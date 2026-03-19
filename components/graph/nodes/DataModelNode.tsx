@@ -3,12 +3,11 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { Database } from "lucide-react";
 import type { StatusId } from "@/lib/config/statuses";
-import { STATUS_STYLES, STATUS_LABELS } from "./node-styles";
+import { StatusBadge } from "@/components/layout/StatusBadge";
 
 export function DataModelNode({ data }: NodeProps) {
   const status = (data.status as StatusId) ?? "idea";
   const label = String(data.label ?? "Data Model");
-  const { badge, dot } = STATUS_STYLES[status] ?? STATUS_STYLES.idea;
 
   return (
     <>
@@ -23,10 +22,7 @@ export function DataModelNode({ data }: NodeProps) {
             {label}
           </span>
         </div>
-        <span className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium self-start ${badge}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
-          {STATUS_LABELS[status]}
-        </span>
+        <StatusBadge status={status} className="self-start" />
       </div>
       <Handle type="source" position={Position.Bottom} className="opacity-0" />
     </>

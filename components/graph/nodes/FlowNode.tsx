@@ -3,13 +3,13 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
-import { STATUS_STYLES, STATUS_LABELS, PLATFORM_DOT_STYLES, PLATFORM_LABELS } from "./node-styles";
+import { StatusBadge } from "@/components/layout/StatusBadge";
+import { PlatformDots } from "@/components/layout/PlatformDots";
 
 export function FlowNode({ data }: NodeProps) {
   const status = (data.status as StatusId) ?? "idea";
   const label = String(data.label ?? "Flow");
   const platforms = (data.platforms as PlatformId[]) ?? [];
-  const { badge, dot } = STATUS_STYLES[status] ?? STATUS_STYLES.idea;
 
   return (
     <>
@@ -22,21 +22,8 @@ export function FlowNode({ data }: NodeProps) {
           {label}
         </span>
         <div className="flex items-center justify-between gap-2">
-          <span className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${badge}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
-            {STATUS_LABELS[status]}
-          </span>
-          {platforms.length > 0 && (
-            <div className="flex items-center gap-1">
-              {platforms.map((platform) => (
-                <span
-                  key={platform}
-                  title={PLATFORM_LABELS[platform]}
-                  className={`w-2 h-2 rounded-full ${PLATFORM_DOT_STYLES[platform]}`}
-                />
-              ))}
-            </div>
-          )}
+          <StatusBadge status={status} />
+          <PlatformDots platforms={platforms} />
         </div>
       </div>
       <Handle type="source" position={Position.Bottom} className="opacity-0" />
