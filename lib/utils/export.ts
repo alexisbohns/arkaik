@@ -1,4 +1,5 @@
-import type { ProjectBundle } from "@/lib/data/types";
+import type { Project, ProjectBundle } from "@/lib/data/types";
+import { localProvider } from "@/lib/data/local-provider";
 
 export function exportToJson(bundle: ProjectBundle): string {
   return JSON.stringify(bundle, null, 2);
@@ -15,4 +16,20 @@ export function downloadJson(bundle: ProjectBundle): void {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+/**
+ * Exports a project by ID, returning a {@link ProjectBundle} containing the
+ * project metadata, all nodes, and all edges.
+ */
+export async function exportProject(id: string): Promise<ProjectBundle> {
+  return localProvider.exportProject(id);
+}
+
+/**
+ * Imports a {@link ProjectBundle}, creating the project, nodes, and edges in
+ * storage. Returns the created {@link Project}.
+ */
+export async function importProject(bundle: ProjectBundle): Promise<Project> {
+  return localProvider.importProject(bundle);
 }
