@@ -4,10 +4,12 @@ import { ReactFlow, MiniMap, Controls, Background, type Node, type Edge } from "
 import "@xyflow/react/dist/style.css";
 import { ProductNode } from "./nodes/ProductNode";
 import { ScenarioNode } from "./nodes/ScenarioNode";
+import { FlowNode } from "./nodes/FlowNode";
 
 const nodeTypes = {
   product: ProductNode,
   scenario: ScenarioNode,
+  flow: FlowNode,
 };
 
 interface CanvasProps {

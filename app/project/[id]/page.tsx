@@ -28,12 +28,33 @@ const initialNodes: Node[] = [
     position: { x: 800, y: 250 },
     data: { label: "Onboarding", status: "planned" },
   },
+  {
+    id: "5",
+    type: "flow",
+    position: { x: 0, y: 450 },
+    data: { label: "Shape an Emotion", status: "planned", platforms: ["ios", "android"] },
+  },
+  {
+    id: "6",
+    type: "flow",
+    position: { x: 200, y: 450 },
+    data: { label: "Record Audio", status: "in-development", platforms: ["ios"] },
+  },
+  {
+    id: "7",
+    type: "flow",
+    position: { x: 380, y: 450 },
+    data: { label: "Browse Feed", status: "live", platforms: ["web", "ios", "android"] },
+  },
 ];
 
 const initialEdges: Edge[] = [
   { id: "e1-2", source: "1", target: "2" },
   { id: "e1-3", source: "1", target: "3" },
   { id: "e1-4", source: "1", target: "4" },
+  { id: "e2-5", source: "2", target: "5" },
+  { id: "e2-6", source: "2", target: "6" },
+  { id: "e3-7", source: "3", target: "7" },
 ];
 
 export default function ProjectCanvasPage() {
