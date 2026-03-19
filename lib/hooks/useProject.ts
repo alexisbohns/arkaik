@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { Project } from "@/lib/data/types";
+import type { ProjectBundle } from "@/lib/data/types";
 import { localProvider } from "@/lib/data/local-provider";
 
 export function useProject(id: string) {
-  const [project, setProject] = useState<Project | undefined>(undefined);
+  const [project, setProject] = useState<ProjectBundle | undefined>(undefined);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

@@ -1,7 +1,7 @@
 import type { DataProvider } from "./data-provider";
-import type { Project } from "./types";
+import type { ProjectBundle } from "./types";
 
-const store = new Map<string, Project>();
+const store = new Map<string, ProjectBundle>();
 
 export const localProvider: DataProvider = {
   async getProject(id: string) {
@@ -10,7 +10,7 @@ export const localProvider: DataProvider = {
   async listProjects() {
     return Array.from(store.values());
   },
-  async saveProject(project: Project) {
-    store.set(project.id, project);
+  async saveProject(bundle: ProjectBundle) {
+    store.set(bundle.project.id, bundle);
   },
 };
