@@ -3,9 +3,11 @@
 import { ReactFlow, MiniMap, Controls, Background, type Node, type Edge } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { ProductNode } from "./nodes/ProductNode";
+import { ScenarioNode } from "./nodes/ScenarioNode";
 
 const nodeTypes = {
   product: ProductNode,
+  scenario: ScenarioNode,
 };
 
 interface CanvasProps {
