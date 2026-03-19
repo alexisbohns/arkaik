@@ -1,12 +1,17 @@
 "use client";
 
-import { ReactFlow, MiniMap, Controls, Background } from "@xyflow/react";
+import { ReactFlow, MiniMap, Controls, Background, type Node, type Edge } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
-export function Canvas() {
+interface CanvasProps {
+  nodes: Node[];
+  edges: Edge[];
+}
+
+export function Canvas({ nodes, edges }: CanvasProps) {
   return (
     <div className="h-full w-full">
-      <ReactFlow fitView>
+      <ReactFlow nodes={nodes} edges={edges} fitView>
         <Controls />
         <MiniMap />
         <Background />
