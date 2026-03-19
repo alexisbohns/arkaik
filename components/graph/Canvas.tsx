@@ -5,11 +5,13 @@ import "@xyflow/react/dist/style.css";
 import { ProductNode } from "./nodes/ProductNode";
 import { ScenarioNode } from "./nodes/ScenarioNode";
 import { FlowNode } from "./nodes/FlowNode";
+import { StepNode } from "./nodes/StepNode";
 
 const nodeTypes = {
   product: ProductNode,
   scenario: ScenarioNode,
   flow: FlowNode,
+  step: StepNode,
 };
 
 interface CanvasProps {
