@@ -1,0 +1,42 @@
+{
+  "id": "pebbles",
+  "title": "Pebbles",
+  "description": "A product graph of the Pebbles app, from tokens to scenarios.",
+  "nodes": [
+    {
+      "id": "1",
+      "title": "Pebbles",
+      "species": "Product",
+      "status": "Live",
+      "platforms": ["iOS", "Android"]
+    },
+    {
+      "id": "2",
+      "title": "Record a Pebble",
+      "species": "Scenario",
+      "status": "In Development",
+      "platforms": ["iOS"]
+    },
+    {
+      "id": "3",
+      "title": "Shape an Emotion",
+      "species": "Flow",
+      "status": "Planned",
+      "platforms": ["iOS", "Android", "Web"]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1-2",
+      "source": "1",
+      "target": "2",
+      "type": "compose"
+    },
+    {
+      "id": "e1-3",
+      "source": "1",
+      "target": "3",
+      "type": "compose"
+    }
+  ]
+}
