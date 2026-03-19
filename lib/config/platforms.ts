@@ -5,3 +5,5 @@ export const PLATFORMS = [
 ] as const;
 
 export type PlatformId = (typeof PLATFORMS)[number]["id"];
+/** @deprecated Use PlatformId */
+export type Platform = PlatformId;

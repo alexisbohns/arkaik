@@ -7,3 +7,5 @@ export const EDGE_TYPES = [
 ] as const;
 
 export type EdgeTypeId = (typeof EDGE_TYPES)[number]["id"];
+/** @deprecated Use EdgeTypeId */
+export type EdgeType = EdgeTypeId;

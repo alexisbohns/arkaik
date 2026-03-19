@@ -7,3 +7,5 @@ export const STATUSES = [
 ] as const;
 
 export type StatusId = (typeof STATUSES)[number]["id"];
+/** @deprecated Use StatusId */
+export type Status = StatusId;

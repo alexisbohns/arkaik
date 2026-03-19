@@ -12,3 +12,5 @@ export const SPECIES = [
 ] as const;
 
 export type SpeciesId = (typeof SPECIES)[number]["id"];
+/** @deprecated Use SpeciesId */
+export type Species = SpeciesId;
