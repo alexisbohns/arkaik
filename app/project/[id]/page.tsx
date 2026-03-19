@@ -1,13 +1,14 @@
 "use client";
 
-import { ReactFlow, MiniMap, Controls, Background, type Edge, type Node } from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
+import { type Edge, type Node } from "@xyflow/react";
+import { Canvas } from "@/components/graph/Canvas";
 
 const initialNodes: Node[] = [
   {
     id: "1",
+    type: "product",
     position: { x: 250, y: 200 },
-    data: { label: "Pebbles" },
+    data: { label: "Pebbles", status: "live" },
   },
 ];
 
@@ -16,11 +17,7 @@ const initialEdges: Edge[] = [];
 export default function ProjectCanvasPage() {
   return (
     <div className="h-screen w-full">
-      <ReactFlow nodes={initialNodes} edges={initialEdges} fitView>
-        <Controls />
-        <MiniMap />
-        <Background />
-      </ReactFlow>
+      <Canvas nodes={initialNodes} edges={initialEdges} />
     </div>
   );
 }

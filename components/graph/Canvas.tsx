@@ -2,6 +2,11 @@
 
 import { ReactFlow, MiniMap, Controls, Background, type Node, type Edge } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { ProductNode } from "./nodes/ProductNode";
+
+const nodeTypes = {
+  product: ProductNode,
+};
 
 interface CanvasProps {
   nodes: Node[];
@@ -11,7 +16,7 @@ interface CanvasProps {
 export function Canvas({ nodes, edges }: CanvasProps) {
   return (
     <div className="h-full w-full">
-      <ReactFlow nodes={nodes} edges={edges} fitView>
+      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView>
         <Controls />
         <MiniMap />
         <Background />
