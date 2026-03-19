@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import type { ArkaikEdge } from "@/lib/data/types";
+import type { Edge } from "@/lib/data/types";
 
-export function useEdges(initial: ArkaikEdge[] = []) {
-  const [edges, setEdges] = useState<ArkaikEdge[]>(initial);
+export function useEdges(initial: Edge[] = []) {
+  const [edges, setEdges] = useState<Edge[]>(initial);
 
-  function addEdge(edge: ArkaikEdge) {
+  function addEdge(edge: Edge) {
     setEdges((prev) => [...prev, edge]);
   }
 
