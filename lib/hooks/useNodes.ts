@@ -1,24 +1,45 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { Node } from "@/lib/data/types";
+import { localProvider } from "@/lib/data/local-provider";
 
-export function useNodes(initial: Node[] = []) {
-  const [nodes, setNodes] = useState<Node[]>(initial);
+export function useNodes(projectId: string) {
+  const [nodes, setNodes] = useState<Node[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  function addNode(node: Node) {
-    setNodes((prev) => [...prev, node]);
-  }
+  useEffect(() => {
+    localProvider
+      .getNodes(projectId)
+      .then((n) => {
+        setNodes(n);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("[useNodes] Failed to load nodes:", err);
+        setLoading(false);
+      });
+  }, [projectId]);
 
-  function removeNode(id: string) {
+  const addNode = useCallback(async (node: Node) => {
+    const created = await localProvider.createNode(node);
+    setNodes((prev) => [...prev, created]);
+    return created;
+  }, []);
+
+  const removeNode = useCallback(async (id: string) => {
+    await localProvider.deleteNode(id);
     setNodes((prev) => prev.filter((n) => n.id !== id));
-  }
+  }, []);
 
-  function updateNode(id: string, patch: Partial<Node>) {
-    setNodes((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, ...patch } : n))
-    );
-  }
+  const updateNode = useCallback(
+    async (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => {
+      const updated = await localProvider.updateNode(id, patch);
+      setNodes((prev) => prev.map((n) => (n.id === id ? updated : n)));
+      return updated;
+    },
+    []
+  );
 
-  return { nodes, addNode, removeNode, updateNode };
+  return { nodes, loading, addNode, removeNode, updateNode };
 }
