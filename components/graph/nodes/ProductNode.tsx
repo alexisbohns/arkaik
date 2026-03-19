@@ -1,22 +1,7 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { Package } from "lucide-react";
 import type { StatusId } from "@/lib/config/statuses";
-
-const STATUS_STYLES: Record<StatusId, { badge: string; dot: string }> = {
-  idea: { badge: "bg-gray-100 text-gray-600", dot: "bg-gray-400" },
-  planned: { badge: "bg-blue-100 text-blue-700", dot: "bg-blue-500" },
-  "in-development": { badge: "bg-orange-100 text-orange-700", dot: "bg-orange-500" },
-  live: { badge: "bg-green-100 text-green-700", dot: "bg-green-500" },
-  deprecated: { badge: "bg-red-100 text-red-700", dot: "bg-red-500" },
-};
-
-const STATUS_LABELS: Record<StatusId, string> = {
-  idea: "Idea",
-  planned: "Planned",
-  "in-development": "In Development",
-  live: "Live",
-  deprecated: "Deprecated",
-};
+import { STATUS_STYLES, STATUS_LABELS } from "./node-styles";
 
 export function ProductNode({ data }: NodeProps) {
   const status = (data.status as StatusId) ?? "idea";
