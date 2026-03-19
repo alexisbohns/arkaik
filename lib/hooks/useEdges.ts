@@ -1,18 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { Edge } from "@/lib/data/types";
+import { localProvider } from "@/lib/data/local-provider";
 
-export function useEdges(initial: Edge[] = []) {
-  const [edges, setEdges] = useState<Edge[]>(initial);
+export function useEdges(projectId: string) {
+  const [edges, setEdges] = useState<Edge[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  function addEdge(edge: Edge) {
-    setEdges((prev) => [...prev, edge]);
-  }
+  useEffect(() => {
+    localProvider
+      .getEdges(projectId)
+      .then((e) => {
+        setEdges(e);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("[useEdges] Failed to load edges:", err);
+        setLoading(false);
+      });
+  }, [projectId]);
 
-  function removeEdge(id: string) {
+  const addEdge = useCallback(async (edge: Edge) => {
+    const created = await localProvider.createEdge(edge);
+    setEdges((prev) => [...prev, created]);
+    return created;
+  }, []);
+
+  const removeEdge = useCallback(async (id: string) => {
+    await localProvider.deleteEdge(id);
     setEdges((prev) => prev.filter((e) => e.id !== id));
-  }
+  }, []);
 
-  return { edges, addEdge, removeEdge };
+  return { edges, loading, addEdge, removeEdge };
 }
