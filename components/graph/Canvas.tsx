@@ -7,6 +7,8 @@ import { ScenarioNode } from "./nodes/ScenarioNode";
 import { FlowNode } from "./nodes/FlowNode";
 import { StepNode } from "./nodes/StepNode";
 import { ConditionNode } from "./nodes/ConditionNode";
+import { DataModelNode } from "./nodes/DataModelNode";
+import { ApiEndpointNode } from "./nodes/ApiEndpointNode";
 
 const nodeTypes = {
   product: ProductNode,
@@ -14,6 +16,8 @@ const nodeTypes = {
   flow: FlowNode,
   step: StepNode,
   condition: ConditionNode,
+  dataModel: DataModelNode,
+  apiEndpoint: ApiEndpointNode,
 };
 
 interface CanvasProps {

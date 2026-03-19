@@ -46,6 +46,30 @@ const initialNodes: Node[] = [
     position: { x: 380, y: 450 },
     data: { label: "Browse Feed", status: "live", platforms: ["web", "ios", "android"] },
   },
+  {
+    id: "8",
+    type: "dataModel",
+    position: { x: 0, y: 650 },
+    data: { label: "Pebble", status: "live" },
+  },
+  {
+    id: "9",
+    type: "dataModel",
+    position: { x: 220, y: 650 },
+    data: { label: "User", status: "live" },
+  },
+  {
+    id: "10",
+    type: "apiEndpoint",
+    position: { x: 440, y: 650 },
+    data: { label: "POST /pebbles", status: "live" },
+  },
+  {
+    id: "11",
+    type: "apiEndpoint",
+    position: { x: 660, y: 650 },
+    data: { label: "GET /feed", status: "in-development" },
+  },
 ];
 
 const initialEdges: Edge[] = [
@@ -55,6 +79,10 @@ const initialEdges: Edge[] = [
   { id: "e2-5", source: "2", target: "5" },
   { id: "e2-6", source: "2", target: "6" },
   { id: "e3-7", source: "3", target: "7" },
+  { id: "e6-8", source: "6", target: "8" },
+  { id: "e6-10", source: "6", target: "10" },
+  { id: "e7-9", source: "7", target: "9" },
+  { id: "e7-11", source: "7", target: "11" },
 ];
 
 export default function ProjectCanvasPage() {
