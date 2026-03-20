@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { Node } from "@/lib/data/types";
+import type { Node, Edge } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import { SPECIES } from "@/lib/config/species";
@@ -29,6 +29,9 @@ interface NodeDetailPanelProps {
   onOpenChange: (open: boolean) => void;
   node?: Node;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => void;
+  allNodes?: Node[];
+  allEdges?: Edge[];
+  onNavigate?: (node: Node) => void;
 }
 
 interface NodeFieldsProps {
@@ -132,11 +135,85 @@ function NodeFields({ node, onUpdate }: NodeFieldsProps) {
   );
 }
 
+interface ConnectionsSectionProps {
+  node: Node;
+  allNodes: Node[];
+  allEdges: Edge[];
+  onNavigate: (node: Node) => void;
+}
+
+function ConnectionsSection({ node, allNodes, allEdges, onNavigate }: ConnectionsSectionProps) {
+  const parent = node.parent_id ? allNodes.find((n) => n.id === node.parent_id) : undefined;
+  const children = allNodes.filter((n) => n.parent_id === node.id);
+
+  const crossLayerNodes = allEdges
+    .filter((e) => e.source_id === node.id || e.target_id === node.id)
+    .map((e) => {
+      const otherId = e.source_id === node.id ? e.target_id : e.source_id;
+      return allNodes.find((n) => n.id === otherId);
+    })
+    .filter((n): n is Node => !!n && (n.species === "data-model" || n.species === "api-endpoint"));
+
+  const uniqueCrossLayerNodes = [...new Map(crossLayerNodes.map((n) => [n.id, n])).values()];
+
+  if (!parent && children.length === 0 && uniqueCrossLayerNodes.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="px-6 flex flex-col gap-2">
+      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Connections</span>
+      <div className="flex flex-col gap-0.5">
+        {parent && (
+          <ConnectionItem badge="Parent" node={parent} onNavigate={onNavigate} />
+        )}
+        {children.map((child) => (
+          <ConnectionItem key={child.id} badge="Child" node={child} onNavigate={onNavigate} />
+        ))}
+        {uniqueCrossLayerNodes.map((n) => (
+          <ConnectionItem
+            key={n.id}
+            badge={SPECIES.find((s) => s.id === n.species)?.label ?? n.species}
+            node={n}
+            onNavigate={onNavigate}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ConnectionItem({
+  badge,
+  node,
+  onNavigate,
+}: {
+  badge: string;
+  node: Node;
+  onNavigate: (node: Node) => void;
+}) {
+  const speciesConfig = SPECIES.find((s) => s.id === node.species);
+  return (
+    <button
+      type="button"
+      onClick={() => onNavigate(node)}
+      className="flex items-center gap-2 text-sm text-left rounded-md px-2 py-1.5 hover:bg-muted transition-colors w-full"
+    >
+      <span className="text-xs text-muted-foreground shrink-0 w-20 truncate">{badge}</span>
+      <span className="flex-1 truncate">{node.title}</span>
+      <span className="text-xs text-muted-foreground ml-auto shrink-0">{speciesConfig?.label ?? node.species}</span>
+    </button>
+  );
+}
+
 export function NodeDetailPanel({
   open,
   onOpenChange,
   node,
   onUpdate,
+  allNodes,
+  allEdges,
+  onNavigate,
 }: NodeDetailPanelProps) {
   const speciesConfig = SPECIES.find((s) => s.id === node?.species);
   const speciesLabel = speciesConfig?.label ?? node?.species;
@@ -152,7 +229,18 @@ export function NodeDetailPanel({
           )}
         </SheetHeader>
         {node && (
-          <NodeFields key={node.id} node={node} onUpdate={onUpdate} />
+          <>
+            <NodeFields key={node.id} node={node} onUpdate={onUpdate} />
+            {allNodes && allEdges && onNavigate && (
+              <ConnectionsSection
+                key={`conn-${node.id}`}
+                node={node}
+                allNodes={allNodes}
+                allEdges={allEdges}
+                onNavigate={onNavigate}
+              />
+            )}
+          </>
         )}
       </SheetContent>
     </Sheet>

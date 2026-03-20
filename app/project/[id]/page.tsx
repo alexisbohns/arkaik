@@ -164,6 +164,10 @@ export default function ProjectCanvasPage() {
     [updateNode],
   );
 
+  const handleNavigate = useCallback((targetNode: DataNode) => {
+    setSelectedNode(targetNode);
+  }, []);
+
   const handleNodeClick = useCallback<NodeMouseHandler>((_event, xyNode) => {
     // Split nodes have IDs like `${nodeId}${SPLIT_SEP}${platform}` — strip the suffix to find the source data node
     const baseId = xyNode.id.includes(SPLIT_SEP) ? xyNode.id.split(SPLIT_SEP)[0] : xyNode.id;
@@ -410,6 +414,9 @@ export default function ProjectCanvasPage() {
         onOpenChange={setPanelOpen}
         node={selectedNode ?? undefined}
         onUpdate={handleNodeUpdate}
+        allNodes={dataNodes}
+        allEdges={dataEdges}
+        onNavigate={handleNavigate}
       />
     </div>
   );
