@@ -1,6 +1,3 @@
-"use client";
-
-import { useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { StatusId } from "@/lib/config/statuses";
@@ -12,7 +9,8 @@ export function ScenarioNode({ data }: NodeProps) {
   const status = (data.status as StatusId) ?? "idea";
   const label = String(data.label ?? "Scenario");
   const platforms = (data.platforms as PlatformId[]) ?? [];
-  const [expanded, setExpanded] = useState(false);
+  const expanded = Boolean(data.expanded);
+  const onToggle = data.onToggle as (() => void) | undefined;
 
   return (
     <>
@@ -23,11 +21,11 @@ export function ScenarioNode({ data }: NodeProps) {
         aria-label={label}
         aria-expanded={expanded}
         className="flex flex-col gap-2 w-56 px-4 py-3 rounded-xl bg-background border-2 border-border shadow-md cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        onClick={() => setExpanded((prev) => !prev)}
+        onClick={() => onToggle?.()}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
-            setExpanded((prev) => !prev);
+            onToggle?.();
           }
         }}
       >
