@@ -352,6 +352,10 @@ export default function ProjectCanvasPage() {
           platforms: n.platforms,
           expanded: expandedProducts.has(n.id),
           onToggle: () => toggleProduct(n.id, n.title),
+          onOpenDetails: () => {
+            setSelectedNode(n);
+            setPanelOpen(true);
+          },
           onAddChild: (() => {
             const child = getChildSpecies(n.species);
             return child ? () => handleAddChildNode(n.id, child) : undefined;
@@ -389,6 +393,10 @@ export default function ProjectCanvasPage() {
             platforms: scenario.platforms,
             expanded: expandedScenarios.has(scenario.id),
             onToggle: () => toggleScenario(scenario.id, scenario.title, product.id, product.title),
+            onOpenDetails: () => {
+              setSelectedNode(scenario);
+              setPanelOpen(true);
+            },
             onAddChild: (() => {
               const child = getChildSpecies(scenario.species);
               return child ? () => handleAddChildNode(scenario.id, child) : undefined;
@@ -439,6 +447,10 @@ export default function ProjectCanvasPage() {
             platforms: flow.platforms,
             expanded: expandedFlows.has(flow.id),
             onToggle: () => toggleFlow(flow.id, flow.title, scenarioId, scenario.title, parentProduct?.id ?? "", parentProduct?.title ?? ""),
+            onOpenDetails: () => {
+              setSelectedNode(flow);
+              setPanelOpen(true);
+            },
             onAddChild: getChildSpecies(flow.species)
               ? () => handleAddChildNode(flow.id, getChildSpecies(flow.species)!)
               : undefined,
