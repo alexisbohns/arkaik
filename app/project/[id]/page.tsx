@@ -7,8 +7,9 @@ import { Canvas } from "@/components/graph/Canvas";
 import { Breadcrumb } from "@/components/layout/Breadcrumb";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
-import type { Edge as DataEdge } from "@/lib/data/types";
 import type { SpeciesId } from "@/lib/config/species";
+import { PLATFORMS } from "@/lib/config/platforms";
+import type { PlatformId } from "@/lib/config/platforms";
 
 interface BreadcrumbEntry {
   nodeId: string;
@@ -62,22 +63,17 @@ function linearPositions(
   }));
 }
 
-function toXYEdge(edge: DataEdge): Edge {
-  let type: string | undefined;
-  if (edge.edge_type === "composes") type = "compose";
-  else if (edge.edge_type === "branches") type = "branch";
-  return {
-    id: edge.id,
-    source: edge.source_id,
-    target: edge.target_id,
-    type,
-  };
-}
-
 /** Species that can appear as direct children of a Flow (steps + branches). */
 const FLOW_CHILD_SPECIES = new Set<SpeciesId>([
   "view", "component", "section", "state", "token", "condition",
 ]);
+
+/** Step-like species eligible for per-platform split rendering. */
+const STEP_SPLIT_SPECIES = new Set<SpeciesId>([
+  "view", "component", "section", "state", "token",
+]);
+
+const ALL_PLATFORM_IDS = PLATFORMS.map((p) => p.id);
 
 export default function ProjectCanvasPage() {
   const params = useParams();
@@ -154,6 +150,9 @@ export default function ProjectCanvasPage() {
   }, []);
 
   const { nodes, edges } = useMemo(() => {
+    // Tracks nodes split by platform: originalId → [splitId, …]
+    const splitNodeMap = new Map<string, string[]>();
+
     const productDataNodes = dataNodes.filter((n) => n.species === "product");
 
     // Build the visible node list, starting with all product nodes
@@ -274,33 +273,84 @@ export default function ProjectCanvasPage() {
         (n) => n.parent_id === flowId && FLOW_CHILD_SPECIES.has(n.species),
       );
 
-      const childPositions = linearPositions(flow.position_x, flow.position_y, children.length);
+      // Build visual items: step-like nodes with a proper subset of platforms
+      // are expanded into one visual node per platform; all others stay as-is.
+      const visualItems: Array<{
+        id: string;
+        dataNode: (typeof children)[0];
+        platform?: PlatformId;
+      }> = [];
 
-      children.forEach((child, i) => {
-        visibleNodeIds.add(child.id);
+      for (const child of children) {
+        const childPlatforms = (child.platforms ?? []) as PlatformId[];
+        const childIsAllPlatforms = ALL_PLATFORM_IDS.every((p) =>
+          childPlatforms.includes(p),
+        );
+        const shouldSplit =
+          STEP_SPLIT_SPECIES.has(child.species) &&
+          childPlatforms.length >= 2 &&
+          !childIsAllPlatforms;
+
+        if (shouldSplit) {
+          const splitIds = childPlatforms.map((p) => `${child.id}__${p}`);
+          splitNodeMap.set(child.id, splitIds);
+          for (const platform of childPlatforms) {
+            visualItems.push({ id: `${child.id}__${platform}`, dataNode: child, platform });
+          }
+        } else {
+          visualItems.push({ id: child.id, dataNode: child });
+        }
+      }
+
+      const childPositions = linearPositions(flow.position_x, flow.position_y, visualItems.length);
+
+      for (const [i, item] of visualItems.entries()) {
+        visibleNodeIds.add(item.id);
         visibleNodes.push({
-          id: child.id,
-          type: SPECIES_TO_NODE_TYPE[child.species],
+          id: item.id,
+          type: SPECIES_TO_NODE_TYPE[item.dataNode.species],
           position: childPositions[i],
           data: {
-            label: child.title,
-            status: child.status,
-            platforms: child.platforms,
+            label: item.dataNode.title,
+            status: item.dataNode.status,
+            platforms: item.platform ? [item.platform] : item.dataNode.platforms,
           },
         });
-      });
+      }
     }
 
-    // Include any persisted edges that connect two visible nodes (deduplicated)
+    // Include any persisted edges that connect two visible nodes (deduplicated).
+    // When a node was split into per-platform variants, fan the edge out to all
+    // applicable split IDs.
     const renderedEdgePairs = new Set(visibleEdges.map((e) => `${e.source}:${e.target}`));
     for (const edge of dataEdges) {
-      if (
-        visibleNodeIds.has(edge.source_id) &&
-        visibleNodeIds.has(edge.target_id) &&
-        !renderedEdgePairs.has(`${edge.source_id}:${edge.target_id}`)
-      ) {
-        visibleEdges.push(toXYEdge(edge));
-        renderedEdgePairs.add(`${edge.source_id}:${edge.target_id}`);
+      const sourceIds =
+        splitNodeMap.get(edge.source_id) ??
+        (visibleNodeIds.has(edge.source_id) ? [edge.source_id] : []);
+      const targetIds =
+        splitNodeMap.get(edge.target_id) ??
+        (visibleNodeIds.has(edge.target_id) ? [edge.target_id] : []);
+
+      const xyType =
+        edge.edge_type === "composes"
+          ? "compose"
+          : edge.edge_type === "branches"
+          ? "branch"
+          : undefined;
+
+      for (const srcId of sourceIds) {
+        for (const tgtId of targetIds) {
+          const pairKey = `${srcId}:${tgtId}`;
+          if (!renderedEdgePairs.has(pairKey)) {
+            visibleEdges.push({
+              id: `${edge.id}--${srcId}--${tgtId}`,
+              source: srcId,
+              target: tgtId,
+              type: xyType,
+            });
+            renderedEdgePairs.add(pairKey);
+          }
+        }
       }
     }
 

@@ -68,7 +68,7 @@
       "species": "view",
       "title": "Emotion Detail",
       "status": "planned",
-      "platforms": ["ios", "android", "web"],
+      "platforms": ["ios", "web"],
       "parent_id": "n-flow",
       "position_x": 510,
       "position_y": 140
