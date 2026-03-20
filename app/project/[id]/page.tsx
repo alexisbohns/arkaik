@@ -3,9 +3,12 @@
 import { useParams } from "next/navigation";
 import { useState, useCallback, useMemo } from "react";
 import { type Edge, type Node, type NodeMouseHandler } from "@xyflow/react";
+import { PlusIcon } from "lucide-react";
 import { Canvas } from "@/components/graph/Canvas";
 import { Breadcrumb } from "@/components/layout/Breadcrumb";
 import { NodeDetailPanel } from "@/components/panels/NodeDetailPanel";
+import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
+import { Button } from "@/components/ui/button";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
 import type { SpeciesId } from "@/lib/config/species";
@@ -90,8 +93,9 @@ export default function ProjectCanvasPage() {
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbEntry[]>([]);
   const [selectedNode, setSelectedNode] = useState<DataNode | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [newNodeOpen, setNewNodeOpen] = useState(false);
 
-  const { nodes: dataNodes, loading: nodesLoading, updateNode } = useNodes(id);
+  const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
 
   const toggleProduct = useCallback((productId: string, label: string) => {
@@ -167,6 +171,41 @@ export default function ProjectCanvasPage() {
   const handleNavigate = useCallback((targetNode: DataNode) => {
     setSelectedNode(targetNode);
   }, []);
+
+  const handleAddNode = useCallback(
+    async (data: NewNodeFormData) => {
+      let position_x = 400;
+      let position_y = 400;
+
+      if (data.parent_id) {
+        const parent = dataNodes.find((n) => n.id === data.parent_id);
+        if (parent) {
+          position_x = parent.position_x;
+          position_y = parent.position_y;
+        }
+      } else {
+        const products = dataNodes.filter((n) => n.species === "product");
+        if (products.length > 0) {
+          const maxX = Math.max(...products.map((n) => n.position_x));
+          position_x = maxX + 300;
+        }
+      }
+
+      await addNode({
+        id: crypto.randomUUID(),
+        project_id: id,
+        title: data.title,
+        species: data.species,
+        status: data.status,
+        platforms: data.platforms,
+        parent_id: data.parent_id,
+        position_x,
+        position_y,
+      });
+      setNewNodeOpen(false);
+    },
+    [dataNodes, addNode, id],
+  );
 
   const handleNodeClick = useCallback<NodeMouseHandler>((_event, xyNode) => {
     // Split nodes have IDs like `${nodeId}${SPLIT_SEP}${platform}` — strip the suffix to find the source data node
@@ -406,8 +445,14 @@ export default function ProjectCanvasPage() {
           <Breadcrumb segments={breadcrumbSegments} />
         </header>
       )}
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 relative">
         <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} />
+        <div className="absolute bottom-4 right-4 z-10">
+          <Button size="sm" onClick={() => setNewNodeOpen(true)}>
+            <PlusIcon className="size-4" />
+            New node
+          </Button>
+        </div>
       </div>
       <NodeDetailPanel
         open={panelOpen}
@@ -417,6 +462,12 @@ export default function ProjectCanvasPage() {
         allNodes={dataNodes}
         allEdges={dataEdges}
         onNavigate={handleNavigate}
+      />
+      <NewNodeForm
+        open={newNodeOpen}
+        onOpenChange={setNewNodeOpen}
+        onSubmit={handleAddNode}
+        nodes={dataNodes}
       />
     </div>
   );
