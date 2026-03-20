@@ -21,9 +21,10 @@ docs/                   # This documentation
 ## State Management
 
 - **No global store.** No Zustand, Redux, or Context-based state.
-- All state lives in local hooks: `useNodes`, `useEdges`, `useProject`, `useGraphNavigation`.
+- Reusable state logic lives in hooks: `useNodes`, `useEdges`, `useProject`, `useGraphNavigation`.
+- The project canvas page (`app/project/[id]/page.tsx`) uses `useNodes` and `useEdges` for data, but manages expansion and breadcrumb state as local `useState` sets (`expandedProducts`, `expandedScenarios`, `expandedFlows`).
 - Data flows via props from the project page down to canvas components.
-- Semantic zoom state (expanded sets, breadcrumbs) is managed in `app/project/[id]/page.tsx`.
+- `useProject` and `useGraphNavigation` exist as utilities but are not currently used on the canvas page.
 
 ## Styling
 
