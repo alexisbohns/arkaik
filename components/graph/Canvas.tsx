@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactFlow, MiniMap, Controls, Background, type Node, type Edge } from "@xyflow/react";
+import { ReactFlow, MiniMap, Controls, Background, type Node, type Edge, type NodeMouseHandler } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { ProductNode } from "./nodes/ProductNode";
 import { ScenarioNode } from "./nodes/ScenarioNode";
@@ -30,12 +30,13 @@ const edgeTypes = {
 interface CanvasProps {
   nodes: Node[];
   edges: Edge[];
+  onNodeClick?: NodeMouseHandler;
 }
 
-export function Canvas({ nodes, edges }: CanvasProps) {
+export function Canvas({ nodes, edges, onNodeClick }: CanvasProps) {
   return (
     <div className="h-full w-full">
-      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} fitView>
+      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} fitView onNodeClick={onNodeClick}>
         <Controls />
         <MiniMap />
         <Background />
