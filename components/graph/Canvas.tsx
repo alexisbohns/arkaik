@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactFlow, MiniMap, Controls, Background, type Node, type Edge, type NodeMouseHandler, type OnConnect } from "@xyflow/react";
+import { ReactFlow, MiniMap, Controls, Background, type Node, type Edge, type NodeMouseHandler, type OnConnect, type EdgeMouseHandler } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { ProductNode } from "./nodes/ProductNode";
 import { ScenarioNode } from "./nodes/ScenarioNode";
@@ -36,12 +36,13 @@ interface CanvasProps {
   edges: Edge[];
   onNodeClick?: NodeMouseHandler;
   onConnect?: OnConnect;
+  onEdgeClick?: EdgeMouseHandler;
 }
 
-export function Canvas({ nodes, edges, onNodeClick, onConnect }: CanvasProps) {
+export function Canvas({ nodes, edges, onNodeClick, onConnect, onEdgeClick }: CanvasProps) {
   return (
     <div className="h-full w-full">
-      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} fitView onNodeClick={onNodeClick} onConnect={onConnect}>
+      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} fitView onNodeClick={onNodeClick} onConnect={onConnect} onEdgeClick={onEdgeClick}>
         <Controls />
         <MiniMap />
         <Background />

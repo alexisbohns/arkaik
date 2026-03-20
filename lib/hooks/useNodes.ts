@@ -37,6 +37,14 @@ export function useNodes(projectId: string) {
     setNodes((prev) => prev.filter((n) => n.id !== id));
   }, []);
 
+  const removeNodes = useCallback(async (ids: string[]) => {
+    for (const id of ids) {
+      await localProvider.deleteNode(id);
+    }
+    const idSet = new Set(ids);
+    setNodes((prev) => prev.filter((n) => !idSet.has(n.id)));
+  }, []);
+
   const updateNode = useCallback(
     async (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => {
       const updated = await localProvider.updateNode(id, patch);
@@ -46,5 +54,5 @@ export function useNodes(projectId: string) {
     []
   );
 
-  return { nodes, loading, addNode, removeNode, updateNode };
+  return { nodes, loading, addNode, removeNode, removeNodes, updateNode };
 }
