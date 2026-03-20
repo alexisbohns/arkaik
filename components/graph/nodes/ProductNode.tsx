@@ -2,12 +2,14 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { Package } from "lucide-react";
 import type { StatusId } from "@/lib/config/statuses";
 import { StatusBadge } from "@/components/layout/StatusBadge";
+import { STATUS_GHOST_STYLES } from "./node-styles";
 
 export function ProductNode({ data }: NodeProps) {
   const status = (data.status as StatusId) ?? "idea";
   const label = String(data.label ?? "Product");
   const expanded = Boolean(data.expanded);
   const onToggle = data.onToggle as (() => void) | undefined;
+  const ghostClass = STATUS_GHOST_STYLES[status];
 
   return (
     <>
@@ -17,7 +19,7 @@ export function ProductNode({ data }: NodeProps) {
         tabIndex={0}
         aria-label={label}
         aria-expanded={expanded}
-        className="flex w-40 h-40 flex-col items-center justify-center rounded-full bg-primary text-primary-foreground border-4 border-border shadow-xl cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className={`flex w-40 h-40 flex-col items-center justify-center rounded-full bg-primary text-primary-foreground border-4 border-border shadow-xl cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${ghostClass.wrapper} ${ghostClass.border}`}
         onClick={() => onToggle?.()}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {

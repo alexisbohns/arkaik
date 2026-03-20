@@ -83,6 +83,28 @@
       "parent_id": "n-flow",
       "position_x": 730,
       "position_y": 140
+    },
+    {
+      "id": "n-scenario-idea",
+      "project_id": "pebbles",
+      "species": "scenario",
+      "title": "Replay a Pebble",
+      "status": "idea",
+      "platforms": ["ios", "android"],
+      "parent_id": "n-product",
+      "position_x": 680,
+      "position_y": 120
+    },
+    {
+      "id": "n-flow-idea",
+      "project_id": "pebbles",
+      "species": "flow",
+      "title": "Discover Emotions",
+      "status": "idea",
+      "platforms": ["ios"],
+      "parent_id": "n-scenario-idea",
+      "position_x": 680,
+      "position_y": -80
     }
   ],
   "edges": [
@@ -120,6 +142,20 @@
       "source_id": "n-step-2",
       "target_id": "n-step-3",
       "edge_type": "branches"
+    },
+    {
+      "id": "e-product-scenario-idea",
+      "project_id": "pebbles",
+      "source_id": "n-product",
+      "target_id": "n-scenario-idea",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-scenario-idea-flow-idea",
+      "project_id": "pebbles",
+      "source_id": "n-scenario-idea",
+      "target_id": "n-flow-idea",
+      "edge_type": "composes"
     }
   ]
 }

@@ -34,3 +34,11 @@ export const PLATFORM_BORDER_STYLES: Record<PlatformId, string> = {
   ios: "border-blue-500",
   android: "border-purple-500",
 };
+
+export const STATUS_GHOST_STYLES: Record<StatusId, { wrapper: string; border: string }> = {
+  idea: { wrapper: "opacity-60", border: "border-dashed" },
+  planned: { wrapper: "", border: "" },
+  "in-development": { wrapper: "", border: "" },
+  live: { wrapper: "", border: "" },
+  deprecated: { wrapper: "", border: "" },
+};
