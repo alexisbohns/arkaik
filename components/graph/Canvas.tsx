@@ -10,6 +10,7 @@ import { ConditionNode } from "./nodes/ConditionNode";
 import { DataModelNode } from "./nodes/DataModelNode";
 import { ApiEndpointNode } from "./nodes/ApiEndpointNode";
 import { ComposeEdge } from "./edges/ComposeEdge";
+import { BranchEdge } from "./edges/BranchEdge";
 
 const nodeTypes = {
   product: ProductNode,
@@ -23,6 +24,7 @@ const nodeTypes = {
 
 const edgeTypes = {
   compose: ComposeEdge,
+  branch: BranchEdge,
 };
 
 interface CanvasProps {
