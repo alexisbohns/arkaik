@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, useCallback, useMemo } from "react";
 import { type Edge, type Node, type NodeMouseHandler, type Connection, type EdgeMouseHandler } from "@xyflow/react";
@@ -7,6 +8,7 @@ import { PlusIcon } from "lucide-react";
 import { Canvas } from "@/components/graph/Canvas";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
+import { ArkaikLogo } from "@/components/branding/ArkaikLogo";
 import { Breadcrumb } from "@/components/layout/Breadcrumb";
 import { NodeDetailPanel } from "@/components/panels/NodeDetailPanel";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
@@ -569,7 +571,10 @@ export default function ProjectCanvasPage() {
   return (
     <div className="h-screen w-full flex flex-col">
       {breadcrumbs.length > 0 && (
-        <header className="flex items-center border-b px-4 py-2 bg-background shrink-0">
+        <header className="flex items-center gap-3 border-b bg-background px-4 py-2 shrink-0">
+          <Link href="/" aria-label="Go to home" className="inline-flex items-center">
+            <ArkaikLogo className="w-16 shrink-0" />
+          </Link>
           <Breadcrumb segments={breadcrumbSegments} />
         </header>
       )}
