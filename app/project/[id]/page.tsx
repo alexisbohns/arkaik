@@ -18,6 +18,7 @@ const SPECIES_TO_NODE_TYPE: Record<SpeciesId, string> = {
   state: "step",
   component: "step",
   section: "step",
+  condition: "condition",
   "data-model": "dataModel",
   "api-endpoint": "apiEndpoint",
 };
@@ -35,14 +36,41 @@ function radialPositions(
   });
 }
 
+/** Position `count` items in a horizontal line centred at (cx, cy + offset). */
+const FLOW_CHILD_SPACING = 220;
+const FLOW_CHILD_Y_OFFSET = 220;
+
+function linearPositions(
+  cx: number,
+  cy: number,
+  count: number,
+  spacing = FLOW_CHILD_SPACING,
+): { x: number; y: number }[] {
+  if (count === 0) return [];
+  const totalWidth = (count - 1) * spacing;
+  const startX = cx - totalWidth / 2;
+  return Array.from({ length: count }, (_, i) => ({
+    x: startX + i * spacing,
+    y: cy + FLOW_CHILD_Y_OFFSET,
+  }));
+}
+
 function toXYEdge(edge: DataEdge): Edge {
+  let type: string | undefined;
+  if (edge.edge_type === "composes") type = "compose";
+  else if (edge.edge_type === "branches") type = "branch";
   return {
     id: edge.id,
     source: edge.source_id,
     target: edge.target_id,
-    type: edge.edge_type === "composes" ? "compose" : undefined,
+    type,
   };
 }
+
+/** Species that can appear as direct children of a Flow (steps + branches). */
+const FLOW_CHILD_SPECIES = new Set<SpeciesId>([
+  "view", "component", "section", "state", "token", "condition",
+]);
 
 export default function ProjectCanvasPage() {
   const params = useParams();
@@ -50,6 +78,7 @@ export default function ProjectCanvasPage() {
 
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
   const [expandedScenarios, setExpandedScenarios] = useState<Set<string>>(new Set());
+  const [expandedFlows, setExpandedFlows] = useState<Set<string>>(new Set());
 
   const { nodes: dataNodes, loading: nodesLoading } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
@@ -73,6 +102,18 @@ export default function ProjectCanvasPage() {
         next.delete(scenarioId);
       } else {
         next.add(scenarioId);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleFlow = useCallback((flowId: string) => {
+    setExpandedFlows((prev) => {
+      const next = new Set(prev);
+      if (next.has(flowId)) {
+        next.delete(flowId);
+      } else {
+        next.add(flowId);
       }
       return next;
     });
@@ -169,6 +210,8 @@ export default function ProjectCanvasPage() {
             label: flow.title,
             status: flow.status,
             platforms: flow.platforms,
+            expanded: expandedFlows.has(flow.id),
+            onToggle: () => toggleFlow(flow.id),
           },
         });
         // Create a compose edge from the scenario to this flow
@@ -177,6 +220,38 @@ export default function ProjectCanvasPage() {
           source: scenarioId,
           target: flow.id,
           type: "compose",
+        });
+      });
+    }
+
+    // For each expanded flow, reveal its children (steps and conditions) in a linear layout
+    const visibleFlowIds = [...visibleNodeIds].filter((nodeId) =>
+      dataNodes.find((n) => n.id === nodeId && n.species === "flow"),
+    );
+
+    for (const flowId of visibleFlowIds) {
+      if (!expandedFlows.has(flowId)) continue;
+
+      const flow = dataNodes.find((n) => n.id === flowId);
+      if (!flow) continue;
+
+      const children = dataNodes.filter(
+        (n) => n.parent_id === flowId && FLOW_CHILD_SPECIES.has(n.species),
+      );
+
+      const childPositions = linearPositions(flow.position_x, flow.position_y, children.length);
+
+      children.forEach((child, i) => {
+        visibleNodeIds.add(child.id);
+        visibleNodes.push({
+          id: child.id,
+          type: SPECIES_TO_NODE_TYPE[child.species],
+          position: childPositions[i],
+          data: {
+            label: child.title,
+            status: child.status,
+            platforms: child.platforms,
+          },
         });
       });
     }
@@ -195,7 +270,7 @@ export default function ProjectCanvasPage() {
     }
 
     return { nodes: visibleNodes, edges: visibleEdges };
-  }, [dataNodes, dataEdges, expandedProducts, expandedScenarios, toggleProduct, toggleScenario]);
+  }, [dataNodes, dataEdges, expandedProducts, expandedScenarios, expandedFlows, toggleProduct, toggleScenario, toggleFlow]);
 
   if (nodesLoading || edgesLoading) {
     return (

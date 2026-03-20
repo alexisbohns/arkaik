@@ -1,42 +1,125 @@
 {
-  "id": "pebbles",
-  "title": "Pebbles",
-  "description": "A product graph of the Pebbles app, from tokens to scenarios.",
+  "project": {
+    "id": "pebbles",
+    "title": "Pebbles",
+    "description": "A product graph of the Pebbles app, from tokens to scenarios.",
+    "created_at": "2024-01-01T00:00:00.000Z",
+    "updated_at": "2024-01-01T00:00:00.000Z"
+  },
   "nodes": [
     {
-      "id": "1",
+      "id": "n-product",
+      "project_id": "pebbles",
+      "species": "product",
       "title": "Pebbles",
-      "species": "Product",
-      "status": "Live",
-      "platforms": ["iOS", "Android"]
+      "status": "live",
+      "platforms": ["ios", "android"],
+      "parent_id": null,
+      "position_x": 400,
+      "position_y": 400
     },
     {
-      "id": "2",
+      "id": "n-scenario",
+      "project_id": "pebbles",
+      "species": "scenario",
       "title": "Record a Pebble",
-      "species": "Scenario",
-      "status": "In Development",
-      "platforms": ["iOS"]
+      "status": "in-development",
+      "platforms": ["ios"],
+      "parent_id": "n-product",
+      "position_x": 400,
+      "position_y": 120
     },
     {
-      "id": "3",
+      "id": "n-flow",
+      "project_id": "pebbles",
+      "species": "flow",
       "title": "Shape an Emotion",
-      "species": "Flow",
-      "status": "Planned",
-      "platforms": ["iOS", "Android", "Web"]
+      "status": "planned",
+      "platforms": ["ios", "android", "web"],
+      "parent_id": "n-scenario",
+      "position_x": 400,
+      "position_y": -80
+    },
+    {
+      "id": "n-step-1",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Emotion Picker",
+      "status": "planned",
+      "platforms": ["ios", "android", "web"],
+      "parent_id": "n-flow",
+      "position_x": 70,
+      "position_y": 140
+    },
+    {
+      "id": "n-condition-1",
+      "project_id": "pebbles",
+      "species": "condition",
+      "title": "Emotion known?",
+      "status": "planned",
+      "platforms": ["ios", "android", "web"],
+      "parent_id": "n-flow",
+      "position_x": 290,
+      "position_y": 140
+    },
+    {
+      "id": "n-step-2",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Emotion Detail",
+      "status": "planned",
+      "platforms": ["ios", "android", "web"],
+      "parent_id": "n-flow",
+      "position_x": 510,
+      "position_y": 140
+    },
+    {
+      "id": "n-step-3",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Emotion Summary",
+      "status": "planned",
+      "platforms": ["ios", "android", "web"],
+      "parent_id": "n-flow",
+      "position_x": 730,
+      "position_y": 140
     }
   ],
   "edges": [
     {
-      "id": "e1-2",
-      "source": "1",
-      "target": "2",
-      "type": "compose"
+      "id": "e-product-scenario",
+      "project_id": "pebbles",
+      "source_id": "n-product",
+      "target_id": "n-scenario",
+      "edge_type": "composes"
     },
     {
-      "id": "e1-3",
-      "source": "1",
-      "target": "3",
-      "type": "compose"
+      "id": "e-scenario-flow",
+      "project_id": "pebbles",
+      "source_id": "n-scenario",
+      "target_id": "n-flow",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-step1-condition1",
+      "project_id": "pebbles",
+      "source_id": "n-step-1",
+      "target_id": "n-condition-1",
+      "edge_type": "branches"
+    },
+    {
+      "id": "e-condition1-step2",
+      "project_id": "pebbles",
+      "source_id": "n-condition-1",
+      "target_id": "n-step-2",
+      "edge_type": "branches"
+    },
+    {
+      "id": "e-step2-step3",
+      "project_id": "pebbles",
+      "source_id": "n-step-2",
+      "target_id": "n-step-3",
+      "edge_type": "branches"
     }
   ]
 }
