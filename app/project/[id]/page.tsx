@@ -2,14 +2,16 @@
 
 import { useParams } from "next/navigation";
 import { useState, useCallback, useMemo } from "react";
-import { type Edge, type Node } from "@xyflow/react";
+import { type Edge, type Node, type NodeMouseHandler } from "@xyflow/react";
 import { Canvas } from "@/components/graph/Canvas";
 import { Breadcrumb } from "@/components/layout/Breadcrumb";
+import { NodeDetailPanel } from "@/components/panels/NodeDetailPanel";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
 import type { SpeciesId } from "@/lib/config/species";
 import { PLATFORMS } from "@/lib/config/platforms";
 import type { PlatformId } from "@/lib/config/platforms";
+import type { Node as DataNode } from "@/lib/data/types";
 
 interface BreadcrumbEntry {
   nodeId: string;
@@ -75,6 +77,9 @@ const STEP_SPLIT_SPECIES = new Set<SpeciesId>([
 
 const ALL_PLATFORM_IDS = PLATFORMS.map((p) => p.id);
 
+/** Delimiter used to build per-platform split node IDs: `${nodeId}${SPLIT_SEP}${platformId}`. */
+const SPLIT_SEP = "__";
+
 export default function ProjectCanvasPage() {
   const params = useParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
@@ -83,6 +88,8 @@ export default function ProjectCanvasPage() {
   const [expandedScenarios, setExpandedScenarios] = useState<Set<string>>(new Set());
   const [expandedFlows, setExpandedFlows] = useState<Set<string>>(new Set());
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbEntry[]>([]);
+  const [selectedNode, setSelectedNode] = useState<DataNode | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
 
   const { nodes: dataNodes, loading: nodesLoading } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
@@ -148,6 +155,16 @@ export default function ProjectCanvasPage() {
       return prev.slice(0, index + 1);
     });
   }, []);
+
+  const handleNodeClick = useCallback<NodeMouseHandler>((_event, xyNode) => {
+    // Split nodes have IDs like `${nodeId}${SPLIT_SEP}${platform}` — strip the suffix to find the source data node
+    const baseId = xyNode.id.includes(SPLIT_SEP) ? xyNode.id.split(SPLIT_SEP)[0] : xyNode.id;
+    const dataNode = dataNodes.find((n) => n.id === baseId);
+    if (dataNode) {
+      setSelectedNode(dataNode);
+      setPanelOpen(true);
+    }
+  }, [dataNodes]);
 
   const { nodes, edges } = useMemo(() => {
     // Tracks nodes split by platform: originalId → [splitId, …]
@@ -292,10 +309,10 @@ export default function ProjectCanvasPage() {
           !childIsAllPlatforms;
 
         if (shouldSplit) {
-          const splitIds = childPlatforms.map((p) => `${child.id}__${p}`);
+          const splitIds = childPlatforms.map((p) => `${child.id}${SPLIT_SEP}${p}`);
           splitNodeMap.set(child.id, splitIds);
           for (const platform of childPlatforms) {
-            visualItems.push({ id: `${child.id}__${platform}`, dataNode: child, platform });
+            visualItems.push({ id: `${child.id}${SPLIT_SEP}${platform}`, dataNode: child, platform });
           }
         } else {
           visualItems.push({ id: child.id, dataNode: child });
@@ -378,8 +395,13 @@ export default function ProjectCanvasPage() {
         </header>
       )}
       <div className="flex-1 min-h-0">
-        <Canvas nodes={nodes} edges={edges} />
+        <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} />
       </div>
+      <NodeDetailPanel
+        open={panelOpen}
+        onOpenChange={setPanelOpen}
+        node={selectedNode ?? undefined}
+      />
     </div>
   );
 }
