@@ -1,7 +1,7 @@
 "use client";
 
 import { Handle, Position, NodeToolbar, type NodeProps } from "@xyflow/react";
-import { Package, PlusCircle } from "lucide-react";
+import { Info, Package, PlusCircle } from "lucide-react";
 import type { StatusId } from "@/lib/config/statuses";
 import { StatusBadge } from "@/components/layout/StatusBadge";
 import { STATUS_GHOST_STYLES } from "./node-styles";
@@ -12,6 +12,7 @@ export function ProductNode({ data }: NodeProps) {
   const label = String(data.label ?? "Product");
   const expanded = Boolean(data.expanded);
   const onToggle = data.onToggle as (() => void) | undefined;
+  const onOpenDetails = data.onOpenDetails as (() => void) | undefined;
   const onAddChild = data.onAddChild as (() => void) | undefined;
   const ghostClass = STATUS_GHOST_STYLES[status];
   const { isHovered, nodeProps, toolbarProps } = useToolbarHover();
@@ -37,8 +38,11 @@ export function ProductNode({ data }: NodeProps) {
         tabIndex={0}
         aria-label={label}
         aria-expanded={expanded}
-        className={`flex w-40 h-40 flex-col items-center justify-center rounded-full bg-primary text-primary-foreground border-4 border-border shadow-xl cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${ghostClass.wrapper} ${ghostClass.border}`}
-        onClick={() => onToggle?.()}
+        className={`relative flex w-40 h-40 flex-col items-center justify-center rounded-full bg-primary text-primary-foreground border-4 border-border shadow-xl cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${ghostClass.wrapper} ${ghostClass.border}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle?.();
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
@@ -47,6 +51,19 @@ export function ProductNode({ data }: NodeProps) {
         }}
         {...nodeProps}
       >
+        {onOpenDetails && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenDetails();
+            }}
+            className="absolute top-2 right-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-background/90 text-foreground border border-border hover:bg-muted transition-colors"
+            aria-label={`Open details for ${label}`}
+          >
+            <Info className="w-3.5 h-3.5" />
+          </button>
+        )}
         <Package className="w-8 h-8 mb-1 shrink-0" />
         <span title={label} className="text-sm font-bold text-center px-4 leading-tight line-clamp-2">
           {label}
