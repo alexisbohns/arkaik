@@ -2,9 +2,10 @@
 
 import { useParams } from "next/navigation";
 import { useState, useCallback, useMemo } from "react";
-import { type Edge, type Node, type NodeMouseHandler } from "@xyflow/react";
+import { type Edge, type Node, type NodeMouseHandler, type Connection } from "@xyflow/react";
 import { PlusIcon } from "lucide-react";
 import { Canvas } from "@/components/graph/Canvas";
+import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { Breadcrumb } from "@/components/layout/Breadcrumb";
 import { NodeDetailPanel } from "@/components/panels/NodeDetailPanel";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
@@ -16,6 +17,7 @@ import { getChildSpecies } from "@/lib/config/species";
 import { PLATFORMS } from "@/lib/config/platforms";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { Node as DataNode } from "@/lib/data/types";
+import type { EdgeTypeId } from "@/lib/config/edge-types";
 
 interface BreadcrumbEntry {
   nodeId: string;
@@ -98,7 +100,10 @@ export default function ProjectCanvasPage() {
   const [newNodePreset, setNewNodePreset] = useState<{ parent_id: string; species: SpeciesId } | null>(null);
 
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode } = useNodes(id);
-  const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
+  const { edges: dataEdges, loading: edgesLoading, addEdge } = useEdges(id);
+
+  const [pendingConnection, setPendingConnection] = useState<Connection | null>(null);
+  const [edgeDialogOpen, setEdgeDialogOpen] = useState(false);
 
   const toggleProduct = useCallback((productId: string, label: string) => {
     setExpandedProducts((prev) => {
@@ -228,6 +233,32 @@ export default function ProjectCanvasPage() {
       setPanelOpen(true);
     }
   }, [dataNodes]);
+
+  const handleConnect = useCallback((connection: Connection) => {
+    if (!connection.source || !connection.target) return;
+    setPendingConnection(connection);
+    setEdgeDialogOpen(true);
+  }, []);
+
+  const handleEdgeTypeSelect = useCallback(async (edgeType: EdgeTypeId) => {
+    if (!pendingConnection?.source || !pendingConnection?.target) return;
+    // Resolve base node IDs in case the source/target are split (platform) nodes
+    const sourceBaseId = pendingConnection.source.includes(SPLIT_SEP)
+      ? pendingConnection.source.split(SPLIT_SEP)[0]
+      : pendingConnection.source;
+    const targetBaseId = pendingConnection.target.includes(SPLIT_SEP)
+      ? pendingConnection.target.split(SPLIT_SEP)[0]
+      : pendingConnection.target;
+    await addEdge({
+      id: crypto.randomUUID(),
+      project_id: id,
+      source_id: sourceBaseId,
+      target_id: targetBaseId,
+      edge_type: edgeType,
+    });
+    setEdgeDialogOpen(false);
+    setPendingConnection(null);
+  }, [pendingConnection, addEdge, id]);
 
   const { nodes, edges } = useMemo(() => {
     // Tracks nodes split by platform: originalId → [splitId, …]
@@ -422,12 +453,14 @@ export default function ProjectCanvasPage() {
         splitNodeMap.get(edge.target_id) ??
         (visibleNodeIds.has(edge.target_id) ? [edge.target_id] : []);
 
-      const xyType =
-        edge.edge_type === "composes"
-          ? "compose"
-          : edge.edge_type === "branches"
-          ? "branch"
-          : undefined;
+      const EDGE_TYPE_MAP: Record<string, string> = {
+        composes: "compose",
+        branches: "branch",
+        calls: "calls",
+        displays: "displays",
+        queries: "queries",
+      };
+      const xyType = EDGE_TYPE_MAP[edge.edge_type];
 
       for (const srcId of sourceIds) {
         for (const tgtId of targetIds) {
@@ -469,7 +502,7 @@ export default function ProjectCanvasPage() {
         </header>
       )}
       <div className="flex-1 min-h-0 relative">
-        <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} />
+        <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} />
         <div className="absolute bottom-4 right-4 z-10">
           <Button size="sm" onClick={() => { setNewNodePreset(null); setNewNodeOpen(true); }}>
             <PlusIcon className="size-4" />
@@ -493,6 +526,14 @@ export default function ProjectCanvasPage() {
         onSubmit={handleAddNode}
         nodes={dataNodes}
         defaultValues={newNodePreset ?? undefined}
+      />
+      <EdgeTypeDialog
+        open={edgeDialogOpen}
+        onOpenChange={(open) => {
+          setEdgeDialogOpen(open);
+          if (!open) setPendingConnection(null);
+        }}
+        onSelect={handleEdgeTypeSelect}
       />
     </div>
   );
