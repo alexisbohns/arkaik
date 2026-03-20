@@ -9,6 +9,7 @@ import { StepNode } from "./nodes/StepNode";
 import { ConditionNode } from "./nodes/ConditionNode";
 import { DataModelNode } from "./nodes/DataModelNode";
 import { ApiEndpointNode } from "./nodes/ApiEndpointNode";
+import { ComposeEdge } from "./edges/ComposeEdge";
 
 const nodeTypes = {
   product: ProductNode,
@@ -20,6 +21,10 @@ const nodeTypes = {
   apiEndpoint: ApiEndpointNode,
 };
 
+const edgeTypes = {
+  compose: ComposeEdge,
+};
+
 interface CanvasProps {
   nodes: Node[];
   edges: Edge[];
@@ -28,7 +33,7 @@ interface CanvasProps {
 export function Canvas({ nodes, edges }: CanvasProps) {
   return (
     <div className="h-full w-full">
-      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView>
+      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} fitView>
         <Controls />
         <MiniMap />
         <Background />
