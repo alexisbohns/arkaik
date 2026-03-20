@@ -114,7 +114,22 @@ Hooks in `lib/hooks/` provide React state wrappers around the provider:
 | `useProject(id)` | `{ project, loading }` | Load a full `ProjectBundle` |
 | `useNodes(projectId)` | `{ nodes, loading, addNode, removeNode, updateNode }` | CRUD for nodes |
 | `useEdges(projectId)` | `{ edges, loading, addEdge, removeEdge }` | CRUD for edges |
-| `useGraphNavigation()` | `{ expandedNodeIds, zoomLevel, breadcrumbs, expand, collapse, navigateTo }` | Semantic zoom state |
+| `useGraphNavigation()` | `{ expandedNodeIds, zoomLevel, breadcrumbs, expand, collapse, navigateTo }` | Generic semantic zoom state |
+
+> **Note:** The project canvas page (`app/project/[id]/page.tsx`) uses `useNodes` and `useEdges` directly but does **not** use `useProject` or `useGraphNavigation`. It manages expansion sets (`expandedProducts`, `expandedScenarios`, `expandedFlows`) and breadcrumbs as local `useState` — the granularity required three separate sets rather than the single `expandedNodeIds` set in `useGraphNavigation`.
+
+### Node Editing Flow
+
+The `NodeDetailPanel` is the primary UI for editing nodes. The mutation path:
+
+```
+NodeDetailPanel (title, status, platforms, description, metadata)
+  → useNodes.updateNode(id, patch)
+    → localProvider.updateNode(id, patch)
+      → localStorage
+```
+
+Platform variant notes are stored in `node.metadata.platformNotes` as `Partial<Record<PlatformId, string>>`.
 
 ## Migration Path
 

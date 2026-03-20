@@ -47,16 +47,22 @@ Lifecycle states for any node:
 
 First-class multi-platform support. Nodes can target any combination:
 
-| ID | Label | Dot Color | Border Color |
-|----|-------|-----------|--------------|
-| `web` | Web | Green | `border-green-500` |
-| `ios` | iOS | Blue | `border-blue-500` |
-| `android` | Android | Purple | `border-purple-500` |
+| ID | Label | Emoji | Dot Color | Border Color |
+|----|-------|-------|-----------|--------------|
+| `web` | Web | 🟢 | `bg-green-500` | `border-green-500` |
+| `ios` | iOS | 🔵 | `bg-blue-500` | `border-blue-500` |
+| `android` | Android | 🟣 | `bg-purple-500` | `border-purple-500` |
 
 **Config source:** `lib/config/platforms.ts`
 
-### Platform Rendering in StepNode
+### Platform Split Rendering
 
+When a flow is expanded, step-like nodes are checked for platform-split rendering in `app/project/[id]/page.tsx`:
+
+- **All 3 platforms or 1 platform**: rendered as a single `StepNode`
+- **2 platforms (proper subset)**: split into separate React Flow nodes, one per platform, each with a single-platform `platforms` array and ID `{nodeId}__{platformId}`
+
+Within the `StepNode` component itself, platform count affects visual rendering:
 - **All 3 platforms**: Stacked cards with opacity cascade
 - **2 platforms**: Single card with platform dots
 - **1 platform**: Single card with platform-colored border
@@ -67,19 +73,25 @@ First-class multi-platform support. Nodes can target any combination:
 |----|-------|--------|-----|
 | `composes` | Composes | Straight solid | Hierarchy: product→scenario→flow |
 | `branches` | Branches | Bezier curve | Flow branching: step→condition→step |
-| `calls` | Calls | Straight solid | View → API endpoint |
-| `displays` | Displays | Straight solid | View → data model |
-| `queries` | Queries | Straight solid | API endpoint → data model |
+| `calls` | Calls | Default (no custom component) | View → API endpoint |
+| `displays` | Displays | Default (no custom component) | View → data model |
+| `queries` | Queries | Default (no custom component) | API endpoint → data model |
 
 **Config source:** `lib/config/edge-types.ts`
 
 ### Edge Components
 
-| Component | Path Style | Used For |
-|-----------|------------|----------|
-| `ComposeEdge` | Straight | composes, displays, queries |
-| `BranchEdge` | Bezier | branches |
-| `CrossLayerEdge` | Dashed straight | Cross-layer references (not yet registered in Canvas) |
+| Component | Path Style | Mapped Edge Types |
+|-----------|------------|-------------------|
+| `ComposeEdge` | Straight | `composes` |
+| `BranchEdge` | Bezier | `branches` |
+| `CrossLayerEdge` | Dashed straight | Not yet registered in `Canvas.tsx` |
+| *(React Flow default)* | Straight | `calls`, `displays`, `queries` |
+
+The mapping from domain `edge_type` to React Flow edge type is in `app/project/[id]/page.tsx`:
+- `composes` → `"compose"` → `ComposeEdge`
+- `branches` → `"branch"` → `BranchEdge`
+- All others → `undefined` → React Flow default edge
 
 ## Adding New Taxonomies
 
@@ -87,6 +99,6 @@ All taxonomies live in `lib/config/` as typed `const` arrays:
 
 1. Add the new entry to the relevant array in `lib/config/`
 2. The `SpeciesId`, `StatusId`, `PlatformId`, or `EdgeTypeId` type updates automatically via `typeof`
-3. If adding a new species: create a node component in `components/graph/nodes/`, register it in `Canvas.tsx`
-4. If adding a new edge type: create an edge component in `components/graph/edges/`, register it in `Canvas.tsx`
+3. If adding a new species: create a node component in `components/graph/nodes/`, register it in `Canvas.tsx`, and add a mapping in `SPECIES_TO_NODE_TYPE` in `app/project/[id]/page.tsx`
+4. If adding a new edge type: create an edge component in `components/graph/edges/`, register it in `Canvas.tsx`, and add a mapping in the edge-type-to-xy-type logic in `app/project/[id]/page.tsx`
 5. Update this document
