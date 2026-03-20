@@ -1,110 +1,41 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { Gochi_Hand } from "next/font/google";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-} from "@/components/ui/breadcrumb";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { localProvider } from "@/lib/data/local-provider";
-import type { ProjectBundle } from "@/lib/data/types";
-import pebbles from "@/seed/pebbles.json";
+import { ArkaikLogo } from "@/components/branding/ArkaikLogo";
+
+const gochiHand = Gochi_Hand({
+  subsets: ["latin"],
+  weight: "400",
+});
 
 export default function Home() {
-  const router = useRouter();
-  const [projects, setProjects] = useState<ProjectBundle[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [importing, setImporting] = useState(false);
-
-  useEffect(() => {
-    localProvider
-      .listProjects()
-      .then((list) => setProjects(list))
-      .catch((err) => console.error("[Home] Failed to load projects:", err))
-      .finally(() => setLoading(false));
-  }, []);
-
-  async function handleImportExample() {
-    setImporting(true);
-    try {
-      await localProvider.importProject(pebbles as ProjectBundle);
-      router.push(`/project/${pebbles.project.id}`);
-    } catch (err) {
-      console.error("[Home] Failed to import example project:", err);
-    } finally {
-      setImporting(false);
-    }
-  }
 
   return (
-    <div className="flex flex-col flex-1 bg-background font-sans">
-      <header className="flex items-center justify-between border-b px-6 py-3">
-        <Breadcrumb>
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink href="/">arkaik</BreadcrumbLink>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
+    <div className="relative flex min-h-screen flex-col overflow-hidden bg-background font-sans">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(127,127,127,0.12),transparent_62%)]" />
+
+      <header className="relative flex items-center justify-end px-6 py-4">
         <ThemeToggle />
       </header>
 
-      <main className="flex flex-1 flex-col gap-6 p-6 max-w-4xl mx-auto w-full">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">Projects</h1>
-        </div>
+      <main className="relative mx-auto flex w-full max-w-5xl flex-1 flex-col items-center justify-center px-6 pb-14 pt-4">
+        <div className="w-full max-w-[540px] text-center">
+          <ArkaikLogo className="mx-auto" />
 
-        {loading ? (
-          <div className="flex flex-1 items-center justify-center">
-            <span className="text-muted-foreground text-sm">Loading…</span>
-          </div>
-        ) : projects.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center py-24">
-            <p className="text-muted-foreground text-sm max-w-xs">
-              No projects yet. Import the example project to get started.
-            </p>
-            <Button onClick={handleImportExample} disabled={importing}>
-              {importing ? "Importing…" : "Import example project"}
-            </Button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {projects.map((bundle) => (
-              <Card key={bundle.project.id}>
-                <CardHeader>
-                  <CardTitle>{bundle.project.title}</CardTitle>
-                  {bundle.project.description && (
-                    <CardDescription>{bundle.project.description}</CardDescription>
-                  )}
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">
-                    {bundle.nodes.length} node{bundle.nodes.length !== 1 ? "s" : ""} ·{" "}
-                    {bundle.edges.length} edge{bundle.edges.length !== 1 ? "s" : ""}
-                  </p>
-                </CardContent>
-                <CardFooter>
-                  <Button size="sm" onClick={() => router.push(`/project/${bundle.project.id}`)}>
-                    Open
-                  </Button>
-                </CardFooter>
-              </Card>
-            ))}
-          </div>
-        )}
+          <p className={`${gochiHand.className} mt-3 text-[44px] leading-none text-primary sm:text-[52px]`}>
+            for product architects
+          </p>
+
+          <Button asChild size="lg" className="mt-10 px-8 text-base">
+            <Link href="/projects">Start building</Link>
+          </Button>
+        </div>
       </main>
+
+      <footer className="relative px-6 pb-6 text-right text-sm text-muted-foreground">
+        with love by <a className="underline underline-offset-4" href="https://github.com/alexisbohns" target="_blank" rel="noreferrer">@alexisbohns</a>
+      </footer>
     </div>
   );
 }

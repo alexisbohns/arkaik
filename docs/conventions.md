@@ -5,6 +5,7 @@
 ```
 app/                    # Next.js App Router pages and layouts
 components/
+  branding/            # Brand assets and logo components
   graph/                # React Flow canvas, custom nodes, custom edges
   layout/               # Shell UI: breadcrumb, sidebar, minimap, badges
   panels/               # Slide-in panels and forms
