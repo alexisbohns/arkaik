@@ -4,21 +4,16 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import { PLATFORMS } from "@/lib/config/platforms";
-import { STATUS_STYLES, STATUS_LABELS, PLATFORM_DOT_STYLES, PLATFORM_LABELS } from "./node-styles";
+import { PLATFORM_BORDER_STYLES } from "./node-styles";
+import { StatusBadge } from "@/components/layout/StatusBadge";
+import { PlatformDots } from "@/components/layout/PlatformDots";
 
 const ALL_PLATFORM_IDS = PLATFORMS.map((p) => p.id);
-
-const PLATFORM_BORDER_STYLES: Record<PlatformId, string> = {
-  web: "border-green-500",
-  ios: "border-blue-500",
-  android: "border-purple-500",
-};
 
 export function StepNode({ data }: NodeProps) {
   const status = (data.status as StatusId) ?? "idea";
   const label = String(data.label ?? "Step");
   const platforms = (data.platforms as PlatformId[]) ?? [];
-  const { badge, dot } = STATUS_STYLES[status] ?? STATUS_STYLES.idea;
 
   const isAllPlatforms = ALL_PLATFORM_IDS.every((p) => platforms.includes(p));
   const singlePlatform = !isAllPlatforms && platforms.length === 1 ? platforms[0] : null;
@@ -43,21 +38,8 @@ export function StepNode({ data }: NodeProps) {
             {label}
           </span>
           <div className="flex items-center justify-between gap-2">
-            <span className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${badge}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
-              {STATUS_LABELS[status]}
-            </span>
-            {platforms.length > 0 && (
-              <div className="flex items-center gap-1">
-                {platforms.map((platform) => (
-                  <span
-                    key={platform}
-                    title={PLATFORM_LABELS[platform]}
-                    className={`w-2 h-2 rounded-full ${PLATFORM_DOT_STYLES[platform]}`}
-                  />
-                ))}
-              </div>
-            )}
+            <StatusBadge status={status} />
+            <PlatformDots platforms={platforms} />
           </div>
         </div>
       </div>

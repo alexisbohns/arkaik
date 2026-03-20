@@ -1,12 +1,11 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { Package } from "lucide-react";
 import type { StatusId } from "@/lib/config/statuses";
-import { STATUS_STYLES, STATUS_LABELS } from "./node-styles";
+import { StatusBadge } from "@/components/layout/StatusBadge";
 
 export function ProductNode({ data }: NodeProps) {
   const status = (data.status as StatusId) ?? "idea";
   const label = String(data.label ?? "Product");
-  const { badge, dot } = STATUS_STYLES[status] ?? STATUS_STYLES.idea;
 
   return (
     <>
@@ -24,10 +23,7 @@ export function ProductNode({ data }: NodeProps) {
         <span title={label} className="text-sm font-bold text-center px-4 leading-tight line-clamp-2">
           {label}
         </span>
-        <span className={`mt-2 flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${badge}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
-          {STATUS_LABELS[status]}
-        </span>
+        <StatusBadge status={status} className="mt-2" />
       </div>
       <Handle type="source" position={Position.Bottom} className="opacity-0" />
     </>

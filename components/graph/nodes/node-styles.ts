@@ -28,3 +28,9 @@ export const PLATFORM_LABELS: Record<PlatformId, string> = {
   ios: "iOS",
   android: "Android",
 };
+
+export const PLATFORM_BORDER_STYLES: Record<PlatformId, string> = {
+  web: "border-green-500",
+  ios: "border-blue-500",
+  android: "border-purple-500",
+};
