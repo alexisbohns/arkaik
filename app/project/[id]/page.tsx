@@ -49,6 +49,7 @@ export default function ProjectCanvasPage() {
   const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
 
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
+  const [expandedScenarios, setExpandedScenarios] = useState<Set<string>>(new Set());
 
   const { nodes: dataNodes, loading: nodesLoading } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
@@ -60,6 +61,18 @@ export default function ProjectCanvasPage() {
         next.delete(productId);
       } else {
         next.add(productId);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleScenario = useCallback((scenarioId: string) => {
+    setExpandedScenarios((prev) => {
+      const next = new Set(prev);
+      if (next.has(scenarioId)) {
+        next.delete(scenarioId);
+      } else {
+        next.add(scenarioId);
       }
       return next;
     });
@@ -111,6 +124,8 @@ export default function ProjectCanvasPage() {
             label: scenario.title,
             status: scenario.status,
             platforms: scenario.platforms,
+            expanded: expandedScenarios.has(scenario.id),
+            onToggle: () => toggleScenario(scenario.id),
           },
         });
         // Create a compose edge from the product to this scenario
@@ -118,6 +133,49 @@ export default function ProjectCanvasPage() {
           id: `compose-${product.id}-${scenario.id}`,
           source: product.id,
           target: scenario.id,
+          type: "compose",
+        });
+      });
+    }
+
+    // For each expanded scenario, reveal its child flows with compose edges
+    const visibleScenarioIds = [...visibleNodeIds].filter((id) =>
+      dataNodes.find((n) => n.id === id && n.species === "scenario"),
+    );
+
+    for (const scenarioId of visibleScenarioIds) {
+      if (!expandedScenarios.has(scenarioId)) continue;
+
+      const scenario = dataNodes.find((n) => n.id === scenarioId);
+      if (!scenario) continue;
+      const childFlows = dataNodes.filter(
+        (n) => n.species === "flow" && n.parent_id === scenarioId,
+      );
+
+      const positions = radialPositions(
+        scenario.position_x,
+        scenario.position_y,
+        childFlows.length,
+        200,
+      );
+
+      childFlows.forEach((flow, i) => {
+        visibleNodeIds.add(flow.id);
+        visibleNodes.push({
+          id: flow.id,
+          type: SPECIES_TO_NODE_TYPE[flow.species],
+          position: positions[i],
+          data: {
+            label: flow.title,
+            status: flow.status,
+            platforms: flow.platforms,
+          },
+        });
+        // Create a compose edge from the scenario to this flow
+        visibleEdges.push({
+          id: `compose-${scenarioId}-${flow.id}`,
+          source: scenarioId,
+          target: flow.id,
           type: "compose",
         });
       });
@@ -137,7 +195,7 @@ export default function ProjectCanvasPage() {
     }
 
     return { nodes: visibleNodes, edges: visibleEdges };
-  }, [dataNodes, dataEdges, expandedProducts, toggleProduct]);
+  }, [dataNodes, dataEdges, expandedProducts, expandedScenarios, toggleProduct, toggleScenario]);
 
   if (nodesLoading || edgesLoading) {
     return (
