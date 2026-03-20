@@ -1,10 +1,13 @@
-import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+"use client";
+
+import { Handle, Position, NodeToolbar, type NodeProps } from "@xyflow/react";
+import { ChevronDown, ChevronRight, PlusCircle } from "lucide-react";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import { StatusBadge } from "@/components/layout/StatusBadge";
 import { PlatformDots } from "@/components/layout/PlatformDots";
 import { STATUS_GHOST_STYLES } from "./node-styles";
+import { useToolbarHover } from "@/lib/hooks/useToolbarHover";
 
 export function ScenarioNode({ data }: NodeProps) {
   const status = (data.status as StatusId) ?? "idea";
@@ -12,10 +15,25 @@ export function ScenarioNode({ data }: NodeProps) {
   const platforms = (data.platforms as PlatformId[]) ?? [];
   const expanded = Boolean(data.expanded);
   const onToggle = data.onToggle as (() => void) | undefined;
+  const onAddChild = data.onAddChild as (() => void) | undefined;
   const ghostClass = STATUS_GHOST_STYLES[status];
+  const { isHovered, nodeProps, toolbarProps } = useToolbarHover();
 
   return (
     <>
+      {onAddChild && (
+        <NodeToolbar isVisible={isHovered} position={Position.Top} offset={8}>
+          <button
+            type="button"
+            {...toolbarProps}
+            onClick={(e) => { e.stopPropagation(); onAddChild(); }}
+            className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-background border border-border shadow-sm hover:bg-muted transition-colors"
+          >
+            <PlusCircle className="w-3 h-3" />
+            Add child
+          </button>
+        </NodeToolbar>
+      )}
       <Handle type="target" position={Position.Top} className="opacity-0" />
       <div
         role="button"
@@ -30,6 +48,7 @@ export function ScenarioNode({ data }: NodeProps) {
             onToggle?.();
           }
         }}
+        {...nodeProps}
       >
         <div className="flex items-center justify-between gap-2">
           <span title={label} className="text-sm font-semibold leading-tight line-clamp-1 flex-1">

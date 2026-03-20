@@ -15,3 +15,22 @@ export const SPECIES = [
 export type SpeciesId = (typeof SPECIES)[number]["id"];
 /** @deprecated Use SpeciesId */
 export type Species = SpeciesId;
+
+/** Maps each species to the suggested child species in the composition hierarchy. */
+const CHILD_SPECIES: Partial<Record<SpeciesId, SpeciesId>> = {
+  product: "scenario",
+  scenario: "flow",
+  flow: "view",
+  view: "component",
+  section: "component",
+  component: "state",
+  state: "token",
+};
+
+/**
+ * Returns the suggested child species for a given parent species,
+ * or `null` if the species does not have a natural child in the hierarchy.
+ */
+export function getChildSpecies(species: SpeciesId): SpeciesId | null {
+  return CHILD_SPECIES[species] ?? null;
+}

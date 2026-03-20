@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
 import type { SpeciesId } from "@/lib/config/species";
+import { getChildSpecies } from "@/lib/config/species";
 import { PLATFORMS } from "@/lib/config/platforms";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { Node as DataNode } from "@/lib/data/types";
@@ -94,6 +95,7 @@ export default function ProjectCanvasPage() {
   const [selectedNode, setSelectedNode] = useState<DataNode | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [newNodeOpen, setNewNodeOpen] = useState(false);
+  const [newNodePreset, setNewNodePreset] = useState<{ parent_id: string; species: SpeciesId } | null>(null);
 
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
@@ -172,6 +174,16 @@ export default function ProjectCanvasPage() {
     setSelectedNode(targetNode);
   }, []);
 
+  const handleAddChildNode = useCallback((parentId: string, childSpecies: SpeciesId) => {
+    setNewNodePreset({ parent_id: parentId, species: childSpecies });
+    setNewNodeOpen(true);
+  }, []);
+
+  const handleNewNodeOpenChange = useCallback((open: boolean) => {
+    setNewNodeOpen(open);
+    if (!open) setNewNodePreset(null);
+  }, []);
+
   const handleAddNode = useCallback(
     async (data: NewNodeFormData) => {
       let position_x = 400;
@@ -235,6 +247,10 @@ export default function ProjectCanvasPage() {
           platforms: n.platforms,
           expanded: expandedProducts.has(n.id),
           onToggle: () => toggleProduct(n.id, n.title),
+          onAddChild: (() => {
+            const child = getChildSpecies(n.species);
+            return child ? () => handleAddChildNode(n.id, child) : undefined;
+          })(),
         },
       }),
     );
@@ -268,6 +284,10 @@ export default function ProjectCanvasPage() {
             platforms: scenario.platforms,
             expanded: expandedScenarios.has(scenario.id),
             onToggle: () => toggleScenario(scenario.id, scenario.title, product.id, product.title),
+            onAddChild: (() => {
+              const child = getChildSpecies(scenario.species);
+              return child ? () => handleAddChildNode(scenario.id, child) : undefined;
+            })(),
           },
         });
         // Create a compose edge from the product to this scenario
@@ -314,6 +334,9 @@ export default function ProjectCanvasPage() {
             platforms: flow.platforms,
             expanded: expandedFlows.has(flow.id),
             onToggle: () => toggleFlow(flow.id, flow.title, scenarioId, scenario.title, parentProduct?.id ?? "", parentProduct?.title ?? ""),
+            onAddChild: getChildSpecies(flow.species)
+              ? () => handleAddChildNode(flow.id, getChildSpecies(flow.species)!)
+              : undefined,
           },
         });
         // Create a compose edge from the scenario to this flow
@@ -423,7 +446,7 @@ export default function ProjectCanvasPage() {
     }
 
     return { nodes: visibleNodes, edges: visibleEdges };
-  }, [dataNodes, dataEdges, expandedProducts, expandedScenarios, expandedFlows, toggleProduct, toggleScenario, toggleFlow]);
+  }, [dataNodes, dataEdges, expandedProducts, expandedScenarios, expandedFlows, toggleProduct, toggleScenario, toggleFlow, handleAddChildNode]);
 
   const breadcrumbSegments = breadcrumbs.map((crumb, index) => ({
     label: crumb.label,
@@ -448,7 +471,7 @@ export default function ProjectCanvasPage() {
       <div className="flex-1 min-h-0 relative">
         <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} />
         <div className="absolute bottom-4 right-4 z-10">
-          <Button size="sm" onClick={() => setNewNodeOpen(true)}>
+          <Button size="sm" onClick={() => { setNewNodePreset(null); setNewNodeOpen(true); }}>
             <PlusIcon className="size-4" />
             New node
           </Button>
@@ -464,10 +487,12 @@ export default function ProjectCanvasPage() {
         onNavigate={handleNavigate}
       />
       <NewNodeForm
+        key={newNodePreset ? `preset-${newNodePreset.parent_id}-${newNodePreset.species}` : "default"}
         open={newNodeOpen}
-        onOpenChange={setNewNodeOpen}
+        onOpenChange={handleNewNodeOpenChange}
         onSubmit={handleAddNode}
         nodes={dataNodes}
+        defaultValues={newNodePreset ?? undefined}
       />
     </div>
   );

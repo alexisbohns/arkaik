@@ -42,21 +42,23 @@ interface NewNodeFormProps {
   onOpenChange: (open: boolean) => void;
   onSubmit: (data: NewNodeFormData) => void;
   nodes?: Node[];
+  /** Pre-fill parent and/or species when opening from an "Add child" action. */
+  defaultValues?: Partial<Pick<NewNodeFormData, "parent_id" | "species">>;
 }
 
-export function NewNodeForm({ open, onOpenChange, onSubmit, nodes = [] }: NewNodeFormProps) {
+export function NewNodeForm({ open, onOpenChange, onSubmit, nodes = [], defaultValues }: NewNodeFormProps) {
   const [title, setTitle] = useState("");
-  const [species, setSpecies] = useState<SpeciesId>("component");
+  const [species, setSpecies] = useState<SpeciesId>(defaultValues?.species ?? "component");
   const [status, setStatus] = useState<StatusId>("idea");
   const [platforms, setPlatforms] = useState<PlatformId[]>([]);
-  const [parentId, setParentId] = useState<string | null>(null);
+  const [parentId, setParentId] = useState<string | null>(defaultValues?.parent_id ?? null);
 
   function resetForm() {
     setTitle("");
-    setSpecies("component");
+    setSpecies(defaultValues?.species ?? "component");
     setStatus("idea");
     setPlatforms([]);
-    setParentId(null);
+    setParentId(defaultValues?.parent_id ?? null);
   }
 
   function handleOpenChange(nextOpen: boolean) {
@@ -81,7 +83,7 @@ export function NewNodeForm({ open, onOpenChange, onSubmit, nodes = [] }: NewNod
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New node</DialogTitle>
+          <DialogTitle>{defaultValues?.parent_id ? "Add child node" : "New node"}</DialogTitle>
           <DialogDescription className="sr-only">
             Fill in the details to create a new node on the canvas.
           </DialogDescription>
