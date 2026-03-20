@@ -89,6 +89,130 @@ const ALL_PLATFORM_IDS = PLATFORMS.map((p) => p.id);
 /** Delimiter used to build per-platform split node IDs: `${nodeId}${SPLIT_SEP}${platformId}`. */
 const SPLIT_SEP = "__";
 
+const COLLISION_PADDING = 24;
+const MAX_COLLISION_ITERATIONS = 30;
+
+interface LayoutSize {
+  width: number;
+  height: number;
+}
+
+interface LayoutRule {
+  fixed?: boolean;
+  axis?: "both" | "x" | "y";
+  clampX?: [number, number];
+  clampY?: [number, number];
+}
+
+function getNodeSize(nodeType?: string): LayoutSize {
+  switch (nodeType) {
+    case "product":
+      return { width: 160, height: 160 };
+    case "scenario":
+      return { width: 224, height: 112 };
+    case "flow":
+      return { width: 192, height: 104 };
+    case "step":
+      return { width: 184, height: 96 };
+    case "condition":
+      return { width: 120, height: 120 };
+    case "dataModel":
+    case "apiEndpoint":
+      return { width: 192, height: 92 };
+    default:
+      return { width: 180, height: 100 };
+  }
+}
+
+function resolveNodeCollisions(nodes: Node[], rules: Map<string, LayoutRule>): Node[] {
+  if (nodes.length < 2) return nodes;
+
+  const positions = new Map(nodes.map((node) => [node.id, { ...node.position }]));
+  const sizes = new Map(nodes.map((node) => [node.id, getNodeSize(node.type)]));
+  const orderedIds = [...nodes].map((node) => node.id).sort((a, b) => a.localeCompare(b));
+
+  const applyAxis = (axis: LayoutRule["axis"], x: number, y: number) => {
+    if (axis === "x") return { x, y: 0 };
+    if (axis === "y") return { x: 0, y };
+    return { x, y };
+  };
+
+  const clampPosition = (id: string) => {
+    const rule = rules.get(id);
+    const pos = positions.get(id);
+    if (!rule || !pos) return;
+
+    if (rule.clampX) {
+      pos.x = Math.max(rule.clampX[0], Math.min(rule.clampX[1], pos.x));
+    }
+    if (rule.clampY) {
+      pos.y = Math.max(rule.clampY[0], Math.min(rule.clampY[1], pos.y));
+    }
+  };
+
+  for (let i = 0; i < MAX_COLLISION_ITERATIONS; i += 1) {
+    let hadCollision = false;
+
+    for (let aIndex = 0; aIndex < orderedIds.length; aIndex += 1) {
+      const aId = orderedIds[aIndex];
+      const aPos = positions.get(aId);
+      const aSize = sizes.get(aId);
+      if (!aPos || !aSize) continue;
+
+      for (let bIndex = aIndex + 1; bIndex < orderedIds.length; bIndex += 1) {
+        const bId = orderedIds[bIndex];
+        const bPos = positions.get(bId);
+        const bSize = sizes.get(bId);
+        if (!bPos || !bSize) continue;
+
+        const ax = aPos.x + aSize.width / 2;
+        const ay = aPos.y + aSize.height / 2;
+        const bx = bPos.x + bSize.width / 2;
+        const by = bPos.y + bSize.height / 2;
+
+        const dx = bx - ax;
+        const dy = by - ay;
+        const overlapX = (aSize.width + bSize.width) / 2 + COLLISION_PADDING - Math.abs(dx);
+        const overlapY = (aSize.height + bSize.height) / 2 + COLLISION_PADDING - Math.abs(dy);
+
+        if (overlapX <= 0 || overlapY <= 0) continue;
+        hadCollision = true;
+
+        const aRule = rules.get(aId) ?? {};
+        const bRule = rules.get(bId) ?? {};
+        const aFixed = Boolean(aRule.fixed);
+        const bFixed = Boolean(bRule.fixed);
+
+        const moveX = overlapX <= overlapY;
+        const directionX = dx >= 0 ? 1 : -1;
+        const directionY = dy >= 0 ? 1 : -1;
+        const pushX = moveX ? (overlapX / (aFixed || bFixed ? 1 : 2)) * directionX : 0;
+        const pushY = !moveX ? (overlapY / (aFixed || bFixed ? 1 : 2)) * directionY : 0;
+
+        if (!aFixed) {
+          const delta = applyAxis(aRule.axis, -pushX, -pushY);
+          aPos.x += delta.x;
+          aPos.y += delta.y;
+          clampPosition(aId);
+        }
+        if (!bFixed) {
+          const delta = applyAxis(bRule.axis, pushX, pushY);
+          bPos.x += delta.x;
+          bPos.y += delta.y;
+          clampPosition(bId);
+        }
+      }
+    }
+
+    if (!hadCollision) break;
+  }
+
+  return nodes.map((node) => {
+    const position = positions.get(node.id);
+    return position ? { ...node, position } : node;
+  });
+}
+
 export default function ProjectCanvasPage() {
   const params = useParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
@@ -337,6 +461,7 @@ export default function ProjectCanvasPage() {
   const { nodes, edges } = useMemo(() => {
     // Tracks nodes split by platform: originalId → [splitId, …]
     const splitNodeMap = new Map<string, string[]>();
+    const layoutRules = new Map<string, LayoutRule>();
 
     const productDataNodes = dataNodes.filter((n) => n.species === "product");
 
@@ -364,6 +489,10 @@ export default function ProjectCanvasPage() {
       }),
     );
 
+    for (const n of productDataNodes) {
+      layoutRules.set(n.id, { fixed: true, axis: "both" });
+    }
+
     const visibleNodeIds = new Set(productDataNodes.map((n) => n.id));
     const visibleEdges: Edge[] = [];
 
@@ -382,11 +511,12 @@ export default function ProjectCanvasPage() {
       );
 
       childScenarios.forEach((scenario, i) => {
+        const scenarioPos = positions[i];
         visibleNodeIds.add(scenario.id);
         visibleNodes.push({
           id: scenario.id,
           type: SPECIES_TO_NODE_TYPE[scenario.species],
-          position: positions[i],
+          position: scenarioPos,
           data: {
             label: scenario.title,
             status: scenario.status,
@@ -402,6 +532,11 @@ export default function ProjectCanvasPage() {
               return child ? () => handleAddChildNode(scenario.id, child) : undefined;
             })(),
           },
+        });
+        layoutRules.set(scenario.id, {
+          axis: "both",
+          clampX: [product.position_x - 460, product.position_x + 460],
+          clampY: [product.position_y - 460, product.position_y + 460],
         });
         // Create a compose edge from the product to this scenario
         visibleEdges.push({
@@ -436,11 +571,12 @@ export default function ProjectCanvasPage() {
       );
 
       childFlows.forEach((flow, i) => {
+        const flowPos = positions[i];
         visibleNodeIds.add(flow.id);
         visibleNodes.push({
           id: flow.id,
           type: SPECIES_TO_NODE_TYPE[flow.species],
-          position: positions[i],
+          position: flowPos,
           data: {
             label: flow.title,
             status: flow.status,
@@ -455,6 +591,11 @@ export default function ProjectCanvasPage() {
               ? () => handleAddChildNode(flow.id, getChildSpecies(flow.species)!)
               : undefined,
           },
+        });
+        layoutRules.set(flow.id, {
+          axis: "both",
+          clampX: [scenario.position_x - 340, scenario.position_x + 340],
+          clampY: [scenario.position_y - 340, scenario.position_y + 340],
         });
         // Create a compose edge from the scenario to this flow
         visibleEdges.push({
@@ -511,18 +652,25 @@ export default function ProjectCanvasPage() {
       }
 
       const childPositions = linearPositions(flow.position_x, flow.position_y, visualItems.length);
+      const maxSpreadX = Math.max(320, visualItems.length * 110);
 
       for (const [i, item] of visualItems.entries()) {
+        const childPosition = childPositions[i];
         visibleNodeIds.add(item.id);
         visibleNodes.push({
           id: item.id,
           type: SPECIES_TO_NODE_TYPE[item.dataNode.species],
-          position: childPositions[i],
+          position: childPosition,
           data: {
             label: item.dataNode.title,
             status: item.dataNode.status,
             platforms: item.platform ? [item.platform] : item.dataNode.platforms,
           },
+        });
+        layoutRules.set(item.id, {
+          axis: "both",
+          clampX: [flow.position_x - maxSpreadX, flow.position_x + maxSpreadX],
+          clampY: [flow.position_y + FLOW_CHILD_Y_OFFSET - 80, flow.position_y + FLOW_CHILD_Y_OFFSET + 80],
         });
       }
     }
@@ -564,7 +712,9 @@ export default function ProjectCanvasPage() {
       }
     }
 
-    return { nodes: visibleNodes, edges: visibleEdges };
+    const collisionFreeNodes = resolveNodeCollisions(visibleNodes, layoutRules);
+
+    return { nodes: collisionFreeNodes, edges: visibleEdges };
   }, [dataNodes, dataEdges, expandedProducts, expandedScenarios, expandedFlows, toggleProduct, toggleScenario, toggleFlow, handleAddChildNode]);
 
   const breadcrumbSegments = breadcrumbs.map((crumb, index) => ({
