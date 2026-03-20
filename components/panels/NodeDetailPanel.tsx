@@ -16,6 +16,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Trash2Icon } from "lucide-react";
 import type { Node, Edge } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
@@ -33,6 +35,7 @@ interface NodeDetailPanelProps {
   onOpenChange: (open: boolean) => void;
   node?: Node;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => void;
+  onDelete?: (nodeId: string) => void;
   allNodes?: Node[];
   allEdges?: Edge[];
   onNavigate?: (node: Node) => void;
@@ -240,6 +243,7 @@ export function NodeDetailPanel({
   onOpenChange,
   node,
   onUpdate,
+  onDelete,
   allNodes,
   allEdges,
   onNavigate,
@@ -252,10 +256,25 @@ export function NodeDetailPanel({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent>
         <SheetHeader>
-          <SheetTitle>{node?.title ?? "Node detail"}</SheetTitle>
-          {speciesLabel && (
-            <SheetDescription>{speciesLabel}{speciesDescription ? ` — ${speciesDescription}` : ""}</SheetDescription>
-          )}
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex flex-col gap-1 min-w-0">
+              <SheetTitle>{node?.title ?? "Node detail"}</SheetTitle>
+              {speciesLabel && (
+                <SheetDescription>{speciesLabel}{speciesDescription ? ` — ${speciesDescription}` : ""}</SheetDescription>
+              )}
+            </div>
+            {node && onDelete && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                aria-label="Delete node"
+                onClick={() => onDelete(node.id)}
+              >
+                <Trash2Icon className="size-4" />
+              </Button>
+            )}
+          </div>
         </SheetHeader>
         {node && (
           <>

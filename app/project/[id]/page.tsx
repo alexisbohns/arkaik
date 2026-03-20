@@ -2,10 +2,11 @@
 
 import { useParams } from "next/navigation";
 import { useState, useCallback, useMemo } from "react";
-import { type Edge, type Node, type NodeMouseHandler, type Connection } from "@xyflow/react";
+import { type Edge, type Node, type NodeMouseHandler, type Connection, type EdgeMouseHandler } from "@xyflow/react";
 import { PlusIcon } from "lucide-react";
 import { Canvas } from "@/components/graph/Canvas";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
+import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
 import { Breadcrumb } from "@/components/layout/Breadcrumb";
 import { NodeDetailPanel } from "@/components/panels/NodeDetailPanel";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
@@ -16,7 +17,7 @@ import type { SpeciesId } from "@/lib/config/species";
 import { getChildSpecies } from "@/lib/config/species";
 import { PLATFORMS } from "@/lib/config/platforms";
 import type { PlatformId } from "@/lib/config/platforms";
-import type { Node as DataNode } from "@/lib/data/types";
+import type { Node as DataNode, Edge as DataEdge } from "@/lib/data/types";
 import type { EdgeTypeId } from "@/lib/config/edge-types";
 
 interface BreadcrumbEntry {
@@ -99,11 +100,82 @@ export default function ProjectCanvasPage() {
   const [newNodeOpen, setNewNodeOpen] = useState(false);
   const [newNodePreset, setNewNodePreset] = useState<{ parent_id: string; species: SpeciesId } | null>(null);
 
-  const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode } = useNodes(id);
-  const { edges: dataEdges, loading: edgesLoading, addEdge } = useEdges(id);
+  const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, removeNodes } = useNodes(id);
+  const { edges: dataEdges, loading: edgesLoading, addEdge, removeEdge } = useEdges(id);
 
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null);
   const [edgeDialogOpen, setEdgeDialogOpen] = useState(false);
+
+  // ── Delete node ──────────────────────────────────────────────────────────
+  const [deleteNodeTarget, setDeleteNodeTarget] = useState<DataNode | null>(null);
+  const [deleteNodeDialogOpen, setDeleteNodeDialogOpen] = useState(false);
+  const [deleteNodeCascade, setDeleteNodeCascade] = useState(false);
+
+  /** Collect all descendant node IDs (breadth-first). */
+  const getDescendantIds = useCallback(
+    (nodeId: string): string[] => {
+      const result: string[] = [];
+      const queue = [nodeId];
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        const children = dataNodes.filter((n) => n.parent_id === current);
+        for (const child of children) {
+          result.push(child.id);
+          queue.push(child.id);
+        }
+      }
+      return result;
+    },
+    [dataNodes],
+  );
+
+  const handleDeleteNodeRequest = useCallback((nodeId: string) => {
+    const node = dataNodes.find((n) => n.id === nodeId);
+    if (!node) return;
+    setDeleteNodeTarget(node);
+    setDeleteNodeCascade(false);
+    setDeleteNodeDialogOpen(true);
+  }, [dataNodes]);
+
+  const handleDeleteNodeConfirm = useCallback(async () => {
+    if (!deleteNodeTarget) return;
+    const idsToDelete = deleteNodeCascade
+      ? [deleteNodeTarget.id, ...getDescendantIds(deleteNodeTarget.id)]
+      : [deleteNodeTarget.id];
+    await removeNodes(idsToDelete);
+    setDeleteNodeDialogOpen(false);
+    setDeleteNodeTarget(null);
+    setPanelOpen(false);
+    setSelectedNode(null);
+  }, [deleteNodeTarget, deleteNodeCascade, getDescendantIds, removeNodes]);
+
+  // ── Delete edge ──────────────────────────────────────────────────────────
+  const [deleteEdgeTarget, setDeleteEdgeTarget] = useState<DataEdge | null>(null);
+  const [deleteEdgeDialogOpen, setDeleteEdgeDialogOpen] = useState(false);
+
+  /** Pre-computed descendant count for the delete node dialog cascade checkbox. */
+  const deleteNodeDescendantCount = useMemo(
+    () => (deleteNodeTarget ? getDescendantIds(deleteNodeTarget.id).length : 0),
+    [deleteNodeTarget, getDescendantIds],
+  );
+
+  const handleEdgeClick = useCallback<EdgeMouseHandler>((_event, xyEdge) => {
+    // Canvas edge IDs for persisted edges are `${edge.id}--${srcId}--${tgtId}`.
+    // Compose edges use `compose-${parentId}-${childId}` and are not persisted.
+    if (xyEdge.id.startsWith("compose-")) return;
+    const edgeId = xyEdge.id.split("--")[0];
+    const edge = dataEdges.find((e) => e.id === edgeId);
+    if (!edge) return;
+    setDeleteEdgeTarget(edge);
+    setDeleteEdgeDialogOpen(true);
+  }, [dataEdges]);
+
+  const handleDeleteEdgeConfirm = useCallback(async () => {
+    if (!deleteEdgeTarget) return;
+    await removeEdge(deleteEdgeTarget.id);
+    setDeleteEdgeDialogOpen(false);
+    setDeleteEdgeTarget(null);
+  }, [deleteEdgeTarget, removeEdge]);
 
   const toggleProduct = useCallback((productId: string, label: string) => {
     setExpandedProducts((prev) => {
@@ -502,7 +574,7 @@ export default function ProjectCanvasPage() {
         </header>
       )}
       <div className="flex-1 min-h-0 relative">
-        <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} />
+        <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} onEdgeClick={handleEdgeClick} />
         <div className="absolute bottom-4 right-4 z-10">
           <Button size="sm" onClick={() => { setNewNodePreset(null); setNewNodeOpen(true); }}>
             <PlusIcon className="size-4" />
@@ -515,6 +587,7 @@ export default function ProjectCanvasPage() {
         onOpenChange={setPanelOpen}
         node={selectedNode ?? undefined}
         onUpdate={handleNodeUpdate}
+        onDelete={handleDeleteNodeRequest}
         allNodes={dataNodes}
         allEdges={dataEdges}
         onNavigate={handleNavigate}
@@ -534,6 +607,33 @@ export default function ProjectCanvasPage() {
           if (!open) setPendingConnection(null);
         }}
         onSelect={handleEdgeTypeSelect}
+      />
+      <DeleteConfirmDialog
+        open={deleteNodeDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteNodeDialogOpen(open);
+          if (!open) setDeleteNodeTarget(null);
+        }}
+        title={`Delete "${deleteNodeTarget?.title ?? "node"}"?`}
+        description="This will permanently delete the node and all its connected edges. This action cannot be undone."
+        cascadeLabel={
+          deleteNodeDescendantCount > 0
+            ? `Also delete ${deleteNodeDescendantCount} child node(s)`
+            : undefined
+        }
+        cascadeChecked={deleteNodeCascade}
+        onCascadeChange={setDeleteNodeCascade}
+        onConfirm={handleDeleteNodeConfirm}
+      />
+      <DeleteConfirmDialog
+        open={deleteEdgeDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteEdgeDialogOpen(open);
+          if (!open) setDeleteEdgeTarget(null);
+        }}
+        title="Delete this edge?"
+        description="This will permanently remove the connection between these two nodes. This action cannot be undone."
+        onConfirm={handleDeleteEdgeConfirm}
       />
     </div>
   );
