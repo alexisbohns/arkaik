@@ -91,7 +91,7 @@ export default function ProjectCanvasPage() {
   const [selectedNode, setSelectedNode] = useState<DataNode | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
 
-  const { nodes: dataNodes, loading: nodesLoading } = useNodes(id);
+  const { nodes: dataNodes, loading: nodesLoading, updateNode } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
 
   const toggleProduct = useCallback((productId: string, label: string) => {
@@ -155,6 +155,14 @@ export default function ProjectCanvasPage() {
       return prev.slice(0, index + 1);
     });
   }, []);
+
+  const handleNodeUpdate = useCallback(
+    async (nodeId: string, patch: Partial<Omit<DataNode, "id" | "project_id">>) => {
+      const updated = await updateNode(nodeId, patch);
+      setSelectedNode(updated);
+    },
+    [updateNode],
+  );
 
   const handleNodeClick = useCallback<NodeMouseHandler>((_event, xyNode) => {
     // Split nodes have IDs like `${nodeId}${SPLIT_SEP}${platform}` — strip the suffix to find the source data node
@@ -401,6 +409,7 @@ export default function ProjectCanvasPage() {
         open={panelOpen}
         onOpenChange={setPanelOpen}
         node={selectedNode ?? undefined}
+        onUpdate={handleNodeUpdate}
       />
     </div>
   );
