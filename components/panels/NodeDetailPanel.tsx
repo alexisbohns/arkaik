@@ -23,6 +23,10 @@ import { SPECIES } from "@/lib/config/species";
 import { STATUSES } from "@/lib/config/statuses";
 import { PLATFORMS } from "@/lib/config/platforms";
 import { PLATFORM_DOT_STYLES, PLATFORM_LABELS } from "@/components/graph/nodes/node-styles";
+import { PlatformVariants } from "@/components/panels/PlatformVariants";
+
+/** Species that use StepNode rendering and support per-platform variant notes. */
+const STEP_SPECIES = new Set(["token", "state", "component", "section", "view"]);
 
 interface NodeDetailPanelProps {
   open: boolean;
@@ -206,6 +210,31 @@ function ConnectionItem({
   );
 }
 
+interface PlatformVariantsSectionProps {
+  node: Node;
+  onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => void;
+}
+
+function PlatformVariantsSection({ node, onUpdate }: PlatformVariantsSectionProps) {
+  const rawNotes = (node.metadata?.platformNotes ?? {}) as Partial<Record<PlatformId, string>>;
+  const [notes, setNotes] = useState<Partial<Record<PlatformId, string>>>(rawNotes);
+
+  function handleNotesChange(platform: PlatformId, value: string) {
+    const next = { ...notes, [platform]: value };
+    setNotes(next);
+    onUpdate?.(node.id, {
+      metadata: { ...node.metadata, platformNotes: next },
+    });
+  }
+
+  return (
+    <div className="px-6 flex flex-col gap-3">
+      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Platform Variants</span>
+      <PlatformVariants notes={notes} onNotesChange={handleNotesChange} />
+    </div>
+  );
+}
+
 export function NodeDetailPanel({
   open,
   onOpenChange,
@@ -231,6 +260,13 @@ export function NodeDetailPanel({
         {node && (
           <>
             <NodeFields key={node.id} node={node} onUpdate={onUpdate} />
+            {STEP_SPECIES.has(node.species) && (
+              <PlatformVariantsSection
+                key={`pv-${node.id}`}
+                node={node}
+                onUpdate={onUpdate}
+              />
+            )}
             {allNodes && allEdges && onNavigate && (
               <ConnectionsSection
                 key={`conn-${node.id}`}
