@@ -4,10 +4,17 @@ import { useParams } from "next/navigation";
 import { useState, useCallback, useMemo } from "react";
 import { type Edge, type Node } from "@xyflow/react";
 import { Canvas } from "@/components/graph/Canvas";
+import { Breadcrumb } from "@/components/layout/Breadcrumb";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
 import type { Edge as DataEdge } from "@/lib/data/types";
 import type { SpeciesId } from "@/lib/config/species";
+
+interface BreadcrumbEntry {
+  nodeId: string;
+  label: string;
+  species: "product" | "scenario" | "flow";
+}
 
 const SPECIES_TO_NODE_TYPE: Record<SpeciesId, string> = {
   product: "product",
@@ -79,43 +86,70 @@ export default function ProjectCanvasPage() {
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
   const [expandedScenarios, setExpandedScenarios] = useState<Set<string>>(new Set());
   const [expandedFlows, setExpandedFlows] = useState<Set<string>>(new Set());
+  const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbEntry[]>([]);
 
   const { nodes: dataNodes, loading: nodesLoading } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
 
-  const toggleProduct = useCallback((productId: string) => {
+  const toggleProduct = useCallback((productId: string, label: string) => {
     setExpandedProducts((prev) => {
       const next = new Set(prev);
       if (next.has(productId)) {
         next.delete(productId);
+        setBreadcrumbs([]);
       } else {
         next.add(productId);
+        setBreadcrumbs([{ nodeId: productId, label, species: "product" }]);
       }
       return next;
     });
   }, []);
 
-  const toggleScenario = useCallback((scenarioId: string) => {
+  const toggleScenario = useCallback((scenarioId: string, label: string, parentProductId: string, parentProductLabel: string) => {
     setExpandedScenarios((prev) => {
       const next = new Set(prev);
       if (next.has(scenarioId)) {
         next.delete(scenarioId);
+        setBreadcrumbs((crumbs) => crumbs.slice(0, crumbs.findIndex((b) => b.nodeId === scenarioId)));
       } else {
         next.add(scenarioId);
+        setBreadcrumbs([
+          { nodeId: parentProductId, label: parentProductLabel, species: "product" },
+          { nodeId: scenarioId, label, species: "scenario" },
+        ]);
       }
       return next;
     });
   }, []);
 
-  const toggleFlow = useCallback((flowId: string) => {
+  const toggleFlow = useCallback((flowId: string, label: string, parentScenarioId: string, parentScenarioLabel: string, grandparentProductId: string, grandparentProductLabel: string) => {
     setExpandedFlows((prev) => {
       const next = new Set(prev);
       if (next.has(flowId)) {
         next.delete(flowId);
+        setBreadcrumbs((crumbs) => crumbs.slice(0, crumbs.findIndex((b) => b.nodeId === flowId)));
       } else {
         next.add(flowId);
+        setBreadcrumbs([
+          { nodeId: grandparentProductId, label: grandparentProductLabel, species: "product" },
+          { nodeId: parentScenarioId, label: parentScenarioLabel, species: "scenario" },
+          { nodeId: flowId, label, species: "flow" },
+        ]);
       }
       return next;
+    });
+  }, []);
+
+  const navigateBackTo = useCallback((index: number) => {
+    setBreadcrumbs((prev) => {
+      const entry = prev[index];
+      if (entry?.species === "product") {
+        setExpandedScenarios(new Set());
+        setExpandedFlows(new Set());
+      } else if (entry?.species === "scenario") {
+        setExpandedFlows(new Set());
+      }
+      return prev.slice(0, index + 1);
     });
   }, []);
 
@@ -133,7 +167,7 @@ export default function ProjectCanvasPage() {
           status: n.status,
           platforms: n.platforms,
           expanded: expandedProducts.has(n.id),
-          onToggle: () => toggleProduct(n.id),
+          onToggle: () => toggleProduct(n.id, n.title),
         },
       }),
     );
@@ -166,7 +200,7 @@ export default function ProjectCanvasPage() {
             status: scenario.status,
             platforms: scenario.platforms,
             expanded: expandedScenarios.has(scenario.id),
-            onToggle: () => toggleScenario(scenario.id),
+            onToggle: () => toggleScenario(scenario.id, scenario.title, product.id, product.title),
           },
         });
         // Create a compose edge from the product to this scenario
@@ -189,6 +223,7 @@ export default function ProjectCanvasPage() {
 
       const scenario = dataNodes.find((n) => n.id === scenarioId);
       if (!scenario) continue;
+      const parentProduct = dataNodes.find((n) => n.id === scenario.parent_id);
       const childFlows = dataNodes.filter(
         (n) => n.species === "flow" && n.parent_id === scenarioId,
       );
@@ -211,7 +246,7 @@ export default function ProjectCanvasPage() {
             status: flow.status,
             platforms: flow.platforms,
             expanded: expandedFlows.has(flow.id),
-            onToggle: () => toggleFlow(flow.id),
+            onToggle: () => toggleFlow(flow.id, flow.title, scenarioId, scenario.title, parentProduct?.id ?? "", parentProduct?.title ?? ""),
           },
         });
         // Create a compose edge from the scenario to this flow
@@ -272,6 +307,11 @@ export default function ProjectCanvasPage() {
     return { nodes: visibleNodes, edges: visibleEdges };
   }, [dataNodes, dataEdges, expandedProducts, expandedScenarios, expandedFlows, toggleProduct, toggleScenario, toggleFlow]);
 
+  const breadcrumbSegments = breadcrumbs.map((crumb, index) => ({
+    label: crumb.label,
+    onClick: index < breadcrumbs.length - 1 ? () => navigateBackTo(index) : undefined,
+  }));
+
   if (nodesLoading || edgesLoading) {
     return (
       <div className="h-screen w-full flex items-center justify-center">
@@ -281,8 +321,15 @@ export default function ProjectCanvasPage() {
   }
 
   return (
-    <div className="h-screen w-full">
-      <Canvas nodes={nodes} edges={edges} />
+    <div className="h-screen w-full flex flex-col">
+      {breadcrumbs.length > 0 && (
+        <header className="flex items-center border-b px-4 py-2 bg-background shrink-0">
+          <Breadcrumb segments={breadcrumbSegments} />
+        </header>
+      )}
+      <div className="flex-1 min-h-0">
+        <Canvas nodes={nodes} edges={edges} />
+      </div>
     </div>
   );
 }

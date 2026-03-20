@@ -10,6 +10,7 @@ import {
 interface BreadcrumbSegment {
   label: string;
   href?: string;
+  onClick?: () => void;
 }
 
 interface BreadcrumbProps {
@@ -25,6 +26,13 @@ export function Breadcrumb({ segments }: BreadcrumbProps) {
             <BreadcrumbItem>
               {segment.href ? (
                 <BreadcrumbLink href={segment.href}>{segment.label}</BreadcrumbLink>
+              ) : segment.onClick ? (
+                <button
+                  onClick={segment.onClick}
+                  className="hover:text-foreground transition-colors"
+                >
+                  {segment.label}
+                </button>
               ) : (
                 <BreadcrumbPage>{segment.label}</BreadcrumbPage>
               )}
