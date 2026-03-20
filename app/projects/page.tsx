@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import Link from "next/link";
 import {
   Card,
   CardContent,
@@ -17,6 +18,7 @@ import {
   BreadcrumbLink,
   BreadcrumbList,
 } from "@/components/ui/breadcrumb";
+import { ArkaikLogo } from "@/components/branding/ArkaikLogo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { localProvider } from "@/lib/data/local-provider";
 import type { ProjectBundle } from "@/lib/data/types";
@@ -51,13 +53,9 @@ export default function ProjectsPage() {
   return (
     <div className="flex flex-1 flex-col bg-background font-sans">
       <header className="flex items-center justify-between border-b px-6 py-3">
-        <Breadcrumb>
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink href="/">arkaik</BreadcrumbLink>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
+        <Link href="/" aria-label="Go to home" className="inline-flex items-center">
+          <ArkaikLogo className="w-20 shrink-0" />
+        </Link>
         <ThemeToggle />
       </header>
 

@@ -20,10 +20,10 @@ export default function Home() {
       </header>
 
       <main className="relative mx-auto flex w-full max-w-5xl flex-1 flex-col items-center justify-center px-6 pb-14 pt-4">
-        <div className="w-full max-w-[540px] text-center">
+        <div className="w-full max-w-[400px] text-center">
           <ArkaikLogo className="mx-auto" />
 
-          <p className={`${gochiHand.className} mt-3 text-[44px] leading-none text-primary sm:text-[52px]`}>
+          <p className={`${gochiHand.className} mt-3 text-[32px] leading-none text-primary sm:text-[32px]`}>
             for product architects
           </p>
 
