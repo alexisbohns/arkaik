@@ -24,6 +24,7 @@ The project page (`app/project/[id]/page.tsx`) is the core of the app. It:
 4. Handles per-platform split rendering for step-like nodes
 5. Renders the `Canvas` component with computed nodes and edges
 6. Opens `NodeDetailPanel` on node click for viewing/editing properties
+7. Opens `NewNodeForm` (Dialog) via a floating "New node" button for creating nodes
 
 ## Component Map
 
@@ -51,10 +52,10 @@ components/
     Sidebar.tsx             # Left panel container (stub)
     StatusBadge.tsx         # Colored pill with status label
   panels/
-    NewNodeForm.tsx         # Quick node creation form
+    NewNodeForm.tsx         # Dialog form for creating a node: title, species, status, platforms, parent
     NodeDetailPanel.tsx     # Slide-in sheet: edit title, description, status, platforms; connection navigation; per-platform variant notes
     PlatformVariants.tsx    # Platform tab switcher with per-platform notes
-  ui/                       # shadcn/ui primitives (button, card, input, etc.)
+  ui/                       # shadcn/ui primitives (button, card, dialog, input, etc.)
 ```
 
 ## Data Flow
@@ -71,6 +72,7 @@ app/project/[id]/page.tsx (semantic zoom + platform split logic)
 Canvas → ReactFlow → Custom Nodes/Edges
     ↕ (click events)
 NodeDetailPanel → Hook (updateNode) → Provider → Storage
+NewNodeForm (Dialog) → Hook (addNode) → Provider → Storage
 ```
 
 All data mutations flow through the `DataProvider` interface (`lib/data/data-provider.ts`). The current implementation is `localProvider` backed by `localStorage`. The interface is designed for a future Supabase migration — swap the provider, keep the hooks and UI unchanged.
