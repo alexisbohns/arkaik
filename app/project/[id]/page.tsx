@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { type Edge, type Node, type NodeMouseHandler, type Connection, type EdgeMouseHandler } from "@xyflow/react";
 import { Code2Icon, CopyIcon, DownloadIcon, PlusIcon } from "lucide-react";
+import { toast } from "sonner";
 import { Canvas } from "@/components/graph/Canvas";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
@@ -18,13 +19,13 @@ import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useProject } from "@/lib/hooks/useProject";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
-import { downloadJson, exportProject } from "@/lib/utils/export";
+import { assertProjectBundleShape, downloadJson, exportProject, importProject, normalizeProjectTimestamps } from "@/lib/utils/export";
 import { generateNodeId } from "@/lib/utils/id";
 import { wouldCreateCycle } from "@/lib/utils/cycle";
 import type { SpeciesId } from "@/lib/config/species";
 import type { Node as DataNode, Edge as DataEdge, PlaylistEntry, ProjectBundle } from "@/lib/data/types";
 import type { EdgeTypeId } from "@/lib/config/edge-types";
-import { stringify as stringifyYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
   addNodeToRollup,
   computePlaylistRollup,
@@ -274,11 +275,18 @@ export default function ProjectCanvasPage() {
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportWarning, setExportWarning] = useState<string | null>(null);
   const [rawOpen, setRawOpen] = useState(false);
+  const [rawMode, setRawMode] = useState<"view" | "edit">("view");
   const [rawFormat, setRawFormat] = useState<"json" | "yaml">("json");
   const [rawBundle, setRawBundle] = useState<ProjectBundle | null>(null);
+  const [rawDraftJson, setRawDraftJson] = useState("");
+  const [rawDraftYaml, setRawDraftYaml] = useState("");
   const [rawLoading, setRawLoading] = useState(false);
   const [rawError, setRawError] = useState<string | null>(null);
   const [rawCopied, setRawCopied] = useState(false);
+  const [rawConfirmEnterEditOpen, setRawConfirmEnterEditOpen] = useState(false);
+  const [rawConfirmCancelOpen, setRawConfirmCancelOpen] = useState(false);
+  const [rawConfirmSaveOpen, setRawConfirmSaveOpen] = useState(false);
+  const [rawPendingClose, setRawPendingClose] = useState(false);
   const [playlistError, setPlaylistError] = useState<string | null>(null);
 
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, removeNode, removeNodes } = useNodes(id);
@@ -744,10 +752,65 @@ export default function ProjectCanvasPage() {
     }
   }, [id]);
 
-  const rawText = useMemo(() => {
+  const rawBaseText = useMemo(() => {
     if (!rawBundle) return "";
     return rawFormat === "json" ? JSON.stringify(rawBundle, null, 2) : stringifyYaml(rawBundle);
   }, [rawBundle, rawFormat]);
+
+  const rawInitialTexts = useMemo(() => {
+    if (!rawBundle) {
+      return { json: "", yaml: "" };
+    }
+
+    return {
+      json: JSON.stringify(rawBundle, null, 2),
+      yaml: stringifyYaml(rawBundle),
+    };
+  }, [rawBundle]);
+
+  const rawDraftText = rawFormat === "json" ? rawDraftJson : rawDraftYaml;
+  const rawViewportText = rawMode === "edit" ? rawDraftText : rawBaseText;
+  const rawHasUnsavedChanges = rawDraftJson !== rawInitialTexts.json || rawDraftYaml !== rawInitialTexts.yaml;
+
+  const syncRawDrafts = useCallback((bundle: ProjectBundle) => {
+    setRawDraftJson(JSON.stringify(bundle, null, 2));
+    setRawDraftYaml(stringifyYaml(bundle));
+  }, []);
+
+  const parseDraftToBundle = useCallback((text: string, format: "json" | "yaml"): ProjectBundle => {
+    let parsed: unknown;
+
+    try {
+      parsed = format === "json" ? JSON.parse(text) : parseYaml(text);
+    } catch {
+      throw new Error(format === "json" ? "Invalid JSON syntax." : "Invalid YAML syntax.");
+    }
+
+    assertProjectBundleShape(parsed);
+
+    return {
+      ...parsed,
+      project: normalizeProjectTimestamps(parsed.project),
+    };
+  }, []);
+
+  const scopeBundleToCurrentProject = useCallback((bundle: ProjectBundle): ProjectBundle => {
+    return {
+      ...bundle,
+      project: {
+        ...bundle.project,
+        id,
+      },
+      nodes: bundle.nodes.map((node) => ({
+        ...node,
+        project_id: id,
+      })),
+      edges: bundle.edges.map((edge) => ({
+        ...edge,
+        project_id: id,
+      })),
+    };
+  }, [id]);
 
   const handleOpenRaw = useCallback(async () => {
     if (!id) {
@@ -760,7 +823,9 @@ export default function ProjectCanvasPage() {
     try {
       const bundle = await exportProject(id);
       setRawBundle(bundle);
+      syncRawDrafts(bundle);
       setRawCopied(false);
+      setRawMode("view");
       setRawOpen(true);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown raw export error";
@@ -768,19 +833,118 @@ export default function ProjectCanvasPage() {
     } finally {
       setRawLoading(false);
     }
-  }, [id]);
+  }, [id, syncRawDrafts]);
+
+  const handleRawOpenChange = useCallback((open: boolean) => {
+    if (open) {
+      setRawOpen(true);
+      return;
+    }
+
+    if (rawMode === "edit" && rawHasUnsavedChanges) {
+      setRawPendingClose(true);
+      setRawConfirmCancelOpen(true);
+      return;
+    }
+
+    setRawOpen(false);
+    setRawMode("view");
+  }, [rawHasUnsavedChanges, rawMode]);
+
+  const handleRawFormatChange = useCallback((nextFormat: "json" | "yaml") => {
+    if (nextFormat === rawFormat) return;
+
+    if (rawMode !== "edit") {
+      setRawFormat(nextFormat);
+      return;
+    }
+
+    try {
+      const parsed = parseDraftToBundle(rawDraftText, rawFormat);
+      setRawDraftJson(JSON.stringify(parsed, null, 2));
+      setRawDraftYaml(stringifyYaml(parsed));
+      setRawFormat(nextFormat);
+      setRawError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Invalid raw draft.";
+      toast.error(`Cannot switch format while editing: ${message}`);
+    }
+  }, [parseDraftToBundle, rawDraftText, rawFormat, rawMode]);
 
   const handleCopyRaw = useCallback(async () => {
-    if (!rawText) return;
+    if (!rawViewportText) return;
 
     setRawError(null);
     try {
-      await navigator.clipboard.writeText(rawText);
+      await navigator.clipboard.writeText(rawViewportText);
       setRawCopied(true);
     } catch {
       setRawError("Unable to copy raw export to clipboard.");
     }
-  }, [rawText]);
+  }, [rawViewportText]);
+
+  const handleRequestRawEdit = useCallback(() => {
+    setRawConfirmEnterEditOpen(true);
+  }, []);
+
+  const handleConfirmRawEnterEdit = useCallback(() => {
+    if (!rawBundle) return;
+    syncRawDrafts(rawBundle);
+    setRawMode("edit");
+    setRawConfirmEnterEditOpen(false);
+  }, [rawBundle, syncRawDrafts]);
+
+  const handleRequestRawCancel = useCallback(() => {
+    if (!rawHasUnsavedChanges) {
+      setRawMode("view");
+      return;
+    }
+    setRawConfirmCancelOpen(true);
+  }, [rawHasUnsavedChanges]);
+
+  const handleConfirmRawCancel = useCallback(() => {
+    if (rawBundle) {
+      syncRawDrafts(rawBundle);
+    }
+
+    setRawMode("view");
+    setRawConfirmCancelOpen(false);
+
+    if (rawPendingClose) {
+      setRawOpen(false);
+      setRawPendingClose(false);
+    }
+  }, [rawBundle, rawPendingClose, syncRawDrafts]);
+
+  const handleRequestRawSave = useCallback(() => {
+    setRawConfirmSaveOpen(true);
+  }, []);
+
+  const handleConfirmRawSave = useCallback(async () => {
+    if (!id) {
+      toast.error("Unable to save raw bundle: missing project id.");
+      setRawConfirmSaveOpen(false);
+      return;
+    }
+
+    try {
+      const parsedBundle = parseDraftToBundle(rawDraftText, rawFormat);
+      const scopedBundle = scopeBundleToCurrentProject(parsedBundle);
+      await importProject(scopedBundle);
+      const refreshedBundle = await exportProject(id);
+      setRawBundle(refreshedBundle);
+      syncRawDrafts(refreshedBundle);
+      setRawMode("view");
+      setRawConfirmSaveOpen(false);
+      setRawError(null);
+      toast.success("Raw bundle saved successfully.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown save error";
+      toast.error(`Raw bundle save failed: ${message}`);
+      setRawMode("edit");
+      setRawConfirmSaveOpen(false);
+    }
+  }, [id, parseDraftToBundle, rawDraftText, rawFormat, scopeBundleToCurrentProject, syncRawDrafts]);
 
   useEffect(() => {
     if (!rawCopied) return;
@@ -1280,28 +1444,68 @@ export default function ProjectCanvasPage() {
         onNavigate={handleNavigate}
         onCreateNode={handleCreateNodeFromPanel}
       />
-      <Sheet open={rawOpen} onOpenChange={setRawOpen}>
+      <Sheet open={rawOpen} onOpenChange={handleRawOpenChange}>
         <SheetContent className="w-full sm:max-w-3xl">
           <SheetHeader className="pr-12">
             <SheetTitle>Raw project bundle</SheetTitle>
             <SheetDescription>Inspect the full export as JSON or YAML.</SheetDescription>
-            <div className="flex flex-wrap items-center gap-2 pt-2">
-              <Button size="sm" variant={rawFormat === "json" ? "default" : "outline"} onClick={() => setRawFormat("json")}>
-                JSON
-              </Button>
-              <Button size="sm" variant={rawFormat === "yaml" ? "default" : "outline"} onClick={() => setRawFormat("yaml")}>
-                YAML
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => void handleCopyRaw()} disabled={!rawText}>
-                <CopyIcon className="size-4" />
-                {rawCopied ? "Copied" : "Copy"}
-              </Button>
+            <div className="flex items-center justify-between gap-2 pt-2">
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant={rawFormat === "json" ? "default" : "outline"} onClick={() => handleRawFormatChange("json")}>
+                  JSON
+                </Button>
+                <Button size="sm" variant={rawFormat === "yaml" ? "default" : "outline"} onClick={() => handleRawFormatChange("yaml")}>
+                  YAML
+                </Button>
+              </div>
+              {rawMode === "view" ? (
+                <Button size="sm" variant="outline" onClick={handleRequestRawEdit} disabled={!rawBundle}>
+                  Edit
+                </Button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={handleRequestRawCancel}>
+                    Cancel
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={handleRequestRawSave}>
+                    Save
+                  </Button>
+                </div>
+              )}
             </div>
           </SheetHeader>
           <div className="min-h-0 flex-1 px-6 pb-6">
-            <pre className="h-full overflow-auto rounded-md border bg-muted/30 p-3 text-xs leading-relaxed">
-              <code>{rawText || "No export available yet."}</code>
-            </pre>
+            <div className="group relative h-full">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void handleCopyRaw()}
+                disabled={!rawViewportText}
+                className="absolute right-2 top-2 z-10 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+              >
+                <CopyIcon className="size-4" />
+                {rawCopied ? "Copied" : "Copy"}
+              </Button>
+              {rawMode === "edit" ? (
+                <textarea
+                  value={rawDraftText}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (rawFormat === "json") {
+                      setRawDraftJson(value);
+                    } else {
+                      setRawDraftYaml(value);
+                    }
+                  }}
+                  spellCheck={false}
+                  className="h-full w-full resize-none overflow-auto rounded-md border bg-muted/30 p-3 pr-24 font-mono text-xs leading-relaxed outline-none"
+                />
+              ) : (
+                <pre className="h-full overflow-auto rounded-md border bg-muted/30 p-3 pr-24 text-xs leading-relaxed">
+                  <code>{rawBaseText || "No export available yet."}</code>
+                </pre>
+              )}
+            </div>
           </div>
         </SheetContent>
       </Sheet>
@@ -1359,6 +1563,35 @@ export default function ProjectCanvasPage() {
         title="Delete this edge?"
         description="This will permanently remove the connection between these two nodes. This action cannot be undone."
         onConfirm={handleDeleteEdgeConfirm}
+      />
+      <DeleteConfirmDialog
+        open={rawConfirmEnterEditOpen}
+        onOpenChange={setRawConfirmEnterEditOpen}
+        title="Enable raw edit mode?"
+        description="You are about to edit the full project payload directly. Saving runs validation for syntax and basic schema issues, but it cannot protect against unintended destructive changes to valid data."
+        confirmLabel="Edit"
+        onConfirm={handleConfirmRawEnterEdit}
+      />
+      <DeleteConfirmDialog
+        open={rawConfirmCancelOpen}
+        onOpenChange={(open) => {
+          setRawConfirmCancelOpen(open);
+          if (!open) setRawPendingClose(false);
+        }}
+        title="Discard unsaved raw changes?"
+        description="You have unsaved edits. Discarding now will permanently lose those changes."
+        confirmLabel="Discard"
+        onConfirm={handleConfirmRawCancel}
+      />
+      <DeleteConfirmDialog
+        open={rawConfirmSaveOpen}
+        onOpenChange={setRawConfirmSaveOpen}
+        title="Apply raw changes to this project?"
+        description="This will replace the current graph data for this project and cannot be undone. Validation checks syntax and bundle shape, but valid edits can still remove or overwrite data unintentionally."
+        confirmLabel="Save"
+        onConfirm={() => {
+          void handleConfirmRawSave();
+        }}
       />
     </div>
   );
