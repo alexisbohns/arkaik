@@ -27,6 +27,10 @@ const nodeIndex = new Map<string, string>();
 /** Maps edge id → project id for O(1) lookup. */
 const edgeIndex = new Map<string, string>();
 
+function isArchived(bundle: ProjectBundle): boolean {
+  return Boolean(bundle.project.archived_at);
+}
+
 // Rebuild indexes from persisted data
 for (const bundle of store.values()) {
   bundle.nodes.forEach((n) => nodeIndex.set(n.id, bundle.project.id));
@@ -38,12 +42,23 @@ export const localProvider: DataProvider = {
     return store.get(id);
   },
   async listProjects() {
-    return Array.from(store.values());
+    return Array.from(store.values()).filter((bundle) => !isArchived(bundle));
   },
   async saveProject(bundle: ProjectBundle) {
     store.set(bundle.project.id, bundle);
     bundle.nodes.forEach((n) => nodeIndex.set(n.id, bundle.project.id));
     bundle.edges.forEach((e) => edgeIndex.set(e.id, bundle.project.id));
+    persistStore(store);
+  },
+  async archiveProject(id: string) {
+    const bundle = store.get(id);
+    if (!bundle) throw new Error(`Project ${id} not found`);
+    const now = new Date().toISOString();
+    bundle.project = {
+      ...bundle.project,
+      archived_at: now,
+      updated_at: now,
+    };
     persistStore(store);
   },
 

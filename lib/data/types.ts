@@ -44,6 +44,8 @@ export interface Project {
   created_at: string;
   /** ISO 8601 timestamp, e.g. "2024-01-01T00:00:00.000Z" */
   updated_at: string;
+  /** ISO 8601 timestamp when archived; null/undefined means active. */
+  archived_at?: string | null;
 }
 
 export interface ProjectBundle {

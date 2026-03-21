@@ -45,6 +45,7 @@ interface Project {
   description?: string;
   created_at: string;  // ISO 8601
   updated_at: string;  // ISO 8601
+  archived_at?: string | null; // ISO 8601 when archived
 }
 ```
 
@@ -70,6 +71,7 @@ interface DataProvider {
   getProject(id: string): Promise<ProjectBundle | undefined>;
   listProjects(): Promise<ProjectBundle[]>;
   saveProject(bundle: ProjectBundle): Promise<void>;
+  archiveProject(id: string): Promise<void>;
 
   // Nodes
   getNodes(projectId: string): Promise<Node[]>;
@@ -88,6 +90,8 @@ interface DataProvider {
 }
 ```
 
+`archiveProject` performs a soft delete. Archived projects remain in storage but are excluded by default from `listProjects()`.
+
 ## Local Provider
 
 Implemented in `lib/data/local-provider.ts`.
@@ -105,6 +109,9 @@ Utilities in `lib/utils/export.ts`:
 - `exportToJson(bundle)` — Serializes a `ProjectBundle` to formatted JSON
 - `downloadJson(bundle)` — Triggers browser download as `{projectId}.json`
 - `exportProject(id)` / `importProject(bundle)` — Delegate to `localProvider`
+- `importProjectFromFile(file)` — Parses and validates JSON file content, normalizes timestamps, and imports via provider
+
+When importing, if the incoming project ID already exists locally, a new project ID is generated and all `project_id` references in nodes and edges are rewritten to the new ID before saving.
 
 ## Hooks
 

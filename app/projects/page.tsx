@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -12,41 +12,115 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-} from "@/components/ui/breadcrumb";
 import { ArkaikLogo } from "@/components/branding/ArkaikLogo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { localProvider } from "@/lib/data/local-provider";
-import type { ProjectBundle } from "@/lib/data/types";
+import type { Project, ProjectBundle } from "@/lib/data/types";
+import { archiveProject, importProjectFromFile } from "@/lib/utils/export";
+import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
+import { CreateProjectForm } from "@/components/panels/CreateProjectForm";
 import pebbles from "@/seed/pebbles.json";
 
 export default function ProjectsPage() {
   const router = useRouter();
   const [projects, setProjects] = useState<ProjectBundle[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<ProjectBundle | null>(null);
   const [importing, setImporting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function loadProjects() {
+    setLoading(true);
+    try {
+      const list = await localProvider.listProjects();
+      setProjects(list);
+    } catch (err) {
+      console.error("[ProjectsPage] Failed to load projects:", err);
+      setError("Failed to load projects");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    localProvider
-      .listProjects()
-      .then((list) => setProjects(list))
-      .catch((err) => console.error("[ProjectsPage] Failed to load projects:", err))
-      .finally(() => setLoading(false));
+    loadProjects();
   }, []);
+
+  async function createProject(project: Pick<Project, "title" | "description">) {
+    setError(null);
+    const now = new Date().toISOString();
+    const id = crypto.randomUUID();
+    const bundle: ProjectBundle = {
+      project: {
+        id,
+        title: project.title,
+        description: project.description,
+        created_at: now,
+        updated_at: now,
+        archived_at: null,
+      },
+      nodes: [],
+      edges: [],
+    };
+
+    await localProvider.saveProject(bundle);
+    await loadProjects();
+    router.push(`/project/${id}`);
+  }
 
   async function handleImportExample() {
     setImporting(true);
+    setError(null);
     try {
-      await localProvider.importProject(pebbles as ProjectBundle);
-      router.push(`/project/${pebbles.project.id}`);
+      const project = await importProjectFromFile(
+        new File([JSON.stringify(pebbles)], "pebbles.json", { type: "application/json" })
+      );
+      await loadProjects();
+      router.push(`/project/${project.id}`);
     } catch (err) {
       console.error("[ProjectsPage] Failed to import example project:", err);
+      setError("Failed to import example project");
     } finally {
       setImporting(false);
+    }
+  }
+
+  async function handleImportFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    setImporting(true);
+    setError(null);
+    try {
+      const project = await importProjectFromFile(file);
+      await loadProjects();
+      router.push(`/project/${project.id}`);
+    } catch (err) {
+      console.error("[ProjectsPage] Failed to import project JSON:", err);
+      const message = err instanceof Error ? err.message : "Failed to import project JSON";
+      setError(message);
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function handleArchiveProject() {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      await archiveProject(deleteTarget.project.id);
+      setDeleteTarget(null);
+      await loadProjects();
+    } catch (err) {
+      console.error("[ProjectsPage] Failed to archive project:", err);
+      setError("Failed to archive project");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -62,7 +136,26 @@ export default function ProjectsPage() {
       <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 p-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold">Projects</h1>
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json,.json"
+              onChange={handleImportFileChange}
+              className="hidden"
+            />
+            <Button
+              variant="outline"
+              disabled={importing}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {importing ? "Importing..." : "Import JSON"}
+            </Button>
+            <Button onClick={() => setCreateOpen(true)}>Create project</Button>
+          </div>
         </div>
+
+        {error && <p className="text-sm text-destructive">{error}</p>}
 
         {loading ? (
           <div className="flex flex-1 items-center justify-center">
@@ -71,11 +164,14 @@ export default function ProjectsPage() {
         ) : projects.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-4 py-24 text-center">
             <p className="max-w-xs text-sm text-muted-foreground">
-              No projects yet. Import the example project to get started.
+              No projects yet. Create one, import your JSON, or load the example project.
             </p>
-            <Button onClick={handleImportExample} disabled={importing}>
-              {importing ? "Importing…" : "Import example project"}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button onClick={() => setCreateOpen(true)}>Create project</Button>
+              <Button variant="outline" onClick={handleImportExample} disabled={importing}>
+                {importing ? "Importing..." : "Import example project"}
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -93,9 +189,12 @@ export default function ProjectsPage() {
                     {bundle.edges.length} edge{bundle.edges.length !== 1 ? "s" : ""}
                   </p>
                 </CardContent>
-                <CardFooter>
+                <CardFooter className="flex items-center gap-2">
                   <Button size="sm" onClick={() => router.push(`/project/${bundle.project.id}`)}>
                     Open
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setDeleteTarget(bundle)}>
+                    Delete
                   </Button>
                 </CardFooter>
               </Card>
@@ -103,6 +202,18 @@ export default function ProjectsPage() {
           </div>
         )}
       </main>
+
+      <CreateProjectForm open={createOpen} onOpenChange={setCreateOpen} onSubmit={createProject} />
+
+      <DeleteConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title="Delete project"
+        description={`Archive \"${deleteTarget?.project.title ?? "this project"}\" and remove it from your list?`}
+        onConfirm={handleArchiveProject}
+      />
     </div>
   );
 }
