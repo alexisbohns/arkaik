@@ -153,6 +153,19 @@ function verticalPositions(
   }));
 }
 
+function verticalStackPositions(
+  cx: number,
+  startY: number,
+  count: number,
+  spacing = FLOW_CHILD_Y_SPACING,
+): { x: number; y: number }[] {
+  if (count === 0) return [];
+  return Array.from({ length: count }, (_, i) => ({
+    x: cx,
+    y: startY + i * spacing,
+  }));
+}
+
 function getNodeSize(nodeType?: string): LayoutSize {
   switch (nodeType) {
     case "flow":
@@ -326,7 +339,7 @@ export default function ProjectCanvasPage() {
     return nodesById.get(rootNodeId) ?? null;
   }, [nodesById, projectBundle?.project.root_node_id]);
 
-  const expandableFlowIds = useMemo(() => {
+  const topLevelFlowIds = useMemo(() => {
     if (explicitRootNode) {
       const ids = new Set<string>();
 
@@ -353,6 +366,11 @@ export default function ProjectCanvasPage() {
         .map((node) => node.id),
     );
   }, [composeChildIdsByParent, composeParentByChild, dataNodes, explicitRootNode, nodesById]);
+
+  const allFlowIds = useMemo(
+    () => new Set(dataNodes.filter((node) => node.species === "flow").map((node) => node.id)),
+    [dataNodes],
+  );
 
   const getPlaylistEntries = useCallback((nodeId: string): PlaylistEntry[] => {
     const entries = nodesById.get(nodeId)?.metadata?.playlist?.entries;
@@ -382,7 +400,7 @@ export default function ProjectCanvasPage() {
       const next = new Set<string>();
 
       for (const flowId of prev) {
-        if (expandableFlowIds.has(flowId)) {
+        if (allFlowIds.has(flowId)) {
           next.add(flowId);
         }
       }
@@ -393,7 +411,7 @@ export default function ProjectCanvasPage() {
 
       return next;
     });
-  }, [expandableFlowIds]);
+  }, [allFlowIds]);
 
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null);
   const [edgeDialogOpen, setEdgeDialogOpen] = useState(false);
@@ -472,19 +490,30 @@ export default function ProjectCanvasPage() {
 
   const toggleFlow = useCallback((flowId: string) => {
     setExpandedFlows((prev) => {
-      if (!expandableFlowIds.has(flowId)) {
-        return prev;
-      }
+      if (topLevelFlowIds.has(flowId)) {
+        if (prev.has(flowId)) {
+          const next = new Set(prev);
+          next.delete(flowId);
+          return next;
+        }
 
-      if (prev.has(flowId)) {
         const next = new Set(prev);
-        next.delete(flowId);
+        for (const topLevelFlowId of topLevelFlowIds) {
+          next.delete(topLevelFlowId);
+        }
+        next.add(flowId);
         return next;
       }
 
-      return new Set([flowId]);
+      const next = new Set(prev);
+      if (next.has(flowId)) {
+        next.delete(flowId);
+      } else {
+        next.add(flowId);
+      }
+      return next;
     });
-  }, [expandableFlowIds]);
+  }, [topLevelFlowIds]);
 
   const handleNodeUpdate = useCallback(
     async (nodeId: string, patch: Partial<Omit<DataNode, "id" | "project_id">>) => {
@@ -1035,13 +1064,10 @@ export default function ProjectCanvasPage() {
 
       if (node.species === "flow") {
         const flowRollup = computeFlowRollup(node.id);
-        const isExpandableFlow = expandableFlowIds.has(node.id);
         baseData.status = getRollupDisplayStatus(flowRollup, node.status);
         baseData.platformRollup = flowRollup;
-        baseData.expanded = isExpandableFlow && expandedFlows.has(node.id);
-        if (isExpandableFlow) {
-          baseData.onToggle = () => toggleFlow(node.id);
-        }
+        baseData.expanded = expandedFlows.has(node.id);
+        baseData.onToggle = () => toggleFlow(node.id);
         baseData.onAddChild = () => handleAddChildNode(node.id, "view");
         baseData.onOpenDetails = () => {
           setSelectedNode(node);
@@ -1149,7 +1175,7 @@ export default function ProjectCanvasPage() {
         );
       }
 
-      return verticalPositions(anchor.x, anchor.y, count, FLOW_CHILD_Y_SPACING);
+      return verticalStackPositions(anchor.x, anchor.y, count, FLOW_CHILD_Y_SPACING);
     };
 
     const renderSequence = (
@@ -1402,7 +1428,6 @@ export default function ProjectCanvasPage() {
     composeParentByChild,
     dataEdges,
     dataNodes,
-    expandableFlowIds,
     expandedFlows,
     getPlaylistEntries,
     getOrderedChildren,
