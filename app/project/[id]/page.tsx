@@ -776,7 +776,6 @@ export default function ProjectCanvasPage() {
     const renderedEdgePairs = new Set(visibleEdges.map((edge) => `${edge.source}:${edge.target}`));
     const EDGE_TYPE_MAP: Record<string, string> = {
       composes: "compose",
-      branches: "branch",
       calls: "calls",
       displays: "displays",
       queries: "queries",

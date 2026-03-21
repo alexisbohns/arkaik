@@ -159,7 +159,6 @@ graph TD
     VIEW -- "calls" --> ROUTE
     ROUTE -- "queries" --> TABLE
     SECTION -- "renders" --> RESPONSE
-    FLOW -- "branches by<br>use case / condition" --> FLOW
 ```
 
 ---
@@ -266,7 +265,7 @@ create table edges (
   source_id uuid references nodes(id) on delete cascade,
   target_id uuid references nodes(id) on delete cascade,
   edge_type text default 'composes' check (edge_type in (
-    'composes','branches','calls','displays','queries'
+    'composes','calls','displays','queries'
   )),
   label text,
   created_at timestamptz default now()
@@ -312,7 +311,6 @@ export const STATUSES = [
 
 export const EDGE_TYPES = [
   { key: 'composes', label: 'Composes' },
-  { key: 'branches', label: 'Branches to' },
   { key: 'calls', label: 'Calls' },
   { key: 'displays', label: 'Displays data from' },
   { key: 'queries', label: 'Queries' },
@@ -350,7 +348,6 @@ arkaik/
           ApiEndpointNode.tsx
         edges/
           ComposeEdge.tsx
-          BranchEdge.tsx
           CrossLayerEdge.tsx
       panels/
         NodeDetailPanel.tsx       ← Shadcn Sheet, slide-in on click

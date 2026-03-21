@@ -67,7 +67,6 @@ Source:
 | Edge Type | Use |
 |---|---|
 | `composes` | Composition hierarchy and ordered flow sequences |
-| `branches` | Legacy/optional branch edges still supported by config and rendering |
 | `calls` | View to API relationship |
 | `displays` | View to data-model relationship |
 | `queries` | API to data-model relationship |

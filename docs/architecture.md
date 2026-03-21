@@ -41,7 +41,6 @@ components/
       node-styles.ts        # Status/platform style maps
     edges/
       ComposeEdge.tsx       # Straight — hierarchy (composes)
-      BranchEdge.tsx        # Bezier — flow branching
       CrossLayerEdge.tsx    # Dashed straight — cross-layer references (not yet registered in Canvas)
   layout/
     Minimap.tsx             # React Flow minimap wrapper (unused — Canvas uses @xyflow/react MiniMap directly)
