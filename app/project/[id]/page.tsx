@@ -326,6 +326,34 @@ export default function ProjectCanvasPage() {
     return nodesById.get(rootNodeId) ?? null;
   }, [nodesById, projectBundle?.project.root_node_id]);
 
+  const expandableFlowIds = useMemo(() => {
+    if (explicitRootNode) {
+      const ids = new Set<string>();
+
+      if (explicitRootNode.species === "flow") {
+        ids.add(explicitRootNode.id);
+      }
+
+      const rootChildFlowIds = (composeChildIdsByParent.get(explicitRootNode.id) ?? [])
+        .map((nodeId) => nodesById.get(nodeId))
+        .filter((node): node is DataNode => Boolean(node))
+        .filter((node) => node.species === "flow")
+        .map((node) => node.id);
+
+      for (const flowId of rootChildFlowIds) {
+        ids.add(flowId);
+      }
+
+      return ids;
+    }
+
+    return new Set(
+      dataNodes
+        .filter((node) => node.species === "flow" && !composeParentByChild.has(node.id))
+        .map((node) => node.id),
+    );
+  }, [composeChildIdsByParent, composeParentByChild, dataNodes, explicitRootNode, nodesById]);
+
   const getPlaylistEntries = useCallback((nodeId: string): PlaylistEntry[] => {
     const entries = nodesById.get(nodeId)?.metadata?.playlist?.entries;
     return Array.isArray(entries) ? entries : [];
@@ -349,26 +377,23 @@ export default function ProjectCanvasPage() {
       .filter((child): child is DataNode => Boolean(child));
   }, [composeChildIdsByParent, getPlaylist, nodesById]);
 
-  // Auto-expand root flows on initial load.
   useEffect(() => {
-    if (nodesLoading) return;
     setExpandedFlows((prev) => {
-      if (prev.size > 0) return prev;
-      const rootFlowIds = explicitRootNode
-        ? [
-            ...(explicitRootNode.species === "flow" ? [explicitRootNode.id] : []),
-            ...(composeChildIdsByParent.get(explicitRootNode.id) ?? [])
-              .map((nodeId) => nodesById.get(nodeId))
-              .filter((node): node is DataNode => Boolean(node))
-              .filter((node) => node.species === "flow")
-              .map((node) => node.id),
-          ]
-        : dataNodes
-            .filter((node) => node.species === "flow" && !composeParentByChild.has(node.id))
-            .map((node) => node.id);
-      return new Set(rootFlowIds);
+      const next = new Set<string>();
+
+      for (const flowId of prev) {
+        if (expandableFlowIds.has(flowId)) {
+          next.add(flowId);
+        }
+      }
+
+      if (next.size === prev.size) {
+        return prev;
+      }
+
+      return next;
     });
-  }, [nodesLoading, composeChildIdsByParent, composeParentByChild, dataNodes, explicitRootNode, nodesById]);
+  }, [expandableFlowIds]);
 
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null);
   const [edgeDialogOpen, setEdgeDialogOpen] = useState(false);
@@ -447,6 +472,10 @@ export default function ProjectCanvasPage() {
 
   const toggleFlow = useCallback((flowId: string) => {
     setExpandedFlows((prev) => {
+      if (!expandableFlowIds.has(flowId)) {
+        return prev;
+      }
+
       const next = new Set(prev);
       if (next.has(flowId)) {
         next.delete(flowId);
@@ -455,7 +484,7 @@ export default function ProjectCanvasPage() {
       }
       return next;
     });
-  }, []);
+  }, [expandableFlowIds]);
 
   const handleNodeUpdate = useCallback(
     async (nodeId: string, patch: Partial<Omit<DataNode, "id" | "project_id">>) => {
@@ -1006,10 +1035,13 @@ export default function ProjectCanvasPage() {
 
       if (node.species === "flow") {
         const flowRollup = computeFlowRollup(node.id);
+        const isExpandableFlow = expandableFlowIds.has(node.id);
         baseData.status = getRollupDisplayStatus(flowRollup, node.status);
         baseData.platformRollup = flowRollup;
-        baseData.expanded = expandedFlows.has(node.id);
-        baseData.onToggle = () => toggleFlow(node.id);
+        baseData.expanded = isExpandableFlow && expandedFlows.has(node.id);
+        if (isExpandableFlow) {
+          baseData.onToggle = () => toggleFlow(node.id);
+        }
         baseData.onAddChild = () => handleAddChildNode(node.id, "view");
         baseData.onOpenDetails = () => {
           setSelectedNode(node);
@@ -1370,6 +1402,7 @@ export default function ProjectCanvasPage() {
     composeParentByChild,
     dataEdges,
     dataNodes,
+    expandableFlowIds,
     expandedFlows,
     getPlaylistEntries,
     getOrderedChildren,
