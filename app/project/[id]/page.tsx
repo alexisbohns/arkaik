@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { type Edge, type Node, type NodeMouseHandler, type Connection, type EdgeMouseHandler } from "@xyflow/react";
 import { DownloadIcon, PlusIcon } from "lucide-react";
 import { Canvas } from "@/components/graph/Canvas";
@@ -241,14 +241,71 @@ export default function ProjectCanvasPage() {
   const [selectedNode, setSelectedNode] = useState<DataNode | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [newNodeOpen, setNewNodeOpen] = useState(false);
-  const [newNodePreset, setNewNodePreset] = useState<{ parent_id: string; species: SpeciesId } | null>(null);
-  const insertInfoRef = useRef<{ insertBeforeSortOrder: number } | null>(null);
+  const [newNodePreset, setNewNodePreset] = useState<{ parentId: string; species: SpeciesId; insertBeforeId?: string } | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportWarning, setExportWarning] = useState<string | null>(null);
 
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, removeNodes } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading, addEdge, removeEdge } = useEdges(id);
+
+  const nodesById = useMemo(
+    () => new Map(dataNodes.map((node) => [node.id, node])),
+    [dataNodes],
+  );
+
+  const composeChildIdsByParent = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const edge of dataEdges) {
+      if (edge.edge_type !== "composes") continue;
+      const children = map.get(edge.source_id) ?? [];
+      children.push(edge.target_id);
+      map.set(edge.source_id, children);
+    }
+    return map;
+  }, [dataEdges]);
+
+  const composeParentByChild = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const edge of dataEdges) {
+      if (edge.edge_type !== "composes") continue;
+      if (!map.has(edge.target_id)) {
+        map.set(edge.target_id, edge.source_id);
+      }
+    }
+    return map;
+  }, [dataEdges]);
+
+  const getPlaylist = useCallback((nodeId: string): string[] => {
+    const raw = nodesById.get(nodeId)?.metadata?.playlist;
+    return Array.isArray(raw) ? raw.filter((entry): entry is string => typeof entry === "string") : [];
+  }, [nodesById]);
+
+  const getOrderedChildren = useCallback((parentId: string): DataNode[] => {
+    const parent = nodesById.get(parentId);
+    if (!parent) return [];
+
+    const edgeChildIds = composeChildIdsByParent.get(parentId) ?? [];
+    const edgeChildSet = new Set(edgeChildIds);
+    const playlist = getPlaylist(parentId);
+
+    const orderedIds = [
+      ...playlist,
+      ...edgeChildIds.filter((childId) => !playlist.includes(childId)),
+    ];
+
+    if (parent.species === "flow") {
+      for (const childId of orderedIds) {
+        edgeChildSet.delete(childId);
+      }
+      // Keep existing composed children visible even if missing from playlist.
+      orderedIds.push(...edgeChildIds.filter((childId) => edgeChildSet.has(childId)));
+    }
+
+    return orderedIds
+      .map((childId) => nodesById.get(childId))
+      .filter((child): child is DataNode => Boolean(child));
+  }, [composeChildIdsByParent, getPlaylist, nodesById]);
 
   // Auto-expand all products on initial load
   useEffect(() => {
@@ -272,18 +329,25 @@ export default function ProjectCanvasPage() {
   const getDescendantIds = useCallback(
     (nodeId: string): string[] => {
       const result: string[] = [];
+      const visited = new Set<string>();
       const queue = [nodeId];
       while (queue.length > 0) {
         const current = queue.shift()!;
-        const children = dataNodes.filter((n) => n.parent_id === current);
+        const composedChildren = composeChildIdsByParent.get(current) ?? [];
+        const playlistChildren = getPlaylist(current);
+        const children = [...new Set([...composedChildren, ...playlistChildren])]
+          .map((childId) => nodesById.get(childId))
+          .filter((child): child is DataNode => Boolean(child));
         for (const child of children) {
+          if (visited.has(child.id)) continue;
+          visited.add(child.id);
           result.push(child.id);
           queue.push(child.id);
         }
       }
       return result;
     },
-    [dataNodes],
+    [composeChildIdsByParent, getPlaylist, nodesById],
   );
 
   const handleDeleteNodeRequest = useCallback((nodeId: string) => {
@@ -356,7 +420,7 @@ export default function ProjectCanvasPage() {
         return next;
       });
       const flowsUnderScenario = new Set(
-        dataNodes.filter((n) => n.parent_id === scenarioId && n.species === "flow").map((n) => n.id),
+        getOrderedChildren(scenarioId).filter((n) => n.species === "flow").map((n) => n.id),
       );
       setExpandedFlows((prev) => {
         const next = new Set(prev);
@@ -367,13 +431,17 @@ export default function ProjectCanvasPage() {
     } else {
       // Enforce one open scenario per product: close sibling scenarios and their child flows
       const siblingIds = new Set(
-        dataNodes
-          .filter((n) => n.species === "scenario" && n.parent_id === parentProductId && n.id !== scenarioId)
+        getOrderedChildren(parentProductId)
+          .filter((n) => n.species === "scenario" && n.id !== scenarioId)
           .map((n) => n.id),
       );
       const siblingFlowIds = new Set(
         dataNodes
-          .filter((n) => n.species === "flow" && n.parent_id != null && siblingIds.has(n.parent_id))
+          .filter((n) => n.species === "flow")
+          .filter((n) => {
+            const parentId = composeParentByChild.get(n.id);
+            return parentId ? siblingIds.has(parentId) : false;
+          })
           .map((n) => n.id),
       );
       setExpandedScenarios((prev) => {
@@ -392,7 +460,7 @@ export default function ProjectCanvasPage() {
         { nodeId: scenarioId, label, species: "scenario" },
       ]);
     }
-  }, [expandedScenarios, dataNodes]);
+  }, [expandedScenarios, composeParentByChild, dataNodes, getOrderedChildren]);
 
   const toggleFlow = useCallback((flowId: string, label: string, parentScenarioId: string, parentScenarioLabel: string, grandparentProductId: string, grandparentProductLabel: string) => {
     setExpandedFlows((prev) => {
@@ -438,19 +506,17 @@ export default function ProjectCanvasPage() {
   }, []);
 
   const handleAddChildNode = useCallback((parentId: string, childSpecies: SpeciesId) => {
-    setNewNodePreset({ parent_id: parentId, species: childSpecies });
+    setNewNodePreset({ parentId, species: childSpecies });
     setNewNodeOpen(true);
   }, []);
 
   const handleInsertBetween = useCallback((sourceId: string, targetId: string, species: SpeciesId) => {
-    const src = dataNodes.find((n) => n.id === sourceId);
-    const tgt = dataNodes.find((n) => n.id === targetId);
-    if (!src || !tgt || !src.parent_id) return;
-    const insertBeforeSortOrder = tgt.sort_order ?? (src.sort_order ?? 0) + 1;
-    insertInfoRef.current = { insertBeforeSortOrder };
-    setNewNodePreset({ parent_id: src.parent_id, species });
+    const srcParentId = composeParentByChild.get(sourceId);
+    const tgtParentId = composeParentByChild.get(targetId);
+    if (!srcParentId || srcParentId !== tgtParentId) return;
+    setNewNodePreset({ parentId: srcParentId, species, insertBeforeId: targetId });
     setNewNodeOpen(true);
-  }, [dataNodes]);
+  }, [composeParentByChild]);
 
   const handleNewNodeOpenChange = useCallback((open: boolean) => {
     setNewNodeOpen(open);
@@ -459,64 +525,55 @@ export default function ProjectCanvasPage() {
 
   const handleAddNode = useCallback(
     async (data: NewNodeFormData) => {
-      let position_x = 400;
-      let position_y = 400;
-
-      if (data.parent_id) {
-        const parent = dataNodes.find((n) => n.id === data.parent_id);
-        if (parent) {
-          position_x = parent.position_x;
-          position_y = parent.position_y;
-        }
-      } else {
-        const products = dataNodes.filter((n) => n.species === "product");
-        if (products.length > 0) {
-          const maxX = Math.max(...products.map((n) => n.position_x));
-          position_x = maxX + 300;
-        }
-      }
-
-      // Auto-assign sort_order: when inserting between nodes, shift following
-      // siblings and insert at the target index; otherwise append at the end.
-      let sort_order: number | undefined;
-      const insertInfo = insertInfoRef.current;
-      if (insertInfo && data.parent_id) {
-        const siblings = dataNodes
-          .filter((n) => n.parent_id === data.parent_id && n.species === data.species)
-          .sort((a, b) => (b.sort_order ?? 0) - (a.sort_order ?? 0));
-
-        for (const sibling of siblings) {
-          const siblingSort = sibling.sort_order ?? 0;
-          if (siblingSort >= insertInfo.insertBeforeSortOrder) {
-            await updateNode(sibling.id, { sort_order: siblingSort + 1 });
-          }
-        }
-
-        sort_order = insertInfo.insertBeforeSortOrder;
-        insertInfoRef.current = null;
-      } else if (data.parent_id) {
-        const siblings = dataNodes.filter((n) => n.parent_id === data.parent_id && n.species === data.species);
-        sort_order = siblings.length > 0
-          ? Math.max(...siblings.map((n) => n.sort_order ?? 0)) + 1
-          : 0;
-      }
+      const preset = newNodePreset;
+      const parentId = preset?.parentId;
+      const insertBeforeId = preset?.insertBeforeId;
+      const newNodeId = crypto.randomUUID();
 
       await addNode({
-        id: crypto.randomUUID(),
+        id: newNodeId,
         project_id: id,
         title: data.title,
         species: data.species,
         status: data.status,
         platforms: data.platforms,
-        parent_id: data.parent_id,
-        sort_order,
-        position_x,
-        position_y,
         metadata: data.metadata,
       });
+
+      if (parentId) {
+        await addEdge({
+          id: crypto.randomUUID(),
+          project_id: id,
+          source_id: parentId,
+          target_id: newNodeId,
+          edge_type: "composes",
+        });
+
+        const parentNode = nodesById.get(parentId);
+        if (parentNode) {
+          const existingPlaylist = Array.isArray(parentNode.metadata?.playlist)
+            ? [...parentNode.metadata.playlist]
+            : [];
+          const insertIndex = insertBeforeId ? existingPlaylist.indexOf(insertBeforeId) : -1;
+          if (insertIndex >= 0) {
+            existingPlaylist.splice(insertIndex, 0, newNodeId);
+          } else {
+            existingPlaylist.push(newNodeId);
+          }
+
+          await updateNode(parentNode.id, {
+            metadata: {
+              ...parentNode.metadata,
+              playlist: existingPlaylist,
+            },
+          });
+        }
+      }
+
+      setNewNodePreset(null);
       setNewNodeOpen(false);
     },
-    [dataNodes, addNode, updateNode, id],
+    [addEdge, addNode, id, newNodePreset, nodesById, updateNode],
   );
 
   const handleNodeClick = useCallback<NodeMouseHandler>((_event, xyNode) => {
@@ -586,21 +643,13 @@ export default function ProjectCanvasPage() {
 
   const { nodes, edges } = useMemo(() => {
     const layoutRules = new Map<string, LayoutRule>();
-    const childrenByParent = new Map<string, DataNode[]>();
-
-    for (const node of dataNodes) {
-      if (!node.parent_id) continue;
-      const currentChildren = childrenByParent.get(node.parent_id) ?? [];
-      currentChildren.push(node);
-      childrenByParent.set(node.parent_id, currentChildren);
-    }
 
     const flowRollups = new Map<string, ReturnType<typeof createEmptyRollup>>();
 
     for (const node of dataNodes) {
       if (node.species !== "flow") continue;
 
-      const childSteps = (childrenByParent.get(node.id) ?? []).filter((child) => isStepSpecies(child.species));
+      const childSteps = getOrderedChildren(node.id).filter((child) => isStepSpecies(child.species));
       const flowRollup = childSteps.reduce(
         (rollup, child) => addNodeToRollup(rollup, child),
         createEmptyRollup(),
@@ -614,7 +663,7 @@ export default function ProjectCanvasPage() {
     for (const node of dataNodes) {
       if (node.species !== "scenario") continue;
 
-      const childFlows = (childrenByParent.get(node.id) ?? []).filter((child) => child.species === "flow");
+      const childFlows = getOrderedChildren(node.id).filter((child) => child.species === "flow");
       scenarioRollups.set(
         node.id,
         mergeRollups(...childFlows.map((flow) => flowRollups.get(flow.id) ?? createEmptyRollup())),
@@ -622,13 +671,24 @@ export default function ProjectCanvasPage() {
     }
 
     const productDataNodes = dataNodes.filter((n) => n.species === "product");
+    const productPositions = new Map<string, { x: number; y: number }>();
+    const productSpacing = 520;
+    const productY = 140;
+    const totalProductWidth = (productDataNodes.length - 1) * productSpacing;
+    const startProductX = 900 - totalProductWidth / 2;
+    productDataNodes.forEach((product, index) => {
+      productPositions.set(product.id, {
+        x: startProductX + index * productSpacing,
+        y: productY,
+      });
+    });
 
     // Build the visible node list, starting with all product nodes
     const visibleNodes: Node[] = productDataNodes.map(
       (n): Node => ({
         id: n.id,
         type: SPECIES_TO_NODE_TYPE[n.species],
-        position: { x: n.position_x, y: n.position_y },
+        position: productPositions.get(n.id) ?? { x: 900, y: productY },
         data: {
           label: n.title,
           status: n.status,
@@ -659,21 +719,20 @@ export default function ProjectCanvasPage() {
     for (const product of productDataNodes) {
       if (!expandedProducts.has(product.id)) continue;
 
-      const childScenarios = dataNodes.filter(
-        (n) => n.species === "scenario" && n.parent_id === product.id,
-      );
+      const childScenarios = getOrderedChildren(product.id).filter((n) => n.species === "scenario");
+
+      const productNode = visibleNodes.find((n) => n.id === product.id);
+      if (!productNode) continue;
 
       const positions = horizontalPositions(
-        product.position_x,
-        product.position_y,
+        productNode.position.x,
+        productNode.position.y,
         childScenarios.length,
       );
 
       childScenarios.forEach((scenario, i) => {
         const scenarioPos = positions[i];
-        const scenarioFlowCount = dataNodes.filter(
-          (n) => n.species === "flow" && n.parent_id === scenario.id,
-        ).length;
+        const scenarioFlowCount = getOrderedChildren(scenario.id).filter((n) => n.species === "flow").length;
         const scenarioRollup = scenarioRollups.get(scenario.id) ?? createEmptyRollup();
         visibleNodeIds.add(scenario.id);
         visibleNodes.push({
@@ -722,14 +781,14 @@ export default function ProjectCanvasPage() {
 
       const scenario = dataNodes.find((n) => n.id === scenarioId);
       if (!scenario) continue;
-      const parentProduct = dataNodes.find((n) => n.id === scenario.parent_id);
-      const childFlows = dataNodes
-        .filter((n) => n.species === "flow" && n.parent_id === scenarioId)
-        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+      const parentProduct = composeParentByChild.get(scenario.id)
+        ? nodesById.get(composeParentByChild.get(scenario.id)!)
+        : undefined;
+      const childFlows = getOrderedChildren(scenarioId).filter((n) => n.species === "flow");
 
       const scenarioNode = visibleNodes.find((n) => n.id === scenarioId);
-      const scenarioCx = scenarioNode?.position.x ?? scenario.position_x;
-      const scenarioCy = scenarioNode?.position.y ?? scenario.position_y;
+      const scenarioCx = scenarioNode?.position.x ?? 0;
+      const scenarioCy = scenarioNode?.position.y ?? 0;
 
       const positions = verticalPositions(
         scenarioCx,
@@ -800,13 +859,11 @@ export default function ProjectCanvasPage() {
       const flow = dataNodes.find((n) => n.id === flowId);
       if (!flow) continue;
 
-      const children = dataNodes
-        .filter((n) => n.parent_id === flowId && FLOW_CHILD_SPECIES.has(n.species))
-        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+      const children = getOrderedChildren(flowId).filter((n) => FLOW_CHILD_SPECIES.has(n.species));
 
       const flowNode = visibleNodes.find((n) => n.id === flowId);
-      const flowCx = flowNode?.position.x ?? flow.position_x;
-      const flowCy = flowNode?.position.y ?? flow.position_y;
+      const flowCx = flowNode?.position.x ?? 0;
+      const flowCy = flowNode?.position.y ?? 0;
 
       const childPositions = linearPositions(flowCx, flowCy, children.length);
       const maxSpreadX = Math.max(480, children.length * 220);
@@ -835,9 +892,7 @@ export default function ProjectCanvasPage() {
       }
 
       // Compose edges between consecutive view-species children — with insert action
-      const sortedViewChildren = children
-        .filter((c) => c.species === "view")
-        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+      const sortedViewChildren = children.filter((c) => c.species === "view");
       for (let vi = 1; vi < sortedViewChildren.length; vi++) {
         const prev = sortedViewChildren[vi - 1];
         const curr = sortedViewChildren[vi];
@@ -895,7 +950,21 @@ export default function ProjectCanvasPage() {
     const collisionFreeNodes = resolveNodeCollisions(visibleNodes, layoutRules);
 
     return { nodes: collisionFreeNodes, edges: visibleEdges };
-  }, [dataNodes, dataEdges, expandedProducts, expandedScenarios, expandedFlows, toggleProduct, toggleScenario, toggleFlow, handleAddChildNode, handleInsertBetween]);
+  }, [
+    composeParentByChild,
+    dataNodes,
+    dataEdges,
+    expandedProducts,
+    expandedScenarios,
+    expandedFlows,
+    getOrderedChildren,
+    nodesById,
+    toggleProduct,
+    toggleScenario,
+    toggleFlow,
+    handleAddChildNode,
+    handleInsertBetween,
+  ]);
 
   const breadcrumbSegments = breadcrumbs.map((crumb, index) => ({
     label: crumb.label,
@@ -954,11 +1023,10 @@ export default function ProjectCanvasPage() {
         onNavigate={handleNavigate}
       />
       <NewNodeForm
-        key={newNodePreset ? `preset-${newNodePreset.parent_id}-${newNodePreset.species}` : "default"}
+        key={newNodePreset ? `preset-${newNodePreset.parentId}-${newNodePreset.species}` : "default"}
         open={newNodeOpen}
         onOpenChange={handleNewNodeOpenChange}
         onSubmit={handleAddNode}
-        nodes={dataNodes}
         defaultValues={newNodePreset ?? undefined}
       />
       <EdgeTypeDialog
