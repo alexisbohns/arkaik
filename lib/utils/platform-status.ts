@@ -7,7 +7,6 @@ import {
   type CountedStatusPresetId,
   type StatusId,
 } from "@/lib/config/statuses";
-import { isStepSpecies } from "@/lib/config/species";
 import type { Node, PlatformStatusMap } from "@/lib/data/types";
 
 export type PlatformStatusCounts = Partial<Record<PlatformId, Partial<Record<StatusId, number>>>>;
@@ -38,7 +37,7 @@ export function hasExplicitPlatformStatuses(node: Pick<Node, "metadata">): boole
 }
 
 export function getEditablePlatformStatuses(node: Pick<Node, "species" | "status" | "platforms" | "metadata">): PlatformStatusMap {
-  if (!isStepSpecies(node.species)) {
+  if (node.species !== "view") {
     return {};
   }
 

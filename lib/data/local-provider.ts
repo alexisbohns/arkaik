@@ -50,9 +50,7 @@ function normalizeBundle(bundle: ProjectBundle): ProjectBundle {
   for (const legacyNode of nodes) {
     const parentId = typeof legacyNode.parent_id === "string" ? legacyNode.parent_id : null;
     if (!parentId) continue;
-    const parent = nodeMap.get(parentId);
-    if (!parent) continue;
-    if (parent.species !== "product" && parent.species !== "scenario") continue;
+    if (!nodeMap.has(parentId)) continue;
 
     const pair = `${parentId}:${legacyNode.id}`;
     if (composePairs.has(pair)) continue;

@@ -21,7 +21,7 @@ import { Trash2Icon } from "lucide-react";
 import type { Node, Edge } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
-import { SPECIES, isStepSpecies } from "@/lib/config/species";
+import { SPECIES } from "@/lib/config/species";
 import { STATUSES } from "@/lib/config/statuses";
 import { PLATFORMS } from "@/lib/config/platforms";
 import { PLATFORM_DOT_STYLES, PLATFORM_LABELS } from "@/components/graph/nodes/node-styles";
@@ -43,9 +43,31 @@ function getOrderedPlaylistChildren(node: Node, allNodes: Node[]) {
 }
 
 function computeFlowRollup(node: Node, allNodes: Node[]) {
-  return getOrderedPlaylistChildren(node, allNodes)
-    .filter((candidate) => isStepSpecies(candidate.species))
-    .reduce((rollup, child) => addNodeToRollup(rollup, child), createEmptyRollup());
+  const allNodesById = new Map(allNodes.map((candidate) => [candidate.id, candidate]));
+
+  function computeFlowRollupRecursive(flowNode: Node, visited: Set<string>) {
+    if (visited.has(flowNode.id)) {
+      return createEmptyRollup();
+    }
+
+    visited.add(flowNode.id);
+    const children = getOrderedPlaylistChildren(flowNode, allNodes);
+    const directViewRollup = children
+      .filter((candidate) => candidate.species === "view")
+      .reduce((rollup, child) => addNodeToRollup(rollup, child), createEmptyRollup());
+    const nestedFlowRollup = mergeRollups(
+      ...children
+        .filter((candidate) => candidate.species === "flow")
+        .map((child) => allNodesById.get(child.id))
+        .filter((candidate): candidate is Node => Boolean(candidate))
+        .map((childFlow) => computeFlowRollupRecursive(childFlow, visited)),
+    );
+
+    visited.delete(flowNode.id);
+    return mergeRollups(directViewRollup, nestedFlowRollup);
+  }
+
+  return computeFlowRollupRecursive(node, new Set<string>());
 }
 
 function getComposeChildren(node: Node, allNodes: Node[], allEdges: Edge[]) {
@@ -61,11 +83,6 @@ function getComposeChildren(node: Node, allNodes: Node[], allEdges: Edge[]) {
 function computeNodeRollup(node: Node, allNodes: Node[], allEdges: Edge[]) {
   if (node.species === "flow") {
     return computeFlowRollup(node, allNodes);
-  }
-
-  if (node.species === "scenario") {
-    const childFlows = getComposeChildren(node, allNodes, allEdges).filter((candidate) => candidate.species === "flow");
-    return mergeRollups(...childFlows.map((flow) => computeFlowRollup(flow, allNodes)));
   }
 
   return createEmptyRollup();
@@ -92,8 +109,8 @@ function NodeFields({ node, onUpdate }: NodeFieldsProps) {
   const [description, setDescription] = useState(node.description ?? "");
   const [status, setStatus] = useState<StatusId>(node.status);
   const [platforms, setPlatforms] = useState<PlatformId[]>(node.platforms);
-  const usesSingleStatusField = !isStepSpecies(node.species) && node.species !== "flow" && node.species !== "scenario";
-  const allowsPlatformEditing = node.species !== "flow" && node.species !== "scenario";
+  const usesSingleStatusField = node.species === "data-model" || node.species === "api-endpoint";
+  const allowsPlatformEditing = node.species !== "flow";
 
   function handleTitleBlur() {
     if (title !== node.title) {
@@ -119,7 +136,7 @@ function NodeFields({ node, onUpdate }: NodeFieldsProps) {
       : [...platforms, platformId];
     setPlatforms(next);
 
-    if (isStepSpecies(node.species)) {
+    if (node.species === "view") {
       const currentStatuses = getEditablePlatformStatuses(node);
       const nextStatuses = Object.fromEntries(
         next.map((platform) => [platform, currentStatuses[platform] ?? node.status]),
@@ -369,14 +386,14 @@ export function NodeDetailPanel({
         {node && (
           <>
             <NodeFields key={node.id} node={node} onUpdate={onUpdate} />
-            {isStepSpecies(node.species) && (
+            {node.species === "view" && (
               <PlatformVariantsSection
                 key={`pv-${node.id}`}
                 node={node}
                 onUpdate={onUpdate}
               />
             )}
-            {(node.species === "flow" || node.species === "scenario") && allNodes && (
+            {node.species === "flow" && allNodes && (
               <ComputedPlatformStatusSection
                 key={`computed-${node.id}`}
                 node={node}
