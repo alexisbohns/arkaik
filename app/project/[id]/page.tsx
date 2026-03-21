@@ -55,6 +55,17 @@ interface RenderSequenceResult {
   entryNodeId?: string;
 }
 
+const VISUAL_NODE_ID_SEPARATOR = "@";
+
+function createVisualNodeId(nodeId: string, parentFlowId: string, entryIndex: number): string {
+  return `${nodeId}${VISUAL_NODE_ID_SEPARATOR}${parentFlowId}:${entryIndex}`;
+}
+
+function getBaseNodeId(nodeId: string): string {
+  const separatorIndex = nodeId.indexOf(VISUAL_NODE_ID_SEPARATOR);
+  return separatorIndex >= 0 ? nodeId.slice(0, separatorIndex) : nodeId;
+}
+
 function collectReferencedNodeIds(entries: PlaylistEntry[]): string[] {
   const result: string[] = [];
 
@@ -440,10 +451,12 @@ export default function ProjectCanvasPage() {
   }, []);
 
   const handleInsertBetween = useCallback((sourceId: string, targetId: string, species: SpeciesId) => {
-    const srcParentId = composeParentByChild.get(sourceId);
-    const tgtParentId = composeParentByChild.get(targetId);
+    const sourceNodeId = getBaseNodeId(sourceId);
+    const targetNodeId = getBaseNodeId(targetId);
+    const srcParentId = composeParentByChild.get(sourceNodeId);
+    const tgtParentId = composeParentByChild.get(targetNodeId);
     if (!srcParentId || srcParentId !== tgtParentId) return;
-    setNewNodePreset({ parentId: srcParentId, species, insertBeforeId: targetId });
+    setNewNodePreset({ parentId: srcParentId, species, insertBeforeId: targetNodeId });
     setNewNodeOpen(true);
   }, [composeParentByChild]);
 
@@ -529,7 +542,8 @@ export default function ProjectCanvasPage() {
   );
 
   const handleNodeClick = useCallback<NodeMouseHandler>((_event, xyNode) => {
-    const dataNode = dataNodes.find((n) => n.id === xyNode.id);
+    const dataNodeId = getBaseNodeId(xyNode.id);
+    const dataNode = dataNodes.find((n) => n.id === dataNodeId);
     if (dataNode) {
       setSelectedNode(dataNode);
       setPanelOpen(true);
@@ -547,8 +561,8 @@ export default function ProjectCanvasPage() {
     await addEdge({
       id: crypto.randomUUID(),
       project_id: id,
-      source_id: pendingConnection.source,
-      target_id: pendingConnection.target,
+      source_id: getBaseNodeId(pendingConnection.source),
+      target_id: getBaseNodeId(pendingConnection.target),
       edge_type: edgeType,
     });
     setEdgeDialogOpen(false);
@@ -599,6 +613,7 @@ export default function ProjectCanvasPage() {
     const visibleEdges: Edge[] = [];
     const visibleNodeIds = new Set<string>();
     const visibleDataNodeIds = new Set<string>();
+    const visibleNodeIdsByDataId = new Map<string, string[]>();
     const derivedEdgePairs = new Set<string>();
     const renderedExpandedFlows = new Set<string>();
 
@@ -626,8 +641,8 @@ export default function ProjectCanvasPage() {
       return combined;
     };
 
-    const addDataNode = (node: DataNode, position: { x: number; y: number }) => {
-      if (visibleNodeIds.has(node.id)) return;
+    const addDataNode = (node: DataNode, position: { x: number; y: number }, visualNodeId = node.id) => {
+      if (visibleNodeIds.has(visualNodeId)) return;
 
       const baseData = {
         label: node.title,
@@ -656,13 +671,14 @@ export default function ProjectCanvasPage() {
       }
 
       visibleNodes.push({
-        id: node.id,
+        id: visualNodeId,
         type: SPECIES_TO_NODE_TYPE[node.species],
         position,
         data: baseData,
       });
-      visibleNodeIds.add(node.id);
+      visibleNodeIds.add(visualNodeId);
       visibleDataNodeIds.add(node.id);
+      visibleNodeIdsByDataId.set(node.id, [...(visibleNodeIdsByDataId.get(node.id) ?? []), visualNodeId]);
     };
 
     const addSyntheticBranchNode = (
@@ -757,6 +773,7 @@ export default function ProjectCanvasPage() {
       depth: number,
       flowTrail: Set<string>,
       contextKey: string,
+      parentFlowVisualId: string,
     ): RenderSequenceResult => {
       if (entries.length === 0) {
         return { startIds: [], endIds: [] };
@@ -769,35 +786,38 @@ export default function ProjectCanvasPage() {
       const renderEntry = (
         entry: PlaylistEntry,
         position: { x: number; y: number },
+        entryIndex: number,
         entryContextKey: string,
       ): RenderSequenceResult => {
         if (entry.type === "view") {
           const viewNode = nodesById.get(entry.view_id);
           if (!viewNode) return { startIds: [], endIds: [] };
 
-          addDataNode(viewNode, position);
-          layoutRules.set(viewNode.id, { axis: "both" });
-          return { startIds: [viewNode.id], endIds: [viewNode.id], entryNodeId: viewNode.id };
+          const viewVisualId = createVisualNodeId(viewNode.id, parentFlowVisualId, entryIndex);
+          addDataNode(viewNode, position, viewVisualId);
+          layoutRules.set(viewVisualId, { axis: "both" });
+          return { startIds: [viewVisualId], endIds: [viewVisualId], entryNodeId: viewVisualId };
         }
 
         if (entry.type === "flow") {
           const flowNode = nodesById.get(entry.flow_id);
           if (!flowNode) return { startIds: [], endIds: [] };
 
-          addDataNode(flowNode, position);
-          layoutRules.set(flowNode.id, { axis: "both" });
+          const flowVisualId = createVisualNodeId(flowNode.id, parentFlowVisualId, entryIndex);
+          addDataNode(flowNode, position, flowVisualId);
+          layoutRules.set(flowVisualId, { axis: "both" });
 
-          if (expandedFlows.has(flowNode.id) && !renderedExpandedFlows.has(flowNode.id) && !flowTrail.has(flowNode.id)) {
-            renderedExpandedFlows.add(flowNode.id);
+          if (expandedFlows.has(flowNode.id) && !renderedExpandedFlows.has(flowVisualId) && !flowTrail.has(flowNode.id)) {
+            renderedExpandedFlows.add(flowVisualId);
             const nextTrail = new Set(flowTrail);
             nextTrail.add(flowNode.id);
             const flowEntries = getPlaylistEntries(flowNode.id);
             const childAnchor = getChildAnchor(position, depth + 1);
-            const childSequence = renderSequence(flowEntries, childAnchor, depth + 1, nextTrail, `${entryContextKey}:flow`);
-            connectIds([flowNode.id], childSequence.startIds);
+            const childSequence = renderSequence(flowEntries, childAnchor, depth + 1, nextTrail, `${entryContextKey}:flow`, flowVisualId);
+            connectIds([flowVisualId], childSequence.startIds);
           }
 
-          return { startIds: [flowNode.id], endIds: [flowNode.id], entryNodeId: flowNode.id };
+          return { startIds: [flowVisualId], endIds: [flowVisualId], entryNodeId: flowVisualId };
         }
 
         const branchId = `branch-${entryContextKey}`;
@@ -832,6 +852,7 @@ export default function ProjectCanvasPage() {
             depth + 1,
             flowTrail,
             `${entryContextKey}:${index}`,
+            parentFlowVisualId,
           );
 
           if (branchSequence.startIds.length > 0) {
@@ -850,7 +871,7 @@ export default function ProjectCanvasPage() {
 
       for (let index = 0; index < entries.length; index += 1) {
         const entry = entries[index];
-        const entryResult = renderEntry(entry, positions[index] ?? anchor, `${contextKey}:${index}`);
+        const entryResult = renderEntry(entry, positions[index] ?? anchor, index, `${contextKey}:${index}`);
         if (entryResult.startIds.length === 0) {
           continue;
         }
@@ -914,6 +935,7 @@ export default function ProjectCanvasPage() {
             2,
             new Set([child.id]),
             `root:${child.id}`,
+            child.id,
           );
           connectIds([child.id], childSequence.startIds);
         }
@@ -927,6 +949,7 @@ export default function ProjectCanvasPage() {
           2,
           new Set([explicitRootNode.id]),
           `root-self:${explicitRootNode.id}`,
+          explicitRootNode.id,
         );
         connectIds([explicitRootNode.id], rootSequence.startIds);
       }
@@ -948,6 +971,7 @@ export default function ProjectCanvasPage() {
             2,
             new Set([rootNode.id]),
             `fallback:${rootNode.id}`,
+            rootNode.id,
           );
           connectIds([rootNode.id], rootSequence.startIds);
         }
@@ -963,17 +987,26 @@ export default function ProjectCanvasPage() {
     };
 
     for (const edge of dataEdges) {
+      if (edge.edge_type === "composes") continue;
       if (!visibleDataNodeIds.has(edge.source_id) || !visibleDataNodeIds.has(edge.target_id)) continue;
-      const pairKey = `${edge.source_id}:${edge.target_id}`;
-      if (renderedEdgePairs.has(pairKey)) continue;
 
-      visibleEdges.push({
-        id: `${edge.id}--${edge.source_id}--${edge.target_id}`,
-        source: edge.source_id,
-        target: edge.target_id,
-        type: EDGE_TYPE_MAP[edge.edge_type],
-      });
-      renderedEdgePairs.add(pairKey);
+      const sourceVisualIds = visibleNodeIdsByDataId.get(edge.source_id) ?? [];
+      const targetVisualIds = visibleNodeIdsByDataId.get(edge.target_id) ?? [];
+
+      for (const sourceVisualId of sourceVisualIds) {
+        for (const targetVisualId of targetVisualIds) {
+          const pairKey = `${sourceVisualId}:${targetVisualId}`;
+          if (renderedEdgePairs.has(pairKey)) continue;
+
+          visibleEdges.push({
+            id: `${edge.id}--${sourceVisualId}--${targetVisualId}`,
+            source: sourceVisualId,
+            target: targetVisualId,
+            type: EDGE_TYPE_MAP[edge.edge_type],
+          });
+          renderedEdgePairs.add(pairKey);
+        }
+      }
     }
 
     const collisionFreeNodes = resolveNodeCollisions(visibleNodes, layoutRules);
