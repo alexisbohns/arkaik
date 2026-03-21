@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { type Edge, type Node, type NodeMouseHandler, type Connection, type EdgeMouseHandler } from "@xyflow/react";
-import { DownloadIcon, PlusIcon } from "lucide-react";
+import { Code2Icon, CopyIcon, DownloadIcon, PlusIcon } from "lucide-react";
 import { Canvas } from "@/components/graph/Canvas";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
@@ -13,6 +13,7 @@ import { NodeDetailPanel } from "@/components/panels/NodeDetailPanel";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
 import { InsertBetweenDialog, type InsertEntryType } from "@/components/panels/InsertBetweenDialog";
 import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useProject } from "@/lib/hooks/useProject";
@@ -21,8 +22,9 @@ import { downloadJson, exportProject } from "@/lib/utils/export";
 import { generateNodeId } from "@/lib/utils/id";
 import { wouldCreateCycle } from "@/lib/utils/cycle";
 import type { SpeciesId } from "@/lib/config/species";
-import type { Node as DataNode, Edge as DataEdge, PlaylistEntry } from "@/lib/data/types";
+import type { Node as DataNode, Edge as DataEdge, PlaylistEntry, ProjectBundle } from "@/lib/data/types";
 import type { EdgeTypeId } from "@/lib/config/edge-types";
+import { stringify as stringifyYaml } from "yaml";
 import {
   addNodeToRollup,
   computePlaylistRollup,
@@ -271,6 +273,12 @@ export default function ProjectCanvasPage() {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportWarning, setExportWarning] = useState<string | null>(null);
+  const [rawOpen, setRawOpen] = useState(false);
+  const [rawFormat, setRawFormat] = useState<"json" | "yaml">("json");
+  const [rawBundle, setRawBundle] = useState<ProjectBundle | null>(null);
+  const [rawLoading, setRawLoading] = useState(false);
+  const [rawError, setRawError] = useState<string | null>(null);
+  const [rawCopied, setRawCopied] = useState(false);
   const [playlistError, setPlaylistError] = useState<string | null>(null);
 
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, removeNode, removeNodes } = useNodes(id);
@@ -736,6 +744,54 @@ export default function ProjectCanvasPage() {
     }
   }, [id]);
 
+  const rawText = useMemo(() => {
+    if (!rawBundle) return "";
+    return rawFormat === "json" ? JSON.stringify(rawBundle, null, 2) : stringifyYaml(rawBundle);
+  }, [rawBundle, rawFormat]);
+
+  const handleOpenRaw = useCallback(async () => {
+    if (!id) {
+      setRawError("Unable to load raw export: missing project id.");
+      return;
+    }
+
+    setRawLoading(true);
+    setRawError(null);
+    try {
+      const bundle = await exportProject(id);
+      setRawBundle(bundle);
+      setRawCopied(false);
+      setRawOpen(true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown raw export error";
+      setRawError(`Unable to load raw export: ${message}`);
+    } finally {
+      setRawLoading(false);
+    }
+  }, [id]);
+
+  const handleCopyRaw = useCallback(async () => {
+    if (!rawText) return;
+
+    setRawError(null);
+    try {
+      await navigator.clipboard.writeText(rawText);
+      setRawCopied(true);
+    } catch {
+      setRawError("Unable to copy raw export to clipboard.");
+    }
+  }, [rawText]);
+
+  useEffect(() => {
+    if (!rawCopied) return;
+    const timeoutId = window.setTimeout(() => {
+      setRawCopied(false);
+    }, 1200);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [rawCopied]);
+
   useKeyboardShortcuts({
     onEscape: () => {
       if (!panelOpen) return;
@@ -1184,11 +1240,20 @@ export default function ProjectCanvasPage() {
               {exportError}
             </span>
           )}
+          {rawError && (
+            <span className="text-xs text-destructive" role="status" aria-live="polite">
+              {rawError}
+            </span>
+          )}
           {playlistError && (
             <span className="text-xs text-destructive" role="status" aria-live="polite">
               {playlistError}
             </span>
           )}
+          <Button size="sm" variant="outline" onClick={() => void handleOpenRaw()} disabled={rawLoading}>
+            <Code2Icon className="size-4" />
+            {rawLoading ? "Loading raw..." : "Raw"}
+          </Button>
           <Button size="sm" variant="outline" onClick={handleExport} disabled={exporting}>
             <DownloadIcon className="size-4" />
             {exporting ? "Exporting..." : "Export JSON"}
@@ -1215,6 +1280,31 @@ export default function ProjectCanvasPage() {
         onNavigate={handleNavigate}
         onCreateNode={handleCreateNodeFromPanel}
       />
+      <Sheet open={rawOpen} onOpenChange={setRawOpen}>
+        <SheetContent className="w-full sm:max-w-3xl">
+          <SheetHeader className="pr-12">
+            <SheetTitle>Raw project bundle</SheetTitle>
+            <SheetDescription>Inspect the full export as JSON or YAML.</SheetDescription>
+            <div className="flex flex-wrap items-center gap-2 pt-2">
+              <Button size="sm" variant={rawFormat === "json" ? "default" : "outline"} onClick={() => setRawFormat("json")}>
+                JSON
+              </Button>
+              <Button size="sm" variant={rawFormat === "yaml" ? "default" : "outline"} onClick={() => setRawFormat("yaml")}>
+                YAML
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => void handleCopyRaw()} disabled={!rawText}>
+                <CopyIcon className="size-4" />
+                {rawCopied ? "Copied" : "Copy"}
+              </Button>
+            </div>
+          </SheetHeader>
+          <div className="min-h-0 flex-1 px-6 pb-6">
+            <pre className="h-full overflow-auto rounded-md border bg-muted/30 p-3 text-xs leading-relaxed">
+              <code>{rawText || "No export available yet."}</code>
+            </pre>
+          </div>
+        </SheetContent>
+      </Sheet>
       <NewNodeForm
         key={newNodePreset ? `preset-${newNodePreset.parentId}-${newNodePreset.species}` : "default"}
         open={newNodeOpen}
