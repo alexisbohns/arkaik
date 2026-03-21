@@ -34,6 +34,7 @@ import {
   getEditablePlatformStatuses,
   mergeRollups,
 } from "@/lib/utils/platform-status";
+import { findWhereUsed } from "@/lib/utils/where-used";
 
 function collectReferencedNodeIds(entries: PlaylistEntry[]): string[] {
   const result: string[] = [];
@@ -262,6 +263,36 @@ function NodeFields({ node, onUpdate }: NodeFieldsProps) {
   );
 }
 
+interface InvocationSectionProps {
+  node: Node;
+  allNodes: Node[];
+  onNavigate: (node: Node) => void;
+}
+
+function InvocationSection({ node, allNodes, onNavigate }: InvocationSectionProps) {
+  const usages = findWhereUsed(node.id, allNodes);
+
+  if (usages.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="px-6 flex flex-col gap-2">
+      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Invocation</span>
+      <div className="flex flex-col gap-0.5">
+        {usages.map((flow) => (
+          <ConnectionItem
+            key={flow.id}
+            badge={flow.id}
+            node={flow}
+            onNavigate={onNavigate}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 interface ConnectionsSectionProps {
   node: Node;
   allNodes: Node[];
@@ -440,6 +471,14 @@ export function NodeDetailPanel({
                 allNodes={allNodes}
                 onUpdate={onUpdate}
                 onCreateNode={onCreateNode}
+              />
+            )}
+            {(node.species === "view" || node.species === "flow") && allNodes && onNavigate && (
+              <InvocationSection
+                key={`inv-${node.id}`}
+                node={node}
+                allNodes={allNodes}
+                onNavigate={onNavigate}
               />
             )}
             {allNodes && allEdges && onNavigate && (
