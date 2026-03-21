@@ -19,7 +19,22 @@ import type { Project, ProjectBundle } from "@/lib/data/types";
 import { archiveProject, importProjectFromFile } from "@/lib/utils/export";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
 import { CreateProjectForm } from "@/components/panels/CreateProjectForm";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import pebbles from "@/seed/pebbles.json";
+import arkaikSelfMap from "@/seed/arkaik-self-map.json";
+
+type ExampleSeed = "pebbles" | "arkaik";
+
+const EXAMPLE_SEEDS: Record<ExampleSeed, { fileName: string; data: unknown }> = {
+  pebbles: { fileName: "pebbles.json", data: pebbles },
+  arkaik: { fileName: "arkaik-self-map.json", data: arkaikSelfMap },
+};
 
 export default function ProjectsPage() {
   const router = useRouter();
@@ -71,12 +86,13 @@ export default function ProjectsPage() {
     router.push(`/project/${id}`);
   }
 
-  async function handleImportExample() {
+  async function handleImportExample(seed: ExampleSeed) {
+    const selected = EXAMPLE_SEEDS[seed];
     setImporting(true);
     setError(null);
     try {
       const project = await importProjectFromFile(
-        new File([JSON.stringify(pebbles)], "pebbles.json", { type: "application/json" })
+        new File([JSON.stringify(selected.data)], selected.fileName, { type: "application/json" })
       );
       await loadProjects();
       router.push(`/project/${project.id}`);
@@ -168,9 +184,20 @@ export default function ProjectsPage() {
             </p>
             <div className="flex items-center gap-2">
               <Button onClick={() => setCreateOpen(true)}>Create project</Button>
-              <Button variant="outline" onClick={handleImportExample} disabled={importing}>
-                {importing ? "Importing..." : "Import example project"}
-              </Button>
+              <Select
+                disabled={importing}
+                onValueChange={(value) => {
+                  void handleImportExample(value as ExampleSeed);
+                }}
+              >
+                <SelectTrigger className="w-[220px]" aria-label="Import example project">
+                  <SelectValue placeholder={importing ? "Importing..." : "Import example project"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pebbles">Pebbles</SelectItem>
+                  <SelectItem value="arkaik">Arkaik</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         ) : (
