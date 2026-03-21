@@ -32,6 +32,21 @@ Expanded flows render only `flow` and `view` children as in-canvas children.
 
 Source: [app/project/[id]/page.tsx](../app/project/[id]/page.tsx)
 
+### Playlist Entry Types
+
+`flow` nodes store ordered playlist data in `node.metadata.playlist.entries`.
+
+| Entry Type | Required Fields | Notes |
+|---|---|---|
+| `view` | `view_id` | Reference to an existing view node |
+| `flow` | `flow_id` | Reference to an existing flow node (cycle-checked before persist) |
+| `condition` | `label`, `if_true`, `if_false` | Two branch lists, each a recursive `PlaylistEntry[]` |
+| `junction` | `label`, `cases[]` | Each case has `label` + `entries: PlaylistEntry[]` |
+
+Editing source: [components/panels/PlaylistEditor.tsx](../components/panels/PlaylistEditor.tsx), [components/panels/PlaylistEntryRow.tsx](../components/panels/PlaylistEntryRow.tsx)
+
+Type source: [lib/data/types.ts](../lib/data/types.ts)
+
 ## Status Model
 
 Statuses are configured in:

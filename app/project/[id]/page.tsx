@@ -446,6 +446,22 @@ export default function ProjectCanvasPage() {
     setSelectedNode(targetNode);
   }, []);
 
+  const handleCreateNodeFromPanel = useCallback(
+    async (species: "flow" | "view", title: string) => {
+      const createdNode = await addNode({
+        id: generateNodeId(species),
+        project_id: id,
+        title,
+        species,
+        status: "idea",
+        platforms: [],
+      });
+
+      return createdNode;
+    },
+    [addNode, id],
+  );
+
   const handleAddChildNode = useCallback((parentId: string, childSpecies: SpeciesId) => {
     setNewNodePreset({ parentId, species: childSpecies });
     setNewNodeOpen(true);
@@ -1069,6 +1085,7 @@ export default function ProjectCanvasPage() {
         allNodes={dataNodes}
         allEdges={dataEdges}
         onNavigate={handleNavigate}
+        onCreateNode={handleCreateNodeFromPanel}
       />
       <NewNodeForm
         key={newNodePreset ? `preset-${newNodePreset.parentId}-${newNodePreset.species}` : "default"}

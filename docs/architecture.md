@@ -49,7 +49,10 @@ components/
     StatusBadge.tsx         # Colored pill with status label
   panels/
     NewNodeForm.tsx         # Dialog form for creating a node with species-aware status/platform defaults
-    NodeDetailPanel.tsx     # Slide-in sheet: edit node fields, platform-specific statuses, and computed rollups
+    NodeDetailPanel.tsx     # Slide-in sheet: edit node fields, platform-specific statuses, computed rollups, and flow playlists
+    PlaylistEditor.tsx      # Flow-only playlist editor: add/remove/reorder and branch editing
+    PlaylistEntryRow.tsx    # Recursive playlist row renderer for condition/junction branches
+    NodeSearchCombobox.tsx  # Search-or-create selector for flow/view references
     PlatformVariants.tsx    # Platform tab switcher with per-platform status and notes
   ui/                       # shadcn/ui primitives (button, card, dialog, input, etc.)
 ```
@@ -98,6 +101,9 @@ Clicking any node opens a slide-in `Sheet` (`NodeDetailPanel`) with:
 - **Connections**: cross-layer nodes (data-model, api-endpoint) with click-to-navigate
 - **Platform Variants** (view only): per-platform status + notes stored in `node.metadata`
 - **Computed gauges** (`flow`): read-only per-platform rollups built from descendant views
+- **Playlist editor** (`flow`): ordered `metadata.playlist.entries` editing with add/remove/reorder and recursive condition/junction branch editing
+
+Flow playlist editing uses fuzzy search-or-create for `view` and `flow` entries. When adding a flow reference, cycle checks run before persisting and invalid inserts are blocked with toast feedback.
 
 Edits call `useNodes.updateNode` which flows through the `DataProvider`.
 

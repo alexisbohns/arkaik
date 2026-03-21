@@ -3,6 +3,7 @@ import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import { AppToaster } from "@/components/ui/toaster";
 
 export const metadata: Metadata = {
   title: "arkaik",
@@ -28,6 +29,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           {children}
+          <AppToaster />
         </ThemeProvider>
       </body>
     </html>
