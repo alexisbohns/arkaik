@@ -32,9 +32,9 @@ import {
   createEmptyRollup,
   getEditablePlatformStatuses,
   getRollupDisplayStatus,
-  mergeRollups,
   type PlatformStatusRollup,
 } from "@/lib/utils/platform-status";
+import { computeElkLayout } from "@/lib/utils/elk-layout";
 
 const SPECIES_TO_NODE_TYPE: Record<SpeciesId, string> = {
   flow: "flow",
@@ -44,15 +44,6 @@ const SPECIES_TO_NODE_TYPE: Record<SpeciesId, string> = {
 };
 
 const FLOW_CHILD_SPECIES = new Set<SpeciesId>(["flow", "view"]);
-const ROOT_FLOW_SPACING = 360;
-const ROOT_ANCHOR_Y = 270;
-const FLOW_CHILD_Y_SPACING = 180;
-const PLAYLIST_DOWN_OFFSET = 240;
-const PLAYLIST_RIGHT_OFFSET = 420;
-const PLAYLIST_HORIZONTAL_SPACING = 320;
-
-const COLLISION_PADDING = 24;
-const MAX_COLLISION_ITERATIONS = 30;
 
 interface RenderSequenceResult {
   startIds: string[];
@@ -109,151 +100,6 @@ function createPlaylistEntryForSpecies(species: SpeciesId, nodeId: string): Play
   }
 
   return null;
-}
-
-interface LayoutSize {
-  width: number;
-  height: number;
-}
-
-interface LayoutRule {
-  fixed?: boolean;
-  axis?: "both" | "x" | "y";
-  clampX?: [number, number];
-  clampY?: [number, number];
-}
-
-function horizontalPositions(
-  cx: number,
-  cy: number,
-  count: number,
-  spacing: number,
-): { x: number; y: number }[] {
-  if (count === 0) return [];
-  const totalWidth = (count - 1) * spacing;
-  const startX = cx - totalWidth / 2;
-  return Array.from({ length: count }, (_, i) => ({
-    x: startX + i * spacing,
-    y: cy,
-  }));
-}
-
-function verticalPositions(
-  cx: number,
-  cy: number,
-  count: number,
-  spacing = FLOW_CHILD_Y_SPACING,
-): { x: number; y: number }[] {
-  if (count === 0) return [];
-  const totalHeight = (count - 1) * spacing;
-  const startY = cy - totalHeight / 2;
-  return Array.from({ length: count }, (_, i) => ({
-    x: cx,
-    y: startY + i * spacing,
-  }));
-}
-
-function getNodeSize(nodeType?: string): LayoutSize {
-  switch (nodeType) {
-    case "flow":
-      return { width: 240, height: 136 };
-    case "view":
-      return { width: 224, height: 140 };
-    case "dataModel":
-    case "apiEndpoint":
-      return { width: 192, height: 92 };
-    default:
-      return { width: 180, height: 100 };
-  }
-}
-
-function resolveNodeCollisions(nodes: Node[], rules: Map<string, LayoutRule>): Node[] {
-  if (nodes.length < 2) return nodes;
-
-  const positions = new Map(nodes.map((node) => [node.id, { ...node.position }]));
-  const sizes = new Map(nodes.map((node) => [node.id, getNodeSize(node.type)]));
-  const orderedIds = [...nodes].map((node) => node.id).sort((a, b) => a.localeCompare(b));
-
-  const applyAxis = (axis: LayoutRule["axis"], x: number, y: number) => {
-    if (axis === "x") return { x, y: 0 };
-    if (axis === "y") return { x: 0, y };
-    return { x, y };
-  };
-
-  const clampPosition = (id: string) => {
-    const rule = rules.get(id);
-    const pos = positions.get(id);
-    if (!rule || !pos) return;
-
-    if (rule.clampX) {
-      pos.x = Math.max(rule.clampX[0], Math.min(rule.clampX[1], pos.x));
-    }
-    if (rule.clampY) {
-      pos.y = Math.max(rule.clampY[0], Math.min(rule.clampY[1], pos.y));
-    }
-  };
-
-  for (let i = 0; i < MAX_COLLISION_ITERATIONS; i += 1) {
-    let hadCollision = false;
-
-    for (let aIndex = 0; aIndex < orderedIds.length; aIndex += 1) {
-      const aId = orderedIds[aIndex];
-      const aPos = positions.get(aId);
-      const aSize = sizes.get(aId);
-      if (!aPos || !aSize) continue;
-
-      for (let bIndex = aIndex + 1; bIndex < orderedIds.length; bIndex += 1) {
-        const bId = orderedIds[bIndex];
-        const bPos = positions.get(bId);
-        const bSize = sizes.get(bId);
-        if (!bPos || !bSize) continue;
-
-        const ax = aPos.x + aSize.width / 2;
-        const ay = aPos.y + aSize.height / 2;
-        const bx = bPos.x + bSize.width / 2;
-        const by = bPos.y + bSize.height / 2;
-
-        const dx = bx - ax;
-        const dy = by - ay;
-        const overlapX = (aSize.width + bSize.width) / 2 + COLLISION_PADDING - Math.abs(dx);
-        const overlapY = (aSize.height + bSize.height) / 2 + COLLISION_PADDING - Math.abs(dy);
-
-        if (overlapX <= 0 || overlapY <= 0) continue;
-        hadCollision = true;
-
-        const aRule = rules.get(aId) ?? {};
-        const bRule = rules.get(bId) ?? {};
-        const aFixed = Boolean(aRule.fixed);
-        const bFixed = Boolean(bRule.fixed);
-
-        const moveX = overlapX <= overlapY;
-        const directionX = dx >= 0 ? 1 : -1;
-        const directionY = dy >= 0 ? 1 : -1;
-        const pushX = moveX ? (overlapX / (aFixed || bFixed ? 1 : 2)) * directionX : 0;
-        const pushY = !moveX ? (overlapY / (aFixed || bFixed ? 1 : 2)) * directionY : 0;
-
-        if (!aFixed) {
-          const delta = applyAxis(aRule.axis, -pushX, -pushY);
-          aPos.x += delta.x;
-          aPos.y += delta.y;
-          clampPosition(aId);
-        }
-        if (!bFixed) {
-          const delta = applyAxis(bRule.axis, pushX, pushY);
-          bPos.x += delta.x;
-          bPos.y += delta.y;
-          clampPosition(bId);
-        }
-      }
-    }
-
-    if (!hadCollision) break;
-  }
-
-  return nodes.map((node) => {
-    const position = positions.get(node.id);
-    return position ? { ...node, position } : node;
-  });
 }
 
 export default function ProjectCanvasPage() {
@@ -326,6 +172,39 @@ export default function ProjectCanvasPage() {
     return nodesById.get(rootNodeId) ?? null;
   }, [nodesById, projectBundle?.project.root_node_id]);
 
+  const topLevelFlowIds = useMemo(() => {
+    if (explicitRootNode) {
+      const ids = new Set<string>();
+
+      if (explicitRootNode.species === "flow") {
+        ids.add(explicitRootNode.id);
+      }
+
+      const rootChildFlowIds = (composeChildIdsByParent.get(explicitRootNode.id) ?? [])
+        .map((nodeId) => nodesById.get(nodeId))
+        .filter((node): node is DataNode => Boolean(node))
+        .filter((node) => node.species === "flow")
+        .map((node) => node.id);
+
+      for (const flowId of rootChildFlowIds) {
+        ids.add(flowId);
+      }
+
+      return ids;
+    }
+
+    return new Set(
+      dataNodes
+        .filter((node) => node.species === "flow" && !composeParentByChild.has(node.id))
+        .map((node) => node.id),
+    );
+  }, [composeChildIdsByParent, composeParentByChild, dataNodes, explicitRootNode, nodesById]);
+
+  const allFlowIds = useMemo(
+    () => new Set(dataNodes.filter((node) => node.species === "flow").map((node) => node.id)),
+    [dataNodes],
+  );
+
   const getPlaylistEntries = useCallback((nodeId: string): PlaylistEntry[] => {
     const entries = nodesById.get(nodeId)?.metadata?.playlist?.entries;
     return Array.isArray(entries) ? entries : [];
@@ -335,40 +214,24 @@ export default function ProjectCanvasPage() {
     return collectReferencedNodeIds(getPlaylistEntries(nodeId));
   }, [getPlaylistEntries]);
 
-  const getOrderedChildren = useCallback((parentId: string): DataNode[] => {
-    const edgeChildIds = composeChildIdsByParent.get(parentId) ?? [];
-    const playlist = getPlaylist(parentId);
 
-    const orderedIds = [
-      ...playlist,
-      ...edgeChildIds.filter((childId) => !playlist.includes(childId)),
-    ];
-
-    return orderedIds
-      .map((childId) => nodesById.get(childId))
-      .filter((child): child is DataNode => Boolean(child));
-  }, [composeChildIdsByParent, getPlaylist, nodesById]);
-
-  // Auto-expand root flows on initial load.
   useEffect(() => {
-    if (nodesLoading) return;
     setExpandedFlows((prev) => {
-      if (prev.size > 0) return prev;
-      const rootFlowIds = explicitRootNode
-        ? [
-            ...(explicitRootNode.species === "flow" ? [explicitRootNode.id] : []),
-            ...(composeChildIdsByParent.get(explicitRootNode.id) ?? [])
-              .map((nodeId) => nodesById.get(nodeId))
-              .filter((node): node is DataNode => Boolean(node))
-              .filter((node) => node.species === "flow")
-              .map((node) => node.id),
-          ]
-        : dataNodes
-            .filter((node) => node.species === "flow" && !composeParentByChild.has(node.id))
-            .map((node) => node.id);
-      return new Set(rootFlowIds);
+      const next = new Set<string>();
+
+      for (const flowId of prev) {
+        if (allFlowIds.has(flowId)) {
+          next.add(flowId);
+        }
+      }
+
+      if (next.size === prev.size) {
+        return prev;
+      }
+
+      return next;
     });
-  }, [nodesLoading, composeChildIdsByParent, composeParentByChild, dataNodes, explicitRootNode, nodesById]);
+  }, [allFlowIds]);
 
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null);
   const [edgeDialogOpen, setEdgeDialogOpen] = useState(false);
@@ -447,6 +310,21 @@ export default function ProjectCanvasPage() {
 
   const toggleFlow = useCallback((flowId: string) => {
     setExpandedFlows((prev) => {
+      if (topLevelFlowIds.has(flowId)) {
+        if (prev.has(flowId)) {
+          const next = new Set(prev);
+          next.delete(flowId);
+          return next;
+        }
+
+        const next = new Set(prev);
+        for (const topLevelFlowId of topLevelFlowIds) {
+          next.delete(topLevelFlowId);
+        }
+        next.add(flowId);
+        return next;
+      }
+
       const next = new Set(prev);
       if (next.has(flowId)) {
         next.delete(flowId);
@@ -455,7 +333,7 @@ export default function ProjectCanvasPage() {
       }
       return next;
     });
-  }, []);
+  }, [topLevelFlowIds]);
 
   const handleNodeUpdate = useCallback(
     async (nodeId: string, patch: Partial<Omit<DataNode, "id" | "project_id">>) => {
@@ -972,8 +850,9 @@ export default function ProjectCanvasPage() {
     },
   });
 
-  const { nodes, edges } = useMemo(() => {
-    const layoutRules = new Map<string, LayoutRule>();
+  // Build graph topology — ELK will compute positions asynchronously
+  const graphData = useMemo(() => {
+    const origin = { x: 0, y: 0 };
     const visibleNodes: Node[] = [];
     const visibleEdges: Edge[] = [];
     const visibleNodeIds = new Set<string>();
@@ -994,7 +873,7 @@ export default function ProjectCanvasPage() {
       return rollup;
     };
 
-    const addDataNode = (node: DataNode, position: { x: number; y: number }, visualNodeId = node.id) => {
+    const addDataNode = (node: DataNode, visualNodeId = node.id) => {
       if (visibleNodeIds.has(visualNodeId)) return;
 
       const baseData = {
@@ -1026,7 +905,7 @@ export default function ProjectCanvasPage() {
       visibleNodes.push({
         id: visualNodeId,
         type: SPECIES_TO_NODE_TYPE[node.species],
-        position,
+        position: origin,
         data: baseData,
       });
       visibleNodeIds.add(visualNodeId);
@@ -1037,7 +916,6 @@ export default function ProjectCanvasPage() {
     const addSyntheticBranchNode = (
       syntheticId: string,
       label: string,
-      position: { x: number; y: number },
       kind: "condition" | "junction",
       summary: string,
     ) => {
@@ -1046,7 +924,7 @@ export default function ProjectCanvasPage() {
       visibleNodes.push({
         id: syntheticId,
         type: "flow",
-        position,
+        position: origin,
         data: {
           label,
           status: "idea",
@@ -1058,7 +936,6 @@ export default function ProjectCanvasPage() {
         },
       });
       visibleNodeIds.add(syntheticId);
-      layoutRules.set(syntheticId, { axis: "both" });
     };
 
     const uniqueIds = (ids: string[]) => [...new Set(ids)];
@@ -1095,34 +972,8 @@ export default function ProjectCanvasPage() {
       }
     };
 
-    const getChildAnchor = (position: { x: number; y: number }, childDepth: number) => {
-      if (childDepth <= 2 || childDepth % 2 === 0) {
-        return { x: position.x, y: position.y + PLAYLIST_DOWN_OFFSET };
-      }
-
-      return { x: position.x + PLAYLIST_RIGHT_OFFSET, y: position.y };
-    };
-
-    const getSequencePositions = (
-      anchor: { x: number; y: number },
-      depth: number,
-      count: number,
-    ) => {
-      if (depth % 2 === 1) {
-        return horizontalPositions(
-          anchor.x,
-          anchor.y,
-          count,
-          depth === 1 ? ROOT_FLOW_SPACING : PLAYLIST_HORIZONTAL_SPACING,
-        );
-      }
-
-      return verticalPositions(anchor.x, anchor.y, count, FLOW_CHILD_Y_SPACING);
-    };
-
     const renderSequence = (
       entries: PlaylistEntry[],
-      anchor: { x: number; y: number },
       depth: number,
       flowTrail: Set<string>,
       contextKey: string,
@@ -1132,13 +983,11 @@ export default function ProjectCanvasPage() {
         return { startIds: [], endIds: [] };
       }
 
-      const positions = getSequencePositions(anchor, depth, entries.length);
       let sequenceStartIds: string[] = [];
       let previousResult: RenderSequenceResult | null = null;
 
       const renderEntry = (
         entry: PlaylistEntry,
-        position: { x: number; y: number },
         entryIndex: number,
         entryContextKey: string,
       ): RenderSequenceResult => {
@@ -1147,8 +996,7 @@ export default function ProjectCanvasPage() {
           if (!viewNode) return { startIds: [], endIds: [] };
 
           const viewVisualId = createVisualNodeId(viewNode.id, parentFlowVisualId, entryIndex);
-          addDataNode(viewNode, position, viewVisualId);
-          layoutRules.set(viewVisualId, { axis: "both" });
+          addDataNode(viewNode, viewVisualId);
           return { startIds: [viewVisualId], endIds: [viewVisualId], entryNodeId: viewVisualId };
         }
 
@@ -1157,20 +1005,23 @@ export default function ProjectCanvasPage() {
           if (!flowNode) return { startIds: [], endIds: [] };
 
           const flowVisualId = createVisualNodeId(flowNode.id, parentFlowVisualId, entryIndex);
-          addDataNode(flowNode, position, flowVisualId);
-          layoutRules.set(flowVisualId, { axis: "both" });
+          addDataNode(flowNode, flowVisualId);
+
+          let flowEndIds = [flowVisualId];
 
           if (expandedFlows.has(flowNode.id) && !renderedExpandedFlows.has(flowVisualId) && !flowTrail.has(flowNode.id)) {
             renderedExpandedFlows.add(flowVisualId);
             const nextTrail = new Set(flowTrail);
             nextTrail.add(flowNode.id);
             const flowEntries = getPlaylistEntries(flowNode.id);
-            const childAnchor = getChildAnchor(position, depth + 1);
-            const childSequence = renderSequence(flowEntries, childAnchor, depth + 1, nextTrail, `${entryContextKey}:flow`, flowVisualId);
+            const childSequence = renderSequence(flowEntries, depth + 1, nextTrail, `${entryContextKey}:flow`, flowVisualId);
             connectIds([flowVisualId], childSequence.startIds);
+            if (childSequence.endIds.length > 0) {
+              flowEndIds = childSequence.endIds;
+            }
           }
 
-          return { startIds: [flowVisualId], endIds: [flowVisualId], entryNodeId: flowVisualId };
+          return { startIds: [flowVisualId], endIds: flowEndIds, entryNodeId: flowVisualId };
         }
 
         const branchId = `branch-${entryContextKey}`;
@@ -1184,13 +1035,10 @@ export default function ProjectCanvasPage() {
         addSyntheticBranchNode(
           branchId,
           entry.label,
-          position,
           entry.type,
           branches.map((branch) => branch.label).join(" / "),
         );
 
-        const branchAnchor = getChildAnchor(position, depth + 1);
-        const branchPositions = getSequencePositions(branchAnchor, depth + 1, branches.length);
         const branchEndIds: string[] = [];
 
         branches.forEach((branch, index) => {
@@ -1201,7 +1049,6 @@ export default function ProjectCanvasPage() {
 
           const branchSequence = renderSequence(
             branch.entries,
-            branchPositions[index] ?? branchAnchor,
             depth + 1,
             flowTrail,
             `${entryContextKey}:${index}`,
@@ -1224,7 +1071,7 @@ export default function ProjectCanvasPage() {
 
       for (let index = 0; index < entries.length; index += 1) {
         const entry = entries[index];
-        const entryResult = renderEntry(entry, positions[index] ?? anchor, index, `${contextKey}:${index}`);
+        const entryResult = renderEntry(entry, index, `${contextKey}:${index}`);
         if (entryResult.startIds.length === 0) {
           continue;
         }
@@ -1255,36 +1102,29 @@ export default function ProjectCanvasPage() {
       };
     };
 
+    // Data-layer nodes (data-model, api-endpoint)
     const dataLayerNodes = dataNodes.filter((node) => node.species === "data-model" || node.species === "api-endpoint");
-    const dataLayerPositions = verticalPositions(160, 760, dataLayerNodes.length, 120);
-    dataLayerNodes.forEach((node, index) => {
-      addDataNode(node, dataLayerPositions[index] ?? { x: 160, y: 760 + index * 120 });
-      layoutRules.set(node.id, { axis: "both" });
+    dataLayerNodes.forEach((node) => {
+      addDataNode(node);
     });
 
+    // Flow/view tree
     if (explicitRootNode) {
-      const rootPosition = { x: 900, y: ROOT_ANCHOR_Y };
-      addDataNode(explicitRootNode, rootPosition);
-      layoutRules.set(explicitRootNode.id, { axis: "both", fixed: true });
+      addDataNode(explicitRootNode);
 
       const rootChildren = (composeChildIdsByParent.get(explicitRootNode.id) ?? [])
         .map((childId) => nodesById.get(childId))
         .filter((child): child is DataNode => Boolean(child))
         .filter((child) => child.species === "flow");
-      const rootAnchor = getChildAnchor(rootPosition, 1);
-      const rootChildPositions = getSequencePositions(rootAnchor, 1, rootChildren.length);
 
-      rootChildren.forEach((child, index) => {
-        const childPosition = rootChildPositions[index] ?? rootAnchor;
-        addDataNode(child, childPosition);
-        layoutRules.set(child.id, { axis: "both" });
+      rootChildren.forEach((child) => {
+        addDataNode(child);
         addComposeEdge(explicitRootNode.id, child.id);
 
         if (expandedFlows.has(child.id)) {
           renderedExpandedFlows.add(child.id);
           const childSequence = renderSequence(
             getPlaylistEntries(child.id),
-            getChildAnchor(childPosition, 2),
             2,
             new Set([child.id]),
             `root:${child.id}`,
@@ -1298,7 +1138,6 @@ export default function ProjectCanvasPage() {
         renderedExpandedFlows.add(explicitRootNode.id);
         const rootSequence = renderSequence(
           getPlaylistEntries(explicitRootNode.id),
-          getChildAnchor(rootPosition, 2),
           2,
           new Set([explicitRootNode.id]),
           `root-self:${explicitRootNode.id}`,
@@ -1308,19 +1147,14 @@ export default function ProjectCanvasPage() {
       }
     } else {
       const rootNodes = dataNodes.filter((node) => !composeParentByChild.has(node.id) && FLOW_CHILD_SPECIES.has(node.species));
-      const rootAnchor = { x: 900, y: ROOT_ANCHOR_Y };
-      const rootPositions = getSequencePositions(getChildAnchor(rootAnchor, 1), 1, rootNodes.length);
 
-      rootNodes.forEach((rootNode, index) => {
-        const position = rootPositions[index] ?? rootAnchor;
-        addDataNode(rootNode, position);
-        layoutRules.set(rootNode.id, { axis: "both" });
+      rootNodes.forEach((rootNode) => {
+        addDataNode(rootNode);
 
         if (rootNode.species === "flow" && expandedFlows.has(rootNode.id)) {
           renderedExpandedFlows.add(rootNode.id);
           const rootSequence = renderSequence(
             getPlaylistEntries(rootNode.id),
-            getChildAnchor(position, 2),
             2,
             new Set([rootNode.id]),
             `fallback:${rootNode.id}`,
@@ -1331,6 +1165,7 @@ export default function ProjectCanvasPage() {
       });
     }
 
+    // Cross-layer edges (calls, displays, queries)
     const renderedEdgePairs = new Set(visibleEdges.map((edge) => `${edge.source}:${edge.target}`));
     const EDGE_TYPE_MAP: Record<string, string> = {
       composes: "compose",
@@ -1362,8 +1197,7 @@ export default function ProjectCanvasPage() {
       }
     }
 
-    const collisionFreeNodes = resolveNodeCollisions(visibleNodes, layoutRules);
-    return { nodes: collisionFreeNodes, edges: visibleEdges };
+    return { nodes: visibleNodes, edges: visibleEdges };
   }, [
     explicitRootNode,
     composeChildIdsByParent,
@@ -1372,12 +1206,39 @@ export default function ProjectCanvasPage() {
     dataNodes,
     expandedFlows,
     getPlaylistEntries,
-    getOrderedChildren,
     handleAddChildNode,
     handleInsertBetween,
     nodesById,
     toggleFlow,
   ]);
+
+  // Run ELK layout asynchronously whenever the graph topology changes
+  const [layoutedNodes, setLayoutedNodes] = useState<Node[]>([]);
+  const [layoutReady, setLayoutReady] = useState(false);
+
+  useEffect(() => {
+    if (graphData.nodes.length === 0) {
+      setLayoutedNodes([]);
+      setLayoutReady(true);
+      return;
+    }
+
+    let cancelled = false;
+
+    computeElkLayout(graphData.nodes, graphData.edges).then((result) => {
+      if (!cancelled) {
+        setLayoutedNodes(result.nodes);
+        setLayoutReady(true);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [graphData]);
+
+  const nodes = layoutReady ? layoutedNodes : graphData.nodes;
+  const edges = graphData.edges;
 
   if (nodesLoading || edgesLoading || projectLoading) {
     return (
