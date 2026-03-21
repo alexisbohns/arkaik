@@ -1,0 +1,272 @@
+{
+  "project": {
+    "id": "arkaik-self-map",
+    "title": "Arkaik (Self Map)",
+    "description": "Map of the /projects experience and local storage interactions.",
+    "root_node_id": "V-projects",
+    "created_at": "2026-03-21T00:00:00.000Z",
+    "updated_at": "2026-03-21T00:00:00.000Z"
+  },
+  "nodes": [
+    {
+      "id": "V-projects",
+      "project_id": "arkaik-self-map",
+      "species": "view",
+      "title": "/projects",
+      "description": "Projects listing page and primary actions.",
+      "status": "live",
+      "platforms": ["web"]
+    },
+    {
+      "id": "F-projects-routing",
+      "project_id": "arkaik-self-map",
+      "species": "flow",
+      "title": "Projects Actions Routing",
+      "description": "Branch behavior depending on whether projects already exist.",
+      "status": "development",
+      "platforms": ["web"],
+      "metadata": {
+        "playlist": {
+          "entries": [
+            {
+              "type": "condition",
+              "label": "There are existing projects?",
+              "if_true": [
+                {
+                  "type": "flow",
+                  "flow_id": "F-import-json"
+                },
+                {
+                  "type": "flow",
+                  "flow_id": "F-create-project"
+                },
+                {
+                  "type": "flow",
+                  "flow_id": "F-delete-project"
+                }
+              ],
+              "if_false": [
+                {
+                  "type": "flow",
+                  "flow_id": "F-import-example-projects"
+                },
+                {
+                  "type": "flow",
+                  "flow_id": "F-import-json"
+                },
+                {
+                  "type": "flow",
+                  "flow_id": "F-create-project"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "F-import-json",
+      "project_id": "arkaik-self-map",
+      "species": "flow",
+      "title": "Import JSON",
+      "description": "Import user-provided project JSON file.",
+      "status": "live",
+      "platforms": ["web"]
+    },
+    {
+      "id": "F-create-project",
+      "project_id": "arkaik-self-map",
+      "species": "flow",
+      "title": "Create Project",
+      "description": "Create a new empty project.",
+      "status": "live",
+      "platforms": ["web"]
+    },
+    {
+      "id": "F-delete-project",
+      "project_id": "arkaik-self-map",
+      "species": "flow",
+      "title": "Delete Project",
+      "description": "Archive a selected project from the list.",
+      "status": "live",
+      "platforms": ["web"]
+    },
+    {
+      "id": "F-import-example-projects",
+      "project_id": "arkaik-self-map",
+      "species": "flow",
+      "title": "Import Example Projects",
+      "description": "Import built-in example seed when no projects exist.",
+      "status": "live",
+      "platforms": ["web"]
+    },
+    {
+      "id": "API-local-list-projects",
+      "project_id": "arkaik-self-map",
+      "species": "api-endpoint",
+      "title": "localProvider.listProjects()",
+      "description": "Read non-archived projects from local storage.",
+      "status": "live",
+      "platforms": ["web"]
+    },
+    {
+      "id": "API-local-save-project",
+      "project_id": "arkaik-self-map",
+      "species": "api-endpoint",
+      "title": "localProvider.saveProject()",
+      "description": "Persist newly created project bundle.",
+      "status": "live",
+      "platforms": ["web"]
+    },
+    {
+      "id": "API-local-archive-project",
+      "project_id": "arkaik-self-map",
+      "species": "api-endpoint",
+      "title": "localProvider.archiveProject()",
+      "description": "Soft-delete project by setting archived_at.",
+      "status": "live",
+      "platforms": ["web"]
+    },
+    {
+      "id": "API-local-import-project",
+      "project_id": "arkaik-self-map",
+      "species": "api-endpoint",
+      "title": "localProvider.importProject()",
+      "description": "Import parsed bundle (JSON or example seed).",
+      "status": "live",
+      "platforms": ["web"]
+    },
+    {
+      "id": "DM-local-storage-store",
+      "project_id": "arkaik-self-map",
+      "species": "data-model",
+      "title": "LocalStorage Store",
+      "description": "Browser localStorage key arkaik:store.",
+      "status": "live",
+      "platforms": ["web"]
+    },
+    {
+      "id": "DM-project-bundle",
+      "project_id": "arkaik-self-map",
+      "species": "data-model",
+      "title": "ProjectBundle",
+      "description": "project + nodes + edges payload persisted in store.",
+      "status": "live",
+      "platforms": ["web"]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-V-projects-F-projects-routing",
+      "project_id": "arkaik-self-map",
+      "source_id": "V-projects",
+      "target_id": "F-projects-routing",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-projects-routing-F-import-json",
+      "project_id": "arkaik-self-map",
+      "source_id": "F-projects-routing",
+      "target_id": "F-import-json",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-projects-routing-F-create-project",
+      "project_id": "arkaik-self-map",
+      "source_id": "F-projects-routing",
+      "target_id": "F-create-project",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-projects-routing-F-delete-project",
+      "project_id": "arkaik-self-map",
+      "source_id": "F-projects-routing",
+      "target_id": "F-delete-project",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-projects-routing-F-import-example-projects",
+      "project_id": "arkaik-self-map",
+      "source_id": "F-projects-routing",
+      "target_id": "F-import-example-projects",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-projects-API-local-list-projects",
+      "project_id": "arkaik-self-map",
+      "source_id": "V-projects",
+      "target_id": "API-local-list-projects",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-F-import-json-API-local-import-project",
+      "project_id": "arkaik-self-map",
+      "source_id": "F-import-json",
+      "target_id": "API-local-import-project",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-F-import-example-projects-API-local-import-project",
+      "project_id": "arkaik-self-map",
+      "source_id": "F-import-example-projects",
+      "target_id": "API-local-import-project",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-F-create-project-API-local-save-project",
+      "project_id": "arkaik-self-map",
+      "source_id": "F-create-project",
+      "target_id": "API-local-save-project",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-F-delete-project-API-local-archive-project",
+      "project_id": "arkaik-self-map",
+      "source_id": "F-delete-project",
+      "target_id": "API-local-archive-project",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-projects-DM-project-bundle",
+      "project_id": "arkaik-self-map",
+      "source_id": "V-projects",
+      "target_id": "DM-project-bundle",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-API-local-list-projects-DM-project-bundle",
+      "project_id": "arkaik-self-map",
+      "source_id": "API-local-list-projects",
+      "target_id": "DM-project-bundle",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-local-save-project-DM-project-bundle",
+      "project_id": "arkaik-self-map",
+      "source_id": "API-local-save-project",
+      "target_id": "DM-project-bundle",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-local-archive-project-DM-project-bundle",
+      "project_id": "arkaik-self-map",
+      "source_id": "API-local-archive-project",
+      "target_id": "DM-project-bundle",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-local-import-project-DM-project-bundle",
+      "project_id": "arkaik-self-map",
+      "source_id": "API-local-import-project",
+      "target_id": "DM-project-bundle",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-DM-local-storage-store-DM-project-bundle",
+      "project_id": "arkaik-self-map",
+      "source_id": "DM-local-storage-store",
+      "target_id": "DM-project-bundle",
+      "edge_type": "composes"
+    }
+  ]
+}
