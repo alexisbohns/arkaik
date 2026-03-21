@@ -4,9 +4,10 @@ import { Handle, Position, NodeToolbar, type NodeProps } from "@xyflow/react";
 import { ChevronDown, ChevronRight, Info, PlusCircle } from "lucide-react";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
+import { PLATFORMS } from "@/lib/config/platforms";
 import { StatusBadge } from "@/components/layout/StatusBadge";
-import { PlatformDots } from "@/components/layout/PlatformDots";
-import { STATUS_GHOST_STYLES } from "./node-styles";
+import { StageIcon } from "@/components/layout/StageIcon";
+import { STATUS_GHOST_STYLES, PLATFORM_ICONS, PLATFORM_LABELS } from "./node-styles";
 import { useToolbarHover } from "@/lib/hooks/useToolbarHover";
 
 export function FlowNode({ data }: NodeProps) {
@@ -14,6 +15,7 @@ export function FlowNode({ data }: NodeProps) {
   const label = String(data.label ?? "Flow");
   const platforms = (data.platforms as PlatformId[]) ?? [];
   const expanded = Boolean(data.expanded);
+  const stage = data.metadata ? (data.metadata as Record<string, unknown>).stage as string | undefined : undefined;
   const onToggle = data.onToggle as (() => void) | undefined;
   const onOpenDetails = data.onOpenDetails as (() => void) | undefined;
   const onAddChild = data.onAddChild as (() => void) | undefined;
@@ -59,6 +61,7 @@ export function FlowNode({ data }: NodeProps) {
             {label}
           </span>
           <div className="flex items-center gap-1">
+            {stage && <StageIcon stage={stage} />}
             {onOpenDetails && (
               <button
                 type="button"
@@ -81,7 +84,19 @@ export function FlowNode({ data }: NodeProps) {
         </div>
         <div className="flex items-center justify-between gap-2">
           <StatusBadge status={status} />
-          <PlatformDots platforms={platforms} />
+          <div className="flex items-center gap-1">
+            {PLATFORMS.map((p) => {
+              const Icon = PLATFORM_ICONS[p.id];
+              const active = platforms.includes(p.id);
+              return (
+                <Icon
+                  key={p.id}
+                  className={`w-3.5 h-3.5 ${active ? "text-green-500" : "text-muted-foreground/40"}`}
+                  aria-label={PLATFORM_LABELS[p.id]}
+                />
+              );
+            })}
+          </div>
         </div>
       </div>
       <Handle type="source" position={Position.Bottom} className="opacity-0" />

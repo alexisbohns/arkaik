@@ -13,6 +13,7 @@ import { ApiEndpointNode } from "./nodes/ApiEndpointNode";
 import { ComposeEdge } from "./edges/ComposeEdge";
 import { BranchEdge } from "./edges/BranchEdge";
 import { CrossLayerEdge } from "./edges/CrossLayerEdge";
+import { FloatingDottedEdge } from "./edges/FloatingDottedEdge";
 
 const nodeTypes = {
   product: ProductNode,
@@ -27,6 +28,7 @@ const nodeTypes = {
 const edgeTypes = {
   compose: ComposeEdge,
   branch: BranchEdge,
+  floatingDotted: FloatingDottedEdge,
   calls: CrossLayerEdge,
   displays: CrossLayerEdge,
   queries: CrossLayerEdge,
