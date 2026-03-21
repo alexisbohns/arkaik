@@ -88,9 +88,9 @@ The project page manages three expansion sets as local `useState`:
 When a user clicks a product node, its `onToggle` fires, adding child scenario nodes to the visible graph. Clicking a scenario reveals flows, and clicking a flow reveals steps and conditions. A breadcrumb trail tracks navigation depth.
 
 Nodes are positioned dynamically:
-- **Product children** (scenarios): radial layout around the parent
-- **Scenario children** (flows): radial layout
-- **Flow children** (steps/conditions): linear horizontal layout
+- **Product children** (scenarios): horizontal row below the parent, evenly spaced
+- **Scenario children** (flows): vertical top-to-bottom layout, sorted by `sort_order` — communicates sequence within the scenario. Consecutive flows are connected by inter-flow compose edges.
+- **Flow children** (steps/conditions): linear horizontal (left-to-right) layout
 
 ### Platform Split Rendering
 

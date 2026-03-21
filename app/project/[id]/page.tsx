@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { type Edge, type Node, type NodeMouseHandler, type Connection, type EdgeMouseHandler } from "@xyflow/react";
 import { PlusIcon } from "lucide-react";
 import { Canvas } from "@/components/graph/Canvas";
@@ -42,22 +42,28 @@ const SPECIES_TO_NODE_TYPE: Record<SpeciesId, string> = {
   "api-endpoint": "apiEndpoint",
 };
 
-/** Position `count` items evenly on a circle of `radius` centred at (cx, cy). */
-function radialPositions(
+/** Position `count` items in a horizontal row centred below (cx, cy). */
+const SCENARIO_SPACING = 300;
+const SCENARIO_Y_OFFSET = 250;
+
+function horizontalPositions(
   cx: number,
   cy: number,
   count: number,
-  radius = 280,
+  spacing = SCENARIO_SPACING,
 ): { x: number; y: number }[] {
-  return Array.from({ length: count }, (_, i) => {
-    const angle = (2 * Math.PI * i) / count - Math.PI / 2;
-    return { x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle) };
-  });
+  if (count === 0) return [];
+  const totalWidth = (count - 1) * spacing;
+  const startX = cx - totalWidth / 2;
+  return Array.from({ length: count }, (_, i) => ({
+    x: startX + i * spacing,
+    y: cy + SCENARIO_Y_OFFSET,
+  }));
 }
 
-/** Position `count` items in a horizontal line centred at (cx, cy + offset). */
+/** Position `count` items in a horizontal line to the right of (cx, cy). */
 const FLOW_CHILD_SPACING = 220;
-const FLOW_CHILD_Y_OFFSET = 220;
+const FLOW_CHILD_X_START = 280;
 
 function linearPositions(
   cx: number,
@@ -66,11 +72,25 @@ function linearPositions(
   spacing = FLOW_CHILD_SPACING,
 ): { x: number; y: number }[] {
   if (count === 0) return [];
-  const totalWidth = (count - 1) * spacing;
-  const startX = cx - totalWidth / 2;
   return Array.from({ length: count }, (_, i) => ({
-    x: startX + i * spacing,
-    y: cy + FLOW_CHILD_Y_OFFSET,
+    x: cx + FLOW_CHILD_X_START + i * spacing,
+    y: cy,
+  }));
+}
+
+/** Position `count` items in a vertical column below (cx, cy). */
+const VERTICAL_CHILD_SPACING = 160;
+const VERTICAL_CHILD_Y_START = 180;
+
+function verticalPositions(
+  cx: number,
+  cy: number,
+  count: number,
+  spacing = VERTICAL_CHILD_SPACING,
+): { x: number; y: number }[] {
+  return Array.from({ length: count }, (_, i) => ({
+    x: cx,
+    y: cy + VERTICAL_CHILD_Y_START + i * spacing,
   }));
 }
 
@@ -218,6 +238,16 @@ export default function ProjectCanvasPage() {
 
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, removeNodes } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading, addEdge, removeEdge } = useEdges(id);
+
+  // Auto-expand all products on initial load
+  useEffect(() => {
+    if (nodesLoading) return;
+    setExpandedProducts((prev) => {
+      if (prev.size > 0) return prev;
+      const productIds = dataNodes.filter((n) => n.species === "product").map((n) => n.id);
+      return new Set(productIds);
+    });
+  }, [nodesLoading, dataNodes]);
 
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null);
   const [edgeDialogOpen, setEdgeDialogOpen] = useState(false);
@@ -425,6 +455,15 @@ export default function ProjectCanvasPage() {
         }
       }
 
+      // Auto-assign sort_order: append after existing siblings
+      let sort_order: number | undefined;
+      if (data.parent_id) {
+        const siblings = dataNodes.filter((n) => n.parent_id === data.parent_id && n.species === data.species);
+        sort_order = siblings.length > 0
+          ? Math.max(...siblings.map((n) => n.sort_order ?? 0)) + 1
+          : 0;
+      }
+
       await addNode({
         id: crypto.randomUUID(),
         project_id: id,
@@ -433,6 +472,7 @@ export default function ProjectCanvasPage() {
         status: data.status,
         platforms: data.platforms,
         parent_id: data.parent_id,
+        sort_order,
         position_x,
         position_y,
       });
@@ -512,7 +552,7 @@ export default function ProjectCanvasPage() {
         (n) => n.species === "scenario" && n.parent_id === product.id,
       );
 
-      const positions = radialPositions(
+      const positions = horizontalPositions(
         product.position_x,
         product.position_y,
         childScenarios.length,
@@ -542,9 +582,7 @@ export default function ProjectCanvasPage() {
           },
         });
         layoutRules.set(scenario.id, {
-          axis: "both",
-          clampX: [product.position_x - 460, product.position_x + 460],
-          clampY: [product.position_y - 460, product.position_y + 460],
+          axis: "x",
         });
         // Create a compose edge from the product to this scenario
         visibleEdges.push({
@@ -556,7 +594,7 @@ export default function ProjectCanvasPage() {
       });
     }
 
-    // For each expanded scenario, reveal its child flows with compose edges
+    // For each expanded scenario, reveal its child flows in vertical (top-to-bottom) order
     const visibleScenarioIds = [...visibleNodeIds].filter((id) =>
       dataNodes.find((n) => n.id === id && n.species === "scenario"),
     );
@@ -567,15 +605,18 @@ export default function ProjectCanvasPage() {
       const scenario = dataNodes.find((n) => n.id === scenarioId);
       if (!scenario) continue;
       const parentProduct = dataNodes.find((n) => n.id === scenario.parent_id);
-      const childFlows = dataNodes.filter(
-        (n) => n.species === "flow" && n.parent_id === scenarioId,
-      );
+      const childFlows = dataNodes
+        .filter((n) => n.species === "flow" && n.parent_id === scenarioId)
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 
-      const positions = radialPositions(
-        scenario.position_x,
-        scenario.position_y,
+      const scenarioNode = visibleNodes.find((n) => n.id === scenarioId);
+      const scenarioCx = scenarioNode?.position.x ?? scenario.position_x;
+      const scenarioCy = scenarioNode?.position.y ?? scenario.position_y;
+
+      const positions = verticalPositions(
+        scenarioCx,
+        scenarioCy,
         childFlows.length,
-        200,
       );
 
       childFlows.forEach((flow, i) => {
@@ -601,17 +642,25 @@ export default function ProjectCanvasPage() {
           },
         });
         layoutRules.set(flow.id, {
-          axis: "both",
-          clampX: [scenario.position_x - 340, scenario.position_x + 340],
-          clampY: [scenario.position_y - 340, scenario.position_y + 340],
+          axis: "x",
         });
-        // Create a compose edge from the scenario to this flow
+        // Compose edge from scenario to this flow
         visibleEdges.push({
           id: `compose-${scenarioId}-${flow.id}`,
           source: scenarioId,
           target: flow.id,
           type: "compose",
         });
+        // Sequence edge between consecutive flows
+        if (i > 0) {
+          const prevFlow = childFlows[i - 1];
+          visibleEdges.push({
+            id: `compose-${prevFlow.id}-${flow.id}`,
+            source: prevFlow.id,
+            target: flow.id,
+            type: "compose",
+          });
+        }
       });
     }
 
@@ -630,8 +679,12 @@ export default function ProjectCanvasPage() {
         (n) => n.parent_id === flowId && FLOW_CHILD_SPECIES.has(n.species),
       );
 
-      const childPositions = linearPositions(flow.position_x, flow.position_y, children.length);
-      const maxSpreadX = Math.max(320, children.length * 110);
+      const flowNode = visibleNodes.find((n) => n.id === flowId);
+      const flowCx = flowNode?.position.x ?? flow.position_x;
+      const flowCy = flowNode?.position.y ?? flow.position_y;
+
+      const childPositions = linearPositions(flowCx, flowCy, children.length);
+      const maxSpreadX = Math.max(480, children.length * 220);
 
       for (const [i, child] of children.entries()) {
         const childPosition = childPositions[i];
@@ -648,8 +701,8 @@ export default function ProjectCanvasPage() {
         });
         layoutRules.set(child.id, {
           axis: "both",
-          clampX: [flow.position_x - maxSpreadX, flow.position_x + maxSpreadX],
-          clampY: [flow.position_y + FLOW_CHILD_Y_OFFSET - 80, flow.position_y + FLOW_CHILD_Y_OFFSET + 80],
+          clampX: [flowCx + FLOW_CHILD_X_START - 40, flowCx + FLOW_CHILD_X_START + maxSpreadX],
+          clampY: [flowCy - 80, flowCy + 80],
         });
       }
     }
@@ -664,6 +717,13 @@ export default function ProjectCanvasPage() {
       queries: "queries",
     };
 
+    // Build a set of expanded flow IDs for sourceHandle assignment
+    const expandedFlowIdSet = new Set(
+      [...visibleNodeIds].filter((nodeId) =>
+        dataNodes.find((n) => n.id === nodeId && n.species === "flow" && expandedFlows.has(nodeId)),
+      ),
+    );
+
     for (const edge of dataEdges) {
       if (!visibleNodeIds.has(edge.source_id) || !visibleNodeIds.has(edge.target_id)) continue;
 
@@ -671,11 +731,16 @@ export default function ProjectCanvasPage() {
       if (renderedEdgePairs.has(pairKey)) continue;
 
       const xyType = EDGE_TYPE_MAP[edge.edge_type];
+      // Flow→child compose edges should exit from the right handle
+      const sourceHandle = expandedFlowIdSet.has(edge.source_id) && edge.edge_type === "composes"
+        ? "right"
+        : undefined;
       visibleEdges.push({
         id: `${edge.id}--${edge.source_id}--${edge.target_id}`,
         source: edge.source_id,
         target: edge.target_id,
         type: xyType,
+        sourceHandle,
       });
       renderedEdgePairs.add(pairKey);
     }

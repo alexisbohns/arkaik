@@ -21,6 +21,7 @@ export interface Node {
   status: Status;
   platforms: Platform[];
   parent_id?: string | null;
+  sort_order?: number;
   position_x: number;
   position_y: number;
   metadata?: Record<string, unknown>;

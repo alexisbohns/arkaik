@@ -10,7 +10,7 @@ export function ConditionNode({ data }: NodeProps) {
 
   return (
     <div className="relative" style={{ width: DIAMOND_OUTER, height: DIAMOND_OUTER }}>
-      <Handle type="target" position={Position.Top} className="opacity-0" />
+      <Handle type="target" position={Position.Left} className="opacity-0" />
       <div
         aria-hidden="true"
         className="absolute bg-background border-2 border-amber-400"
@@ -33,7 +33,7 @@ export function ConditionNode({ data }: NodeProps) {
           {label}
         </span>
       </div>
-      <Handle type="source" position={Position.Bottom} className="opacity-0" />
+      <Handle type="source" position={Position.Right} className="opacity-0" />
     </div>
   );
 }
