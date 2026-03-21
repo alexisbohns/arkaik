@@ -15,6 +15,7 @@ interface DeleteConfirmDialogProps {
   onOpenChange: (open: boolean) => void;
   title: string;
   description: string;
+  confirmLabel?: string;
   /** When provided, renders a cascade checkbox with this label. */
   cascadeLabel?: string;
   cascadeChecked?: boolean;
@@ -27,6 +28,7 @@ export function DeleteConfirmDialog({
   onOpenChange,
   title,
   description,
+  confirmLabel = "Delete",
   cascadeLabel,
   cascadeChecked,
   onCascadeChange,
@@ -58,7 +60,7 @@ export function DeleteConfirmDialog({
             Cancel
           </Button>
           <Button variant="destructive" onClick={onConfirm}>
-            Delete
+            {confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

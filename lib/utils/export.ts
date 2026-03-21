@@ -17,7 +17,7 @@ function isValidIsoString(value: unknown): value is string {
   return typeof value === "string" && !Number.isNaN(Date.parse(value));
 }
 
-function normalizeProjectTimestamps(project: Project): Project {
+export function normalizeProjectTimestamps(project: Project): Project {
   const now = new Date().toISOString();
   return {
     ...project,
@@ -27,7 +27,7 @@ function normalizeProjectTimestamps(project: Project): Project {
   };
 }
 
-function assertProjectBundleShape(value: unknown): asserts value is ProjectBundle {
+export function assertProjectBundleShape(value: unknown): asserts value is ProjectBundle {
   if (!isRecord(value)) throw new Error("Invalid JSON: expected object root");
 
   const project = value.project;
