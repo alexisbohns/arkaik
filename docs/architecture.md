@@ -21,7 +21,7 @@ The project page (`app/project/[id]/page.tsx`) is the core of the app. It:
 1. Loads nodes and edges via `useNodes` and `useEdges`
 2. Manages expansion state for flows via local `useState`
 3. Computes per-platform view statuses and flow rollup gauges
-4. Maps domain nodes to React Flow nodes with position, type, and toggle handlers
+4. Maps domain nodes to React Flow nodes with position, type, card-variant preference, and toggle handlers
 5. Renders the `Canvas` component with computed nodes and edges
 6. Opens `NodeDetailPanel` on node click for viewing/editing properties
 7. Opens `NewNodeForm` (Dialog) via a floating "New node" button for creating nodes
@@ -35,7 +35,7 @@ components/
     Canvas.tsx              # ReactFlow wrapper — registers node/edge types, renders Controls, MiniMap, Background
     nodes/                  # Custom React Flow node components
       FlowNode.tsx          # Container card for flow nodes with rollup gauges
-      ViewNode.tsx          # View card with per-platform status rows
+      ViewNode.tsx          # Variant-based View cards (compact/large), API actions, platform/API popovers
       PlatformGaugeList.tsx # Shared stacked gauge renderer for flow cards and panels
       DataModelNode.tsx     # Parallel layer — amber, Database icon
       ApiEndpointNode.tsx   # Parallel layer — teal, Plug icon
@@ -57,6 +57,7 @@ components/
     NodeSearchCombobox.tsx  # Search-or-create selector for flow/view references
     PlatformVariants.tsx    # Platform tab switcher with per-platform status and notes
   ui/                       # shadcn/ui primitives (button, card, dialog, input, etc.)
+    popover.tsx             # Radix popover wrapper used by View card API/platform details
 ```
 
 ## Data Flow
@@ -66,7 +67,7 @@ localStorage
     ↕ (read/write)
 localProvider (implements DataProvider)
     ↕ (async calls)
-Hooks: useNodes, useEdges
+Hooks: useNodes, useEdges, useProject
     ↕ (state)
 app/project/[id]/page.tsx (semantic zoom + status rollup logic)
     ↕ (props)
@@ -74,6 +75,7 @@ Canvas → ReactFlow → Custom Nodes/Edges
     ↕ (click events)
 NodeDetailPanel → Hook (updateNode) → Provider → Storage
 NewNodeForm (Dialog) → Hook (addNode) → Provider → Storage
+View card variant selector → Hook (useProject.updateProject) → Provider → Storage
 ```
 
 All data mutations flow through the `DataProvider` interface (`lib/data/data-provider.ts`). The current implementation is `localProvider` backed by `localStorage`. The interface is designed for a future Supabase migration — swap the provider, keep the hooks and UI unchanged.
@@ -93,7 +95,18 @@ Nodes are positioned dynamically:
 - Root flows: horizontal row near the top of the canvas
 - Root views: horizontal row below root flows
 - Flow children: vertical column to the right of the parent flow
-- Data layer nodes (`data-model`, `api-endpoint`): dedicated column position
+
+Canvas visibility rule:
+
+- Rendered nodes: `flow`, `view`
+- Hidden from canvas cards: `data-model`, `api-endpoint` (still persisted in project data)
+
+View card variants:
+
+- `compact` (default): header + API buttons + platform status icons
+- `large`: header + optional cover + platform status rows + API buttons
+
+Project preference source: `project.metadata.view_card_variant` in [lib/data/types.ts](../lib/data/types.ts)
 
 ## Node Detail Panel
 

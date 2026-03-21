@@ -41,6 +41,19 @@ export function assertProjectBundleShape(value: unknown): asserts value is Proje
   if (project.root_node_id !== undefined && typeof project.root_node_id !== "string") {
     throw new Error("Invalid JSON: project.root_node_id must be a string when provided");
   }
+  if (project.metadata !== undefined) {
+    if (!isRecord(project.metadata)) {
+      throw new Error("Invalid JSON: project.metadata must be an object when provided");
+    }
+    const viewCardVariant = project.metadata.view_card_variant;
+    if (
+      viewCardVariant !== undefined
+      && viewCardVariant !== "compact"
+      && viewCardVariant !== "large"
+    ) {
+      throw new Error("Invalid JSON: project.metadata.view_card_variant must be compact or large");
+    }
+  }
 
   if (!Array.isArray(value.nodes)) {
     throw new Error("Invalid JSON: nodes must be an array");
