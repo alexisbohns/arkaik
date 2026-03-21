@@ -28,7 +28,7 @@ Source: [app/project/[id]/page.tsx](../app/project/[id]/page.tsx)
 
 ### Flow Children
 
-All flows start collapsed. Only top-level flows (root flow and/or direct flow children of `project.root_node_id`, or inferred root flows when no explicit root exists) are expandable in-canvas. Expanded top-level flows render only `flow` and `view` children as in-canvas children.
+All flows start collapsed. Only top-level flows (root flow and/or direct flow children of `project.root_node_id`, or inferred root flows when no explicit root exists) are expandable in-canvas. Top-level expansion is accordion-style: opening one top-level flow collapses any other top-level flow already open. Expanded top-level flows render only `flow` and `view` children as in-canvas children.
 
 Source: [app/project/[id]/page.tsx](../app/project/[id]/page.tsx)
 

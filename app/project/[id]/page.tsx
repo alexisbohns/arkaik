@@ -476,13 +476,13 @@ export default function ProjectCanvasPage() {
         return prev;
       }
 
-      const next = new Set(prev);
-      if (next.has(flowId)) {
+      if (prev.has(flowId)) {
+        const next = new Set(prev);
         next.delete(flowId);
-      } else {
-        next.add(flowId);
+        return next;
       }
-      return next;
+
+      return new Set([flowId]);
     });
   }, [expandableFlowIds]);
 
