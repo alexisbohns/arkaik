@@ -17,7 +17,7 @@ import { useEdges } from "@/lib/hooks/useEdges";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
 import { downloadJson, exportProject } from "@/lib/utils/export";
 import type { SpeciesId } from "@/lib/config/species";
-import type { Node as DataNode, Edge as DataEdge } from "@/lib/data/types";
+import type { Node as DataNode, Edge as DataEdge, PlaylistEntry } from "@/lib/data/types";
 import type { EdgeTypeId } from "@/lib/config/edge-types";
 import {
   addNodeToRollup,
@@ -45,6 +45,46 @@ const FLOW_CHILD_Y_SPACING = 180;
 
 const COLLISION_PADDING = 24;
 const MAX_COLLISION_ITERATIONS = 30;
+
+function collectReferencedNodeIds(entries: PlaylistEntry[]): string[] {
+  const result: string[] = [];
+
+  for (const entry of entries) {
+    if (entry.type === "view") {
+      result.push(entry.view_id);
+      continue;
+    }
+
+    if (entry.type === "flow") {
+      result.push(entry.flow_id);
+      continue;
+    }
+
+    if (entry.type === "condition") {
+      result.push(...collectReferencedNodeIds(entry.if_true));
+      result.push(...collectReferencedNodeIds(entry.if_false));
+      continue;
+    }
+
+    for (const playlistCase of entry.cases) {
+      result.push(...collectReferencedNodeIds(playlistCase.entries));
+    }
+  }
+
+  return result;
+}
+
+function createPlaylistEntryForSpecies(species: SpeciesId, nodeId: string): PlaylistEntry | null {
+  if (species === "view") {
+    return { type: "view", view_id: nodeId };
+  }
+
+  if (species === "flow") {
+    return { type: "flow", flow_id: nodeId };
+  }
+
+  return null;
+}
 
 interface LayoutSize {
   width: number;
@@ -235,8 +275,9 @@ export default function ProjectCanvasPage() {
   }, [dataEdges]);
 
   const getPlaylist = useCallback((nodeId: string): string[] => {
-    const raw = nodesById.get(nodeId)?.metadata?.playlist;
-    return Array.isArray(raw) ? raw.filter((entry): entry is string => typeof entry === "string") : [];
+    const entries = nodesById.get(nodeId)?.metadata?.playlist?.entries;
+    if (!Array.isArray(entries)) return [];
+    return collectReferencedNodeIds(entries);
   }, [nodesById]);
 
   const getOrderedChildren = useCallback((parentId: string): DataNode[] => {
@@ -410,20 +451,28 @@ export default function ProjectCanvasPage() {
 
         const parentNode = nodesById.get(parentId);
         if (parentNode) {
-          const existingPlaylist = Array.isArray(parentNode.metadata?.playlist)
-            ? [...parentNode.metadata.playlist]
+          const existingEntries = Array.isArray(parentNode.metadata?.playlist?.entries)
+            ? [...parentNode.metadata.playlist.entries]
             : [];
-          const insertIndex = insertBeforeId ? existingPlaylist.indexOf(insertBeforeId) : -1;
-          if (insertIndex >= 0) {
-            existingPlaylist.splice(insertIndex, 0, newNodeId);
-          } else {
-            existingPlaylist.push(newNodeId);
+          const newEntry = createPlaylistEntryForSpecies(data.species, newNodeId);
+
+          if (newEntry) {
+            const existingPlaylistIds = collectReferencedNodeIds(existingEntries);
+            const insertIndex = insertBeforeId ? existingPlaylistIds.indexOf(insertBeforeId) : -1;
+
+            if (insertIndex >= 0) {
+              existingEntries.splice(insertIndex, 0, newEntry);
+            } else {
+              existingEntries.push(newEntry);
+            }
           }
 
           await updateNode(parentNode.id, {
             metadata: {
               ...parentNode.metadata,
-              playlist: existingPlaylist,
+              playlist: {
+                entries: existingEntries,
+              },
             },
           });
         }

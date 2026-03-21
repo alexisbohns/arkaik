@@ -16,9 +16,24 @@ export type PlatformStatusMap = Partial<Record<PlatformId, StatusId>>;
 /** Freeform per-platform notes used by the detail panel. */
 export type PlatformNotesMap = Partial<Record<PlatformId, string>>;
 
+export type PlaylistEntry =
+  | { type: "view"; view_id: string }
+  | { type: "flow"; flow_id: string }
+  | { type: "condition"; label: string; if_true: PlaylistEntry[]; if_false: PlaylistEntry[] }
+  | { type: "junction"; label: string; cases: JunctionCase[] };
+
+export interface JunctionCase {
+  label: string;
+  entries: PlaylistEntry[];
+}
+
+export interface FlowPlaylist {
+  entries: PlaylistEntry[];
+}
+
 export interface NodeMetadata extends Record<string, unknown> {
   stage?: string;
-  playlist?: string[];
+  playlist?: FlowPlaylist;
   platformNotes?: PlatformNotesMap;
   platformStatuses?: PlatformStatusMap;
 }

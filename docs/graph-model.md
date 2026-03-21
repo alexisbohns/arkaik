@@ -20,8 +20,8 @@ Config source: [lib/config/species.ts](../lib/config/species.ts)
 ### Parent/Child Links
 
 - Persisted parent/child links are `composes` edges.
-- Child ordering is read from `node.metadata.playlist`.
-- When playlist is missing child IDs that still have compose edges, those children are appended after playlist entries.
+- Child ordering is read from `node.metadata.playlist.entries`.
+- When playlist entries do not reference all compose-edge children, missing children are appended after playlist-derived ordering.
 
 Source: [app/project/[id]/page.tsx](../app/project/[id]/page.tsx)
 

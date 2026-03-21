@@ -26,9 +26,28 @@ Defined in `lib/data/types.ts`:
 | Field | Type | Purpose |
 |-------|------|---------|
 | `stage` | `string` | Optional lifecycle marker used by node headers |
-| `playlist` | `string[]` | Ordered child node IDs used for flow sequence rendering |
+| `playlist` | `FlowPlaylist` | Ordered playlist structure for flow sequencing with support for inline branching |
 | `platformNotes` | `Partial<Record<PlatformId, string>>` | Per-platform notes in the detail panel |
 | `platformStatuses` | `Partial<Record<PlatformId, StatusId>>` | Per-platform source-of-truth statuses for views |
+
+`FlowPlaylist` structure:
+
+```typescript
+type PlaylistEntry =
+  | { type: "view"; view_id: string }
+  | { type: "flow"; flow_id: string }
+  | { type: "condition"; label: string; if_true: PlaylistEntry[]; if_false: PlaylistEntry[] }
+  | { type: "junction"; label: string; cases: JunctionCase[] };
+
+interface JunctionCase {
+  label: string;
+  entries: PlaylistEntry[];
+}
+
+interface FlowPlaylist {
+  entries: PlaylistEntry[];
+}
+```
 
 ### Edge
 
@@ -108,7 +127,7 @@ Implemented in `lib/data/local-provider.ts`.
 - **Indexing:** Dual index maps — `nodeIndex` (node ID → project ID) and `edgeIndex` (edge ID → project ID) for fast lookups
 - **Persistence:** Auto-persists to `localStorage` on every mutation
 - **Cascade:** `deleteNode` also removes all edges referencing that node
-- **Normalization:** Legacy node fields (`parent_id`, `sort_order`, `position_x`, `position_y`) are stripped on load/import, and ordered `metadata.playlist` values are hydrated from legacy data when present
+- **Normalization:** Legacy node fields (`parent_id`, `sort_order`, `position_x`, `position_y`) are stripped on load/import, and ordered `metadata.playlist.entries` values are hydrated from legacy data when present
 
 ## Import / Export
 
