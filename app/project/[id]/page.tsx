@@ -236,6 +236,7 @@ export default function ProjectCanvasPage() {
   const [newNodePreset, setNewNodePreset] = useState<{ parent_id: string; species: SpeciesId } | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [exportWarning, setExportWarning] = useState<string | null>(null);
 
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, removeNodes } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading, addEdge, removeEdge } = useEdges(id);
@@ -517,12 +518,15 @@ export default function ProjectCanvasPage() {
 
     setExporting(true);
     setExportError(null);
+    setExportWarning(null);
     try {
       const bundle = await exportProject(id);
-      downloadJson(bundle);
+      const result = downloadJson(bundle);
+      setExportWarning(result.warning);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown export error";
       setExportError(`Unable to export project: ${message}`);
+      setExportWarning(null);
     } finally {
       setExporting(false);
     }
@@ -791,6 +795,11 @@ export default function ProjectCanvasPage() {
           </Link>
           {breadcrumbs.length > 0 && <Breadcrumb segments={breadcrumbSegments} />}
           <div className="ml-auto flex items-center gap-3">
+            {exportWarning && (
+              <span className="text-xs text-amber-700" role="status" aria-live="polite">
+                {exportWarning}
+              </span>
+            )}
             {exportError && (
               <span className="text-xs text-destructive" role="status" aria-live="polite">
                 {exportError}
