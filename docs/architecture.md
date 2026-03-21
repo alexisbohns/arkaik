@@ -25,6 +25,7 @@ The project page (`app/project/[id]/page.tsx`) is the core of the app. It:
 5. Renders the `Canvas` component with computed nodes and edges
 6. Opens `NodeDetailPanel` on node click for viewing/editing properties
 7. Opens `NewNodeForm` (Dialog) via a floating "New node" button for creating nodes
+8. Opens `InsertBetweenDialog` from compose-edge insert actions for search-or-create insertion in flow playlists
 
 ## Component Map
 
@@ -49,6 +50,7 @@ components/
     StatusBadge.tsx         # Colored pill with status label
   panels/
     NewNodeForm.tsx         # Dialog form for creating a node with species-aware status/platform defaults
+    InsertBetweenDialog.tsx # Dialog for insert-between actions: choose view/flow, search existing, or create inline
     NodeDetailPanel.tsx     # Slide-in sheet: edit node fields, platform-specific statuses, computed rollups, and flow playlists
     PlaylistEditor.tsx      # Flow-only playlist editor: add/remove/reorder and branch editing
     PlaylistEntryRow.tsx    # Recursive playlist row renderer for condition/junction branches
@@ -104,6 +106,8 @@ Clicking any node opens a slide-in `Sheet` (`NodeDetailPanel`) with:
 - **Playlist editor** (`flow`): ordered `metadata.playlist.entries` editing with add/remove/reorder and recursive condition/junction branch editing
 
 Flow playlist editing uses fuzzy search-or-create for `view` and `flow` entries. When adding a flow reference, cycle checks run before persisting and invalid inserts are blocked with toast feedback.
+
+Compose edges in expanded sequences expose a single insert action. It opens `InsertBetweenDialog`, where users choose `view`, `flow`, `condition`, or `junction`. For `view`/`flow`, the dialog reuses `NodeSearchCombobox` to select existing nodes or create new ones inline; for `condition`/`junction`, it inserts structured entries with sensible defaults. Node-reference inserts are placed at the correct playlist position and ensure the compose edge exists.
 
 Edits call `useNodes.updateNode` which flows through the `DataProvider`.
 

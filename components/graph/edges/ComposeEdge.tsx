@@ -5,6 +5,10 @@ import { Button } from "@/components/ui/button";
 import { useToolbarHover } from "@/lib/hooks/useToolbarHover";
 
 interface ComposeEdgeData extends Record<string, unknown> {
+  insertActions?: Array<{
+    label: string;
+    onInsert: () => void;
+  }>;
   insertLabel?: string;
   label?: string;
   onInsert?: () => void;
@@ -22,6 +26,11 @@ export function ComposeEdge({
   const { isHovered, nodeProps: pathProps, toolbarProps: buttonProps } = useToolbarHover();
   const [edgePath, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
   const edgeData = data as ComposeEdgeData | undefined;
+  const insertActions = edgeData?.insertActions
+    ?? (edgeData?.onInsert
+      ? [{ label: edgeData.insertLabel ?? "Insert", onInsert: edgeData.onInsert }]
+      : []);
+  const hasInsertActions = insertActions.length > 0;
 
   return (
     <>
@@ -41,14 +50,14 @@ export function ComposeEdge({
         {...pathProps}
       />
 
-      {(edgeData?.label || (isHovered && edgeData?.onInsert)) && (
+      {(edgeData?.label || (isHovered && hasInsertActions)) && (
         <EdgeLabelRenderer>
           <>
             {edgeData?.label && (
               <div
                 style={{
                   position: "absolute",
-                  transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY - (edgeData.onInsert ? 16 : 0)}px)`,
+                  transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY - (hasInsertActions ? 16 : 0)}px)`,
                   pointerEvents: "none",
                 }}
                 className="rounded-full border bg-background/95 px-2 py-0.5 text-[11px] font-medium text-muted-foreground shadow-sm"
@@ -56,30 +65,34 @@ export function ComposeEdge({
                 {edgeData.label}
               </div>
             )}
-            {isHovered && edgeData?.onInsert && (
+            {isHovered && hasInsertActions && (
               <div
                 style={{
                   position: "absolute",
-                  transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY + (edgeData.label ? 14 : 0)}px)`,
+                  transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY + (edgeData?.label ? 14 : 0)}px)`,
                   pointerEvents: "all",
                 }}
                 {...buttonProps}
+                className="flex items-center gap-1"
               >
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={edgeData.onInsert}
-                        className="size-6 rounded-full"
-                      >
-                        <PlusIcon className="size-3" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top">{edgeData.insertLabel}</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                {insertActions.map((action) => (
+                  <TooltipProvider key={action.label}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={action.onInsert}
+                          className="size-6 rounded-full"
+                          aria-label={action.label}
+                        >
+                          <PlusIcon className="size-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">{action.label}</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ))}
               </div>
             )}
           </>
