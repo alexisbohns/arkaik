@@ -31,12 +31,21 @@ function normalizeBundle(bundle: ProjectBundle): ProjectBundle {
   for (const [parentId, children] of childrenByParent) {
     const parent = nodeMap.get(parentId);
     if (!parent) continue;
-    const playlist = children
+    const entries = children
       .sort((a, b) => (a.sort - b.sort) || (a.index - b.index))
-      .map((child) => child.id);
+      .map((child) => {
+        const childNode = nodeMap.get(child.id);
+        if (!childNode) return null;
+        if (childNode.species === "flow") return { type: "flow", flow_id: child.id } as const;
+        if (childNode.species === "view") return { type: "view", view_id: child.id } as const;
+        return null;
+      })
+      .filter((entry): entry is { type: "flow"; flow_id: string } | { type: "view"; view_id: string } => Boolean(entry));
     parent.metadata = {
       ...parent.metadata,
-      playlist,
+      playlist: {
+        entries,
+      },
     };
   }
 

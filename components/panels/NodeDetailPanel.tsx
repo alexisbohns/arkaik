@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Trash2Icon } from "lucide-react";
-import type { Node, Edge } from "@/lib/data/types";
+import type { Node, Edge, PlaylistEntry } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import { SPECIES } from "@/lib/config/species";
@@ -34,8 +34,37 @@ import {
   mergeRollups,
 } from "@/lib/utils/platform-status";
 
+function collectReferencedNodeIds(entries: PlaylistEntry[]): string[] {
+  const result: string[] = [];
+
+  for (const entry of entries) {
+    if (entry.type === "view") {
+      result.push(entry.view_id);
+      continue;
+    }
+
+    if (entry.type === "flow") {
+      result.push(entry.flow_id);
+      continue;
+    }
+
+    if (entry.type === "condition") {
+      result.push(...collectReferencedNodeIds(entry.if_true));
+      result.push(...collectReferencedNodeIds(entry.if_false));
+      continue;
+    }
+
+    for (const playlistCase of entry.cases) {
+      result.push(...collectReferencedNodeIds(playlistCase.entries));
+    }
+  }
+
+  return result;
+}
+
 function getOrderedPlaylistChildren(node: Node, allNodes: Node[]) {
-  const playlist = Array.isArray(node.metadata?.playlist) ? node.metadata.playlist : [];
+  const entries = Array.isArray(node.metadata?.playlist?.entries) ? node.metadata.playlist.entries : [];
+  const playlist = collectReferencedNodeIds(entries);
   const childMap = new Map(allNodes.map((candidate) => [candidate.id, candidate]));
   return playlist
     .map((id) => childMap.get(id))
