@@ -308,21 +308,50 @@ export default function ProjectCanvasPage() {
   }, []);
 
   const toggleScenario = useCallback((scenarioId: string, label: string, parentProductId: string, parentProductLabel: string) => {
-    setExpandedScenarios((prev) => {
-      const next = new Set(prev);
-      if (next.has(scenarioId)) {
+    if (expandedScenarios.has(scenarioId)) {
+      setExpandedScenarios((prev) => {
+        const next = new Set(prev);
         next.delete(scenarioId);
-        setBreadcrumbs((crumbs) => crumbs.slice(0, crumbs.findIndex((b) => b.nodeId === scenarioId)));
-      } else {
+        return next;
+      });
+      const flowsUnderScenario = new Set(
+        dataNodes.filter((n) => n.parent_id === scenarioId && n.species === "flow").map((n) => n.id),
+      );
+      setExpandedFlows((prev) => {
+        const next = new Set(prev);
+        flowsUnderScenario.forEach((id) => next.delete(id));
+        return next;
+      });
+      setBreadcrumbs((crumbs) => crumbs.slice(0, crumbs.findIndex((b) => b.nodeId === scenarioId)));
+    } else {
+      // Enforce one open scenario per product: close sibling scenarios and their child flows
+      const siblingIds = new Set(
+        dataNodes
+          .filter((n) => n.species === "scenario" && n.parent_id === parentProductId && n.id !== scenarioId)
+          .map((n) => n.id),
+      );
+      const siblingFlowIds = new Set(
+        dataNodes
+          .filter((n) => n.species === "flow" && n.parent_id != null && siblingIds.has(n.parent_id))
+          .map((n) => n.id),
+      );
+      setExpandedScenarios((prev) => {
+        const next = new Set(prev);
+        siblingIds.forEach((id) => next.delete(id));
         next.add(scenarioId);
-        setBreadcrumbs([
-          { nodeId: parentProductId, label: parentProductLabel, species: "product" },
-          { nodeId: scenarioId, label, species: "scenario" },
-        ]);
-      }
-      return next;
-    });
-  }, []);
+        return next;
+      });
+      setExpandedFlows((prev) => {
+        const next = new Set(prev);
+        siblingFlowIds.forEach((id) => next.delete(id));
+        return next;
+      });
+      setBreadcrumbs([
+        { nodeId: parentProductId, label: parentProductLabel, species: "product" },
+        { nodeId: scenarioId, label, species: "scenario" },
+      ]);
+    }
+  }, [expandedScenarios, dataNodes]);
 
   const toggleFlow = useCallback((flowId: string, label: string, parentScenarioId: string, parentScenarioLabel: string, grandparentProductId: string, grandparentProductLabel: string) => {
     setExpandedFlows((prev) => {
