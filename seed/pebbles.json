@@ -1,5 +1,5 @@
 {
-  "project": {"id":"pebbles","title":"Pebbles","description":"An emotion journaling app for capturing and replaying personal moments.","created_at":"2024-01-01T00:00:00.000Z","updated_at":"2024-01-01T00:00:00.000Z"},
+  "project": {"id":"pebbles","title":"Pebbles","description":"An emotion journaling app for capturing and replaying personal moments.","root_node_id":"n-product","created_at":"2024-01-01T00:00:00.000Z","updated_at":"2024-01-01T00:00:00.000Z"},
   "nodes": [
     {"id":"n-product","project_id":"pebbles","species":"flow","title":"Pebbles","description":"A product graph of the Pebbles app, from tokens to scenarios.","status":"live","platforms":["ios","android"],"metadata":{"playlist":{"entries":[{"type":"flow","flow_id":"n-s1"},{"type":"flow","flow_id":"n-s2"},{"type":"flow","flow_id":"n-s3"},{"type":"flow","flow_id":"n-s4"}]}}},
     {"id":"n-s1","project_id":"pebbles","species":"flow","title":"Record a Pebble","description":"Guide the user through capturing an emotion and saving it as a pebble.","status":"development","platforms":["ios","android"],"metadata":{"playlist":{"entries":[{"type":"flow","flow_id":"n-f2"},{"type":"flow","flow_id":"n-f3"},{"type":"flow","flow_id":"n-f1"}]}}},

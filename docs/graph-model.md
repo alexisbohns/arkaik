@@ -22,6 +22,7 @@ Config source: [lib/config/species.ts](../lib/config/species.ts)
 - Persisted parent/child links are `composes` edges.
 - Child ordering is read from `node.metadata.playlist.entries`.
 - When playlist entries do not reference all compose-edge children, missing children are appended after playlist-derived ordering.
+- Root anchoring uses `project.root_node_id` when present; otherwise the canvas infers roots from nodes without compose parents.
 
 Source: [app/project/[id]/page.tsx](../app/project/[id]/page.tsx)
 

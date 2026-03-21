@@ -80,7 +80,9 @@ The project page manages one expansion set as local `useState`:
 
 - `expandedFlows` — which flows show their direct flow/view children
 
-Root nodes are rendered first, then expanded flows reveal ordered children from `metadata.playlist` and `composes` edges.
+When `project.root_node_id` is present, that node is rendered as the primary anchor and top-level compose children fan out from it. When it is missing, root nodes are inferred from nodes with no compose parent.
+
+Expanded flows reveal ordered children from `metadata.playlist` and `composes` edges.
 
 Nodes are positioned dynamically:
 

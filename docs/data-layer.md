@@ -69,6 +69,7 @@ interface Project {
   id: string;
   title: string;
   description?: string;
+  root_node_id?: string; // Optional node id used as the canvas anchor
   created_at: string;  // ISO 8601
   updated_at: string;  // ISO 8601
   archived_at?: string | null; // ISO 8601 when archived
@@ -86,6 +87,8 @@ interface ProjectBundle {
 ```
 
 A `ProjectBundle` is the unit of storage and export — one project with all its nodes and edges.
+
+`project.root_node_id` (when present) points to the node that should render as the primary canvas anchor in [app/project/[id]/page.tsx](../app/project/[id]/page.tsx). If it is missing, the canvas falls back to inferred roots (nodes without compose parents).
 
 ## DataProvider Interface
 
@@ -141,6 +144,8 @@ Utilities in `lib/utils/export.ts`:
 `downloadJson(bundle)` applies a soft warning when the serialized bundle is larger than 4 MB. The warning is intended for UX guidance only and does not block download.
 
 When importing, if the incoming project ID already exists locally, a new project ID is generated and all `project_id` references in nodes and edges are rewritten to the new ID before saving.
+
+When importing JSON, `project.root_node_id` is optional. If provided, it must reference an existing node ID in `nodes` or the import fails validation.
 
 ## Hooks
 

@@ -62,6 +62,8 @@ export interface Project {
   id: string;
   title: string;
   description?: string;
+  /** Optional node id used as the primary canvas anchor/root. */
+  root_node_id?: string;
   /** ISO 8601 timestamp, e.g. "2024-01-01T00:00:00.000Z" */
   created_at: string;
   /** ISO 8601 timestamp, e.g. "2024-01-01T00:00:00.000Z" */
