@@ -14,6 +14,7 @@ import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeFo
 import { Button } from "@/components/ui/button";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
+import { useProject } from "@/lib/hooks/useProject";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
 import { downloadJson, exportProject } from "@/lib/utils/export";
 import type { SpeciesId } from "@/lib/config/species";
@@ -40,6 +41,7 @@ const ROOT_FLOW_SPACING = 360;
 const ROOT_FLOW_Y = 120;
 const ROOT_VIEW_SPACING = 300;
 const ROOT_VIEW_Y = 420;
+const ROOT_ANCHOR_Y = 270;
 const FLOW_CHILD_X_OFFSET = 320;
 const FLOW_CHILD_Y_SPACING = 180;
 
@@ -246,6 +248,7 @@ export default function ProjectCanvasPage() {
 
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, removeNodes } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading, addEdge, removeEdge } = useEdges(id);
+  const { project: projectBundle, loading: projectLoading } = useProject(id);
 
   const nodesById = useMemo(
     () => new Map(dataNodes.map((node) => [node.id, node])),
@@ -274,6 +277,12 @@ export default function ProjectCanvasPage() {
     return map;
   }, [dataEdges]);
 
+  const explicitRootNode = useMemo(() => {
+    const rootNodeId = projectBundle?.project.root_node_id;
+    if (!rootNodeId) return null;
+    return nodesById.get(rootNodeId) ?? null;
+  }, [nodesById, projectBundle?.project.root_node_id]);
+
   const getPlaylist = useCallback((nodeId: string): string[] => {
     const entries = nodesById.get(nodeId)?.metadata?.playlist?.entries;
     if (!Array.isArray(entries)) return [];
@@ -299,12 +308,14 @@ export default function ProjectCanvasPage() {
     if (nodesLoading) return;
     setExpandedFlows((prev) => {
       if (prev.size > 0) return prev;
-      const rootFlowIds = dataNodes
-        .filter((node) => node.species === "flow" && !composeParentByChild.has(node.id))
-        .map((node) => node.id);
+      const rootFlowIds = explicitRootNode
+        ? [explicitRootNode].filter((node) => node.species === "flow").map((node) => node.id)
+        : dataNodes
+            .filter((node) => node.species === "flow" && !composeParentByChild.has(node.id))
+            .map((node) => node.id);
       return new Set(rootFlowIds);
     });
-  }, [nodesLoading, dataNodes, composeParentByChild]);
+  }, [nodesLoading, dataNodes, composeParentByChild, explicitRootNode]);
 
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null);
   const [edgeDialogOpen, setEdgeDialogOpen] = useState(false);
@@ -624,25 +635,84 @@ export default function ProjectCanvasPage() {
       layoutRules.set(node.id, { axis: "both" });
     });
 
-    const rootNodes = dataNodes.filter((node) => !composeParentByChild.has(node.id));
-    const rootFlows = rootNodes.filter((node) => node.species === "flow");
-    const rootViews = rootNodes.filter((node) => node.species === "view");
-
-    const rootFlowPositions = horizontalPositions(900, ROOT_FLOW_Y, rootFlows.length, ROOT_FLOW_SPACING);
-    const rootViewPositions = horizontalPositions(900, ROOT_VIEW_Y, rootViews.length, ROOT_VIEW_SPACING);
-
-    rootFlows.forEach((flow, index) => {
-      addDataNode(flow, rootFlowPositions[index] ?? { x: 900, y: ROOT_FLOW_Y });
-      layoutRules.set(flow.id, { axis: "both", fixed: true });
-    });
-
-    rootViews.forEach((view, index) => {
-      addDataNode(view, rootViewPositions[index] ?? { x: 900, y: ROOT_VIEW_Y });
-      layoutRules.set(view.id, { axis: "both", fixed: true });
-    });
-
-    const queue: string[] = rootFlows.map((flow) => flow.id);
+    const queue: string[] = [];
     const visitedFlowIds = new Set<string>();
+
+    if (explicitRootNode) {
+      const rootPosition = { x: 900, y: ROOT_ANCHOR_Y };
+      addDataNode(explicitRootNode, rootPosition);
+      layoutRules.set(explicitRootNode.id, { axis: "both", fixed: true });
+
+      const rootChildren = getOrderedChildren(explicitRootNode.id).filter((child) => FLOW_CHILD_SPECIES.has(child.species));
+      const rootChildPositions = verticalPositions(
+        rootPosition.x + FLOW_CHILD_X_OFFSET,
+        rootPosition.y,
+        rootChildren.length,
+      );
+
+      rootChildren.forEach((child, index) => {
+        const childPosition = rootChildPositions[index] ?? {
+          x: rootPosition.x + FLOW_CHILD_X_OFFSET,
+          y: rootPosition.y,
+        };
+        addDataNode(child, childPosition);
+        layoutRules.set(child.id, {
+          axis: "both",
+          clampX: [rootPosition.x + FLOW_CHILD_X_OFFSET - 50, rootPosition.x + FLOW_CHILD_X_OFFSET + 260],
+          clampY: [rootPosition.y - 280, rootPosition.y + 280],
+        });
+
+        visibleEdges.push({
+          id: `compose-${explicitRootNode.id}-${child.id}`,
+          source: explicitRootNode.id,
+          target: child.id,
+          type: "compose",
+        });
+
+        if (child.species === "flow") {
+          queue.push(child.id);
+        }
+      });
+
+      const rootChildViews = rootChildren.filter((child) => child.species === "view");
+      for (let index = 1; index < rootChildViews.length; index += 1) {
+        const prev = rootChildViews[index - 1];
+        const curr = rootChildViews[index];
+        visibleEdges.push({
+          id: `compose-${prev.id}-${curr.id}`,
+          source: prev.id,
+          target: curr.id,
+          type: "compose",
+          data: {
+            insertLabel: "Insert a View",
+            onInsert: () => handleInsertBetween(prev.id, curr.id, "view"),
+          },
+        });
+      }
+
+      if (explicitRootNode.species === "flow") {
+        visitedFlowIds.add(explicitRootNode.id);
+      }
+    } else {
+      const rootNodes = dataNodes.filter((node) => !composeParentByChild.has(node.id));
+      const rootFlows = rootNodes.filter((node) => node.species === "flow");
+      const rootViews = rootNodes.filter((node) => node.species === "view");
+
+      const rootFlowPositions = horizontalPositions(900, ROOT_FLOW_Y, rootFlows.length, ROOT_FLOW_SPACING);
+      const rootViewPositions = horizontalPositions(900, ROOT_VIEW_Y, rootViews.length, ROOT_VIEW_SPACING);
+
+      rootFlows.forEach((flow, index) => {
+        addDataNode(flow, rootFlowPositions[index] ?? { x: 900, y: ROOT_FLOW_Y });
+        layoutRules.set(flow.id, { axis: "both", fixed: true });
+      });
+
+      rootViews.forEach((view, index) => {
+        addDataNode(view, rootViewPositions[index] ?? { x: 900, y: ROOT_VIEW_Y });
+        layoutRules.set(view.id, { axis: "both", fixed: true });
+      });
+
+      queue.push(...rootFlows.map((flow) => flow.id));
+    }
 
     while (queue.length > 0) {
       const flowId = queue.shift()!;
@@ -728,6 +798,7 @@ export default function ProjectCanvasPage() {
     const collisionFreeNodes = resolveNodeCollisions(visibleNodes, layoutRules);
     return { nodes: collisionFreeNodes, edges: visibleEdges };
   }, [
+    explicitRootNode,
     composeParentByChild,
     dataEdges,
     dataNodes,
@@ -738,7 +809,7 @@ export default function ProjectCanvasPage() {
     toggleFlow,
   ]);
 
-  if (nodesLoading || edgesLoading) {
+  if (nodesLoading || edgesLoading || projectLoading) {
     return (
       <div className="h-screen w-full flex items-center justify-center">
         <span className="text-muted-foreground text-sm">Loading graph…</span>

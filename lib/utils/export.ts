@@ -38,12 +38,27 @@ function assertProjectBundleShape(value: unknown): asserts value is ProjectBundl
   if (typeof project.title !== "string" || !project.title.trim()) {
     throw new Error("Invalid JSON: project.title must be a non-empty string");
   }
+  if (project.root_node_id !== undefined && typeof project.root_node_id !== "string") {
+    throw new Error("Invalid JSON: project.root_node_id must be a string when provided");
+  }
 
   if (!Array.isArray(value.nodes)) {
     throw new Error("Invalid JSON: nodes must be an array");
   }
   if (!Array.isArray(value.edges)) {
     throw new Error("Invalid JSON: edges must be an array");
+  }
+
+  if (typeof project.root_node_id === "string") {
+    const nodeIds = new Set(
+      value.nodes
+        .filter(isRecord)
+        .map((node) => node.id)
+        .filter((id): id is string => typeof id === "string"),
+    );
+    if (!nodeIds.has(project.root_node_id)) {
+      throw new Error("Invalid JSON: project.root_node_id must reference an existing node id");
+    }
   }
 }
 
