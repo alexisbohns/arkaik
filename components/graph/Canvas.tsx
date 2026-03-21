@@ -8,7 +8,6 @@ import { ViewNode } from "./nodes/ViewNode";
 import { DataModelNode } from "./nodes/DataModelNode";
 import { ApiEndpointNode } from "./nodes/ApiEndpointNode";
 import { ComposeEdge } from "./edges/ComposeEdge";
-import { BranchEdge } from "./edges/BranchEdge";
 import { CrossLayerEdge } from "./edges/CrossLayerEdge";
 import { FloatingDottedEdge } from "./edges/FloatingDottedEdge";
 
@@ -21,7 +20,6 @@ const nodeTypes = {
 
 const edgeTypes = {
   compose: ComposeEdge,
-  branch: BranchEdge,
   floatingDotted: FloatingDottedEdge,
   calls: CrossLayerEdge,
   displays: CrossLayerEdge,
