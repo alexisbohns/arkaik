@@ -37,6 +37,81 @@ import {
 } from "@/lib/utils/platform-status";
 import { computeElkLayout } from "@/lib/utils/elk-layout";
 
+const SPECIES_TO_NODE_TYPE: Record<SpeciesId, string> = {
+  flow: "flow",
+  view: "view",
+  "data-model": "dataModel",
+  "api-endpoint": "apiEndpoint",
+};
+
+const FLOW_CHILD_SPECIES = new Set<SpeciesId>(["flow", "view"]);
+
+interface RenderSequenceResult {
+  startIds: string[];
+  endIds: string[];
+  entryNodeId?: string;
+}
+
+type ViewCardVariant = "compact" | "large";
+
+interface ViewApiRelation {
+  apiId: string;
+  title: string;
+  status: DataNode["status"];
+  edgeType: EdgeTypeId;
+}
+
+const VISUAL_NODE_ID_SEPARATOR = "@";
+
+function createVisualNodeId(nodeId: string, parentFlowId: string, entryIndex: number): string {
+  return `${nodeId}${VISUAL_NODE_ID_SEPARATOR}${parentFlowId}:${entryIndex}`;
+}
+
+function getBaseNodeId(nodeId: string): string {
+  const separatorIndex = nodeId.indexOf(VISUAL_NODE_ID_SEPARATOR);
+  return separatorIndex >= 0 ? nodeId.slice(0, separatorIndex) : nodeId;
+}
+
+function collectReferencedNodeIds(entries: PlaylistEntry[]): string[] {
+  const result: string[] = [];
+
+  for (const entry of entries) {
+    if (entry.type === "view") {
+      result.push(entry.view_id);
+      continue;
+    }
+
+    if (entry.type === "flow") {
+      result.push(entry.flow_id);
+      continue;
+    }
+
+    if (entry.type === "condition") {
+      result.push(...collectReferencedNodeIds(entry.if_true));
+      result.push(...collectReferencedNodeIds(entry.if_false));
+      continue;
+    }
+
+    for (const playlistCase of entry.cases) {
+      result.push(...collectReferencedNodeIds(playlistCase.entries));
+    }
+  }
+
+  return result;
+}
+
+function createPlaylistEntryForSpecies(species: SpeciesId, nodeId: string): PlaylistEntry | null {
+  if (species === "view") {
+    return { type: "view", view_id: nodeId };
+  }
+
+  if (species === "flow") {
+    return { type: "flow", flow_id: nodeId };
+  }
+
+  return null;
+}
+
 export default function ProjectCanvasPage() {
   const params = useParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
