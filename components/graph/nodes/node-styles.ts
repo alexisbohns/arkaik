@@ -1,5 +1,7 @@
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
+import type { LucideIcon } from "lucide-react";
+import { Monitor, Apple, Bot } from "lucide-react";
 
 export const STATUS_STYLES: Record<StatusId, { badge: string; dot: string }> = {
   idea: { badge: "bg-gray-100 text-gray-600", dot: "bg-gray-400" },
@@ -15,6 +17,12 @@ export const STATUS_LABELS: Record<StatusId, string> = {
   "in-development": "In Development",
   live: "Live",
   deprecated: "Deprecated",
+};
+
+export const PLATFORM_ICONS: Record<PlatformId, LucideIcon> = {
+  web: Monitor,
+  ios: Apple,
+  android: Bot,
 };
 
 export const PLATFORM_DOT_STYLES: Record<PlatformId, string> = {
