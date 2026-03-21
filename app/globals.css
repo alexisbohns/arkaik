@@ -109,3 +109,50 @@
     color: hsl(var(--foreground));
   }
 }
+
+@layer components {
+  .react-flow__controls {
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: 0 6px 16px hsl(240 10% 3.9% / 0.18);
+  }
+
+  .react-flow__controls-button {
+    background-color: hsl(var(--card));
+    border-bottom: 1px solid hsl(var(--border));
+    color: hsl(var(--foreground));
+  }
+
+  .react-flow__controls-button:hover {
+    background-color: hsl(var(--accent));
+  }
+
+  .react-flow__controls-button svg {
+    fill: currentColor;
+  }
+
+  .react-flow__controls-button:last-child {
+    border-bottom: 0;
+  }
+
+  .react-flow__minimap {
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .dark .react-flow__controls {
+    box-shadow: 0 10px 24px hsl(0 0% 0% / 0.45);
+  }
+
+  .dark .react-flow__controls-button {
+    background-color: hsl(var(--card));
+    color: hsl(var(--foreground));
+    border-bottom-color: hsl(var(--border));
+  }
+
+  .dark .react-flow__controls-button:hover {
+    background-color: hsl(var(--accent));
+  }
+}

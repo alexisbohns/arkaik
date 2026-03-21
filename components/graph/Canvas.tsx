@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useRef } from "react";
-import { ReactFlow, MiniMap, Controls, Background, type Node, type Edge, type NodeMouseHandler, type OnConnect, type EdgeMouseHandler, type ReactFlowInstance } from "@xyflow/react";
+import { useCallback, useMemo, useRef, type CSSProperties } from "react";
+import { ReactFlow, Controls, Background, type Node, type Edge, type NodeMouseHandler, type OnConnect, type EdgeMouseHandler, type ReactFlowInstance } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { useTheme } from "next-themes";
 import { FlowNode } from "./nodes/FlowNode";
 import { ViewNode } from "./nodes/ViewNode";
 import { DataModelNode } from "./nodes/DataModelNode";
@@ -10,6 +11,7 @@ import { ApiEndpointNode } from "./nodes/ApiEndpointNode";
 import { ComposeEdge } from "./edges/ComposeEdge";
 import { CrossLayerEdge } from "./edges/CrossLayerEdge";
 import { FloatingDottedEdge } from "./edges/FloatingDottedEdge";
+import { Minimap } from "../layout/Minimap";
 
 const nodeTypes = {
   flow: FlowNode,
@@ -36,6 +38,22 @@ interface CanvasProps {
 
 export function Canvas({ nodes, edges, onNodeClick, onConnect, onEdgeClick }: CanvasProps) {
   const reactFlowRef = useRef<ReactFlowInstance<Node, Edge> | null>(null);
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
+
+  const flowStyle = useMemo(() => {
+    return {
+      "--xy-controls-button-background-color": "hsl(var(--card))",
+      "--xy-controls-button-background-color-hover": "hsl(var(--accent))",
+      "--xy-controls-button-color": "hsl(var(--foreground))",
+      "--xy-controls-button-color-hover": "hsl(var(--foreground))",
+      "--xy-controls-button-border-color": "hsl(var(--border))",
+      "--xy-controls-box-shadow": isDark ? "0 10px 24px hsl(0 0% 0% / 0.45)" : "0 6px 16px hsl(240 10% 3.9% / 0.18)",
+      "--xy-minimap-background-color": "hsl(var(--card))",
+      "--xy-minimap-mask-stroke-color": isDark ? "#60a5fa" : "#3b82f6",
+      "--xy-minimap-mask-stroke-width": "1.5",
+    } as CSSProperties;
+  }, [isDark]);
 
   const handleInit = useCallback((instance: ReactFlowInstance<Node, Edge>) => {
     reactFlowRef.current = instance;
@@ -64,6 +82,8 @@ export function Canvas({ nodes, edges, onNodeClick, onConnect, onEdgeClick }: Ca
         edges={edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        colorMode={isDark ? "dark" : "light"}
+        style={flowStyle}
         fitView
         onInit={handleInit}
         onNodeClick={handleNodeClick}
@@ -71,7 +91,7 @@ export function Canvas({ nodes, edges, onNodeClick, onConnect, onEdgeClick }: Ca
         onEdgeClick={onEdgeClick}
       >
         <Controls />
-        <MiniMap />
+        <Minimap />
         <Background />
       </ReactFlow>
     </div>
