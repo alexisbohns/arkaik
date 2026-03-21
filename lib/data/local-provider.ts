@@ -1,5 +1,31 @@
 import type { DataProvider } from "./data-provider";
-import type { Node, Edge, ProjectBundle } from "./types";
+import type { Node, Edge, ProjectBundle, PlaylistEntry } from "./types";
+import { wouldCreateCycle } from "@/lib/utils/cycle";
+
+function collectReferencedFlowIds(entries: PlaylistEntry[]): string[] {
+  const result: string[] = [];
+
+  for (const entry of entries) {
+    if (entry.type === "flow") {
+      result.push(entry.flow_id);
+      continue;
+    }
+
+    if (entry.type === "condition") {
+      result.push(...collectReferencedFlowIds(entry.if_true));
+      result.push(...collectReferencedFlowIds(entry.if_false));
+      continue;
+    }
+
+    if (entry.type === "junction") {
+      for (const playlistCase of entry.cases) {
+        result.push(...collectReferencedFlowIds(playlistCase.entries));
+      }
+    }
+  }
+
+  return result;
+}
 
 const STORAGE_KEY = "arkaik:store";
 
@@ -163,7 +189,24 @@ export const localProvider: DataProvider = {
     if (!projectId) throw new Error(`Node ${id} not found`);
     const bundle = store.get(projectId)!;
     const idx = bundle.nodes.findIndex((n) => n.id === id);
-    bundle.nodes[idx] = { ...bundle.nodes[idx], ...patch };
+    const nextNode = { ...bundle.nodes[idx], ...patch };
+
+    if (nextNode.species === "flow") {
+      const entries = nextNode.metadata?.playlist?.entries;
+      if (Array.isArray(entries)) {
+        const nextNodes = [...bundle.nodes];
+        nextNodes[idx] = nextNode;
+        const candidateFlowIds = collectReferencedFlowIds(entries);
+
+        for (const candidateFlowId of candidateFlowIds) {
+          if (wouldCreateCycle(nextNode.id, candidateFlowId, nextNodes)) {
+            throw new Error(`Cannot add Flow ${candidateFlowId}: it would create a circular reference.`);
+          }
+        }
+      }
+    }
+
+    bundle.nodes[idx] = nextNode;
     persistStore(store);
     return bundle.nodes[idx];
   },

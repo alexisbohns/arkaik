@@ -18,6 +18,7 @@ import { useProject } from "@/lib/hooks/useProject";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
 import { downloadJson, exportProject } from "@/lib/utils/export";
 import { generateNodeId } from "@/lib/utils/id";
+import { wouldCreateCycle } from "@/lib/utils/cycle";
 import type { SpeciesId } from "@/lib/config/species";
 import type { Node as DataNode, Edge as DataEdge, PlaylistEntry } from "@/lib/data/types";
 import type { EdgeTypeId } from "@/lib/config/edge-types";
@@ -246,8 +247,9 @@ export default function ProjectCanvasPage() {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportWarning, setExportWarning] = useState<string | null>(null);
+  const [playlistError, setPlaylistError] = useState<string | null>(null);
 
-  const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, removeNodes } = useNodes(id);
+  const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, removeNode, removeNodes } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading, addEdge, removeEdge } = useEdges(id);
   const { project: projectBundle, loading: projectLoading } = useProject(id);
 
@@ -442,7 +444,9 @@ export default function ProjectCanvasPage() {
       const insertBeforeId = preset?.insertBeforeId;
       const newNodeId = generateNodeId(data.species);
 
-      await addNode({
+      setPlaylistError(null);
+
+      const createdNode = await addNode({
         id: newNodeId,
         project_id: id,
         title: data.title,
@@ -453,6 +457,20 @@ export default function ProjectCanvasPage() {
       });
 
       if (parentId) {
+        const parentNode = nodesById.get(parentId);
+        if (parentNode && parentNode.species === "flow" && data.species === "flow") {
+          const nodesForValidation = [
+            ...dataNodes.filter((node) => node.id !== createdNode.id),
+            createdNode,
+          ];
+
+          if (wouldCreateCycle(parentNode.id, createdNode.id, nodesForValidation)) {
+            await removeNode(createdNode.id);
+            setPlaylistError(`Cannot add Flow ${createdNode.id}: it would create a circular reference.`);
+            return;
+          }
+        }
+
         await addEdge({
           id: crypto.randomUUID(),
           project_id: id,
@@ -461,7 +479,6 @@ export default function ProjectCanvasPage() {
           edge_type: "composes",
         });
 
-        const parentNode = nodesById.get(parentId);
         if (parentNode) {
           const existingEntries = Array.isArray(parentNode.metadata?.playlist?.entries)
             ? [...parentNode.metadata.playlist.entries]
@@ -493,7 +510,7 @@ export default function ProjectCanvasPage() {
       setNewNodePreset(null);
       setNewNodeOpen(false);
     },
-    [addEdge, addNode, id, newNodePreset, nodesById, updateNode],
+    [addEdge, addNode, dataNodes, id, newNodePreset, nodesById, removeNode, updateNode],
   );
 
   const handleNodeClick = useCallback<NodeMouseHandler>((_event, xyNode) => {
@@ -832,6 +849,11 @@ export default function ProjectCanvasPage() {
           {exportError && (
             <span className="text-xs text-destructive" role="status" aria-live="polite">
               {exportError}
+            </span>
+          )}
+          {playlistError && (
+            <span className="text-xs text-destructive" role="status" aria-live="polite">
+              {playlistError}
             </span>
           )}
           <Button size="sm" variant="outline" onClick={handleExport} disabled={exporting}>
