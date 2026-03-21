@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { type Edge, type Node, type NodeMouseHandler, type Connection, type EdgeMouseHandler } from "@xyflow/react";
-import { PlusIcon } from "lucide-react";
+import { DownloadIcon, PlusIcon } from "lucide-react";
 import { Canvas } from "@/components/graph/Canvas";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
@@ -15,10 +15,9 @@ import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeFo
 import { Button } from "@/components/ui/button";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
+import { downloadJson, exportProject } from "@/lib/utils/export";
 import type { SpeciesId } from "@/lib/config/species";
 import { getChildSpecies } from "@/lib/config/species";
-import { PLATFORMS } from "@/lib/config/platforms";
-import type { PlatformId } from "@/lib/config/platforms";
 import type { Node as DataNode, Edge as DataEdge } from "@/lib/data/types";
 import type { EdgeTypeId } from "@/lib/config/edge-types";
 
@@ -235,6 +234,8 @@ export default function ProjectCanvasPage() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [newNodeOpen, setNewNodeOpen] = useState(false);
   const [newNodePreset, setNewNodePreset] = useState<{ parent_id: string; species: SpeciesId } | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, removeNodes } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading, addEdge, removeEdge } = useEdges(id);
@@ -508,6 +509,25 @@ export default function ProjectCanvasPage() {
     setPendingConnection(null);
   }, [pendingConnection, addEdge, id]);
 
+  const handleExport = useCallback(async () => {
+    if (!id) {
+      setExportError("Unable to export: missing project id.");
+      return;
+    }
+
+    setExporting(true);
+    setExportError(null);
+    try {
+      const bundle = await exportProject(id);
+      downloadJson(bundle);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown export error";
+      setExportError(`Unable to export project: ${message}`);
+    } finally {
+      setExporting(false);
+    }
+  }, [id]);
+
   const { nodes, edges } = useMemo(() => {
     const layoutRules = new Map<string, LayoutRule>();
 
@@ -765,14 +785,23 @@ export default function ProjectCanvasPage() {
 
   return (
     <div className="h-screen w-full flex flex-col">
-      {breadcrumbs.length > 0 && (
-        <header className="flex items-center gap-3 border-b bg-background px-4 py-2 shrink-0">
+      <header className="flex items-center gap-3 border-b bg-background px-4 py-2 shrink-0">
           <Link href="/" aria-label="Go to home" className="inline-flex items-center">
             <ArkaikLogo className="w-16 shrink-0" />
           </Link>
-          <Breadcrumb segments={breadcrumbSegments} />
+          {breadcrumbs.length > 0 && <Breadcrumb segments={breadcrumbSegments} />}
+          <div className="ml-auto flex items-center gap-3">
+            {exportError && (
+              <span className="text-xs text-destructive" role="status" aria-live="polite">
+                {exportError}
+              </span>
+            )}
+            <Button size="sm" variant="outline" onClick={handleExport} disabled={exporting}>
+              <DownloadIcon className="size-4" />
+              {exporting ? "Exporting..." : "Export JSON"}
+            </Button>
+          </div>
         </header>
-      )}
       <div className="flex-1 min-h-0 relative">
         <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} onEdgeClick={handleEdgeClick} />
         <div className="absolute bottom-4 right-4 z-10">
