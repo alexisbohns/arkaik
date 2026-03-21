@@ -16,6 +16,7 @@ interface Node {
   status: StatusId;
   platforms: PlatformId[];
   parent_id?: string | null;
+  sort_order?: number;          // Sibling ordering within a parent (0-based)
   position_x: number;
   position_y: number;
   metadata?: Record<string, unknown>;

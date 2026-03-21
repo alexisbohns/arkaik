@@ -85,6 +85,7 @@ export function FlowNode({ data }: NodeProps) {
         </div>
       </div>
       <Handle type="source" position={Position.Bottom} className="opacity-0" />
+      <Handle type="source" position={Position.Right} id="right" className="opacity-0" />
     </>
   );
 }
