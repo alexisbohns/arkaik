@@ -41,7 +41,7 @@ export function PlatformGaugeList({
               aria-label={PLATFORM_LABELS[platform.id]}
             />
             {showLabels && (
-              <span className="min-w-0 truncate text-xs text-muted-foreground">{PLATFORM_LABELS[platform.id]}</span>
+              <span className="w-14 shrink-0 truncate text-xs text-muted-foreground">{PLATFORM_LABELS[platform.id]}</span>
             )}
             <div className="flex h-3 flex-1 overflow-hidden rounded-sm bg-muted">
               {hasData ? (
