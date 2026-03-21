@@ -17,6 +17,7 @@ import { useEdges } from "@/lib/hooks/useEdges";
 import { useProject } from "@/lib/hooks/useProject";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
 import { downloadJson, exportProject } from "@/lib/utils/export";
+import { generateNodeId } from "@/lib/utils/id";
 import type { SpeciesId } from "@/lib/config/species";
 import type { Node as DataNode, Edge as DataEdge, PlaylistEntry } from "@/lib/data/types";
 import type { EdgeTypeId } from "@/lib/config/edge-types";
@@ -439,7 +440,7 @@ export default function ProjectCanvasPage() {
       const preset = newNodePreset;
       const parentId = preset?.parentId;
       const insertBeforeId = preset?.insertBeforeId;
-      const newNodeId = crypto.randomUUID();
+      const newNodeId = generateNodeId(data.species);
 
       await addNode({
         id: newNodeId,
