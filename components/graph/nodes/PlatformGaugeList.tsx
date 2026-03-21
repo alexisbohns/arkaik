@@ -43,7 +43,7 @@ export function PlatformGaugeList({
             {showLabels && (
               <span className="w-14 shrink-0 truncate text-xs text-muted-foreground">{PLATFORM_LABELS[platform.id]}</span>
             )}
-            <div className="flex h-3 flex-1 overflow-hidden rounded-sm bg-muted">
+            <div className="flex h-2 flex-1 overflow-hidden rounded-md bg-muted">
               {hasData ? (
                 segments.map((segment) => {
                   if (segment.count === 0) return null;
