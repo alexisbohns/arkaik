@@ -584,6 +584,9 @@ export default function ProjectCanvasPage() {
 
       childScenarios.forEach((scenario, i) => {
         const scenarioPos = positions[i];
+        const scenarioFlowCount = dataNodes.filter(
+          (n) => n.species === "flow" && n.parent_id === scenario.id,
+        ).length;
         visibleNodeIds.add(scenario.id);
         visibleNodes.push({
           id: scenario.id,
@@ -593,6 +596,7 @@ export default function ProjectCanvasPage() {
             label: scenario.title,
             status: scenario.status,
             platforms: scenario.platforms,
+            flowCount: scenarioFlowCount,
             expanded: expandedScenarios.has(scenario.id),
             onToggle: () => toggleScenario(scenario.id, scenario.title, product.id, product.title),
             onOpenDetails: () => {
@@ -668,12 +672,12 @@ export default function ProjectCanvasPage() {
         layoutRules.set(flow.id, {
           axis: "x",
         });
-        // Compose edge from scenario to this flow
+        // Floating dotted edge from scenario to this flow
         visibleEdges.push({
           id: `compose-${scenarioId}-${flow.id}`,
           source: scenarioId,
           target: flow.id,
-          type: "compose",
+          type: "floatingDotted",
         });
         // Sequence edge between consecutive flows
         if (i > 0) {

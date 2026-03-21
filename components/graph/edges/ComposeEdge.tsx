@@ -1,11 +1,13 @@
-import { BaseEdge, getStraightPath, type EdgeProps } from "@xyflow/react";
+import { BaseEdge, getSmoothStepPath, type EdgeProps } from "@xyflow/react";
 
 export function ComposeEdge({
   sourceX,
   sourceY,
+  sourcePosition,
   targetX,
   targetY,
+  targetPosition,
 }: EdgeProps) {
-  const [edgePath] = getStraightPath({ sourceX, sourceY, targetX, targetY });
+  const [edgePath] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
   return <BaseEdge path={edgePath} />;
 }
