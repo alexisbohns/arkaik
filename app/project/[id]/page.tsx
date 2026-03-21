@@ -15,6 +15,7 @@ import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeFo
 import { Button } from "@/components/ui/button";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
+import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
 import { downloadJson, exportProject } from "@/lib/utils/export";
 import type { SpeciesId } from "@/lib/config/species";
 import { getChildSpecies } from "@/lib/config/species";
@@ -531,6 +532,22 @@ export default function ProjectCanvasPage() {
       setExporting(false);
     }
   }, [id]);
+
+  useKeyboardShortcuts({
+    onEscape: () => {
+      if (!panelOpen) return;
+      setPanelOpen(false);
+    },
+    onDelete: () => {
+      if (deleteNodeDialogOpen || deleteEdgeDialogOpen || newNodeOpen || edgeDialogOpen) return;
+      if (!selectedNode) return;
+      handleDeleteNodeRequest(selectedNode.id);
+    },
+    onExport: () => {
+      if (exporting) return;
+      void handleExport();
+    },
+  });
 
   const { nodes, edges } = useMemo(() => {
     const layoutRules = new Map<string, LayoutRule>();

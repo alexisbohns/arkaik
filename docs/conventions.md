@@ -27,6 +27,14 @@ docs/                   # This documentation
 - Data flows via props from the project page down to canvas components.
 - `useProject` and `useGraphNavigation` exist as utilities but are not currently used on the canvas page.
 
+## Keyboard Shortcuts
+
+- Project-page shortcuts are wired in `app/project/[id]/page.tsx` using `lib/hooks/useKeyboardShortcuts.ts`.
+- Shortcut key checks and focus guards live in `lib/utils/keyboard.ts`.
+- Keep shortcut handlers thin: they should call existing page handlers (`handleDeleteNodeRequest`, `handleExport`) instead of duplicating business logic.
+- Delete shortcuts must not directly mutate storage. Always route through the existing confirmation dialog flow.
+- Ignore destructive shortcuts when focus is in editable controls (`input`, `textarea`, `contenteditable`, or combobox/textbox roles).
+
 ## Styling
 
 - **Tailwind CSS** for all styling — no CSS modules, no styled-components.
