@@ -24,9 +24,10 @@ export function useNodes(projectId: string) {
   const addNode = useCallback(async (node: Node) => {
     const created = await localProvider.createNode(node);
     // localProvider.createNode mutates bundle.nodes in place, so prev may
-    // already contain the new node — guard against duplicates.
+    // already contain the new node. Always return a new array reference so
+    // React re-renders even when the provider mutated state in place.
     setNodes((prev) => {
-      if (prev.some((n) => n.id === created.id)) return prev;
+      if (prev.some((n) => n.id === created.id)) return [...prev];
       return [...prev, created];
     });
     return created;

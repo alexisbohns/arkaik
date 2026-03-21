@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { type Edge, type Node, type NodeMouseHandler, type Connection, type EdgeMouseHandler } from "@xyflow/react";
 import { DownloadIcon, PlusIcon } from "lucide-react";
 import { Canvas } from "@/components/graph/Canvas";
@@ -242,6 +242,7 @@ export default function ProjectCanvasPage() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [newNodeOpen, setNewNodeOpen] = useState(false);
   const [newNodePreset, setNewNodePreset] = useState<{ parent_id: string; species: SpeciesId } | null>(null);
+  const insertInfoRef = useRef<{ insertBeforeSortOrder: number } | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportWarning, setExportWarning] = useState<string | null>(null);
@@ -441,6 +442,16 @@ export default function ProjectCanvasPage() {
     setNewNodeOpen(true);
   }, []);
 
+  const handleInsertBetween = useCallback((sourceId: string, targetId: string, species: SpeciesId) => {
+    const src = dataNodes.find((n) => n.id === sourceId);
+    const tgt = dataNodes.find((n) => n.id === targetId);
+    if (!src || !tgt || !src.parent_id) return;
+    const insertBeforeSortOrder = tgt.sort_order ?? (src.sort_order ?? 0) + 1;
+    insertInfoRef.current = { insertBeforeSortOrder };
+    setNewNodePreset({ parent_id: src.parent_id, species });
+    setNewNodeOpen(true);
+  }, [dataNodes]);
+
   const handleNewNodeOpenChange = useCallback((open: boolean) => {
     setNewNodeOpen(open);
     if (!open) setNewNodePreset(null);
@@ -465,9 +476,25 @@ export default function ProjectCanvasPage() {
         }
       }
 
-      // Auto-assign sort_order: append after existing siblings
+      // Auto-assign sort_order: when inserting between nodes, shift following
+      // siblings and insert at the target index; otherwise append at the end.
       let sort_order: number | undefined;
-      if (data.parent_id) {
+      const insertInfo = insertInfoRef.current;
+      if (insertInfo && data.parent_id) {
+        const siblings = dataNodes
+          .filter((n) => n.parent_id === data.parent_id && n.species === data.species)
+          .sort((a, b) => (b.sort_order ?? 0) - (a.sort_order ?? 0));
+
+        for (const sibling of siblings) {
+          const siblingSort = sibling.sort_order ?? 0;
+          if (siblingSort >= insertInfo.insertBeforeSortOrder) {
+            await updateNode(sibling.id, { sort_order: siblingSort + 1 });
+          }
+        }
+
+        sort_order = insertInfo.insertBeforeSortOrder;
+        insertInfoRef.current = null;
+      } else if (data.parent_id) {
         const siblings = dataNodes.filter((n) => n.parent_id === data.parent_id && n.species === data.species);
         sort_order = siblings.length > 0
           ? Math.max(...siblings.map((n) => n.sort_order ?? 0)) + 1
@@ -489,7 +516,7 @@ export default function ProjectCanvasPage() {
       });
       setNewNodeOpen(false);
     },
-    [dataNodes, addNode, id],
+    [dataNodes, addNode, updateNode, id],
   );
 
   const handleNodeClick = useCallback<NodeMouseHandler>((_event, xyNode) => {
@@ -745,7 +772,7 @@ export default function ProjectCanvasPage() {
           target: flow.id,
           type: "floatingDotted",
         });
-        // Sequence edge between consecutive flows
+        // Sequence edge between consecutive flows — with insert action
         if (i > 0) {
           const prevFlow = childFlows[i - 1];
           visibleEdges.push({
@@ -753,6 +780,10 @@ export default function ProjectCanvasPage() {
             source: prevFlow.id,
             target: flow.id,
             type: "compose",
+            data: {
+              insertLabel: "Insert a Flow",
+              onInsert: () => handleInsertBetween(prevFlow.id, flow.id, "flow"),
+            },
           });
         }
       });
@@ -769,9 +800,9 @@ export default function ProjectCanvasPage() {
       const flow = dataNodes.find((n) => n.id === flowId);
       if (!flow) continue;
 
-      const children = dataNodes.filter(
-        (n) => n.parent_id === flowId && FLOW_CHILD_SPECIES.has(n.species),
-      );
+      const children = dataNodes
+        .filter((n) => n.parent_id === flowId && FLOW_CHILD_SPECIES.has(n.species))
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 
       const flowNode = visibleNodes.find((n) => n.id === flowId);
       const flowCx = flowNode?.position.x ?? flow.position_x;
@@ -800,6 +831,25 @@ export default function ProjectCanvasPage() {
           axis: "both",
           clampX: [flowCx + FLOW_CHILD_X_START - 40, flowCx + FLOW_CHILD_X_START + maxSpreadX],
           clampY: [flowCy - 80, flowCy + 80],
+        });
+      }
+
+      // Compose edges between consecutive view-species children — with insert action
+      const sortedViewChildren = children
+        .filter((c) => c.species === "view")
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+      for (let vi = 1; vi < sortedViewChildren.length; vi++) {
+        const prev = sortedViewChildren[vi - 1];
+        const curr = sortedViewChildren[vi];
+        visibleEdges.push({
+          id: `compose-${prev.id}-${curr.id}`,
+          source: prev.id,
+          target: curr.id,
+          type: "compose",
+          data: {
+            insertLabel: "Insert a View",
+            onInsert: () => handleInsertBetween(prev.id, curr.id, "view"),
+          },
         });
       }
     }
@@ -845,7 +895,7 @@ export default function ProjectCanvasPage() {
     const collisionFreeNodes = resolveNodeCollisions(visibleNodes, layoutRules);
 
     return { nodes: collisionFreeNodes, edges: visibleEdges };
-  }, [dataNodes, dataEdges, expandedProducts, expandedScenarios, expandedFlows, toggleProduct, toggleScenario, toggleFlow, handleAddChildNode]);
+  }, [dataNodes, dataEdges, expandedProducts, expandedScenarios, expandedFlows, toggleProduct, toggleScenario, toggleFlow, handleAddChildNode, handleInsertBetween]);
 
   const breadcrumbSegments = breadcrumbs.map((crumb, index) => ({
     label: crumb.label,
