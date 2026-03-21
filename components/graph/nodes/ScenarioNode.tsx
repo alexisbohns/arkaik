@@ -4,16 +4,18 @@ import { Handle, Position, NodeToolbar, type NodeProps } from "@xyflow/react";
 import { ChevronDown, ChevronRight, Info, PlusCircle, Layers } from "lucide-react";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
+import type { PlatformStatusRollup } from "@/lib/utils/platform-status";
 import { PLATFORMS } from "@/lib/config/platforms";
-import { StatusBadge } from "@/components/layout/StatusBadge";
 import { StageIcon } from "@/components/layout/StageIcon";
-import { STATUS_GHOST_STYLES, PLATFORM_ICONS, PLATFORM_LABELS } from "./node-styles";
+import { STATUS_GHOST_STYLES } from "./node-styles";
 import { useToolbarHover } from "@/lib/hooks/useToolbarHover";
+import { PlatformGaugeList } from "./PlatformGaugeList";
 
 export function ScenarioNode({ data }: NodeProps) {
   const status = (data.status as StatusId) ?? "idea";
   const label = String(data.label ?? "Scenario");
   const platforms = (data.platforms as PlatformId[]) ?? [];
+  const platformRollup = (data.platformRollup as PlatformStatusRollup | undefined) ?? { counts: {}, totals: {} };
   const expanded = Boolean(data.expanded);
   const flowCount = typeof data.flowCount === "number" ? data.flowCount : 0;
   const stage = data.metadata ? (data.metadata as Record<string, unknown>).stage as string | undefined : undefined;
@@ -44,7 +46,7 @@ export function ScenarioNode({ data }: NodeProps) {
         tabIndex={0}
         aria-label={label}
         aria-expanded={expanded}
-        className={`flex flex-col gap-2 w-56 px-4 py-3 rounded-xl bg-background border-2 border-border shadow-md cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${ghostClass.wrapper} ${ghostClass.border}`}
+        className={`flex flex-col gap-3 w-64 px-4 py-3 rounded-2xl bg-background border-2 border-border shadow-md cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${ghostClass.wrapper} ${ghostClass.border}`}
         onClick={(e) => {
           e.stopPropagation();
           onToggle?.();
@@ -83,30 +85,11 @@ export function ScenarioNode({ data }: NodeProps) {
             )}
           </div>
         </div>
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5">
-            <StatusBadge status={status} />
-            {flowCount > 0 && (
-              <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground">
-                <Layers className="w-3 h-3" />
-                {flowCount}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-1">
-            {PLATFORMS.map((p) => {
-              const Icon = PLATFORM_ICONS[p.id];
-              const active = platforms.includes(p.id);
-              return (
-                <Icon
-                  key={p.id}
-                  className={`w-3.5 h-3.5 ${active ? "text-green-500" : "text-muted-foreground/40"}`}
-                  aria-label={PLATFORM_LABELS[p.id]}
-                />
-              );
-            })}
-          </div>
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Layers className="w-3.5 h-3.5" />
+          <span>{flowCount}</span>
         </div>
+        <PlatformGaugeList rollup={platformRollup} platforms={platforms.length > 0 ? platforms : PLATFORMS.map((platform) => platform.id)} />
       </div>
       <Handle type="source" position={Position.Bottom} className="opacity-0" />
     </>

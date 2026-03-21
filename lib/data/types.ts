@@ -11,6 +11,16 @@ export type Status = StatusId;
 export type Platform = PlatformId;
 /** Relationship type between two nodes, derived from the EDGE_TYPES config. */
 export type EdgeType = EdgeTypeId;
+/** Per-platform status source of truth for step-like species. */
+export type PlatformStatusMap = Partial<Record<PlatformId, StatusId>>;
+/** Freeform per-platform notes used by the detail panel. */
+export type PlatformNotesMap = Partial<Record<PlatformId, string>>;
+
+export interface NodeMetadata extends Record<string, unknown> {
+  stage?: string;
+  platformNotes?: PlatformNotesMap;
+  platformStatuses?: PlatformStatusMap;
+}
 
 export interface Node {
   id: string;
@@ -24,7 +34,7 @@ export interface Node {
   sort_order?: number;
   position_x: number;
   position_y: number;
-  metadata?: Record<string, unknown>;
+  metadata?: NodeMetadata;
 }
 
 export interface Edge {

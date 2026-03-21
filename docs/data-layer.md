@@ -19,9 +19,19 @@ interface Node {
   sort_order?: number;          // Sibling ordering within a parent (0-based)
   position_x: number;
   position_y: number;
-  metadata?: Record<string, unknown>;
+  metadata?: NodeMetadata;
 }
 ```
+
+### NodeMetadata
+
+Defined in `lib/data/types.ts`:
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `stage` | `string` | Optional lifecycle marker used by node headers |
+| `platformNotes` | `Partial<Record<PlatformId, string>>` | Per-platform notes in the detail panel |
+| `platformStatuses` | `Partial<Record<PlatformId, StatusId>>` | Per-platform source-of-truth statuses for step-like species |
 
 ### Edge
 
@@ -133,13 +143,15 @@ Hooks in `lib/hooks/` provide React state wrappers around the provider:
 The `NodeDetailPanel` is the primary UI for editing nodes. The mutation path:
 
 ```
-NodeDetailPanel (title, status, platforms, description, metadata)
+NodeDetailPanel (title, description, platforms, metadata)
   → useNodes.updateNode(id, patch)
     → localProvider.updateNode(id, patch)
       → localStorage
 ```
 
-Platform variant notes are stored in `node.metadata.platformNotes` as `Partial<Record<PlatformId, string>>`.
+Step-like species store editable per-platform statuses in `node.metadata.platformStatuses`. When legacy data does not have that field yet, the UI lazily derives platform statuses from `node.status` + `node.platforms` and writes the richer metadata shape back on the next edit.
+
+`flow` and `scenario` no longer rely on an editable single status in the UI. Their cards and panels compute platform gauges from descendants in `app/project/[id]/page.tsx` and `components/panels/NodeDetailPanel.tsx`.
 
 ## Migration Path
 

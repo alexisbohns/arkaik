@@ -20,8 +20,8 @@ The project page (`app/project/[id]/page.tsx`) is the core of the app. It:
 
 1. Loads nodes and edges via `useNodes` and `useEdges`
 2. Manages expansion state for products, scenarios, and flows via local `useState` sets
-3. Maps domain nodes to React Flow nodes with position, type, and toggle handlers
-4. Handles per-platform split rendering for step-like nodes
+3. Computes per-platform step statuses and rollup gauges for flows and scenarios
+4. Maps domain nodes to React Flow nodes with position, type, and toggle handlers
 5. Renders the `Canvas` component with computed nodes and edges
 6. Opens `NodeDetailPanel` on node click for viewing/editing properties
 7. Opens `NewNodeForm` (Dialog) via a floating "New node" button for creating nodes
@@ -34,9 +34,10 @@ components/
     Canvas.tsx              # ReactFlow wrapper — registers node/edge types, renders Controls, MiniMap, Background
     nodes/                  # Custom React Flow node components
       ProductNode.tsx       # Level 7 — large circle, Package icon
-      ScenarioNode.tsx      # Level 6 — rounded rect, platform dots
-      FlowNode.tsx          # Level 5 — rounded rect, violet accent
-      StepNode.tsx          # Level 4–0 — views, components, tokens
+      ScenarioNode.tsx      # Level 6 — rounded rect, flow count + per-platform stacked gauges
+      FlowNode.tsx          # Level 5 — rounded rect with compact per-platform stacked gauges
+      StepNode.tsx          # Level 4–0 — per-platform status rows
+      PlatformGaugeList.tsx # Shared stacked gauge renderer for flow/scenario cards and panels
       ConditionNode.tsx     # Diamond — branching logic
       DataModelNode.tsx     # Parallel layer — amber, Database icon
       ApiEndpointNode.tsx   # Parallel layer — teal, Plug icon
@@ -52,9 +53,9 @@ components/
     Sidebar.tsx             # Left panel container (stub)
     StatusBadge.tsx         # Colored pill with status label
   panels/
-    NewNodeForm.tsx         # Dialog form for creating a node: title, species, status, platforms, parent
-    NodeDetailPanel.tsx     # Slide-in sheet: edit title, description, status, platforms; connection navigation; per-platform variant notes
-    PlatformVariants.tsx    # Platform tab switcher with per-platform notes
+    NewNodeForm.tsx         # Dialog form for creating a node with species-aware status/platform defaults
+    NodeDetailPanel.tsx     # Slide-in sheet: edit node fields, platform-specific statuses, and computed rollups
+    PlatformVariants.tsx    # Platform tab switcher with per-platform status and notes
   ui/                       # shadcn/ui primitives (button, card, dialog, input, etc.)
 ```
 
@@ -67,7 +68,7 @@ localProvider (implements DataProvider)
     ↕ (async calls)
 Hooks: useNodes, useEdges
     ↕ (state)
-app/project/[id]/page.tsx (semantic zoom + platform split logic)
+app/project/[id]/page.tsx (semantic zoom + status rollup logic)
     ↕ (props)
 Canvas → ReactFlow → Custom Nodes/Edges
     ↕ (click events)
@@ -106,9 +107,10 @@ Nodes targeting all 3 platforms or a single platform are rendered as a single no
 
 Clicking any node opens a slide-in `Sheet` (`NodeDetailPanel`) with:
 
-- **Editable fields**: title, description, status dropdown, platform toggles
+- **Editable fields**: title, description, and species-aware status/platform controls
 - **Connections**: parent, children, and cross-layer nodes (data-model, api-endpoint) with click-to-navigate
-- **Platform Variants** (step-species only): per-platform tabbed notes stored in `node.metadata.platformNotes`
+- **Platform Variants** (step-species only): per-platform status + notes stored in `node.metadata`
+- **Computed gauges** (`flow`, `scenario`): read-only per-platform rollups built from descendants
 
 Edits call `useNodes.updateNode` which flows through the `DataProvider`.
 

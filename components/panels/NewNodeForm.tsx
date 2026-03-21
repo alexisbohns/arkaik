@@ -18,14 +18,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SPECIES } from "@/lib/config/species";
+import { SPECIES, isStepSpecies } from "@/lib/config/species";
 import { STATUSES } from "@/lib/config/statuses";
 import { PLATFORMS } from "@/lib/config/platforms";
 import { PLATFORM_DOT_STYLES, PLATFORM_LABELS } from "@/components/graph/nodes/node-styles";
 import type { SpeciesId } from "@/lib/config/species";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
-import type { Node } from "@/lib/data/types";
+import type { Node, NodeMetadata } from "@/lib/data/types";
 
 const PARENT_NONE = "__none__";
 
@@ -35,6 +35,7 @@ export interface NewNodeFormData {
   status: StatusId;
   platforms: PlatformId[];
   parent_id: string | null;
+  metadata?: NodeMetadata;
 }
 
 interface NewNodeFormProps {
@@ -52,6 +53,9 @@ export function NewNodeForm({ open, onOpenChange, onSubmit, nodes = [], defaultV
   const [status, setStatus] = useState<StatusId>("idea");
   const [platforms, setPlatforms] = useState<PlatformId[]>([]);
   const [parentId, setParentId] = useState<string | null>(defaultValues?.parent_id ?? null);
+  const usesSingleStatusField = !isStepSpecies(species) && species !== "flow" && species !== "scenario";
+  const usesPlatformDefaultStatus = isStepSpecies(species);
+  const allowsPlatformEditing = species !== "flow" && species !== "scenario";
 
   function resetForm() {
     setTitle("");
@@ -75,7 +79,16 @@ export function NewNodeForm({ open, onOpenChange, onSubmit, nodes = [], defaultV
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim()) return;
-    onSubmit({ title: title.trim(), species, status, platforms, parent_id: parentId });
+
+    const metadata: NodeMetadata | undefined = isStepSpecies(species)
+      ? {
+          platformStatuses: Object.fromEntries(
+            platforms.map((platformId) => [platformId, status]),
+          ) as Record<PlatformId, StatusId>,
+        }
+      : undefined;
+
+    onSubmit({ title: title.trim(), species, status, platforms, parent_id: parentId, metadata });
     resetForm();
   }
 
@@ -112,43 +125,49 @@ export function NewNodeForm({ open, onOpenChange, onSubmit, nodes = [], defaultV
               </SelectContent>
             </Select>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</span>
-            <Select value={status} onValueChange={(v) => setStatus(v as StatusId)}>
-              <SelectTrigger aria-label="Status">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {STATUSES.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Platforms</span>
-            <div className="flex items-center gap-2 flex-wrap">
-              {PLATFORMS.map((p) => {
-                const selected = platforms.includes(p.id);
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => handlePlatformToggle(p.id)}
-                    aria-pressed={selected}
-                    className={`flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${
-                      selected
-                        ? "bg-muted text-foreground"
-                        : "bg-transparent text-muted-foreground border border-input hover:bg-muted/50"
-                    }`}
-                  >
-                    <span className={`w-2 h-2 rounded-full ${selected ? PLATFORM_DOT_STYLES[p.id] : "bg-muted-foreground/40"}`} />
-                    {PLATFORM_LABELS[p.id]}
-                  </button>
-                );
-              })}
+          {(usesSingleStatusField || usesPlatformDefaultStatus) && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                {usesPlatformDefaultStatus ? "Default Platform Status" : "Status"}
+              </span>
+              <Select value={status} onValueChange={(v) => setStatus(v as StatusId)}>
+                <SelectTrigger aria-label={usesPlatformDefaultStatus ? "Default platform status" : "Status"}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUSES.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          </div>
+          )}
+          {allowsPlatformEditing && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Platforms</span>
+              <div className="flex items-center gap-2 flex-wrap">
+                {PLATFORMS.map((p) => {
+                  const selected = platforms.includes(p.id);
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => handlePlatformToggle(p.id)}
+                      aria-pressed={selected}
+                      className={`flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${
+                        selected
+                          ? "bg-muted text-foreground"
+                          : "bg-transparent text-muted-foreground border border-input hover:bg-muted/50"
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full ${selected ? PLATFORM_DOT_STYLES[p.id] : "bg-muted-foreground/40"}`} />
+                      {PLATFORM_LABELS[p.id]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <div className="flex flex-col gap-1.5">
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Parent</span>
             <Select

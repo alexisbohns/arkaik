@@ -16,6 +16,12 @@ export type SpeciesId = (typeof SPECIES)[number]["id"];
 /** @deprecated Use SpeciesId */
 export type Species = SpeciesId;
 
+export const STEP_SPECIES = ["token", "state", "component", "section", "view"] as const;
+
+export function isStepSpecies(species: SpeciesId): species is (typeof STEP_SPECIES)[number] {
+  return STEP_SPECIES.includes(species as (typeof STEP_SPECIES)[number]);
+}
+
 /** Maps each species to the suggested child species in the composition hierarchy. */
 const CHILD_SPECIES: Partial<Record<SpeciesId, SpeciesId>> = {
   product: "scenario",
