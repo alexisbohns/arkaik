@@ -26,9 +26,9 @@ Defined in `lib/data/types.ts`:
 | Field | Type | Purpose |
 |-------|------|---------|
 | `stage` | `string` | Optional lifecycle marker used by node headers |
-| `playlist` | `string[]` | Ordered child node IDs used for flow/scenario sequence rendering |
+| `playlist` | `string[]` | Ordered child node IDs used for flow sequence rendering |
 | `platformNotes` | `Partial<Record<PlatformId, string>>` | Per-platform notes in the detail panel |
-| `platformStatuses` | `Partial<Record<PlatformId, StatusId>>` | Per-platform source-of-truth statuses for step-like species |
+| `platformStatuses` | `Partial<Record<PlatformId, StatusId>>` | Per-platform source-of-truth statuses for views |
 
 ### Edge
 
@@ -134,7 +134,7 @@ Hooks in `lib/hooks/` provide React state wrappers around the provider:
 | `useEdges(projectId)` | `{ edges, loading, addEdge, removeEdge }` | CRUD for edges |
 | `useGraphNavigation()` | `{ expandedNodeIds, zoomLevel, breadcrumbs, expand, collapse, navigateTo }` | Generic semantic zoom state |
 
-> **Note:** The project canvas page (`app/project/[id]/page.tsx`) uses `useNodes` and `useEdges` directly but does **not** use `useProject` or `useGraphNavigation`. It manages expansion sets (`expandedProducts`, `expandedScenarios`, `expandedFlows`) and breadcrumbs as local `useState` — the granularity required three separate sets rather than the single `expandedNodeIds` set in `useGraphNavigation`.
+> **Note:** The project canvas page (`app/project/[id]/page.tsx`) uses `useNodes` and `useEdges` directly but does **not** use `useProject` or `useGraphNavigation`. It currently manages an `expandedFlows` set as local state.
 
 ### Node Editing Flow
 
@@ -147,9 +147,9 @@ NodeDetailPanel (title, description, platforms, metadata)
       → localStorage
 ```
 
-Step-like species store editable per-platform statuses in `node.metadata.platformStatuses`. When legacy data does not have that field yet, the UI lazily derives platform statuses from `node.status` + `node.platforms` and writes the richer metadata shape back on the next edit.
+Views store editable per-platform statuses in `node.metadata.platformStatuses`. When legacy data does not have that field yet, the UI derives platform statuses from `node.status` + `node.platforms` and writes the richer metadata shape back on the next edit.
 
-`flow` and `scenario` no longer rely on an editable single status in the UI. Their cards and panels compute platform gauges from descendants in `app/project/[id]/page.tsx` and `components/panels/NodeDetailPanel.tsx`.
+Flows do not expose an editable rollup status in UI. Flow cards and panel gauges compute status from descendant views in [app/project/[id]/page.tsx](../app/project/[id]/page.tsx) and [components/panels/NodeDetailPanel.tsx](../components/panels/NodeDetailPanel.tsx).
 
 ## Migration Path
 
@@ -162,4 +162,4 @@ To add a new provider: implement the `DataProvider` interface and swap the impor
 
 ## Seed Data
 
-`seed/pebbles.json` contains an example project ("Pebbles") demonstrating the stripped node schema, persisted compose edges for structure, and playlist-driven ordering for scenarios/flows.
+`seed/pebbles.json` contains an example project ("Pebbles") demonstrating the 4-species model, persisted compose edges for structure, and playlist-driven flow ordering.

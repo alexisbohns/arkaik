@@ -1,123 +1,100 @@
 # Graph Model
 
-The product graph is built from **nodes** (entities) connected by **edges** (relationships). Platform status now has two layers:
+The graph is built from nodes and edges with structure driven by persisted relationships.
 
-- Step-like species (`view`, `section`, `component`, `state`, `token`) store a status per selected platform in `node.metadata.platformStatuses`
-- `flow` and `scenario` compute their platform status gauges from descendants instead of exposing an editable lifecycle status in the UI
+## Species
 
-Structure and ordering are derived from graph data:
+Current taxonomy has exactly 4 species.
 
-- Parent/child hierarchy uses persisted `composes` edges
-- Child sequence uses `node.metadata.playlist` (ordered child node IDs)
-- Canvas positions are computed at render time (not persisted on `Node`)
+| Level | Species | Role | React Flow node type |
+|---|---|---|---|
+| 1 | `flow` | Ordered sequence container | `flow` |
+| 0 | `view` | Reusable page/screen | `view` |
+| — | `data-model` | Data entity/table | `dataModel` |
+| — | `api-endpoint` | API endpoint | `apiEndpoint` |
 
-## Species Hierarchy
+Config source: [lib/config/species.ts](../lib/config/species.ts)
 
-8 levels forming a composition tree, plus 2 parallel layers:
+## Composition Model
 
-| Level | Species | Description | Node Component |
-|-------|---------|-------------|----------------|
-| 7 | `product` | Top-level product | `ProductNode` — large circle, Package icon |
-| 6 | `scenario` | Composed set of flows | `ScenarioNode` — rounded rect, chevron toggle |
-| 5 | `flow` | Sequence of steps | `FlowNode` — rounded rect, violet accent |
-| 4 | `view` | A page or screen | `StepNode` — platform-aware card stacking |
-| 3 | `section` | Card grid, header bar | `StepNode` |
-| 2 | `component` | Button, Card, Input | `StepNode` |
-| 1 | `state` | button:hover, input:error | `StepNode` |
-| 0 | `token` | Color, spacing, translation key | `StepNode` |
-| — | `condition` | Branching logic in flows | `ConditionNode` — diamond shape, amber border |
-| — | `data-model` | Database table / entity | `DataModelNode` — amber border, Database icon |
-| — | `api-endpoint` | REST endpoint | `ApiEndpointNode` — teal border, Plug icon |
+### Parent/Child Links
 
-**Config source:** `lib/config/species.ts`
+- Persisted parent/child links are `composes` edges.
+- Child ordering is read from `node.metadata.playlist`.
+- When playlist is missing child IDs that still have compose edges, those children are appended after playlist entries.
+
+Source: [app/project/[id]/page.tsx](../app/project/[id]/page.tsx)
 
 ### Flow Children
 
-Species that can appear inside an expanded flow:
+Expanded flows render only `flow` and `view` children as in-canvas children.
 
-- `view`, `component`, `section`, `state`, `token` → rendered as `StepNode`
-- `condition` → rendered as `ConditionNode`
+Source: [app/project/[id]/page.tsx](../app/project/[id]/page.tsx)
 
-## Statuses
+## Status Model
 
-Lifecycle states defined in `lib/config/statuses.ts`:
+Statuses are configured in:
 
-| ID | Label | Order | Counted In Rollups | Visual Effect |
-|----|-------|-------|--------------------|---------------|
-| `idea` | Idea | 0 | No | Dashed border, 60% opacity |
-| `backlog` | Backlog | 1 | No | Normal |
-| `prioritized` | Prioritized | 2 | Yes | Normal |
-| `development` | Development | 3 | Yes | Normal |
-| `releasing` | Releasing | 4 | Yes | Normal |
-| `live` | Live | 5 | Yes | Normal |
-| `archived` | Archived | 6 | No | 60% opacity |
-| `blocked` | Blocked | 7 | Yes | Normal |
+- [lib/config/statuses.ts](../lib/config/statuses.ts)
 
-**Config source:** `lib/config/statuses.ts`
+Rollup behavior:
 
-### Rollup Preset
+- `view` is the only species with editable per-platform status values (`metadata.platformStatuses`).
+- `flow` status is computed for display by aggregating descendant views (including nested sub-flows).
+- `data-model` and `api-endpoint` use single lifecycle status.
 
-The current counted-status preset is `delivery`, defined in `lib/config/statuses.ts`.
+Sources:
 
-- Included: `prioritized`, `development`, `releasing`, `live`, `blocked`
-- Excluded: `idea`, `backlog`, `archived`
-
-The preset is static for now but is structured to become user-configurable later.
+- [lib/utils/platform-status.ts](../lib/utils/platform-status.ts)
+- [components/panels/NodeDetailPanel.tsx](../components/panels/NodeDetailPanel.tsx)
+- [app/project/[id]/page.tsx](../app/project/[id]/page.tsx)
 
 ## Platforms
 
-First-class multi-platform support. Nodes can target any combination:
+Platforms are configured in:
 
-| ID | Label | Emoji | Dot Color | Border Color |
-|----|-------|-------|-----------|--------------|
-| `web` | Web | 🟢 | `bg-green-500` | `border-green-500` |
-| `ios` | iOS | 🔵 | `bg-blue-500` | `border-blue-500` |
-| `android` | Android | 🟣 | `bg-purple-500` | `border-purple-500` |
+- [lib/config/platforms.ts](../lib/config/platforms.ts)
 
-**Config source:** `lib/config/platforms.ts`
+Views can target one or more platforms; per-platform notes/statuses are stored in node metadata.
 
-### Platform Status Rendering
+Source:
 
-The graph page (`app/project/[id]/page.tsx`) derives the presentation payload for node cards:
-
-- `StepNode` renders one status row per active platform
-- `FlowNode` renders one stacked gauge per platform from direct step-like children
-- `ScenarioNode` renders one stacked gauge per platform by merging child flow rollups
-
-Empty platforms render an inactive gauge instead of inventing a lifecycle state.
+- [lib/data/types.ts](../lib/data/types.ts)
 
 ## Edge Types
 
-| ID | Label | Visual | Use |
-|----|-------|--------|-----|
-| `composes` | Composes | Straight solid | Hierarchy: product→scenario→flow and parent-child composition links |
-| `branches` | Branches | Bezier curve | Flow branching: step→condition→step |
-| `calls` | Calls | Default (no custom component) | View → API endpoint |
-| `displays` | Displays | Default (no custom component) | View → data model |
-| `queries` | Queries | Default (no custom component) | API endpoint → data model |
+| Edge Type | Use |
+|---|---|
+| `composes` | Composition hierarchy and ordered flow sequences |
+| `branches` | Legacy/optional branch edges still supported by config and rendering |
+| `calls` | View to API relationship |
+| `displays` | View to data-model relationship |
+| `queries` | API to data-model relationship |
 
-**Config source:** `lib/config/edge-types.ts`
+Config source: [lib/config/edge-types.ts](../lib/config/edge-types.ts)
 
-### Edge Components
+Rendering mapping source: [app/project/[id]/page.tsx](../app/project/[id]/page.tsx)
 
-| Component | Path Style | Mapped Edge Types |
-|-----------|------------|-------------------|
-| `ComposeEdge` | Straight | `composes` |
-| `BranchEdge` | Bezier | `branches` |
-| `CrossLayerEdge` | Dashed straight | Not yet registered in `Canvas.tsx` |
-| *(React Flow default)* | Straight | `calls`, `displays`, `queries` |
+## Node And Edge Components
 
-The mapping from domain `edge_type` to React Flow edge type is in `app/project/[id]/page.tsx`:
-- `composes` → `"compose"` → `ComposeEdge`
-- `branches` → `"branch"` → `BranchEdge`
-- All others → `undefined` → React Flow default edge
+Node registration is in:
 
-## Adding New Taxonomies
+- [components/graph/Canvas.tsx](../components/graph/Canvas.tsx)
 
-All taxonomies live in `lib/config/` as typed `const` arrays:
+Current custom registrations:
 
-1. Add the new entry to the relevant array in `lib/config/`
-2. The `SpeciesId`, `StatusId`, `PlatformId`, or `EdgeTypeId` type updates automatically via `typeof`
-3. If adding a new species: create a node component in `components/graph/nodes/`, register it in `Canvas.tsx`, and add a mapping in `SPECIES_TO_NODE_TYPE` in `app/project/[id]/page.tsx`
-4. If adding a new edge type: create an edge component in `components/graph/edges/`, register it in `Canvas.tsx`, and add a mapping in the edge-type-to-xy-type logic in `app/project/[id]/page.tsx`
-5. Update this document
+- `flow` -> `FlowNode`
+- `view` -> `ViewNode`
+- `dataModel` -> `DataModelNode`
+- `apiEndpoint` -> `ApiEndpointNode`
+
+Edge registration is also in [components/graph/Canvas.tsx](../components/graph/Canvas.tsx).
+
+## Taxonomy Update Checklist
+
+1. Update config array in `lib/config/*`.
+2. Update page mappings and rendering filters in [app/project/[id]/page.tsx](../app/project/[id]/page.tsx).
+3. Update Canvas registrations in [components/graph/Canvas.tsx](../components/graph/Canvas.tsx).
+4. Update forms/panels that branch by species.
+5. Update seed data in [seed/pebbles.json](../seed/pebbles.json).
+6. Update this document.
