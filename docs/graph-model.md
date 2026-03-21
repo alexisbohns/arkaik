@@ -15,6 +15,14 @@ Current taxonomy has exactly 4 species.
 
 Config source: [lib/config/species.ts](../lib/config/species.ts)
 
+## Canvas Visibility
+
+- Canvas rendering currently shows only `flow` and `view` as visible React Flow nodes.
+- `data-model` and `api-endpoint` remain persisted graph species and can still be edited from panels/import-export, but they are not rendered as standalone canvas cards.
+- View cards surface API relationships inline via embedded actions instead of separate API nodes.
+
+Source: [app/project/[id]/page.tsx](../app/project/[id]/page.tsx), [components/graph/nodes/ViewNode.tsx](../components/graph/nodes/ViewNode.tsx)
+
 ## Composition Model
 
 ### Parent/Child Links
@@ -102,6 +110,13 @@ Config source: [lib/config/edge-types.ts](../lib/config/edge-types.ts)
 
 Rendering mapping source: [app/project/[id]/page.tsx](../app/project/[id]/page.tsx)
 
+`calls` edges between a view and API endpoint are projected into View card UI:
+
+- API -> View: inbound/read affordance (`cloud-download` icon)
+- View -> API: outbound/write affordance (`cloud-upload` icon)
+
+Source: [app/project/[id]/page.tsx](../app/project/[id]/page.tsx), [components/graph/nodes/ViewNode.tsx](../components/graph/nodes/ViewNode.tsx)
+
 ## Node And Edge Components
 
 Node registration is in:
@@ -114,6 +129,8 @@ Current custom registrations:
 - `view` -> `ViewNode`
 - `dataModel` -> `DataModelNode`
 - `apiEndpoint` -> `ApiEndpointNode`
+
+`dataModel` and `apiEndpoint` remain registered node types for compatibility, but the current project page renderer does not add those species into `visibleNodes`.
 
 Edge registration is also in [components/graph/Canvas.tsx](../components/graph/Canvas.tsx).
 

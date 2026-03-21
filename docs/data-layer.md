@@ -70,9 +70,14 @@ interface Project {
   title: string;
   description?: string;
   root_node_id?: string; // Optional node id used as the canvas anchor
+  metadata?: ProjectMetadata; // Optional project-level UI preferences
   created_at: string;  // ISO 8601
   updated_at: string;  // ISO 8601
   archived_at?: string | null; // ISO 8601 when archived
+}
+
+interface ProjectMetadata {
+  view_card_variant?: "compact" | "large";
 }
 ```
 
@@ -153,12 +158,12 @@ Hooks in `lib/hooks/` provide React state wrappers around the provider:
 
 | Hook | Returns | Purpose |
 |------|---------|---------|
-| `useProject(id)` | `{ project, loading }` | Load a full `ProjectBundle` |
+| `useProject(id)` | `{ project, loading, updateProject }` | Load and update project-level metadata/settings |
 | `useNodes(projectId)` | `{ nodes, loading, addNode, removeNode, updateNode }` | CRUD for nodes |
 | `useEdges(projectId)` | `{ edges, loading, addEdge, removeEdge }` | CRUD for edges |
 | `useGraphNavigation()` | `{ expandedNodeIds, zoomLevel, breadcrumbs, expand, collapse, navigateTo }` | Generic semantic zoom state |
 
-> **Note:** The project canvas page (`app/project/[id]/page.tsx`) uses `useNodes` and `useEdges` directly but does **not** use `useProject` or `useGraphNavigation`. It currently manages an `expandedFlows` set as local state.
+The project canvas page (`app/project/[id]/page.tsx`) uses `useProject` for root-node anchoring and project-level card-style preferences, and still manages `expandedFlows` as local state.
 
 ### Node Editing Flow
 

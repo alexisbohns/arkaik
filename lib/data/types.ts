@@ -64,12 +64,18 @@ export interface Project {
   description?: string;
   /** Optional node id used as the primary canvas anchor/root. */
   root_node_id?: string;
+  /** Optional project-level UI settings and preferences. */
+  metadata?: ProjectMetadata;
   /** ISO 8601 timestamp, e.g. "2024-01-01T00:00:00.000Z" */
   created_at: string;
   /** ISO 8601 timestamp, e.g. "2024-01-01T00:00:00.000Z" */
   updated_at: string;
   /** ISO 8601 timestamp when archived; null/undefined means active. */
   archived_at?: string | null;
+}
+
+export interface ProjectMetadata extends Record<string, unknown> {
+  view_card_variant?: "compact" | "large";
 }
 
 export interface ProjectBundle {

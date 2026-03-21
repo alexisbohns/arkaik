@@ -73,6 +73,9 @@ export default function ProjectsPage() {
         id,
         title: project.title,
         description: project.description,
+        metadata: {
+          view_card_variant: "compact",
+        },
         created_at: now,
         updated_at: now,
         archived_at: null,

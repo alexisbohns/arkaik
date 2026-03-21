@@ -15,6 +15,7 @@ import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeFo
 import { InsertBetweenDialog, type InsertEntryType } from "@/components/panels/InsertBetweenDialog";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useProject } from "@/lib/hooks/useProject";
@@ -35,72 +36,6 @@ import {
   type PlatformStatusRollup,
 } from "@/lib/utils/platform-status";
 import { computeElkLayout } from "@/lib/utils/elk-layout";
-
-const SPECIES_TO_NODE_TYPE: Record<SpeciesId, string> = {
-  flow: "flow",
-  view: "view",
-  "data-model": "dataModel",
-  "api-endpoint": "apiEndpoint",
-};
-
-const FLOW_CHILD_SPECIES = new Set<SpeciesId>(["flow", "view"]);
-
-interface RenderSequenceResult {
-  startIds: string[];
-  endIds: string[];
-  entryNodeId?: string;
-}
-
-const VISUAL_NODE_ID_SEPARATOR = "@";
-
-function createVisualNodeId(nodeId: string, parentFlowId: string, entryIndex: number): string {
-  return `${nodeId}${VISUAL_NODE_ID_SEPARATOR}${parentFlowId}:${entryIndex}`;
-}
-
-function getBaseNodeId(nodeId: string): string {
-  const separatorIndex = nodeId.indexOf(VISUAL_NODE_ID_SEPARATOR);
-  return separatorIndex >= 0 ? nodeId.slice(0, separatorIndex) : nodeId;
-}
-
-function collectReferencedNodeIds(entries: PlaylistEntry[]): string[] {
-  const result: string[] = [];
-
-  for (const entry of entries) {
-    if (entry.type === "view") {
-      result.push(entry.view_id);
-      continue;
-    }
-
-    if (entry.type === "flow") {
-      result.push(entry.flow_id);
-      continue;
-    }
-
-    if (entry.type === "condition") {
-      result.push(...collectReferencedNodeIds(entry.if_true));
-      result.push(...collectReferencedNodeIds(entry.if_false));
-      continue;
-    }
-
-    for (const playlistCase of entry.cases) {
-      result.push(...collectReferencedNodeIds(playlistCase.entries));
-    }
-  }
-
-  return result;
-}
-
-function createPlaylistEntryForSpecies(species: SpeciesId, nodeId: string): PlaylistEntry | null {
-  if (species === "view") {
-    return { type: "view", view_id: nodeId };
-  }
-
-  if (species === "flow") {
-    return { type: "flow", flow_id: nodeId };
-  }
-
-  return null;
-}
 
 export default function ProjectCanvasPage() {
   const params = useParams();
@@ -137,7 +72,11 @@ export default function ProjectCanvasPage() {
 
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, removeNode, removeNodes } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading, addEdge, removeEdge } = useEdges(id);
-  const { project: projectBundle, loading: projectLoading } = useProject(id);
+  const { project: projectBundle, loading: projectLoading, updateProject } = useProject(id);
+
+  const viewCardVariant: ViewCardVariant = projectBundle?.project.metadata?.view_card_variant === "large"
+    ? "large"
+    : "compact";
 
   const nodesById = useMemo(
     () => new Map(dataNodes.map((node) => [node.id, node])),
@@ -205,6 +144,47 @@ export default function ProjectCanvasPage() {
     [dataNodes],
   );
 
+  const viewApiRelationsByViewId = useMemo(() => {
+    const map = new Map<string, { inbound: ViewApiRelation[]; outbound: ViewApiRelation[] }>();
+
+    for (const edge of dataEdges) {
+      if (edge.edge_type !== "calls") continue;
+
+      const sourceNode = nodesById.get(edge.source_id);
+      const targetNode = nodesById.get(edge.target_id);
+      if (!sourceNode || !targetNode) continue;
+
+      if (sourceNode.species === "api-endpoint" && targetNode.species === "view") {
+        const current = map.get(targetNode.id) ?? { inbound: [], outbound: [] };
+        if (!current.inbound.some((relation) => relation.apiId === sourceNode.id)) {
+          current.inbound.push({
+            apiId: sourceNode.id,
+            title: sourceNode.title,
+            status: sourceNode.status,
+            edgeType: edge.edge_type,
+          });
+          map.set(targetNode.id, current);
+        }
+        continue;
+      }
+
+      if (sourceNode.species === "view" && targetNode.species === "api-endpoint") {
+        const current = map.get(sourceNode.id) ?? { inbound: [], outbound: [] };
+        if (!current.outbound.some((relation) => relation.apiId === targetNode.id)) {
+          current.outbound.push({
+            apiId: targetNode.id,
+            title: targetNode.title,
+            status: targetNode.status,
+            edgeType: edge.edge_type,
+          });
+          map.set(sourceNode.id, current);
+        }
+      }
+    }
+
+    return map;
+  }, [dataEdges, nodesById]);
+
   const getPlaylistEntries = useCallback((nodeId: string): PlaylistEntry[] => {
     const entries = nodesById.get(nodeId)?.metadata?.playlist?.entries;
     return Array.isArray(entries) ? entries : [];
@@ -214,7 +194,7 @@ export default function ProjectCanvasPage() {
     return collectReferencedNodeIds(getPlaylistEntries(nodeId));
   }, [getPlaylistEntries]);
 
-
+  // Auto-expand root flows on initial load.
   useEffect(() => {
     setExpandedFlows((prev) => {
       const next = new Set<string>();
@@ -589,6 +569,25 @@ export default function ProjectCanvasPage() {
     }
   }, [dataNodes]);
 
+  const handleViewCardVariantChange = useCallback(
+    async (variant: ViewCardVariant) => {
+      if (!projectBundle) return;
+
+      try {
+        await updateProject({
+          metadata: {
+            ...(projectBundle.project.metadata ?? {}),
+            view_card_variant: variant,
+          },
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown settings save error";
+        toast.error(`Unable to save card preference: ${message}`);
+      }
+    },
+    [projectBundle, updateProject],
+  );
+
   const handleConnect = useCallback((connection: Connection) => {
     if (!connection.source || !connection.target) return;
     setPendingConnection(connection);
@@ -898,8 +897,26 @@ export default function ProjectCanvasPage() {
 
       if (node.species === "view") {
         const viewRollup = addNodeToRollup(createEmptyRollup(), node);
+        const apiRelations = viewApiRelationsByViewId.get(node.id) ?? { inbound: [], outbound: [] };
+        const metadata = (node.metadata ?? {}) as Record<string, unknown>;
+        const coverUrl = typeof metadata.cover_url === "string"
+          ? metadata.cover_url
+          : typeof metadata.coverUrl === "string"
+            ? metadata.coverUrl
+            : typeof metadata.cover === "string"
+              ? metadata.cover
+              : undefined;
+
         baseData.status = getRollupDisplayStatus(viewRollup, node.status);
         baseData.platformStatuses = getEditablePlatformStatuses(node);
+        baseData.apiInbound = apiRelations.inbound;
+        baseData.apiOutbound = apiRelations.outbound;
+        baseData.viewCardVariant = viewCardVariant;
+        baseData.coverUrl = coverUrl;
+        baseData.onOpenDetails = () => {
+          setSelectedNode(node);
+          setPanelOpen(true);
+        };
       }
 
       visibleNodes.push({
@@ -1102,13 +1119,6 @@ export default function ProjectCanvasPage() {
       };
     };
 
-    // Data-layer nodes (data-model, api-endpoint)
-    const dataLayerNodes = dataNodes.filter((node) => node.species === "data-model" || node.species === "api-endpoint");
-    dataLayerNodes.forEach((node) => {
-      addDataNode(node);
-    });
-
-    // Flow/view tree
     if (explicitRootNode) {
       addDataNode(explicitRootNode);
 
@@ -1210,6 +1220,8 @@ export default function ProjectCanvasPage() {
     handleInsertBetween,
     nodesById,
     toggleFlow,
+    viewApiRelationsByViewId,
+    viewCardVariant,
   ]);
 
   // Run ELK layout asynchronously whenever the graph topology changes
@@ -1275,6 +1287,15 @@ export default function ProjectCanvasPage() {
               {playlistError}
             </span>
           )}
+          <Select value={viewCardVariant} onValueChange={(value) => void handleViewCardVariantChange(value as ViewCardVariant)}>
+            <SelectTrigger className="h-8 w-[160px]" aria-label="View card variant">
+              <SelectValue placeholder="Card style" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="compact">Compact cards</SelectItem>
+              <SelectItem value="large">Large cards</SelectItem>
+            </SelectContent>
+          </Select>
           <Button size="sm" variant="outline" onClick={() => void handleOpenRaw()} disabled={rawLoading}>
             <Code2Icon className="size-4" />
             {rawLoading ? "Loading raw..." : "Raw"}
