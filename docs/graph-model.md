@@ -28,7 +28,19 @@ Source: [app/project/[id]/page.tsx](../app/project/[id]/page.tsx)
 
 ### Flow Children
 
-All flows start collapsed. Any visible flow can be expanded in-canvas. Top-level expansion (root flow and/or direct flow children of `project.root_node_id`, or inferred root flows when no explicit root exists) is accordion-style: opening one top-level flow collapses any other top-level flow already open. Expanded flows render only `flow` and `view` children as in-canvas children.
+All flows start collapsed. Any visible flow can be expanded in-canvas. Top-level expansion (root flow and/or direct flow children of `project.root_node_id`, or inferred root flows when no explicit root exists) is accordion-style: opening one top-level flow collapses any other top-level flow already open.
+
+Expanded flow children follow a strict alternating drill layout:
+
+- Root children are rendered horizontally below the root.
+- Level 2 children are rendered vertically below each level 1 node.
+- Level 3 children are rendered horizontally below each level 2 node.
+- The pattern continues alternating by depth.
+- Vertical drill segments always use top/bottom handles for both `flow` and `view` nodes.
+
+Layout is computed by **elkjs** (Eclipse Layout Kernel, layered algorithm). The page builds a flat list of nodes and compose edges with `position: {x:0, y:0}`, then an async `useEffect` calls `computeElkLayout()` which runs the ELK layered algorithm and returns positioned nodes.
+
+Layout source: [lib/utils/elk-layout.ts](../lib/utils/elk-layout.ts)
 
 Source: [app/project/[id]/page.tsx](../app/project/[id]/page.tsx)
 

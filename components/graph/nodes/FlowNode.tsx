@@ -44,7 +44,8 @@ export function FlowNode({ data }: NodeProps) {
           </button>
         </NodeToolbar>
       )}
-      <Handle type="target" position={Position.Top} className="opacity-0" />
+      <Handle type="target" position={Position.Top} id="top" className="opacity-0" />
+      <Handle type="target" position={Position.Left} id="left" className="opacity-0" />
       <div
         role={isInteractive ? "button" : "group"}
         tabIndex={isInteractive ? 0 : -1}
@@ -102,7 +103,7 @@ export function FlowNode({ data }: NodeProps) {
           <PlatformGaugeList rollup={platformRollup} platforms={platforms.length > 0 ? platforms : PLATFORMS.map((platform) => platform.id)} compact />
         )}
       </div>
-      <Handle type="source" position={Position.Bottom} className="opacity-0" />
+      <Handle type="source" position={Position.Bottom} id="bottom" className="opacity-0" />
       <Handle type="source" position={Position.Right} id="right" className="opacity-0" />
     </>
   );

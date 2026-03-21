@@ -16,7 +16,8 @@ export function ViewNode({ data }: NodeProps) {
 
   return (
     <>
-      <Handle type="target" position={Position.Left} className="opacity-0" />
+      <Handle type="target" position={Position.Top} id="top" className="opacity-0" />
+      <Handle type="target" position={Position.Left} id="left" className="opacity-0" />
       <div className={`relative ${ghostClass.wrapper}`}>
         <div
           role="img"
@@ -33,7 +34,8 @@ export function ViewNode({ data }: NodeProps) {
           )}
         </div>
       </div>
-      <Handle type="source" position={Position.Right} className="opacity-0" />
+      <Handle type="source" position={Position.Bottom} id="bottom" className="opacity-0" />
+      <Handle type="source" position={Position.Right} id="right" className="opacity-0" />
     </>
   );
 }
