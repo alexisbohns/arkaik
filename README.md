@@ -256,9 +256,6 @@ create table nodes (
   )),
   platforms text[] default '{}',
   description text,
-  parent_id uuid references nodes(id) on delete set null,
-  position_x float default 0,
-  position_y float default 0,
   created_at timestamptz default now()
 );
 

@@ -18,6 +18,7 @@ export type PlatformNotesMap = Partial<Record<PlatformId, string>>;
 
 export interface NodeMetadata extends Record<string, unknown> {
   stage?: string;
+  playlist?: string[];
   platformNotes?: PlatformNotesMap;
   platformStatuses?: PlatformStatusMap;
 }
@@ -30,10 +31,6 @@ export interface Node {
   description?: string;
   status: Status;
   platforms: Platform[];
-  parent_id?: string | null;
-  sort_order?: number;
-  position_x: number;
-  position_y: number;
   metadata?: NodeMetadata;
 }
 

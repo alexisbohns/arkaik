@@ -5,6 +5,12 @@ The product graph is built from **nodes** (entities) connected by **edges** (rel
 - Step-like species (`view`, `section`, `component`, `state`, `token`) store a status per selected platform in `node.metadata.platformStatuses`
 - `flow` and `scenario` compute their platform status gauges from descendants instead of exposing an editable lifecycle status in the UI
 
+Structure and ordering are derived from graph data:
+
+- Parent/child hierarchy uses persisted `composes` edges
+- Child sequence uses `node.metadata.playlist` (ordered child node IDs)
+- Canvas positions are computed at render time (not persisted on `Node`)
+
 ## Species Hierarchy
 
 8 levels forming a composition tree, plus 2 parallel layers:
@@ -84,7 +90,7 @@ Empty platforms render an inactive gauge instead of inventing a lifecycle state.
 
 | ID | Label | Visual | Use |
 |----|-------|--------|-----|
-| `composes` | Composes | Straight solid | Hierarchy: product→scenario→flow |
+| `composes` | Composes | Straight solid | Hierarchy: product→scenario→flow and parent-child composition links |
 | `branches` | Branches | Bezier curve | Flow branching: step→condition→step |
 | `calls` | Calls | Default (no custom component) | View → API endpoint |
 | `displays` | Displays | Default (no custom component) | View → data model |

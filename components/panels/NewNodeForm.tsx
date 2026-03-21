@@ -25,16 +25,13 @@ import { PLATFORM_DOT_STYLES, PLATFORM_LABELS } from "@/components/graph/nodes/n
 import type { SpeciesId } from "@/lib/config/species";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
-import type { Node, NodeMetadata } from "@/lib/data/types";
-
-const PARENT_NONE = "__none__";
+import type { NodeMetadata } from "@/lib/data/types";
 
 export interface NewNodeFormData {
   title: string;
   species: SpeciesId;
   status: StatusId;
   platforms: PlatformId[];
-  parent_id: string | null;
   metadata?: NodeMetadata;
 }
 
@@ -42,17 +39,15 @@ interface NewNodeFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (data: NewNodeFormData) => void;
-  nodes?: Node[];
-  /** Pre-fill parent and/or species when opening from an "Add child" action. */
-  defaultValues?: Partial<Pick<NewNodeFormData, "parent_id" | "species">>;
+  /** Pre-fill species when opening from an "Add child" action. */
+  defaultValues?: Partial<Pick<NewNodeFormData, "species">>;
 }
 
-export function NewNodeForm({ open, onOpenChange, onSubmit, nodes = [], defaultValues }: NewNodeFormProps) {
+export function NewNodeForm({ open, onOpenChange, onSubmit, defaultValues }: NewNodeFormProps) {
   const [title, setTitle] = useState("");
   const [species, setSpecies] = useState<SpeciesId>(defaultValues?.species ?? "component");
   const [status, setStatus] = useState<StatusId>("idea");
   const [platforms, setPlatforms] = useState<PlatformId[]>([]);
-  const [parentId, setParentId] = useState<string | null>(defaultValues?.parent_id ?? null);
   const usesSingleStatusField = !isStepSpecies(species) && species !== "flow" && species !== "scenario";
   const usesPlatformDefaultStatus = isStepSpecies(species);
   const allowsPlatformEditing = species !== "flow" && species !== "scenario";
@@ -62,7 +57,6 @@ export function NewNodeForm({ open, onOpenChange, onSubmit, nodes = [], defaultV
     setSpecies(defaultValues?.species ?? "component");
     setStatus("idea");
     setPlatforms([]);
-    setParentId(defaultValues?.parent_id ?? null);
   }
 
   function handleOpenChange(nextOpen: boolean) {
@@ -88,7 +82,7 @@ export function NewNodeForm({ open, onOpenChange, onSubmit, nodes = [], defaultV
         }
       : undefined;
 
-    onSubmit({ title: title.trim(), species, status, platforms, parent_id: parentId, metadata });
+    onSubmit({ title: title.trim(), species, status, platforms, metadata });
     resetForm();
   }
 
@@ -96,7 +90,7 @@ export function NewNodeForm({ open, onOpenChange, onSubmit, nodes = [], defaultV
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{defaultValues?.parent_id ? "Add child node" : "New node"}</DialogTitle>
+          <DialogTitle>New node</DialogTitle>
           <DialogDescription className="sr-only">
             Fill in the details to create a new node on the canvas.
           </DialogDescription>
@@ -168,28 +162,6 @@ export function NewNodeForm({ open, onOpenChange, onSubmit, nodes = [], defaultV
               </div>
             </div>
           )}
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Parent</span>
-            <Select
-              value={parentId ?? PARENT_NONE}
-              onValueChange={(v) => setParentId(v === PARENT_NONE ? null : v)}
-            >
-              <SelectTrigger aria-label="Parent node">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={PARENT_NONE}>None</SelectItem>
-                {nodes.map((n) => {
-                  const speciesLabel = SPECIES.find((s) => s.id === n.species)?.label ?? n.species;
-                  return (
-                    <SelectItem key={n.id} value={n.id}>
-                      {n.title} ({speciesLabel})
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
-          </div>
         </form>
         <DialogFooter>
           <Button variant="outline" type="button" onClick={() => handleOpenChange(false)}>

@@ -15,10 +15,6 @@ interface Node {
   description?: string;
   status: StatusId;
   platforms: PlatformId[];
-  parent_id?: string | null;
-  sort_order?: number;          // Sibling ordering within a parent (0-based)
-  position_x: number;
-  position_y: number;
   metadata?: NodeMetadata;
 }
 ```
@@ -30,6 +26,7 @@ Defined in `lib/data/types.ts`:
 | Field | Type | Purpose |
 |-------|------|---------|
 | `stage` | `string` | Optional lifecycle marker used by node headers |
+| `playlist` | `string[]` | Ordered child node IDs used for flow/scenario sequence rendering |
 | `platformNotes` | `Partial<Record<PlatformId, string>>` | Per-platform notes in the detail panel |
 | `platformStatuses` | `Partial<Record<PlatformId, StatusId>>` | Per-platform source-of-truth statuses for step-like species |
 
@@ -111,6 +108,7 @@ Implemented in `lib/data/local-provider.ts`.
 - **Indexing:** Dual index maps — `nodeIndex` (node ID → project ID) and `edgeIndex` (edge ID → project ID) for fast lookups
 - **Persistence:** Auto-persists to `localStorage` on every mutation
 - **Cascade:** `deleteNode` also removes all edges referencing that node
+- **Normalization:** Legacy node fields (`parent_id`, `sort_order`, `position_x`, `position_y`) are stripped on load/import, and ordered `metadata.playlist` values are hydrated from legacy data when present
 
 ## Import / Export
 
@@ -164,4 +162,4 @@ To add a new provider: implement the `DataProvider` interface and swap the impor
 
 ## Seed Data
 
-`seed/pebbles.json` contains an example project ("Pebbles") demonstrating the data shape with products, scenarios, flows, views, conditions, and all edge types.
+`seed/pebbles.json` contains an example project ("Pebbles") demonstrating the stripped node schema, persisted compose edges for structure, and playlist-driven ordering for scenarios/flows.

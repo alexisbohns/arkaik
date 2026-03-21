@@ -34,19 +34,37 @@ import {
   mergeRollups,
 } from "@/lib/utils/platform-status";
 
+function getOrderedPlaylistChildren(node: Node, allNodes: Node[]) {
+  const playlist = Array.isArray(node.metadata?.playlist) ? node.metadata.playlist : [];
+  const childMap = new Map(allNodes.map((candidate) => [candidate.id, candidate]));
+  return playlist
+    .map((id) => childMap.get(id))
+    .filter((child): child is Node => Boolean(child));
+}
+
 function computeFlowRollup(node: Node, allNodes: Node[]) {
-  return allNodes
-    .filter((candidate) => candidate.parent_id === node.id && isStepSpecies(candidate.species))
+  return getOrderedPlaylistChildren(node, allNodes)
+    .filter((candidate) => isStepSpecies(candidate.species))
     .reduce((rollup, child) => addNodeToRollup(rollup, child), createEmptyRollup());
 }
 
-function computeNodeRollup(node: Node, allNodes: Node[]) {
+function getComposeChildren(node: Node, allNodes: Node[], allEdges: Edge[]) {
+  const childIds = allEdges
+    .filter((edge) => edge.edge_type === "composes" && edge.source_id === node.id)
+    .map((edge) => edge.target_id);
+  const childMap = new Map(allNodes.map((candidate) => [candidate.id, candidate]));
+  return childIds
+    .map((id) => childMap.get(id))
+    .filter((child): child is Node => Boolean(child));
+}
+
+function computeNodeRollup(node: Node, allNodes: Node[], allEdges: Edge[]) {
   if (node.species === "flow") {
     return computeFlowRollup(node, allNodes);
   }
 
   if (node.species === "scenario") {
-    const childFlows = allNodes.filter((candidate) => candidate.parent_id === node.id && candidate.species === "flow");
+    const childFlows = getComposeChildren(node, allNodes, allEdges).filter((candidate) => candidate.species === "flow");
     return mergeRollups(...childFlows.map((flow) => computeFlowRollup(flow, allNodes)));
   }
 
@@ -204,11 +222,8 @@ interface ConnectionsSectionProps {
 }
 
 function ConnectionsSection({ node, allNodes, allEdges, onNavigate }: ConnectionsSectionProps) {
-  const parent = node.parent_id ? allNodes.find((n) => n.id === node.parent_id) : undefined;
-  const children = allNodes.filter((n) => n.parent_id === node.id);
-
   const crossLayerNodes = allEdges
-    .filter((e) => e.source_id === node.id || e.target_id === node.id)
+    .filter((e) => e.edge_type !== "composes" && (e.source_id === node.id || e.target_id === node.id))
     .map((e) => {
       const otherId = e.source_id === node.id ? e.target_id : e.source_id;
       return allNodes.find((n) => n.id === otherId);
@@ -217,7 +232,7 @@ function ConnectionsSection({ node, allNodes, allEdges, onNavigate }: Connection
 
   const uniqueCrossLayerNodes = [...new Map(crossLayerNodes.map((n) => [n.id, n])).values()];
 
-  if (!parent && children.length === 0 && uniqueCrossLayerNodes.length === 0) {
+  if (uniqueCrossLayerNodes.length === 0) {
     return null;
   }
 
@@ -225,12 +240,6 @@ function ConnectionsSection({ node, allNodes, allEdges, onNavigate }: Connection
     <div className="px-6 flex flex-col gap-2">
       <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Connections</span>
       <div className="flex flex-col gap-0.5">
-        {parent && (
-          <ConnectionItem badge="Parent" node={parent} onNavigate={onNavigate} />
-        )}
-        {children.map((child) => (
-          <ConnectionItem key={child.id} badge="Child" node={child} onNavigate={onNavigate} />
-        ))}
         {uniqueCrossLayerNodes.map((n) => (
           <ConnectionItem
             key={n.id}
@@ -308,8 +317,8 @@ function PlatformVariantsSection({ node, onUpdate }: PlatformVariantsSectionProp
   );
 }
 
-function ComputedPlatformStatusSection({ node, allNodes }: { node: Node; allNodes: Node[] }) {
-  const rollup = computeNodeRollup(node, allNodes);
+function ComputedPlatformStatusSection({ node, allNodes, allEdges }: { node: Node; allNodes: Node[]; allEdges: Edge[] }) {
+  const rollup = computeNodeRollup(node, allNodes, allEdges);
 
   return (
     <div className="px-6 flex flex-col gap-3">
@@ -372,6 +381,7 @@ export function NodeDetailPanel({
                 key={`computed-${node.id}`}
                 node={node}
                 allNodes={allNodes}
+                allEdges={allEdges ?? []}
               />
             )}
             {allNodes && allEdges && onNavigate && (

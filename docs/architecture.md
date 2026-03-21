@@ -90,7 +90,7 @@ When a user clicks a product node, its `onToggle` fires, adding child scenario n
 
 Nodes are positioned dynamically:
 - **Product children** (scenarios): horizontal row below the parent, evenly spaced
-- **Scenario children** (flows): vertical top-to-bottom layout, sorted by `sort_order` — communicates sequence within the scenario. Consecutive flows are connected by inter-flow compose edges.
+- **Scenario children** (flows): vertical top-to-bottom layout, ordered by parent `metadata.playlist`. Consecutive flows are connected by inter-flow compose edges.
 - **Flow children** (steps/conditions): linear horizontal (left-to-right) layout
 
 ### Platform Split Rendering
@@ -108,7 +108,7 @@ Nodes targeting all 3 platforms or a single platform are rendered as a single no
 Clicking any node opens a slide-in `Sheet` (`NodeDetailPanel`) with:
 
 - **Editable fields**: title, description, and species-aware status/platform controls
-- **Connections**: parent, children, and cross-layer nodes (data-model, api-endpoint) with click-to-navigate
+- **Connections**: cross-layer nodes (data-model, api-endpoint) with click-to-navigate
 - **Platform Variants** (step-species only): per-platform status + notes stored in `node.metadata`
 - **Computed gauges** (`flow`, `scenario`): read-only per-platform rollups built from descendants
 
