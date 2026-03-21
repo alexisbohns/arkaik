@@ -107,9 +107,11 @@ Implemented in `lib/data/local-provider.ts`.
 Utilities in `lib/utils/export.ts`:
 
 - `exportToJson(bundle)` — Serializes a `ProjectBundle` to formatted JSON
-- `downloadJson(bundle)` — Triggers browser download as `{projectId}.json`
+- `downloadJson(bundle)` — Triggers browser download as `{project-title-slug}-{projectId}.json` and returns export diagnostics (`filename`, `bytes`, `warning`)
 - `exportProject(id)` / `importProject(bundle)` — Delegate to `localProvider`
 - `importProjectFromFile(file)` — Parses and validates JSON file content, normalizes timestamps, and imports via provider
+
+`downloadJson(bundle)` applies a soft warning when the serialized bundle is larger than 4 MB. The warning is intended for UX guidance only and does not block download.
 
 When importing, if the incoming project ID already exists locally, a new project ID is generated and all `project_id` references in nodes and edges are rewritten to the new ID before saving.
 

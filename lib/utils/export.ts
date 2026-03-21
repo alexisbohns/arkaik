@@ -1,6 +1,14 @@
 import type { Project, ProjectBundle } from "@/lib/data/types";
 import { localProvider } from "@/lib/data/local-provider";
 
+const MAX_RECOMMENDED_EXPORT_BYTES = 4 * 1024 * 1024;
+
+export interface ExportDownloadResult {
+  filename: string;
+  bytes: number;
+  warning: string | null;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -59,17 +67,40 @@ export function exportToJson(bundle: ProjectBundle): string {
   return JSON.stringify(bundle, null, 2);
 }
 
-export function downloadJson(bundle: ProjectBundle): void {
+function sanitizeFilenameSegment(input: string): string {
+  const normalized = input.normalize("NFKD").replace(/[^\x00-\x7F]/g, "");
+  const compact = normalized.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  if (!compact) return "project";
+  return compact.slice(0, 48);
+}
+
+function buildExportFilename(bundle: ProjectBundle): string {
+  const titlePart = sanitizeFilenameSegment(bundle.project.title);
+  return `${titlePart}-${bundle.project.id}.json`;
+}
+
+function buildExportWarning(bytes: number): string | null {
+  if (bytes <= MAX_RECOMMENDED_EXPORT_BYTES) return null;
+  const sizeMb = (bytes / (1024 * 1024)).toFixed(1);
+  return `Large export (${sizeMb} MB). This may be hard to share or import on some devices.`;
+}
+
+export function downloadJson(bundle: ProjectBundle): ExportDownloadResult {
   const json = exportToJson(bundle);
+  const filename = buildExportFilename(bundle);
+  const bytes = new Blob([json]).size;
+  const warning = buildExportWarning(bytes);
   const blob = new Blob([json], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${bundle.project.id}.json`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+
+  return { filename, bytes, warning };
 }
 
 /**
