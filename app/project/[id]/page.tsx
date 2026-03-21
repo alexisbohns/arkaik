@@ -40,15 +40,20 @@ const SPECIES_TO_NODE_TYPE: Record<SpeciesId, string> = {
 
 const FLOW_CHILD_SPECIES = new Set<SpeciesId>(["flow", "view"]);
 const ROOT_FLOW_SPACING = 360;
-const ROOT_FLOW_Y = 120;
-const ROOT_VIEW_SPACING = 300;
-const ROOT_VIEW_Y = 420;
 const ROOT_ANCHOR_Y = 270;
-const FLOW_CHILD_X_OFFSET = 320;
 const FLOW_CHILD_Y_SPACING = 180;
+const PLAYLIST_DOWN_OFFSET = 240;
+const PLAYLIST_RIGHT_OFFSET = 420;
+const PLAYLIST_HORIZONTAL_SPACING = 320;
 
 const COLLISION_PADDING = 24;
 const MAX_COLLISION_ITERATIONS = 30;
+
+interface RenderSequenceResult {
+  startIds: string[];
+  endIds: string[];
+  entryNodeId?: string;
+}
 
 function collectReferencedNodeIds(entries: PlaylistEntry[]): string[] {
   const result: string[] = [];
@@ -286,11 +291,14 @@ export default function ProjectCanvasPage() {
     return nodesById.get(rootNodeId) ?? null;
   }, [nodesById, projectBundle?.project.root_node_id]);
 
-  const getPlaylist = useCallback((nodeId: string): string[] => {
+  const getPlaylistEntries = useCallback((nodeId: string): PlaylistEntry[] => {
     const entries = nodesById.get(nodeId)?.metadata?.playlist?.entries;
-    if (!Array.isArray(entries)) return [];
-    return collectReferencedNodeIds(entries);
+    return Array.isArray(entries) ? entries : [];
   }, [nodesById]);
+
+  const getPlaylist = useCallback((nodeId: string): string[] => {
+    return collectReferencedNodeIds(getPlaylistEntries(nodeId));
+  }, [getPlaylistEntries]);
 
   const getOrderedChildren = useCallback((parentId: string): DataNode[] => {
     const edgeChildIds = composeChildIdsByParent.get(parentId) ?? [];
@@ -312,13 +320,20 @@ export default function ProjectCanvasPage() {
     setExpandedFlows((prev) => {
       if (prev.size > 0) return prev;
       const rootFlowIds = explicitRootNode
-        ? [explicitRootNode].filter((node) => node.species === "flow").map((node) => node.id)
+        ? [
+            ...(explicitRootNode.species === "flow" ? [explicitRootNode.id] : []),
+            ...(composeChildIdsByParent.get(explicitRootNode.id) ?? [])
+              .map((nodeId) => nodesById.get(nodeId))
+              .filter((node): node is DataNode => Boolean(node))
+              .filter((node) => node.species === "flow")
+              .map((node) => node.id),
+          ]
         : dataNodes
             .filter((node) => node.species === "flow" && !composeParentByChild.has(node.id))
             .map((node) => node.id);
       return new Set(rootFlowIds);
     });
-  }, [nodesLoading, dataNodes, composeParentByChild, explicitRootNode]);
+  }, [nodesLoading, composeChildIdsByParent, composeParentByChild, dataNodes, explicitRootNode, nodesById]);
 
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null);
   const [edgeDialogOpen, setEdgeDialogOpen] = useState(false);
@@ -583,6 +598,9 @@ export default function ProjectCanvasPage() {
     const visibleNodes: Node[] = [];
     const visibleEdges: Edge[] = [];
     const visibleNodeIds = new Set<string>();
+    const visibleDataNodeIds = new Set<string>();
+    const derivedEdgePairs = new Set<string>();
+    const renderedExpandedFlows = new Set<string>();
 
     const flowRollupCache = new Map<string, PlatformStatusRollup>();
 
@@ -644,6 +662,223 @@ export default function ProjectCanvasPage() {
         data: baseData,
       });
       visibleNodeIds.add(node.id);
+      visibleDataNodeIds.add(node.id);
+    };
+
+    const addSyntheticBranchNode = (
+      syntheticId: string,
+      label: string,
+      position: { x: number; y: number },
+      kind: "condition" | "junction",
+      summary: string,
+    ) => {
+      if (visibleNodeIds.has(syntheticId)) return;
+
+      visibleNodes.push({
+        id: syntheticId,
+        type: "flow",
+        position,
+        data: {
+          label,
+          status: "idea",
+          platforms: [],
+          platformRollup: createEmptyRollup(),
+          renderVariant: "branch",
+          branchKind: kind,
+          branchSummary: summary,
+        },
+      });
+      visibleNodeIds.add(syntheticId);
+      layoutRules.set(syntheticId, { axis: "both" });
+    };
+
+    const uniqueIds = (ids: string[]) => [...new Set(ids)];
+
+    const addComposeEdge = (
+      source: string,
+      target: string,
+      data?: Record<string, unknown>,
+    ) => {
+      if (source === target) return;
+
+      const pairKey = `${source}:${target}`;
+      if (derivedEdgePairs.has(pairKey)) return;
+      derivedEdgePairs.add(pairKey);
+
+      visibleEdges.push({
+        id: `compose-${source}-${target}-${visibleEdges.length}`,
+        source,
+        target,
+        type: "compose",
+        data,
+      });
+    };
+
+    const connectIds = (
+      sourceIds: string[],
+      targetIds: string[],
+      data?: Record<string, unknown>,
+    ) => {
+      for (const sourceId of uniqueIds(sourceIds)) {
+        for (const targetId of uniqueIds(targetIds)) {
+          addComposeEdge(sourceId, targetId, data);
+        }
+      }
+    };
+
+    const getChildAnchor = (position: { x: number; y: number }, childDepth: number) => {
+      if (childDepth <= 2 || childDepth % 2 === 0) {
+        return { x: position.x, y: position.y + PLAYLIST_DOWN_OFFSET };
+      }
+
+      return { x: position.x + PLAYLIST_RIGHT_OFFSET, y: position.y };
+    };
+
+    const getSequencePositions = (
+      anchor: { x: number; y: number },
+      depth: number,
+      count: number,
+    ) => {
+      if (depth % 2 === 1) {
+        return horizontalPositions(
+          anchor.x,
+          anchor.y,
+          count,
+          depth === 1 ? ROOT_FLOW_SPACING : PLAYLIST_HORIZONTAL_SPACING,
+        );
+      }
+
+      return verticalPositions(anchor.x, anchor.y, count, FLOW_CHILD_Y_SPACING);
+    };
+
+    const renderSequence = (
+      entries: PlaylistEntry[],
+      anchor: { x: number; y: number },
+      depth: number,
+      flowTrail: Set<string>,
+      contextKey: string,
+    ): RenderSequenceResult => {
+      if (entries.length === 0) {
+        return { startIds: [], endIds: [] };
+      }
+
+      const positions = getSequencePositions(anchor, depth, entries.length);
+      let sequenceStartIds: string[] = [];
+      let previousResult: RenderSequenceResult | null = null;
+
+      const renderEntry = (
+        entry: PlaylistEntry,
+        position: { x: number; y: number },
+        entryContextKey: string,
+      ): RenderSequenceResult => {
+        if (entry.type === "view") {
+          const viewNode = nodesById.get(entry.view_id);
+          if (!viewNode) return { startIds: [], endIds: [] };
+
+          addDataNode(viewNode, position);
+          layoutRules.set(viewNode.id, { axis: "both" });
+          return { startIds: [viewNode.id], endIds: [viewNode.id], entryNodeId: viewNode.id };
+        }
+
+        if (entry.type === "flow") {
+          const flowNode = nodesById.get(entry.flow_id);
+          if (!flowNode) return { startIds: [], endIds: [] };
+
+          addDataNode(flowNode, position);
+          layoutRules.set(flowNode.id, { axis: "both" });
+
+          if (expandedFlows.has(flowNode.id) && !renderedExpandedFlows.has(flowNode.id) && !flowTrail.has(flowNode.id)) {
+            renderedExpandedFlows.add(flowNode.id);
+            const nextTrail = new Set(flowTrail);
+            nextTrail.add(flowNode.id);
+            const flowEntries = getPlaylistEntries(flowNode.id);
+            const childAnchor = getChildAnchor(position, depth + 1);
+            const childSequence = renderSequence(flowEntries, childAnchor, depth + 1, nextTrail, `${entryContextKey}:flow`);
+            connectIds([flowNode.id], childSequence.startIds);
+          }
+
+          return { startIds: [flowNode.id], endIds: [flowNode.id], entryNodeId: flowNode.id };
+        }
+
+        const branchId = `branch-${entryContextKey}`;
+        const branches = entry.type === "condition"
+          ? [
+              { label: "Yes", entries: entry.if_true },
+              { label: "No", entries: entry.if_false },
+            ]
+          : entry.cases.map((playlistCase) => ({ label: playlistCase.label, entries: playlistCase.entries }));
+
+        addSyntheticBranchNode(
+          branchId,
+          entry.label,
+          position,
+          entry.type,
+          branches.map((branch) => branch.label).join(" / "),
+        );
+
+        const branchAnchor = getChildAnchor(position, depth + 1);
+        const branchPositions = getSequencePositions(branchAnchor, depth + 1, branches.length);
+        const branchEndIds: string[] = [];
+
+        branches.forEach((branch, index) => {
+          if (branch.entries.length === 0) {
+            branchEndIds.push(branchId);
+            return;
+          }
+
+          const branchSequence = renderSequence(
+            branch.entries,
+            branchPositions[index] ?? branchAnchor,
+            depth + 1,
+            flowTrail,
+            `${entryContextKey}:${index}`,
+          );
+
+          if (branchSequence.startIds.length > 0) {
+            connectIds([branchId], branchSequence.startIds, { label: branch.label });
+            branchEndIds.push(...branchSequence.endIds);
+          } else {
+            branchEndIds.push(branchId);
+          }
+        });
+
+        return {
+          startIds: [branchId],
+          endIds: uniqueIds(branchEndIds.length > 0 ? branchEndIds : [branchId]),
+        };
+      };
+
+      for (let index = 0; index < entries.length; index += 1) {
+        const entry = entries[index];
+        const entryResult = renderEntry(entry, positions[index] ?? anchor, `${contextKey}:${index}`);
+        if (entryResult.startIds.length === 0) {
+          continue;
+        }
+
+        if (sequenceStartIds.length === 0) {
+          sequenceStartIds = [...entryResult.startIds];
+        }
+
+        if (previousResult) {
+          const priorResult = previousResult;
+          const edgeData = priorResult.entryNodeId && entryResult.entryNodeId
+            ? {
+                insertLabel: "Insert a View",
+                onInsert: () => handleInsertBetween(priorResult.entryNodeId!, entryResult.entryNodeId!, "view"),
+              }
+            : undefined;
+          connectIds(priorResult.endIds, entryResult.startIds, edgeData);
+        }
+
+        previousResult = entryResult;
+      }
+
+      const terminalIds = previousResult ? previousResult.endIds : sequenceStartIds;
+
+      return {
+        startIds: uniqueIds(sequenceStartIds),
+        endIds: uniqueIds(terminalIds),
+      };
     };
 
     const dataLayerNodes = dataNodes.filter((node) => node.species === "data-model" || node.species === "api-endpoint");
@@ -653,141 +888,70 @@ export default function ProjectCanvasPage() {
       layoutRules.set(node.id, { axis: "both" });
     });
 
-    const queue: string[] = [];
-    const visitedFlowIds = new Set<string>();
-
     if (explicitRootNode) {
       const rootPosition = { x: 900, y: ROOT_ANCHOR_Y };
       addDataNode(explicitRootNode, rootPosition);
       layoutRules.set(explicitRootNode.id, { axis: "both", fixed: true });
 
-      const rootChildren = getOrderedChildren(explicitRootNode.id).filter((child) => FLOW_CHILD_SPECIES.has(child.species));
-      const rootChildPositions = verticalPositions(
-        rootPosition.x + FLOW_CHILD_X_OFFSET,
-        rootPosition.y,
-        rootChildren.length,
-      );
+      const rootChildren = (composeChildIdsByParent.get(explicitRootNode.id) ?? [])
+        .map((childId) => nodesById.get(childId))
+        .filter((child): child is DataNode => Boolean(child))
+        .filter((child) => child.species === "flow");
+      const rootAnchor = getChildAnchor(rootPosition, 1);
+      const rootChildPositions = getSequencePositions(rootAnchor, 1, rootChildren.length);
 
       rootChildren.forEach((child, index) => {
-        const childPosition = rootChildPositions[index] ?? {
-          x: rootPosition.x + FLOW_CHILD_X_OFFSET,
-          y: rootPosition.y,
-        };
+        const childPosition = rootChildPositions[index] ?? rootAnchor;
         addDataNode(child, childPosition);
-        layoutRules.set(child.id, {
-          axis: "both",
-          clampX: [rootPosition.x + FLOW_CHILD_X_OFFSET - 50, rootPosition.x + FLOW_CHILD_X_OFFSET + 260],
-          clampY: [rootPosition.y - 280, rootPosition.y + 280],
-        });
+        layoutRules.set(child.id, { axis: "both" });
+        addComposeEdge(explicitRootNode.id, child.id);
 
-        visibleEdges.push({
-          id: `compose-${explicitRootNode.id}-${child.id}`,
-          source: explicitRootNode.id,
-          target: child.id,
-          type: "compose",
-        });
-
-        if (child.species === "flow") {
-          queue.push(child.id);
+        if (expandedFlows.has(child.id)) {
+          renderedExpandedFlows.add(child.id);
+          const childSequence = renderSequence(
+            getPlaylistEntries(child.id),
+            getChildAnchor(childPosition, 2),
+            2,
+            new Set([child.id]),
+            `root:${child.id}`,
+          );
+          connectIds([child.id], childSequence.startIds);
         }
       });
 
-      const rootChildViews = rootChildren.filter((child) => child.species === "view");
-      for (let index = 1; index < rootChildViews.length; index += 1) {
-        const prev = rootChildViews[index - 1];
-        const curr = rootChildViews[index];
-        visibleEdges.push({
-          id: `compose-${prev.id}-${curr.id}`,
-          source: prev.id,
-          target: curr.id,
-          type: "compose",
-          data: {
-            insertLabel: "Insert a View",
-            onInsert: () => handleInsertBetween(prev.id, curr.id, "view"),
-          },
-        });
-      }
-
-      if (explicitRootNode.species === "flow") {
-        visitedFlowIds.add(explicitRootNode.id);
+      if (explicitRootNode.species === "flow" && expandedFlows.has(explicitRootNode.id) && rootChildren.length === 0) {
+        renderedExpandedFlows.add(explicitRootNode.id);
+        const rootSequence = renderSequence(
+          getPlaylistEntries(explicitRootNode.id),
+          getChildAnchor(rootPosition, 2),
+          2,
+          new Set([explicitRootNode.id]),
+          `root-self:${explicitRootNode.id}`,
+        );
+        connectIds([explicitRootNode.id], rootSequence.startIds);
       }
     } else {
-      const rootNodes = dataNodes.filter((node) => !composeParentByChild.has(node.id));
-      const rootFlows = rootNodes.filter((node) => node.species === "flow");
-      const rootViews = rootNodes.filter((node) => node.species === "view");
+      const rootNodes = dataNodes.filter((node) => !composeParentByChild.has(node.id) && FLOW_CHILD_SPECIES.has(node.species));
+      const rootAnchor = { x: 900, y: ROOT_ANCHOR_Y };
+      const rootPositions = getSequencePositions(getChildAnchor(rootAnchor, 1), 1, rootNodes.length);
 
-      const rootFlowPositions = horizontalPositions(900, ROOT_FLOW_Y, rootFlows.length, ROOT_FLOW_SPACING);
-      const rootViewPositions = horizontalPositions(900, ROOT_VIEW_Y, rootViews.length, ROOT_VIEW_SPACING);
+      rootNodes.forEach((rootNode, index) => {
+        const position = rootPositions[index] ?? rootAnchor;
+        addDataNode(rootNode, position);
+        layoutRules.set(rootNode.id, { axis: "both" });
 
-      rootFlows.forEach((flow, index) => {
-        addDataNode(flow, rootFlowPositions[index] ?? { x: 900, y: ROOT_FLOW_Y });
-        layoutRules.set(flow.id, { axis: "both", fixed: true });
-      });
-
-      rootViews.forEach((view, index) => {
-        addDataNode(view, rootViewPositions[index] ?? { x: 900, y: ROOT_VIEW_Y });
-        layoutRules.set(view.id, { axis: "both", fixed: true });
-      });
-
-      queue.push(...rootFlows.map((flow) => flow.id));
-    }
-
-    while (queue.length > 0) {
-      const flowId = queue.shift()!;
-      if (visitedFlowIds.has(flowId)) continue;
-      visitedFlowIds.add(flowId);
-
-      if (!expandedFlows.has(flowId)) continue;
-      const parentNode = visibleNodes.find((node) => node.id === flowId);
-      if (!parentNode) continue;
-
-      const children = getOrderedChildren(flowId).filter((child) => FLOW_CHILD_SPECIES.has(child.species));
-      const childPositions = verticalPositions(
-        parentNode.position.x + FLOW_CHILD_X_OFFSET,
-        parentNode.position.y,
-        children.length,
-      );
-
-      children.forEach((child, index) => {
-        const pos = childPositions[index] ?? {
-          x: parentNode.position.x + FLOW_CHILD_X_OFFSET,
-          y: parentNode.position.y,
-        };
-
-        addDataNode(child, pos);
-        layoutRules.set(child.id, {
-          axis: "both",
-          clampX: [parentNode.position.x + FLOW_CHILD_X_OFFSET - 50, parentNode.position.x + FLOW_CHILD_X_OFFSET + 260],
-          clampY: [parentNode.position.y - 280, parentNode.position.y + 280],
-        });
-
-        visibleEdges.push({
-          id: `compose-${flowId}-${child.id}`,
-          source: flowId,
-          target: child.id,
-          type: "compose",
-        });
-
-        if (child.species === "flow") {
-          queue.push(child.id);
+        if (rootNode.species === "flow" && expandedFlows.has(rootNode.id)) {
+          renderedExpandedFlows.add(rootNode.id);
+          const rootSequence = renderSequence(
+            getPlaylistEntries(rootNode.id),
+            getChildAnchor(position, 2),
+            2,
+            new Set([rootNode.id]),
+            `fallback:${rootNode.id}`,
+          );
+          connectIds([rootNode.id], rootSequence.startIds);
         }
       });
-
-      const childViews = children.filter((child) => child.species === "view");
-      for (let index = 1; index < childViews.length; index += 1) {
-        const prev = childViews[index - 1];
-        const curr = childViews[index];
-        visibleEdges.push({
-          id: `compose-${prev.id}-${curr.id}`,
-          source: prev.id,
-          target: curr.id,
-          type: "compose",
-          data: {
-            insertLabel: "Insert a View",
-            onInsert: () => handleInsertBetween(prev.id, curr.id, "view"),
-          },
-        });
-      }
     }
 
     const renderedEdgePairs = new Set(visibleEdges.map((edge) => `${edge.source}:${edge.target}`));
@@ -799,7 +963,7 @@ export default function ProjectCanvasPage() {
     };
 
     for (const edge of dataEdges) {
-      if (!visibleNodeIds.has(edge.source_id) || !visibleNodeIds.has(edge.target_id)) continue;
+      if (!visibleDataNodeIds.has(edge.source_id) || !visibleDataNodeIds.has(edge.target_id)) continue;
       const pairKey = `${edge.source_id}:${edge.target_id}`;
       if (renderedEdgePairs.has(pairKey)) continue;
 
@@ -816,13 +980,16 @@ export default function ProjectCanvasPage() {
     return { nodes: collisionFreeNodes, edges: visibleEdges };
   }, [
     explicitRootNode,
+    composeChildIdsByParent,
     composeParentByChild,
     dataEdges,
     dataNodes,
     expandedFlows,
+    getPlaylistEntries,
     getOrderedChildren,
     handleAddChildNode,
     handleInsertBetween,
+    nodesById,
     toggleFlow,
   ]);
 
