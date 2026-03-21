@@ -1,106 +1,530 @@
 {
-  "project": {"id":"pebbles","title":"Pebbles","description":"An emotion journaling app for capturing and replaying personal moments.","root_node_id":"F-product","created_at":"2024-01-01T00:00:00.000Z","updated_at":"2024-01-01T00:00:00.000Z"},
+  "project": {
+    "id": "pebbles",
+    "title": "Pebbles",
+    "description": "An emotion journaling app for capturing and replaying personal moments.",
+    "root_node_id": "V-home",
+    "created_at": "2024-01-01T00:00:00.000Z",
+    "updated_at": "2024-01-01T00:00:00.000Z"
+  },
   "nodes": [
-    {"id":"F-product","project_id":"pebbles","species":"flow","title":"Pebbles","description":"A product graph of the Pebbles app, from tokens to scenarios.","status":"live","platforms":["ios","android"],"metadata":{"playlist":{"entries":[{"type":"flow","flow_id":"F-s1"},{"type":"flow","flow_id":"F-s2"},{"type":"flow","flow_id":"F-s3"},{"type":"flow","flow_id":"F-s4"}]}}},
-    {"id":"F-s1","project_id":"pebbles","species":"flow","title":"Record a Pebble","description":"Guide the user through capturing an emotion and saving it as a pebble.","status":"development","platforms":["ios","android"],"metadata":{"playlist":{"entries":[{"type":"flow","flow_id":"F-f2"},{"type":"flow","flow_id":"F-f3"},{"type":"flow","flow_id":"F-f1"}]}}},
-    {"id":"F-s2","project_id":"pebbles","species":"flow","title":"Replay a Pebble","description":"Browse and relive past pebbles from the timeline.","status":"idea","platforms":["ios","android"],"metadata":{"playlist":{"entries":[{"type":"flow","flow_id":"F-f4"},{"type":"flow","flow_id":"F-f5"}]}}},
-    {"id":"F-s3","project_id":"pebbles","species":"flow","title":"Manage Profile","description":"Create, sign in to, and configure a user account.","status":"backlog","platforms":["ios","android","web"],"metadata":{"playlist":{"entries":[{"type":"flow","flow_id":"F-f6"},{"type":"flow","flow_id":"F-f7"},{"type":"flow","flow_id":"F-f8"}]}}},
-    {"id":"F-s4","project_id":"pebbles","species":"flow","title":"Explore Insights","description":"Surface trends and patterns in the user's emotion history.","status":"backlog","platforms":["ios","android"],"metadata":{"playlist":{"entries":[{"type":"flow","flow_id":"F-f9"},{"type":"flow","flow_id":"F-f10"},{"type":"flow","flow_id":"F-f11"}]}}},
-    {"id":"F-f1","project_id":"pebbles","species":"flow","title":"Shape an Emotion","description":"User selects and refines an emotion label.","status":"development","platforms":["ios","android"],"metadata":{"playlist":{"entries":[{"type":"view","view_id":"V-v1-1"},{"type":"view","view_id":"V-c1-1"},{"type":"view","view_id":"V-v1-2"},{"type":"view","view_id":"V-v1-3"}]}}},
-    {"id":"F-f2","project_id":"pebbles","species":"flow","title":"Capture a Moment","description":"User records audio or video to attach to the pebble.","status":"development","platforms":["ios","android"],"metadata":{"playlist":{"entries":[{"type":"view","view_id":"V-v2-1"},{"type":"view","view_id":"V-v2-2"},{"type":"view","view_id":"V-v2-3"},{"type":"view","view_id":"V-v2-4"}]}}},
-    {"id":"F-f3","project_id":"pebbles","species":"flow","title":"Add Tags & Context","description":"User annotates the pebble with tags and optional location.","status":"backlog","platforms":["ios","android"],"metadata":{"playlist":{"entries":[{"type":"view","view_id":"V-v3-1"},{"type":"view","view_id":"V-v3-2"},{"type":"view","view_id":"V-v3-3"}]}}},
-    {"id":"F-f4","project_id":"pebbles","species":"flow","title":"Discover Emotions","description":"Browse the full gallery of recorded emotions.","status":"idea","platforms":["ios"],"metadata":{"playlist":{"entries":[{"type":"view","view_id":"V-v4-1"},{"type":"view","view_id":"V-v4-2"}]}}},
-    {"id":"F-f5","project_id":"pebbles","species":"flow","title":"Timeline View","description":"Scroll through a chronological list of pebbles.","status":"idea","platforms":["ios","android"],"metadata":{"playlist":{"entries":[{"type":"view","view_id":"V-v5-1"},{"type":"view","view_id":"V-v5-2"},{"type":"view","view_id":"V-v5-3"}]}}},
-    {"id":"F-f6","project_id":"pebbles","species":"flow","title":"Sign Up","description":"New user registration.","status":"live","platforms":["ios","android","web"],"metadata":{"playlist":{"entries":[{"type":"view","view_id":"V-v6-1"},{"type":"view","view_id":"V-v6-2"},{"type":"view","view_id":"V-v6-3"}]}}},
-    {"id":"F-f7","project_id":"pebbles","species":"flow","title":"Sign In","description":"Returning user authentication.","status":"live","platforms":["ios","android","web"],"metadata":{"playlist":{"entries":[{"type":"view","view_id":"V-v7-1"},{"type":"view","view_id":"V-v7-2"}]}}},
-    {"id":"F-f8","project_id":"pebbles","species":"flow","title":"Edit Profile","description":"User updates avatar and display name.","status":"backlog","platforms":["ios","android","web"],"metadata":{"playlist":{"entries":[{"type":"view","view_id":"V-v8-1"},{"type":"view","view_id":"V-v8-2"}]}}},
-    {"id":"F-f9","project_id":"pebbles","species":"flow","title":"Weekly Summary","description":"An auto-generated digest of the week's pebbles.","status":"backlog","platforms":["ios","android"],"metadata":{"playlist":{"entries":[{"type":"view","view_id":"V-v9-1"},{"type":"view","view_id":"V-v9-2"}]}}},
-    {"id":"F-f10","project_id":"pebbles","species":"flow","title":"Emotion Trends","description":"Charts showing emotion frequency over time.","status":"idea","platforms":["ios","android"],"metadata":{"playlist":{"entries":[{"type":"view","view_id":"V-v10-1"},{"type":"view","view_id":"V-v10-2"}]}}},
-    {"id":"F-f11","project_id":"pebbles","species":"flow","title":"Export Data","description":"Download all pebbles as CSV or JSON.","status":"idea","platforms":["web"],"metadata":{"playlist":{"entries":[{"type":"view","view_id":"V-v11-1"},{"type":"view","view_id":"V-v11-2"}]}}},
-    {"id":"V-v1-1","project_id":"pebbles","species":"view","title":"Emotion Picker","description":"Grid of emotion tiles for quick selection.","status":"development","platforms":["ios","android"],"metadata":{"platformStatuses":{"ios":"development","android":"prioritized"}}},
-    {"id":"V-c1-1","project_id":"pebbles","species":"view","title":"Emotion known?","description":"Branch: yes → detail, no → stay on picker.","status":"development","platforms":["ios","android"]},
-    {"id":"V-v1-2","project_id":"pebbles","species":"view","title":"Emotion Detail","description":"Slider and notes field to refine the chosen emotion.","status":"development","platforms":["ios","android"],"metadata":{"platformStatuses":{"ios":"development","android":"blocked"}}},
-    {"id":"V-v1-3","project_id":"pebbles","species":"view","title":"Emotion Summary","description":"Read-only card showing the finalised emotion before saving.","status":"development","platforms":["ios","android"]},
-    {"id":"V-v2-1","project_id":"pebbles","species":"view","title":"Camera Viewfinder","description":"Live camera preview with record button.","status":"development","platforms":["ios","android"],"metadata":{"platformStatuses":{"ios":"live","android":"development"}}},
-    {"id":"V-v2-2","project_id":"pebbles","species":"view","title":"Voice Recorder","description":"Waveform visualiser and record/stop controls.","status":"development","platforms":["ios","android"]},
-    {"id":"V-v2-3","project_id":"pebbles","species":"view","title":"Preview Recording","description":"Playback of the captured clip before saving.","status":"backlog","platforms":["ios","android"],"metadata":{"platformStatuses":{"ios":"backlog","android":"prioritized"}}},
-    {"id":"V-v2-4","project_id":"pebbles","species":"view","title":"Save Confirmation","description":"Confirmation screen shown after a pebble is saved.","status":"backlog","platforms":["ios","android"]},
-    {"id":"V-v3-1","project_id":"pebbles","species":"view","title":"Tag Selector","description":"Multi-select chip list of available tags.","status":"backlog","platforms":["ios","android"]},
-    {"id":"V-v3-2","project_id":"pebbles","species":"view","title":"Context Input","description":"Free-text field for adding a personal note.","status":"backlog","platforms":["ios","android"]},
-    {"id":"V-v3-3","project_id":"pebbles","species":"view","title":"Location Picker","description":"Map view for attaching a place to the pebble.","status":"idea","platforms":["ios","android"]},
-    {"id":"V-v4-1","project_id":"pebbles","species":"view","title":"Emotion Gallery","description":"Masonry grid of all recorded emotion pebbles.","status":"idea","platforms":["ios"]},
-    {"id":"V-v4-2","project_id":"pebbles","species":"view","title":"Emotion Card","description":"Full-screen detail of a single pebble.","status":"idea","platforms":["ios"]},
-    {"id":"V-v5-1","project_id":"pebbles","species":"view","title":"Timeline","description":"Vertical list of pebbles grouped by date.","status":"idea","platforms":["ios","android"]},
-    {"id":"V-v5-2","project_id":"pebbles","species":"view","title":"Filter Options","description":"Bottom sheet with date-range and emotion filters.","status":"idea","platforms":["ios","android"]},
-    {"id":"V-v5-3","project_id":"pebbles","species":"view","title":"Pebble Detail","description":"Rich detail view of a tapped pebble.","status":"idea","platforms":["ios","android"]},
-    {"id":"V-v6-1","project_id":"pebbles","species":"view","title":"Welcome Screen","description":"Onboarding illustration with Sign Up and Sign In CTAs.","status":"live","platforms":["ios","android","web"],"metadata":{"platformStatuses":{"ios":"live","android":"live","web":"releasing"}}},
-    {"id":"V-v6-2","project_id":"pebbles","species":"view","title":"Registration Form","description":"Name, email, and password fields.","status":"live","platforms":["ios","android","web"]},
-    {"id":"V-v6-3","project_id":"pebbles","species":"view","title":"Verify Email","description":"Enter the verification code sent by email.","status":"live","platforms":["ios","android","web"]},
-    {"id":"V-v7-1","project_id":"pebbles","species":"view","title":"Login Form","description":"Email and password sign-in form.","status":"live","platforms":["ios","android","web"]},
-    {"id":"V-v7-2","project_id":"pebbles","species":"view","title":"Forgot Password","description":"Email entry to trigger a password-reset link.","status":"live","platforms":["ios","android","web"]},
-    {"id":"V-v8-1","project_id":"pebbles","species":"view","title":"Profile Settings","description":"Form to edit display name and bio.","status":"backlog","platforms":["ios","android","web"],"metadata":{"platformStatuses":{"ios":"backlog","android":"prioritized","web":"idea"}}},
-    {"id":"V-v8-2","project_id":"pebbles","species":"view","title":"Avatar Picker","description":"Gallery of preset avatars with optional camera upload.","status":"backlog","platforms":["ios","android"]},
-    {"id":"V-v9-1","project_id":"pebbles","species":"view","title":"Summary Dashboard","description":"Card-based summary of the week's pebbles.","status":"backlog","platforms":["ios","android"]},
-    {"id":"V-v9-2","project_id":"pebbles","species":"view","title":"Summary Detail","description":"Expanded view of a specific weekly summary insight.","status":"backlog","platforms":["ios","android"]},
-    {"id":"V-v10-1","project_id":"pebbles","species":"view","title":"Trends Chart","description":"Line chart of emotion frequency over a configurable time window.","status":"idea","platforms":["ios","android"]},
-    {"id":"V-v10-2","project_id":"pebbles","species":"view","title":"Trend Detail","description":"Drill-down for a single emotion's trend over time.","status":"idea","platforms":["ios","android"]},
-    {"id":"V-v11-1","project_id":"pebbles","species":"view","title":"Export Options","description":"Choose format (CSV, JSON) and date range for export.","status":"idea","platforms":["web"]},
-    {"id":"V-v11-2","project_id":"pebbles","species":"view","title":"Export Confirmation","description":"Download link and success state after export is ready.","status":"idea","platforms":["web"]},
-    {"id":"DM-pebble","project_id":"pebbles","species":"data-model","title":"Pebble","description":"Core record: id, emotion_id, media_url, tags, location, user_id, created_at.","status":"development","platforms":["ios","android","web"]},
-    {"id":"DM-user","project_id":"pebbles","species":"data-model","title":"User","description":"id, email, display_name, avatar_url, created_at.","status":"live","platforms":["ios","android","web"]},
-    {"id":"DM-emotion","project_id":"pebbles","species":"data-model","title":"Emotion","description":"id, label, color, icon, valence, arousal.","status":"live","platforms":["ios","android","web"]},
-    {"id":"DM-tag","project_id":"pebbles","species":"data-model","title":"Tag","description":"id, name, color, user_id.","status":"backlog","platforms":["ios","android"]},
-    {"id":"API-post-pebbles","project_id":"pebbles","species":"api-endpoint","title":"POST /pebbles","description":"Create a new pebble entry for the authenticated user.","status":"development","platforms":["ios","android"]},
-    {"id":"API-get-pebbles","project_id":"pebbles","species":"api-endpoint","title":"GET /pebbles","description":"List pebbles for the authenticated user with optional filters.","status":"development","platforms":["ios","android"]},
-    {"id":"API-get-emotions","project_id":"pebbles","species":"api-endpoint","title":"GET /emotions","description":"Return the canonical emotion taxonomy.","status":"live","platforms":["ios","android","web"]},
-    {"id":"API-auth-signup","project_id":"pebbles","species":"api-endpoint","title":"POST /auth/signup","description":"Register a new user and send a verification email.","status":"live","platforms":["ios","android","web"]},
-    {"id":"API-auth-login","project_id":"pebbles","species":"api-endpoint","title":"POST /auth/login","description":"Authenticate a user and return JWT access/refresh tokens.","status":"live","platforms":["ios","android","web"]}
+    {
+      "id": "V-home",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Pebbles Home",
+      "description": "Landing surface where users choose what to do next.",
+      "status": "live",
+      "platforms": ["ios", "android", "web"],
+      "metadata": {
+        "platformStatuses": {
+          "ios": "live",
+          "android": "live",
+          "web": "live"
+        }
+      }
+    },
+    {
+      "id": "F-record",
+      "project_id": "pebbles",
+      "species": "flow",
+      "title": "Record a Pebble",
+      "description": "Capture an emotion and persist it as a pebble.",
+      "status": "development",
+      "platforms": ["ios", "android"],
+      "metadata": {
+        "playlist": {
+          "entries": [
+            { "type": "view", "view_id": "V-picker" },
+            {
+              "type": "condition",
+              "label": "Emotion known?",
+              "if_true": [{ "type": "view", "view_id": "V-detail" }],
+              "if_false": []
+            },
+            { "type": "view", "view_id": "V-summary" },
+            { "type": "view", "view_id": "V-confirm" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "F-replay",
+      "project_id": "pebbles",
+      "species": "flow",
+      "title": "Replay a Pebble",
+      "description": "Browse and relive previously recorded moments.",
+      "status": "idea",
+      "platforms": ["ios", "android"],
+      "metadata": {
+        "playlist": {
+          "entries": [
+            { "type": "view", "view_id": "V-timeline" },
+            { "type": "view", "view_id": "V-pebble" },
+            { "type": "view", "view_id": "V-confirm" },
+            { "type": "flow", "flow_id": "F-google" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "F-account",
+      "project_id": "pebbles",
+      "species": "flow",
+      "title": "Manage Account",
+      "description": "Choose an auth path and update profile settings.",
+      "status": "backlog",
+      "platforms": ["ios", "android", "web"],
+      "metadata": {
+        "playlist": {
+          "entries": [
+            {
+              "type": "junction",
+              "label": "Auth method",
+              "cases": [
+                {
+                  "label": "Google",
+                  "entries": [{ "type": "flow", "flow_id": "F-google" }]
+                },
+                {
+                  "label": "GitHub",
+                  "entries": [{ "type": "flow", "flow_id": "F-github" }]
+                },
+                {
+                  "label": "Email",
+                  "entries": [{ "type": "flow", "flow_id": "F-email" }]
+                }
+              ]
+            },
+            { "type": "view", "view_id": "V-profile" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "F-insights",
+      "project_id": "pebbles",
+      "species": "flow",
+      "title": "Explore Insights",
+      "description": "Inspect trends and summaries based on recorded pebbles.",
+      "status": "backlog",
+      "platforms": ["ios", "android"],
+      "metadata": {
+        "playlist": {
+          "entries": [
+            { "type": "view", "view_id": "V-trends" },
+            { "type": "view", "view_id": "V-weekly" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "F-google",
+      "project_id": "pebbles",
+      "species": "flow",
+      "title": "Sign in with Google",
+      "description": "Authenticate via Google OAuth.",
+      "status": "live",
+      "platforms": ["ios", "android", "web"],
+      "metadata": {
+        "playlist": {
+          "entries": [
+            { "type": "view", "view_id": "V-google-auth" },
+            { "type": "view", "view_id": "V-confirm" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "F-github",
+      "project_id": "pebbles",
+      "species": "flow",
+      "title": "Sign in with GitHub",
+      "description": "Authenticate via GitHub OAuth.",
+      "status": "live",
+      "platforms": ["ios", "android", "web"],
+      "metadata": {
+        "playlist": {
+          "entries": [
+            { "type": "view", "view_id": "V-github-auth" },
+            { "type": "view", "view_id": "V-confirm" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "F-email",
+      "project_id": "pebbles",
+      "species": "flow",
+      "title": "Sign in with Email",
+      "description": "Authenticate or register via email.",
+      "status": "live",
+      "platforms": ["ios", "android", "web"],
+      "metadata": {
+        "playlist": {
+          "entries": [
+            { "type": "view", "view_id": "V-email" },
+            {
+              "type": "condition",
+              "label": "Email known?",
+              "if_true": [{ "type": "view", "view_id": "V-known" }],
+              "if_false": [{ "type": "view", "view_id": "V-unknown" }]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "V-picker",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Emotion Picker",
+      "description": "Choose an emotion from the canonical set.",
+      "status": "development",
+      "platforms": ["ios", "android"],
+      "metadata": {
+        "platformStatuses": {
+          "ios": "development",
+          "android": "prioritized"
+        }
+      }
+    },
+    {
+      "id": "V-detail",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Emotion Detail",
+      "description": "Refine a selected emotion with intensity and note fields.",
+      "status": "development",
+      "platforms": ["ios", "android"],
+      "metadata": {
+        "platformStatuses": {
+          "ios": "development",
+          "android": "blocked"
+        }
+      }
+    },
+    {
+      "id": "V-summary",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Emotion Summary",
+      "description": "Review the selected emotion before saving.",
+      "status": "development",
+      "platforms": ["ios", "android"]
+    },
+    {
+      "id": "V-confirm",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Save Confirmation",
+      "description": "Confirmation state displayed after successful actions.",
+      "status": "backlog",
+      "platforms": ["ios", "android", "web"]
+    },
+    {
+      "id": "V-timeline",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Timeline",
+      "description": "Chronological list of previously captured pebbles.",
+      "status": "idea",
+      "platforms": ["ios", "android"]
+    },
+    {
+      "id": "V-pebble",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Pebble Detail",
+      "description": "Detailed replay of one selected pebble.",
+      "status": "idea",
+      "platforms": ["ios", "android"]
+    },
+    {
+      "id": "V-profile",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Profile Settings",
+      "description": "Profile management and account preferences.",
+      "status": "backlog",
+      "platforms": ["ios", "android", "web"]
+    },
+    {
+      "id": "V-trends",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Trends Chart",
+      "description": "Visualize frequency changes for emotions over time.",
+      "status": "idea",
+      "platforms": ["ios", "android"]
+    },
+    {
+      "id": "V-weekly",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Weekly Summary",
+      "description": "Digest of activity and emotion shifts over the week.",
+      "status": "backlog",
+      "platforms": ["ios", "android"]
+    },
+    {
+      "id": "V-google-auth",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Google OAuth",
+      "description": "Google identity provider consent and callback handling.",
+      "status": "live",
+      "platforms": ["ios", "android", "web"]
+    },
+    {
+      "id": "V-github-auth",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "GitHub OAuth",
+      "description": "GitHub identity provider consent and callback handling.",
+      "status": "live",
+      "platforms": ["ios", "android", "web"]
+    },
+    {
+      "id": "V-email",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Submit Email",
+      "description": "Collect email before routing to login or registration.",
+      "status": "live",
+      "platforms": ["ios", "android", "web"]
+    },
+    {
+      "id": "V-known",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Known Email Login",
+      "description": "Password login for known email addresses.",
+      "status": "live",
+      "platforms": ["ios", "android", "web"]
+    },
+    {
+      "id": "V-unknown",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "New Registration",
+      "description": "Create an account for unknown email addresses.",
+      "status": "live",
+      "platforms": ["ios", "android", "web"]
+    },
+    {
+      "id": "DM-pebble",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "Pebble",
+      "description": "Core journal record containing emotion, media, tags, and ownership.",
+      "status": "development",
+      "platforms": ["ios", "android", "web"]
+    },
+    {
+      "id": "DM-emotion",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "Emotion",
+      "description": "Taxonomy of emotion labels and presentation metadata.",
+      "status": "live",
+      "platforms": ["ios", "android", "web"]
+    },
+    {
+      "id": "DM-user",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "User",
+      "description": "User account identity and profile fields.",
+      "status": "live",
+      "platforms": ["ios", "android", "web"]
+    },
+    {
+      "id": "DM-tag",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "Tag",
+      "description": "User-defined labels attached to pebbles.",
+      "status": "backlog",
+      "platforms": ["ios", "android", "web"]
+    },
+    {
+      "id": "API-get-emotions",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "GET /emotions",
+      "description": "Fetch canonical emotion options.",
+      "status": "live",
+      "platforms": ["ios", "android", "web"]
+    },
+    {
+      "id": "API-post-pebbles",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "POST /pebbles",
+      "description": "Persist a newly captured pebble.",
+      "status": "development",
+      "platforms": ["ios", "android"]
+    },
+    {
+      "id": "API-get-pebbles",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "GET /pebbles",
+      "description": "List previously recorded pebbles.",
+      "status": "development",
+      "platforms": ["ios", "android"]
+    },
+    {
+      "id": "API-post-auth-signup",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "POST /auth/signup",
+      "description": "Register a new user with email/password.",
+      "status": "live",
+      "platforms": ["ios", "android", "web"]
+    }
   ],
   "edges": [
-    {"id":"e-F-product-F-s1","project_id":"pebbles","source_id":"F-product","target_id":"F-s1","edge_type":"composes"},
-    {"id":"e-F-product-F-s2","project_id":"pebbles","source_id":"F-product","target_id":"F-s2","edge_type":"composes"},
-    {"id":"e-F-product-F-s3","project_id":"pebbles","source_id":"F-product","target_id":"F-s3","edge_type":"composes"},
-    {"id":"e-F-product-F-s4","project_id":"pebbles","source_id":"F-product","target_id":"F-s4","edge_type":"composes"},
-    {"id":"e-F-s1-F-f1","project_id":"pebbles","source_id":"F-s1","target_id":"F-f1","edge_type":"composes"},
-    {"id":"e-F-s1-F-f2","project_id":"pebbles","source_id":"F-s1","target_id":"F-f2","edge_type":"composes"},
-    {"id":"e-F-s1-F-f3","project_id":"pebbles","source_id":"F-s1","target_id":"F-f3","edge_type":"composes"},
-    {"id":"e-F-s2-F-f4","project_id":"pebbles","source_id":"F-s2","target_id":"F-f4","edge_type":"composes"},
-    {"id":"e-F-s2-F-f5","project_id":"pebbles","source_id":"F-s2","target_id":"F-f5","edge_type":"composes"},
-    {"id":"e-F-s3-F-f6","project_id":"pebbles","source_id":"F-s3","target_id":"F-f6","edge_type":"composes"},
-    {"id":"e-F-s3-F-f7","project_id":"pebbles","source_id":"F-s3","target_id":"F-f7","edge_type":"composes"},
-    {"id":"e-F-s3-F-f8","project_id":"pebbles","source_id":"F-s3","target_id":"F-f8","edge_type":"composes"},
-    {"id":"e-F-s4-F-f9","project_id":"pebbles","source_id":"F-s4","target_id":"F-f9","edge_type":"composes"},
-    {"id":"e-F-s4-F-f10","project_id":"pebbles","source_id":"F-s4","target_id":"F-f10","edge_type":"composes"},
-    {"id":"e-F-s4-F-f11","project_id":"pebbles","source_id":"F-s4","target_id":"F-f11","edge_type":"composes"},
-    {"id":"e-F-f1-V-v1-1","project_id":"pebbles","source_id":"F-f1","target_id":"V-v1-1","edge_type":"composes"},
-    {"id":"e-F-f2-V-v2-1","project_id":"pebbles","source_id":"F-f2","target_id":"V-v2-1","edge_type":"composes"},
-    {"id":"e-F-f3-V-v3-1","project_id":"pebbles","source_id":"F-f3","target_id":"V-v3-1","edge_type":"composes"},
-    {"id":"e-F-f4-V-v4-1","project_id":"pebbles","source_id":"F-f4","target_id":"V-v4-1","edge_type":"composes"},
-    {"id":"e-F-f5-V-v5-1","project_id":"pebbles","source_id":"F-f5","target_id":"V-v5-1","edge_type":"composes"},
-    {"id":"e-F-f6-V-v6-1","project_id":"pebbles","source_id":"F-f6","target_id":"V-v6-1","edge_type":"composes"},
-    {"id":"e-F-f7-V-v7-1","project_id":"pebbles","source_id":"F-f7","target_id":"V-v7-1","edge_type":"composes"},
-    {"id":"e-F-f8-V-v8-1","project_id":"pebbles","source_id":"F-f8","target_id":"V-v8-1","edge_type":"composes"},
-    {"id":"e-F-f9-V-v9-1","project_id":"pebbles","source_id":"F-f9","target_id":"V-v9-1","edge_type":"composes"},
-    {"id":"e-F-f10-V-v10-1","project_id":"pebbles","source_id":"F-f10","target_id":"V-v10-1","edge_type":"composes"},
-    {"id":"e-F-f11-V-v11-1","project_id":"pebbles","source_id":"F-f11","target_id":"V-v11-1","edge_type":"composes"},
-    {"id":"e-API-post-pebbles-DM-pebble","project_id":"pebbles","source_id":"API-post-pebbles","target_id":"DM-pebble","edge_type":"queries"},
-    {"id":"e-API-get-pebbles-DM-pebble","project_id":"pebbles","source_id":"API-get-pebbles","target_id":"DM-pebble","edge_type":"queries"},
-    {"id":"e-API-get-emotions-DM-emotion","project_id":"pebbles","source_id":"API-get-emotions","target_id":"DM-emotion","edge_type":"queries"},
-    {"id":"e-API-auth-signup-DM-user","project_id":"pebbles","source_id":"API-auth-signup","target_id":"DM-user","edge_type":"queries"},
-    {"id":"e-API-auth-login-DM-user","project_id":"pebbles","source_id":"API-auth-login","target_id":"DM-user","edge_type":"queries"},
-    {"id":"e-DM-pebble-DM-emotion","project_id":"pebbles","source_id":"DM-pebble","target_id":"DM-emotion","edge_type":"composes"},
-    {"id":"e-DM-pebble-DM-tag","project_id":"pebbles","source_id":"DM-pebble","target_id":"DM-tag","edge_type":"composes"},
-    {"id":"e-DM-pebble-DM-user","project_id":"pebbles","source_id":"DM-pebble","target_id":"DM-user","edge_type":"composes"},
-    {"id":"e-V-v1-1-API-get-emotions","project_id":"pebbles","source_id":"V-v1-1","target_id":"API-get-emotions","edge_type":"calls"},
-    {"id":"e-V-v1-3-API-post-pebbles","project_id":"pebbles","source_id":"V-v1-3","target_id":"API-post-pebbles","edge_type":"calls"},
-    {"id":"e-V-v4-1-API-get-pebbles","project_id":"pebbles","source_id":"V-v4-1","target_id":"API-get-pebbles","edge_type":"calls"},
-    {"id":"e-V-v5-1-API-get-pebbles","project_id":"pebbles","source_id":"V-v5-1","target_id":"API-get-pebbles","edge_type":"calls"},
-    {"id":"e-V-v6-2-API-auth-signup","project_id":"pebbles","source_id":"V-v6-2","target_id":"API-auth-signup","edge_type":"calls"},
-    {"id":"e-V-v7-1-API-auth-login","project_id":"pebbles","source_id":"V-v7-1","target_id":"API-auth-login","edge_type":"calls"},
-    {"id":"e-V-v1-2-DM-emotion","project_id":"pebbles","source_id":"V-v1-2","target_id":"DM-emotion","edge_type":"displays"},
-    {"id":"e-V-v4-2-DM-pebble","project_id":"pebbles","source_id":"V-v4-2","target_id":"DM-pebble","edge_type":"displays"},
-    {"id":"e-V-v5-3-DM-pebble","project_id":"pebbles","source_id":"V-v5-3","target_id":"DM-pebble","edge_type":"displays"},
-    {"id":"e-V-v9-1-DM-pebble","project_id":"pebbles","source_id":"V-v9-1","target_id":"DM-pebble","edge_type":"displays"},
-    {"id":"e-V-v10-1-DM-emotion","project_id":"pebbles","source_id":"V-v10-1","target_id":"DM-emotion","edge_type":"displays"}
+    {
+      "id": "e-V-home-F-record",
+      "project_id": "pebbles",
+      "source_id": "V-home",
+      "target_id": "F-record",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-home-F-replay",
+      "project_id": "pebbles",
+      "source_id": "V-home",
+      "target_id": "F-replay",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-home-F-account",
+      "project_id": "pebbles",
+      "source_id": "V-home",
+      "target_id": "F-account",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-home-F-insights",
+      "project_id": "pebbles",
+      "source_id": "V-home",
+      "target_id": "F-insights",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-account-F-google",
+      "project_id": "pebbles",
+      "source_id": "F-account",
+      "target_id": "F-google",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-account-F-github",
+      "project_id": "pebbles",
+      "source_id": "F-account",
+      "target_id": "F-github",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-account-F-email",
+      "project_id": "pebbles",
+      "source_id": "F-account",
+      "target_id": "F-email",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-replay-F-google",
+      "project_id": "pebbles",
+      "source_id": "F-replay",
+      "target_id": "F-google",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-picker-API-get-emotions",
+      "project_id": "pebbles",
+      "source_id": "V-picker",
+      "target_id": "API-get-emotions",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-summary-API-post-pebbles",
+      "project_id": "pebbles",
+      "source_id": "V-summary",
+      "target_id": "API-post-pebbles",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-timeline-API-get-pebbles",
+      "project_id": "pebbles",
+      "source_id": "V-timeline",
+      "target_id": "API-get-pebbles",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-email-API-post-auth-signup",
+      "project_id": "pebbles",
+      "source_id": "V-email",
+      "target_id": "API-post-auth-signup",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-pebble-DM-pebble",
+      "project_id": "pebbles",
+      "source_id": "V-pebble",
+      "target_id": "DM-pebble",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-trends-DM-emotion",
+      "project_id": "pebbles",
+      "source_id": "V-trends",
+      "target_id": "DM-emotion",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-API-post-pebbles-DM-pebble",
+      "project_id": "pebbles",
+      "source_id": "API-post-pebbles",
+      "target_id": "DM-pebble",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-pebbles-DM-pebble",
+      "project_id": "pebbles",
+      "source_id": "API-get-pebbles",
+      "target_id": "DM-pebble",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-emotions-DM-emotion",
+      "project_id": "pebbles",
+      "source_id": "API-get-emotions",
+      "target_id": "DM-emotion",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-DM-pebble-DM-emotion",
+      "project_id": "pebbles",
+      "source_id": "DM-pebble",
+      "target_id": "DM-emotion",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-DM-pebble-DM-user",
+      "project_id": "pebbles",
+      "source_id": "DM-pebble",
+      "target_id": "DM-user",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-DM-pebble-DM-tag",
+      "project_id": "pebbles",
+      "source_id": "DM-pebble",
+      "target_id": "DM-tag",
+      "edge_type": "composes"
+    }
   ]
 }
