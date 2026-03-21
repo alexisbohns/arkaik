@@ -18,9 +18,16 @@ import { useEdges } from "@/lib/hooks/useEdges";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
 import { downloadJson, exportProject } from "@/lib/utils/export";
 import type { SpeciesId } from "@/lib/config/species";
-import { getChildSpecies } from "@/lib/config/species";
+import { getChildSpecies, isStepSpecies } from "@/lib/config/species";
 import type { Node as DataNode, Edge as DataEdge } from "@/lib/data/types";
 import type { EdgeTypeId } from "@/lib/config/edge-types";
+import {
+  addNodeToRollup,
+  createEmptyRollup,
+  getEditablePlatformStatuses,
+  getRollupDisplayStatus,
+  mergeRollups,
+} from "@/lib/utils/platform-status";
 
 interface BreadcrumbEntry {
   nodeId: string;
@@ -119,11 +126,11 @@ function getNodeSize(nodeType?: string): LayoutSize {
     case "product":
       return { width: 160, height: 160 };
     case "scenario":
-      return { width: 224, height: 112 };
+      return { width: 256, height: 164 };
     case "flow":
-      return { width: 192, height: 104 };
+      return { width: 240, height: 136 };
     case "step":
-      return { width: 184, height: 96 };
+      return { width: 224, height: 140 };
     case "condition":
       return { width: 120, height: 120 };
     case "dataModel":
@@ -478,6 +485,7 @@ export default function ProjectCanvasPage() {
         sort_order,
         position_x,
         position_y,
+        metadata: data.metadata,
       });
       setNewNodeOpen(false);
     },
@@ -551,6 +559,40 @@ export default function ProjectCanvasPage() {
 
   const { nodes, edges } = useMemo(() => {
     const layoutRules = new Map<string, LayoutRule>();
+    const childrenByParent = new Map<string, DataNode[]>();
+
+    for (const node of dataNodes) {
+      if (!node.parent_id) continue;
+      const currentChildren = childrenByParent.get(node.parent_id) ?? [];
+      currentChildren.push(node);
+      childrenByParent.set(node.parent_id, currentChildren);
+    }
+
+    const flowRollups = new Map<string, ReturnType<typeof createEmptyRollup>>();
+
+    for (const node of dataNodes) {
+      if (node.species !== "flow") continue;
+
+      const childSteps = (childrenByParent.get(node.id) ?? []).filter((child) => isStepSpecies(child.species));
+      const flowRollup = childSteps.reduce(
+        (rollup, child) => addNodeToRollup(rollup, child),
+        createEmptyRollup(),
+      );
+
+      flowRollups.set(node.id, flowRollup);
+    }
+
+    const scenarioRollups = new Map<string, ReturnType<typeof createEmptyRollup>>();
+
+    for (const node of dataNodes) {
+      if (node.species !== "scenario") continue;
+
+      const childFlows = (childrenByParent.get(node.id) ?? []).filter((child) => child.species === "flow");
+      scenarioRollups.set(
+        node.id,
+        mergeRollups(...childFlows.map((flow) => flowRollups.get(flow.id) ?? createEmptyRollup())),
+      );
+    }
 
     const productDataNodes = dataNodes.filter((n) => n.species === "product");
 
@@ -564,6 +606,7 @@ export default function ProjectCanvasPage() {
           label: n.title,
           status: n.status,
           platforms: n.platforms,
+          metadata: n.metadata,
           expanded: expandedProducts.has(n.id),
           onToggle: () => toggleProduct(n.id, n.title),
           onOpenDetails: () => {
@@ -604,6 +647,7 @@ export default function ProjectCanvasPage() {
         const scenarioFlowCount = dataNodes.filter(
           (n) => n.species === "flow" && n.parent_id === scenario.id,
         ).length;
+        const scenarioRollup = scenarioRollups.get(scenario.id) ?? createEmptyRollup();
         visibleNodeIds.add(scenario.id);
         visibleNodes.push({
           id: scenario.id,
@@ -611,8 +655,10 @@ export default function ProjectCanvasPage() {
           position: scenarioPos,
           data: {
             label: scenario.title,
-            status: scenario.status,
+            status: getRollupDisplayStatus(scenarioRollup, scenario.status),
             platforms: scenario.platforms,
+            metadata: scenario.metadata,
+            platformRollup: scenarioRollup,
             flowCount: scenarioFlowCount,
             expanded: expandedScenarios.has(scenario.id),
             onToggle: () => toggleScenario(scenario.id, scenario.title, product.id, product.title),
@@ -666,6 +712,7 @@ export default function ProjectCanvasPage() {
 
       childFlows.forEach((flow, i) => {
         const flowPos = positions[i];
+        const flowRollup = flowRollups.get(flow.id) ?? createEmptyRollup();
         visibleNodeIds.add(flow.id);
         visibleNodes.push({
           id: flow.id,
@@ -673,8 +720,10 @@ export default function ProjectCanvasPage() {
           position: flowPos,
           data: {
             label: flow.title,
-            status: flow.status,
+            status: getRollupDisplayStatus(flowRollup, flow.status),
             platforms: flow.platforms,
+            metadata: flow.metadata,
+            platformRollup: flowRollup,
             expanded: expandedFlows.has(flow.id),
             onToggle: () => toggleFlow(flow.id, flow.title, scenarioId, scenario.title, parentProduct?.id ?? "", parentProduct?.title ?? ""),
             onOpenDetails: () => {
@@ -733,6 +782,7 @@ export default function ProjectCanvasPage() {
 
       for (const [i, child] of children.entries()) {
         const childPosition = childPositions[i];
+        const childRollup = addNodeToRollup(createEmptyRollup(), child);
         visibleNodeIds.add(child.id);
         visibleNodes.push({
           id: child.id,
@@ -740,8 +790,10 @@ export default function ProjectCanvasPage() {
           position: childPosition,
           data: {
             label: child.title,
-            status: child.status,
+            status: getRollupDisplayStatus(childRollup, child.status),
             platforms: child.platforms,
+            metadata: child.metadata,
+            platformStatuses: getEditablePlatformStatuses(child),
           },
         });
         layoutRules.set(child.id, {

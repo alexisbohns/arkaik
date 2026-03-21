@@ -2,25 +2,26 @@
 
 import type { PlatformId } from "@/lib/config/platforms";
 import { PLATFORMS } from "@/lib/config/platforms";
-import { PLATFORM_ICONS, STATUS_STYLES, STATUS_LABELS } from "./node-styles";
-import type { StatusId } from "@/lib/config/statuses";
+import type { PlatformStatusMap } from "@/lib/data/types";
+import { PLATFORM_ICONS, STATUS_ICONS, STATUS_STYLES, STATUS_LABELS } from "./node-styles";
 
 interface PlatformListProps {
   platforms: PlatformId[];
-  status?: StatusId;
+  platformStatuses?: PlatformStatusMap;
 }
 
-export function PlatformList({ platforms, status = "idea" }: PlatformListProps) {
+export function PlatformList({ platforms, platformStatuses = {} }: PlatformListProps) {
   if (platforms.length === 0) return null;
 
-  const { dot: statusDot } = STATUS_STYLES[status] ?? STATUS_STYLES.idea;
-  const statusLabel = STATUS_LABELS[status];
-
   return (
-    <div className="flex flex-col gap-1 text-xs">
+    <div className="flex flex-col gap-2 text-xs">
       {PLATFORMS.map((platform) => {
         if (!platforms.includes(platform.id)) return null;
         const Icon = PLATFORM_ICONS[platform.id];
+        const status = platformStatuses[platform.id];
+        const StatusIcon = status ? STATUS_ICONS[status] : null;
+        const statusLabel = status ? STATUS_LABELS[status] : "Unset";
+        const statusClass = status ? STATUS_STYLES[status].badge : "text-muted-foreground/40";
         return (
           <div
             key={platform.id}
@@ -28,11 +29,20 @@ export function PlatformList({ platforms, status = "idea" }: PlatformListProps) 
           >
             <Icon className="w-3 h-3 text-muted-foreground shrink-0" />
             <span className="text-muted-foreground truncate">{platform.label}</span>
-            <span
-              title={statusLabel}
-              className={`w-1.5 h-1.5 rounded-full ${statusDot} shrink-0 ml-auto`}
-              aria-label={`Status: ${statusLabel}`}
-            />
+            {StatusIcon ? (
+              <span title={statusLabel} className="ml-auto shrink-0">
+                <StatusIcon
+                  className={`h-3.5 w-3.5 ${statusClass}`}
+                  aria-label={`Status: ${statusLabel}`}
+                />
+              </span>
+            ) : (
+              <span
+                title={statusLabel}
+                className="ml-auto h-2.5 w-2.5 shrink-0 rounded-full bg-muted-foreground/30"
+                aria-label={`Status: ${statusLabel}`}
+              />
+            )}
           </div>
         );
       })}

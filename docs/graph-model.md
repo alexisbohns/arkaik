@@ -1,6 +1,9 @@
 # Graph Model
 
-The product graph is built from **nodes** (entities) connected by **edges** (relationships). Every node has a species, a status, and optional platform tags.
+The product graph is built from **nodes** (entities) connected by **edges** (relationships). Platform status now has two layers:
+
+- Step-like species (`view`, `section`, `component`, `state`, `token`) store a status per selected platform in `node.metadata.platformStatuses`
+- `flow` and `scenario` compute their platform status gauges from descendants instead of exposing an editable lifecycle status in the UI
 
 ## Species Hierarchy
 
@@ -31,17 +34,29 @@ Species that can appear inside an expanded flow:
 
 ## Statuses
 
-Lifecycle states for any node:
+Lifecycle states defined in `lib/config/statuses.ts`:
 
-| ID | Label | Order | Badge Color | Visual Effect |
-|----|-------|-------|-------------|---------------|
-| `idea` | Idea | 0 | Gray | Dashed border, 60% opacity |
-| `planned` | Planned | 1 | Blue | Normal |
-| `in-development` | In Development | 2 | Orange | Normal |
-| `live` | Live | 3 | Green | Normal |
-| `deprecated` | Deprecated | 4 | Red | Normal |
+| ID | Label | Order | Counted In Rollups | Visual Effect |
+|----|-------|-------|--------------------|---------------|
+| `idea` | Idea | 0 | No | Dashed border, 60% opacity |
+| `backlog` | Backlog | 1 | No | Normal |
+| `prioritized` | Prioritized | 2 | Yes | Normal |
+| `development` | Development | 3 | Yes | Normal |
+| `releasing` | Releasing | 4 | Yes | Normal |
+| `live` | Live | 5 | Yes | Normal |
+| `archived` | Archived | 6 | No | 60% opacity |
+| `blocked` | Blocked | 7 | Yes | Normal |
 
 **Config source:** `lib/config/statuses.ts`
+
+### Rollup Preset
+
+The current counted-status preset is `delivery`, defined in `lib/config/statuses.ts`.
+
+- Included: `prioritized`, `development`, `releasing`, `live`, `blocked`
+- Excluded: `idea`, `backlog`, `archived`
+
+The preset is static for now but is structured to become user-configurable later.
 
 ## Platforms
 
@@ -55,17 +70,15 @@ First-class multi-platform support. Nodes can target any combination:
 
 **Config source:** `lib/config/platforms.ts`
 
-### Platform Split Rendering
+### Platform Status Rendering
 
-When a flow is expanded, step-like nodes are checked for platform-split rendering in `app/project/[id]/page.tsx`:
+The graph page (`app/project/[id]/page.tsx`) derives the presentation payload for node cards:
 
-- **All 3 platforms or 1 platform**: rendered as a single `StepNode`
-- **2 platforms (proper subset)**: split into separate React Flow nodes, one per platform, each with a single-platform `platforms` array and ID `{nodeId}__{platformId}`
+- `StepNode` renders one status row per active platform
+- `FlowNode` renders one stacked gauge per platform from direct step-like children
+- `ScenarioNode` renders one stacked gauge per platform by merging child flow rollups
 
-Within the `StepNode` component itself, platform count affects visual rendering:
-- **All 3 platforms**: Stacked cards with opacity cascade
-- **2 platforms**: Single card with platform dots
-- **1 platform**: Single card with platform-colored border
+Empty platforms render an inactive gauge instead of inventing a lifecycle state.
 
 ## Edge Types
 
