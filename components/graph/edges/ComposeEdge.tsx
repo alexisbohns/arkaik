@@ -17,9 +17,10 @@ export function ComposeEdge({
   targetY,
   targetPosition,
   data,
-}: EdgeProps<ComposeEdgeData>) {
+}: EdgeProps) {
   const { isHovered, nodeProps: pathProps, toolbarProps: buttonProps } = useToolbarHover();
   const [edgePath, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
+  const edgeData = data as ComposeEdgeData | undefined;
 
   return (
     <>
@@ -39,7 +40,7 @@ export function ComposeEdge({
         {...pathProps}
       />
 
-      {isHovered && data?.onInsert && (
+      {isHovered && edgeData?.onInsert && (
         <EdgeLabelRenderer>
           <div
             style={{
@@ -55,13 +56,13 @@ export function ComposeEdge({
                   <Button
                     variant="outline"
                     size="icon"
-                    onClick={data.onInsert}
+                    onClick={edgeData.onInsert}
                     className="size-6 rounded-full"
                   >
                     <PlusIcon className="size-3" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="top">{data.insertLabel}</TooltipContent>
+                <TooltipContent side="top">{edgeData.insertLabel}</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </div>
