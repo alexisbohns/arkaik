@@ -11,6 +11,7 @@ import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
 import { ArkaikLogo } from "@/components/branding/ArkaikLogo";
 import { NodeDetailPanel } from "@/components/panels/NodeDetailPanel";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
+import { InsertBetweenDialog, type InsertEntryType } from "@/components/panels/InsertBetweenDialog";
 import { Button } from "@/components/ui/button";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
@@ -261,6 +262,12 @@ export default function ProjectCanvasPage() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [newNodeOpen, setNewNodeOpen] = useState(false);
   const [newNodePreset, setNewNodePreset] = useState<{ parentId: string; species: SpeciesId; insertBeforeId?: string } | null>(null);
+  const [insertBetweenOpen, setInsertBetweenOpen] = useState(false);
+  const [insertBetweenType, setInsertBetweenType] = useState<InsertEntryType>("view");
+  const [insertBetweenContext, setInsertBetweenContext] = useState<{
+    parentId: string;
+    insertBeforeId: string;
+  } | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportWarning, setExportWarning] = useState<string | null>(null);
@@ -462,20 +469,141 @@ export default function ProjectCanvasPage() {
     [addNode, id],
   );
 
+  const handleInsertPlaylistEntry = useCallback(
+    async (parentId: string, entry: PlaylistEntry, insertBeforeId: string) => {
+      const parentNode = nodesById.get(parentId);
+      if (!parentNode || parentNode.species !== "flow") return false;
+
+      if (entry.type === "view" || entry.type === "flow") {
+        const nodeId = entry.type === "view" ? entry.view_id : entry.flow_id;
+
+        if (entry.type === "flow") {
+          if (wouldCreateCycle(parentNode.id, nodeId, dataNodes)) {
+            setPlaylistError(`Cannot add Flow ${nodeId}: it would create a circular reference.`);
+            return false;
+          }
+        }
+
+        const hasComposeEdge = dataEdges.some(
+          (edge) => edge.edge_type === "composes" && edge.source_id === parentId && edge.target_id === nodeId,
+        );
+
+        if (!hasComposeEdge) {
+          await addEdge({
+            id: crypto.randomUUID(),
+            project_id: id,
+            source_id: parentId,
+            target_id: nodeId,
+            edge_type: "composes",
+          });
+        }
+      }
+
+      const existingEntries = Array.isArray(parentNode.metadata?.playlist?.entries)
+        ? [...parentNode.metadata.playlist.entries]
+        : [];
+
+      const existingPlaylistIds = collectReferencedNodeIds(existingEntries);
+      const insertIndex = existingPlaylistIds.indexOf(insertBeforeId);
+
+      if (insertIndex >= 0) {
+        existingEntries.splice(insertIndex, 0, entry);
+      } else {
+        existingEntries.push(entry);
+      }
+
+      await updateNode(parentNode.id, {
+        metadata: {
+          ...parentNode.metadata,
+          playlist: {
+            entries: existingEntries,
+          },
+        },
+      });
+      return true;
+    },
+    [addEdge, dataEdges, dataNodes, id, nodesById, updateNode],
+  );
+
   const handleAddChildNode = useCallback((parentId: string, childSpecies: SpeciesId) => {
     setNewNodePreset({ parentId, species: childSpecies });
     setNewNodeOpen(true);
   }, []);
 
-  const handleInsertBetween = useCallback((sourceId: string, targetId: string, species: SpeciesId) => {
-    const sourceNodeId = getBaseNodeId(sourceId);
-    const targetNodeId = getBaseNodeId(targetId);
-    const srcParentId = composeParentByChild.get(sourceNodeId);
-    const tgtParentId = composeParentByChild.get(targetNodeId);
-    if (!srcParentId || srcParentId !== tgtParentId) return;
-    setNewNodePreset({ parentId: srcParentId, species, insertBeforeId: targetNodeId });
-    setNewNodeOpen(true);
-  }, [composeParentByChild]);
+  const handleInsertBetween = useCallback((parentFlowVisualId: string, targetEntryVisualId: string) => {
+    const parentId = getBaseNodeId(parentFlowVisualId);
+    const insertBeforeId = getBaseNodeId(targetEntryVisualId);
+    const parentNode = nodesById.get(parentId);
+    if (!parentNode || parentNode.species !== "flow") return;
+    setInsertBetweenType("view");
+    setInsertBetweenContext({ parentId, insertBeforeId });
+    setInsertBetweenOpen(true);
+  }, [nodesById]);
+
+  const handleInsertBetweenSelect = useCallback(async (nodeId: string) => {
+    if (!insertBetweenContext) return;
+    if (insertBetweenType !== "view" && insertBetweenType !== "flow") return;
+    const entry = createPlaylistEntryForSpecies(insertBetweenType, nodeId);
+    if (!entry) return;
+    setPlaylistError(null);
+    const inserted = await handleInsertPlaylistEntry(
+      insertBetweenContext.parentId,
+      entry,
+      insertBetweenContext.insertBeforeId,
+    );
+    if (inserted) {
+      setInsertBetweenOpen(false);
+      setInsertBetweenContext(null);
+    }
+  }, [handleInsertPlaylistEntry, insertBetweenContext, insertBetweenType]);
+
+  const handleInsertBetweenCreate = useCallback(async (title: string) => {
+    if (!insertBetweenContext) return;
+    if (insertBetweenType !== "view" && insertBetweenType !== "flow") return;
+    setPlaylistError(null);
+    const createdNode = await handleCreateNodeFromPanel(insertBetweenType, title);
+    const entry = createPlaylistEntryForSpecies(insertBetweenType, createdNode.id);
+    if (!entry) return;
+    const inserted = await handleInsertPlaylistEntry(
+      insertBetweenContext.parentId,
+      entry,
+      insertBetweenContext.insertBeforeId,
+    );
+    if (inserted) {
+      setInsertBetweenOpen(false);
+      setInsertBetweenContext(null);
+    }
+  }, [handleCreateNodeFromPanel, handleInsertPlaylistEntry, insertBetweenContext, insertBetweenType]);
+
+  const handleInsertBetweenStructured = useCallback(async (label: string) => {
+    if (!insertBetweenContext) return;
+    if (insertBetweenType !== "condition" && insertBetweenType !== "junction") return;
+
+    const entry: PlaylistEntry = insertBetweenType === "condition"
+      ? {
+          type: "condition",
+          label: label.trim() || "Condition",
+          if_true: [],
+          if_false: [],
+        }
+      : {
+          type: "junction",
+          label: label.trim() || "Junction",
+          cases: [{ label: "Case 1", entries: [] }],
+        };
+
+    setPlaylistError(null);
+    const inserted = await handleInsertPlaylistEntry(
+      insertBetweenContext.parentId,
+      entry,
+      insertBetweenContext.insertBeforeId,
+    );
+
+    if (inserted) {
+      setInsertBetweenOpen(false);
+      setInsertBetweenContext(null);
+    }
+  }, [handleInsertPlaylistEntry, insertBetweenContext, insertBetweenType]);
 
   const handleNewNodeOpenChange = useCallback((open: boolean) => {
     setNewNodeOpen(open);
@@ -614,7 +742,7 @@ export default function ProjectCanvasPage() {
       setPanelOpen(false);
     },
     onDelete: () => {
-      if (deleteNodeDialogOpen || deleteEdgeDialogOpen || newNodeOpen || edgeDialogOpen) return;
+      if (deleteNodeDialogOpen || deleteEdgeDialogOpen || newNodeOpen || insertBetweenOpen || edgeDialogOpen) return;
       if (!selectedNode) return;
       handleDeleteNodeRequest(selectedNode.id);
     },
@@ -889,8 +1017,8 @@ export default function ProjectCanvasPage() {
           const priorResult = previousResult;
           const edgeData = priorResult.entryNodeId && entryResult.entryNodeId
             ? {
-                insertLabel: "Insert a View",
-                onInsert: () => handleInsertBetween(priorResult.entryNodeId!, entryResult.entryNodeId!, "view"),
+                insertLabel: "Insert",
+                onInsert: () => handleInsertBetween(parentFlowVisualId, entryResult.entryNodeId!),
               }
             : undefined;
           connectIds(priorResult.endIds, entryResult.startIds, edgeData);
@@ -1093,6 +1221,19 @@ export default function ProjectCanvasPage() {
         onOpenChange={handleNewNodeOpenChange}
         onSubmit={handleAddNode}
         defaultValues={newNodePreset ?? undefined}
+      />
+      <InsertBetweenDialog
+        open={insertBetweenOpen}
+        onOpenChange={(open) => {
+          setInsertBetweenOpen(open);
+          if (!open) setInsertBetweenContext(null);
+        }}
+        entryType={insertBetweenType}
+        onEntryTypeChange={setInsertBetweenType}
+        allNodes={dataNodes}
+        onSelectNode={handleInsertBetweenSelect}
+        onCreateNode={handleInsertBetweenCreate}
+        onInsertStructured={handleInsertBetweenStructured}
       />
       <EdgeTypeDialog
         open={edgeDialogOpen}
