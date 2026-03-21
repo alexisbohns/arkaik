@@ -110,3 +110,17 @@ See [`docs/`](docs/README.md) for detailed documentation:
 - `GET /pebbles` → List of compact pebbles (lighter)
 - `POST /pebbles` → Create a new pebble
 - `PUT /pebbles/:id/emotions` → Attach emotions to a pebble
+
+## Credits
+
+arkaik is built on top of these great projects:
+
+- [Next.js](https://github.com/vercel/next.js) — React framework with App Router, server components, and file-based routing
+- [React Flow](https://github.com/xyflow/xyflow) — Interactive node-based graph library for React
+- [shadcn/ui](https://github.com/shadcn-ui/ui) — Accessible, composable UI components built on Radix UI
+- [Radix UI](https://github.com/radix-ui/primitives) — Unstyled, accessible component primitives
+- [Tailwind CSS](https://github.com/tailwindlabs/tailwindcss) — Utility-first CSS framework
+- [class-variance-authority](https://github.com/joe-bell/cva) — Type-safe component variant management
+- [tailwind-merge](https://github.com/dcastil/tailwind-merge) — Merge Tailwind classes without style conflicts
+- [Lucide](https://github.com/lucide-icons/lucide) — Icon library
+- [next-themes](https://github.com/pacocoursey/next-themes) — Theme management for Next.js
