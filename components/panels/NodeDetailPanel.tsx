@@ -27,6 +27,7 @@ import { PLATFORMS } from "@/lib/config/platforms";
 import { PLATFORM_DOT_STYLES, PLATFORM_LABELS } from "@/components/graph/nodes/node-styles";
 import { PlatformVariants } from "@/components/panels/PlatformVariants";
 import { PlatformGaugeList } from "@/components/graph/nodes/PlatformGaugeList";
+import { PlaylistEditor } from "@/components/panels/PlaylistEditor";
 import {
   addNodeToRollup,
   createEmptyRollup,
@@ -121,16 +122,17 @@ interface NodeDetailPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   node?: Node;
-  onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => void;
+  onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
   onDelete?: (nodeId: string) => void;
   allNodes?: Node[];
   allEdges?: Edge[];
   onNavigate?: (node: Node) => void;
+  onCreateNode?: (species: "flow" | "view", title: string) => Promise<Node>;
 }
 
 interface NodeFieldsProps {
   node: Node;
-  onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => void;
+  onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
 }
 
 function NodeFields({ node, onUpdate }: NodeFieldsProps) {
@@ -324,7 +326,7 @@ function ConnectionItem({
 
 interface PlatformVariantsSectionProps {
   node: Node;
-  onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => void;
+  onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
 }
 
 function PlatformVariantsSection({ node, onUpdate }: PlatformVariantsSectionProps) {
@@ -383,6 +385,7 @@ export function NodeDetailPanel({
   allNodes,
   allEdges,
   onNavigate,
+  onCreateNode,
 }: NodeDetailPanelProps) {
   const speciesConfig = SPECIES.find((s) => s.id === node?.species);
   const speciesLabel = speciesConfig?.label ?? node?.species;
@@ -428,6 +431,15 @@ export function NodeDetailPanel({
                 node={node}
                 allNodes={allNodes}
                 allEdges={allEdges ?? []}
+              />
+            )}
+            {node.species === "flow" && allNodes && (
+              <PlaylistEditor
+                key={`playlist-${node.id}`}
+                node={node}
+                allNodes={allNodes}
+                onUpdate={onUpdate}
+                onCreateNode={onCreateNode}
               />
             )}
             {allNodes && allEdges && onNavigate && (

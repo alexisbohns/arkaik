@@ -174,6 +174,8 @@ NodeDetailPanel (title, description, platforms, metadata)
 Views store editable per-platform statuses in `node.metadata.platformStatuses`. When legacy data does not have that field yet, the UI derives platform statuses from `node.status` + `node.platforms` and writes the richer metadata shape back on the next edit.
 
 Flows do not expose an editable rollup status in UI. Flow cards and panel gauges compute status from descendant views in [app/project/[id]/page.tsx](../app/project/[id]/page.tsx) and [components/panels/NodeDetailPanel.tsx](../components/panels/NodeDetailPanel.tsx).
+ 
+ Flow playlist edits (`metadata.playlist.entries`) also originate from `NodeDetailPanel` via [components/panels/PlaylistEditor.tsx](../components/panels/PlaylistEditor.tsx). All playlist mutations use `useNodes.updateNode`, and provider-side validation blocks circular flow references before persistence.
 
 ## Migration Path
 
