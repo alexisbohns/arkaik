@@ -24,6 +24,7 @@ import type { Node as DataNode, Edge as DataEdge, PlaylistEntry } from "@/lib/da
 import type { EdgeTypeId } from "@/lib/config/edge-types";
 import {
   addNodeToRollup,
+  computePlaylistRollup,
   createEmptyRollup,
   getEditablePlatformStatuses,
   getRollupDisplayStatus,
@@ -619,26 +620,14 @@ export default function ProjectCanvasPage() {
 
     const flowRollupCache = new Map<string, PlatformStatusRollup>();
 
-    const computeFlowRollup = (flowNodeId: string, visited: Set<string>): PlatformStatusRollup => {
+    const computeFlowRollup = (flowNodeId: string): PlatformStatusRollup => {
       const cached = flowRollupCache.get(flowNodeId);
       if (cached) return cached;
-      if (visited.has(flowNodeId)) return createEmptyRollup();
 
-      visited.add(flowNodeId);
-      const children = getOrderedChildren(flowNodeId);
-      const directViewRollup = children
-        .filter((child) => child.species === "view")
-        .reduce((rollup, child) => addNodeToRollup(rollup, child), createEmptyRollup());
-      const nestedFlowRollup = mergeRollups(
-        ...children
-          .filter((child) => child.species === "flow")
-          .map((child) => computeFlowRollup(child.id, visited)),
-      );
-      visited.delete(flowNodeId);
-
-      const combined = mergeRollups(directViewRollup, nestedFlowRollup);
-      flowRollupCache.set(flowNodeId, combined);
-      return combined;
+      const entries = getPlaylistEntries(flowNodeId);
+      const rollup = computePlaylistRollup(entries, nodesById);
+      flowRollupCache.set(flowNodeId, rollup);
+      return rollup;
     };
 
     const addDataNode = (node: DataNode, position: { x: number; y: number }, visualNodeId = node.id) => {
@@ -652,7 +641,7 @@ export default function ProjectCanvasPage() {
       } as Record<string, unknown>;
 
       if (node.species === "flow") {
-        const flowRollup = computeFlowRollup(node.id, new Set<string>());
+        const flowRollup = computeFlowRollup(node.id);
         baseData.status = getRollupDisplayStatus(flowRollup, node.status);
         baseData.platformRollup = flowRollup;
         baseData.expanded = expandedFlows.has(node.id);

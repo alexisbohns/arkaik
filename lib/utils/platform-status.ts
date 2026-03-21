@@ -7,7 +7,7 @@ import {
   type CountedStatusPresetId,
   type StatusId,
 } from "@/lib/config/statuses";
-import type { Node, PlatformStatusMap } from "@/lib/data/types";
+import type { Node, PlaylistEntry, PlatformStatusMap } from "@/lib/data/types";
 
 export type PlatformStatusCounts = Partial<Record<PlatformId, Partial<Record<StatusId, number>>>>;
 export type PlatformTotals = Partial<Record<PlatformId, number>>;
@@ -151,4 +151,60 @@ export function getRollupDisplayStatus(
   }
 
   return fallbackStatus;
+}
+
+function computePlaylistRollupRecursive(
+  entries: PlaylistEntry[],
+  nodesById: ReadonlyMap<string, Pick<Node, "species" | "status" | "platforms" | "metadata">>,
+  visited: Set<string>,
+): PlatformStatusRollup {
+  let rollup = createEmptyRollup();
+
+  for (const entry of entries) {
+    if (entry.type === "view") {
+      const viewNode = nodesById.get(entry.view_id);
+      if (viewNode) {
+        rollup = addNodeToRollup(rollup, viewNode);
+      }
+      continue;
+    }
+
+    if (entry.type === "flow") {
+      if (!visited.has(entry.flow_id)) {
+        visited.add(entry.flow_id);
+        const flowNode = nodesById.get(entry.flow_id);
+        const subEntries = flowNode?.metadata?.playlist?.entries;
+        if (Array.isArray(subEntries)) {
+          rollup = mergeRollups(rollup, computePlaylistRollupRecursive(subEntries, nodesById, visited));
+        }
+        visited.delete(entry.flow_id);
+      }
+      continue;
+    }
+
+    if (entry.type === "condition") {
+      rollup = mergeRollups(
+        rollup,
+        computePlaylistRollupRecursive(entry.if_true, nodesById, visited),
+        computePlaylistRollupRecursive(entry.if_false, nodesById, visited),
+      );
+      continue;
+    }
+
+    if (entry.type === "junction") {
+      rollup = mergeRollups(
+        rollup,
+        ...entry.cases.map((c) => computePlaylistRollupRecursive(c.entries, nodesById, visited)),
+      );
+    }
+  }
+
+  return rollup;
+}
+
+export function computePlaylistRollup(
+  entries: PlaylistEntry[],
+  nodesById: ReadonlyMap<string, Pick<Node, "species" | "status" | "platforms" | "metadata">>,
+): PlatformStatusRollup {
+  return computePlaylistRollupRecursive(entries, nodesById, new Set());
 }
