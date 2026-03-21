@@ -1,7 +1,7 @@
 export const PLATFORMS = [
-  { id: "web",     label: "Web",     emoji: "🟢" },
-  { id: "ios",     label: "iOS",     emoji: "🔵" },
-  { id: "android", label: "Android", emoji: "🟣" },
+  { id: "web",     label: "Web",     icon: "Monitor" },
+  { id: "ios",     label: "iOS",     icon: "Apple" },
+  { id: "android", label: "Android", icon: "Bot" },
 ] as const;
 
 export type PlatformId = (typeof PLATFORMS)[number]["id"];

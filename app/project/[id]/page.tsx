@@ -79,16 +79,6 @@ const FLOW_CHILD_SPECIES = new Set<SpeciesId>([
   "view", "component", "section", "state", "token", "condition",
 ]);
 
-/** Step-like species eligible for per-platform split rendering. */
-const STEP_SPLIT_SPECIES = new Set<SpeciesId>([
-  "view", "component", "section", "state", "token",
-]);
-
-const ALL_PLATFORM_IDS = PLATFORMS.map((p) => p.id);
-
-/** Delimiter used to build per-platform split node IDs: `${nodeId}${SPLIT_SEP}${platformId}`. */
-const SPLIT_SEP = "__";
-
 const COLLISION_PADDING = 24;
 const MAX_COLLISION_ITERATIONS = 30;
 
@@ -423,9 +413,7 @@ export default function ProjectCanvasPage() {
   );
 
   const handleNodeClick = useCallback<NodeMouseHandler>((_event, xyNode) => {
-    // Split nodes have IDs like `${nodeId}${SPLIT_SEP}${platform}` — strip the suffix to find the source data node
-    const baseId = xyNode.id.includes(SPLIT_SEP) ? xyNode.id.split(SPLIT_SEP)[0] : xyNode.id;
-    const dataNode = dataNodes.find((n) => n.id === baseId);
+    const dataNode = dataNodes.find((n) => n.id === xyNode.id);
     if (dataNode) {
       setSelectedNode(dataNode);
       setPanelOpen(true);
@@ -440,18 +428,11 @@ export default function ProjectCanvasPage() {
 
   const handleEdgeTypeSelect = useCallback(async (edgeType: EdgeTypeId) => {
     if (!pendingConnection?.source || !pendingConnection?.target) return;
-    // Resolve base node IDs in case the source/target are split (platform) nodes
-    const sourceBaseId = pendingConnection.source.includes(SPLIT_SEP)
-      ? pendingConnection.source.split(SPLIT_SEP)[0]
-      : pendingConnection.source;
-    const targetBaseId = pendingConnection.target.includes(SPLIT_SEP)
-      ? pendingConnection.target.split(SPLIT_SEP)[0]
-      : pendingConnection.target;
     await addEdge({
       id: crypto.randomUUID(),
       project_id: id,
-      source_id: sourceBaseId,
-      target_id: targetBaseId,
+      source_id: pendingConnection.source,
+      target_id: pendingConnection.target,
       edge_type: edgeType,
     });
     setEdgeDialogOpen(false);
@@ -459,8 +440,6 @@ export default function ProjectCanvasPage() {
   }, [pendingConnection, addEdge, id]);
 
   const { nodes, edges } = useMemo(() => {
-    // Tracks nodes split by platform: originalId → [splitId, …]
-    const splitNodeMap = new Map<string, string[]>();
     const layoutRules = new Map<string, LayoutRule>();
 
     const productDataNodes = dataNodes.filter((n) => n.species === "product");
@@ -622,52 +601,23 @@ export default function ProjectCanvasPage() {
         (n) => n.parent_id === flowId && FLOW_CHILD_SPECIES.has(n.species),
       );
 
-      // Build visual items: step-like nodes with a proper subset of platforms
-      // are expanded into one visual node per platform; all others stay as-is.
-      const visualItems: Array<{
-        id: string;
-        dataNode: (typeof children)[0];
-        platform?: PlatformId;
-      }> = [];
+      const childPositions = linearPositions(flow.position_x, flow.position_y, children.length);
+      const maxSpreadX = Math.max(320, children.length * 110);
 
-      for (const child of children) {
-        const childPlatforms = (child.platforms ?? []) as PlatformId[];
-        const childIsAllPlatforms = ALL_PLATFORM_IDS.every((p) =>
-          childPlatforms.includes(p),
-        );
-        const shouldSplit =
-          STEP_SPLIT_SPECIES.has(child.species) &&
-          childPlatforms.length >= 2 &&
-          !childIsAllPlatforms;
-
-        if (shouldSplit) {
-          const splitIds = childPlatforms.map((p) => `${child.id}${SPLIT_SEP}${p}`);
-          splitNodeMap.set(child.id, splitIds);
-          for (const platform of childPlatforms) {
-            visualItems.push({ id: `${child.id}${SPLIT_SEP}${platform}`, dataNode: child, platform });
-          }
-        } else {
-          visualItems.push({ id: child.id, dataNode: child });
-        }
-      }
-
-      const childPositions = linearPositions(flow.position_x, flow.position_y, visualItems.length);
-      const maxSpreadX = Math.max(320, visualItems.length * 110);
-
-      for (const [i, item] of visualItems.entries()) {
+      for (const [i, child] of children.entries()) {
         const childPosition = childPositions[i];
-        visibleNodeIds.add(item.id);
+        visibleNodeIds.add(child.id);
         visibleNodes.push({
-          id: item.id,
-          type: SPECIES_TO_NODE_TYPE[item.dataNode.species],
+          id: child.id,
+          type: SPECIES_TO_NODE_TYPE[child.species],
           position: childPosition,
           data: {
-            label: item.dataNode.title,
-            status: item.dataNode.status,
-            platforms: item.platform ? [item.platform] : item.dataNode.platforms,
+            label: child.title,
+            status: child.status,
+            platforms: child.platforms,
           },
         });
-        layoutRules.set(item.id, {
+        layoutRules.set(child.id, {
           axis: "both",
           clampX: [flow.position_x - maxSpreadX, flow.position_x + maxSpreadX],
           clampY: [flow.position_y + FLOW_CHILD_Y_OFFSET - 80, flow.position_y + FLOW_CHILD_Y_OFFSET + 80],
@@ -675,41 +625,30 @@ export default function ProjectCanvasPage() {
       }
     }
 
-    // Include any persisted edges that connect two visible nodes (deduplicated).
-    // When a node was split into per-platform variants, fan the edge out to all
-    // applicable split IDs.
+    // Include any persisted edges that connect two visible nodes.
     const renderedEdgePairs = new Set(visibleEdges.map((e) => `${e.source}:${e.target}`));
+    const EDGE_TYPE_MAP: Record<string, string> = {
+      composes: "compose",
+      branches: "branch",
+      calls: "calls",
+      displays: "displays",
+      queries: "queries",
+    };
+
     for (const edge of dataEdges) {
-      const sourceIds =
-        splitNodeMap.get(edge.source_id) ??
-        (visibleNodeIds.has(edge.source_id) ? [edge.source_id] : []);
-      const targetIds =
-        splitNodeMap.get(edge.target_id) ??
-        (visibleNodeIds.has(edge.target_id) ? [edge.target_id] : []);
+      if (!visibleNodeIds.has(edge.source_id) || !visibleNodeIds.has(edge.target_id)) continue;
 
-      const EDGE_TYPE_MAP: Record<string, string> = {
-        composes: "compose",
-        branches: "branch",
-        calls: "calls",
-        displays: "displays",
-        queries: "queries",
-      };
+      const pairKey = `${edge.source_id}:${edge.target_id}`;
+      if (renderedEdgePairs.has(pairKey)) continue;
+
       const xyType = EDGE_TYPE_MAP[edge.edge_type];
-
-      for (const srcId of sourceIds) {
-        for (const tgtId of targetIds) {
-          const pairKey = `${srcId}:${tgtId}`;
-          if (!renderedEdgePairs.has(pairKey)) {
-            visibleEdges.push({
-              id: `${edge.id}--${srcId}--${tgtId}`,
-              source: srcId,
-              target: tgtId,
-              type: xyType,
-            });
-            renderedEdgePairs.add(pairKey);
-          }
-        }
-      }
+      visibleEdges.push({
+        id: `${edge.id}--${edge.source_id}--${edge.target_id}`,
+        source: edge.source_id,
+        target: edge.target_id,
+        type: xyType,
+      });
+      renderedEdgePairs.add(pairKey);
     }
 
     const collisionFreeNodes = resolveNodeCollisions(visibleNodes, layoutRules);
