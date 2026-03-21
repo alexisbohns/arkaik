@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SPECIES, isStepSpecies } from "@/lib/config/species";
+import { SPECIES } from "@/lib/config/species";
 import { STATUSES } from "@/lib/config/statuses";
 import { PLATFORMS } from "@/lib/config/platforms";
 import { PLATFORM_DOT_STYLES, PLATFORM_LABELS } from "@/components/graph/nodes/node-styles";
@@ -45,16 +45,16 @@ interface NewNodeFormProps {
 
 export function NewNodeForm({ open, onOpenChange, onSubmit, defaultValues }: NewNodeFormProps) {
   const [title, setTitle] = useState("");
-  const [species, setSpecies] = useState<SpeciesId>(defaultValues?.species ?? "component");
+  const [species, setSpecies] = useState<SpeciesId>(defaultValues?.species ?? "view");
   const [status, setStatus] = useState<StatusId>("idea");
   const [platforms, setPlatforms] = useState<PlatformId[]>([]);
-  const usesSingleStatusField = !isStepSpecies(species) && species !== "flow" && species !== "scenario";
-  const usesPlatformDefaultStatus = isStepSpecies(species);
-  const allowsPlatformEditing = species !== "flow" && species !== "scenario";
+  const usesSingleStatusField = species === "data-model" || species === "api-endpoint";
+  const usesPlatformDefaultStatus = species === "view";
+  const allowsPlatformEditing = species !== "flow";
 
   function resetForm() {
     setTitle("");
-    setSpecies(defaultValues?.species ?? "component");
+    setSpecies(defaultValues?.species ?? "view");
     setStatus("idea");
     setPlatforms([]);
   }
@@ -74,7 +74,7 @@ export function NewNodeForm({ open, onOpenChange, onSubmit, defaultValues }: New
     e.preventDefault();
     if (!title.trim()) return;
 
-    const metadata: NodeMetadata | undefined = isStepSpecies(species)
+    const metadata: NodeMetadata | undefined = species === "view"
       ? {
           platformStatuses: Object.fromEntries(
             platforms.map((platformId) => [platformId, status]),

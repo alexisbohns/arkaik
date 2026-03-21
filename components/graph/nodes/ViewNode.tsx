@@ -7,9 +7,9 @@ import type { PlatformStatusMap } from "@/lib/data/types";
 import { STATUS_GHOST_STYLES } from "./node-styles";
 import { PlatformList } from "./PlatformList";
 
-export function StepNode({ data }: NodeProps) {
+export function ViewNode({ data }: NodeProps) {
   const status = (data.status as StatusId) ?? "idea";
-  const label = String(data.label ?? "Step");
+  const label = String(data.label ?? "View");
   const platforms = (data.platforms as PlatformId[]) ?? [];
   const platformStatuses = (data.platformStatuses as PlatformStatusMap | undefined) ?? {};
   const ghostClass = STATUS_GHOST_STYLES[status];

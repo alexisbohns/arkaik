@@ -3,11 +3,8 @@
 import { useCallback, useRef } from "react";
 import { ReactFlow, MiniMap, Controls, Background, type Node, type Edge, type NodeMouseHandler, type OnConnect, type EdgeMouseHandler, type ReactFlowInstance } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { ProductNode } from "./nodes/ProductNode";
-import { ScenarioNode } from "./nodes/ScenarioNode";
 import { FlowNode } from "./nodes/FlowNode";
-import { StepNode } from "./nodes/StepNode";
-import { ConditionNode } from "./nodes/ConditionNode";
+import { ViewNode } from "./nodes/ViewNode";
 import { DataModelNode } from "./nodes/DataModelNode";
 import { ApiEndpointNode } from "./nodes/ApiEndpointNode";
 import { ComposeEdge } from "./edges/ComposeEdge";
@@ -16,11 +13,8 @@ import { CrossLayerEdge } from "./edges/CrossLayerEdge";
 import { FloatingDottedEdge } from "./edges/FloatingDottedEdge";
 
 const nodeTypes = {
-  product: ProductNode,
-  scenario: ScenarioNode,
   flow: FlowNode,
-  step: StepNode,
-  condition: ConditionNode,
+  view: ViewNode,
   dataModel: DataModelNode,
   apiEndpoint: ApiEndpointNode,
 };

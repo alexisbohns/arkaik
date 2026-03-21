@@ -23,7 +23,7 @@ docs/                   # This documentation
 
 - **No global store.** No Zustand, Redux, or Context-based state.
 - Reusable state logic lives in hooks: `useNodes`, `useEdges`, `useProject`, `useGraphNavigation`.
-- The project canvas page (`app/project/[id]/page.tsx`) uses `useNodes` and `useEdges` for data, but manages expansion and breadcrumb state as local `useState` sets (`expandedProducts`, `expandedScenarios`, `expandedFlows`).
+- The project canvas page (`app/project/[id]/page.tsx`) uses `useNodes` and `useEdges` for data, and manages flow expansion as local `useState` (`expandedFlows`).
 - Data flows via props from the project page down to canvas components.
 - `useProject` and `useGraphNavigation` exist as utilities but are not currently used on the canvas page.
 
@@ -50,7 +50,7 @@ All domain enums live in `lib/config/` as `const` arrays with `as const`:
 ```typescript
 // lib/config/species.ts
 export const SPECIES = [
-  { id: "product", level: 7, label: "Product", description: "top-level" },
+  { id: "flow", level: 1, label: "Flow", description: "an ordered sequence of views and sub-flows" },
   // ...
 ] as const;
 
@@ -82,7 +82,8 @@ Never write to `localStorage` directly. Always use the provider.
 
 ## Naming
 
-- **Files:** kebab-case for config and utils (`edge-types.ts`), PascalCase for components (`ProductNode.tsx`)
+- **Files:** kebab-case for config and utils (`edge-types.ts`), PascalCase for components (`FlowNode.tsx`)
+  - Current graph node components include `FlowNode.tsx`, `ViewNode.tsx`, `DataModelNode.tsx`, `ApiEndpointNode.tsx`
 - **Types:** PascalCase (`SpeciesId`, `ProjectBundle`)
 - **Config arrays:** UPPER_SNAKE_CASE (`SPECIES`, `STATUSES`, `EDGE_TYPES`)
 - **Hooks:** camelCase with `use` prefix (`useNodes`, `useGraphNavigation`)

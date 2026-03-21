@@ -9,7 +9,6 @@ import { Canvas } from "@/components/graph/Canvas";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
 import { ArkaikLogo } from "@/components/branding/ArkaikLogo";
-import { Breadcrumb } from "@/components/layout/Breadcrumb";
 import { NodeDetailPanel } from "@/components/panels/NodeDetailPanel";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
 import { Button } from "@/components/ui/button";
@@ -18,7 +17,6 @@ import { useEdges } from "@/lib/hooks/useEdges";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
 import { downloadJson, exportProject } from "@/lib/utils/export";
 import type { SpeciesId } from "@/lib/config/species";
-import { getChildSpecies, isStepSpecies } from "@/lib/config/species";
 import type { Node as DataNode, Edge as DataEdge } from "@/lib/data/types";
 import type { EdgeTypeId } from "@/lib/config/edge-types";
 import {
@@ -27,84 +25,23 @@ import {
   getEditablePlatformStatuses,
   getRollupDisplayStatus,
   mergeRollups,
+  type PlatformStatusRollup,
 } from "@/lib/utils/platform-status";
 
-interface BreadcrumbEntry {
-  nodeId: string;
-  label: string;
-  species: "product" | "scenario" | "flow";
-}
-
 const SPECIES_TO_NODE_TYPE: Record<SpeciesId, string> = {
-  product: "product",
-  scenario: "scenario",
   flow: "flow",
-  view: "step",
-  token: "step",
-  state: "step",
-  component: "step",
-  section: "step",
-  condition: "condition",
+  view: "view",
   "data-model": "dataModel",
   "api-endpoint": "apiEndpoint",
 };
 
-/** Position `count` items in a horizontal row centred below (cx, cy). */
-const SCENARIO_SPACING = 300;
-const SCENARIO_Y_OFFSET = 250;
-
-function horizontalPositions(
-  cx: number,
-  cy: number,
-  count: number,
-  spacing = SCENARIO_SPACING,
-): { x: number; y: number }[] {
-  if (count === 0) return [];
-  const totalWidth = (count - 1) * spacing;
-  const startX = cx - totalWidth / 2;
-  return Array.from({ length: count }, (_, i) => ({
-    x: startX + i * spacing,
-    y: cy + SCENARIO_Y_OFFSET,
-  }));
-}
-
-/** Position `count` items in a horizontal line to the right of (cx, cy). */
-const FLOW_CHILD_SPACING = 220;
-const FLOW_CHILD_X_START = 280;
-
-function linearPositions(
-  cx: number,
-  cy: number,
-  count: number,
-  spacing = FLOW_CHILD_SPACING,
-): { x: number; y: number }[] {
-  if (count === 0) return [];
-  return Array.from({ length: count }, (_, i) => ({
-    x: cx + FLOW_CHILD_X_START + i * spacing,
-    y: cy,
-  }));
-}
-
-/** Position `count` items in a vertical column below (cx, cy). */
-const VERTICAL_CHILD_SPACING = 160;
-const VERTICAL_CHILD_Y_START = 180;
-
-function verticalPositions(
-  cx: number,
-  cy: number,
-  count: number,
-  spacing = VERTICAL_CHILD_SPACING,
-): { x: number; y: number }[] {
-  return Array.from({ length: count }, (_, i) => ({
-    x: cx,
-    y: cy + VERTICAL_CHILD_Y_START + i * spacing,
-  }));
-}
-
-/** Species that can appear as direct children of a Flow (steps + branches). */
-const FLOW_CHILD_SPECIES = new Set<SpeciesId>([
-  "view", "component", "section", "state", "token", "condition",
-]);
+const FLOW_CHILD_SPECIES = new Set<SpeciesId>(["flow", "view"]);
+const ROOT_FLOW_SPACING = 360;
+const ROOT_FLOW_Y = 120;
+const ROOT_VIEW_SPACING = 300;
+const ROOT_VIEW_Y = 420;
+const FLOW_CHILD_X_OFFSET = 320;
+const FLOW_CHILD_Y_SPACING = 180;
 
 const COLLISION_PADDING = 24;
 const MAX_COLLISION_ITERATIONS = 30;
@@ -121,18 +58,42 @@ interface LayoutRule {
   clampY?: [number, number];
 }
 
+function horizontalPositions(
+  cx: number,
+  cy: number,
+  count: number,
+  spacing: number,
+): { x: number; y: number }[] {
+  if (count === 0) return [];
+  const totalWidth = (count - 1) * spacing;
+  const startX = cx - totalWidth / 2;
+  return Array.from({ length: count }, (_, i) => ({
+    x: startX + i * spacing,
+    y: cy,
+  }));
+}
+
+function verticalPositions(
+  cx: number,
+  cy: number,
+  count: number,
+  spacing = FLOW_CHILD_Y_SPACING,
+): { x: number; y: number }[] {
+  if (count === 0) return [];
+  const totalHeight = (count - 1) * spacing;
+  const startY = cy - totalHeight / 2;
+  return Array.from({ length: count }, (_, i) => ({
+    x: cx,
+    y: startY + i * spacing,
+  }));
+}
+
 function getNodeSize(nodeType?: string): LayoutSize {
   switch (nodeType) {
-    case "product":
-      return { width: 160, height: 160 };
-    case "scenario":
-      return { width: 256, height: 164 };
     case "flow":
       return { width: 240, height: 136 };
-    case "step":
+    case "view":
       return { width: 224, height: 140 };
-    case "condition":
-      return { width: 120, height: 120 };
     case "dataModel":
     case "apiEndpoint":
       return { width: 192, height: 92 };
@@ -234,10 +195,7 @@ export default function ProjectCanvasPage() {
   const params = useParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
 
-  const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
-  const [expandedScenarios, setExpandedScenarios] = useState<Set<string>>(new Set());
   const [expandedFlows, setExpandedFlows] = useState<Set<string>>(new Set());
-  const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbEntry[]>([]);
   const [selectedNode, setSelectedNode] = useState<DataNode | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [newNodeOpen, setNewNodeOpen] = useState(false);
@@ -282,11 +240,7 @@ export default function ProjectCanvasPage() {
   }, [nodesById]);
 
   const getOrderedChildren = useCallback((parentId: string): DataNode[] => {
-    const parent = nodesById.get(parentId);
-    if (!parent) return [];
-
     const edgeChildIds = composeChildIdsByParent.get(parentId) ?? [];
-    const edgeChildSet = new Set(edgeChildIds);
     const playlist = getPlaylist(parentId);
 
     const orderedIds = [
@@ -294,38 +248,30 @@ export default function ProjectCanvasPage() {
       ...edgeChildIds.filter((childId) => !playlist.includes(childId)),
     ];
 
-    if (parent.species === "flow") {
-      for (const childId of orderedIds) {
-        edgeChildSet.delete(childId);
-      }
-      // Keep existing composed children visible even if missing from playlist.
-      orderedIds.push(...edgeChildIds.filter((childId) => edgeChildSet.has(childId)));
-    }
-
     return orderedIds
       .map((childId) => nodesById.get(childId))
       .filter((child): child is DataNode => Boolean(child));
   }, [composeChildIdsByParent, getPlaylist, nodesById]);
 
-  // Auto-expand all products on initial load
+  // Auto-expand root flows on initial load.
   useEffect(() => {
     if (nodesLoading) return;
-    setExpandedProducts((prev) => {
+    setExpandedFlows((prev) => {
       if (prev.size > 0) return prev;
-      const productIds = dataNodes.filter((n) => n.species === "product").map((n) => n.id);
-      return new Set(productIds);
+      const rootFlowIds = dataNodes
+        .filter((node) => node.species === "flow" && !composeParentByChild.has(node.id))
+        .map((node) => node.id);
+      return new Set(rootFlowIds);
     });
-  }, [nodesLoading, dataNodes]);
+  }, [nodesLoading, dataNodes, composeParentByChild]);
 
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null);
   const [edgeDialogOpen, setEdgeDialogOpen] = useState(false);
 
-  // ── Delete node ──────────────────────────────────────────────────────────
   const [deleteNodeTarget, setDeleteNodeTarget] = useState<DataNode | null>(null);
   const [deleteNodeDialogOpen, setDeleteNodeDialogOpen] = useState(false);
   const [deleteNodeCascade, setDeleteNodeCascade] = useState(false);
 
-  /** Collect all descendant node IDs (breadth-first). */
   const getDescendantIds = useCallback(
     (nodeId: string): string[] => {
       const result: string[] = [];
@@ -370,19 +316,15 @@ export default function ProjectCanvasPage() {
     setSelectedNode(null);
   }, [deleteNodeTarget, deleteNodeCascade, getDescendantIds, removeNodes]);
 
-  // ── Delete edge ──────────────────────────────────────────────────────────
   const [deleteEdgeTarget, setDeleteEdgeTarget] = useState<DataEdge | null>(null);
   const [deleteEdgeDialogOpen, setDeleteEdgeDialogOpen] = useState(false);
 
-  /** Pre-computed descendant count for the delete node dialog cascade checkbox. */
   const deleteNodeDescendantCount = useMemo(
     () => (deleteNodeTarget ? getDescendantIds(deleteNodeTarget.id).length : 0),
     [deleteNodeTarget, getDescendantIds],
   );
 
   const handleEdgeClick = useCallback<EdgeMouseHandler>((_event, xyEdge) => {
-    // Canvas edge IDs for persisted edges are `${edge.id}--${srcId}--${tgtId}`.
-    // Compose edges use `compose-${parentId}-${childId}` and are not persisted.
     if (xyEdge.id.startsWith("compose-")) return;
     const edgeId = xyEdge.id.split("--")[0];
     const edge = dataEdges.find((e) => e.id === edgeId);
@@ -398,98 +340,15 @@ export default function ProjectCanvasPage() {
     setDeleteEdgeTarget(null);
   }, [deleteEdgeTarget, removeEdge]);
 
-  const toggleProduct = useCallback((productId: string, label: string) => {
-    setExpandedProducts((prev) => {
-      const next = new Set(prev);
-      if (next.has(productId)) {
-        next.delete(productId);
-        setBreadcrumbs([]);
-      } else {
-        next.add(productId);
-        setBreadcrumbs([{ nodeId: productId, label, species: "product" }]);
-      }
-      return next;
-    });
-  }, []);
-
-  const toggleScenario = useCallback((scenarioId: string, label: string, parentProductId: string, parentProductLabel: string) => {
-    if (expandedScenarios.has(scenarioId)) {
-      setExpandedScenarios((prev) => {
-        const next = new Set(prev);
-        next.delete(scenarioId);
-        return next;
-      });
-      const flowsUnderScenario = new Set(
-        getOrderedChildren(scenarioId).filter((n) => n.species === "flow").map((n) => n.id),
-      );
-      setExpandedFlows((prev) => {
-        const next = new Set(prev);
-        flowsUnderScenario.forEach((id) => next.delete(id));
-        return next;
-      });
-      setBreadcrumbs((crumbs) => crumbs.slice(0, crumbs.findIndex((b) => b.nodeId === scenarioId)));
-    } else {
-      // Enforce one open scenario per product: close sibling scenarios and their child flows
-      const siblingIds = new Set(
-        getOrderedChildren(parentProductId)
-          .filter((n) => n.species === "scenario" && n.id !== scenarioId)
-          .map((n) => n.id),
-      );
-      const siblingFlowIds = new Set(
-        dataNodes
-          .filter((n) => n.species === "flow")
-          .filter((n) => {
-            const parentId = composeParentByChild.get(n.id);
-            return parentId ? siblingIds.has(parentId) : false;
-          })
-          .map((n) => n.id),
-      );
-      setExpandedScenarios((prev) => {
-        const next = new Set(prev);
-        siblingIds.forEach((id) => next.delete(id));
-        next.add(scenarioId);
-        return next;
-      });
-      setExpandedFlows((prev) => {
-        const next = new Set(prev);
-        siblingFlowIds.forEach((id) => next.delete(id));
-        return next;
-      });
-      setBreadcrumbs([
-        { nodeId: parentProductId, label: parentProductLabel, species: "product" },
-        { nodeId: scenarioId, label, species: "scenario" },
-      ]);
-    }
-  }, [expandedScenarios, composeParentByChild, dataNodes, getOrderedChildren]);
-
-  const toggleFlow = useCallback((flowId: string, label: string, parentScenarioId: string, parentScenarioLabel: string, grandparentProductId: string, grandparentProductLabel: string) => {
+  const toggleFlow = useCallback((flowId: string) => {
     setExpandedFlows((prev) => {
       const next = new Set(prev);
       if (next.has(flowId)) {
         next.delete(flowId);
-        setBreadcrumbs((crumbs) => crumbs.slice(0, crumbs.findIndex((b) => b.nodeId === flowId)));
       } else {
         next.add(flowId);
-        setBreadcrumbs([
-          { nodeId: grandparentProductId, label: grandparentProductLabel, species: "product" },
-          { nodeId: parentScenarioId, label: parentScenarioLabel, species: "scenario" },
-          { nodeId: flowId, label, species: "flow" },
-        ]);
       }
       return next;
-    });
-  }, []);
-
-  const navigateBackTo = useCallback((index: number) => {
-    setBreadcrumbs((prev) => {
-      const entry = prev[index];
-      if (entry?.species === "product") {
-        setExpandedScenarios(new Set());
-        setExpandedFlows(new Set());
-      } else if (entry?.species === "scenario") {
-        setExpandedFlows(new Set());
-      }
-      return prev.slice(0, index + 1);
     });
   }, []);
 
@@ -643,259 +502,144 @@ export default function ProjectCanvasPage() {
 
   const { nodes, edges } = useMemo(() => {
     const layoutRules = new Map<string, LayoutRule>();
-
-    const flowRollups = new Map<string, ReturnType<typeof createEmptyRollup>>();
-
-    for (const node of dataNodes) {
-      if (node.species !== "flow") continue;
-
-      const childSteps = getOrderedChildren(node.id).filter((child) => isStepSpecies(child.species));
-      const flowRollup = childSteps.reduce(
-        (rollup, child) => addNodeToRollup(rollup, child),
-        createEmptyRollup(),
-      );
-
-      flowRollups.set(node.id, flowRollup);
-    }
-
-    const scenarioRollups = new Map<string, ReturnType<typeof createEmptyRollup>>();
-
-    for (const node of dataNodes) {
-      if (node.species !== "scenario") continue;
-
-      const childFlows = getOrderedChildren(node.id).filter((child) => child.species === "flow");
-      scenarioRollups.set(
-        node.id,
-        mergeRollups(...childFlows.map((flow) => flowRollups.get(flow.id) ?? createEmptyRollup())),
-      );
-    }
-
-    const productDataNodes = dataNodes.filter((n) => n.species === "product");
-    const productPositions = new Map<string, { x: number; y: number }>();
-    const productSpacing = 520;
-    const productY = 140;
-    const totalProductWidth = (productDataNodes.length - 1) * productSpacing;
-    const startProductX = 900 - totalProductWidth / 2;
-    productDataNodes.forEach((product, index) => {
-      productPositions.set(product.id, {
-        x: startProductX + index * productSpacing,
-        y: productY,
-      });
-    });
-
-    // Build the visible node list, starting with all product nodes
-    const visibleNodes: Node[] = productDataNodes.map(
-      (n): Node => ({
-        id: n.id,
-        type: SPECIES_TO_NODE_TYPE[n.species],
-        position: productPositions.get(n.id) ?? { x: 900, y: productY },
-        data: {
-          label: n.title,
-          status: n.status,
-          platforms: n.platforms,
-          metadata: n.metadata,
-          expanded: expandedProducts.has(n.id),
-          onToggle: () => toggleProduct(n.id, n.title),
-          onOpenDetails: () => {
-            setSelectedNode(n);
-            setPanelOpen(true);
-          },
-          onAddChild: (() => {
-            const child = getChildSpecies(n.species);
-            return child ? () => handleAddChildNode(n.id, child) : undefined;
-          })(),
-        },
-      }),
-    );
-
-    for (const n of productDataNodes) {
-      layoutRules.set(n.id, { fixed: true, axis: "both" });
-    }
-
-    const visibleNodeIds = new Set(productDataNodes.map((n) => n.id));
+    const visibleNodes: Node[] = [];
     const visibleEdges: Edge[] = [];
+    const visibleNodeIds = new Set<string>();
 
-    // For each expanded product, reveal its child scenarios with compose edges
-    for (const product of productDataNodes) {
-      if (!expandedProducts.has(product.id)) continue;
+    const flowRollupCache = new Map<string, PlatformStatusRollup>();
 
-      const childScenarios = getOrderedChildren(product.id).filter((n) => n.species === "scenario");
+    const computeFlowRollup = (flowNodeId: string, visited: Set<string>): PlatformStatusRollup => {
+      const cached = flowRollupCache.get(flowNodeId);
+      if (cached) return cached;
+      if (visited.has(flowNodeId)) return createEmptyRollup();
 
-      const productNode = visibleNodes.find((n) => n.id === product.id);
-      if (!productNode) continue;
-
-      const positions = horizontalPositions(
-        productNode.position.x,
-        productNode.position.y,
-        childScenarios.length,
+      visited.add(flowNodeId);
+      const children = getOrderedChildren(flowNodeId);
+      const directViewRollup = children
+        .filter((child) => child.species === "view")
+        .reduce((rollup, child) => addNodeToRollup(rollup, child), createEmptyRollup());
+      const nestedFlowRollup = mergeRollups(
+        ...children
+          .filter((child) => child.species === "flow")
+          .map((child) => computeFlowRollup(child.id, visited)),
       );
+      visited.delete(flowNodeId);
 
-      childScenarios.forEach((scenario, i) => {
-        const scenarioPos = positions[i];
-        const scenarioFlowCount = getOrderedChildren(scenario.id).filter((n) => n.species === "flow").length;
-        const scenarioRollup = scenarioRollups.get(scenario.id) ?? createEmptyRollup();
-        visibleNodeIds.add(scenario.id);
-        visibleNodes.push({
-          id: scenario.id,
-          type: SPECIES_TO_NODE_TYPE[scenario.species],
-          position: scenarioPos,
-          data: {
-            label: scenario.title,
-            status: getRollupDisplayStatus(scenarioRollup, scenario.status),
-            platforms: scenario.platforms,
-            metadata: scenario.metadata,
-            platformRollup: scenarioRollup,
-            flowCount: scenarioFlowCount,
-            expanded: expandedScenarios.has(scenario.id),
-            onToggle: () => toggleScenario(scenario.id, scenario.title, product.id, product.title),
-            onOpenDetails: () => {
-              setSelectedNode(scenario);
-              setPanelOpen(true);
-            },
-            onAddChild: (() => {
-              const child = getChildSpecies(scenario.species);
-              return child ? () => handleAddChildNode(scenario.id, child) : undefined;
-            })(),
-          },
-        });
-        layoutRules.set(scenario.id, {
-          axis: "x",
-        });
-        // Create a compose edge from the product to this scenario
-        visibleEdges.push({
-          id: `compose-${product.id}-${scenario.id}`,
-          source: product.id,
-          target: scenario.id,
-          type: "compose",
-        });
-      });
-    }
+      const combined = mergeRollups(directViewRollup, nestedFlowRollup);
+      flowRollupCache.set(flowNodeId, combined);
+      return combined;
+    };
 
-    // For each expanded scenario, reveal its child flows in vertical (top-to-bottom) order
-    const visibleScenarioIds = [...visibleNodeIds].filter((id) =>
-      dataNodes.find((n) => n.id === id && n.species === "scenario"),
-    );
+    const addDataNode = (node: DataNode, position: { x: number; y: number }) => {
+      if (visibleNodeIds.has(node.id)) return;
 
-    for (const scenarioId of visibleScenarioIds) {
-      if (!expandedScenarios.has(scenarioId)) continue;
+      const baseData = {
+        label: node.title,
+        status: node.status,
+        platforms: node.platforms,
+        metadata: node.metadata,
+      } as Record<string, unknown>;
 
-      const scenario = dataNodes.find((n) => n.id === scenarioId);
-      if (!scenario) continue;
-      const parentProduct = composeParentByChild.get(scenario.id)
-        ? nodesById.get(composeParentByChild.get(scenario.id)!)
-        : undefined;
-      const childFlows = getOrderedChildren(scenarioId).filter((n) => n.species === "flow");
-
-      const scenarioNode = visibleNodes.find((n) => n.id === scenarioId);
-      const scenarioCx = scenarioNode?.position.x ?? 0;
-      const scenarioCy = scenarioNode?.position.y ?? 0;
-
-      const positions = verticalPositions(
-        scenarioCx,
-        scenarioCy,
-        childFlows.length,
-      );
-
-      childFlows.forEach((flow, i) => {
-        const flowPos = positions[i];
-        const flowRollup = flowRollups.get(flow.id) ?? createEmptyRollup();
-        visibleNodeIds.add(flow.id);
-        visibleNodes.push({
-          id: flow.id,
-          type: SPECIES_TO_NODE_TYPE[flow.species],
-          position: flowPos,
-          data: {
-            label: flow.title,
-            status: getRollupDisplayStatus(flowRollup, flow.status),
-            platforms: flow.platforms,
-            metadata: flow.metadata,
-            platformRollup: flowRollup,
-            expanded: expandedFlows.has(flow.id),
-            onToggle: () => toggleFlow(flow.id, flow.title, scenarioId, scenario.title, parentProduct?.id ?? "", parentProduct?.title ?? ""),
-            onOpenDetails: () => {
-              setSelectedNode(flow);
-              setPanelOpen(true);
-            },
-            onAddChild: getChildSpecies(flow.species)
-              ? () => handleAddChildNode(flow.id, getChildSpecies(flow.species)!)
-              : undefined,
-          },
-        });
-        layoutRules.set(flow.id, {
-          axis: "x",
-        });
-        // Floating dotted edge from scenario to this flow
-        visibleEdges.push({
-          id: `compose-${scenarioId}-${flow.id}`,
-          source: scenarioId,
-          target: flow.id,
-          type: "floatingDotted",
-        });
-        // Sequence edge between consecutive flows — with insert action
-        if (i > 0) {
-          const prevFlow = childFlows[i - 1];
-          visibleEdges.push({
-            id: `compose-${prevFlow.id}-${flow.id}`,
-            source: prevFlow.id,
-            target: flow.id,
-            type: "compose",
-            data: {
-              insertLabel: "Insert a Flow",
-              onInsert: () => handleInsertBetween(prevFlow.id, flow.id, "flow"),
-            },
-          });
-        }
-      });
-    }
-
-    // For each expanded flow, reveal its children (steps and conditions) in a linear layout
-    const visibleFlowIds = [...visibleNodeIds].filter((nodeId) =>
-      dataNodes.find((n) => n.id === nodeId && n.species === "flow"),
-    );
-
-    for (const flowId of visibleFlowIds) {
-      if (!expandedFlows.has(flowId)) continue;
-
-      const flow = dataNodes.find((n) => n.id === flowId);
-      if (!flow) continue;
-
-      const children = getOrderedChildren(flowId).filter((n) => FLOW_CHILD_SPECIES.has(n.species));
-
-      const flowNode = visibleNodes.find((n) => n.id === flowId);
-      const flowCx = flowNode?.position.x ?? 0;
-      const flowCy = flowNode?.position.y ?? 0;
-
-      const childPositions = linearPositions(flowCx, flowCy, children.length);
-      const maxSpreadX = Math.max(480, children.length * 220);
-
-      for (const [i, child] of children.entries()) {
-        const childPosition = childPositions[i];
-        const childRollup = addNodeToRollup(createEmptyRollup(), child);
-        visibleNodeIds.add(child.id);
-        visibleNodes.push({
-          id: child.id,
-          type: SPECIES_TO_NODE_TYPE[child.species],
-          position: childPosition,
-          data: {
-            label: child.title,
-            status: getRollupDisplayStatus(childRollup, child.status),
-            platforms: child.platforms,
-            metadata: child.metadata,
-            platformStatuses: getEditablePlatformStatuses(child),
-          },
-        });
-        layoutRules.set(child.id, {
-          axis: "both",
-          clampX: [flowCx + FLOW_CHILD_X_START - 40, flowCx + FLOW_CHILD_X_START + maxSpreadX],
-          clampY: [flowCy - 80, flowCy + 80],
-        });
+      if (node.species === "flow") {
+        const flowRollup = computeFlowRollup(node.id, new Set<string>());
+        baseData.status = getRollupDisplayStatus(flowRollup, node.status);
+        baseData.platformRollup = flowRollup;
+        baseData.expanded = expandedFlows.has(node.id);
+        baseData.onToggle = () => toggleFlow(node.id);
+        baseData.onAddChild = () => handleAddChildNode(node.id, "view");
+        baseData.onOpenDetails = () => {
+          setSelectedNode(node);
+          setPanelOpen(true);
+        };
       }
 
-      // Compose edges between consecutive view-species children — with insert action
-      const sortedViewChildren = children.filter((c) => c.species === "view");
-      for (let vi = 1; vi < sortedViewChildren.length; vi++) {
-        const prev = sortedViewChildren[vi - 1];
-        const curr = sortedViewChildren[vi];
+      if (node.species === "view") {
+        const viewRollup = addNodeToRollup(createEmptyRollup(), node);
+        baseData.status = getRollupDisplayStatus(viewRollup, node.status);
+        baseData.platformStatuses = getEditablePlatformStatuses(node);
+      }
+
+      visibleNodes.push({
+        id: node.id,
+        type: SPECIES_TO_NODE_TYPE[node.species],
+        position,
+        data: baseData,
+      });
+      visibleNodeIds.add(node.id);
+    };
+
+    const dataLayerNodes = dataNodes.filter((node) => node.species === "data-model" || node.species === "api-endpoint");
+    const dataLayerPositions = verticalPositions(160, 760, dataLayerNodes.length, 120);
+    dataLayerNodes.forEach((node, index) => {
+      addDataNode(node, dataLayerPositions[index] ?? { x: 160, y: 760 + index * 120 });
+      layoutRules.set(node.id, { axis: "both" });
+    });
+
+    const rootNodes = dataNodes.filter((node) => !composeParentByChild.has(node.id));
+    const rootFlows = rootNodes.filter((node) => node.species === "flow");
+    const rootViews = rootNodes.filter((node) => node.species === "view");
+
+    const rootFlowPositions = horizontalPositions(900, ROOT_FLOW_Y, rootFlows.length, ROOT_FLOW_SPACING);
+    const rootViewPositions = horizontalPositions(900, ROOT_VIEW_Y, rootViews.length, ROOT_VIEW_SPACING);
+
+    rootFlows.forEach((flow, index) => {
+      addDataNode(flow, rootFlowPositions[index] ?? { x: 900, y: ROOT_FLOW_Y });
+      layoutRules.set(flow.id, { axis: "both", fixed: true });
+    });
+
+    rootViews.forEach((view, index) => {
+      addDataNode(view, rootViewPositions[index] ?? { x: 900, y: ROOT_VIEW_Y });
+      layoutRules.set(view.id, { axis: "both", fixed: true });
+    });
+
+    const queue: string[] = rootFlows.map((flow) => flow.id);
+    const visitedFlowIds = new Set<string>();
+
+    while (queue.length > 0) {
+      const flowId = queue.shift()!;
+      if (visitedFlowIds.has(flowId)) continue;
+      visitedFlowIds.add(flowId);
+
+      if (!expandedFlows.has(flowId)) continue;
+      const parentNode = visibleNodes.find((node) => node.id === flowId);
+      if (!parentNode) continue;
+
+      const children = getOrderedChildren(flowId).filter((child) => FLOW_CHILD_SPECIES.has(child.species));
+      const childPositions = verticalPositions(
+        parentNode.position.x + FLOW_CHILD_X_OFFSET,
+        parentNode.position.y,
+        children.length,
+      );
+
+      children.forEach((child, index) => {
+        const pos = childPositions[index] ?? {
+          x: parentNode.position.x + FLOW_CHILD_X_OFFSET,
+          y: parentNode.position.y,
+        };
+
+        addDataNode(child, pos);
+        layoutRules.set(child.id, {
+          axis: "both",
+          clampX: [parentNode.position.x + FLOW_CHILD_X_OFFSET - 50, parentNode.position.x + FLOW_CHILD_X_OFFSET + 260],
+          clampY: [parentNode.position.y - 280, parentNode.position.y + 280],
+        });
+
+        visibleEdges.push({
+          id: `compose-${flowId}-${child.id}`,
+          source: flowId,
+          target: child.id,
+          type: "compose",
+        });
+
+        if (child.species === "flow") {
+          queue.push(child.id);
+        }
+      });
+
+      const childViews = children.filter((child) => child.species === "view");
+      for (let index = 1; index < childViews.length; index += 1) {
+        const prev = childViews[index - 1];
+        const curr = childViews[index];
         visibleEdges.push({
           id: `compose-${prev.id}-${curr.id}`,
           source: prev.id,
@@ -909,8 +653,7 @@ export default function ProjectCanvasPage() {
       }
     }
 
-    // Include any persisted edges that connect two visible nodes.
-    const renderedEdgePairs = new Set(visibleEdges.map((e) => `${e.source}:${e.target}`));
+    const renderedEdgePairs = new Set(visibleEdges.map((edge) => `${edge.source}:${edge.target}`));
     const EDGE_TYPE_MAP: Record<string, string> = {
       composes: "compose",
       branches: "branch",
@@ -919,57 +662,32 @@ export default function ProjectCanvasPage() {
       queries: "queries",
     };
 
-    // Build a set of expanded flow IDs for sourceHandle assignment
-    const expandedFlowIdSet = new Set(
-      [...visibleNodeIds].filter((nodeId) =>
-        dataNodes.find((n) => n.id === nodeId && n.species === "flow" && expandedFlows.has(nodeId)),
-      ),
-    );
-
     for (const edge of dataEdges) {
       if (!visibleNodeIds.has(edge.source_id) || !visibleNodeIds.has(edge.target_id)) continue;
-
       const pairKey = `${edge.source_id}:${edge.target_id}`;
       if (renderedEdgePairs.has(pairKey)) continue;
 
-      const xyType = EDGE_TYPE_MAP[edge.edge_type];
-      // Flow→child compose edges should exit from the right handle
-      const sourceHandle = expandedFlowIdSet.has(edge.source_id) && edge.edge_type === "composes"
-        ? "right"
-        : undefined;
       visibleEdges.push({
         id: `${edge.id}--${edge.source_id}--${edge.target_id}`,
         source: edge.source_id,
         target: edge.target_id,
-        type: xyType,
-        sourceHandle,
+        type: EDGE_TYPE_MAP[edge.edge_type],
       });
       renderedEdgePairs.add(pairKey);
     }
 
     const collisionFreeNodes = resolveNodeCollisions(visibleNodes, layoutRules);
-
     return { nodes: collisionFreeNodes, edges: visibleEdges };
   }, [
     composeParentByChild,
-    dataNodes,
     dataEdges,
-    expandedProducts,
-    expandedScenarios,
+    dataNodes,
     expandedFlows,
     getOrderedChildren,
-    nodesById,
-    toggleProduct,
-    toggleScenario,
-    toggleFlow,
     handleAddChildNode,
     handleInsertBetween,
+    toggleFlow,
   ]);
-
-  const breadcrumbSegments = breadcrumbs.map((crumb, index) => ({
-    label: crumb.label,
-    onClick: index < breadcrumbs.length - 1 ? () => navigateBackTo(index) : undefined,
-  }));
 
   if (nodesLoading || edgesLoading) {
     return (
@@ -982,27 +700,26 @@ export default function ProjectCanvasPage() {
   return (
     <div className="h-screen w-full flex flex-col">
       <header className="flex items-center gap-3 border-b bg-background px-4 py-2 shrink-0">
-          <Link href="/" aria-label="Go to home" className="inline-flex items-center">
-            <ArkaikLogo className="w-16 shrink-0" />
-          </Link>
-          {breadcrumbs.length > 0 && <Breadcrumb segments={breadcrumbSegments} />}
-          <div className="ml-auto flex items-center gap-3">
-            {exportWarning && (
-              <span className="text-xs text-amber-700" role="status" aria-live="polite">
-                {exportWarning}
-              </span>
-            )}
-            {exportError && (
-              <span className="text-xs text-destructive" role="status" aria-live="polite">
-                {exportError}
-              </span>
-            )}
-            <Button size="sm" variant="outline" onClick={handleExport} disabled={exporting}>
-              <DownloadIcon className="size-4" />
-              {exporting ? "Exporting..." : "Export JSON"}
-            </Button>
-          </div>
-        </header>
+        <Link href="/" aria-label="Go to home" className="inline-flex items-center">
+          <ArkaikLogo className="w-16 shrink-0" />
+        </Link>
+        <div className="ml-auto flex items-center gap-3">
+          {exportWarning && (
+            <span className="text-xs text-amber-700" role="status" aria-live="polite">
+              {exportWarning}
+            </span>
+          )}
+          {exportError && (
+            <span className="text-xs text-destructive" role="status" aria-live="polite">
+              {exportError}
+            </span>
+          )}
+          <Button size="sm" variant="outline" onClick={handleExport} disabled={exporting}>
+            <DownloadIcon className="size-4" />
+            {exporting ? "Exporting..." : "Export JSON"}
+          </Button>
+        </div>
+      </header>
       <div className="flex-1 min-h-0 relative">
         <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} onEdgeClick={handleEdgeClick} />
         <div className="absolute bottom-4 right-4 z-10">
