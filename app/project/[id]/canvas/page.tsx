@@ -1148,7 +1148,11 @@ export default function ProjectCanvasPage() {
           );
 
           if (branchSequence.startIds.length > 0) {
-            connectIds([branchId], branchSequence.startIds, { label: branch.label });
+            const branchEdgeData: Record<string, unknown> = { label: branch.label };
+            if (entry.type === "condition") {
+              branchEdgeData.edgeColor = branch.label === "Yes" ? "green" : "yellow";
+            }
+            connectIds([branchId], branchSequence.startIds, branchEdgeData);
             branchEndIds.push(...branchSequence.endIds);
           } else {
             branchEndIds.push(branchId);
