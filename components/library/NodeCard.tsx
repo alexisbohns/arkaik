@@ -57,10 +57,9 @@ export function NodeCard({
   const previewItems = playlistPreview.slice(0, 5);
 
   return (
-    <div
-      role="button"
+    <article
       tabIndex={0}
-      className="w-full text-left"
+      className="w-full cursor-pointer"
       onClick={onClick}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -143,6 +142,6 @@ export function NodeCard({
           )}
         </CardContent>
       </Card>
-    </div>
+    </article>
   );
 }

@@ -18,16 +18,15 @@ export function SpeciesBadge({ species, label, description, showLabel = false, o
   return (
     <HoverCard openDelay={250}>
       <HoverCardTrigger asChild>
-        <button
-          type="button"
-          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted/60 shrink-0"
+        <abbr
+          tabIndex={0}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted/60 shrink-0 no-underline cursor-default"
           aria-label={`About ${label}`}
           onClick={onClick}
-          onMouseDown={onClick}
         >
           <SpeciesIcon className="size-3.5" />
           {showLabel && <span>{label}</span>}
-        </button>
+        </abbr>
       </HoverCardTrigger>
       <HoverCardContent className="w-64 p-3" align="start">
         <div className="flex items-start gap-2">
