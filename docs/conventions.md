@@ -23,6 +23,11 @@ docs/                   # This documentation
 
 - **No global store.** No Zustand, Redux, or Context-based state.
 - Reusable state logic lives in hooks: `useNodes`, `useEdges`, `useProject`, `useProjects`, `useGraphNavigation`.
+- Hook intent:
+  - `useNodes` and `useEdges` handle project graph CRUD.
+  - `useProject` handles project-level metadata (including `root_node_id` and card preferences).
+  - `useProjects` powers project lists/switching in route shell UI.
+  - `useGraphNavigation` remains a generic helper for graph navigation state when needed.
 - The project canvas page (`app/project/[id]/canvas/page.tsx`) uses `useNodes` and `useEdges` for data, and manages flow expansion as local `useState` (`expandedFlows`).
 - Data flows via props from the project page down to canvas components.
 - Route-shell concerns such as the project switcher and persistent sidebar should stay in the project layout and use route state plus lightweight hooks instead of introducing shared global state.

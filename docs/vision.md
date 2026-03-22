@@ -1,179 +1,74 @@
 # Vision
 
-> This document describes the full vision for arkaik — including features not yet implemented.  
-> For the current state, see [architecture.md](architecture.md) and [graph-model.md](graph-model.md).
+> This document describes long-term direction while staying aligned with the current architecture.
+> Source of truth for implemented behavior: [architecture.md](architecture.md), [graph-model.md](graph-model.md), and [data-layer.md](data-layer.md).
 
-## The Problem
+## Problem Statement
 
-Existing tools silo product knowledge: Jira for stories, Figma for screens, Notion for docs, dbdiagram for schemas, Swagger for APIs. No tool lets you **traverse across all these layers fluidly** — from a user story down to the API payload it touches, or from a database table up to which screens render its data, across platforms.
+Product knowledge is usually fragmented across planning docs, design files, API specs, and database tools. Teams lose time reconstructing dependencies between user-facing behavior, backend calls, and data storage.
 
-## What arkaik Is
+arkaik targets that gap with one navigable graph.
 
-**arkaik** is a **product graph browser**. Not a task tracker. Not a wiki. Not a design tool. It's a navigable, multi-dimensional map of a product's full anatomy — from pixels to payloads.
+## Product Direction
 
-### Who Is This For?
+arkaik is a local-first graph workspace for mapping how product behavior is built and reused.
 
-- Solo founders and indie devs who wear every hat
-- Small product teams where design, engineering, and data overlap
-- Anyone who needs to model the full vertical of a product in one place
+The current model centers on four species:
 
-### Core Principles
+- `flow`: ordered sequence container
+- `view`: reusable screen/page node
+- `data-model`: data entity node
+- `api-endpoint`: API contract node
 
-- **One graph, not many docs** — everything is a node, everything can be linked
-- **Opinionated ontology** — the tool *knows* what a flow, a component, a data model is
-- **Semantic zoom** — start at the product level, drill down to a color token
-- **Platform-aware** — first-class support for Web, iOS, Android variants
-- **Local-first** — works offline, data is yours, open-source friendly
+Flow behavior is playlist-driven (`metadata.playlist.entries`) and anchored by optional `project.root_node_id`.
 
-## The Species Model (Atomic Hierarchy)
+## UX Direction
 
-Inspired by Atomic Design, extended upward into flows, scenarios, and the product. Every entity in arkaik belongs to a **species** — a level in the composition hierarchy.
+### Playlist-Centric Exploration
 
-| Level | Species | Examples | Composes from |
-|---|---|---|---|
-| 0 | 🎨 Token | Color token, spacing value, translation key | — |
-| 1 | ◻️ State | Button:hover, Card:loading, Input:error | Tokens |
-| 2 | 🧩 Component | Button, Card, Input, Emotion Wheel | States |
-| 3 | 📐 Section | Card grid, Header bar, Navigation drawer | Components |
-| 4 | 📄 View | Pebble detail page, Emotion picker page | Sections |
-| 5 | 🔀 Flow | "Shape an emotion", "Relate souls" | Views |
-| 6 | 🎬 Scenario | "Record a full pebble" | Flows |
-| 7 | 📦 Product | Pebbles, teale | Scenarios |
+- Expand flows in place to reveal ordered playlist entries.
+- Support branching directly inside playlists via `condition` and `junction` entries.
+- Keep rendering readable with alternating drill layout and top-level accordion expansion.
 
-> **Current implementation:** Only levels 4–5 are implemented as `view` and `flow`. Levels 0–3 and 6–7 are planned. See [graph-model.md](graph-model.md) for the live species list.
+Implementation references: [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx), [lib/utils/elk-layout.ts](../lib/utils/elk-layout.ts)
 
-### Three Orthogonal Dimensions
+### Reuse-First Authoring
 
-Every node in the graph is described across three axes:
+- Enable many-to-many reuse of `view` and `flow` nodes across playlists.
+- Make reverse references visible in where-used UI.
+- Support insert-between and search-or-create flows directly from composition edges.
 
-1. **Species** — *what it is* (level in the hierarchy above)
-2. **Platform variant** — *where it lives* (Web, iOS, Android)
-3. **Lifecycle status** — *where it's at* (Idea → Live → Archived)
+Implementation references: [components/panels/NodeDetailPanel.tsx](../components/panels/NodeDetailPanel.tsx), [components/panels/InsertBetweenDialog.tsx](../components/panels/InsertBetweenDialog.tsx), [lib/utils/where-used.ts](../lib/utils/where-used.ts)
 
-### Parallel Layers: Data & API
+### Two Complementary Workspaces
 
-Alongside the UI species hierarchy, two parallel layers connect to it:
+- **Canvas route** for spatial graph editing and sequence expansion.
+- **Library route** for high-density browsing, filtering, and metadata audits.
+- **Sidebar shell** for stable in-project navigation between both modes.
 
-- **Data Models** — tables, fields, relations. Linked to components and views that *display* them.
-- **API Endpoints** — routes, methods, payloads, responses. Linked to data models they *query* and views that *call* them.
+Implementation references: [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx), [app/project/[id]/library/page.tsx](../app/project/[id]/library/page.tsx), [components/layout/ProjectSidebar.tsx](../components/layout/ProjectSidebar.tsx)
 
-## Interaction Model: Semantic Zoom
+## Platform And Status Direction
 
-### Level 0 — Product map
+- Keep per-platform status editing on `view` nodes.
+- Keep `flow` status as computed rollup from descendant views.
+- Continue exposing lifecycle state as a first-class visual signal in cards, panels, and table rows.
 
-Central node(s) = Products. Radiating out = Scenarios. Bird's-eye view, just names and status badges.
+Config sources: [lib/config/platforms.ts](../lib/config/platforms.ts), [lib/config/statuses.ts](../lib/config/statuses.ts)
 
-### Level 1 — Scenario anatomy
+## Data And Backend Direction
 
-Click a Scenario → it expands in-place. Flows that compose it, laid out as connected blocks.
+- Preserve the `DataProvider` abstraction to keep UI/hooks backend-agnostic.
+- Continue local-first operation with import/export.
+- Migrate to Supabase provider without changing UI contracts.
 
-### Level 2 — Flow anatomy (workflow view)
+Implementation references: [lib/data/data-provider.ts](../lib/data/data-provider.ts), [lib/data/local-provider.ts](../lib/data/local-provider.ts), [lib/utils/export.ts](../lib/utils/export.ts)
 
-Click a Flow → it expands into a flowchart:
+## Roadmap Themes
 
-- **View nodes** — if shared across all platforms: single node with stacked indicator. Click to unfold platform variants.
-- **Platform-specific nodes** — when a view differs per platform: 1–3 nodes, color-coded (Web, iOS, Android).
-- **Condition nodes** — diamonds between views: user action, data condition, branching arrows.
-- **Dead-end nodes** — error states, empty states, permission walls (dashed border).
-
-### Level 3 — View detail
-
-Click a view → side panel slides in:
-
-- Platform variants as tabs (mockup or placeholder note)
-- Linked components used in this view
-- Linked data models and API endpoints
-- Status badge
-
-### Key UX Patterns
-
-- **Breadcrumbs** — always visible: `Pebbles > Record a Pebble > Shape an Emotion > View 3`
-- **Minimap** — small overview in the corner
-- **Ghost nodes** — "Idea" status nodes render as dashed/faded
-- **Cross-layer shortcuts** — icon on any view node to jump to Data Model or API Endpoint
-
-## Architecture Diagram
-
-```mermaid
-graph TD
-    subgraph UI["🧬 UI Species Hierarchy"]
-        TOKEN["🎨 Token<br>color, spacing, translation key"]
-        STATE["◻️ State<br>button:hover, card:loading"]
-        COMPONENT["🧩 Component<br>Button, Card, Input"]
-        SECTION["📐 Section<br>Card Grid, Header Bar"]
-        VIEW["📄 View<br>Pebble Detail, Emotion Picker"]
-        FLOW["🔀 Flow<br>Shape an Emotion"]
-        SCENARIO["🎬 Scenario<br>Record a full Pebble"]
-        PRODUCT["📦 Product<br>Pebbles"]
-
-        TOKEN --> STATE
-        STATE --> COMPONENT
-        COMPONENT --> SECTION
-        SECTION --> VIEW
-        VIEW --> FLOW
-        FLOW --> SCENARIO
-        SCENARIO --> PRODUCT
-    end
-
-    subgraph PLATFORM["🌐 Platform Variants"]
-        WEB["Web"]
-        IOS["iOS"]
-        ANDROID["Android"]
-    end
-
-    COMPONENT -. "variant per platform" .-> PLATFORM
-    VIEW -. "variant per platform" .-> PLATFORM
-
-    subgraph DATA["📦 Data Models"]
-        TABLE["Table<br>events, pearls, souls"]
-        FIELD["Field<br>id, name, intensity"]
-        RELATION["Relation<br>event_pearl, event_souls"]
-        FIELD --> TABLE
-        TABLE --> RELATION
-    end
-
-    subgraph API["🔌 API Endpoints"]
-        ROUTE["Route<br>GET /pebbles/:id"]
-        PAYLOAD["Payload<br>request body"]
-        RESPONSE["Response<br>consolidated pebble"]
-        PAYLOAD --> ROUTE
-        ROUTE --> RESPONSE
-    end
-
-    COMPONENT -- "displays data from" --> TABLE
-    VIEW -- "calls" --> ROUTE
-    ROUTE -- "queries" --> TABLE
-```
-
-## Planned Data Model
-
-The full vision targets a Supabase-backed schema:
-
-```sql
--- Nodes: every entity in the graph
--- species: token | state | component | section | view | flow | scenario | product | data-model | api-endpoint
--- status: idea | backlog | prioritized | development | releasing | live | archived | blocked
-
-create table nodes (
-  id uuid primary key default gen_random_uuid(),
-  project_id uuid not null references projects(id) on delete cascade,
-  title text not null,
-  species text not null,
-  status text default 'idea',
-  platforms text[] default '{}',
-  description text,
-  metadata jsonb,
-  created_at timestamptz default now()
-);
-```
-
-> The current `localStorage` implementation already uses this shape — the migration path to Supabase does not require data transformation, only a provider swap. See [data-layer.md](data-layer.md#migration-path) for details.
-
-## Roadmap
-
-| Phase | Feature |
+| Horizon | Theme |
 |---|---|
-| Current | `flow` + `view` species, per-platform statuses, playlist composition, JSON import/export |
-| Near-term | Component and section species (levels 2–3) |
-| Mid-term | Token and state species (levels 0–1), Supabase backend |
-| Long-term | Scenario and product species (levels 6–7), multi-user, real-time sync |
+| Current | Playlist modeling, reusable nodes, route shell, library workflows |
+| Near-term | Better collaboration primitives and stronger validation tooling |
+| Mid-term | Supabase-backed provider parity with local-first behavior |
+| Long-term | Multi-user graph operations, branch-aware review workflows, and richer analytics |

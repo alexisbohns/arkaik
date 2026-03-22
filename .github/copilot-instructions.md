@@ -7,7 +7,8 @@ This project uses Next.js 16 with breaking changes. Read `node_modules/next/dist
 ## Architecture
 
 - Product graph browser built with React Flow on Next.js App Router
-- 8-level species hierarchy (token → product) + 2 parallel layers (data-model, api-endpoint)
+- 4-species model (`flow`, `view`, `data-model`, `api-endpoint`) with playlist-driven flow expansion
+- Project shell routes include both canvas and library (`/project/[id]/canvas`, `/project/[id]/library`)
 - Local-first data with provider abstraction (localStorage now, Supabase planned)
 - See `docs/` for detailed documentation
 
@@ -22,7 +23,7 @@ When reviewing or making changes:
 
 ## Conventions
 
-- State: local hooks (`useNodes`, `useEdges`, `useProject`, `useGraphNavigation`) — no global store
+- State: local hooks (`useNodes`, `useEdges`, `useProject`, `useProjects`, `useGraphNavigation`) — no global store
 - Styling: Tailwind + shadcn/ui + class-variance-authority
 - Config: typed const arrays in `lib/config/` — add new taxonomies there
 - Data: all mutations go through `DataProvider` interface in `lib/data/`

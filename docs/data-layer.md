@@ -135,7 +135,7 @@ Implemented in `lib/data/local-provider.ts`.
 - **Indexing:** Dual index maps — `nodeIndex` (node ID → project ID) and `edgeIndex` (edge ID → project ID) for fast lookups
 - **Persistence:** Auto-persists to `localStorage` on every mutation
 - **Cascade:** `deleteNode` also removes all edges referencing that node
-- **Normalization:** Legacy node fields (`parent_id`, `sort_order`, `position_x`, `position_y`) are stripped on load/import, and ordered `metadata.playlist.entries` values are hydrated from legacy data when present
+- **Normalization:** Legacy structural fields from pre-playlist storage are stripped on load/import, and ordered `metadata.playlist.entries` values are hydrated from legacy data when present
 
 ## Import / Export
 
@@ -162,7 +162,7 @@ Hooks in `lib/hooks/` provide React state wrappers around the provider:
 | `useProjects()` | `{ projects, loading }` | Load the active project list for shell navigation |
 | `useNodes(projectId)` | `{ nodes, loading, addNode, removeNode, updateNode }` | CRUD for nodes |
 | `useEdges(projectId)` | `{ edges, loading, addEdge, removeEdge }` | CRUD for edges |
-| `useGraphNavigation()` | `{ expandedNodeIds, zoomLevel, breadcrumbs, expand, collapse, navigateTo }` | Generic semantic zoom state |
+| `useGraphNavigation()` | `{ expandedNodeIds, zoomLevel, breadcrumbs, expand, collapse, navigateTo }` | Generic graph navigation state utility |
 
 The project canvas page (`app/project/[id]/canvas/page.tsx`) uses `useProject` for root-node anchoring and project-level card-style preferences, and still manages `expandedFlows` as local state.
 
