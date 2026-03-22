@@ -6,6 +6,7 @@ import {
   SheetContent,
   SheetHeader,
   SheetClose,
+  SheetTitle,
 } from "@/components/ui/sheet";
 import {
   Select,
@@ -146,6 +147,12 @@ function NodeFields({ node, onUpdate }: NodeFieldsProps) {
   const lastSavedDescriptionRef = useRef(node.description ?? "");
   const titleEditRef = useRef<HTMLDivElement>(null);
   const descriptionEditRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (titleEditRef.current) titleEditRef.current.textContent = node.title;
+    if (descriptionEditRef.current) descriptionEditRef.current.textContent = node.description ?? "";
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const usesSingleStatusField = node.species === "data-model" || node.species === "api-endpoint";
 
   useEffect(() => {
@@ -202,28 +209,22 @@ function NodeFields({ node, onUpdate }: NodeFieldsProps) {
           suppressContentEditableWarning
           onPaste={handleTitlePaste}
           onInput={(e) => {
-            const text = (e.currentTarget.textContent || "").trim();
-            setTitle(text);
+            setTitle(e.currentTarget.textContent || "");
           }}
           className="text-lg font-semibold text-foreground outline-none empty:before:text-muted-foreground empty:before:content-['Node_title'] whitespace-pre-wrap break-words"
           aria-label="Node title (editable)"
-        >
-          {title}
-        </div>
+        />
         <div
           ref={descriptionEditRef}
           contentEditable
           suppressContentEditableWarning
           onPaste={handleDescriptionPaste}
           onInput={(e) => {
-            const text = (e.currentTarget.textContent || "").trim();
-            setDescription(text);
+            setDescription(e.currentTarget.textContent || "");
           }}
           className="text-sm text-foreground leading-relaxed outline-none empty:before:text-muted-foreground empty:before:content-['Add_a_description...'] whitespace-pre-wrap break-words"
           aria-label="Description (editable)"
-        >
-          {description}
-        </div>
+        />
       </div>
       {usesSingleStatusField && (
         <div className="flex flex-col gap-1.5">
@@ -422,6 +423,9 @@ export function NodeDetailPanel({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent onOpenAutoFocus={(e) => e.preventDefault()}>
         <SheetHeader>
+          <SheetTitle className="sr-only">
+            {node ? `${speciesLabel}: ${node.title}` : "Node details"}
+          </SheetTitle>
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               {node && speciesLabel && (
