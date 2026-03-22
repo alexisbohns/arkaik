@@ -12,11 +12,15 @@ app/
   page.tsx              # Home page: component showcase / project list
   project/
     [id]/
-      layout.tsx        # Minimal wrapper
-      page.tsx          # Main canvas — semantic zoom logic lives here
+      layout.tsx        # Shared project shell with Canvas/Library route links
+      page.tsx          # Redirects to /project/[id]/canvas
+      canvas/
+        page.tsx        # Main canvas — semantic zoom logic lives here
+      library/
+        page.tsx        # Filterable gallery/directory node browser
 ```
 
-The project page (`app/project/[id]/page.tsx`) is the core of the app. It:
+The canvas page (`app/project/[id]/canvas/page.tsx`) is the core of the graph renderer. It:
 
 1. Loads nodes and edges via `useNodes` and `useEdges`
 2. Manages expansion state for flows via local `useState`
@@ -48,6 +52,10 @@ components/
     PlatformDots.tsx        # Colored dots for web/ios/android
     Sidebar.tsx             # Left panel container (stub)
     StatusBadge.tsx         # Colored pill with status label
+  library/
+    LibraryFilterBar.tsx # Species/search/display controls for the library page
+    NodeCard.tsx         # Gallery-mode card for a single node
+    NodeTable.tsx        # Directory-mode sortable table for nodes
   panels/
     NewNodeForm.tsx         # Dialog form for creating a node with species-aware status/platform defaults
     InsertBetweenDialog.tsx # Dialog for insert-between actions: choose view/flow, search existing, or create inline
@@ -69,13 +77,23 @@ localProvider (implements DataProvider)
     ↕ (async calls)
 Hooks: useNodes, useEdges, useProject
     ↕ (state)
-app/project/[id]/page.tsx (semantic zoom + status rollup logic)
+app/project/[id]/canvas/page.tsx (semantic zoom + status rollup logic)
     ↕ (props)
 Canvas → ReactFlow → Custom Nodes/Edges
     ↕ (click events)
 NodeDetailPanel → Hook (updateNode) → Provider → Storage
 NewNodeForm (Dialog) → Hook (addNode) → Provider → Storage
 View card variant selector → Hook (useProject.updateProject) → Provider → Storage
+
+Library route data flow:
+
+Hooks: useNodes, useEdges
+  ↕ (state)
+app/project/[id]/library/page.tsx
+  ↕ (props)
+LibraryFilterBar + NodeCard/NodeTable
+  ↕ (click events)
+NodeDetailPanel / NewNodeForm → hooks → Provider → Storage
 ```
 
 All data mutations flow through the `DataProvider` interface (`lib/data/data-provider.ts`). The current implementation is `localProvider` backed by `localStorage`. The interface is designed for a future Supabase migration — swap the provider, keep the hooks and UI unchanged.
@@ -133,7 +151,8 @@ Edits call `useNodes.updateNode` which flows through the `DataProvider`.
 
 ## Source References
 
-- Graph orchestration: [app/project/[id]/page.tsx](../app/project/[id]/page.tsx)
+- Graph orchestration: [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx)
+- Library orchestration: [app/project/[id]/library/page.tsx](../app/project/[id]/library/page.tsx)
 - React Flow registry: [components/graph/Canvas.tsx](../components/graph/Canvas.tsx)
 - Data hooks: [lib/hooks/useNodes.ts](../lib/hooks/useNodes.ts), [lib/hooks/useEdges.ts](../lib/hooks/useEdges.ts)
 - Data provider: [lib/data/local-provider.ts](../lib/data/local-provider.ts)

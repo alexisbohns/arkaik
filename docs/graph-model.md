@@ -21,7 +21,26 @@ Config source: [lib/config/species.ts](../lib/config/species.ts)
 - `data-model` and `api-endpoint` remain persisted graph species and can still be edited from panels/import-export, but they are not rendered as standalone canvas cards.
 - View cards surface API relationships inline via embedded actions instead of separate API nodes.
 
-Source: [app/project/[id]/page.tsx](../app/project/[id]/page.tsx), [components/graph/nodes/ViewNode.tsx](../components/graph/nodes/ViewNode.tsx)
+Source: [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx), [components/graph/nodes/ViewNode.tsx](../components/graph/nodes/ViewNode.tsx)
+
+## Library Views
+
+Project library is available at `/project/[id]/library` with two browsing modes:
+
+- **Gallery**: card grid with title, prefixed ID, species/status badges, platforms, and flow playlist preview.
+- **Directory**: sortable table for `id`, `title`, `species`, `status`, and `used in` flow count.
+
+Filtering:
+
+- Species filter supports `all`, `flow`, `view`, `data-model`, `api-endpoint`.
+- Search matches node title and description text.
+
+Library source:
+
+- [app/project/[id]/library/page.tsx](../app/project/[id]/library/page.tsx)
+- [components/library/LibraryFilterBar.tsx](../components/library/LibraryFilterBar.tsx)
+- [components/library/NodeCard.tsx](../components/library/NodeCard.tsx)
+- [components/library/NodeTable.tsx](../components/library/NodeTable.tsx)
 
 ## Composition Model
 
@@ -32,7 +51,7 @@ Source: [app/project/[id]/page.tsx](../app/project/[id]/page.tsx), [components/g
 - When playlist entries do not reference all compose-edge children, missing children are appended after playlist-derived ordering.
 - Root anchoring uses `project.root_node_id` when present; otherwise the canvas infers roots from nodes without compose parents.
 
-Source: [app/project/[id]/page.tsx](../app/project/[id]/page.tsx)
+Source: [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx)
 
 ### Flow Children
 
@@ -50,7 +69,7 @@ Layout is computed by **elkjs** (Eclipse Layout Kernel, layered algorithm). The 
 
 Layout source: [lib/utils/elk-layout.ts](../lib/utils/elk-layout.ts)
 
-Source: [app/project/[id]/page.tsx](../app/project/[id]/page.tsx)
+Source: [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx)
 
 ### Playlist Entry Types
 
@@ -83,7 +102,7 @@ Sources:
 
 - [lib/utils/platform-status.ts](../lib/utils/platform-status.ts)
 - [components/panels/NodeDetailPanel.tsx](../components/panels/NodeDetailPanel.tsx)
-- [app/project/[id]/page.tsx](../app/project/[id]/page.tsx)
+- [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx)
 
 ## Platforms
 
@@ -108,14 +127,14 @@ Source:
 
 Config source: [lib/config/edge-types.ts](../lib/config/edge-types.ts)
 
-Rendering mapping source: [app/project/[id]/page.tsx](../app/project/[id]/page.tsx)
+Rendering mapping source: [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx)
 
 `calls` edges between a view and API endpoint are projected into View card UI:
 
 - API -> View: inbound/read affordance (`cloud-download` icon)
 - View -> API: outbound/write affordance (`cloud-upload` icon)
 
-Source: [app/project/[id]/page.tsx](../app/project/[id]/page.tsx), [components/graph/nodes/ViewNode.tsx](../components/graph/nodes/ViewNode.tsx)
+Source: [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx), [components/graph/nodes/ViewNode.tsx](../components/graph/nodes/ViewNode.tsx)
 
 ## Node And Edge Components
 
@@ -137,7 +156,7 @@ Edge registration is also in [components/graph/Canvas.tsx](../components/graph/C
 ## Taxonomy Update Checklist
 
 1. Update config array in `lib/config/*`.
-2. Update page mappings and rendering filters in [app/project/[id]/page.tsx](../app/project/[id]/page.tsx).
+2. Update page mappings and rendering filters in [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx).
 3. Update Canvas registrations in [components/graph/Canvas.tsx](../components/graph/Canvas.tsx).
 4. Update forms/panels that branch by species.
 5. Update seed data in [seed/pebbles.json](../seed/pebbles.json).
