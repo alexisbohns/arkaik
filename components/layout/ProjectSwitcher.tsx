@@ -65,7 +65,7 @@ export function ProjectSwitcher({
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              className="cursor-pointer data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                 <FolderOpenIcon className="size-4" />
@@ -101,7 +101,7 @@ export function ProjectSwitcher({
                   <DropdownMenuItem
                     key={projectBundle.project.id}
                     onClick={() => handleProjectSelect(projectBundle.project.id)}
-                    className="gap-2 p-2"
+                    className="cursor-pointer gap-2 p-2"
                   >
                     <div className="flex size-6 items-center justify-center rounded-sm border bg-background">
                       <FolderOpenIcon className="size-3.5" />
