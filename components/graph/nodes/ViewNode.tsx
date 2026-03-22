@@ -34,7 +34,7 @@ function ApiPopoverButton({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="inline-flex h-9 min-w-9 items-center justify-center rounded-full border border-border bg-muted/40 px-3 text-muted-foreground transition-colors hover:bg-muted"
+          className="inline-flex h-9 min-w-9 items-center justify-center rounded-full border border-border bg-muted/40 px-3 text-muted-foreground transition-colors hover:bg-muted cursor-context-menu"
           onClick={(event) => event.stopPropagation()}
           aria-label={label}
         >
@@ -78,7 +78,7 @@ function PlatformStatusIcon({ platform, status }: { platform: PlatformId; status
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-muted/30 transition-colors hover:bg-muted"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-muted/30 transition-colors hover:bg-muted cursor-context-menu"
           onClick={(event) => event.stopPropagation()}
           aria-label={`${PLATFORM_LABELS[platform]} status`}
         >
@@ -138,7 +138,7 @@ export function ViewNode({ data }: NodeProps) {
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 shrink-0 text-muted-foreground"
+                className="h-7 w-7 shrink-0 text-muted-foreground cursor-pointer"
                 onClick={(event) => {
                   event.stopPropagation();
                   onOpenDetails();
