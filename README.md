@@ -1,6 +1,6 @@
 # Arkaik
 
-A product graph browser built with React Flow on Next.js. Map your product's anatomy — from user flows down to API endpoints — in one navigable, local-first graph.
+> A product graph browser built with React Flow on Next.js. Map your product's anatomy — from user flows down to API endpoints — in one navigable, local-first graph.
 
 ## What is arkaik?
 
