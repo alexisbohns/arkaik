@@ -15,7 +15,7 @@ app/
       layout.tsx        # Shared project shell with persistent sidebar + project switcher
       page.tsx          # Redirects to /project/[id]/canvas
       canvas/
-        page.tsx        # Main canvas — semantic zoom logic lives here
+        page.tsx        # Main canvas — playlist expansion and status rollups
       library/
         page.tsx        # Filterable gallery/directory node browser
 ```
@@ -84,7 +84,7 @@ app/project/[id]/layout.tsx (sidebar shell + route-aware navigation)
   ↕ (props)
 ProjectSidebar + ProjectSwitcher
   ↕ (route changes)
-app/project/[id]/canvas/page.tsx (semantic zoom + status rollup logic)
+app/project/[id]/canvas/page.tsx (playlist expansion + status rollup logic)
     ↕ (props)
 Canvas → ReactFlow → Custom Nodes/Edges
     ↕ (click events)
@@ -115,7 +115,7 @@ Route-aware active states + cross-project navigation
 
 All data mutations flow through the `DataProvider` interface (`lib/data/data-provider.ts`). The current implementation is `localProvider` backed by `localStorage`. The interface is designed for a future Supabase migration — swap the provider, keep the hooks and UI unchanged.
 
-## Semantic Zoom
+## Playlist Expansion
 
 The project page manages one expansion set as local `useState`:
 
@@ -149,6 +149,7 @@ Clicking any node opens a slide-in `Sheet` (`NodeDetailPanel`) with:
 
 - **Editable fields**: title, description, and species-aware status/platform controls
 - **Connections**: cross-layer nodes (data-model, api-endpoint) with click-to-navigate
+- **Where Used**: reverse reference list showing which flow playlists currently include the selected node
 - **Platform Variants** (view only): per-platform status + notes stored in `node.metadata`
 - **Computed gauges** (`flow`): read-only per-platform rollups built from descendant views
 - **Playlist editor** (`flow`): ordered `metadata.playlist.entries` editing with add/remove/reorder and recursive condition/junction branch editing
@@ -158,6 +159,24 @@ Flow playlist editing uses fuzzy search-or-create for `view` and `flow` entries.
 Compose edges in expanded sequences expose a single insert action. It opens `InsertBetweenDialog`, where users choose `view`, `flow`, `condition`, or `junction`. For `view`/`flow`, the dialog reuses `NodeSearchCombobox` to select existing nodes or create new ones inline; for `condition`/`junction`, it inserts structured entries with sensible defaults. Node-reference inserts are placed at the correct playlist position and ensure the compose edge exists.
 
 Edits call `useNodes.updateNode` which flows through the `DataProvider`.
+
+## Library
+
+The library route (`app/project/[id]/library/page.tsx`) is the project-wide browser for reusable nodes.
+
+- **Gallery view**: card layout using `NodeCard` for scanning titles, species/status badges, and flow playlist previews.
+- **Directory view**: sortable table using `NodeTable` for dense auditing (`id`, `title`, `species`, `status`, `used in`).
+- **Filter controls**: `LibraryFilterBar` owns species filtering and text search.
+
+Library interactions reuse the same edit/create surfaces as canvas (`NodeDetailPanel`, `NewNodeForm`) so data mutation paths stay identical.
+
+## Sidebar Navigation
+
+Project-level navigation is defined in `app/project/[id]/layout.tsx` and rendered by `ProjectSidebar` + `ProjectSwitcher`.
+
+- Sidebar links are route-aware (`canvas`, `library`) and preserve active state from pathname/search params.
+- The switcher supports cross-project navigation while keeping users in the closest equivalent destination.
+- Keeping navigation in the shared project layout avoids duplicated route chrome in child pages.
 
 ## Theming
 

@@ -44,16 +44,20 @@ Library source:
 
 ## Composition Model
 
-### Parent/Child Links
+### Root Node
+
+- `project.root_node_id` is the explicit canvas anchor when present.
+- If `root_node_id` is not set, the canvas infers roots from nodes with no incoming `composes` edge.
+
+Source: [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx), [lib/data/types.ts](../lib/data/types.ts)
+
+### Playlist Expansion
 
 - Persisted parent/child links are `composes` edges.
 - Child ordering is read from `node.metadata.playlist.entries`.
 - When playlist entries do not reference all compose-edge children, missing children are appended after playlist-derived ordering.
-- Root anchoring uses `project.root_node_id` when present; otherwise the canvas infers roots from nodes without compose parents.
 
 Source: [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx)
-
-### Flow Children
 
 All flows start collapsed. Any visible flow can be expanded in-canvas. Top-level expansion (root flow and/or direct flow children of `project.root_node_id`, or inferred root flows when no explicit root exists) is accordion-style: opening one top-level flow collapses any other top-level flow already open.
 
@@ -70,6 +74,15 @@ Layout is computed by **elkjs** (Eclipse Layout Kernel, layered algorithm). The 
 Layout source: [lib/utils/elk-layout.ts](../lib/utils/elk-layout.ts)
 
 Source: [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx)
+
+### Node Reuse
+
+- `view` and `flow` nodes are reusable and can appear multiple times across playlists.
+- Reuse is many-to-many: a single node can be referenced by many flow playlists, and one flow playlist can reference many nodes.
+- The source of truth for sequence semantics is the playlist (`metadata.playlist.entries`), while `composes` edges provide structural connectivity.
+- The detail panel's where-used UI derives reverse references by scanning all flow playlists.
+
+Source: [components/panels/NodeDetailPanel.tsx](../components/panels/NodeDetailPanel.tsx), [lib/utils/where-used.ts](../lib/utils/where-used.ts), [lib/data/types.ts](../lib/data/types.ts)
 
 ### Playlist Entry Types
 
@@ -95,7 +108,7 @@ Statuses are configured in:
 Rollup behavior:
 
 - `view` is the only species with editable per-platform status values (`metadata.platformStatuses`).
-- `flow` status is computed for display by aggregating descendant views (including nested sub-flows).
+- `flow` status is computed for display by recursively walking playlist entries and aggregating descendant view platform statuses, including nested sub-flows and branch entries.
 - `data-model` and `api-endpoint` use single lifecycle status.
 
 Sources:
