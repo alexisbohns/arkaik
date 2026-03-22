@@ -485,7 +485,7 @@ export function NodeDetailPanel({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent>
+      <SheetContent onOpenAutoFocus={(e) => e.preventDefault()}>
         <SheetHeader>
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
