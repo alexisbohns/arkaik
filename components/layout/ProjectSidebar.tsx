@@ -55,7 +55,7 @@ export function ProjectSidebar({
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="border-b border-sidebar-border">
+      <SidebarHeader>
         <ProjectSwitcher
           currentProjectId={projectId}
           currentProjectTitle={currentProjectTitle}
