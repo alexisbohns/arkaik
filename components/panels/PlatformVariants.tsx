@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { PlatformId } from "@/lib/config/platforms";
 import { PLATFORMS } from "@/lib/config/platforms";
 import {
@@ -18,10 +19,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
 
 export interface PlatformVariantsProps {
-  platforms?: PlatformId[];
   statuses?: PlatformStatusMap;
   notes?: Partial<Record<PlatformId, string>>;
   onStatusChange?: (platform: PlatformId, value: StatusId | undefined) => void;
@@ -29,92 +28,94 @@ export interface PlatformVariantsProps {
 }
 
 export function PlatformVariants({
-  platforms = [],
   statuses = {},
   notes = {},
   onStatusChange,
   onNotesChange,
 }: PlatformVariantsProps) {
-  const activePlatforms = PLATFORMS.filter((platform) => platforms.includes(platform.id));
-
-  if (activePlatforms.length === 0) {
-    return (
-      <div className="rounded-md border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground">
-        Select at least one platform to configure platform-specific statuses.
-      </div>
-    );
-  }
+  const [activeTab, setActiveTab] = useState<PlatformId>(PLATFORMS[0].id);
+  const currentStatus = statuses[activeTab];
+  const currentNotes = notes[activeTab] ?? "";
 
   return (
-    <div className="flex flex-col gap-4">
-      {activePlatforms.map((platform) => {
-        const PlatformIcon = PLATFORM_ICONS[platform.id];
-        const currentStatus = statuses[platform.id];
-        const currentNotes = notes[platform.id] ?? "";
+    <div className="flex flex-col gap-3">
+      <div role="tablist" className="flex border-b border-border">
+        {PLATFORMS.map((p) => {
+          const PlatformIcon = PLATFORM_ICONS[p.id];
 
-        return (
-          <div key={platform.id} className="flex flex-col gap-3 rounded-md border border-border p-3">
-            <div className="flex items-center gap-2">
-              <PlatformIcon className="size-4 text-muted-foreground" />
-              <span className="text-sm font-medium text-foreground">{PLATFORM_LABELS[platform.id]}</span>
-            </div>
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Status
-                </label>
-                <Select
-                  value={currentStatus ?? ""}
-                  onValueChange={(value) => {
-                    if (value === "unset") {
-                      onStatusChange?.(platform.id, undefined);
-                    } else {
-                      onStatusChange?.(platform.id, value as StatusId);
-                    }
-                  }}
-                >
-                  <SelectTrigger aria-label={`Status for ${PLATFORM_LABELS[platform.id]}`}>
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="unset">
-                      <span className="text-xs text-muted-foreground">Unset</span>
-                    </SelectItem>
-                    {STATUSES.map((status) => {
-                      const StatusIcon = STATUS_ICONS[status.id];
+          return (
+            <button
+              key={p.id}
+              type="button"
+              role="tab"
+              aria-selected={p.id === activeTab}
+              onClick={() => setActiveTab(p.id)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors border-b-2 -mb-px ${
+                p.id === activeTab
+                  ? "border-foreground text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <PlatformIcon className="size-3.5" />
+              {PLATFORM_LABELS[p.id]}
+            </button>
+          );
+        })}
+      </div>
+      <div role="tabpanel" className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Status
+          </label>
+          <Select
+            value={currentStatus ?? ""}
+            onValueChange={(value) => {
+              if (value === "unset") {
+                onStatusChange?.(activeTab, undefined);
+              } else {
+                onStatusChange?.(activeTab, value as StatusId);
+              }
+            }}
+          >
+            <SelectTrigger aria-label={`Status for ${PLATFORM_LABELS[activeTab]}`}>
+              <SelectValue placeholder="No status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="unset">
+                <span className="text-muted-foreground">No status</span>
+              </SelectItem>
+              {STATUSES.map((status) => {
+                const StatusIcon = STATUS_ICONS[status.id];
 
-                      return (
-                        <SelectItem key={status.id} value={status.id}>
-                          <span className="inline-flex items-center gap-2">
-                            <StatusIcon className={`size-3.5 ${STATUS_STYLES[status.id].badge}`} />
-                            {status.label}
-                          </span>
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label
-                  htmlFor={`platform-notes-${platform.id}`}
-                  className="text-xs font-medium text-muted-foreground uppercase tracking-wide"
-                >
-                  Notes
-                </label>
-                <textarea
-                  id={`platform-notes-${platform.id}`}
-                  value={currentNotes}
-                  onChange={(e) => onNotesChange?.(platform.id, e.target.value)}
-                  placeholder={`Notes for ${PLATFORM_LABELS[platform.id]}…`}
-                  rows={2}
-                  className="border-input bg-transparent text-sm text-foreground leading-relaxed resize-none rounded-md border px-3 py-2 outline-none placeholder:text-muted-foreground focus:ring-[3px] focus:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
-                />
-              </div>
-            </div>
-          </div>
-        );
-      })}
+                return (
+                  <SelectItem key={status.id} value={status.id}>
+                    <span className="inline-flex items-center gap-2">
+                      <StatusIcon className={`size-3.5 ${STATUS_STYLES[status.id].badge}`} />
+                      {status.label}
+                    </span>
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label
+            htmlFor={`platform-notes-${activeTab}`}
+            className="text-xs font-medium text-muted-foreground uppercase tracking-wide"
+          >
+            Notes
+          </label>
+          <textarea
+            id={`platform-notes-${activeTab}`}
+            value={currentNotes}
+            onChange={(e) => onNotesChange?.(activeTab, e.target.value)}
+            placeholder={`Notes for ${PLATFORM_LABELS[activeTab]}…`}
+            rows={3}
+            className="border-input bg-transparent text-sm text-foreground leading-relaxed resize-none rounded-md border px-3 py-2 outline-none placeholder:text-muted-foreground focus:ring-[3px] focus:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+          />
+        </div>
+      </div>
     </div>
   );
 }

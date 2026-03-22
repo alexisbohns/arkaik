@@ -21,10 +21,7 @@ import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import { SPECIES } from "@/lib/config/species";
 import { STATUSES } from "@/lib/config/statuses";
-import { PLATFORMS } from "@/lib/config/platforms";
 import {
-  PLATFORM_ICONS,
-  PLATFORM_LABELS,
   STATUS_ICONS,
   STATUS_STYLES,
 } from "@/components/graph/nodes/node-styles";
@@ -145,11 +142,11 @@ function NodeFields({ node, onUpdate }: NodeFieldsProps) {
   const [title, setTitle] = useState(node.title);
   const [description, setDescription] = useState(node.description ?? "");
   const [status, setStatus] = useState<StatusId>(node.status);
-  const [platforms, setPlatforms] = useState<PlatformId[]>(node.platforms);
   const lastSavedTitleRef = useRef(node.title);
-  const lastSavedDescriptionRef = useRef(node.description ?? "");  const titleEditRef = useRef<HTMLDivElement>(null);
-  const descriptionEditRef = useRef<HTMLDivElement>(null);  const usesSingleStatusField = node.species === "data-model" || node.species === "api-endpoint";
-  const allowsPlatformEditing = node.species !== "flow";
+  const lastSavedDescriptionRef = useRef(node.description ?? "");
+  const titleEditRef = useRef<HTMLDivElement>(null);
+  const descriptionEditRef = useRef<HTMLDivElement>(null);
+  const usesSingleStatusField = node.species === "data-model" || node.species === "api-endpoint";
 
   useEffect(() => {
     if (title === lastSavedTitleRef.current) {
@@ -182,39 +179,6 @@ function NodeFields({ node, onUpdate }: NodeFieldsProps) {
   function handleStatusChange(value: StatusId) {
     setStatus(value);
     onUpdate?.(node.id, { status: value });
-  }
-
-  function handlePlatformToggle(platformId: PlatformId) {
-    const next = platforms.includes(platformId)
-      ? platforms.filter((p) => p !== platformId)
-      : [...platforms, platformId];
-    setPlatforms(next);
-
-    if (node.species === "view") {
-      const currentStatuses = getEditablePlatformStatuses(node);
-      const nextStatuses = Object.fromEntries(
-        next.map((platform) => [platform, currentStatuses[platform] ?? node.status]),
-      ) as Record<PlatformId, StatusId>;
-      const currentNotes = node.metadata?.platformNotes ?? {};
-      const nextNotes = Object.fromEntries(
-        next.flatMap((platform) => {
-          const note = currentNotes[platform];
-          return typeof note === "string" ? [[platform, note]] : [];
-        }),
-      ) as Partial<Record<PlatformId, string>>;
-
-      onUpdate?.(node.id, {
-        platforms: next,
-        metadata: {
-          ...node.metadata,
-          platformStatuses: nextStatuses,
-          platformNotes: nextNotes,
-        },
-      });
-      return;
-    }
-
-    onUpdate?.(node.id, { platforms: next });
   }
 
   function handleTitlePaste(e: React.ClipboardEvent<HTMLDivElement>) {
@@ -283,34 +247,6 @@ function NodeFields({ node, onUpdate }: NodeFieldsProps) {
               })}
             </SelectContent>
           </Select>
-        </div>
-      )}
-      {allowsPlatformEditing && (
-        <div className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Platforms</span>
-          <div className="flex items-center gap-2 flex-wrap">
-            {PLATFORMS.map((p) => {
-              const selected = platforms.includes(p.id);
-              const PlatformIcon = PLATFORM_ICONS[p.id];
-
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => handlePlatformToggle(p.id)}
-                  aria-pressed={selected}
-                  className={`flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${
-                    selected
-                      ? "bg-muted text-foreground"
-                      : "bg-transparent text-muted-foreground border border-input hover:bg-muted/50"
-                  }`}
-                >
-                  <PlatformIcon className={`size-3.5 ${selected ? "text-foreground" : "text-muted-foreground"}`} />
-                  {PLATFORM_LABELS[p.id]}
-                </button>
-              );
-            })}
-          </div>
         </div>
       )}
     </div>
@@ -447,7 +383,6 @@ function PlatformVariantsSection({ node, onUpdate }: PlatformVariantsSectionProp
     <div className="px-6 flex flex-col gap-3">
       <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Platform Variants</span>
       <PlatformVariants
-        platforms={node.platforms}
         statuses={statuses}
         notes={notes}
         onStatusChange={handleStatusChange}
