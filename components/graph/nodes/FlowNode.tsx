@@ -1,7 +1,7 @@
 "use client";
 
 import { Handle, Position, NodeToolbar, type NodeProps } from "@xyflow/react";
-import { ChevronDown, ChevronRight, Info, PlusCircle } from "lucide-react";
+import { ChevronDown, ChevronRight, Info, PlusCircle, Split } from "lucide-react";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { PlatformStatusRollup } from "@/lib/utils/platform-status";
@@ -27,6 +27,7 @@ export function FlowNode({ data }: NodeProps) {
   const ghostClass = STATUS_GHOST_STYLES[status];
   const { isHovered, nodeProps, toolbarProps } = useToolbarHover();
   const isBranch = renderVariant === "branch";
+  const isConditionBranch = isBranch && branchKind === "condition";
   const isInteractive = Boolean(onToggle);
 
   return (
@@ -46,7 +47,20 @@ export function FlowNode({ data }: NodeProps) {
       )}
       <Handle type="target" position={Position.Top} id="top" className="opacity-0" />
       <Handle type="target" position={Position.Left} id="left" className="opacity-0" />
-      <div
+      {isConditionBranch ? (
+        <div
+          role="group"
+          aria-label={label}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-background border-2 border-dashed border-yellow-400 dark:border-yellow-500 shadow-sm"
+          {...nodeProps}
+        >
+          <Split className="w-3.5 h-3.5 shrink-0 text-yellow-500 dark:text-yellow-400" />
+          <span className="text-sm font-medium leading-tight whitespace-nowrap text-foreground">
+            {label}
+          </span>
+        </div>
+      ) : (
+        <div
         role={isInteractive ? "button" : "group"}
         tabIndex={isInteractive ? 0 : -1}
         aria-label={label}
@@ -103,6 +117,7 @@ export function FlowNode({ data }: NodeProps) {
           <PlatformGaugeList rollup={platformRollup} platforms={platforms.length > 0 ? platforms : PLATFORMS.map((platform) => platform.id)} compact />
         )}
       </div>
+      )}
       <Handle type="source" position={Position.Bottom} id="bottom" className="opacity-0" />
       <Handle type="source" position={Position.Right} id="right" className="opacity-0" />
     </>

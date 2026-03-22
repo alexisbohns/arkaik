@@ -12,6 +12,7 @@ interface ComposeEdgeData extends Record<string, unknown> {
   insertLabel?: string;
   label?: string;
   onInsert?: () => void;
+  edgeColor?: "green" | "yellow";
 }
 
 export function ComposeEdge({
@@ -26,6 +27,7 @@ export function ComposeEdge({
   const { isHovered, nodeProps: pathProps, toolbarProps: buttonProps } = useToolbarHover();
   const [edgePath, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
   const edgeData = data as ComposeEdgeData | undefined;
+  const edgeColor = edgeData?.edgeColor;
   const insertActions = edgeData?.insertActions
     ?? (edgeData?.onInsert
       ? [{ label: edgeData.insertLabel ?? "Insert", onInsert: edgeData.onInsert }]
@@ -38,6 +40,7 @@ export function ComposeEdge({
         d={edgePath}
         fill="none"
         strokeWidth={2}
+        style={edgeColor === "green" ? { stroke: "#22c55e" } : edgeColor === "yellow" ? { stroke: "#eab308" } : undefined}
         className="react-flow__edge-path"
         {...pathProps}
       />
@@ -60,7 +63,7 @@ export function ComposeEdge({
                   transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY - (hasInsertActions ? 16 : 0)}px)`,
                   pointerEvents: "none",
                 }}
-                className="rounded-full border bg-background/95 px-2 py-0.5 text-[11px] font-medium text-muted-foreground shadow-sm"
+                className={`rounded-full border bg-background/95 px-2 py-0.5 text-[11px] font-medium shadow-sm ${edgeColor === "green" ? "text-green-500 border-green-500/30" : edgeColor === "yellow" ? "text-yellow-500 border-yellow-500/30" : "text-muted-foreground"}`}
               >
                 {edgeData.label}
               </div>
