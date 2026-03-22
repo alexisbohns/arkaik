@@ -8,7 +8,7 @@ interface MarkdownContentProps {
 
 export function MarkdownContent({ source }: MarkdownContentProps) {
   return (
-    <article className="docs-prose">
+    <article className="markdown-content">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
