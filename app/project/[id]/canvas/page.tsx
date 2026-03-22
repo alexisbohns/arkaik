@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { type Edge, type Node, type NodeMouseHandler, type Connection, type EdgeMouseHandler } from "@xyflow/react";
@@ -9,13 +8,14 @@ import { toast } from "sonner";
 import { Canvas } from "@/components/graph/Canvas";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
-import { ArkaikLogo } from "@/components/branding/ArkaikLogo";
 import { NodeDetailPanel } from "@/components/panels/NodeDetailPanel";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
 import { InsertBetweenDialog, type InsertEntryType } from "@/components/panels/InsertBetweenDialog";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useProject } from "@/lib/hooks/useProject";
@@ -1337,10 +1337,15 @@ export default function ProjectCanvasPage() {
 
   return (
     <div className="h-full w-full flex flex-col">
-      <header className="flex items-center gap-3 border-b bg-background px-4 py-2 shrink-0">
-        <Link href="/" aria-label="Go to home" className="inline-flex items-center">
-          <ArkaikLogo className="w-16 shrink-0" />
-        </Link>
+      <header className="flex h-12 shrink-0 items-center gap-3 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <SidebarTrigger className="-ml-1" />
+        <Separator orientation="vertical" className="mx-1 h-4" />
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium">
+            {projectBundle?.project.title ?? "Untitled project"}
+          </p>
+          <p className="truncate text-xs text-muted-foreground">Canvas</p>
+        </div>
         <div className="ml-auto flex items-center gap-3">
           {exportWarning && (
             <span className="text-xs text-amber-700" role="status" aria-live="polite">
@@ -1379,16 +1384,14 @@ export default function ProjectCanvasPage() {
             <DownloadIcon className="size-4" />
             {exporting ? "Exporting..." : "Export JSON"}
           </Button>
-        </div>
-      </header>
-      <div className="flex-1 min-h-0 relative">
-        <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} onEdgeClick={handleEdgeClick} />
-        <div className="absolute bottom-4 right-4 z-10">
           <Button size="sm" onClick={() => { setNewNodePreset(null); setNewNodeOpen(true); }}>
             <PlusIcon className="size-4" />
             New node
           </Button>
         </div>
+      </header>
+      <div className="flex-1 min-h-0 relative">
+        <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} onEdgeClick={handleEdgeClick} />
       </div>
       <NodeDetailPanel
         open={panelOpen}
