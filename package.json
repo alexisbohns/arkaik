@@ -26,11 +26,16 @@
     "lucide-react": "^0.577.0",
     "next": "16.2.0",
     "next-themes": "^0.4.6",
+    "react-markdown": "^10.1.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "rehype-highlight": "^7.0.2",
+    "remark-gfm": "^4.0.1",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
-    "yaml": "^2.8.3"
+    "yaml": "^2.8.3",
+    "gray-matter": "^4.0.3",
+    "highlight.js": "^11.11.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

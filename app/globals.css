@@ -113,6 +113,134 @@
 }
 
 @layer components {
+  .docs-prose {
+    max-width: 70ch;
+    color: hsl(var(--foreground));
+    line-height: 1.7;
+  }
+
+  .docs-prose h1,
+  .docs-prose h2,
+  .docs-prose h3,
+  .docs-prose h4 {
+    color: hsl(var(--foreground));
+    line-height: 1.25;
+    font-weight: 600;
+    scroll-margin-top: 4.5rem;
+  }
+
+  .docs-prose h1 {
+    font-size: 2rem;
+    margin-top: 0;
+    margin-bottom: 1rem;
+  }
+
+  .docs-prose h2 {
+    font-size: 1.5rem;
+    margin-top: 2.25rem;
+    margin-bottom: 0.9rem;
+    padding-bottom: 0.45rem;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+
+  .docs-prose h3 {
+    font-size: 1.2rem;
+    margin-top: 1.7rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .docs-prose h4 {
+    font-size: 1.05rem;
+    margin-top: 1.4rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .docs-prose p,
+  .docs-prose ul,
+  .docs-prose ol,
+  .docs-prose table,
+  .docs-prose pre,
+  .docs-prose blockquote {
+    margin-top: 0.9rem;
+    margin-bottom: 0.9rem;
+  }
+
+  .docs-prose ul,
+  .docs-prose ol {
+    padding-left: 1.3rem;
+  }
+
+  .docs-prose li + li {
+    margin-top: 0.35rem;
+  }
+
+  .docs-prose a {
+    color: hsl(var(--primary));
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+    transition: color 150ms ease;
+  }
+
+  .docs-prose a:hover {
+    color: hsl(var(--foreground));
+  }
+
+  .docs-prose code {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    background-color: hsl(var(--muted));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-sm);
+    padding: 0.12rem 0.35rem;
+  }
+
+  .docs-prose pre {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    border-radius: var(--radius-md);
+    border: 1px solid hsl(var(--border));
+    overflow-x: auto;
+  }
+
+  .docs-prose pre code {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    display: block;
+  }
+
+  .docs-prose blockquote {
+    border-left: 3px solid hsl(var(--border));
+    padding-left: 0.9rem;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .docs-prose table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+  }
+
+  .docs-prose th,
+  .docs-prose td {
+    border: 1px solid hsl(var(--border));
+    padding: 0.55rem 0.7rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .docs-prose th {
+    background-color: hsl(var(--muted));
+    font-weight: 600;
+  }
+
+  .docs-prose img {
+    max-width: 100%;
+    border-radius: var(--radius-md);
+  }
+
   .react-flow__controls {
     border: 1px solid hsl(var(--border));
     border-radius: var(--radius);

@@ -10,6 +10,11 @@ arkaik is a product graph browser built on Next.js 16 App Router with React Flow
 app/
   layout.tsx            # Root layout: fonts (Geist), ThemeProvider, global CSS
   page.tsx              # Home page: component showcase / project list
+  docs/
+    layout.tsx          # Documentation shell with sidebar + page frame
+    page.tsx            # Docs home: renders repository root README.md
+    [...slug]/
+      page.tsx          # Markdown document route mapped from docs/**/*.md
   project/
     [id]/
       layout.tsx        # Shared project shell with persistent sidebar + project switcher
@@ -111,6 +116,22 @@ app/project/[id]/layout.tsx
 ProjectSidebar / ProjectSwitcher
   ↕ (pathname + searchParams)
 Route-aware active states + cross-project navigation
+
+Docs route flow:
+
+app/docs/layout.tsx
+  ↕ (server-loaded nav items)
+DocsSidebar
+  ↕ (pathname)
+Route-aware docs links
+  ↕ (slug lookup)
+app/docs/page.tsx + app/docs/[...slug]/page.tsx
+  ↕
+lib/utils/docs.ts (filesystem discovery + slug-safe lookup)
+  ↕
+components/docs/MarkdownContent.tsx (react-markdown + GFM + highlighting)
+
+Docs pages are rendered from markdown at request/build time using server-side file reads. The home route (`/docs`) is pinned to repository `README.md`, while nested routes resolve to markdown under `docs/`. Unknown paths redirect back to `/docs`.
 ```
 
 All data mutations flow through the `DataProvider` interface (`lib/data/data-provider.ts`). The current implementation is `localProvider` backed by `localStorage`. The interface is designed for a future Supabase migration — swap the provider, keep the hooks and UI unchanged.
@@ -192,6 +213,7 @@ Project-level navigation is defined in `app/project/[id]/layout.tsx` and rendere
 - Project shell: [app/project/[id]/layout.tsx](../app/project/[id]/layout.tsx)
 - Library orchestration: [app/project/[id]/library/page.tsx](../app/project/[id]/library/page.tsx)
 - Sidebar components: [components/layout/ProjectSidebar.tsx](../components/layout/ProjectSidebar.tsx), [components/layout/ProjectSwitcher.tsx](../components/layout/ProjectSwitcher.tsx)
+- Docs shell + renderer: [app/docs/layout.tsx](../app/docs/layout.tsx), [app/docs/page.tsx](../app/docs/page.tsx), [app/docs/[...slug]/page.tsx](../app/docs/[...slug]/page.tsx), [components/layout/DocsSidebar.tsx](../components/layout/DocsSidebar.tsx), [components/docs/MarkdownContent.tsx](../components/docs/MarkdownContent.tsx), [lib/utils/docs.ts](../lib/utils/docs.ts)
 - React Flow registry: [components/graph/Canvas.tsx](../components/graph/Canvas.tsx)
 - Data hooks: [lib/hooks/useNodes.ts](../lib/hooks/useNodes.ts), [lib/hooks/useEdges.ts](../lib/hooks/useEdges.ts), [lib/hooks/useProject.ts](../lib/hooks/useProject.ts), [lib/hooks/useProjects.ts](../lib/hooks/useProjects.ts)
 - Data provider: [lib/data/local-provider.ts](../lib/data/local-provider.ts)
