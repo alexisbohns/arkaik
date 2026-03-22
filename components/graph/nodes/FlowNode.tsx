@@ -38,7 +38,7 @@ export function FlowNode({ data }: NodeProps) {
             type="button"
             {...toolbarProps}
             onClick={(e) => { e.stopPropagation(); onAddChild(); }}
-            className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-background border border-border shadow-sm hover:bg-muted transition-colors"
+            className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-background border border-border shadow-sm hover:bg-muted transition-colors cursor-pointer"
           >
             <PlusCircle className="w-3 h-3" />
             Add child
@@ -65,7 +65,7 @@ export function FlowNode({ data }: NodeProps) {
         tabIndex={isInteractive ? 0 : -1}
         aria-label={label}
         aria-expanded={isInteractive ? expanded : undefined}
-        className={`flex flex-col gap-3 ${isBranch ? "w-56 border-dashed bg-muted/20" : "w-60"} px-4 py-3 rounded-xl bg-background border-2 border-border shadow-sm ${isInteractive ? "cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring" : "cursor-default"} ${ghostClass.wrapper} ${ghostClass.border}`}
+        className={`flex flex-col gap-3 ${isBranch ? "w-56 border-dashed bg-muted/20" : "w-60"} px-4 py-3 rounded-xl bg-background border-2 border-border shadow-sm ${isInteractive ? `${expanded ? "cursor-zoom-out" : "cursor-zoom-in"} focus:outline-none focus-visible:ring-2 focus-visible:ring-ring` : "cursor-default"} ${ghostClass.wrapper} ${ghostClass.border}`}
         onClick={(e) => {
           e.stopPropagation();
           onToggle?.();
@@ -96,7 +96,7 @@ export function FlowNode({ data }: NodeProps) {
                   e.stopPropagation();
                   onOpenDetails();
                 }}
-                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
                 aria-label={`Open details for ${label}`}
               >
                 <Info className="w-3.5 h-3.5" />

@@ -94,6 +94,21 @@ Never write to `localStorage` directly. Always use the provider.
 - When a UI control represents a shareable filter, keep it URL-driven. The library `species` filter is the current example.
 - Cross-project navigation should preserve the current in-project destination when it can be mapped safely.
 
+## Cursor Semantics
+
+Graph interactive elements must use the correct Tailwind cursor class. Do not leave clickable elements without an explicit cursor — React Flow's canvas can suppress browser defaults.
+
+| Action | Cursor class | Example |
+|---|---|---|
+| Show hover card | `cursor-help` | species badge (`EntityBadges`) |
+| Insert node | `cursor-copy` | insert button on compose edge |
+| Unfold flow | `cursor-zoom-in` | collapsed `FlowNode` |
+| Collapse flow | `cursor-zoom-out` | expanded `FlowNode` |
+| Open panel | `cursor-pointer` | info button on any node |
+| Show popover | `cursor-context-menu` | API/platform buttons on `ViewNode` |
+
+Non-interactive but focusable elements (e.g. branch nodes, static cards) use `cursor-default`.
+
 ## Naming
 
 - **Files:** kebab-case for config and utils (`edge-types.ts`), PascalCase for components (`FlowNode.tsx`)

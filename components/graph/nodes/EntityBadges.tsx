@@ -20,7 +20,7 @@ export function SpeciesBadge({ species, label, description, showLabel = false, o
       <HoverCardTrigger asChild>
         <abbr
           tabIndex={0}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted/60 shrink-0 no-underline cursor-default"
+          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted/60 shrink-0 no-underline cursor-help"
           aria-label={`About ${label}`}
           onClick={onClick}
         >

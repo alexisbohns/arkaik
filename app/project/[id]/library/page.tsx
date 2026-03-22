@@ -261,7 +261,7 @@ export default function ProjectLibraryPage() {
   return (
     <div className="h-full w-full flex flex-col">
       <header className="flex h-12 shrink-0 items-center gap-3 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <SidebarTrigger className="-ml-1" />
+        <SidebarTrigger className="-ml-1 cursor-pointer" />
         <Separator orientation="vertical" className="mx-1 h-4" />
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">
@@ -270,7 +270,7 @@ export default function ProjectLibraryPage() {
           <p className="truncate text-xs text-muted-foreground">Library</p>
         </div>
         <div className="ml-auto flex items-center gap-3">
-          <Button size="sm" onClick={() => setNewNodeOpen(true)}>
+          <Button size="sm" className="cursor-pointer" onClick={() => setNewNodeOpen(true)}>
             <PlusIcon className="size-4" />
             New node
           </Button>
@@ -292,7 +292,7 @@ export default function ProjectLibraryPage() {
             <div className="rounded-xl border border-dashed p-10 text-center">
               <p className="text-sm text-muted-foreground">No {emptyLabel} yet. Create one to get started.</p>
               <div className="mt-4">
-                <Button size="sm" onClick={() => setNewNodeOpen(true)}>
+                <Button size="sm" className="cursor-pointer" onClick={() => setNewNodeOpen(true)}>
                   <PlusIcon className="size-4" />
                   Create node
                 </Button>

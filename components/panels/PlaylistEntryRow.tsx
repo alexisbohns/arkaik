@@ -201,13 +201,13 @@ function PlaylistEntryRow({
           )}
         </div>
         <div className="flex items-center gap-1">
-          <Button type="button" size="icon" variant="ghost" disabled={index === 0} onClick={() => onMove(-1)}>
+          <Button type="button" size="icon" variant="ghost" className="cursor-pointer" disabled={index === 0} onClick={() => onMove(-1)}>
             <ArrowUpIcon className="size-4" />
           </Button>
-          <Button type="button" size="icon" variant="ghost" disabled={index >= total - 1} onClick={() => onMove(1)}>
+          <Button type="button" size="icon" variant="ghost" className="cursor-pointer" disabled={index >= total - 1} onClick={() => onMove(1)}>
             <ArrowDownIcon className="size-4" />
           </Button>
-          <Button type="button" size="icon" variant="ghost" className="text-destructive" onClick={() => void onRemove()}>
+          <Button type="button" size="icon" variant="ghost" className="text-destructive cursor-pointer" onClick={() => void onRemove()}>
             <Trash2Icon className="size-4" />
           </Button>
         </div>
@@ -276,7 +276,7 @@ function PlaylistEntryRow({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="text-destructive"
+                    className="text-destructive cursor-pointer"
                     onClick={() => {
                       const nextCases = entry.cases.filter((_, idx) => idx !== caseIndex);
                       void onChangeEntry({ ...entry, cases: nextCases });

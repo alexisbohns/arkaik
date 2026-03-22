@@ -442,7 +442,7 @@ export function NodeDetailPanel({
               <Button
                 variant="ghost"
                 size="icon"
-                className="shrink-0"
+                className="shrink-0 cursor-pointer"
                 aria-label="Close panel"
               >
                 <X className="size-4" />

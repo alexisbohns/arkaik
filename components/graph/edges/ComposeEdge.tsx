@@ -86,7 +86,7 @@ export function ComposeEdge({
                           variant="outline"
                           size="icon"
                           onClick={action.onInsert}
-                          className="size-6 rounded-full"
+                          className="size-6 rounded-full cursor-copy"
                           aria-label={action.label}
                         >
                           <PlusIcon className="size-3" />

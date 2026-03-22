@@ -1342,7 +1342,7 @@ export default function ProjectCanvasPage() {
   return (
     <div className="h-full w-full flex flex-col">
       <header className="flex h-12 shrink-0 items-center gap-3 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <SidebarTrigger className="-ml-1" />
+        <SidebarTrigger className="-ml-1 cursor-pointer" />
         <Separator orientation="vertical" className="mx-1 h-4" />
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">
@@ -1380,15 +1380,15 @@ export default function ProjectCanvasPage() {
               <SelectItem value="large">Large cards</SelectItem>
             </SelectContent>
           </Select>
-          <Button size="sm" variant="outline" onClick={() => void handleOpenRaw()} disabled={rawLoading}>
+          <Button size="sm" variant="outline" className="cursor-pointer" onClick={() => void handleOpenRaw()} disabled={rawLoading}>
             <Code2Icon className="size-4" />
             {rawLoading ? "Loading raw..." : "Raw"}
           </Button>
-          <Button size="sm" variant="outline" onClick={handleExport} disabled={exporting}>
+          <Button size="sm" variant="outline" className="cursor-pointer" onClick={handleExport} disabled={exporting}>
             <DownloadIcon className="size-4" />
             {exporting ? "Exporting..." : "Export JSON"}
           </Button>
-          <Button size="sm" onClick={() => { setNewNodePreset(null); setNewNodeOpen(true); }}>
+          <Button size="sm" className="cursor-pointer" onClick={() => { setNewNodePreset(null); setNewNodeOpen(true); }}>
             <PlusIcon className="size-4" />
             New node
           </Button>
@@ -1415,23 +1415,23 @@ export default function ProjectCanvasPage() {
             <SheetDescription>Inspect the full export as JSON or YAML.</SheetDescription>
             <div className="flex items-center justify-between gap-2 pt-2">
               <div className="flex items-center gap-2">
-                <Button size="sm" variant={rawFormat === "json" ? "default" : "outline"} onClick={() => handleRawFormatChange("json")}>
+                <Button size="sm" className="cursor-pointer" variant={rawFormat === "json" ? "default" : "outline"} onClick={() => handleRawFormatChange("json")}>
                   JSON
                 </Button>
-                <Button size="sm" variant={rawFormat === "yaml" ? "default" : "outline"} onClick={() => handleRawFormatChange("yaml")}>
+                <Button size="sm" className="cursor-pointer" variant={rawFormat === "yaml" ? "default" : "outline"} onClick={() => handleRawFormatChange("yaml")}>
                   YAML
                 </Button>
               </div>
               {rawMode === "view" ? (
-                <Button size="sm" variant="outline" onClick={handleRequestRawEdit} disabled={!rawBundle}>
+                <Button size="sm" variant="outline" className="cursor-pointer" onClick={handleRequestRawEdit} disabled={!rawBundle}>
                   Edit
                 </Button>
               ) : (
                 <div className="flex items-center gap-2">
-                  <Button size="sm" variant="outline" onClick={handleRequestRawCancel}>
+                  <Button size="sm" variant="outline" className="cursor-pointer" onClick={handleRequestRawCancel}>
                     Cancel
                   </Button>
-                  <Button size="sm" variant="destructive" onClick={handleRequestRawSave}>
+                  <Button size="sm" variant="destructive" className="cursor-pointer" onClick={handleRequestRawSave}>
                     Save
                   </Button>
                 </div>
@@ -1445,7 +1445,7 @@ export default function ProjectCanvasPage() {
                 variant="outline"
                 onClick={() => void handleCopyRaw()}
                 disabled={!rawViewportText}
-                className="absolute right-2 top-2 z-10 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                className="absolute right-2 top-2 z-10 cursor-pointer opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
               >
                 <CopyIcon className="size-4" />
                 {rawCopied ? "Copied" : "Copy"}
