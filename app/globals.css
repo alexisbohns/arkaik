@@ -113,6 +113,159 @@
 }
 
 @layer components {
+  .markdown-content {
+    max-width: 70ch;
+    color: hsl(var(--foreground));
+    line-height: 1.7;
+  }
+
+  .markdown-content h1,
+  .markdown-content h2,
+  .markdown-content h3,
+  .markdown-content h4 {
+    color: hsl(var(--foreground));
+    line-height: 1.25;
+    font-weight: 600;
+    scroll-margin-top: 4.5rem;
+  }
+
+  .markdown-content h1 {
+    font-size: 2rem;
+    font-weight: 400;
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+  }
+
+  .markdown-content h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+  }
+
+  .markdown-content h3 {
+    font-size: 1.2rem;
+    margin-top: 1.7rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .markdown-content h4 {
+    font-size: 1.05rem;
+    margin-top: 1.4rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .markdown-content p {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    opacity: 0.8;
+  }
+
+  .markdown-content ul {
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+    padding-left: 1.2rem;
+  }
+
+  .markdown-content ul li {
+    margin-top: 0.4rem;
+    margin-bottom: 0.4rem;
+    list-style-type: "✻";
+    padding-left: 1rem;
+
+    &::marker {
+      color: hsl(var(--muted-foreground));
+    }
+  }
+
+  .markdown-content ol {
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+    padding-left: 1.2rem;
+  }
+
+  .markdown-content ol li + li {
+    margin-top: 0.35rem;
+  }
+
+  .markdown-content a {
+    color: hsl(var(--primary));
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+    transition: color 150ms ease;
+  }
+
+  .markdown-content ul a {
+    text-decoration: underline;
+  }
+
+  .markdown-content a:hover {
+    color: hsl(var(--foreground));
+  }
+
+  .markdown-content table,
+  .markdown-content pre,
+  .markdown-content blockquote {
+    margin-top: 0.9rem;
+    margin-bottom: 0.9rem;
+  }
+
+  .markdown-content code {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    background-color: hsl(var(--muted));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-sm);
+    padding: 0.12rem 0.35rem;
+  }
+
+  .markdown-content pre {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    border-radius: var(--radius-md);
+    border: 1px solid hsl(var(--border));
+    overflow-x: auto;
+  }
+
+  .markdown-content pre code {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    display: block;
+  }
+
+  .markdown-content blockquote {
+    border-left: 3px solid hsl(var(--border));
+    padding-left: 0.9rem;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .markdown-content table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+  }
+
+  .markdown-content th,
+  .markdown-content td {
+    border: 1px solid hsl(var(--border));
+    padding: 0.55rem 0.7rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .markdown-content th {
+    background-color: hsl(var(--muted));
+    font-weight: 600;
+  }
+
+  .markdown-content img {
+    max-width: 100%;
+    border-radius: var(--radius-md);
+  }
+
   .react-flow__controls {
     border: 1px solid hsl(var(--border));
     border-radius: var(--radius);
