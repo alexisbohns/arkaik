@@ -299,21 +299,22 @@ export default function ProjectLibraryPage() {
               </div>
             </div>
           ) : displayMode === "gallery" ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {visibleNodes.map((node) => (
-                <NodeCard
-                  key={node.id}
-                  node={node}
-                  speciesLabel={SPECIES_LABEL_BY_ID[node.species] ?? node.species}
-                  speciesDescription={SPECIES_DESCRIPTION_BY_ID[node.species]}
-                  viewPlatformStatuses={node.species === "view" ? getNodePlatformStatuses(node) : undefined}
-                  flowRollup={node.species === "flow" ? flowRollupByNodeId[node.id] : undefined}
-                  playlistPreview={playlistPreviewForNode(node, nodesById)}
-                  usedInCount={usedInByNodeId[node.id] ?? 0}
-                  onClick={() => handleSelectNode(node)}
-                />
+                <li key={node.id}>
+                  <NodeCard
+                    node={node}
+                    speciesLabel={SPECIES_LABEL_BY_ID[node.species] ?? node.species}
+                    speciesDescription={SPECIES_DESCRIPTION_BY_ID[node.species]}
+                    viewPlatformStatuses={node.species === "view" ? getNodePlatformStatuses(node) : undefined}
+                    flowRollup={node.species === "flow" ? flowRollupByNodeId[node.id] : undefined}
+                    playlistPreview={playlistPreviewForNode(node, nodesById)}
+                    usedInCount={usedInByNodeId[node.id] ?? 0}
+                    onClick={() => handleSelectNode(node)}
+                  />
+                </li>
               ))}
-            </div>
+            </ul>
           ) : (
             <div className="rounded-xl border bg-card p-3">
               <NodeTable
