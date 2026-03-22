@@ -1,14 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Sheet,
   SheetContent,
   SheetHeader,
+  SheetClose,
   SheetTitle,
-  SheetDescription,
 } from "@/components/ui/sheet";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -17,14 +16,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Trash2Icon } from "lucide-react";
+import { Trash2Icon, X } from "lucide-react";
 import type { Node, Edge, PlaylistEntry } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import { SPECIES } from "@/lib/config/species";
 import { STATUSES } from "@/lib/config/statuses";
-import { PLATFORMS } from "@/lib/config/platforms";
-import { PLATFORM_DOT_STYLES, PLATFORM_LABELS } from "@/components/graph/nodes/node-styles";
+import {
+  STATUS_ICONS,
+  STATUS_STYLES,
+} from "@/components/graph/nodes/node-styles";
+import { SpeciesBadge, EntityId } from "@/components/graph/nodes/EntityBadges";
 import { PlatformVariants } from "@/components/panels/PlatformVariants";
 import { PlatformGaugeList } from "@/components/graph/nodes/PlatformGaugeList";
 import { PlaylistEditor } from "@/components/panels/PlaylistEditor";
@@ -137,73 +139,91 @@ interface NodeFieldsProps {
 }
 
 function NodeFields({ node, onUpdate }: NodeFieldsProps) {
+  const AUTOSAVE_DELAY_MS = 350;
   const [title, setTitle] = useState(node.title);
   const [description, setDescription] = useState(node.description ?? "");
   const [status, setStatus] = useState<StatusId>(node.status);
-  const [platforms, setPlatforms] = useState<PlatformId[]>(node.platforms);
+  const lastSavedTitleRef = useRef(node.title);
+  const lastSavedDescriptionRef = useRef(node.description ?? "");
+  const titleEditRef = useRef<HTMLDivElement>(null);
+  const descriptionEditRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (titleEditRef.current) titleEditRef.current.textContent = node.title;
+    if (descriptionEditRef.current) descriptionEditRef.current.textContent = node.description ?? "";
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const usesSingleStatusField = node.species === "data-model" || node.species === "api-endpoint";
-  const allowsPlatformEditing = node.species !== "flow";
 
-  function handleTitleBlur() {
-    if (title !== node.title) {
-      onUpdate?.(node.id, { title });
+  useEffect(() => {
+    if (title === lastSavedTitleRef.current) {
+      return;
     }
-  }
 
-  function handleDescriptionBlur() {
-    const trimmed = description.trim() || undefined;
-    if (trimmed !== node.description) {
-      onUpdate?.(node.id, { description: trimmed });
+    const timeout = setTimeout(() => {
+      lastSavedTitleRef.current = title;
+      void onUpdate?.(node.id, { title });
+    }, AUTOSAVE_DELAY_MS);
+
+    return () => clearTimeout(timeout);
+  }, [title, node.id, onUpdate]);
+
+  useEffect(() => {
+    if (description === lastSavedDescriptionRef.current) {
+      return;
     }
-  }
+
+    const timeout = setTimeout(() => {
+      const trimmed = description.trim();
+      const normalized = trimmed.length > 0 ? trimmed : "";
+      lastSavedDescriptionRef.current = normalized;
+      void onUpdate?.(node.id, { description: normalized || undefined });
+    }, AUTOSAVE_DELAY_MS);
+
+    return () => clearTimeout(timeout);
+  }, [description, node.id, onUpdate]);
 
   function handleStatusChange(value: StatusId) {
     setStatus(value);
     onUpdate?.(node.id, { status: value });
   }
 
-  function handlePlatformToggle(platformId: PlatformId) {
-    const next = platforms.includes(platformId)
-      ? platforms.filter((p) => p !== platformId)
-      : [...platforms, platformId];
-    setPlatforms(next);
+  function handleTitlePaste(e: React.ClipboardEvent<HTMLDivElement>) {
+    e.preventDefault();
+    const text = e.clipboardData.getData("text/plain");
+    document.execCommand("insertText", false, text);
+  }
 
-    if (node.species === "view") {
-      const currentStatuses = getEditablePlatformStatuses(node);
-      const nextStatuses = Object.fromEntries(
-        next.map((platform) => [platform, currentStatuses[platform] ?? node.status]),
-      ) as Record<PlatformId, StatusId>;
-      const currentNotes = node.metadata?.platformNotes ?? {};
-      const nextNotes = Object.fromEntries(
-        next.flatMap((platform) => {
-          const note = currentNotes[platform];
-          return typeof note === "string" ? [[platform, note]] : [];
-        }),
-      ) as Partial<Record<PlatformId, string>>;
-
-      onUpdate?.(node.id, {
-        platforms: next,
-        metadata: {
-          ...node.metadata,
-          platformStatuses: nextStatuses,
-          platformNotes: nextNotes,
-        },
-      });
-      return;
-    }
-
-    onUpdate?.(node.id, { platforms: next });
+  function handleDescriptionPaste(e: React.ClipboardEvent<HTMLDivElement>) {
+    e.preventDefault();
+    const text = e.clipboardData.getData("text/plain");
+    document.execCommand("insertText", false, text);
   }
 
   return (
     <div className="px-6 flex flex-col gap-5">
-      <div className="flex flex-col gap-1.5">
-        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Title</span>
-        <Input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onBlur={handleTitleBlur}
-          aria-label="Node title"
+      <div className="flex flex-col">
+        <div
+          ref={titleEditRef}
+          contentEditable
+          suppressContentEditableWarning
+          onPaste={handleTitlePaste}
+          onInput={(e) => {
+            setTitle(e.currentTarget.textContent || "");
+          }}
+          className="text-lg font-semibold text-foreground outline-none empty:before:text-muted-foreground empty:before:content-['Node_title'] whitespace-pre-wrap break-words"
+          aria-label="Node title (editable)"
+        />
+        <div
+          ref={descriptionEditRef}
+          contentEditable
+          suppressContentEditableWarning
+          onPaste={handleDescriptionPaste}
+          onInput={(e) => {
+            setDescription(e.currentTarget.textContent || "");
+          }}
+          className="text-sm text-foreground leading-relaxed outline-none empty:before:text-muted-foreground empty:before:content-['Add_a_description...'] whitespace-pre-wrap break-words"
+          aria-label="Description (editable)"
         />
       </div>
       {usesSingleStatusField && (
@@ -214,51 +234,22 @@ function NodeFields({ node, onUpdate }: NodeFieldsProps) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {STATUSES.map((s) => (
-                <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
-              ))}
+              {STATUSES.map((s) => {
+                const StatusIcon = STATUS_ICONS[s.id];
+
+                return (
+                  <SelectItem key={s.id} value={s.id}>
+                    <span className="inline-flex items-center gap-2">
+                      <StatusIcon className={`size-3.5 ${STATUS_STYLES[s.id].badge}`} />
+                      {s.label}
+                    </span>
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
         </div>
       )}
-      {allowsPlatformEditing && (
-        <div className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Platforms</span>
-          <div className="flex items-center gap-2 flex-wrap">
-            {PLATFORMS.map((p) => {
-              const selected = platforms.includes(p.id);
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => handlePlatformToggle(p.id)}
-                  aria-pressed={selected}
-                  className={`flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${
-                    selected
-                      ? "bg-muted text-foreground"
-                      : "bg-transparent text-muted-foreground border border-input hover:bg-muted/50"
-                  }`}
-                >
-                  <span className={`w-2 h-2 rounded-full ${selected ? PLATFORM_DOT_STYLES[p.id] : "bg-muted-foreground/40"}`} />
-                  {PLATFORM_LABELS[p.id]}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-      <div className="flex flex-col gap-1.5">
-        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Description</span>
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          onBlur={handleDescriptionBlur}
-          placeholder="No description"
-          rows={4}
-          className="border-input bg-transparent text-sm text-foreground leading-relaxed resize-none rounded-md border px-3 py-2 shadow-xs outline-none placeholder:text-muted-foreground focus:ring-[3px] focus:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
-          aria-label="Description"
-        />
-      </div>
     </div>
   );
 }
@@ -374,8 +365,15 @@ function PlatformVariantsSection({ node, onUpdate }: PlatformVariantsSectionProp
     });
   }
 
-  function handleStatusChange(platform: PlatformId, value: StatusId) {
-    const next = { ...statuses, [platform]: value };
+  function handleStatusChange(platform: PlatformId, value: StatusId | undefined) {
+    let next: Partial<Record<PlatformId, StatusId>>;
+    if (value === undefined) {
+      // Unset - remove the status for this platform
+      const { [platform]: _, ...rest } = statuses;
+      next = rest;
+    } else {
+      next = { ...statuses, [platform]: value };
+    }
     setStatuses(next);
     onUpdate?.(node.id, {
       metadata: { ...node.metadata, platformStatuses: next, platformNotes: notes },
@@ -386,7 +384,6 @@ function PlatformVariantsSection({ node, onUpdate }: PlatformVariantsSectionProp
     <div className="px-6 flex flex-col gap-3">
       <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Platform Variants</span>
       <PlatformVariants
-        platforms={node.platforms}
         statuses={statuses}
         notes={notes}
         onStatusChange={handleStatusChange}
@@ -424,26 +421,33 @@ export function NodeDetailPanel({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent>
+      <SheetContent onOpenAutoFocus={(e) => e.preventDefault()}>
         <SheetHeader>
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex flex-col gap-1 min-w-0">
-              <SheetTitle>{node?.title ?? "Node detail"}</SheetTitle>
-              {speciesLabel && (
-                <SheetDescription>{speciesLabel}{speciesDescription ? ` — ${speciesDescription}` : ""}</SheetDescription>
+          <SheetTitle className="sr-only">
+            {node ? `${speciesLabel}: ${node.title}` : "Node details"}
+          </SheetTitle>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              {node && speciesLabel && (
+                <SpeciesBadge
+                  species={node.species}
+                  label={speciesLabel}
+                  description={speciesDescription}
+                  showLabel
+                />
               )}
+              {node && <EntityId id={node.id} />}
             </div>
-            {node && onDelete && (
+            <SheetClose asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className="shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                aria-label="Delete node"
-                onClick={() => onDelete(node.id)}
+                className="shrink-0"
+                aria-label="Close panel"
               >
-                <Trash2Icon className="size-4" />
+                <X className="size-4" />
               </Button>
-            )}
+            </SheetClose>
           </div>
         </SheetHeader>
         {node && (

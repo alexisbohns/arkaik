@@ -21,7 +21,12 @@ import {
 import { SPECIES } from "@/lib/config/species";
 import { STATUSES } from "@/lib/config/statuses";
 import { PLATFORMS } from "@/lib/config/platforms";
-import { PLATFORM_DOT_STYLES, PLATFORM_LABELS } from "@/components/graph/nodes/node-styles";
+import {
+  PLATFORM_DOT_STYLES,
+  PLATFORM_LABELS,
+  STATUS_ICONS,
+  STATUS_STYLES,
+} from "@/components/graph/nodes/node-styles";
 import type { SpeciesId } from "@/lib/config/species";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
@@ -129,9 +134,18 @@ export function NewNodeForm({ open, onOpenChange, onSubmit, defaultValues }: New
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {STATUSES.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
-                  ))}
+                  {STATUSES.map((s) => {
+                    const StatusIcon = STATUS_ICONS[s.id];
+
+                    return (
+                      <SelectItem key={s.id} value={s.id}>
+                        <span className="inline-flex items-center gap-2">
+                          <StatusIcon className={`size-3.5 ${STATUS_STYLES[s.id].badge}`} />
+                          {s.label}
+                        </span>
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>

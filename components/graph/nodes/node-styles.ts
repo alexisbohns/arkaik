@@ -1,8 +1,15 @@
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
+import type { SpeciesId } from "@/lib/config/species";
 import type { LucideIcon } from "lucide-react";
 import {
-  Monitor, Apple, Bot,
+  Monitor,
+  Apple,
+  Bot,
+  MonitorSmartphone,
+  Network,
+  Database,
+  Plug,
   Lightbulb, CircleDashed, CircleDotDashed, CirclePlay, CircleFadingArrowUp,
   CircleCheckBig, CircleSlash, CircleX,
 } from "lucide-react";
@@ -44,6 +51,13 @@ export const PLATFORM_ICONS: Record<PlatformId, LucideIcon> = {
   web:     Monitor,
   ios:     Apple,
   android: Bot,
+};
+
+export const SPECIES_ICONS: Record<SpeciesId, LucideIcon> = {
+  flow: Network,
+  view: MonitorSmartphone,
+  "data-model": Database,
+  "api-endpoint": Plug,
 };
 
 export const PLATFORM_DOT_STYLES: Record<PlatformId, string> = {

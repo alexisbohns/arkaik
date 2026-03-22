@@ -75,6 +75,7 @@ To add a new taxonomy value, add it to the array. The type updates automatically
 - **Node components** receive React Flow `NodeProps` with a `data` object containing `label`, `status`, `platforms`, `expanded`, `onToggle`.
 - **Edge components** receive React Flow `EdgeProps` and render SVG paths.
 - All node components are in `components/graph/nodes/` and must be registered in the `nodeTypes` map in `Canvas.tsx`.
+- Species affordances in panel and library cards should use a compact icon trigger with a hover card explaining the species from `lib/config/species.ts` descriptions.
 
 ## Data Mutations
 

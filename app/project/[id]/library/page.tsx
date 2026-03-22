@@ -5,6 +5,7 @@ import { useParams, usePathname, useRouter, useSearchParams } from "next/navigat
 import { PlusIcon } from "lucide-react";
 import { LibraryFilterBar, type LibraryDisplayMode, type LibrarySpeciesFilter } from "@/components/library/LibraryFilterBar";
 import { NodeCard } from "@/components/library/NodeCard";
+import type { PlaylistPreviewItem } from "@/components/library/NodeCard";
 import { NodeTable, type NodeSortKey, type NodeSortState } from "@/components/library/NodeTable";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
 import { NodeDetailPanel } from "@/components/panels/NodeDetailPanel";
@@ -19,6 +20,11 @@ import { useNodes } from "@/lib/hooks/useNodes";
 import { useProject } from "@/lib/hooks/useProject";
 import { findWhereUsed } from "@/lib/utils/where-used";
 import { generateNodeId } from "@/lib/utils/id";
+import {
+  computePlaylistRollup,
+  createEmptyRollup,
+  getNodePlatformStatuses,
+} from "@/lib/utils/platform-status";
 
 const SPECIES_EMPTY_LABELS: Record<LibrarySpeciesFilter, string> = {
   all: "nodes",
@@ -30,6 +36,10 @@ const SPECIES_EMPTY_LABELS: Record<LibrarySpeciesFilter, string> = {
 
 const SPECIES_LABEL_BY_ID = Object.fromEntries(
   SPECIES.map((species) => [species.id, species.label]),
+) as Record<SpeciesId, string>;
+
+const SPECIES_DESCRIPTION_BY_ID = Object.fromEntries(
+  SPECIES.map((species) => [species.id, species.description]),
 ) as Record<SpeciesId, string>;
 
 const STATUS_LABEL_BY_ID = Object.fromEntries(
@@ -44,7 +54,7 @@ function parseSpeciesFilter(value: string | null): LibrarySpeciesFilter {
   return "all";
 }
 
-function playlistPreviewForNode(node: DataNode, allNodesById: Map<string, DataNode>): string[] {
+function playlistPreviewForNode(node: DataNode, allNodesById: Map<string, DataNode>): PlaylistPreviewItem[] {
   if (node.species !== "flow") return [];
 
   const entries = Array.isArray(node.metadata?.playlist?.entries)
@@ -53,12 +63,23 @@ function playlistPreviewForNode(node: DataNode, allNodesById: Map<string, DataNo
 
   return entries.map((entry) => {
     if (entry.type === "view") {
-      return allNodesById.get(entry.view_id)?.title ?? entry.view_id;
+      return {
+        type: "view",
+        label: allNodesById.get(entry.view_id)?.title ?? entry.view_id,
+      };
     }
+
     if (entry.type === "flow") {
-      return allNodesById.get(entry.flow_id)?.title ?? entry.flow_id;
+      return {
+        type: "flow",
+        label: allNodesById.get(entry.flow_id)?.title ?? entry.flow_id,
+      };
     }
-    return entry.label;
+
+    return {
+      type: entry.type,
+      label: entry.label,
+    };
   });
 }
 
@@ -153,6 +174,20 @@ export default function ProjectLibraryPage() {
   }, [dataNodes, search, sort, speciesFilter, usedInByNodeId]);
 
   const emptyLabel = SPECIES_EMPTY_LABELS[speciesFilter];
+
+  const flowRollupByNodeId = useMemo(
+    () => Object.fromEntries(
+      dataNodes
+        .filter((node) => node.species === "flow")
+        .map((flowNode) => {
+          const entries = Array.isArray(flowNode.metadata?.playlist?.entries)
+            ? flowNode.metadata.playlist.entries
+            : [];
+          return [flowNode.id, computePlaylistRollup(entries, nodesById)];
+        }),
+    ) as Record<string, ReturnType<typeof createEmptyRollup>>,
+    [dataNodes, nodesById],
+  );
 
   async function handleNodeUpdate(nodeId: string, patch: Partial<Omit<DataNode, "id" | "project_id">>) {
     const updatedNode = await updateNode(nodeId, patch);
@@ -270,6 +305,9 @@ export default function ProjectLibraryPage() {
                   key={node.id}
                   node={node}
                   speciesLabel={SPECIES_LABEL_BY_ID[node.species] ?? node.species}
+                  speciesDescription={SPECIES_DESCRIPTION_BY_ID[node.species]}
+                  viewPlatformStatuses={node.species === "view" ? getNodePlatformStatuses(node) : undefined}
+                  flowRollup={node.species === "flow" ? flowRollupByNodeId[node.id] : undefined}
                   playlistPreview={playlistPreviewForNode(node, nodesById)}
                   usedInCount={usedInByNodeId[node.id] ?? 0}
                   onClick={() => handleSelectNode(node)}
