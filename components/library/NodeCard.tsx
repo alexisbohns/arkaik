@@ -57,7 +57,18 @@ export function NodeCard({
   const previewItems = playlistPreview.slice(0, 5);
 
   return (
-    <button type="button" className="w-full text-left" onClick={onClick}>
+    <div
+      role="button"
+      tabIndex={0}
+      className="w-full text-left"
+      onClick={onClick}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onClick();
+        }
+      }}
+    >
       <Card className="h-full gap-3 py-4 transition-colors hover:bg-muted/40">
         <CardHeader className="gap-2 px-4">
           <CardTitle className="line-clamp-2 text-base leading-tight">{node.title}</CardTitle>
@@ -132,6 +143,6 @@ export function NodeCard({
           )}
         </CardContent>
       </Card>
-    </button>
+    </div>
   );
 }
