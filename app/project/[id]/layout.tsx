@@ -1,8 +1,12 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useParams } from "next/navigation";
-import { cn } from "@/lib/utils";
+import { usePathname, useParams, useSearchParams } from "next/navigation";
+import { ProjectSidebar } from "@/components/layout/ProjectSidebar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { SPECIES } from "@/lib/config/species";
+import { useProject } from "@/lib/hooks/useProject";
+
+const SPECIES_LABELS = Object.fromEntries(SPECIES.map((species) => [species.id, species.label])) as Record<string, string>;
 
 export default function ProjectLayout({
   children,
@@ -11,35 +15,31 @@ export default function ProjectLayout({
 }) {
   const pathname = usePathname();
   const params = useParams();
+  const searchParams = useSearchParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
+  const { project, loading } = useProject(id);
 
-  const navItems = [
-    { label: "Canvas", href: `/project/${id}/canvas`, active: pathname.startsWith(`/project/${id}/canvas`) },
-    { label: "Library", href: `/project/${id}/library`, active: pathname.startsWith(`/project/${id}/library`) },
-  ];
+  const currentView = pathname.startsWith(`/project/${id}/library`) ? "library" : "canvas";
+  const currentSpecies = currentView === "library" ? searchParams.get("species") : null;
+  const currentQueryString = currentView === "library" ? searchParams.toString() : "";
+  const sectionLabel = currentView === "library"
+    ? currentSpecies && SPECIES_LABELS[currentSpecies]
+      ? `${SPECIES_LABELS[currentSpecies]} Library`
+      : "Library"
+    : "Canvas";
 
   return (
-    <div className="h-screen w-full overflow-hidden">
-      <div className="flex items-center gap-2 border-b bg-background/95 px-4 py-2">
-        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Project</span>
-        <nav className="flex items-center gap-1" aria-label="Project views">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "rounded px-2 py-1 text-xs font-medium transition-colors",
-                item.active
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-              )}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-      </div>
-      <div className="h-[calc(100vh-41px)]">{children}</div>
-    </div>
+    <SidebarProvider defaultOpen>
+      <ProjectSidebar
+        projectId={id}
+        currentProjectTitle={project?.project.title}
+        currentView={currentView}
+        currentSpecies={currentSpecies}
+        currentQueryString={currentQueryString}
+      />
+      <SidebarInset className="h-svh overflow-hidden">
+        {children}
+      </SidebarInset>
+    </SidebarProvider>
   );
 }

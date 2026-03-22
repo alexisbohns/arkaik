@@ -93,7 +93,7 @@ interface ProjectBundle {
 
 A `ProjectBundle` is the unit of storage and export — one project with all its nodes and edges.
 
-`project.root_node_id` (when present) points to the node that should render as the primary canvas anchor in [app/project/[id]/page.tsx](../app/project/[id]/page.tsx). If it is missing, the canvas falls back to inferred roots (nodes without compose parents).
+`project.root_node_id` (when present) points to the node that should render as the primary canvas anchor in [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx). If it is missing, the canvas falls back to inferred roots (nodes without compose parents).
 
 ## DataProvider Interface
 
@@ -159,11 +159,12 @@ Hooks in `lib/hooks/` provide React state wrappers around the provider:
 | Hook | Returns | Purpose |
 |------|---------|---------|
 | `useProject(id)` | `{ project, loading, updateProject }` | Load and update project-level metadata/settings |
+| `useProjects()` | `{ projects, loading }` | Load the active project list for shell navigation |
 | `useNodes(projectId)` | `{ nodes, loading, addNode, removeNode, updateNode }` | CRUD for nodes |
 | `useEdges(projectId)` | `{ edges, loading, addEdge, removeEdge }` | CRUD for edges |
 | `useGraphNavigation()` | `{ expandedNodeIds, zoomLevel, breadcrumbs, expand, collapse, navigateTo }` | Generic semantic zoom state |
 
-The project canvas page (`app/project/[id]/page.tsx`) uses `useProject` for root-node anchoring and project-level card-style preferences, and still manages `expandedFlows` as local state.
+The project canvas page (`app/project/[id]/canvas/page.tsx`) uses `useProject` for root-node anchoring and project-level card-style preferences, and still manages `expandedFlows` as local state.
 
 ### Node Editing Flow
 
@@ -178,7 +179,7 @@ NodeDetailPanel (title, description, platforms, metadata)
 
 Views store editable per-platform statuses in `node.metadata.platformStatuses`. When legacy data does not have that field yet, the UI derives platform statuses from `node.status` + `node.platforms` and writes the richer metadata shape back on the next edit.
 
-Flows do not expose an editable rollup status in UI. Flow cards and panel gauges compute status from descendant views in [app/project/[id]/page.tsx](../app/project/[id]/page.tsx) and [components/panels/NodeDetailPanel.tsx](../components/panels/NodeDetailPanel.tsx).
+Flows do not expose an editable rollup status in UI. Flow cards and panel gauges compute status from descendant views in [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx) and [components/panels/NodeDetailPanel.tsx](../components/panels/NodeDetailPanel.tsx).
  
  Flow playlist edits (`metadata.playlist.entries`) also originate from `NodeDetailPanel` via [components/panels/PlaylistEditor.tsx](../components/panels/PlaylistEditor.tsx). All playlist mutations use `useNodes.updateNode`, and provider-side validation blocks circular flow references before persistence.
 

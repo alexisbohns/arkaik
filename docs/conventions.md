@@ -7,7 +7,7 @@ app/                    # Next.js App Router pages and layouts
 components/
   branding/            # Brand assets and logo components
   graph/                # React Flow canvas, custom nodes, custom edges
-  layout/               # Shell UI: breadcrumb, sidebar, minimap, badges
+  layout/               # Shell UI: project sidebar, switcher, breadcrumb, minimap, badges
   panels/               # Slide-in panels and forms
   ui/                   # shadcn/ui primitives (do not edit directly — use CLI)
 lib/
@@ -22,14 +22,14 @@ docs/                   # This documentation
 ## State Management
 
 - **No global store.** No Zustand, Redux, or Context-based state.
-- Reusable state logic lives in hooks: `useNodes`, `useEdges`, `useProject`, `useGraphNavigation`.
-- The project canvas page (`app/project/[id]/page.tsx`) uses `useNodes` and `useEdges` for data, and manages flow expansion as local `useState` (`expandedFlows`).
+- Reusable state logic lives in hooks: `useNodes`, `useEdges`, `useProject`, `useProjects`, `useGraphNavigation`.
+- The project canvas page (`app/project/[id]/canvas/page.tsx`) uses `useNodes` and `useEdges` for data, and manages flow expansion as local `useState` (`expandedFlows`).
 - Data flows via props from the project page down to canvas components.
-- `useProject` and `useGraphNavigation` exist as utilities but are not currently used on the canvas page.
+- Route-shell concerns such as the project switcher and persistent sidebar should stay in the project layout and use route state plus lightweight hooks instead of introducing shared global state.
 
 ## Keyboard Shortcuts
 
-- Project-page shortcuts are wired in `app/project/[id]/page.tsx` using `lib/hooks/useKeyboardShortcuts.ts`.
+- Project-page shortcuts are wired in `app/project/[id]/canvas/page.tsx` using `lib/hooks/useKeyboardShortcuts.ts`.
 - Shortcut key checks and focus guards live in `lib/utils/keyboard.ts`.
 - Keep shortcut handlers thin: they should call existing page handlers (`handleDeleteNodeRequest`, `handleExport`) instead of duplicating business logic.
 - Delete shortcuts must not directly mutate storage. Always route through the existing confirmation dialog flow.
@@ -39,6 +39,7 @@ docs/                   # This documentation
 
 - **Tailwind CSS** for all styling — no CSS modules, no styled-components.
 - **shadcn/ui** for UI primitives (`components/ui/`). Generated via CLI — don't edit these files by hand.
+- Sidebar primitives are also generated via shadcn CLI. Compose with them in `components/layout/` rather than forking the generated files.
 - **class-variance-authority (CVA)** for component variants.
 - **`cn()` helper** (`lib/utils.ts`) for merging Tailwind classes: `cn("base-class", conditional && "active-class")`.
 - **`tailwind-merge`** resolves conflicting Tailwind classes automatically via `cn()`.
@@ -79,6 +80,13 @@ Component → Hook (useNodes.addNode) → Provider (localProvider.createNode) �
 ```
 
 Never write to `localStorage` directly. Always use the provider.
+
+## Routing UI
+
+- Shared project navigation belongs in `app/project/[id]/layout.tsx`, not inside individual route pages.
+- Route-aware active states should derive from `usePathname()` and `useSearchParams()`.
+- When a UI control represents a shareable filter, keep it URL-driven. The library `species` filter is the current example.
+- Cross-project navigation should preserve the current in-project destination when it can be mapped safely.
 
 ## Naming
 

@@ -1,21 +1,22 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useMemo, useState } from "react";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { PlusIcon } from "lucide-react";
-import { ArkaikLogo } from "@/components/branding/ArkaikLogo";
 import { LibraryFilterBar, type LibraryDisplayMode, type LibrarySpeciesFilter } from "@/components/library/LibraryFilterBar";
 import { NodeCard } from "@/components/library/NodeCard";
 import { NodeTable, type NodeSortKey, type NodeSortState } from "@/components/library/NodeTable";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
 import { NodeDetailPanel } from "@/components/panels/NodeDetailPanel";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import { SPECIES, type SpeciesId } from "@/lib/config/species";
 import { STATUSES, STATUS_ORDER } from "@/lib/config/statuses";
 import type { Node as DataNode } from "@/lib/data/types";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useNodes } from "@/lib/hooks/useNodes";
+import { useProject } from "@/lib/hooks/useProject";
 import { findWhereUsed } from "@/lib/utils/where-used";
 import { generateNodeId } from "@/lib/utils/id";
 
@@ -111,6 +112,8 @@ function sortNodes(
 
 export default function ProjectLibraryPage() {
   const params = useParams();
+  const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
 
@@ -119,20 +122,16 @@ export default function ProjectLibraryPage() {
   const [newNodeOpen, setNewNodeOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [displayMode, setDisplayMode] = useState<LibraryDisplayMode>("gallery");
-  const [speciesFilter, setSpeciesFilter] = useState<LibrarySpeciesFilter>(
-    parseSpeciesFilter(searchParams.get("species")),
-  );
   const [sort, setSort] = useState<NodeSortState>({
     key: "title",
     direction: "asc",
   });
 
+  const speciesFilter = parseSpeciesFilter(searchParams.get("species"));
+
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
-
-  useEffect(() => {
-    setSpeciesFilter(parseSpeciesFilter(searchParams.get("species")));
-  }, [searchParams]);
+  const { project: projectBundle } = useProject(id);
 
   const nodesById = useMemo(
     () => new Map(dataNodes.map((node) => [node.id, node])),
@@ -178,6 +177,19 @@ export default function ProjectLibraryPage() {
     });
   }
 
+  function handleSpeciesChange(nextSpecies: LibrarySpeciesFilter) {
+    const nextParams = new URLSearchParams(searchParams.toString());
+
+    if (nextSpecies === "all") {
+      nextParams.delete("species");
+    } else {
+      nextParams.set("species", nextSpecies);
+    }
+
+    const nextQuery = nextParams.toString();
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname);
+  }
+
   async function handleCreateNodeFromPanel(species: "flow" | "view", title: string) {
     return addNode({
       id: generateNodeId(species),
@@ -213,10 +225,15 @@ export default function ProjectLibraryPage() {
 
   return (
     <div className="h-full w-full flex flex-col">
-      <header className="flex items-center gap-3 border-b bg-background px-4 py-2 shrink-0">
-        <Link href="/" aria-label="Go to home" className="inline-flex items-center">
-          <ArkaikLogo className="w-16 shrink-0" />
-        </Link>
+      <header className="flex h-12 shrink-0 items-center gap-3 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <SidebarTrigger className="-ml-1" />
+        <Separator orientation="vertical" className="mx-1 h-4" />
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium">
+            {projectBundle?.project.title ?? "Untitled project"}
+          </p>
+          <p className="truncate text-xs text-muted-foreground">Library</p>
+        </div>
         <div className="ml-auto flex items-center gap-3">
           <Button size="sm" onClick={() => setNewNodeOpen(true)}>
             <PlusIcon className="size-4" />
@@ -231,7 +248,7 @@ export default function ProjectLibraryPage() {
             species={speciesFilter}
             search={search}
             displayMode={displayMode}
-            onSpeciesChange={setSpeciesFilter}
+            onSpeciesChange={handleSpeciesChange}
             onSearchChange={setSearch}
             onDisplayModeChange={setDisplayMode}
           />

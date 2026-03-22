@@ -12,7 +12,7 @@ app/
   page.tsx              # Home page: component showcase / project list
   project/
     [id]/
-      layout.tsx        # Shared project shell with Canvas/Library route links
+      layout.tsx        # Shared project shell with persistent sidebar + project switcher
       page.tsx          # Redirects to /project/[id]/canvas
       canvas/
         page.tsx        # Main canvas — semantic zoom logic lives here
@@ -50,7 +50,8 @@ components/
   layout/
     Minimap.tsx             # React Flow minimap wrapper (unused — Canvas uses @xyflow/react MiniMap directly)
     PlatformDots.tsx        # Colored dots for web/ios/android
-    Sidebar.tsx             # Left panel container (stub)
+    ProjectSidebar.tsx      # Persistent in-project sidebar navigation
+    ProjectSwitcher.tsx     # Sidebar header dropdown for cross-project navigation
     StatusBadge.tsx         # Colored pill with status label
   library/
     LibraryFilterBar.tsx # Species/search/display controls for the library page
@@ -65,7 +66,9 @@ components/
     NodeSearchCombobox.tsx  # Search-or-create selector for flow/view references
     PlatformVariants.tsx    # Platform tab switcher with per-platform status and notes
   ui/                       # shadcn/ui primitives (button, card, dialog, input, etc.)
+    dropdown-menu.tsx       # Radix dropdown wrapper used by the project switcher
     popover.tsx             # Radix popover wrapper used by View card API/platform details
+    sidebar.tsx             # shadcn sidebar primitives used by the project layout shell
 ```
 
 ## Data Flow
@@ -75,8 +78,12 @@ localStorage
     ↕ (read/write)
 localProvider (implements DataProvider)
     ↕ (async calls)
-Hooks: useNodes, useEdges, useProject
+Hooks: useNodes, useEdges, useProject, useProjects
     ↕ (state)
+app/project/[id]/layout.tsx (sidebar shell + route-aware navigation)
+  ↕ (props)
+ProjectSidebar + ProjectSwitcher
+  ↕ (route changes)
 app/project/[id]/canvas/page.tsx (semantic zoom + status rollup logic)
     ↕ (props)
 Canvas → ReactFlow → Custom Nodes/Edges
@@ -94,6 +101,16 @@ app/project/[id]/library/page.tsx
 LibraryFilterBar + NodeCard/NodeTable
   ↕ (click events)
 NodeDetailPanel / NewNodeForm → hooks → Provider → Storage
+
+Project-shell navigation flow:
+
+Hooks: useProject, useProjects
+  ↕ (state)
+app/project/[id]/layout.tsx
+  ↕ (props)
+ProjectSidebar / ProjectSwitcher
+  ↕ (pathname + searchParams)
+Route-aware active states + cross-project navigation
 ```
 
 All data mutations flow through the `DataProvider` interface (`lib/data/data-provider.ts`). The current implementation is `localProvider` backed by `localStorage`. The interface is designed for a future Supabase migration — swap the provider, keep the hooks and UI unchanged.
@@ -148,11 +165,14 @@ Edits call `useNodes.updateNode` which flows through the `DataProvider`.
 - `ThemeProvider` wraps the entire app in the root layout
 - `ThemeToggle` component for user switching
 - Tailwind CSS with shadcn/ui design tokens
+- Sidebar theme tokens live in `app/globals.css` and back the shadcn sidebar primitives
 
 ## Source References
 
 - Graph orchestration: [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx)
+- Project shell: [app/project/[id]/layout.tsx](../app/project/[id]/layout.tsx)
 - Library orchestration: [app/project/[id]/library/page.tsx](../app/project/[id]/library/page.tsx)
+- Sidebar components: [components/layout/ProjectSidebar.tsx](../components/layout/ProjectSidebar.tsx), [components/layout/ProjectSwitcher.tsx](../components/layout/ProjectSwitcher.tsx)
 - React Flow registry: [components/graph/Canvas.tsx](../components/graph/Canvas.tsx)
-- Data hooks: [lib/hooks/useNodes.ts](../lib/hooks/useNodes.ts), [lib/hooks/useEdges.ts](../lib/hooks/useEdges.ts)
+- Data hooks: [lib/hooks/useNodes.ts](../lib/hooks/useNodes.ts), [lib/hooks/useEdges.ts](../lib/hooks/useEdges.ts), [lib/hooks/useProject.ts](../lib/hooks/useProject.ts), [lib/hooks/useProjects.ts](../lib/hooks/useProjects.ts)
 - Data provider: [lib/data/local-provider.ts](../lib/data/local-provider.ts)
