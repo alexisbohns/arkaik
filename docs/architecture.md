@@ -10,6 +10,11 @@ arkaik is a product graph browser built on Next.js 16 App Router with React Flow
 app/
   layout.tsx            # Root layout: fonts (Geist), ThemeProvider, global CSS
   page.tsx              # Home page: component showcase / project list
+  generate/
+    page.tsx            # Prompt builder UI for LLM-assisted ProjectBundle generation
+  llms-full.txt/
+    route.ts            # Full LLM-readable context bundle (docs + schema + example)
+  sitemap.ts            # XML sitemap route
   docs/
     layout.tsx          # Documentation shell with sidebar + page frame
     page.tsx            # Docs home: renders repository root README.md
@@ -62,6 +67,9 @@ components/
     LibraryFilterBar.tsx # Species/search/display controls for the library page
     NodeCard.tsx         # Gallery-mode card for a single node
     NodeTable.tsx        # Directory-mode sortable table for nodes
+  generate/
+    PromptBuilderForm.tsx # Use-case aware form (pitch/plan/extend) and advanced options
+    PromptOutput.tsx      # Prompt preview, token estimate, copy/download actions
   panels/
     NewNodeForm.tsx         # Dialog form for creating a node with species-aware status/platform defaults
     InsertBetweenDialog.tsx # Dialog for insert-between actions: choose view/flow, search existing, or create inline
@@ -132,6 +140,25 @@ lib/utils/docs.ts (filesystem discovery + slug-safe lookup)
 components/docs/MarkdownContent.tsx (react-markdown + GFM + highlighting)
 
 Docs pages are rendered from markdown at request/build time using server-side file reads. The home route (`/docs`) is pinned to repository `README.md`, while nested routes resolve to markdown under `docs/`. Unknown paths redirect back to `/docs`.
+
+Prompt generation flow:
+
+app/generate/page.tsx
+  ↕ (local state)
+components/generate/PromptBuilderForm.tsx
+  ↕ (typed config)
+lib/prompts/assemble.ts
+  ↕ (text blocks)
+lib/prompts/blocks.ts + lib/prompts/types.ts
+  ↕ (preview actions)
+components/generate/PromptOutput.tsx
+
+LLM affordance assets:
+
+- `public/llms.txt` exposes a concise site + model manifest.
+- `app/llms-full.txt/route.ts` serves a larger, plain-text context bundle for crawlers/agents.
+- `public/schema/project-bundle.json` and `public/schema/example-bundle.json` define and demonstrate the import contract.
+- `public/robots.txt` and `app/sitemap.ts` support discoverability.
 ```
 
 All data mutations flow through the `DataProvider` interface (`lib/data/data-provider.ts`). The current implementation is `localProvider` backed by `localStorage`. The interface is designed for a future Supabase migration — swap the provider, keep the hooks and UI unchanged.
@@ -214,6 +241,8 @@ Project-level navigation is defined in `app/project/[id]/layout.tsx` and rendere
 - Library orchestration: [app/project/[id]/library/page.tsx](../app/project/[id]/library/page.tsx)
 - Sidebar components: [components/layout/ProjectSidebar.tsx](../components/layout/ProjectSidebar.tsx), [components/layout/ProjectSwitcher.tsx](../components/layout/ProjectSwitcher.tsx)
 - Docs shell + renderer: [app/docs/layout.tsx](../app/docs/layout.tsx), [app/docs/page.tsx](../app/docs/page.tsx), [app/docs/[...slug]/page.tsx](../app/docs/[...slug]/page.tsx), [components/layout/DocsSidebar.tsx](../components/layout/DocsSidebar.tsx), [components/docs/MarkdownContent.tsx](../components/docs/MarkdownContent.tsx), [lib/utils/docs.ts](../lib/utils/docs.ts)
+- Prompt builder: [app/generate/page.tsx](../app/generate/page.tsx), [components/generate/PromptBuilderForm.tsx](../components/generate/PromptBuilderForm.tsx), [components/generate/PromptOutput.tsx](../components/generate/PromptOutput.tsx), [lib/prompts/assemble.ts](../lib/prompts/assemble.ts), [lib/prompts/blocks.ts](../lib/prompts/blocks.ts), [lib/prompts/types.ts](../lib/prompts/types.ts)
 - React Flow registry: [components/graph/Canvas.tsx](../components/graph/Canvas.tsx)
 - Data hooks: [lib/hooks/useNodes.ts](../lib/hooks/useNodes.ts), [lib/hooks/useEdges.ts](../lib/hooks/useEdges.ts), [lib/hooks/useProject.ts](../lib/hooks/useProject.ts), [lib/hooks/useProjects.ts](../lib/hooks/useProjects.ts)
 - Data provider: [lib/data/local-provider.ts](../lib/data/local-provider.ts)
+- LLM surfaces: [public/llms.txt](../public/llms.txt), [app/llms-full.txt/route.ts](../app/llms-full.txt/route.ts), [public/schema/project-bundle.json](../public/schema/project-bundle.json), [public/schema/example-bundle.json](../public/schema/example-bundle.json), [public/robots.txt](../public/robots.txt), [app/sitemap.ts](../app/sitemap.ts)

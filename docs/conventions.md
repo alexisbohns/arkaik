@@ -7,6 +7,7 @@ app/                    # Next.js App Router pages and layouts
 components/
   branding/            # Brand assets and logo components
   graph/                # React Flow canvas, custom nodes, custom edges
+  generate/             # Prompt builder form/output components for /generate
   layout/               # Shell UI: project sidebar, switcher, breadcrumb, minimap, badges
   panels/               # Slide-in panels and forms
   ui/                   # shadcn/ui primitives (do not edit directly — use CLI)
@@ -14,7 +15,12 @@ lib/
   config/               # Typed const arrays: species, statuses, platforms, edge types
   data/                 # DataProvider interface + implementations
   hooks/                # React hooks for state management
+  prompts/              # Prompt assembly blocks/types for the AI prompt builder
   utils/                # Helpers: layout, export, cn()
+public/
+  schema/               # Public JSON schema + example bundle for import contract
+  llms.txt              # Concise LLM manifest
+  robots.txt            # Crawl directives + sitemap pointer
 seed/                   # Example project JSON for development
 docs/                   # This documentation
 ```

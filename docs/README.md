@@ -8,6 +8,14 @@
 - [Conventions](conventions.md) — Coding patterns, file organization, state management
 - [Vision](vision.md) — Long-term product direction and roadmap ideas
 
+## LLM & Prompt Surfaces
+
+- Generate prompt builder UI: `/generate`
+- LLM concise manifest: `/llms.txt`
+- LLM full context bundle: `/llms-full.txt`
+- Import schema: `/schema/project-bundle.json`
+- Import example bundle: `/schema/example-bundle.json`
+
 ## Frontend Docs Route
 
 Documentation is also available inside the app at `/docs`.

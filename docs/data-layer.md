@@ -152,6 +152,17 @@ When importing, if the incoming project ID already exists locally, a new project
 
 When importing JSON, `project.root_node_id` is optional. If provided, it must reference an existing node ID in `nodes` or the import fails validation.
 
+### Public Schema Contract
+
+Arkaik now publishes a machine-readable schema and example bundle for import/export alignment and LLM prompt tooling:
+
+| Asset | Path | Purpose |
+|---|---|---|
+| ProjectBundle schema | `public/schema/project-bundle.json` | Canonical JSON Schema for the bundle format |
+| Example bundle | `public/schema/example-bundle.json` | Complete, valid reference example |
+
+These assets mirror the TypeScript model in `lib/data/types.ts` and help external tooling generate importable bundles.
+
 ## Hooks
 
 Hooks in `lib/hooks/` provide React state wrappers around the provider:
