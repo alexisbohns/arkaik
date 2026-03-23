@@ -1,0 +1,39 @@
+# Arkaik
+
+> Product graph browser for product architects
+
+## What is Arkaik
+
+Arkaik is a visual product graph browser that lets product architects map their entire product as an interactive graph. It uses a 4-species model (flows, views, data models, API endpoints) with playlist-driven composition to model user journeys, screens, data entities, and API integrations.
+
+## Key Concepts
+
+- **Flow**: An ordered sequence of views and sub-flows representing a user journey
+- **View**: A reusable page or screen in the product
+- **Data Model**: A data entity or table used by the product
+- **API Endpoint**: An API endpoint consumed or exposed by the product
+- **Playlist**: The ordered list of entries (views, sub-flows, conditions, junctions) inside a flow
+- **Edge**: A relationship between nodes — composes (hierarchy), calls (view→API), displays (view→data), queries (API→data)
+
+## Documentation
+
+- [Architecture](https://arkaik.app/docs/architecture): System design, component relationships, data flow
+- [Graph Model](https://arkaik.app/docs/graph-model): 4-species taxonomy, composition model, statuses, platforms, edge types
+- [Data Layer](https://arkaik.app/docs/data-layer): DataProvider interface, local storage, import/export format
+- [Conventions](https://arkaik.app/docs/conventions): Coding patterns, file organization, state management
+- [Vision](https://arkaik.app/docs/vision): Product direction and roadmap
+
+## Import/Export Format
+
+Arkaik projects are importable/exportable as JSON files conforming to the ProjectBundle schema.
+
+- JSON Schema: https://arkaik.app/schema/project-bundle.json
+- Example bundle: https://arkaik.app/schema/example-bundle.json
+- Full documentation + schema: https://arkaik.app/llms-full.txt
+
+## Links
+
+- Website: https://arkaik.app
+- Projects: https://arkaik.app/projects
+- Documentation: https://arkaik.app/docs
+- Generate with AI: https://arkaik.app/generate

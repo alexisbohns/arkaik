@@ -170,6 +170,9 @@ export default function ProjectsPage() {
             >
               {importing ? "Importing..." : "Import JSON"}
             </Button>
+            <Button variant="outline" asChild>
+              <Link href="/generate">Generate with AI</Link>
+            </Button>
             <Button onClick={() => setCreateOpen(true)}>Create project</Button>
           </div>
         </div>
