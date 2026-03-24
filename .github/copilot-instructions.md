@@ -27,3 +27,9 @@ When reviewing or making changes:
 - Styling: Tailwind + shadcn/ui + class-variance-authority
 - Config: typed const arrays in `lib/config/` — add new taxonomies there
 - Data: all mutations go through `DataProvider` interface in `lib/data/`
+
+## Validation Rules (LLM / Coding Agent)
+
+- Before considering any code change complete, always run `npm run lint`.
+- Before considering any code change complete, always run `npx next build`.
+- If either command fails, fix regressions before finalizing.

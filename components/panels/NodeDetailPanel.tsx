@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Trash2Icon, X } from "lucide-react";
+import { X } from "lucide-react";
 import type { Node, Edge, PlaylistEntry } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
@@ -103,17 +103,7 @@ function computeFlowRollup(node: Node, allNodes: Node[]) {
   return computeFlowRollupRecursive(node, new Set<string>());
 }
 
-function getComposeChildren(node: Node, allNodes: Node[], allEdges: Edge[]) {
-  const childIds = allEdges
-    .filter((edge) => edge.edge_type === "composes" && edge.source_id === node.id)
-    .map((edge) => edge.target_id);
-  const childMap = new Map(allNodes.map((candidate) => [candidate.id, candidate]));
-  return childIds
-    .map((id) => childMap.get(id))
-    .filter((child): child is Node => Boolean(child));
-}
-
-function computeNodeRollup(node: Node, allNodes: Node[], allEdges: Edge[]) {
+function computeNodeRollup(node: Node, allNodes: Node[]) {
   if (node.species === "flow") {
     return computeFlowRollup(node, allNodes);
   }
@@ -369,7 +359,8 @@ function PlatformVariantsSection({ node, onUpdate }: PlatformVariantsSectionProp
     let next: Partial<Record<PlatformId, StatusId>>;
     if (value === undefined) {
       // Unset - remove the status for this platform
-      const { [platform]: _, ...rest } = statuses;
+      const rest = { ...statuses };
+      delete rest[platform];
       next = rest;
     } else {
       next = { ...statuses, [platform]: value };
@@ -393,8 +384,8 @@ function PlatformVariantsSection({ node, onUpdate }: PlatformVariantsSectionProp
   );
 }
 
-function ComputedPlatformStatusSection({ node, allNodes, allEdges }: { node: Node; allNodes: Node[]; allEdges: Edge[] }) {
-  const rollup = computeNodeRollup(node, allNodes, allEdges);
+function ComputedPlatformStatusSection({ node, allNodes }: { node: Node; allNodes: Node[] }) {
+  const rollup = computeNodeRollup(node, allNodes);
 
   return (
     <div className="px-6 flex flex-col gap-3">
@@ -415,6 +406,7 @@ export function NodeDetailPanel({
   onNavigate,
   onCreateNode,
 }: NodeDetailPanelProps) {
+  void onDelete;
   const speciesConfig = SPECIES.find((s) => s.id === node?.species);
   const speciesLabel = speciesConfig?.label ?? node?.species;
   const speciesDescription = speciesConfig?.description;
@@ -465,7 +457,6 @@ export function NodeDetailPanel({
                 key={`computed-${node.id}`}
                 node={node}
                 allNodes={allNodes}
-                allEdges={allEdges ?? []}
               />
             )}
             {node.species === "flow" && allNodes && (
