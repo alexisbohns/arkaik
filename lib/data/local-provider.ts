@@ -49,7 +49,11 @@ function normalizeBundle(bundle: ProjectBundle): ProjectBundle {
   });
 
   const normalizedNodes: Node[] = nodes.map((node) => {
-    const { parent_id: _parentId, sort_order: _sortOrder, position_x: _positionX, position_y: _positionY, ...rest } = node;
+    const rest: LegacyNode = { ...node };
+    delete rest.parent_id;
+    delete rest.sort_order;
+    delete rest.position_x;
+    delete rest.position_y;
     return rest;
   });
 

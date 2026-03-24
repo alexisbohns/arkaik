@@ -11,7 +11,6 @@ export function useProjects() {
   useEffect(() => {
     let cancelled = false;
 
-    setLoading(true);
     localProvider
       .listProjects()
       .then((nextProjects) => {

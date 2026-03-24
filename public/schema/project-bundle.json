@@ -1,0 +1,265 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://arkaik.app/schema/project-bundle.json",
+  "title": "Arkaik ProjectBundle",
+  "description": "The import/export format for an Arkaik product graph. Contains a project, its nodes (flows, views, data models, API endpoints), and edges (relationships between nodes).",
+  "type": "object",
+  "required": ["project", "nodes", "edges"],
+  "additionalProperties": false,
+  "properties": {
+    "project": { "$ref": "#/$defs/Project" },
+    "nodes": {
+      "type": "array",
+      "description": "All nodes in the project graph.",
+      "items": { "$ref": "#/$defs/Node" }
+    },
+    "edges": {
+      "type": "array",
+      "description": "All edges (relationships) between nodes.",
+      "items": { "$ref": "#/$defs/Edge" }
+    }
+  },
+  "$defs": {
+    "Species": {
+      "type": "string",
+      "enum": ["flow", "view", "data-model", "api-endpoint"],
+      "description": "The species of a node. flow = ordered sequence of views/sub-flows. view = reusable page or screen. data-model = data entity/table. api-endpoint = API endpoint."
+    },
+    "Status": {
+      "type": "string",
+      "enum": ["idea", "backlog", "prioritized", "development", "releasing", "live", "archived", "blocked"],
+      "description": "Lifecycle status of a node."
+    },
+    "Platform": {
+      "type": "string",
+      "enum": ["web", "ios", "android"],
+      "description": "Target platform."
+    },
+    "EdgeType": {
+      "type": "string",
+      "enum": ["composes", "calls", "displays", "queries"],
+      "description": "composes = structural hierarchy (flow↔view). calls = view/flow → api-endpoint. displays = view → data-model. queries = api-endpoint → data-model."
+    },
+    "Stage": {
+      "type": "string",
+      "enum": ["beta", "monitoring", "deprecated"],
+      "description": "Optional lifecycle stage marker for a node."
+    },
+    "PlaylistEntry": {
+      "description": "An entry in a flow's playlist. Discriminated union on 'type'.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "view_id"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "view" },
+            "view_id": { "type": "string", "description": "ID of the view node to display." }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "flow_id"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "flow" },
+            "flow_id": { "type": "string", "description": "ID of the sub-flow node to execute." }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "label", "if_true", "if_false"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "condition" },
+            "label": { "type": "string", "description": "Human-readable condition description." },
+            "if_true": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/PlaylistEntry" }
+            },
+            "if_false": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/PlaylistEntry" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "label", "cases"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "junction" },
+            "label": { "type": "string", "description": "Human-readable junction description (e.g. 'User role?')." },
+            "cases": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/JunctionCase" }
+            }
+          }
+        }
+      ]
+    },
+    "JunctionCase": {
+      "type": "object",
+      "required": ["label", "entries"],
+      "additionalProperties": false,
+      "properties": {
+        "label": { "type": "string", "description": "Case label (e.g. 'Admin', 'Member')." },
+        "entries": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/PlaylistEntry" }
+        }
+      }
+    },
+    "FlowPlaylist": {
+      "type": "object",
+      "required": ["entries"],
+      "additionalProperties": false,
+      "properties": {
+        "entries": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/PlaylistEntry" }
+        }
+      }
+    },
+    "PlatformStatusMap": {
+      "type": "object",
+      "description": "Per-platform status overrides for view nodes.",
+      "additionalProperties": false,
+      "properties": {
+        "web":     { "$ref": "#/$defs/Status" },
+        "ios":     { "$ref": "#/$defs/Status" },
+        "android": { "$ref": "#/$defs/Status" }
+      }
+    },
+    "PlatformNotesMap": {
+      "type": "object",
+      "description": "Freeform per-platform notes.",
+      "additionalProperties": false,
+      "properties": {
+        "web":     { "type": "string" },
+        "ios":     { "type": "string" },
+        "android": { "type": "string" }
+      }
+    },
+    "NodeMetadata": {
+      "type": "object",
+      "description": "Optional metadata for a node.",
+      "properties": {
+        "stage": { "$ref": "#/$defs/Stage" },
+        "playlist": { "$ref": "#/$defs/FlowPlaylist" },
+        "platformNotes": { "$ref": "#/$defs/PlatformNotesMap" },
+        "platformStatuses": { "$ref": "#/$defs/PlatformStatusMap" }
+      }
+    },
+    "Node": {
+      "type": "object",
+      "required": ["id", "project_id", "species", "title", "status", "platforms"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique node ID. Convention: prefix with species — F- (flow), V- (view), DM- (data-model), API- (api-endpoint)."
+        },
+        "project_id": {
+          "type": "string",
+          "description": "Must match project.id."
+        },
+        "species": { "$ref": "#/$defs/Species" },
+        "title": {
+          "type": "string",
+          "description": "Human-readable node title."
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional description of the node's purpose."
+        },
+        "status": { "$ref": "#/$defs/Status" },
+        "platforms": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Platform" },
+          "minItems": 1,
+          "description": "One or more target platforms."
+        },
+        "metadata": { "$ref": "#/$defs/NodeMetadata" }
+      }
+    },
+    "Edge": {
+      "type": "object",
+      "required": ["id", "project_id", "source_id", "target_id", "edge_type"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique edge ID. Convention: e-{source_id}-{target_id}."
+        },
+        "project_id": {
+          "type": "string",
+          "description": "Must match project.id."
+        },
+        "source_id": {
+          "type": "string",
+          "description": "ID of the source node."
+        },
+        "target_id": {
+          "type": "string",
+          "description": "ID of the target node."
+        },
+        "edge_type": { "$ref": "#/$defs/EdgeType" },
+        "metadata": {
+          "type": "object",
+          "description": "Optional edge metadata."
+        }
+      }
+    },
+    "ProjectMetadata": {
+      "type": "object",
+      "description": "Optional project-level UI settings.",
+      "properties": {
+        "view_card_variant": {
+          "type": "string",
+          "enum": ["compact", "large"]
+        }
+      }
+    },
+    "Project": {
+      "type": "object",
+      "required": ["id", "title", "created_at", "updated_at"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique project identifier."
+        },
+        "title": {
+          "type": "string",
+          "description": "Project title."
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional project description."
+        },
+        "root_node_id": {
+          "type": "string",
+          "description": "ID of the root node used as the canvas entry point. Should reference an existing node."
+        },
+        "metadata": { "$ref": "#/$defs/ProjectMetadata" },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 creation timestamp."
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 last-update timestamp."
+        },
+        "archived_at": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "description": "ISO 8601 archive timestamp, or null if active."
+        }
+      }
+    }
+  }
+}

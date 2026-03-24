@@ -1,0 +1,316 @@
+{
+  "project": {
+    "id": "fitness-tracker",
+    "title": "FitTrack",
+    "description": "A fitness tracking app with workout logging, social challenges, and premium subscriptions.",
+    "root_node_id": "V-home",
+    "created_at": "2026-03-23T00:00:00.000Z",
+    "updated_at": "2026-03-23T00:00:00.000Z"
+  },
+  "nodes": [
+    {
+      "id": "V-home",
+      "project_id": "fitness-tracker",
+      "species": "view",
+      "title": "Home Dashboard",
+      "description": "Main landing screen showing today's stats, active challenges, and quick actions.",
+      "status": "idea",
+      "platforms": ["web", "ios"],
+      "metadata": {
+        "platformStatuses": {
+          "web": "idea",
+          "ios": "idea"
+        }
+      }
+    },
+    {
+      "id": "V-workout-log",
+      "project_id": "fitness-tracker",
+      "species": "view",
+      "title": "Workout Log",
+      "description": "Screen to log a new workout with exercise type, duration, and intensity.",
+      "status": "idea",
+      "platforms": ["web", "ios"]
+    },
+    {
+      "id": "V-workout-success",
+      "project_id": "fitness-tracker",
+      "species": "view",
+      "title": "Workout Saved",
+      "description": "Confirmation screen after successfully saving a workout.",
+      "status": "idea",
+      "platforms": ["web", "ios"]
+    },
+    {
+      "id": "V-challenge-list",
+      "project_id": "fitness-tracker",
+      "species": "view",
+      "title": "Challenge List",
+      "description": "Browse available social challenges and see active ones.",
+      "status": "idea",
+      "platforms": ["web", "ios"]
+    },
+    {
+      "id": "V-challenge-detail",
+      "project_id": "fitness-tracker",
+      "species": "view",
+      "title": "Challenge Detail",
+      "description": "View challenge rules, leaderboard, and join/leave action.",
+      "status": "idea",
+      "platforms": ["web", "ios"]
+    },
+    {
+      "id": "V-subscription",
+      "project_id": "fitness-tracker",
+      "species": "view",
+      "title": "Subscription Plans",
+      "description": "View and select premium subscription plans.",
+      "status": "idea",
+      "platforms": ["web", "ios"]
+    },
+    {
+      "id": "V-payment-success",
+      "project_id": "fitness-tracker",
+      "species": "view",
+      "title": "Payment Confirmation",
+      "description": "Confirmation screen after successful payment.",
+      "status": "idea",
+      "platforms": ["web", "ios"]
+    },
+    {
+      "id": "F-log-workout",
+      "project_id": "fitness-tracker",
+      "species": "flow",
+      "title": "Log a Workout",
+      "description": "Flow for logging a workout from the home screen.",
+      "status": "idea",
+      "platforms": ["web", "ios"],
+      "metadata": {
+        "playlist": {
+          "entries": [
+            { "type": "view", "view_id": "V-workout-log" },
+            { "type": "view", "view_id": "V-workout-success" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "F-browse-challenges",
+      "project_id": "fitness-tracker",
+      "species": "flow",
+      "title": "Browse Challenges",
+      "description": "Flow for browsing and joining social challenges.",
+      "status": "idea",
+      "platforms": ["web", "ios"],
+      "metadata": {
+        "playlist": {
+          "entries": [
+            { "type": "view", "view_id": "V-challenge-list" },
+            { "type": "view", "view_id": "V-challenge-detail" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "F-subscribe",
+      "project_id": "fitness-tracker",
+      "species": "flow",
+      "title": "Subscribe to Premium",
+      "description": "Flow for upgrading to a premium subscription.",
+      "status": "idea",
+      "platforms": ["web", "ios"],
+      "metadata": {
+        "playlist": {
+          "entries": [
+            { "type": "view", "view_id": "V-subscription" },
+            {
+              "type": "condition",
+              "label": "Payment successful?",
+              "if_true": [
+                { "type": "view", "view_id": "V-payment-success" }
+              ],
+              "if_false": [
+                { "type": "view", "view_id": "V-subscription" }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "DM-user",
+      "project_id": "fitness-tracker",
+      "species": "data-model",
+      "title": "User",
+      "description": "User profile with authentication and subscription status.",
+      "status": "idea",
+      "platforms": ["web", "ios"]
+    },
+    {
+      "id": "DM-workout",
+      "project_id": "fitness-tracker",
+      "species": "data-model",
+      "title": "Workout",
+      "description": "A logged workout record with type, duration, and timestamp.",
+      "status": "idea",
+      "platforms": ["web", "ios"]
+    },
+    {
+      "id": "DM-challenge",
+      "project_id": "fitness-tracker",
+      "species": "data-model",
+      "title": "Challenge",
+      "description": "A social challenge with rules, participants, and leaderboard.",
+      "status": "idea",
+      "platforms": ["web", "ios"]
+    },
+    {
+      "id": "API-create-workout",
+      "project_id": "fitness-tracker",
+      "species": "api-endpoint",
+      "title": "POST /workouts",
+      "description": "Create a new workout record.",
+      "status": "idea",
+      "platforms": ["web", "ios"]
+    },
+    {
+      "id": "API-list-challenges",
+      "project_id": "fitness-tracker",
+      "species": "api-endpoint",
+      "title": "GET /challenges",
+      "description": "List available challenges with pagination and filters.",
+      "status": "idea",
+      "platforms": ["web", "ios"]
+    },
+    {
+      "id": "API-create-subscription",
+      "project_id": "fitness-tracker",
+      "species": "api-endpoint",
+      "title": "POST /subscriptions",
+      "description": "Create a new premium subscription via payment provider.",
+      "status": "idea",
+      "platforms": ["web", "ios"]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-V-home-F-log-workout",
+      "project_id": "fitness-tracker",
+      "source_id": "V-home",
+      "target_id": "F-log-workout",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-home-F-browse-challenges",
+      "project_id": "fitness-tracker",
+      "source_id": "V-home",
+      "target_id": "F-browse-challenges",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-home-F-subscribe",
+      "project_id": "fitness-tracker",
+      "source_id": "V-home",
+      "target_id": "F-subscribe",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-log-workout-V-workout-log",
+      "project_id": "fitness-tracker",
+      "source_id": "F-log-workout",
+      "target_id": "V-workout-log",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-log-workout-V-workout-success",
+      "project_id": "fitness-tracker",
+      "source_id": "F-log-workout",
+      "target_id": "V-workout-success",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-browse-challenges-V-challenge-list",
+      "project_id": "fitness-tracker",
+      "source_id": "F-browse-challenges",
+      "target_id": "V-challenge-list",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-browse-challenges-V-challenge-detail",
+      "project_id": "fitness-tracker",
+      "source_id": "F-browse-challenges",
+      "target_id": "V-challenge-detail",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-subscribe-V-subscription",
+      "project_id": "fitness-tracker",
+      "source_id": "F-subscribe",
+      "target_id": "V-subscription",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-subscribe-V-payment-success",
+      "project_id": "fitness-tracker",
+      "source_id": "F-subscribe",
+      "target_id": "V-payment-success",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-workout-log-API-create-workout",
+      "project_id": "fitness-tracker",
+      "source_id": "V-workout-log",
+      "target_id": "API-create-workout",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-challenge-list-API-list-challenges",
+      "project_id": "fitness-tracker",
+      "source_id": "V-challenge-list",
+      "target_id": "API-list-challenges",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-subscription-API-create-subscription",
+      "project_id": "fitness-tracker",
+      "source_id": "V-subscription",
+      "target_id": "API-create-subscription",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-home-DM-user",
+      "project_id": "fitness-tracker",
+      "source_id": "V-home",
+      "target_id": "DM-user",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-challenge-detail-DM-challenge",
+      "project_id": "fitness-tracker",
+      "source_id": "V-challenge-detail",
+      "target_id": "DM-challenge",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-API-create-workout-DM-workout",
+      "project_id": "fitness-tracker",
+      "source_id": "API-create-workout",
+      "target_id": "DM-workout",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-list-challenges-DM-challenge",
+      "project_id": "fitness-tracker",
+      "source_id": "API-list-challenges",
+      "target_id": "DM-challenge",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-create-subscription-DM-user",
+      "project_id": "fitness-tracker",
+      "source_id": "API-create-subscription",
+      "target_id": "DM-user",
+      "edge_type": "queries"
+    }
+  ]
+}
