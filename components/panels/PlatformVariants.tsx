@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { PlatformId } from "@/lib/config/platforms";
 import { PLATFORMS } from "@/lib/config/platforms";
 import {
@@ -9,7 +9,7 @@ import {
   STATUS_ICONS,
   STATUS_STYLES,
 } from "@/components/graph/nodes/node-styles";
-import type { PlatformStatusMap } from "@/lib/data/types";
+import type { PlatformImagesMap, PlatformStatusMap } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 import { STATUSES } from "@/lib/config/statuses";
 import {
@@ -19,23 +19,75 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ImagePlus, X } from "lucide-react";
 
 export interface PlatformVariantsProps {
   statuses?: PlatformStatusMap;
   notes?: Partial<Record<PlatformId, string>>;
+  images?: PlatformImagesMap;
   onStatusChange?: (platform: PlatformId, value: StatusId | undefined) => void;
   onNotesChange?: (platform: PlatformId, value: string) => void;
+  onImageChange?: (platform: PlatformId, value: string | undefined) => void;
 }
 
 export function PlatformVariants({
   statuses = {},
   notes = {},
+  images = {},
   onStatusChange,
   onNotesChange,
+  onImageChange,
 }: PlatformVariantsProps) {
   const [activeTab, setActiveTab] = useState<PlatformId>(PLATFORMS[0].id);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const currentStatus = statuses[activeTab];
   const currentNotes = notes[activeTab] ?? "";
+  const currentImage =
+    typeof images[activeTab] === "string" && images[activeTab]!.startsWith("data:image/")
+      ? images[activeTab]
+      : undefined;
+
+  function readFileAsDataUrl(file: File) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const result = e.target?.result;
+      if (typeof result === "string" && result.startsWith("data:image/")) {
+        onImageChange?.(activeTab, result);
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file && file.type.startsWith("image/")) {
+      readFileAsDataUrl(file);
+    }
+    // Reset input so the same file can be re-selected
+    e.target.value = "";
+  }
+
+  function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setIsDragging(true);
+  }
+
+  function handleDragLeave(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+      setIsDragging(false);
+    }
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith("image/")) {
+      readFileAsDataUrl(file);
+    }
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -98,6 +150,64 @@ export function PlatformVariants({
               })}
             </SelectContent>
           </Select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Screenshot
+          </label>
+          {currentImage ? (
+            <div className="relative group rounded-md overflow-hidden border border-border">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={currentImage}
+                alt={`Screenshot for ${PLATFORM_LABELS[activeTab]}`}
+                className="w-full object-contain max-h-48"
+              />
+              <button
+                type="button"
+                onClick={() => onImageChange?.(activeTab, undefined)}
+                aria-label={`Remove screenshot for ${PLATFORM_LABELS[activeTab]}`}
+                className="absolute top-1.5 right-1.5 rounded-full bg-background/80 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-background"
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
+          ) : (
+            <div
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`flex flex-col items-center justify-center gap-2 rounded-md border border-dashed px-3 py-5 text-xs text-muted-foreground transition-colors cursor-pointer ${
+                isDragging
+                  ? "border-foreground bg-muted/50 text-foreground"
+                  : "border-border hover:border-foreground/50 hover:bg-muted/30"
+              }`}
+              onClick={() => fileInputRef.current?.click()}
+              role="button"
+              tabIndex={0}
+              aria-label={`Upload screenshot for ${PLATFORM_LABELS[activeTab]}`}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
+            >
+              <ImagePlus className="size-5 shrink-0" />
+              <span className="text-center leading-snug">
+                Drag &amp; drop or{" "}
+                <span className="underline underline-offset-2">choose a file</span>
+              </span>
+            </div>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleFileChange}
+            aria-label={`File input for ${PLATFORM_LABELS[activeTab]} screenshot`}
+          />
         </div>
         <div className="flex flex-col gap-1.5">
           <label

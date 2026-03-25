@@ -344,14 +344,16 @@ interface PlatformVariantsSectionProps {
 function PlatformVariantsSection({ node, onUpdate }: PlatformVariantsSectionProps) {
   const rawNotes = (node.metadata?.platformNotes ?? {}) as Partial<Record<PlatformId, string>>;
   const rawStatuses = getEditablePlatformStatuses(node);
+  const rawImages = (node.metadata?.platformImages ?? {}) as Partial<Record<PlatformId, string>>;
   const [notes, setNotes] = useState<Partial<Record<PlatformId, string>>>(rawNotes);
   const [statuses, setStatuses] = useState(rawStatuses);
+  const [images, setImages] = useState<Partial<Record<PlatformId, string>>>(rawImages);
 
   function handleNotesChange(platform: PlatformId, value: string) {
     const next = { ...notes, [platform]: value };
     setNotes(next);
     onUpdate?.(node.id, {
-      metadata: { ...node.metadata, platformNotes: next, platformStatuses: statuses },
+      metadata: { ...node.metadata, platformNotes: next, platformStatuses: statuses, platformImages: images },
     });
   }
 
@@ -367,7 +369,22 @@ function PlatformVariantsSection({ node, onUpdate }: PlatformVariantsSectionProp
     }
     setStatuses(next);
     onUpdate?.(node.id, {
-      metadata: { ...node.metadata, platformStatuses: next, platformNotes: notes },
+      metadata: { ...node.metadata, platformStatuses: next, platformNotes: notes, platformImages: images },
+    });
+  }
+
+  function handleImageChange(platform: PlatformId, value: string | undefined) {
+    let next: Partial<Record<PlatformId, string>>;
+    if (value === undefined) {
+      const rest = { ...images };
+      delete rest[platform];
+      next = rest;
+    } else {
+      next = { ...images, [platform]: value };
+    }
+    setImages(next);
+    onUpdate?.(node.id, {
+      metadata: { ...node.metadata, platformImages: next, platformNotes: notes, platformStatuses: statuses },
     });
   }
 
@@ -377,8 +394,10 @@ function PlatformVariantsSection({ node, onUpdate }: PlatformVariantsSectionProp
       <PlatformVariants
         statuses={statuses}
         notes={notes}
+        images={images}
         onStatusChange={handleStatusChange}
         onNotesChange={handleNotesChange}
+        onImageChange={handleImageChange}
       />
     </div>
   );
