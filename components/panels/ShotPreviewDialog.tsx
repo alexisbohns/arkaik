@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Dialog,
   DialogPortal,
-  DialogOverlay,
   DialogTitle,
 } from "@/components/ui/dialog";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
@@ -102,7 +101,7 @@ export function ShotPreviewDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPortal>
-        <DialogOverlay />
+        <DialogPrimitive.Overlay className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/80" />
         <DialogPrimitive.Content
           data-slot="dialog-content"
           className={cn(
