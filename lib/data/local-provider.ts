@@ -126,9 +126,16 @@ function loadStore(): Map<string, ProjectBundle> {
   }
 }
 
-function persistStore(store: Map<string, ProjectBundle>) {
+function persistStore(store: Map<string, ProjectBundle>): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.fromEntries(store)));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.fromEntries(store)));
+  } catch (err) {
+    console.error("[LocalProvider] Failed to persist store:", err);
+    throw new Error("Failed to save data. Your browser storage may be full.", {
+      cause: err,
+    });
+  }
 }
 
 const store = loadStore();
@@ -227,6 +234,32 @@ export const localProvider: DataProvider = {
       return true;
     });
     nodeIndex.delete(id);
+    persistStore(store);
+  },
+
+  async deleteNodes(ids: string[]) {
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    const affectedProjects = new Set<string>();
+    for (const id of ids) {
+      const projectId = nodeIndex.get(id);
+      if (projectId) affectedProjects.add(projectId);
+    }
+    for (const projectId of affectedProjects) {
+      const bundle = store.get(projectId);
+      if (!bundle) continue;
+      bundle.nodes = bundle.nodes.filter((n) => !idSet.has(n.id));
+      bundle.edges = bundle.edges.filter((e) => {
+        if (idSet.has(e.source_id) || idSet.has(e.target_id)) {
+          edgeIndex.delete(e.id);
+          return false;
+        }
+        return true;
+      });
+    }
+    for (const id of ids) {
+      nodeIndex.delete(id);
+    }
     persistStore(store);
   },
 

@@ -112,6 +112,12 @@ export default function ProjectsPage() {
     e.target.value = "";
     if (!file) return;
 
+    const MAX_IMPORT_SIZE = 5 * 1024 * 1024; // 5 MB
+    if (file.size > MAX_IMPORT_SIZE) {
+      setError(`File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum size is 5 MB.`);
+      return;
+    }
+
     setImporting(true);
     setError(null);
     try {

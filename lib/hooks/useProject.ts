@@ -1,19 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { Project, ProjectBundle } from "@/lib/data/types";
 import { localProvider } from "@/lib/data/local-provider";
 
 export function useProject(id: string) {
   const [project, setProject] = useState<ProjectBundle | undefined>(undefined);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     localProvider.getProject(id).then((p) => {
       setProject(p);
       setLoading(false);
-    }).catch(() => {
+    }).catch((err) => {
+      console.error("[useProject] Failed to load project:", err);
+      setError(err instanceof Error ? err.message : "Failed to load project");
       setLoading(false);
     });
   }, [id]);
@@ -41,5 +43,5 @@ export function useProject(id: string) {
     [project],
   );
 
-  return { project, loading, updateProject };
+  return { project, loading, error, updateProject };
 }

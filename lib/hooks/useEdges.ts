@@ -7,6 +7,7 @@ import { localProvider } from "@/lib/data/local-provider";
 export function useEdges(projectId: string) {
   const [edges, setEdges] = useState<Edge[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     localProvider
@@ -17,6 +18,7 @@ export function useEdges(projectId: string) {
       })
       .catch((err) => {
         console.error("[useEdges] Failed to load edges:", err);
+        setError(err instanceof Error ? err.message : "Failed to load edges");
         setLoading(false);
       });
   }, [projectId]);
@@ -32,5 +34,5 @@ export function useEdges(projectId: string) {
     setEdges((prev) => prev.filter((e) => e.id !== id));
   }, []);
 
-  return { edges, loading, addEdge, removeEdge };
+  return { edges, loading, error, addEdge, removeEdge };
 }
