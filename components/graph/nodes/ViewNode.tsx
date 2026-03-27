@@ -4,7 +4,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { CloudDownload, CloudUpload, Info } from "lucide-react";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
-import type { PlatformStatusMap } from "@/lib/data/types";
+import type { PlatformStatusMap, PlatformScreenshotsMap } from "@/lib/data/types";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { STATUS_GHOST_STYLES, STATUS_ICONS, STATUS_LABELS, STATUS_STYLES, PLATFORM_ICONS, PLATFORM_LABELS } from "./node-styles";
@@ -89,7 +89,6 @@ function PlatformStatusIcon({ platform, status }: { platform: PlatformId; status
         <div className="flex flex-col gap-1.5">
           <p className="text-sm font-semibold">{PLATFORM_LABELS[platform]}</p>
           <p className="text-xs text-muted-foreground">Status: {STATUS_LABELS[status]}</p>
-          <p className="text-xs text-muted-foreground">Screenshot support coming soon.</p>
         </div>
       </PopoverContent>
     </Popover>
@@ -112,6 +111,10 @@ export function ViewNode({ data }: NodeProps) {
   const apiInbound = (data.apiInbound as ViewApiRelation[] | undefined) ?? [];
   const apiOutbound = (data.apiOutbound as ViewApiRelation[] | undefined) ?? [];
   const coverUrl = typeof data.coverUrl === "string" ? data.coverUrl : undefined;
+  const platformScreenshots = (data.platformScreenshots as PlatformScreenshotsMap | undefined) ?? {};
+  const firstScreenshot = platforms.reduce<string | undefined>(
+    (found, p) => found ?? platformScreenshots[p], undefined,
+  );
   const onOpenDetails = data.onOpenDetails as (() => void) | undefined;
   const ghostClass = STATUS_GHOST_STYLES[status];
   const showLargeVariant = viewCardVariant === "large";
@@ -150,12 +153,12 @@ export function ViewNode({ data }: NodeProps) {
             )}
           </div>
 
-          {showLargeVariant && coverUrl && (
+          {showLargeVariant && (firstScreenshot || coverUrl) && (
             <div
               role="img"
-              aria-label={`${label} cover`}
+              aria-label={`${label} ${firstScreenshot ? "screenshot" : "cover"}`}
               className="h-28 overflow-hidden rounded-md border border-border bg-muted bg-cover bg-center"
-              style={{ backgroundImage: `url(${coverUrl})` }}
+              style={{ backgroundImage: `url(${firstScreenshot ?? coverUrl})` }}
             />
           )}
 
@@ -178,7 +181,18 @@ export function ViewNode({ data }: NodeProps) {
             </div>
           )}
 
-          {!showLargeVariant && <div className="h-2" />}
+          {!showLargeVariant && (
+            firstScreenshot ? (
+              <div
+                role="img"
+                aria-label={`${label} screenshot`}
+                className="h-24 overflow-hidden rounded-md border border-border bg-muted bg-cover bg-center"
+                style={{ backgroundImage: `url(${firstScreenshot})` }}
+              />
+            ) : (
+              <div className="h-2" />
+            )
+          )}
 
           <div className="mt-auto flex items-center justify-between gap-3">
             {hasAnyApi ? (

@@ -988,6 +988,7 @@ export default function ProjectCanvasPage() {
         baseData.apiOutbound = apiRelations.outbound;
         baseData.viewCardVariant = viewCardVariant;
         baseData.coverUrl = coverUrl;
+        baseData.platformScreenshots = metadata.platformScreenshots;
         baseData.onOpenDetails = () => {
           setSelectedNode(node);
           setPanelOpen(true);
