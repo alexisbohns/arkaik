@@ -344,14 +344,16 @@ interface PlatformVariantsSectionProps {
 function PlatformVariantsSection({ node, onUpdate }: PlatformVariantsSectionProps) {
   const rawNotes = (node.metadata?.platformNotes ?? {}) as Partial<Record<PlatformId, string>>;
   const rawStatuses = getEditablePlatformStatuses(node);
+  const rawScreenshots = (node.metadata?.platformScreenshots ?? {}) as Partial<Record<PlatformId, string>>;
   const [notes, setNotes] = useState<Partial<Record<PlatformId, string>>>(rawNotes);
   const [statuses, setStatuses] = useState(rawStatuses);
+  const [screenshots, setScreenshots] = useState<Partial<Record<PlatformId, string>>>(rawScreenshots);
 
   function handleNotesChange(platform: PlatformId, value: string) {
     const next = { ...notes, [platform]: value };
     setNotes(next);
     onUpdate?.(node.id, {
-      metadata: { ...node.metadata, platformNotes: next, platformStatuses: statuses },
+      metadata: { ...node.metadata, platformNotes: next, platformStatuses: statuses, platformScreenshots: screenshots },
     });
   }
 
@@ -367,7 +369,20 @@ function PlatformVariantsSection({ node, onUpdate }: PlatformVariantsSectionProp
     }
     setStatuses(next);
     onUpdate?.(node.id, {
-      metadata: { ...node.metadata, platformStatuses: next, platformNotes: notes },
+      metadata: { ...node.metadata, platformStatuses: next, platformNotes: notes, platformScreenshots: screenshots },
+    });
+  }
+
+  function handleScreenshotChange(platform: PlatformId, value: string | undefined) {
+    const next = { ...screenshots };
+    if (value === undefined) {
+      delete next[platform];
+    } else {
+      next[platform] = value;
+    }
+    setScreenshots(next);
+    onUpdate?.(node.id, {
+      metadata: { ...node.metadata, platformScreenshots: next, platformNotes: notes, platformStatuses: statuses },
     });
   }
 
@@ -377,8 +392,10 @@ function PlatformVariantsSection({ node, onUpdate }: PlatformVariantsSectionProp
       <PlatformVariants
         statuses={statuses}
         notes={notes}
+        screenshots={screenshots}
         onStatusChange={handleStatusChange}
         onNotesChange={handleNotesChange}
+        onScreenshotChange={handleScreenshotChange}
       />
     </div>
   );
