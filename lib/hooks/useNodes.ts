@@ -7,6 +7,7 @@ import { localProvider } from "@/lib/data/local-provider";
 export function useNodes(projectId: string) {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     localProvider
@@ -17,6 +18,7 @@ export function useNodes(projectId: string) {
       })
       .catch((err) => {
         console.error("[useNodes] Failed to load nodes:", err);
+        setError(err instanceof Error ? err.message : "Failed to load nodes");
         setLoading(false);
       });
   }, [projectId]);
@@ -39,9 +41,7 @@ export function useNodes(projectId: string) {
   }, []);
 
   const removeNodes = useCallback(async (ids: string[]) => {
-    for (const id of ids) {
-      await localProvider.deleteNode(id);
-    }
+    await localProvider.deleteNodes(ids);
     const idSet = new Set(ids);
     setNodes((prev) => prev.filter((n) => !idSet.has(n.id)));
   }, []);
@@ -55,5 +55,5 @@ export function useNodes(projectId: string) {
     []
   );
 
-  return { nodes, loading, addNode, removeNode, removeNodes, updateNode };
+  return { nodes, loading, error, addNode, removeNode, removeNodes, updateNode };
 }

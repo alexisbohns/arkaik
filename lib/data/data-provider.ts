@@ -12,6 +12,7 @@ export interface DataProvider {
   createNode(node: Node): Promise<Node>;
   updateNode(id: string, patch: Partial<Omit<Node, "id" | "project_id">>): Promise<Node>;
   deleteNode(id: string): Promise<void>;
+  deleteNodes(ids: string[]): Promise<void>;
 
   createEdge(edge: Edge): Promise<Edge>;
   deleteEdge(id: string): Promise<void>;

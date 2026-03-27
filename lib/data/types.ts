@@ -83,8 +83,3 @@ export interface ProjectBundle {
   nodes: Node[];
   edges: Edge[];
 }
-
-/** @deprecated Use Node */
-export type ArkaikNode = Node;
-/** @deprecated Use Edge */
-export type ArkaikEdge = Edge;
