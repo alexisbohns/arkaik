@@ -40,6 +40,7 @@ export interface PlatformVariantsProps {
   onStatusChange?: (platform: PlatformId, value: StatusId | undefined) => void;
   onNotesChange?: (platform: PlatformId, value: string) => void;
   onScreenshotChange?: (platform: PlatformId, value: string | undefined) => void;
+  onZoomShot?: (platform: PlatformId) => void;
 }
 
 export function PlatformVariants({
@@ -49,6 +50,7 @@ export function PlatformVariants({
   onStatusChange,
   onNotesChange,
   onScreenshotChange,
+  onZoomShot,
 }: PlatformVariantsProps) {
   const [activeTab, setActiveTab] = useState<PlatformId>(PLATFORMS[0].id);
   const [dragOver, setDragOver] = useState(false);
@@ -164,7 +166,8 @@ export function PlatformVariants({
               <img
                 src={currentScreenshot}
                 alt={`Screenshot for ${PLATFORM_LABELS[activeTab]}`}
-                className="max-h-40 w-full object-contain rounded-md border border-border"
+                className={`max-h-40 w-full object-contain rounded-md border border-border ${onZoomShot ? "cursor-zoom-in" : ""}`}
+                onClick={onZoomShot ? () => onZoomShot(activeTab) : undefined}
               />
               <Button
                 variant="ghost"

@@ -116,6 +116,7 @@ export function ViewNode({ data }: NodeProps) {
     (found, p) => found ?? platformScreenshots[p], undefined,
   );
   const onOpenDetails = data.onOpenDetails as (() => void) | undefined;
+  const onZoomShot = data.onZoomShot as (() => void) | undefined;
   const ghostClass = STATUS_GHOST_STYLES[status];
   const showLargeVariant = viewCardVariant === "large";
   const hasInboundApi = apiInbound.length > 0;
@@ -157,8 +158,9 @@ export function ViewNode({ data }: NodeProps) {
             <div
               role="img"
               aria-label={`${label} ${firstScreenshot ? "screenshot" : "cover"}`}
-              className="h-28 overflow-hidden rounded-md border border-border bg-muted bg-cover bg-center"
+              className={`h-28 overflow-hidden rounded-md border border-border bg-muted bg-cover bg-center ${onZoomShot ? "cursor-zoom-in" : ""}`}
               style={{ backgroundImage: `url(${firstScreenshot ?? coverUrl})` }}
+              onClick={onZoomShot ? (event) => { event.stopPropagation(); onZoomShot(); } : undefined}
             />
           )}
 
@@ -186,8 +188,9 @@ export function ViewNode({ data }: NodeProps) {
               <div
                 role="img"
                 aria-label={`${label} screenshot`}
-                className="h-24 overflow-hidden rounded-md border border-border bg-muted bg-cover bg-center"
+                className={`h-24 overflow-hidden rounded-md border border-border bg-muted bg-cover bg-center ${onZoomShot ? "cursor-zoom-in" : ""}`}
                 style={{ backgroundImage: `url(${firstScreenshot})` }}
+                onClick={onZoomShot ? (event) => { event.stopPropagation(); onZoomShot(); } : undefined}
               />
             ) : (
               <div className="h-2" />
