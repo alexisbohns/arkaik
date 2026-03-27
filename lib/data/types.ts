@@ -15,6 +15,8 @@ export type EdgeType = EdgeTypeId;
 export type PlatformStatusMap = Partial<Record<PlatformId, StatusId>>;
 /** Freeform per-platform notes used by the detail panel. */
 export type PlatformNotesMap = Partial<Record<PlatformId, string>>;
+/** Per-platform screenshot stored as base64 data URI. */
+export type PlatformScreenshotsMap = Partial<Record<PlatformId, string>>;
 
 export type PlaylistEntry =
   | { type: "view"; view_id: string }
@@ -36,6 +38,7 @@ export interface NodeMetadata extends Record<string, unknown> {
   playlist?: FlowPlaylist;
   platformNotes?: PlatformNotesMap;
   platformStatuses?: PlatformStatusMap;
+  platformScreenshots?: PlatformScreenshotsMap;
 }
 
 export interface Node {
