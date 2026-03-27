@@ -3,13 +3,30 @@ import type { Node, Edge } from "@xyflow/react";
 
 const elk = new ELK();
 
-/** Size lookup matching getNodeSize in the page — keep in sync. */
-function getNodeSize(nodeType?: string): { width: number; height: number } {
-  switch (nodeType) {
+/** Size lookup matching rendered node dimensions — keep in sync with components. */
+function getNodeSize(node: Node): { width: number; height: number } {
+  switch (node.type) {
     case "flow":
       return { width: 240, height: 136 };
-    case "view":
-      return { width: 224, height: 140 };
+    case "view": {
+      const data = node.data as Record<string, unknown>;
+      const isLarge = data.viewCardVariant === "large";
+      const platforms = (data.platforms as string[] | undefined) ?? [];
+      const screenshots = data.platformScreenshots as Record<string, string> | undefined;
+      const hasScreenshot = screenshots != null && Object.values(screenshots).some(Boolean);
+      const hasCover = typeof data.coverUrl === "string";
+      const hasImage = hasScreenshot || hasCover;
+
+      if (isLarge) {
+        // base: py-3(24) + title(28) + gap(12) + platformList(platforms*24 + gaps) + footer(36) + border(4)
+        const platformListHeight = platforms.length > 0 ? platforms.length * 24 + 8 : 0;
+        const imageHeight = hasImage ? 112 + 12 : 0; // h-28 + gap-3
+        return { width: 260, height: 104 + platformListHeight + imageHeight };
+      }
+      // compact: py-3(24) + title(28) + gap(12) + spacer/screenshot + gap(12) + footer(36) + border(4)
+      const screenshotHeight = hasScreenshot ? 96 : 8; // h-24 vs h-2
+      return { width: 224, height: 116 + screenshotHeight };
+    }
     case "dataModel":
     case "apiEndpoint":
       return { width: 192, height: 92 };
@@ -37,7 +54,7 @@ export async function computeElkLayout(
   const direction = options.direction ?? "DOWN";
 
   const elkNodes: ElkNode[] = nodes.map((node) => {
-    const size = getNodeSize(node.type);
+    const size = getNodeSize(node);
     return {
       id: node.id,
       width: size.width,
