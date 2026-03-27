@@ -9,6 +9,7 @@ import { Canvas } from "@/components/graph/Canvas";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
 import { NodeDetailPanel } from "@/components/panels/NodeDetailPanel";
+import { ShotPreviewDialog } from "@/components/panels/ShotPreviewDialog";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
 import { InsertBetweenDialog, type InsertEntryType } from "@/components/panels/InsertBetweenDialog";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import { assertProjectBundleShape, downloadJson, exportProject, importProject, n
 import { generateNodeId } from "@/lib/utils/id";
 import { wouldCreateCycle } from "@/lib/utils/cycle";
 import type { SpeciesId } from "@/lib/config/species";
+import type { PlatformId } from "@/lib/config/platforms";
 import type { Node as DataNode, Edge as DataEdge, PlaylistEntry, ProjectBundle } from "@/lib/data/types";
 import type { EdgeTypeId } from "@/lib/config/edge-types";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
@@ -119,6 +121,8 @@ export default function ProjectCanvasPage() {
   const [expandedFlows, setExpandedFlows] = useState<Set<string>>(new Set());
   const [selectedNode, setSelectedNode] = useState<DataNode | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [zoomNode, setZoomNode] = useState<DataNode | null>(null);
+  const [zoomPlatform, setZoomPlatform] = useState<PlatformId | undefined>(undefined);
   const [newNodeOpen, setNewNodeOpen] = useState(false);
   const [newNodePreset, setNewNodePreset] = useState<{ parentId: string; species: SpeciesId; insertBeforeId?: string } | null>(null);
   const [insertBetweenOpen, setInsertBetweenOpen] = useState(false);
@@ -993,6 +997,10 @@ export default function ProjectCanvasPage() {
           setSelectedNode(node);
           setPanelOpen(true);
         };
+        baseData.onZoomShot = () => {
+          setZoomNode(node);
+          setZoomPlatform(undefined);
+        };
       }
 
       visibleNodes.push({
@@ -1408,6 +1416,16 @@ export default function ProjectCanvasPage() {
         allEdges={dataEdges}
         onNavigate={handleNavigate}
         onCreateNode={handleCreateNodeFromPanel}
+        onZoomShot={(node, platform) => {
+          setZoomNode(node);
+          setZoomPlatform(platform);
+        }}
+      />
+      <ShotPreviewDialog
+        open={zoomNode !== null}
+        onOpenChange={(open) => { if (!open) setZoomNode(null); }}
+        node={zoomNode ?? undefined}
+        initialPlatform={zoomPlatform}
       />
       <Sheet open={rawOpen} onOpenChange={handleRawOpenChange}>
         <SheetContent className="w-full sm:max-w-3xl">

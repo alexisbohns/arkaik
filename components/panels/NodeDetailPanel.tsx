@@ -121,6 +121,7 @@ interface NodeDetailPanelProps {
   allEdges?: Edge[];
   onNavigate?: (node: Node) => void;
   onCreateNode?: (species: "flow" | "view", title: string) => Promise<Node>;
+  onZoomShot?: (node: Node, platform: PlatformId) => void;
 }
 
 interface NodeFieldsProps {
@@ -339,9 +340,10 @@ function ConnectionItem({
 interface PlatformVariantsSectionProps {
   node: Node;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
+  onZoomShot?: (platform: PlatformId) => void;
 }
 
-function PlatformVariantsSection({ node, onUpdate }: PlatformVariantsSectionProps) {
+function PlatformVariantsSection({ node, onUpdate, onZoomShot }: PlatformVariantsSectionProps) {
   const rawNotes = (node.metadata?.platformNotes ?? {}) as Partial<Record<PlatformId, string>>;
   const rawStatuses = getEditablePlatformStatuses(node);
   const rawScreenshots = (node.metadata?.platformScreenshots ?? {}) as Partial<Record<PlatformId, string>>;
@@ -396,6 +398,7 @@ function PlatformVariantsSection({ node, onUpdate }: PlatformVariantsSectionProp
         onStatusChange={handleStatusChange}
         onNotesChange={handleNotesChange}
         onScreenshotChange={handleScreenshotChange}
+        onZoomShot={onZoomShot}
       />
     </div>
   );
@@ -422,6 +425,7 @@ export function NodeDetailPanel({
   allEdges,
   onNavigate,
   onCreateNode,
+  onZoomShot,
 }: NodeDetailPanelProps) {
   void onDelete;
   const speciesConfig = SPECIES.find((s) => s.id === node?.species);
@@ -467,6 +471,7 @@ export function NodeDetailPanel({
                 key={`pv-${node.id}`}
                 node={node}
                 onUpdate={onUpdate}
+                onZoomShot={onZoomShot ? (platform) => onZoomShot(node, platform) : undefined}
               />
             )}
             {node.species === "flow" && allNodes && (
