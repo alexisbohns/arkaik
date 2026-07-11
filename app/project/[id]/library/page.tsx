@@ -18,6 +18,7 @@ import type { Node as DataNode } from "@/lib/data/types";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useProject } from "@/lib/hooks/useProject";
+import { useJournal } from "@/lib/hooks/useJournal";
 import { findWhereUsed } from "@/lib/utils/where-used";
 import { generateNodeId } from "@/lib/utils/id";
 import {
@@ -153,6 +154,7 @@ export default function ProjectLibraryPage() {
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
   const { project: projectBundle } = useProject(id);
+  const { journal } = useJournal(id);
 
   const nodesById = useMemo(
     () => new Map(dataNodes.map((node) => [node.id, node])),
@@ -338,6 +340,7 @@ export default function ProjectLibraryPage() {
         onUpdate={handleNodeUpdate}
         allNodes={dataNodes}
         allEdges={dataEdges}
+        journal={journal}
         onNavigate={setSelectedNode}
         onCreateNode={handleCreateNodeFromPanel}
       />

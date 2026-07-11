@@ -5,6 +5,7 @@ import {
   BookOpenIcon,
   DatabaseIcon,
   GitBranchIcon,
+  HistoryIcon,
   LayoutPanelTopIcon,
   MonitorIcon,
   ServerIcon,
@@ -31,7 +32,7 @@ import {
 interface ProjectSidebarProps {
   projectId: string;
   currentProjectTitle?: string;
-  currentView: "canvas" | "library";
+  currentView: "canvas" | "library" | "changelog";
   currentSpecies: string | null;
   currentQueryString?: string;
 }
@@ -52,6 +53,7 @@ export function ProjectSidebar({
 }: ProjectSidebarProps) {
   const canvasHref = `/project/${projectId}/canvas`;
   const libraryHref = `/project/${projectId}/library`;
+  const changelogHref = `/project/${projectId}/changelog`;
 
   return (
     <Sidebar collapsible="icon">
@@ -99,6 +101,15 @@ export function ProjectSidebar({
                   </SidebarMenuSubItem>
                 ))}
               </SidebarMenuSub>
+            </SidebarMenuItem>
+
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={currentView === "changelog"} tooltip="Changelog">
+                <Link href={changelogHref}>
+                  <HistoryIcon />
+                  <span>Changelog</span>
+                </Link>
+              </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>

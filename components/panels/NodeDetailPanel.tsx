@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
-import type { Node, Edge, PlaylistEntry } from "@/lib/data/types";
+import type { Node, Edge, JournalEvent, PlaylistEntry } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import { SPECIES } from "@/lib/config/species";
@@ -38,6 +38,8 @@ import {
   mergeRollups,
 } from "@/lib/utils/platform-status";
 import { findWhereUsed } from "@/lib/utils/where-used";
+import { computeNodeTimeline } from "@/lib/utils/journal";
+import { describeJournalEvent, formatEventDate } from "@/components/journal/describe-event";
 
 function collectReferencedNodeIds(entries: PlaylistEntry[]): string[] {
   const result: string[] = [];
@@ -120,6 +122,7 @@ interface NodeDetailPanelProps {
   onDelete?: (nodeId: string) => void;
   allNodes?: Node[];
   allEdges?: Edge[];
+  journal?: JournalEvent[];
   onNavigate?: (node: Node) => void;
   onCreateNode?: (species: "flow" | "view", title: string) => Promise<Node>;
   onZoomShot?: (node: Node, platform: PlatformId) => void;
@@ -353,6 +356,44 @@ function ConnectionItem({
   );
 }
 
+interface HistorySectionProps {
+  node: Node;
+  journal: JournalEvent[];
+  allNodes: Node[];
+}
+
+function HistorySection({ node, journal, allNodes }: HistorySectionProps) {
+  const timeline = computeNodeTimeline(journal, node.id);
+
+  if (timeline.length === 0) {
+    return null;
+  }
+
+  const nodesById = new Map(allNodes.map((n) => [n.id, n]));
+
+  return (
+    <div className="px-6 flex flex-col gap-2">
+      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">History</span>
+      <div className="flex flex-col gap-0.5">
+        {[...timeline].reverse().map((event) => {
+          const { icon: Icon, text, meta } = describeJournalEvent(event, nodesById);
+
+          return (
+            <div key={event.id} className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm">
+              <Icon className="size-3.5 shrink-0 text-muted-foreground mt-0.5" aria-hidden="true" />
+              <div className="flex-1 min-w-0">
+                <p className="truncate">{text}</p>
+                {meta && <p className="text-xs text-muted-foreground truncate">{meta}</p>}
+              </div>
+              <span className="text-xs text-muted-foreground shrink-0">{formatEventDate(event.ts)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 interface PlatformVariantsSectionProps {
   node: Node;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
@@ -439,6 +480,7 @@ export function NodeDetailPanel({
   onDelete,
   allNodes,
   allEdges,
+  journal,
   onNavigate,
   onCreateNode,
   onZoomShot,
@@ -522,6 +564,14 @@ export function NodeDetailPanel({
                 allNodes={allNodes}
                 allEdges={allEdges}
                 onNavigate={onNavigate}
+              />
+            )}
+            {journal && (
+              <HistorySection
+                key={`history-${node.id}`}
+                node={node}
+                journal={journal}
+                allNodes={allNodes ?? []}
               />
             )}
           </>
