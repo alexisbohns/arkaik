@@ -15,6 +15,7 @@ const eslintConfig = defineConfig([
     // Standalone CommonJS Node scripts (not part of the Next.js app).
     "docs/arkaik-skill/scripts/**",
     "tests/**",
+    "scripts/**",
   ]),
 ]);
 

@@ -16,7 +16,7 @@ export const JunctionCaseSchema: z.ZodType<JunctionCase> = z.lazy(() =>
     label: z.string(),
     entries: z.array(PlaylistEntrySchema),
   }),
-);
+).meta({ id: "JunctionCase" });
 
 export const PlaylistEntrySchema: z.ZodType<PlaylistEntry> = z.lazy(() =>
   z.discriminatedUnion("type", [
@@ -34,7 +34,10 @@ export const PlaylistEntrySchema: z.ZodType<PlaylistEntry> = z.lazy(() =>
       cases: z.array(JunctionCaseSchema),
     }),
   ]),
-);
+).meta({
+  id: "PlaylistEntry",
+  description: "An entry in a flow's playlist. Discriminated union on 'type'.",
+});
 
 export interface FlowPlaylist {
   entries: PlaylistEntry[];
@@ -42,4 +45,4 @@ export interface FlowPlaylist {
 
 export const FlowPlaylistSchema: z.ZodType<FlowPlaylist> = z.object({
   entries: z.array(PlaylistEntrySchema),
-});
+}).meta({ id: "FlowPlaylist" });
