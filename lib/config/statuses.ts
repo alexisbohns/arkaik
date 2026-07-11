@@ -1,3 +1,5 @@
+import type { StatusId } from "@arkaik/schema";
+
 export const STATUSES = [
   { id: "idea",        label: "Idea",        order: 0 },
   { id: "backlog",     label: "Backlog",     order: 1 },
@@ -7,9 +9,9 @@ export const STATUSES = [
   { id: "live",        label: "Live",        order: 5 },
   { id: "archived",    label: "Archived",    order: 6 },
   { id: "blocked",     label: "Blocked",     order: 7 },
-] as const;
+] as const satisfies readonly { id: StatusId; label: string; order: number }[];
 
-export type StatusId = (typeof STATUSES)[number]["id"];
+export type { StatusId };
 /** @deprecated Use StatusId */
 export type Status = StatusId;
 
