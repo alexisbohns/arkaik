@@ -27,6 +27,8 @@ function buildTypesBlock(schemaPackage) {
   ]);
 
   const [
+    refType,
+    ref,
     nodeMetadata,
     platformNotesMap,
     platformStatusMap,
@@ -37,6 +39,8 @@ function buildTypesBlock(schemaPackage) {
     projectMetadata,
     projectBundle,
   ] = extractDeclarations("bundle.ts", [
+    "RefType",
+    "Ref",
     "NodeMetadata",
     "PlatformNotesMap",
     "PlatformStatusMap",
@@ -60,6 +64,10 @@ function buildTypesBlock(schemaPackage) {
     platformNotesMap,
     platformStatusMap,
     platformScreenshotsMap,
+    "",
+    refType,
+    "",
+    ref,
     "",
     nodeMetadata,
     "",

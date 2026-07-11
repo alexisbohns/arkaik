@@ -15,6 +15,7 @@ const CASES = [
   { file: "duplicate-node-id.json", expectValid: false },
   { file: "dangling-edge.json", expectValid: false },
   { file: "invalid-view-card-variant.json", expectValid: false },
+  { file: "duplicate-ref-id.json", expectValid: false },
   { file: "invalid-kitchen-sink.json", expectValid: false },
 ];
 

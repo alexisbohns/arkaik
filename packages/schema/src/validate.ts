@@ -295,6 +295,40 @@ export function validateBundle(input: unknown): ValidationResult {
       }
     }
 
+    // Refs (docs/spec/bundle-format.md § References). external_status /
+    // status_mapped are advisory display data and MUST NOT mutate node.status —
+    // the validator only checks them, it never writes back. Unrecognized `type`
+    // values are preserved, never flagged.
+    const refs = md.refs as unknown[] | undefined;
+    if (Array.isArray(refs)) {
+      const refIds = new Set<string>();
+      refs.forEach((ref, ri) => {
+        const r = (ref ?? {}) as Record<string, unknown>;
+        const refBase = `${base}.metadata.refs[${ri}]`;
+        const refId = r.id;
+        if (typeof refId !== "string" || !refId.trim()) {
+          error(`${refBase}.id`, "ref-id-required", `Node ${nodeId}: ref is missing an id`);
+        } else if (refIds.has(refId)) {
+          error(`${refBase}.id`, "duplicate-ref-id", `Node ${nodeId}: duplicate ref id "${refId}"`);
+        } else {
+          refIds.add(refId);
+        }
+        if (typeof r.url !== "string" || !r.url.trim()) {
+          error(`${refBase}.url`, "ref-url-required", `Node ${nodeId}: ref "${refId}" is missing a url`);
+        }
+        if (
+          r.status_mapped !== undefined &&
+          !STATUS_IDS.includes(r.status_mapped as (typeof STATUS_IDS)[number])
+        ) {
+          error(
+            `${refBase}.status_mapped`,
+            "valid-status",
+            `Node ${nodeId}: ref "${refId}" has invalid status_mapped "${r.status_mapped}"`,
+          );
+        }
+      });
+    }
+
     // Flow must have playlist
     if (species === "flow") {
       const playlist = md.playlist as { entries?: unknown[] } | undefined;

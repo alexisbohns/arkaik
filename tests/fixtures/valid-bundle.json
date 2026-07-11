@@ -2,6 +2,7 @@
   "project": {
     "id": "test-project",
     "title": "Test Project",
+    "version": "1.4.0",
     "created_at": "2026-01-01T00:00:00.000Z",
     "updated_at": "2026-01-01T00:00:00.000Z"
   },
@@ -14,7 +15,24 @@
       "status": "idea",
       "platforms": ["web"],
       "metadata": {
-        "platformScreenshots": { "web": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" }
+        "platformScreenshots": { "web": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" },
+        "refs": [
+          {
+            "id": "gh-142",
+            "type": "github-issue",
+            "url": "https://github.com/acme/app/issues/142",
+            "title": "Home screen layout",
+            "external_status": "open",
+            "status_mapped": "development",
+            "platform": "web",
+            "synced_at": "2026-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "notion-brief",
+            "type": "notion-page",
+            "url": "https://notion.so/acme/home-brief"
+          }
+        ]
       }
     }
   ],
