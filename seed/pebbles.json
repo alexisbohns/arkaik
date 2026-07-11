@@ -2,65 +2,843 @@
   "project": {
     "id": "pebbles",
     "title": "Pebbles",
-    "description": "Simplified map of core Pebbles journeys.",
-    "root_node_id": "V-my-path",
-    "created_at": "2024-01-01T00:00:00.000Z",
-    "updated_at": "2024-01-01T00:00:00.000Z"
+    "description": "Pebbles is an atomic diary app allowing to record memories and enrich them with emotions, instants, thoughts, related to people and get weekly and monthly wraps.",
+    "root_node_id": "V-landing",
+    "metadata": {
+      "view_card_variant": "large"
+    },
+    "created_at": "2026-04-01T00:00:00.000Z",
+    "updated_at": "2026-07-03T00:00:00.000Z"
   },
   "nodes": [
     {
-      "id": "V-my-path",
+      "id": "V-landing",
       "project_id": "pebbles",
       "species": "view",
-      "title": "My Path",
-      "description": "Root view for core user journeys.",
-      "status": "live",
-      "platforms": ["web"]
+      "title": "Landing",
+      "description": "Public landing page with app branding, login button, and create-account link. Redirects authenticated users to the home view. iOS (PR #281) implements this as WelcomeView: persistent logo header, auto-advancing 3-step carousel, and two CTAs that push AuthView with the correct mode preselected.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
     },
-
     {
-      "id": "F-create-pebble",
+      "id": "V-login",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Login",
+      "description": "Login page with username and password form. Redirects to path or onboarding based on profile completion status.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-register",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Register",
+      "description": "Registration page with username, password, confirm password, and consent checkboxes (terms + privacy). Auto-logs in and redirects to onboarding on success.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-home",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Home",
+      "description": "Main dashboard. iOS (#388) is now the post-auth root: horizontal weeks roll of cairns at top, paginated per-week pebble list (TabView page style) in the body, full-width 'New pebble' button and a custom bottom bar (glyph + bounce + karma) replacing the system tab bar. Glyph and stats push the Profile screen; Lab is reachable as a NavigationLink inside Profile.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-timeline",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Path",
+      "description": "Week-paginated path of pebbles. Top: horizontal weeks roll of cairn animations centered on the focused week. Middle: date-range header with prev/next chevrons and a per-week scrollable list of pebble rows that pages horizontally between weeks. Bottom: in-view dock combining the quick pebble editor (collapsed as a 'What happened?' trigger; expanded as a bottom-sheet overlay) and a stats bar (profile glyph link, bounce, karma — all link to Profile).",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-pebble-record",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Record Pebble",
+      "description": "Capture a new memory with title and quick context.",
+      "status": "archived",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ],
+      "metadata": {
+        "stage": "deprecated"
+      }
+    },
+    {
+      "id": "V-pebble-intensity",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Set Intensity & Valence",
+      "description": "Adjust the intensity and emotional valence of a pebble.",
+      "status": "archived",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ],
+      "metadata": {
+        "stage": "deprecated"
+      }
+    },
+    {
+      "id": "V-emotion-pearl",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Shape Emotion Pearl",
+      "description": "Sculpt a nuanced emotion pearl for the pebble.",
+      "status": "archived",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ],
+      "metadata": {
+        "stage": "deprecated"
+      }
+    },
+    {
+      "id": "V-instant-attach",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Attach Instants",
+      "description": "Capture or select photos to attach as instants to the pebble during recording.",
+      "status": "archived",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ],
+      "metadata": {
+        "stage": "deprecated"
+      }
+    },
+    {
+      "id": "V-soul-link",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Link Soul",
+      "description": "Associate one or more souls (people) with the pebble.",
+      "status": "archived",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ],
+      "metadata": {
+        "stage": "deprecated"
+      }
+    },
+    {
+      "id": "V-domain-attach",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Attach Domain",
+      "description": "Map the pebble to a life domain on the revisited Maslow pyramid.",
+      "status": "archived",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ],
+      "metadata": {
+        "stage": "deprecated"
+      }
+    },
+    {
+      "id": "V-cards-thoughts",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Add Cards & Thoughts",
+      "description": "Enrich the pebble with media cards and scoped written thoughts.",
+      "status": "archived",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ],
+      "metadata": {
+        "stage": "deprecated"
+      }
+    },
+    {
+      "id": "V-quick-pebble-editor",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Quick Pebble Editor",
+      "description": "Single-page pebble creation editor (V2) combining all enrichment steps. On /path the editor is anchored to the bottom dock — collapsed as a 'What happened?' trigger that opens an overlay bottom-sheet on tap; on /record it auto-opens as the route's primary affordance.",
+      "status": "live",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-pebble-detail",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Pebble Detail",
+      "description": "Read-only display of a recorded pebble: rendered shape, title, picture, emotion/domain/collections/souls metadata shown as shared tiles, and description. Edit button stacks the editor.",
+      "status": "live",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ],
+      "metadata": {
+        "platformStatuses": {
+          "ios": "live",
+          "web": "idea",
+          "android": "idea"
+        }
+      }
+    },
+    {
+      "id": "V-pebble-revelation",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Pebble Revelation",
+      "description": "Intermediate screen after save that reveals the generated pebble SVG visual for the first time, before transitioning to celebration.",
+      "status": "archived",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ],
+      "metadata": {
+        "stage": "deprecated"
+      }
+    },
+    {
+      "id": "V-record-celebration",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Record Celebration",
+      "description": "Celebration screen after revelation that confirms the pebble was saved, before navigating to the detail view.",
+      "status": "archived",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ],
+      "metadata": {
+        "stage": "deprecated"
+      }
+    },
+    {
+      "id": "V-collections-list",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Collections",
+      "description": "Browse and manage all pebble collections.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-collection-detail",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Collection Detail",
+      "description": "View a collection and its pebbles grouped by month; rename / re-mode / delete entry points.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-collection-create",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Create Collection",
+      "description": "Create a new collection to group pebbles.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-collection-edit",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Edit Collection",
+      "description": "Rename or re-mode an existing collection. Web renders inline on the detail page; iOS presents as a sheet.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-souls-list",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Souls Directory",
+      "description": "Browse and manage all souls (people in your life) as a 3-column glyph grid.",
+      "status": "live",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-soul-detail",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Soul Detail",
+      "description": "View a soul's profile and all linked pebbles.",
+      "status": "live",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-soul-create",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Add Soul",
+      "description": "Create a new soul entry for someone in your life.",
+      "status": "live",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-soul-edit",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Edit Soul",
+      "description": "Rename an existing soul. Web renders inline on the detail page; iOS presents as a sheet.",
+      "status": "live",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-glyphs-list",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Glyphs",
+      "description": "Glyphs page with three tabs — Mine (glyphs I created), Owned (glyphs I swapped, my entitlements), and Commu (community marketplace, approved+listed, excluding my own). Mine keeps carve + rename; Owned/Commu open the swap/owned drawer.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-glyph-detail",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Glyph Detail",
+      "description": "View a single glyph with full SVG preview and metadata.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-glyph-carve",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Carve Glyph",
+      "description": "Draw a new glyph on a pebble surface using the carve editor.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-glyph-attach",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Attach Glyph",
+      "description": "Draw a new glyph or select an existing one to attach to a pebble during recording.",
+      "status": "archived",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ],
+      "metadata": {
+        "stage": "deprecated"
+      }
+    },
+    {
+      "id": "V-bounce-tempo",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Bounce Tempo",
+      "description": "View your bounce karma and regularity tempo.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-collection-rise",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Collection Rise",
+      "description": "Track collection growth and level progression.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-achievements",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Achievements",
+      "description": "Gallery of unlocked and upcoming achievements.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-weekly-cairn-intro",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Weekly Cairn Intro",
+      "description": "Introduction screen before reviewing the weekly wrap.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-weekly-cairn",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Weekly Cairn",
+      "description": "Weekly wrap summarizing pebbles stacked into a cairn.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-weekly-cairn-review",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Weekly Cairn Review",
+      "description": "Reflect on and confirm the weekly cairn.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-monthly-cairn-intro",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Monthly Cairn Intro",
+      "description": "Introduction screen before reviewing the monthly wrap.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-monthly-cairn",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Monthly Cairn",
+      "description": "Monthly wrap aggregating weekly cairns into a larger cairn.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-monthly-cairn-review",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Monthly Cairn Review",
+      "description": "Reflect on and confirm the monthly cairn.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-onboarding-intro",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Onboarding — Your life is a path",
+      "description": "First onboarding screen introducing the pebble/path metaphor.",
+      "status": "development",
+      "platforms": [
+        "ios"
+      ]
+    },
+    {
+      "id": "V-onboarding-concept",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Onboarding — Drop a pebble, keep the moment",
+      "description": "Second onboarding screen framing pebble recording as low-friction.",
+      "status": "development",
+      "platforms": [
+        "ios"
+      ]
+    },
+    {
+      "id": "V-onboarding-qualify",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Onboarding — Qualify and relate",
+      "description": "Third onboarding screen explaining emotion, domain, souls, collections.",
+      "status": "development",
+      "platforms": [
+        "ios"
+      ]
+    },
+    {
+      "id": "V-onboarding-carving",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Onboarding — Get your pebble",
+      "description": "Fourth onboarding screen explaining glyph carving and pebble illustration.",
+      "status": "development",
+      "platforms": [
+        "ios"
+      ]
+    },
+    {
+      "id": "V-settings",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Settings",
+      "description": "Profile settings. iOS (#452): edit-mode sheet presented from Profile's gear button. Web: a dedicated /settings route reached from the Profile gear button, with a Save action enabled when dirty. Sections mirror iOS — header glyph (tap → glyph picker dialog), Informations (editable display_name, read-only email), Providers (read-only Apple/Google list for SSO accounts) or Password (new password field for email-only accounts), Legal (Terms, Privacy) — plus a web-only Appearance section (theme, language, colour world). Persists name+glyph via the profiles update (update_profile RPC on iOS) and password via auth.updateUser.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios"
+      ]
+    },
+    {
+      "id": "V-profile",
+      "project_id": "pebbles",
+      "species": "view",
+      "description": "User profile dashboard. Banner (glyph + display name in the Reenie Beanie script face + member-since), a shortcuts row (Collections / Souls / Glyphs), a Stats card (ripple-level badge + 28-day assiduity grid + Days / Pebbles / Karma counters), a horizontal Collections carousel, a Lab card, and a logout button; a gear button opens Settings. Web aligns to the iOS token refactor (issues #465 / #467). iOS (#388): pushed from PathView's bottom bar; hosts the Lab navigation link and the onboarding replay full-screen cover.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "F-record-pebble",
       "project_id": "pebbles",
       "species": "flow",
-      "title": "Create a Pebble",
-      "description": "Main flow to create and finalize a pebble.",
-      "status": "development",
-      "platforms": ["web"],
+      "title": "Record Pebble",
+      "description": "Core flow to capture a new pebble via the single-page Quick Pebble V2 editor with all enrichments inline.",
+      "status": "live",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ],
       "metadata": {
         "playlist": {
           "entries": [
-            { "type": "flow", "flow_id": "F-create-record" },
-            { "type": "flow", "flow_id": "F-shape-emotion" },
-            { "type": "flow", "flow_id": "F-add-instant" },
-            { "type": "flow", "flow_id": "F-add-place" },
-            { "type": "view", "view_id": "V-created-pebble-success" },
             {
-              "type": "condition",
-              "label": "is the first record of the day",
-              "if_true": [{ "type": "view", "view_id": "V-bounce-plus-one-reward" }],
-              "if_false": [{ "type": "view", "view_id": "V-pebble-page" }]
+              "type": "view",
+              "view_id": "V-quick-pebble-editor"
+            },
+            {
+              "type": "view",
+              "view_id": "V-pebble-detail"
+            },
+            {
+              "type": "view",
+              "view_id": "V-karma-flash"
             }
           ]
         }
       }
     },
     {
-      "id": "F-open-pebble",
+      "id": "F-onboarding",
       "project_id": "pebbles",
       "species": "flow",
-      "title": "Open a Pebble",
-      "description": "Open pebble details and optionally edit.",
+      "title": "Onboarding",
+      "description": "New user onboarding journey ending with first pebble.",
       "status": "development",
-      "platforms": ["web"],
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ],
       "metadata": {
         "playlist": {
           "entries": [
-            { "type": "view", "view_id": "V-pebble-page" },
             {
-              "type": "condition",
-              "label": "edit the pebble",
-              "if_true": [{ "type": "flow", "flow_id": "F-pebble-edition" }],
-              "if_false": []
+              "type": "view",
+              "view_id": "V-onboarding-intro"
+            },
+            {
+              "type": "view",
+              "view_id": "V-onboarding-concept"
+            },
+            {
+              "type": "view",
+              "view_id": "V-onboarding-qualify"
+            },
+            {
+              "type": "view",
+              "view_id": "V-onboarding-carving"
+            },
+            {
+              "type": "view",
+              "view_id": "V-home"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "F-manage-collections",
+      "project_id": "pebbles",
+      "species": "flow",
+      "title": "Manage Collections",
+      "description": "Browse, create, and curate pebble collections.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ],
+      "metadata": {
+        "playlist": {
+          "entries": [
+            {
+              "type": "view",
+              "view_id": "V-collections-list"
+            },
+            {
+              "type": "junction",
+              "label": "Collection action?",
+              "cases": [
+                {
+                  "label": "View collection",
+                  "entries": [
+                    {
+                      "type": "view",
+                      "view_id": "V-collection-detail"
+                    }
+                  ]
+                },
+                {
+                  "label": "Create collection",
+                  "entries": [
+                    {
+                      "type": "view",
+                      "view_id": "V-collection-create"
+                    }
+                  ]
+                },
+                {
+                  "label": "Edit collection",
+                  "entries": [
+                    {
+                      "type": "view",
+                      "view_id": "V-collection-edit"
+                    }
+                  ]
+                },
+                {
+                  "label": "Track rise",
+                  "entries": [
+                    {
+                      "type": "view",
+                      "view_id": "V-collection-rise"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "F-manage-souls",
+      "project_id": "pebbles",
+      "species": "flow",
+      "title": "Manage Souls",
+      "description": "Browse, add, and view souls linked to your pebbles.",
+      "status": "live",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ],
+      "metadata": {
+        "playlist": {
+          "entries": [
+            {
+              "type": "view",
+              "view_id": "V-souls-list"
+            },
+            {
+              "type": "junction",
+              "label": "Soul action?",
+              "cases": [
+                {
+                  "label": "View soul",
+                  "entries": [
+                    {
+                      "type": "view",
+                      "view_id": "V-soul-detail"
+                    }
+                  ]
+                },
+                {
+                  "label": "Add soul",
+                  "entries": [
+                    {
+                      "type": "view",
+                      "view_id": "V-soul-create"
+                    }
+                  ]
+                },
+                {
+                  "label": "Edit soul",
+                  "entries": [
+                    {
+                      "type": "view",
+                      "view_id": "V-soul-edit"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "F-manage-glyphs",
+      "project_id": "pebbles",
+      "species": "flow",
+      "title": "Manage Glyphs",
+      "description": "Browse, carve, and view glyphs (shape-agnostic custom marks).",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ],
+      "metadata": {
+        "playlist": {
+          "entries": [
+            {
+              "type": "view",
+              "view_id": "V-glyphs-list"
+            },
+            {
+              "type": "junction",
+              "label": "Glyph action?",
+              "cases": [
+                {
+                  "label": "View glyph",
+                  "entries": [
+                    {
+                      "type": "view",
+                      "view_id": "V-glyph-detail"
+                    }
+                  ]
+                },
+                {
+                  "label": "Carve glyph",
+                  "entries": [
+                    {
+                      "type": "view",
+                      "view_id": "V-glyph-carve"
+                    }
+                  ]
+                },
+                {
+                  "label": "Swap community glyph",
+                  "entries": [
+                    {
+                      "type": "view",
+                      "view_id": "V-glyph-swap-drawer"
+                    }
+                  ]
+                }
+              ]
             }
           ]
         }
@@ -70,446 +848,3254 @@
       "id": "F-weekly-wrap",
       "project_id": "pebbles",
       "species": "flow",
-      "title": "View my Weekly Wrap",
-      "description": "Weekly and monthly progression overview.",
-      "status": "development",
-      "platforms": ["web"],
-      "metadata": {
-        "playlist": {
-          "entries": [
-            { "type": "view", "view_id": "V-wrap-launcher" },
-            { "type": "view", "view_id": "V-week-highlight" },
-            { "type": "view", "view_id": "V-week-stats" },
-            { "type": "view", "view_id": "V-week-reward" },
-            { "type": "view", "view_id": "V-month-progression" },
-            { "type": "view", "view_id": "V-month-reward" }
-          ]
-        }
-      }
-    },
-
-    {
-      "id": "F-create-record",
-      "project_id": "pebbles",
-      "species": "flow",
-      "title": "Create a Record",
-      "description": "Capture record details for a pebble.",
-      "status": "development",
-      "platforms": ["web"],
-      "metadata": {
-        "playlist": {
-          "entries": [
-            { "type": "view", "view_id": "V-pebble-time" },
-            { "type": "view", "view_id": "V-pebble-name" },
-            { "type": "view", "view_id": "V-pebble-intensity" },
-            { "type": "view", "view_id": "V-pebble-record-summary" }
-          ]
-        }
-      }
-    },
-    {
-      "id": "F-shape-emotion",
-      "project_id": "pebbles",
-      "species": "flow",
-      "title": "Shape an Emotion",
-      "description": "Adjust emotion framing.",
-      "status": "development",
-      "platforms": ["web"]
-    },
-    {
-      "id": "F-add-instant",
-      "project_id": "pebbles",
-      "species": "flow",
-      "title": "Add an Instant",
-      "description": "Add a specific instant to the pebble.",
-      "status": "development",
-      "platforms": ["web"]
-    },
-    {
-      "id": "F-add-place",
-      "project_id": "pebbles",
-      "species": "flow",
-      "title": "Add a Place",
-      "description": "Attach place context to the pebble.",
-      "status": "development",
-      "platforms": ["web"]
-    },
-    {
-      "id": "F-pebble-edition",
-      "project_id": "pebbles",
-      "species": "flow",
-      "title": "Pebble Edition",
-      "description": "Edit an existing pebble.",
-      "status": "development",
-      "platforms": ["web"]
-    },
-
-    {
-      "id": "V-created-pebble-success",
-      "project_id": "pebbles",
-      "species": "view",
-      "title": "Created Pebble Success Page",
-      "description": "Success confirmation after pebble creation.",
-      "status": "development",
-      "platforms": ["web"]
-    },
-    {
-      "id": "V-bounce-plus-one-reward",
-      "project_id": "pebbles",
-      "species": "view",
-      "title": "Bounce +1 Reward Page",
-      "description": "Reward page for first record of the day.",
+      "title": "Weekly Wrap",
+      "description": "Weekly cairn ritual to stack and review your week.",
       "status": "idea",
-      "platforms": ["web"]
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ],
+      "metadata": {
+        "playlist": {
+          "entries": [
+            {
+              "type": "view",
+              "view_id": "V-weekly-cairn-intro"
+            },
+            {
+              "type": "view",
+              "view_id": "V-weekly-cairn"
+            },
+            {
+              "type": "view",
+              "view_id": "V-weekly-cairn-review"
+            }
+          ]
+        }
+      }
     },
     {
-      "id": "V-pebble-page",
+      "id": "F-monthly-wrap",
       "project_id": "pebbles",
-      "species": "view",
-      "title": "Pebble Page",
-      "description": "Single pebble detail page.",
+      "species": "flow",
+      "title": "Monthly Wrap",
+      "description": "Monthly cairn ritual to stack weekly cairns into a bigger cairn.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ],
+      "metadata": {
+        "playlist": {
+          "entries": [
+            {
+              "type": "view",
+              "view_id": "V-monthly-cairn-intro"
+            },
+            {
+              "type": "view",
+              "view_id": "V-monthly-cairn"
+            },
+            {
+              "type": "view",
+              "view_id": "V-monthly-cairn-review"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "F-gamification",
+      "project_id": "pebbles",
+      "species": "flow",
+      "title": "Gamification Hub",
+      "description": "Access bounce tempo, collection rise, and achievements.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ],
+      "metadata": {
+        "playlist": {
+          "entries": [
+            {
+              "type": "junction",
+              "label": "What to explore?",
+              "cases": [
+                {
+                  "label": "Bounce tempo",
+                  "entries": [
+                    {
+                      "type": "view",
+                      "view_id": "V-bounce-tempo"
+                    }
+                  ]
+                },
+                {
+                  "label": "Collection rise",
+                  "entries": [
+                    {
+                      "type": "view",
+                      "view_id": "V-collection-rise"
+                    }
+                  ]
+                },
+                {
+                  "label": "Achievements",
+                  "entries": [
+                    {
+                      "type": "view",
+                      "view_id": "V-achievements"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "DM-account",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "Account",
+      "description": "User account with username and hashed password credentials.",
       "status": "development",
-      "platforms": ["web"]
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
     },
     {
-      "id": "V-wrap-launcher",
+      "id": "DM-profile",
       "project_id": "pebbles",
-      "species": "view",
-      "title": "Wrap Launcher",
-      "description": "Entry point to weekly wrap.",
+      "species": "data-model",
+      "title": "Profile",
+      "description": "User profile with display name, onboarding state, color world preference, and consent timestamps (terms_accepted_at, privacy_accepted_at).",
       "status": "development",
-      "platforms": ["web"]
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
     },
     {
-      "id": "V-week-highlight",
+      "id": "DM-pebble",
       "project_id": "pebbles",
-      "species": "view",
-      "title": "Week Highlight",
-      "description": "Top highlights of the week.",
+      "species": "data-model",
+      "title": "Pebble",
+      "description": "A single recorded memory with intensity, 3-level positiveness, visibility, and timestamp.",
       "status": "development",
-      "platforms": ["web"]
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
     },
     {
-      "id": "V-week-stats",
+      "id": "DM-emotion-pearl",
       "project_id": "pebbles",
-      "species": "view",
-      "title": "Week Stats",
-      "description": "Stats summary for the week.",
+      "species": "data-model",
+      "title": "Emotion Pearl",
+      "description": "Nuanced emotional shape attached to a pebble.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "DM-soul",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "Soul",
+      "description": "A person linked to pebbles, representing someone in the user's life. Each soul carries a glyph for visual identity.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "DM-domain",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "Domain",
+      "description": "Life domain from the revisited Maslow pyramid.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "DM-card",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "Card",
+      "description": "Media or content card attached to a pebble.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "DM-thought",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "Thought",
+      "description": "Scoped written reflection tied to a pebble.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "DM-collection",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "Collection",
+      "description": "A curated group of pebbles with rise progression.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "DM-bounce",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "Bounce",
+      "description": "User's regularity karma tracking engagement tempo.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "DM-cairn",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "Cairn",
+      "description": "Weekly or monthly wrap stacking pebbles into a summary.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "DM-achievement",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "Achievement",
+      "description": "Unlockable reward earned through collecting and engagement.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "DM-instant",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "Instant",
+      "description": "A compressed photo attached to a pebble, stored as a base64 JPEG data URI.",
       "status": "development",
-      "platforms": ["web"]
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
     },
     {
-      "id": "V-week-reward",
+      "id": "DM-mark",
       "project_id": "pebbles",
-      "species": "view",
-      "title": "Week Reward",
-      "description": "Weekly reward screen.",
-      "status": "development",
-      "platforms": ["web"]
+      "species": "data-model",
+      "title": "Mark",
+      "description": "A glyph rendered into a pebble slot (shape-agnostic square), stored as SVG strokes. The is_custom flag (generated from user_id IS NOT NULL) distinguishes user-drawn glyphs from per-domain system seeds, and powers the % custom-glyph creativity signal in admin analytics.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
     },
     {
-      "id": "V-month-progression",
-      "project_id": "pebbles",
-      "species": "view",
-      "title": "Month Progression",
-      "description": "Monthly progression view.",
-      "status": "backlog",
-      "platforms": ["web"]
-    },
-    {
-      "id": "V-month-reward",
-      "project_id": "pebbles",
-      "species": "view",
-      "title": "Month Reward",
-      "description": "Monthly reward view.",
-      "status": "backlog",
-      "platforms": ["web"]
-    },
-    {
-      "id": "V-pebble-time",
-      "project_id": "pebbles",
-      "species": "view",
-      "title": "Pebble Time",
-      "description": "Select time for the record.",
-      "status": "development",
-      "platforms": ["web"]
-    },
-    {
-      "id": "V-pebble-name",
-      "project_id": "pebbles",
-      "species": "view",
-      "title": "Pebble Name",
-      "description": "Set name for the pebble record.",
-      "status": "development",
-      "platforms": ["web"]
-    },
-    {
-      "id": "V-pebble-intensity",
-      "project_id": "pebbles",
-      "species": "view",
-      "title": "Pebble Intensity",
-      "description": "Pick intensity for the pebble record.",
-      "status": "development",
-      "platforms": ["web"]
-    },
-    {
-      "id": "V-pebble-record-summary",
-      "project_id": "pebbles",
-      "species": "view",
-      "title": "Pebble Record Summary",
-      "description": "Review record details before creation.",
-      "status": "development",
-      "platforms": ["web"]
-    },
-
-    {
-      "id": "API-create-record",
+      "id": "API-get-marks",
       "project_id": "pebbles",
       "species": "api-endpoint",
-      "title": "create record",
-      "description": "API callback to create a record.",
-      "status": "development",
-      "platforms": ["web"]
+      "title": "GET /marks",
+      "description": "Retrieve all user marks (glyphs).",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
     },
     {
-      "id": "API-get-single-pebble",
+      "id": "API-create-mark",
       "project_id": "pebbles",
       "species": "api-endpoint",
-      "title": "get single pebble",
-      "description": "API call to fetch one pebble.",
-      "status": "development",
-      "platforms": ["web"]
+      "title": "POST /marks",
+      "description": "Create a new mark (glyph).",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-delete-mark",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "DELETE /marks/:id",
+      "description": "Delete a mark (glyph) by ID.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-create-pebble",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "POST /pebbles",
+      "description": "Create a new pebble record.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
     },
     {
       "id": "API-get-pebbles",
       "project_id": "pebbles",
       "species": "api-endpoint",
-      "title": "get pebbles",
-      "description": "API call to fetch pebbles list.",
-      "status": "development",
-      "platforms": ["web"]
-    },
-
-    {
-      "id": "DM-consolidated-pebbles-view",
-      "project_id": "pebbles",
-      "species": "data-model",
-      "title": "consolidated pebbles view",
-      "description": "Aggregated data model for pebbles list.",
-      "status": "development",
-      "platforms": ["web"]
+      "title": "GET /pebbles",
+      "description": "Retrieve pebbles with filters and pagination.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
     },
     {
-      "id": "DM-consolidated-pebble-view",
+      "id": "API-get-pebble",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "GET /pebbles/:id",
+      "description": "Retrieve a single pebble with all enrichments.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-set-intensity",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "PATCH /pebbles/:id/intensity",
+      "description": "Set intensity and valence on a pebble.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-create-emotion-pearl",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "POST /pebbles/:id/pearl",
+      "description": "Shape and attach an emotion pearl to a pebble.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-link-soul",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "POST /pebbles/:id/souls",
+      "description": "Link one or more souls to a pebble.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-attach-domain",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "POST /pebbles/:id/domain",
+      "description": "Attach a life domain to a pebble.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-add-card",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "POST /pebbles/:id/cards",
+      "description": "Add a media card to a pebble.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-add-thought",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "POST /pebbles/:id/thoughts",
+      "description": "Write a scoped thought on a pebble.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-get-souls",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "GET /souls",
+      "description": "Retrieve all souls for the current user.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-create-soul",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "POST /souls",
+      "description": "Create a new soul entry.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-update-soul",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "PATCH /souls/:id",
+      "description": "Rename an existing soul.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-delete-soul",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "DELETE /souls/:id",
+      "description": "Delete a soul; cascades the pebble_souls join rows. Pebbles themselves are untouched.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-get-collections",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "GET /collections",
+      "description": "Retrieve all user collections.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-create-collection",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "POST /collections",
+      "description": "Create a new pebble collection.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-get-bounce",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "GET /bounce",
+      "description": "Retrieve current bounce tempo and karma.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-get-achievements",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "GET /achievements",
+      "description": "Retrieve unlocked and available achievements.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-get-weekly-cairn",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "GET /cairns/weekly",
+      "description": "Generate or retrieve the current weekly cairn.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-get-monthly-cairn",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "GET /cairns/monthly",
+      "description": "Generate or retrieve the current monthly cairn.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-register",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "POST /auth/register",
+      "description": "Register a new user account.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-login",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "POST /auth/login",
+      "description": "Authenticate an existing user.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-logout",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "POST /auth/logout",
+      "description": "End the current user session.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-get-session",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "GET /auth/session",
+      "description": "Retrieve the current session.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-get-profile",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "GET /profile",
+      "description": "Retrieve the current user profile.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-update-profile",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "PATCH /profile",
+      "description": "Update the current user profile.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-get-collection-rise",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "GET /collections/:id/rise",
+      "description": "Retrieve rise progression for a collection.",
+      "status": "idea",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-mechanic-sheet",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Mechanic Sheet",
+      "description": "Informational dialog explaining a gamification mechanic (pebbles, bounce, or karma).",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-pebble-visual",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Pebble Visual",
+      "description": "Reusable SVG visual component rendering a pebble's generated glyph at multiple tiers (thumbnail, detail, revelation).",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "DM-pebble-engine",
       "project_id": "pebbles",
       "species": "data-model",
-      "title": "consolidated pebble view",
-      "description": "Aggregated data model for single pebble.",
+      "title": "Pebble Engine",
+      "description": "Pure TypeScript rendering engine that generates SVG pebble visuals from pebble data; designed for extraction as @pebbles/engine.",
       "status": "development",
-      "platforms": ["web"]
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-docs-index",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Docs Index",
+      "description": "Public documentation index listing all legal and support pages grouped by category. Supports locale switching (EN/FR) and embed mode for iOS webview.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios"
+      ]
+    },
+    {
+      "id": "V-docs-slug",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Docs Page",
+      "description": "Individual documentation page rendering localized markdown content (privacy policy, terms, legal notice, credits). Supports locale switching and embed mode.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios"
+      ]
+    },
+    {
+      "id": "V-docs-legal-notice",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Legal Notice",
+      "description": "Individual legal notice page rendered from localized markdown. Accessible without authentication.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios"
+      ]
+    },
+    {
+      "id": "V-docs-terms",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Terms of Service",
+      "description": "Individual terms of service page rendered from localized markdown. Accessible without authentication.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios"
+      ]
+    },
+    {
+      "id": "V-docs-privacy",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Privacy Policy",
+      "description": "Individual privacy policy page rendered from localized markdown. Accessible without authentication.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios"
+      ]
+    },
+    {
+      "id": "F-legal-consent",
+      "project_id": "pebbles",
+      "species": "flow",
+      "title": "Legal Consent",
+      "description": "Registration consent flow: user accepts terms and privacy policy during signup via checkboxes linking to legal documents.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ],
+      "metadata": {
+        "playlist": {
+          "entries": [
+            {
+              "type": "view",
+              "view_id": "V-register"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "V-lab",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Lab",
+      "description": "Living product-transparency view. Featured community card, then announcements, changelog (top 5 + see all), ongoing initiatives, and backlog (top 5 by upvotes). iOS (#388): no longer a tab; pushed from Profile's Discover section.",
+      "status": "development",
+      "platforms": [
+        "ios",
+        "web"
+      ]
+    },
+    {
+      "id": "V-admin-analytics",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Admin · Analytics",
+      "description": "Back-office analytics page (admin-only). Thin slice (PR #337): KPI strip (Total users, DAU, WAU, MAU, Pebbles/day, DAU/MAU) + Active users line chart with DAU/WAU/MAU toggle. Global time-range tabs (7d/30d/90d/1y/All) URL-driven via ?range=. Layout extension (#339): Active users chart shrinks to 8/12 and a Retention cohort heatmap (last 8 weekly signup cohorts) fills 4/12. Five other buildable surfaces (volume, enrichment, per-user, domain share, visibility, single-emotion share) follow on the same milestone (M28).",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "V-admin-glyph-moderation",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Admin · Glyph moderation",
+      "description": "Back-office moderation queue for community glyph submissions (#497, M36 sub-project D). Admin-only. Status-filtered list (pending/approved/rejected) of submissions, each previewed as its shapeless square glyph. Approve (publishes to Market, optional price override), Reject (required reason stored in review_note, shown to the submitter), and Re-price approved listings. All mutations go through is_admin-gated SECURITY DEFINER RPCs; the queue reads via admin_list_glyph_submissions because the widened glyphs SELECT policy does not expose pending submissions' strokes to admins via RLS.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "V-admin-glyph-upload",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Admin · Upload glyph",
+      "description": "Back-office authoring flow (#497, M36 sub-project D). Admin-only. Imports a raw SVG, parses it into the stroke-only glyph model (supported subset: path/line/polyline/polygon, commands M L H V Q C Z; fills/other elements skipped and reported), previews it as a shapeless square glyph, adjusts name/price plus scale/recenter/flip transforms (baked into geometry at publish), and publishes a first-party (admin-owned) community glyph via publish_admin_glyph.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "V-admin-domains",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Admin · Domains",
+      "description": "Back-office domain management (#518). Admin-only. Lists every domain with its current glyph thumbnail; a per-domain editor edits name + description (the domains.label column) and uploads/replaces the domain's glyph. The glyph reuses the stroke-only SVG pipeline (svgToStrokes + scale/recenter/flip adjust baked into geometry) shared with the glyph uploader. Text edits update the DB fallback only — localized domain names/labels still come from the client i18n catalogs; the glyph is language-neutral and newly DB-sourced. All mutations go through is_admin-gated SECURITY DEFINER RPCs.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "API-admin-list-domains",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "RPC admin_list_domains",
+      "description": "is_admin-gated SECURITY DEFINER RPC. Returns every domain (id, slug, name, label, default_glyph_id) left-joined to its glyph geometry (strokes, view_box), ordered by name. The admin Domains list + editor read path.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "API-admin-update-domain",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "RPC admin_update_domain",
+      "description": "is_admin-gated SECURITY DEFINER RPC. Updates a domain's name and label (description); trims input and rejects an empty name (bad_name) or unknown domain (not_found).",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "API-admin-set-domain-glyph",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "RPC admin_set_domain_glyph",
+      "description": "is_admin-gated SECURITY DEFINER RPC. Sets/replaces a domain's glyph in place: when default_glyph_id is null it inserts a system-owned (NULL user_id), shapeless glyph and links it; otherwise it overwrites that glyph row's strokes/view_box (same glyph_id — no orphans, and every consumer updates). Rejects empty strokes (empty_glyph) or unknown domain (not_found).",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "DM-v-domains-with-glyph",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "v_domains_with_glyph",
+      "description": "Postgres view (security_invoker): one row per domain — id, slug, name, label, default_glyph_id — left-joined to its glyph's strokes + view_box. Domain glyphs are system-owned (NULL user_id) so they read under the widened glyphs SELECT policy. Web reads this via useDomainGlyphs to render each domain's glyph beside its name; also available to iOS.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios"
+      ]
+    },
+    {
+      "id": "API-admin-list-glyph-submissions",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "RPC admin_list_glyph_submissions",
+      "description": "is_admin-gated SECURITY DEFINER RPC. Returns submissions joined to glyph geometry (strokes/view_box/name) + submitter email, ordered oldest-first. The moderation queue's read path — bypasses the RLS gap that hides pending submissions' strokes from admins.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "API-approve-glyph",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "RPC approve_glyph",
+      "description": "is_admin-gated SECURITY DEFINER RPC. Sets a pending submission to approved (live in Market), stamps reviewed_at/reviewed_by, with an optional price override.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "API-reject-glyph",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "RPC reject_glyph",
+      "description": "is_admin-gated SECURITY DEFINER RPC. Sets a pending submission to rejected with a required review_note (surfaced to the submitter), stamping reviewed_at/reviewed_by.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "API-set-glyph-price",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "RPC set_glyph_price",
+      "description": "is_admin-gated SECURITY DEFINER RPC. Re-prices an approved listing. Existing entitlements' price_paid snapshots are untouched.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "API-publish-admin-glyph",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "RPC publish_admin_glyph",
+      "description": "is_admin-gated SECURITY DEFINER RPC. Atomically inserts a glyph owned by the admin + an auto-approved submission, publishing a first-party community glyph from an uploaded SVG.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "DM-glyphs",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "glyphs",
+      "description": "User-drawn (or admin-uploaded) glyph marks: stroke-only geometry (strokes JSONB of {d,width} + view_box), optional name, nullable user_id (NULL = system seed). Rendered recolored by emotion. SELECT widened (D8) to own ∪ seeds ∪ approved-listed ∪ entitled; UPDATE/DELETE locked once listed/bought (admin-exempt).",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios"
+      ]
+    },
+    {
+      "id": "DM-glyph-submissions",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "glyph_submissions",
+      "description": "A community glyph submission and its market listing (#496). Columns: glyph_id, submitter_id, status (pending/approved/rejected), price, review_note (#497 admin reason), reviewed_at/reviewed_by. At most one active (pending|approved) submission per glyph.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "DM-v-analytics-kpi-daily",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "v_analytics_kpi_daily",
+      "description": "Postgres view: one row per calendar day from the earliest pebble's created_at to today. Columns: bucket_date, total_users, dau, pebbles_today, wau, mau, dau_mau_pct. Aggregates auth.users and public.pebbles. Plain (non-materialized) view; will swap to MV when query times warrant.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "DM-v-analytics-active-users-daily",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "v_analytics_active_users_daily",
+      "description": "Postgres view: projection of v_analytics_kpi_daily exposing bucket_date, dau, wau, mau. Backs the daily DAU/WAU/MAU line chart on the admin analytics page.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "API-get-kpi-daily",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "get_kpi_daily",
+      "description": "SECURITY DEFINER plpgsql RPC, gated on is_admin(auth.uid()). Takes p_range ('7d'|'30d'|'90d'|'1y'|'all'). Returns the latest row of v_analytics_kpi_daily plus the row at (latest - period_length) for delta computation, plus the trailing 30 days for sparklines. Raises insufficient_privilege (42501) for non-admins.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "API-get-active-users-series",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "get_active_users_series",
+      "description": "SECURITY DEFINER plpgsql RPC, gated on is_admin(auth.uid()). Takes p_start and p_end dates. Returns rows from v_analytics_active_users_daily in [p_start, p_end] ordered ascending. Raises insufficient_privilege (42501) for non-admins.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "DM-v-analytics-retention-cohorts-weekly",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "v_analytics_retention_cohorts_weekly",
+      "description": "Postgres view: one row per (cohort_week, week_offset). Cohort = users grouped by signup week (Mon–Sun, UTC) from auth.users.created_at. Columns: cohort_week, week_offset, cohort_size, active_users, retention_pct. retention_pct = % of cohort users who created >=1 pebble in that week_offset.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "API-get-retention-cohorts",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "get_retention_cohorts",
+      "description": "SECURITY DEFINER plpgsql RPC, gated on is_admin(auth.uid()). No arguments. Returns rows from v_analytics_retention_cohorts_weekly for the last 8 cohorts (most recent signup weeks). Raises insufficient_privilege (42501) for non-admins.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "DM-v-analytics-emotion-share-weekly",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "v_analytics_emotion_share_weekly",
+      "description": "Postgres view: one row per (ISO week, emotion). Columns: bucket_week, emotion_id, emotion_slug, emotion_name, color, pebbles_with_emotion, total_pebbles, share_pct. Source: pebbles.emotion_id (NOT NULL FK), so each pebble counts toward exactly one emotion and share_pct sums to 100% per week.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "DM-v-analytics-domain-share-weekly",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "v_analytics_domain_share_weekly",
+      "description": "Postgres view: one row per (ISO week, domain). Columns: bucket_week, domain_id, domain_slug, domain_name, domain_label, domain_level, pebbles_in_domain, total_pebbles, share_pct. Source: pebble_domains many-to-many, so a pebble can be linked to multiple domains and shares may exceed 100%. domain_level is derived from the seeded Maslow slug order (zoe, asphaleia, philia, time, eudaimonia).",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "API-get-emotion-share",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "get_emotion_share",
+      "description": "SECURITY DEFINER plpgsql RPC, gated on is_admin(auth.uid()). Takes p_start and p_end dates (week-truncated internally). Returns rows from v_analytics_emotion_share_weekly within the range, ordered by bucket_week asc, share_pct desc. The admin emotion-share card aggregates these rows for the snapshot view and renders them directly for the 12-week stacked-area over-time view.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "API-get-domain-share",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "get_domain_share",
+      "description": "SECURITY DEFINER plpgsql RPC, gated on is_admin(auth.uid()). Takes p_start and p_end dates (week-truncated internally). Returns rows from v_analytics_domain_share_weekly within the range, ordered by bucket_week asc, domain_level asc. The admin domain-share card calls this RPC twice (current + previous period) to compute 'biggest movers' deltas in pp.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "DM-bounce",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "bounces",
+      "description": "Postgres table: snapshot of each user's running bounce karma score. Columns: user_id (PK, FK auth.users), score (int, default 0; cumulative sum of karma_events.delta — may be transiently negative if reversals exceed gains, the analytics view floors at 0), updated_at. Maintained atomically by trigger karma_events_apply_to_bounce on every karma_events insert (upserts the delta in the same transaction). Backfilled at migration time from sum(karma_events.delta) per user. RLS: users can read their own row; writes only via the trigger (security definer).",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "DM-v-analytics-bounce-distribution-today",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "v_analytics_bounce_distribution_today",
+      "description": "Postgres view: histogram of users by current bounce score (six buckets: 0, 1-10, 11-25, 26-50, 51-100, 100+) plus three summary stats denormalized onto every row — median_score, pct_maintaining (% of users whose current bounce >= bounce 7 days ago, reconstructed from karma_events), avg_active_days_per_week (avg distinct active days in the last 7 days across MAU). Always emits all six bucket rows, even when empty.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "API-get-bounce-distribution-today",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "get_bounce_distribution_today",
+      "description": "SECURITY DEFINER plpgsql RPC, gated on is_admin(auth.uid()). No arguments. Returns the six histogram-bucket rows from v_analytics_bounce_distribution_today ordered by bucket_order asc. Backs the bounce karma distribution card on the admin analytics page. Raises insufficient_privilege (42501) for non-admins.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "DM-v-analytics-quality-signals-today",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "v_analytics_quality_signals_today",
+      "description": "Postgres view: 8 rows describing today's habit-health indicators for the admin Quality signals table. Each row has indicator_order, indicator_key, indicator_label, unit, value (current period), previous_value (matching prior period), and available (false for the four indicators whose source data isn't captured yet — median session duration, sessions/WAU, % revisits to past pebbles, friction events/session). Phase A computes pebbles/WAU and D1 / D7 / D30 retention from public.pebbles + auth.users; the other four rows return null until sessions, pebble_views, and a normalized analytics_events table land in Phases B and C of issue #346.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "API-get-quality-signals-today",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "get_quality_signals_today",
+      "description": "SECURITY DEFINER plpgsql RPC, gated on is_admin(auth.uid()). No arguments. Returns all eight rows from v_analytics_quality_signals_today ordered by indicator_order asc. Backs the Quality signals card on the admin analytics page. Raises insufficient_privilege (42501) for non-admins.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "DM-emotion-category",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "Emotion Category & Palette",
+      "description": "public.emotion_categories table grouping emotions (anger, fear, joy, peace, pride, sadness, shame) with an inlined four-color palette: primary_color, secondary_color, light_color, surface_color (all 8-digit #RRGGBBAA). public.emotions.category_id NOT NULL FK joins to it. The view public.v_emotions_with_palette is an INNER JOIN of emotions and emotion_categories that clients consume to render pebble strokes (primary in light mode, secondary in dark) and the emotion meta pill (primary background, light foreground). Schema shipped in #367; iOS consumer in #369.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "API-get-emotion-palettes",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "select v_emotions_with_palette",
+      "description": "PostgREST select on public.v_emotions_with_palette. RLS open (select using true) — readable by any authenticated user. Returns ~38 rows × 11 columns: id, slug, name, color (legacy), category_id, category_slug, category_name, primary_color, secondary_color, light_color, surface_color. iOS consumes this once on app mount via EmotionPaletteService and caches in memory for the session.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "id": "V-wallet",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Wallet",
+      "description": "Karma wallet page at /wallet (M36, #494). Shows the user's spendable karma balance, total earned, total spent, a debt hint when the balance is negative, and a paginated credit/withdraw history list (fetched on demand, not part of the eager global load). Reachable from the karma stat in the Path bottom bar; back button returns to /path.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "DM-karma-events",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "karma_events",
+      "description": "Postgres append-only karma ledger. Each row carries a smallint delta plus a type axis (credit = earn-side: pebble_created/pebble_enriched/pebble_deleted/grant; withdraw = spend-side: purchase/refund), making karma a spendable currency. balance = Σ delta; earned = Σ delta where credit; spent = -Σ delta where withdraw. Inserts fire two triggers: apply_karma_event_to_wallet (all events) and apply_karma_event_to_bounce (credit-only, so the bounce snapshot stays earned-karma). Indexed on (user_id, type) and (user_id, created_at desc).",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios"
+      ]
+    },
+    {
+      "id": "DM-wallet-balances",
+      "project_id": "pebbles",
+      "species": "data-model",
+      "title": "wallet_balances",
+      "description": "Postgres table: per-user spendable karma balance snapshot. Columns: user_id (PK, FK auth.users), balance (int, default 0; may go transiently negative on earn-side clawbacks — no non-negative CHECK, the overdraw guard lives in spend_karma), updated_at. Maintained atomically by trigger karma_events_apply_to_wallet on every karma_events insert (credit and withdraw). RLS: users read their own row; writes only via the trigger (security definer). Backfilled at migration time from sum(karma_events.delta) per user.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "API-spend-karma",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "spend_karma",
+      "description": "SECURITY DEFINER plpgsql RPC (granted to authenticated). Guarded, race-safe karma debit: takes p_amount (positive), p_reason ('purchase'), optional p_ref_id. Locks the caller's wallet_balances row FOR UPDATE to serialize concurrent spends, raises insufficient_karma (P0001) when balance < amount, otherwise inserts a negative withdraw karma_events row — the trigger updates wallet_balances in the same transaction. Returns the new event id.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "API-refund-karma",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "refund_karma",
+      "description": "SECURITY DEFINER plpgsql RPC, execution restricted to service_role (revoked from authenticated to avoid a client-callable karma mint). Inserts a positive withdraw-side karma_events row reversing a prior spend; the trigger updates wallet_balances. Returns the new event id.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "API-get-wallet-summary",
+      "project_id": "pebbles",
+      "species": "api-endpoint",
+      "title": "select v_wallet_summary",
+      "description": "PostgREST select on public.v_wallet_summary, filtered to auth.uid() and granted to authenticated. Returns one row: balance (from wallet_balances) plus total_earned (Σ credit delta) and total_spent (-Σ withdraw delta) computed from karma_events. Backs the Wallet page summary card in one round-trip.",
+      "status": "development",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "V-karma-flash",
+      "project_id": "pebbles",
+      "species": "view",
+      "title": "Karma Earned Flash",
+      "description": "iOS-only delight surface (M36, #505) shown when a user earns karma by creating or enriching a pebble. Renders an in-app \"liquid glass\" pastille that pops up bottom-center (real .glassEffect on iOS 26, translucent-material fallback below), hosted in a pass-through overlay window so it floats above the create/edit/detail sheets. Shows a sparkle + \"+N karma\" with an accent-color countdown ring that drains over its ~2.5s lifetime; tap to dismiss. Fires a Core-Haptics vibration matched to a ceramic sound (sound only in ringtone mode, never interrupting other audio). Works on every device and iOS 17+ — the Dynamic Island is deliberately NOT used, because iOS won't render a foreground app's own Live Activity and karma is always earned by a foreground action. The \"+N\" amount is the exact server-computed delta returned as karma_delta by the compose-pebble / compose-pebble-update edge functions (read back from karma_events); delight-only, never authoritative over the balance. Non-positive deltas (deletions/clawbacks) stay silent. The ActivityKit/PebblesWidget stack is retained, unused, as the reference for a future Glyph-purchase Live Activity.",
+      "status": "development",
+      "platforms": [
+        "ios"
+      ]
+    },
+    {
+      "id": "DM-glyph-entitlements",
+      "species": "data-model",
+      "title": "glyph_entitlements",
+      "description": "Per-user glyph ownership grants from the marketplace: (user_id, glyph_id, price_paid, created_at). Written by buy_glyph; read by the Owned tab. RLS: caller sees only their own entitlements.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios"
+      ],
+      "project_id": "pebbles"
+    },
+    {
+      "id": "API-buy-glyph",
+      "species": "api-endpoint",
+      "title": "buy_glyph",
+      "description": "SECURITY DEFINER RPC buy_glyph(p_glyph_id): atomically spends karma, inserts a glyph_entitlements row, and credits the creator, in one transaction. Raises insufficient_karma / not_in_market / already_owned / cannot_buy_own. Returns scalar jsonb { entitlement_id, balance }.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios"
+      ],
+      "project_id": "pebbles"
+    },
+    {
+      "id": "V-glyph-swap-drawer",
+      "species": "view",
+      "title": "Glyph Swap Drawer",
+      "description": "Community glyph swap drawer. Slide-to-confirm karma swap with rising haptics + pebble/bamboo sound; morphs SWAP → OWNED in place on success. Usage/owners/creator shown as placeholders until a detail RPC lands.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios"
+      ],
+      "project_id": "pebbles"
+    },
+    {
+      "id": "F-swap-glyph",
+      "species": "flow",
+      "title": "Swap Glyph",
+      "description": "Swap a community glyph for karma: browse the Commu tab, open the swap drawer, slide to confirm, and the drawer morphs to the owned state.",
+      "status": "development",
+      "platforms": [
+        "web",
+        "ios"
+      ],
+      "metadata": {
+        "playlist": {
+          "entries": [
+            {
+              "type": "view",
+              "view_id": "V-glyphs-list"
+            },
+            {
+              "type": "view",
+              "view_id": "V-glyph-swap-drawer"
+            }
+          ]
+        }
+      },
+      "project_id": "pebbles"
     }
   ],
   "edges": [
     {
-      "id": "e-V-my-path-F-create-pebble",
+      "id": "e-F-record-pebble-V-karma-flash",
       "project_id": "pebbles",
-      "source_id": "V-my-path",
-      "target_id": "F-create-pebble",
+      "source_id": "F-record-pebble",
+      "target_id": "V-karma-flash",
       "edge_type": "composes"
     },
     {
-      "id": "e-V-my-path-F-open-pebble",
+      "id": "e-V-karma-flash-DM-karma-events",
       "project_id": "pebbles",
-      "source_id": "V-my-path",
-      "target_id": "F-open-pebble",
+      "source_id": "V-karma-flash",
+      "target_id": "DM-karma-events",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-home-F-record-pebble",
+      "project_id": "pebbles",
+      "source_id": "V-home",
+      "target_id": "F-record-pebble",
       "edge_type": "composes"
     },
     {
-      "id": "e-V-my-path-F-weekly-wrap",
+      "id": "e-V-home-F-manage-collections",
       "project_id": "pebbles",
-      "source_id": "V-my-path",
+      "source_id": "V-home",
+      "target_id": "F-manage-collections",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-home-F-manage-souls",
+      "project_id": "pebbles",
+      "source_id": "V-home",
+      "target_id": "F-manage-souls",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-home-F-weekly-wrap",
+      "project_id": "pebbles",
+      "source_id": "V-home",
       "target_id": "F-weekly-wrap",
       "edge_type": "composes"
     },
-
     {
-      "id": "e-F-create-pebble-F-create-record",
+      "id": "e-V-home-F-monthly-wrap",
       "project_id": "pebbles",
-      "source_id": "F-create-pebble",
-      "target_id": "F-create-record",
+      "source_id": "V-home",
+      "target_id": "F-monthly-wrap",
       "edge_type": "composes"
     },
     {
-      "id": "e-F-create-pebble-F-shape-emotion",
+      "id": "e-V-home-F-gamification",
       "project_id": "pebbles",
-      "source_id": "F-create-pebble",
-      "target_id": "F-shape-emotion",
+      "source_id": "V-home",
+      "target_id": "F-gamification",
       "edge_type": "composes"
     },
     {
-      "id": "e-F-create-pebble-F-add-instant",
+      "id": "e-V-home-V-timeline",
       "project_id": "pebbles",
-      "source_id": "F-create-pebble",
-      "target_id": "F-add-instant",
+      "source_id": "V-home",
+      "target_id": "V-timeline",
       "edge_type": "composes"
     },
     {
-      "id": "e-F-create-pebble-F-add-place",
+      "id": "e-V-home-V-profile",
       "project_id": "pebbles",
-      "source_id": "F-create-pebble",
-      "target_id": "F-add-place",
+      "source_id": "V-home",
+      "target_id": "V-profile",
       "edge_type": "composes"
     },
     {
-      "id": "e-F-create-pebble-V-created-pebble-success",
+      "id": "e-V-profile-V-settings",
       "project_id": "pebbles",
-      "source_id": "F-create-pebble",
-      "target_id": "V-created-pebble-success",
+      "source_id": "V-profile",
+      "target_id": "V-settings",
       "edge_type": "composes"
     },
     {
-      "id": "e-F-create-pebble-V-bounce-plus-one-reward",
+      "id": "e-F-record-pebble-V-quick-pebble-editor",
       "project_id": "pebbles",
-      "source_id": "F-create-pebble",
-      "target_id": "V-bounce-plus-one-reward",
+      "source_id": "F-record-pebble",
+      "target_id": "V-quick-pebble-editor",
       "edge_type": "composes"
     },
     {
-      "id": "e-F-create-pebble-V-pebble-page",
+      "id": "e-F-record-pebble-V-pebble-record",
       "project_id": "pebbles",
-      "source_id": "F-create-pebble",
-      "target_id": "V-pebble-page",
-      "edge_type": "composes"
-    },
-
-    {
-      "id": "e-F-open-pebble-V-pebble-page",
-      "project_id": "pebbles",
-      "source_id": "F-open-pebble",
-      "target_id": "V-pebble-page",
+      "source_id": "F-record-pebble",
+      "target_id": "V-pebble-record",
       "edge_type": "composes"
     },
     {
-      "id": "e-F-open-pebble-F-pebble-edition",
+      "id": "e-F-record-pebble-V-pebble-intensity",
       "project_id": "pebbles",
-      "source_id": "F-open-pebble",
-      "target_id": "F-pebble-edition",
-      "edge_type": "composes"
-    },
-
-    {
-      "id": "e-F-weekly-wrap-V-wrap-launcher",
-      "project_id": "pebbles",
-      "source_id": "F-weekly-wrap",
-      "target_id": "V-wrap-launcher",
-      "edge_type": "composes"
-    },
-    {
-      "id": "e-F-weekly-wrap-V-week-highlight",
-      "project_id": "pebbles",
-      "source_id": "F-weekly-wrap",
-      "target_id": "V-week-highlight",
-      "edge_type": "composes"
-    },
-    {
-      "id": "e-F-weekly-wrap-V-week-stats",
-      "project_id": "pebbles",
-      "source_id": "F-weekly-wrap",
-      "target_id": "V-week-stats",
-      "edge_type": "composes"
-    },
-    {
-      "id": "e-F-weekly-wrap-V-week-reward",
-      "project_id": "pebbles",
-      "source_id": "F-weekly-wrap",
-      "target_id": "V-week-reward",
-      "edge_type": "composes"
-    },
-    {
-      "id": "e-F-weekly-wrap-V-month-progression",
-      "project_id": "pebbles",
-      "source_id": "F-weekly-wrap",
-      "target_id": "V-month-progression",
-      "edge_type": "composes"
-    },
-    {
-      "id": "e-F-weekly-wrap-V-month-reward",
-      "project_id": "pebbles",
-      "source_id": "F-weekly-wrap",
-      "target_id": "V-month-reward",
-      "edge_type": "composes"
-    },
-
-    {
-      "id": "e-F-create-record-V-pebble-time",
-      "project_id": "pebbles",
-      "source_id": "F-create-record",
-      "target_id": "V-pebble-time",
-      "edge_type": "composes"
-    },
-    {
-      "id": "e-F-create-record-V-pebble-name",
-      "project_id": "pebbles",
-      "source_id": "F-create-record",
-      "target_id": "V-pebble-name",
-      "edge_type": "composes"
-    },
-    {
-      "id": "e-F-create-record-V-pebble-intensity",
-      "project_id": "pebbles",
-      "source_id": "F-create-record",
+      "source_id": "F-record-pebble",
       "target_id": "V-pebble-intensity",
       "edge_type": "composes"
     },
     {
-      "id": "e-F-create-record-V-pebble-record-summary",
+      "id": "e-F-record-pebble-V-emotion-pearl",
       "project_id": "pebbles",
-      "source_id": "F-create-record",
-      "target_id": "V-pebble-record-summary",
+      "source_id": "F-record-pebble",
+      "target_id": "V-emotion-pearl",
       "edge_type": "composes"
     },
-
     {
-      "id": "e-V-pebble-record-summary-API-create-record",
+      "id": "e-F-record-pebble-V-instant-attach",
       "project_id": "pebbles",
-      "source_id": "V-pebble-record-summary",
-      "target_id": "API-create-record",
+      "source_id": "F-record-pebble",
+      "target_id": "V-instant-attach",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-record-pebble-V-soul-link",
+      "project_id": "pebbles",
+      "source_id": "F-record-pebble",
+      "target_id": "V-soul-link",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-record-pebble-V-domain-attach",
+      "project_id": "pebbles",
+      "source_id": "F-record-pebble",
+      "target_id": "V-domain-attach",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-record-pebble-V-glyph-attach",
+      "project_id": "pebbles",
+      "source_id": "F-record-pebble",
+      "target_id": "V-glyph-attach",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-record-pebble-V-cards-thoughts",
+      "project_id": "pebbles",
+      "source_id": "F-record-pebble",
+      "target_id": "V-cards-thoughts",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-record-pebble-V-pebble-detail",
+      "project_id": "pebbles",
+      "source_id": "F-record-pebble",
+      "target_id": "V-pebble-detail",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-record-pebble-V-pebble-revelation",
+      "project_id": "pebbles",
+      "source_id": "F-record-pebble",
+      "target_id": "V-pebble-revelation",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-record-pebble-V-record-celebration",
+      "project_id": "pebbles",
+      "source_id": "F-record-pebble",
+      "target_id": "V-record-celebration",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-onboarding-V-onboarding-intro",
+      "project_id": "pebbles",
+      "source_id": "F-onboarding",
+      "target_id": "V-onboarding-intro",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-onboarding-V-onboarding-concept",
+      "project_id": "pebbles",
+      "source_id": "F-onboarding",
+      "target_id": "V-onboarding-concept",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-onboarding-V-onboarding-qualify",
+      "project_id": "pebbles",
+      "source_id": "F-onboarding",
+      "target_id": "V-onboarding-qualify",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-onboarding-V-onboarding-carving",
+      "project_id": "pebbles",
+      "source_id": "F-onboarding",
+      "target_id": "V-onboarding-carving",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-onboarding-V-home",
+      "project_id": "pebbles",
+      "source_id": "F-onboarding",
+      "target_id": "V-home",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-manage-collections-V-collections-list",
+      "project_id": "pebbles",
+      "source_id": "F-manage-collections",
+      "target_id": "V-collections-list",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-manage-collections-V-collection-detail",
+      "project_id": "pebbles",
+      "source_id": "F-manage-collections",
+      "target_id": "V-collection-detail",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-manage-collections-V-collection-create",
+      "project_id": "pebbles",
+      "source_id": "F-manage-collections",
+      "target_id": "V-collection-create",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-manage-collections-V-collection-edit",
+      "project_id": "pebbles",
+      "source_id": "F-manage-collections",
+      "target_id": "V-collection-edit",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-manage-collections-V-collection-rise",
+      "project_id": "pebbles",
+      "source_id": "F-manage-collections",
+      "target_id": "V-collection-rise",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-manage-souls-V-souls-list",
+      "project_id": "pebbles",
+      "source_id": "F-manage-souls",
+      "target_id": "V-souls-list",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-manage-souls-V-soul-detail",
+      "project_id": "pebbles",
+      "source_id": "F-manage-souls",
+      "target_id": "V-soul-detail",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-manage-souls-V-soul-create",
+      "project_id": "pebbles",
+      "source_id": "F-manage-souls",
+      "target_id": "V-soul-create",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-manage-souls-V-soul-edit",
+      "project_id": "pebbles",
+      "source_id": "F-manage-souls",
+      "target_id": "V-soul-edit",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-weekly-wrap-V-weekly-cairn-intro",
+      "project_id": "pebbles",
+      "source_id": "F-weekly-wrap",
+      "target_id": "V-weekly-cairn-intro",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-weekly-wrap-V-weekly-cairn",
+      "project_id": "pebbles",
+      "source_id": "F-weekly-wrap",
+      "target_id": "V-weekly-cairn",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-weekly-wrap-V-weekly-cairn-review",
+      "project_id": "pebbles",
+      "source_id": "F-weekly-wrap",
+      "target_id": "V-weekly-cairn-review",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-monthly-wrap-V-monthly-cairn-intro",
+      "project_id": "pebbles",
+      "source_id": "F-monthly-wrap",
+      "target_id": "V-monthly-cairn-intro",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-monthly-wrap-V-monthly-cairn",
+      "project_id": "pebbles",
+      "source_id": "F-monthly-wrap",
+      "target_id": "V-monthly-cairn",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-monthly-wrap-V-monthly-cairn-review",
+      "project_id": "pebbles",
+      "source_id": "F-monthly-wrap",
+      "target_id": "V-monthly-cairn-review",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-gamification-V-bounce-tempo",
+      "project_id": "pebbles",
+      "source_id": "F-gamification",
+      "target_id": "V-bounce-tempo",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-gamification-V-collection-rise",
+      "project_id": "pebbles",
+      "source_id": "F-gamification",
+      "target_id": "V-collection-rise",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-gamification-V-achievements",
+      "project_id": "pebbles",
+      "source_id": "F-gamification",
+      "target_id": "V-achievements",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-pebble-record-API-create-pebble",
+      "project_id": "pebbles",
+      "source_id": "V-pebble-record",
+      "target_id": "API-create-pebble",
       "edge_type": "calls"
     },
     {
-      "id": "e-V-pebble-page-API-get-single-pebble",
+      "id": "e-V-pebble-intensity-API-set-intensity",
       "project_id": "pebbles",
-      "source_id": "V-pebble-page",
-      "target_id": "API-get-single-pebble",
+      "source_id": "V-pebble-intensity",
+      "target_id": "API-set-intensity",
       "edge_type": "calls"
     },
     {
-      "id": "e-V-created-pebble-success-API-get-single-pebble",
+      "id": "e-V-emotion-pearl-API-create-emotion-pearl",
       "project_id": "pebbles",
-      "source_id": "V-created-pebble-success",
-      "target_id": "API-get-single-pebble",
+      "source_id": "V-emotion-pearl",
+      "target_id": "API-create-emotion-pearl",
       "edge_type": "calls"
     },
     {
-      "id": "e-V-my-path-API-get-pebbles",
+      "id": "e-V-soul-link-API-link-soul",
       "project_id": "pebbles",
-      "source_id": "V-my-path",
+      "source_id": "V-soul-link",
+      "target_id": "API-link-soul",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-soul-link-API-get-souls",
+      "project_id": "pebbles",
+      "source_id": "V-soul-link",
+      "target_id": "API-get-souls",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-domain-attach-API-attach-domain",
+      "project_id": "pebbles",
+      "source_id": "V-domain-attach",
+      "target_id": "API-attach-domain",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-cards-thoughts-API-add-card",
+      "project_id": "pebbles",
+      "source_id": "V-cards-thoughts",
+      "target_id": "API-add-card",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-cards-thoughts-API-add-thought",
+      "project_id": "pebbles",
+      "source_id": "V-cards-thoughts",
+      "target_id": "API-add-thought",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-pebble-detail-API-get-pebble",
+      "project_id": "pebbles",
+      "source_id": "V-pebble-detail",
+      "target_id": "API-get-pebble",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-home-API-get-pebbles",
+      "project_id": "pebbles",
+      "source_id": "V-home",
       "target_id": "API-get-pebbles",
       "edge_type": "calls"
     },
-
     {
-      "id": "e-API-get-pebbles-DM-consolidated-pebbles-view",
+      "id": "e-V-home-API-get-bounce",
       "project_id": "pebbles",
-      "source_id": "API-get-pebbles",
-      "target_id": "DM-consolidated-pebbles-view",
+      "source_id": "V-home",
+      "target_id": "API-get-bounce",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-timeline-API-get-pebbles",
+      "project_id": "pebbles",
+      "source_id": "V-timeline",
+      "target_id": "API-get-pebbles",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-souls-list-API-get-souls",
+      "project_id": "pebbles",
+      "source_id": "V-souls-list",
+      "target_id": "API-get-souls",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-soul-create-API-create-soul",
+      "project_id": "pebbles",
+      "source_id": "V-soul-create",
+      "target_id": "API-create-soul",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-soul-edit-API-update-soul",
+      "project_id": "pebbles",
+      "source_id": "V-soul-edit",
+      "target_id": "API-update-soul",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-souls-list-API-delete-soul",
+      "project_id": "pebbles",
+      "source_id": "V-souls-list",
+      "target_id": "API-delete-soul",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-soul-detail-API-get-pebbles",
+      "project_id": "pebbles",
+      "source_id": "V-soul-detail",
+      "target_id": "API-get-pebbles",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-collections-list-API-get-collections",
+      "project_id": "pebbles",
+      "source_id": "V-collections-list",
+      "target_id": "API-get-collections",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-collection-create-API-create-collection",
+      "project_id": "pebbles",
+      "source_id": "V-collection-create",
+      "target_id": "API-create-collection",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-bounce-tempo-API-get-bounce",
+      "project_id": "pebbles",
+      "source_id": "V-bounce-tempo",
+      "target_id": "API-get-bounce",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-collection-rise-API-get-collection-rise",
+      "project_id": "pebbles",
+      "source_id": "V-collection-rise",
+      "target_id": "API-get-collection-rise",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-achievements-API-get-achievements",
+      "project_id": "pebbles",
+      "source_id": "V-achievements",
+      "target_id": "API-get-achievements",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-weekly-cairn-API-get-weekly-cairn",
+      "project_id": "pebbles",
+      "source_id": "V-weekly-cairn",
+      "target_id": "API-get-weekly-cairn",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-monthly-cairn-API-get-monthly-cairn",
+      "project_id": "pebbles",
+      "source_id": "V-monthly-cairn",
+      "target_id": "API-get-monthly-cairn",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-onboarding-carving-V-home",
+      "project_id": "pebbles",
+      "source_id": "V-onboarding-carving",
+      "target_id": "V-home",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-home-DM-pebble",
+      "project_id": "pebbles",
+      "source_id": "V-home",
+      "target_id": "DM-pebble",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-home-DM-bounce",
+      "project_id": "pebbles",
+      "source_id": "V-home",
+      "target_id": "DM-bounce",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-timeline-DM-pebble",
+      "project_id": "pebbles",
+      "source_id": "V-timeline",
+      "target_id": "DM-pebble",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-pebble-detail-DM-pebble",
+      "project_id": "pebbles",
+      "source_id": "V-pebble-detail",
+      "target_id": "DM-pebble",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-pebble-detail-DM-emotion-pearl",
+      "project_id": "pebbles",
+      "source_id": "V-pebble-detail",
+      "target_id": "DM-emotion-pearl",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-pebble-detail-DM-soul",
+      "project_id": "pebbles",
+      "source_id": "V-pebble-detail",
+      "target_id": "DM-soul",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-pebble-detail-DM-card",
+      "project_id": "pebbles",
+      "source_id": "V-pebble-detail",
+      "target_id": "DM-card",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-pebble-detail-DM-thought",
+      "project_id": "pebbles",
+      "source_id": "V-pebble-detail",
+      "target_id": "DM-thought",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-pebble-detail-DM-domain",
+      "project_id": "pebbles",
+      "source_id": "V-pebble-detail",
+      "target_id": "DM-domain",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-emotion-pearl-DM-emotion-pearl",
+      "project_id": "pebbles",
+      "source_id": "V-emotion-pearl",
+      "target_id": "DM-emotion-pearl",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-domain-attach-DM-domain",
+      "project_id": "pebbles",
+      "source_id": "V-domain-attach",
+      "target_id": "DM-domain",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-collections-list-DM-collection",
+      "project_id": "pebbles",
+      "source_id": "V-collections-list",
+      "target_id": "DM-collection",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-collection-detail-DM-collection",
+      "project_id": "pebbles",
+      "source_id": "V-collection-detail",
+      "target_id": "DM-collection",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-collection-detail-DM-pebble",
+      "project_id": "pebbles",
+      "source_id": "V-collection-detail",
+      "target_id": "DM-pebble",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-collection-edit-DM-collection",
+      "project_id": "pebbles",
+      "source_id": "V-collection-edit",
+      "target_id": "DM-collection",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-collection-create-DM-collection",
+      "project_id": "pebbles",
+      "source_id": "V-collection-create",
+      "target_id": "DM-collection",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-souls-list-DM-soul",
+      "project_id": "pebbles",
+      "source_id": "V-souls-list",
+      "target_id": "DM-soul",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-soul-detail-DM-soul",
+      "project_id": "pebbles",
+      "source_id": "V-soul-detail",
+      "target_id": "DM-soul",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-soul-detail-DM-pebble",
+      "project_id": "pebbles",
+      "source_id": "V-soul-detail",
+      "target_id": "DM-pebble",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-soul-edit-DM-soul",
+      "project_id": "pebbles",
+      "source_id": "V-soul-edit",
+      "target_id": "DM-soul",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-bounce-tempo-DM-bounce",
+      "project_id": "pebbles",
+      "source_id": "V-bounce-tempo",
+      "target_id": "DM-bounce",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-collection-rise-DM-collection",
+      "project_id": "pebbles",
+      "source_id": "V-collection-rise",
+      "target_id": "DM-collection",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-achievements-DM-achievement",
+      "project_id": "pebbles",
+      "source_id": "V-achievements",
+      "target_id": "DM-achievement",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-weekly-cairn-DM-cairn",
+      "project_id": "pebbles",
+      "source_id": "V-weekly-cairn",
+      "target_id": "DM-cairn",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-weekly-cairn-DM-pebble",
+      "project_id": "pebbles",
+      "source_id": "V-weekly-cairn",
+      "target_id": "DM-pebble",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-monthly-cairn-DM-cairn",
+      "project_id": "pebbles",
+      "source_id": "V-monthly-cairn",
+      "target_id": "DM-cairn",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-monthly-cairn-DM-pebble",
+      "project_id": "pebbles",
+      "source_id": "V-monthly-cairn",
+      "target_id": "DM-pebble",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-profile-DM-profile",
+      "project_id": "pebbles",
+      "source_id": "V-profile",
+      "target_id": "DM-profile",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-profile-DM-bounce",
+      "project_id": "pebbles",
+      "source_id": "V-profile",
+      "target_id": "DM-bounce",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-API-create-pebble-DM-pebble",
+      "project_id": "pebbles",
+      "source_id": "API-create-pebble",
+      "target_id": "DM-pebble",
       "edge_type": "queries"
     },
     {
-      "id": "e-API-get-single-pebble-DM-consolidated-pebble-view",
+      "id": "e-API-get-pebbles-DM-pebble",
       "project_id": "pebbles",
-      "source_id": "API-get-single-pebble",
-      "target_id": "DM-consolidated-pebble-view",
+      "source_id": "API-get-pebbles",
+      "target_id": "DM-pebble",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-pebble-DM-pebble",
+      "project_id": "pebbles",
+      "source_id": "API-get-pebble",
+      "target_id": "DM-pebble",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-set-intensity-DM-pebble",
+      "project_id": "pebbles",
+      "source_id": "API-set-intensity",
+      "target_id": "DM-pebble",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-create-emotion-pearl-DM-emotion-pearl",
+      "project_id": "pebbles",
+      "source_id": "API-create-emotion-pearl",
+      "target_id": "DM-emotion-pearl",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-link-soul-DM-pebble",
+      "project_id": "pebbles",
+      "source_id": "API-link-soul",
+      "target_id": "DM-pebble",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-link-soul-DM-soul",
+      "project_id": "pebbles",
+      "source_id": "API-link-soul",
+      "target_id": "DM-soul",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-attach-domain-DM-pebble",
+      "project_id": "pebbles",
+      "source_id": "API-attach-domain",
+      "target_id": "DM-pebble",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-attach-domain-DM-domain",
+      "project_id": "pebbles",
+      "source_id": "API-attach-domain",
+      "target_id": "DM-domain",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-add-card-DM-card",
+      "project_id": "pebbles",
+      "source_id": "API-add-card",
+      "target_id": "DM-card",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-add-thought-DM-thought",
+      "project_id": "pebbles",
+      "source_id": "API-add-thought",
+      "target_id": "DM-thought",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-souls-DM-soul",
+      "project_id": "pebbles",
+      "source_id": "API-get-souls",
+      "target_id": "DM-soul",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-create-soul-DM-soul",
+      "project_id": "pebbles",
+      "source_id": "API-create-soul",
+      "target_id": "DM-soul",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-update-soul-DM-soul",
+      "project_id": "pebbles",
+      "source_id": "API-update-soul",
+      "target_id": "DM-soul",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-delete-soul-DM-soul",
+      "project_id": "pebbles",
+      "source_id": "API-delete-soul",
+      "target_id": "DM-soul",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-collections-DM-collection",
+      "project_id": "pebbles",
+      "source_id": "API-get-collections",
+      "target_id": "DM-collection",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-create-collection-DM-collection",
+      "project_id": "pebbles",
+      "source_id": "API-create-collection",
+      "target_id": "DM-collection",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-bounce-DM-bounce",
+      "project_id": "pebbles",
+      "source_id": "API-get-bounce",
+      "target_id": "DM-bounce",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-achievements-DM-achievement",
+      "project_id": "pebbles",
+      "source_id": "API-get-achievements",
+      "target_id": "DM-achievement",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-weekly-cairn-DM-cairn",
+      "project_id": "pebbles",
+      "source_id": "API-get-weekly-cairn",
+      "target_id": "DM-cairn",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-weekly-cairn-DM-pebble",
+      "project_id": "pebbles",
+      "source_id": "API-get-weekly-cairn",
+      "target_id": "DM-pebble",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-monthly-cairn-DM-cairn",
+      "project_id": "pebbles",
+      "source_id": "API-get-monthly-cairn",
+      "target_id": "DM-cairn",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-monthly-cairn-DM-pebble",
+      "project_id": "pebbles",
+      "source_id": "API-get-monthly-cairn",
+      "target_id": "DM-pebble",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-register-DM-account",
+      "project_id": "pebbles",
+      "source_id": "API-register",
+      "target_id": "DM-account",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-register-DM-profile",
+      "project_id": "pebbles",
+      "source_id": "API-register",
+      "target_id": "DM-profile",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-login-DM-account",
+      "project_id": "pebbles",
+      "source_id": "API-login",
+      "target_id": "DM-account",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-logout-DM-account",
+      "project_id": "pebbles",
+      "source_id": "API-logout",
+      "target_id": "DM-account",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-session-DM-account",
+      "project_id": "pebbles",
+      "source_id": "API-get-session",
+      "target_id": "DM-account",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-profile-DM-profile",
+      "project_id": "pebbles",
+      "source_id": "API-get-profile",
+      "target_id": "DM-profile",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-update-profile-DM-profile",
+      "project_id": "pebbles",
+      "source_id": "API-update-profile",
+      "target_id": "DM-profile",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-collection-rise-DM-collection",
+      "project_id": "pebbles",
+      "source_id": "API-get-collection-rise",
+      "target_id": "DM-collection",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-V-home-F-manage-glyphs",
+      "project_id": "pebbles",
+      "source_id": "V-home",
+      "target_id": "F-manage-glyphs",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-manage-glyphs-V-glyphs-list",
+      "project_id": "pebbles",
+      "source_id": "F-manage-glyphs",
+      "target_id": "V-glyphs-list",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-manage-glyphs-V-glyph-detail",
+      "project_id": "pebbles",
+      "source_id": "F-manage-glyphs",
+      "target_id": "V-glyph-detail",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-manage-glyphs-V-glyph-carve",
+      "project_id": "pebbles",
+      "source_id": "F-manage-glyphs",
+      "target_id": "V-glyph-carve",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-glyphs-list-API-get-marks",
+      "project_id": "pebbles",
+      "source_id": "V-glyphs-list",
+      "target_id": "API-get-marks",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-glyph-carve-API-create-mark",
+      "project_id": "pebbles",
+      "source_id": "V-glyph-carve",
+      "target_id": "API-create-mark",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-glyph-detail-API-delete-mark",
+      "project_id": "pebbles",
+      "source_id": "V-glyph-detail",
+      "target_id": "API-delete-mark",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-glyphs-list-DM-mark",
+      "project_id": "pebbles",
+      "source_id": "V-glyphs-list",
+      "target_id": "DM-mark",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-glyph-detail-DM-mark",
+      "project_id": "pebbles",
+      "source_id": "V-glyph-detail",
+      "target_id": "DM-mark",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-API-get-marks-DM-mark",
+      "project_id": "pebbles",
+      "source_id": "API-get-marks",
+      "target_id": "DM-mark",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-create-mark-DM-mark",
+      "project_id": "pebbles",
+      "source_id": "API-create-mark",
+      "target_id": "DM-mark",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-delete-mark-DM-mark",
+      "project_id": "pebbles",
+      "source_id": "API-delete-mark",
+      "target_id": "DM-mark",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-V-instant-attach-DM-instant",
+      "project_id": "pebbles",
+      "source_id": "V-instant-attach",
+      "target_id": "DM-instant",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-pebble-detail-DM-instant",
+      "project_id": "pebbles",
+      "source_id": "V-pebble-detail",
+      "target_id": "DM-instant",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-glyph-attach-DM-mark",
+      "project_id": "pebbles",
+      "source_id": "V-glyph-attach",
+      "target_id": "DM-mark",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-glyph-attach-API-get-marks",
+      "project_id": "pebbles",
+      "source_id": "V-glyph-attach",
+      "target_id": "API-get-marks",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-glyph-attach-API-create-mark",
+      "project_id": "pebbles",
+      "source_id": "V-glyph-attach",
+      "target_id": "API-create-mark",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-home-V-mechanic-sheet",
+      "project_id": "pebbles",
+      "source_id": "V-home",
+      "target_id": "V-mechanic-sheet",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-mechanic-sheet-DM-bounce",
+      "project_id": "pebbles",
+      "source_id": "V-mechanic-sheet",
+      "target_id": "DM-bounce",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-landing-V-home",
+      "project_id": "pebbles",
+      "source_id": "V-landing",
+      "target_id": "V-home",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-landing-V-login",
+      "project_id": "pebbles",
+      "source_id": "V-landing",
+      "target_id": "V-login",
+      "edge_type": "composes",
+      "metadata": {
+        "cta": "Log in",
+        "ios_trigger": "AuthView(initialMode: .login)"
+      }
+    },
+    {
+      "id": "e-V-landing-V-register",
+      "project_id": "pebbles",
+      "source_id": "V-landing",
+      "target_id": "V-register",
+      "edge_type": "composes",
+      "metadata": {
+        "cta": "Create an account",
+        "ios_trigger": "AuthView(initialMode: .signup)"
+      }
+    },
+    {
+      "id": "e-V-login-V-register",
+      "project_id": "pebbles",
+      "source_id": "V-login",
+      "target_id": "V-register",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-register-V-login",
+      "project_id": "pebbles",
+      "source_id": "V-register",
+      "target_id": "V-login",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-login-API-login",
+      "project_id": "pebbles",
+      "source_id": "V-login",
+      "target_id": "API-login",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-register-API-register",
+      "project_id": "pebbles",
+      "source_id": "V-register",
+      "target_id": "API-register",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-pebble-revelation-V-pebble-visual",
+      "project_id": "pebbles",
+      "source_id": "V-pebble-revelation",
+      "target_id": "V-pebble-visual",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-pebble-detail-V-pebble-visual",
+      "project_id": "pebbles",
+      "source_id": "V-pebble-detail",
+      "target_id": "V-pebble-visual",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-pebble-detail-V-quick-pebble-editor",
+      "project_id": "pebbles",
+      "source_id": "V-pebble-detail",
+      "target_id": "V-quick-pebble-editor",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-timeline-V-pebble-visual",
+      "project_id": "pebbles",
+      "source_id": "V-timeline",
+      "target_id": "V-pebble-visual",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-timeline-F-onboarding",
+      "project_id": "pebbles",
+      "source_id": "V-timeline",
+      "target_id": "F-onboarding",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-pebble-visual-DM-pebble-engine",
+      "project_id": "pebbles",
+      "source_id": "V-pebble-visual",
+      "target_id": "DM-pebble-engine",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-quick-pebble-editor-API-create-pebble",
+      "project_id": "pebbles",
+      "source_id": "V-quick-pebble-editor",
+      "target_id": "API-create-pebble",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-quick-pebble-editor-API-get-souls",
+      "project_id": "pebbles",
+      "source_id": "V-quick-pebble-editor",
+      "target_id": "API-get-souls",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-quick-pebble-editor-API-get-marks",
+      "project_id": "pebbles",
+      "source_id": "V-quick-pebble-editor",
+      "target_id": "API-get-marks",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-quick-pebble-editor-API-get-collections",
+      "project_id": "pebbles",
+      "source_id": "V-quick-pebble-editor",
+      "target_id": "API-get-collections",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-quick-pebble-editor-DM-pebble",
+      "project_id": "pebbles",
+      "source_id": "V-quick-pebble-editor",
+      "target_id": "DM-pebble",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-quick-pebble-editor-DM-emotion-pearl",
+      "project_id": "pebbles",
+      "source_id": "V-quick-pebble-editor",
+      "target_id": "DM-emotion-pearl",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-quick-pebble-editor-DM-soul",
+      "project_id": "pebbles",
+      "source_id": "V-quick-pebble-editor",
+      "target_id": "DM-soul",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-quick-pebble-editor-DM-domain",
+      "project_id": "pebbles",
+      "source_id": "V-quick-pebble-editor",
+      "target_id": "DM-domain",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-quick-pebble-editor-DM-instant",
+      "project_id": "pebbles",
+      "source_id": "V-quick-pebble-editor",
+      "target_id": "DM-instant",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-quick-pebble-editor-DM-mark",
+      "project_id": "pebbles",
+      "source_id": "V-quick-pebble-editor",
+      "target_id": "DM-mark",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-quick-pebble-editor-DM-collection",
+      "project_id": "pebbles",
+      "source_id": "V-quick-pebble-editor",
+      "target_id": "DM-collection",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-docs-index-V-docs-slug",
+      "project_id": "pebbles",
+      "source_id": "V-docs-index",
+      "target_id": "V-docs-slug",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-register-V-docs-terms",
+      "project_id": "pebbles",
+      "source_id": "V-register",
+      "target_id": "V-docs-terms",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-register-V-docs-privacy",
+      "project_id": "pebbles",
+      "source_id": "V-register",
+      "target_id": "V-docs-privacy",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-profile-V-docs-legal-notice",
+      "project_id": "pebbles",
+      "source_id": "V-profile",
+      "target_id": "V-docs-legal-notice",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-profile-V-docs-terms",
+      "project_id": "pebbles",
+      "source_id": "V-profile",
+      "target_id": "V-docs-terms",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-profile-V-docs-privacy",
+      "project_id": "pebbles",
+      "source_id": "V-profile",
+      "target_id": "V-docs-privacy",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-docs-index-V-docs-legal-notice",
+      "project_id": "pebbles",
+      "source_id": "V-docs-index",
+      "target_id": "V-docs-legal-notice",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-docs-index-V-docs-terms",
+      "project_id": "pebbles",
+      "source_id": "V-docs-index",
+      "target_id": "V-docs-terms",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-docs-index-V-docs-privacy",
+      "project_id": "pebbles",
+      "source_id": "V-docs-index",
+      "target_id": "V-docs-privacy",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-legal-consent-V-register",
+      "project_id": "pebbles",
+      "source_id": "F-legal-consent",
+      "target_id": "V-register",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-profile-V-lab",
+      "project_id": "pebbles",
+      "source_id": "V-profile",
+      "target_id": "V-lab",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-admin-analytics-API-get-kpi-daily",
+      "project_id": "pebbles",
+      "source_id": "V-admin-analytics",
+      "target_id": "API-get-kpi-daily",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-admin-analytics-API-get-active-users-series",
+      "project_id": "pebbles",
+      "source_id": "V-admin-analytics",
+      "target_id": "API-get-active-users-series",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-admin-analytics-DM-v-analytics-kpi-daily",
+      "project_id": "pebbles",
+      "source_id": "V-admin-analytics",
+      "target_id": "DM-v-analytics-kpi-daily",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-admin-analytics-DM-v-analytics-active-users-daily",
+      "project_id": "pebbles",
+      "source_id": "V-admin-analytics",
+      "target_id": "DM-v-analytics-active-users-daily",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-API-get-kpi-daily-DM-v-analytics-kpi-daily",
+      "project_id": "pebbles",
+      "source_id": "API-get-kpi-daily",
+      "target_id": "DM-v-analytics-kpi-daily",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-kpi-daily-DM-pebble",
+      "project_id": "pebbles",
+      "source_id": "API-get-kpi-daily",
+      "target_id": "DM-pebble",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-kpi-daily-DM-account",
+      "project_id": "pebbles",
+      "source_id": "API-get-kpi-daily",
+      "target_id": "DM-account",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-active-users-series-DM-v-analytics-active-users-daily",
+      "project_id": "pebbles",
+      "source_id": "API-get-active-users-series",
+      "target_id": "DM-v-analytics-active-users-daily",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-active-users-series-DM-pebble",
+      "project_id": "pebbles",
+      "source_id": "API-get-active-users-series",
+      "target_id": "DM-pebble",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-V-admin-analytics-API-get-retention-cohorts",
+      "project_id": "pebbles",
+      "source_id": "V-admin-analytics",
+      "target_id": "API-get-retention-cohorts",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-admin-analytics-DM-v-analytics-retention-cohorts-weekly",
+      "project_id": "pebbles",
+      "source_id": "V-admin-analytics",
+      "target_id": "DM-v-analytics-retention-cohorts-weekly",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-API-get-retention-cohorts-DM-v-analytics-retention-cohorts-weekly",
+      "project_id": "pebbles",
+      "source_id": "API-get-retention-cohorts",
+      "target_id": "DM-v-analytics-retention-cohorts-weekly",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-retention-cohorts-DM-pebble",
+      "project_id": "pebbles",
+      "source_id": "API-get-retention-cohorts",
+      "target_id": "DM-pebble",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-retention-cohorts-DM-account",
+      "project_id": "pebbles",
+      "source_id": "API-get-retention-cohorts",
+      "target_id": "DM-account",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-V-admin-analytics-API-get-emotion-share",
+      "project_id": "pebbles",
+      "source_id": "V-admin-analytics",
+      "target_id": "API-get-emotion-share",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-admin-analytics-API-get-domain-share",
+      "project_id": "pebbles",
+      "source_id": "V-admin-analytics",
+      "target_id": "API-get-domain-share",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-admin-analytics-DM-v-analytics-emotion-share-weekly",
+      "project_id": "pebbles",
+      "source_id": "V-admin-analytics",
+      "target_id": "DM-v-analytics-emotion-share-weekly",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-admin-analytics-DM-v-analytics-domain-share-weekly",
+      "project_id": "pebbles",
+      "source_id": "V-admin-analytics",
+      "target_id": "DM-v-analytics-domain-share-weekly",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-API-get-emotion-share-DM-v-analytics-emotion-share-weekly",
+      "project_id": "pebbles",
+      "source_id": "API-get-emotion-share",
+      "target_id": "DM-v-analytics-emotion-share-weekly",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-domain-share-DM-v-analytics-domain-share-weekly",
+      "project_id": "pebbles",
+      "source_id": "API-get-domain-share",
+      "target_id": "DM-v-analytics-domain-share-weekly",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-V-admin-analytics-API-get-bounce-distribution-today",
+      "project_id": "pebbles",
+      "source_id": "V-admin-analytics",
+      "target_id": "API-get-bounce-distribution-today",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-admin-analytics-DM-v-analytics-bounce-distribution-today",
+      "project_id": "pebbles",
+      "source_id": "V-admin-analytics",
+      "target_id": "DM-v-analytics-bounce-distribution-today",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-API-get-bounce-distribution-today-DM-v-analytics-bounce-distribution-today",
+      "project_id": "pebbles",
+      "source_id": "API-get-bounce-distribution-today",
+      "target_id": "DM-v-analytics-bounce-distribution-today",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-bounce-distribution-today-DM-bounce",
+      "project_id": "pebbles",
+      "source_id": "API-get-bounce-distribution-today",
+      "target_id": "DM-bounce",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-bounce-distribution-today-DM-pebble",
+      "project_id": "pebbles",
+      "source_id": "API-get-bounce-distribution-today",
+      "target_id": "DM-pebble",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-V-admin-analytics-API-get-quality-signals-today",
+      "project_id": "pebbles",
+      "source_id": "V-admin-analytics",
+      "target_id": "API-get-quality-signals-today",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-admin-analytics-DM-v-analytics-quality-signals-today",
+      "project_id": "pebbles",
+      "source_id": "V-admin-analytics",
+      "target_id": "DM-v-analytics-quality-signals-today",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-API-get-quality-signals-today-DM-v-analytics-quality-signals-today",
+      "project_id": "pebbles",
+      "source_id": "API-get-quality-signals-today",
+      "target_id": "DM-v-analytics-quality-signals-today",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-quality-signals-today-DM-pebble",
+      "project_id": "pebbles",
+      "source_id": "API-get-quality-signals-today",
+      "target_id": "DM-pebble",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-quality-signals-today-DM-account",
+      "project_id": "pebbles",
+      "source_id": "API-get-quality-signals-today",
+      "target_id": "DM-account",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-emotion-palettes-DM-emotion-category",
+      "project_id": "pebbles",
+      "source_id": "API-get-emotion-palettes",
+      "target_id": "DM-emotion-category",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-V-timeline-API-get-emotion-palettes",
+      "project_id": "pebbles",
+      "source_id": "V-timeline",
+      "target_id": "API-get-emotion-palettes",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-timeline-DM-emotion-category",
+      "project_id": "pebbles",
+      "source_id": "V-timeline",
+      "target_id": "DM-emotion-category",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-pebble-detail-API-get-emotion-palettes",
+      "project_id": "pebbles",
+      "source_id": "V-pebble-detail",
+      "target_id": "API-get-emotion-palettes",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-pebble-detail-DM-emotion-category",
+      "project_id": "pebbles",
+      "source_id": "V-pebble-detail",
+      "target_id": "DM-emotion-category",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-soul-detail-API-get-emotion-palettes",
+      "project_id": "pebbles",
+      "source_id": "V-soul-detail",
+      "target_id": "API-get-emotion-palettes",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-soul-detail-DM-emotion-category",
+      "project_id": "pebbles",
+      "source_id": "V-soul-detail",
+      "target_id": "DM-emotion-category",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-collection-detail-API-get-emotion-palettes",
+      "project_id": "pebbles",
+      "source_id": "V-collection-detail",
+      "target_id": "API-get-emotion-palettes",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-collection-detail-DM-emotion-category",
+      "project_id": "pebbles",
+      "source_id": "V-collection-detail",
+      "target_id": "DM-emotion-category",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-quick-pebble-editor-API-get-emotion-palettes",
+      "project_id": "pebbles",
+      "source_id": "V-quick-pebble-editor",
+      "target_id": "API-get-emotion-palettes",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-quick-pebble-editor-DM-emotion-category",
+      "project_id": "pebbles",
+      "source_id": "V-quick-pebble-editor",
+      "target_id": "DM-emotion-category",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-timeline-V-wallet",
+      "project_id": "pebbles",
+      "source_id": "V-timeline",
+      "target_id": "V-wallet",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-wallet-API-get-wallet-summary",
+      "project_id": "pebbles",
+      "source_id": "V-wallet",
+      "target_id": "API-get-wallet-summary",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-wallet-DM-wallet-balances",
+      "project_id": "pebbles",
+      "source_id": "V-wallet",
+      "target_id": "DM-wallet-balances",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-wallet-DM-karma-events",
+      "project_id": "pebbles",
+      "source_id": "V-wallet",
+      "target_id": "DM-karma-events",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-API-get-wallet-summary-DM-wallet-balances",
+      "project_id": "pebbles",
+      "source_id": "API-get-wallet-summary",
+      "target_id": "DM-wallet-balances",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-get-wallet-summary-DM-karma-events",
+      "project_id": "pebbles",
+      "source_id": "API-get-wallet-summary",
+      "target_id": "DM-karma-events",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-spend-karma-DM-karma-events",
+      "project_id": "pebbles",
+      "source_id": "API-spend-karma",
+      "target_id": "DM-karma-events",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-spend-karma-DM-wallet-balances",
+      "project_id": "pebbles",
+      "source_id": "API-spend-karma",
+      "target_id": "DM-wallet-balances",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-refund-karma-DM-karma-events",
+      "project_id": "pebbles",
+      "source_id": "API-refund-karma",
+      "target_id": "DM-karma-events",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-refund-karma-DM-wallet-balances",
+      "project_id": "pebbles",
+      "source_id": "API-refund-karma",
+      "target_id": "DM-wallet-balances",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-V-admin-glyph-moderation-API-admin-list-glyph-submissions",
+      "project_id": "pebbles",
+      "source_id": "V-admin-glyph-moderation",
+      "target_id": "API-admin-list-glyph-submissions",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-admin-glyph-moderation-API-approve-glyph",
+      "project_id": "pebbles",
+      "source_id": "V-admin-glyph-moderation",
+      "target_id": "API-approve-glyph",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-admin-glyph-moderation-API-reject-glyph",
+      "project_id": "pebbles",
+      "source_id": "V-admin-glyph-moderation",
+      "target_id": "API-reject-glyph",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-admin-glyph-moderation-API-set-glyph-price",
+      "project_id": "pebbles",
+      "source_id": "V-admin-glyph-moderation",
+      "target_id": "API-set-glyph-price",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-admin-glyph-moderation-DM-glyph-submissions",
+      "project_id": "pebbles",
+      "source_id": "V-admin-glyph-moderation",
+      "target_id": "DM-glyph-submissions",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-admin-glyph-moderation-DM-glyphs",
+      "project_id": "pebbles",
+      "source_id": "V-admin-glyph-moderation",
+      "target_id": "DM-glyphs",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-admin-glyph-upload-API-publish-admin-glyph",
+      "project_id": "pebbles",
+      "source_id": "V-admin-glyph-upload",
+      "target_id": "API-publish-admin-glyph",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-admin-glyph-upload-DM-glyphs",
+      "project_id": "pebbles",
+      "source_id": "V-admin-glyph-upload",
+      "target_id": "DM-glyphs",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-admin-glyph-upload-DM-glyph-submissions",
+      "project_id": "pebbles",
+      "source_id": "V-admin-glyph-upload",
+      "target_id": "DM-glyph-submissions",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-API-admin-list-glyph-submissions-DM-glyph-submissions",
+      "project_id": "pebbles",
+      "source_id": "API-admin-list-glyph-submissions",
+      "target_id": "DM-glyph-submissions",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-admin-list-glyph-submissions-DM-glyphs",
+      "project_id": "pebbles",
+      "source_id": "API-admin-list-glyph-submissions",
+      "target_id": "DM-glyphs",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-approve-glyph-DM-glyph-submissions",
+      "project_id": "pebbles",
+      "source_id": "API-approve-glyph",
+      "target_id": "DM-glyph-submissions",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-reject-glyph-DM-glyph-submissions",
+      "project_id": "pebbles",
+      "source_id": "API-reject-glyph",
+      "target_id": "DM-glyph-submissions",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-set-glyph-price-DM-glyph-submissions",
+      "project_id": "pebbles",
+      "source_id": "API-set-glyph-price",
+      "target_id": "DM-glyph-submissions",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-publish-admin-glyph-DM-glyphs",
+      "project_id": "pebbles",
+      "source_id": "API-publish-admin-glyph",
+      "target_id": "DM-glyphs",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-publish-admin-glyph-DM-glyph-submissions",
+      "project_id": "pebbles",
+      "source_id": "API-publish-admin-glyph",
+      "target_id": "DM-glyph-submissions",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-V-admin-domains-API-admin-list-domains",
+      "project_id": "pebbles",
+      "source_id": "V-admin-domains",
+      "target_id": "API-admin-list-domains",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-admin-domains-API-admin-update-domain",
+      "project_id": "pebbles",
+      "source_id": "V-admin-domains",
+      "target_id": "API-admin-update-domain",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-admin-domains-API-admin-set-domain-glyph",
+      "project_id": "pebbles",
+      "source_id": "V-admin-domains",
+      "target_id": "API-admin-set-domain-glyph",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-admin-domains-DM-domain",
+      "project_id": "pebbles",
+      "source_id": "V-admin-domains",
+      "target_id": "DM-domain",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-admin-domains-DM-glyphs",
+      "project_id": "pebbles",
+      "source_id": "V-admin-domains",
+      "target_id": "DM-glyphs",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-API-admin-list-domains-DM-domain",
+      "project_id": "pebbles",
+      "source_id": "API-admin-list-domains",
+      "target_id": "DM-domain",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-admin-list-domains-DM-glyphs",
+      "project_id": "pebbles",
+      "source_id": "API-admin-list-domains",
+      "target_id": "DM-glyphs",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-admin-update-domain-DM-domain",
+      "project_id": "pebbles",
+      "source_id": "API-admin-update-domain",
+      "target_id": "DM-domain",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-admin-set-domain-glyph-DM-domain",
+      "project_id": "pebbles",
+      "source_id": "API-admin-set-domain-glyph",
+      "target_id": "DM-domain",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-admin-set-domain-glyph-DM-glyphs",
+      "project_id": "pebbles",
+      "source_id": "API-admin-set-domain-glyph",
+      "target_id": "DM-glyphs",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-V-pebble-detail-DM-v-domains-with-glyph",
+      "project_id": "pebbles",
+      "source_id": "V-pebble-detail",
+      "target_id": "DM-v-domains-with-glyph",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-quick-pebble-editor-DM-v-domains-with-glyph",
+      "project_id": "pebbles",
+      "source_id": "V-quick-pebble-editor",
+      "target_id": "DM-v-domains-with-glyph",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-F-manage-glyphs-V-glyph-swap-drawer",
+      "project_id": "pebbles",
+      "source_id": "F-manage-glyphs",
+      "target_id": "V-glyph-swap-drawer",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-swap-glyph-V-glyphs-list",
+      "project_id": "pebbles",
+      "source_id": "F-swap-glyph",
+      "target_id": "V-glyphs-list",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-swap-glyph-V-glyph-swap-drawer",
+      "project_id": "pebbles",
+      "source_id": "F-swap-glyph",
+      "target_id": "V-glyph-swap-drawer",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-swap-glyph-API-buy-glyph",
+      "project_id": "pebbles",
+      "source_id": "F-swap-glyph",
+      "target_id": "API-buy-glyph",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-glyph-swap-drawer-API-buy-glyph",
+      "project_id": "pebbles",
+      "source_id": "V-glyph-swap-drawer",
+      "target_id": "API-buy-glyph",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-glyph-swap-drawer-DM-glyphs",
+      "project_id": "pebbles",
+      "source_id": "V-glyph-swap-drawer",
+      "target_id": "DM-glyphs",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-glyph-swap-drawer-DM-glyph-entitlements",
+      "project_id": "pebbles",
+      "source_id": "V-glyph-swap-drawer",
+      "target_id": "DM-glyph-entitlements",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-glyphs-list-DM-glyphs",
+      "project_id": "pebbles",
+      "source_id": "V-glyphs-list",
+      "target_id": "DM-glyphs",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-V-glyphs-list-DM-glyph-entitlements",
+      "project_id": "pebbles",
+      "source_id": "V-glyphs-list",
+      "target_id": "DM-glyph-entitlements",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-API-buy-glyph-DM-glyph-entitlements",
+      "project_id": "pebbles",
+      "source_id": "API-buy-glyph",
+      "target_id": "DM-glyph-entitlements",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-buy-glyph-DM-glyphs",
+      "project_id": "pebbles",
+      "source_id": "API-buy-glyph",
+      "target_id": "DM-glyphs",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-buy-glyph-DM-wallet-balances",
+      "project_id": "pebbles",
+      "source_id": "API-buy-glyph",
+      "target_id": "DM-wallet-balances",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-buy-glyph-DM-karma-events",
+      "project_id": "pebbles",
+      "source_id": "API-buy-glyph",
+      "target_id": "DM-karma-events",
       "edge_type": "queries"
     }
   ]
