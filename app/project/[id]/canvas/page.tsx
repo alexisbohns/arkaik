@@ -20,6 +20,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useProject } from "@/lib/hooks/useProject";
+import { useJournal } from "@/lib/hooks/useJournal";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
 import { parseAndValidateBundle, downloadJson, exportProject, importProject, normalizeProjectTimestamps } from "@/lib/utils/export";
 import { generateNodeId } from "@/lib/utils/id";
@@ -152,6 +153,7 @@ export default function ProjectCanvasPage() {
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, removeNode, removeNodes } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading, addEdge, removeEdge } = useEdges(id);
   const { project: projectBundle, loading: projectLoading, updateProject } = useProject(id);
+  const { journal } = useJournal(id);
 
   const viewCardVariant: ViewCardVariant = projectBundle?.project.metadata?.view_card_variant === "large"
     ? "large"
@@ -1414,6 +1416,7 @@ export default function ProjectCanvasPage() {
         onDelete={handleDeleteNodeRequest}
         allNodes={dataNodes}
         allEdges={dataEdges}
+        journal={journal}
         onNavigate={handleNavigate}
         onCreateNode={handleCreateNodeFromPanel}
         onZoomShot={(node, platform) => {
