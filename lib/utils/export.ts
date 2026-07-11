@@ -85,6 +85,7 @@ async function ensureUniqueProjectId(initialId: string): Promise<string> {
 
 function rewriteBundleProjectId(bundle: ProjectBundle, newProjectId: string): ProjectBundle {
   return {
+    ...bundle,
     project: { ...bundle.project, id: newProjectId },
     nodes: bundle.nodes.map((node) => ({ ...node, project_id: newProjectId })),
     edges: bundle.edges.map((edge) => ({ ...edge, project_id: newProjectId })),
