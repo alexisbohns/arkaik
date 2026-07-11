@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+# transient CJS build emitted by the schema parity test
+/packages/schema/.test-build/
 
 # next.js
 /.next/

@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "eslint",
     "validate:seeds": "node docs/arkaik-skill/scripts/validate-bundle.js seed/pebbles.json && node docs/arkaik-skill/scripts/validate-bundle.js seed/arkaik-self-map.json && node docs/arkaik-skill/scripts/validate-bundle.js public/schema/example-bundle.json",
-    "test:fixtures": "node tests/fixtures/run-fixture-tests.js"
+    "test:fixtures": "node tests/fixtures/run-fixture-tests.js",
+    "test:schema": "node tests/schema/parity.test.js"
   },
   "dependencies": {
     "@radix-ui/react-collapsible": "^1.1.12",

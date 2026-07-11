@@ -32,3 +32,6 @@ jobs:
 
       - name: Validate bundle fixtures
         run: npm run test:fixtures
+
+      - name: Schema validator parity tests
+        run: npm run test:schema
