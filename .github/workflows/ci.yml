@@ -48,6 +48,9 @@ jobs:
       - name: Journal (Level 2) tests
         run: npm run test:journal
 
+      - name: Journal projection tests
+        run: npm run test:journal-projections
+
       - name: Screenshot data-URI size warning tests
         run: npm run test:screenshot-size
 

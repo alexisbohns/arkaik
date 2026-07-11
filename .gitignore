@@ -17,6 +17,7 @@
 /packages/schema/.generate-build/
 /tests/data/.test-build/
 /tests/data/.test-build-export/
+/tests/data/.test-build-journal/
 
 # next.js
 /.next/

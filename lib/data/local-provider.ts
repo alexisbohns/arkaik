@@ -105,6 +105,9 @@ export const localProvider: DataProvider = {
   async getEdges(projectId: string) {
     return store.get(projectId)?.edges ?? [];
   },
+  async getJournal(projectId: string) {
+    return store.get(projectId)?.journal ?? [];
+  },
 
   async createNode(node: Node) {
     const bundle = store.get(node.project_id);
