@@ -1,0 +1,21 @@
+{
+  "schema_version": 2,
+  "project": {
+    "id": "test-sc",
+    "title": "Sidecar Mismatch",
+    "version": "1.0.0",
+    "created_at": "2026-01-01T00:00:00.000Z",
+    "updated_at": "2026-01-03T00:00:00.000Z"
+  },
+  "nodes": [
+    {
+      "id": "V-home",
+      "project_id": "test-sc",
+      "species": "view",
+      "title": "Home",
+      "status": "development",
+      "platforms": ["web"]
+    }
+  ],
+  "edges": []
+}

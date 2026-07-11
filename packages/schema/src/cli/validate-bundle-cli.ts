@@ -1,12 +1,26 @@
 import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { validateBundle } from "../validate";
+import { parseJournalLines, type JournalLineFinding } from "../journal";
 
 /**
  * Entry point for the standalone `validate-bundle.js` build artifact
  * (`docs/spec/toolchain.md` § @arkaik/schema). esbuild bundles this file
  * together with `@arkaik/schema` into a zero-dependency script so agents
  * without node_modules can still gate on it with nothing but Node.
+ *
+ * The snapshot↔journal cross-check (docs/spec/journal.md § Authority &
+ * Consistency Model) runs against the bundle's `journal` array. In a repo the
+ * canonical journal is the JSONL sidecar next to the snapshot, never embedded
+ * (docs/spec/journal.md § Canonical), so this CLI auto-discovers a sibling
+ * `journal.jsonl` and folds its events into the bundle before validating. That
+ * is what makes the dual-write hard gate real: `node validate-bundle.js
+ * docs/arkaik/bundle.json` gates the *appended* event, not just an embedded
+ * projection. An embedded `journal` (the packed interchange form) always wins —
+ * the sidecar is only consulted when none is present.
  */
+
+const JOURNAL_SIDECAR = "journal.jsonl";
 
 function countBySpecies(nodes: unknown[], species: string): number {
   return nodes.filter((n) => (n as { species?: unknown } | null)?.species === species).length;
@@ -31,14 +45,31 @@ function main(): void {
     process.exit(1);
   }
 
-  const loose = bundle as { project?: unknown; nodes?: unknown; edges?: unknown } | null;
+  const loose = bundle as { project?: unknown; nodes?: unknown; edges?: unknown; journal?: unknown } | null;
   if (typeof loose !== "object" || loose === null || !loose.project || !loose.nodes || !loose.edges) {
     console.error("FATAL: Missing top-level keys (project, nodes, edges).");
     process.exit(1);
   }
 
+  // Fold in the canonical JSONL sidecar when the bundle carries no embedded
+  // journal. Line-level parse findings (bad JSON, missing envelope fields) carry
+  // the 1-based line number and are hard errors — a malformed line invalidates
+  // exactly that one event and never damages the rest (docs/spec/journal.md).
+  let sidecarFindings: JournalLineFinding[] = [];
+  let sidecarLoaded = false;
+  if (loose.journal === undefined) {
+    const sidecarPath = join(dirname(filePath), JOURNAL_SIDECAR);
+    if (existsSync(sidecarPath)) {
+      const { events, findings } = parseJournalLines(readFileSync(sidecarPath, "utf8"));
+      sidecarFindings = findings;
+      sidecarLoaded = true;
+      loose.journal = events;
+    }
+  }
+
   const nodes = Array.isArray(loose.nodes) ? loose.nodes : [];
   const edges = Array.isArray(loose.edges) ? loose.edges : [];
+  const journal = Array.isArray(loose.journal) ? loose.journal : [];
   const result = validateBundle(bundle);
 
   console.log("\n  Arkaik Bundle Validation");
@@ -47,6 +78,11 @@ function main(): void {
     `  Nodes: ${nodes.length} (${countBySpecies(nodes, "view")} views, ${countBySpecies(nodes, "flow")} flows, ${countBySpecies(nodes, "data-model")} data-models, ${countBySpecies(nodes, "api-endpoint")} api-endpoints)`,
   );
   console.log(`  Edges: ${edges.length}`);
+  if (sidecarLoaded) {
+    console.log(`  Journal: ${journal.length} event(s) from ${JOURNAL_SIDECAR} sidecar`);
+  } else if (journal.length > 0) {
+    console.log(`  Journal: ${journal.length} embedded event(s)`);
+  }
   console.log("");
 
   if (result.warnings.length > 0) {
@@ -55,13 +91,18 @@ function main(): void {
     console.log("");
   }
 
-  if (result.valid) {
+  const errorMessages = [
+    ...sidecarFindings.map((f) => f.message),
+    ...result.errors.map((e) => e.message),
+  ];
+
+  if (errorMessages.length === 0) {
     console.log("  Result: VALID\n");
     process.exit(0);
   }
 
-  console.log(`  Errors: ${result.errors.length}`);
-  result.errors.forEach((e) => console.log(`    ERROR: ${e.message}`));
+  console.log(`  Errors: ${errorMessages.length}`);
+  errorMessages.forEach((m) => console.log(`    ERROR: ${m}`));
   console.log("\n  Result: INVALID\n");
   process.exit(1);
 }

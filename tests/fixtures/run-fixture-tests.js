@@ -10,6 +10,11 @@ const path = require("path");
 
 const VALIDATOR = path.join(__dirname, "..", "..", "docs", "arkaik-skill", "scripts", "validate-bundle.js");
 
+// Sidecar cases (subdirectories) exercise the JSONL journal sidecar path: the
+// validator auto-discovers `journal.jsonl` next to the passed bundle.json and
+// folds it into the snapshot↔journal cross-check (docs/spec/journal.md). This is
+// what makes the Skill v2 dual-write hard gate real — the appended sidecar event
+// is gated, not just an embedded projection.
 const CASES = [
   { file: "valid-bundle.json", expectValid: true },
   { file: "valid-level2.json", expectValid: true },
@@ -19,6 +24,9 @@ const CASES = [
   { file: "duplicate-ref-id.json", expectValid: false },
   { file: "invalid-kitchen-sink.json", expectValid: false },
   { file: "journal-status-mismatch.json", expectValid: false },
+  { file: "sidecar-valid/bundle.json", expectValid: true },
+  { file: "sidecar-mismatch/bundle.json", expectValid: false },
+  { file: "sidecar-bad-line/bundle.json", expectValid: false },
 ];
 
 let failures = 0;
