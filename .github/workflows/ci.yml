@@ -44,3 +44,6 @@ jobs:
 
       - name: Screenshot data-URI size warning tests
         run: npm run test:screenshot-size
+
+      - name: Bundle migration chain tests
+        run: npm run test:migrate

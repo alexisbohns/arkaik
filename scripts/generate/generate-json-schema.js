@@ -51,11 +51,14 @@ function generate() {
   schema.$id = SCHEMA_ID;
   schema.version = SCHEMA_VERSION;
 
-  if (schema.additionalProperties === false) {
-    schema.additionalProperties = true;
-  }
+  // The bundle root and Project tolerate and preserve unknown fields
+  // (schema_version, journal, project.version, forward-compat keys). The
+  // canonical zod schemas use `.catchall(z.unknown())`, which z.toJSONSchema
+  // renders as `additionalProperties: {}`; normalize both to an explicit `true`
+  // so the published contract reads unambiguously as "extra fields allowed".
+  schema.additionalProperties = true;
   const projectDef = schema.$defs && schema.$defs.Project;
-  if (projectDef && projectDef.additionalProperties === false) {
+  if (projectDef) {
     projectDef.additionalProperties = true;
   }
 
