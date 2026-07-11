@@ -74,9 +74,12 @@ See [`docs/`](docs/README.md) for detailed documentation:
 - [Graph Model](docs/graph-model.md) — 4-species taxonomy, composition, statuses, edge types
 - [Data Layer](docs/data-layer.md) — DataProvider interface, local storage, import/export
 - [Conventions](docs/conventions.md) — coding patterns, file organization, state management
-- [Vision](docs/vision.md) — full product vision and roadmap (8-level species model, semantic zoom, planned features)
+- [Vision](docs/vision.md) — product strategy: the four layers (format, toolchain, app, services), modes & tiers, roadmap
+- [Specs](docs/spec/bundle-format.md) — draft specifications for the bundle format v2, the event journal, and the toolchain
 
 ## Migration Path
+
+> Superseded by the phased roadmap in [docs/vision.md](docs/vision.md) (git-native toolchain first). Kept as the original engineering sketch of the backend evolution.
 
 | **Phase** | **What** | **How** |
 | --- | --- | --- |
