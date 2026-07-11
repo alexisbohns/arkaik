@@ -39,6 +39,7 @@ async function generate() {
     target: "node18",
     format: "cjs",
     legalComments: "none",
+    minify: true,
     banner: { js: BANNER },
   });
   fs.chmodSync(OUT_FILE, 0o755);
