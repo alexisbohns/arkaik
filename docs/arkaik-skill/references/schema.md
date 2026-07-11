@@ -42,12 +42,41 @@ type PlatformNotesMap = Partial<Record<PlatformId, string>>;
 type PlatformStatusMap = Partial<Record<PlatformId, StatusId>>;
 type PlatformScreenshotsMap = Partial<Record<PlatformId, string>>;
 
+type RefType =
+  | "figma"
+  | "github-issue"
+  | "gitlab-issue"
+  | "linear-issue"
+  | "github-pr"
+  | "gitlab-mr"
+  | "url";
+
+interface Ref {
+  /** Unique within the node, kebab-case (e.g. "gh-142"). */
+  id: string;
+  /** One of {@link RefType}; unrecognized values are preserved and render as generic links. */
+  type: RefType | (string & {});
+  /** Canonical external URL. */
+  url: string;
+  /** Display label. */
+  title?: string;
+  /** Mirrored external state, verbatim (e.g. "open", "merged", "In Progress"). */
+  external_status?: string;
+  /** Optional mapping of external_status into the arkaik lifecycle. Advisory display data — never mutates node.status. */
+  status_mapped?: StatusId;
+  /** Optional scoping to one platform variant. */
+  platform?: PlatformId;
+  /** ISO 8601 — when external_status was last mirrored. */
+  synced_at?: string;
+}
+
 interface NodeMetadata extends Record<string, unknown> {
   stage?: string;
   playlist?: FlowPlaylist;
   platformNotes?: PlatformNotesMap;
   platformStatuses?: PlatformStatusMap;
   platformScreenshots?: PlatformScreenshotsMap;
+  refs?: Ref[];
 }
 
 interface Node {
@@ -78,6 +107,8 @@ interface Project {
   id: string;
   title: string;
   description?: string;
+  /** v2: current version label, free-form (semver recommended, not required), e.g. "1.4.0" or "2026-07". Version history lives in the journal. */
+  version?: string;
   /** Optional node id used as the primary canvas anchor/root. */
   root_node_id?: string;
   /** Optional project-level UI settings and preferences. */

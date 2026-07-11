@@ -52,6 +52,10 @@
           "description": "Optional project description.",
           "type": "string"
         },
+        "version": {
+          "description": "Current version label of the mapped product (free-form; semver recommended, not required). Version history lives in the journal as release.tagged events.",
+          "type": "string"
+        },
         "root_node_id": {
           "description": "ID of the root node used as the canvas entry point. Should reference an existing node.",
           "type": "string"
@@ -197,6 +201,13 @@
         },
         "platformScreenshots": {
           "$ref": "#/$defs/PlatformScreenshotsMap"
+        },
+        "refs": {
+          "description": "Typed external references on the node.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Ref"
+          }
         }
       },
       "additionalProperties": {},
@@ -359,6 +370,50 @@
         "type": "string"
       },
       "description": "Per-platform screenshot: a relative path, an absolute URL, or a data URI (see docs/spec/bundle-format.md § Asset Values)."
+    },
+    "Ref": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique within the node, kebab-case (e.g. \"gh-142\")."
+        },
+        "type": {
+          "type": "string",
+          "description": "Ref type: figma | github-issue | gitlab-issue | linear-issue | github-pr | gitlab-mr | url. Unrecognized values are preserved and render as generic links."
+        },
+        "url": {
+          "type": "string",
+          "description": "Canonical external URL."
+        },
+        "title": {
+          "description": "Display label.",
+          "type": "string"
+        },
+        "external_status": {
+          "description": "Mirrored external state, verbatim (e.g. \"open\", \"merged\", \"In Progress\").",
+          "type": "string"
+        },
+        "status_mapped": {
+          "description": "Optional mapping of external_status into the arkaik lifecycle. Advisory display data — never mutates node.status.",
+          "$ref": "#/$defs/Status"
+        },
+        "platform": {
+          "description": "Optional scoping to one platform variant.",
+          "$ref": "#/$defs/Platform"
+        },
+        "synced_at": {
+          "description": "ISO 8601 — when external_status was last mirrored.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "url"
+      ],
+      "additionalProperties": false,
+      "description": "A typed external reference on a node (docs/spec/bundle-format.md § References)."
     },
     "Edge": {
       "type": "object",

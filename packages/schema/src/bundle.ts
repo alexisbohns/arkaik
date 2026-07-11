@@ -39,12 +39,68 @@ export const PlatformScreenshotsMapSchema: z.ZodType<PlatformScreenshotsMap> = z
     "Per-platform screenshot: a relative path, an absolute URL, or a data URI (see docs/spec/bundle-format.md § Asset Values).",
 });
 
+/**
+ * Known external-reference types (docs/spec/bundle-format.md § References).
+ * Unrecognized `type` values are preserved, never rejected — the `(string & {})`
+ * arm of `Ref.type` and the free-form `z.string()` in `RefSchema` keep them
+ * round-tripping so unknown types can render as generic links.
+ */
+export type RefType =
+  | "figma"
+  | "github-issue"
+  | "gitlab-issue"
+  | "linear-issue"
+  | "github-pr"
+  | "gitlab-mr"
+  | "url";
+
+export interface Ref {
+  /** Unique within the node, kebab-case (e.g. "gh-142"). */
+  id: string;
+  /** One of {@link RefType}; unrecognized values are preserved and render as generic links. */
+  type: RefType | (string & {});
+  /** Canonical external URL. */
+  url: string;
+  /** Display label. */
+  title?: string;
+  /** Mirrored external state, verbatim (e.g. "open", "merged", "In Progress"). */
+  external_status?: string;
+  /** Optional mapping of external_status into the arkaik lifecycle. Advisory display data — never mutates node.status. */
+  status_mapped?: StatusId;
+  /** Optional scoping to one platform variant. */
+  platform?: PlatformId;
+  /** ISO 8601 — when external_status was last mirrored. */
+  synced_at?: string;
+}
+
+export const RefSchema: z.ZodType<Ref> = z
+  .object({
+    id: z.string().meta({ description: "Unique within the node, kebab-case (e.g. \"gh-142\")." }),
+    type: z.string().meta({
+      description:
+        "Ref type: figma | github-issue | gitlab-issue | linear-issue | github-pr | gitlab-mr | url. Unrecognized values are preserved and render as generic links.",
+    }),
+    url: z.string().meta({ description: "Canonical external URL." }),
+    title: z.string().optional().meta({ description: "Display label." }),
+    external_status: z.string().optional().meta({
+      description: "Mirrored external state, verbatim (e.g. \"open\", \"merged\", \"In Progress\").",
+    }),
+    status_mapped: StatusSchema.optional().meta({
+      description:
+        "Optional mapping of external_status into the arkaik lifecycle. Advisory display data — never mutates node.status.",
+    }),
+    platform: PlatformSchema.optional().meta({ description: "Optional scoping to one platform variant." }),
+    synced_at: z.string().optional().meta({ description: "ISO 8601 — when external_status was last mirrored." }),
+  })
+  .meta({ id: "Ref", description: "A typed external reference on a node (docs/spec/bundle-format.md § References)." });
+
 export interface NodeMetadata extends Record<string, unknown> {
   stage?: string;
   playlist?: FlowPlaylist;
   platformNotes?: PlatformNotesMap;
   platformStatuses?: PlatformStatusMap;
   platformScreenshots?: PlatformScreenshotsMap;
+  refs?: Ref[];
 }
 
 export const NodeMetadataSchema: z.ZodType<NodeMetadata> = z
@@ -54,6 +110,7 @@ export const NodeMetadataSchema: z.ZodType<NodeMetadata> = z
     platformNotes: PlatformNotesMapSchema.optional(),
     platformStatuses: PlatformStatusMapSchema.optional(),
     platformScreenshots: PlatformScreenshotsMapSchema.optional(),
+    refs: z.array(RefSchema).optional().meta({ description: "Typed external references on the node." }),
   })
   .catchall(z.unknown())
   .meta({ id: "NodeMetadata", description: "Optional metadata for a node." });
@@ -113,6 +170,8 @@ export interface Project {
   id: string;
   title: string;
   description?: string;
+  /** v2: current version label, free-form (semver recommended, not required), e.g. "1.4.0" or "2026-07". Version history lives in the journal. */
+  version?: string;
   /** Optional node id used as the primary canvas anchor/root. */
   root_node_id?: string;
   /** Optional project-level UI settings and preferences. */
@@ -129,6 +188,10 @@ export const ProjectSchema: z.ZodType<Project> = z.object({
   id: z.string().meta({ description: "Unique project identifier." }),
   title: z.string().meta({ description: "Project title." }),
   description: z.string().optional().meta({ description: "Optional project description." }),
+  version: z.string().optional().meta({
+    description:
+      "Current version label of the mapped product (free-form; semver recommended, not required). Version history lives in the journal as release.tagged events.",
+  }),
   root_node_id: z.string().optional().meta({
     description: "ID of the root node used as the canvas entry point. Should reference an existing node.",
   }),

@@ -27,6 +27,7 @@ const FIXTURES = [
   "tests/fixtures/duplicate-node-id.json",
   "tests/fixtures/dangling-edge.json",
   "tests/fixtures/invalid-view-card-variant.json",
+  "tests/fixtures/duplicate-ref-id.json",
   "tests/fixtures/invalid-kitchen-sink.json",
 ];
 
