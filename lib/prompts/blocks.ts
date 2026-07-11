@@ -257,18 +257,18 @@ Given the structured plan below (which may be a Mermaid diagram, flowchart, scre
 
 export const TASK_EXTEND = `## Task
 
-Given the existing Arkaik ProjectBundle below and the description of what to add, generate a COMPLETE updated ProjectBundle JSON:
+Given the existing Arkaik ProjectBundle below and the description of what to add, output an updated ProjectBundle JSON. The app's import replaces the whole project, so the output must still be a complete bundle — but you must produce it as a **surgical patch**, not a regeneration: copy every untouched node and edge byte-identical from the input, and only add or modify what the described change requires.
 
-1. Include **ALL existing nodes and edges unchanged** — do not modify or remove any existing data.
-2. Add the new nodes (flows, views, data models, API endpoints) as described.
-3. Add new edges connecting the new nodes to the existing graph.
-4. Update playlists of existing flows if the new nodes should be part of existing sequences.
+1. **Copy every existing node and edge byte-identical into the output** — same IDs, same field values, same field order, same array order. Do not re-derive, re-generate, re-type, or "clean up" any node or edge that isn't part of the described change, even if you could produce an equivalent-looking result. Treat the existing bundle as data to carry forward, not as a reference to reconstruct from.
+2. Add the new nodes (flows, views, data models, API endpoints) as described, appended to the existing arrays.
+3. Add new edges connecting the new nodes to the existing graph, appended to the existing array.
+4. Update playlists of existing flows only if the new nodes should be part of existing sequences — append new playlist entries, don't rebuild the playlist.
 5. Maintain consistency with the existing naming conventions and depth of detail.
 
 ### Additional Rules for Extension
-- NEVER modify or remove existing nodes or edges.
+- NEVER modify, remove, or re-emit-with-changes any existing node or edge. If it wasn't named in the requested change, it must appear in the output exactly as it appeared in the input.
 - NEVER change existing node IDs, titles, statuses, or metadata unless explicitly requested.
-- New node IDs must not conflict with existing IDs.
+- **Duplicate node IDs break the app.** The graph layout and canvas both key nodes by ID — two nodes sharing an ID break the entire graph render, and any edge pointing at that ID silently resolves to whichever node was defined last. Before adding a new node, derive its ID deterministically from its title and check it against **every** ID already present in the existing bundle (not just the nodes you're adding). If the derived ID collides, disambiguate it — never reuse an existing ID for a different node.
 - New edges must integrate with the existing graph logically.
 - If adding to an existing flow's playlist, append entries at the end unless a specific insertion point is described.
 - Preserve the existing project.id and all project-level metadata.`;
