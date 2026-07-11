@@ -22,7 +22,33 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "refs": [
+          {
+            "id": "gh-281",
+            "type": "github-pr",
+            "url": "https://github.com/pebbles-app/pebbles-ios/pull/281",
+            "title": "iOS: WelcomeView implementation",
+            "external_status": "merged",
+            "status_mapped": "live",
+            "platform": "ios",
+            "synced_at": "2026-07-09T14:30:00.000Z"
+          },
+          {
+            "id": "figma-landing",
+            "type": "figma",
+            "url": "https://www.figma.com/file/pebbles-design/Pebbles?node-id=1%3A42",
+            "title": "Landing — Design"
+          },
+          {
+            "id": "notion-landing-brief",
+            "type": "notion-page",
+            "url": "https://notion.so/pebbles/landing-brief",
+            "title": "Landing brief"
+          }
+        ]
+      }
     },
     {
       "id": "V-login",

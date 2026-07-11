@@ -1,6 +1,7 @@
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { SpeciesId } from "@/lib/config/species";
+import type { RefType } from "@/lib/data/types";
 import type { LucideIcon } from "lucide-react";
 import {
   Monitor,
@@ -12,6 +13,7 @@ import {
   Plug,
   Lightbulb, CircleDashed, CircleDotDashed, CirclePlay, CircleFadingArrowUp,
   CircleCheckBig, CircleSlash, CircleX,
+  Figma, Github, Gitlab, Ticket, GitPullRequest, GitMerge, ExternalLink, Link2,
 } from "lucide-react";
 
 export const STATUS_STYLES: Record<StatusId, { badge: string; dot: string }> = {
@@ -88,3 +90,31 @@ export const STATUS_GHOST_STYLES: Record<StatusId, { wrapper: string; border: st
   archived:    { wrapper: "opacity-60", border: ""              },
   blocked:     { wrapper: "",           border: ""              },
 };
+
+// Known `Ref.type` values (docs/spec/bundle-format.md § References). Keyed by
+// plain `string`, not `RefType`, because `Ref.type` also accepts unrecognized
+// values (`RefType | (string & {})`); unrecognized types fall back to
+// REF_TYPE_ICON_FALLBACK / REF_TYPE_LABEL_FALLBACK and render as generic links,
+// per the format's "unknown types MUST be preserved" rule.
+export const REF_TYPE_ICONS: Record<string, LucideIcon> = {
+  figma:            Figma,
+  "github-issue":   Github,
+  "gitlab-issue":   Gitlab,
+  "linear-issue":   Ticket,
+  "github-pr":      GitPullRequest,
+  "gitlab-mr":      GitMerge,
+  url:              ExternalLink,
+} satisfies Record<RefType, LucideIcon>;
+
+export const REF_TYPE_LABELS: Record<string, string> = {
+  figma:            "Figma",
+  "github-issue":   "GitHub Issue",
+  "gitlab-issue":   "GitLab Issue",
+  "linear-issue":   "Linear Issue",
+  "github-pr":      "GitHub PR",
+  "gitlab-mr":      "GitLab MR",
+  url:              "Link",
+} satisfies Record<RefType, string>;
+
+export const REF_TYPE_ICON_FALLBACK: LucideIcon = Link2;
+export const REF_TYPE_LABEL_FALLBACK = "Link";

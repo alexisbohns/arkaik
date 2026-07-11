@@ -19,6 +19,8 @@ export type {
   JunctionCase,
   FlowPlaylist,
   NodeMetadata,
+  Ref,
+  RefType,
   Node,
   Edge,
   Project,
