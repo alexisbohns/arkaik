@@ -1,88 +1,36 @@
-import type { SpeciesId } from "@/lib/config/species";
-import type { StatusId } from "@/lib/config/statuses";
-import type { EdgeTypeId } from "@/lib/config/edge-types";
-import type { PlatformId } from "@/lib/config/platforms";
+/**
+ * Domain types for the app.
+ *
+ * These are re-exported from `@arkaik/schema` — the single source of truth for
+ * the ProjectBundle shape (zod schemas + inferred types). Re-exporting here,
+ * rather than declaring the shapes a second time, means the app and the schema
+ * package can never drift. See `docs/spec/toolchain.md` § @arkaik/schema.
+ *
+ * The `~23` existing importers of `@/lib/data/types` are unaffected: every name
+ * they consumed is still exported from this module.
+ */
+import type { SpeciesId, StatusId, PlatformId, EdgeTypeId } from "@arkaik/schema";
 
-/** Species of a node, derived from the SPECIES config. */
+export type {
+  PlatformStatusMap,
+  PlatformNotesMap,
+  PlatformScreenshotsMap,
+  PlaylistEntry,
+  JunctionCase,
+  FlowPlaylist,
+  NodeMetadata,
+  Node,
+  Edge,
+  Project,
+  ProjectMetadata,
+  ProjectBundle,
+} from "@arkaik/schema";
+
+/** Species of a node — the SPECIES config id union. */
 export type Species = SpeciesId;
-/** Lifecycle status of a node, derived from the STATUSES config. */
+/** Lifecycle status of a node — the STATUSES config id union. */
 export type Status = StatusId;
-/** Platform the node is available on, derived from the PLATFORMS config. */
+/** Platform the node is available on — the PLATFORMS config id union. */
 export type Platform = PlatformId;
-/** Relationship type between two nodes, derived from the EDGE_TYPES config. */
+/** Relationship type between two nodes — the EDGE_TYPES config id union. */
 export type EdgeType = EdgeTypeId;
-/** Per-platform status source of truth for step-like species. */
-export type PlatformStatusMap = Partial<Record<PlatformId, StatusId>>;
-/** Freeform per-platform notes used by the detail panel. */
-export type PlatformNotesMap = Partial<Record<PlatformId, string>>;
-/** Per-platform screenshot stored as base64 data URI. */
-export type PlatformScreenshotsMap = Partial<Record<PlatformId, string>>;
-
-export type PlaylistEntry =
-  | { type: "view"; view_id: string }
-  | { type: "flow"; flow_id: string }
-  | { type: "condition"; label: string; if_true: PlaylistEntry[]; if_false: PlaylistEntry[] }
-  | { type: "junction"; label: string; cases: JunctionCase[] };
-
-export interface JunctionCase {
-  label: string;
-  entries: PlaylistEntry[];
-}
-
-export interface FlowPlaylist {
-  entries: PlaylistEntry[];
-}
-
-export interface NodeMetadata extends Record<string, unknown> {
-  stage?: string;
-  playlist?: FlowPlaylist;
-  platformNotes?: PlatformNotesMap;
-  platformStatuses?: PlatformStatusMap;
-  platformScreenshots?: PlatformScreenshotsMap;
-}
-
-export interface Node {
-  id: string;
-  project_id: string;
-  species: Species;
-  title: string;
-  description?: string;
-  status: Status;
-  platforms: Platform[];
-  metadata?: NodeMetadata;
-}
-
-export interface Edge {
-  id: string;
-  project_id: string;
-  source_id: string;
-  target_id: string;
-  edge_type: EdgeType;
-  metadata?: Record<string, unknown>;
-}
-
-export interface Project {
-  id: string;
-  title: string;
-  description?: string;
-  /** Optional node id used as the primary canvas anchor/root. */
-  root_node_id?: string;
-  /** Optional project-level UI settings and preferences. */
-  metadata?: ProjectMetadata;
-  /** ISO 8601 timestamp, e.g. "2024-01-01T00:00:00.000Z" */
-  created_at: string;
-  /** ISO 8601 timestamp, e.g. "2024-01-01T00:00:00.000Z" */
-  updated_at: string;
-  /** ISO 8601 timestamp when archived; null/undefined means active. */
-  archived_at?: string | null;
-}
-
-export interface ProjectMetadata extends Record<string, unknown> {
-  view_card_variant?: "compact" | "large";
-}
-
-export interface ProjectBundle {
-  project: Project;
-  nodes: Node[];
-  edges: Edge[];
-}

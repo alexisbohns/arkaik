@@ -1,16 +1,16 @@
 import type { Project, ProjectBundle } from "@/lib/data/types";
+import { parseBundle, validateBundle, type ValidationFinding } from "@arkaik/schema";
 import { localProvider } from "@/lib/data/local-provider";
 
 const MAX_RECOMMENDED_EXPORT_BYTES = 4 * 1024 * 1024;
+
+/** Cap on findings named in a thrown message so a broken bundle stays readable. */
+const MAX_REPORTED_FINDINGS = 5;
 
 export interface ExportDownloadResult {
   filename: string;
   bytes: number;
   warning: string | null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function isValidIsoString(value: unknown): value is string {
@@ -27,52 +27,50 @@ export function normalizeProjectTimestamps(project: Project): Project {
   };
 }
 
-export function assertProjectBundleShape(value: unknown): asserts value is ProjectBundle {
-  if (!isRecord(value)) throw new Error("Invalid JSON: expected object root");
+/** Render a zod issue path (`["nodes", 3, "id"]`) as `nodes[3].id`. */
+function formatIssuePath(path: ReadonlyArray<PropertyKey>): string {
+  let out = "";
+  for (const key of path) {
+    if (typeof key === "number") out += `[${key}]`;
+    else out += out ? `.${String(key)}` : String(key);
+  }
+  return out || "(root)";
+}
 
-  const project = value.project;
-  if (!isRecord(project)) throw new Error("Invalid JSON: missing project object");
-  if (typeof project.id !== "string" || !project.id.trim()) {
-    throw new Error("Invalid JSON: project.id must be a non-empty string");
-  }
-  if (typeof project.title !== "string" || !project.title.trim()) {
-    throw new Error("Invalid JSON: project.title must be a non-empty string");
-  }
-  if (project.root_node_id !== undefined && typeof project.root_node_id !== "string") {
-    throw new Error("Invalid JSON: project.root_node_id must be a string when provided");
-  }
-  if (project.metadata !== undefined) {
-    if (!isRecord(project.metadata)) {
-      throw new Error("Invalid JSON: project.metadata must be an object when provided");
-    }
-    const viewCardVariant = project.metadata.view_card_variant;
-    if (
-      viewCardVariant !== undefined
-      && viewCardVariant !== "compact"
-      && viewCardVariant !== "large"
-    ) {
-      throw new Error("Invalid JSON: project.metadata.view_card_variant must be compact or large");
-    }
-  }
+/** Join a capped list of `path: message` parts, noting how many were elided. */
+function joinReported(parts: string[]): string {
+  const shown = parts.slice(0, MAX_REPORTED_FINDINGS);
+  const extra = parts.length - shown.length;
+  return shown.join("; ") + (extra > 0 ? ` (and ${extra} more)` : "");
+}
 
-  if (!Array.isArray(value.nodes)) {
-    throw new Error("Invalid JSON: nodes must be an array");
-  }
-  if (!Array.isArray(value.edges)) {
-    throw new Error("Invalid JSON: edges must be an array");
-  }
-
-  if (typeof project.root_node_id === "string") {
-    const nodeIds = new Set(
-      value.nodes
-        .filter(isRecord)
-        .map((node) => node.id)
-        .filter((id): id is string => typeof id === "string"),
+/**
+ * Parse and semantically validate an untrusted bundle against the canonical
+ * `@arkaik/schema` rules (`parseBundle` for shape, `validateBundle` for the
+ * graph rules JSON Schema cannot express — duplicate IDs, dangling edge refs,
+ * etc.). Returns the typed {@link ProjectBundle} on success; throws an Error
+ * with a readable, path-specific message on the first batch of failures.
+ * Warnings (e.g. the stale edge-ID convention) never block.
+ */
+export function parseAndValidateBundle(value: unknown): ProjectBundle {
+  const parsed = parseBundle(value);
+  if (!parsed.success) {
+    const parts = parsed.error.issues.map(
+      (issue) => `${formatIssuePath(issue.path)}: ${issue.message}`,
     );
-    if (!nodeIds.has(project.root_node_id)) {
-      throw new Error("Invalid JSON: project.root_node_id must reference an existing node id");
-    }
+    throw new Error(`Invalid bundle: ${joinReported(parts)}`);
   }
+
+  const { valid, errors } = validateBundle(value);
+  if (!valid) {
+    const parts = errors.map(
+      (finding: ValidationFinding) =>
+        finding.path ? `${finding.path}: ${finding.message}` : finding.message,
+    );
+    throw new Error(`Invalid bundle: ${joinReported(parts)}`);
+  }
+
+  return parsed.data;
 }
 
 async function ensureUniqueProjectId(initialId: string): Promise<string> {
@@ -166,11 +164,11 @@ export async function importProjectFromFile(file: File): Promise<Project> {
     throw new Error("Invalid JSON file");
   }
 
-  assertProjectBundleShape(parsed);
+  const bundle = parseAndValidateBundle(parsed);
 
   const normalizedBundle: ProjectBundle = {
-    ...parsed,
-    project: normalizeProjectTimestamps(parsed.project),
+    ...bundle,
+    project: normalizeProjectTimestamps(bundle.project),
   };
 
   const resolvedProjectId = await ensureUniqueProjectId(normalizedBundle.project.id);
