@@ -27,6 +27,7 @@ import {
   STATUS_STYLES,
 } from "@/components/graph/nodes/node-styles";
 import { SpeciesBadge, EntityId } from "@/components/graph/nodes/EntityBadges";
+import { RefList } from "@/components/graph/nodes/RefBadges";
 import { PlatformVariants } from "@/components/panels/PlatformVariants";
 import { PlatformGaugeList } from "@/components/graph/nodes/PlatformGaugeList";
 import { PlaylistEditor } from "@/components/panels/PlaylistEditor";
@@ -275,6 +276,21 @@ function InvocationSection({ node, allNodes, onNavigate }: InvocationSectionProp
   );
 }
 
+function RefsSection({ node }: { node: Node }) {
+  const refs = node.metadata?.refs;
+
+  if (!refs || refs.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="px-6 flex flex-col gap-2">
+      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">References</span>
+      <RefList refs={refs} />
+    </div>
+  );
+}
+
 interface ConnectionsSectionProps {
   node: Node;
   allNodes: Node[];
@@ -466,6 +482,7 @@ export function NodeDetailPanel({
         {node && (
           <>
             <NodeFields key={node.id} node={node} onUpdate={onUpdate} />
+            <RefsSection key={`refs-${node.id}`} node={node} />
             {node.species === "view" && (
               <PlatformVariantsSection
                 key={`pv-${node.id}`}
