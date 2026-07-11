@@ -352,7 +352,7 @@
       "additionalProperties": {
         "type": "string"
       },
-      "description": "Per-platform screenshot stored as base64 data URI."
+      "description": "Per-platform screenshot: a relative path, an absolute URL, or a data URI (see docs/spec/bundle-format.md § Asset Values)."
     },
     "Edge": {
       "type": "object",

@@ -59,6 +59,22 @@ const SPECIES_PREFIXES: Record<string, string> = {
 const VALID_STAGES = ["beta", "monitoring", "deprecated"];
 const VALID_VIEW_CARD_VARIANTS = ["compact", "large"];
 
+// Data URIs are the "Lokal / legacy" asset form (docs/spec/bundle-format.md
+// § Asset Values) — tolerated, but a bundle carrying several unbounded
+// inline images is a size bomb. Matches the app's own upload cap
+// (components/panels/PlatformVariants.tsx MAX_FILE_SIZE) so a screenshot
+// the app itself would accept never triggers this warning.
+const MAX_SCREENSHOT_DATA_URI_BYTES = 2 * 1024 * 1024;
+
+/** Estimated decoded byte length of a `data:` URI's base64 payload. */
+function estimateDataUriBytes(dataUri: string): number {
+  const comma = dataUri.indexOf(",");
+  if (comma === -1) return 0;
+  const payload = dataUri.slice(comma + 1);
+  const padding = payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0;
+  return Math.floor((payload.length * 3) / 4) - padding;
+}
+
 const VALID_EDGE_SEMANTICS: Record<EdgeTypeId, ReadonlyArray<[SpeciesId, SpeciesId]>> = {
   composes: [
     ["flow", "view"],
@@ -260,6 +276,21 @@ export function validateBundle(input: unknown): ValidationResult {
             "valid-status",
             `Node ${nodeId}: platformStatuses has invalid status "${s}" for platform "${p}"`,
           );
+        }
+      }
+    }
+    const platformScreenshots = md.platformScreenshots as Record<string, unknown> | undefined;
+    if (platformScreenshots) {
+      for (const [p, value] of Object.entries(platformScreenshots)) {
+        if (typeof value === "string" && value.startsWith("data:")) {
+          const bytes = estimateDataUriBytes(value);
+          if (bytes > MAX_SCREENSHOT_DATA_URI_BYTES) {
+            warn(
+              `${base}.metadata.platformScreenshots`,
+              "screenshot-data-uri-size",
+              `Node ${nodeId}: platformScreenshots.${p} is a ${(bytes / (1024 * 1024)).toFixed(1)}MB data URI, above the ${MAX_SCREENSHOT_DATA_URI_BYTES / (1024 * 1024)}MB guidance (docs/spec/bundle-format.md § Asset Values) — consider a relative path or hosted URL instead`,
+            );
+          }
         }
       }
     }

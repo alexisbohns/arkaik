@@ -76,7 +76,7 @@ interface Ref {
 
 ## Asset Values
 
-Anywhere the format carries an asset (today: `metadata.platformScreenshots`, a per-platform map — currently missing from the published schema and validator, a known drift to fix), the value MUST be one of three forms:
+Anywhere the format carries an asset (today: `metadata.platformScreenshots`, a per-platform map), the value MUST be one of three forms:
 
 | Form | Detection | Where the bytes live | Intended mode |
 |---|---|---|---|
@@ -85,6 +85,8 @@ Anywhere the format carries an asset (today: `metadata.platformScreenshots`, a p
 | Data URI | `data:` | Inline in the bundle | Lokal / legacy only — discouraged; subject to import size caps |
 
 Consumers that cannot resolve a form (the hosted app receiving a relative path, for instance) MUST degrade to a placeholder, never fail the import. `arkaik pack` converts between forms (inline or upload) when producing a self-contained interchange file. Journal events MUST NOT embed asset payloads.
+
+**Size-bomb guidance:** a `data:` value SHOULD stay under 2MB decoded — the same cap the app's own screenshot upload enforces. `validateBundle()` (`@arkaik/schema`) emits a `screenshot-data-uri-size` **warning** (never an error) above that threshold: data URIs are a legitimate legacy form and MUST NOT be rejected on size alone, only flagged so producers can migrate to a hosted or relative-path form.
 
 ## Identifier Conventions
 

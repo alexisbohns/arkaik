@@ -41,3 +41,6 @@ jobs:
 
       - name: Schema validator parity tests
         run: npm run test:schema
+
+      - name: Screenshot data-URI size warning tests
+        run: npm run test:screenshot-size
