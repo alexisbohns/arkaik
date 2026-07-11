@@ -16,6 +16,7 @@
     "test:schema": "node tests/schema/parity.test.js",
     "test:refs": "node tests/schema/refs.test.js",
     "test:journal": "node tests/schema/journal.test.js",
+    "test:journal-projections": "node tests/data/journal-projections.test.js",
     "test:screenshot-size": "node tests/schema/screenshot-size.test.js",
     "test:migrate": "node tests/data/migrate.test.js && node tests/data/import-roundtrip.test.js && node tests/data/seed-import.test.js"
   },
