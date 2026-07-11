@@ -76,6 +76,7 @@ See [`docs/`](docs/README.md) for detailed documentation:
 - [Conventions](docs/conventions.md) — coding patterns, file organization, state management
 - [Vision](docs/vision.md) — product strategy: the four layers (format, toolchain, app, services), modes & tiers, roadmap
 - [Specs](docs/spec/bundle-format.md) — draft specifications for the bundle format v2, the event journal, and the toolchain
+- [Contributing](CONTRIBUTING.md) — license split, how to submit changes
 
 ## Migration Path
 
