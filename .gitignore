@@ -15,6 +15,8 @@
 # transient CJS build emitted by the schema parity test / contract generators
 /packages/schema/.test-build/
 /packages/schema/.generate-build/
+/tests/data/.test-build/
+/tests/data/.test-build-export/
 
 # next.js
 /.next/

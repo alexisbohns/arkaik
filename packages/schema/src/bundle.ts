@@ -138,19 +138,25 @@ export const ProjectSchema: z.ZodType<Project> = z.object({
   archived_at: z.string().nullable().optional().meta({
     description: "ISO 8601 archive timestamp, or null if active.",
   }),
-}).meta({ id: "Project" });
+}).catchall(z.unknown()).meta({ id: "Project" });
 
 export interface ProjectBundle {
+  /** Bundle Format contract version (docs/spec/bundle-format.md § Schema Versioning). Absent MUST be treated as 1. */
+  schema_version?: number;
   project: Project;
   nodes: Node[];
   edges: Edge[];
 }
 
 export const ProjectBundleSchema: z.ZodType<ProjectBundle> = z.object({
+  schema_version: z.number().int().optional().meta({
+    description:
+      "Bundle Format contract version. Absent means 1 (docs/spec/bundle-format.md § Schema Versioning). Older versions migrate through an explicit chain; unknown fields from newer versions are preserved on re-export.",
+  }),
   project: ProjectSchema,
   nodes: z.array(NodeSchema).meta({ description: "All nodes in the project graph." }),
   edges: z.array(EdgeSchema).meta({ description: "All edges (relationships) between nodes." }),
-}).meta({
+}).catchall(z.unknown()).meta({
   id: "ProjectBundle",
   title: "Arkaik ProjectBundle",
   description:

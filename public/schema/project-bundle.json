@@ -12,6 +12,12 @@
   ],
   "additionalProperties": true,
   "properties": {
+    "schema_version": {
+      "description": "Bundle Format contract version. Absent means 1 (docs/spec/bundle-format.md § Schema Versioning). Older versions migrate through an explicit chain; unknown fields from newer versions are preserved on re-export.",
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
     "project": {
       "$ref": "#/$defs/Project"
     },

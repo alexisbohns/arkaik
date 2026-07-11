@@ -90,6 +90,8 @@ interface Project {
 }
 
 interface ProjectBundle {
+  /** Bundle Format contract version (docs/spec/bundle-format.md § Schema Versioning). Absent MUST be treated as 1. */
+  schema_version?: number;
   project: Project;
   nodes: Node[];
   edges: Edge[];

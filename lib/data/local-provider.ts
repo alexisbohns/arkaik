@@ -1,5 +1,6 @@
 import type { DataProvider } from "./data-provider";
 import type { Node, Edge, ProjectBundle, PlaylistEntry } from "./types";
+import { migrateBundle } from "./migrate";
 import { wouldCreateCycle } from "@/lib/utils/cycle";
 
 function collectReferencedFlowIds(entries: PlaylistEntry[]): string[] {
@@ -29,88 +30,6 @@ function collectReferencedFlowIds(entries: PlaylistEntry[]): string[] {
 
 const STORAGE_KEY = "arkaik:store";
 
-type LegacyNode = Node & {
-  parent_id?: string | null;
-  sort_order?: number;
-  position_x?: number;
-  position_y?: number;
-};
-
-function normalizeBundle(bundle: ProjectBundle): ProjectBundle {
-  const nodes = bundle.nodes as LegacyNode[];
-  const childrenByParent = new Map<string, Array<{ id: string; sort: number; index: number }>>();
-
-  nodes.forEach((node, index) => {
-    const parentId = typeof node.parent_id === "string" ? node.parent_id : null;
-    if (!parentId) return;
-    const children = childrenByParent.get(parentId) ?? [];
-    children.push({ id: node.id, sort: node.sort_order ?? Number.MAX_SAFE_INTEGER, index });
-    childrenByParent.set(parentId, children);
-  });
-
-  const normalizedNodes: Node[] = nodes.map((node) => {
-    const rest: LegacyNode = { ...node };
-    delete rest.parent_id;
-    delete rest.sort_order;
-    delete rest.position_x;
-    delete rest.position_y;
-    return rest;
-  });
-
-  const nodeMap = new Map(normalizedNodes.map((node) => [node.id, node]));
-  for (const [parentId, children] of childrenByParent) {
-    const parent = nodeMap.get(parentId);
-    if (!parent) continue;
-    const entries = children
-      .sort((a, b) => (a.sort - b.sort) || (a.index - b.index))
-      .map((child) => {
-        const childNode = nodeMap.get(child.id);
-        if (!childNode) return null;
-        if (childNode.species === "flow") return { type: "flow", flow_id: child.id } as const;
-        if (childNode.species === "view") return { type: "view", view_id: child.id } as const;
-        return null;
-      })
-      .filter((entry): entry is { type: "flow"; flow_id: string } | { type: "view"; view_id: string } => Boolean(entry));
-    parent.metadata = {
-      ...parent.metadata,
-      playlist: {
-        entries,
-      },
-    };
-  }
-
-  const composePairs = new Set(
-    bundle.edges
-      .filter((edge) => edge.edge_type === "composes")
-      .map((edge) => `${edge.source_id}:${edge.target_id}`),
-  );
-  const extraComposeEdges: Edge[] = [];
-
-  for (const legacyNode of nodes) {
-    const parentId = typeof legacyNode.parent_id === "string" ? legacyNode.parent_id : null;
-    if (!parentId) continue;
-    if (!nodeMap.has(parentId)) continue;
-
-    const pair = `${parentId}:${legacyNode.id}`;
-    if (composePairs.has(pair)) continue;
-    composePairs.add(pair);
-
-    extraComposeEdges.push({
-      id: `legacy-compose-${parentId}-${legacyNode.id}`,
-      project_id: bundle.project.id,
-      source_id: parentId,
-      target_id: legacyNode.id,
-      edge_type: "composes",
-    });
-  }
-
-  return {
-    ...bundle,
-    nodes: normalizedNodes,
-    edges: [...bundle.edges, ...extraComposeEdges],
-  };
-}
-
 function loadStore(): Map<string, ProjectBundle> {
   if (typeof window === "undefined") return new Map();
   try {
@@ -118,7 +37,7 @@ function loadStore(): Map<string, ProjectBundle> {
     if (!raw) return new Map();
     const obj = JSON.parse(raw) as Record<string, ProjectBundle>;
     return new Map(
-      Object.entries(obj).map(([projectId, bundle]) => [projectId, normalizeBundle(bundle)]),
+      Object.entries(obj).map(([projectId, bundle]) => [projectId, migrateBundle(bundle)]),
     );
   } catch (err) {
     console.error("[LocalProvider] Failed to load store from localStorage:", err);
@@ -162,7 +81,7 @@ export const localProvider: DataProvider = {
     return Array.from(store.values()).filter((bundle) => !isArchived(bundle));
   },
   async saveProject(bundle: ProjectBundle) {
-    const normalized = normalizeBundle(bundle);
+    const normalized = migrateBundle(bundle);
     store.set(normalized.project.id, normalized);
     normalized.nodes.forEach((n) => nodeIndex.set(n.id, normalized.project.id));
     normalized.edges.forEach((e) => edgeIndex.set(e.id, normalized.project.id));
@@ -286,7 +205,7 @@ export const localProvider: DataProvider = {
     return bundle;
   },
   async importProject(bundle: ProjectBundle) {
-    const normalized = normalizeBundle(bundle);
+    const normalized = migrateBundle(bundle);
     store.set(normalized.project.id, normalized);
     normalized.nodes.forEach((n) => nodeIndex.set(n.id, normalized.project.id));
     normalized.edges.forEach((e) => edgeIndex.set(e.id, normalized.project.id));
