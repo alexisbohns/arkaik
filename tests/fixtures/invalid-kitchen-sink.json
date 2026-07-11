@@ -1,0 +1,120 @@
+{
+  "project": {
+    "id": "proj",
+    "title": "Kitchen Sink",
+    "root_node_id": "V-does-not-exist",
+    "metadata": { "view_card_variant": "gigantic" },
+    "created_at": "not-a-date",
+    "updated_at": "2026-01-01T00:00:00.000Z"
+  },
+  "nodes": [
+    {
+      "id": "V-home",
+      "project_id": "proj",
+      "species": "view",
+      "title": "Home",
+      "status": "live",
+      "platforms": ["web"],
+      "metadata": {
+        "platformStatuses": { "ios": "live", "mars": "live", "web": "bogus" }
+      }
+    },
+    {
+      "id": "V-home",
+      "project_id": "proj",
+      "species": "view",
+      "title": "Duplicate Home",
+      "status": "live",
+      "platforms": ["web"]
+    },
+    {
+      "id": "V-weird",
+      "project_id": "other-project",
+      "species": "gremlin",
+      "title": "   ",
+      "status": "invented",
+      "platforms": ["web", "playstation"],
+      "metadata": { "stage": "experimental" }
+    },
+    {
+      "id": "F-a",
+      "project_id": "proj",
+      "species": "flow",
+      "title": "Flow A",
+      "status": "development",
+      "platforms": ["web"],
+      "metadata": { "playlist": { "entries": [{ "type": "flow", "flow_id": "F-b" }] } }
+    },
+    {
+      "id": "F-b",
+      "project_id": "proj",
+      "species": "flow",
+      "title": "Flow B",
+      "status": "development",
+      "platforms": ["web"],
+      "metadata": {
+        "playlist": {
+          "entries": [
+            { "type": "flow", "flow_id": "F-a" },
+            { "type": "view", "view_id": "V-ghost" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "F-no-playlist",
+      "project_id": "proj",
+      "species": "flow",
+      "title": "Flow Without Playlist",
+      "status": "development",
+      "platforms": ["web"]
+    },
+    {
+      "id": "F-empty",
+      "project_id": "proj",
+      "species": "flow",
+      "title": "Flow With Empty Playlist",
+      "status": "development",
+      "platforms": ["web"],
+      "metadata": { "playlist": { "entries": [] } }
+    },
+    {
+      "id": "API-fetch",
+      "project_id": "proj",
+      "species": "api-endpoint",
+      "title": "Fetch",
+      "status": "live",
+      "platforms": ["web"]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-V-home-API-fetch",
+      "project_id": "proj",
+      "source_id": "V-home",
+      "target_id": "API-fetch",
+      "edge_type": "displays"
+    },
+    {
+      "id": "e-renamed",
+      "project_id": "wrong-project",
+      "source_id": "V-home",
+      "target_id": "API-fetch",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-dup",
+      "project_id": "proj",
+      "source_id": "V-home",
+      "target_id": "V-missing",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-dup",
+      "project_id": "proj",
+      "source_id": "V-home",
+      "target_id": "V-home",
+      "edge_type": "frobnicate"
+    }
+  ]
+}
