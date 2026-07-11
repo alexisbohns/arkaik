@@ -1,0 +1,60 @@
+{
+  "schema_version": 2,
+  "project": {
+    "id": "test-l2",
+    "title": "Level 2 Test Project",
+    "version": "1.0.0",
+    "created_at": "2026-01-01T00:00:00.000Z",
+    "updated_at": "2026-01-05T00:00:00.000Z"
+  },
+  "nodes": [
+    {
+      "id": "V-home",
+      "project_id": "test-l2",
+      "species": "view",
+      "title": "Home",
+      "status": "live",
+      "platforms": ["web"]
+    },
+    {
+      "id": "V-settings",
+      "project_id": "test-l2",
+      "species": "view",
+      "title": "Settings",
+      "status": "development",
+      "platforms": ["web"]
+    },
+    {
+      "id": "F-onboarding",
+      "project_id": "test-l2",
+      "species": "flow",
+      "title": "Onboarding",
+      "status": "development",
+      "platforms": ["web"],
+      "metadata": {
+        "playlist": { "entries": [{ "type": "view", "view_id": "V-home" }] }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-F-onboarding-V-home",
+      "project_id": "test-l2",
+      "source_id": "F-onboarding",
+      "target_id": "V-home",
+      "edge_type": "composes"
+    }
+  ],
+  "journal": [
+    { "id": "01J9ZK4E4N0000000000000001", "ts": "2026-01-01T00:00:00.000Z", "actor": "claude-code", "type": "node.created", "node_id": "V-home", "species": "view", "title": "Home" },
+    { "id": "01J9ZK4E4N0000000000000002", "ts": "2026-01-01T00:01:00.000Z", "actor": "claude-code", "type": "node.created", "node_id": "V-settings", "species": "view", "title": "Settings" },
+    { "id": "01J9ZK4E4N0000000000000003", "ts": "2026-01-01T00:02:00.000Z", "actor": "claude-code", "type": "node.created", "node_id": "F-onboarding", "species": "flow", "title": "Onboarding" },
+    { "id": "01J9ZK4E4N0000000000000004", "ts": "2026-01-01T00:03:00.000Z", "actor": "claude-code", "type": "edge.added", "edge_id": "e-F-onboarding-V-home", "source_id": "F-onboarding", "target_id": "V-home", "edge_type": "composes" },
+    { "id": "01J9ZK4E4N0000000000000005", "ts": "2026-01-02T00:00:00.000Z", "actor": "alexis", "type": "node.status_changed", "node_id": "V-home", "from": "idea", "to": "development" },
+    { "id": "01J9ZK4E4N0000000000000006", "ts": "2026-01-02T00:01:00.000Z", "actor": "alexis", "type": "node.status_changed", "node_id": "V-settings", "from": "idea", "to": "development" },
+    { "id": "01J9ZK4E4N0000000000000007", "ts": "2026-01-02T00:02:00.000Z", "actor": "alexis", "type": "node.status_changed", "node_id": "F-onboarding", "from": "idea", "to": "development" },
+    { "id": "01J9ZK4E4N0000000000000008", "ts": "2026-01-03T00:00:00.000Z", "actor": "alexis", "type": "node.status_changed", "node_id": "V-home", "from": "development", "to": "live" },
+    { "id": "01J9ZK4E4N0000000000000009", "ts": "2026-01-04T00:00:00.000Z", "actor": "ci", "type": "release.tagged", "version": "1.0.0", "notes": "First cut." },
+    { "id": "01J9ZK4E4N000000000000000A", "ts": "2026-01-05T00:00:00.000Z", "actor": "alexis", "type": "idea.proposed", "title": "Dark mode", "description": "Let users pick a theme." }
+  ]
+}

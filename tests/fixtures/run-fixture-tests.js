@@ -12,11 +12,13 @@ const VALIDATOR = path.join(__dirname, "..", "..", "docs", "arkaik-skill", "scri
 
 const CASES = [
   { file: "valid-bundle.json", expectValid: true },
+  { file: "valid-level2.json", expectValid: true },
   { file: "duplicate-node-id.json", expectValid: false },
   { file: "dangling-edge.json", expectValid: false },
   { file: "invalid-view-card-variant.json", expectValid: false },
   { file: "duplicate-ref-id.json", expectValid: false },
   { file: "invalid-kitchen-sink.json", expectValid: false },
+  { file: "journal-status-mismatch.json", expectValid: false },
 ];
 
 let failures = 0;

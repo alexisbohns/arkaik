@@ -24,11 +24,13 @@ const FIXTURES = [
   "seed/arkaik-self-map.json",
   "public/schema/example-bundle.json",
   "tests/fixtures/valid-bundle.json",
+  "tests/fixtures/valid-level2.json",
   "tests/fixtures/duplicate-node-id.json",
   "tests/fixtures/dangling-edge.json",
   "tests/fixtures/invalid-view-card-variant.json",
   "tests/fixtures/duplicate-ref-id.json",
   "tests/fixtures/invalid-kitchen-sink.json",
+  "tests/fixtures/journal-status-mismatch.json",
 ];
 
 /** Run the standalone validator and extract its verdict + finding counts. */
