@@ -71,7 +71,10 @@
       "title": "Import JSON",
       "description": "Import user-provided project JSON file.",
       "status": "live",
-      "platforms": ["web"]
+      "platforms": ["web"],
+      "metadata": {
+        "playlist": { "entries": [] }
+      }
     },
     {
       "id": "F-create-project",
@@ -80,7 +83,10 @@
       "title": "Create Project",
       "description": "Create a new empty project.",
       "status": "live",
-      "platforms": ["web"]
+      "platforms": ["web"],
+      "metadata": {
+        "playlist": { "entries": [] }
+      }
     },
     {
       "id": "F-delete-project",
@@ -89,7 +95,10 @@
       "title": "Delete Project",
       "description": "Archive a selected project from the list.",
       "status": "live",
-      "platforms": ["web"]
+      "platforms": ["web"],
+      "metadata": {
+        "playlist": { "entries": [] }
+      }
     },
     {
       "id": "F-import-example-projects",
@@ -98,7 +107,10 @@
       "title": "Import Example Projects",
       "description": "Import built-in example seed when no projects exist.",
       "status": "live",
-      "platforms": ["web"]
+      "platforms": ["web"],
+      "metadata": {
+        "playlist": { "entries": [] }
+      }
     },
     {
       "id": "API-local-list-projects",
@@ -260,13 +272,6 @@
       "source_id": "API-local-import-project",
       "target_id": "DM-project-bundle",
       "edge_type": "queries"
-    },
-    {
-      "id": "e-DM-local-storage-store-DM-project-bundle",
-      "project_id": "arkaik-self-map",
-      "source_id": "DM-local-storage-store",
-      "target_id": "DM-project-bundle",
-      "edge_type": "composes"
     }
   ]
 }
