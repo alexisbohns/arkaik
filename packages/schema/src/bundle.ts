@@ -23,12 +23,21 @@ export const PlatformNotesMapSchema: z.ZodType<PlatformNotesMap> = z.partialReco
   z.string(),
 ).meta({ id: "PlatformNotesMap", description: "Freeform per-platform notes." });
 
-/** Per-platform screenshot stored as base64 data URI. */
+/**
+ * Per-platform screenshot. Each value is a relative path (Kommit), an
+ * absolute `https://` URL (hosted modes), or a `data:` URI (Lokal/legacy) —
+ * see docs/spec/bundle-format.md § Asset Values. `validateBundle()` warns on
+ * `data:` values above a size threshold; it never rejects them.
+ */
 export type PlatformScreenshotsMap = Partial<Record<PlatformId, string>>;
 export const PlatformScreenshotsMapSchema: z.ZodType<PlatformScreenshotsMap> = z.partialRecord(
   PlatformSchema,
   z.string(),
-).meta({ id: "PlatformScreenshotsMap", description: "Per-platform screenshot stored as base64 data URI." });
+).meta({
+  id: "PlatformScreenshotsMap",
+  description:
+    "Per-platform screenshot: a relative path, an absolute URL, or a data URI (see docs/spec/bundle-format.md § Asset Values).",
+});
 
 export interface NodeMetadata extends Record<string, unknown> {
   stage?: string;

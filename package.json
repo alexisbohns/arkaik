@@ -13,7 +13,8 @@
     "generate": "node scripts/generate/index.js",
     "validate:seeds": "node docs/arkaik-skill/scripts/validate-bundle.js seed/pebbles.json && node docs/arkaik-skill/scripts/validate-bundle.js seed/arkaik-self-map.json && node docs/arkaik-skill/scripts/validate-bundle.js public/schema/example-bundle.json",
     "test:fixtures": "node tests/fixtures/run-fixture-tests.js",
-    "test:schema": "node tests/schema/parity.test.js"
+    "test:schema": "node tests/schema/parity.test.js",
+    "test:screenshot-size": "node tests/schema/screenshot-size.test.js"
   },
   "dependencies": {
     "@radix-ui/react-collapsible": "^1.1.12",
