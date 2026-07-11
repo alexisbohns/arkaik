@@ -61,6 +61,13 @@ function generate() {
   if (projectDef) {
     projectDef.additionalProperties = true;
   }
+  // Journal events preserve unknown types/fields for forward compatibility
+  // (docs/spec/journal.md § Event Envelope); `.catchall(z.unknown())` renders as
+  // `additionalProperties: {}` — normalize to explicit `true` for the same reason.
+  const journalEventDef = schema.$defs && schema.$defs.JournalEvent;
+  if (journalEventDef) {
+    journalEventDef.additionalProperties = true;
+  }
 
   fs.writeFileSync(OUT_FILE, JSON.stringify(reorder(schema, KEY_ORDER), null, 2) + "\n");
   cleanup();

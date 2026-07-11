@@ -16,7 +16,7 @@ const SCHEMA_DIR = path.join(__dirname, "..", "..", "packages", "schema");
 const SRC_DIR = path.join(SCHEMA_DIR, "src");
 const BUILD_DIR = path.join(SCHEMA_DIR, ".generate-build");
 
-const MODULES = ["ids", "enums", "playlist", "bundle", "validate", "parse", "index"];
+const MODULES = ["ids", "enums", "playlist", "journal", "journal-events", "bundle", "validate", "parse", "index"];
 
 function loadSchemaPackage() {
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });

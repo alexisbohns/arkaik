@@ -9,7 +9,7 @@
  * risked reconstructing the bundle as `{ project, nodes, edges }` and dropping
  * every other top-level key. This test drives the *full* ID-collision import
  * path — parse (must preserve unknown keys) → rewrite (must preserve unknown
- * keys) → import — and asserts an unknown top-level key, `schema_version`, and
+ * keys) → import — and asserts the embedded `journal`, `schema_version`, and
  * `project.version` all survive to the stored bundle, with ids rewritten.
  *
  * export.ts is loaded by transpiling it and intercepting its two runtime
@@ -100,7 +100,10 @@ async function main() {
       { id: "V-home", project_id: COLLIDING_ID, species: "view", title: "Home", status: "idea", platforms: ["web"] },
     ],
     edges: [],
-    journal: [{ id: "01J9ZK4E4NVQ9K4YB2Q6WPXC1T", type: "release.tagged" }],
+    journal: [
+      { id: "01J9ZK4E4NVQ9K4YB2Q6WPXC1S", ts: "2026-01-01T00:00:00.000Z", type: "node.created", node_id: "V-home", species: "view", title: "Home" },
+      { id: "01J9ZK4E4NVQ9K4YB2Q6WPXC1T", ts: "2026-01-01T00:01:00.000Z", type: "release.tagged", version: "2.1.0" },
+    ],
   };
 
   // Duck-typed File: importProjectFromFile only calls file.text().
@@ -118,7 +121,7 @@ async function main() {
   );
   assert(
     JSON.stringify(captured.journal) === JSON.stringify(bundle.journal),
-    "id-collision: unknown top-level `journal` key survived the rewrite (no silent stripping)",
+    "id-collision: embedded `journal` survived the rewrite (no silent stripping)",
   );
   assert(captured.schema_version === 1, "id-collision: schema_version survived the rewrite");
   assert(captured.project.version === "2.1.0", "id-collision: project.version survived the rewrite");

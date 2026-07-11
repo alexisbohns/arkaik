@@ -10,6 +10,8 @@ import {
   type StatusId,
 } from "./enums";
 import { FlowPlaylistSchema, type FlowPlaylist } from "./playlist";
+import { JournalEventSchema } from "./journal-events";
+import type { JournalEvent } from "./journal";
 
 export type PlatformStatusMap = Partial<Record<PlatformId, StatusId>>;
 export const PlatformStatusMapSchema: z.ZodType<PlatformStatusMap> = z.partialRecord(
@@ -209,6 +211,8 @@ export interface ProjectBundle {
   project: Project;
   nodes: Node[];
   edges: Edge[];
+  /** Optional embedded journal — the interchange projection (Level 2). Canonical storage is the JSONL sidecar; see docs/spec/journal.md. */
+  journal?: JournalEvent[];
 }
 
 export const ProjectBundleSchema: z.ZodType<ProjectBundle> = z.object({
@@ -219,6 +223,10 @@ export const ProjectBundleSchema: z.ZodType<ProjectBundle> = z.object({
   project: ProjectSchema,
   nodes: z.array(NodeSchema).meta({ description: "All nodes in the project graph." }),
   edges: z.array(EdgeSchema).meta({ description: "All edges (relationships) between nodes." }),
+  journal: z.array(JournalEventSchema).optional().meta({
+    description:
+      "Optional embedded journal events — the Level 2 interchange projection (docs/spec/journal.md). Canonical storage in repos is the JSONL sidecar; a bundle without a journal is Level 0/1, not an error.",
+  }),
 }).catchall(z.unknown()).meta({
   id: "ProjectBundle",
   title: "Arkaik ProjectBundle",

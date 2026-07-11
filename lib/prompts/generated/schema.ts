@@ -120,11 +120,126 @@ interface Project {
   archived_at?: string | null;
 }
 
+interface JournalEvent extends Record<string, unknown> {
+  /** ULID — sortable, collision-free without coordination. */
+  id: string;
+  /** ISO 8601 timestamp. */
+  ts: string;
+  /** Who/what wrote it: "alexis", "claude-code", "arkaik-sync", "ci". */
+  actor?: string;
+  /** Event type — the v1 vocabulary, or an unknown forward-compatible value. */
+  type: string;
+  /** Reserved per-event payload version, for the day a payload shape changes. */
+  v?: number;
+}
+
+interface NodeCreatedEvent extends JournalEvent {
+  type: "node.created";
+  node_id: string;
+  species: SpeciesId;
+  title: string;
+}
+
+interface NodeUpdatedEvent extends JournalEvent {
+  type: "node.updated";
+  node_id: string;
+  fields: string[];
+  from?: unknown;
+  to?: unknown;
+}
+
+interface NodeStatusChangedEvent extends JournalEvent {
+  type: "node.status_changed";
+  node_id: string;
+  from: StatusId;
+  to: StatusId;
+  platform?: PlatformId;
+}
+
+interface NodeDeletedEvent extends JournalEvent {
+  type: "node.deleted";
+  node_id: string;
+}
+
+interface EdgeAddedEvent extends JournalEvent {
+  type: "edge.added";
+  edge_id: string;
+  source_id: string;
+  target_id: string;
+  edge_type: EdgeTypeId;
+}
+
+interface EdgeRemovedEvent extends JournalEvent {
+  type: "edge.removed";
+  edge_id: string;
+}
+
+interface ReleaseTaggedEvent extends JournalEvent {
+  type: "release.tagged";
+  version: string;
+  notes?: string;
+  platform?: PlatformId;
+}
+
+interface IdeaProposedEvent extends JournalEvent {
+  type: "idea.proposed";
+  title: string;
+  description?: string;
+  node_id?: string;
+}
+
+interface RequestFiledEvent extends JournalEvent {
+  type: "request.filed";
+  title: string;
+  description?: string;
+  source?: string;
+  node_id?: string;
+}
+
+interface RefAddedEvent extends JournalEvent {
+  type: "ref.added";
+  node_id: string;
+  ref_id: string;
+  ref_type: string;
+  url: string;
+}
+
+interface RefRemovedEvent extends JournalEvent {
+  type: "ref.removed";
+  node_id: string;
+  ref_id: string;
+}
+
+interface RefStatusChangedEvent extends JournalEvent {
+  type: "ref.status_changed";
+  node_id: string;
+  ref_id: string;
+  from?: string;
+  to: string;
+  synced_at: string;
+}
+
+type KnownJournalEvent =
+  | NodeCreatedEvent
+  | NodeUpdatedEvent
+  | NodeStatusChangedEvent
+  | NodeDeletedEvent
+  | EdgeAddedEvent
+  | EdgeRemovedEvent
+  | ReleaseTaggedEvent
+  | IdeaProposedEvent
+  | RequestFiledEvent
+  | RefAddedEvent
+  | RefRemovedEvent
+  | RefStatusChangedEvent;
+
 interface ProjectBundle {
   /** Bundle Format contract version (docs/spec/bundle-format.md § Schema Versioning). Absent MUST be treated as 1. */
   schema_version?: number;
   project: Project;
   nodes: Node[];
   edges: Edge[];
+  /** Optional embedded journal — the interchange projection (Level 2). Canonical storage is the JSONL sidecar; see docs/spec/journal.md. */
+  journal?: JournalEvent[];
 }
 \`\`\``;

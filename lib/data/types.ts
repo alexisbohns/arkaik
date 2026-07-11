@@ -24,6 +24,21 @@ export type {
   Project,
   ProjectMetadata,
   ProjectBundle,
+  JournalEvent,
+  JournalEventType,
+  KnownJournalEvent,
+  NodeCreatedEvent,
+  NodeUpdatedEvent,
+  NodeStatusChangedEvent,
+  NodeDeletedEvent,
+  EdgeAddedEvent,
+  EdgeRemovedEvent,
+  ReleaseTaggedEvent,
+  IdeaProposedEvent,
+  RequestFiledEvent,
+  RefAddedEvent,
+  RefRemovedEvent,
+  RefStatusChangedEvent,
 } from "@arkaik/schema";
 
 /** Species of a node — the SPECIES config id union. */

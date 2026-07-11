@@ -52,6 +52,23 @@ function buildTypesBlock(schemaPackage) {
     "ProjectBundle",
   ]);
 
+  const journalDecls = extractDeclarations("journal.ts", [
+    "JournalEvent",
+    "NodeCreatedEvent",
+    "NodeUpdatedEvent",
+    "NodeStatusChangedEvent",
+    "NodeDeletedEvent",
+    "EdgeAddedEvent",
+    "EdgeRemovedEvent",
+    "ReleaseTaggedEvent",
+    "IdeaProposedEvent",
+    "RequestFiledEvent",
+    "RefAddedEvent",
+    "RefRemovedEvent",
+    "RefStatusChangedEvent",
+    "KnownJournalEvent",
+  ]);
+
   return [
     ...enumAliases,
     "",
@@ -79,6 +96,7 @@ function buildTypesBlock(schemaPackage) {
     "",
     project,
     "",
+    ...journalDecls.flatMap((decl) => [decl, ""]),
     projectBundle,
   ].join("\n");
 }

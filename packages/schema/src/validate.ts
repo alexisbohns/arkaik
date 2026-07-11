@@ -7,6 +7,7 @@ import {
   type SpeciesId,
 } from "./ids";
 import type { PlaylistEntry } from "./playlist";
+import { crossCheckJournal } from "./journal";
 
 /**
  * Semantic validation for Arkaik ProjectBundles.
@@ -519,6 +520,12 @@ export function validateBundle(input: unknown): ValidationResult {
   for (const id of flowGraph.keys()) {
     dfs(id);
   }
+
+  // --- Snapshot ↔ journal cross-checks (Format Level 2, docs/spec/journal.md) ---
+  // Runs only when a non-empty `journal` is embedded; the checks compare the
+  // journal to the snapshot by value. Deliberately kept in the zod-free journal
+  // module so it bundles into the standalone validator.
+  for (const finding of crossCheckJournal(bundle)) findings.push(finding);
 
   return result();
 }
