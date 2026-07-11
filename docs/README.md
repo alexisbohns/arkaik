@@ -6,7 +6,15 @@
 - [Graph Model](graph-model.md) — 4-species taxonomy, composition model, statuses, platforms, edge types
 - [Data Layer](data-layer.md) — DataProvider interface, local storage, import/export
 - [Conventions](conventions.md) — Coding patterns, file organization, state management
-- [Vision](vision.md) — Long-term product direction and roadmap ideas
+- [Vision](vision.md) — Product strategy: the four layers, modes & tiers, format levels, roadmap
+
+## Specifications
+
+Normative (draft) specs for the arkaik format and tooling:
+
+- [Bundle Format v2](spec/bundle-format.md) — schema versioning, references, asset values, ID conventions, canonical serialization
+- [Journal & Events](spec/journal.md) — event vocabulary, JSONL sidecar, authority model, releases & projections
+- [Toolchain & Packaging](spec/toolchain.md) — npm workspace, `@arkaik/schema`, the `arkaik` CLI, skill distribution
 
 ## LLM & Prompt Surfaces
 
