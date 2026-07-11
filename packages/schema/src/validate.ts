@@ -1,4 +1,3 @@
-import { z } from "zod";
 import {
   EDGE_TYPE_IDS,
   PLATFORM_IDS,
@@ -6,8 +5,7 @@ import {
   STATUS_IDS,
   type EdgeTypeId,
   type SpeciesId,
-} from "./enums";
-import { ProjectBundleSchema, type ProjectBundle } from "./bundle";
+} from "./ids";
 import type { PlaylistEntry } from "./playlist";
 
 /**
@@ -20,6 +18,11 @@ import type { PlaylistEntry } from "./playlist";
  * faithful port of the standalone validator in
  * `docs/arkaik-skill/scripts/validate-bundle.js`; a parity fixture test keeps
  * the two in agreement.
+ *
+ * Deliberately zod-free (only plain ID lists from ./ids, no schema imports):
+ * the esbuild-bundled standalone validator is built from this file, and
+ * pulling zod in would bloat it for no benefit — this logic never calls into
+ * zod at runtime. Shape parsing against the zod schemas lives in parse.ts.
  */
 
 export type Severity = "error" | "warning";
@@ -80,15 +83,6 @@ function isIsoDate(value: unknown): boolean {
 // the strict types hold before the checks below have run.
 type LooseNode = Record<string, unknown>;
 type LooseEdge = Record<string, unknown>;
-
-/**
- * Shape-only parse. Returns a zod `SafeParseResult`: on success `.data` is a
- * typed `ProjectBundle`; on failure `.error` carries structured issues. Does
- * not run semantic graph rules — use {@link validateBundle} for those.
- */
-export function parseBundle(input: unknown) {
-  return ProjectBundleSchema.safeParse(input) as z.ZodSafeParseResult<ProjectBundle>;
-}
 
 /**
  * Validate a ProjectBundle against the full semantic rule set. Returns

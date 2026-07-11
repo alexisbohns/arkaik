@@ -1,9 +1,11 @@
 /**
  * Loads the TypeScript @arkaik/schema package into a running Node process
- * without a bundler. Each source file is transpiled to CommonJS with the
- * TypeScript compiler (a devDependency) and written into a build dir *inside*
+ * without a bundler, the same way tests/schema/load-schema.js does for the
+ * parity test — kept as a separate copy so the generators have no
+ * dependency on the tests/ directory. Each source file is transpiled to
+ * CommonJS with the TypeScript compiler and written into a build dir *inside*
  * packages/schema so that `require("zod")` resolves against the workspace's
- * node_modules. Returns the package's public exports.
+ * node_modules.
  */
 
 const fs = require("fs");
@@ -12,18 +14,13 @@ const ts = require("typescript");
 
 const SCHEMA_DIR = path.join(__dirname, "..", "..", "packages", "schema");
 const SRC_DIR = path.join(SCHEMA_DIR, "src");
-const BUILD_DIR = path.join(SCHEMA_DIR, ".test-build");
+const BUILD_DIR = path.join(SCHEMA_DIR, ".generate-build");
 
-// Order does not matter for output — CommonJS resolves requires lazily — but we
-// transpile every module the entrypoint depends on.
 const MODULES = ["ids", "enums", "playlist", "bundle", "validate", "parse", "index"];
 
-function loadSchema() {
+function loadSchemaPackage() {
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
   fs.mkdirSync(BUILD_DIR, { recursive: true });
-
-  // packages/schema is "type": "module"; mark the CJS output dir accordingly so
-  // the transpiled `.js` files are loaded as CommonJS.
   fs.writeFileSync(path.join(BUILD_DIR, "package.json"), JSON.stringify({ type: "commonjs" }));
 
   for (const name of MODULES) {
@@ -39,11 +36,14 @@ function loadSchema() {
     fs.writeFileSync(path.join(BUILD_DIR, `${name}.js`), outputText);
   }
 
-  // Bust the require cache so repeated loads pick up fresh output.
   for (const name of MODULES) {
     delete require.cache[path.join(BUILD_DIR, `${name}.js`)];
   }
   return require(path.join(BUILD_DIR, "index.js"));
 }
 
-module.exports = { loadSchema, BUILD_DIR };
+function cleanup() {
+  fs.rmSync(BUILD_DIR, { recursive: true, force: true });
+}
+
+module.exports = { loadSchemaPackage, cleanup };

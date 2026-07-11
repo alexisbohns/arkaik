@@ -2,12 +2,15 @@
   "name": "nextjs",
   "version": "0.1.0",
   "private": true,
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "generate": "node scripts/generate/index.js",
     "validate:seeds": "node docs/arkaik-skill/scripts/validate-bundle.js seed/pebbles.json && node docs/arkaik-skill/scripts/validate-bundle.js seed/arkaik-self-map.json && node docs/arkaik-skill/scripts/validate-bundle.js public/schema/example-bundle.json",
     "test:fixtures": "node tests/fixtures/run-fixture-tests.js",
     "test:schema": "node tests/schema/parity.test.js"
@@ -47,6 +50,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "esbuild": "^0.28.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.0",
     "tailwindcss": "^4",

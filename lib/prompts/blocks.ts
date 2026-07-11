@@ -1,3 +1,7 @@
+import { PLATFORM_IDS, STATUS_IDS, SPECIES_PREFIXES } from "./generated/schema";
+
+export { SCHEMA_BLOCK } from "./generated/schema";
+
 export const CONTEXT_BLOCK = `## Context: What is Arkaik
 
 Arkaik is a product graph browser for product architects. Projects are visual maps of product architecture, containing nodes and edges that describe the product's screens, journeys, data, and APIs.
@@ -23,8 +27,8 @@ Flows orchestrate views through an ordered playlist. Each playlist entry is one 
 - **queries**: An API endpoint reads/writes a data model
 
 ### Platforms & Statuses
-- Platforms: \`"web"\`, \`"ios"\`, \`"android"\`
-- Statuses (lifecycle): \`"idea"\`, \`"backlog"\`, \`"prioritized"\`, \`"development"\`, \`"releasing"\`, \`"live"\`, \`"archived"\`, \`"blocked"\`
+- Platforms: ${PLATFORM_IDS.map((p) => `\`"${p}"\``).join(", ")}
+- Statuses (lifecycle): ${STATUS_IDS.map((s) => `\`"${s}"\``).join(", ")}
 - Views can have per-platform status overrides in \`metadata.platformStatuses\`
 
 ### Optional Metadata
@@ -32,77 +36,9 @@ Flows orchestrate views through an ordered playlist. Each playlist entry is one 
 - \`metadata.platformNotes\`: Per-platform freetext notes
 - \`metadata.platformStatuses\`: Per-platform status overrides (views only)`;
 
-export const SCHEMA_BLOCK = `## TypeScript Types (ProjectBundle Schema)
-
-\`\`\`typescript
-type Species = "flow" | "view" | "data-model" | "api-endpoint";
-type Status = "idea" | "backlog" | "prioritized" | "development" | "releasing" | "live" | "archived" | "blocked";
-type Platform = "web" | "ios" | "android";
-type EdgeType = "composes" | "calls" | "displays" | "queries";
-
-type PlaylistEntry =
-  | { type: "view"; view_id: string }
-  | { type: "flow"; flow_id: string }
-  | { type: "condition"; label: string; if_true: PlaylistEntry[]; if_false: PlaylistEntry[] }
-  | { type: "junction"; label: string; cases: JunctionCase[] };
-
-interface JunctionCase {
-  label: string;
-  entries: PlaylistEntry[];
-}
-
-interface FlowPlaylist {
-  entries: PlaylistEntry[];
-}
-
-interface NodeMetadata {
-  stage?: "beta" | "monitoring" | "deprecated";
-  playlist?: FlowPlaylist;
-  platformNotes?: Partial<Record<Platform, string>>;
-  platformStatuses?: Partial<Record<Platform, Status>>;
-}
-
-interface Node {
-  id: string;                // Unique. Convention: F- (flow), V- (view), DM- (data-model), API- (api-endpoint)
-  project_id: string;        // Must match project.id
-  species: Species;
-  title: string;
-  description?: string;
-  status: Status;
-  platforms: Platform[];     // At least one
-  metadata?: NodeMetadata;   // Required for flows (must include playlist)
-}
-
-interface Edge {
-  id: string;                // Convention: e-{source_id}-{target_id}
-  project_id: string;        // Must match project.id
-  source_id: string;         // Must reference an existing node ID
-  target_id: string;         // Must reference an existing node ID
-  edge_type: EdgeType;
-  metadata?: Record<string, unknown>;
-}
-
-interface Project {
-  id: string;
-  title: string;
-  description?: string;
-  root_node_id?: string;     // Should reference an existing node
-  metadata?: { view_card_variant?: "compact" | "large" };
-  created_at: string;        // ISO 8601
-  updated_at: string;        // ISO 8601
-  archived_at?: string | null;
-}
-
-interface ProjectBundle {
-  project: Project;
-  nodes: Node[];
-  edges: Edge[];
-}
-\`\`\``;
-
 export const RULES_BLOCK = `## Rules & Constraints
 
-1. Every node.id must be unique within the bundle, prefixed by species: \`F-\` (flow), \`V-\` (view), \`DM-\` (data-model), \`API-\` (api-endpoint). Use lowercase kebab-case after the prefix (e.g., \`V-user-profile\`, \`F-checkout-flow\`).
+1. Every node.id must be unique within the bundle, prefixed by species: \`${SPECIES_PREFIXES.flow}\` (flow), \`${SPECIES_PREFIXES.view}\` (view), \`${SPECIES_PREFIXES["data-model"]}\` (data-model), \`${SPECIES_PREFIXES["api-endpoint"]}\` (api-endpoint). Use lowercase kebab-case after the prefix (e.g., \`V-user-profile\`, \`F-checkout-flow\`).
 2. Every node.project_id must exactly match project.id.
 3. Every edge.source_id and edge.target_id must reference IDs of nodes that exist in the nodes array.
 4. Edge IDs should follow the pattern: \`e-{source_id}-{target_id}\` (e.g., \`e-V-home-F-login\`).
@@ -117,7 +53,7 @@ export const RULES_BLOCK = `## Rules & Constraints
 9. Every view or sub-flow referenced in a flow's playlist MUST also have a "composes" edge from that flow to the referenced node.
 10. Timestamps (created_at, updated_at) must be valid ISO 8601 strings (e.g., "2026-01-01T00:00:00.000Z").
 11. Output must be valid JSON — no comments, no trailing commas, no JavaScript expressions.
-12. platforms arrays must contain at least one value from: "web", "ios", "android".
+12. platforms arrays must contain at least one value from: ${PLATFORM_IDS.map((p) => `"${p}"`).join(", ")}.
 13. Flow nodes should have metadata.playlist with at least one entry.
 14. Use descriptive but concise titles (2-5 words) and optional descriptions (1 sentence).
 15. Keep IDs short but meaningful — they appear in the UI.`;

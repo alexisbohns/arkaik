@@ -2,34 +2,27 @@
 
 ## Table of Contents
 
-1. [Enums & Type Aliases](#enums--type-aliases)
+1. [Types](#types)
 2. [Playlist Entries](#playlist-entries)
-3. [Node](#node)
-4. [Edge](#edge)
-5. [Project](#project)
-6. [ProjectBundle](#projectbundle)
-7. [Edge Type Semantics](#edge-type-semantics)
-8. [ID Conventions](#id-conventions)
-9. [Validation Checklist](#validation-checklist)
+3. [Edge Type Semantics](#edge-type-semantics)
+4. [ID Conventions](#id-conventions)
+5. [Validation Checklist](#validation-checklist)
 
 ---
 
-## Enums & Type Aliases
+## Types
 
+The canonical shape of a ProjectBundle, generated from the `@arkaik/schema` zod
+definitions (`docs/spec/toolchain.md` § @arkaik/schema). Do not hand-edit the
+block below — run `npm run generate`.
+
+<!-- GENERATED:SCHEMA:START -->
 ```typescript
-type Species = "flow" | "view" | "data-model" | "api-endpoint";
-type Status = "idea" | "backlog" | "prioritized" | "development" | "releasing" | "live" | "archived" | "blocked";
-type Platform = "web" | "ios" | "android";
-type EdgeType = "composes" | "calls" | "displays" | "queries";
-```
+type SpeciesId = "flow" | "view" | "data-model" | "api-endpoint";
+type StatusId = "idea" | "backlog" | "prioritized" | "development" | "releasing" | "live" | "archived" | "blocked";
+type PlatformId = "web" | "ios" | "android";
+type EdgeTypeId = "composes" | "calls" | "displays" | "queries";
 
----
-
-## Playlist Entries
-
-Flows orchestrate views through an ordered playlist. Each entry is one of:
-
-```typescript
 type PlaylistEntry =
   | { type: "view"; view_id: string }
   | { type: "flow"; flow_id: string }
@@ -44,7 +37,73 @@ interface JunctionCase {
 interface FlowPlaylist {
   entries: PlaylistEntry[];
 }
+
+type PlatformNotesMap = Partial<Record<PlatformId, string>>;
+type PlatformStatusMap = Partial<Record<PlatformId, StatusId>>;
+type PlatformScreenshotsMap = Partial<Record<PlatformId, string>>;
+
+interface NodeMetadata extends Record<string, unknown> {
+  stage?: string;
+  playlist?: FlowPlaylist;
+  platformNotes?: PlatformNotesMap;
+  platformStatuses?: PlatformStatusMap;
+  platformScreenshots?: PlatformScreenshotsMap;
+}
+
+interface Node {
+  id: string;
+  project_id: string;
+  species: SpeciesId;
+  title: string;
+  description?: string;
+  status: StatusId;
+  platforms: PlatformId[];
+  metadata?: NodeMetadata;
+}
+
+interface Edge {
+  id: string;
+  project_id: string;
+  source_id: string;
+  target_id: string;
+  edge_type: EdgeTypeId;
+  metadata?: Record<string, unknown>;
+}
+
+interface ProjectMetadata extends Record<string, unknown> {
+  view_card_variant?: "compact" | "large";
+}
+
+interface Project {
+  id: string;
+  title: string;
+  description?: string;
+  /** Optional node id used as the primary canvas anchor/root. */
+  root_node_id?: string;
+  /** Optional project-level UI settings and preferences. */
+  metadata?: ProjectMetadata;
+  /** ISO 8601 timestamp, e.g. "2024-01-01T00:00:00.000Z" */
+  created_at: string;
+  /** ISO 8601 timestamp, e.g. "2024-01-01T00:00:00.000Z" */
+  updated_at: string;
+  /** ISO 8601 timestamp when archived; null/undefined means active. */
+  archived_at?: string | null;
+}
+
+interface ProjectBundle {
+  project: Project;
+  nodes: Node[];
+  edges: Edge[];
+}
 ```
+<!-- GENERATED:SCHEMA:END -->
+
+---
+
+## Playlist Entries
+
+Flows orchestrate views through an ordered playlist (`PlaylistEntry`, above).
+Each entry is one of `view`, `flow`, `condition`, or `junction`.
 
 **Condition** is a binary branch (yes/no question). The `label` is a question
 (e.g., "Email verified?"), and `if_true` / `if_false` contain the entries for
@@ -56,74 +115,6 @@ entries.
 
 Every `view_id` and `flow_id` in playlist entries must reference node IDs that
 exist in the bundle's `nodes` array.
-
----
-
-## Node
-
-```typescript
-interface NodeMetadata {
-  stage?: "beta" | "monitoring" | "deprecated";
-  playlist?: FlowPlaylist;                           // Required for flow nodes
-  platformNotes?: Partial<Record<Platform, string>>;
-  platformStatuses?: Partial<Record<Platform, Status>>; // Views only
-}
-
-interface Node {
-  id: string;                // Unique across ALL nodes. Prefixed by species (see ID Conventions)
-  project_id: string;        // Must exactly match project.id
-  species: Species;
-  title: string;             // Required, non-empty. See "Titles" below for per-species conventions
-  description?: string;      // 1 sentence
-  status: Status;
-  platforms: Platform[];     // At least one value
-  metadata?: NodeMetadata;   // Required for flows (must include playlist)
-}
-```
-
----
-
-## Edge
-
-```typescript
-interface Edge {
-  id: string;                // Convention: e-{source_id}-{target_id}
-  project_id: string;        // Must exactly match project.id
-  source_id: string;         // Must reference an existing node ID
-  target_id: string;         // Must reference an existing node ID
-  edge_type: EdgeType;
-  metadata?: Record<string, unknown>;
-}
-```
-
----
-
-## Project
-
-```typescript
-interface Project {
-  id: string;
-  title: string;
-  description?: string;
-  root_node_id?: string;     // Should reference an existing node
-  metadata?: { view_card_variant?: "compact" | "large" };
-  created_at: string;        // ISO 8601 (e.g., "2026-01-01T00:00:00.000Z")
-  updated_at: string;        // ISO 8601
-  archived_at?: string | null;
-}
-```
-
----
-
-## ProjectBundle
-
-```typescript
-interface ProjectBundle {
-  project: Project;
-  nodes: Node[];
-  edges: Edge[];
-}
-```
 
 ---
 
