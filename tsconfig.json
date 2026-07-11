@@ -19,7 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@arkaik/schema": ["./packages/schema/src/index.ts"]
     }
   },
   "include": [
