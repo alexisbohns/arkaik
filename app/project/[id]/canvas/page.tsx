@@ -21,7 +21,7 @@ import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useProject } from "@/lib/hooks/useProject";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
-import { assertProjectBundleShape, downloadJson, exportProject, importProject, normalizeProjectTimestamps } from "@/lib/utils/export";
+import { parseAndValidateBundle, downloadJson, exportProject, importProject, normalizeProjectTimestamps } from "@/lib/utils/export";
 import { generateNodeId } from "@/lib/utils/id";
 import { wouldCreateCycle } from "@/lib/utils/cycle";
 import type { SpeciesId } from "@/lib/config/species";
@@ -742,11 +742,11 @@ export default function ProjectCanvasPage() {
       throw new Error(format === "json" ? "Invalid JSON syntax." : "Invalid YAML syntax.");
     }
 
-    assertProjectBundleShape(parsed);
+    const bundle = parseAndValidateBundle(parsed);
 
     return {
-      ...parsed,
-      project: normalizeProjectTimestamps(parsed.project),
+      ...bundle,
+      project: normalizeProjectTimestamps(bundle.project),
     };
   }, []);
 
