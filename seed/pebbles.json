@@ -589,6 +589,7 @@
       "id": "V-profile",
       "project_id": "pebbles",
       "species": "view",
+      "title": "Profile",
       "description": "User profile dashboard. Banner (glyph + display name in the Reenie Beanie script face + member-since), a shortcuts row (Collections / Souls / Glyphs), a Stats card (ripple-level badge + 28-day assiduity grid + Days / Pebbles / Karma counters), a horizontal Collections carousel, a Lab card, and a logout button; a gear button opens Settings. Web aligns to the iOS token refactor (issues #465 / #467). iOS (#388): pushed from PathView's bottom bar; hosts the Lab navigation link and the onboarding replay full-screen cover.",
       "status": "development",
       "platforms": [
@@ -1929,7 +1930,7 @@
       ]
     },
     {
-      "id": "DM-bounce",
+      "id": "DM-bounces",
       "project_id": "pebbles",
       "species": "data-model",
       "title": "bounces",
@@ -2656,10 +2657,10 @@
       "edge_type": "displays"
     },
     {
-      "id": "e-V-home-DM-bounce",
+      "id": "e-V-home-DM-bounces",
       "project_id": "pebbles",
       "source_id": "V-home",
-      "target_id": "DM-bounce",
+      "target_id": "DM-bounces",
       "edge_type": "displays"
     },
     {
@@ -2789,10 +2790,10 @@
       "edge_type": "displays"
     },
     {
-      "id": "e-V-bounce-tempo-DM-bounce",
+      "id": "e-V-bounce-tempo-DM-bounces",
       "project_id": "pebbles",
       "source_id": "V-bounce-tempo",
-      "target_id": "DM-bounce",
+      "target_id": "DM-bounces",
       "edge_type": "displays"
     },
     {
@@ -2845,10 +2846,10 @@
       "edge_type": "displays"
     },
     {
-      "id": "e-V-profile-DM-bounce",
+      "id": "e-V-profile-DM-bounces",
       "project_id": "pebbles",
       "source_id": "V-profile",
-      "target_id": "DM-bounce",
+      "target_id": "DM-bounces",
       "edge_type": "displays"
     },
     {
@@ -2971,10 +2972,10 @@
       "edge_type": "queries"
     },
     {
-      "id": "e-API-get-bounce-DM-bounce",
+      "id": "e-API-get-bounce-DM-bounces",
       "project_id": "pebbles",
       "source_id": "API-get-bounce",
-      "target_id": "DM-bounce",
+      "target_id": "DM-bounces",
       "edge_type": "queries"
     },
     {
@@ -3195,10 +3196,10 @@
       "edge_type": "composes"
     },
     {
-      "id": "e-V-mechanic-sheet-DM-bounce",
+      "id": "e-V-mechanic-sheet-DM-bounces",
       "project_id": "pebbles",
       "source_id": "V-mechanic-sheet",
-      "target_id": "DM-bounce",
+      "target_id": "DM-bounces",
       "edge_type": "displays"
     },
     {
@@ -3616,10 +3617,10 @@
       "edge_type": "queries"
     },
     {
-      "id": "e-API-get-bounce-distribution-today-DM-bounce",
+      "id": "e-API-get-bounce-distribution-today-DM-bounces",
       "project_id": "pebbles",
       "source_id": "API-get-bounce-distribution-today",
-      "target_id": "DM-bounce",
+      "target_id": "DM-bounces",
       "edge_type": "queries"
     },
     {
