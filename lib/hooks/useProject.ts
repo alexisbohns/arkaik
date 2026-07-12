@@ -26,11 +26,19 @@ export function useProject(id: string) {
         throw new Error("Cannot update project before it is loaded");
       }
 
+      // Re-read the current bundle before saving. With the IndexedDB provider,
+      // getProject returns a fresh snapshot, so this hook's `project` state does
+      // not reflect node/edge edits made concurrently via useNodes/useEdges
+      // (which the old shared-in-memory store surfaced automatically). Saving
+      // our own stale `project.nodes`/`edges` would clobber those edits, so we
+      // patch project-level fields onto the freshest stored bundle instead.
+      const current = (await localProvider.getProject(project.project.id)) ?? project;
+
       const now = new Date().toISOString();
       const nextBundle: ProjectBundle = {
-        ...project,
+        ...current,
         project: {
-          ...project.project,
+          ...current.project,
           ...patch,
           updated_at: now,
         },

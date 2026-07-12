@@ -25,11 +25,11 @@ export function useNodes(projectId: string) {
 
   const addNode = useCallback(async (node: Node) => {
     const created = await localProvider.createNode(node);
-    // localProvider.createNode mutates bundle.nodes in place, so prev may
-    // already contain the new node. Always return a new array reference so
-    // React re-renders even when the provider mutated state in place.
+    // The provider returns a fresh node and does not mutate this hook's state
+    // (the IndexedDB backend hands back new objects, not shared references).
+    // The id guard stays as a defensive no-op against a double add.
     setNodes((prev) => {
-      if (prev.some((n) => n.id === created.id)) return [...prev];
+      if (prev.some((n) => n.id === created.id)) return prev;
       return [...prev, created];
     });
     return created;

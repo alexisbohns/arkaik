@@ -160,7 +160,7 @@ graph LR
 Not a tier. A **Try Lokal** button next to Sign in on the landing page.
 
 - No account, no server, no sign-up
-- Full editor experience in browser storage — `localStorage` today (`lib/data/local-provider.ts`, key `arkaik:store`); an IndexedDB (Dexie.js) migration is planned and is a prerequisite for journal writes in the app (see Roadmap)
+- Full editor experience in browser storage — IndexedDB via Dexie.js (`lib/data/local-provider.ts` + `lib/data/db.ts`); a legacy `localStorage` store (key `arkaik:store`) is imported once on first load. This per-project store is the prerequisite for journal writes in the app (see Roadmap)
 - Limited features (no AI, no hosted assets, no version history)
 - Manual JSON export to save work
 - Clear warning that browser cache clearing can remove local data
@@ -286,7 +286,7 @@ The bundle contract currently lives in five places that drift independently: `li
 
 - `packages/cli`: `init`, `validate`, `log`, `release` (tagging, release notes, compaction), `sync`, `pack`, `open`; skill distribution as a Claude Code plugin as a second channel
 - Deterministic IDs adopted **in the app** for nodes and edges (today `lib/utils/id.ts` generates random UUID suffixes and canvas edges use raw UUIDs, so any app round-trip violates the conventions the skill enforces), plus canonical serialization (sorted keys/nodes/edges) so app exports diff cleanly in git
-- App-side event emission, gated on the IndexedDB (Dexie) migration — localStorage rewrites the whole store on every mutation and cannot absorb a growing journal
+- App-side event emission, unblocked by the IndexedDB (Dexie) migration that landed — the old localStorage backend rewrote the whole store on every mutation and could not absorb a growing journal; the per-project store (with a separate journal table) now can
 - `arkaik dev` (local viewer) decision: requires making `/project/[id]` routing static-export friendly; evaluated on its own merits, not assumed
 
 ### Phase 4 — Services Re-Based
