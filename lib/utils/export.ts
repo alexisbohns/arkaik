@@ -1,5 +1,5 @@
 import type { Project, ProjectBundle } from "@/lib/data/types";
-import { parseBundle, validateBundle, type ValidationFinding } from "@arkaik/schema";
+import { parseBundle, serializeBundle, validateBundle, type ValidationFinding } from "@arkaik/schema";
 import { localProvider } from "@/lib/data/local-provider";
 
 const MAX_RECOMMENDED_EXPORT_BYTES = 4 * 1024 * 1024;
@@ -91,7 +91,7 @@ function rewriteBundleProjectId(bundle: ProjectBundle, newProjectId: string): Pr
 }
 
 export function exportToJson(bundle: ProjectBundle): string {
-  return JSON.stringify(bundle, null, 2);
+  return serializeBundle(bundle);
 }
 
 function sanitizeFilenameSegment(input: string): string {

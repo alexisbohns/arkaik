@@ -42,6 +42,9 @@ jobs:
       - name: Schema validator parity tests
         run: npm run test:schema
 
+      - name: Canonical serialization determinism tests
+        run: npm run test:serialize
+
       - name: Ref + version format field tests
         run: npm run test:refs
 

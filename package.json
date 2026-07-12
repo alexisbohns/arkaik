@@ -14,6 +14,7 @@
     "validate:seeds": "node docs/arkaik-skill/scripts/validate-bundle.js seed/pebbles.json && node docs/arkaik-skill/scripts/validate-bundle.js seed/arkaik-self-map.json && node docs/arkaik-skill/scripts/validate-bundle.js public/schema/example-bundle.json",
     "test:fixtures": "node tests/fixtures/run-fixture-tests.js",
     "test:schema": "node tests/schema/parity.test.js",
+    "test:serialize": "node tests/schema/serialize.test.js",
     "test:refs": "node tests/schema/refs.test.js",
     "test:journal": "node tests/schema/journal.test.js",
     "test:journal-projections": "node tests/data/journal-projections.test.js",

@@ -23,6 +23,7 @@ import { useProject } from "@/lib/hooks/useProject";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
 import { parseAndValidateBundle, downloadJson, exportProject, importProject, normalizeProjectTimestamps } from "@/lib/utils/export";
+import { serializeBundle } from "@arkaik/schema";
 import { generateNodeId } from "@/lib/utils/id";
 import { wouldCreateCycle } from "@/lib/utils/cycle";
 import type { SpeciesId } from "@/lib/config/species";
@@ -712,7 +713,7 @@ export default function ProjectCanvasPage() {
 
   const rawBaseText = useMemo(() => {
     if (!rawBundle) return "";
-    return rawFormat === "json" ? JSON.stringify(rawBundle, null, 2) : stringifyYaml(rawBundle);
+    return rawFormat === "json" ? serializeBundle(rawBundle) : stringifyYaml(rawBundle);
   }, [rawBundle, rawFormat]);
 
   const rawInitialTexts = useMemo(() => {
@@ -721,7 +722,7 @@ export default function ProjectCanvasPage() {
     }
 
     return {
-      json: JSON.stringify(rawBundle, null, 2),
+      json: serializeBundle(rawBundle),
       yaml: stringifyYaml(rawBundle),
     };
   }, [rawBundle]);
@@ -731,7 +732,7 @@ export default function ProjectCanvasPage() {
   const rawHasUnsavedChanges = rawDraftJson !== rawInitialTexts.json || rawDraftYaml !== rawInitialTexts.yaml;
 
   const syncRawDrafts = useCallback((bundle: ProjectBundle) => {
-    setRawDraftJson(JSON.stringify(bundle, null, 2));
+    setRawDraftJson(serializeBundle(bundle));
     setRawDraftYaml(stringifyYaml(bundle));
   }, []);
 
@@ -819,7 +820,7 @@ export default function ProjectCanvasPage() {
 
     try {
       const parsed = parseDraftToBundle(rawDraftText, rawFormat);
-      setRawDraftJson(JSON.stringify(parsed, null, 2));
+      setRawDraftJson(serializeBundle(parsed));
       setRawDraftYaml(stringifyYaml(parsed));
       setRawFormat(nextFormat);
       setRawError(null);
