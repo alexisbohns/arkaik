@@ -116,3 +116,6 @@ jobs:
 
       - name: Re-run migrations (idempotency gate — must be a no-op, exit 0)
         run: npm run db:migrate
+
+      - name: Synk auth-guard integration test (unauthenticated → 401)
+        run: npm run test:auth

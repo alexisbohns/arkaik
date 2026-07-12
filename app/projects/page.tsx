@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/card";
 import { ArkaikLogo } from "@/components/branding/ArkaikLogo";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { AuthButton } from "@/components/auth/AuthButton";
 import { getProvider } from "@/lib/data/provider-registry";
 import type { Project, ProjectBundle } from "@/lib/data/types";
 import { archiveProject, importProjectFromFile } from "@/lib/utils/export";
@@ -155,7 +156,10 @@ export default function ProjectsPage() {
         <Link href="/" aria-label="Go to home" className="inline-flex items-center">
           <ArkaikLogo className="w-20 shrink-0" />
         </Link>
-        <ThemeToggle />
+        <div className="flex items-center gap-2">
+          <AuthButton />
+          <ThemeToggle />
+        </div>
       </header>
 
       <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 p-6">

@@ -20,7 +20,14 @@ import { Pool, type QueryResult, type QueryResultRow } from "pg";
 
 let pool: Pool | undefined;
 
-function getPool(): Pool {
+/**
+ * The lazily-created singleton connection pool. Exported so the Auth.js Postgres
+ * adapter (auth.ts) can share the same pool instead of opening a second one.
+ * DATABASE_URL is still read here at call time, never at import — the adapter is
+ * only constructed inside NextAuth's lazy config, which runs on request, so the
+ * local-first app boots untouched with services env vars unset.
+ */
+export function getPool(): Pool {
   if (!pool) {
     const connectionString = process.env.DATABASE_URL;
     if (!connectionString) {
