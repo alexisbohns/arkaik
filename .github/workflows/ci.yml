@@ -71,3 +71,45 @@ jobs:
 
       - name: CLI tests
         run: npm run test:cli
+
+  # Services migration-integrity gate (docs/spec/services.md § CI Additions).
+  # Separate job so the local-first `build` job above stays green with no DB.
+  services:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: arkaik
+          POSTGRES_PASSWORD: arkaik
+          POSTGRES_DB: arkaik_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U arkaik -d arkaik_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://arkaik:arkaik@localhost:5432/arkaik_test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply migrations
+        run: npm run db:migrate
+
+      - name: Re-run migrations (idempotency gate — must be a no-op, exit 0)
+        run: npm run db:migrate

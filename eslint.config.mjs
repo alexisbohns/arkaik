@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
     "docs/arkaik-skill/scripts/**",
     "tests/**",
     "scripts/**",
+    // Standalone Node migration runner (db/migrate.mjs) + plain-SQL migrations.
+    "db/**",
     // Claude Code plugin: a byte-identical generated copy of
     // docs/arkaik-skill/scripts/** (see scripts/generate/generate-plugin.js).
     "plugin/**",
