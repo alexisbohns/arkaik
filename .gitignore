@@ -18,6 +18,7 @@
 /tests/data/.test-build/
 /tests/data/.test-build-export/
 /tests/data/.test-build-journal/
+/packages/cli/.test-build/
 
 # next.js
 /.next/
