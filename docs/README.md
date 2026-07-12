@@ -15,6 +15,7 @@ Normative (draft) specs for the arkaik format and tooling:
 - [Bundle Format v2](spec/bundle-format.md) — schema versioning, references, asset values, ID conventions, canonical serialization
 - [Journal & Events](spec/journal.md) — event vocabulary, JSONL sidecar, authority model, releases & projections
 - [Toolchain & Packaging](spec/toolchain.md) — npm workspace, `@arkaik/schema`, the `arkaik` CLI, skill distribution
+- [Services](spec/services.md) — Publik sharing, Synk backups, backend decision record, tier enforcement, self-hosting
 
 ## LLM & Prompt Surfaces
 

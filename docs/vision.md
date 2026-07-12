@@ -63,7 +63,7 @@ The npm channel is the standard for repo-native developer tooling — Storybook,
 ### Journey 4: Sovereign Developer
 
 1. User discovers Inkognito on the pricing page.
-2. User provisions Supabase and runs arkaik migration/setup scripts.
+2. User deploys the AGPL app + services to their own host, provisions a Postgres, and runs the release-aligned `db/migrations` scripts.
 3. User runs arkaik with full local-first behavior and no dependency on arkaik-hosted infrastructure.
 
 ### Journey 5: Git-Native Builder (Kommit)
@@ -183,7 +183,7 @@ Current implementation references: `docs/arkaik-skill/skill.md`, `docs/arkaik-sk
 
 #### Publik: The Share Action
 
-Not a tier. A publish feature available from Lokal, Kommit (`arkaik push`), and potentially paid tiers.
+Not a tier. A publish feature available from Lokal, Kommit (`arkaik push`), and potentially paid tiers. Protocol specified in [spec/services.md](spec/services.md).
 
 - User clicks Publish on a project (or runs the CLI equivalent)
 - arkaik stores a raw JSON snapshot and returns a shareable project ID URL (for example, `arkaik.app/p/abc123`)
@@ -195,15 +195,13 @@ Not a tier. A publish feature available from Lokal, Kommit (`arkaik push`), and 
 
 #### Inkognito: The Sovereign Option
 
-Not a tier. A below-the-fold pricing-page CTA for power users.
+Not a tier. A below-the-fold pricing-page CTA for power users. Redefined with the M4 backend decision (rationale in [spec/services.md](spec/services.md) § Inkognito): sovereignty through **full-stack self-hosting** rather than a bespoke bring-your-own-database provider.
 
-- Local-first operation backed by the user's own Supabase project
-- arkaik provides setup scripts, migration scripts, and documentation
-- Full features including asset uploads (to user-owned Supabase buckets)
-- No arkaik account required; AI features excluded
+- Deploy the AGPL app + services yourself: any Node host (Vercel works) plus any plain Postgres — Neon, RDS, or a Supabase project's Postgres all qualify
+- `db/migrations/*.sql` are the release-aligned setup and migration scripts; bundle-format migrations ride on `schema_version` independently
+- Same code, same features as hosted (arkaik-operated AI excluded); no arkaik account, no arkaik infrastructure involved
 - Target audience: developers prioritizing full data sovereignty
 - arkaik infra cost: zero
-- Schema migrations are user-managed, with release-aligned scripts provided by arkaik — the `schema_version` field introduced at Format Level 1 is what makes these migrations tractable
 
 ### Pricing Tiers
 
@@ -218,7 +216,7 @@ Not a tier. A below-the-fold pricing-page CTA for power users.
 |  | **Synk** | **Basik** | **Klub** |
 |---|---|---|---|
 | **Source of truth** | Browser | Browser | Browser |
-| **Server storage** | arkaik server (JSON backups) | arkaik Supabase (consolidated) | arkaik Supabase (consolidated) |
+| **Server storage** | arkaik Postgres (JSON backups) | arkaik Postgres (managed) | arkaik Postgres (managed) |
 | **Sync method** | Interval backup (~1 min) | Real-time sync | Real-time sync |
 | **Version history** | 7 days | 30 days | Unlimited |
 | **Data persistence** | Server backups | Server + local | Server + local |
@@ -241,7 +239,7 @@ Version history is where the format levels pay off for services: snapshot retent
 
 |  | **Synk** | **Basik** | **Klub** |
 |---|---|---|---|
-| **arkaik server** | Backup service only | Full Supabase | Full Supabase |
+| **arkaik server** | Backup service only | Managed Postgres + realtime | Managed Postgres + realtime |
 | **Data responsibility** | Shared (best-effort backups) | arkaik-managed guarantees | arkaik-managed guarantees |
 | **arkaik infra cost** | Low | Medium | Medium to High |
 
@@ -289,10 +287,21 @@ The bundle contract currently lives in five places that drift independently: `li
 - App-side event emission, unblocked by the IndexedDB (Dexie) migration that landed — the old localStorage backend rewrote the whole store on every mutation and could not absorb a growing journal; the per-project store (with a separate journal table) now can
 - `arkaik dev` (local viewer) decision: requires making `/project/[id]` routing static-export friendly; evaluated on its own merits, not assumed
 
-### Phase 4 — Services Re-Based
+### Phase 4 — Services: The Free Surface
 
-- Synk/Basik/Klub, Publik, and Inkognito as specified above, with snapshot retention + journal as the version-history substrate
-- Server-side integrations (ref status sync) as the Klub differentiator
+Backend decision: **Vercel-native** — Next.js route handlers + managed Postgres (Neon); no Supabase. Normative spec: [spec/services.md](spec/services.md).
+
+- **Publik**: anonymous snapshot sharing — `POST` a bundle, get `arkaik.app/p/{id}` + a one-time owner key; journal stripped server-side by default; `arkaik push` as the CLI channel
+- **Synk**: Auth.js accounts (GitHub OAuth) + one-way interval backups (~1 min debounce, content-hash deduped via canonical serialization), 7-day retention, restore as explicit import
+- Tier enforcement points (project/entity/retention limits) built config-driven so paid tiers flip a column, not the code
+- Provider-injection seam + mutation notifications in the data layer — shared prerequisite with the `arkaik dev` RFC
+- Inkognito as full-stack self-hosting: `db/migrations/*.sql` shipped release-aligned
+
+### Phase 5 — Services: Monetization & Depth
+
+- Payments (Stripe), pricing page, Basik/Klub tier activation on the Phase 4 enforcement points
+- Real-time sync and multi-device semantics for Basik/Klub — designed on the journal substrate, the first phase allowed to think in events
+- Server-side integrations (ref status sync) as the Klub differentiator; hosted asset buckets + `arkaik pack` upload path
 - Collaboration explorations on top of event streams
 
 ## Core Product Direction (Unchanged)
@@ -348,10 +357,10 @@ Implementation references: `lib/data/data-provider.ts`, `lib/data/local-provider
 
 - [ ] Basik pricing model: fixed monthly versus pay-what-you-want
 - [ ] Entity limits: validate whether 250 (Synk) and 1,000 (Basik) match real project distributions
-- [ ] Publik moderation: define minimal report and takedown process for harmful content
-- [ ] Publik owner key UX: define recovery or account-link fallback when key is lost
+- [x] Publik moderation: resolved at process level in [spec/services.md](spec/services.md) — report endpoint + threshold flag + admin deletion + published takedown contact
+- [ ] Publik owner key UX: define recovery or account-link fallback when key is lost (candidate: bind snapshots to Synk accounts when the publisher is signed in)
 - [ ] Lokal to Synk migration: test browser-storage-to-server migration early as the primary conversion funnel
-- [ ] Inkognito migrations: commit to versioned migration artifacts from the first release
+- [x] Inkognito migrations: resolved — `db/migrations/*.sql` shipped release-aligned from the first services release ([spec/services.md](spec/services.md))
 - [ ] Screenshot policy in the interchange format: are data URIs tolerated forever (Lokal needs them) or eventually rejected above a size threshold?
 - [ ] Per-platform releases: is optional `platform` on `release.tagged` enough, or do platforms need independent version sequences?
 - [ ] Publik and journals: default-exclude is decided; is opt-in inclusion ever safe (history can leak internal names and dates)?
