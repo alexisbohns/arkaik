@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import type { Edge } from "@/lib/data/types";
-import { localProvider } from "@/lib/data/local-provider";
+import { getProvider } from "@/lib/data/provider-registry";
 
 export function useEdges(projectId: string) {
   const [edges, setEdges] = useState<Edge[]>([]);
@@ -10,7 +10,7 @@ export function useEdges(projectId: string) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    localProvider
+    getProvider()
       .getEdges(projectId)
       .then((e) => {
         setEdges(e);
@@ -24,13 +24,13 @@ export function useEdges(projectId: string) {
   }, [projectId]);
 
   const addEdge = useCallback(async (edge: Edge) => {
-    const created = await localProvider.createEdge(edge);
+    const created = await getProvider().createEdge(edge);
     setEdges((prev) => [...prev, created]);
     return created;
   }, []);
 
   const removeEdge = useCallback(async (id: string) => {
-    await localProvider.deleteEdge(id);
+    await getProvider().deleteEdge(id);
     setEdges((prev) => prev.filter((e) => e.id !== id));
   }, []);
 

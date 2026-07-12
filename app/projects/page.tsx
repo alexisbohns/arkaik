@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/card";
 import { ArkaikLogo } from "@/components/branding/ArkaikLogo";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { localProvider } from "@/lib/data/local-provider";
+import { getProvider } from "@/lib/data/provider-registry";
 import type { Project, ProjectBundle } from "@/lib/data/types";
 import { archiveProject, importProjectFromFile } from "@/lib/utils/export";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
@@ -50,7 +50,7 @@ export default function ProjectsPage() {
   async function loadProjects() {
     setLoading(true);
     try {
-      const list = await localProvider.listProjects();
+      const list = await getProvider().listProjects();
       setProjects(list);
     } catch (err) {
       console.error("[ProjectsPage] Failed to load projects:", err);
@@ -84,7 +84,7 @@ export default function ProjectsPage() {
       edges: [],
     };
 
-    await localProvider.saveProject(bundle);
+    await getProvider().saveProject(bundle);
     await loadProjects();
     router.push(`/project/${id}`);
   }

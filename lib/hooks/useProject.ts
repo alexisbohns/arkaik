@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import type { Project, ProjectBundle } from "@/lib/data/types";
-import { localProvider } from "@/lib/data/local-provider";
+import { getProvider } from "@/lib/data/provider-registry";
 
 export function useProject(id: string) {
   const [project, setProject] = useState<ProjectBundle | undefined>(undefined);
@@ -10,7 +10,7 @@ export function useProject(id: string) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    localProvider.getProject(id).then((p) => {
+    getProvider().getProject(id).then((p) => {
       setProject(p);
       setLoading(false);
     }).catch((err) => {
@@ -32,7 +32,7 @@ export function useProject(id: string) {
       // (which the old shared-in-memory store surfaced automatically). Saving
       // our own stale `project.nodes`/`edges` would clobber those edits, so we
       // patch project-level fields onto the freshest stored bundle instead.
-      const current = (await localProvider.getProject(project.project.id)) ?? project;
+      const current = (await getProvider().getProject(project.project.id)) ?? project;
 
       const now = new Date().toISOString();
       const nextBundle: ProjectBundle = {
@@ -44,7 +44,7 @@ export function useProject(id: string) {
         },
       };
 
-      await localProvider.saveProject(nextBundle);
+      await getProvider().saveProject(nextBundle);
       setProject(nextBundle);
       return nextBundle.project;
     },

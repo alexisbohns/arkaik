@@ -69,6 +69,9 @@ jobs:
       - name: Bundle migration chain tests
         run: npm run test:migrate
 
+      - name: Provider-injection seam + mutation-notification tests
+        run: npm run test:provider
+
       - name: CLI tests
         run: npm run test:cli
 
