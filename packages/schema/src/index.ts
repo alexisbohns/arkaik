@@ -5,3 +5,4 @@ export * from "./journal-events";
 export * from "./bundle";
 export * from "./validate";
 export * from "./parse";
+export * from "./serialize";
