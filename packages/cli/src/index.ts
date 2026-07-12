@@ -2,9 +2,7 @@
  * `arkaik` CLI entry point.
  *
  * A tiny hand-rolled command dispatcher — deliberately dependency-free (no
- * commander/yargs). Each command owns its own flag parsing so later commands
- * (push — Phase 4) slot in by adding a `case` here and a handler module under
- * `./commands`.
+ * commander/yargs). Each command owns its own flag parsing.
  *
  * All schema behaviour is reused verbatim from `@arkaik/schema`; the commands
  * never re-implement validation or serialization.
@@ -16,6 +14,7 @@ import { runRelease } from "./commands/release";
 import { runSyncCli } from "./commands/sync";
 import { runPackCli } from "./commands/pack";
 import { runOpenCli } from "./commands/open";
+import { runPushCli } from "./commands/push";
 
 const USAGE = `arkaik — CLI for Arkaik project bundles
 
@@ -30,6 +29,8 @@ Commands:
   sync [options] [path]       Mirror external ref status (GitHub issues/PRs) into node refs.
   pack [options] [path]       Produce a single self-contained interchange bundle (embeds the journal).
   open [options] [path]       Validate, then hand off the packed bundle to arkaik.app import.
+  push [options] [path]       Validate, pack (journal stripped), and publish to Publik.
+                               --delete <id> --key <owner_key> removes a snapshot.
 
 Options:
   -h, --help        Show this help.
@@ -65,6 +66,9 @@ function main(argv: string[]): void {
       return;
     case "open":
       runOpenCli(rest);
+      return;
+    case "push":
+      runPushCli(rest);
       return;
     default:
       console.error(`Unknown command: ${command}\n`);
