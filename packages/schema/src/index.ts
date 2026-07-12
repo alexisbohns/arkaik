@@ -6,3 +6,5 @@ export * from "./bundle";
 export * from "./validate";
 export * from "./parse";
 export * from "./serialize";
+export * from "./projections";
+export * from "./emit";
