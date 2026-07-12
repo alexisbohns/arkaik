@@ -19,7 +19,8 @@
     "test:journal": "node tests/schema/journal.test.js",
     "test:journal-projections": "node tests/data/journal-projections.test.js",
     "test:screenshot-size": "node tests/schema/screenshot-size.test.js",
-    "test:migrate": "node tests/data/migrate.test.js && node tests/data/import-roundtrip.test.js && node tests/data/seed-import.test.js"
+    "test:migrate": "node tests/data/migrate.test.js && node tests/data/import-roundtrip.test.js && node tests/data/seed-import.test.js",
+    "test:cli": "npm run build -w arkaik && node tests/cli/run-cli-tests.js"
   },
   "dependencies": {
     "@radix-ui/react-collapsible": "^1.1.12",

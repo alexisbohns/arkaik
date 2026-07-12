@@ -1,0 +1,18 @@
+{
+  "name": "arkaik",
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "arkaik": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node build.js"
+  },
+  "dependencies": {
+    "@arkaik/schema": "*"
+  }
+}

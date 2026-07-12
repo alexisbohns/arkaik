@@ -16,6 +16,9 @@ const eslintConfig = defineConfig([
     "docs/arkaik-skill/scripts/**",
     "tests/**",
     "scripts/**",
+    // esbuild-bundled CLI output + its Node build script (not app source).
+    "packages/cli/dist/**",
+    "packages/cli/build.js",
   ]),
 ]);
 
