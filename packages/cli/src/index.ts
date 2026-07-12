@@ -11,6 +11,8 @@
  */
 import { runInit } from "./commands/init";
 import { runValidate } from "./commands/validate";
+import { runLog } from "./commands/log";
+import { runRelease } from "./commands/release";
 
 const USAGE = `arkaik — CLI for Arkaik project bundles
 
@@ -18,8 +20,10 @@ Usage:
   arkaik <command> [options]
 
 Commands:
-  init [options]    Scaffold docs/arkaik/, install the agent skill (--update to upgrade).
-  validate [path]   Validate a project bundle (folds in a journal.jsonl sidecar).
+  init [options]              Scaffold docs/arkaik/, install the agent skill (--update to upgrade).
+  validate [path]             Validate a project bundle (folds in a journal.jsonl sidecar).
+  log [--node <id>] [path]    Print the journal: project changelog, or one node's timeline.
+  release <version> [path]    Tag a release (append release.tagged) and draft its notes.
 
 Options:
   -h, --help        Show this help.
@@ -40,6 +44,12 @@ function main(argv: string[]): void {
       return;
     case "validate":
       runValidate(rest);
+      return;
+    case "log":
+      runLog(rest);
+      return;
+    case "release":
+      runRelease(rest);
       return;
     default:
       console.error(`Unknown command: ${command}\n`);

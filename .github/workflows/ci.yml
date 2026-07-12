@@ -54,6 +54,9 @@ jobs:
       - name: Journal projection tests
         run: npm run test:journal-projections
 
+      - name: Journal write-primitive (emit) tests
+        run: npm run test:emit
+
       - name: Screenshot data-URI size warning tests
         run: npm run test:screenshot-size
 
