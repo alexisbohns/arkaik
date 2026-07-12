@@ -13,6 +13,7 @@ import { runInit } from "./commands/init";
 import { runValidate } from "./commands/validate";
 import { runLog } from "./commands/log";
 import { runRelease } from "./commands/release";
+import { runSyncCli } from "./commands/sync";
 
 const USAGE = `arkaik — CLI for Arkaik project bundles
 
@@ -24,6 +25,7 @@ Commands:
   validate [path]             Validate a project bundle (folds in a journal.jsonl sidecar).
   log [--node <id>] [path]    Print the journal: project changelog, or one node's timeline.
   release <version> [path]    Tag a release (append release.tagged) and draft its notes.
+  sync [options] [path]       Mirror external ref status (GitHub issues/PRs) into node refs.
 
 Options:
   -h, --help        Show this help.
@@ -50,6 +52,9 @@ function main(argv: string[]): void {
       return;
     case "release":
       runRelease(rest);
+      return;
+    case "sync":
+      runSyncCli(rest);
       return;
     default:
       console.error(`Unknown command: ${command}\n`);
