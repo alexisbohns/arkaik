@@ -131,11 +131,37 @@ export function downloadJson(bundle: ProjectBundle): ExportDownloadResult {
 }
 
 /**
+ * Dev-time cross-check for the app's journal *writer* role (issue #218). The
+ * exported bundle now carries the app-emitted journal, so we run the same
+ * `validateBundle` — which includes `crossCheckJournal` — the CLI/skill
+ * dual-write is held to. A real emission bug (a `node.status_changed.to` that
+ * disagrees with the snapshot, a dangling ref) surfaces here as a console
+ * warning.
+ *
+ * Deliberately **non-blocking**: a project imported without a journal and then
+ * edited legitimately has a *partial* journal (its pre-existing nodes lack a
+ * `node.created`) — the expected Level 0/1 → 2 transition, not a corruption. We
+ * never fail an export over it; a fully app-authored graph stays green by
+ * construction (every node was created through `createNode`).
+ */
+function warnOnInvalidExport(bundle: ProjectBundle): void {
+  const { valid, errors } = validateBundle(bundle);
+  if (!valid) {
+    console.warn(
+      `[export] Bundle ${bundle.project.id} failed validation (${errors.length} error(s)):`,
+      errors.map((f) => (f.path ? `${f.path}: ${f.message}` : f.message)),
+    );
+  }
+}
+
+/**
  * Exports a project by ID, returning a {@link ProjectBundle} containing the
- * project metadata, all nodes, and all edges.
+ * project metadata, all nodes, edges, and the app-emitted journal.
  */
 export async function exportProject(id: string): Promise<ProjectBundle> {
-  return localProvider.exportProject(id);
+  const bundle = await localProvider.exportProject(id);
+  warnOnInvalidExport(bundle);
+  return bundle;
 }
 
 /**

@@ -57,6 +57,9 @@ jobs:
       - name: Journal write-primitive (emit) tests
         run: npm run test:emit
 
+      - name: App-side journal emission tests
+        run: npm run test:emit-events
+
       - name: Screenshot data-URI size warning tests
         run: npm run test:screenshot-size
 

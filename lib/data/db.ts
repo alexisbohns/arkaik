@@ -16,10 +16,10 @@ import { migrateBundle } from "./migrate";
  *   `journal`. A mutation to project A writes only project A's row, never
  *   touching project B (the core win over the old backend).
  * - `journals`  — one row per project, keyed by `projectId`, holding the
- *   embedded journal events. The journal lives in its *own* row so a future
- *   app-side journal append (#218) can rewrite just the journal, not the graph
- *   snapshot. It is read-only here; nothing in this issue writes journal events
- *   beyond mirroring what save/import already carried.
+ *   embedded journal events. The journal lives in its *own* row so an app-side
+ *   journal append ({@link appendJournalEvents}, #218) can grow just the
+ *   journal, never rewriting the graph snapshot. The provider's mutations write
+ *   here as the app half of the dual-write (docs/spec/journal.md).
  * - `meta`      — small key/value table for provider bookkeeping (currently
  *   just the one-time legacy-migration flag).
  *
@@ -56,7 +56,7 @@ export interface MetaRecord {
 const DB_NAME = "arkaik";
 const LEGACY_MIGRATION_FLAG = "legacyLocalStorageMigrated";
 
-class ArkaikDB extends Dexie {
+export class ArkaikDB extends Dexie {
   projects!: Table<ProjectRecord, string>;
   journals!: Table<JournalRecord, string>;
   meta!: Table<MetaRecord, string>;
@@ -89,6 +89,29 @@ export function assembleBundle(
   events: JournalEvent[] | undefined,
 ): ProjectBundle {
   return events !== undefined ? { ...snapshot, journal: events } : snapshot;
+}
+
+/**
+ * Append `events` to a project's journal row (the `journals` store) WITHOUT
+ * touching its snapshot (`projects` row) — the app half of the snapshot+journal
+ * dual-write (docs/spec/journal.md § Authority & Consistency Model, issue #218).
+ *
+ * MUST be called inside a `readwrite` transaction whose scope already includes
+ * `db.journals`, so the caller's snapshot write and this append commit
+ * atomically (both or neither). Reads the project's current events — empty when
+ * it has no journal row yet, so the first append *starts* the journal — and
+ * writes back the concatenation. History only ever grows here; the snapshot is
+ * never re-serialized, which is the whole point of the separate journal row.
+ */
+export async function appendJournalEvents(
+  db: ArkaikDB,
+  projectId: string,
+  events: readonly JournalEvent[],
+): Promise<void> {
+  if (events.length === 0) return;
+  const row = await db.journals.get(projectId);
+  const existing = row?.events ?? [];
+  await db.journals.put({ projectId, events: [...existing, ...events] });
 }
 
 function isBrowser(): boolean {

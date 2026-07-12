@@ -3,11 +3,20 @@ import type { Node, Edge, ProjectBundle, PlaylistEntry } from "./types";
 import { migrateBundle } from "./migrate";
 import { wouldCreateCycle } from "@/lib/utils/cycle";
 import {
+  appendJournalEvents,
   assembleBundle,
   getDb,
   splitBundle,
   type ProjectRecord,
 } from "./db";
+import {
+  diffNodeUpdate,
+  edgeAddedInput,
+  edgeRemovedInput,
+  nodeCreatedInput,
+  nodeDeletedInput,
+  toJournalEvents,
+} from "./emit-events";
 
 /**
  * The app's `DataProvider`, backed by IndexedDB (Dexie — see `./db.ts`).
@@ -23,6 +32,21 @@ import {
  * which never execute during Next's server render or prerender; off the browser
  * they throw the same "not found"-style errors the previous provider did (an
  * unreachable path at build time — `npm run build` prerenders clean).
+ *
+ * ## Journal emission (issue #218)
+ * The app is a journal *writer*: every graph mutation dual-writes — it patches
+ * the snapshot AND appends the matching event to the project's `journals` row
+ * (via {@link appendJournalEvents}, in the *same* transaction so both commit
+ * atomically). The event derivation is centralized here (not in hooks) through
+ * the pure helpers in `./emit-events.ts`. No snapshot rewrite happens on the
+ * append — the journal grows in its own row.
+ *
+ * **No-emit list** (deliberately emit nothing): `saveProject`, `archiveProject`,
+ * and `importProject`. `saveProject` persists a whole re-read bundle (project-
+ * field edits) with no clean per-field v1 mapping; `archiveProject` toggles a
+ * timestamp with no v1 event; `importProject` already carries its own journal
+ * (re-emitting would double-count). They still *preserve* an existing journal
+ * row so history round-trips.
  */
 
 function collectReferencedFlowIds(entries: PlaylistEntry[]): string[] {
@@ -132,11 +156,12 @@ export const localProvider: DataProvider = {
   async createNode(node: Node) {
     const db = await getDb();
     if (!db) throw new Error(`Project ${node.project_id} not found`);
-    await db.transaction("rw", db.projects, async () => {
+    await db.transaction("rw", db.projects, db.journals, async () => {
       const record = await db.projects.get(node.project_id);
       if (!record) throw new Error(`Project ${node.project_id} not found`);
       record.snapshot.nodes.push(node);
       await db.projects.put(record);
+      await appendJournalEvents(db, node.project_id, toJournalEvents([nodeCreatedInput(node)]));
     });
     return node;
   },
@@ -145,14 +170,15 @@ export const localProvider: DataProvider = {
     const db = await getDb();
     if (!db) throw new Error(`Node ${id} not found`);
     let updated: Node | undefined;
-    await db.transaction("rw", db.projects, async () => {
+    await db.transaction("rw", db.projects, db.journals, async () => {
       const records = await db.projects.toArray();
       const record = records.find((r) => r.snapshot.nodes.some((n) => n.id === id));
       if (!record) throw new Error(`Node ${id} not found`);
 
       const nodes = record.snapshot.nodes;
       const idx = nodes.findIndex((n) => n.id === id);
-      const nextNode = { ...nodes[idx], ...patch };
+      const current = nodes[idx];
+      const nextNode = { ...current, ...patch };
 
       if (nextNode.species === "flow") {
         const entries = nextNode.metadata?.playlist?.entries;
@@ -169,9 +195,15 @@ export const localProvider: DataProvider = {
         }
       }
 
+      // Diff the patch against the pre-update node (per-key for metadata) and
+      // append the derived event(s). Computed only after the cycle validation
+      // above, so a rejected update never emits.
+      const events = toJournalEvents(diffNodeUpdate(current, patch));
+
       nodes[idx] = nextNode;
       updated = nextNode;
       await db.projects.put(record);
+      await appendJournalEvents(db, record.snapshot.project.id, events);
     });
     return updated!;
   },
@@ -179,15 +211,18 @@ export const localProvider: DataProvider = {
   async deleteNode(id: string) {
     const db = await getDb();
     if (!db) throw new Error(`Node ${id} not found`);
-    await db.transaction("rw", db.projects, async () => {
+    await db.transaction("rw", db.projects, db.journals, async () => {
       const records = await db.projects.toArray();
       const record = records.find((r) => r.snapshot.nodes.some((n) => n.id === id));
       if (!record) throw new Error(`Node ${id} not found`);
       record.snapshot.nodes = record.snapshot.nodes.filter((n) => n.id !== id);
+      // Cascade-remove attached edges. The journal's node.deleted IMPLIES this
+      // cascade, so we do NOT emit edge.removed for them (docs/spec/journal.md:71).
       record.snapshot.edges = record.snapshot.edges.filter(
         (e) => e.source_id !== id && e.target_id !== id,
       );
       await db.projects.put(record);
+      await appendJournalEvents(db, record.snapshot.project.id, toJournalEvents([nodeDeletedInput(id)]));
     });
   },
 
@@ -196,16 +231,24 @@ export const localProvider: DataProvider = {
     const db = await getDb();
     if (!db) return;
     const idSet = new Set(ids);
-    await db.transaction("rw", db.projects, async () => {
+    await db.transaction("rw", db.projects, db.journals, async () => {
       const records = await db.projects.toArray();
       for (const record of records) {
-        const hasAffected = record.snapshot.nodes.some((n) => idSet.has(n.id));
-        if (!hasAffected) continue;
+        // Only ids actually present in this project's snapshot are deleted (and
+        // emitted), so a node.deleted never references a node that never existed.
+        const deletedIds = record.snapshot.nodes.filter((n) => idSet.has(n.id)).map((n) => n.id);
+        if (deletedIds.length === 0) continue;
         record.snapshot.nodes = record.snapshot.nodes.filter((n) => !idSet.has(n.id));
+        // Cascade-remove edges without emitting edge.removed (docs/spec/journal.md:71).
         record.snapshot.edges = record.snapshot.edges.filter(
           (e) => !idSet.has(e.source_id) && !idSet.has(e.target_id),
         );
         await db.projects.put(record);
+        await appendJournalEvents(
+          db,
+          record.snapshot.project.id,
+          toJournalEvents(deletedIds.map(nodeDeletedInput)),
+        );
       }
     });
   },
@@ -213,11 +256,12 @@ export const localProvider: DataProvider = {
   async createEdge(edge: Edge) {
     const db = await getDb();
     if (!db) throw new Error(`Project ${edge.project_id} not found`);
-    await db.transaction("rw", db.projects, async () => {
+    await db.transaction("rw", db.projects, db.journals, async () => {
       const record = await db.projects.get(edge.project_id);
       if (!record) throw new Error(`Project ${edge.project_id} not found`);
       record.snapshot.edges.push(edge);
       await db.projects.put(record);
+      await appendJournalEvents(db, edge.project_id, toJournalEvents([edgeAddedInput(edge)]));
     });
     return edge;
   },
@@ -225,12 +269,13 @@ export const localProvider: DataProvider = {
   async deleteEdge(id: string) {
     const db = await getDb();
     if (!db) throw new Error(`Edge ${id} not found`);
-    await db.transaction("rw", db.projects, async () => {
+    await db.transaction("rw", db.projects, db.journals, async () => {
       const records = await db.projects.toArray();
       const record = records.find((r) => r.snapshot.edges.some((e) => e.id === id));
       if (!record) throw new Error(`Edge ${id} not found`);
       record.snapshot.edges = record.snapshot.edges.filter((e) => e.id !== id);
       await db.projects.put(record);
+      await appendJournalEvents(db, record.snapshot.project.id, toJournalEvents([edgeRemovedInput(id)]));
     });
   },
 
