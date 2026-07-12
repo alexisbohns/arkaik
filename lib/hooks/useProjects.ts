@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { localProvider } from "@/lib/data/local-provider";
+import { getProvider } from "@/lib/data/provider-registry";
 import type { ProjectBundle } from "@/lib/data/types";
 
 export function useProjects() {
@@ -12,7 +12,7 @@ export function useProjects() {
   useEffect(() => {
     let cancelled = false;
 
-    localProvider
+    getProvider()
       .listProjects()
       .then((nextProjects) => {
         if (cancelled) return;

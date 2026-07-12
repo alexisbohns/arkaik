@@ -48,6 +48,24 @@ import {
  * timestamp with no v1 event; `importProject` already carries its own journal
  * (re-emitting would double-count). They still *preserve* an existing journal
  * row so history round-trips.
+ *
+ * ## Mutation notifications (issue #243)
+ * A lightweight, dependency-free pub/sub — {@link subscribeToMutations} — is a
+ * capability of *this module*, not a new `DataProvider` method, so other
+ * providers (a future repo-bundle viewer, `docs/rfcs/arkaik-dev.md` Option
+ * B.1) stay unburdened by a concern only the local provider has today. Synk's
+ * `SyncManager` (`docs/spec/services.md` § Synk) is the first consumer: it
+ * debounces a backup on each notification.
+ *
+ * Every mutation below that changes stored data (create/update/delete node,
+ * create/delete edge, `importProject`, `saveProject`) calls
+ * {@link notifyMutation} exactly once per affected project, and always AFTER
+ * its `db.transaction(...)` has resolved successfully — never inside the
+ * transaction, and never when the transaction throws (an uncaught rejection
+ * propagates out of the method before the notify call is reached).
+ * `archiveProject` is deliberately not wired to notifications, matching the
+ * "no-emit" journal list above — it is not part of issue #243's acceptance
+ * list either.
  */
 
 function collectReferencedFlowIds(entries: PlaylistEntry[]): string[] {
@@ -77,6 +95,35 @@ function collectReferencedFlowIds(entries: PlaylistEntry[]): string[] {
 
 function isArchived(record: ProjectRecord): boolean {
   return Boolean(record.snapshot.project.archived_at);
+}
+
+/** A single mutation notification: which project changed. */
+export interface MutationEvent {
+  projectId: string;
+}
+
+type MutationListener = (event: MutationEvent) => void;
+
+const mutationListeners = new Set<MutationListener>();
+
+/**
+ * Subscribe to local-provider mutation notifications (issue #243) — see the
+ * module doc above for exactly which methods fire and when. Returns an
+ * unsubscribe function.
+ */
+export function subscribeToMutations(cb: MutationListener): () => void {
+  mutationListeners.add(cb);
+  return () => {
+    mutationListeners.delete(cb);
+  };
+}
+
+/** Notify subscribers that `projectId` changed. Called only after a
+ * mutation's `db.transaction(...)` has resolved successfully. */
+function notifyMutation(projectId: string): void {
+  for (const listener of mutationListeners) {
+    listener({ projectId });
+  }
 }
 
 export const localProvider: DataProvider = {
@@ -115,6 +162,7 @@ export const localProvider: DataProvider = {
         await db.journals.delete(projectId);
       }
     });
+    notifyMutation(projectId);
   },
 
   async archiveProject(id: string) {
@@ -164,6 +212,7 @@ export const localProvider: DataProvider = {
       await db.projects.put(record);
       await appendJournalEvents(db, node.project_id, toJournalEvents([nodeCreatedInput(node)]));
     });
+    notifyMutation(node.project_id);
     return node;
   },
 
@@ -171,10 +220,12 @@ export const localProvider: DataProvider = {
     const db = await getDb();
     if (!db) throw new Error(`Node ${id} not found`);
     let updated: Node | undefined;
+    let projectId: string | undefined;
     await db.transaction("rw", db.projects, db.journals, async () => {
       const records = await db.projects.toArray();
       const record = records.find((r) => r.snapshot.nodes.some((n) => n.id === id));
       if (!record) throw new Error(`Node ${id} not found`);
+      projectId = record.snapshot.project.id;
 
       const nodes = record.snapshot.nodes;
       const idx = nodes.findIndex((n) => n.id === id);
@@ -206,16 +257,19 @@ export const localProvider: DataProvider = {
       await db.projects.put(record);
       await appendJournalEvents(db, record.snapshot.project.id, events);
     });
+    notifyMutation(projectId!);
     return updated!;
   },
 
   async deleteNode(id: string) {
     const db = await getDb();
     if (!db) throw new Error(`Node ${id} not found`);
+    let projectId: string | undefined;
     await db.transaction("rw", db.projects, db.journals, async () => {
       const records = await db.projects.toArray();
       const record = records.find((r) => r.snapshot.nodes.some((n) => n.id === id));
       if (!record) throw new Error(`Node ${id} not found`);
+      projectId = record.snapshot.project.id;
       record.snapshot.nodes = record.snapshot.nodes.filter((n) => n.id !== id);
       // Cascade-remove attached edges. The journal's node.deleted IMPLIES this
       // cascade, so we do NOT emit edge.removed for them (docs/spec/journal.md:71).
@@ -225,6 +279,7 @@ export const localProvider: DataProvider = {
       await db.projects.put(record);
       await appendJournalEvents(db, record.snapshot.project.id, toJournalEvents([nodeDeletedInput(id)]));
     });
+    notifyMutation(projectId!);
   },
 
   async deleteNodes(ids: string[]) {
@@ -232,6 +287,9 @@ export const localProvider: DataProvider = {
     const db = await getDb();
     if (!db) return;
     const idSet = new Set(ids);
+    // One notification per affected project, not one per node (issue #243) —
+    // collected during the transaction, fired after it commits.
+    const affectedProjectIds: string[] = [];
     await db.transaction("rw", db.projects, db.journals, async () => {
       const records = await db.projects.toArray();
       for (const record of records) {
@@ -250,8 +308,12 @@ export const localProvider: DataProvider = {
           record.snapshot.project.id,
           toJournalEvents(deletedIds.map(nodeDeletedInput)),
         );
+        affectedProjectIds.push(record.snapshot.project.id);
       }
     });
+    for (const projectId of affectedProjectIds) {
+      notifyMutation(projectId);
+    }
   },
 
   async createEdge(edge: Edge) {
@@ -269,20 +331,24 @@ export const localProvider: DataProvider = {
       await db.projects.put(record);
       await appendJournalEvents(db, normalized.project_id, toJournalEvents([edgeAddedInput(normalized)]));
     });
+    notifyMutation(normalized.project_id);
     return normalized;
   },
 
   async deleteEdge(id: string) {
     const db = await getDb();
     if (!db) throw new Error(`Edge ${id} not found`);
+    let projectId: string | undefined;
     await db.transaction("rw", db.projects, db.journals, async () => {
       const records = await db.projects.toArray();
       const record = records.find((r) => r.snapshot.edges.some((e) => e.id === id));
       if (!record) throw new Error(`Edge ${id} not found`);
+      projectId = record.snapshot.project.id;
       record.snapshot.edges = record.snapshot.edges.filter((e) => e.id !== id);
       await db.projects.put(record);
       await appendJournalEvents(db, record.snapshot.project.id, toJournalEvents([edgeRemovedInput(id)]));
     });
+    notifyMutation(projectId!);
   },
 
   async exportProject(id: string) {
@@ -308,6 +374,7 @@ export const localProvider: DataProvider = {
         await db.journals.delete(projectId);
       }
     });
+    notifyMutation(projectId);
     return normalized.project;
   },
 };

@@ -14,8 +14,9 @@
  *
  * export.ts is loaded by transpiling it and intercepting its two runtime
  * imports: the real `@arkaik/schema` (so parse/validate behave exactly as in
- * the app) and a stub `localProvider` that forces one id collision and captures
- * what gets imported.
+ * the app) and a stub `provider-registry` module (export.ts reads its provider
+ * through `getProvider()`, issue #243) whose stub provider forces one id
+ * collision and captures what gets imported.
  */
 
 const fs = require("fs");
@@ -41,13 +42,18 @@ const COLLIDING_ID = "existing-project";
 let captured = null;
 
 const stubProvider = {
-  localProvider: {
-    getProject: async (id) => (id === COLLIDING_ID ? { project: { id } } : undefined),
-    importProject: async (bundle) => {
-      captured = bundle;
-      return bundle.project;
-    },
+  getProject: async (id) => (id === COLLIDING_ID ? { project: { id } } : undefined),
+  importProject: async (bundle) => {
+    captured = bundle;
+    return bundle.project;
   },
+};
+
+// export.ts reads its provider through the getProvider() seam (issue #243)
+// rather than importing local-provider directly, so the stub is shaped like
+// provider-registry's export.
+const stubProviderRegistry = {
+  getProvider: () => stubProvider,
 };
 
 function loadExportModule() {
@@ -73,7 +79,7 @@ function loadExportModule() {
   const originalLoad = Module._load;
   Module._load = function (request, parent, isMain) {
     if (request === "@arkaik/schema") return schemaExports;
-    if (request.includes("local-provider")) return stubProvider;
+    if (request.includes("provider-registry")) return stubProviderRegistry;
     return originalLoad.call(this, request, parent, isMain);
   };
   try {
@@ -110,7 +116,7 @@ async function main() {
   const file = { text: async () => JSON.stringify(bundle) };
   const createdProject = await exportModule.importProjectFromFile(file);
 
-  assert(captured !== null, "import path reached localProvider.importProject");
+  assert(captured !== null, "import path reached the provider's importProject");
   assert(
     captured.project.id !== COLLIDING_ID && createdProject.id === captured.project.id,
     "id-collision: project id was rewritten to a fresh id",

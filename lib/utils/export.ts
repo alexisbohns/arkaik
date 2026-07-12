@@ -1,6 +1,6 @@
 import type { Project, ProjectBundle } from "@/lib/data/types";
 import { parseBundle, serializeBundle, validateBundle, type ValidationFinding } from "@arkaik/schema";
-import { localProvider } from "@/lib/data/local-provider";
+import { getProvider } from "@/lib/data/provider-registry";
 
 const MAX_RECOMMENDED_EXPORT_BYTES = 4 * 1024 * 1024;
 
@@ -75,7 +75,7 @@ export function parseAndValidateBundle(value: unknown): ProjectBundle {
 
 async function ensureUniqueProjectId(initialId: string): Promise<string> {
   let candidate = initialId;
-  while (await localProvider.getProject(candidate)) {
+  while (await getProvider().getProject(candidate)) {
     candidate = crypto.randomUUID();
   }
   return candidate;
@@ -159,7 +159,7 @@ function warnOnInvalidExport(bundle: ProjectBundle): void {
  * project metadata, all nodes, edges, and the app-emitted journal.
  */
 export async function exportProject(id: string): Promise<ProjectBundle> {
-  const bundle = await localProvider.exportProject(id);
+  const bundle = await getProvider().exportProject(id);
   warnOnInvalidExport(bundle);
   return bundle;
 }
@@ -169,11 +169,11 @@ export async function exportProject(id: string): Promise<ProjectBundle> {
  * storage. Returns the created {@link Project}.
  */
 export async function importProject(bundle: ProjectBundle): Promise<Project> {
-  return localProvider.importProject(bundle);
+  return getProvider().importProject(bundle);
 }
 
 export async function archiveProject(id: string): Promise<void> {
-  return localProvider.archiveProject(id);
+  return getProvider().archiveProject(id);
 }
 
 /**
@@ -203,5 +203,5 @@ export async function importProjectFromFile(file: File): Promise<Project> {
       ? normalizedBundle
       : rewriteBundleProjectId(normalizedBundle, resolvedProjectId);
 
-  return localProvider.importProject(finalBundle);
+  return getProvider().importProject(finalBundle);
 }

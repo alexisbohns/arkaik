@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import type { JournalEvent } from "@/lib/data/types";
-import { localProvider } from "@/lib/data/local-provider";
+import { getProvider } from "@/lib/data/provider-registry";
 
 /**
  * Loads a project's embedded `journal[]` — consistent with {@link useNodes} /
@@ -17,7 +17,7 @@ export function useJournal(projectId: string) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    localProvider
+    getProvider()
       .getJournal(projectId)
       .then((j) => {
         setJournal(j);
