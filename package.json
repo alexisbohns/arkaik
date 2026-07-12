@@ -26,9 +26,11 @@
     "test:migrate": "node tests/data/migrate.test.js && node tests/data/import-roundtrip.test.js && node tests/data/seed-import.test.js",
     "test:provider": "node tests/data/provider-registry.test.js && node tests/data/mutation-notifications.test.js",
     "test:cli": "npm run build -w arkaik && node tests/cli/run-cli-tests.js && node tests/cli/init.test.js && node tests/cli/log-release.test.js && node tests/cli/sync.test.js && node tests/cli/pack-open.test.js",
+    "test:auth": "node tests/services/auth-guard.test.js",
     "test:publik": "node tests/services/publik-api.test.js"
   },
   "dependencies": {
+    "@auth/pg-adapter": "^1.11.2",
     "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
@@ -49,6 +51,7 @@
     "highlight.js": "^11.11.1",
     "lucide-react": "^0.577.0",
     "next": "16.2.0",
+    "next-auth": "^5.0.0-beta.31",
     "next-themes": "^0.4.6",
     "pg": "^8.13.1",
     "react": "19.2.4",
