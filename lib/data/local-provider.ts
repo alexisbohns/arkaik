@@ -1,6 +1,7 @@
 import type { DataProvider } from "./data-provider";
 import type { Node, Edge, ProjectBundle, PlaylistEntry } from "./types";
 import { migrateBundle } from "./migrate";
+import { edgeId } from "@arkaik/schema";
 import { wouldCreateCycle } from "@/lib/utils/cycle";
 import {
   appendJournalEvents,
@@ -256,14 +257,19 @@ export const localProvider: DataProvider = {
   async createEdge(edge: Edge) {
     const db = await getDb();
     if (!db) throw new Error(`Project ${edge.project_id} not found`);
+    // Enforce the `e-{source}-{target}` convention at the seam so any edge
+    // creation — including a repoint expressed as delete + create — stays
+    // conformant regardless of the id the caller supplied (issue #215,
+    // docs/spec/bundle-format.md § Identifier Conventions).
+    const normalized: Edge = { ...edge, id: edgeId(edge.source_id, edge.target_id) };
     await db.transaction("rw", db.projects, db.journals, async () => {
-      const record = await db.projects.get(edge.project_id);
-      if (!record) throw new Error(`Project ${edge.project_id} not found`);
-      record.snapshot.edges.push(edge);
+      const record = await db.projects.get(normalized.project_id);
+      if (!record) throw new Error(`Project ${normalized.project_id} not found`);
+      record.snapshot.edges.push(normalized);
       await db.projects.put(record);
-      await appendJournalEvents(db, edge.project_id, toJournalEvents([edgeAddedInput(edge)]));
+      await appendJournalEvents(db, normalized.project_id, toJournalEvents([edgeAddedInput(normalized)]));
     });
-    return edge;
+    return normalized;
   },
 
   async deleteEdge(id: string) {

@@ -26,13 +26,12 @@ function idArrayLiteral(name, ids) {
 
 function generate() {
   const schemaPackage = loadSchemaPackage();
-  const { SPECIES_IDS, STATUS_IDS, PLATFORM_IDS, EDGE_TYPE_IDS } = schemaPackage;
+  const { SPECIES_IDS, STATUS_IDS, PLATFORM_IDS, EDGE_TYPE_IDS, SPECIES_PREFIXES } = schemaPackage;
   const typesBlock = buildTypesBlock(schemaPackage);
   cleanup();
 
   const speciesPrefixEntries = SPECIES_IDS.map((id) => {
-    const prefix = { flow: "F-", view: "V-", "data-model": "DM-", "api-endpoint": "API-" }[id];
-    return `  ${JSON.stringify(id)}: ${JSON.stringify(prefix)},`;
+    return `  ${JSON.stringify(id)}: ${JSON.stringify(SPECIES_PREFIXES[id])},`;
   }).join("\n");
 
   const content = `${HEADER}
