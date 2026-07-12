@@ -185,7 +185,7 @@ The `NodeDetailPanel` is the primary UI for editing nodes. The mutation path:
 NodeDetailPanel (title, description, platforms, metadata)
   → useNodes.updateNode(id, patch)
     → localProvider.updateNode(id, patch)
-      → localStorage
+      → IndexedDB (Dexie)
 ```
 
 Views store editable per-platform statuses in `node.metadata.platformStatuses`. When legacy data does not have that field yet, the UI derives platform statuses from `node.status` + `node.platforms` and writes the richer metadata shape back on the next edit.
@@ -198,10 +198,12 @@ Flows do not expose an editable rollup status in UI. Flow cards and panel gauges
 
 The `DataProvider` interface abstracts storage so the backend can change without touching hooks or UI:
 
-1. **Current:** `localStorage` via `localProvider`
+1. **Current:** IndexedDB via `localProvider` (Dexie — `lib/data/db.ts`). The `localProvider` export name is kept; it is repointed at the IndexedDB implementation, so the hooks and UI are unchanged.
 2. **Planned:** Supabase (auth, RLS, realtime sync)
 
-To add a new provider: implement the `DataProvider` interface and swap the import in the hooks.
+Storage layout: a `projects` table keyed by `id` holds one row per project (the bundle snapshot minus its journal), so a mutation to project A rewrites only project A's row — not the whole store as the previous `localStorage` backend did. The embedded journal lives in its own `journals` table (keyed by `projectId`), leaving room for a future app-side journal append that need not rewrite the graph snapshot. On first load, any legacy `arkaik:store` `localStorage` payload is imported once into IndexedDB (running `migrateBundle` per bundle) and the source payload is kept as a passive backup.
+
+To add a new provider: implement the `DataProvider` interface and repoint the `localProvider` export (or introduce a provider seam).
 
 ## Seed Data
 

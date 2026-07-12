@@ -161,7 +161,7 @@ LLM affordance assets:
 - `public/robots.txt` and `app/sitemap.ts` support discoverability.
 ```
 
-All data mutations flow through the `DataProvider` interface (`lib/data/data-provider.ts`). The current implementation is `localProvider` backed by `localStorage`. The interface is designed for a future Supabase migration — swap the provider, keep the hooks and UI unchanged.
+All data mutations flow through the `DataProvider` interface (`lib/data/data-provider.ts`). The current implementation is `localProvider` backed by IndexedDB (Dexie — `lib/data/db.ts`), which writes per project rather than rewriting the whole store on every mutation. The interface is designed for a future Supabase migration — swap the provider, keep the hooks and UI unchanged.
 
 ## Playlist Expansion
 

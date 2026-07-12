@@ -2,6 +2,28 @@ import type { DataProvider } from "./data-provider";
 import type { Node, Edge, ProjectBundle, PlaylistEntry } from "./types";
 import { migrateBundle } from "./migrate";
 import { wouldCreateCycle } from "@/lib/utils/cycle";
+import {
+  assembleBundle,
+  getDb,
+  splitBundle,
+  type ProjectRecord,
+} from "./db";
+
+/**
+ * The app's `DataProvider`, backed by IndexedDB (Dexie — see `./db.ts`).
+ *
+ * It keeps the exact `DataProvider` method signatures (all async), so the hooks
+ * and UI that import `localProvider` need no change: the export name is
+ * preserved and simply repointed at the IndexedDB implementation. `localStorage`
+ * is gone except for the one-time import in `./db.ts`.
+ *
+ * SSR / prerender: `getDb()` resolves to `null` off the browser, so every
+ * **read** below no-ops to an empty result and never touches a browser API at
+ * import time. **Mutations** run only from client event handlers / effects,
+ * which never execute during Next's server render or prerender; off the browser
+ * they throw the same "not found"-style errors the previous provider did (an
+ * unreachable path at build time — `npm run build` prerenders clean).
+ */
 
 function collectReferencedFlowIds(entries: PlaylistEntry[]): string[] {
   const result: string[] = [];
@@ -28,191 +50,213 @@ function collectReferencedFlowIds(entries: PlaylistEntry[]): string[] {
   return result;
 }
 
-const STORAGE_KEY = "arkaik:store";
-
-function loadStore(): Map<string, ProjectBundle> {
-  if (typeof window === "undefined") return new Map();
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return new Map();
-    const obj = JSON.parse(raw) as Record<string, ProjectBundle>;
-    return new Map(
-      Object.entries(obj).map(([projectId, bundle]) => [projectId, migrateBundle(bundle)]),
-    );
-  } catch (err) {
-    console.error("[LocalProvider] Failed to load store from localStorage:", err);
-    return new Map();
-  }
-}
-
-function persistStore(store: Map<string, ProjectBundle>): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.fromEntries(store)));
-  } catch (err) {
-    console.error("[LocalProvider] Failed to persist store:", err);
-    throw new Error("Failed to save data. Your browser storage may be full.", {
-      cause: err,
-    });
-  }
-}
-
-const store = loadStore();
-/** Maps node id → project id for O(1) lookup. */
-const nodeIndex = new Map<string, string>();
-/** Maps edge id → project id for O(1) lookup. */
-const edgeIndex = new Map<string, string>();
-
-function isArchived(bundle: ProjectBundle): boolean {
-  return Boolean(bundle.project.archived_at);
-}
-
-// Rebuild indexes from persisted data
-for (const bundle of store.values()) {
-  bundle.nodes.forEach((n) => nodeIndex.set(n.id, bundle.project.id));
-  bundle.edges.forEach((e) => edgeIndex.set(e.id, bundle.project.id));
+function isArchived(record: ProjectRecord): boolean {
+  return Boolean(record.snapshot.project.archived_at);
 }
 
 export const localProvider: DataProvider = {
   async getProject(id: string) {
-    return store.get(id);
+    const db = await getDb();
+    if (!db) return undefined;
+    const record = await db.projects.get(id);
+    if (!record) return undefined;
+    const journalRow = await db.journals.get(id);
+    return assembleBundle(record.snapshot, journalRow?.events);
   },
+
   async listProjects() {
-    return Array.from(store.values()).filter((bundle) => !isArchived(bundle));
+    const db = await getDb();
+    if (!db) return [];
+    const [records, journals] = await Promise.all([
+      db.projects.toArray(),
+      db.journals.toArray(),
+    ]);
+    const journalByProject = new Map(journals.map((row) => [row.projectId, row.events]));
+    return records
+      .filter((record) => !isArchived(record))
+      .map((record) => assembleBundle(record.snapshot, journalByProject.get(record.id)));
   },
+
   async saveProject(bundle: ProjectBundle) {
-    const normalized = migrateBundle(bundle);
-    store.set(normalized.project.id, normalized);
-    normalized.nodes.forEach((n) => nodeIndex.set(n.id, normalized.project.id));
-    normalized.edges.forEach((e) => edgeIndex.set(e.id, normalized.project.id));
-    persistStore(store);
+    const db = await getDb();
+    if (!db) return;
+    const { snapshot, journal } = splitBundle(migrateBundle(bundle));
+    const projectId = snapshot.project.id;
+    await db.transaction("rw", db.projects, db.journals, async () => {
+      await db.projects.put({ id: projectId, snapshot });
+      if (journal !== undefined) {
+        await db.journals.put({ projectId, events: journal });
+      } else {
+        await db.journals.delete(projectId);
+      }
+    });
   },
+
   async archiveProject(id: string) {
-    const bundle = store.get(id);
-    if (!bundle) throw new Error(`Project ${id} not found`);
-    const now = new Date().toISOString();
-    bundle.project = {
-      ...bundle.project,
-      archived_at: now,
-      updated_at: now,
-    };
-    persistStore(store);
+    const db = await getDb();
+    if (!db) return;
+    await db.transaction("rw", db.projects, async () => {
+      const record = await db.projects.get(id);
+      if (!record) throw new Error(`Project ${id} not found`);
+      const now = new Date().toISOString();
+      record.snapshot.project = {
+        ...record.snapshot.project,
+        archived_at: now,
+        updated_at: now,
+      };
+      await db.projects.put(record);
+    });
   },
 
   async getNodes(projectId: string) {
-    return store.get(projectId)?.nodes ?? [];
+    const db = await getDb();
+    if (!db) return [];
+    const record = await db.projects.get(projectId);
+    return record?.snapshot.nodes ?? [];
   },
+
   async getEdges(projectId: string) {
-    return store.get(projectId)?.edges ?? [];
+    const db = await getDb();
+    if (!db) return [];
+    const record = await db.projects.get(projectId);
+    return record?.snapshot.edges ?? [];
   },
+
   async getJournal(projectId: string) {
-    return store.get(projectId)?.journal ?? [];
+    const db = await getDb();
+    if (!db) return [];
+    const row = await db.journals.get(projectId);
+    return row?.events ?? [];
   },
 
   async createNode(node: Node) {
-    const bundle = store.get(node.project_id);
-    if (!bundle) throw new Error(`Project ${node.project_id} not found`);
-    bundle.nodes.push(node);
-    nodeIndex.set(node.id, node.project_id);
-    persistStore(store);
+    const db = await getDb();
+    if (!db) throw new Error(`Project ${node.project_id} not found`);
+    await db.transaction("rw", db.projects, async () => {
+      const record = await db.projects.get(node.project_id);
+      if (!record) throw new Error(`Project ${node.project_id} not found`);
+      record.snapshot.nodes.push(node);
+      await db.projects.put(record);
+    });
     return node;
   },
+
   async updateNode(id: string, patch: Partial<Omit<Node, "id" | "project_id">>) {
-    const projectId = nodeIndex.get(id);
-    if (!projectId) throw new Error(`Node ${id} not found`);
-    const bundle = store.get(projectId)!;
-    const idx = bundle.nodes.findIndex((n) => n.id === id);
-    const nextNode = { ...bundle.nodes[idx], ...patch };
+    const db = await getDb();
+    if (!db) throw new Error(`Node ${id} not found`);
+    let updated: Node | undefined;
+    await db.transaction("rw", db.projects, async () => {
+      const records = await db.projects.toArray();
+      const record = records.find((r) => r.snapshot.nodes.some((n) => n.id === id));
+      if (!record) throw new Error(`Node ${id} not found`);
 
-    if (nextNode.species === "flow") {
-      const entries = nextNode.metadata?.playlist?.entries;
-      if (Array.isArray(entries)) {
-        const nextNodes = [...bundle.nodes];
-        nextNodes[idx] = nextNode;
-        const candidateFlowIds = collectReferencedFlowIds(entries);
+      const nodes = record.snapshot.nodes;
+      const idx = nodes.findIndex((n) => n.id === id);
+      const nextNode = { ...nodes[idx], ...patch };
 
-        for (const candidateFlowId of candidateFlowIds) {
-          if (wouldCreateCycle(nextNode.id, candidateFlowId, nextNodes)) {
-            throw new Error(`Cannot add Flow ${candidateFlowId}: it would create a circular reference.`);
+      if (nextNode.species === "flow") {
+        const entries = nextNode.metadata?.playlist?.entries;
+        if (Array.isArray(entries)) {
+          const nextNodes = [...nodes];
+          nextNodes[idx] = nextNode;
+          const candidateFlowIds = collectReferencedFlowIds(entries);
+
+          for (const candidateFlowId of candidateFlowIds) {
+            if (wouldCreateCycle(nextNode.id, candidateFlowId, nextNodes)) {
+              throw new Error(`Cannot add Flow ${candidateFlowId}: it would create a circular reference.`);
+            }
           }
         }
       }
-    }
 
-    bundle.nodes[idx] = nextNode;
-    persistStore(store);
-    return bundle.nodes[idx];
-  },
-  async deleteNode(id: string) {
-    const projectId = nodeIndex.get(id);
-    if (!projectId) throw new Error(`Node ${id} not found`);
-    const bundle = store.get(projectId)!;
-    bundle.nodes = bundle.nodes.filter((n) => n.id !== id);
-    bundle.edges = bundle.edges.filter((e) => {
-      if (e.source_id === id || e.target_id === id) {
-        edgeIndex.delete(e.id);
-        return false;
-      }
-      return true;
+      nodes[idx] = nextNode;
+      updated = nextNode;
+      await db.projects.put(record);
     });
-    nodeIndex.delete(id);
-    persistStore(store);
+    return updated!;
+  },
+
+  async deleteNode(id: string) {
+    const db = await getDb();
+    if (!db) throw new Error(`Node ${id} not found`);
+    await db.transaction("rw", db.projects, async () => {
+      const records = await db.projects.toArray();
+      const record = records.find((r) => r.snapshot.nodes.some((n) => n.id === id));
+      if (!record) throw new Error(`Node ${id} not found`);
+      record.snapshot.nodes = record.snapshot.nodes.filter((n) => n.id !== id);
+      record.snapshot.edges = record.snapshot.edges.filter(
+        (e) => e.source_id !== id && e.target_id !== id,
+      );
+      await db.projects.put(record);
+    });
   },
 
   async deleteNodes(ids: string[]) {
     if (ids.length === 0) return;
+    const db = await getDb();
+    if (!db) return;
     const idSet = new Set(ids);
-    const affectedProjects = new Set<string>();
-    for (const id of ids) {
-      const projectId = nodeIndex.get(id);
-      if (projectId) affectedProjects.add(projectId);
-    }
-    for (const projectId of affectedProjects) {
-      const bundle = store.get(projectId);
-      if (!bundle) continue;
-      bundle.nodes = bundle.nodes.filter((n) => !idSet.has(n.id));
-      bundle.edges = bundle.edges.filter((e) => {
-        if (idSet.has(e.source_id) || idSet.has(e.target_id)) {
-          edgeIndex.delete(e.id);
-          return false;
-        }
-        return true;
-      });
-    }
-    for (const id of ids) {
-      nodeIndex.delete(id);
-    }
-    persistStore(store);
+    await db.transaction("rw", db.projects, async () => {
+      const records = await db.projects.toArray();
+      for (const record of records) {
+        const hasAffected = record.snapshot.nodes.some((n) => idSet.has(n.id));
+        if (!hasAffected) continue;
+        record.snapshot.nodes = record.snapshot.nodes.filter((n) => !idSet.has(n.id));
+        record.snapshot.edges = record.snapshot.edges.filter(
+          (e) => !idSet.has(e.source_id) && !idSet.has(e.target_id),
+        );
+        await db.projects.put(record);
+      }
+    });
   },
 
   async createEdge(edge: Edge) {
-    const bundle = store.get(edge.project_id);
-    if (!bundle) throw new Error(`Project ${edge.project_id} not found`);
-    bundle.edges.push(edge);
-    edgeIndex.set(edge.id, edge.project_id);
-    persistStore(store);
+    const db = await getDb();
+    if (!db) throw new Error(`Project ${edge.project_id} not found`);
+    await db.transaction("rw", db.projects, async () => {
+      const record = await db.projects.get(edge.project_id);
+      if (!record) throw new Error(`Project ${edge.project_id} not found`);
+      record.snapshot.edges.push(edge);
+      await db.projects.put(record);
+    });
     return edge;
   },
+
   async deleteEdge(id: string) {
-    const projectId = edgeIndex.get(id);
-    if (!projectId) throw new Error(`Edge ${id} not found`);
-    const bundle = store.get(projectId)!;
-    bundle.edges = bundle.edges.filter((e) => e.id !== id);
-    edgeIndex.delete(id);
-    persistStore(store);
+    const db = await getDb();
+    if (!db) throw new Error(`Edge ${id} not found`);
+    await db.transaction("rw", db.projects, async () => {
+      const records = await db.projects.toArray();
+      const record = records.find((r) => r.snapshot.edges.some((e) => e.id === id));
+      if (!record) throw new Error(`Edge ${id} not found`);
+      record.snapshot.edges = record.snapshot.edges.filter((e) => e.id !== id);
+      await db.projects.put(record);
+    });
   },
 
   async exportProject(id: string) {
-    const bundle = store.get(id);
-    if (!bundle) throw new Error(`Project ${id} not found`);
-    return bundle;
+    const db = await getDb();
+    if (!db) throw new Error(`Project ${id} not found`);
+    const record = await db.projects.get(id);
+    if (!record) throw new Error(`Project ${id} not found`);
+    const journalRow = await db.journals.get(id);
+    return assembleBundle(record.snapshot, journalRow?.events);
   },
+
   async importProject(bundle: ProjectBundle) {
+    const db = await getDb();
     const normalized = migrateBundle(bundle);
-    store.set(normalized.project.id, normalized);
-    normalized.nodes.forEach((n) => nodeIndex.set(n.id, normalized.project.id));
-    normalized.edges.forEach((e) => edgeIndex.set(e.id, normalized.project.id));
-    persistStore(store);
+    const { snapshot, journal } = splitBundle(normalized);
+    const projectId = snapshot.project.id;
+    if (!db) return normalized.project;
+    await db.transaction("rw", db.projects, db.journals, async () => {
+      await db.projects.put({ id: projectId, snapshot });
+      if (journal !== undefined) {
+        await db.journals.put({ projectId, events: journal });
+      } else {
+        await db.journals.delete(projectId);
+      }
+    });
     return normalized.project;
   },
 };
