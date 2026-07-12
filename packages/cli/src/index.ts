@@ -3,12 +3,13 @@
  *
  * A tiny hand-rolled command dispatcher — deliberately dependency-free (no
  * commander/yargs). Each command owns its own flag parsing so later commands
- * (init/log/release/sync/pack/open — separate issues) slot in by adding a
- * `case` here and a handler module under `./commands`.
+ * (log/release/sync/pack/open — separate issues) slot in by adding a `case`
+ * here and a handler module under `./commands`.
  *
  * All schema behaviour is reused verbatim from `@arkaik/schema`; the commands
  * never re-implement validation or serialization.
  */
+import { runInit } from "./commands/init";
 import { runValidate } from "./commands/validate";
 
 const USAGE = `arkaik — CLI for Arkaik project bundles
@@ -17,6 +18,7 @@ Usage:
   arkaik <command> [options]
 
 Commands:
+  init [options]    Scaffold docs/arkaik/, install the agent skill (--update to upgrade).
   validate [path]   Validate a project bundle (folds in a journal.jsonl sidecar).
 
 Options:
@@ -33,6 +35,9 @@ function main(argv: string[]): void {
   }
 
   switch (command) {
+    case "init":
+      runInit(rest);
+      return;
     case "validate":
       runValidate(rest);
       return;
