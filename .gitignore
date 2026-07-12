@@ -21,6 +21,7 @@
 /tests/data/.test-build-emit-events/
 /tests/data/.test-build-local-provider/
 /tests/data/.test-build-provider-registry/
+/tests/services/.test-build-publik/
 /packages/cli/.test-build/
 
 # next.js
