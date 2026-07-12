@@ -12,17 +12,10 @@
  * prints a report over the structured {path, rule, message, severity} findings.
  * Exit 0 when valid, 1 when invalid; warnings never fail.
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import {
-  validateBundle,
-  parseJournalLines,
-  serializeBundle,
-  type JournalLineFinding,
-  type ValidationFinding,
-} from "@arkaik/schema";
-
-const JOURNAL_SIDECAR = "journal.jsonl";
+import { readFileSync, writeFileSync } from "node:fs";
+import { serializeBundle, type ValidationFinding } from "@arkaik/schema";
+import { readBundle } from "../lib/bundle-io";
+import { validateBundleAt, JOURNAL_SIDECAR } from "../lib/bundle-validate";
 
 const USAGE = `arkaik validate [--fix-format] [path]
 
@@ -45,36 +38,29 @@ function fail(message: string): never {
   process.exit(1);
 }
 
-/** Read + JSON.parse the bundle at `filePath`, exiting with a FATAL on error. */
-function readBundle(filePath: string): unknown {
-  if (!existsSync(filePath)) fail(`File not found: ${filePath}`);
-  const raw = readFileSync(filePath, "utf8");
-  try {
-    return JSON.parse(raw);
-  } catch (e) {
-    return fail(`FATAL: Cannot parse JSON — ${(e as Error).message}`);
-  }
-}
-
 function countBySpecies(nodes: unknown[], species: string): number {
   return nodes.filter((n) => (n as { species?: unknown } | null)?.species === species).length;
 }
 
-function formatFinding(f: ValidationFinding): string {
+/** Exported so `arkaik open` (packages/cli/src/commands/open.ts) can format the
+ * same findings it gates on without re-implementing the string shape. */
+export function formatFinding(f: ValidationFinding): string {
   const where = f.path ? ` ${f.path}` : "";
   return `${f.severity.toUpperCase()} [${f.rule}]${where}: ${f.message}`;
 }
 
 /** `--fix-format`: rewrite the bundle file to canonical serialization in place. */
 function fixFormat(filePath: string): never {
-  const bundle = readBundle(filePath);
-  if (typeof bundle !== "object" || bundle === null || Array.isArray(bundle)) {
-    fail("FATAL: Bundle must be a JSON object.");
+  let bundle: Record<string, unknown>;
+  try {
+    bundle = readBundle(filePath);
+  } catch (e) {
+    return fail(`FATAL: ${(e as Error).message}`);
   }
   const before = readFileSync(filePath, "utf8");
   // serializeBundle preserves unknown top-level keys (schema_version, journal)
   // and unknown fields, and is idempotent — running twice yields no change.
-  const after = serializeBundle(bundle as Parameters<typeof serializeBundle>[0]);
+  const after = serializeBundle(bundle as unknown as Parameters<typeof serializeBundle>[0]);
   if (after === before) {
     console.log(`Already canonical: ${filePath}`);
   } else {
@@ -86,58 +72,38 @@ function fixFormat(filePath: string): never {
 
 /** `validate`: validate the bundle (+ sidecar journal) and report findings. */
 function validate(filePath: string): never {
-  const bundle = readBundle(filePath);
-
-  const loose = bundle as
-    | { project?: unknown; nodes?: unknown; edges?: unknown; journal?: unknown }
-    | null;
-  if (typeof loose !== "object" || loose === null || !loose.project || !loose.nodes || !loose.edges) {
-    fail("FATAL: Missing top-level keys (project, nodes, edges).");
-  }
-
-  // Fold in the canonical JSONL sidecar when the bundle carries no embedded
-  // journal. An embedded `journal` (the packed interchange form) always wins.
-  let sidecarFindings: JournalLineFinding[] = [];
-  let sidecarLoaded = false;
-  if (loose.journal === undefined) {
-    const sidecarPath = join(dirname(filePath), JOURNAL_SIDECAR);
-    if (existsSync(sidecarPath)) {
-      const { events, findings } = parseJournalLines(readFileSync(sidecarPath, "utf8"));
-      sidecarFindings = findings;
-      sidecarLoaded = true;
-      loose.journal = events;
+  const v = (() => {
+    try {
+      return validateBundleAt(filePath);
+    } catch (e) {
+      return fail(`FATAL: ${(e as Error).message}`);
     }
-  }
-
-  const nodes = Array.isArray(loose.nodes) ? loose.nodes : [];
-  const edges = Array.isArray(loose.edges) ? loose.edges : [];
-  const journal = Array.isArray(loose.journal) ? loose.journal : [];
-  const result = validateBundle(bundle);
+  })();
 
   console.log("\n  Arkaik Bundle Validation");
   console.log("  =======================\n");
   console.log(
-    `  Nodes: ${nodes.length} (${countBySpecies(nodes, "view")} views, ${countBySpecies(nodes, "flow")} flows, ${countBySpecies(nodes, "data-model")} data-models, ${countBySpecies(nodes, "api-endpoint")} api-endpoints)`,
+    `  Nodes: ${v.nodes.length} (${countBySpecies(v.nodes, "view")} views, ${countBySpecies(v.nodes, "flow")} flows, ${countBySpecies(v.nodes, "data-model")} data-models, ${countBySpecies(v.nodes, "api-endpoint")} api-endpoints)`,
   );
-  console.log(`  Edges: ${edges.length}`);
-  if (sidecarLoaded) {
-    console.log(`  Journal: ${journal.length} event(s) from ${JOURNAL_SIDECAR} sidecar`);
-  } else if (journal.length > 0) {
-    console.log(`  Journal: ${journal.length} embedded event(s)`);
+  console.log(`  Edges: ${v.edges.length}`);
+  if (v.sidecarLoaded) {
+    console.log(`  Journal: ${v.journal.length} event(s) from ${JOURNAL_SIDECAR} sidecar`);
+  } else if (v.journal.length > 0) {
+    console.log(`  Journal: ${v.journal.length} embedded event(s)`);
   }
   console.log("");
 
-  if (result.warnings.length > 0) {
-    console.log(`  Warnings: ${result.warnings.length}`);
-    result.warnings.forEach((w) => console.log(`    ${formatFinding(w)}`));
+  if (v.result.warnings.length > 0) {
+    console.log(`  Warnings: ${v.result.warnings.length}`);
+    v.result.warnings.forEach((w) => console.log(`    ${formatFinding(w)}`));
     console.log("");
   }
 
   // Sidecar line-parse findings are hard errors, joined with the semantic
   // errors from validateBundle.
   const errorLines = [
-    ...sidecarFindings.map((f) => `ERROR [${f.rule}] line ${f.line}: ${f.message}`),
-    ...result.errors.map(formatFinding),
+    ...v.sidecarFindings.map((f) => `ERROR [${f.rule}] line ${f.line}: ${f.message}`),
+    ...v.result.errors.map(formatFinding),
   ];
 
   if (errorLines.length === 0) {
