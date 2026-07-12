@@ -59,3 +59,6 @@ jobs:
 
       - name: Bundle migration chain tests
         run: npm run test:migrate
+
+      - name: CLI tests
+        run: npm run test:cli

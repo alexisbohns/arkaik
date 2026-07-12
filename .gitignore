@@ -26,6 +26,9 @@
 # production
 /build
 
+# esbuild-bundled CLI output (rebuilt on demand by `npm run build -w arkaik`)
+/packages/cli/dist/
+
 # misc
 .DS_Store
 *.pem
