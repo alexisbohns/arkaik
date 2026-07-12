@@ -1,0 +1,14 @@
+{
+  "name": "arkaik",
+  "owner": {
+    "name": "Arkaik"
+  },
+  "description": "The Arkaik agent skill for maintaining a product's graph map (ProjectBundle), distributed as a Claude Code plugin.",
+  "plugins": [
+    {
+      "name": "arkaik",
+      "source": "./plugin",
+      "description": "Maintain the Arkaik product graph map — add, update, or remove nodes/edges and record matching journal events."
+    }
+  ]
+}

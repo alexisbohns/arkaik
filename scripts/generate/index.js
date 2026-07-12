@@ -14,6 +14,10 @@ const STEPS = [
   "build-validator.js",
   "generate-schema-doc.js",
   "generate-prompt-fragments.js",
+  // Must run last: copies the just-regenerated validate-bundle.js and
+  // schema.md into the plugin channel (docs/spec/toolchain.md § Skill
+  // Distribution).
+  "generate-plugin.js",
 ];
 
 for (const step of STEPS) {

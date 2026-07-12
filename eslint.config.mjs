@@ -16,6 +16,9 @@ const eslintConfig = defineConfig([
     "docs/arkaik-skill/scripts/**",
     "tests/**",
     "scripts/**",
+    // Claude Code plugin: a byte-identical generated copy of
+    // docs/arkaik-skill/scripts/** (see scripts/generate/generate-plugin.js).
+    "plugin/**",
     // esbuild-bundled CLI output + its Node build script (not app source).
     "packages/cli/dist/**",
     "packages/cli/build.js",

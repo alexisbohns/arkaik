@@ -25,7 +25,7 @@ jobs:
         run: npm run generate
 
       - name: Fail on generated-artifact drift
-        run: git diff --exit-code -- public/schema/project-bundle.json docs/arkaik-skill/scripts/validate-bundle.js docs/arkaik-skill/references/schema.md lib/prompts/generated
+        run: git diff --exit-code -- public/schema/project-bundle.json docs/arkaik-skill/scripts/validate-bundle.js docs/arkaik-skill/references/schema.md lib/prompts/generated plugin/.claude-plugin/plugin.json plugin/skills/arkaik
 
       - name: Lint
         run: npm run lint
