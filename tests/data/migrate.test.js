@@ -16,6 +16,7 @@
  */
 
 const { loadMigrate, BUILD_DIR } = require("./load-migrate");
+const { loadSchema, BUILD_DIR: SCHEMA_BUILD_DIR } = require("../schema/load-schema");
 const fs = require("fs");
 
 let failures = 0;
@@ -30,6 +31,7 @@ function assert(cond, message) {
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 const { migrateBundle, CURRENT_SCHEMA_VERSION } = loadMigrate();
+const { validateBundle } = loadSchema();
 
 function legacyBundle() {
   return {
@@ -88,8 +90,8 @@ function legacyBundle() {
 
   const edgeIds = out.edges.map((e) => e.id).sort();
   assert(
-    eq(edgeIds, ["legacy-compose-F-root-V-a", "legacy-compose-F-root-V-b"]),
-    "v0→1: missing composes edges are backfilled",
+    eq(edgeIds, ["e-F-root-V-a", "e-F-root-V-b"]),
+    "v0→1 backfill + v1→2 normalization: composes edges backfilled with conventional e-{source}-{target} ids",
   );
   assert(
     out.edges.every((e) => e.edge_type === "composes" && e.project_id === "p1"),
@@ -151,7 +153,141 @@ function legacyBundle() {
   assert(eq(out.journal, legacy.journal), "v0→1: unknown top-level `journal` key survives the migration");
 }
 
+// --- v1 → 2: deterministic-id retrofit (issue #215) ---
+// A synthetic v1 store carrying the app's identifier defects: random
+// `${prefix}${8 hex}` node ids, a `legacy-compose-*` edge id and a raw-UUID
+// edge id, a flow playlist + root_node_id pointing at random ids, and unknown
+// fields at both the top level and on a node.
+function v1RandomBundle() {
+  return {
+    schema_version: 1,
+    project: {
+      id: "proj-1",
+      title: "Proj 1",
+      root_node_id: "F-aaaaaaaa",
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    },
+    nodes: [
+      {
+        id: "F-aaaaaaaa",
+        project_id: "proj-1",
+        species: "flow",
+        title: "Onboarding",
+        status: "idea",
+        platforms: ["web"],
+        custom_field: "keep-me",
+        metadata: {
+          playlist: {
+            entries: [
+              { type: "view", view_id: "V-bbbbbbbb" },
+              { type: "view", view_id: "V-cccccccc" },
+            ],
+          },
+        },
+      },
+      { id: "V-bbbbbbbb", project_id: "proj-1", species: "view", title: "Home", status: "idea", platforms: ["web"] },
+      { id: "V-cccccccc", project_id: "proj-1", species: "view", title: "Home", status: "idea", platforms: ["web"] },
+    ],
+    edges: [
+      {
+        id: "legacy-compose-F-aaaaaaaa-V-bbbbbbbb",
+        project_id: "proj-1",
+        source_id: "F-aaaaaaaa",
+        target_id: "V-bbbbbbbb",
+        edge_type: "composes",
+      },
+      {
+        id: "b3d1c0de-0000-4000-8000-000000000000",
+        project_id: "proj-1",
+        source_id: "F-aaaaaaaa",
+        target_id: "V-cccccccc",
+        edge_type: "composes",
+      },
+    ],
+    future_field: { anything: true },
+  };
+}
+
+{
+  const out = migrateBundle(v1RandomBundle());
+
+  const ids = out.nodes.map((n) => n.id).sort();
+  assert(
+    eq(ids, ["F-onboarding", "V-home", "V-home-2"]),
+    "v1→2: random node ids become title-derived, colliding titles disambiguate with -2",
+  );
+
+  const flow = out.nodes.find((n) => n.id === "F-onboarding");
+  assert(
+    eq(flow.metadata.playlist.entries, [
+      { type: "view", view_id: "V-home" },
+      { type: "view", view_id: "V-home-2" },
+    ]),
+    "v1→2: playlist entry references are repointed to the new node ids",
+  );
+  assert(flow.custom_field === "keep-me", "v1→2: unknown node fields are preserved");
+
+  assert(out.project.root_node_id === "F-onboarding", "v1→2: project.root_node_id is repointed");
+
+  const edgeIds = out.edges.map((e) => e.id).sort();
+  assert(
+    eq(edgeIds, ["e-F-onboarding-V-home", "e-F-onboarding-V-home-2"]),
+    "v1→2: raw-UUID and legacy-compose-* edge ids are normalized to e-{source}-{target}",
+  );
+  const legacyEdge = out.edges.find((e) => e.id === "e-F-onboarding-V-home");
+  assert(
+    legacyEdge.source_id === "F-onboarding" && legacyEdge.target_id === "V-home",
+    "v1→2: edge endpoints are repointed alongside the id",
+  );
+
+  assert(eq(out.future_field, { anything: true }), "v1→2: unknown top-level fields are preserved");
+  assert(out.schema_version === 1, "v1→2: does not stamp schema_version (data-shape migration only)");
+
+  const validation = validateBundle(out);
+  assert(validation.valid, "v1→2: migrated bundle passes validateBundle (no errors)");
+  assert(
+    !validation.findings.some((f) => f.rule === "edge-id-convention"),
+    "v1→2: migrated bundle has no edge-id-convention warnings",
+  );
+  assert(
+    !validation.findings.some((f) => f.rule === "dangling-edge" || f.rule === "playlist-ref-exists"),
+    "v1→2: migrated bundle has no dangling edge or playlist references",
+  );
+
+  const twice = migrateBundle(out);
+  assert(eq(twice, out), "v1→2: idempotent (re-migrating a retrofitted bundle is a no-op)");
+}
+
+// --- v1 → 2: untitled-node fallback ---
+{
+  const bundle = {
+    schema_version: 1,
+    project: { id: "p", title: "P", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z" },
+    nodes: [{ id: "V-deadbeef", project_id: "p", species: "view", title: "", status: "idea", platforms: ["web"] }],
+    edges: [],
+  };
+  const first = migrateBundle(bundle);
+  const newId = first.nodes[0].id;
+  assert(newId.startsWith("V-") && newId !== "V-deadbeef", "v1→2 untitled: a random hex id with no title is still rewritten");
+  assert(!/^V-[0-9a-f]{8}$/.test(newId), "v1→2 untitled: the fallback id is not itself random-shaped (stays put on re-run)");
+  assert(eq(migrateBundle(bundle).nodes[0].id, newId), "v1→2 untitled: fallback id is deterministic across runs");
+  assert(migrateBundle(first).nodes[0].id === newId, "v1→2 untitled: idempotent");
+}
+
+// --- v0 (no schema_version) runs the full chain through v1→2 ---
+{
+  const v0 = v1RandomBundle();
+  delete v0.schema_version;
+  const out = migrateBundle(v0);
+  assert(
+    eq(out.nodes.map((n) => n.id).sort(), ["F-onboarding", "V-home", "V-home-2"]),
+    "chain: a versionless bundle passes through both v0→1 and v1→2",
+  );
+}
+
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
+fs.rmSync(SCHEMA_BUILD_DIR, { recursive: true, force: true });
 
 if (failures > 0) {
   console.log(`\n${failures} migration test(s) failed.`);

@@ -6,6 +6,7 @@ import {
   type EdgeTypeId,
   type SpeciesId,
 } from "./ids";
+import { SPECIES_PREFIXES } from "./id-gen";
 import type { PlaylistEntry } from "./playlist";
 import { crossCheckJournal } from "./journal";
 
@@ -49,13 +50,6 @@ export interface ValidationResult {
   /** The subset of `findings` with severity `warning`. */
   warnings: ValidationFinding[];
 }
-
-const SPECIES_PREFIXES: Record<string, string> = {
-  flow: "F-",
-  view: "V-",
-  "data-model": "DM-",
-  "api-endpoint": "API-",
-};
 
 const VALID_STAGES = ["beta", "monitoring", "deprecated"];
 const VALID_VIEW_CARD_VARIANTS = ["compact", "large"];
@@ -198,7 +192,7 @@ export function validateBundle(input: unknown): ValidationResult {
 
     // Species prefix
     const species = node.species as string;
-    const expectedPrefix = SPECIES_PREFIXES[species];
+    const expectedPrefix = (SPECIES_PREFIXES as Record<string, string | undefined>)[species];
     if (expectedPrefix && !(typeof nodeId === "string" && nodeId.startsWith(expectedPrefix))) {
       error(
         `${base}.id`,

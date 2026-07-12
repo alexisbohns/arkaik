@@ -24,7 +24,7 @@ import { useJournal } from "@/lib/hooks/useJournal";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
 import { parseAndValidateBundle, downloadJson, exportProject, importProject, normalizeProjectTimestamps } from "@/lib/utils/export";
 import { serializeBundle } from "@arkaik/schema";
-import { generateNodeId } from "@/lib/utils/id";
+import { generateNodeId, edgeId } from "@/lib/utils/id";
 import { wouldCreateCycle } from "@/lib/utils/cycle";
 import type { SpeciesId } from "@/lib/config/species";
 import type { PlatformId } from "@/lib/config/platforms";
@@ -412,7 +412,7 @@ export default function ProjectCanvasPage() {
   const handleCreateNodeFromPanel = useCallback(
     async (species: "flow" | "view", title: string) => {
       const createdNode = await addNode({
-        id: generateNodeId(species),
+        id: generateNodeId(species, title, nodesById.keys()),
         project_id: id,
         title,
         species,
@@ -422,7 +422,7 @@ export default function ProjectCanvasPage() {
 
       return createdNode;
     },
-    [addNode, id],
+    [addNode, id, nodesById],
   );
 
   const handleInsertPlaylistEntry = useCallback(
@@ -446,7 +446,7 @@ export default function ProjectCanvasPage() {
 
         if (!hasComposeEdge) {
           await addEdge({
-            id: crypto.randomUUID(),
+            id: edgeId(parentId, nodeId),
             project_id: id,
             source_id: parentId,
             target_id: nodeId,
@@ -571,7 +571,7 @@ export default function ProjectCanvasPage() {
       const preset = newNodePreset;
       const parentId = preset?.parentId;
       const insertBeforeId = preset?.insertBeforeId;
-      const newNodeId = generateNodeId(data.species);
+      const newNodeId = generateNodeId(data.species, data.title, nodesById.keys());
 
       setPlaylistError(null);
 
@@ -601,7 +601,7 @@ export default function ProjectCanvasPage() {
         }
 
         await addEdge({
-          id: crypto.randomUUID(),
+          id: edgeId(parentId, newNodeId),
           project_id: id,
           source_id: parentId,
           target_id: newNodeId,
@@ -678,11 +678,13 @@ export default function ProjectCanvasPage() {
 
   const handleEdgeTypeSelect = useCallback(async (edgeType: EdgeTypeId) => {
     if (!pendingConnection?.source || !pendingConnection?.target) return;
+    const sourceId = getBaseNodeId(pendingConnection.source);
+    const targetId = getBaseNodeId(pendingConnection.target);
     await addEdge({
-      id: crypto.randomUUID(),
+      id: edgeId(sourceId, targetId),
       project_id: id,
-      source_id: getBaseNodeId(pendingConnection.source),
-      target_id: getBaseNodeId(pendingConnection.target),
+      source_id: sourceId,
+      target_id: targetId,
       edge_type: edgeType,
     });
     setEdgeDialogOpen(false);

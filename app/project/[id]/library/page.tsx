@@ -229,7 +229,7 @@ export default function ProjectLibraryPage() {
 
   async function handleCreateNodeFromPanel(species: "flow" | "view", title: string) {
     return addNode({
-      id: generateNodeId(species),
+      id: generateNodeId(species, title, nodesById.keys()),
       project_id: id,
       title,
       species,
@@ -240,7 +240,7 @@ export default function ProjectLibraryPage() {
 
   async function handleCreateNode(data: NewNodeFormData) {
     await addNode({
-      id: generateNodeId(data.species),
+      id: generateNodeId(data.species, data.title, nodesById.keys()),
       project_id: id,
       title: data.title,
       species: data.species,

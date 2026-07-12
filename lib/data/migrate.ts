@@ -1,4 +1,5 @@
-import type { Node, Edge, ProjectBundle } from "./types";
+import type { Node, Edge, ProjectBundle, PlaylistEntry } from "./types";
+import { deriveNodeId, edgeId, SPECIES_PREFIXES, type SpeciesId } from "@arkaik/schema";
 
 /**
  * Explicit, ordered Bundle Format migration chain (docs/spec/bundle-format.md
@@ -21,7 +22,7 @@ import type { Node, Edge, ProjectBundle } from "./types";
  */
 
 /** Highest `schema_version` this build knows how to read natively. */
-export const CURRENT_SCHEMA_VERSION = 1;
+export const CURRENT_SCHEMA_VERSION = 2;
 
 /** A node as it appeared before playlists — the pre-v1 legacy shape. */
 type LegacyNode = Node & {
@@ -137,12 +138,153 @@ function migrateLegacyToV1(bundle: ProjectBundle): ProjectBundle {
 }
 
 /**
+ * The exact shape the app's *old* random node-id generator produced:
+ * `${SPECIES_PREFIX}${crypto.randomUUID().slice(0, 8)}` — the species prefix
+ * followed by exactly 8 lowercase hex digits (issue #215). Only ids matching
+ * this are retrofitted; anything else (already-conventional, hand-authored, or
+ * semantically-suffixed) is left untouched, which is what keeps this step a
+ * byte-for-byte no-op on the already-conformant seeds.
+ */
+function isRandomLegacyNodeId(id: unknown, species: unknown): boolean {
+  if (typeof id !== "string" || typeof species !== "string") return false;
+  const prefix = (SPECIES_PREFIXES as Record<string, string | undefined>)[species];
+  if (!prefix || !id.startsWith(prefix)) return false;
+  return /^[0-9a-f]{8}$/.test(id.slice(prefix.length));
+}
+
+/**
+ * Rewrite the node-id references inside a playlist (view/flow entries, and
+ * recursively into condition branches and junction cases) using `remap`.
+ * Returns the *same* array reference when nothing changed so callers can detect
+ * a no-op and preserve object identity. Unknown entry fields are preserved via
+ * the spread; entries whose ids are not in `remap` pass through untouched.
+ */
+function remapPlaylistEntries(entries: PlaylistEntry[], remap: Map<string, string>): PlaylistEntry[] {
+  let changed = false;
+  const next = entries.map((entry) => {
+    if (entry.type === "view") {
+      const mapped = remap.get(entry.view_id);
+      if (mapped) {
+        changed = true;
+        return { ...entry, view_id: mapped };
+      }
+      return entry;
+    }
+    if (entry.type === "flow") {
+      const mapped = remap.get(entry.flow_id);
+      if (mapped) {
+        changed = true;
+        return { ...entry, flow_id: mapped };
+      }
+      return entry;
+    }
+    if (entry.type === "condition") {
+      const ifTrue = Array.isArray(entry.if_true) ? remapPlaylistEntries(entry.if_true, remap) : entry.if_true;
+      const ifFalse = Array.isArray(entry.if_false) ? remapPlaylistEntries(entry.if_false, remap) : entry.if_false;
+      if (ifTrue !== entry.if_true || ifFalse !== entry.if_false) {
+        changed = true;
+        return { ...entry, if_true: ifTrue, if_false: ifFalse };
+      }
+      return entry;
+    }
+    if (entry.type === "junction") {
+      let casesChanged = false;
+      const cases = Array.isArray(entry.cases)
+        ? entry.cases.map((playlistCase) => {
+            const caseEntries = Array.isArray(playlistCase.entries)
+              ? remapPlaylistEntries(playlistCase.entries, remap)
+              : playlistCase.entries;
+            if (caseEntries !== playlistCase.entries) {
+              casesChanged = true;
+              return { ...playlistCase, entries: caseEntries };
+            }
+            return playlistCase;
+          })
+        : entry.cases;
+      if (casesChanged) {
+        changed = true;
+        return { ...entry, cases };
+      }
+      return entry;
+    }
+    return entry;
+  });
+  return changed ? next : entries;
+}
+
+/**
+ * Step two of the chain (1 → 2): retrofit the app's identifier defects (issue
+ * #215, docs/spec/bundle-format.md § Identifier Conventions). Any node id the
+ * old app minted as `${prefix}${8 hex}` is rewritten to the deterministic
+ * title-derived form; every edge id is normalized to `e-{source}-{target}`
+ * (fixing raw-UUID and `legacy-compose-*` ids from the v0→1 step alike). Node
+ * renames are propagated *in the same pass* to edge endpoints, edge ids,
+ * playlist references, and `project.root_node_id`.
+ *
+ * Pure, idempotent, and non-destructive: unknown fields survive via spreads;
+ * an already-conformant bundle (the seeds) is returned structurally unchanged;
+ * a node with no usable title falls back to a stable hash id so it can never
+ * collide or dangle. Deliberately does not touch the `journal` (app-side event
+ * emission is issue #218) — it is preserved verbatim.
+ */
+function migrateV1ToV2(bundle: ProjectBundle): ProjectBundle {
+  const nodes: Node[] = Array.isArray(bundle.nodes) ? bundle.nodes : [];
+
+  // Reserve the ids we are keeping first, so rewritten ids disambiguate around
+  // them; then assign deterministic ids to the random ones in array order.
+  const remap = new Map<string, string>();
+  const taken = new Set<string>();
+  for (const node of nodes) {
+    if (!isRandomLegacyNodeId(node.id, node.species)) taken.add(node.id);
+  }
+  for (const node of nodes) {
+    if (!isRandomLegacyNodeId(node.id, node.species)) continue;
+    const newId = deriveNodeId(node.species as SpeciesId, node.title ?? "", taken, node.id);
+    remap.set(node.id, newId);
+    taken.add(newId);
+  }
+
+  const nextNodes = nodes.map((node) => {
+    const newId = remap.get(node.id) ?? node.id;
+    let metadata = node.metadata;
+    const playlist = node.metadata?.playlist;
+    if (playlist && Array.isArray(playlist.entries)) {
+      const nextEntries = remapPlaylistEntries(playlist.entries, remap);
+      if (nextEntries !== playlist.entries) {
+        metadata = { ...node.metadata, playlist: { ...playlist, entries: nextEntries } };
+      }
+    }
+    if (newId === node.id && metadata === node.metadata) return node;
+    return { ...node, id: newId, metadata };
+  });
+
+  const edges: Edge[] = Array.isArray(bundle.edges) ? bundle.edges : [];
+  const nextEdges = edges.map((edge) => {
+    const sourceId = remap.get(edge.source_id) ?? edge.source_id;
+    const targetId = remap.get(edge.target_id) ?? edge.target_id;
+    const id = edgeId(sourceId, targetId);
+    if (sourceId === edge.source_id && targetId === edge.target_id && id === edge.id) return edge;
+    return { ...edge, id, source_id: sourceId, target_id: targetId };
+  });
+
+  const rootNodeId = bundle.project.root_node_id;
+  const nextRootNodeId = rootNodeId && remap.has(rootNodeId) ? remap.get(rootNodeId)! : rootNodeId;
+  const nextProject =
+    nextRootNodeId === rootNodeId ? bundle.project : { ...bundle.project, root_node_id: nextRootNodeId };
+
+  return { ...bundle, project: nextProject, nodes: nextNodes, edges: nextEdges };
+}
+
+/**
  * The ordered chain. Steps are contiguous (each `to` is the next step's `from`)
  * and applied in order from the bundle's source version up to
- * {@link CURRENT_SCHEMA_VERSION}. Append future steps ({ from: 1, to: 2, ... })
+ * {@link CURRENT_SCHEMA_VERSION}. Append future steps ({ from: 2, to: 3, ... })
  * here — the dispatcher picks up the rest automatically.
  */
-const MIGRATIONS: readonly Migration[] = [{ from: 0, to: 1, migrate: migrateLegacyToV1 }];
+const MIGRATIONS: readonly Migration[] = [
+  { from: 0, to: 1, migrate: migrateLegacyToV1 },
+  { from: 1, to: 2, migrate: migrateV1ToV2 },
+];
 
 /**
  * Upgrade a bundle to the current schema version by running each applicable
