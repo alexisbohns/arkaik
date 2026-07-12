@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import {
   BookOpenIcon,
@@ -10,8 +11,10 @@ import {
   MonitorIcon,
   ServerIcon,
   Settings2Icon,
+  Share2Icon,
 } from "lucide-react";
 import { ProjectSwitcher } from "@/components/layout/ProjectSwitcher";
+import { PublishDialog } from "@/components/publik/PublishDialog";
 import {
   Sidebar,
   SidebarContent,
@@ -54,6 +57,7 @@ export function ProjectSidebar({
   const canvasHref = `/project/${projectId}/canvas`;
   const libraryHref = `/project/${projectId}/library`;
   const changelogHref = `/project/${projectId}/changelog`;
+  const [publishOpen, setPublishOpen] = useState(false);
 
   return (
     <Sidebar collapsible="icon">
@@ -120,6 +124,16 @@ export function ProjectSidebar({
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip="Publish to Publik"
+              onClick={() => setPublishOpen(true)}
+              className="cursor-pointer"
+            >
+              <Share2Icon />
+              <span>Publish</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
             <SidebarMenuButton disabled tooltip="Settings coming soon">
               <Settings2Icon />
               <span>Settings</span>
@@ -129,6 +143,13 @@ export function ProjectSidebar({
       </SidebarFooter>
 
       <SidebarRail />
+
+      <PublishDialog
+        open={publishOpen}
+        onOpenChange={setPublishOpen}
+        projectId={projectId}
+        projectTitle={currentProjectTitle ?? "Untitled project"}
+      />
     </Sidebar>
   );
 }
