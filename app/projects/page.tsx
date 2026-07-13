@@ -21,7 +21,10 @@ import { archiveProject, importProjectFromFile } from "@/lib/utils/export";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
 import { CreateProjectForm } from "@/components/panels/CreateProjectForm";
 import { PublishDialog } from "@/components/publik/PublishDialog";
-import { Share2Icon } from "lucide-react";
+import { ProjectSyncControl } from "@/components/sync/ProjectSyncControl";
+import { RestoreDialog } from "@/components/sync/RestoreDialog";
+import { SynkOnboardingBanner } from "@/components/sync/SynkOnboardingBanner";
+import { HistoryIcon, Share2Icon } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -29,6 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useAuthStatus } from "@/lib/hooks/useAuthStatus";
 import pebbles from "@/seed/pebbles.json";
 import arkaikSelfMap from "@/seed/arkaik-self-map.json";
 
@@ -41,12 +45,14 @@ const EXAMPLE_SEEDS: Record<ExampleSeed, { fileName: string; data: unknown }> = 
 
 export default function ProjectsPage() {
   const router = useRouter();
+  const auth = useAuthStatus();
   const [projects, setProjects] = useState<ProjectBundle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ProjectBundle | null>(null);
   const [publishTarget, setPublishTarget] = useState<ProjectBundle | null>(null);
+  const [restoreOpen, setRestoreOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -186,11 +192,19 @@ export default function ProjectsPage() {
             <Button variant="outline" asChild>
               <Link href="/generate">Generate with AI</Link>
             </Button>
+            {auth.state === "signed-in" && (
+              <Button variant="outline" onClick={() => setRestoreOpen(true)}>
+                <HistoryIcon />
+                Restore from Synk
+              </Button>
+            )}
             <Button onClick={() => setCreateOpen(true)}>Create project</Button>
           </div>
         </div>
 
         {error && <p className="text-sm text-destructive">{error}</p>}
+
+        {!loading && projects.length > 0 && <SynkOnboardingBanner projects={projects} />}
 
         {loading ? (
           <div className="flex flex-1 items-center justify-center">
@@ -229,11 +243,12 @@ export default function ProjectsPage() {
                     <CardDescription>{bundle.project.description}</CardDescription>
                   )}
                 </CardHeader>
-                <CardContent>
+                <CardContent className="flex flex-col gap-2">
                   <p className="text-sm text-muted-foreground">
                     {bundle.nodes.length} node{bundle.nodes.length !== 1 ? "s" : ""} ·{" "}
                     {bundle.edges.length} edge{bundle.edges.length !== 1 ? "s" : ""}
                   </p>
+                  <ProjectSyncControl projectId={bundle.project.id} />
                 </CardContent>
                 <CardFooter className="flex items-center gap-2">
                   <Button size="sm" onClick={() => router.push(`/project/${bundle.project.id}`)}>
@@ -273,6 +288,8 @@ export default function ProjectsPage() {
         projectId={publishTarget?.project.id ?? ""}
         projectTitle={publishTarget?.project.title ?? "this project"}
       />
+
+      <RestoreDialog open={restoreOpen} onOpenChange={setRestoreOpen} />
     </div>
   );
 }

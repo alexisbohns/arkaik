@@ -5,6 +5,7 @@ import "highlight.js/styles/github.css";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AppToaster } from "@/components/ui/toaster";
+import { SyncProvider } from "@/components/sync/SyncProvider";
 
 export const metadata: Metadata = {
   title: "arkaik",
@@ -72,6 +73,7 @@ export default function RootLayout({
         >
           {children}
           <AppToaster />
+          <SyncProvider />
         </ThemeProvider>
       </body>
     </html>

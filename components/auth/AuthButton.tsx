@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { GithubIcon, LogOutIcon, UserRoundIcon } from "lucide-react";
 import { signIn, signOut } from "next-auth/react";
 
@@ -13,14 +12,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useAuthStatus, type AuthStatusUser } from "@/lib/hooks/useAuthStatus";
 
 /**
  * Sign-in / account entry point for the app shell (docs/spec/services.md
  * § Synk → Auth). Native to the existing chrome — an icon-sized control that
  * sits beside the theme toggle / in the sidebar footer.
  *
- * GRACEFUL ABSENCE: the component asks GET /api/auth/status once on mount and
- * renders *nothing* until it knows auth is configured. When it is not (the
+ * GRACEFUL ABSENCE: `useAuthStatus` asks GET /api/auth/status once on mount and
+ * this renders *nothing* until it knows auth is configured. When it is not (the
  * default local-first deployment), this stays null forever — no sign-in affords,
  * no services surface leaks, and local-first usage is untouched. The endpoint
  * returns only a boolean and the public profile; no secret reaches the client.
@@ -29,55 +29,14 @@ import {
  * changes between signed-in and signed-out.
  */
 
-interface AuthUser {
-  name: string | null;
-  email: string | null;
-  image: string | null;
-}
-
-type AuthStatus =
-  | { state: "loading" }
-  | { state: "unconfigured" }
-  | { state: "signed-out" }
-  | { state: "signed-in"; user: AuthUser };
-
-function initials(user: AuthUser): string {
+function initials(user: AuthStatusUser): string {
   const source = user.name ?? user.email ?? "";
   const trimmed = source.trim();
   return trimmed ? trimmed[0]!.toUpperCase() : "";
 }
 
 export function AuthButton() {
-  const [status, setStatus] = useState<AuthStatus>({ state: "loading" });
-
-  useEffect(() => {
-    let active = true;
-
-    async function loadStatus() {
-      try {
-        const res = await fetch("/api/auth/status", { cache: "no-store" });
-        if (!res.ok) throw new Error(`status ${res.status}`);
-        const data: { configured: boolean; user: AuthUser | null } = await res.json();
-        if (!active) return;
-        if (!data.configured) {
-          setStatus({ state: "unconfigured" });
-        } else if (data.user) {
-          setStatus({ state: "signed-in", user: data.user });
-        } else {
-          setStatus({ state: "signed-out" });
-        }
-      } catch {
-        // Treat any failure as "auth unavailable" — degrade to hidden, never
-        // block the local-first shell.
-        if (active) setStatus({ state: "unconfigured" });
-      }
-    }
-
-    void loadStatus();
-    return () => {
-      active = false;
-    };
-  }, []);
+  const status = useAuthStatus();
 
   // Hidden while loading and whenever auth is not configured.
   if (status.state === "loading" || status.state === "unconfigured") {
