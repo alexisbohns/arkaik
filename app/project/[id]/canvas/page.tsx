@@ -300,9 +300,7 @@ export default function ProjectCanvasPage() {
     return collectReferencedNodeIds(getPlaylistEntries(nodeId));
   }, [getPlaylistEntries]);
 
-  // Prune stale expansion entries, and expand the first top-level flow once on
-  // initial load so a fresh project opens on a real map instead of a bare root.
-  const autoExpandedRef = useRef(false);
+  // Prune expansion entries whose flow no longer exists.
   useEffect(() => {
     setExpandedFlows((prev) => {
       const next = new Set<string>();
@@ -313,20 +311,32 @@ export default function ProjectCanvasPage() {
         }
       }
 
-      if (!autoExpandedRef.current && next.size === 0 && topLevelFlowIds.size > 0) {
-        autoExpandedRef.current = true;
-        const [firstTopLevelFlowId] = topLevelFlowIds;
-        next.add(firstTopLevelFlowId);
-        return next;
-      }
-
       if (next.size === prev.size) {
         return prev;
       }
 
       return next;
     });
-  }, [allFlowIds, topLevelFlowIds]);
+  }, [allFlowIds]);
+
+  // Expand the first top-level flow once on initial load so a fresh project
+  // opens on a real map instead of a bare root. Gated on all three sources:
+  // nodes/edges resolve before the project bundle, and during that window the
+  // top-level set is computed without the explicit root (orphan flows only).
+  // The decision also lives outside the state updater (updaters must stay
+  // pure — StrictMode double-invokes them).
+  const autoExpandedRef = useRef(false);
+  const pendingFitFlowRef = useRef<string | null>(null);
+  const [fitSignal, setFitSignal] = useState(0);
+  useEffect(() => {
+    if (autoExpandedRef.current || nodesLoading || edgesLoading || projectLoading) return;
+    if (topLevelFlowIds.size === 0) return;
+    autoExpandedRef.current = true;
+
+    const [firstTopLevelFlowId] = topLevelFlowIds;
+    pendingFitFlowRef.current = firstTopLevelFlowId;
+    setExpandedFlows((prev) => (prev.size === 0 ? new Set([firstTopLevelFlowId]) : prev));
+  }, [edgesLoading, nodesLoading, projectLoading, topLevelFlowIds]);
 
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null);
   const [edgeDialogOpen, setEdgeDialogOpen] = useState(false);
@@ -1370,6 +1380,19 @@ export default function ProjectCanvasPage() {
     };
   }, [graphData]);
 
+  // The one-time ReactFlow fitView frames the pre-expansion layout; once the
+  // auto-expanded flow's playlist nodes land in a computed layout, re-frame.
+  useEffect(() => {
+    const flowId = pendingFitFlowRef.current;
+    if (!flowId) return;
+
+    const marker = `${VISUAL_NODE_ID_SEPARATOR}${flowId}:`;
+    if (!layoutedNodes.some((node) => node.id.includes(marker))) return;
+
+    pendingFitFlowRef.current = null;
+    setFitSignal((value) => value + 1);
+  }, [layoutedNodes]);
+
   const nodes = layoutReady ? layoutedNodes : graphData.nodes;
   const edges = graphData.edges;
 
@@ -1437,7 +1460,7 @@ export default function ProjectCanvasPage() {
         </div>
       </header>
       <div className="flex-1 min-h-0 relative">
-        <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} onEdgeClick={handleEdgeClick} />
+        <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} onEdgeClick={handleEdgeClick} fitSignal={fitSignal} />
       </div>
       <NodeDetailPanel
         open={panelOpen}
