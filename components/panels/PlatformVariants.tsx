@@ -37,6 +37,8 @@ export interface PlatformVariantsProps {
   statuses?: PlatformStatusMap;
   notes?: Partial<Record<PlatformId, string>>;
   screenshots?: Partial<Record<PlatformId, string>>;
+  /** Tab opened on mount (e.g. the platform of the clicked Delivery item). */
+  initialPlatform?: PlatformId;
   onStatusChange?: (platform: PlatformId, value: StatusId | undefined) => void;
   onNotesChange?: (platform: PlatformId, value: string) => void;
   onScreenshotChange?: (platform: PlatformId, value: string | undefined) => void;
@@ -47,12 +49,13 @@ export function PlatformVariants({
   statuses = {},
   notes = {},
   screenshots = {},
+  initialPlatform,
   onStatusChange,
   onNotesChange,
   onScreenshotChange,
   onZoomShot,
 }: PlatformVariantsProps) {
-  const [activeTab, setActiveTab] = useState<PlatformId>(PLATFORMS[0].id);
+  const [activeTab, setActiveTab] = useState<PlatformId>(initialPlatform ?? PLATFORMS[0].id);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const currentStatus = statuses[activeTab];

@@ -18,9 +18,11 @@ export default function ProjectLayout({
 
   const currentView = pathname.startsWith(`/project/${id}/library`)
     ? "library"
-    : pathname.startsWith(`/project/${id}/changelog`)
-      ? "changelog"
-      : "canvas";
+    : pathname.startsWith(`/project/${id}/delivery`)
+      ? "delivery"
+      : pathname.startsWith(`/project/${id}/changelog`)
+        ? "changelog"
+        : "canvas";
   const currentSpecies = currentView === "library" ? searchParams.get("species") : null;
   const currentQueryString = currentView === "library" ? searchParams.toString() : "";
 

@@ -28,6 +28,8 @@ app/
         page.tsx        # The Journey map canvas — compose-closure traversal, playlist expansion, status rollups
       library/
         page.tsx        # Gallery/directory node browser (species via sidebar ?species= links)
+      delivery/
+        page.tsx        # Delivery board — (node × platform) items grouped by status
       changelog/
         page.tsx        # Releases + backlog derived from the journal
   p/
@@ -36,7 +38,7 @@ app/
   api/                  # Publik, Synk, and auth route handlers (spec/services.md)
 ```
 
-Planned project routes (spec'd, not yet built — vision.md § Roadmap, Core Product phases): `/project/[id]/maps` (+ `/maps/[mapId]`), `/project/[id]/delivery`, `/project/[id]/overview`.
+Planned project routes (spec'd, not yet built — vision.md § Roadmap, Core Product phases): `/project/[id]/maps` (+ `/maps/[mapId]`), `/project/[id]/overview`.
 
 The canvas page (`app/project/[id]/canvas/page.tsx`) is the core of the graph renderer. It:
 

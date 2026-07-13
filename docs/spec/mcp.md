@@ -6,7 +6,7 @@ order: 6
 
 # MCP Server — the Agent Plane
 
-> Status: **Draft specification** — describes the target `arkaik-mcp` package. Nothing in this document is implemented yet; there is no MCP server in the codebase today. Agents currently interact through the skill ([toolchain.md](toolchain.md) § Skill Distribution), the CLI, and the raw format.
+> Status: **Draft specification** — describes the target `arkaik-mcp` package. There is no MCP server in the codebase today; the shared dual-write derivation prerequisite (§ Reuse Seams) is in place at `packages/schema/src/derive.ts`. Agents currently interact through the skill ([toolchain.md](toolchain.md) § Skill Distribution), the CLI, and the raw format.
 > The key words MUST, MUST NOT, SHOULD, and MAY are to be interpreted as in RFC 2119.
 
 ## Purpose
