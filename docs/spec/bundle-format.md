@@ -6,7 +6,7 @@ order: 1
 
 # Bundle Format v2
 
-> Status: **Draft specification** — describes the target format. Implemented behavior is documented in [data-layer.md](../data-layer.md); the currently published contract is v1 at `public/schema/project-bundle.json`.
+> Status: **Implemented** — v2 is the published contract at `public/schema/project-bundle.json`, generated from the canonical zod source in `packages/schema` ([toolchain.md](toolchain.md)). Implemented behavior is documented in [data-layer.md](../data-layer.md). This document remains the normative contract.
 > The key words MUST, MUST NOT, SHOULD, and MAY are to be interpreted as in RFC 2119.
 
 ## Overview

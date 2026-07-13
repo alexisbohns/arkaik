@@ -2,7 +2,7 @@
 
 ## Data Types
 
-Defined in `lib/data/types.ts`:
+Canonically defined in `packages/schema/src/` (`@arkaik/schema`) and re-exported through `lib/data/types.ts`:
 
 ### Node
 
@@ -21,14 +21,16 @@ interface Node {
 
 ### NodeMetadata
 
-Defined in `lib/data/types.ts`:
-
 | Field | Type | Purpose |
 |-------|------|---------|
-| `stage` | `string` | Optional lifecycle marker used by node headers |
+| `stage` | `string` | Optional lifecycle marker used by node headers (`beta` / `monitoring` / `deprecated`) |
 | `playlist` | `FlowPlaylist` | Ordered playlist structure for flow sequencing with support for inline branching |
 | `platformNotes` | `Partial<Record<PlatformId, string>>` | Per-platform notes in the detail panel |
 | `platformStatuses` | `Partial<Record<PlatformId, StatusId>>` | Per-platform source-of-truth statuses for views |
+| `platformScreenshots` | `Partial<Record<PlatformId, string>>` | Per-platform screenshot asset values (path, URL, or data URI — [spec/bundle-format.md](spec/bundle-format.md) § Asset Values) |
+| `refs` | `Ref[]` | Typed external references ([spec/bundle-format.md](spec/bundle-format.md) § References) |
+
+Unknown metadata keys are preserved (`catchall`) — the forward-compatibility rule of the format.
 
 `FlowPlaylist` structure:
 
@@ -69,6 +71,7 @@ interface Project {
   id: string;
   title: string;
   description?: string;
+  version?: string;    // Current version label of the mapped product (Level 1)
   root_node_id?: string; // Optional node id used as the canvas anchor
   metadata?: ProjectMetadata; // Optional project-level UI preferences
   created_at: string;  // ISO 8601
@@ -76,8 +79,9 @@ interface Project {
   archived_at?: string | null; // ISO 8601 when archived
 }
 
-interface ProjectMetadata {
+interface ProjectMetadata extends Record<string, unknown> {
   view_card_variant?: "compact" | "large";
+  // maps?: MapDefinition[] — specified in spec/maps.md, lands with roadmap CP-B
 }
 ```
 
@@ -85,9 +89,11 @@ interface ProjectMetadata {
 
 ```typescript
 interface ProjectBundle {
+  schema_version?: number;   // Absent means 1 (spec/bundle-format.md)
   project: Project;
   nodes: Node[];
   edges: Edge[];
+  journal?: JournalEvent[];  // Level 2 embedded interchange projection (spec/journal.md)
 }
 ```
 
@@ -112,11 +118,15 @@ interface DataProvider {
   createNode(node: Node): Promise<Node>;
   updateNode(id: string, patch: Partial<Omit<Node, "id" | "project_id">>): Promise<Node>;
   deleteNode(id: string): Promise<void>;
+  deleteNodes(ids: string[]): Promise<void>;
 
   // Edges
   getEdges(projectId: string): Promise<Edge[]>;
   createEdge(edge: Edge): Promise<Edge>;
   deleteEdge(id: string): Promise<void>;
+
+  // Journal
+  getJournal(projectId: string): Promise<JournalEvent[]>;
 
   // Import/Export
   exportProject(id: string): Promise<ProjectBundle>;
@@ -128,14 +138,15 @@ interface DataProvider {
 
 ## Local Provider
 
-Implemented in `lib/data/local-provider.ts`.
+Implemented in `lib/data/local-provider.ts`, resolved through the provider seam `lib/data/provider-registry.ts` (`getProvider()` / `setProvider()`).
 
-- **Storage key:** `arkaik:store`
-- **Backend:** `localStorage` with an in-memory `Map<string, ProjectBundle>`
-- **Indexing:** Dual index maps — `nodeIndex` (node ID → project ID) and `edgeIndex` (edge ID → project ID) for fast lookups
-- **Persistence:** Auto-persists to `localStorage` on every mutation
-- **Cascade:** `deleteNode` also removes all edges referencing that node
-- **Normalization:** Legacy structural fields from pre-playlist storage are stripped on load/import, and ordered `metadata.playlist.entries` values are hydrated from legacy data when present
+- **Backend:** IndexedDB via Dexie (`lib/data/db.ts`, database `arkaik`) — three tables: `projects` (one row per project: the bundle snapshot minus its journal), `journals` (per-project event arrays), `meta` (bookkeeping)
+- **Writes:** Row-level per project — a mutation to project A rewrites only A's row
+- **Dual-write:** Every graph mutation patches the snapshot *and* appends the derived journal events (`lib/data/emit-events.ts`, actor `arkaik-app`) in the same Dexie transaction; `saveProject`/`importProject`/`archiveProject` deliberately do not emit
+- **Notifications:** `subscribeToMutations(cb)` fires per affected project after the transaction commits (consumed by the Synk `SyncManager`)
+- **Cascade:** `deleteNode` also removes all edges referencing that node (no separate `edge.removed` events — implied by `node.deleted`)
+- **Legacy migration:** on first open, any old `arkaik:store` `localStorage` payload is imported once (running `migrateBundle` per bundle) and kept as a passive backup
+- **Normalization:** legacy structural fields are stripped and playlists hydrated via the explicit migration chain in `lib/data/migrate.ts` (`schema_version`-aware)
 
 ## Import / Export
 
@@ -161,7 +172,7 @@ Arkaik now publishes a machine-readable schema and example bundle for import/exp
 | ProjectBundle schema | `public/schema/project-bundle.json` | Canonical JSON Schema for the bundle format |
 | Example bundle | `public/schema/example-bundle.json` | Complete, valid reference example |
 
-These assets mirror the TypeScript model in `lib/data/types.ts` and help external tooling generate importable bundles.
+These assets are generated from the canonical zod source in `packages/schema` (`npm run generate`, drift-checked in CI) and help external tooling generate importable bundles.
 
 ## Hooks
 
@@ -171,9 +182,9 @@ Hooks in `lib/hooks/` provide React state wrappers around the provider:
 |------|---------|---------|
 | `useProject(id)` | `{ project, loading, updateProject }` | Load and update project-level metadata/settings |
 | `useProjects()` | `{ projects, loading }` | Load the active project list for shell navigation |
-| `useNodes(projectId)` | `{ nodes, loading, addNode, removeNode, updateNode }` | CRUD for nodes |
+| `useNodes(projectId)` | `{ nodes, loading, addNode, removeNode, removeNodes, updateNode }` | CRUD for nodes |
 | `useEdges(projectId)` | `{ edges, loading, addEdge, removeEdge }` | CRUD for edges |
-| `useGraphNavigation()` | `{ expandedNodeIds, zoomLevel, breadcrumbs, expand, collapse, navigateTo }` | Generic graph navigation state utility |
+| `useJournal(projectId)` | `{ journal, loading }` | Read-only journal events for timelines and the changelog |
 
 The project canvas page (`app/project/[id]/canvas/page.tsx`) uses `useProject` for root-node anchoring and project-level card-style preferences, and still manages `expandedFlows` as local state.
 
@@ -199,11 +210,12 @@ Flows do not expose an editable rollup status in UI. Flow cards and panel gauges
 The `DataProvider` interface abstracts storage so the backend can change without touching hooks or UI:
 
 1. **Current:** IndexedDB via `localProvider` (Dexie — `lib/data/db.ts`). The `localProvider` export name is kept; it is repointed at the IndexedDB implementation, so the hooks and UI are unchanged.
-2. **Planned:** Supabase (auth, RLS, realtime sync)
+2. **Hosted services** are *not* providers: Publik shares snapshots and Synk backs them up one-way ([spec/services.md](spec/services.md)); the browser stays the source of truth. (The old "Supabase provider" plan is superseded — see the backend decision record in [spec/services.md](spec/services.md).)
+3. **Future second provider:** the read-only repo-bundle provider contemplated by [rfcs/arkaik-dev.md](rfcs/arkaik-dev.md), injected through `setProvider()`.
 
 Storage layout: a `projects` table keyed by `id` holds one row per project (the bundle snapshot minus its journal), so a mutation to project A rewrites only project A's row — not the whole store as the previous `localStorage` backend did. The embedded journal lives in its own `journals` table (keyed by `projectId`), leaving room for a future app-side journal append that need not rewrite the graph snapshot. On first load, any legacy `arkaik:store` `localStorage` payload is imported once into IndexedDB (running `migrateBundle` per bundle) and the source payload is kept as a passive backup.
 
-To add a new provider: implement the `DataProvider` interface and repoint the `localProvider` export (or introduce a provider seam).
+To add a new provider: implement the `DataProvider` interface and inject it via `setProvider()` (`lib/data/provider-registry.ts`) — the seam every hook already reads through.
 
 ## Seed Data
 

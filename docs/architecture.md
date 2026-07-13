@@ -25,10 +25,18 @@ app/
       layout.tsx        # Shared project shell with persistent sidebar + project switcher
       page.tsx          # Redirects to /project/[id]/canvas
       canvas/
-        page.tsx        # Main canvas — playlist expansion and status rollups
+        page.tsx        # The Journey map canvas — compose-closure traversal, playlist expansion, status rollups
       library/
-        page.tsx        # Filterable gallery/directory node browser
+        page.tsx        # Gallery/directory node browser (species via sidebar ?species= links)
+      changelog/
+        page.tsx        # Releases + backlog derived from the journal
+  p/
+    [id]/
+      page.tsx          # Publik snapshot preview (server-rendered)
+  api/                  # Publik, Synk, and auth route handlers (spec/services.md)
 ```
+
+Planned project routes (spec'd, not yet built — vision.md § Roadmap, Core Product phases): `/project/[id]/maps` (+ `/maps/[mapId]`), `/project/[id]/delivery`, `/project/[id]/overview`.
 
 The canvas page (`app/project/[id]/canvas/page.tsx`) is the core of the graph renderer. It:
 
@@ -87,11 +95,11 @@ components/
 ## Data Flow
 
 ```
-localStorage
+IndexedDB (Dexie)
     ↕ (read/write)
-localProvider (implements DataProvider)
+localProvider (implements DataProvider, via getProvider())
     ↕ (async calls)
-Hooks: useNodes, useEdges, useProject, useProjects
+Hooks: useNodes, useEdges, useProject, useProjects, useJournal
     ↕ (state)
 app/project/[id]/layout.tsx (sidebar shell + route-aware navigation)
   ↕ (props)
@@ -161,7 +169,7 @@ LLM affordance assets:
 - `public/robots.txt` and `app/sitemap.ts` support discoverability.
 ```
 
-All data mutations flow through the `DataProvider` interface (`lib/data/data-provider.ts`). The current implementation is `localProvider` backed by IndexedDB (Dexie — `lib/data/db.ts`), which writes per project rather than rewriting the whole store on every mutation. The interface is designed for a future Supabase migration — swap the provider, keep the hooks and UI unchanged.
+All data mutations flow through the `DataProvider` interface (`lib/data/data-provider.ts`). The current implementation is `localProvider` backed by IndexedDB (Dexie — `lib/data/db.ts`), which writes per project rather than rewriting the whole store on every mutation. The interface plus the `getProvider()`/`setProvider()` seam (`lib/data/provider-registry.ts`) let the backend change without touching hooks or UI — the seam a future read-only repo-bundle provider ([rfcs/arkaik-dev.md](rfcs/arkaik-dev.md)) injects through.
 
 ## Playlist Expansion
 
@@ -169,20 +177,14 @@ The project page manages one expansion set as local `useState`:
 
 - `expandedFlows` — which flows show their direct flow/view children
 
-When `project.root_node_id` is present, that node is rendered as the primary anchor and top-level compose children fan out from it. When it is missing, root nodes are inferred from nodes with no compose parent.
+When `project.root_node_id` is present, the canvas walks the full compose closure from that node — views always render and chain the walk onward; flows render as collapsed cards. When it is missing, root nodes are inferred from nodes with no compose parent. The first top-level flow auto-expands on initial load.
 
-Expanded flows reveal ordered children from `metadata.playlist` and `composes` edges.
+Expanded flows reveal ordered children from `metadata.playlist` and `composes` edges. Positions are computed by ELK (`lib/utils/elk-layout.ts`, layered algorithm over compose edges).
 
-Nodes are positioned dynamically:
-
-- Root flows: horizontal row near the top of the canvas
-- Root views: horizontal row below root flows
-- Flow children: vertical column to the right of the parent flow
-
-Canvas visibility rule:
+Canvas visibility rule (Journey map):
 
 - Rendered nodes: `flow`, `view`
-- Hidden from canvas cards: `data-model`, `api-endpoint` (still persisted in project data)
+- Not rendered here: `data-model`, `api-endpoint` (still persisted; they render on the System map once roadmap CP-C lands — [spec/maps.md](spec/maps.md))
 
 View card variants:
 
@@ -214,7 +216,7 @@ The library route (`app/project/[id]/library/page.tsx`) is the project-wide brow
 
 - **Gallery view**: card layout using `NodeCard` for scanning titles, species/status badges, and flow playlist previews.
 - **Directory view**: sortable table using `NodeTable` for dense auditing (`id`, `title`, `species`, `status`, `used in`).
-- **Filter controls**: `LibraryFilterBar` owns species filtering and text search.
+- **Filter controls**: species selection is owned by the sidebar (`?species=` deep links); `LibraryFilterBar` owns text search and the gallery/directory display toggle.
 
 Library interactions reuse the same edit/create surfaces as canvas (`NodeDetailPanel`, `NewNodeForm`) so data mutation paths stay identical.
 

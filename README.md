@@ -14,8 +14,10 @@ It's not a task tracker, not a wiki, not a design tool. It's a navigable, multi-
 - **Playlist composition** — flows contain ordered sequences of views and sub-flows, with condition and junction branching
 - **Per-platform tracking** — Web, iOS, Android variants with independent statuses and notes per view
 - **8 lifecycle statuses** — idea, backlog, prioritized, development, releasing, live, archived, blocked
-- **Local-first** — all data in `localStorage`, works offline, no account required
-- **JSON import/export** — full project bundles for backup, sharing, and self-hosting
+- **Journal & changelog** — an append-only event log records how the graph changed; releases, timelines, and a backlog are derived from it
+- **Local-first** — all data in your browser (IndexedDB), works offline, no account required; optional Synk backups with a free account
+- **Publish & share** — Publik snapshots (`arkaik.app/p/{id}`) and full JSON import/export for backup, sharing, and self-hosting
+- **Agent-native** — an `arkaik` CLI, a Claude Code plugin/skill for coding agents that maintain the map as a side effect of development, and machine-readable schema surfaces (`/llms.txt`)
 - **Seed example** — ships with a "Pebbles" example project to explore immediately
 - **Dark mode** — light/dark theme toggle
 
@@ -36,24 +38,32 @@ Open [http://localhost:3000](http://localhost:3000) — create a project or load
 app/
   layout.tsx                  # Root layout: fonts, theme, global CSS
   page.tsx                    # Home / landing page
-  projects/page.tsx           # Project list, create, import, seed
-  project/[id]/page.tsx       # Main graph canvas
+  projects/page.tsx           # Project list, create, import, seed, restore
+  project/[id]/canvas/        # Graph canvas (the Journey map)
+  project/[id]/library/       # Filterable node browser
+  project/[id]/changelog/     # Releases + backlog from the journal
+  p/[id]/                     # Publik snapshot preview
+  api/                        # Publik, Synk, and auth route handlers
 components/
   graph/
     Canvas.tsx                # React Flow wrapper + node/edge type registry
     nodes/                    # FlowNode, ViewNode, DataModelNode, ApiEndpointNode
     edges/                    # ComposeEdge, CrossLayerEdge, FloatingDottedEdge
-  layout/                     # Breadcrumb, StatusBadge, PlatformDots, StageIcon
+  layout/                     # ProjectSidebar, ProjectSwitcher, StatusBadge, etc.
   panels/                     # NodeDetailPanel, NewNodeForm, PlaylistEditor, etc.
   ui/                         # shadcn/ui primitives (button, card, dialog, etc.)
 lib/
   config/                     # Typed const arrays: species, statuses, platforms, edge-types, stages
-  data/                       # DataProvider interface + localStorage implementation
-  hooks/                      # useNodes, useEdges, useProject, useGraphNavigation, etc.
+  data/                       # DataProvider interface + IndexedDB (Dexie) implementation
+  hooks/                      # useNodes, useEdges, useProject, useJournal, etc.
   utils/                      # export, layout, cycle detection, platform-status rollups
+packages/
+  schema/                     # @arkaik/schema — canonical zod model, validation, projections (MIT)
+  cli/                        # arkaik — init, validate, log, release, sync, pack, open, push (MIT)
+plugin/                       # Claude Code plugin: the agent skill + generated assets (MIT)
 seed/
   pebbles.json                # Example project data
-docs/                         # Architecture, graph model, data layer, conventions, vision
+docs/                         # Architecture, graph model, data layer, conventions, vision, specs
 ```
 
 ## Tech Stack
@@ -64,7 +74,8 @@ docs/                         # Architecture, graph model, data layer, conventio
 | UI | React 19 |
 | Graph canvas | React Flow (`@xyflow/react` 12) |
 | Styling | Tailwind CSS 4 + shadcn/ui + CVA |
-| Storage | `localStorage` (Supabase planned) |
+| Storage | IndexedDB via Dexie (local-first); optional Postgres-backed services (Publik, Synk) |
+| Schema | `@arkaik/schema` — canonical zod model, generated JSON Schema + validator |
 
 ## Documentation
 
@@ -74,21 +85,9 @@ See [`docs/`](docs/README.md) for detailed documentation:
 - [Graph Model](docs/graph-model.md) — 4-species taxonomy, composition, statuses, edge types
 - [Data Layer](docs/data-layer.md) — DataProvider interface, local storage, import/export
 - [Conventions](docs/conventions.md) — coding patterns, file organization, state management
-- [Vision](docs/vision.md) — product strategy: the four layers (format, toolchain, app, services), modes & tiers, roadmap
-- [Specs](docs/spec/bundle-format.md) — draft specifications for the bundle format v2, the event journal, and the toolchain
+- [Vision](docs/vision.md) — product strategy: the four layers (format, toolchain, app, services), the core product ("one graph, many maps"), modes & tiers, roadmap
+- [Specs](docs/spec/bundle-format.md) — normative specifications: bundle format v2, event journal, toolchain, services, maps, MCP server
 - [Contributing](CONTRIBUTING.md) — license split, how to submit changes
-
-## Migration Path
-
-> Superseded by the phased roadmap in [docs/vision.md](docs/vision.md) (git-native toolchain first). Kept as the original engineering sketch of the backend evolution.
-
-| **Phase** | **What** | **How** |
-| --- | --- | --- |
-| MVP (now) | Local-first, single user | `local-provider` with localStorage |
-| Phase 2 | Supabase backend | Write `supabase-provider`, swap provider, add RLS on `project_id` |
-| Phase 3 | Auth + profiles | Supabase Auth, `profiles` table, `project_members` join table |
-| Phase 4 | Multi-tenant SaaS | Each user sees their projects, can create new ones |
-| Open source | Self-hosted | Same repo, `local-provider` or self-hosted Supabase |
 
 ---
 

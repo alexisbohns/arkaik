@@ -15,11 +15,11 @@ Current taxonomy has exactly 4 species.
 
 Config source: [lib/config/species.ts](../lib/config/species.ts)
 
-## Canvas Visibility
+## Canvas Visibility (Journey Map)
 
-- Canvas rendering currently shows only `flow` and `view` as visible React Flow nodes.
-- `data-model` and `api-endpoint` remain persisted graph species and can still be edited from panels/import-export, but they are not rendered as standalone canvas cards.
-- View cards surface API relationships inline via embedded actions instead of separate API nodes.
+- The canvas is the **Journey map** ([vision.md § Core Product](vision.md), [spec/maps.md](spec/maps.md)): it renders `flow` and `view` species as React Flow nodes over the full compose closure from the root — views chain the traversal onward, flows render as collapsed, expandable cards.
+- `data-model` and `api-endpoint` remain persisted graph species, editable from panels and import/export. They render as standalone cards on the **System map** (roadmap CP-C); on the Journey map they surface inline on View cards via embedded API actions and in the detail panel's Connections section.
+- Cross-layer edges (`calls`, `displays`, `queries`) draw whenever both endpoints are visible.
 
 Source: [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx), [components/graph/nodes/ViewNode.tsx](../components/graph/nodes/ViewNode.tsx)
 
@@ -32,7 +32,7 @@ Project library is available at `/project/[id]/library` with two browsing modes:
 
 Filtering:
 
-- Species filter supports `all`, `flow`, `view`, `data-model`, `api-endpoint`.
+- Species selection is owned by the **sidebar** (`?species=` deep links: `all` when absent, or one of `flow`, `view`, `data-model`, `api-endpoint`); the in-page bar carries search and the display-mode toggle only.
 - Search matches node title and description text.
 
 Library source:
@@ -59,7 +59,7 @@ Source: [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx),
 
 Source: [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx)
 
-All flows start collapsed. Any visible flow can be expanded in-canvas. Top-level expansion (root flow and/or direct flow children of `project.root_node_id`, or inferred root flows when no explicit root exists) is accordion-style: opening one top-level flow collapses any other top-level flow already open.
+The canvas walks the compose closure from the anchor (`project.root_node_id`, or inferred roots when absent): views are always rendered and chain the walk onward; flows are rendered as collapsed cards whose interiors (playlists) render only when expanded. Flows start collapsed, except that the first **top-level flow** (a flow reached without passing through another flow) auto-expands on initial load. Top-level expansion is accordion-style: opening one top-level flow collapses any other top-level flow already open.
 
 Expanded flow children follow a strict alternating drill layout:
 
