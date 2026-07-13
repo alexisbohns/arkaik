@@ -121,3 +121,5 @@ jobs:
         run: npm run test:publik
       - name: Synk auth-guard integration test (unauthenticated → 401)
         run: npm run test:auth
+      - name: Synk API integration tests (authz isolation, dedupe, limits, retention)
+        run: npm run test:synk

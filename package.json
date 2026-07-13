@@ -27,7 +27,8 @@
     "test:provider": "node tests/data/provider-registry.test.js && node tests/data/mutation-notifications.test.js",
     "test:cli": "npm run build -w arkaik && node tests/cli/run-cli-tests.js && node tests/cli/init.test.js && node tests/cli/log-release.test.js && node tests/cli/sync.test.js && node tests/cli/pack-open.test.js && node tests/cli/push.test.js",
     "test:auth": "node tests/services/auth-guard.test.js",
-    "test:publik": "node tests/services/publik-api.test.js"
+    "test:publik": "node tests/services/publik-api.test.js",
+    "test:synk": "node tests/services/synk-api.test.js"
   },
   "dependencies": {
     "@auth/pg-adapter": "^1.11.2",
