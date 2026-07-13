@@ -270,6 +270,29 @@ export async function fetchSnapshotBundle(id: string): Promise<unknown | null> {
   return rows.length ? rows[0].bundle : null;
 }
 
+export interface SnapshotSummary {
+  /** The stored bundle JSON, verbatim (post journal-strip unless opted in). */
+  bundle: unknown;
+  /** ISO 8601 timestamp of when the snapshot was created. */
+  createdAt: string;
+}
+
+/**
+ * Fetch a snapshot's bundle plus its creation timestamp, for the `/p/{id}`
+ * preview page (docs/spec/services.md § Publik → Surfaces: "created date").
+ * Kept separate from {@link fetchSnapshotBundle} — which backs `GET
+ * /api/publik/{id}` and must keep returning the bundle alone — so that
+ * endpoint's response shape never changes.
+ */
+export async function fetchSnapshotSummary(id: string): Promise<SnapshotSummary | null> {
+  const { rows } = await query<{ bundle: unknown; created_at: Date }>(
+    `select bundle, created_at from publik_snapshots where id = $1`,
+    [id],
+  );
+  if (!rows.length) return null;
+  return { bundle: rows[0].bundle, createdAt: rows[0].created_at.toISOString() };
+}
+
 export type DeleteOutcome = "deleted" | "not_found" | "forbidden";
 
 /**

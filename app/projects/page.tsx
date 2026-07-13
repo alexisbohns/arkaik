@@ -20,6 +20,8 @@ import type { Project, ProjectBundle } from "@/lib/data/types";
 import { archiveProject, importProjectFromFile } from "@/lib/utils/export";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
 import { CreateProjectForm } from "@/components/panels/CreateProjectForm";
+import { PublishDialog } from "@/components/publik/PublishDialog";
+import { Share2Icon } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -44,6 +46,7 @@ export default function ProjectsPage() {
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ProjectBundle | null>(null);
+  const [publishTarget, setPublishTarget] = useState<ProjectBundle | null>(null);
   const [importing, setImporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -236,6 +239,10 @@ export default function ProjectsPage() {
                   <Button size="sm" onClick={() => router.push(`/project/${bundle.project.id}`)}>
                     Open
                   </Button>
+                  <Button size="sm" variant="outline" onClick={() => setPublishTarget(bundle)}>
+                    <Share2Icon />
+                    Publish
+                  </Button>
                   <Button size="sm" variant="outline" onClick={() => setDeleteTarget(bundle)}>
                     Delete
                   </Button>
@@ -256,6 +263,15 @@ export default function ProjectsPage() {
         title="Delete project"
         description={`Archive \"${deleteTarget?.project.title ?? "this project"}\" and remove it from your list?`}
         onConfirm={handleArchiveProject}
+      />
+
+      <PublishDialog
+        open={Boolean(publishTarget)}
+        onOpenChange={(open) => {
+          if (!open) setPublishTarget(null);
+        }}
+        projectId={publishTarget?.project.id ?? ""}
+        projectTitle={publishTarget?.project.title ?? "this project"}
       />
     </div>
   );
