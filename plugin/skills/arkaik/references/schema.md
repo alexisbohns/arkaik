@@ -101,6 +101,7 @@ interface Edge {
 
 interface ProjectMetadata extends Record<string, unknown> {
   view_card_variant?: "compact" | "large";
+  maps?: MapDefinition[];
 }
 
 interface Project {

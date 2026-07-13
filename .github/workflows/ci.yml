@@ -57,6 +57,9 @@ jobs:
       - name: Journal projection tests
         run: npm run test:journal-projections
 
+      - name: Map projection + validation tests
+        run: npm run test:maps
+
       - name: Journal write-primitive (emit) tests
         run: npm run test:emit
 

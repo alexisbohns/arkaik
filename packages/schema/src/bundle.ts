@@ -12,6 +12,7 @@ import {
 import { FlowPlaylistSchema, type FlowPlaylist } from "./playlist";
 import { JournalEventSchema } from "./journal-events";
 import type { JournalEvent } from "./journal";
+import type { MapDefinition } from "./maps";
 
 export type PlatformStatusMap = Partial<Record<PlatformId, StatusId>>;
 export const PlatformStatusMapSchema: z.ZodType<PlatformStatusMap> = z.partialRecord(
@@ -157,13 +158,54 @@ export const EdgeSchema: z.ZodType<Edge> = z.object({
   metadata: z.record(z.string(), z.unknown()).optional().meta({ description: "Optional edge metadata." }),
 }).meta({ id: "Edge" });
 
+/**
+ * A stored map definition (docs/spec/maps.md). Deliberately lenient: `kind`,
+ * `species`, and `edge_types` parse as free strings so an unknown value is a
+ * `validateBundle()` *warning* (map-unknown-*), never a parse rejection — a
+ * stale map must not fail an import. The canonical type and the projection
+ * functions live in `./maps` (zod-free).
+ */
+export const MapDefinitionSchema: z.ZodType<MapDefinition> = z
+  .object({
+    id: z.string().meta({
+      description: "Kebab-case, unique within the project; built-in ids (journey, system) are reserved.",
+    }),
+    title: z.string().meta({ description: "Display title." }),
+    description: z.string().optional().meta({ description: "What this map is for." }),
+    kind: z.string().meta({
+      description:
+        "Map kind: journey | system. Selects the renderer and selection defaults; unrecognized kinds are preserved and listed as unrenderable.",
+    }),
+    species: z.array(z.string()).optional().meta({
+      description: "Node filter; defaults by kind (journey: flow+view; system: view+api-endpoint+data-model).",
+    }),
+    edge_types: z.array(z.string()).optional().meta({
+      description: "Edge filter; defaults by kind (journey: composes; system: calls+displays+queries).",
+    }),
+    root_node_id: z.string().optional().meta({
+      description: "Scope anchor: the subgraph is the undirected neighborhood reachable from this node.",
+    }),
+    depth: z.number().optional().meta({ description: "Traversal bound from the root; absent = unbounded." }),
+    layout: z
+      .object({ direction: z.string().optional() })
+      .catchall(z.unknown())
+      .optional()
+      .meta({ description: "Renderer layout hints (e.g. direction: DOWN | RIGHT)." }),
+  })
+  .catchall(z.unknown())
+  .meta({ id: "MapDefinition", description: "A stored map definition (docs/spec/maps.md § MapDefinition)." });
+
 export interface ProjectMetadata extends Record<string, unknown> {
   view_card_variant?: "compact" | "large";
+  maps?: MapDefinition[];
 }
 
 export const ProjectMetadataSchema: z.ZodType<ProjectMetadata> = z
   .object({
     view_card_variant: z.enum(["compact", "large"]).optional(),
+    maps: z.array(MapDefinitionSchema).optional().meta({
+      description: "Stored map definitions (docs/spec/maps.md § Storage) — additive; unknown fields preserved.",
+    }),
   })
   .catchall(z.unknown())
   .meta({ id: "ProjectMetadata", description: "Optional project-level UI settings." });

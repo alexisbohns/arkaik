@@ -107,10 +107,77 @@
             "compact",
             "large"
           ]
+        },
+        "maps": {
+          "description": "Stored map definitions (docs/spec/maps.md § Storage) — additive; unknown fields preserved.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MapDefinition"
+          }
         }
       },
       "additionalProperties": {},
       "description": "Optional project-level UI settings."
+    },
+    "MapDefinition": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Kebab-case, unique within the project; built-in ids (journey, system) are reserved."
+        },
+        "title": {
+          "type": "string",
+          "description": "Display title."
+        },
+        "description": {
+          "description": "What this map is for.",
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "description": "Map kind: journey | system. Selects the renderer and selection defaults; unrecognized kinds are preserved and listed as unrenderable."
+        },
+        "species": {
+          "description": "Node filter; defaults by kind (journey: flow+view; system: view+api-endpoint+data-model).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "edge_types": {
+          "description": "Edge filter; defaults by kind (journey: composes; system: calls+displays+queries).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "root_node_id": {
+          "description": "Scope anchor: the subgraph is the undirected neighborhood reachable from this node.",
+          "type": "string"
+        },
+        "depth": {
+          "description": "Traversal bound from the root; absent = unbounded.",
+          "type": "number"
+        },
+        "layout": {
+          "description": "Renderer layout hints (e.g. direction: DOWN | RIGHT).",
+          "type": "object",
+          "properties": {
+            "direction": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "kind"
+      ],
+      "additionalProperties": {},
+      "description": "A stored map definition (docs/spec/maps.md § MapDefinition)."
     },
     "Node": {
       "type": "object",
