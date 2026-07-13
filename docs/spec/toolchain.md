@@ -6,7 +6,7 @@ order: 3
 
 # Toolchain & Packaging
 
-> Status: **Draft specification** — describes the target packages and CLI. Today the toolchain exists only as the copy-paste skill and standalone validator under `docs/arkaik-skill/`.
+> Status: **Implemented** — `packages/schema` (`@arkaik/schema`) and `packages/cli` (`arkaik`) are live workspace packages; the skill ships as a Claude Code plugin (`plugin/`) with generated assets, and `scripts/generate/` drift-checks every generated artifact in CI. The legacy copy-paste skill remains under `docs/arkaik-skill/`. This document remains the normative contract; the MCP server companion is specified in [mcp.md](mcp.md).
 > The key words MUST, SHOULD, and MAY are to be interpreted as in RFC 2119.
 
 ## Why npm

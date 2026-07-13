@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, type CSSProperties } from "react";
 import { ReactFlow, Controls, Background, type Node, type Edge, type NodeMouseHandler, type OnConnect, type EdgeMouseHandler, type ReactFlowInstance } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useTheme } from "next-themes";
@@ -34,12 +34,28 @@ interface CanvasProps {
   onNodeClick?: NodeMouseHandler;
   onConnect?: OnConnect;
   onEdgeClick?: EdgeMouseHandler;
+  /** Increment to re-frame the viewport around the current graph (e.g. after a programmatic layout change). */
+  fitSignal?: number;
 }
 
-export function Canvas({ nodes, edges, onNodeClick, onConnect, onEdgeClick }: CanvasProps) {
+export function Canvas({ nodes, edges, onNodeClick, onConnect, onEdgeClick, fitSignal }: CanvasProps) {
   const reactFlowRef = useRef<ReactFlowInstance<Node, Edge> | null>(null);
+  const lastFitSignal = useRef(fitSignal);
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
+
+  useEffect(() => {
+    if (fitSignal === undefined || fitSignal === lastFitSignal.current) return;
+    lastFitSignal.current = fitSignal;
+
+    // Wait for React Flow to measure freshly mounted nodes — unmeasured nodes
+    // are excluded from the fit bounds. minZoom overrides the instance default
+    // (0.5) so wide graphs can be framed in full.
+    const timer = setTimeout(() => {
+      void reactFlowRef.current?.fitView({ padding: 0.1, duration: 300, minZoom: 0.15 });
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [fitSignal]);
 
   const flowStyle = useMemo(() => {
     return {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { type Edge, type Node, type NodeMouseHandler, type Connection, type EdgeMouseHandler } from "@xyflow/react";
 import { Code2Icon, CopyIcon, DownloadIcon, PlusIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -193,25 +193,49 @@ export default function ProjectCanvasPage() {
     return nodesById.get(rootNodeId) ?? null;
   }, [nodesById, projectBundle?.project.root_node_id]);
 
+  // Compose closure from the explicit root: views chain the walk onward, flows
+  // are surfaced as collapsed cards whose interiors stay behind playlist
+  // expansion (walking into a flow's compose children would double-render its
+  // playlist). Pairs are in BFS discovery order.
+  const composeClosure = useMemo(() => {
+    const pairs: Array<{ parentId: string; child: DataNode }> = [];
+    const flowIds = new Set<string>();
+
+    if (!explicitRootNode) return { pairs, flowIds };
+
+    if (explicitRootNode.species === "flow") {
+      flowIds.add(explicitRootNode.id);
+      return { pairs, flowIds };
+    }
+
+    const visited = new Set<string>([explicitRootNode.id]);
+    const queue: DataNode[] = [explicitRootNode];
+
+    while (queue.length > 0) {
+      const parent = queue.shift()!;
+
+      for (const childId of composeChildIdsByParent.get(parent.id) ?? []) {
+        if (visited.has(childId)) continue;
+        const child = nodesById.get(childId);
+        if (!child || !FLOW_CHILD_SPECIES.has(child.species)) continue;
+
+        visited.add(childId);
+        pairs.push({ parentId: parent.id, child });
+
+        if (child.species === "flow") {
+          flowIds.add(child.id);
+        } else {
+          queue.push(child);
+        }
+      }
+    }
+
+    return { pairs, flowIds };
+  }, [composeChildIdsByParent, explicitRootNode, nodesById]);
+
   const topLevelFlowIds = useMemo(() => {
     if (explicitRootNode) {
-      const ids = new Set<string>();
-
-      if (explicitRootNode.species === "flow") {
-        ids.add(explicitRootNode.id);
-      }
-
-      const rootChildFlowIds = (composeChildIdsByParent.get(explicitRootNode.id) ?? [])
-        .map((nodeId) => nodesById.get(nodeId))
-        .filter((node): node is DataNode => Boolean(node))
-        .filter((node) => node.species === "flow")
-        .map((node) => node.id);
-
-      for (const flowId of rootChildFlowIds) {
-        ids.add(flowId);
-      }
-
-      return ids;
+      return composeClosure.flowIds;
     }
 
     return new Set(
@@ -219,7 +243,7 @@ export default function ProjectCanvasPage() {
         .filter((node) => node.species === "flow" && !composeParentByChild.has(node.id))
         .map((node) => node.id),
     );
-  }, [composeChildIdsByParent, composeParentByChild, dataNodes, explicitRootNode, nodesById]);
+  }, [composeClosure, composeParentByChild, dataNodes, explicitRootNode]);
 
   const allFlowIds = useMemo(
     () => new Set(dataNodes.filter((node) => node.species === "flow").map((node) => node.id)),
@@ -276,7 +300,7 @@ export default function ProjectCanvasPage() {
     return collectReferencedNodeIds(getPlaylistEntries(nodeId));
   }, [getPlaylistEntries]);
 
-  // Auto-expand root flows on initial load.
+  // Prune expansion entries whose flow no longer exists.
   useEffect(() => {
     setExpandedFlows((prev) => {
       const next = new Set<string>();
@@ -294,6 +318,25 @@ export default function ProjectCanvasPage() {
       return next;
     });
   }, [allFlowIds]);
+
+  // Expand the first top-level flow once on initial load so a fresh project
+  // opens on a real map instead of a bare root. Gated on all three sources:
+  // nodes/edges resolve before the project bundle, and during that window the
+  // top-level set is computed without the explicit root (orphan flows only).
+  // The decision also lives outside the state updater (updaters must stay
+  // pure — StrictMode double-invokes them).
+  const autoExpandedRef = useRef(false);
+  const pendingFitFlowRef = useRef<string | null>(null);
+  const [fitSignal, setFitSignal] = useState(0);
+  useEffect(() => {
+    if (autoExpandedRef.current || nodesLoading || edgesLoading || projectLoading) return;
+    if (topLevelFlowIds.size === 0) return;
+    autoExpandedRef.current = true;
+
+    const [firstTopLevelFlowId] = topLevelFlowIds;
+    pendingFitFlowRef.current = firstTopLevelFlowId;
+    setExpandedFlows((prev) => (prev.size === 0 ? new Set([firstTopLevelFlowId]) : prev));
+  }, [edgesLoading, nodesLoading, projectLoading, topLevelFlowIds]);
 
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null);
   const [edgeDialogOpen, setEdgeDialogOpen] = useState(false);
@@ -1215,16 +1258,11 @@ export default function ProjectCanvasPage() {
     if (explicitRootNode) {
       addDataNode(explicitRootNode);
 
-      const rootChildren = (composeChildIdsByParent.get(explicitRootNode.id) ?? [])
-        .map((childId) => nodesById.get(childId))
-        .filter((child): child is DataNode => Boolean(child))
-        .filter((child) => child.species === "flow");
-
-      rootChildren.forEach((child) => {
+      composeClosure.pairs.forEach(({ parentId, child }) => {
         addDataNode(child);
-        addComposeEdge(explicitRootNode.id, child.id);
+        addComposeEdge(parentId, child.id);
 
-        if (expandedFlows.has(child.id)) {
+        if (child.species === "flow" && expandedFlows.has(child.id)) {
           renderedExpandedFlows.add(child.id);
           const childSequence = renderSequence(
             getPlaylistEntries(child.id),
@@ -1237,7 +1275,7 @@ export default function ProjectCanvasPage() {
         }
       });
 
-      if (explicitRootNode.species === "flow" && expandedFlows.has(explicitRootNode.id) && rootChildren.length === 0) {
+      if (explicitRootNode.species === "flow" && expandedFlows.has(explicitRootNode.id) && composeClosure.pairs.length === 0) {
         renderedExpandedFlows.add(explicitRootNode.id);
         const rootSequence = renderSequence(
           getPlaylistEntries(explicitRootNode.id),
@@ -1303,7 +1341,7 @@ export default function ProjectCanvasPage() {
     return { nodes: visibleNodes, edges: visibleEdges };
   }, [
     explicitRootNode,
-    composeChildIdsByParent,
+    composeClosure,
     composeParentByChild,
     dataEdges,
     dataNodes,
@@ -1341,6 +1379,19 @@ export default function ProjectCanvasPage() {
       cancelled = true;
     };
   }, [graphData]);
+
+  // The one-time ReactFlow fitView frames the pre-expansion layout; once the
+  // auto-expanded flow's playlist nodes land in a computed layout, re-frame.
+  useEffect(() => {
+    const flowId = pendingFitFlowRef.current;
+    if (!flowId) return;
+
+    const marker = `${VISUAL_NODE_ID_SEPARATOR}${flowId}:`;
+    if (!layoutedNodes.some((node) => node.id.includes(marker))) return;
+
+    pendingFitFlowRef.current = null;
+    setFitSignal((value) => value + 1);
+  }, [layoutedNodes]);
 
   const nodes = layoutReady ? layoutedNodes : graphData.nodes;
   const edges = graphData.edges;
@@ -1409,7 +1460,7 @@ export default function ProjectCanvasPage() {
         </div>
       </header>
       <div className="flex-1 min-h-0 relative">
-        <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} onEdgeClick={handleEdgeClick} />
+        <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} onEdgeClick={handleEdgeClick} fitSignal={fitSignal} />
       </div>
       <NodeDetailPanel
         open={panelOpen}

@@ -24,16 +24,18 @@ This is deliberately layered (see [Format Levels](#format-levels)): nobody is fo
 
 The second half of the thesis: **arkaik is not just an app**. Its most committed users keep their product map *in their repository, next to their code*, maintained by coding agents as a side effect of development — that is exactly how arkaik itself uses the [agent skill](arkaik-skill/skill.md) with the Pebbles project. For them, the repo is the source of truth and arkaik.app is a lens. Serving that persona well requires treating the format and the tooling as products in their own right.
 
+And a corollary this vision previously under-served, now that the lower layers have shipped: **the lens itself**. One canvas cannot simultaneously serve a strategist zooming out, an operator zooming in, and an agent querying programmatically. The app answer is **one graph, many maps** — the same bundle read through purpose-built projections, each consumable by humans as a page and by agents as a function ([§ Core Product](#core-product-one-graph-many-maps), normative spec in [spec/maps.md](spec/maps.md)).
+
 ## The Four Layers
 
 arkaik is structured as four layers, each usable without the ones above it.
 
 | Layer | What it is | License | Status |
 |---|---|---|---|
-| **1. Format** | The open, versioned `ProjectBundle` + journal + references specification | MIT (planned split) | Partial — v1 schema published at `public/schema/project-bundle.json`, unversioned; v2 specified in [spec/bundle-format.md](spec/bundle-format.md) |
-| **2. Toolchain** | An npm package: `arkaik` CLI (validate, init, log, release, sync, pack), the agent skill, a zero-dependency validator artifact | MIT (planned split) | Planned — today the skill is copy-paste (`docs/arkaik-skill/`) and the validator is standalone |
-| **3. App** | arkaik.app — the graph viewer/editor (hosted; later possibly a local viewer via static export) | AGPL-3.0 | Live — local-first via `localStorage`, no accounts |
-| **4. Services** | Sync, hosting, sharing, integrations: the Synk/Basik/Klub tiers, Publik snapshots, Inkognito BYO-Supabase | AGPL / commercial | Planned |
+| **1. Format** | The open, versioned `ProjectBundle` + journal + references specification | MIT | **Shipped** — v2 published at `public/schema/project-bundle.json`, generated from `@arkaik/schema` ([spec/bundle-format.md](spec/bundle-format.md)) |
+| **2. Toolchain** | npm packages: `@arkaik/schema`, the `arkaik` CLI (init, validate, log, release, sync, pack, open, push), the agent skill + Claude Code plugin, a zero-dependency validator artifact | MIT | **Shipped** — `packages/schema`, `packages/cli`, `plugin/`; MCP server specified next ([spec/mcp.md](spec/mcp.md)) |
+| **3. App** | arkaik.app — the graph viewer/editor (hosted; later possibly a local viewer via static export) | AGPL-3.0 | Live — local-first via IndexedDB (Dexie), optional Synk accounts; **core experience under reconstruction** ([§ Core Product](#core-product-one-graph-many-maps)) |
+| **4. Services** | Sync, hosting, sharing, integrations: the Synk/Basik/Klub tiers, Publik snapshots, Inkognito self-hosting | AGPL / commercial | **Free surface shipped** — Publik + Synk with Auth.js accounts; monetization (Basik/Klub) deliberately gated behind Core Product |
 
 Design rule: **each layer only depends on the layer below it.** The app renders anything that conforms to the format; the services sync anything the app can hold. A user can adopt the format with zero arkaik infrastructure (a JSON file in a repo), and every additional layer is opt-in convenience.
 
@@ -122,6 +124,59 @@ Screenshots and previews are where storage gets critical, and the rule that keep
 | Data URI | Inline in the bundle | Lokal / legacy only — discouraged |
 
 Today the app stores screenshots as base64 data URIs inside the bundle (`metadata.platformScreenshots`, written by `components/panels/NodeDetailPanel.tsx`). That is a size bomb: it presses against the 5 MB import cap, the 4 MB export warning, and the localStorage quota simultaneously, and it is the one place the current code and the published schema have already drifted apart. The v2 spec legitimizes all three forms; `arkaik pack` inlines or uploads assets when a self-contained interchange file is needed. Journal events never carry asset payloads — only the fact that an asset changed.
+
+## Core Product: One Graph, Many Maps
+
+> Normative companion: [spec/maps.md](spec/maps.md). Agent plane: [spec/mcp.md](spec/mcp.md).
+
+### The Honest Diagnosis
+
+The lower layers sprinted ahead of the lens. Today the canvas anchors on `project.root_node_id` and renders only its *flow* children — a view-rooted bundle (the Pebbles seed's exact shape) renders **one card out of 147 nodes**. Data models and API endpoints never appear on the canvas at all, which silences 201 of the seed's 277 edges. The library's species filter duplicates the sidebar. There is no surface that answers "what is in flight on Android?" — the question per-platform statuses exist for. A map that is rich in data and poor in readings is a filing cabinet, not a map.
+
+### The App Thesis
+
+A **map is a named, parameterized projection over (snapshot, journal)**: a scope (root anchor), a selection (species, edge types), and a rendering mode (canvas, board, dashboard). Projections live in `@arkaik/schema` beside `computeChangelog` — the app renders them, the CLI prints them, the MCP server serves them.
+
+**Audience symmetry** is the design rule that follows: *every human surface has an agent-consumable twin*, produced by the same function. A strategist reads the Overview; an agent calls the same aggregation. An operator drags through the Delivery board; an agent queries the same (node × platform, status) tuples. Nothing is rendered that cannot be queried, and nothing is queryable that has no home on screen.
+
+### The Built-in Maps
+
+| Map | Centered on | Answers | Rendering |
+|---|---|---|---|
+| **Journey** | Navigation | "How does a user move through the product?" | Compose/playlist drill-down canvas (today's canvas, with the traversal fixed) |
+| **System** | The model | "Which screens render this data model? What does this endpoint feed?" | All four species as cards, cross-layer edges drawn, ELK-layered by species tier |
+| **Delivery** | Product status | "What is in flight on Android? What shipped on iOS?" | Board of (node × platform) items grouped by status — a view `live` on iOS and `prioritized` on Android appears in **both** columns, by design |
+| **Overview** | The whole | "Where does this product stand?" | Dashboard: per-platform delivery gauges, release pulse and backlog from the journal, inventory, coverage/health indicators |
+
+**Custom maps are data**, not features: a `MapDefinition` stored at `project.metadata.maps` scopes any archetype to a root anchor — the admin area versus the user app is two saved maps, not a format extension. Humans create them in a dialog; **agents author them by writing JSON**. ("Area" tags remain a future format revision if root-scoping proves insufficient — see Open Questions.)
+
+### The Information Architecture
+
+The sidebar reorganizes around three groups, replacing the single-canvas "Navigate":
+
+- **Project** — the product-level reading: Overview, Delivery, Changelog. This is where strategists land.
+- **Maps** — the graph readings: Journey, System, and saved custom maps. This is where structure is explored and edited.
+- **Library** — the dense inventory: one page per species, driven by the sidebar (the sidebar is the *only* species selector; the in-page species filter is removed as redundant). This is where operators audit.
+
+Zooming is a continuum, not a mode switch: Overview links into maps, maps open the node detail panel, the panel deep-links back into scoped maps and the library.
+
+### The Agent Plane
+
+The skill made agents good *writers*; the format made them competent *readers*. The **MCP server** ([spec/mcp.md](spec/mcp.md)) makes them conversational participants: the projections above exposed as tools, plus validator-gated dual-write mutations (`actor: "arkaik-mcp"`). Repo-local (Kommit, stdio, `npx -y arkaik-mcp`) first — zero infrastructure, serving the persona that already lives in the repo. A hosted agent surface over Synk projects is the natural Klub-tier follow-up, on the tier-enforcement seam that already exists.
+
+### Continuity Guardrails (unchanged)
+
+- **Graph model**: the four species, playlist-driven flows (`metadata.playlist.entries`), optional `project.root_node_id` anchor. Config source: `lib/config/species.ts`
+- **Platform and status**: per-platform status editing on `view` nodes; `flow` status stays a computed rollup; the journal extends with history, never replaces. `release.tagged` keeps its optional `platform`. Config: `lib/config/platforms.ts`, `lib/config/statuses.ts`
+- **Reuse-first authoring**: where-used visibility, insert-between operations, the shared node detail panel. References: `components/panels/NodeDetailPanel.tsx`, `components/panels/InsertBetweenDialog.tsx`, `lib/utils/where-used.ts`
+- **Data layer**: the `DataProvider` abstraction, local-first operation, import/export. References: `lib/data/data-provider.ts`, `lib/data/local-provider.ts`, `lib/utils/export.ts`
+
+### Non-Goals
+
+- Not a task tracker — refs *link to* issues and PRs; arkaik never becomes the place where they are managed
+- Not a wiki, not a design tool
+- No event-sourcing purism: the snapshot is never silently re-projected from the journal (see the authority rules in [spec/journal.md](spec/journal.md))
+- No per-map stored layouts, no map sharing in v1 ([spec/maps.md](spec/maps.md) § Non-Goals)
 
 ## Modes & Tiers
 
@@ -256,16 +311,21 @@ The split executes when the packages are physically extracted (`packages/schema`
 
 ## Roadmap
 
-Sequencing principle: **git-native toolchain first.** It serves arkaik's own dogfooding workflow immediately, builds bottom-up adoption the way Storybook and Changesets did, and lets the SaaS tiers arrive later as convenience on top of a proven format — rather than a format invented under a SaaS deadline.
+Two sequencing principles:
 
-### Phase 0 — Enablers
+1. **Git-native toolchain first.** It serves arkaik's own dogfooding workflow immediately, builds bottom-up adoption the way Storybook and Changesets did, and lets the SaaS tiers arrive later as convenience on top of a proven format — rather than a format invented under a SaaS deadline. *This principle has run its course: Phases 0–4 are shipped.*
+2. **Core product before monetization.** The business-model scaffolding exists (tier limits, enforcement sockets, Publik/Synk), but charging for a lens that renders one card of a 147-node bundle would be selling the filing cabinet. Phase 5 stays parked until the Core Product phases below make the app worth paying for.
+
+Phases 0–4 are kept below as the shipped record; statements inside them describe the pre-implementation state they fixed.
+
+### Phase 0 — Enablers *(shipped)*
 
 - CI: lint, build, run the validator against all seeds (`seed/pebbles.json`, `seed/arkaik-self-map.json`, `public/schema/example-bundle.json`), fixture tests (valid/invalid bundles)
 - Fix `rewriteBundleProjectId` in `lib/utils/export.ts`, which silently drops unknown top-level bundle keys on import-ID collision — a landmine for any format extension
 - Align the `TASK_EXTEND` prompt in `lib/prompts/blocks.ts` with the skill's surgical-patch doctrine (it currently instructs LLMs to regenerate the full bundle)
 - License split decision recorded; `CONTRIBUTING.md` / `GOVERNANCE.md` stubs
 
-### Phase 1 — Single Source of Truth
+### Phase 1 — Single Source of Truth *(shipped)*
 
 The bundle contract currently lives in five places that drift independently: `lib/data/types.ts`, `public/schema/project-bundle.json`, `docs/arkaik-skill/references/schema.md`, `docs/arkaik-skill/scripts/validate-bundle.js`, and `lib/prompts/blocks.ts` (drift is already real: `platformScreenshots` exists only in the first). Collapse them **before** the journal would make it six:
 
@@ -273,21 +333,21 @@ The bundle contract currently lives in five places that drift independently: `li
 - Generated artifacts, committed and drift-checked in CI: the JSON Schema, a zero-dependency bundled `validate-bundle.js` (agents in repos without the CLI still need `node validate-bundle.js`), the skill's schema reference fragment, and the prompt generator's schema block
 - App consumes the package: `lib/data/types.ts` becomes a re-export; `assertProjectBundleShape` is replaced by real validation — closing the duplicate-node-ID class of import failures at the app door
 
-### Phase 2 — Format v2 & Journal Read Path
+### Phase 2 — Format v2 & Journal Read Path *(shipped)*
 
 - Bundle v2 per [spec/bundle-format.md](spec/bundle-format.md): `schema_version`, refs, asset value forms, optional embedded `journal[]`
 - Journal per [spec/journal.md](spec/journal.md): JSONL sidecar, union-merge gitattributes, event vocabulary
 - Skill v2: dual-write (patch snapshot + append events), templated per project, versioned frontmatter so `arkaik init --update` can upgrade it
 - App reads journals: per-node status timeline in the detail panel, changelog view — rendering only, no app-side event emission yet
 
-### Phase 3 — Toolchain & Write Path
+### Phase 3 — Toolchain & Write Path *(shipped)*
 
 - `packages/cli`: `init`, `validate`, `log`, `release` (tagging, release notes, compaction), `sync`, `pack`, `open`; skill distribution as a Claude Code plugin as a second channel
 - Deterministic IDs adopted **in the app** for nodes and edges (today `lib/utils/id.ts` generates random UUID suffixes and canvas edges use raw UUIDs, so any app round-trip violates the conventions the skill enforces), plus canonical serialization (sorted keys/nodes/edges) so app exports diff cleanly in git
 - App-side event emission, unblocked by the IndexedDB (Dexie) migration that landed — the old localStorage backend rewrote the whole store on every mutation and could not absorb a growing journal; the per-project store (with a separate journal table) now can
 - `arkaik dev` (local viewer) decision: requires making `/project/[id]` routing static-export friendly; evaluated on its own merits, not assumed
 
-### Phase 4 — Services: The Free Surface
+### Phase 4 — Services: The Free Surface *(shipped)*
 
 Backend decision: **Vercel-native** — Next.js route handlers + managed Postgres (Neon); no Supabase. Normative spec: [spec/services.md](spec/services.md).
 
@@ -297,61 +357,27 @@ Backend decision: **Vercel-native** — Next.js route handlers + managed Postgre
 - Provider-injection seam + mutation notifications in the data layer — shared prerequisite with the `arkaik dev` RFC
 - Inkognito as full-stack self-hosting: `db/migrations/*.sql` shipped release-aligned
 
+### Core Product Phases (current focus)
+
+The execution of [§ Core Product](#core-product-one-graph-many-maps). CP-A ships the usability floor and the specs; each subsequent phase turns one spec'd surface real. Sizes: S/M/L.
+
+| Phase | Scope | Size | Depends on |
+|---|---|---|---|
+| **CP-A — Usability floor + specs** | Canvas compose-closure traversal fix + first-flow auto-expand (a view-rooted bundle renders its real tree); library species filter removed (sidebar is the single selector); sidebar regrouped Project / Maps / Library; [spec/maps.md](spec/maps.md) + [spec/mcp.md](spec/mcp.md) written; stale docs refreshed; seed showcases version + journal | S–M | — |
+| **CP-B — Maps in the schema** | `packages/schema/src/maps.ts`: `MapDefinition`, `BUILT_IN_MAPS`, `computeMapSubgraph`, `listMaps`; typed `metadata.maps` in `bundle.ts`; warning-severity validation rules; `emit-events` core moves to `schema/derive.ts` (MCP prerequisite); `npm run generate` ripple + tests | M | — |
+| **CP-C — Maps routes & canvas decomposition** | `/maps` index + `/maps/[mapId]`; `/canvas` becomes a redirect; the canvas monolith decomposes (`journey-graph`, `graph-build`, `system-graph` utils; `JourneyMap`/`SystemMap`/`RawBundleSheet` components; `useElkLayout`); ELK gains cross-layer edge + species-partition options (spike partitioning first); System map renders all four species; custom-map dialog; dead navigation code deleted | L | CP-B |
+| **CP-D — Delivery board** | `lib/utils/delivery.ts` ((node × platform, status) tuples via `getNodePlatformStatuses`; flows excluded — rollups aren't deliverables); `/delivery` board with the `delivery` status-preset columns + all-statuses toggle; detail panel opens on the clicked platform tab (`initialPlatform`) | M | ∥ CP-C |
+| **CP-E — Overview** | `/overview` dashboard composing existing projections (platform gauges, release pulse, backlog, inventory, delivery snapshot, maps) + `lib/utils/coverage.ts` health indicators; `/project/[id]` lands on Overview | M | CP-B; richer after CP-C/D |
+| **CP-F — MCP server** | `packages/mcp` per [spec/mcp.md](spec/mcp.md): stdio tools over the repo bundle, validator-gated dual-write, `arkaik/io` reuse seam, plugin `.mcp.json`, JSON-RPC test harness | L | CP-B; ∥ CP-C/D/E |
+
 ### Phase 5 — Services: Monetization & Depth
+
+> Gated on the Core Product phases: pricing a broken lens would convert nobody and burn the launch. Revisit when Overview/Delivery/Maps are live.
 
 - Payments (Stripe), pricing page, Basik/Klub tier activation on the Phase 4 enforcement points
 - Real-time sync and multi-device semantics for Basik/Klub — designed on the journal substrate, the first phase allowed to think in events
 - Server-side integrations (ref status sync) as the Klub differentiator; hosted asset buckets + `arkaik pack` upload path
 - Collaboration explorations on top of event streams
-
-## Core Product Direction (Unchanged)
-
-The strategy above must preserve the current graph and UX foundations.
-
-### Graph Model Continuity
-
-The core model remains centered on four species:
-
-- `flow`: ordered sequence container
-- `view`: reusable screen/page node
-- `data-model`: data entity node
-- `api-endpoint`: API contract node
-
-Flow behavior remains playlist-driven (`metadata.playlist.entries`) and can anchor from optional `project.root_node_id`.
-
-Config source: `lib/config/species.ts`
-
-### UX Continuity
-
-- Keep canvas route for spatial graph editing and sequence expansion
-- Keep library route for dense browsing, filtering, and metadata audit workflows
-- Keep sidebar shell for stable in-project navigation between both modes
-- Keep reuse-first authoring with where-used visibility and insert-between operations
-
-Implementation references: `app/project/[id]/canvas/page.tsx`, `app/project/[id]/library/page.tsx`, `components/layout/ProjectSidebar.tsx`, `components/panels/NodeDetailPanel.tsx`, `components/panels/InsertBetweenDialog.tsx`, `lib/utils/where-used.ts`, `lib/utils/elk-layout.ts`
-
-### Platform And Status Continuity
-
-- Keep per-platform status editing on `view` nodes
-- Keep `flow` status as computed rollup from descendant views
-- Keep lifecycle state visible in cards, panels, and table rows
-- The journal extends this model with history; it does not replace it. `release.tagged` events carry an optional `platform` so per-platform release rhythms (web weekly, iOS monthly) stay expressible
-
-Config sources: `lib/config/platforms.ts`, `lib/config/statuses.ts`
-
-### Data Layer Continuity
-
-- Preserve the `DataProvider` abstraction so UI and hooks stay backend-agnostic
-- Continue local-first operation with import/export
-- Add tier-aware backend behavior without breaking existing contracts
-
-Implementation references: `lib/data/data-provider.ts`, `lib/data/local-provider.ts`, `lib/utils/export.ts`
-
-### Non-Goals
-
-- Not a task tracker — refs *link to* issues and PRs; arkaik never becomes the place where they are managed
-- Not a wiki, not a design tool
-- No event-sourcing purism: the snapshot is never silently re-projected from the journal (see the authority rules in [spec/journal.md](spec/journal.md))
 
 ## Open Questions
 
@@ -365,3 +391,8 @@ Implementation references: `lib/data/data-provider.ts`, `lib/data/local-provider
 - [ ] Per-platform releases: is optional `platform` on `release.tagged` enough, or do platforms need independent version sequences?
 - [ ] Publik and journals: default-exclude is decided; is opt-in inclusion ever safe (history can leak internal names and dates)?
 - [ ] Kommit naming: confirm "Kommit" (working name) against the existing K-family
+- [ ] Map naming: confirm "Journey" / "System" / "Delivery" / "Overview" labels (alternatives recorded in [spec/maps.md](spec/maps.md))
+- [ ] Delivery board and flows: should flows appear as items (rollup as pseudo-deliverable) behind a filter, or stay excluded?
+- [ ] Per-map layout persistence: are ELK-computed positions enough, or do maps eventually store user-arranged layouts?
+- [ ] "Area" tags: does root-scoped map coverage hold up, or do nodes need first-class area/domain membership (a format revision)?
+- [ ] Hosted agent plane: device-token auth flow for MCP/`arkaik push --to synk` — Klub launch requirement or fast-follow?

@@ -6,7 +6,7 @@ order: 2
 
 # Journal & Events
 
-> Status: **Draft specification** — describes the target format (Format Level 2, see [bundle-format.md](bundle-format.md)). Nothing in this document is implemented yet.
+> Status: **Implemented** (Format Level 2, see [bundle-format.md](bundle-format.md)) — the event vocabulary, JSONL sidecar IO, cross-checks, and projections live in `packages/schema/src/journal*.ts` and `projections.ts`; the app dual-writes via `lib/data/emit-events.ts`, and the CLI reads/writes the sidecar (`arkaik log`, `arkaik release`). This document remains the normative contract.
 > The key words MUST, MUST NOT, SHOULD, and MAY are to be interpreted as in RFC 2119.
 
 ## Purpose

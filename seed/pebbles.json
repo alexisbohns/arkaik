@@ -1,14 +1,25 @@
 {
+  "schema_version": 2,
   "project": {
     "id": "pebbles",
     "title": "Pebbles",
     "description": "Pebbles is an atomic diary app allowing to record memories and enrich them with emotions, instants, thoughts, related to people and get weekly and monthly wraps.",
+    "version": "0.4.0",
     "root_node_id": "V-landing",
     "metadata": {
-      "view_card_variant": "large"
+      "view_card_variant": "large",
+      "maps": [
+        {
+          "id": "recording-loop",
+          "title": "Recording loop",
+          "description": "The core capture journey, scoped to the record-pebble flow.",
+          "kind": "journey",
+          "root_node_id": "F-record-pebble"
+        }
+      ]
     },
     "created_at": "2026-04-01T00:00:00.000Z",
-    "updated_at": "2026-07-03T00:00:00.000Z"
+    "updated_at": "2026-07-09T14:30:00.000Z"
   },
   "nodes": [
     {
@@ -4124,6 +4135,1520 @@
       "source_id": "API-buy-glyph",
       "target_id": "DM-karma-events",
       "edge_type": "queries"
+    }
+  ],
+  "journal": [
+    {
+      "id": "01KN44ARM0JH4YFMX52BGKNPKY",
+      "ts": "2026-04-01T09:00:00.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-landing",
+      "species": "view",
+      "title": "Landing"
+    },
+    {
+      "id": "01KN44ASK852PG8CBAZNCSBCP3",
+      "ts": "2026-04-01T09:00:01.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-login",
+      "species": "view",
+      "title": "Login"
+    },
+    {
+      "id": "01KN44ATJGXCN7A82WMF0M86J5",
+      "ts": "2026-04-01T09:00:02.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-register",
+      "species": "view",
+      "title": "Register"
+    },
+    {
+      "id": "01KN44AVHR9RMJT63P3JJ2KHBA",
+      "ts": "2026-04-01T09:00:03.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-home",
+      "species": "view",
+      "title": "Home"
+    },
+    {
+      "id": "01KN44AWH0XG024XKAK7T77Q4J",
+      "ts": "2026-04-01T09:00:04.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-timeline",
+      "species": "view",
+      "title": "Path"
+    },
+    {
+      "id": "01KN44AXG8NYZCR26AAJ7N2TCA",
+      "ts": "2026-04-01T09:00:05.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-pebble-record",
+      "species": "view",
+      "title": "Record Pebble"
+    },
+    {
+      "id": "01KN44AYFG4XTCMGR63HYQWQ0B",
+      "ts": "2026-04-01T09:00:06.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-pebble-intensity",
+      "species": "view",
+      "title": "Set Intensity & Valence"
+    },
+    {
+      "id": "01KN44AZERH180VYAM1Z6FM5JH",
+      "ts": "2026-04-01T09:00:07.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-emotion-pearl",
+      "species": "view",
+      "title": "Shape Emotion Pearl"
+    },
+    {
+      "id": "01KN44B0E0SGSENRGXMSBYDH2N",
+      "ts": "2026-04-01T09:00:08.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-instant-attach",
+      "species": "view",
+      "title": "Attach Instants"
+    },
+    {
+      "id": "01KN44B1D8K5KFKMYQWAZHDFCG",
+      "ts": "2026-04-01T09:00:09.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-soul-link",
+      "species": "view",
+      "title": "Link Soul"
+    },
+    {
+      "id": "01KN44B2CGVQHGV8NM89YA7J3R",
+      "ts": "2026-04-01T09:00:10.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-domain-attach",
+      "species": "view",
+      "title": "Attach Domain"
+    },
+    {
+      "id": "01KN44B3BRQJ59050EZFG8PHN3",
+      "ts": "2026-04-01T09:00:11.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-cards-thoughts",
+      "species": "view",
+      "title": "Add Cards & Thoughts"
+    },
+    {
+      "id": "01KN44B4B0GXGR8GXW8M8XE6JT",
+      "ts": "2026-04-01T09:00:12.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-quick-pebble-editor",
+      "species": "view",
+      "title": "Quick Pebble Editor"
+    },
+    {
+      "id": "01KN44B5A8Q927011CVMSZRXXZ",
+      "ts": "2026-04-01T09:00:13.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-pebble-detail",
+      "species": "view",
+      "title": "Pebble Detail"
+    },
+    {
+      "id": "01KN44B69GVKCSPPFQ23J0MMV3",
+      "ts": "2026-04-01T09:00:14.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-pebble-revelation",
+      "species": "view",
+      "title": "Pebble Revelation"
+    },
+    {
+      "id": "01KN44B78RXTXW2B7NW5RB16ER",
+      "ts": "2026-04-01T09:00:15.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-record-celebration",
+      "species": "view",
+      "title": "Record Celebration"
+    },
+    {
+      "id": "01KN44B88056ANQJDPK8G8CDWX",
+      "ts": "2026-04-01T09:00:16.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-collections-list",
+      "species": "view",
+      "title": "Collections"
+    },
+    {
+      "id": "01KN44B978TR3KW0VRKV2GNS5G",
+      "ts": "2026-04-01T09:00:17.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-collection-detail",
+      "species": "view",
+      "title": "Collection Detail"
+    },
+    {
+      "id": "01KN44BA6GXDKZSM6XY2NZ76S2",
+      "ts": "2026-04-01T09:00:18.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-collection-create",
+      "species": "view",
+      "title": "Create Collection"
+    },
+    {
+      "id": "01KN44BB5RPGAM7JRSREN2SAHK",
+      "ts": "2026-04-01T09:00:19.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-collection-edit",
+      "species": "view",
+      "title": "Edit Collection"
+    },
+    {
+      "id": "01KN44BC50M4AKD1AW4V2CYDT5",
+      "ts": "2026-04-01T09:00:20.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-souls-list",
+      "species": "view",
+      "title": "Souls Directory"
+    },
+    {
+      "id": "01KN44BD48DSPQHE4HX3EKMWD0",
+      "ts": "2026-04-01T09:00:21.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-soul-detail",
+      "species": "view",
+      "title": "Soul Detail"
+    },
+    {
+      "id": "01KN44BE3GD452HZK2SR92GX0B",
+      "ts": "2026-04-01T09:00:22.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-soul-create",
+      "species": "view",
+      "title": "Add Soul"
+    },
+    {
+      "id": "01KN44BF2R15QW3D5ESFMVS57C",
+      "ts": "2026-04-01T09:00:23.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-soul-edit",
+      "species": "view",
+      "title": "Edit Soul"
+    },
+    {
+      "id": "01KN44BG20BX91AF4R5DN3YED8",
+      "ts": "2026-04-01T09:00:24.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-glyphs-list",
+      "species": "view",
+      "title": "Glyphs"
+    },
+    {
+      "id": "01KN44BH18HGP6NBM2QVSHAHF7",
+      "ts": "2026-04-01T09:00:25.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-glyph-detail",
+      "species": "view",
+      "title": "Glyph Detail"
+    },
+    {
+      "id": "01KN44BJ0GRDHWD8ZJ5ATEC1VJ",
+      "ts": "2026-04-01T09:00:26.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-glyph-carve",
+      "species": "view",
+      "title": "Carve Glyph"
+    },
+    {
+      "id": "01KN44BJZRTNW5XK61Y89BXFEC",
+      "ts": "2026-04-01T09:00:27.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-glyph-attach",
+      "species": "view",
+      "title": "Attach Glyph"
+    },
+    {
+      "id": "01KN44BKZ0EQDXXNMKVT265BBG",
+      "ts": "2026-04-01T09:00:28.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-bounce-tempo",
+      "species": "view",
+      "title": "Bounce Tempo"
+    },
+    {
+      "id": "01KN44BMY8J1MG6X3RD8XN48HK",
+      "ts": "2026-04-01T09:00:29.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-collection-rise",
+      "species": "view",
+      "title": "Collection Rise"
+    },
+    {
+      "id": "01KN44BNXGG9XW2PVJ7S0K12B1",
+      "ts": "2026-04-01T09:00:30.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-achievements",
+      "species": "view",
+      "title": "Achievements"
+    },
+    {
+      "id": "01KN44BPWRK3WYWECQT3XBRJPW",
+      "ts": "2026-04-01T09:00:31.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-weekly-cairn-intro",
+      "species": "view",
+      "title": "Weekly Cairn Intro"
+    },
+    {
+      "id": "01KN44BQW0S9XV4XEF85GRNC74",
+      "ts": "2026-04-01T09:00:32.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-weekly-cairn",
+      "species": "view",
+      "title": "Weekly Cairn"
+    },
+    {
+      "id": "01KN44BRV843HB1QMJTFZNCS2Q",
+      "ts": "2026-04-01T09:00:33.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-weekly-cairn-review",
+      "species": "view",
+      "title": "Weekly Cairn Review"
+    },
+    {
+      "id": "01KN44BSTGA4WH313K6417W6RJ",
+      "ts": "2026-04-01T09:00:34.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-monthly-cairn-intro",
+      "species": "view",
+      "title": "Monthly Cairn Intro"
+    },
+    {
+      "id": "01KN44BTSR4B12NG3VS9HKP446",
+      "ts": "2026-04-01T09:00:35.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-monthly-cairn",
+      "species": "view",
+      "title": "Monthly Cairn"
+    },
+    {
+      "id": "01KN44BVS0DN03WQ089BXV0F4P",
+      "ts": "2026-04-01T09:00:36.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-monthly-cairn-review",
+      "species": "view",
+      "title": "Monthly Cairn Review"
+    },
+    {
+      "id": "01KN44BWR80M5VDBACP24Y6P3F",
+      "ts": "2026-04-01T09:00:37.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-onboarding-intro",
+      "species": "view",
+      "title": "Onboarding — Your life is a path"
+    },
+    {
+      "id": "01KN44BXQG24Z05F6RHV8SRN52",
+      "ts": "2026-04-01T09:00:38.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-onboarding-concept",
+      "species": "view",
+      "title": "Onboarding — Drop a pebble, keep the moment"
+    },
+    {
+      "id": "01KN44BYPRGKGSHGT8XAHMXS43",
+      "ts": "2026-04-01T09:00:39.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-onboarding-qualify",
+      "species": "view",
+      "title": "Onboarding — Qualify and relate"
+    },
+    {
+      "id": "01KN44BZP0YFDM866X0WQXRX7H",
+      "ts": "2026-04-01T09:00:40.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-onboarding-carving",
+      "species": "view",
+      "title": "Onboarding — Get your pebble"
+    },
+    {
+      "id": "01KN44C0N8V73F9A63EE7X0EDH",
+      "ts": "2026-04-01T09:00:41.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-settings",
+      "species": "view",
+      "title": "Settings"
+    },
+    {
+      "id": "01KN44C1MGB2MZY3MX49HGCJT7",
+      "ts": "2026-04-01T09:00:42.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-profile",
+      "species": "view",
+      "title": "Profile"
+    },
+    {
+      "id": "01KN44C2KRAC1CEQYSG31AK08N",
+      "ts": "2026-04-01T09:00:43.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "F-record-pebble",
+      "species": "flow",
+      "title": "Record Pebble"
+    },
+    {
+      "id": "01KN44C3K0Y28FN6B2W5ZMFNRS",
+      "ts": "2026-04-01T09:00:44.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "F-onboarding",
+      "species": "flow",
+      "title": "Onboarding"
+    },
+    {
+      "id": "01KN44C4J8M3FGFKN14P5ES3B5",
+      "ts": "2026-04-01T09:00:45.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "F-manage-collections",
+      "species": "flow",
+      "title": "Manage Collections"
+    },
+    {
+      "id": "01KN44C5HG2WGQK7B9GAPMQGE8",
+      "ts": "2026-04-01T09:00:46.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "F-manage-souls",
+      "species": "flow",
+      "title": "Manage Souls"
+    },
+    {
+      "id": "01KN44C6GR98B5BGJM16S0B757",
+      "ts": "2026-04-01T09:00:47.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "F-manage-glyphs",
+      "species": "flow",
+      "title": "Manage Glyphs"
+    },
+    {
+      "id": "01KN44C7G02BE6Q2ADKFQZHR5X",
+      "ts": "2026-04-01T09:00:48.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "F-weekly-wrap",
+      "species": "flow",
+      "title": "Weekly Wrap"
+    },
+    {
+      "id": "01KN44C8F8C53GNTRRBPC83849",
+      "ts": "2026-04-01T09:00:49.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "F-monthly-wrap",
+      "species": "flow",
+      "title": "Monthly Wrap"
+    },
+    {
+      "id": "01KN44C9EGGD25WBAFRA7WY36A",
+      "ts": "2026-04-01T09:00:50.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "F-gamification",
+      "species": "flow",
+      "title": "Gamification Hub"
+    },
+    {
+      "id": "01KN44CADRJNAHEMRKR85CVMH1",
+      "ts": "2026-04-01T09:00:51.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-account",
+      "species": "data-model",
+      "title": "Account"
+    },
+    {
+      "id": "01KN44CBD054GGAGM4K4TXSS2K",
+      "ts": "2026-04-01T09:00:52.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-profile",
+      "species": "data-model",
+      "title": "Profile"
+    },
+    {
+      "id": "01KN44CCC8T8JCDSDHE9W01SHQ",
+      "ts": "2026-04-01T09:00:53.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-pebble",
+      "species": "data-model",
+      "title": "Pebble"
+    },
+    {
+      "id": "01KN44CDBGWREFN42JQWTSQ3GJ",
+      "ts": "2026-04-01T09:00:54.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-emotion-pearl",
+      "species": "data-model",
+      "title": "Emotion Pearl"
+    },
+    {
+      "id": "01KN44CEARQDKCV24AKJ68M051",
+      "ts": "2026-04-01T09:00:55.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-soul",
+      "species": "data-model",
+      "title": "Soul"
+    },
+    {
+      "id": "01KN44CFA0YY7MC0YRAC3J93W8",
+      "ts": "2026-04-01T09:00:56.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-domain",
+      "species": "data-model",
+      "title": "Domain"
+    },
+    {
+      "id": "01KN44CG982HN225XHE2E2A5B5",
+      "ts": "2026-04-01T09:00:57.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-card",
+      "species": "data-model",
+      "title": "Card"
+    },
+    {
+      "id": "01KN44CH8GJMP61ZXF20J50PPM",
+      "ts": "2026-04-01T09:00:58.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-thought",
+      "species": "data-model",
+      "title": "Thought"
+    },
+    {
+      "id": "01KN44CJ7RXW5BQZ1JDZXZ91DD",
+      "ts": "2026-04-01T09:00:59.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-collection",
+      "species": "data-model",
+      "title": "Collection"
+    },
+    {
+      "id": "01KN44CK70YN0WQ5W2YV9MAXED",
+      "ts": "2026-04-01T09:01:00.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-bounce",
+      "species": "data-model",
+      "title": "Bounce"
+    },
+    {
+      "id": "01KN44CM68W6D43WXM2K91FHZY",
+      "ts": "2026-04-01T09:01:01.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-cairn",
+      "species": "data-model",
+      "title": "Cairn"
+    },
+    {
+      "id": "01KN44CN5G44DNG2QJA0618WY0",
+      "ts": "2026-04-01T09:01:02.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-achievement",
+      "species": "data-model",
+      "title": "Achievement"
+    },
+    {
+      "id": "01KN44CP4RS92VX9PZBYVMNB0A",
+      "ts": "2026-04-01T09:01:03.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-instant",
+      "species": "data-model",
+      "title": "Instant"
+    },
+    {
+      "id": "01KN44CQ40JWYH0RR9YPNQHMC1",
+      "ts": "2026-04-01T09:01:04.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-mark",
+      "species": "data-model",
+      "title": "Mark"
+    },
+    {
+      "id": "01KN44CR38WYDPFKRANM0M10BP",
+      "ts": "2026-04-01T09:01:05.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-get-marks",
+      "species": "api-endpoint",
+      "title": "GET /marks"
+    },
+    {
+      "id": "01KN44CS2GV1XZSHC3VAQPN0GB",
+      "ts": "2026-04-01T09:01:06.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-create-mark",
+      "species": "api-endpoint",
+      "title": "POST /marks"
+    },
+    {
+      "id": "01KN44CT1RH5068PFWG63NGSJ7",
+      "ts": "2026-04-01T09:01:07.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-delete-mark",
+      "species": "api-endpoint",
+      "title": "DELETE /marks/:id"
+    },
+    {
+      "id": "01KN44CV1048EP109JQEXMRY19",
+      "ts": "2026-04-01T09:01:08.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-create-pebble",
+      "species": "api-endpoint",
+      "title": "POST /pebbles"
+    },
+    {
+      "id": "01KN44CW08APT40KSSR5MQZ6G1",
+      "ts": "2026-04-01T09:01:09.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-get-pebbles",
+      "species": "api-endpoint",
+      "title": "GET /pebbles"
+    },
+    {
+      "id": "01KN44CWZGYTGPGVCZ6HK5TKMK",
+      "ts": "2026-04-01T09:01:10.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-get-pebble",
+      "species": "api-endpoint",
+      "title": "GET /pebbles/:id"
+    },
+    {
+      "id": "01KN44CXYRE145ZEXB0VRPF2MS",
+      "ts": "2026-04-01T09:01:11.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-set-intensity",
+      "species": "api-endpoint",
+      "title": "PATCH /pebbles/:id/intensity"
+    },
+    {
+      "id": "01KN44CYY0M92WJW8FCGSKTD4K",
+      "ts": "2026-04-01T09:01:12.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-create-emotion-pearl",
+      "species": "api-endpoint",
+      "title": "POST /pebbles/:id/pearl"
+    },
+    {
+      "id": "01KN44CZX86KPHH97ZT71JJCHZ",
+      "ts": "2026-04-01T09:01:13.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-link-soul",
+      "species": "api-endpoint",
+      "title": "POST /pebbles/:id/souls"
+    },
+    {
+      "id": "01KN44D0WGVQCTJPB35EZPSADK",
+      "ts": "2026-04-01T09:01:14.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-attach-domain",
+      "species": "api-endpoint",
+      "title": "POST /pebbles/:id/domain"
+    },
+    {
+      "id": "01KN44D1VRFZTE4KNC5JJ2SXPF",
+      "ts": "2026-04-01T09:01:15.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-add-card",
+      "species": "api-endpoint",
+      "title": "POST /pebbles/:id/cards"
+    },
+    {
+      "id": "01KN44D2V0MQPTS90C8QK1Q2QY",
+      "ts": "2026-04-01T09:01:16.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-add-thought",
+      "species": "api-endpoint",
+      "title": "POST /pebbles/:id/thoughts"
+    },
+    {
+      "id": "01KN44D3T8JFRWXVAYS5MDMQYC",
+      "ts": "2026-04-01T09:01:17.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-get-souls",
+      "species": "api-endpoint",
+      "title": "GET /souls"
+    },
+    {
+      "id": "01KN44D4SG05GTF4EBNYB2TNDJ",
+      "ts": "2026-04-01T09:01:18.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-create-soul",
+      "species": "api-endpoint",
+      "title": "POST /souls"
+    },
+    {
+      "id": "01KN44D5RRDCCZF8YN3TBE2AJJ",
+      "ts": "2026-04-01T09:01:19.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-update-soul",
+      "species": "api-endpoint",
+      "title": "PATCH /souls/:id"
+    },
+    {
+      "id": "01KN44D6R0EGN56AMY396C4SJ7",
+      "ts": "2026-04-01T09:01:20.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-delete-soul",
+      "species": "api-endpoint",
+      "title": "DELETE /souls/:id"
+    },
+    {
+      "id": "01KN44D7Q8XSP6D39HJ8AAAM5Q",
+      "ts": "2026-04-01T09:01:21.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-get-collections",
+      "species": "api-endpoint",
+      "title": "GET /collections"
+    },
+    {
+      "id": "01KN44D8PG81570GHBJPFC8JGM",
+      "ts": "2026-04-01T09:01:22.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-create-collection",
+      "species": "api-endpoint",
+      "title": "POST /collections"
+    },
+    {
+      "id": "01KN44D9NR668HN4HJWDYW2F9N",
+      "ts": "2026-04-01T09:01:23.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-get-bounce",
+      "species": "api-endpoint",
+      "title": "GET /bounce"
+    },
+    {
+      "id": "01KN44DAN0W62BHKW1CRTYY8VG",
+      "ts": "2026-04-01T09:01:24.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-get-achievements",
+      "species": "api-endpoint",
+      "title": "GET /achievements"
+    },
+    {
+      "id": "01KN44DBM8B3WD3XJS1D4AY8PM",
+      "ts": "2026-04-01T09:01:25.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-get-weekly-cairn",
+      "species": "api-endpoint",
+      "title": "GET /cairns/weekly"
+    },
+    {
+      "id": "01KN44DCKG3AZFZZ6F1H974EDT",
+      "ts": "2026-04-01T09:01:26.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-get-monthly-cairn",
+      "species": "api-endpoint",
+      "title": "GET /cairns/monthly"
+    },
+    {
+      "id": "01KN44DDJRZCB4XB4MSMQEZYTS",
+      "ts": "2026-04-01T09:01:27.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-register",
+      "species": "api-endpoint",
+      "title": "POST /auth/register"
+    },
+    {
+      "id": "01KN44DEJ0BV8KVKMC9R0TKMMF",
+      "ts": "2026-04-01T09:01:28.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-login",
+      "species": "api-endpoint",
+      "title": "POST /auth/login"
+    },
+    {
+      "id": "01KN44DFH8Q9VSMZV7C07N83MZ",
+      "ts": "2026-04-01T09:01:29.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-logout",
+      "species": "api-endpoint",
+      "title": "POST /auth/logout"
+    },
+    {
+      "id": "01KN44DGGG7426E69Q100VFJB4",
+      "ts": "2026-04-01T09:01:30.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-get-session",
+      "species": "api-endpoint",
+      "title": "GET /auth/session"
+    },
+    {
+      "id": "01KN44DHFR8VD7Q18Q56J8SCPS",
+      "ts": "2026-04-01T09:01:31.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-get-profile",
+      "species": "api-endpoint",
+      "title": "GET /profile"
+    },
+    {
+      "id": "01KN44DJF0NKXX0J1YGKKK1YH4",
+      "ts": "2026-04-01T09:01:32.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-update-profile",
+      "species": "api-endpoint",
+      "title": "PATCH /profile"
+    },
+    {
+      "id": "01KN44DKE83WHTKK69C5QEP9QD",
+      "ts": "2026-04-01T09:01:33.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-get-collection-rise",
+      "species": "api-endpoint",
+      "title": "GET /collections/:id/rise"
+    },
+    {
+      "id": "01KN44DMDG634QBK9P4NKBQYB4",
+      "ts": "2026-04-01T09:01:34.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-mechanic-sheet",
+      "species": "view",
+      "title": "Mechanic Sheet"
+    },
+    {
+      "id": "01KN44DNCRZ0K3QR27GJ5FBN8E",
+      "ts": "2026-04-01T09:01:35.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-pebble-visual",
+      "species": "view",
+      "title": "Pebble Visual"
+    },
+    {
+      "id": "01KN44DPC0132MA558BR9ZG6EP",
+      "ts": "2026-04-01T09:01:36.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-pebble-engine",
+      "species": "data-model",
+      "title": "Pebble Engine"
+    },
+    {
+      "id": "01KN44DQB8F6F7C8EJXT3ANJBX",
+      "ts": "2026-04-01T09:01:37.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-docs-index",
+      "species": "view",
+      "title": "Docs Index"
+    },
+    {
+      "id": "01KN44DRAGE0S04R3TJ4C0RV8H",
+      "ts": "2026-04-01T09:01:38.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-docs-slug",
+      "species": "view",
+      "title": "Docs Page"
+    },
+    {
+      "id": "01KN44DS9RXSG6BGN1KERHQSR6",
+      "ts": "2026-04-01T09:01:39.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-docs-legal-notice",
+      "species": "view",
+      "title": "Legal Notice"
+    },
+    {
+      "id": "01KN44DT90B75W88CG33W2C9HW",
+      "ts": "2026-04-01T09:01:40.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-docs-terms",
+      "species": "view",
+      "title": "Terms of Service"
+    },
+    {
+      "id": "01KN44DV88S2NX85XDEBYFTQPQ",
+      "ts": "2026-04-01T09:01:41.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-docs-privacy",
+      "species": "view",
+      "title": "Privacy Policy"
+    },
+    {
+      "id": "01KN44DW7GWME9TVMMG0ZNH839",
+      "ts": "2026-04-01T09:01:42.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "F-legal-consent",
+      "species": "flow",
+      "title": "Legal Consent"
+    },
+    {
+      "id": "01KN44DX6R33HRSH8FAPZZ349Q",
+      "ts": "2026-04-01T09:01:43.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-lab",
+      "species": "view",
+      "title": "Lab"
+    },
+    {
+      "id": "01KN44DY60W4MZMPPN0498BWBR",
+      "ts": "2026-04-01T09:01:44.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-admin-analytics",
+      "species": "view",
+      "title": "Admin · Analytics"
+    },
+    {
+      "id": "01KN44DZ58MTF434K1MSXM1VZC",
+      "ts": "2026-04-01T09:01:45.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-admin-glyph-moderation",
+      "species": "view",
+      "title": "Admin · Glyph moderation"
+    },
+    {
+      "id": "01KN44E04GF795227Z1NDFHFQ0",
+      "ts": "2026-04-01T09:01:46.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-admin-glyph-upload",
+      "species": "view",
+      "title": "Admin · Upload glyph"
+    },
+    {
+      "id": "01KN44E13RQKVGHK7AAVRV648G",
+      "ts": "2026-04-01T09:01:47.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-admin-domains",
+      "species": "view",
+      "title": "Admin · Domains"
+    },
+    {
+      "id": "01KN44E230J514SQN1BYJVV6XY",
+      "ts": "2026-04-01T09:01:48.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-admin-list-domains",
+      "species": "api-endpoint",
+      "title": "RPC admin_list_domains"
+    },
+    {
+      "id": "01KN44E328HV88APBB5328YDJH",
+      "ts": "2026-04-01T09:01:49.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-admin-update-domain",
+      "species": "api-endpoint",
+      "title": "RPC admin_update_domain"
+    },
+    {
+      "id": "01KN44E41GCGBW6HQ2W8A4GVS7",
+      "ts": "2026-04-01T09:01:50.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-admin-set-domain-glyph",
+      "species": "api-endpoint",
+      "title": "RPC admin_set_domain_glyph"
+    },
+    {
+      "id": "01KN44E50R9T07R70133JZ9NBW",
+      "ts": "2026-04-01T09:01:51.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-v-domains-with-glyph",
+      "species": "data-model",
+      "title": "v_domains_with_glyph"
+    },
+    {
+      "id": "01KN44E6002ARF46X3NH5XDCA8",
+      "ts": "2026-04-01T09:01:52.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-admin-list-glyph-submissions",
+      "species": "api-endpoint",
+      "title": "RPC admin_list_glyph_submissions"
+    },
+    {
+      "id": "01KN44E6Z84D3GT1GHAH2A6NH6",
+      "ts": "2026-04-01T09:01:53.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-approve-glyph",
+      "species": "api-endpoint",
+      "title": "RPC approve_glyph"
+    },
+    {
+      "id": "01KN44E7YGCS3NGRHSTSE3TG9V",
+      "ts": "2026-04-01T09:01:54.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-reject-glyph",
+      "species": "api-endpoint",
+      "title": "RPC reject_glyph"
+    },
+    {
+      "id": "01KN44E8XRDB4QTEC5RYC7S91K",
+      "ts": "2026-04-01T09:01:55.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-set-glyph-price",
+      "species": "api-endpoint",
+      "title": "RPC set_glyph_price"
+    },
+    {
+      "id": "01KN44E9X0TF949HT22BDABJF1",
+      "ts": "2026-04-01T09:01:56.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-publish-admin-glyph",
+      "species": "api-endpoint",
+      "title": "RPC publish_admin_glyph"
+    },
+    {
+      "id": "01KN44EAW8YKXE25DE3CXF4QMH",
+      "ts": "2026-04-01T09:01:57.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-glyphs",
+      "species": "data-model",
+      "title": "glyphs"
+    },
+    {
+      "id": "01KN44EBVGY57V4F8FDWE53SY4",
+      "ts": "2026-04-01T09:01:58.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-glyph-submissions",
+      "species": "data-model",
+      "title": "glyph_submissions"
+    },
+    {
+      "id": "01KN44ECTR00GS6FS0738S16Z4",
+      "ts": "2026-04-01T09:01:59.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-v-analytics-kpi-daily",
+      "species": "data-model",
+      "title": "v_analytics_kpi_daily"
+    },
+    {
+      "id": "01KN44EDT0FE09178RRVZ3TVMP",
+      "ts": "2026-04-01T09:02:00.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-v-analytics-active-users-daily",
+      "species": "data-model",
+      "title": "v_analytics_active_users_daily"
+    },
+    {
+      "id": "01KN44EES8PKXJAQTPWMXX74KD",
+      "ts": "2026-04-01T09:02:01.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-get-kpi-daily",
+      "species": "api-endpoint",
+      "title": "get_kpi_daily"
+    },
+    {
+      "id": "01KN44EFRGCRED5FGXSFY67A0H",
+      "ts": "2026-04-01T09:02:02.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-get-active-users-series",
+      "species": "api-endpoint",
+      "title": "get_active_users_series"
+    },
+    {
+      "id": "01KN44EGQR4E6W5KRF1GSDQGW4",
+      "ts": "2026-04-01T09:02:03.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-v-analytics-retention-cohorts-weekly",
+      "species": "data-model",
+      "title": "v_analytics_retention_cohorts_weekly"
+    },
+    {
+      "id": "01KN44EHQ0JHA1KH5M82F0E2KG",
+      "ts": "2026-04-01T09:02:04.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-get-retention-cohorts",
+      "species": "api-endpoint",
+      "title": "get_retention_cohorts"
+    },
+    {
+      "id": "01KN44EJP8K7KJYVA4QYKT0MPN",
+      "ts": "2026-04-01T09:02:05.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-v-analytics-emotion-share-weekly",
+      "species": "data-model",
+      "title": "v_analytics_emotion_share_weekly"
+    },
+    {
+      "id": "01KN44EKNGBC7J3X8FZJW2E079",
+      "ts": "2026-04-01T09:02:06.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-v-analytics-domain-share-weekly",
+      "species": "data-model",
+      "title": "v_analytics_domain_share_weekly"
+    },
+    {
+      "id": "01KN44EMMRZ6EF9ZQTA758M7M1",
+      "ts": "2026-04-01T09:02:07.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-get-emotion-share",
+      "species": "api-endpoint",
+      "title": "get_emotion_share"
+    },
+    {
+      "id": "01KN44ENM0A88HTR1KD01JY1GB",
+      "ts": "2026-04-01T09:02:08.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-get-domain-share",
+      "species": "api-endpoint",
+      "title": "get_domain_share"
+    },
+    {
+      "id": "01KN44EPK8PTQ0AQW5K6YHBFBC",
+      "ts": "2026-04-01T09:02:09.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-bounces",
+      "species": "data-model",
+      "title": "bounces"
+    },
+    {
+      "id": "01KN44EQJGGCP8NFYF1Z13DV1C",
+      "ts": "2026-04-01T09:02:10.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-v-analytics-bounce-distribution-today",
+      "species": "data-model",
+      "title": "v_analytics_bounce_distribution_today"
+    },
+    {
+      "id": "01KN44ERHRVJB9EJMYQFDB0DD2",
+      "ts": "2026-04-01T09:02:11.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-get-bounce-distribution-today",
+      "species": "api-endpoint",
+      "title": "get_bounce_distribution_today"
+    },
+    {
+      "id": "01KN44ESH044HQSZVEZK38NKQE",
+      "ts": "2026-04-01T09:02:12.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-v-analytics-quality-signals-today",
+      "species": "data-model",
+      "title": "v_analytics_quality_signals_today"
+    },
+    {
+      "id": "01KN44ETG8DA85SP7DTRPZJQJ8",
+      "ts": "2026-04-01T09:02:13.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-get-quality-signals-today",
+      "species": "api-endpoint",
+      "title": "get_quality_signals_today"
+    },
+    {
+      "id": "01KN44EVFG15JZG4FMRBBXHESN",
+      "ts": "2026-04-01T09:02:14.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-emotion-category",
+      "species": "data-model",
+      "title": "Emotion Category & Palette"
+    },
+    {
+      "id": "01KN44EWERNTTSGZ8981MYFCX1",
+      "ts": "2026-04-01T09:02:15.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-get-emotion-palettes",
+      "species": "api-endpoint",
+      "title": "select v_emotions_with_palette"
+    },
+    {
+      "id": "01KN44EXE0NZ9YBRCSD9Y1KD8M",
+      "ts": "2026-04-01T09:02:16.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-wallet",
+      "species": "view",
+      "title": "Wallet"
+    },
+    {
+      "id": "01KN44EYD8GV4VBQP865KAN0M4",
+      "ts": "2026-04-01T09:02:17.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-karma-events",
+      "species": "data-model",
+      "title": "karma_events"
+    },
+    {
+      "id": "01KN44EZCGBX77H2JZ7YH7039Z",
+      "ts": "2026-04-01T09:02:18.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-wallet-balances",
+      "species": "data-model",
+      "title": "wallet_balances"
+    },
+    {
+      "id": "01KN44F0BRJ9Y7VTND2NDAXC3N",
+      "ts": "2026-04-01T09:02:19.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-spend-karma",
+      "species": "api-endpoint",
+      "title": "spend_karma"
+    },
+    {
+      "id": "01KN44F1B0MSXWVMH3W41EGZBA",
+      "ts": "2026-04-01T09:02:20.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-refund-karma",
+      "species": "api-endpoint",
+      "title": "refund_karma"
+    },
+    {
+      "id": "01KN44F2A8PVS7KHRRDQ38NENC",
+      "ts": "2026-04-01T09:02:21.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-get-wallet-summary",
+      "species": "api-endpoint",
+      "title": "select v_wallet_summary"
+    },
+    {
+      "id": "01KN44F39GZREKQ6022GD0Q6JG",
+      "ts": "2026-04-01T09:02:22.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-karma-flash",
+      "species": "view",
+      "title": "Karma Earned Flash"
+    },
+    {
+      "id": "01KN44F48RWBWFBTSHCWHQJ43C",
+      "ts": "2026-04-01T09:02:23.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-glyph-entitlements",
+      "species": "data-model",
+      "title": "glyph_entitlements"
+    },
+    {
+      "id": "01KN44F580T4X4CT4979J6SQ00",
+      "ts": "2026-04-01T09:02:24.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-buy-glyph",
+      "species": "api-endpoint",
+      "title": "buy_glyph"
+    },
+    {
+      "id": "01KN44F678K2GGBEJENJ1A4B15",
+      "ts": "2026-04-01T09:02:25.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-glyph-swap-drawer",
+      "species": "view",
+      "title": "Glyph Swap Drawer"
+    },
+    {
+      "id": "01KN44F76GQRV494WZSP75C962",
+      "ts": "2026-04-01T09:02:26.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "F-swap-glyph",
+      "species": "flow",
+      "title": "Swap Glyph"
+    },
+    {
+      "id": "01KQ2F1AR05BGMY6H78JD9C2TR",
+      "ts": "2026-04-25T14:00:00.000Z",
+      "actor": "claude-code",
+      "type": "node.status_changed",
+      "node_id": "V-pebble-detail",
+      "from": "development",
+      "to": "live"
+    },
+    {
+      "id": "01KQ4G8QM0N1D3X84J7P370N13",
+      "ts": "2026-04-26T09:00:00.000Z",
+      "actor": "claude-code",
+      "type": "node.status_changed",
+      "node_id": "V-pebble-detail",
+      "platform": "ios",
+      "from": "development",
+      "to": "live"
+    },
+    {
+      "id": "01KQ9RG180F11T10ZD7RBFJJ32",
+      "ts": "2026-04-28T10:00:00.000Z",
+      "actor": "claude-code",
+      "type": "node.status_changed",
+      "node_id": "V-quick-pebble-editor",
+      "from": "development",
+      "to": "live"
+    },
+    {
+      "id": "01KQ9RS6709DE9WHAZBTDHXE14",
+      "ts": "2026-04-28T10:05:00.000Z",
+      "actor": "claude-code",
+      "type": "node.status_changed",
+      "node_id": "F-record-pebble",
+      "from": "development",
+      "to": "live"
+    },
+    {
+      "id": "01KQMT3YM0XJ6YR72XKVAX2KS3",
+      "ts": "2026-05-02T17:00:00.000Z",
+      "actor": "alexis",
+      "type": "release.tagged",
+      "version": "0.2.0",
+      "notes": "First public loop: record a pebble end to end."
+    },
+    {
+      "id": "01KS2GNPW0YMXHVXVAF6N7ZYTX",
+      "ts": "2026-05-20T11:00:00.000Z",
+      "actor": "claude-code",
+      "type": "node.status_changed",
+      "node_id": "V-souls-list",
+      "from": "development",
+      "to": "live"
+    },
+    {
+      "id": "01KS2GQHF0Y8B4GWJHHRXX993X",
+      "ts": "2026-05-20T11:01:00.000Z",
+      "actor": "claude-code",
+      "type": "node.status_changed",
+      "node_id": "V-soul-detail",
+      "from": "development",
+      "to": "live"
+    },
+    {
+      "id": "01KS2GSC20REQMRWQ8XVDG8CNB",
+      "ts": "2026-05-20T11:02:00.000Z",
+      "actor": "claude-code",
+      "type": "node.status_changed",
+      "node_id": "V-soul-create",
+      "from": "development",
+      "to": "live"
+    },
+    {
+      "id": "01KS2GV6N0RG7NJRBHSVQ84KM4",
+      "ts": "2026-05-20T11:03:00.000Z",
+      "actor": "claude-code",
+      "type": "node.status_changed",
+      "node_id": "V-soul-edit",
+      "from": "development",
+      "to": "live"
+    },
+    {
+      "id": "01KS2H80T02G77NSNSNSYXSHAA",
+      "ts": "2026-05-20T11:10:00.000Z",
+      "actor": "claude-code",
+      "type": "node.status_changed",
+      "node_id": "F-manage-souls",
+      "from": "development",
+      "to": "live"
+    },
+    {
+      "id": "01KSFZHHT02YW2BRC7KQP53K0W",
+      "ts": "2026-05-25T16:30:00.000Z",
+      "actor": "alexis",
+      "type": "release.tagged",
+      "version": "0.3.0",
+      "notes": "Souls: relate pebbles to the people they belong with."
+    },
+    {
+      "id": "01KTBHWDE08J8XRDVVC2VZBGC6",
+      "ts": "2026-06-05T09:30:00.000Z",
+      "actor": "claude-code",
+      "type": "node.status_changed",
+      "node_id": "V-pebble-record",
+      "from": "development",
+      "to": "archived"
+    },
+    {
+      "id": "01KTBHY810BSR9ZC91N98KMXY1",
+      "ts": "2026-06-05T09:31:00.000Z",
+      "actor": "claude-code",
+      "type": "node.status_changed",
+      "node_id": "V-pebble-intensity",
+      "from": "development",
+      "to": "archived"
+    },
+    {
+      "id": "01KTBJ02M0DXJETS9WEDPK9P88",
+      "ts": "2026-06-05T09:32:00.000Z",
+      "actor": "claude-code",
+      "type": "node.status_changed",
+      "node_id": "V-emotion-pearl",
+      "from": "development",
+      "to": "archived"
+    },
+    {
+      "id": "01KTRB9KQ0B80Z2S9KTADQBNBC",
+      "ts": "2026-06-10T08:45:00.000Z",
+      "actor": "claude-code",
+      "type": "node.status_changed",
+      "node_id": "V-landing",
+      "from": "idea",
+      "to": "development"
+    },
+    {
+      "id": "01KVJEDVG06TDYETVMJ5RQ79DS",
+      "ts": "2026-06-20T12:00:00.000Z",
+      "actor": "alexis",
+      "type": "idea.proposed",
+      "title": "Pebble reactions",
+      "description": "Let souls react to a shared pebble with a single glyph."
+    },
+    {
+      "id": "01KW7QBD40H5H3SHQKPX875RF5",
+      "ts": "2026-06-28T18:20:00.000Z",
+      "actor": "alexis",
+      "type": "request.filed",
+      "title": "Offline recording",
+      "description": "Android beta testers ask to record pebbles without a connection.",
+      "source": "beta-feedback"
+    },
+    {
+      "id": "01KWCGPMC0N5EZ1YMV9AHHY20V",
+      "ts": "2026-06-30T15:00:00.000Z",
+      "actor": "claude-code",
+      "type": "ref.added",
+      "node_id": "V-landing",
+      "ref_id": "gh-281",
+      "ref_type": "github-pr",
+      "url": "https://github.com/pebbles-app/pebbles-ios/pull/281"
+    },
+    {
+      "id": "01KWEHY180556JFNS6B459VZV7",
+      "ts": "2026-07-01T10:00:00.000Z",
+      "actor": "alexis",
+      "type": "release.tagged",
+      "version": "0.4.0",
+      "platform": "ios",
+      "notes": "iOS beta: WelcomeView carousel and auth handoff."
+    },
+    {
+      "id": "01KWH1F6J08R3PHHH0P0VPKH2V",
+      "ts": "2026-07-02T09:10:00.000Z",
+      "actor": "alexis",
+      "type": "idea.proposed",
+      "title": "Export a month as a zine",
+      "description": "Print-ready PDF of a monthly wrap, pebbles as pages."
+    },
+    {
+      "id": "01KX3MJ5J05GSF6FCH4GWAK97Y",
+      "ts": "2026-07-09T14:30:00.000Z",
+      "actor": "arkaik-sync",
+      "type": "ref.status_changed",
+      "node_id": "V-landing",
+      "ref_id": "gh-281",
+      "from": "open",
+      "to": "merged",
+      "synced_at": "2026-07-09T14:30:00.000Z"
     }
   ]
 }

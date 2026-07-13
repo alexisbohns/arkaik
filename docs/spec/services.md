@@ -6,7 +6,7 @@ order: 4
 
 # Services — Publik & Synk
 
-> Status: **Draft specification** — describes the M4 target. Nothing in this document is implemented yet; there is no server surface in the codebase today (no `app/api/`, no database, no auth).
+> Status: **Implemented (M4)** — the free surface is live: `app/api/publik` + `app/api/synk` route handlers, `lib/services/`, Auth.js at `auth.ts`, migrations under `db/migrations/`, and the client sync engine in `lib/sync/`. Basik/Klub monetization (M5) remains unbuilt and is gated behind the Core Product phases (vision.md § Roadmap). This document remains the normative contract.
 > The key words MUST, MUST NOT, SHOULD, and MAY are to be interpreted as in RFC 2119.
 
 ## Scope

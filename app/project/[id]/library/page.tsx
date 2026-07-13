@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { PlusIcon } from "lucide-react";
 import { LibraryFilterBar, type LibraryDisplayMode, type LibrarySpeciesFilter } from "@/components/library/LibraryFilterBar";
 import { NodeCard } from "@/components/library/NodeCard";
@@ -33,6 +33,15 @@ const SPECIES_EMPTY_LABELS: Record<LibrarySpeciesFilter, string> = {
   flow: "flows",
   "data-model": "data models",
   "api-endpoint": "API endpoints",
+};
+
+// The sidebar owns species selection; the header subtitle mirrors it so the
+// active filter stays visible on the page itself.
+const SPECIES_SUBTITLE_LABELS: Record<SpeciesId, string> = {
+  view: "Views",
+  flow: "Flows",
+  "data-model": "Data Models",
+  "api-endpoint": "API Endpoints",
 };
 
 const SPECIES_LABEL_BY_ID = Object.fromEntries(
@@ -134,8 +143,6 @@ function sortNodes(
 
 export default function ProjectLibraryPage() {
   const params = useParams();
-  const pathname = usePathname();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
 
@@ -214,19 +221,6 @@ export default function ProjectLibraryPage() {
     });
   }
 
-  function handleSpeciesChange(nextSpecies: LibrarySpeciesFilter) {
-    const nextParams = new URLSearchParams(searchParams.toString());
-
-    if (nextSpecies === "all") {
-      nextParams.delete("species");
-    } else {
-      nextParams.set("species", nextSpecies);
-    }
-
-    const nextQuery = nextParams.toString();
-    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname);
-  }
-
   async function handleCreateNodeFromPanel(species: "flow" | "view", title: string) {
     return addNode({
       id: generateNodeId(species, title, nodesById.keys()),
@@ -269,7 +263,9 @@ export default function ProjectLibraryPage() {
           <p className="truncate text-sm font-medium">
             {projectBundle?.project.title ?? "Untitled project"}
           </p>
-          <p className="truncate text-xs text-muted-foreground">Library</p>
+          <p className="truncate text-xs text-muted-foreground">
+            {speciesFilter === "all" ? "Library" : `Library · ${SPECIES_SUBTITLE_LABELS[speciesFilter]}`}
+          </p>
         </div>
         <div className="ml-auto flex items-center gap-3">
           <Button size="sm" className="cursor-pointer" onClick={() => setNewNodeOpen(true)}>
@@ -282,10 +278,8 @@ export default function ProjectLibraryPage() {
       <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
           <LibraryFilterBar
-            species={speciesFilter}
             search={search}
             displayMode={displayMode}
-            onSpeciesChange={handleSpeciesChange}
             onSearchChange={setSearch}
             onDisplayModeChange={setDisplayMode}
           />

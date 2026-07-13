@@ -7,8 +7,8 @@ import {
   DatabaseIcon,
   GitBranchIcon,
   HistoryIcon,
-  LayoutPanelTopIcon,
   MonitorIcon,
+  RouteIcon,
   ServerIcon,
   Settings2Icon,
   Share2Icon,
@@ -25,9 +25,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
   SidebarRail,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
@@ -40,6 +37,8 @@ interface ProjectSidebarProps {
   currentQueryString?: string;
 }
 
+// One library page per species, driven from here — the sidebar is the only
+// species selector (vision.md § Core Product, Information Architecture).
 const LIBRARY_ITEMS = [
   { label: "Views", species: "view", icon: MonitorIcon },
   { label: "Flows", species: "flow", icon: GitBranchIcon },
@@ -72,41 +71,54 @@ export function ProjectSidebar({
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Navigate</SidebarGroupLabel>
+          <SidebarGroupLabel>Maps</SidebarGroupLabel>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={currentView === "canvas"} tooltip="Canvas">
+              <SidebarMenuButton asChild isActive={currentView === "canvas"} tooltip="Journey map">
                 <Link href={canvasHref}>
-                  <LayoutPanelTopIcon />
-                  <span>Canvas</span>
+                  <RouteIcon />
+                  <span>Journey</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
 
+        <SidebarGroup>
+          <SidebarGroupLabel>Library</SidebarGroupLabel>
+          <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={currentView === "library"} tooltip="Library">
+              <SidebarMenuButton
+                asChild
+                isActive={currentView === "library" && currentSpecies === null}
+                tooltip="All nodes"
+              >
                 <Link href={libraryHref}>
                   <BookOpenIcon />
-                  <span>Library</span>
+                  <span>All nodes</span>
                 </Link>
               </SidebarMenuButton>
-              <SidebarMenuSub>
-                {LIBRARY_ITEMS.map((item) => (
-                  <SidebarMenuSubItem key={item.species}>
-                    <SidebarMenuSubButton
-                      asChild
-                      isActive={currentView === "library" && currentSpecies === item.species}
-                    >
-                      <Link href={`${libraryHref}?species=${item.species}`}>
-                        <item.icon />
-                        <span>{item.label}</span>
-                      </Link>
-                    </SidebarMenuSubButton>
-                  </SidebarMenuSubItem>
-                ))}
-              </SidebarMenuSub>
             </SidebarMenuItem>
+            {LIBRARY_ITEMS.map((item) => (
+              <SidebarMenuItem key={item.species}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={currentView === "library" && currentSpecies === item.species}
+                  tooltip={item.label}
+                >
+                  <Link href={`${libraryHref}?species=${item.species}`}>
+                    <item.icon />
+                    <span>{item.label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </SidebarGroup>
 
+        <SidebarGroup>
+          <SidebarGroupLabel>Project</SidebarGroupLabel>
+          <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={currentView === "changelog"} tooltip="Changelog">
                 <Link href={changelogHref}>

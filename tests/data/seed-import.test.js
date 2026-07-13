@@ -38,15 +38,25 @@ for (const rel of BUNDLES) {
   assert(parseBundle(bundle).success, `${rel}: parseBundle accepts it as-is`);
   assert(eq(migrateBundle(bundle), bundle), `${rel}: migrateBundle is a no-op (round-trip unchanged)`);
 
-  // With an explicit schema_version: 1 (Conformance Level 1).
-  const versioned = { schema_version: 1, ...bundle };
-  const parsed = parseBundle(versioned);
-  assert(parsed.success, `${rel}: parseBundle accepts it with explicit schema_version: 1`);
-  assert(
-    parsed.success && parsed.data.schema_version === 1,
-    `${rel}: parseBundle preserves schema_version: 1 (not stripped)`,
-  );
-  assert(eq(migrateBundle(versioned), versioned), `${rel}: migrateBundle is a no-op on a declared-v1 bundle`);
+  // With an explicit schema_version: 1 (Conformance Level 1). Only meaningful
+  // for bundles that don't already declare a version of their own — the
+  // pebbles seed is a genuine Level 2 bundle (schema_version: 2 + journal).
+  if (bundle.schema_version === undefined) {
+    const versioned = { schema_version: 1, ...bundle };
+    const parsed = parseBundle(versioned);
+    assert(parsed.success, `${rel}: parseBundle accepts it with explicit schema_version: 1`);
+    assert(
+      parsed.success && parsed.data.schema_version === 1,
+      `${rel}: parseBundle preserves schema_version: 1 (not stripped)`,
+    );
+    assert(eq(migrateBundle(versioned), versioned), `${rel}: migrateBundle is a no-op on a declared-v1 bundle`);
+  } else {
+    const parsed = parseBundle(bundle);
+    assert(
+      parsed.success && parsed.data.schema_version === bundle.schema_version,
+      `${rel}: parseBundle preserves declared schema_version: ${bundle.schema_version} (not stripped)`,
+    );
+  }
 }
 
 fs.rmSync(MIGRATE_BUILD_DIR, { recursive: true, force: true });
