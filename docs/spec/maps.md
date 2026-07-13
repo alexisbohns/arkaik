@@ -6,7 +6,7 @@ order: 5
 
 # Maps & Projections
 
-> Status: **Partially implemented** — the format and projection half is live in `packages/schema/src/maps.ts` (`MapDefinition`, `computeMapSubgraph`, `listMaps`), `bundle.ts` (typed `metadata.maps`), and `validate.ts` (the warning rules below); the Delivery board consumes the delivery reading at `/project/[id]/delivery`. The map *renderers* (`/maps` routes, Journey/System surfaces) land with roadmap CP-C. This document remains the normative contract.
+> Status: **Implemented** — the format/projection half lives in `packages/schema/src/maps.ts` + `bundle.ts` + `validate.ts`; the renderers are live at `/project/[id]/maps` (index + custom-map editor) and `/project/[id]/maps/[mapId]` (Journey via `lib/utils/journey-graph.ts`, System via `lib/utils/system-graph.ts` with species-tier ELK partitioning); the Delivery board consumes the delivery reading at `/project/[id]/delivery`. This document remains the normative contract.
 > The key words MUST, MUST NOT, SHOULD, and MAY are to be interpreted as in RFC 2119.
 
 ## Purpose
@@ -52,7 +52,7 @@ Maps-as-data is the point: a human saves a map from a dialog, **an agent authors
 
 1. **Species filter.** Keep nodes whose `species` is in the (defaulted) `species` list.
 2. **Edge filter.** Keep edges whose `edge_type` is in the (defaulted) `edge_types` list **and** whose two endpoints both survived step 1.
-3. **Scope.** If `root_node_id` is present and resolves to a surviving node: **undirected BFS** from it through the surviving edges, bounded by `depth` when present; keep only visited nodes and traversed edges. Undirected, because a scoped map means *"the neighborhood of this anchor"* — an admin view's map must include the API that calls into it, not only what it calls. (A directed variant was considered and rejected for v1; a `direction` knob MAY be added later without breaking this contract.)
+3. **Scope.** If `root_node_id` is present and resolves to a surviving node: **undirected BFS** from it through the surviving edges, bounded by `depth` when present; keep the visited nodes and the surviving edges among them. Undirected, because a scoped map means *"the neighborhood of this anchor"* — an admin view's map must include the API that calls into it, not only what it calls. (A directed variant was considered and rejected for v1; a `direction` knob MAY be added later without breaking this contract.)
 4. **Unresolvable root → empty subgraph**, never an error — the same posture as `computeChangelog` with an unknown version.
 
 The function is deterministic, pure, and generic over the node/edge element type (callers pass full app nodes or raw parsed JSON and get the same elements back).

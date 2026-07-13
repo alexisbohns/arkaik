@@ -7,7 +7,10 @@ import {
   DatabaseIcon,
   GitBranchIcon,
   HistoryIcon,
+  MapIcon,
+  MapPinnedIcon,
   MonitorIcon,
+  NetworkIcon,
   RouteIcon,
   ServerIcon,
   SquareKanbanIcon,
@@ -33,8 +36,12 @@ import {
 interface ProjectSidebarProps {
   projectId: string;
   currentProjectTitle?: string;
-  currentView: "canvas" | "library" | "delivery" | "changelog";
+  currentView: "maps" | "library" | "delivery" | "changelog";
   currentSpecies: string | null;
+  /** Active map id when currentView is "maps" and a specific map is open. */
+  currentMapId: string | null;
+  /** Custom maps stored at project.metadata.maps, for direct navigation. */
+  customMaps: readonly { id: string; title: string }[];
   currentQueryString?: string;
 }
 
@@ -52,9 +59,11 @@ export function ProjectSidebar({
   currentProjectTitle,
   currentView,
   currentSpecies,
+  currentMapId,
+  customMaps,
   currentQueryString,
 }: ProjectSidebarProps) {
-  const canvasHref = `/project/${projectId}/canvas`;
+  const mapsHref = `/project/${projectId}/maps`;
   const libraryHref = `/project/${projectId}/library`;
   const deliveryHref = `/project/${projectId}/delivery`;
   const changelogHref = `/project/${projectId}/changelog`;
@@ -76,13 +85,55 @@ export function ProjectSidebar({
           <SidebarGroupLabel>Maps</SidebarGroupLabel>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={currentView === "canvas"} tooltip="Journey map">
-                <Link href={canvasHref}>
+              <SidebarMenuButton
+                asChild
+                isActive={currentView === "maps" && currentMapId === null}
+                tooltip="All maps"
+              >
+                <Link href={mapsHref}>
+                  <MapIcon />
+                  <span>All maps</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                isActive={currentView === "maps" && currentMapId === "journey"}
+                tooltip="Journey map"
+              >
+                <Link href={`${mapsHref}/journey`}>
                   <RouteIcon />
                   <span>Journey</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                isActive={currentView === "maps" && currentMapId === "system"}
+                tooltip="System map"
+              >
+                <Link href={`${mapsHref}/system`}>
+                  <NetworkIcon />
+                  <span>System</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            {customMaps.map((map) => (
+              <SidebarMenuItem key={map.id}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={currentView === "maps" && currentMapId === map.id}
+                  tooltip={map.title}
+                >
+                  <Link href={`${mapsHref}/${map.id}`}>
+                    <MapPinnedIcon />
+                    <span>{map.title}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
           </SidebarMenu>
         </SidebarGroup>
 

@@ -49,10 +49,10 @@ export function Canvas({ nodes, edges, onNodeClick, onConnect, onEdgeClick, fitS
     lastFitSignal.current = fitSignal;
 
     // Wait for React Flow to measure freshly mounted nodes — unmeasured nodes
-    // are excluded from the fit bounds. minZoom overrides the instance default
-    // (0.5) so wide graphs can be framed in full.
+    // are excluded from the fit bounds. minZoom matches the instance floor so
+    // whole-product maps (the System map's ~140 nodes) frame in full.
     const timer = setTimeout(() => {
-      void reactFlowRef.current?.fitView({ padding: 0.1, duration: 300, minZoom: 0.15 });
+      void reactFlowRef.current?.fitView({ padding: 0.1, duration: 300, minZoom: 0.05 });
     }, 150);
     return () => clearTimeout(timer);
   }, [fitSignal]);
@@ -101,6 +101,7 @@ export function Canvas({ nodes, edges, onNodeClick, onConnect, onEdgeClick, fitS
         colorMode={isDark ? "dark" : "light"}
         style={flowStyle}
         fitView
+        minZoom={0.05}
         onInit={handleInit}
         onNodeClick={handleNodeClick}
         onConnect={onConnect}

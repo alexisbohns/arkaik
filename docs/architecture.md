@@ -23,9 +23,13 @@ app/
   project/
     [id]/
       layout.tsx        # Shared project shell with persistent sidebar + project switcher
-      page.tsx          # Redirects to /project/[id]/canvas
+      page.tsx          # Redirects to /project/[id]/maps/journey
       canvas/
-        page.tsx        # The Journey map canvas — compose-closure traversal, playlist expansion, status rollups
+        page.tsx        # Redirects to /project/[id]/maps/journey (old links keep working)
+      maps/
+        page.tsx        # Maps index — built-ins + custom maps from project.metadata.maps
+        [mapId]/
+          page.tsx      # Renderer shell: journey → JourneyMap, system → SystemMap
       library/
         page.tsx        # Gallery/directory node browser (species via sidebar ?species= links)
       delivery/
@@ -38,9 +42,9 @@ app/
   api/                  # Publik, Synk, and auth route handlers (spec/services.md)
 ```
 
-Planned project routes (spec'd, not yet built — vision.md § Roadmap, Core Product phases): `/project/[id]/maps` (+ `/maps/[mapId]`), `/project/[id]/overview`.
+Planned project routes (spec'd, not yet built — vision.md § Roadmap, Core Product phases): `/project/[id]/overview`.
 
-The canvas page (`app/project/[id]/canvas/page.tsx`) is the core of the graph renderer. It:
+The Journey map (`components/maps/JourneyMap.tsx`) is the core of the graph renderer; its graph construction is the pure `buildJourneyGraph` in `lib/utils/journey-graph.ts` (golden-tested against the Pebbles seed). It:
 
 1. Loads nodes and edges via `useNodes` and `useEdges`
 2. Manages expansion state for flows via local `useState`
@@ -67,9 +71,17 @@ components/
     edges/
       ComposeEdge.tsx       # Straight — hierarchy (composes)
       CrossLayerEdge.tsx    # Dashed straight — cross-layer references (not yet registered in Canvas)
+  maps/
+    JourneyMap.tsx          # The Journey map surface: expansion state, editing, dialogs, toolbar
+    SystemMap.tsx           # The System map surface: species tiers, cross-layer edges, connect-to-create
+    MapCard.tsx             # Maps-index card with kind badge + subgraph counts
+    MapEditorDialog.tsx     # Create/edit custom maps (project.metadata.maps)
+  delivery/
+    DeliveryBoard.tsx       # Status columns of (node × platform) items
+    PlatformItemCard.tsx    # Slim node×platform card
+    DeliveryFilterBar.tsx   # Platform/species chips, all-statuses toggle, search
   layout/
     Minimap.tsx             # React Flow minimap wrapper (unused — Canvas uses @xyflow/react MiniMap directly)
-    PlatformDots.tsx        # Colored dots for web/ios/android
     ProjectSidebar.tsx      # Persistent in-project sidebar navigation
     ProjectSwitcher.tsx     # Sidebar header dropdown for cross-project navigation
     StatusBadge.tsx         # Colored pill with status label
@@ -88,6 +100,7 @@ components/
     PlaylistEntryRow.tsx    # Recursive playlist row renderer for condition/junction branches
     NodeSearchCombobox.tsx  # Search-or-create selector for flow/view references
     PlatformVariants.tsx    # Platform tab switcher with per-platform status and notes
+    RawBundleSheet.tsx      # Raw JSON/YAML bundle viewer/editor sheet (guarded edit + save-back)
   ui/                       # shadcn/ui primitives (button, card, dialog, input, etc.)
     dropdown-menu.tsx       # Radix dropdown wrapper used by the project switcher
     popover.tsx             # Radix popover wrapper used by View card API/platform details
@@ -107,7 +120,7 @@ app/project/[id]/layout.tsx (sidebar shell + route-aware navigation)
   ↕ (props)
 ProjectSidebar + ProjectSwitcher
   ↕ (route changes)
-app/project/[id]/canvas/page.tsx (playlist expansion + status rollup logic)
+components/maps/JourneyMap.tsx (expansion state; buildJourneyGraph builds topology)
     ↕ (props)
 Canvas → ReactFlow → Custom Nodes/Edges
     ↕ (click events)
@@ -240,7 +253,7 @@ Project-level navigation is defined in `app/project/[id]/layout.tsx` and rendere
 
 ## Source References
 
-- Graph orchestration: [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx)
+- Graph orchestration: [components/maps/JourneyMap.tsx](../components/maps/JourneyMap.tsx), [lib/utils/journey-graph.ts](../lib/utils/journey-graph.ts), [lib/utils/system-graph.ts](../lib/utils/system-graph.ts)
 - Project shell: [app/project/[id]/layout.tsx](../app/project/[id]/layout.tsx)
 - Library orchestration: [app/project/[id]/library/page.tsx](../app/project/[id]/library/page.tsx)
 - Sidebar components: [components/layout/ProjectSidebar.tsx](../components/layout/ProjectSidebar.tsx), [components/layout/ProjectSwitcher.tsx](../components/layout/ProjectSwitcher.tsx)

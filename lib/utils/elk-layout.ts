@@ -38,6 +38,16 @@ function getNodeSize(node: Node): { width: number; height: number } {
 export interface ElkLayoutOptions {
   /** Direction for the top-level layout. Default: "DOWN". */
   direction?: "DOWN" | "RIGHT";
+  /** React Flow edge types included in the layout graph. Default: ["compose"] (the Journey hierarchy). */
+  layoutEdgeTypes?: readonly string[];
+  /**
+   * Pin React Flow node types into ordered tiers via ELK partitioning
+   * (e.g. `{ view: 0, apiEndpoint: 1, dataModel: 2 }` for the System map).
+   * Spike-verified: requires `elk.separateConnectedComponents: false` so
+   * edge-less nodes stay in their tier instead of floating to a separate
+   * component layout.
+   */
+  partitionByNodeType?: Record<string, number>;
 }
 
 /**
@@ -52,18 +62,24 @@ export async function computeElkLayout(
   options: ElkLayoutOptions = {},
 ): Promise<{ nodes: Node[]; edges: Edge[] }> {
   const direction = options.direction ?? "DOWN";
+  const layoutEdgeTypes = new Set(options.layoutEdgeTypes ?? ["compose"]);
+  const partitions = options.partitionByNodeType;
 
   const elkNodes: ElkNode[] = nodes.map((node) => {
     const size = getNodeSize(node);
+    const partition = partitions && node.type !== undefined ? partitions[node.type] : undefined;
     return {
       id: node.id,
       width: size.width,
       height: size.height,
+      ...(partition !== undefined
+        ? { layoutOptions: { "elk.partitioning.partition": String(partition) } }
+        : {}),
     };
   });
 
   const elkEdges: ElkExtendedEdge[] = edges
-    .filter((edge) => edge.type === "compose")
+    .filter((edge) => edge.type !== undefined && layoutEdgeTypes.has(edge.type))
     .map((edge) => ({
       id: edge.id,
       sources: [edge.source],
@@ -83,6 +99,9 @@ export async function computeElkLayout(
       "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
       "elk.layered.crossingMinimization.forceNodeModelOrder": "true",
       "elk.hierarchyHandling": "INCLUDE_CHILDREN",
+      ...(partitions
+        ? { "elk.partitioning.activate": "true", "elk.separateConnectedComponents": "false" }
+        : {}),
     },
     children: elkNodes,
     edges: elkEdges,

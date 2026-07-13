@@ -18,10 +18,10 @@ Config source: [lib/config/species.ts](../lib/config/species.ts)
 ## Canvas Visibility (Journey Map)
 
 - The canvas is the **Journey map** ([vision.md § Core Product](vision.md), [spec/maps.md](spec/maps.md)): it renders `flow` and `view` species as React Flow nodes over the full compose closure from the root — views chain the traversal onward, flows render as collapsed, expandable cards.
-- `data-model` and `api-endpoint` remain persisted graph species, editable from panels and import/export. They render as standalone cards on the **System map** (roadmap CP-C); on the Journey map they surface inline on View cards via embedded API actions and in the detail panel's Connections section.
+- `data-model` and `api-endpoint` remain persisted graph species, editable from panels and import/export. They render as standalone cards on the **System map** (`/project/[id]/maps/system`); on the Journey map they surface inline on View cards via embedded API actions and in the detail panel's Connections section.
 - Cross-layer edges (`calls`, `displays`, `queries`) draw whenever both endpoints are visible.
 
-Source: [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx), [components/graph/nodes/ViewNode.tsx](../components/graph/nodes/ViewNode.tsx)
+Source: [components/maps/JourneyMap.tsx](../components/maps/JourneyMap.tsx), [lib/utils/journey-graph.ts](../lib/utils/journey-graph.ts), [components/graph/nodes/ViewNode.tsx](../components/graph/nodes/ViewNode.tsx)
 
 ## Library Views
 
@@ -49,7 +49,7 @@ Library source:
 - `project.root_node_id` is the explicit canvas anchor when present.
 - If `root_node_id` is not set, the canvas infers roots from nodes with no incoming `composes` edge.
 
-Source: [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx), [lib/data/types.ts](../lib/data/types.ts)
+Source: [components/maps/JourneyMap.tsx](../components/maps/JourneyMap.tsx), [lib/utils/journey-graph.ts](../lib/utils/journey-graph.ts), [lib/data/types.ts](../lib/data/types.ts)
 
 ### Playlist Expansion
 
@@ -57,7 +57,7 @@ Source: [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx),
 - Child ordering is read from `node.metadata.playlist.entries`.
 - When playlist entries do not reference all compose-edge children, missing children are appended after playlist-derived ordering.
 
-Source: [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx)
+Source: [components/maps/JourneyMap.tsx](../components/maps/JourneyMap.tsx), [lib/utils/journey-graph.ts](../lib/utils/journey-graph.ts)
 
 The canvas walks the compose closure from the anchor (`project.root_node_id`, or inferred roots when absent): views are always rendered and chain the walk onward; flows are rendered as collapsed cards whose interiors (playlists) render only when expanded. Flows start collapsed, except that the first **top-level flow** (a flow reached without passing through another flow) auto-expands on initial load. Top-level expansion is accordion-style: opening one top-level flow collapses any other top-level flow already open.
 
@@ -73,7 +73,7 @@ Layout is computed by **elkjs** (Eclipse Layout Kernel, layered algorithm). The 
 
 Layout source: [lib/utils/elk-layout.ts](../lib/utils/elk-layout.ts)
 
-Source: [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx)
+Source: [components/maps/JourneyMap.tsx](../components/maps/JourneyMap.tsx), [lib/utils/journey-graph.ts](../lib/utils/journey-graph.ts)
 
 ### Node Reuse
 
@@ -115,7 +115,7 @@ Sources:
 
 - [lib/utils/platform-status.ts](../lib/utils/platform-status.ts)
 - [components/panels/NodeDetailPanel.tsx](../components/panels/NodeDetailPanel.tsx)
-- [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx)
+- [components/maps/JourneyMap.tsx](../components/maps/JourneyMap.tsx), [lib/utils/journey-graph.ts](../lib/utils/journey-graph.ts)
 
 ## Platforms
 
@@ -140,14 +140,14 @@ Source:
 
 Config source: [lib/config/edge-types.ts](../lib/config/edge-types.ts)
 
-Rendering mapping source: [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx)
+Rendering mapping source: [lib/utils/journey-graph.ts](../lib/utils/journey-graph.ts), [lib/utils/system-graph.ts](../lib/utils/system-graph.ts)
 
 `calls` edges between a view and API endpoint are projected into View card UI:
 
 - API -> View: inbound/read affordance (`cloud-download` icon)
 - View -> API: outbound/write affordance (`cloud-upload` icon)
 
-Source: [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx), [components/graph/nodes/ViewNode.tsx](../components/graph/nodes/ViewNode.tsx)
+Source: [components/maps/JourneyMap.tsx](../components/maps/JourneyMap.tsx), [lib/utils/journey-graph.ts](../lib/utils/journey-graph.ts), [components/graph/nodes/ViewNode.tsx](../components/graph/nodes/ViewNode.tsx)
 
 ## Node And Edge Components
 
@@ -169,7 +169,7 @@ Edge registration is also in [components/graph/Canvas.tsx](../components/graph/C
 ## Taxonomy Update Checklist
 
 1. Update config array in `lib/config/*`.
-2. Update page mappings and rendering filters in [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx).
+2. Update graph builders and rendering filters in [lib/utils/journey-graph.ts](../lib/utils/journey-graph.ts) and [lib/utils/system-graph.ts](../lib/utils/system-graph.ts).
 3. Update Canvas registrations in [components/graph/Canvas.tsx](../components/graph/Canvas.tsx).
 4. Update forms/panels that branch by species.
 5. Update seed data in [seed/pebbles.json](../seed/pebbles.json).

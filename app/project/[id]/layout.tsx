@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { usePathname, useParams, useSearchParams } from "next/navigation";
 import { ProjectSidebar } from "@/components/layout/ProjectSidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
@@ -22,9 +23,23 @@ export default function ProjectLayout({
       ? "delivery"
       : pathname.startsWith(`/project/${id}/changelog`)
         ? "changelog"
-        : "canvas";
+        : "maps";
   const currentSpecies = currentView === "library" ? searchParams.get("species") : null;
   const currentQueryString = currentView === "library" ? searchParams.toString() : "";
+
+  const mapsPrefix = `/project/${id}/maps/`;
+  const currentMapId =
+    currentView === "maps" && pathname.startsWith(mapsPrefix)
+      ? decodeURIComponent(pathname.slice(mapsPrefix.length).split("/")[0] ?? "") || null
+      : null;
+
+  const customMaps = useMemo(() => {
+    const stored = project?.project.metadata?.maps;
+    if (!Array.isArray(stored)) return [];
+    return stored
+      .filter((definition) => typeof definition?.id === "string" && typeof definition?.title === "string")
+      .map((definition) => ({ id: definition.id, title: definition.title }));
+  }, [project]);
 
   return (
     <SidebarProvider defaultOpen>
@@ -33,6 +48,8 @@ export default function ProjectLayout({
         currentProjectTitle={project?.project.title}
         currentView={currentView}
         currentSpecies={currentSpecies}
+        currentMapId={currentMapId}
+        customMaps={customMaps}
         currentQueryString={currentQueryString}
       />
       <SidebarInset className="h-svh overflow-hidden">
