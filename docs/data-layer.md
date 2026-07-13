@@ -81,7 +81,7 @@ interface Project {
 
 interface ProjectMetadata extends Record<string, unknown> {
   view_card_variant?: "compact" | "large";
-  // maps?: MapDefinition[] — specified in spec/maps.md, lands with roadmap CP-B
+  maps?: MapDefinition[]; // Stored map definitions (spec/maps.md § Storage)
 }
 ```
 

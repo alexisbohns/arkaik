@@ -10,6 +10,7 @@ import {
   MonitorIcon,
   RouteIcon,
   ServerIcon,
+  SquareKanbanIcon,
   Settings2Icon,
   Share2Icon,
 } from "lucide-react";
@@ -32,7 +33,7 @@ import {
 interface ProjectSidebarProps {
   projectId: string;
   currentProjectTitle?: string;
-  currentView: "canvas" | "library" | "changelog";
+  currentView: "canvas" | "library" | "delivery" | "changelog";
   currentSpecies: string | null;
   currentQueryString?: string;
 }
@@ -55,6 +56,7 @@ export function ProjectSidebar({
 }: ProjectSidebarProps) {
   const canvasHref = `/project/${projectId}/canvas`;
   const libraryHref = `/project/${projectId}/library`;
+  const deliveryHref = `/project/${projectId}/delivery`;
   const changelogHref = `/project/${projectId}/changelog`;
   const [publishOpen, setPublishOpen] = useState(false);
 
@@ -119,6 +121,14 @@ export function ProjectSidebar({
         <SidebarGroup>
           <SidebarGroupLabel>Project</SidebarGroupLabel>
           <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={currentView === "delivery"} tooltip="Delivery board">
+                <Link href={deliveryHref}>
+                  <SquareKanbanIcon />
+                  <span>Delivery</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={currentView === "changelog"} tooltip="Changelog">
                 <Link href={changelogHref}>

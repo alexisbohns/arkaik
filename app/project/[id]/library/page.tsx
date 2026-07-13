@@ -21,6 +21,7 @@ import { useProject } from "@/lib/hooks/useProject";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { findWhereUsed } from "@/lib/utils/where-used";
 import { generateNodeId } from "@/lib/utils/id";
+import { matchesSearch } from "@/lib/utils/search";
 import {
   computePlaylistRollup,
   createEmptyRollup,
@@ -91,12 +92,6 @@ function playlistPreviewForNode(node: DataNode, allNodesById: Map<string, DataNo
       label: entry.label,
     };
   });
-}
-
-function matchesSearch(node: DataNode, searchQuery: string) {
-  if (!searchQuery) return true;
-  const haystack = `${node.title} ${node.description ?? ""}`.toLowerCase();
-  return haystack.includes(searchQuery.toLowerCase());
 }
 
 function sortNodes(

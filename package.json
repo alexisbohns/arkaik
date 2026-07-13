@@ -19,6 +19,8 @@
     "test:serialize": "node tests/schema/serialize.test.js",
     "test:refs": "node tests/schema/refs.test.js",
     "test:journal": "node tests/schema/journal.test.js",
+    "test:maps": "node tests/schema/maps.test.js",
+    "test:delivery": "node tests/app/delivery.test.js",
     "test:journal-projections": "node tests/data/journal-projections.test.js",
     "test:emit": "node tests/schema/emit.test.js",
     "test:emit-events": "node tests/data/emit-events.test.js",

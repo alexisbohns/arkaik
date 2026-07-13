@@ -6,7 +6,7 @@ order: 5
 
 # Maps & Projections
 
-> Status: **Draft specification** — describes the target model for the app's multi-map experience (vision.md § Core Product). Nothing in this document is implemented yet; today the app renders a single canvas route.
+> Status: **Partially implemented** — the format and projection half is live in `packages/schema/src/maps.ts` (`MapDefinition`, `computeMapSubgraph`, `listMaps`), `bundle.ts` (typed `metadata.maps`), and `validate.ts` (the warning rules below); the Delivery board consumes the delivery reading at `/project/[id]/delivery`. The map *renderers* (`/maps` routes, Journey/System surfaces) land with roadmap CP-C. This document remains the normative contract.
 > The key words MUST, MUST NOT, SHOULD, and MAY are to be interpreted as in RFC 2119.
 
 ## Purpose

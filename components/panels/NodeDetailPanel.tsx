@@ -118,6 +118,8 @@ interface NodeDetailPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   node?: Node;
+  /** Platform tab the variants section opens on (e.g. the clicked Delivery item's platform). */
+  initialPlatform?: PlatformId;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
   onDelete?: (nodeId: string) => void;
   allNodes?: Node[];
@@ -396,11 +398,12 @@ function HistorySection({ node, journal, allNodes }: HistorySectionProps) {
 
 interface PlatformVariantsSectionProps {
   node: Node;
+  initialPlatform?: PlatformId;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
   onZoomShot?: (platform: PlatformId) => void;
 }
 
-function PlatformVariantsSection({ node, onUpdate, onZoomShot }: PlatformVariantsSectionProps) {
+function PlatformVariantsSection({ node, initialPlatform, onUpdate, onZoomShot }: PlatformVariantsSectionProps) {
   const rawNotes = (node.metadata?.platformNotes ?? {}) as Partial<Record<PlatformId, string>>;
   const rawStatuses = getEditablePlatformStatuses(node);
   const rawScreenshots = (node.metadata?.platformScreenshots ?? {}) as Partial<Record<PlatformId, string>>;
@@ -452,6 +455,7 @@ function PlatformVariantsSection({ node, onUpdate, onZoomShot }: PlatformVariant
         statuses={statuses}
         notes={notes}
         screenshots={screenshots}
+        initialPlatform={initialPlatform}
         onStatusChange={handleStatusChange}
         onNotesChange={handleNotesChange}
         onScreenshotChange={handleScreenshotChange}
@@ -476,6 +480,7 @@ export function NodeDetailPanel({
   open,
   onOpenChange,
   node,
+  initialPlatform,
   onUpdate,
   onDelete,
   allNodes,
@@ -527,8 +532,9 @@ export function NodeDetailPanel({
             <RefsSection key={`refs-${node.id}`} node={node} />
             {node.species === "view" && (
               <PlatformVariantsSection
-                key={`pv-${node.id}`}
+                key={`pv-${node.id}-${initialPlatform ?? ""}`}
                 node={node}
+                initialPlatform={initialPlatform}
                 onUpdate={onUpdate}
                 onZoomShot={onZoomShot ? (platform) => onZoomShot(node, platform) : undefined}
               />

@@ -16,7 +16,7 @@ const BUILD_DIR = path.join(SCHEMA_DIR, ".test-build");
 
 // Order does not matter for output — CommonJS resolves requires lazily — but we
 // transpile every module the entrypoint depends on.
-const MODULES = ["ids", "id-gen", "enums", "playlist", "journal", "journal-events", "bundle", "validate", "parse", "serialize", "projections", "emit", "index"];
+const MODULES = ["ids", "id-gen", "enums", "playlist", "journal", "journal-events", "bundle", "validate", "parse", "serialize", "projections", "maps", "emit", "derive", "index"];
 
 function loadSchema() {
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });

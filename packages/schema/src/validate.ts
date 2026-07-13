@@ -9,6 +9,7 @@ import {
 import { SPECIES_PREFIXES } from "./id-gen";
 import type { PlaylistEntry } from "./playlist";
 import { crossCheckJournal } from "./journal";
+import { isBuiltInMapId } from "./maps";
 
 /**
  * Semantic validation for Arkaik ProjectBundles.
@@ -343,6 +344,64 @@ export function validateBundle(input: unknown): ValidationResult {
       "root-node-exists",
       `project.root_node_id "${rootNodeId}" does not reference an existing node`,
     );
+  }
+
+  // --- Stored map definitions (docs/spec/maps.md § Validation) ---
+  // Warning severity only: a stale or dangling map must never fail an import
+  // or a CI gate. Non-object entries and missing id/title are shape concerns
+  // (parse.ts / the JSON Schema); here we cross-check against the graph.
+  const storedMaps = projectMetadata?.maps;
+  if (Array.isArray(storedMaps)) {
+    const seenMapIds = new Set<string>();
+    storedMaps.forEach((definition, index) => {
+      if (typeof definition !== "object" || definition === null || Array.isArray(definition)) return;
+      const map = definition as Record<string, unknown>;
+      const path = `project.metadata.maps[${index}]`;
+      const mapId = typeof map.id === "string" ? map.id : undefined;
+
+      if (mapId !== undefined) {
+        if (seenMapIds.has(mapId)) {
+          warn(`${path}.id`, "map-duplicate-id", `Duplicate map id "${mapId}"`);
+        }
+        seenMapIds.add(mapId);
+        if (isBuiltInMapId(mapId)) {
+          warn(`${path}.id`, "map-shadows-built-in", `Map id "${mapId}" shadows a built-in map and will be ignored`);
+        }
+      }
+
+      const mapRoot = map.root_node_id;
+      if (typeof mapRoot === "string" && !nodeIds.has(mapRoot)) {
+        warn(
+          `${path}.root_node_id`,
+          "map-unknown-root",
+          `Map "${mapId ?? index}" anchors on "${mapRoot}" which does not reference an existing node`,
+        );
+      }
+
+      if (Array.isArray(map.species)) {
+        map.species.forEach((value, valueIndex) => {
+          if (typeof value === "string" && !SPECIES_IDS.includes(value as SpeciesId)) {
+            warn(
+              `${path}.species[${valueIndex}]`,
+              "map-unknown-species",
+              `Map "${mapId ?? index}" filters on unknown species "${value}"`,
+            );
+          }
+        });
+      }
+
+      if (Array.isArray(map.edge_types)) {
+        map.edge_types.forEach((value, valueIndex) => {
+          if (typeof value === "string" && !EDGE_TYPE_IDS.includes(value as EdgeTypeId)) {
+            warn(
+              `${path}.edge_types[${valueIndex}]`,
+              "map-unknown-edge-type",
+              `Map "${mapId ?? index}" filters on unknown edge type "${value}"`,
+            );
+          }
+        });
+      }
+    });
   }
 
   // --- Edge checks ---
