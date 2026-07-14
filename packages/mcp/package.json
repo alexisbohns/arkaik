@@ -1,16 +1,10 @@
 {
-  "name": "arkaik",
+  "name": "arkaik-mcp",
   "version": "0.1.0",
   "license": "MIT",
   "type": "module",
   "bin": {
-    "arkaik": "dist/index.js"
-  },
-  "exports": {
-    "./io": {
-      "types": "./src/io.ts",
-      "default": "./dist/io.js"
-    }
+    "arkaik-mcp": "dist/index.js"
   },
   "files": [
     "dist"
@@ -19,6 +13,7 @@
     "build": "node build.js"
   },
   "dependencies": {
-    "@arkaik/schema": "*"
+    "@arkaik/schema": "*",
+    "arkaik": "*"
   }
 }

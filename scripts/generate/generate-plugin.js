@@ -25,6 +25,7 @@ const SKILL_SRC_DIR = path.join(ROOT, "docs", "arkaik-skill");
 const PLUGIN_DIR = path.join(ROOT, "plugin");
 const SKILL_DEST_DIR = path.join(PLUGIN_DIR, "skills", "arkaik");
 const MANIFEST_FILE = path.join(PLUGIN_DIR, ".claude-plugin", "plugin.json");
+const MCP_FILE = path.join(PLUGIN_DIR, ".mcp.json");
 
 /** Extract the `version:` value from a skill file's YAML frontmatter. */
 function extractVersion(skillContent) {
@@ -65,11 +66,30 @@ function writeManifest(version) {
   fs.writeFileSync(MANIFEST_FILE, JSON.stringify(manifest, null, 2) + "\n");
 }
 
+/**
+ * Declare the MCP server (docs/spec/mcp.md § Distribution): installing the
+ * plugin delivers skill + tools together — the doctrine and the agent plane,
+ * one install. `npx -y arkaik-mcp` is the whole setup; the server resolves
+ * the bundle per its discovery rules (--bundle / ARKAIK_BUNDLE / default).
+ */
+function writeMcpJson() {
+  const mcp = {
+    mcpServers: {
+      arkaik: {
+        command: "npx",
+        args: ["-y", "arkaik-mcp"],
+      },
+    },
+  };
+  fs.writeFileSync(MCP_FILE, JSON.stringify(mcp, null, 2) + "\n");
+}
+
 function generate() {
   const skillContent = fs.readFileSync(path.join(SKILL_SRC_DIR, "skill.md"), "utf8");
   const version = extractVersion(skillContent);
   copySkillAssets();
   writeManifest(version);
+  writeMcpJson();
   console.log(`generated plugin v${version} -> ${path.relative(ROOT, PLUGIN_DIR)}`);
 }
 

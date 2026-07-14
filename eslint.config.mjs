@@ -21,9 +21,11 @@ const eslintConfig = defineConfig([
     // Claude Code plugin: a byte-identical generated copy of
     // docs/arkaik-skill/scripts/** (see scripts/generate/generate-plugin.js).
     "plugin/**",
-    // esbuild-bundled CLI output + its Node build script (not app source).
+    // esbuild-bundled CLI/MCP output + their Node build scripts (not app source).
     "packages/cli/dist/**",
     "packages/cli/build.js",
+    "packages/mcp/dist/**",
+    "packages/mcp/build.js",
     // Transient transpile dirs of the test loaders / artifact generator —
     // cleaned up on success, but a crashed run must not break lint.
     "packages/schema/.test-build/**",

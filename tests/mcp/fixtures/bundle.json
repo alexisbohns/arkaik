@@ -1,0 +1,96 @@
+{
+  "schema_version": 2,
+  "project": {
+    "id": "fixture",
+    "title": "Fixture",
+    "version": "0.1.0",
+    "root_node_id": "F-onboard",
+    "metadata": {
+      "maps": [
+        { "id": "onboarding", "title": "Onboarding", "kind": "journey", "root_node_id": "F-onboard" }
+      ]
+    },
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z"
+  },
+  "nodes": [
+    {
+      "id": "API-get-profile",
+      "project_id": "fixture",
+      "title": "Get profile",
+      "species": "api-endpoint",
+      "status": "live",
+      "platforms": ["web"]
+    },
+    {
+      "id": "DM-profile",
+      "project_id": "fixture",
+      "title": "Profile",
+      "species": "data-model",
+      "status": "live",
+      "platforms": ["web"]
+    },
+    {
+      "id": "F-onboard",
+      "project_id": "fixture",
+      "title": "Onboard",
+      "species": "flow",
+      "status": "development",
+      "platforms": ["web"],
+      "metadata": {
+        "playlist": {
+          "entries": [
+            { "type": "view", "view_id": "V-welcome" },
+            { "type": "view", "view_id": "V-profile" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "V-profile",
+      "project_id": "fixture",
+      "title": "Profile page",
+      "species": "view",
+      "status": "development",
+      "platforms": ["web"]
+    },
+    {
+      "id": "V-welcome",
+      "project_id": "fixture",
+      "title": "Welcome",
+      "species": "view",
+      "status": "live",
+      "platforms": ["web"]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-F-onboard-V-profile",
+      "project_id": "fixture",
+      "source_id": "F-onboard",
+      "target_id": "V-profile",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-onboard-V-welcome",
+      "project_id": "fixture",
+      "source_id": "F-onboard",
+      "target_id": "V-welcome",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-V-profile-API-get-profile",
+      "project_id": "fixture",
+      "source_id": "V-profile",
+      "target_id": "API-get-profile",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-V-profile-DM-profile",
+      "project_id": "fixture",
+      "source_id": "V-profile",
+      "target_id": "DM-profile",
+      "edge_type": "displays"
+    }
+  ]
+}
