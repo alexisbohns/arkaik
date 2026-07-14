@@ -6,7 +6,7 @@ order: 6
 
 # MCP Server — the Agent Plane
 
-> Status: **Draft specification** — describes the target `arkaik-mcp` package. There is no MCP server in the codebase today; the shared dual-write derivation prerequisite (§ Reuse Seams) is in place at `packages/schema/src/derive.ts`. Agents currently interact through the skill ([toolchain.md](toolchain.md) § Skill Distribution), the CLI, and the raw format.
+> Status: **Implemented** — `packages/mcp` (`arkaik-mcp`), a dependency-free stdio server: the SDK caveat below resolved to its own fallback (the workspace's zod 4 vs the SDK's zod 3), so the server speaks newline-delimited JSON-RPC directly; the tool catalog is the contract, and adopting the SDK later changes plumbing, not behavior. File IO comes from the `arkaik/io` subpath export (§ Reuse Seams); the plugin ships the generated `plugin/.mcp.json`; `tests/mcp/run-mcp-tests.js` is the harness (§ Testing). This document remains the normative contract.
 > The key words MUST, MUST NOT, SHOULD, and MAY are to be interpreted as in RFC 2119.
 
 ## Purpose
@@ -23,7 +23,7 @@ This is the **audience-symmetry principle** (vision.md § Core Product) made con
 | Bin / install story | `npx -y arkaik-mcp` is the whole setup; esbuild-bundled single file like the CLI |
 | Transport | **stdio** (v1). The server is spawned per session by the agent host; no daemon, no port |
 | Not a CLI subcommand | The `arkaik` CLI stays dependency-free; the MCP SDK would end that. The CLI usage text gains a pointer line; an `arkaik mcp` alias MAY wrap the package later |
-| SDK note | `@modelcontextprotocol/sdk` is the default choice; if its zod version conflicts with the workspace's zod 4, fall back to the SDK's low-level `Server` API with raw JSON-Schema tool definitions. `@arkaik/schema` remains the only validation authority either way |
+| SDK note | `@modelcontextprotocol/sdk` was the default choice; its zod-3 pin against the workspace's zod 4 resolved this to the fallback, taken all the way: the server speaks newline-delimited JSON-RPC directly (`src/protocol.ts`, ~150 lines — `initialize`, `tools/list`, `tools/call`, `ping`) with raw JSON-Schema tool definitions whose enums come from `@arkaik/schema` ids. `@arkaik/schema` remains the only validation authority; the SDK MAY be adopted later without changing the tool catalog |
 
 ## Bundle Discovery (Kommit-first)
 

@@ -14,6 +14,7 @@ below (`docs/spec/toolchain.md` § Skill Distribution, "second channel").
 plugin/
   .claude-plugin/
     plugin.json               # the plugin manifest (generated)
+  .mcp.json                   # declares the arkaik-mcp server (generated) — skill + tools, one install
   skills/
     arkaik/
       SKILL.md                 # generated copy of docs/arkaik-skill/skill.md

@@ -30,6 +30,12 @@ const dir = dirname(fileURLToPath(import.meta.url));
 const ENTRY = join(dir, "src", "index.ts");
 const OUT_FILE = join(dir, "dist", "index.js");
 
+// The `arkaik/io` subpath export (docs/spec/mcp.md § Reuse Seams): the file-IO
+// seam the MCP server imports. Bundled separately so consumers get plain ESM
+// with no bin banner.
+const IO_ENTRY = join(dir, "src", "io.ts");
+const IO_OUT_FILE = join(dir, "dist", "io.js");
+
 const SKILL_SRC_DIR = join(dir, "..", "..", "docs", "arkaik-skill");
 const SKILL_DIST_DIR = join(dir, "dist", "assets", "skill");
 
@@ -55,6 +61,18 @@ async function run() {
   });
   chmodSync(OUT_FILE, 0o755);
   console.log(`built ${relative(dir, OUT_FILE)}`);
+
+  await build({
+    entryPoints: [IO_ENTRY],
+    outfile: IO_OUT_FILE,
+    bundle: true,
+    platform: "node",
+    target: "node18",
+    format: "esm",
+    legalComments: "none",
+  });
+  console.log(`built ${relative(dir, IO_OUT_FILE)}`);
+
   copySkillAssets();
 }
 

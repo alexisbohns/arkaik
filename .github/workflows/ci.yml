@@ -25,7 +25,7 @@ jobs:
         run: npm run generate
 
       - name: Fail on generated-artifact drift
-        run: git diff --exit-code -- public/schema/project-bundle.json docs/arkaik-skill/scripts/validate-bundle.js docs/arkaik-skill/references/schema.md lib/prompts/generated plugin/.claude-plugin/plugin.json plugin/skills/arkaik
+        run: git diff --exit-code -- public/schema/project-bundle.json docs/arkaik-skill/scripts/validate-bundle.js docs/arkaik-skill/references/schema.md lib/prompts/generated plugin/.claude-plugin/plugin.json plugin/.mcp.json plugin/skills/arkaik
 
       - name: Lint
         run: npm run lint
@@ -89,6 +89,9 @@ jobs:
 
       - name: CLI tests
         run: npm run test:cli
+
+      - name: MCP server tests
+        run: npm run test:mcp
 
   # Services migration-integrity gate (docs/spec/services.md § CI Additions).
   # Separate job so the local-first `build` job above stays green with no DB.

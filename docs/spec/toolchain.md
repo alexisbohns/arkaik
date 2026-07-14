@@ -6,7 +6,7 @@ order: 3
 
 # Toolchain & Packaging
 
-> Status: **Implemented** — `packages/schema` (`@arkaik/schema`) and `packages/cli` (`arkaik`) are live workspace packages; the skill ships as a Claude Code plugin (`plugin/`) with generated assets, and `scripts/generate/` drift-checks every generated artifact in CI. The legacy copy-paste skill remains under `docs/arkaik-skill/`. This document remains the normative contract; the MCP server companion is specified in [mcp.md](mcp.md).
+> Status: **Implemented** — `packages/schema` (`@arkaik/schema`), `packages/cli` (`arkaik`, with the `arkaik/io` subpath export), and `packages/mcp` (`arkaik-mcp`) are live workspace packages; the skill ships as a Claude Code plugin (`plugin/`) with generated assets (now including `.mcp.json`), and `scripts/generate/` drift-checks every generated artifact in CI. The legacy copy-paste skill remains under `docs/arkaik-skill/`. This document remains the normative contract; the MCP server companion is specified in [mcp.md](mcp.md).
 > The key words MUST, SHOULD, and MAY are to be interpreted as in RFC 2119.
 
 ## Why npm
@@ -22,7 +22,8 @@ The arkaik repo becomes an npm workspace. **The Next.js app stays at the reposit
   package.json           # + "workspaces": ["packages/*"]
   packages/
     schema/              # @arkaik/schema (MIT)
-    cli/                 # arkaik (MIT) — depends on @arkaik/schema
+    cli/                 # arkaik (MIT) — depends on @arkaik/schema; exports arkaik/io
+    mcp/                 # arkaik-mcp (MIT) — the agent plane (mcp.md); depends on both
 ```
 
 The app consumes `@arkaik/schema` via `transpilePackages` in `next.config.ts` and a path mapping in `tsconfig.json`; `lib/data/types.ts` becomes a re-export so its ~23 importers don't churn.

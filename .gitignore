@@ -37,6 +37,7 @@
 
 # esbuild-bundled CLI output (rebuilt on demand by `npm run build -w arkaik`)
 /packages/cli/dist/
+/packages/mcp/dist/
 
 # misc
 .DS_Store
