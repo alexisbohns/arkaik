@@ -222,7 +222,7 @@ Not a tier. A **Try Lokal** button next to Sign in on the landing page.
 - Purpose: zero-friction entry point before account commitment
 - Conversion trigger: when users need backups, sharing, or more features, prompt Sign up to keep your work and migrate local data to account mode
 
-Current implementation references: `lib/data/local-provider.ts`, `lib/utils/export.ts`, `app/project/[id]/canvas/page.tsx`
+Current implementation references: `lib/data/local-provider.ts`, `lib/utils/export.ts`, `components/maps/JourneyMap.tsx`
 
 #### Kommit: The Git-Native Mode
 
@@ -365,7 +365,7 @@ The execution of [§ Core Product](#core-product-one-graph-many-maps). CP-A ship
 |---|---|---|---|
 | **CP-A — Usability floor + specs** *(shipped)* | Canvas compose-closure traversal fix + first-flow auto-expand (a view-rooted bundle renders its real tree); library species filter removed (sidebar is the single selector); sidebar regrouped Project / Maps / Library; [spec/maps.md](spec/maps.md) + [spec/mcp.md](spec/mcp.md) written; stale docs refreshed; seed showcases version + journal | S–M | — |
 | **CP-B — Maps in the schema** *(shipped)* | `packages/schema/src/maps.ts`: `MapDefinition`, `BUILT_IN_MAPS`, `computeMapSubgraph`, `listMaps`; typed `metadata.maps` in `bundle.ts`; warning-severity validation rules; `emit-events` core moves to `schema/derive.ts` (MCP prerequisite); `npm run generate` ripple + tests | M | — |
-| **CP-C — Maps routes & canvas decomposition** | `/maps` index + `/maps/[mapId]`; `/canvas` becomes a redirect; the canvas monolith decomposes (`journey-graph`, `graph-build`, `system-graph` utils; `JourneyMap`/`SystemMap`/`RawBundleSheet` components; `useElkLayout`); ELK gains cross-layer edge + species-partition options (spike partitioning first); System map renders all four species; custom-map dialog; dead navigation code deleted | L | CP-B |
+| **CP-C — Maps routes & canvas decomposition** *(shipped)* | `/maps` index + `/maps/[mapId]`; `/canvas` becomes a redirect; the canvas monolith decomposes (`journey-graph`, `graph-build`, `system-graph` utils; `JourneyMap`/`SystemMap`/`RawBundleSheet` components; `useElkLayout`); ELK gains cross-layer edge + species-partition options (spike partitioning first); System map renders all four species; custom-map dialog; dead navigation code deleted | L | CP-B |
 | **CP-D — Delivery board** *(shipped)* | `lib/utils/delivery.ts` ((node × platform, status) tuples via `getNodePlatformStatuses`; flows excluded — rollups aren't deliverables); `/delivery` board with the `delivery` status-preset columns + all-statuses toggle; detail panel opens on the clicked platform tab (`initialPlatform`) | M | ∥ CP-C |
 | **CP-E — Overview** | `/overview` dashboard composing existing projections (platform gauges, release pulse, backlog, inventory, delivery snapshot, maps) + `lib/utils/coverage.ts` health indicators; `/project/[id]` lands on Overview | M | CP-B; richer after CP-C/D |
 | **CP-F — MCP server** | `packages/mcp` per [spec/mcp.md](spec/mcp.md): stdio tools over the repo bundle, validator-gated dual-write, `arkaik/io` reuse seam, plugin `.mcp.json`, JSON-RPC test harness | L | CP-B; ∥ CP-C/D/E |

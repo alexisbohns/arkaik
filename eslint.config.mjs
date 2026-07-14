@@ -24,6 +24,10 @@ const eslintConfig = defineConfig([
     // esbuild-bundled CLI output + its Node build script (not app source).
     "packages/cli/dist/**",
     "packages/cli/build.js",
+    // Transient transpile dirs of the test loaders / artifact generator —
+    // cleaned up on success, but a crashed run must not break lint.
+    "packages/schema/.test-build/**",
+    "packages/schema/.generate-build/**",
   ]),
 ]);
 

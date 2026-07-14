@@ -99,7 +99,7 @@ interface ProjectBundle {
 
 A `ProjectBundle` is the unit of storage and export — one project with all its nodes and edges.
 
-`project.root_node_id` (when present) points to the node that should render as the primary canvas anchor in [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx). If it is missing, the canvas falls back to inferred roots (nodes without compose parents).
+`project.root_node_id` (when present) points to the node the Journey map anchors on ([lib/utils/journey-graph.ts](../lib/utils/journey-graph.ts)); a scoped map's own `root_node_id` overrides it. If it is missing, the canvas falls back to inferred roots (nodes without compose parents).
 
 ## DataProvider Interface
 
@@ -186,7 +186,7 @@ Hooks in `lib/hooks/` provide React state wrappers around the provider:
 | `useEdges(projectId)` | `{ edges, loading, addEdge, removeEdge }` | CRUD for edges |
 | `useJournal(projectId)` | `{ journal, loading }` | Read-only journal events for timelines and the changelog |
 
-The project canvas page (`app/project/[id]/canvas/page.tsx`) uses `useProject` for root-node anchoring and project-level card-style preferences, and still manages `expandedFlows` as local state.
+The Journey map (`components/maps/JourneyMap.tsx`) uses `useProject` for root-node anchoring and project-level card-style preferences, and still manages `expandedFlows` as local state.
 
 ### Node Editing Flow
 
@@ -201,7 +201,7 @@ NodeDetailPanel (title, description, platforms, metadata)
 
 Views store editable per-platform statuses in `node.metadata.platformStatuses`. When legacy data does not have that field yet, the UI derives platform statuses from `node.status` + `node.platforms` and writes the richer metadata shape back on the next edit.
 
-Flows do not expose an editable rollup status in UI. Flow cards and panel gauges compute status from descendant views in [app/project/[id]/canvas/page.tsx](../app/project/[id]/canvas/page.tsx) and [components/panels/NodeDetailPanel.tsx](../components/panels/NodeDetailPanel.tsx).
+Flows do not expose an editable rollup status in UI. Flow cards and panel gauges compute status from descendant views in [lib/utils/journey-graph.ts](../lib/utils/journey-graph.ts) and [components/panels/NodeDetailPanel.tsx](../components/panels/NodeDetailPanel.tsx).
  
  Flow playlist edits (`metadata.playlist.entries`) also originate from `NodeDetailPanel` via [components/panels/PlaylistEditor.tsx](../components/panels/PlaylistEditor.tsx). All playlist mutations use `useNodes.updateNode`, and provider-side validation blocks circular flow references before persistence.
 

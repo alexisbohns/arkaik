@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Handle, Position, NodeToolbar, type NodeProps } from "@xyflow/react";
 import { ChevronDown, ChevronRight, Info, PlusCircle, Split } from "lucide-react";
 import type { StatusId } from "@/lib/config/statuses";
@@ -11,7 +12,7 @@ import { STATUS_GHOST_STYLES } from "./node-styles";
 import { useToolbarHover } from "@/lib/hooks/useToolbarHover";
 import { PlatformGaugeList } from "./PlatformGaugeList";
 
-export function FlowNode({ data }: NodeProps) {
+function FlowNodeComponent({ data }: NodeProps) {
   const status = (data.status as StatusId) ?? "idea";
   const label = String(data.label ?? "Flow");
   const platforms = (data.platforms as PlatformId[]) ?? [];
@@ -123,3 +124,10 @@ export function FlowNode({ data }: NodeProps) {
     </>
   );
 }
+
+/**
+ * Memoized so spotlight hovers (which only decorate other nodes' wrapper
+ * `className`) never re-render card internals — React Flow reuses unchanged
+ * node objects, so props stay reference-equal for untouched nodes.
+ */
+export const FlowNode = memo(FlowNodeComponent);

@@ -34,13 +34,13 @@ docs/                   # This documentation
   - `useProject` handles project-level metadata (including `root_node_id` and card preferences).
   - `useProjects` powers project lists/switching in route shell UI.
   - `useJournal` exposes the read-only event log for timelines and the changelog.
-- The project canvas page (`app/project/[id]/canvas/page.tsx`) uses `useNodes` and `useEdges` for data, and manages flow expansion as local `useState` (`expandedFlows`).
+- The Journey map (`components/maps/JourneyMap.tsx`) uses `useNodes` and `useEdges` for data, and manages flow expansion as local `useState` (`expandedFlows`); graph construction is the pure `buildJourneyGraph` (`lib/utils/journey-graph.ts`).
 - Data flows via props from the project page down to canvas components.
 - Route-shell concerns such as the project switcher and persistent sidebar should stay in the project layout and use route state plus lightweight hooks instead of introducing shared global state.
 
 ## Keyboard Shortcuts
 
-- Project-page shortcuts are wired in `app/project/[id]/canvas/page.tsx` using `lib/hooks/useKeyboardShortcuts.ts`.
+- Journey-map shortcuts are wired in `components/maps/JourneyMap.tsx` using `lib/hooks/useKeyboardShortcuts.ts`.
 - Shortcut key checks and focus guards live in `lib/utils/keyboard.ts`.
 - Keep shortcut handlers thin: they should call existing page handlers (`handleDeleteNodeRequest`, `handleExport`) instead of duplicating business logic.
 - Delete shortcuts must not directly mutate storage. Always route through the existing confirmation dialog flow.

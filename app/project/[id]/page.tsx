@@ -6,5 +6,5 @@ interface ProjectPageProps {
 
 export default async function ProjectPage({ params }: ProjectPageProps) {
   const { id } = await params;
-  redirect(`/project/${id}/canvas`);
+  redirect(`/project/${id}/maps/journey`);
 }

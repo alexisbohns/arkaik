@@ -310,4 +310,17 @@
   .dark .react-flow__controls-button:hover {
     background-color: hsl(var(--accent));
   }
+
+  /* Neighborhood spotlight: dim everything outside the hovered/pinned node's
+     neighborhood (lib/utils/graph-spotlight.ts). No pointer-events change —
+     the cursor must be able to move onto dimmed nodes to re-anchor. */
+  .react-flow__node,
+  .react-flow__edge {
+    transition: opacity 120ms ease-out;
+  }
+
+  .react-flow__node.arkaik-dim,
+  .react-flow__edge.arkaik-dim {
+    opacity: 0.15;
+  }
 }
