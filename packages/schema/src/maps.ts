@@ -30,6 +30,12 @@ export const MAP_KINDS: readonly MapKind[] = ["journey", "system"];
 /** Layout hints for canvas renderers. Unknown keys round-trip like all format objects. */
 export interface MapLayoutHints extends Record<string, unknown> {
   direction?: "DOWN" | "RIGHT" | (string & {});
+  /**
+   * Canvas layout algorithm: `"organic"` (force-directed with overlap
+   * removal) or `"layered"` (hierarchical tiers). Renderers fall back to the
+   * kind's default for unknown values (docs/spec/maps.md § MapDefinition).
+   */
+  algorithm?: "layered" | "organic" | (string & {});
 }
 
 /**
@@ -81,6 +87,7 @@ export const BUILT_IN_MAPS: readonly MapDefinition[] = [
     title: "System",
     description: "The model layer — views, API endpoints, and data models joined by cross-layer edges.",
     kind: "system",
+    layout: { algorithm: "organic" },
   },
 ];
 

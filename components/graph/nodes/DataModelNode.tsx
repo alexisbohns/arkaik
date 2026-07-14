@@ -1,12 +1,13 @@
 "use client";
 
+import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { Database } from "lucide-react";
 import type { StatusId } from "@/lib/config/statuses";
 import { StatusBadge } from "@/components/layout/StatusBadge";
 import { STATUS_GHOST_STYLES } from "./node-styles";
 
-export function DataModelNode({ data }: NodeProps) {
+function DataModelNodeComponent({ data }: NodeProps) {
   const status = (data.status as StatusId) ?? "idea";
   const label = String(data.label ?? "Data Model");
   const ghostClass = STATUS_GHOST_STYLES[status];
@@ -30,3 +31,6 @@ export function DataModelNode({ data }: NodeProps) {
     </>
   );
 }
+
+/** Memoized — see FlowNode: spotlight hovers must not re-render card internals. */
+export const DataModelNode = memo(DataModelNodeComponent);

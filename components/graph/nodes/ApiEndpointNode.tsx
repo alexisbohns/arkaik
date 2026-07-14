@@ -1,12 +1,13 @@
 "use client";
 
+import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { Plug } from "lucide-react";
 import type { StatusId } from "@/lib/config/statuses";
 import { StatusBadge } from "@/components/layout/StatusBadge";
 import { STATUS_GHOST_STYLES } from "./node-styles";
 
-export function ApiEndpointNode({ data }: NodeProps) {
+function ApiEndpointNodeComponent({ data }: NodeProps) {
   const status = (data.status as StatusId) ?? "idea";
   const label = String(data.label ?? "API Endpoint");
   const ghostClass = STATUS_GHOST_STYLES[status];
@@ -30,3 +31,6 @@ export function ApiEndpointNode({ data }: NodeProps) {
     </>
   );
 }
+
+/** Memoized — see FlowNode: spotlight hovers must not re-render card internals. */
+export const ApiEndpointNode = memo(ApiEndpointNodeComponent);

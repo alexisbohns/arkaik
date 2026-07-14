@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { CloudDownload, CloudUpload, Info } from "lucide-react";
 import type { StatusId } from "@/lib/config/statuses";
@@ -102,7 +103,7 @@ function InlineStatusIcon({ status }: { status: StatusId }) {
   return <StatusIcon className={`size-5 ${statusStyles.badge}`} aria-label={STATUS_LABELS[status]} />;
 }
 
-export function ViewNode({ data }: NodeProps) {
+function ViewNodeComponent({ data }: NodeProps) {
   const status = (data.status as StatusId) ?? "idea";
   const label = String(data.label ?? "View");
   const platforms = (data.platforms as PlatformId[]) ?? [];
@@ -220,3 +221,6 @@ export function ViewNode({ data }: NodeProps) {
     </>
   );
 }
+
+/** Memoized — see FlowNode: spotlight hovers must not re-render card internals. */
+export const ViewNode = memo(ViewNodeComponent);

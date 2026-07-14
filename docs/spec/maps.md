@@ -27,7 +27,7 @@ interface MapDefinition extends Record<string, unknown> {
   edge_types?: EdgeTypeId[];     // edge filter; defaults by kind
   root_node_id?: string;         // scope anchor; journey falls back to project.root_node_id
   depth?: number;                // traversal bound from the root; absent = unbounded
-  layout?: { direction?: "DOWN" | "RIGHT" };
+  layout?: { direction?: "DOWN" | "RIGHT"; algorithm?: "layered" | "organic" };
 }
 ```
 
@@ -37,6 +37,7 @@ interface MapDefinition extends Record<string, unknown> {
 | Reserved ids | `journey` and `system` name the built-in maps every project has implicitly. A stored definition MUST NOT reuse them (validator warning `map-shadows-built-in`) |
 | Unknown fields | Preserved and ignored, like every other format object (`Record<string, unknown>`) |
 | Unknown kinds | Consumers MUST preserve definitions with unrecognized `kind` values and SHOULD list them as unrenderable rather than dropping them |
+| `layout.algorithm` | `"organic"` = force-directed with overlap removal (structure/cluster reading); `"layered"` = hierarchical tiers (didactic reading). Renderers fall back to the kind's default for unknown values; the built-in System map defaults to `organic` — at whole-product scale the tiered rendition degenerates into an unreadably wide ribbon |
 
 ## Storage
 

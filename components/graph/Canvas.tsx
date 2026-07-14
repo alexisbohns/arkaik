@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ReactFlow, Controls, Background, type Node, type Edge, type NodeMouseHandler, type OnConnect, type EdgeMouseHandler, type ReactFlowInstance } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useTheme } from "next-themes";
+import { applySpotlight, buildSpotlightIndex } from "@/lib/utils/graph-spotlight";
 import { FlowNode } from "./nodes/FlowNode";
 import { ViewNode } from "./nodes/ViewNode";
 import { DataModelNode } from "./nodes/DataModelNode";
@@ -36,13 +37,47 @@ interface CanvasProps {
   onEdgeClick?: EdgeMouseHandler;
   /** Increment to re-frame the viewport around the current graph (e.g. after a programmatic layout change). */
   fitSignal?: number;
+  /** Dim non-neighbors of the hovered node — the dense-map legibility mode. */
+  spotlight?: boolean;
+  /** External spotlight pin (e.g. the map's panel-selected node); hover takes precedence. */
+  spotlightNodeId?: string | null;
 }
 
-export function Canvas({ nodes, edges, onNodeClick, onConnect, onEdgeClick, fitSignal }: CanvasProps) {
+export function Canvas({
+  nodes,
+  edges,
+  onNodeClick,
+  onConnect,
+  onEdgeClick,
+  fitSignal,
+  spotlight = false,
+  spotlightNodeId = null,
+}: CanvasProps) {
   const reactFlowRef = useRef<ReactFlowInstance<Node, Edge> | null>(null);
   const lastFitSignal = useRef(fitSignal);
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
+
+  const spotlightIndex = useMemo(
+    () => (spotlight ? buildSpotlightIndex(edges) : null),
+    [edges, spotlight],
+  );
+
+  const anchorId = spotlight ? hoveredNodeId ?? spotlightNodeId : null;
+
+  const display = useMemo(() => {
+    if (!anchorId || !spotlightIndex) return { nodes, edges };
+    return applySpotlight(nodes, edges, anchorId, spotlightIndex);
+  }, [anchorId, edges, nodes, spotlightIndex]);
+
+  const handleNodeMouseEnter = useCallback<NodeMouseHandler>((_event, node) => {
+    setHoveredNodeId(node.id);
+  }, []);
+
+  const handleNodeMouseLeave = useCallback<NodeMouseHandler>(() => {
+    setHoveredNodeId(null);
+  }, []);
 
   useEffect(() => {
     if (fitSignal === undefined || fitSignal === lastFitSignal.current) return;
@@ -94,8 +129,8 @@ export function Canvas({ nodes, edges, onNodeClick, onConnect, onEdgeClick, fitS
   return (
     <div className="h-full w-full">
       <ReactFlow
-        nodes={nodes}
-        edges={edges}
+        nodes={display.nodes}
+        edges={display.edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         colorMode={isDark ? "dark" : "light"}
@@ -106,6 +141,8 @@ export function Canvas({ nodes, edges, onNodeClick, onConnect, onEdgeClick, fitS
         onNodeClick={handleNodeClick}
         onConnect={onConnect}
         onEdgeClick={onEdgeClick}
+        onNodeMouseEnter={spotlight ? handleNodeMouseEnter : undefined}
+        onNodeMouseLeave={spotlight ? handleNodeMouseLeave : undefined}
       >
         <Controls />
         <Minimap />

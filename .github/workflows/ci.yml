@@ -66,6 +66,9 @@ jobs:
       - name: Journey graph golden parity tests
         run: npm run test:journey-graph
 
+      - name: Neighborhood spotlight tests
+        run: npm run test:spotlight
+
       - name: Journal write-primitive (emit) tests
         run: npm run test:emit
 

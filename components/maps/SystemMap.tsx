@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type Connection, type EdgeMouseHandler, type NodeMouseHandler } from "@xyflow/react";
 import { PlusIcon } from "lucide-react";
 import type { MapDefinition } from "@arkaik/schema";
@@ -10,6 +10,7 @@ import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
 import { NodeDetailPanel } from "@/components/panels/NodeDetailPanel";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import type { EdgeTypeId } from "@/lib/config/edge-types";
@@ -28,23 +29,42 @@ interface SystemMapProps {
   definition: MapDefinition;
 }
 
-// Views feed APIs feed data models — pin the tiers regardless of edge shape
-// (spike-verified partitioning; orphans stay in their tier).
-const SYSTEM_LAYOUT_OPTIONS: ElkLayoutOptions = {
+// Tiered: views feed APIs feed data models — pin the tiers regardless of edge
+// shape (spike-verified partitioning; orphans stay in their tier).
+const SYSTEM_TIERED_LAYOUT_OPTIONS: ElkLayoutOptions = {
+  algorithm: "layered",
   direction: "DOWN",
   layoutEdgeTypes: ["calls", "displays", "queries"],
   partitionByNodeType: { view: 0, apiEndpoint: 1, dataModel: 2 },
 };
 
+// Organic: force-directed structure with overlap removal — at whole-product
+// scale the tiered rendition degenerates into an unreadably wide ribbon
+// (docs/spec/maps.md § MapDefinition, layout.algorithm).
+const SYSTEM_ORGANIC_LAYOUT_OPTIONS: ElkLayoutOptions = {
+  algorithm: "organic",
+  layoutEdgeTypes: ["calls", "displays", "queries"],
+};
+
+type SystemLayoutMode = "tiered" | "organic";
+
 /**
  * The System map: the model-centered reading — views, API endpoints, and data
- * models joined by cross-layer edges, ELK-layered into species tiers
- * (docs/spec/maps.md § Built-in Maps). Connect-to-create and edge deletion
- * work exactly as on the Journey map; there is no expansion state.
+ * models joined by cross-layer edges (docs/spec/maps.md § Built-in Maps).
+ * Two renditions: organic (default — cluster/structure reading) and tiered
+ * (species tiers — didactic reading), plus a hover/pin neighborhood spotlight
+ * for tracing one node's relations inside the dense whole-product picture.
+ * Connect-to-create and edge deletion work exactly as on the Journey map;
+ * there is no expansion state.
  */
 export function SystemMap({ projectId, definition }: SystemMapProps) {
   const [selectedNode, setSelectedNode] = useState<DataNode | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  // Session-local rendition choice, seeded from the definition's layout hint
+  // (organic is the system kind's default — docs/spec/maps.md).
+  const [layoutMode, setLayoutMode] = useState<SystemLayoutMode>(() =>
+    definition.layout?.algorithm === "layered" ? "tiered" : "organic",
+  );
   const [newNodeOpen, setNewNodeOpen] = useState(false);
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null);
   const [edgeDialogOpen, setEdgeDialogOpen] = useState(false);
@@ -69,12 +89,34 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
     [dataEdges, dataNodes, definition],
   );
 
-  const { nodes, ready } = useElkLayout(graph, SYSTEM_LAYOUT_OPTIONS);
+  const { nodes, layoutVersion } = useElkLayout(
+    graph,
+    layoutMode === "tiered" ? SYSTEM_TIERED_LAYOUT_OPTIONS : SYSTEM_ORGANIC_LAYOUT_OPTIONS,
+  );
 
-  // ReactFlow's one-time fitView fires while nodes still sit at the origin.
-  // `ready` flips exactly once when the first ELK layout lands (large graphs
-  // take seconds), so deriving the signal re-frames the viewport right then.
-  const fitSignal = ready ? 1 : 0;
+  // Re-frame the viewport when a layout the user asked for lands: armed at
+  // mount (ReactFlow's one-time fitView fires while nodes still sit at the
+  // origin) and re-armed on each rendition switch. Data-edit relayouts leave
+  // the ref unarmed so they never yank the viewport while someone works.
+  const pendingFitRef = useRef(true);
+  const [fitSignal, setFitSignal] = useState(0);
+
+  useEffect(() => {
+    if (layoutVersion === 0 || !pendingFitRef.current) return;
+    // Consume the flag inside the frame callback: if a second layout lands
+    // before the frame fires (StrictMode's doubled effects), the cleanup
+    // cancels this frame and the still-armed ref re-schedules — exactly one fit.
+    const frame = requestAnimationFrame(() => {
+      pendingFitRef.current = false;
+      setFitSignal((value) => value + 1);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [layoutVersion]);
+
+  const handleLayoutModeChange = useCallback((value: string) => {
+    pendingFitRef.current = true;
+    setLayoutMode(value === "tiered" ? "tiered" : "organic");
+  }, []);
 
   const handleNodeClick = useCallback<NodeMouseHandler>(
     (_event, xyNode) => {
@@ -185,6 +227,15 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
           </p>
         </div>
         <div className="ml-auto flex items-center gap-3">
+          <Select value={layoutMode} onValueChange={handleLayoutModeChange}>
+            <SelectTrigger className="h-8 w-[120px]" aria-label="Layout algorithm">
+              <SelectValue placeholder="Layout" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="organic">Organic</SelectItem>
+              <SelectItem value="tiered">Tiered</SelectItem>
+            </SelectContent>
+          </Select>
           <Button size="sm" className="cursor-pointer" onClick={() => setNewNodeOpen(true)}>
             <PlusIcon className="size-4" />
             New node
@@ -199,6 +250,8 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
           onConnect={handleConnect}
           onEdgeClick={handleEdgeClick}
           fitSignal={fitSignal}
+          spotlight
+          spotlightNodeId={panelOpen ? selectedNode?.id ?? null : null}
         />
       </div>
       <NodeDetailPanel

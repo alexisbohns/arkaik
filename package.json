@@ -22,6 +22,7 @@
     "test:maps": "node tests/schema/maps.test.js",
     "test:delivery": "node tests/app/delivery.test.js",
     "test:journey-graph": "node tests/app/journey-graph.test.js",
+    "test:spotlight": "node tests/app/graph-spotlight.test.js",
     "test:journal-projections": "node tests/data/journal-projections.test.js",
     "test:emit": "node tests/schema/emit.test.js",
     "test:emit-events": "node tests/data/emit-events.test.js",
