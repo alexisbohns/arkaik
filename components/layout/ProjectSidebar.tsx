@@ -7,6 +7,7 @@ import {
   DatabaseIcon,
   GitBranchIcon,
   HistoryIcon,
+  LayoutDashboardIcon,
   MapIcon,
   MapPinnedIcon,
   MonitorIcon,
@@ -36,7 +37,7 @@ import {
 interface ProjectSidebarProps {
   projectId: string;
   currentProjectTitle?: string;
-  currentView: "maps" | "library" | "delivery" | "changelog";
+  currentView: "overview" | "maps" | "library" | "delivery" | "changelog";
   currentSpecies: string | null;
   /** Active map id when currentView is "maps" and a specific map is open. */
   currentMapId: string | null;
@@ -63,6 +64,7 @@ export function ProjectSidebar({
   customMaps,
   currentQueryString,
 }: ProjectSidebarProps) {
+  const overviewHref = `/project/${projectId}/overview`;
   const mapsHref = `/project/${projectId}/maps`;
   const libraryHref = `/project/${projectId}/library`;
   const deliveryHref = `/project/${projectId}/delivery`;
@@ -172,6 +174,14 @@ export function ProjectSidebar({
         <SidebarGroup>
           <SidebarGroupLabel>Project</SidebarGroupLabel>
           <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={currentView === "overview"} tooltip="Overview">
+                <Link href={overviewHref}>
+                  <LayoutDashboardIcon />
+                  <span>Overview</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={currentView === "delivery"} tooltip="Delivery board">
                 <Link href={deliveryHref}>

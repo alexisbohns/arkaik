@@ -23,7 +23,7 @@ import { useProjects } from "@/lib/hooks/useProjects";
 interface ProjectSwitcherProps {
   currentProjectId: string;
   currentProjectTitle?: string;
-  currentView: "maps" | "library" | "delivery" | "changelog";
+  currentView: "overview" | "maps" | "library" | "delivery" | "changelog";
   currentQueryString?: string;
 }
 

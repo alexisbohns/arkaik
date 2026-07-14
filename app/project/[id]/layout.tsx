@@ -17,13 +17,15 @@ export default function ProjectLayout({
   const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
   const { project } = useProject(id);
 
-  const currentView = pathname.startsWith(`/project/${id}/library`)
-    ? "library"
-    : pathname.startsWith(`/project/${id}/delivery`)
-      ? "delivery"
-      : pathname.startsWith(`/project/${id}/changelog`)
-        ? "changelog"
-        : "maps";
+  const currentView = pathname.startsWith(`/project/${id}/overview`)
+    ? "overview"
+    : pathname.startsWith(`/project/${id}/library`)
+      ? "library"
+      : pathname.startsWith(`/project/${id}/delivery`)
+        ? "delivery"
+        : pathname.startsWith(`/project/${id}/changelog`)
+          ? "changelog"
+          : "maps";
   const currentSpecies = currentView === "library" ? searchParams.get("species") : null;
   const currentQueryString = currentView === "library" ? searchParams.toString() : "";
 

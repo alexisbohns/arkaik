@@ -6,7 +6,7 @@ order: 5
 
 # Maps & Projections
 
-> Status: **Implemented** — the format/projection half lives in `packages/schema/src/maps.ts` + `bundle.ts` + `validate.ts`; the renderers are live at `/project/[id]/maps` (index + custom-map editor) and `/project/[id]/maps/[mapId]` (Journey via `lib/utils/journey-graph.ts`, System via `lib/utils/system-graph.ts` with species-tier ELK partitioning); the Delivery board consumes the delivery reading at `/project/[id]/delivery`. This document remains the normative contract.
+> Status: **Implemented** — the format/projection half lives in `packages/schema/src/maps.ts` + `bundle.ts` + `validate.ts`; the renderers are live at `/project/[id]/maps` (index + custom-map editor) and `/project/[id]/maps/[mapId]` (Journey via `lib/utils/journey-graph.ts`, System via `lib/utils/system-graph.ts` with species-tier ELK partitioning); the Delivery board consumes the delivery reading at `/project/[id]/delivery`; the Overview dashboard composes the aggregations in `lib/utils/coverage.ts` at `/project/[id]/overview` (§ Overview Composition). This document remains the normative contract.
 > The key words MUST, MUST NOT, SHOULD, and MAY are to be interpreted as in RFC 2119.
 
 ## Purpose
@@ -65,7 +65,33 @@ The function is deterministic, pure, and generic over the node/edge element type
 | **Journey** | `journey` | "How does a user move through the product?" | The existing canvas: compose closure from the root, playlist expansion, flows collapsible, visual node duplication for reuse |
 | **System** | `system` | "Which screens render this model? What does this endpoint feed?" | Direct render of `computeMapSubgraph`: all selected species as cards, cross-layer edges drawn, ELK-layered by species tier (views / api-endpoints / data-models) |
 
-**Renderer division of labor:** System is a *direct* projection render. Journey consumes the definition's root and species but owns its drawing logic (playlist ordering, expansion state, visual duplication of reused views) — renderer logic over a projection, exactly as `ReleaseCard` is renderer logic over `computeChangelog`. Delivery and Overview (vision.md § Core Product) are projections too, but render as a board and a dashboard rather than a canvas; their selection logic is specified with their implementation phases.
+**Renderer division of labor:** System is a *direct* projection render. Journey consumes the definition's root and species but owns its drawing logic (playlist ordering, expansion state, visual duplication of reused views) — renderer logic over a projection, exactly as `ReleaseCard` is renderer logic over `computeChangelog`. Delivery and Overview (vision.md § Core Product) are projections too, but render as a board and a dashboard rather than a canvas; Delivery's item semantics live with its implementation (`lib/utils/delivery.ts`), and the Overview's composition is specified in § Overview Composition below.
+
+## Overview Composition
+
+The Overview answers *"where does this product stand?"* — a dashboard of pure aggregations (`lib/utils/coverage.ts`) over (snapshot, journal), rendered at `/project/[id]/overview`, which is also where `/project/[id]` lands. Each section links into the surface that owns the detail:
+
+| Section | Feeds from | Jump-off |
+|---|---|---|
+| Platform delivery | `computeProductRollup` — every view through the flow cards' rollup (counted-preset statuses only) | Delivery board |
+| Delivery snapshot | `computeDeliverySnapshot` — the board's own item expansion and column grouping | Delivery board |
+| Release pulse | `computeReleasePulse` — `release.tagged` markers newest-first, each with its `computeChangelog` event count; a re-tagged version resolves to its latest marker | Changelog |
+| Backlog | `computeBacklog` (journal.md § Projections) | Changelog |
+| Inventory | `computeInventory` — node/edge/journal census; per-species totals + node-level status tallies | Library (per species) |
+| Health | `computeHealthIndicators` (below) | Per-indicator evidence |
+| Maps | `listMaps` + `computeMapSubgraph` counts | Maps index |
+
+**Health indicators** (fixed order; `count` of offenders, 0 = healthy; offending node ids included where the offenders are nodes):
+
+| Indicator | Rule |
+|---|---|
+| `unreachable-from-root` | Flow/view ids not reached by a **directed** BFS over `composes` edges (source → target) from `project.root_node_id`. Directed is the Journey's own traversal direction — an undirected walk would absolve an orphan flow that merely composes *into* reachable views (§ Orphans). Data models and API endpoints are out of scope (composes never reaches them). Unset or unresolvable root → zero findings, never an error — the § Subgraph Algorithm rule-4 posture |
+| `views-without-screenshot` | Views with no non-empty `metadata.platformScreenshots` value |
+| `nodes-without-description` | Nodes whose `description` is absent or whitespace |
+| `disconnected-nodes` | Nodes appearing in no edge as source or target |
+| `open-backlog` | `computeBacklog(...).items.length` — journal ideas/requests not realized as snapshot nodes |
+
+The Overview is read-only by design: strategists get the global picture one screen deep and jump into maps, the board, the changelog, or the library to act. Audience symmetry holds — every number on the dashboard comes from an exported pure function an agent can call (mcp.md).
 
 ## Validation
 
