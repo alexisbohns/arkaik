@@ -25,6 +25,7 @@
 /tests/app/.test-build-delivery/
 /tests/app/.test-build-journey-graph/
 /tests/app/.test-build-graph-spotlight/
+/tests/app/.test-build-coverage/
 /packages/cli/.test-build/
 
 # next.js

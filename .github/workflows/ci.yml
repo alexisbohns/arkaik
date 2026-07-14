@@ -69,6 +69,9 @@ jobs:
       - name: Neighborhood spotlight tests
         run: npm run test:spotlight
 
+      - name: Overview coverage projection tests
+        run: npm run test:coverage
+
       - name: Journal write-primitive (emit) tests
         run: npm run test:emit
 

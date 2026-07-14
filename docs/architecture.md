@@ -23,9 +23,11 @@ app/
   project/
     [id]/
       layout.tsx        # Shared project shell with persistent sidebar + project switcher
-      page.tsx          # Redirects to /project/[id]/maps/journey
+      page.tsx          # Redirects to /project/[id]/overview — a project opens on the global picture
       canvas/
         page.tsx        # Redirects to /project/[id]/maps/journey (old links keep working)
+      overview/
+        page.tsx        # Overview dashboard — the strategist reading over lib/utils/coverage.ts projections
       maps/
         page.tsx        # Maps index — built-ins + custom maps from project.metadata.maps
         [mapId]/
@@ -41,8 +43,6 @@ app/
       page.tsx          # Publik snapshot preview (server-rendered)
   api/                  # Publik, Synk, and auth route handlers (spec/services.md)
 ```
-
-Planned project routes (spec'd, not yet built — vision.md § Roadmap, Core Product phases): `/project/[id]/overview`.
 
 The Journey map (`components/maps/JourneyMap.tsx`) is the core of the graph renderer; its graph construction is the pure `buildJourneyGraph` in `lib/utils/journey-graph.ts` (golden-tested against the Pebbles seed). It:
 
@@ -80,6 +80,15 @@ components/
     DeliveryBoard.tsx       # Status columns of (node × platform) items
     PlatformItemCard.tsx    # Slim node×platform card
     DeliveryFilterBar.tsx   # Platform/species chips, all-statuses toggle, search
+  overview/
+    OverviewSection.tsx     # Shared dashboard card shell (title + jump-off link)
+    PlatformGaugesCard.tsx  # Product-wide per-platform delivery gauges (PlatformGaugeList)
+    DeliverySnapshotCard.tsx # Board column totals without the board
+    ReleasePulseCard.tsx    # Tagged releases, newest first, with change counts
+    BacklogCard.tsx         # Open ideas/requests summary + first rows
+    InventoryCard.tsx       # Census by species with status dots; rows link into the library
+    HealthCard.tsx          # Doc-health indicators with per-indicator evidence links
+    MapsCard.tsx            # Every map with live subgraph counts
   layout/
     Minimap.tsx             # React Flow minimap wrapper (unused — Canvas uses @xyflow/react MiniMap directly)
     ProjectSidebar.tsx      # Persistent in-project sidebar navigation
