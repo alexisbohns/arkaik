@@ -1,6 +1,7 @@
 {
   "name": "arkaik-mcp",
   "version": "0.1.0",
+  "description": "Arkaik MCP server — stdio tools over an Arkaik product-graph bundle: read projections plus validator-gated dual-write mutations.",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -9,10 +10,23 @@
   "files": [
     "dist"
   ],
-  "scripts": {
-    "build": "node build.js"
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alexisbohns/arkaik.git",
+    "directory": "packages/mcp"
   },
-  "dependencies": {
+  "homepage": "https://github.com/alexisbohns/arkaik/blob/main/docs/spec/mcp.md",
+  "keywords": [
+    "arkaik",
+    "mcp",
+    "model-context-protocol",
+    "product-graph"
+  ],
+  "scripts": {
+    "build": "node build.js",
+    "prepublishOnly": "node build.js"
+  },
+  "devDependencies": {
     "@arkaik/schema": "*",
     "arkaik": "*"
   }
