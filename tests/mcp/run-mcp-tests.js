@@ -268,6 +268,93 @@ async function main() {
   const backlogAfter = await callTool("get_backlog", {});
   check("the new idea shows in the backlog", backlogAfter.body?.items.some((item) => item.title === "Dark mode"));
 
+  // --- Playlist composition: a populated flow in one call (issue #263) ---------
+  const flowCreate = await callTool("create_node", {
+    species: "flow",
+    title: "Reader discovery",
+    platforms: ["web"],
+    metadata: {
+      playlist: {
+        entries: [
+          { type: "view", view_id: "V-welcome" },
+          { type: "view", view_id: "V-profile" },
+        ],
+      },
+    },
+  });
+  check(
+    "create_node builds a populated flow in a single call",
+    flowCreate.isError !== true && flowCreate.body.node.id === "F-reader-discovery",
+    JSON.stringify(flowCreate.body).slice(0, 240),
+  );
+  check(
+    "create_node synthesizes a composes edge per playlist ref",
+    Array.isArray(flowCreate.body?.edges) &&
+      flowCreate.body.edges.length === 2 &&
+      flowCreate.body.edges.every(
+        (edge) => edge.edge_type === "composes" && edge.source_id === "F-reader-discovery",
+      ),
+    JSON.stringify(flowCreate.body?.edges),
+  );
+  check(
+    "the synthesized edges emit edge.added alongside node.created",
+    flowCreate.body?.events.filter((event) => event.type === "edge.added").length === 2 &&
+      flowCreate.body.events.some((event) => event.type === "node.created"),
+    JSON.stringify(flowCreate.body?.events?.map((event) => event.type)),
+  );
+  const afterFlowCreate = await callTool("validate_bundle", {});
+  check(
+    "bundle validates clean after the synthesized flow",
+    afterFlowCreate.body?.valid === true,
+    JSON.stringify(afterFlowCreate.body),
+  );
+  const snapshotAfterFlow = JSON.parse(readFileSync(bundlePath, "utf8"));
+  check(
+    "synthesized composes edges land in the snapshot",
+    ["e-F-reader-discovery-V-welcome", "e-F-reader-discovery-V-profile"].every((id) =>
+      snapshotAfterFlow.edges.some((edge) => edge.id === id),
+    ),
+  );
+
+  // update_node extends the playlist; only the newly referenced ref's edge is synthesized.
+  const flowExtend = await callTool("update_node", {
+    node_id: "F-reader-discovery",
+    patch: {
+      metadata: {
+        playlist: {
+          entries: [
+            { type: "view", view_id: "V-welcome" },
+            { type: "view", view_id: "V-profile" },
+            { type: "flow", flow_id: "F-onboard" },
+          ],
+        },
+      },
+    },
+  });
+  check(
+    "update_node synthesizes the composes edge for a playlist addition only",
+    flowExtend.isError !== true &&
+      Array.isArray(flowExtend.body?.edges) &&
+      flowExtend.body.edges.length === 1 &&
+      flowExtend.body.edges[0].id === "e-F-reader-discovery-F-onboard",
+    JSON.stringify(flowExtend.body?.edges),
+  );
+  const afterFlowExtend = await callTool("validate_bundle", {});
+  check(
+    "bundle validates clean after the playlist extension",
+    afterFlowExtend.body?.valid === true,
+    JSON.stringify(afterFlowExtend.body),
+  );
+  const flowNoop = await callTool("update_node", {
+    node_id: "F-reader-discovery",
+    patch: { status: "development" },
+  });
+  check(
+    "a non-playlist patch synthesizes no edges",
+    flowNoop.isError !== true && Array.isArray(flowNoop.body?.edges) && flowNoop.body.edges.length === 0,
+    JSON.stringify(flowNoop.body?.edges),
+  );
+
   // --- The gate ----------------------------------------------------------------
   const bundleBytes = readFileSync(bundlePath, "utf8");
   const journalBytes = readFileSync(journalPath, "utf8");
