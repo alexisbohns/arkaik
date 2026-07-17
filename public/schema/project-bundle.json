@@ -537,7 +537,7 @@
         "displays",
         "queries"
       ],
-      "description": "composes = structural hierarchy (flow↔view). calls = view/flow → api-endpoint. displays = view → data-model. queries = api-endpoint → data-model."
+      "description": "composes = structural hierarchy (flow↔view). calls = view/flow → api-endpoint, or api-endpoint → api-endpoint (endpoint fan-out to internal/external APIs). displays = view → data-model. queries = api-endpoint → data-model."
     },
     "JournalEvent": {
       "type": "object",

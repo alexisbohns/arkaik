@@ -1,0 +1,119 @@
+{
+  "schema_version": 2,
+  "project": {
+    "id": "femfolk-fanout",
+    "title": "API Endpoint Fan-out",
+    "description": "A first-party endpoint fanning out to third-party APIs via api-endpoint -> api-endpoint calls edges (issue #264).",
+    "version": "1.0.0",
+    "created_at": "2026-01-01T00:00:00.000Z",
+    "updated_at": "2026-01-05T00:00:00.000Z"
+  },
+  "nodes": [
+    {
+      "id": "V-track-preview",
+      "project_id": "femfolk-fanout",
+      "species": "view",
+      "title": "Track Preview",
+      "status": "live",
+      "platforms": ["web"]
+    },
+    {
+      "id": "API-enrich-preview",
+      "project_id": "femfolk-fanout",
+      "species": "api-endpoint",
+      "title": "Enrich Preview",
+      "description": "First-party BFF route that aggregates metadata from external music APIs.",
+      "status": "live",
+      "platforms": ["web"]
+    },
+    {
+      "id": "API-musicbrainz",
+      "project_id": "femfolk-fanout",
+      "species": "api-endpoint",
+      "title": "MusicBrainz API",
+      "description": "Third-party dependency.",
+      "status": "live",
+      "platforms": ["web"]
+    },
+    {
+      "id": "API-cover-art-archive",
+      "project_id": "femfolk-fanout",
+      "species": "api-endpoint",
+      "title": "Cover Art Archive API",
+      "description": "Third-party dependency.",
+      "status": "live",
+      "platforms": ["web"]
+    },
+    {
+      "id": "API-deezer",
+      "project_id": "femfolk-fanout",
+      "species": "api-endpoint",
+      "title": "Deezer API",
+      "description": "Third-party dependency.",
+      "status": "live",
+      "platforms": ["web"]
+    },
+    {
+      "id": "API-odesli",
+      "project_id": "femfolk-fanout",
+      "species": "api-endpoint",
+      "title": "Odesli API",
+      "description": "Third-party dependency.",
+      "status": "live",
+      "platforms": ["web"]
+    },
+    {
+      "id": "API-wikimedia-commons",
+      "project_id": "femfolk-fanout",
+      "species": "api-endpoint",
+      "title": "Wikimedia Commons API",
+      "description": "Third-party dependency.",
+      "status": "live",
+      "platforms": ["web"]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-V-track-preview-API-enrich-preview",
+      "project_id": "femfolk-fanout",
+      "source_id": "V-track-preview",
+      "target_id": "API-enrich-preview",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-API-enrich-preview-API-musicbrainz",
+      "project_id": "femfolk-fanout",
+      "source_id": "API-enrich-preview",
+      "target_id": "API-musicbrainz",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-API-enrich-preview-API-cover-art-archive",
+      "project_id": "femfolk-fanout",
+      "source_id": "API-enrich-preview",
+      "target_id": "API-cover-art-archive",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-API-enrich-preview-API-deezer",
+      "project_id": "femfolk-fanout",
+      "source_id": "API-enrich-preview",
+      "target_id": "API-deezer",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-API-enrich-preview-API-odesli",
+      "project_id": "femfolk-fanout",
+      "source_id": "API-enrich-preview",
+      "target_id": "API-odesli",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-API-enrich-preview-API-wikimedia-commons",
+      "project_id": "femfolk-fanout",
+      "source_id": "API-enrich-preview",
+      "target_id": "API-wikimedia-commons",
+      "edge_type": "calls"
+    }
+  ]
+}

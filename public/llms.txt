@@ -13,7 +13,7 @@ Arkaik is a visual product graph browser that lets product architects map their 
 - **Data Model**: A data entity or table used by the product
 - **API Endpoint**: An API endpoint consumed or exposed by the product
 - **Playlist**: The ordered list of entries (views, sub-flows, conditions, junctions) inside a flow
-- **Edge**: A relationship between nodes — composes (hierarchy), calls (view→API), displays (view→data), queries (API→data)
+- **Edge**: A relationship between nodes — composes (hierarchy), calls (view/flow→API, API→API), displays (view→data), queries (API→data)
 
 ## Documentation
 

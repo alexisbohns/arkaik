@@ -159,7 +159,7 @@ larger restructuring. Follow these rules strictly:
 - Every `source_id` and `target_id` must reference existing node IDs
 - Edge type semantics:
   - `composes`: flow -> view, flow -> flow (sub-flow), view -> flow (triggers)
-  - `calls`: view -> api-endpoint, flow -> api-endpoint
+  - `calls`: view -> api-endpoint, flow -> api-endpoint, api-endpoint -> api-endpoint (endpoint fan-out to internal/external APIs)
   - `displays`: view -> data-model
   - `queries`: api-endpoint -> data-model
 - Every view/flow referenced in a playlist MUST also have a `composes` edge

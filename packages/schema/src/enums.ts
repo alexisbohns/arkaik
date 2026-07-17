@@ -23,5 +23,5 @@ export const PlatformSchema = z.enum(PLATFORM_IDS).meta({
 export const EdgeTypeSchema = z.enum(EDGE_TYPE_IDS).meta({
   id: "EdgeType",
   description:
-    "composes = structural hierarchy (flow↔view). calls = view/flow → api-endpoint. displays = view → data-model. queries = api-endpoint → data-model.",
+    "composes = structural hierarchy (flow↔view). calls = view/flow → api-endpoint, or api-endpoint → api-endpoint (endpoint fan-out to internal/external APIs). displays = view → data-model. queries = api-endpoint → data-model.",
 });

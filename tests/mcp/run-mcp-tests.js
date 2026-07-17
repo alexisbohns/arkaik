@@ -247,6 +247,27 @@ async function main() {
   const removed = await callTool("remove_edge", { edge_id: edged.body.edge.id });
   check("remove_edge round-trips", removed.isError !== true && removed.body.events[0].type === "edge.removed");
 
+  // Issue #264: a first-party api-endpoint may `calls` another api-endpoint
+  // (a server action / BFF route fanning out to internal/external APIs). The
+  // write-gate delegates to validateBundle, which now admits this pair.
+  const fanoutApi = await callTool("create_node", {
+    species: "api-endpoint",
+    title: "Enrich preview",
+    platforms: ["web"],
+  });
+  const fanoutEdge = await callTool("add_edge", {
+    source_id: fanoutApi.body.node.id,
+    target_id: "API-get-profile",
+    edge_type: "calls",
+  });
+  check(
+    "add_edge accepts api-endpoint -> api-endpoint calls (issue #264)",
+    fanoutEdge.isError !== true && fanoutEdge.body.events[0].type === "edge.added",
+    JSON.stringify(fanoutEdge.body).slice(0, 240),
+  );
+  // Clean up so the api fan-out node/edge leave no residue for later checks.
+  await callTool("delete_node", { node_id: fanoutApi.body.node.id });
+
   const deleted = await callTool("delete_node", { node_id: created.body.node.id });
   check(
     "delete_node cascades and emits node.deleted only",
