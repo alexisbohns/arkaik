@@ -39,6 +39,34 @@ export const PlaylistEntrySchema: z.ZodType<PlaylistEntry> = z.lazy(() =>
   description: "An entry in a flow's playlist. Discriminated union on 'type'.",
 });
 
+/**
+ * Every node id a playlist references — the `view_id` of each view entry and
+ * the `flow_id` of each sub-flow entry — recursing through `condition` and
+ * `junction` branches. Order follows the entries; duplicates (a reused node)
+ * are preserved. Pure and shape-only: it never touches the graph, so both the
+ * validator's coherence check and the MCP's composes-edge synthesis
+ * (docs/spec/mcp.md § Write Path) can share it.
+ */
+export function collectPlaylistNodeRefs(entries: PlaylistEntry[]): string[] {
+  const refs: string[] = [];
+  for (const entry of entries) {
+    if (!entry) continue;
+    if (entry.type === "view") {
+      refs.push(entry.view_id);
+    } else if (entry.type === "flow") {
+      refs.push(entry.flow_id);
+    } else if (entry.type === "condition") {
+      refs.push(...collectPlaylistNodeRefs(entry.if_true ?? []));
+      refs.push(...collectPlaylistNodeRefs(entry.if_false ?? []));
+    } else if (entry.type === "junction") {
+      for (const branch of entry.cases ?? []) {
+        refs.push(...collectPlaylistNodeRefs(branch.entries ?? []));
+      }
+    }
+  }
+  return refs;
+}
+
 export interface FlowPlaylist {
   entries: PlaylistEntry[];
 }

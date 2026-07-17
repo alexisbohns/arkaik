@@ -10,6 +10,7 @@ import {
   PLATFORM_IDS,
   SPECIES_IDS,
   STATUS_IDS,
+  collectPlaylistNodeRefs,
   computeBacklog,
   computeChangelog,
   computeMapSubgraph,
@@ -94,6 +95,41 @@ function unwrap(result: WriteResult): { warnings: unknown[]; events: JournalEven
 }
 
 const UPDATABLE_NODE_FIELDS = new Set(["title", "description", "status", "platforms", "metadata"]);
+
+/**
+ * The `composes` edges a flow's playlist requires but that don't exist yet
+ * (docs/spec/mcp.md § Write Path — Playlist composition). Without this, a flow
+ * cannot be created with a populated playlist in a single validated mutation
+ * (issue #263): `validateBundle`'s `playlist-composes-coherence` rule demands a
+ * `composes` edge for every referenced view/sub-flow, but `add_edge` cannot
+ * create those until the flow node exists — a deadlock no call ordering
+ * escapes. `create_node`/`update_node` synthesize the missing edges (flow → each
+ * referenced view/sub-flow) and fold them into the same gated write, mirroring
+ * what the app's playlist editor already does (JourneyMap.tsx). Edges that
+ * already exist are left untouched; a duplicate reference yields one edge.
+ */
+function synthesizeComposesEdges(flow: Node, existingEdges: Edge[], projectId: string): Edge[] {
+  if (flow.species !== "flow") return [];
+  const entries = flow.metadata?.playlist?.entries;
+  if (!Array.isArray(entries) || entries.length === 0) return [];
+
+  const existingIds = new Set(existingEdges.map((edge) => edge.id));
+  const seen = new Set<string>();
+  const synthesized: Edge[] = [];
+  for (const refId of collectPlaylistNodeRefs(entries)) {
+    const id = edgeId(flow.id, refId);
+    if (existingIds.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    synthesized.push({
+      id,
+      project_id: projectId,
+      source_id: flow.id,
+      target_id: refId,
+      edge_type: "composes",
+    });
+  }
+  return synthesized;
+}
 
 /** Release list for `get_changelog` with no version: newest first by each version's latest marker. */
 function listReleases(journal: JournalEvent[], nodesById: Map<string, Node>) {
@@ -310,7 +346,7 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
     {
       name: "create_node",
       description:
-        "Create a node. The id derives from species + title; the mutation is refused (nothing written) if the result fails validation.",
+        "Create a node. The id derives from species + title; the mutation is refused (nothing written) if the result fails validation. For a flow, pass its populated metadata.playlist here — the matching composes edges to every referenced view/sub-flow are synthesized in the same mutation, so a full flow lands in one call.",
       inputSchema: {
         type: "object",
         properties: {
@@ -344,11 +380,20 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
           : {}),
       };
 
-      const result = persistMutation(ctx.bundlePath, graph.loaded, { nodes: [...graph.nodes, node] }, [
+      // A flow's playlist requires composes edges the validator would otherwise
+      // reject as missing (issue #263) — synthesize them into the same write.
+      const synthesizedEdges = synthesizeComposesEdges(node, graph.edges, graph.project.id);
+      const next =
+        synthesizedEdges.length > 0
+          ? { nodes: [...graph.nodes, node], edges: [...graph.edges, ...synthesizedEdges] }
+          : { nodes: [...graph.nodes, node] };
+
+      const result = persistMutation(ctx.bundlePath, graph.loaded, next, [
         nodeCreatedInput(node),
+        ...synthesizedEdges.map(edgeAddedInput),
       ]);
       const { warnings, events } = unwrap(result);
-      return { node, events, warnings };
+      return { node, edges: synthesizedEdges, events, warnings };
     },
   );
 
@@ -356,7 +401,7 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
     {
       name: "update_node",
       description:
-        "Patch a node's title, description, status, platforms, or metadata. Journal events derive from the diff; refused if validation fails.",
+        "Patch a node's title, description, status, platforms, or metadata. Journal events derive from the diff; refused if validation fails. When a flow's metadata.playlist gains a view/sub-flow, the matching composes edge is synthesized in the same mutation.",
       inputSchema: {
         type: "object",
         properties: {
@@ -398,9 +443,18 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
 
       const updated: Node = { ...current, ...patch };
       const nextNodes = graph.nodes.map((candidate) => (candidate.id === nodeId ? updated : candidate));
-      const result = persistMutation(ctx.bundlePath, graph.loaded, { nodes: nextNodes }, inputs);
+      // Same composes-edge synthesis as create_node (issue #263): a playlist that
+      // now references a view/sub-flow gets its composes edge in this write.
+      const synthesizedEdges = synthesizeComposesEdges(updated, graph.edges, graph.project.id);
+      const next =
+        synthesizedEdges.length > 0 ? { nodes: nextNodes, edges: [...graph.edges, ...synthesizedEdges] } : { nodes: nextNodes };
+
+      const result = persistMutation(ctx.bundlePath, graph.loaded, next, [
+        ...inputs,
+        ...synthesizedEdges.map(edgeAddedInput),
+      ]);
       const { warnings, events } = unwrap(result);
-      return { node: updated, events, warnings };
+      return { node: updated, edges: synthesizedEdges, events, warnings };
     },
   );
 

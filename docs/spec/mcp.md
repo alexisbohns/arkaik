@@ -43,8 +43,8 @@ All tool results are JSON text content. Read tools are projections; write tools 
 |---|---|---|---|
 | `list_nodes` | `species?`, `status?`, `platform?`, `query?`, `limit?` | node summaries `{id, title, species, status, platforms}` | — |
 | `get_node` | `node_id` | full node + edges with neighbor titles + where-used flows + `computeNodeTimeline` | — |
-| `create_node` | `species`, `title`, `description?`, `status?`, `platforms`, `metadata?` | created node (id via `deriveNodeId`) | `node.created` |
-| `update_node` | `node_id`, `patch` | updated node | via `diffNodeUpdate`: `node.updated` / `node.status_changed` (± `platform`) / `ref.added` / `ref.removed` |
+| `create_node` | `species`, `title`, `description?`, `status?`, `platforms`, `metadata?` | created node (id via `deriveNodeId`) + any synthesized `composes` edges | `node.created` (+ one `edge.added` per synthesized composes edge — see Playlist Composition) |
+| `update_node` | `node_id`, `patch` | updated node + any synthesized `composes` edges | via `diffNodeUpdate`: `node.updated` / `node.status_changed` (± `platform`) / `ref.added` / `ref.removed` (+ `edge.added` per synthesized composes edge) |
 | `delete_node` | `node_id` | removed node + cascaded edge ids | `node.deleted` (edge cascade implied per [journal.md](journal.md)) |
 | `add_edge` | `source_id`, `target_id`, `edge_type` | created edge (id via `edgeId`) | `edge.added` |
 | `remove_edge` | `edge_id` | ack | `edge.removed` |
@@ -68,6 +68,12 @@ Every mutating tool MUST follow, in order:
 4. Persist: append each event to the journal sidecar (JSONL, one line per event, `actor: "arkaik-mcp"`), then rewrite the snapshot with `serializeBundle` (canonical form — clean git diffs).
 
 This is the skill's dual-write doctrine ([journal.md](journal.md) § Authority) enforced structurally: an MCP mutation is *incapable* of the snapshot-without-history drift that free-form file edits invite.
+
+### Playlist Composition (composes-edge synthesis)
+
+A flow's playlist and its `composes` edges are two views of one relationship: the validator's `playlist-composes-coherence` rule requires a `composes` edge from a flow to every view/sub-flow its playlist references. Under the gate above this created a deadlock — a flow created with a populated playlist fails coherence because the edges don't exist yet, but `add_edge` cannot create them until the flow node exists, so no single call could produce a populated flow (issue #263).
+
+`create_node` and `update_node` therefore **synthesize** the required edges: when the mutated node is a flow, they add a `composes` edge (flow → referenced node) for every playlist reference (recursing through `condition`/`junction` branches) that lacks one, fold those edges and their `edge.added` events into the *same* validated write, and return them in the tool result under `edges`. Edges that already exist are never duplicated; a reference to a missing node still fails the gate (nothing is written). This mirrors the app's own playlist editor, which adds the edge and the entry together. A populated flow is thus a single `create_node` call.
 
 ## Reuse Seams (two enabling moves)
 
