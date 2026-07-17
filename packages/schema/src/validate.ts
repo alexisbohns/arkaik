@@ -81,6 +81,7 @@ const VALID_EDGE_SEMANTICS: Record<EdgeTypeId, ReadonlyArray<[SpeciesId, Species
   calls: [
     ["view", "api-endpoint"],
     ["flow", "api-endpoint"],
+    ["api-endpoint", "api-endpoint"],
   ],
   displays: [["view", "data-model"]],
   queries: [["api-endpoint", "data-model"]],

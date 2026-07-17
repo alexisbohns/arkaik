@@ -25,6 +25,7 @@ const FIXTURES = [
   "public/schema/example-bundle.json",
   "tests/fixtures/valid-bundle.json",
   "tests/fixtures/valid-level2.json",
+  "tests/fixtures/api-endpoint-fanout.json",
   "tests/fixtures/duplicate-node-id.json",
   "tests/fixtures/dangling-edge.json",
   "tests/fixtures/invalid-view-card-variant.json",

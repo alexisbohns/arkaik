@@ -134,7 +134,7 @@ Source:
 | Edge Type | Use |
 |---|---|
 | `composes` | Composition hierarchy and ordered flow sequences |
-| `calls` | View to API relationship |
+| `calls` | View/flow to API relationship, or API endpoint to API endpoint (first-party endpoint fanning out to internal/external APIs) |
 | `displays` | View to data-model relationship |
 | `queries` | API to data-model relationship |
 
@@ -146,6 +146,10 @@ Rendering mapping source: [lib/utils/journey-graph.ts](../lib/utils/journey-grap
 
 - API -> View: inbound/read affordance (`cloud-download` icon)
 - View -> API: outbound/write affordance (`cloud-upload` icon)
+
+`calls` edges between two API endpoints (a first-party endpoint fanning out to
+internal/external APIs) have no view endpoint to project onto, so they surface only
+on the System map (`/project/[id]/maps/system`), drawn between the two endpoint cards.
 
 Source: [components/maps/JourneyMap.tsx](../components/maps/JourneyMap.tsx), [lib/utils/journey-graph.ts](../lib/utils/journey-graph.ts), [components/graph/nodes/ViewNode.tsx](../components/graph/nodes/ViewNode.tsx)
 

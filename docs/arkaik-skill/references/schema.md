@@ -277,6 +277,7 @@ exist in the bundle's `nodes` array.
 | `composes` | view → view | View contains or navigates to this view |
 | `calls` | view → api-endpoint | View calls this API |
 | `calls` | flow → api-endpoint | Flow calls this API |
+| `calls` | api-endpoint → api-endpoint | Endpoint calls another (internal or third-party) API — e.g. a server action / BFF route fanning out to external APIs |
 | `displays` | view → data-model | View displays data from this model |
 | `queries` | api-endpoint → data-model | API reads or writes this model |
 
