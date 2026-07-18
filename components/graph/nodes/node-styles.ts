@@ -11,6 +11,7 @@ import {
   Network,
   Database,
   Plug,
+  ClipboardCheck,
   Lightbulb, CircleDashed, CircleDotDashed, CirclePlay, CircleFadingArrowUp,
   CircleCheckBig, CircleSlash, CircleX,
   Figma, Github, Gitlab, Ticket, GitPullRequest, GitMerge, ExternalLink, Link2,
@@ -60,6 +61,7 @@ export const SPECIES_ICONS: Record<SpeciesId, LucideIcon> = {
   view: MonitorSmartphone,
   "data-model": Database,
   "api-endpoint": Plug,
+  acceptance: ClipboardCheck,
 };
 
 export const PLATFORM_DOT_STYLES: Record<PlatformId, string> = {

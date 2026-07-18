@@ -8,6 +8,7 @@ export const SPECIES_TO_NODE_TYPE: Record<SpeciesId, string> = {
   view: "view",
   "data-model": "dataModel",
   "api-endpoint": "apiEndpoint",
+  acceptance: "acceptance",
 };
 
 /** Domain edge type → React Flow edge type registered in Canvas.tsx. */
@@ -16,6 +17,7 @@ export const EDGE_TYPE_TO_FLOW_TYPE: Record<EdgeTypeId, string> = {
   calls: "calls",
   displays: "displays",
   queries: "queries",
+  covers: "covers",
 };
 
 /**

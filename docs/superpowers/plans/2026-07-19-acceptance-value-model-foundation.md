@@ -1094,6 +1094,8 @@ git commit -m "feat(mcp): acceptance-aware list_nodes filters, enriched summarie
 
 No new test file — these are `as const satisfies` config arrays whose shape TypeScript enforces against the schema types (a missing/typo'd id fails `next build`/`eslint`). Surfaces (next plan) consumes them.
 
+Note: the app's hand-written `Record<SpeciesId, …>` / `Record<EdgeTypeId, …>` exhaustive-map sites (`app/project/[id]/library/page.tsx`, `components/graph/nodes/node-styles.ts`, `components/overview/InventoryCard.tsx`, `lib/utils/graph-build.ts`, `app/project/[id]/delivery/page.tsx`) were already forward-fixed with `acceptance`/`covers` entries in Task 1's follow-up commit (`fix(app): exhaustive species/edge records for acceptance + covers`), so Task 8's `npm run build` expectation below already holds going in.
+
 - [ ] **Step 1: Create `lib/config/values.ts`**
 
 ```ts
@@ -1171,6 +1173,8 @@ Verify each `icon` is a real `lucide-react` export: `node -e "const l=require('l
 
 Run: `npm run lint && npm run build`
 Expected: clean. The generic Library/sidebar will now list acceptances with default rendering — acceptable until the Surfaces plan lands (Journey/System maps exclude them by their species-filter defaults).
+
+Also run `grep -rn "Record<SpeciesId" app components lib` to confirm no site was missed.
 
 - [ ] **Step 4: Commit**
 
