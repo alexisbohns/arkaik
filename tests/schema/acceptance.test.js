@@ -89,6 +89,67 @@ const badValue = JSON.parse(JSON.stringify(acc));
 badValue.metadata.values = ["synergy"];
 check("parseBundle rejects unknown value ids", !parseBundle(makeBundle([badValue, view], [covers])).success);
 
+// --- Task 3: validator rules -------------------------------------------------
+const { validateBundle } = schema;
+const rules = (result) => result.findings.map((f) => `${f.severity}:${f.rule}`);
+
+const okResult = validateBundle(makeBundle([acc, view], [covers]));
+check("valid acceptance bundle has no findings", okResult.valid && okResult.findings.length === 0, JSON.stringify(rules(okResult)));
+
+const flowNode = {
+  id: "F-record", project_id: "p", species: "flow", title: "Record",
+  status: "live", platforms: ["web"],
+  metadata: { playlist: { entries: [{ type: "view", view_id: "V-pebble-detail" }] } },
+};
+const composesEdge = {
+  id: "e-F-record-V-pebble-detail", project_id: "p",
+  source_id: "F-record", target_id: "V-pebble-detail", edge_type: "composes",
+};
+const coversFlow = {
+  id: "e-AC-pebble-draw-in-animation-F-record", project_id: "p",
+  source_id: "AC-pebble-draw-in-animation", target_id: "F-record", edge_type: "covers",
+};
+const flowOk = validateBundle(makeBundle([acc, view, flowNode], [covers, composesEdge, coversFlow]));
+check("covers acceptance→flow is admitted", flowOk.valid, JSON.stringify(flowOk.errors));
+
+const badCovers = validateBundle(makeBundle([acc, view], [
+  { id: "e-V-pebble-detail-AC-pebble-draw-in-animation", project_id: "p",
+    source_id: "V-pebble-detail", target_id: "AC-pebble-draw-in-animation", edge_type: "covers" },
+]));
+check("covers view→acceptance is rejected", rules(badCovers).includes("error:edge-semantics"), JSON.stringify(rules(badCovers)));
+
+const badVal = JSON.parse(JSON.stringify(acc));
+badVal.metadata.values = ["synergy"];
+check("unknown value element is an error",
+  rules(validateBundle(makeBundle([badVal, view], [covers]))).includes("error:valid-value"));
+
+const draft = { id: "AC-draft", project_id: "p", species: "acceptance", title: "Draft", status: "idea", platforms: ["web"] };
+const draftResult = validateBundle(makeBundle([draft]));
+check("title-only acceptance draft: two warnings, still valid",
+  draftResult.valid &&
+  rules(draftResult).includes("warning:acceptance-gherkin-missing") &&
+  rules(draftResult).includes("warning:acceptance-values-missing"),
+  JSON.stringify(rules(draftResult)));
+
+const viewWithGherkin = JSON.parse(JSON.stringify(view));
+viewWithGherkin.metadata = { gherkin: "When…", values: ["informs"] };
+const misplaced = validateBundle(makeBundle([viewWithGherkin]));
+check("gherkin/values on a view are warnings",
+  misplaced.valid &&
+  rules(misplaced).includes("warning:gherkin-species") &&
+  rules(misplaced).includes("warning:values-species"),
+  JSON.stringify(rules(misplaced)));
+
+const accBadSubset = JSON.parse(JSON.stringify(acc));
+accBadSubset.platforms = ["ios"];
+accBadSubset.metadata.platformStatuses = { web: "live", ios: "live" };
+check("platformStatuses outside platforms stays a warning on acceptances (spec deviation note)",
+  rules(validateBundle(makeBundle([accBadSubset, view], [covers]))).includes("warning:platform-statuses-subset"));
+
+const uncovered = validateBundle(makeBundle([draft]));
+check("acceptance with zero covers edges is NOT an orphan finding",
+  !rules(uncovered).some((r) => r.includes("orphan")));
+
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 if (failures > 0) {
   console.log(`\n${failures} acceptance test(s) failed.`);

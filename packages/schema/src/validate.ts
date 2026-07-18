@@ -3,8 +3,10 @@ import {
   PLATFORM_IDS,
   SPECIES_IDS,
   STATUS_IDS,
+  VALUE_IDS,
   type EdgeTypeId,
   type SpeciesId,
+  type ValueId,
 } from "./ids";
 import { SPECIES_PREFIXES } from "./id-gen";
 import type { PlaylistEntry } from "./playlist";
@@ -292,6 +294,42 @@ export function validateBundle(input: unknown): ValidationResult {
               `Node ${nodeId}: platformScreenshots.${p} is a ${(bytes / (1024 * 1024)).toFixed(1)}MB data URI, above the ${MAX_SCREENSHOT_DATA_URI_BYTES / (1024 * 1024)}MB guidance (docs/spec/bundle-format.md § Asset Values) — consider a relative path or hosted URL instead`,
             );
           }
+        }
+      }
+    }
+
+    // Acceptance fields (spec §3.1/§4). gherkin/values are the acceptance's
+    // How/Why; on any other species they are almost certainly a mistake.
+    // Missing on an acceptance is a warning — title-only drafts are legal.
+    const gherkin = md.gherkin;
+    const values = md.values;
+    if (species === "acceptance") {
+      if (typeof gherkin !== "string" || !gherkin.trim()) {
+        warn(
+          `${base}.metadata.gherkin`,
+          "acceptance-gherkin-missing",
+          `Acceptance ${nodeId}: metadata.gherkin is missing or empty (one Given/When/Then scenario expected)`,
+        );
+      }
+      if (!Array.isArray(values) || values.length === 0) {
+        warn(
+          `${base}.metadata.values`,
+          "acceptance-values-missing",
+          `Acceptance ${nodeId}: metadata.values is missing or empty (assign 1-3 value elements)`,
+        );
+      }
+    } else {
+      if (gherkin !== undefined) {
+        warn(`${base}.metadata.gherkin`, "gherkin-species", `Node ${nodeId}: metadata.gherkin is only meaningful on acceptance nodes`);
+      }
+      if (values !== undefined) {
+        warn(`${base}.metadata.values`, "values-species", `Node ${nodeId}: metadata.values is only meaningful on acceptance nodes`);
+      }
+    }
+    if (Array.isArray(values)) {
+      for (const v of values) {
+        if (!VALUE_IDS.includes(v as ValueId)) {
+          error(`${base}.metadata.values`, "valid-value", `Node ${nodeId}: invalid value element "${v}"`);
         }
       }
     }
