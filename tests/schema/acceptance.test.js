@@ -202,6 +202,38 @@ check("multi-anchor acceptance appears under each anchor independently",
   acceptancesCovering("F-record", multiAnchorNodes, multiAnchorEdges).length === 1 &&
   computeAnchorRollup("V-pebble-detail", multiAnchorNodes, multiAnchorEdges).ios.live === 1);
 
+// --- Task 6: backdated journal + event diffing -------------------------------
+const { orderEvents, computeNodeTimeline, diffNodeUpdate } = schema;
+
+// Retro-population appends events NOW with historical ts (spec §5): file order
+// is newest-first here; projections must still read chronologically.
+const backdated = [
+  { id: "01K0ZZZZZZZZZZZZZZZZZZZZZZ", ts: "2026-07-19T00:00:00.000Z", type: "node.status_changed", node_id: "AC-x", from: "development", to: "live", platform: "ios" },
+  { id: "01K0AAAAAAAAAAAAAAAAAAAAAA", ts: "2025-11-02T00:00:00.000Z", type: "node.created", node_id: "AC-x", species: "acceptance", title: "X", actor: "backfill-agent" },
+  { id: "01K0BBBBBBBBBBBBBBBBBBBBBB", ts: "2026-02-14T00:00:00.000Z", type: "node.status_changed", node_id: "AC-x", from: "backlog", to: "development", platform: "ios", actor: "backfill-agent" },
+];
+const ordered = orderEvents(backdated);
+check("orderEvents sorts backdated appends by ts",
+  ordered[0].ts.startsWith("2025-11") && ordered[1].ts.startsWith("2026-02") && ordered[2].ts.startsWith("2026-07"),
+  ordered.map((e) => e.ts).join(", "));
+const timeline = computeNodeTimeline(backdated, "AC-x");
+check("computeNodeTimeline reads backdated events chronologically",
+  timeline[0]?.type === "node.created" && timeline.length === 3,
+  JSON.stringify(timeline).slice(0, 200));
+
+// diffNodeUpdate emits node.status_changed + platform for an acceptance's
+// platformStatuses delta — same mechanism views use (derive.ts:125).
+const patchInputs = diffNodeUpdate(acc, {
+  metadata: { ...acc.metadata, platformStatuses: { ...acc.metadata.platformStatuses, android: "live" } },
+});
+const platformEvents = patchInputs.filter((input) => input.type === "node.status_changed");
+check("diffNodeUpdate emits per-platform status_changed for acceptances",
+  platformEvents.length === 1 &&
+  platformEvents[0].payload.platform === "android" &&
+  platformEvents[0].payload.from === "development" &&
+  platformEvents[0].payload.to === "live",
+  JSON.stringify(patchInputs));
+
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 if (failures > 0) {
   console.log(`\n${failures} acceptance test(s) failed.`);
