@@ -48,6 +48,47 @@ check(
 
 // (later tasks append their sections here)
 
+// --- Task 2: NodeMetadata fields --------------------------------------------
+const { parseBundle } = schema;
+const NOW = "2026-07-19T00:00:00.000Z";
+function makeBundle(nodes, edges = [], extra = {}) {
+  return {
+    schema_version: 2,
+    project: { id: "p", title: "P", created_at: NOW, updated_at: NOW },
+    nodes,
+    edges,
+    ...extra,
+  };
+}
+const acc = {
+  id: "AC-pebble-draw-in-animation",
+  project_id: "p",
+  species: "acceptance",
+  title: "Pebble draw-in animation",
+  status: "backlog",
+  platforms: ["web", "ios", "android"],
+  metadata: {
+    gherkin: "When I'm on the Pebble Detail, Then I see the Pebble appearing in a drawing animation.",
+    values: ["fun-entertainment", "design-aesthetics"],
+    platformStatuses: { ios: "live", android: "development" },
+  },
+};
+const view = {
+  id: "V-pebble-detail", project_id: "p", species: "view", title: "Pebble Detail",
+  status: "live", platforms: ["web", "ios", "android"],
+};
+const covers = {
+  id: "e-AC-pebble-draw-in-animation-V-pebble-detail", project_id: "p",
+  source_id: "AC-pebble-draw-in-animation", target_id: "V-pebble-detail", edge_type: "covers",
+};
+
+const parsed = parseBundle(makeBundle([acc, view], [covers]));
+check("parseBundle accepts gherkin/values/covers", parsed.success, JSON.stringify(parsed.success ? "" : parsed.error.issues[0]));
+
+const badValue = JSON.parse(JSON.stringify(acc));
+badValue.metadata.values = ["synergy"];
+check("parseBundle rejects unknown value ids", !parseBundle(makeBundle([badValue, view], [covers])).success);
+
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 if (failures > 0) {
   console.log(`\n${failures} acceptance test(s) failed.`);

@@ -283,6 +283,17 @@
           "items": {
             "$ref": "#/$defs/Ref"
           }
+        },
+        "gherkin": {
+          "description": "Acceptance nodes only: exactly one Given/When/Then scenario (the How). A second scenario is a second acceptance node.",
+          "type": "string"
+        },
+        "values": {
+          "description": "Acceptance nodes only: 1..n Bain value elements served (the Why).",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Value"
+          }
         }
       },
       "additionalProperties": {},
@@ -489,6 +500,42 @@
       ],
       "additionalProperties": false,
       "description": "A typed external reference on a node (docs/spec/bundle-format.md § References)."
+    },
+    "Value": {
+      "type": "string",
+      "enum": [
+        "saves-time",
+        "simplifies",
+        "makes-money",
+        "reduces-risk",
+        "organizes",
+        "integrates",
+        "connects",
+        "reduces-effort",
+        "avoids-hassles",
+        "reduces-cost",
+        "quality",
+        "variety",
+        "sensory-appeal",
+        "informs",
+        "reduces-anxiety",
+        "rewards-me",
+        "nostalgia",
+        "design-aesthetics",
+        "badge-value",
+        "wellness",
+        "therapeutic-value",
+        "fun-entertainment",
+        "attractiveness",
+        "provides-access",
+        "provides-hope",
+        "self-actualization",
+        "motivation",
+        "heirloom",
+        "affiliation-belonging",
+        "self-transcendence"
+      ],
+      "description": "A Bain B2C Elements-of-Value element served by an acceptance (spec §3.2)."
     },
     "Edge": {
       "type": "object",

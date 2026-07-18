@@ -77,6 +77,10 @@ interface NodeMetadata extends Record<string, unknown> {
   platformStatuses?: PlatformStatusMap;
   platformScreenshots?: PlatformScreenshotsMap;
   refs?: Ref[];
+  /** Acceptance nodes: one Given/When/Then scenario — the How (spec §3.1). */
+  gherkin?: string;
+  /** Acceptance nodes: value elements served — the Why (spec §3.2). */
+  values?: ValueId[];
 }
 
 interface Node {
