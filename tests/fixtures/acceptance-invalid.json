@@ -1,0 +1,45 @@
+{
+  "schema_version": 2,
+  "project": {
+    "id": "fixture",
+    "title": "Acceptance Invalid Fixture",
+    "created_at": "2026-07-19T00:00:00.000Z",
+    "updated_at": "2026-07-19T00:00:00.000Z"
+  },
+  "nodes": [
+    {
+      "id": "V-home",
+      "project_id": "fixture",
+      "species": "view",
+      "title": "Home",
+      "status": "live",
+      "platforms": ["web"]
+    },
+    {
+      "id": "AC-bad-value",
+      "project_id": "fixture",
+      "species": "acceptance",
+      "title": "Bad value",
+      "status": "idea",
+      "platforms": ["web"],
+      "metadata": { "gherkin": "When…, Then….", "values": ["synergy"] }
+    },
+    {
+      "id": "AC-draft",
+      "project_id": "fixture",
+      "species": "acceptance",
+      "title": "Draft",
+      "status": "idea",
+      "platforms": ["web"]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-V-home-AC-draft",
+      "project_id": "fixture",
+      "source_id": "V-home",
+      "target_id": "AC-draft",
+      "edge_type": "covers"
+    }
+  ]
+}

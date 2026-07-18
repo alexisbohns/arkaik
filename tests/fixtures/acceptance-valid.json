@@ -1,0 +1,41 @@
+{
+  "schema_version": 2,
+  "project": {
+    "id": "fixture",
+    "title": "Acceptance Fixture",
+    "created_at": "2026-07-19T00:00:00.000Z",
+    "updated_at": "2026-07-19T00:00:00.000Z"
+  },
+  "nodes": [
+    {
+      "id": "V-pebble-detail",
+      "project_id": "fixture",
+      "species": "view",
+      "title": "Pebble Detail",
+      "status": "live",
+      "platforms": ["web", "ios", "android"]
+    },
+    {
+      "id": "AC-pebble-draw-in-animation",
+      "project_id": "fixture",
+      "species": "acceptance",
+      "title": "Pebble draw-in animation",
+      "status": "backlog",
+      "platforms": ["web", "ios", "android"],
+      "metadata": {
+        "gherkin": "When I'm on the Pebble Detail, Then I see the Pebble appearing in a drawing animation.",
+        "values": ["fun-entertainment", "design-aesthetics"],
+        "platformStatuses": { "ios": "live", "android": "development" }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-AC-pebble-draw-in-animation-V-pebble-detail",
+      "project_id": "fixture",
+      "source_id": "AC-pebble-draw-in-animation",
+      "target_id": "V-pebble-detail",
+      "edge_type": "covers"
+    }
+  ]
+}
