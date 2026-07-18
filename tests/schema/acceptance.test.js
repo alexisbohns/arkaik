@@ -189,6 +189,19 @@ check("computeAnchorRollup counts resolved statuses per platform",
 check("computeAnchorRollup is null when nothing covers (fallback signal)",
   computeAnchorRollup("V-orphan", [acc, view, orphanView], [covers]) === null);
 
+const multiAnchorNodes = [acc, view, flowNode];
+const multiAnchorEdges = [covers, composesEdge, coversFlow];
+check("acceptancesCovering works for flow anchors",
+  acceptancesCovering("F-record", multiAnchorNodes, multiAnchorEdges).map((n) => n.id).join() === "AC-pebble-draw-in-animation");
+const flowRollup = computeAnchorRollup("F-record", multiAnchorNodes, multiAnchorEdges);
+check("computeAnchorRollup works for flow anchors",
+  flowRollup !== null && flowRollup.ios.live === 1 && flowRollup.web.backlog === 1,
+  JSON.stringify(flowRollup));
+check("multi-anchor acceptance appears under each anchor independently",
+  acceptancesCovering("V-pebble-detail", multiAnchorNodes, multiAnchorEdges).length === 1 &&
+  acceptancesCovering("F-record", multiAnchorNodes, multiAnchorEdges).length === 1 &&
+  computeAnchorRollup("V-pebble-detail", multiAnchorNodes, multiAnchorEdges).ios.live === 1);
+
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 if (failures > 0) {
   console.log(`\n${failures} acceptance test(s) failed.`);
