@@ -150,6 +150,45 @@ const uncovered = validateBundle(makeBundle([draft]));
 check("acceptance with zero covers edges is NOT an orphan finding",
   !rules(uncovered).some((r) => r.includes("orphan")));
 
+// --- Task 5: projections -----------------------------------------------------
+const {
+  resolvePlatformStatus, hasParityGap, computeParityGaps,
+  acceptancesCovering, computeUncoveredViews, computeAnchorRollup,
+} = schema;
+
+check("resolvePlatformStatus: override wins", resolvePlatformStatus(acc, "ios") === "live");
+check("resolvePlatformStatus: base fallback", resolvePlatformStatus(acc, "web") === "backlog");
+check("resolvePlatformStatus: non-applicable platform is undefined",
+  resolvePlatformStatus({ ...acc, platforms: ["ios"] }, "web") === undefined);
+
+check("hasParityGap: live on ios, not on web/android", hasParityGap(acc) === true);
+const allLive = { ...acc, status: "live", metadata: { ...acc.metadata, platformStatuses: {} } };
+check("hasParityGap: uniformly live is no gap", hasParityGap(allLive) === false);
+const noneLive = { ...acc, metadata: { ...acc.metadata, platformStatuses: { ios: "development", android: "development" } } };
+check("hasParityGap: nothing delivered is no gap", hasParityGap(noneLive) === false);
+check("hasParityGap: archived acceptances are excluded", hasParityGap({ ...acc, status: "archived" }) === false);
+check("hasParityGap: threshold parameter", hasParityGap(noneLive, ["live", "development"]) === true);
+
+const gaps = computeParityGaps([acc, view, allLive]);
+check("computeParityGaps returns only gapped acceptances",
+  gaps.length === 1 && gaps[0].node_id === "AC-pebble-draw-in-animation" &&
+  gaps[0].delivered.includes("ios") && gaps[0].missing.web === "backlog" && gaps[0].missing.android === "development",
+  JSON.stringify(gaps));
+
+check("acceptancesCovering finds the acceptance",
+  acceptancesCovering("V-pebble-detail", [acc, view], [covers]).map((n) => n.id).join() === "AC-pebble-draw-in-animation");
+
+const orphanView = { id: "V-orphan", project_id: "p", species: "view", title: "Orphan", status: "idea", platforms: ["web"] };
+check("computeUncoveredViews lists views without covers",
+  computeUncoveredViews([acc, view, orphanView], [covers]).map((n) => n.id).join() === "V-orphan");
+
+const rollup = computeAnchorRollup("V-pebble-detail", [acc, view], [covers]);
+check("computeAnchorRollup counts resolved statuses per platform",
+  rollup !== null && rollup.ios.live === 1 && rollup.android.development === 1 && rollup.web.backlog === 1,
+  JSON.stringify(rollup));
+check("computeAnchorRollup is null when nothing covers (fallback signal)",
+  computeAnchorRollup("V-orphan", [acc, view, orphanView], [covers]) === null);
+
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 if (failures > 0) {
   console.log(`\n${failures} acceptance test(s) failed.`);
