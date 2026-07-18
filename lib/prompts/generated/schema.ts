@@ -2,25 +2,26 @@
 // Built from packages/schema/src via `npm run generate`
 // (docs/spec/toolchain.md § @arkaik/schema).
 
-export const SPECIES_IDS = ["flow", "view", "data-model", "api-endpoint"] as const;
+export const SPECIES_IDS = ["flow", "view", "data-model", "api-endpoint", "acceptance"] as const;
 export const STATUS_IDS = ["idea", "backlog", "prioritized", "development", "releasing", "live", "archived", "blocked"] as const;
 export const PLATFORM_IDS = ["web", "ios", "android"] as const;
-export const EDGE_TYPE_IDS = ["composes", "calls", "displays", "queries"] as const;
+export const EDGE_TYPE_IDS = ["composes", "calls", "displays", "queries", "covers"] as const;
 
 export const SPECIES_PREFIXES: Record<(typeof SPECIES_IDS)[number], string> = {
   "flow": "F-",
   "view": "V-",
   "data-model": "DM-",
   "api-endpoint": "API-",
+  "acceptance": "AC-",
 };
 
 export const SCHEMA_BLOCK = `## TypeScript Types (ProjectBundle Schema)
 
 \`\`\`typescript
-type SpeciesId = "flow" | "view" | "data-model" | "api-endpoint";
+type SpeciesId = "flow" | "view" | "data-model" | "api-endpoint" | "acceptance";
 type StatusId = "idea" | "backlog" | "prioritized" | "development" | "releasing" | "live" | "archived" | "blocked";
 type PlatformId = "web" | "ios" | "android";
-type EdgeTypeId = "composes" | "calls" | "displays" | "queries";
+type EdgeTypeId = "composes" | "calls" | "displays" | "queries" | "covers";
 
 type PlaylistEntry =
   | { type: "view"; view_id: string }

@@ -85,6 +85,10 @@ const VALID_EDGE_SEMANTICS: Record<EdgeTypeId, ReadonlyArray<[SpeciesId, Species
   ],
   displays: [["view", "data-model"]],
   queries: [["api-endpoint", "data-model"]],
+  covers: [
+    ["acceptance", "view"],
+    ["acceptance", "flow"],
+  ],
 };
 
 function isIsoDate(value: unknown): boolean {

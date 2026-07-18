@@ -18,10 +18,10 @@ block below — run `npm run generate`.
 
 <!-- GENERATED:SCHEMA:START -->
 ```typescript
-type SpeciesId = "flow" | "view" | "data-model" | "api-endpoint";
+type SpeciesId = "flow" | "view" | "data-model" | "api-endpoint" | "acceptance";
 type StatusId = "idea" | "backlog" | "prioritized" | "development" | "releasing" | "live" | "archived" | "blocked";
 type PlatformId = "web" | "ios" | "android";
-type EdgeTypeId = "composes" | "calls" | "displays" | "queries";
+type EdgeTypeId = "composes" | "calls" | "displays" | "queries" | "covers";
 
 type PlaylistEntry =
   | { type: "view"; view_id: string }

@@ -22,6 +22,7 @@ export const SPECIES_PREFIXES: Record<SpeciesId, string> = {
   view: "V-",
   "data-model": "DM-",
   "api-endpoint": "API-",
+  acceptance: "AC-",
 };
 
 /**
