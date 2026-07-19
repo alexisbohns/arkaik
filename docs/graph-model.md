@@ -43,6 +43,10 @@ Library source:
 - [components/library/NodeCard.tsx](../components/library/NodeCard.tsx)
 - [components/library/NodeTable.tsx](../components/library/NodeTable.tsx)
 
+## Acceptances View
+
+- **Acceptances** (`/project/[id]/acceptances`) — the parity matrix: acceptances grouped by the view/flow they cover, one status column per platform, filterable by platform/status/value/anchor/parity-gap. Editing (Gherkin, values, per-platform status) happens in the node detail panel.
+
 ## Composition Model
 
 ### Root Node
