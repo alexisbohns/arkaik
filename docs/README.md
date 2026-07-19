@@ -6,6 +6,7 @@
 - [Graph Model](graph-model.md) — 4-species taxonomy, composition model, statuses, platforms, edge types
 - [Data Layer](data-layer.md) — DataProvider interface, local storage, import/export
 - [Conventions](conventions.md) — Coding patterns, file organization, state management
+- [Icon Wobble](icon-wobble.md) — The hand-drawn icon effect: why/what/how + a portable recipe
 - [Vision](vision.md) — Product strategy: the four layers, modes & tiers, format levels, roadmap
 
 ## Specifications
