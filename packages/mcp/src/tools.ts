@@ -10,6 +10,8 @@ import {
   PLATFORM_IDS,
   SPECIES_IDS,
   STATUS_IDS,
+  VALUE_IDS,
+  acceptancesCovering,
   collectPlaylistNodeRefs,
   computeBacklog,
   computeChangelog,
@@ -17,14 +19,17 @@ import {
   computeNodeTimeline,
   deriveNodeId,
   edgeId,
+  hasParityGap,
   listMaps,
   orderEvents,
+  resolvePlatformStatus,
   type Edge,
   type EventInput,
   type JournalEvent,
   type Node,
   type Project,
   type ReleaseTaggedEvent,
+  type ValueId,
 } from "@arkaik/schema";
 import {
   diffNodeUpdate,
@@ -80,7 +85,14 @@ function findNode(nodes: Node[], nodeId: string): Node {
 }
 
 function nodeSummary(node: Node) {
-  return { id: node.id, title: node.title, species: node.species, status: node.status, platforms: node.platforms };
+  const base = { id: node.id, title: node.title, species: node.species, status: node.status, platforms: node.platforms };
+  if (node.species !== "acceptance") return base;
+  // Acceptances are the parity unit — without resolved per-platform statuses
+  // and values in the summary, reading parity costs one get_node per node.
+  const platform_statuses = Object.fromEntries(
+    node.platforms.map((platform) => [platform, resolvePlatformStatus(node, platform)]),
+  );
+  return { ...base, platform_statuses, values: node.metadata?.values ?? [] };
 }
 
 /** Unwrap a write result: refusals become isError tool results with the pathed findings. */
@@ -165,13 +177,26 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
     {
       name: "list_nodes",
       description:
-        "List nodes in the product graph, filtered by species, status, platform, and/or a case-insensitive title/description substring. Returns summaries.",
+        "List nodes in the product graph, filtered by species, status, platform, value element, covers-anchor, parity gap, and/or a case-insensitive title/description substring. Returns summaries (acceptances include platform_statuses + values).",
       inputSchema: {
         type: "object",
         properties: {
           species: { type: "string", enum: [...SPECIES_IDS] },
           status: { type: "string", enum: [...STATUS_IDS] },
           platform: { type: "string", enum: [...PLATFORM_IDS] },
+          value: {
+            type: "string",
+            enum: [...VALUE_IDS],
+            description: "Only acceptances tagged with this value element.",
+          },
+          anchor: {
+            type: "string",
+            description: "Node id — only acceptances covering it via a covers edge.",
+          },
+          parity_gap: {
+            type: "boolean",
+            description: "Only acceptances delivered (live) on ≥1 applicable platform but not all.",
+          },
           query: { type: "string", description: "Case-insensitive substring over title + description." },
           limit: { type: "integer", minimum: 1, description: "Default 50." },
         },
@@ -179,15 +204,22 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
       },
     },
     (args) => {
-      const { nodes } = load(ctx);
+      const { nodes, edges } = load(ctx);
       const query = typeof args.query === "string" ? args.query.toLowerCase() : undefined;
       const limit = typeof args.limit === "number" && args.limit >= 1 ? Math.floor(args.limit) : 50;
+      const anchorCoveringIds =
+        typeof args.anchor === "string"
+          ? new Set(acceptancesCovering(args.anchor, nodes, edges).map((node) => node.id))
+          : undefined;
 
       const matches = nodes.filter((node) => {
         if (typeof args.species === "string" && node.species !== args.species) return false;
         if (typeof args.status === "string" && node.status !== args.status) return false;
         if (typeof args.platform === "string" && !node.platforms.includes(args.platform as Node["platforms"][number]))
           return false;
+        if (typeof args.value === "string" && !(node.metadata?.values ?? []).includes(args.value as ValueId)) return false;
+        if (anchorCoveringIds !== undefined && !anchorCoveringIds.has(node.id)) return false;
+        if (args.parity_gap === true && !hasParityGap(node)) return false;
         if (query !== undefined) {
           const haystack = `${node.title}\n${node.description ?? ""}`.toLowerCase();
           if (!haystack.includes(query)) return false;
@@ -203,7 +235,7 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
     {
       name: "get_node",
       description:
-        "Fetch one node in full: fields, its edges with neighbor titles, the flows that use it, and its journal timeline.",
+        "Fetch one node in full: fields, its edges with neighbor titles, the flows that use it, its journal timeline, and (views/flows) the acceptances covering it.",
       inputSchema: {
         type: "object",
         properties: { node_id: { type: "string" } },
@@ -248,7 +280,18 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
         .filter((flow): flow is Node => flow !== undefined && flow.species === "flow")
         .map((flow) => ({ id: flow.id, title: flow.title }));
 
-      return { node, edges: relatedEdges, whereUsedFlows, timeline: computeNodeTimeline(journal, nodeId) };
+      const covered_by =
+        node.species === "view" || node.species === "flow"
+          ? acceptancesCovering(nodeId, nodes, edges).map(nodeSummary)
+          : undefined;
+
+      return {
+        node,
+        edges: relatedEdges,
+        whereUsedFlows,
+        timeline: computeNodeTimeline(journal, nodeId),
+        ...(covered_by !== undefined ? { covered_by } : {}),
+      };
     },
   );
 
