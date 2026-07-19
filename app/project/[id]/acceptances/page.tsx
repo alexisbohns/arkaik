@@ -27,7 +27,7 @@ export default function ProjectAcceptancesPage() {
   const [panelOpen, setPanelOpen] = useState(false);
 
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode } = useNodes(id);
-  const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
+  const { edges: dataEdges, loading: edgesLoading, addEdge } = useEdges(id);
   const { project: projectBundle } = useProject(id);
   const { journal } = useJournal(id);
   const { filters, setFilters } = useAcceptanceFilters();
@@ -75,6 +75,19 @@ export default function ProjectAcceptancesPage() {
       metadata: {},
     });
     handleSelectNode(created);
+    return created;
+  }
+
+  async function handleCreateAcceptanceForAnchor(anchor: DataNode, title: string): Promise<DataNode> {
+    const created = await handleCreateAcceptance(title);
+    await addEdge({
+      id: `e-${created.id}-${anchor.id}`,
+      project_id: id,
+      source_id: created.id,
+      target_id: anchor.id,
+      edge_type: "covers",
+    });
+    return created;
   }
 
   if (nodesLoading || edgesLoading) {
@@ -141,6 +154,7 @@ export default function ProjectAcceptancesPage() {
         allEdges={dataEdges}
         journal={journal}
         onNavigate={setSelectedNode}
+        onCreateAcceptanceForAnchor={handleCreateAcceptanceForAnchor}
       />
     </div>
   );
