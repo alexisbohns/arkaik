@@ -144,7 +144,7 @@ A **map is a named, parameterized projection over (snapshot, journal)**: a scope
 | Map | Centered on | Answers | Rendering |
 |---|---|---|---|
 | **Journey** | Navigation | "How does a user move through the product?" | Compose/playlist drill-down canvas (today's canvas, with the traversal fixed) |
-| **System** | The model | "Which screens render this data model? What does this endpoint feed?" | All four species as cards, cross-layer edges drawn, ELK-layered by species tier |
+| **System** | The model | "Which screens render this data model? What does this endpoint feed?" | System-layer species (views, API endpoints, data models) as cards, cross-layer edges drawn, ELK-layered by species tier |
 | **Delivery** | Product status | "What is in flight on Android? What shipped on iOS?" | Board of (node × platform) items grouped by status — a view `live` on iOS and `prioritized` on Android appears in **both** columns, by design |
 | **Overview** | The whole | "Where does this product stand?" | Dashboard: per-platform delivery gauges, release pulse and backlog from the journal, inventory, coverage/health indicators |
 
@@ -166,7 +166,7 @@ The skill made agents good *writers*; the format made them competent *readers*. 
 
 ### Continuity Guardrails (unchanged)
 
-- **Graph model**: the four species, playlist-driven flows (`metadata.playlist.entries`), optional `project.root_node_id` anchor. Config source: `lib/config/species.ts`
+- **Graph model**: the five species, playlist-driven flows (`metadata.playlist.entries`), optional `project.root_node_id` anchor. Config source: `lib/config/species.ts`
 - **Platform and status**: per-platform status editing on `view` nodes; `flow` status stays a computed rollup; the journal extends with history, never replaces. `release.tagged` keeps its optional `platform`. Config: `lib/config/platforms.ts`, `lib/config/statuses.ts`
 - **Reuse-first authoring**: where-used visibility, insert-between operations, the shared node detail panel. References: `components/panels/NodeDetailPanel.tsx`, `components/panels/InsertBetweenDialog.tsx`, `lib/utils/where-used.ts`
 - **Data layer**: the `DataProvider` abstraction, local-first operation, import/export. References: `lib/data/data-provider.ts`, `lib/data/local-provider.ts`, `lib/utils/export.ts`

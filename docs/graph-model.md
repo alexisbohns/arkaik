@@ -33,7 +33,7 @@ Project library is available at `/project/[id]/library` with two browsing modes:
 
 Filtering:
 
-- Species selection is owned by the **sidebar** (`?species=` deep links: `all` when absent, or one of `flow`, `view`, `data-model`, `api-endpoint`); the in-page bar carries search and the display-mode toggle only.
+- Species selection is owned by the **sidebar** (`?species=` deep links: `all` when absent, or one of `flow`, `view`, `data-model`, `api-endpoint`, `acceptance`); the in-page bar carries search and the display-mode toggle only.
 - Search matches node title and description text.
 
 Library source:
@@ -108,7 +108,8 @@ Statuses are configured in:
 
 Rollup behavior:
 
-- `view` is the only species with editable per-platform status values (`metadata.platformStatuses`).
+- `acceptance` is the primary carrier of stored per-platform status values (`metadata.platformStatuses`).
+- `view` also stores `metadata.platformStatuses`, but this is now a deprecated fallback: it is authoritative only while no acceptance covers the view (see `covers` under Edge Types).
 - `flow` status is computed for display by recursively walking playlist entries and aggregating descendant view platform statuses, including nested sub-flows and branch entries.
 - `data-model` and `api-endpoint` use single lifecycle status.
 
@@ -161,6 +162,9 @@ acceptances; a covered view's per-platform status is computed from its
 covering acceptances, falling back to the view's stored `platformStatuses`
 when uncovered (spec §3.4).
 
+Source: `packages/schema/src/acceptance.ts` (projections; not yet consumed by
+the app's status rollups — see the Surfaces plan).
+
 ## Node And Edge Components
 
 Node registration is in:
@@ -175,6 +179,8 @@ Current custom registrations:
 - `apiEndpoint` -> `ApiEndpointNode`
 
 `dataModel` and `apiEndpoint` remain registered node types for compatibility, but the current project page renderer does not add those species into `visibleNodes`.
+
+`acceptance` nodes and `covers` edges have no custom Canvas registration yet — they render with generic node/edge components, and the map-kind defaults exclude them (see the dated note under the Taxonomy Update Checklist).
 
 Edge registration is also in [components/graph/Canvas.tsx](../components/graph/Canvas.tsx).
 
