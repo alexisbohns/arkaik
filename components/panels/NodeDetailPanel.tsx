@@ -31,6 +31,7 @@ import { RefList } from "@/components/graph/nodes/RefBadges";
 import { PlatformVariants } from "@/components/panels/PlatformVariants";
 import { PlatformGaugeList } from "@/components/graph/nodes/PlatformGaugeList";
 import { PlaylistEditor } from "@/components/panels/PlaylistEditor";
+import { AcceptanceEditor } from "@/components/panels/AcceptanceEditor";
 import {
   addNodeToRollup,
   createEmptyRollup,
@@ -530,6 +531,16 @@ export function NodeDetailPanel({
           <>
             <NodeFields key={node.id} node={node} onUpdate={onUpdate} />
             <RefsSection key={`refs-${node.id}`} node={node} />
+            {node.species === "acceptance" && allNodes && allEdges && onUpdate && (
+              <AcceptanceEditor
+                key={`acceptance-${node.id}`}
+                node={node}
+                allNodes={allNodes}
+                allEdges={allEdges}
+                onUpdate={onUpdate}
+                onNavigate={onNavigate}
+              />
+            )}
             {node.species === "view" && (
               <PlatformVariantsSection
                 key={`pv-${node.id}-${initialPlatform ?? ""}`}
