@@ -14,6 +14,9 @@ const STEPS = [
   "build-validator.js",
   "generate-schema-doc.js",
   "generate-prompt-fragments.js",
+  // Icon-wobble filter registry (issue #271): scans lucide usage and emits
+  // lib/wobble/wobble-registry.generated.ts + app/wobble.generated.css.
+  "generate-icon-wobble.js",
   // Must run last: copies the just-regenerated validate-bundle.js and
   // schema.md into the plugin channel (docs/spec/toolchain.md § Skill
   // Distribution).

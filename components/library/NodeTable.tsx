@@ -72,7 +72,7 @@ export function NodeTable({
         {nodes.map((node) => {
           const usedInCount = usedInByNodeId[node.id] ?? 0;
           return (
-            <TableRow key={node.id} className="cursor-pointer" onClick={() => onSelectNode(node)}>
+            <TableRow key={node.id} data-wobble-group className="cursor-pointer" onClick={() => onSelectNode(node)}>
               <TableCell className="font-mono text-xs">{node.id}</TableCell>
               <TableCell className="max-w-[280px] truncate">{node.title}</TableCell>
               <TableCell>{speciesLabelById[node.species] ?? node.species}</TableCell>
