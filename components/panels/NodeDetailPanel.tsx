@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
-import type { Node, Edge, JournalEvent, PlaylistEntry } from "@/lib/data/types";
+import type { Node, Edge, JournalEvent } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import { SPECIES } from "@/lib/config/species";
@@ -34,87 +34,12 @@ import { PlaylistEditor } from "@/components/panels/PlaylistEditor";
 import { AcceptanceEditor } from "@/components/panels/AcceptanceEditor";
 import { AcceptancesSection } from "@/components/panels/AcceptancesSection";
 import {
-  addNodeToRollup,
-  createEmptyRollup,
+  computeFlowPlatformRollup,
   getEditablePlatformStatuses,
-  mergeRollups,
 } from "@/lib/utils/platform-status";
 import { findWhereUsed } from "@/lib/utils/where-used";
 import { computeNodeTimeline } from "@/lib/utils/journal";
 import { describeJournalEvent, formatEventDate } from "@/components/journal/describe-event";
-
-function collectReferencedNodeIds(entries: PlaylistEntry[]): string[] {
-  const result: string[] = [];
-
-  for (const entry of entries) {
-    if (entry.type === "view") {
-      result.push(entry.view_id);
-      continue;
-    }
-
-    if (entry.type === "flow") {
-      result.push(entry.flow_id);
-      continue;
-    }
-
-    if (entry.type === "condition") {
-      result.push(...collectReferencedNodeIds(entry.if_true));
-      result.push(...collectReferencedNodeIds(entry.if_false));
-      continue;
-    }
-
-    for (const playlistCase of entry.cases) {
-      result.push(...collectReferencedNodeIds(playlistCase.entries));
-    }
-  }
-
-  return result;
-}
-
-function getOrderedPlaylistChildren(node: Node, allNodes: Node[]) {
-  const entries = Array.isArray(node.metadata?.playlist?.entries) ? node.metadata.playlist.entries : [];
-  const playlist = collectReferencedNodeIds(entries);
-  const childMap = new Map(allNodes.map((candidate) => [candidate.id, candidate]));
-  return playlist
-    .map((id) => childMap.get(id))
-    .filter((child): child is Node => Boolean(child));
-}
-
-function computeFlowRollup(node: Node, allNodes: Node[]) {
-  const allNodesById = new Map(allNodes.map((candidate) => [candidate.id, candidate]));
-
-  function computeFlowRollupRecursive(flowNode: Node, visited: Set<string>) {
-    if (visited.has(flowNode.id)) {
-      return createEmptyRollup();
-    }
-
-    visited.add(flowNode.id);
-    const children = getOrderedPlaylistChildren(flowNode, allNodes);
-    const directViewRollup = children
-      .filter((candidate) => candidate.species === "view")
-      .reduce((rollup, child) => addNodeToRollup(rollup, child), createEmptyRollup());
-    const nestedFlowRollup = mergeRollups(
-      ...children
-        .filter((candidate) => candidate.species === "flow")
-        .map((child) => allNodesById.get(child.id))
-        .filter((candidate): candidate is Node => Boolean(candidate))
-        .map((childFlow) => computeFlowRollupRecursive(childFlow, visited)),
-    );
-
-    visited.delete(flowNode.id);
-    return mergeRollups(directViewRollup, nestedFlowRollup);
-  }
-
-  return computeFlowRollupRecursive(node, new Set<string>());
-}
-
-function computeNodeRollup(node: Node, allNodes: Node[]) {
-  if (node.species === "flow") {
-    return computeFlowRollup(node, allNodes);
-  }
-
-  return createEmptyRollup();
-}
 
 interface NodeDetailPanelProps {
   open: boolean;
@@ -468,8 +393,9 @@ function PlatformVariantsSection({ node, initialPlatform, onUpdate, onZoomShot }
   );
 }
 
-function ComputedPlatformStatusSection({ node, allNodes }: { node: Node; allNodes: Node[] }) {
-  const rollup = computeNodeRollup(node, allNodes);
+function ComputedPlatformStatusSection({ node, allNodes, allEdges }: { node: Node; allNodes: Node[]; allEdges: Edge[] }) {
+  const nodesById = new Map(allNodes.map((n) => [n.id, n]));
+  const rollup = computeFlowPlatformRollup(node, nodesById, allNodes, allEdges);
 
   return (
     <div className="px-6 flex flex-col gap-3">
@@ -563,11 +489,12 @@ export function NodeDetailPanel({
                 onZoomShot={onZoomShot ? (platform) => onZoomShot(node, platform) : undefined}
               />
             )}
-            {node.species === "flow" && allNodes && (
+            {node.species === "flow" && allNodes && allEdges && (
               <ComputedPlatformStatusSection
                 key={`computed-${node.id}`}
                 node={node}
                 allNodes={allNodes}
+                allEdges={allEdges}
               />
             )}
             {node.species === "flow" && allNodes && (

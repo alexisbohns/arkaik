@@ -2,7 +2,7 @@ import type { Node, Edge } from "@xyflow/react";
 import { computeMapSubgraph, type MapDefinition } from "@arkaik/schema";
 import type { Node as DataNode, Edge as DataEdge } from "@/lib/data/types";
 import { EDGE_TYPE_TO_FLOW_TYPE, SPECIES_TO_NODE_TYPE } from "@/lib/utils/graph-build";
-import { addNodeToRollup, createEmptyRollup, getEditablePlatformStatuses, getRollupDisplayStatus } from "@/lib/utils/platform-status";
+import { addEffectiveNodeToRollup, createEmptyRollup, getEffectivePlatformStatuses, getRollupDisplayStatus } from "@/lib/utils/platform-status";
 
 export interface SystemGraphHandlers {
   onOpenDetails?: (node: DataNode) => void;
@@ -34,9 +34,9 @@ export function buildSystemGraph(
     } as Record<string, unknown>;
 
     if (node.species === "view") {
-      const viewRollup = addNodeToRollup(createEmptyRollup(), node);
+      const viewRollup = addEffectiveNodeToRollup(createEmptyRollup(), node, dataNodes, dataEdges);
       baseData.status = getRollupDisplayStatus(viewRollup, node.status);
-      baseData.platformStatuses = getEditablePlatformStatuses(node);
+      baseData.platformStatuses = getEffectivePlatformStatuses(node, dataNodes, dataEdges);
       baseData.apiInbound = [];
       baseData.apiOutbound = [];
       baseData.viewCardVariant = "compact";
