@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import type { PlatformId } from "@/lib/config/platforms";
-import type { SpeciesId } from "@/lib/config/species";
+import { SPECIES, type SpeciesId } from "@/lib/config/species";
 import {
   DEFAULT_COUNTED_STATUS_PRESET_ID,
   getCountedStatuses,
@@ -27,21 +27,13 @@ import { computeDeliveryItems, groupItemsByStatus, type DeliveryItem } from "@/l
 import { generateNodeId } from "@/lib/utils/id";
 import { matchesSearch } from "@/lib/utils/search";
 
-const SPECIES_LABEL_BY_ID: Record<SpeciesId, string> = {
-  flow: "Flow",
-  view: "View",
-  "data-model": "Data Model",
-  "api-endpoint": "API Endpoint",
-  acceptance: "Acceptance",
-};
+const SPECIES_LABEL_BY_ID = Object.fromEntries(
+  SPECIES.map((species) => [species.id, species.label]),
+) as Record<SpeciesId, string>;
 
-const SPECIES_DESCRIPTION_BY_ID: Record<SpeciesId, string | undefined> = {
-  flow: "an ordered sequence of views and sub-flows",
-  view: "a reusable page or screen",
-  "data-model": "parallel layer: data model",
-  "api-endpoint": "parallel layer: API endpoint",
-  acceptance: "a testable promise with per-platform status",
-};
+const SPECIES_DESCRIPTION_BY_ID = Object.fromEntries(
+  SPECIES.map((species) => [species.id, species.description]),
+) as Record<SpeciesId, string>;
 
 const STATUS_LABEL_BY_ID = Object.fromEntries(
   STATUSES.map((status) => [status.id, status.label]),
