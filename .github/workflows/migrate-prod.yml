@@ -1,0 +1,59 @@
+# Apply pending DB migrations to the PRODUCTION Postgres on release.
+#
+# Why this exists: neither `next build` nor Vercel's deploy runs migrations, and
+# the CI `services` job (ci.yml) only migrates a throwaway container — never prod.
+# So env vars could be set in Vercel and the app deployed while the prod DB stayed
+# schema-less, which surfaced as a NextAuth `Configuration` "Server error" on
+# sign-in (adapter query → `relation "users" does not exist`). This closes that
+# gap: whenever a migration file lands on `main`, apply it to prod.
+#
+# Safe by construction — `db/migrate.mjs` is idempotent (skips already-applied
+# files via the `_migrations` table), so re-runs and the `workflow_dispatch`
+# catch-up below are no-ops when there is nothing pending.
+#
+# ONE-TIME SETUP: add a repository secret named PROD_DATABASE_URL holding the
+# production Postgres connection string (the same value as Vercel's prod
+# DATABASE_URL). Settings → Secrets and variables → Actions → New repository
+# secret. Without it, `db:migrate` exits with a clear "DATABASE_URL is not set".
+
+name: Migrate (production)
+
+on:
+  push:
+    branches: [main]
+    # Only run when a migration actually changes; ordinary deploys skip this.
+    paths: ["db/migrations/**"]
+  # Manual trigger for catch-up / re-runs (ignores the paths filter above).
+  workflow_dispatch:
+
+# Serialize runs so two quick pushes can't migrate the same DB concurrently.
+# cancel-in-progress: false → a new run queues behind the active one rather than
+# interrupting a migration mid-transaction.
+concurrency:
+  group: migrate-prod
+  cancel-in-progress: false
+
+# The job only needs to read the repo; no write scopes on the token.
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply migrations to production
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
