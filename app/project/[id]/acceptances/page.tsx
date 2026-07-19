@@ -26,7 +26,7 @@ export default function ProjectAcceptancesPage() {
   const [selectedNode, setSelectedNode] = useState<DataNode | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
 
-  const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode } = useNodes(id);
+  const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, removeNode } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading, addEdge } = useEdges(id);
   const { project: projectBundle } = useProject(id);
   const { journal } = useJournal(id);
@@ -80,13 +80,18 @@ export default function ProjectAcceptancesPage() {
 
   async function handleCreateAcceptanceForAnchor(anchor: DataNode, title: string): Promise<DataNode> {
     const created = await handleCreateAcceptance(title);
-    await addEdge({
-      id: `e-${created.id}-${anchor.id}`,
-      project_id: id,
-      source_id: created.id,
-      target_id: anchor.id,
-      edge_type: "covers",
-    });
+    try {
+      await addEdge({
+        id: `e-${created.id}-${anchor.id}`,
+        project_id: id,
+        source_id: created.id,
+        target_id: anchor.id,
+        edge_type: "covers",
+      });
+    } catch (err) {
+      await removeNode(created.id).catch(() => {}); // roll back the just-created node so no orphan acceptance lingers
+      throw err;
+    }
     return created;
   }
 

@@ -6,6 +6,7 @@ import { PlatformList } from "@/components/graph/nodes/PlatformList";
 import { EntityId } from "@/components/graph/nodes/EntityBadges";
 import { Button } from "@/components/ui/button";
 import { PlusIcon, TriangleAlertIcon } from "lucide-react";
+import { toast } from "sonner";
 
 interface AcceptancesSectionProps {
   node: Node;
@@ -35,9 +36,15 @@ export function AcceptancesSection({ node, allNodes, allEdges, onNavigate, onCre
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => {
+            onClick={async () => {
               const title = window.prompt(`New acceptance for "${node.title}" (the What):`);
-              if (title && title.trim()) void onCreate(node, title.trim());
+              if (!title || !title.trim() || !onCreate) return;
+              try {
+                await onCreate(node, title.trim());
+              } catch (err) {
+                toast.error("Couldn't add the acceptance.");
+                console.error(err);
+              }
             }}
           >
             <PlusIcon className="size-4" /> Add
