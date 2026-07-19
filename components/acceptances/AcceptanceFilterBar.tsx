@@ -31,6 +31,11 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions }: Accept
 
   const [searchDraft, setSearchDraft] = useState(filters.search);
   const [syncedSearch, setSyncedSearch] = useState(filters.search);
+  // What we last wrote ourselves via the debounced onChange below. Tracked as
+  // state (not a ref) because it must be *read* during the render-time draft
+  // adjustment, and react-hooks/refs forbids reading ref values during render
+  // just as it forbids writing them.
+  const [lastWrittenSearch, setLastWrittenSearch] = useState(filters.search);
   const filtersRef = useRef(filters);
   // Keep the ref current without mutating it during render (react-hooks/refs).
   useEffect(() => { filtersRef.current = filters; }, [filters]);
@@ -39,12 +44,20 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions }: Accept
   // effect that just mirrors a prop into state trips react-hooks/set-state-in-effect.
   if (filters.search !== syncedSearch) {
     setSyncedSearch(filters.search);
-    setSearchDraft(filters.search);
+    // Only reset the visible draft on an EXTERNAL change (Clear, back/forward),
+    // not when our own debounced write echoes back through the URL — otherwise
+    // characters typed during the round-trip gap get reverted.
+    if (filters.search !== lastWrittenSearch) {
+      setSearchDraft(filters.search);
+    }
   }
   // Debounce draft → URL so typing stays responsive and doesn't drop characters.
   useEffect(() => {
     if (searchDraft === filtersRef.current.search) return;
-    const t = setTimeout(() => onChange({ ...filtersRef.current, search: searchDraft }), 300);
+    const t = setTimeout(() => {
+      setLastWrittenSearch(searchDraft);
+      onChange({ ...filtersRef.current, search: searchDraft });
+    }, 300);
     return () => clearTimeout(t);
   }, [searchDraft, onChange]);
 
