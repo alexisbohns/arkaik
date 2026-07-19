@@ -44,6 +44,7 @@ function copySkillAssets() {
   fs.mkdirSync(path.join(SKILL_DEST_DIR, "scripts"), { recursive: true });
   fs.copyFileSync(path.join(SKILL_SRC_DIR, "skill.md"), path.join(SKILL_DEST_DIR, "SKILL.md"));
   fs.copyFileSync(path.join(SKILL_SRC_DIR, "references", "schema.md"), path.join(SKILL_DEST_DIR, "references", "schema.md"));
+  fs.copyFileSync(path.join(SKILL_SRC_DIR, "references", "values.md"), path.join(SKILL_DEST_DIR, "references", "values.md"));
   fs.copyFileSync(path.join(SKILL_SRC_DIR, "scripts", "validate-bundle.js"), path.join(SKILL_DEST_DIR, "scripts", "validate-bundle.js"));
   fs.chmodSync(path.join(SKILL_DEST_DIR, "scripts", "validate-bundle.js"), 0o755);
 }

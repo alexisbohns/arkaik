@@ -1,6 +1,6 @@
 ---
 name: arkaik
-version: 2.0.0
+version: 3.0.0
 description: >
   Maintain the Arkaik product graph map for {{PRODUCT_NAME}} — add, update, or
   remove nodes and edges in the ProjectBundle JSON that describes its screens,
@@ -221,6 +221,61 @@ clocks lie) and errors on any mismatch, naming both sides:
 ### 6. Update timestamps
 
 Set `project.updated_at` to the current ISO 8601 timestamp.
+
+## Acceptances — the parity layer
+
+An **acceptance** is a testable promise: a short `title` (the What), exactly one
+Given/When/Then scenario in `metadata.gherkin` (the How), 1–3 value elements in
+`metadata.values` (the Why), and a status per applicable platform. Acceptances
+are where per-platform truth lives; views and flows are computed aggregates.
+
+**Discipline — when you ship user-visible behavior on a platform:**
+
+1. Find the acceptance covering that behavior (`covers` edge into the view or
+   flow). If none exists, create one (`species: "acceptance"`, id prefix `AC-`).
+2. Set `metadata.platformStatuses.<platform>` on the **acceptance** — never on
+   the view. View `platformStatuses` is legacy fallback for views no acceptance
+   covers yet; do not write it on covered views.
+3. Append the matching `node.status_changed` event with the `platform` field.
+
+**Rules:**
+
+- One Given/When/Then per acceptance — a second scenario is a second acceptance.
+- `Given` encodes render variants ("Given the pebble has a picture attached…").
+- `platforms` lists only the platforms where the behavior is *expected* — a
+  mobile-only behavior is `["ios", "android"]`, not backlog-on-web.
+- `covers` edges: acceptance → view or acceptance → flow. Zero edges = a
+  product-level acceptance (legal). Several = the behavior spans surfaces.
+- Statuses reuse the standard lifecycle; "shipped" = `live`.
+
+**Example** — iOS ships the draw-in animation:
+
+```json
+{
+  "id": "AC-pebble-draw-in-animation",
+  "project_id": "{{PRODUCT_NAME}}",
+  "species": "acceptance",
+  "title": "Pebble draw-in animation",
+  "status": "backlog",
+  "platforms": ["web", "ios", "android"],
+  "metadata": {
+    "gherkin": "When I'm on the Pebble Detail, Then I see the Pebble appearing in a drawing animation.",
+    "values": ["fun-entertainment", "design-aesthetics"],
+    "platformStatuses": { "ios": "live" }
+  }
+}
+```
+
+plus `{"type": "node.status_changed", "node_id": "AC-pebble-draw-in-animation", "from": "backlog", "to": "live", "platform": "ios"}` in the journal.
+
+<!-- values:start -->
+### Value mapping
+
+Assign 1–3 `metadata.values` from the 30-element Bain pyramid when creating an
+acceptance. **If unsure, omit them** — enrichment passes exist; a wrong value is
+worse than a missing one. Consult `references/values.md` (one-line definitions
+per element) only when actually mapping — do not load it otherwise.
+<!-- values:end -->
 
 ## Full Schema Reference
 

@@ -114,6 +114,33 @@ const validatorScriptPath = path.join(dir, SKILL_DIR_REL, "scripts", "validate-b
   check("SKILL.md substitutes the bundle path", skill.includes("docs/arkaik/bundle.json"));
   check("SKILL.md substitutes the journal path", skill.includes("docs/arkaik/journal.jsonl"));
   check("SKILL.md frontmatter carries a version stamp", /^version:\s*\d+\.\d+\.\d+/m.test(skill));
+
+  const valuesRefPath = path.join(dir, SKILL_DIR_REL, "references", "values.md");
+  check("references/values.md installed", existsSync(valuesRefPath));
+  check("SKILL.md contains the Acceptances section", skill.includes("## Acceptances — the parity layer"));
+  check("SKILL.md contains the Value mapping section", skill.includes("### Value mapping"));
+  check("SKILL.md frontmatter version is 3.0.0", /^version:\s*3\.0\.0/m.test(skill));
+}
+
+// ---------------------------------------------------------------------------
+// `init --no-values` renders the skill without the value-mapping guidance and
+// skips references/values.md, in an otherwise-fresh tmpdir.
+// ---------------------------------------------------------------------------
+{
+  const noValuesDir = mkdtempSync(path.join(tmpdir(), "arkaik-init-no-values-"));
+  const result = runCli(["init", "--product", "Widget Co", "--no-values"], noValuesDir);
+  check("init --no-values exits 0", result.status === 0, `${result.stdout}\n${result.stderr}`);
+
+  const noValuesSkillPath = path.join(noValuesDir, SKILL_DIR_REL, "SKILL.md");
+  const noValuesValuesRefPath = path.join(noValuesDir, SKILL_DIR_REL, "references", "values.md");
+  check("SKILL.md installed under --no-values", existsSync(noValuesSkillPath));
+
+  const noValuesSkill = readFileSync(noValuesSkillPath, "utf8");
+  check("--no-values SKILL.md does not contain Value mapping section", !noValuesSkill.includes("### Value mapping"));
+  check("--no-values SKILL.md does not contain the values markers", !noValuesSkill.includes("<!-- values:start -->"));
+  check("--no-values does not install references/values.md", !existsSync(noValuesValuesRefPath));
+
+  rmSync(noValuesDir, { recursive: true, force: true });
 }
 
 // ---------------------------------------------------------------------------

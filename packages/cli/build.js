@@ -44,6 +44,7 @@ function copySkillAssets() {
   mkdirSync(join(SKILL_DIST_DIR, "scripts"), { recursive: true });
   cpSync(join(SKILL_SRC_DIR, "skill.md"), join(SKILL_DIST_DIR, "skill.md"));
   cpSync(join(SKILL_SRC_DIR, "references", "schema.md"), join(SKILL_DIST_DIR, "references", "schema.md"));
+  cpSync(join(SKILL_SRC_DIR, "references", "values.md"), join(SKILL_DIST_DIR, "references", "values.md"));
   cpSync(join(SKILL_SRC_DIR, "scripts", "validate-bundle.js"), join(SKILL_DIST_DIR, "scripts", "validate-bundle.js"));
   console.log(`copied skill assets -> ${relative(dir, SKILL_DIST_DIR)}`);
 }
