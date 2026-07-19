@@ -217,9 +217,9 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
         if (typeof args.status === "string" && node.status !== args.status) return false;
         if (typeof args.platform === "string" && !node.platforms.includes(args.platform as Node["platforms"][number]))
           return false;
-        if (typeof args.value === "string" && !(node.metadata?.values ?? []).includes(args.value as ValueId)) return false;
+        if (typeof args.value === "string" && (node.species !== "acceptance" || !(node.metadata?.values ?? []).includes(args.value as ValueId))) return false;
         if (anchorCoveringIds !== undefined && !anchorCoveringIds.has(node.id)) return false;
-        if (args.parity_gap === true && !hasParityGap(node)) return false;
+        if (args.parity_gap === true && (node.species !== "acceptance" || !hasParityGap(node))) return false;
         if (query !== undefined) {
           const haystack = `${node.title}\n${node.description ?? ""}`.toLowerCase();
           if (!haystack.includes(query)) return false;

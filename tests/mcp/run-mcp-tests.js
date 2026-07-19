@@ -448,6 +448,26 @@ async function main() {
     JSON.stringify(coveredView.body?.covered_by),
   );
 
+  // A view with legacy per-platform statuses must NOT satisfy acceptance-scoped filters.
+  const legacyView = await callTool("create_node", {
+    species: "view",
+    title: "Legacy gapped view",
+    status: "idea",
+    platforms: ["web", "ios"],
+    metadata: { platformStatuses: { ios: "live", web: "idea" } },
+  });
+  check("fixture setup: legacy gapped view created", !legacyView.isError, JSON.stringify(legacyView.body).slice(0, 160));
+
+  const gapListScoped = await callTool("list_nodes", { parity_gap: true });
+  check(
+    "parity_gap filter excludes non-acceptance nodes with platform splits",
+    gapListScoped.body?.total === 1 && gapListScoped.body.nodes[0].id === "AC-profile-shows-avatar",
+    JSON.stringify(gapListScoped.body).slice(0, 200),
+  );
+
+  const gapSpecies = await callTool("list_nodes", { species: "acceptance", parity_gap: true });
+  check("species + parity_gap compose", gapSpecies.body?.total === 1 && gapSpecies.body.nodes[0].id === "AC-profile-shows-avatar");
+
   session.close();
 
   if (failures > 0) {
