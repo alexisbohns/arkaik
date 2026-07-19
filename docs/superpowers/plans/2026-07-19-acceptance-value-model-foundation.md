@@ -1092,7 +1092,7 @@ git commit -m "feat(mcp): acceptance-aware list_nodes filters, enriched summarie
 - Create: `lib/config/values.ts`
 - Modify: `lib/config/species.ts`, `lib/config/edge-types.ts`
 
-No new test file — these are `as const satisfies` config arrays whose shape TypeScript enforces against the schema types (a missing/typo'd id fails `next build`/`eslint`). Surfaces (next plan) consumes them.
+No new test file. `species.ts`/`edge-types.ts` stay `as const satisfies` config arrays whose shape TypeScript enforces against the schema types. `values.ts` keeps label/icon in `Record<ValueId, string>` maps — TypeScript's exhaustiveness check makes a missing or typo'd id a compile error — and derives each element's `tier` directly from the schema's `VALUE_TIERS` map (`@arkaik/schema`) rather than duplicating it, so tier can never drift out of sync with the schema. Surfaces (next plan) consumes them.
 
 Note: the app's hand-written `Record<SpeciesId, …>` / `Record<EdgeTypeId, …>` exhaustive-map sites (`app/project/[id]/library/page.tsx`, `components/graph/nodes/node-styles.ts`, `components/overview/InventoryCard.tsx`, `lib/utils/graph-build.ts`, `app/project/[id]/delivery/page.tsx`) were already forward-fixed with `acceptance`/`covers` entries in Task 1's follow-up commit (`fix(app): exhaustive species/edge records for acceptance + covers`), so Task 8's `npm run build` expectation below already holds going in.
 
