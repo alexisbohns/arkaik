@@ -75,7 +75,7 @@ function main(): void {
   console.log("\n  Arkaik Bundle Validation");
   console.log("  =======================\n");
   console.log(
-    `  Nodes: ${nodes.length} (${countBySpecies(nodes, "view")} views, ${countBySpecies(nodes, "flow")} flows, ${countBySpecies(nodes, "data-model")} data-models, ${countBySpecies(nodes, "api-endpoint")} api-endpoints)`,
+    `  Nodes: ${nodes.length} (${countBySpecies(nodes, "view")} views, ${countBySpecies(nodes, "flow")} flows, ${countBySpecies(nodes, "data-model")} data-models, ${countBySpecies(nodes, "api-endpoint")} api-endpoints, ${countBySpecies(nodes, "acceptance")} acceptances)`,
   );
   console.log(`  Edges: ${edges.length}`);
   if (sidecarLoaded) {
