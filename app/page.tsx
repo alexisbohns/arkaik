@@ -33,7 +33,7 @@ export default function Home() {
 
           <Link
             href="/docs"
-            className="mt-4 inline-block text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+            className="mt-4 block text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
           >
             Read the doc
           </Link>
