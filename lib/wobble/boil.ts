@@ -8,9 +8,13 @@
  *
  * Everything runs off a single set of delegated document listeners and one
  * `setInterval` per actively-boiling icon name — no per-instance React state,
- * no per-frame work when nothing is hovered/focused. Because filters are shared
- * per icon name, hovering any instance boils every instance of that name (the
- * intended shared-seed behaviour from the issue).
+ * no per-frame work when nothing is hovered/focused.
+ *
+ * The static wobble uses a shared `wob-<name>` filter (all instances identical
+ * at rest). Boiling, however, is per-instance: a hovered icon is switched via
+ * inline `style.filter` to a dedicated `wob-boil-<name>` filter that the driver
+ * animates. So hovering one card in a grid boils only that card's icon, not
+ * every other card that happens to use the same icon name.
  *
  * Hover/focus is resolved to a "scope": the nearest interactive *item* (a link,
  * button, menu/option, or a `[data-wobble-group]` wrapper), falling back to the
@@ -57,8 +61,20 @@ function iconName(svg: Element): string | null {
   return null;
 }
 
-function turbulenceFor(name: string): Element | null {
-  return document.getElementById(`wob-${name}`)?.querySelector("feTurbulence") ?? null;
+/**
+ * The `feTurbulence` of a name's *boil* filter (`wob-boil-<name>`). Only this
+ * dedicated filter is animated; the shared static `wob-<name>` filter is never
+ * touched, so un-hovered instances of the same icon are left undisturbed.
+ */
+function boilTurbulenceFor(name: string): Element | null {
+  return document.getElementById(`wob-boil-${name}`)?.querySelector("feTurbulence") ?? null;
+}
+
+/** Point an icon at its boil filter (on) or back at the shared static one (off). */
+function setBoilFilter(icon: Element, name: string, on: boolean): void {
+  const style = (icon as SVGElement).style;
+  if (!style) return;
+  style.filter = on ? `url(#wob-boil-${name})` : "";
 }
 
 function anyActiveForName(name: string): boolean {
@@ -70,7 +86,7 @@ function anyActiveForName(name: string): boolean {
 
 function startBoil(name: string): void {
   if (timers.has(name) || prefersReducedMotion.matches) return;
-  const turbulence = turbulenceFor(name);
+  const turbulence = boilTurbulenceFor(name);
   if (!turbulence) return;
   const base = Number(turbulence.getAttribute("data-base-seed") ?? "0");
   let step = 0;
@@ -86,7 +102,7 @@ function stopBoil(name: string): void {
   if (timer === undefined) return;
   clearInterval(timer);
   timers.delete(name);
-  const turbulence = turbulenceFor(name);
+  const turbulence = boilTurbulenceFor(name);
   if (turbulence) {
     turbulence.setAttribute("seed", turbulence.getAttribute("data-base-seed") ?? "0");
   }
@@ -101,6 +117,9 @@ function enter(icon: Element, reason: Reason): void {
     active.set(icon, reasons);
   }
   reasons.add(reason);
+  // Static wobble stays under reduced motion; don't switch to the boil filter.
+  if (prefersReducedMotion.matches) return;
+  setBoilFilter(icon, name, true);
   startBoil(name);
 }
 
@@ -108,8 +127,11 @@ function leave(icon: Element, reason: Reason): void {
   const reasons = active.get(icon);
   if (!reasons) return;
   reasons.delete(reason);
-  if (reasons.size === 0) active.delete(icon);
   const name = iconName(icon);
+  if (reasons.size === 0) {
+    active.delete(icon);
+    if (name) setBoilFilter(icon, name, false); // back to the shared static filter
+  }
   if (name && !anyActiveForName(name)) stopBoil(name);
 }
 
@@ -163,10 +185,17 @@ function onFocusOut(event: FocusEvent): void {
 // toggle; the change listener also stops any boil already running.
 let prefersReducedMotion: MediaQueryList;
 
-function onReduceChange(): void {
-  if (prefersReducedMotion.matches) {
-    for (const name of [...timers.keys()]) stopBoil(name);
+/** Stop every boil and revert active icons to the shared static filter. */
+function clearAllBoils(): void {
+  for (const name of [...timers.keys()]) stopBoil(name);
+  for (const icon of active.keys()) {
+    const name = iconName(icon);
+    if (name) setBoilFilter(icon, name, false);
   }
+}
+
+function onReduceChange(): void {
+  if (prefersReducedMotion.matches) clearAllBoils();
 }
 
 /**
@@ -192,7 +221,7 @@ export function wireBoil(): () => void {
     document.removeEventListener("focusin", onFocusIn);
     document.removeEventListener("focusout", onFocusOut);
     prefersReducedMotion.removeEventListener("change", onReduceChange);
-    for (const name of [...timers.keys()]) stopBoil(name);
+    clearAllBoils();
     active.clear();
   };
 }
