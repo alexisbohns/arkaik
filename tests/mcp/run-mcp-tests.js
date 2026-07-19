@@ -393,6 +393,81 @@ async function main() {
   const badPatch = await callTool("update_node", { node_id: "V-profile", patch: { species: "flow" } });
   check("identity fields cannot be patched", badPatch.isError === true && /species/.test(badPatch.body.message));
 
+  // --- Acceptance layer (spec Foundation) ------------------------------------
+  const createdAcc = await callTool("create_node", {
+    species: "acceptance",
+    title: "Profile shows avatar",
+    status: "backlog",
+    platforms: ["web", "ios"],
+    metadata: {
+      gherkin: "When I open my Profile, Then I see my avatar.",
+      values: ["design-aesthetics"],
+      platformStatuses: { web: "live" },
+    },
+  });
+  check(
+    "create_node accepts an acceptance (AC- id derived)",
+    !createdAcc.isError && createdAcc.body?.node?.id === "AC-profile-shows-avatar",
+    JSON.stringify(createdAcc.body).slice(0, 200),
+  );
+
+  const coversEdge = await callTool("add_edge", {
+    source_id: "AC-profile-shows-avatar",
+    target_id: "V-profile",
+    edge_type: "covers",
+  });
+  check("add_edge accepts covers acceptance→view", !coversEdge.isError, JSON.stringify(coversEdge.body).slice(0, 200));
+
+  const accList = await callTool("list_nodes", { species: "acceptance" });
+  const accSummary = accList.body?.nodes?.find((n) => n.id === "AC-profile-shows-avatar");
+  check(
+    "acceptance summaries carry platform_statuses + values",
+    accSummary?.platform_statuses?.web === "live" &&
+      accSummary?.platform_statuses?.ios === "backlog" &&
+      accSummary?.values?.[0] === "design-aesthetics",
+    JSON.stringify(accSummary),
+  );
+
+  const gapList = await callTool("list_nodes", { parity_gap: true });
+  check(
+    "list_nodes parity_gap filter finds the gapped acceptance",
+    gapList.body?.total === 1 && gapList.body.nodes[0].id === "AC-profile-shows-avatar",
+    JSON.stringify(gapList.body).slice(0, 160),
+  );
+
+  const valueList = await callTool("list_nodes", { value: "design-aesthetics" });
+  check("list_nodes value filter", valueList.body?.total === 1 && valueList.body.nodes[0].id === "AC-profile-shows-avatar");
+
+  const anchorList = await callTool("list_nodes", { anchor: "V-profile" });
+  check("list_nodes anchor filter", anchorList.body?.total === 1 && anchorList.body.nodes[0].id === "AC-profile-shows-avatar");
+
+  const coveredView = await callTool("get_node", { node_id: "V-profile" });
+  check(
+    "get_node exposes covered_by on views",
+    coveredView.body?.covered_by?.some((s) => s.id === "AC-profile-shows-avatar"),
+    JSON.stringify(coveredView.body?.covered_by),
+  );
+
+  // A view with legacy per-platform statuses must NOT satisfy acceptance-scoped filters.
+  const legacyView = await callTool("create_node", {
+    species: "view",
+    title: "Legacy gapped view",
+    status: "idea",
+    platforms: ["web", "ios"],
+    metadata: { platformStatuses: { ios: "live", web: "idea" } },
+  });
+  check("fixture setup: legacy gapped view created", !legacyView.isError, JSON.stringify(legacyView.body).slice(0, 160));
+
+  const gapListScoped = await callTool("list_nodes", { parity_gap: true });
+  check(
+    "parity_gap filter excludes non-acceptance nodes with platform splits",
+    gapListScoped.body?.total === 1 && gapListScoped.body.nodes[0].id === "AC-profile-shows-avatar",
+    JSON.stringify(gapListScoped.body).slice(0, 200),
+  );
+
+  const gapSpecies = await callTool("list_nodes", { species: "acceptance", parity_gap: true });
+  check("species + parity_gap compose", gapSpecies.body?.total === 1 && gapSpecies.body.nodes[0].id === "AC-profile-shows-avatar");
+
   session.close();
 
   if (failures > 0) {

@@ -88,6 +88,21 @@ Consumers that cannot resolve a form (the hosted app receiving a relative path, 
 
 **Size-bomb guidance:** a `data:` value SHOULD stay under 2MB decoded — the same cap the app's own screenshot upload enforces. `validateBundle()` (`@arkaik/schema`) emits a `screenshot-data-uri-size` **warning** (never an error) above that threshold: data URIs are a legitimate legacy form and MUST NOT be rejected on size alone, only flagged so producers can migrate to a hosted or relative-path form.
 
+### Acceptance Nodes
+
+An `acceptance` node (id prefix `AC-`) is a testable promise: `title` is the
+What, `metadata.gherkin` holds exactly one Given/When/Then scenario (the How),
+`metadata.values` holds 1..n elements of the core value enum (the Why — Bain
+B2C pyramid, see the generated JSON Schema `Value` enum). Per-platform status
+uses the same `metadata.platformStatuses` mechanic as views; `platforms` lists
+the platforms where the behavior is expected ("availability").
+
+`covers` edges (acceptance → view | flow) anchor the promise to surfaces. Zero
+covers edges is legal (a product-level acceptance). Stored per-platform status
+lives on acceptances; covered views compute theirs (validator: missing
+`gherkin`/`values` on an acceptance are warnings; unknown value ids are errors;
+`gherkin`/`values` on other species are warnings).
+
 ## Identifier Conventions
 
 IDs are deterministic and human-readable. This subsumes and canonicalizes the rules in `docs/arkaik-skill/references/schema.md`.

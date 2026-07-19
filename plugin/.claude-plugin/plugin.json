@@ -1,7 +1,7 @@
 {
   "name": "arkaik",
   "displayName": "Arkaik",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Agent skill that maintains the Arkaik product graph map (ProjectBundle JSON) — surgical node/edge patches paired with dual-write journal events, gated by the bundled validator. Ships unrendered; see the plugin README for the per-project path defaults.",
   "author": {
     "name": "Arkaik"

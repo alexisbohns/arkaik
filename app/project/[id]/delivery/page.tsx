@@ -33,7 +33,7 @@ const SPECIES_LABEL_BY_ID = Object.fromEntries(
 
 const SPECIES_DESCRIPTION_BY_ID = Object.fromEntries(
   SPECIES.map((species) => [species.id, species.description]),
-) as Record<SpeciesId, string | undefined>;
+) as Record<SpeciesId, string>;
 
 const STATUS_LABEL_BY_ID = Object.fromEntries(
   STATUSES.map((status) => [status.id, status.label]),

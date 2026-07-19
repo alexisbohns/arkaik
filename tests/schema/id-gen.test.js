@@ -75,8 +75,9 @@ assert(
   SPECIES_PREFIXES.flow === "F-" &&
     SPECIES_PREFIXES.view === "V-" &&
     SPECIES_PREFIXES["data-model"] === "DM-" &&
-    SPECIES_PREFIXES["api-endpoint"] === "API-",
-  "SPECIES_PREFIXES: all four species map to their conventional prefixes",
+    SPECIES_PREFIXES["api-endpoint"] === "API-" &&
+    SPECIES_PREFIXES.acceptance === "AC-",
+  "SPECIES_PREFIXES: all five species map to their conventional prefixes",
 );
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });

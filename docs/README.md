@@ -3,7 +3,7 @@
 ## Contents
 
 - [Architecture](architecture.md) — System design, component relationships, data flow
-- [Graph Model](graph-model.md) — 4-species taxonomy, composition model, statuses, platforms, edge types
+- [Graph Model](graph-model.md) — 5-species taxonomy, composition model, statuses, platforms, edge types
 - [Data Layer](data-layer.md) — DataProvider interface, local storage, import/export
 - [Conventions](conventions.md) — Coding patterns, file organization, state management
 - [Icon Wobble](icon-wobble.md) — The hand-drawn icon effect: why/what/how + a portable recipe

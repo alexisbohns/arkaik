@@ -26,6 +26,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
@@ -62,6 +63,10 @@ Options:
                          packaged version is newer than what's installed;
                          no-op when already current. Never touches the
                          bundle or journal.
+  --no-values           Render the skill without the value-mapping guidance
+                        (and skip references/values.md). Applies when the
+                        skill is installed or upgraded; a same-version
+                        \`--update\` run is a no-op.
   -h, --help             Show this help.`;
 
 function fail(message: string): never {
@@ -75,10 +80,11 @@ interface InitOptions {
   journal?: string;
   skillsDir?: string;
   update: boolean;
+  noValues: boolean;
 }
 
 function parseArgs(args: string[]): InitOptions {
-  const opts: InitOptions = { update: false };
+  const opts: InitOptions = { update: false, noValues: false };
 
   const nextValue = (i: number, flag: string): string => {
     const value = args[i];
@@ -93,6 +99,8 @@ function parseArgs(args: string[]): InitOptions {
       process.exit(0);
     } else if (arg === "--update") {
       opts.update = true;
+    } else if (arg === "--no-values") {
+      opts.noValues = true;
     } else if (arg === "--product") {
       opts.product = nextValue(++i, arg);
     } else if (arg === "--bundle") {
@@ -217,38 +225,54 @@ function renderTemplate(template: string, vars: Record<string, string>): string 
   return out;
 }
 
+/** Strip the value-mapping guidance block (marker-delimited in skill.md). */
+function stripValuesSection(content: string): string {
+  // Consume the block's own trailing newlines too, so removing it doesn't
+  // leave a double blank line — the blank line preceding the block already
+  // provides the section separator.
+  return content.replace(/<!-- values:start -->[\s\S]*?<!-- values:end -->\n*/g, "");
+}
+
 /** Render the packaged skill template + copy its generated siblings into `skillsDirPath`. */
-function renderAndWriteSkill(skillsDirPath: string, vars: Record<string, string>): string {
+function renderAndWriteSkill(skillsDirPath: string, vars: Record<string, string>, noValues: boolean): string {
   const rawSkill = readFileSync(join(ASSET_DIR, "skill.md"), "utf8");
+  const template = noValues ? stripValuesSection(rawSkill) : rawSkill;
 
   mkdirSync(join(skillsDirPath, "references"), { recursive: true });
   mkdirSync(join(skillsDirPath, "scripts"), { recursive: true });
 
-  writeFileSync(join(skillsDirPath, "SKILL.md"), renderTemplate(rawSkill, vars));
+  writeFileSync(join(skillsDirPath, "SKILL.md"), renderTemplate(template, vars));
   copyFileSync(join(ASSET_DIR, "references", "schema.md"), join(skillsDirPath, "references", "schema.md"));
+  if (noValues) {
+    // Cover the --update case: a previously-installed skill (with values on)
+    // may still carry references/values.md; a --no-values upgrade removes it.
+    rmSync(join(skillsDirPath, "references", "values.md"), { force: true });
+  } else {
+    copyFileSync(join(ASSET_DIR, "references", "values.md"), join(skillsDirPath, "references", "values.md"));
+  }
   copyFileSync(join(ASSET_DIR, "scripts", "validate-bundle.js"), join(skillsDirPath, "scripts", "validate-bundle.js"));
 
   return extractVersion(rawSkill) ?? "unknown";
 }
 
 /** Plain `init`: install the skill only if it isn't there yet. */
-function installSkill(skillsDirPath: string, vars: Record<string, string>): void {
+function installSkill(skillsDirPath: string, vars: Record<string, string>, noValues: boolean): void {
   const skillPath = join(skillsDirPath, "SKILL.md");
   if (existsSync(skillPath)) {
     console.log(`Skipping skill install (already exists): ${skillPath}. Use \`arkaik init --update\` to upgrade.`);
     return;
   }
-  const version = renderAndWriteSkill(skillsDirPath, vars);
+  const version = renderAndWriteSkill(skillsDirPath, vars, noValues);
   console.log(`Installed skill v${version} -> ${skillPath}`);
 }
 
 /** `--update`: upgrade the skill + generated assets only if the packaged version is newer. */
-function updateSkill(skillsDirPath: string, vars: Record<string, string>): void {
+function updateSkill(skillsDirPath: string, vars: Record<string, string>, noValues: boolean): void {
   const packagedVersion = extractVersion(readFileSync(join(ASSET_DIR, "skill.md"), "utf8"));
   const skillPath = join(skillsDirPath, "SKILL.md");
 
   if (!existsSync(skillPath)) {
-    const version = renderAndWriteSkill(skillsDirPath, vars);
+    const version = renderAndWriteSkill(skillsDirPath, vars, noValues);
     console.log(`No existing skill found at ${skillPath}; installed v${version}.`);
     return;
   }
@@ -263,7 +287,7 @@ function updateSkill(skillsDirPath: string, vars: Record<string, string>): void 
     return;
   }
 
-  const version = renderAndWriteSkill(skillsDirPath, vars);
+  const version = renderAndWriteSkill(skillsDirPath, vars, noValues);
   console.log(`Upgraded skill v${installedVersion ?? "unknown"} -> v${version}.`);
 }
 
@@ -279,10 +303,15 @@ export function runInit(args: string[]): void {
   const journalPath = resolve(cwd, journalRelPath);
   const skillsDirPath = resolve(cwd, skillsDirRelPath);
 
-  const vars = { PRODUCT_NAME: productName, BUNDLE_PATH: bundleRelPath, JOURNAL_PATH: journalRelPath };
+  const vars = {
+    PRODUCT_NAME: productName,
+    PROJECT_ID: kebabCase(productName),
+    BUNDLE_PATH: bundleRelPath,
+    JOURNAL_PATH: journalRelPath,
+  };
 
   if (opts.update) {
-    updateSkill(skillsDirPath, vars);
+    updateSkill(skillsDirPath, vars, opts.noValues);
     return;
   }
 
@@ -290,5 +319,5 @@ export function runInit(args: string[]): void {
   writeIfAbsent(journalPath, "", "journal");
   writeIfAbsent(join(dirname(bundlePath), "assets", ".gitkeep"), "", "assets dir");
   ensureGitAttributes(journalRelPath);
-  installSkill(skillsDirPath, vars);
+  installSkill(skillsDirPath, vars, opts.noValues);
 }

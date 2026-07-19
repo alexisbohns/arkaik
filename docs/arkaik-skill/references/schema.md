@@ -18,10 +18,10 @@ block below — run `npm run generate`.
 
 <!-- GENERATED:SCHEMA:START -->
 ```typescript
-type SpeciesId = "flow" | "view" | "data-model" | "api-endpoint";
+type SpeciesId = "flow" | "view" | "data-model" | "api-endpoint" | "acceptance";
 type StatusId = "idea" | "backlog" | "prioritized" | "development" | "releasing" | "live" | "archived" | "blocked";
 type PlatformId = "web" | "ios" | "android";
-type EdgeTypeId = "composes" | "calls" | "displays" | "queries";
+type EdgeTypeId = "composes" | "calls" | "displays" | "queries" | "covers";
 
 type PlaylistEntry =
   | { type: "view"; view_id: string }
@@ -77,6 +77,10 @@ interface NodeMetadata extends Record<string, unknown> {
   platformStatuses?: PlatformStatusMap;
   platformScreenshots?: PlatformScreenshotsMap;
   refs?: Ref[];
+  /** Acceptance nodes: one Given/When/Then scenario — the How (spec §3.1). */
+  gherkin?: string;
+  /** Acceptance nodes: value elements served — the Why (spec §3.2). */
+  values?: ValueId[];
 }
 
 interface Node {

@@ -10,7 +10,7 @@ It's not a task tracker, not a wiki, not a design tool. It's a navigable, multi-
 
 ## Features
 
-- **4-species graph** — flows, views, data models, and API endpoints as first-class node types
+- **5-species graph** — flows, views, data models, API endpoints, and acceptances as first-class node types
 - **Playlist composition** — flows contain ordered sequences of views and sub-flows, with condition and junction branching
 - **Per-platform tracking** — Web, iOS, Android variants with independent statuses and notes per view
 - **8 lifecycle statuses** — idea, backlog, prioritized, development, releasing, live, archived, blocked
@@ -82,7 +82,7 @@ docs/                         # Architecture, graph model, data layer, conventio
 See [`docs/`](docs/README.md) for detailed documentation:
 
 - [Architecture](docs/architecture.md) — system design, component map, data flow
-- [Graph Model](docs/graph-model.md) — 4-species taxonomy, composition, statuses, edge types
+- [Graph Model](docs/graph-model.md) — 5-species taxonomy, composition, statuses, edge types
 - [Data Layer](docs/data-layer.md) — DataProvider interface, local storage, import/export
 - [Conventions](docs/conventions.md) — coding patterns, file organization, state management
 - [Vision](docs/vision.md) — product strategy: the four layers (format, toolchain, app, services), the core product ("one graph, many maps"), modes & tiers, roadmap

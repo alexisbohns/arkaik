@@ -4,10 +4,12 @@ import {
   PlatformSchema,
   SpeciesSchema,
   StatusSchema,
+  ValueSchema,
   type EdgeTypeId,
   type PlatformId,
   type SpeciesId,
   type StatusId,
+  type ValueId,
 } from "./enums";
 import { FlowPlaylistSchema, type FlowPlaylist } from "./playlist";
 import { JournalEventSchema } from "./journal-events";
@@ -104,6 +106,10 @@ export interface NodeMetadata extends Record<string, unknown> {
   platformStatuses?: PlatformStatusMap;
   platformScreenshots?: PlatformScreenshotsMap;
   refs?: Ref[];
+  /** Acceptance nodes: one Given/When/Then scenario — the How (spec §3.1). */
+  gherkin?: string;
+  /** Acceptance nodes: value elements served — the Why (spec §3.2). */
+  values?: ValueId[];
 }
 
 export const NodeMetadataSchema: z.ZodType<NodeMetadata> = z
@@ -114,6 +120,12 @@ export const NodeMetadataSchema: z.ZodType<NodeMetadata> = z
     platformStatuses: PlatformStatusMapSchema.optional(),
     platformScreenshots: PlatformScreenshotsMapSchema.optional(),
     refs: z.array(RefSchema).optional().meta({ description: "Typed external references on the node." }),
+    gherkin: z.string().optional().meta({
+      description: "Acceptance nodes only: exactly one Given/When/Then scenario (the How). A second scenario is a second acceptance node.",
+    }),
+    values: z.array(ValueSchema).optional().meta({
+      description: "Acceptance nodes only: 1..n Bain value elements served (the Why).",
+    }),
   })
   .catchall(z.unknown())
   .meta({ id: "NodeMetadata", description: "Optional metadata for a node." });

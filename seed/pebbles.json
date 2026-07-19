@@ -19,7 +19,7 @@
       ]
     },
     "created_at": "2026-04-01T00:00:00.000Z",
-    "updated_at": "2026-07-09T14:30:00.000Z"
+    "updated_at": "2026-07-19T12:00:06.000Z"
   },
   "nodes": [
     {
@@ -2186,6 +2186,48 @@
         }
       },
       "project_id": "pebbles"
+    },
+    {
+      "id": "AC-pebble-draw-in-animation",
+      "project_id": "pebbles",
+      "species": "acceptance",
+      "title": "Pebble draw-in animation",
+      "description": "The pebble render draws itself in progressively when the detail opens — the signature reveal moment.",
+      "status": "backlog",
+      "platforms": ["web", "ios", "android"],
+      "metadata": {
+        "gherkin": "When I'm on the Pebble Detail, Then I see the Pebble appearing in a drawing animation.",
+        "values": ["fun-entertainment", "design-aesthetics"],
+        "platformStatuses": { "ios": "live", "android": "development" }
+      }
+    },
+    {
+      "id": "AC-emotion-palette-on-read",
+      "project_id": "pebbles",
+      "species": "acceptance",
+      "title": "Emotion palette on read view",
+      "description": "Reading a pebble shows its emotion tinted with the emotion category's palette colors.",
+      "status": "backlog",
+      "platforms": ["web", "ios", "android"],
+      "metadata": {
+        "gherkin": "When I read a pebble, Then its emotion is shown with the emotion category's palette.",
+        "values": ["reduces-anxiety", "design-aesthetics"],
+        "platformStatuses": { "ios": "live", "android": "live" }
+      }
+    },
+    {
+      "id": "AC-buy-community-glyph",
+      "project_id": "pebbles",
+      "species": "acceptance",
+      "title": "Buy a community glyph (30 Karma)",
+      "description": "Spending 30 Karma in the Community tab swaps a listed community glyph into the user's collection.",
+      "status": "development",
+      "platforms": ["web", "ios"],
+      "metadata": {
+        "gherkin": "Given I have 30 Karma, When I'm on the Community glyphs, Then I can buy a Glyph.",
+        "values": ["rewards-me", "affiliation-belonging"],
+        "platformStatuses": { "web": "live", "ios": "backlog" }
+      }
     }
   ],
   "edges": [
@@ -4135,6 +4177,27 @@
       "source_id": "API-buy-glyph",
       "target_id": "DM-karma-events",
       "edge_type": "queries"
+    },
+    {
+      "id": "e-AC-pebble-draw-in-animation-V-pebble-detail",
+      "project_id": "pebbles",
+      "source_id": "AC-pebble-draw-in-animation",
+      "target_id": "V-pebble-detail",
+      "edge_type": "covers"
+    },
+    {
+      "id": "e-AC-emotion-palette-on-read-V-pebble-detail",
+      "project_id": "pebbles",
+      "source_id": "AC-emotion-palette-on-read",
+      "target_id": "V-pebble-detail",
+      "edge_type": "covers"
+    },
+    {
+      "id": "e-AC-buy-community-glyph-F-swap-glyph",
+      "project_id": "pebbles",
+      "source_id": "AC-buy-community-glyph",
+      "target_id": "F-swap-glyph",
+      "edge_type": "covers"
     }
   ],
   "journal": [
@@ -5649,6 +5712,63 @@
       "from": "open",
       "to": "merged",
       "synced_at": "2026-07-09T14:30:00.000Z"
+    },
+    {
+      "id": "01K0ACCEPTANCESEED00000001",
+      "ts": "2026-07-19T12:00:00.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "AC-pebble-draw-in-animation",
+      "species": "acceptance",
+      "title": "Pebble draw-in animation"
+    },
+    {
+      "id": "01K0ACCEPTANCESEED00000002",
+      "ts": "2026-07-19T12:00:01.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "AC-emotion-palette-on-read",
+      "species": "acceptance",
+      "title": "Emotion palette on read view"
+    },
+    {
+      "id": "01K0ACCEPTANCESEED00000003",
+      "ts": "2026-07-19T12:00:02.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "AC-buy-community-glyph",
+      "species": "acceptance",
+      "title": "Buy a community glyph (30 Karma)"
+    },
+    {
+      "id": "01K0ACCEPTANCESEED00000004",
+      "ts": "2026-07-19T12:00:03.000Z",
+      "actor": "claude-code",
+      "type": "edge.added",
+      "edge_id": "e-AC-pebble-draw-in-animation-V-pebble-detail",
+      "source_id": "AC-pebble-draw-in-animation",
+      "target_id": "V-pebble-detail",
+      "edge_type": "covers"
+    },
+    {
+      "id": "01K0ACCEPTANCESEED00000005",
+      "ts": "2026-07-19T12:00:04.000Z",
+      "actor": "claude-code",
+      "type": "edge.added",
+      "edge_id": "e-AC-emotion-palette-on-read-V-pebble-detail",
+      "source_id": "AC-emotion-palette-on-read",
+      "target_id": "V-pebble-detail",
+      "edge_type": "covers"
+    },
+    {
+      "id": "01K0ACCEPTANCESEED00000006",
+      "ts": "2026-07-19T12:00:05.000Z",
+      "actor": "claude-code",
+      "type": "edge.added",
+      "edge_id": "e-AC-buy-community-glyph-F-swap-glyph",
+      "source_id": "AC-buy-community-glyph",
+      "target_id": "F-swap-glyph",
+      "edge_type": "covers"
     }
   ]
 }

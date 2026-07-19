@@ -34,6 +34,7 @@ const SPECIES_EMPTY_LABELS: Record<LibrarySpeciesFilter, string> = {
   flow: "flows",
   "data-model": "data models",
   "api-endpoint": "API endpoints",
+  acceptance: "acceptances",
 };
 
 // The sidebar owns species selection; the header subtitle mirrors it so the
@@ -43,6 +44,7 @@ const SPECIES_SUBTITLE_LABELS: Record<SpeciesId, string> = {
   flow: "Flows",
   "data-model": "Data Models",
   "api-endpoint": "API Endpoints",
+  acceptance: "Acceptances",
 };
 
 const SPECIES_LABEL_BY_ID = Object.fromEntries(

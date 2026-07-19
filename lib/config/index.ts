@@ -3,3 +3,4 @@ export { STATUSES, type StatusId } from "./statuses";
 export { STAGES, type StageId } from "./stages";
 export { EDGE_TYPES, type EdgeTypeId } from "./edge-types";
 export { PLATFORMS, type PlatformId } from "./platforms";
+export { VALUE_TIERS_CONFIG, VALUES, type ValueId, type ValueTierId } from "./values";

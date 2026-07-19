@@ -4,7 +4,7 @@ The graph is built from nodes and edges with structure driven by persisted relat
 
 ## Species
 
-Current taxonomy has exactly 4 species.
+Current taxonomy has exactly 5 species.
 
 | Level | Species | Role | React Flow node type |
 |---|---|---|---|
@@ -12,6 +12,7 @@ Current taxonomy has exactly 4 species.
 | 0 | `view` | Reusable page/screen | `view` |
 | — | `data-model` | Data entity/table | `dataModel` |
 | — | `api-endpoint` | API endpoint | `apiEndpoint` |
+| — | `acceptance` | A testable promise: What (`title`), How (`metadata.gherkin`, one Given/When/Then), Why (`metadata.values`, Bain elements), with per-platform status in `metadata.platformStatuses`. Id prefix `AC-`. | `acceptance` |
 
 Config source: [lib/config/species.ts](../lib/config/species.ts)
 
@@ -32,7 +33,7 @@ Project library is available at `/project/[id]/library` with two browsing modes:
 
 Filtering:
 
-- Species selection is owned by the **sidebar** (`?species=` deep links: `all` when absent, or one of `flow`, `view`, `data-model`, `api-endpoint`); the in-page bar carries search and the display-mode toggle only.
+- Species selection is owned by the **sidebar** (`?species=` deep links: `all` when absent, or one of `flow`, `view`, `data-model`, `api-endpoint`, `acceptance`); the in-page bar carries search and the display-mode toggle only.
 - Search matches node title and description text.
 
 Library source:
@@ -107,7 +108,8 @@ Statuses are configured in:
 
 Rollup behavior:
 
-- `view` is the only species with editable per-platform status values (`metadata.platformStatuses`).
+- `acceptance` is the primary carrier of stored per-platform status values (`metadata.platformStatuses`).
+- `view` also stores `metadata.platformStatuses`, but this is now a deprecated fallback: it is authoritative only while no acceptance covers the view (see `covers` under Edge Types).
 - `flow` status is computed for display by recursively walking playlist entries and aggregating descendant view platform statuses, including nested sub-flows and branch entries.
 - `data-model` and `api-endpoint` use single lifecycle status.
 
@@ -137,6 +139,7 @@ Source:
 | `calls` | View/flow to API relationship, or API endpoint to API endpoint (first-party endpoint fanning out to internal/external APIs) |
 | `displays` | View to data-model relationship |
 | `queries` | API to data-model relationship |
+| `covers` | Acceptance to view/flow relationship — anchors a testable promise to the surface(s) it covers |
 
 Config source: [lib/config/edge-types.ts](../lib/config/edge-types.ts)
 
@@ -153,6 +156,15 @@ on the System map (`/project/[id]/maps/system`), drawn between the two endpoint 
 
 Source: [components/maps/JourneyMap.tsx](../components/maps/JourneyMap.tsx), [lib/utils/journey-graph.ts](../lib/utils/journey-graph.ts), [components/graph/nodes/ViewNode.tsx](../components/graph/nodes/ViewNode.tsx)
 
+`covers` — acceptance → view | flow. Zero covers edges = product-level
+acceptance (legal, not an orphan). Stored per-platform status lives on
+acceptances; a covered view's per-platform status is computed from its
+covering acceptances, falling back to the view's stored `platformStatuses`
+when uncovered (spec §3.4).
+
+Source: `packages/schema/src/acceptance.ts` (projections; not yet consumed by
+the app's status rollups — see the Surfaces plan).
+
 ## Node And Edge Components
 
 Node registration is in:
@@ -168,6 +180,8 @@ Current custom registrations:
 
 `dataModel` and `apiEndpoint` remain registered node types for compatibility, but the current project page renderer does not add those species into `visibleNodes`.
 
+`acceptance` nodes and `covers` edges have no custom Canvas registration yet — they render with generic node/edge components, and the map-kind defaults exclude them (see the dated note under the Taxonomy Update Checklist).
+
 Edge registration is also in [components/graph/Canvas.tsx](../components/graph/Canvas.tsx).
 
 ## Taxonomy Update Checklist
@@ -178,3 +192,14 @@ Edge registration is also in [components/graph/Canvas.tsx](../components/graph/C
 4. Update forms/panels that branch by species.
 5. Update seed data in [seed/pebbles.json](../seed/pebbles.json).
 6. Update this document.
+
+2026-07-19 — acceptance/covers: steps 3–4 deferred to the Surfaces plan
+(docs/superpowers/specs/2026-07-19-acceptance-value-model-design.md §9);
+maps exclude acceptances by default. Step 1 is done ([lib/config/species.ts](../lib/config/species.ts),
+[lib/config/edge-types.ts](../lib/config/edge-types.ts)); step 2 needed no
+change — `journey` and `system` map kinds' species defaults in
+[packages/schema/src/maps.ts](../packages/schema/src/maps.ts) exclude
+`acceptance`, so `lib/utils/journey-graph.ts` and `lib/utils/system-graph.ts`
+have no acceptance-specific branches. `lib/utils/graph-build.ts` already maps
+`acceptance` to React Flow node type `"acceptance"` as a forward-fix
+placeholder for when Canvas registration lands. Step 5 is done (seed).

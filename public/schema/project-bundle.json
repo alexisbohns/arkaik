@@ -231,9 +231,10 @@
         "flow",
         "view",
         "data-model",
-        "api-endpoint"
+        "api-endpoint",
+        "acceptance"
       ],
-      "description": "The species of a node. flow = ordered sequence of views/sub-flows. view = reusable page or screen. data-model = data entity/table. api-endpoint = API endpoint."
+      "description": "The species of a node. flow = ordered sequence of views/sub-flows. view = reusable page or screen. data-model = data entity/table. api-endpoint = API endpoint. acceptance = a testable promise (one Given/When/Then) with per-platform status."
     },
     "Status": {
       "type": "string",
@@ -281,6 +282,17 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/Ref"
+          }
+        },
+        "gherkin": {
+          "description": "Acceptance nodes only: exactly one Given/When/Then scenario (the How). A second scenario is a second acceptance node.",
+          "type": "string"
+        },
+        "values": {
+          "description": "Acceptance nodes only: 1..n Bain value elements served (the Why).",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Value"
           }
         }
       },
@@ -489,6 +501,42 @@
       "additionalProperties": false,
       "description": "A typed external reference on a node (docs/spec/bundle-format.md § References)."
     },
+    "Value": {
+      "type": "string",
+      "enum": [
+        "saves-time",
+        "simplifies",
+        "makes-money",
+        "reduces-risk",
+        "organizes",
+        "integrates",
+        "connects",
+        "reduces-effort",
+        "avoids-hassles",
+        "reduces-cost",
+        "quality",
+        "variety",
+        "sensory-appeal",
+        "informs",
+        "reduces-anxiety",
+        "rewards-me",
+        "nostalgia",
+        "design-aesthetics",
+        "badge-value",
+        "wellness",
+        "therapeutic-value",
+        "fun-entertainment",
+        "attractiveness",
+        "provides-access",
+        "provides-hope",
+        "self-actualization",
+        "motivation",
+        "heirloom",
+        "affiliation-belonging",
+        "self-transcendence"
+      ],
+      "description": "A Bain B2C Elements-of-Value element served by an acceptance (spec §3.2)."
+    },
     "Edge": {
       "type": "object",
       "properties": {
@@ -535,9 +583,10 @@
         "composes",
         "calls",
         "displays",
-        "queries"
+        "queries",
+        "covers"
       ],
-      "description": "composes = structural hierarchy (flow↔view). calls = view/flow → api-endpoint, or api-endpoint → api-endpoint (endpoint fan-out to internal/external APIs). displays = view → data-model. queries = api-endpoint → data-model."
+      "description": "composes = structural hierarchy (flow↔view). calls = view/flow → api-endpoint, or api-endpoint → api-endpoint (endpoint fan-out to internal/external APIs). displays = view → data-model. queries = api-endpoint → data-model. covers = acceptance → view/flow (which surface the acceptance is proven on)."
     },
     "JournalEvent": {
       "type": "object",

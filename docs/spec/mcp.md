@@ -41,8 +41,8 @@ All tool results are JSON text content. Read tools are projections; write tools 
 
 | Tool | Input | Returns | Journal events |
 |---|---|---|---|
-| `list_nodes` | `species?`, `status?`, `platform?`, `query?`, `limit?` | node summaries `{id, title, species, status, platforms}` | — |
-| `get_node` | `node_id` | full node + edges with neighbor titles + where-used flows + `computeNodeTimeline` | — |
+| `list_nodes` | `species?`, `status?`, `platform?`, `value?`, `anchor?`, `parity_gap?`, `query?`, `limit?` | node summaries `{id, title, species, status, platforms}` (acceptances add `platform_statuses`, `values`) | — |
+| `get_node` | `node_id` | full node + edges with neighbor titles + where-used flows + `computeNodeTimeline` + (views/flows) `covered_by` | — |
 | `create_node` | `species`, `title`, `description?`, `status?`, `platforms`, `metadata?` | created node (id via `deriveNodeId`) + any synthesized `composes` edges | `node.created` (+ one `edge.added` per synthesized composes edge — see Playlist Composition) |
 | `update_node` | `node_id`, `patch` | updated node + any synthesized `composes` edges | via `diffNodeUpdate`: `node.updated` / `node.status_changed` (± `platform`) / `ref.added` / `ref.removed` (+ `edge.added` per synthesized composes edge) |
 | `delete_node` | `node_id` | removed node + cascaded edge ids | `node.deleted` (edge cascade implied per [journal.md](journal.md)) |
@@ -55,6 +55,14 @@ All tool results are JSON text content. Read tools are projections; write tools 
 | `list_maps` | — | built-in + stored `MapDefinition`s with node/edge counts | — |
 | `get_map` | `map_id` | `computeMapSubgraph` result | — |
 | `validate_bundle` | — | `validateBundle` findings (errors + warnings, with paths) | — |
+
+`list_nodes` additionally accepts:
+
+- `value` — only acceptances tagged with this value element (enum: the 30 `VALUE_IDS`).
+- `anchor` — a node id; only acceptances covering it via a `covers` edge.
+- `parity_gap` — boolean; only acceptances delivered (`live`) on ≥1 applicable platform but not all (spec §3.5).
+
+Acceptance summaries additionally carry `platform_statuses` (resolved per applicable platform) and `values`. `get_node` on a view or flow includes `covered_by`: summaries of the acceptances covering it.
 
 `arkaik release` (tagging, note drafting, compaction) stays **CLI-only** in v1 — it is a ceremony with side effects beyond the bundle, owned by `packages/cli/src/commands/release.ts`.
 

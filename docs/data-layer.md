@@ -219,4 +219,4 @@ To add a new provider: implement the `DataProvider` interface and inject it via 
 
 ## Seed Data
 
-`seed/pebbles.json` contains an example project ("Pebbles") demonstrating the 4-species model, persisted compose edges for structure, and playlist-driven flow ordering.
+`seed/pebbles.json` contains an example project ("Pebbles") demonstrating the 5-species model, persisted compose edges for structure, and playlist-driven flow ordering.

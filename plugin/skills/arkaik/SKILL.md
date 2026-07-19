@@ -1,6 +1,6 @@
 ---
 name: arkaik
-version: 2.0.0
+version: 3.0.0
 description: >
   Maintain the Arkaik product graph map for {{PRODUCT_NAME}} — add, update, or
   remove nodes and edges in the ProjectBundle JSON that describes its screens,
@@ -40,6 +40,7 @@ one the first time you make a change (see [Dual-write](#dual-write-snapshot--jou
 > | Parameter | Meaning | Default |
 > |---|---|---|
 > | `{{PRODUCT_NAME}}` | The product this map describes | the current product |
+> | `{{PROJECT_ID}}` | Kebab-case `project.id` for this map (distinct from the display name above) | a kebab-case slug of the product name |
 > | `{{BUNDLE_PATH}}` | Path to the snapshot | `docs/arkaik/bundle.json` |
 > | `{{JOURNAL_PATH}}` | Path to the journal sidecar | `docs/arkaik/journal.jsonl` |
 
@@ -82,7 +83,7 @@ Each graph operation has a matching event. Append one line per operation:
 |---|---|
 | Add a node | `node.created` (`node_id`, `species`, `title`) |
 | Add an edge | `edge.added` (`edge_id`, `source_id`, `target_id`, `edge_type`) |
-| Change a node's `status` | `node.status_changed` (`node_id`, `from`, `to`; add `platform` when a per-platform view status moved) |
+| Change a node's `status` | `node.status_changed` (`node_id`, `from`, `to`; add `platform` when a per-platform node status — an acceptance, or a not-yet-covered view — moved) |
 | Change any other node field (rename, description, playlist…) | `node.updated` (`node_id`, `fields[]`; `from`/`to` for short scalars like `title`) |
 | Remove a node | `node.deleted` (`node_id`) — **implies** cascade removal of its edges; do NOT also emit `edge.removed` for those |
 | Remove an edge on its own (node stays) | `edge.removed` (`edge_id`) |
@@ -132,6 +133,7 @@ Map your code change to graph operations (and the events they pair with):
 | Status change | Update the node's `status` field | `node.status_changed` |
 | Rename (label only) | Update the node's `title`; keep the `id` stable so edges stay intact | `node.updated` (`fields: ["title"]`, with `from`/`to`) |
 | Rename (id must change) | Update the `id`, then repoint every edge's `source_id`/`target_id` **and** the edge `id` (`e-{source}-{target}`), plus any playlist `view_id`/`flow_id` and `root_node_id` | `node.updated` + `edge.removed`/`edge.added` for each repointed edge |
+| Ship/add user-visible behavior on a platform | Find or create the covering `AC-` acceptance + `covers` edge to the view/flow; set `metadata.platformStatuses.<platform>` on the acceptance | `node.created` + `edge.added` (new acceptance) + `node.status_changed` (`platform`) |
 
 ### 3. Apply the change
 
@@ -162,6 +164,7 @@ larger restructuring. Follow these rules strictly:
   - `calls`: view -> api-endpoint, flow -> api-endpoint, api-endpoint -> api-endpoint (endpoint fan-out to internal/external APIs)
   - `displays`: view -> data-model
   - `queries`: api-endpoint -> data-model
+  - `covers`: acceptance -> view, acceptance -> flow
 - Every view/flow referenced in a playlist MUST also have a `composes` edge
 
 **Playlist rules:**
@@ -211,7 +214,8 @@ the two **by value, never by timestamp** (per-node timestamps don't exist and
 clocks lie) and errors on any mismatch, naming both sides:
 - The last project-level `node.status_changed.to` for a node must equal its
   current `status`. (Platform-scoped transitions — those carrying `platform` —
-  move a per-platform view status, not `node.status`, and are excluded.)
+  move a per-platform node status — an acceptance, or a not-yet-covered view —
+  not `node.status`, and are excluded.)
 - Every node in the snapshot must have a `node.created` event.
 - No event may reference a node or edge that never existed. The `node.deleted`
   edge cascade is applied, so you never emit the cascaded `edge.removed` events.
@@ -221,6 +225,64 @@ clocks lie) and errors on any mismatch, naming both sides:
 ### 6. Update timestamps
 
 Set `project.updated_at` to the current ISO 8601 timestamp.
+
+## Acceptances — the parity layer
+
+An **acceptance** is a testable promise: a short `title` (the What), exactly one
+Given/When/Then scenario in `metadata.gherkin` (the How), 1–3 value elements in
+`metadata.values` (the Why), and a status per applicable platform. Acceptances
+are where per-platform truth lives; views and flows are computed aggregates.
+
+**Discipline — when you ship user-visible behavior on a platform:**
+
+1. Find the acceptance covering that behavior (`covers` edge into the view or
+   flow). If none exists, create one (`species: "acceptance"`, id prefix `AC-`).
+2. Set `metadata.platformStatuses.<platform>` on the **acceptance** — never on
+   the view. View `platformStatuses` is legacy fallback for views no acceptance
+   covers yet; do not write it on covered views.
+3. Append the matching `node.status_changed` event with the `platform` field.
+
+Creating a new acceptance + covers edge is itself a dual-write: append
+`node.created` and `edge.added` alongside the `node.status_changed`.
+
+**Rules:**
+
+- One Given/When/Then per acceptance — a second scenario is a second acceptance.
+- `Given` encodes render variants ("Given the pebble has a picture attached…").
+- `platforms` lists only the platforms where the behavior is *expected* — a
+  mobile-only behavior is `["ios", "android"]`, not backlog-on-web.
+- `covers` edges: acceptance → view or acceptance → flow. Zero edges = a
+  product-level acceptance (legal). Several = the behavior spans surfaces.
+- Statuses reuse the standard lifecycle; "shipped" = `live`.
+
+**Example** — iOS ships the draw-in animation:
+
+```json
+{
+  "id": "AC-pebble-draw-in-animation",
+  "project_id": "{{PROJECT_ID}}",
+  "species": "acceptance",
+  "title": "Pebble draw-in animation",
+  "status": "backlog",
+  "platforms": ["web", "ios", "android"],
+  "metadata": {
+    "gherkin": "When I'm on the Pebble Detail, Then I see the Pebble appearing in a drawing animation.",
+    "values": ["fun-entertainment", "design-aesthetics"],
+    "platformStatuses": { "ios": "live" }
+  }
+}
+```
+
+plus `{"type": "node.status_changed", "node_id": "AC-pebble-draw-in-animation", "from": "backlog", "to": "live", "platform": "ios"}` in the journal.
+
+<!-- values:start -->
+### Value mapping
+
+Assign 1–3 `metadata.values` from the 30-element Bain pyramid when creating an
+acceptance. **If unsure, omit them** — enrichment passes exist; a wrong value is
+worse than a missing one. Consult `references/values.md` (one-line definitions
+per element) only when actually mapping — do not load it otherwise.
+<!-- values:end -->
 
 ## Full Schema Reference
 
@@ -246,7 +308,7 @@ known type whenever one fits.
 |---|---|---|
 | `node.created` | `node_id`, `species`, `title` | Node added to the graph |
 | `node.updated` | `node_id`, `fields[]`, optional `from`/`to` for scalars | Non-status fields changed |
-| `node.status_changed` | `node_id`, `from`, `to`, `platform?` | Lifecycle transition; `platform` present when a per-platform view status moved |
+| `node.status_changed` | `node_id`, `from`, `to`, `platform?` | Lifecycle transition; `platform` present when a per-platform node status — an acceptance, or a not-yet-covered view — moved |
 | `node.deleted` | `node_id` | Node removed. **Implies** cascade removal of every edge referencing it — do not emit the cascaded `edge.removed` events |
 | `edge.added` | `edge_id`, `source_id`, `target_id`, `edge_type` | Relationship created |
 | `edge.removed` | `edge_id` | Relationship removed (non-cascade) |
