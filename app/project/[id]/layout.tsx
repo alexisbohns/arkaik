@@ -25,7 +25,9 @@ export default function ProjectLayout({
         ? "delivery"
         : pathname.startsWith(`/project/${id}/changelog`)
           ? "changelog"
-          : "maps";
+          : pathname.startsWith(`/project/${id}/acceptances`)
+            ? "acceptances"
+            : "maps";
   const currentSpecies = currentView === "library" ? searchParams.get("species") : null;
   const currentQueryString = currentView === "library" ? searchParams.toString() : "";
 
