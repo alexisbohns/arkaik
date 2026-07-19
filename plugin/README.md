@@ -104,6 +104,6 @@ compatible.
 
 `plugin/.claude-plugin/plugin.json`'s `version` field is *generated from* the
 skill's frontmatter `version` stamp (`docs/arkaik-skill/skill.md`,
-`version: 2.0.0`) — never hand-set — so a skill version bump and a plugin
+`version: 3.0.0`) — never hand-set — so a skill version bump and a plugin
 manifest version bump cannot drift apart. `npm run generate` is the only
 thing that writes `plugin.json`.

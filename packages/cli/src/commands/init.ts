@@ -26,6 +26,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
@@ -63,7 +64,9 @@ Options:
                          no-op when already current. Never touches the
                          bundle or journal.
   --no-values           Render the skill without the value-mapping guidance
-                        (and skip references/values.md).
+                        (and skip references/values.md). Applies when the
+                        skill is installed or upgraded; a same-version
+                        \`--update\` run is a no-op.
   -h, --help             Show this help.`;
 
 function fail(message: string): never {
@@ -224,7 +227,10 @@ function renderTemplate(template: string, vars: Record<string, string>): string 
 
 /** Strip the value-mapping guidance block (marker-delimited in skill.md). */
 function stripValuesSection(content: string): string {
-  return content.replace(/<!-- values:start -->[\s\S]*?<!-- values:end -->\n?/g, "");
+  // Consume the block's own trailing newlines too, so removing it doesn't
+  // leave a double blank line — the blank line preceding the block already
+  // provides the section separator.
+  return content.replace(/<!-- values:start -->[\s\S]*?<!-- values:end -->\n*/g, "");
 }
 
 /** Render the packaged skill template + copy its generated siblings into `skillsDirPath`. */
@@ -237,7 +243,11 @@ function renderAndWriteSkill(skillsDirPath: string, vars: Record<string, string>
 
   writeFileSync(join(skillsDirPath, "SKILL.md"), renderTemplate(template, vars));
   copyFileSync(join(ASSET_DIR, "references", "schema.md"), join(skillsDirPath, "references", "schema.md"));
-  if (!noValues) {
+  if (noValues) {
+    // Cover the --update case: a previously-installed skill (with values on)
+    // may still carry references/values.md; a --no-values upgrade removes it.
+    rmSync(join(skillsDirPath, "references", "values.md"), { force: true });
+  } else {
     copyFileSync(join(ASSET_DIR, "references", "values.md"), join(skillsDirPath, "references", "values.md"));
   }
   copyFileSync(join(ASSET_DIR, "scripts", "validate-bundle.js"), join(skillsDirPath, "scripts", "validate-bundle.js"));
@@ -293,7 +303,12 @@ export function runInit(args: string[]): void {
   const journalPath = resolve(cwd, journalRelPath);
   const skillsDirPath = resolve(cwd, skillsDirRelPath);
 
-  const vars = { PRODUCT_NAME: productName, BUNDLE_PATH: bundleRelPath, JOURNAL_PATH: journalRelPath };
+  const vars = {
+    PRODUCT_NAME: productName,
+    PROJECT_ID: kebabCase(productName),
+    BUNDLE_PATH: bundleRelPath,
+    JOURNAL_PATH: journalRelPath,
+  };
 
   if (opts.update) {
     updateSkill(skillsDirPath, vars, opts.noValues);
