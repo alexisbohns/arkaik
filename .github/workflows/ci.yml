@@ -75,6 +75,9 @@ jobs:
       - name: Overview coverage projection tests
         run: npm run test:coverage
 
+      - name: Value icon resolution tests
+        run: npm run test:value-icons
+
       - name: Journal write-primitive (emit) tests
         run: npm run test:emit
 

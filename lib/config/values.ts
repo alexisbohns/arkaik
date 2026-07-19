@@ -53,7 +53,7 @@ const VALUE_LABELS: Record<ValueId, string> = {
 const VALUE_ICONS: Record<ValueId, string> = {
   // functional
   "saves-time": "Timer",
-  simplifies: "Wand2",
+  simplifies: "WandSparkles",
   "makes-money": "Banknote",
   "reduces-risk": "ShieldCheck",
   organizes: "FolderKanban",
