@@ -8,7 +8,7 @@ const VALUE_BY_ID = new Map(VALUES.map((v) => [v.id, v]));
 
 export function ValueIcon({ valueId, className }: { valueId: ValueId; className?: string }) {
   const Icon = VALUE_ICON_COMPONENTS[valueId];
-  return <Icon className={className ?? "size-3.5"} aria-hidden />;
+  return <Icon className={className ?? "size-3.5"} aria-hidden="true" />;
 }
 
 /** Icon + label chip for a value element. */
