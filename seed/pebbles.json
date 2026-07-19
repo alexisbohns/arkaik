@@ -2219,11 +2219,11 @@
       "species": "acceptance",
       "title": "Buy a community glyph (30 Karma)",
       "status": "development",
-      "platforms": ["web", "ios", "android"],
+      "platforms": ["web", "ios"],
       "metadata": {
         "gherkin": "Given I have 30 Karma, When I'm on the Community glyphs, Then I can buy a Glyph.",
         "values": ["rewards-me", "affiliation-belonging"],
-        "platformStatuses": { "web": "live", "android": "live", "ios": "backlog" }
+        "platformStatuses": { "web": "live", "ios": "backlog" }
       }
     }
   ],
