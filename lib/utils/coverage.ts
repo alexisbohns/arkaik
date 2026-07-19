@@ -58,20 +58,28 @@ export function computeInventory(
 // --- Platform gauges: the whole-product view-delivery rollup ------------------
 
 /**
- * Reduce every node into one product-wide rollup. Only views contribute
- * (`addNodeToRollup` goes through `getEditablePlatformStatuses`, which is
- * empty for other species) and only counted-preset statuses are tallied —
- * the same reading as the flow cards' gauges, at product scale. Feeds
+ * Reduce views into one product-wide rollup — the source for the overview
+ * page's product-wide per-platform gauge. Only views contribute (filtered
+ * explicitly here) and only counted-preset statuses are tallied — the same
+ * reading as the flow cards' gauges, at product scale. Feeds
  * `getPlatformRollupSegments` / `PlatformGaugeList` directly.
+ *
+ * The view filter is explicit rather than relying on `getEditablePlatformStatuses`
+ * returning `{}` for other species: that helper now also seeds the acceptance
+ * editor (view + acceptance), so acceptances would otherwise leak into this
+ * product-delivery gauge. Part 2's rollup seam will extend this to be
+ * acceptance-aware deliberately.
  */
 export function computeProductRollup(
   nodes: readonly Pick<Node, "species" | "status" | "platforms" | "metadata">[],
   presetId?: CountedStatusPresetId,
 ): PlatformStatusRollup {
-  return nodes.reduce(
-    (rollup, node) => (presetId === undefined ? addNodeToRollup(rollup, node) : addNodeToRollup(rollup, node, presetId)),
-    createEmptyRollup(),
-  );
+  return nodes
+    .filter((node) => node.species === "view")
+    .reduce(
+      (rollup, node) => (presetId === undefined ? addNodeToRollup(rollup, node) : addNodeToRollup(rollup, node, presetId)),
+      createEmptyRollup(),
+    );
 }
 
 // --- Release pulse -------------------------------------------------------------

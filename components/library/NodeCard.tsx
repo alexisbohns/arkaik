@@ -4,6 +4,7 @@ import { GitBranchIcon, SplitIcon } from "lucide-react";
 import type { Node } from "@/lib/data/types";
 import type { PlatformStatusMap } from "@/lib/data/types";
 import type { PlatformStatusRollup } from "@/lib/utils/platform-status";
+import { getEditablePlatformStatuses } from "@/lib/utils/platform-status";
 import type { SpeciesId } from "@/lib/config/species";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PlatformGaugeList } from "@/components/graph/nodes/PlatformGaugeList";
@@ -14,6 +15,7 @@ import {
   SPECIES_ICONS,
 } from "@/components/graph/nodes/node-styles";
 import { SpeciesBadge, EntityId } from "@/components/graph/nodes/EntityBadges";
+import { ValueBadge } from "@/components/values/ValueBadge";
 
 export interface PlaylistPreviewItem {
   type: "view" | "flow" | "condition" | "junction";
@@ -98,7 +100,27 @@ export function NodeCard({
             </div>
           )}
 
-          {node.species !== "view" && node.species !== "flow" && (
+          {node.species === "acceptance" && (
+            <div className="space-y-2">
+              {typeof node.metadata?.gherkin === "string" && node.metadata.gherkin && (
+                <p className="line-clamp-2 text-[11px] text-muted-foreground">{node.metadata.gherkin}</p>
+              )}
+              {(node.metadata?.values ?? []).length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {(node.metadata?.values ?? []).map((v) => <ValueBadge key={v} valueId={v} />)}
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <span className="text-muted-foreground">Platforms</span>
+                <PlatformList
+                  platforms={node.platforms}
+                  platformStatuses={getEditablePlatformStatuses(node)}
+                />
+              </div>
+            </div>
+          )}
+
+          {node.species !== "view" && node.species !== "flow" && node.species !== "acceptance" && (
             <div className="space-y-1.5">
               <span className="text-muted-foreground">Platforms</span>
               {node.platforms.length > 0 ? (

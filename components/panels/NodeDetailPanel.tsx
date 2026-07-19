@@ -31,6 +31,8 @@ import { RefList } from "@/components/graph/nodes/RefBadges";
 import { PlatformVariants } from "@/components/panels/PlatformVariants";
 import { PlatformGaugeList } from "@/components/graph/nodes/PlatformGaugeList";
 import { PlaylistEditor } from "@/components/panels/PlaylistEditor";
+import { AcceptanceEditor } from "@/components/panels/AcceptanceEditor";
+import { AcceptancesSection } from "@/components/panels/AcceptancesSection";
 import {
   addNodeToRollup,
   createEmptyRollup,
@@ -127,6 +129,7 @@ interface NodeDetailPanelProps {
   journal?: JournalEvent[];
   onNavigate?: (node: Node) => void;
   onCreateNode?: (species: "flow" | "view", title: string) => Promise<Node>;
+  onCreateAcceptanceForAnchor?: (anchor: Node, title: string) => Promise<Node>;
   onZoomShot?: (node: Node, platform: PlatformId) => void;
 }
 
@@ -488,6 +491,7 @@ export function NodeDetailPanel({
   journal,
   onNavigate,
   onCreateNode,
+  onCreateAcceptanceForAnchor,
   onZoomShot,
 }: NodeDetailPanelProps) {
   void onDelete;
@@ -530,6 +534,26 @@ export function NodeDetailPanel({
           <>
             <NodeFields key={node.id} node={node} onUpdate={onUpdate} />
             <RefsSection key={`refs-${node.id}`} node={node} />
+            {(node.species === "view" || node.species === "flow") && allNodes && allEdges && (
+              <AcceptancesSection
+                key={`acceptances-${node.id}`}
+                node={node}
+                allNodes={allNodes}
+                allEdges={allEdges}
+                onNavigate={onNavigate}
+                onCreate={onCreateAcceptanceForAnchor}
+              />
+            )}
+            {node.species === "acceptance" && allNodes && allEdges && onUpdate && (
+              <AcceptanceEditor
+                key={`acceptance-${node.id}`}
+                node={node}
+                allNodes={allNodes}
+                allEdges={allEdges}
+                onUpdate={onUpdate}
+                onNavigate={onNavigate}
+              />
+            )}
             {node.species === "view" && (
               <PlatformVariantsSection
                 key={`pv-${node.id}-${initialPlatform ?? ""}`}

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   BookOpenIcon,
+  ClipboardCheckIcon,
   DatabaseIcon,
   GitBranchIcon,
   HistoryIcon,
@@ -37,7 +38,7 @@ import {
 interface ProjectSidebarProps {
   projectId: string;
   currentProjectTitle?: string;
-  currentView: "overview" | "maps" | "library" | "delivery" | "changelog";
+  currentView: "overview" | "maps" | "library" | "delivery" | "changelog" | "acceptances" | "pyramid";
   currentSpecies: string | null;
   /** Active map id when currentView is "maps" and a specific map is open. */
   currentMapId: string | null;
@@ -151,6 +152,14 @@ export function ProjectSidebar({
                 <Link href={libraryHref}>
                   <BookOpenIcon />
                   <span>All nodes</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={currentView === "acceptances"} tooltip="Acceptances">
+                <Link href={`/project/${projectId}/acceptances`}>
+                  <ClipboardCheckIcon />
+                  <span>Acceptances</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

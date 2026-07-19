@@ -36,8 +36,16 @@ export function hasExplicitPlatformStatuses(node: Pick<Node, "metadata">): boole
   return Boolean(node.metadata?.platformStatuses);
 }
 
+/**
+ * Per-platform statuses that seed an editable `PlatformVariants` control.
+ * Returns a full map (override ?? node.status per platform) for the species
+ * that own a per-platform status editor — `view` and `acceptance` — and `{}`
+ * for every other species. Callers that must stay views-only (e.g. the
+ * product-delivery rollup in `computeProductRollup`) filter by species
+ * themselves rather than relying on this returning `{}` for acceptances.
+ */
 export function getEditablePlatformStatuses(node: Pick<Node, "species" | "status" | "platforms" | "metadata">): PlatformStatusMap {
-  if (node.species !== "view") {
+  if (node.species !== "view" && node.species !== "acceptance") {
     return {};
   }
 
