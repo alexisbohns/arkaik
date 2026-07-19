@@ -1,7 +1,8 @@
 "use client";
 
-import type { Node, Edge, PlatformStatusMap } from "@/lib/data/types";
-import { acceptancesCovering, hasParityGap, resolvePlatformStatus } from "@arkaik/schema";
+import type { Node, Edge } from "@/lib/data/types";
+import { acceptancesCovering, hasParityGap } from "@arkaik/schema";
+import { getEditablePlatformStatuses } from "@/lib/utils/platform-status";
 import { PlatformList } from "@/components/graph/nodes/PlatformList";
 import { EntityId } from "@/components/graph/nodes/EntityBadges";
 import { Button } from "@/components/ui/button";
@@ -14,15 +15,6 @@ interface AcceptancesSectionProps {
   allEdges: Edge[];
   onNavigate?: (node: Node) => void;
   onCreate?: (anchor: Node, title: string) => Promise<Node>;
-}
-
-function resolvedMap(acc: Node): PlatformStatusMap {
-  const map: PlatformStatusMap = {};
-  for (const p of acc.platforms) {
-    const status = resolvePlatformStatus(acc, p);
-    if (status) map[p] = status;
-  }
-  return map;
 }
 
 export function AcceptancesSection({ node, allNodes, allEdges, onNavigate, onCreate }: AcceptancesSectionProps) {
@@ -67,7 +59,7 @@ export function AcceptancesSection({ node, allNodes, allEdges, onNavigate, onCre
                   {acc.title}
                 </span>
                 <EntityId id={acc.id} />
-                <PlatformList platforms={acc.platforms} platformStatuses={resolvedMap(acc)} />
+                <PlatformList platforms={acc.platforms} platformStatuses={getEditablePlatformStatuses(acc)} />
               </button>
             </li>
           ))}

@@ -1,10 +1,10 @@
 "use client";
 
 import { GitBranchIcon, SplitIcon } from "lucide-react";
-import { resolvePlatformStatus } from "@arkaik/schema";
 import type { Node } from "@/lib/data/types";
 import type { PlatformStatusMap } from "@/lib/data/types";
 import type { PlatformStatusRollup } from "@/lib/utils/platform-status";
+import { getEditablePlatformStatuses } from "@/lib/utils/platform-status";
 import type { SpeciesId } from "@/lib/config/species";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PlatformGaugeList } from "@/components/graph/nodes/PlatformGaugeList";
@@ -114,11 +114,7 @@ export function NodeCard({
                 <span className="text-muted-foreground">Platforms</span>
                 <PlatformList
                   platforms={node.platforms}
-                  platformStatuses={node.platforms.reduce<PlatformStatusMap>((acc, p) => {
-                    const s = resolvePlatformStatus(node, p);
-                    if (s) acc[p] = s;
-                    return acc;
-                  }, {})}
+                  platformStatuses={getEditablePlatformStatuses(node)}
                 />
               </div>
             </div>
