@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Gochi_Hand } from "next/font/google";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { ArkaikLogo } from "@/components/branding/ArkaikLogo";
+import { ArkaikLogoBoil } from "@/components/branding/ArkaikLogoBoil";
 
 const gochiHand = Gochi_Hand({
   subsets: ["latin"],
@@ -21,7 +21,7 @@ export default function Home() {
 
       <main className="relative mx-auto flex w-full max-w-5xl flex-1 flex-col items-center justify-center px-6 pb-14 pt-4">
         <div className="w-full max-w-[400px] text-center">
-          <ArkaikLogo className="mx-auto" />
+          <ArkaikLogoBoil className="mx-auto" />
 
           <p className={`${gochiHand.className} mt-3 text-[32px] leading-none text-primary sm:text-[32px]`}>
             for product architects
