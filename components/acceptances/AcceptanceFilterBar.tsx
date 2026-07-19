@@ -52,6 +52,9 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions }: Accept
     }
   }
   // Debounce draft → URL so typing stays responsive and doesn't drop characters.
+  // Self-echo correctness relies on router.replace running as a transition (App
+  // Router default): the plain setLastWrittenSearch below commits on the default
+  // lane before the searchParams echo, so the guard never mistakes it for external.
   useEffect(() => {
     if (searchDraft === filtersRef.current.search) return;
     const t = setTimeout(() => {
@@ -117,7 +120,13 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions }: Accept
       </Button>
 
       {isFiltered && (
-        <Button type="button" variant="ghost" size="sm" onClick={() => onChange(EMPTY_FILTERS)} aria-label="Clear filters">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => { setSearchDraft(""); onChange(EMPTY_FILTERS); }}
+          aria-label="Clear filters"
+        >
           <XIcon className="size-4" /> Clear
         </Button>
       )}
