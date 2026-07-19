@@ -27,6 +27,8 @@ import {
   EDGE_DISTANCE,
   FRAME_RATE,
   FREQ_MULTIPLIER,
+  INTRO_DURATION_MS,
+  INTRO_START_FACTOR,
   MAX_OPACITY,
   NOISE_PAN_SPEED,
   NOISE_SCALE,
@@ -44,6 +46,19 @@ function clamp(value: number, lo: number, hi: number): number {
 
 function mapRange(value: number, inMin: number, inMax: number, outMin: number, outMax: number): number {
   return outMin + ((value - inMin) * (outMax - outMin)) / (inMax - inMin);
+}
+
+/** Slow start, slow finish, quicker through the middle — a natural-feeling reveal. */
+function smoothstep(t: number): number {
+  const c = clamp(t, 0, 1);
+  return c * c * (3 - 2 * c);
+}
+
+/** Opacity multiplier for the mount-time intro: soft → full contrast. */
+function introOpacityScale(elapsedMs: number): number {
+  if (elapsedMs >= INTRO_DURATION_MS) return 1;
+  const t = smoothstep(elapsedMs / INTRO_DURATION_MS);
+  return INTRO_START_FACTOR + (1 - INTRO_START_FACTOR) * t;
 }
 
 /** Ridged noise: folds/cubes a smooth field into vein-like ridges. */
@@ -140,7 +155,7 @@ export function AsciiTerrainBackground({ className }: { className?: string }) {
       }
     };
 
-    const render = () => {
+    const render = (opacityScale = 1) => {
       const cssWidth = canvas.clientWidth;
       const cssHeight = canvas.clientHeight;
       ctx.clearRect(0, 0, cssWidth, cssHeight);
@@ -158,7 +173,7 @@ export function AsciiTerrainBackground({ className }: { className?: string }) {
 
           let noiseVal = clamp(mapRange(noiseCache[index], 0, 1, -0.2, 1.2), 0, 1);
           noiseVal = Math.pow(noiseVal, 1.5);
-          const alpha = Math.pow(noiseVal, 0.8) * MAX_OPACITY * fadeFactor;
+          const alpha = Math.pow(noiseVal, 0.8) * MAX_OPACITY * opacityScale * fadeFactor;
 
           if (Math.abs(alpha - currentAlpha) > 1 / 255) {
             ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(3)})`;
@@ -172,13 +187,15 @@ export function AsciiTerrainBackground({ className }: { className?: string }) {
       }
     };
 
+    const mountTime = performance.now();
+
     const frame = (time: number) => {
       rafId = requestAnimationFrame(frame);
       if (time - lastFrameTime < FRAME_INTERVAL_MS) return;
       lastFrameTime = time;
 
       updateNoiseCache();
-      render();
+      render(introOpacityScale(time - mountTime));
       offsetX += NOISE_PAN_SPEED;
       offsetY += NOISE_PAN_SPEED;
     };

@@ -43,3 +43,15 @@ export const ASCII_CHARS = [" ", ".", ":", "-", "~", "+", "=", "^", "*", "#", "@
  * than the pen's stark full-contrast terminal look.
  */
 export const MAX_OPACITY = 0.35;
+
+/**
+ * On mount, the texture eases in from `INTRO_START_FACTOR × MAX_OPACITY`
+ * (soft, logo-first) up to the full `MAX_OPACITY` (ridges, contrast) over
+ * `INTRO_DURATION_MS`, instead of appearing at full contrast immediately.
+ * Skipped under `prefers-reduced-motion: reduce`, which renders straight at
+ * full contrast.
+ */
+export const INTRO_DURATION_MS = 6000;
+
+/** Opacity fraction the texture starts at when the intro begins. */
+export const INTRO_START_FACTOR = 0.06;
