@@ -3,7 +3,7 @@ import { getCountedStatuses, type CountedStatusPresetId, type StatusId } from "@
 import type { Edge, JournalEvent, Node, ReleaseTaggedEvent } from "@/lib/data/types";
 import { computeDeliveryItems, groupItemsByStatus } from "@/lib/utils/delivery";
 import { computeBacklog, computeChangelog } from "@/lib/utils/journal";
-import { addNodeToRollup, createEmptyRollup, type PlatformStatusRollup } from "@/lib/utils/platform-status";
+import { addEffectiveNodeToRollup, createEmptyRollup, type PlatformStatusRollup } from "@/lib/utils/platform-status";
 import { orderEvents } from "@arkaik/schema";
 
 /**
@@ -67,17 +67,20 @@ export function computeInventory(
  * The view filter is explicit rather than relying on `getEditablePlatformStatuses`
  * returning `{}` for other species: that helper now also seeds the acceptance
  * editor (view + acceptance), so acceptances would otherwise leak into this
- * product-delivery gauge. Part 2's rollup seam will extend this to be
- * acceptance-aware deliberately.
+ * product-delivery gauge. Views covered by acceptances contribute their
+ * acceptance-derived (effective) per-platform statuses via the rollup seam
+ * (`addEffectiveNodeToRollup`); uncovered views fall back to their stored
+ * statuses.
  */
 export function computeProductRollup(
-  nodes: readonly Pick<Node, "species" | "status" | "platforms" | "metadata">[],
+  nodes: readonly Node[],
+  edges: readonly Edge[],
   presetId?: CountedStatusPresetId,
 ): PlatformStatusRollup {
   return nodes
     .filter((node) => node.species === "view")
     .reduce(
-      (rollup, node) => (presetId === undefined ? addNodeToRollup(rollup, node) : addNodeToRollup(rollup, node, presetId)),
+      (rollup, node) => addEffectiveNodeToRollup(rollup, node, nodes, edges, presetId),
       createEmptyRollup(),
     );
 }

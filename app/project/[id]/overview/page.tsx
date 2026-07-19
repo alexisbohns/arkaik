@@ -52,7 +52,7 @@ export default function OverviewPage() {
     [dataEdges, dataNodes, journal],
   );
 
-  const rollup = useMemo(() => computeProductRollup(dataNodes), [dataNodes]);
+  const rollup = useMemo(() => computeProductRollup(dataNodes, dataEdges), [dataNodes, dataEdges]);
   const gaugePlatforms = useMemo(() => getRollupPlatforms(rollup), [rollup]);
 
   const releases = useMemo(
