@@ -24,7 +24,7 @@ export function ParityCard({ gaps, projectId }: ParityCardProps) {
             <span className="text-muted-foreground">acceptance{gaps.length === 1 ? "" : "s"} with a parity gap</span>
           </div>
           <ul className="flex flex-col gap-2 text-xs">
-            {gaps.slice(0, 4).map((gap) => (
+            {[...gaps].sort((a, b) => Object.keys(b.missing).length - Object.keys(a.missing).length).slice(0, 4).map((gap) => (
               <li key={gap.node_id} className="flex flex-col gap-1">
                 <span className="truncate font-medium">{gap.title}</span>
                 <span className="text-muted-foreground">

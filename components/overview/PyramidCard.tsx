@@ -22,12 +22,13 @@ export function PyramidCard({ tiers, projectId }: PyramidCardProps) {
       <div className="flex flex-col gap-3">
         {tiers.map((tier) => {
           const rollup = mergeRollups(...tier.elements.map((element) => element.rollup));
-          const served = tier.elements.reduce((sum, element) => sum + element.acceptanceCount, 0);
+          const total = tier.elements.length;
+          const served = tier.elements.filter((element) => element.acceptanceCount > 0).length;
           return (
             <div key={tier.tier} className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>{TIER_LABEL.get(tier.tier)}</span>
-                <span>{served}</span>
+                <span>{served}/{total}</span>
               </div>
               <PlatformGaugeList rollup={rollup} platforms={ALL_PLATFORMS} compact />
             </div>
