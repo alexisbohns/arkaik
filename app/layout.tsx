@@ -6,6 +6,8 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AppToaster } from "@/components/ui/toaster";
 import { SyncProvider } from "@/components/sync/SyncProvider";
+import { WobbleFilters } from "@/components/wobble/WobbleFilters";
+import { WobbleBoil } from "@/components/wobble/WobbleBoil";
 
 export const metadata: Metadata = {
   title: "arkaik",
@@ -65,6 +67,8 @@ export default function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
+        <WobbleFilters />
+        <WobbleBoil />
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

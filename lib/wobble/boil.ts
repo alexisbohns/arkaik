@@ -1,0 +1,162 @@
+/**
+ * The "boil" driver for the icon-wobble effect (issue #271).
+ *
+ * Static wobble is pure CSS (`app/wobble.generated.css`) and costs nothing at
+ * rest. This module adds the *animated* part: while an icon is hovered or
+ * keyboard-focused, its shared filter's `seed` is cycled through a short
+ * ping-pong so the noise "boils", then snaps back to the resting seed on leave.
+ *
+ * Everything runs off a single set of delegated document listeners and one
+ * `setInterval` per actively-boiling icon name — no per-instance React state,
+ * no per-frame work when nothing is hovered/focused. Because filters are shared
+ * per icon name, hovering any instance boils every instance of that name (the
+ * intended shared-seed behaviour from the issue).
+ */
+
+import { BOIL_FPS, BOIL_SEED_STEPS, NO_WOBBLE_CLASS } from "./constants";
+
+type Reason = "hover" | "focus";
+
+const ICON_SELECTOR = `svg.lucide:not(.${NO_WOBBLE_CLASS})`;
+const BOIL_INTERVAL_MS = Math.round(1000 / BOIL_FPS);
+
+/** Icons currently held active, and by which signals (hover and/or focus). */
+const active = new Map<Element, Set<Reason>>();
+/** One interval per icon name currently boiling. */
+const timers = new Map<string, ReturnType<typeof setInterval>>();
+
+/** The `lucide-<name>` suffix of an icon's class list, or null. */
+function iconName(svg: Element): string | null {
+  for (const cls of svg.classList) {
+    if (cls.startsWith("lucide-")) return cls.slice("lucide-".length);
+  }
+  return null;
+}
+
+function turbulenceFor(name: string): Element | null {
+  return document.getElementById(`wob-${name}`)?.querySelector("feTurbulence") ?? null;
+}
+
+function anyActiveForName(name: string): boolean {
+  for (const el of active.keys()) {
+    if (iconName(el) === name) return true;
+  }
+  return false;
+}
+
+function startBoil(name: string): void {
+  if (timers.has(name) || prefersReducedMotion.matches) return;
+  const turbulence = turbulenceFor(name);
+  if (!turbulence) return;
+  const base = Number(turbulence.getAttribute("data-base-seed") ?? "0");
+  let step = 0;
+  const timer = setInterval(() => {
+    step = (step + 1) % BOIL_SEED_STEPS.length;
+    turbulence.setAttribute("seed", String(base + BOIL_SEED_STEPS[step]));
+  }, BOIL_INTERVAL_MS);
+  timers.set(name, timer);
+}
+
+function stopBoil(name: string): void {
+  const timer = timers.get(name);
+  if (timer === undefined) return;
+  clearInterval(timer);
+  timers.delete(name);
+  const turbulence = turbulenceFor(name);
+  if (turbulence) {
+    turbulence.setAttribute("seed", turbulence.getAttribute("data-base-seed") ?? "0");
+  }
+}
+
+function enter(icon: Element, reason: Reason): void {
+  const name = iconName(icon);
+  if (!name) return;
+  let reasons = active.get(icon);
+  if (!reasons) {
+    reasons = new Set();
+    active.set(icon, reasons);
+  }
+  reasons.add(reason);
+  startBoil(name);
+}
+
+function leave(icon: Element, reason: Reason): void {
+  const reasons = active.get(icon);
+  if (!reasons) return;
+  reasons.delete(reason);
+  if (reasons.size === 0) active.delete(icon);
+  const name = iconName(icon);
+  if (name && !anyActiveForName(name)) stopBoil(name);
+}
+
+/** Icons at or within a focus target (a focusable button may contain the svg). */
+function iconsWithin(el: Element): Element[] {
+  const icons: Element[] = [];
+  if (el.matches(ICON_SELECTOR)) icons.push(el);
+  el.querySelectorAll(ICON_SELECTOR).forEach((node) => icons.push(node));
+  return icons;
+}
+
+function onMouseOver(event: MouseEvent): void {
+  const icon = (event.target as Element | null)?.closest?.(ICON_SELECTOR);
+  if (icon) enter(icon, "hover");
+}
+
+function onMouseOut(event: MouseEvent): void {
+  const icon = (event.target as Element | null)?.closest?.(ICON_SELECTOR);
+  if (!icon) return;
+  const related = event.relatedTarget as Node | null;
+  // Ignore moves between the icon's own child paths.
+  if (related && icon.contains(related)) return;
+  leave(icon, "hover");
+}
+
+function onFocusIn(event: FocusEvent): void {
+  const el = event.target as Element | null;
+  if (!el?.querySelectorAll) return;
+  for (const icon of iconsWithin(el)) enter(icon, "focus");
+}
+
+function onFocusOut(event: FocusEvent): void {
+  const el = event.target as Element | null;
+  if (!el?.querySelectorAll) return;
+  for (const icon of iconsWithin(el)) leave(icon, "focus");
+}
+
+// Live handle so newly-hovered icons respect a mid-session reduced-motion
+// toggle; the change listener also stops any boil already running.
+let prefersReducedMotion: MediaQueryList;
+
+function onReduceChange(): void {
+  if (prefersReducedMotion.matches) {
+    for (const name of [...timers.keys()]) stopBoil(name);
+  }
+}
+
+/**
+ * Wire the delegated hover/focus listeners. Returns a cleanup that removes them,
+ * clears every running boil, and resets seeds. Safe to call on the server (no-op).
+ */
+export function wireBoil(): () => void {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return () => {};
+  }
+
+  prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  prefersReducedMotion.addEventListener("change", onReduceChange);
+
+  document.addEventListener("mouseover", onMouseOver);
+  document.addEventListener("mouseout", onMouseOut);
+  document.addEventListener("focusin", onFocusIn);
+  document.addEventListener("focusout", onFocusOut);
+
+  return () => {
+    document.removeEventListener("mouseover", onMouseOver);
+    document.removeEventListener("mouseout", onMouseOut);
+    document.removeEventListener("focusin", onFocusIn);
+    document.removeEventListener("focusout", onFocusOut);
+    prefersReducedMotion.removeEventListener("change", onReduceChange);
+    for (const name of [...timers.keys()]) stopBoil(name);
+    active.clear();
+  };
+}
