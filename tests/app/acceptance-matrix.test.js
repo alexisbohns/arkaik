@@ -20,9 +20,9 @@ const accProduct = { id: "AC-offline", project_id: "p", species: "acceptance", t
 const nodes = [view, flow, acc1, acc2, accProduct];
 const acceptances = [acc1, acc2, accProduct];
 const edges = [
+  { id: "e-AC-anim-F-swap", project_id: "p", source_id: "AC-anim", target_id: "F-swap", edge_type: "covers" },
   { id: "e-AC-anim-V-detail", project_id: "p", source_id: "AC-anim", target_id: "V-detail", edge_type: "covers" },
   { id: "e-AC-palette-V-detail", project_id: "p", source_id: "AC-palette", target_id: "V-detail", edge_type: "covers" },
-  { id: "e-AC-anim-F-swap", project_id: "p", source_id: "AC-anim", target_id: "F-swap", edge_type: "covers" },
 ];
 const nodesById = new Map(nodes.map((n) => [n.id, n]));
 
@@ -39,16 +39,26 @@ check("value filter", filterAcceptances(acceptances, edges, { ...EMPTY_FILTERS, 
 check("anchor filter keeps acceptances covering that anchor", filterAcceptances(acceptances, edges, { ...EMPTY_FILTERS, anchor: "F-swap" }).map((a) => a.id).join() === "AC-anim");
 check("parity_gap filter keeps only gapped acceptances", filterAcceptances(acceptances, edges, { ...EMPTY_FILTERS, parityGap: true }).map((a) => a.id).join() === "AC-anim");
 
+const accWithDesc = { ...acc2, id: "AC-desc", description: "supports quiet reflection", metadata: { values: ["reduces-anxiety"] } };
+check("search matches description text",
+  filterAcceptances([accWithDesc], edges, { ...EMPTY_FILTERS, search: "reflection" }).map((a) => a.id).join() === "AC-desc");
+const danglingEdge = { id: "e-AC-offline-V-missing", project_id: "p", source_id: "AC-offline", target_id: "V-missing", edge_type: "covers" };
+const dangGroups = groupAcceptancesByAnchor([accProduct], [danglingEdge], nodesById).groups;
+check("acceptance whose only covers-edge targets a missing node falls to product-level",
+  dangGroups.length === 1 && dangGroups[0].anchorId === null && dangGroups[0].acceptances[0].id === "AC-offline");
+
 // --- groupAcceptancesByAnchor ------------------------------------------------
 const { groups } = groupAcceptancesByAnchor(acceptances, edges, nodesById);
-check("anchor groups then product-level last",
-  groups.map((g) => g.anchorId ?? "__product__").join() === "F-swap,V-detail,__product__" || groups.map((g) => g.anchorId ?? "__product__").join() === "V-detail,F-swap,__product__");
+check("groups are ordered by anchor title, product-level last",
+  groups.map((g) => g.anchorId ?? "__product__").join() === "V-detail,F-swap,__product__",
+  groups.map((g) => g.anchorId ?? "__product__").join());
 const productGroup = groups[groups.length - 1];
 check("product group is the null-anchor bucket", productGroup.anchorId === null && productGroup.acceptances.map((a) => a.id).join() === "AC-offline");
 const detailGroup = groups.find((g) => g.anchorId === "V-detail");
 check("multi-anchor acceptance appears under each anchor", detailGroup.acceptances.some((a) => a.id === "AC-anim") && groups.find((g) => g.anchorId === "F-swap").acceptances.some((a) => a.id === "AC-anim"));
 check("group carries anchor node + species + gap count", detailGroup.anchorNode.id === "V-detail" && detailGroup.anchorSpecies === "view" && detailGroup.gapCount === 1);
-check("duplicateAnchorCount marks acceptances spanning >1 anchor", detailGroup.acceptances.find((a) => a.id === "AC-anim") && groups.find((g) => g.anchorId === "V-detail").acceptances.length >= 1);
+check("acceptance covering 2 anchors appears in exactly 2 groups",
+  groups.filter((g) => g.acceptances.some((a) => a.id === "AC-anim")).length === 2);
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 if (failures > 0) { console.log(`\n${failures} acceptance-matrix test(s) failed.`); process.exit(1); }

@@ -1,3 +1,10 @@
+/**
+ * Parity-matrix projections for the /acceptances surface (spec §9.1): filter
+ * acceptances by the filter-bar criteria, and group them under the view/flow
+ * they cover (product-level last). Pure functions over nodes/edges, built on
+ * the schema projections (resolvePlatformStatus/hasParityGap) — no stored state.
+ */
+
 import type { Node, Edge } from "@/lib/data/types";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { StatusId } from "@/lib/config/statuses";
