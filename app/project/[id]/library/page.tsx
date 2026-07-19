@@ -23,9 +23,9 @@ import { findWhereUsed } from "@/lib/utils/where-used";
 import { generateNodeId } from "@/lib/utils/id";
 import { matchesSearch } from "@/lib/utils/search";
 import {
-  computePlaylistRollup,
+  computeFlowPlatformRollup,
   createEmptyRollup,
-  getNodePlatformStatuses,
+  getEffectivePlatformStatuses,
 } from "@/lib/utils/platform-status";
 
 const SPECIES_EMPTY_LABELS: Record<LibrarySpeciesFilter, string> = {
@@ -185,14 +185,9 @@ export default function ProjectLibraryPage() {
     () => Object.fromEntries(
       dataNodes
         .filter((node) => node.species === "flow")
-        .map((flowNode) => {
-          const entries = Array.isArray(flowNode.metadata?.playlist?.entries)
-            ? flowNode.metadata.playlist.entries
-            : [];
-          return [flowNode.id, computePlaylistRollup(entries, nodesById)];
-        }),
+        .map((flowNode) => [flowNode.id, computeFlowPlatformRollup(flowNode, nodesById, dataNodes, dataEdges)]),
     ) as Record<string, ReturnType<typeof createEmptyRollup>>,
-    [dataNodes, nodesById],
+    [dataNodes, dataEdges, nodesById],
   );
 
   async function handleNodeUpdate(nodeId: string, patch: Partial<Omit<DataNode, "id" | "project_id">>) {
@@ -299,7 +294,7 @@ export default function ProjectLibraryPage() {
                     node={node}
                     speciesLabel={SPECIES_LABEL_BY_ID[node.species] ?? node.species}
                     speciesDescription={SPECIES_DESCRIPTION_BY_ID[node.species]}
-                    viewPlatformStatuses={node.species === "view" ? getNodePlatformStatuses(node) : undefined}
+                    viewPlatformStatuses={node.species === "view" ? getEffectivePlatformStatuses(node, dataNodes, dataEdges) : undefined}
                     flowRollup={node.species === "flow" ? flowRollupByNodeId[node.id] : undefined}
                     playlistPreview={playlistPreviewForNode(node, nodesById)}
                     usedInCount={usedInByNodeId[node.id] ?? 0}
