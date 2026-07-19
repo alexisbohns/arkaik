@@ -3,6 +3,7 @@ import { Gochi_Hand } from "next/font/google";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ArkaikLogoBoil } from "@/components/branding/ArkaikLogoBoil";
+import { AsciiTerrainBackground } from "@/components/background/AsciiTerrainBackground";
 
 const gochiHand = Gochi_Hand({
   subsets: ["latin"],
@@ -13,6 +14,7 @@ export default function Home() {
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-hidden bg-background font-sans">
+      <AsciiTerrainBackground />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(127,127,127,0.12),transparent_62%)]" />
 
       <header className="relative flex items-center justify-end px-6 py-4">
