@@ -2,7 +2,8 @@
 
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { CheckIcon, ChevronsUpDownIcon, FolderOpenIcon } from "lucide-react";
+import { CheckIcon, ChevronsUpDownIcon, FolderOpenIcon, GithubIcon, LogOutIcon } from "lucide-react";
+import { signIn, signOut } from "next-auth/react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,6 +19,7 @@ import {
   SidebarMenuSkeleton,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { useAuthStatus } from "@/lib/hooks/useAuthStatus";
 import { useProjects } from "@/lib/hooks/useProjects";
 
 interface ProjectSwitcherProps {
@@ -36,6 +38,7 @@ export function ProjectSwitcher({
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
   const { projects, loading } = useProjects();
+  const authStatus = useAuthStatus();
 
   const sortedProjects = useMemo(
     () => [...projects].sort((left, right) => left.project.title.localeCompare(right.project.title)),
@@ -116,6 +119,33 @@ export function ProjectSwitcher({
                   </DropdownMenuItem>
                 );
               })
+            )}
+            {authStatus.state === "signed-out" && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="cursor-pointer gap-2"
+                  onClick={() => void signIn("github")}
+                >
+                  <GithubIcon className="size-4" />
+                  <span>Sign in with GitHub</span>
+                </DropdownMenuItem>
+              </>
+            )}
+            {authStatus.state === "signed-in" && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-xs text-muted-foreground">
+                  {authStatus.user.name ?? authStatus.user.email ?? "Account"}
+                </DropdownMenuLabel>
+                <DropdownMenuItem
+                  className="cursor-pointer gap-2"
+                  onClick={() => void signOut()}
+                >
+                  <LogOutIcon className="size-4" />
+                  <span>Sign out</span>
+                </DropdownMenuItem>
+              </>
             )}
           </DropdownMenuContent>
         </DropdownMenu>

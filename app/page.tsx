@@ -30,6 +30,13 @@ export default function Home() {
           <Button asChild size="lg" className="mt-10 px-8 text-base">
             <Link href="/projects">Start building</Link>
           </Button>
+
+          <Link
+            href="/docs"
+            className="mt-4 inline-block text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+          >
+            Read the doc
+          </Link>
         </div>
       </main>
 

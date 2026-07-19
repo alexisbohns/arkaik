@@ -5,6 +5,7 @@ import {
   Sheet,
   SheetContent,
   SheetHeader,
+  SheetBody,
   SheetClose,
   SheetTitle,
 } from "@/components/ui/sheet";
@@ -457,7 +458,7 @@ export function NodeDetailPanel({
           </div>
         </SheetHeader>
         {node && (
-          <>
+          <SheetBody className="flex flex-col gap-4 pb-6">
             <NodeFields key={node.id} node={node} onUpdate={onUpdate} />
             <RefsSection key={`refs-${node.id}`} node={node} />
             {(node.species === "view" || node.species === "flow") && allNodes && allEdges && (
@@ -531,7 +532,7 @@ export function NodeDetailPanel({
                 allNodes={allNodes ?? []}
               />
             )}
-          </>
+          </SheetBody>
         )}
       </SheetContent>
     </Sheet>

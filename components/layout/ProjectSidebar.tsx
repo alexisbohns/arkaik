@@ -6,6 +6,7 @@ import {
   BookOpenIcon,
   ClipboardCheckIcon,
   DatabaseIcon,
+  FileTextIcon,
   GitBranchIcon,
   HistoryIcon,
   LayoutDashboardIcon,
@@ -239,6 +240,14 @@ export function ProjectSidebar({
             <SidebarMenuButton disabled tooltip="Settings coming soon">
               <Settings2Icon />
               <span>Settings</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild tooltip="Documentation">
+              <a href="/docs" target="_blank" rel="noreferrer">
+                <FileTextIcon />
+                <span>Documentation</span>
+              </a>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
