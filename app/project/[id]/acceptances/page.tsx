@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { PlusIcon } from "lucide-react";
-import { deriveNodeId } from "@arkaik/schema";
+import { toast } from "sonner";
 import type { Node as DataNode } from "@/lib/data/types";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
@@ -14,6 +14,7 @@ import { filterAcceptances } from "@/lib/utils/acceptance-matrix";
 import { AcceptanceFilterBar } from "@/components/acceptances/AcceptanceFilterBar";
 import { AcceptanceMatrix } from "@/components/acceptances/AcceptanceMatrix";
 import { NodeDetailPanel } from "@/components/panels/NodeDetailPanel";
+import { generateNodeId } from "@/lib/utils/id";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -64,11 +65,12 @@ export default function ProjectAcceptancesPage() {
 
   async function handleCreateAcceptance(title: string) {
     const created = await addNode({
-      id: deriveNodeId("acceptance", title, dataNodes.map((node) => node.id)),
+      id: generateNodeId("acceptance", title, nodesById.keys()),
       project_id: id,
       species: "acceptance",
       title,
       status: "idea",
+      // seed all platforms so a new acceptance renders in the parity matrix immediately (library/delivery seed []).
       platforms: ["web", "ios", "android"],
       metadata: {},
     });
@@ -98,9 +100,18 @@ export default function ProjectAcceptancesPage() {
           <Button
             size="sm"
             className="cursor-pointer"
-            onClick={() => {
+            // Lightweight create affordance: acceptances are primarily created at scale by
+            // the retro-population agents (via MCP), so this surface uses a simple prompt
+            // rather than the richer NewNodeForm dialog the library/delivery pages use.
+            onClick={async () => {
               const title = window.prompt("Acceptance title (the What):");
-              if (title && title.trim()) void handleCreateAcceptance(title.trim());
+              if (!title || !title.trim()) return;
+              try {
+                await handleCreateAcceptance(title.trim());
+              } catch (err) {
+                toast.error("Couldn't create the acceptance.");
+                console.error(err);
+              }
             }}
           >
             <PlusIcon className="size-4" />
