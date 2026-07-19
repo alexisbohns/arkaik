@@ -22,9 +22,19 @@ interface AcceptanceEditorProps {
 
 export function AcceptanceEditor({ node, allNodes, allEdges, onUpdate, onNavigate }: AcceptanceEditorProps) {
   const [gherkin, setGherkin] = useState(node.metadata?.gherkin ?? "");
-  const gherkinTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- reflect external gherkin edits on the same node (key only remounts on node.id)
-  useEffect(() => { setGherkin(node.metadata?.gherkin ?? ""); }, [node.id, node.metadata?.gherkin]);
+  const nodeRef = useRef(node);
+  useEffect(() => { nodeRef.current = node; }, [node]);
+  // Debounce-save gherkin. The effect reschedules on every keystroke and clears
+  // its timer on rechange/unmount, so the save closure is always fresh. It reads
+  // the LATEST node via nodeRef at fire time, so a concurrent values/status edit
+  // isn't clobbered by the provider's shallow metadata merge (mirrors NodeFields).
+  useEffect(() => {
+    if (gherkin === (nodeRef.current.metadata?.gherkin ?? "")) return;
+    const t = setTimeout(() => {
+      onUpdate(nodeRef.current.id, { metadata: { ...nodeRef.current.metadata, gherkin } });
+    }, 350);
+    return () => clearTimeout(t);
+  }, [gherkin, onUpdate]);
 
   const statuses: PlatformStatusMap = getEditablePlatformStatuses(node);
   const nodesById = new Map(allNodes.map((n) => [n.id, n]));
@@ -56,11 +66,7 @@ export function AcceptanceEditor({ node, allNodes, allEdges, onUpdate, onNavigat
         <span className="text-xs text-muted-foreground">Gherkin — the How (one Given/When/Then)</span>
         <textarea
           value={gherkin}
-          onChange={(e) => {
-            setGherkin(e.target.value);
-            if (gherkinTimer.current) clearTimeout(gherkinTimer.current);
-            gherkinTimer.current = setTimeout(() => patchMetadata({ gherkin: e.target.value }), 350);
-          }}
+          onChange={(e) => setGherkin(e.target.value)}
           rows={3}
           placeholder="When I'm on …, Then …"
           className="rounded-md border bg-background px-2 py-1.5 text-sm"
