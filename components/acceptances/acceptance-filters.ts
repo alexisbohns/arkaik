@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { PLATFORM_IDS, STATUS_IDS, VALUE_IDS } from "@arkaik/schema";
 import type { AcceptanceFilters } from "@/lib/utils/acceptance-matrix";
 import { EMPTY_FILTERS } from "@/lib/utils/acceptance-matrix";
 
@@ -10,12 +11,16 @@ export type { AcceptanceFilters } from "@/lib/utils/acceptance-matrix";
 
 const KEYS = ["search", "platform", "status", "value", "anchor", "parity_gap"] as const;
 
+function oneOf<T extends string>(value: string | null, allowed: readonly string[]): T | "all" {
+  return value && allowed.includes(value) ? (value as T) : "all";
+}
+
 function readFilters(params: URLSearchParams): AcceptanceFilters {
   return {
     search: params.get("search") ?? "",
-    platform: (params.get("platform") as AcceptanceFilters["platform"]) || "all",
-    status: (params.get("status") as AcceptanceFilters["status"]) || "all",
-    value: (params.get("value") as AcceptanceFilters["value"]) || "all",
+    platform: oneOf(params.get("platform"), PLATFORM_IDS),
+    status: oneOf(params.get("status"), STATUS_IDS),
+    value: oneOf(params.get("value"), VALUE_IDS),
     anchor: params.get("anchor") || "all",
     parityGap: params.get("parity_gap") === "1",
   };

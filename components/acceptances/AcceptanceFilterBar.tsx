@@ -1,6 +1,7 @@
 "use client";
 
-import { SearchIcon, XIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { SearchIcon, TriangleAlertIcon, XIcon } from "lucide-react";
 import type { AcceptanceFilters } from "@/lib/utils/acceptance-matrix";
 import { EMPTY_FILTERS } from "@/lib/utils/acceptance-matrix";
 import { PLATFORMS } from "@/lib/config/platforms";
@@ -24,14 +25,36 @@ interface AcceptanceFilterBarProps {
 const ALL = "all";
 
 export function AcceptanceFilterBar({ filters, onChange, anchorOptions }: AcceptanceFilterBarProps) {
-  const isFiltered = JSON.stringify(filters) !== JSON.stringify(EMPTY_FILTERS);
+  const isFiltered =
+    filters.search !== "" || filters.platform !== "all" || filters.status !== "all" ||
+    filters.value !== "all" || filters.anchor !== "all" || filters.parityGap;
+
+  const [searchDraft, setSearchDraft] = useState(filters.search);
+  const [syncedSearch, setSyncedSearch] = useState(filters.search);
+  const filtersRef = useRef(filters);
+  // Keep the ref current without mutating it during render (react-hooks/refs).
+  useEffect(() => { filtersRef.current = filters; }, [filters]);
+  // Reflect external search changes (Clear, back/forward) into the draft. Adjusted
+  // during render (React's documented pattern) rather than in an effect, since an
+  // effect that just mirrors a prop into state trips react-hooks/set-state-in-effect.
+  if (filters.search !== syncedSearch) {
+    setSyncedSearch(filters.search);
+    setSearchDraft(filters.search);
+  }
+  // Debounce draft → URL so typing stays responsive and doesn't drop characters.
+  useEffect(() => {
+    if (searchDraft === filtersRef.current.search) return;
+    const t = setTimeout(() => onChange({ ...filtersRef.current, search: searchDraft }), 300);
+    return () => clearTimeout(t);
+  }, [searchDraft, onChange]);
+
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card/70 p-3 md:p-4">
       <div className="relative min-w-[12rem] flex-1">
         <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
-          value={filters.search}
-          onChange={(e) => onChange({ ...filters, search: e.target.value })}
+          value={searchDraft}
+          onChange={(e) => setSearchDraft(e.target.value)}
           placeholder="Search acceptances…"
           className="pl-8"
           aria-label="Search acceptances"
@@ -75,9 +98,9 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions }: Accept
         variant={filters.parityGap ? "default" : "outline"}
         aria-pressed={filters.parityGap}
         onClick={() => onChange({ ...filters, parityGap: !filters.parityGap })}
-        className={filters.parityGap ? "bg-amber-500 text-white hover:bg-amber-500/90" : "text-amber-600"}
+        className={filters.parityGap ? "bg-amber-500 text-white hover:bg-amber-500/90" : "text-amber-600 hover:text-amber-700"}
       >
-        ⚠ Parity gaps
+        <TriangleAlertIcon className="size-4" /> Parity gaps
       </Button>
 
       {isFiltered && (
