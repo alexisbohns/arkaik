@@ -96,6 +96,7 @@ export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "piggy-bank", seed: 12 },
   { name: "plug", seed: 9 },
   { name: "plus", seed: 9 },
+  { name: "pyramid", seed: 7 },
   { name: "refresh-cw", seed: 17 },
   { name: "route", seed: 2 },
   { name: "search", seed: 13 },
