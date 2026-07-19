@@ -147,7 +147,7 @@ export default function ProjectLibraryPage() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [newNodeOpen, setNewNodeOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [displayMode, setDisplayMode] = useState<LibraryDisplayMode>("gallery");
+  const [displayMode, setDisplayMode] = useState<LibraryDisplayMode>("directory");
   const [sort, setSort] = useState<NodeSortState>({
     key: "title",
     direction: "asc",
