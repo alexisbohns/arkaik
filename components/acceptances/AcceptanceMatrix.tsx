@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import type { Node, Edge } from "@/lib/data/types";
 import { resolvePlatformStatus, hasParityGap } from "@arkaik/schema";
@@ -25,7 +25,7 @@ function PlatformCell({ acceptance, platformId }: { acceptance: Node; platformId
 }
 
 export function AcceptanceMatrix({ acceptances, edges, nodesById, onSelect }: AcceptanceMatrixProps) {
-  const { groups } = groupAcceptancesByAnchor(acceptances, edges, nodesById);
+  const { groups } = useMemo(() => groupAcceptancesByAnchor(acceptances, edges, nodesById), [acceptances, edges, nodesById]);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   if (groups.length === 0) {
