@@ -2192,6 +2192,7 @@
       "project_id": "pebbles",
       "species": "acceptance",
       "title": "Pebble draw-in animation",
+      "description": "The pebble render draws itself in progressively when the detail opens — the signature reveal moment.",
       "status": "backlog",
       "platforms": ["web", "ios", "android"],
       "metadata": {
@@ -2205,6 +2206,7 @@
       "project_id": "pebbles",
       "species": "acceptance",
       "title": "Emotion palette on read view",
+      "description": "Reading a pebble shows its emotion tinted with the emotion category's palette colors.",
       "status": "backlog",
       "platforms": ["web", "ios", "android"],
       "metadata": {
@@ -2218,6 +2220,7 @@
       "project_id": "pebbles",
       "species": "acceptance",
       "title": "Buy a community glyph (30 Karma)",
+      "description": "Spending 30 Karma in the Community tab swaps a listed community glyph into the user's collection.",
       "status": "development",
       "platforms": ["web", "ios"],
       "metadata": {

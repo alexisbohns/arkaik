@@ -34,8 +34,8 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // --- Inventory: all species always present, config order, zero-safe ---------
 const emptyInventory = computeInventory([], [], []);
 assert(
-  eq(emptyInventory.species.map((s) => s.species), ["flow", "view", "data-model", "api-endpoint"]),
-  "inventory lists all four species in config order even when empty",
+  eq(emptyInventory.species.map((s) => s.species), ["flow", "view", "data-model", "api-endpoint", "acceptance"]),
+  "inventory lists all five species in config order even when empty",
 );
 assert(
   emptyInventory.nodeCount === 0 && emptyInventory.edgeCount === 0 && emptyInventory.journalEventCount === 0,
@@ -184,15 +184,15 @@ const nodesById = new Map(bundle.nodes.map((node) => [node.id, node]));
 
 const inventory = computeInventory(bundle.nodes, bundle.edges, bundle.journal);
 assert(
-  inventory.nodeCount === 147 && inventory.edgeCount === 277 && inventory.journalEventCount === 168,
-  `seed census 147/277/168 (got ${inventory.nodeCount}/${inventory.edgeCount}/${inventory.journalEventCount})`,
+  inventory.nodeCount === 150 && inventory.edgeCount === 280 && inventory.journalEventCount === 174,
+  `seed census 150/280/174 (got ${inventory.nodeCount}/${inventory.edgeCount}/${inventory.journalEventCount})`,
 );
 assert(
   eq(
     inventory.species.map((entry) => [entry.species, entry.total]),
-    [["flow", 10], ["view", 58], ["data-model", 30], ["api-endpoint", 49]],
+    [["flow", 10], ["view", 58], ["data-model", 30], ["api-endpoint", 49], ["acceptance", 3]],
   ),
-  "seed species totals flow 10 / view 58 / data-model 30 / api-endpoint 49",
+  "seed species totals flow 10 / view 58 / data-model 30 / api-endpoint 49 / acceptance 3",
 );
 
 const seedRollup = computeProductRollup(bundle.nodes);
@@ -249,8 +249,8 @@ assert(
   "seed ships no screenshots: 58/58 views flagged",
 );
 assert(
-  seedById.get("nodes-without-description").count === 0 && seedById.get("nodes-without-description").total === 147,
-  "every seed node carries a description: 0/147",
+  seedById.get("nodes-without-description").count === 0 && seedById.get("nodes-without-description").total === 150,
+  "every seed node carries a description: 0/150",
 );
 assert(eq(seedById.get("disconnected-nodes").nodeIds, ["DM-bounce"]), "DM-bounce is the seed's one disconnected node");
 assert(seedById.get("open-backlog").count === 3, `seed backlog has 3 open items (got ${seedById.get("open-backlog").count})`);
