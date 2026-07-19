@@ -1,0 +1,10 @@
+name: lab-note-reminder
+on:
+  pull_request:
+    types: [opened, edited, synchronize, labeled, unlabeled, ready_for_review]
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  lab-note-reminder:
+    uses: alexisbohns/ariko/.github/workflows/lab-note-reminder.yml@main
