@@ -61,17 +61,20 @@ assert(
 );
 
 // --- Product rollup: views only, override wins, uncounted statuses excluded --
-const rollup = computeProductRollup([
-  {
-    species: "view",
-    status: "development",
-    platforms: ["web", "ios"],
-    metadata: { platformStatuses: { ios: "live" } },
-  },
-  { species: "api-endpoint", status: "live", platforms: ["web"] }, // not a view — ignored
-  { species: "view", status: "idea", platforms: ["web"] }, // idea is uncounted
-  { species: "flow", status: "development", platforms: ["web"] }, // rollup, not deliverable
-]);
+const rollup = computeProductRollup(
+  [
+    {
+      species: "view",
+      status: "development",
+      platforms: ["web", "ios"],
+      metadata: { platformStatuses: { ios: "live" } },
+    },
+    { species: "api-endpoint", status: "live", platforms: ["web"] }, // not a view — ignored
+    { species: "view", status: "idea", platforms: ["web"] }, // idea is uncounted
+    { species: "flow", status: "development", platforms: ["web"] }, // rollup, not deliverable
+  ],
+  [], // no covers edges → views fall back to stored statuses
+);
 assert(eq(rollup.totals, { web: 1, ios: 1 }), `rollup counts views only (totals ${JSON.stringify(rollup.totals)})`);
 assert(
   eq(rollup.counts, { web: { development: 1 }, ios: { live: 1 } }),
@@ -195,15 +198,15 @@ assert(
   "seed species totals flow 10 / view 58 / data-model 30 / api-endpoint 49 / acceptance 3",
 );
 
-const seedRollup = computeProductRollup(bundle.nodes);
-assert(eq(seedRollup.totals, { web: 30, ios: 31, android: 17 }), `seed rollup totals web 30 / ios 31 / android 17 (got ${JSON.stringify(seedRollup.totals)})`);
+const seedRollup = computeProductRollup(bundle.nodes, bundle.edges);
+assert(eq(seedRollup.totals, { web: 30, ios: 31, android: 18 }), `seed rollup totals web 30 / ios 31 / android 18 (got ${JSON.stringify(seedRollup.totals)})`);
 assert(
   eq(seedRollup.counts, {
     web: { development: 25, live: 5 },
     ios: { development: 25, live: 6 },
-    android: { development: 12, live: 5 },
+    android: { development: 13, live: 5 },
   }),
-  "seed rollup per-platform status counts (one platformStatuses override included)",
+  "seed rollup counts: V-pebble-detail now contributes android:development from its covering acceptances",
 );
 
 const seedPulse = computeReleasePulse(bundle.journal, { nodesById });

@@ -47,6 +47,10 @@ Library source:
 
 - **Acceptances** (`/project/[id]/acceptances`) — the parity matrix: acceptances grouped by the view/flow they cover, one status column per platform, filterable by platform/status/value/anchor/parity-gap. Editing (Gherkin, values, per-platform status) happens in the node detail panel.
 
+## Pyramid View
+
+- **Pyramid** (`/project/[id]/pyramid`) — the value-element gauge grid: four Bain tier sections (functional → emotional → life-changing → social impact), each rendering its value elements as cards showing the element's icon + label + per-platform delivery gauge + acceptance count. A platform chip row filters the gauges to a single platform (or all), and each element card links to the Acceptances matrix pre-filtered on that value (`?value=<id>`).
+
 ## Composition Model
 
 ### Root Node

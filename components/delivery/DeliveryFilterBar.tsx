@@ -20,9 +20,11 @@ interface DeliveryFilterBarProps {
 }
 
 // Flows are not deliverables (their status is a rollup of their views), so the
-// board offers the three item-bearing species. Views are the default lens.
+// board offers the item-bearing species. Views are the default lens;
+// acceptances are the atomic parity unit (spec §9.3).
 const SPECIES_OPTIONS: { id: SpeciesId; label: string }[] = [
   { id: "view", label: "Views" },
+  { id: "acceptance", label: "Acceptances" },
   { id: "api-endpoint", label: "API Endpoints" },
   { id: "data-model", label: "Data Models" },
 ];

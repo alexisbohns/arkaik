@@ -13,6 +13,7 @@ import {
   MapPinnedIcon,
   MonitorIcon,
   NetworkIcon,
+  PyramidIcon,
   RouteIcon,
   ServerIcon,
   SquareKanbanIcon,
@@ -70,6 +71,7 @@ export function ProjectSidebar({
   const libraryHref = `/project/${projectId}/library`;
   const deliveryHref = `/project/${projectId}/delivery`;
   const changelogHref = `/project/${projectId}/changelog`;
+  const pyramidHref = `/project/${projectId}/pyramid`;
   const [publishOpen, setPublishOpen] = useState(false);
 
   return (
@@ -188,6 +190,14 @@ export function ProjectSidebar({
                 <Link href={overviewHref}>
                   <LayoutDashboardIcon />
                   <span>Overview</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={currentView === "pyramid"} tooltip="Value pyramid">
+                <Link href={pyramidHref}>
+                  <PyramidIcon />
+                  <span>Pyramid</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

@@ -2,13 +2,15 @@
 
 import { useMemo } from "react";
 import { useParams } from "next/navigation";
-import { computeMapSubgraph, listMaps } from "@arkaik/schema";
+import { computeMapSubgraph, computeParityGaps, listMaps } from "@arkaik/schema";
 import { BacklogCard } from "@/components/overview/BacklogCard";
 import { DeliverySnapshotCard } from "@/components/overview/DeliverySnapshotCard";
 import { HealthCard } from "@/components/overview/HealthCard";
 import { InventoryCard } from "@/components/overview/InventoryCard";
 import { MapsCard, type MapsCardEntry } from "@/components/overview/MapsCard";
+import { ParityCard } from "@/components/overview/ParityCard";
 import { PlatformGaugesCard } from "@/components/overview/PlatformGaugesCard";
+import { PyramidCard } from "@/components/overview/PyramidCard";
 import { ReleasePulseCard } from "@/components/overview/ReleasePulseCard";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -25,6 +27,7 @@ import {
 } from "@/lib/utils/coverage";
 import { computeBacklog } from "@/lib/utils/journal";
 import { getRollupPlatforms } from "@/lib/utils/platform-status";
+import { computePyramidAggregation } from "@/lib/utils/pyramid";
 
 /**
  * The Overview: "Where does this product stand?" — the strategist reading
@@ -52,7 +55,7 @@ export default function OverviewPage() {
     [dataEdges, dataNodes, journal],
   );
 
-  const rollup = useMemo(() => computeProductRollup(dataNodes), [dataNodes]);
+  const rollup = useMemo(() => computeProductRollup(dataNodes, dataEdges), [dataNodes, dataEdges]);
   const gaugePlatforms = useMemo(() => getRollupPlatforms(rollup), [rollup]);
 
   const releases = useMemo(
@@ -66,6 +69,12 @@ export default function OverviewPage() {
   );
 
   const snapshot = useMemo(() => computeDeliverySnapshot(dataNodes), [dataNodes]);
+
+  const parityGaps = useMemo(() => computeParityGaps(dataNodes), [dataNodes]);
+  const pyramidTiers = useMemo(
+    () => computePyramidAggregation(dataNodes.filter((node) => node.species === "acceptance")),
+    [dataNodes],
+  );
 
   const health = useMemo(
     () =>
@@ -124,6 +133,8 @@ export default function OverviewPage() {
           ) : (
             <>
               <PlatformGaugesCard rollup={rollup} platforms={gaugePlatforms} projectId={id} />
+              <ParityCard gaps={parityGaps} projectId={id} />
+              <PyramidCard tiers={pyramidTiers} projectId={id} />
               <DeliverySnapshotCard snapshot={snapshot} projectId={id} />
               <ReleasePulseCard releases={releases} projectId={id} />
               <BacklogCard backlog={backlog} projectId={id} />

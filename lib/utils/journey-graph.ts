@@ -8,10 +8,10 @@ import {
   getPlaylistEntries,
 } from "@/lib/utils/graph-build";
 import {
-  addNodeToRollup,
-  computePlaylistRollup,
+  addEffectiveNodeToRollup,
+  computeFlowPlatformRollup,
   createEmptyRollup,
-  getEditablePlatformStatuses,
+  getEffectivePlatformStatuses,
   getRollupDisplayStatus,
   type PlatformStatusRollup,
 } from "@/lib/utils/platform-status";
@@ -202,8 +202,10 @@ export function buildJourneyGraph(params: JourneyGraphParams): { nodes: Node[]; 
     const cached = flowRollupCache.get(flowNodeId);
     if (cached) return cached;
 
-    const entries = getPlaylistEntries(nodesById, flowNodeId);
-    const rollup = computePlaylistRollup(entries, nodesById);
+    const flowNode = nodesById.get(flowNodeId);
+    const rollup = flowNode
+      ? computeFlowPlatformRollup(flowNode, nodesById, dataNodes, dataEdges)
+      : createEmptyRollup();
     flowRollupCache.set(flowNodeId, rollup);
     return rollup;
   };
@@ -229,7 +231,7 @@ export function buildJourneyGraph(params: JourneyGraphParams): { nodes: Node[]; 
     }
 
     if (node.species === "view") {
-      const viewRollup = addNodeToRollup(createEmptyRollup(), node);
+      const viewRollup = addEffectiveNodeToRollup(createEmptyRollup(), node, dataNodes, dataEdges);
       const apiRelations = viewApiRelationsByViewId.get(node.id) ?? { inbound: [], outbound: [] };
       const metadata = (node.metadata ?? {}) as Record<string, unknown>;
       const coverUrl = typeof metadata.cover_url === "string"
@@ -241,7 +243,7 @@ export function buildJourneyGraph(params: JourneyGraphParams): { nodes: Node[]; 
             : undefined;
 
       baseData.status = getRollupDisplayStatus(viewRollup, node.status);
-      baseData.platformStatuses = getEditablePlatformStatuses(node);
+      baseData.platformStatuses = getEffectivePlatformStatuses(node, dataNodes, dataEdges);
       baseData.apiInbound = apiRelations.inbound;
       baseData.apiOutbound = apiRelations.outbound;
       baseData.viewCardVariant = viewCardVariant;

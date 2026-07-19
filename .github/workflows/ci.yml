@@ -81,6 +81,12 @@ jobs:
       - name: Acceptance matrix util tests
         run: npm run test:acceptance-matrix
 
+      - name: Effective platform-status seam tests
+        run: npm run test:effective-status
+
+      - name: Pyramid aggregation tests
+        run: npm run test:pyramid
+
       - name: Journal write-primitive (emit) tests
         run: npm run test:emit
 

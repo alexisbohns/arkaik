@@ -25,6 +25,8 @@
     "test:journey-graph": "node tests/app/journey-graph.test.js",
     "test:spotlight": "node tests/app/graph-spotlight.test.js",
     "test:coverage": "node tests/app/coverage.test.js",
+    "test:effective-status": "node tests/app/effective-status.test.js",
+    "test:pyramid": "node tests/app/pyramid.test.js",
     "test:value-icons": "node tests/app/value-icons.test.js",
     "test:acceptance-matrix": "node tests/app/acceptance-matrix.test.js",
     "test:mcp": "npm run build -w arkaik && npm run build -w arkaik-mcp && node tests/mcp/run-mcp-tests.js",

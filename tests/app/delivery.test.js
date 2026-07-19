@@ -66,6 +66,16 @@ const nodes = [
     status: "backlog",
     platforms: ["web"],
   },
+  {
+    // Acceptances carry their own per-platform statuses — one item per platform.
+    id: "AC-z",
+    project_id: "p",
+    species: "acceptance",
+    title: "Z",
+    status: "backlog",
+    platforms: ["web", "ios"],
+    metadata: { platformStatuses: { web: "live" } },
+  },
 ];
 
 const DELIVERY_PRESET = ["prioritized", "development", "releasing", "live", "blocked"];
@@ -99,6 +109,12 @@ const key = (item) => `${item.node.id}:${item.platform}=${item.status}`;
     JSON.stringify(apiAndDm) ===
       JSON.stringify(["API-x:ios=releasing", "API-x:web=releasing", "DM-y:web=backlog"]),
     "APIs and data models yield one item per platform at node.status",
+  );
+
+  const acceptances = computeDeliveryItems(nodes, ["acceptance"]).map(key).sort();
+  assert(
+    JSON.stringify(acceptances) === JSON.stringify(["AC-z:ios=backlog", "AC-z:web=live"]),
+    "acceptances expand to one item per platform (override where present, node.status fallback elsewhere)",
   );
 }
 
