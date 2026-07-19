@@ -4,7 +4,7 @@ The graph is built from nodes and edges with structure driven by persisted relat
 
 ## Species
 
-Current taxonomy has exactly 4 species.
+Current taxonomy has exactly 5 species.
 
 | Level | Species | Role | React Flow node type |
 |---|---|---|---|
@@ -12,6 +12,7 @@ Current taxonomy has exactly 4 species.
 | 0 | `view` | Reusable page/screen | `view` |
 | — | `data-model` | Data entity/table | `dataModel` |
 | — | `api-endpoint` | API endpoint | `apiEndpoint` |
+| — | `acceptance` | A testable promise: What (`title`), How (`metadata.gherkin`, one Given/When/Then), Why (`metadata.values`, Bain elements), with per-platform status in `metadata.platformStatuses`. Id prefix `AC-`. | `acceptance` |
 
 Config source: [lib/config/species.ts](../lib/config/species.ts)
 
@@ -137,6 +138,7 @@ Source:
 | `calls` | View/flow to API relationship, or API endpoint to API endpoint (first-party endpoint fanning out to internal/external APIs) |
 | `displays` | View to data-model relationship |
 | `queries` | API to data-model relationship |
+| `covers` | Acceptance to view/flow relationship — anchors a testable promise to the surface(s) it covers |
 
 Config source: [lib/config/edge-types.ts](../lib/config/edge-types.ts)
 
@@ -152,6 +154,12 @@ internal/external APIs) have no view endpoint to project onto, so they surface o
 on the System map (`/project/[id]/maps/system`), drawn between the two endpoint cards.
 
 Source: [components/maps/JourneyMap.tsx](../components/maps/JourneyMap.tsx), [lib/utils/journey-graph.ts](../lib/utils/journey-graph.ts), [components/graph/nodes/ViewNode.tsx](../components/graph/nodes/ViewNode.tsx)
+
+`covers` — acceptance → view | flow. Zero covers edges = product-level
+acceptance (legal, not an orphan). Stored per-platform status lives on
+acceptances; a covered view's per-platform status is computed from its
+covering acceptances, falling back to the view's stored `platformStatuses`
+when uncovered (spec §3.4).
 
 ## Node And Edge Components
 
@@ -178,3 +186,14 @@ Edge registration is also in [components/graph/Canvas.tsx](../components/graph/C
 4. Update forms/panels that branch by species.
 5. Update seed data in [seed/pebbles.json](../seed/pebbles.json).
 6. Update this document.
+
+2026-07-19 — acceptance/covers: steps 3–4 deferred to the Surfaces plan
+(docs/superpowers/specs/2026-07-19-acceptance-value-model-design.md §9);
+maps exclude acceptances by default. Step 1 is done ([lib/config/species.ts](../lib/config/species.ts),
+[lib/config/edge-types.ts](../lib/config/edge-types.ts)); step 2 needed no
+change — `journey` and `system` map kinds' species defaults in
+[packages/schema/src/maps.ts](../packages/schema/src/maps.ts) exclude
+`acceptance`, so `lib/utils/journey-graph.ts` and `lib/utils/system-graph.ts`
+have no acceptance-specific branches. `lib/utils/graph-build.ts` already maps
+`acceptance` to React Flow node type `"acceptance"` as a forward-fix
+placeholder for when Canvas registration lands. Step 5 is done (seed).
