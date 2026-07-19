@@ -34,3 +34,13 @@ export const BOIL_SEED_STEPS = [0, 1, 2, 1] as const;
 
 /** Icons carrying this class are left un-wobbled (perf/fidelity escape hatch). */
 export const NO_WOBBLE_CLASS = "no-wobble";
+
+/**
+ * Opt-in marker for a "hover group": hovering/focusing an element carrying this
+ * attribute boils every lucide icon inside it. Most items (links, buttons, menu
+ * items) are matched automatically as interactive elements; this attribute is
+ * the escape hatch for clickable wrappers that aren't semantic elements (e.g.
+ * an `onClick` <article> or table row). Keep the literal string in markup in
+ * sync with this constant.
+ */
+export const WOBBLE_GROUP_ATTR = "data-wobble-group";

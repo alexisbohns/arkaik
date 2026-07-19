@@ -11,14 +11,38 @@
  * no per-frame work when nothing is hovered/focused. Because filters are shared
  * per icon name, hovering any instance boils every instance of that name (the
  * intended shared-seed behaviour from the issue).
+ *
+ * Hover/focus is resolved to a "scope": the nearest interactive *item* (a link,
+ * button, menu/option, or a `[data-wobble-group]` wrapper), falling back to the
+ * icon itself. So hovering anywhere on a sidebar row or Overview card row boils
+ * the icon inside it — not just a direct hover of the glyph.
  */
 
-import { BOIL_FPS, BOIL_SEED_STEPS, NO_WOBBLE_CLASS } from "./constants";
+import { BOIL_FPS, BOIL_SEED_STEPS, NO_WOBBLE_CLASS, WOBBLE_GROUP_ATTR } from "./constants";
 
 type Reason = "hover" | "focus";
 
 const ICON_SELECTOR = `svg.lucide:not(.${NO_WOBBLE_CLASS})`;
 const BOIL_INTERVAL_MS = Math.round(1000 / BOIL_FPS);
+
+/**
+ * Interactive "items" whose hover/focus should boil the icons they contain.
+ * Real elements + ARIA roles cover almost every icon-bearing item in the app;
+ * `[data-wobble-group]` opts in the few clickable wrappers that lack a role.
+ */
+const GROUP_SELECTOR = [
+  "a[href]",
+  "button",
+  '[role="button"]',
+  '[role="menuitem"]',
+  '[role="menuitemcheckbox"]',
+  '[role="menuitemradio"]',
+  '[role="option"]',
+  '[role="tab"]',
+  "label",
+  "summary",
+  `[${WOBBLE_GROUP_ATTR}]`,
+].join(",");
 
 /** Icons currently held active, and by which signals (hover and/or focus). */
 const active = new Map<Element, Set<Reason>>();
@@ -89,7 +113,7 @@ function leave(icon: Element, reason: Reason): void {
   if (name && !anyActiveForName(name)) stopBoil(name);
 }
 
-/** Icons at or within a focus target (a focusable button may contain the svg). */
+/** Icons at or within an element (a focusable/hoverable item may contain them). */
 function iconsWithin(el: Element): Element[] {
   const icons: Element[] = [];
   if (el.matches(ICON_SELECTOR)) icons.push(el);
@@ -97,18 +121,30 @@ function iconsWithin(el: Element): Element[] {
   return icons;
 }
 
+/**
+ * The hover/focus scope for a target: the nearest interactive item, or the icon
+ * itself for a standalone glyph with no interactive ancestor (unchanged
+ * direct-hover behaviour — no regression).
+ */
+function resolveScope(target: Element): Element | null {
+  return target.closest(GROUP_SELECTOR) ?? target.closest(ICON_SELECTOR);
+}
+
 function onMouseOver(event: MouseEvent): void {
-  const icon = (event.target as Element | null)?.closest?.(ICON_SELECTOR);
-  if (icon) enter(icon, "hover");
+  const target = event.target as Element | null;
+  const scope = target?.closest ? resolveScope(target) : null;
+  if (!scope) return;
+  for (const icon of iconsWithin(scope)) enter(icon, "hover");
 }
 
 function onMouseOut(event: MouseEvent): void {
-  const icon = (event.target as Element | null)?.closest?.(ICON_SELECTOR);
-  if (!icon) return;
+  const target = event.target as Element | null;
+  const scope = target?.closest ? resolveScope(target) : null;
+  if (!scope) return;
   const related = event.relatedTarget as Node | null;
-  // Ignore moves between the icon's own child paths.
-  if (related && icon.contains(related)) return;
-  leave(icon, "hover");
+  // Ignore moves between the scope's own descendants.
+  if (related && scope.contains(related)) return;
+  for (const icon of iconsWithin(scope)) leave(icon, "hover");
 }
 
 function onFocusIn(event: FocusEvent): void {
