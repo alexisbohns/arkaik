@@ -15,6 +15,7 @@ import { useNodes } from "@/lib/hooks/useNodes";
 import { useProject } from "@/lib/hooks/useProject";
 
 const VALUE_LABEL = new Map(VALUES.map((v) => [v.id, v.label]));
+const VALUE_DESCRIPTION = new Map(VALUES.map((v) => [v.id, v.description]));
 const TIER_LABEL = new Map(VALUE_TIERS_CONFIG.map((t) => [t.id, t.label]));
 
 /**
@@ -98,6 +99,7 @@ export default function PyramidPage() {
                         </span>
                         <span className="shrink-0 text-xs text-muted-foreground">{element.acceptanceCount}</span>
                       </div>
+                      <p className="line-clamp-2 text-xs text-muted-foreground">{VALUE_DESCRIPTION.get(element.value)}</p>
                       <PlatformGaugeList rollup={element.rollup} platforms={gaugePlatforms} compact />
                     </Link>
                   );
