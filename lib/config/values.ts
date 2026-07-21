@@ -88,6 +88,48 @@ const VALUE_ICONS: Record<ValueId, string> = {
 };
 
 /**
+ * One-line definition per element, mirroring plugin/skills/arkaik/references/values.md
+ * (the canonical Bain B2C pyramid reference) — shown in the Pyramid page cards
+ * and as tooltips wherever a value item is shown compactly.
+ */
+const VALUE_DESCRIPTIONS: Record<ValueId, string> = {
+  // functional
+  "saves-time": "Completes the user's task in less time.",
+  simplifies: "Reduces steps, choices, or cognitive load.",
+  "makes-money": "Helps the user earn.",
+  "reduces-risk": "Protects against loss, error, or uncertainty.",
+  organizes: "Brings order to the user's things or life.",
+  integrates: "Ties different tools or parts of life together.",
+  connects: "Brings the user together with other people.",
+  "reduces-effort": "Same outcome, less work.",
+  "avoids-hassles": "Prevents friction and annoyance before it happens.",
+  "reduces-cost": "Saves the user money.",
+  quality: "Superior craft or performance the user can feel.",
+  variety: "Meaningful choice and breadth.",
+  "sensory-appeal": "Looks, sounds, or feels good in the moment.",
+  informs: "Tells the user something they want to know.",
+  // emotional
+  "reduces-anxiety": "Calms; makes the user feel safe.",
+  "rewards-me": "Tangible perks for engagement.",
+  nostalgia: "Positive memory of the past.",
+  "design-aesthetics": "Beauty as an experienced value, beyond function.",
+  "badge-value": "Signals identity or status to others.",
+  wellness: "Improves physical or mental well-being.",
+  "therapeutic-value": "Actively supports emotional processing or healing.",
+  "fun-entertainment": "Enjoyable, playful, delightful.",
+  attractiveness: "Makes the user feel attractive.",
+  "provides-access": "Grants entry to something otherwise out of reach.",
+  // life-changing
+  "provides-hope": "Reason to believe things can improve.",
+  "self-actualization": "Helps the user become who they want to be.",
+  motivation: "Energizes the user toward their goals.",
+  heirloom: "Something worth passing on across time.",
+  "affiliation-belonging": "Makes the user part of a group that matters.",
+  // social-impact
+  "self-transcendence": "Helps beyond the user themselves.",
+};
+
+/**
  * UI mirror for the 30 Bain B2C value elements. `tier` derives from the
  * schema's VALUE_TIERS so it can never drift; the Record types above make a
  * missing element a compile error.
@@ -97,6 +139,7 @@ export const VALUES = VALUE_IDS.map((id) => ({
   tier: VALUE_TIERS[id],
   label: VALUE_LABELS[id],
   icon: VALUE_ICONS[id],
+  description: VALUE_DESCRIPTIONS[id],
 }));
 
 export type { ValueId, ValueTierId };
