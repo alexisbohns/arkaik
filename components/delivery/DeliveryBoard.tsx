@@ -22,7 +22,7 @@ export function DeliveryBoard({ columns, speciesLabelById, speciesDescriptionByI
         return (
           <section key={status} className="flex w-72 shrink-0 flex-col rounded-xl border bg-card/50">
             <header className="flex items-center gap-2 border-b px-3 py-2.5">
-              <StatusIcon className={`size-4 ${STATUS_STYLES[status].dot}`} aria-hidden="true" />
+              <StatusIcon className={`size-4 ${STATUS_STYLES[status].badge}`} aria-hidden="true" />
               <h2 className="text-sm font-medium">{label}</h2>
               <span className="ml-auto rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
                 {items.length}
