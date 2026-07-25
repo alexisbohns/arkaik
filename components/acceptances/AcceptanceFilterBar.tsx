@@ -10,6 +10,8 @@ import { VALUES } from "@/lib/config/values";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { STATUS_ICONS, STATUS_STYLES } from "@/components/graph/nodes/node-styles";
+import { VALUE_ICON_COMPONENTS } from "@/lib/config/value-icons";
 
 interface AnchorOption {
   id: string;
@@ -89,7 +91,10 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions }: Accept
         <SelectTrigger className="w-[9rem]" aria-label="Status"><SelectValue placeholder="Status" /></SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL}>All statuses</SelectItem>
-          {STATUSES.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
+          {STATUSES.map((s) => {
+            const Icon = STATUS_ICONS[s.id];
+            return <SelectItem key={s.id} value={s.id}><span className="inline-flex items-center gap-2"><Icon className={`size-3.5 ${STATUS_STYLES[s.id].badge}`} />{s.label}</span></SelectItem>;
+          })}
         </SelectContent>
       </Select>
 
@@ -97,7 +102,10 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions }: Accept
         <SelectTrigger className="w-[11rem]" aria-label="Value"><SelectValue placeholder="Value" /></SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL}>All values</SelectItem>
-          {VALUES.map((v) => <SelectItem key={v.id} value={v.id}>{v.label}</SelectItem>)}
+          {VALUES.map((v) => {
+            const Icon = VALUE_ICON_COMPONENTS[v.id];
+            return <SelectItem key={v.id} value={v.id}><span className="inline-flex items-center gap-2"><Icon className="size-3.5" />{v.label}</span></SelectItem>;
+          })}
         </SelectContent>
       </Select>
 
