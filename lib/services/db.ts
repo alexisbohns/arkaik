@@ -1,6 +1,6 @@
 import "server-only";
 
-import { Pool, type QueryResult, type QueryResultRow } from "pg";
+import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from "pg";
 
 /**
  * Server-only Postgres access for the arkaik services surface
@@ -17,6 +17,29 @@ import { Pool, type QueryResult, type QueryResultRow } from "pg";
  * module import. This is what lets the local-first app build and boot with every
  * services env var unset: nothing here runs until a route handler issues a query.
  */
+
+/** True when the services surface has a database configured. */
+export function servicesConfigured(): boolean {
+  return Boolean(process.env.DATABASE_URL);
+}
+
+/**
+ * 503 for when `DATABASE_URL` is unset: the local-first app still builds and
+ * serves, and the client gets a clear, non-crashing signal that hosted services
+ * are absent on this deployment (docs/spec/services.md § Backend — env vars).
+ *
+ * `service` names the surface in the message ("Publik", "Synk", "Tokens"), which
+ * is the only way the per-service copies of this helper ever differed.
+ */
+export function servicesUnavailable(service: string): Response {
+  return Response.json(
+    {
+      error: "services_unavailable",
+      message: `arkaik services (${service}) are not configured on this deployment.`,
+    },
+    { status: 503 },
+  );
+}
 
 let pool: Pool | undefined;
 
@@ -51,4 +74,34 @@ export async function query<T extends QueryResultRow = QueryResultRow>(
   params?: readonly unknown[],
 ): Promise<QueryResult<T>> {
   return getPool().query<T>(text, params as unknown[] | undefined);
+}
+
+/**
+ * Run `fn` inside a single transaction on one checked-out connection, committing
+ * on return and rolling back on throw. The client is always released, including
+ * when the rollback itself fails.
+ *
+ * Why this exists rather than `query()` calls wrapped in begin/commit: `query()`
+ * checks a connection out of the pool per statement, so consecutive calls can
+ * land on *different* connections — which would silently scatter the statements
+ * across transactions. Anything needing atomicity, or a lock that must outlive a
+ * single statement (`select … for update`), MUST go through here.
+ *
+ * The callback receives the client; use `client.query(...)` for every statement
+ * inside it. Values still go through $-params, never interpolation
+ * (docs/spec/services.md § Security & Privacy).
+ */
+export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await getPool().connect();
+  try {
+    await client.query("begin");
+    const result = await fn(client);
+    await client.query("commit");
+    return result;
+  } catch (err) {
+    await client.query("rollback").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 }
