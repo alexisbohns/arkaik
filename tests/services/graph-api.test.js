@@ -344,7 +344,14 @@ async function main() {
       ctx(projectId),
     );
     check("a stale If-Match returns 409", stale.status === 409, String(stale.status));
-    check("the 409 reports the current version", (await stale.json()).version === current.version);
+    const staleBody = await stale.json();
+    // Guarded like the refusal checks above: two undefineds comparing equal
+    // would report success while proving nothing.
+    check(
+      "the 409 reports the current version",
+      Boolean(staleBody.version) && staleBody.version === current.version,
+      `${staleBody.version} vs ${current.version}`,
+    );
 
     const fresh = await api.MUTATE(
       jsonReq(
