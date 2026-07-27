@@ -167,24 +167,41 @@ async function main() {
     // silently dropped its entire journal. seed/pebbles.json ships with a
     // journal, so this is the ordinary path, not a corner case.
     const shared = bundle([node("V-a", "view")]);
+    // Payload fields sit FLAT on the envelope (docs/spec/journal.md § Event
+    // Envelope) — `{ type, payload: {...} }` is `EventInput`, the pre-stamp
+    // shape used inside derive.ts, and is NOT what a stored event looks like.
     shared.journal = [
       {
-        id: "01JQZZZZZZZZZZZZZZZZZZZZZZ",
-        type: "node.created",
+        id: "01KN44ARM0JH4YFMX52BGKNPKZ",
         ts: "2026-01-01T00:00:00.000Z",
         actor: "seed",
-        payload: { node_id: "V-a", species: "view", title: "A" },
+        type: "node.created",
+        node_id: "V-a",
+        species: "view",
+        title: "A",
       },
     ];
 
     const firstImport = await api.CREATE_PROJECT(jsonReq(`${ORIGIN}/api/graph/projects`, "POST", shared));
-    check("a journal-carrying bundle imports", firstImport.status === 201, String(firstImport.status));
-    const firstId = (await firstImport.json()).id;
+    const firstBody = await firstImport.json();
+    // Print the findings on failure — a bare status code sent me guessing at the
+    // event shape rather than reading what the validator actually objected to.
+    check(
+      "a journal-carrying bundle imports",
+      firstImport.status === 201,
+      `${firstImport.status} ${JSON.stringify(firstBody.errors ?? firstBody)}`,
+    );
+    const firstId = firstBody.id;
 
     setSession(sessionFor(userB));
     const secondImport = await api.CREATE_PROJECT(jsonReq(`${ORIGIN}/api/graph/projects`, "POST", shared));
-    check("another owner can import the same bundle", secondImport.status === 201, String(secondImport.status));
-    const secondId = (await secondImport.json()).id;
+    const secondBody = await secondImport.json();
+    check(
+      "another owner can import the same bundle",
+      secondImport.status === 201,
+      `${secondImport.status} ${JSON.stringify(secondBody.errors ?? secondBody)}`,
+    );
+    const secondId = secondBody.id;
 
     const secondJournal = await (await api.GET_JOURNAL(new Request(ORIGIN), ctx(secondId))).json();
     check(
