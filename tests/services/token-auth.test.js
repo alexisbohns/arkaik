@@ -47,15 +47,24 @@ async function seedUser(client, label) {
   return rows[0].id;
 }
 
+/**
+ * Remove only rows this test created. Owners are matched by their DERIVED id
+ * (`own-u<testUserId>`) rather than by "any ownerless own-u% row" — the latter
+ * would happily delete a real user's personal owner if this ever ran against a
+ * developer's database instead of CI's throwaway container.
+ */
 async function cleanup(client) {
-  // Deleting the user cascades to owner_members, owners' memberships and tokens.
-  await client.query(`delete from api_tokens where user_id in
-                        (select id from users where email like 'tokentest-%@example.com')`);
-  await client.query(`delete from owner_members where user_id in
-                        (select id from users where email like 'tokentest-%@example.com')`);
-  await client.query(`delete from owners where id like 'own-u%'
-                        and not exists (select 1 from owner_members m where m.owner_id = owners.id)`);
-  await client.query(`delete from users where email like 'tokentest-%@example.com'`);
+  const { rows } = await client.query(
+    `select id from users where email like 'tokentest-%@example.com'`,
+  );
+  const ids = rows.map((row) => row.id);
+  if (ids.length === 0) return;
+  const ownerIds = ids.map((id) => `own-u${id}`);
+
+  await client.query(`delete from api_tokens where user_id = any($1::int[])`, [ids]);
+  await client.query(`delete from owner_members where user_id = any($1::int[])`, [ids]);
+  await client.query(`delete from owners where id = any($1::text[])`, [ownerIds]);
+  await client.query(`delete from users where id = any($1::int[])`, [ids]);
 }
 
 const sessionFor = (userId, name) => ({ user: { id: String(userId), name: name ?? "tokentest" } });
@@ -136,8 +145,36 @@ async function main() {
     const parsed = tokens.parseToken(minted.plaintext);
     const tampered = `ark_${parsed.prefix}_${"x".repeat(parsed.secret.length)}`;
     check("a valid prefix with a wrong secret is rejected", (await tokens.verifyToken(tampered)) === null);
-    check("an unknown prefix is rejected", (await tokens.verifyToken("ark_zzzzzzzz_zzzz")) === null);
+    check("an unknown prefix is rejected", (await tokens.verifyToken("ark_aabbccddeeff_zzzz")) === null);
     check("a malformed token is rejected", (await tokens.verifyToken("not-a-token")) === null);
+
+    // REGRESSION: secrets are base64url, whose alphabet includes `_`. Parsing
+    // with split("_") rejected roughly half of all issued tokens. Mint enough
+    // that at least one secret is virtually certain to contain an underscore,
+    // and require every one of them to verify.
+    const underscoreSample = [];
+    for (let i = 0; i < 12; i++) {
+      underscoreSample.push(
+        await tokens.mintToken({ ownerId: ownerA, userId: userA, name: `sample-${i}` }),
+      );
+    }
+    const withUnderscore = underscoreSample.filter((t) =>
+      tokens.parseToken(t.plaintext).secret.includes("_"),
+    );
+    check(
+      "the sample contains at least one secret with an underscore",
+      withUnderscore.length > 0,
+      `0 of ${underscoreSample.length} — sample too small to prove the regression`,
+    );
+    let allVerified = true;
+    for (const sample of underscoreSample) {
+      if ((await tokens.verifyToken(sample.plaintext)) === null) allVerified = false;
+    }
+    check("every minted token verifies, underscores in the secret included", allVerified);
+    check(
+      "prefixes are hex, so the separator is never ambiguous",
+      underscoreSample.every((t) => /^[0-9a-f]+$/.test(t.record.prefix)),
+    );
 
     // --- Expiry -------------------------------------------------------------
     const expired = await tokens.mintToken({

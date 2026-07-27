@@ -21,7 +21,15 @@ import { query } from "@/lib/services/db";
 /** Human-visible scheme prefix, so a leaked string is recognizable as an arkaik token. */
 export const TOKEN_SCHEME = "ark";
 
-/** 6 bytes → 8 base64url chars. The public, indexed lookup key. */
+/**
+ * 6 bytes → 12 HEX chars. The public, indexed lookup key.
+ *
+ * Hex, not base64url, on purpose: the token is `ark_<prefix>_<secret>` and the
+ * base64url alphabet contains `_`. A base64url prefix would make the separator
+ * ambiguous, so the parse below could not tell where the prefix ended. Hex has
+ * no `_`, which makes "everything after the second underscore is the secret"
+ * exactly true. (The secret stays base64url — it is never split on.)
+ */
 const PREFIX_BYTES = 6;
 
 /** 32 bytes → 43 base64url chars of entropy. Never stored in plaintext. */
@@ -99,12 +107,28 @@ function secretMatches(presentedSecret: string, storedHashHex: string): boolean 
  * Parse `ark_<prefix>_<secret>`. Returns null for anything malformed, so callers
  * never have to distinguish "no token" from "garbage token" — both are simply
  * unauthenticated.
+ *
+ * Splits on the FIRST TWO underscores only, never `split("_")`: the secret is
+ * base64url, whose alphabet includes `_`, so roughly half of all generated
+ * secrets contain one. A three-way split rejected those tokens outright — every
+ * affected credential simply failed to authenticate.
  */
 export function parseToken(raw: string): { prefix: string; secret: string } | null {
-  const parts = raw.trim().split("_");
-  if (parts.length !== 3) return null;
-  const [scheme, prefix, secret] = parts;
+  const trimmed = raw.trim();
+  const firstSep = trimmed.indexOf("_");
+  if (firstSep === -1) return null;
+  const secondSep = trimmed.indexOf("_", firstSep + 1);
+  if (secondSep === -1) return null;
+
+  const scheme = trimmed.slice(0, firstSep);
+  const prefix = trimmed.slice(firstSep + 1, secondSep);
+  const secret = trimmed.slice(secondSep + 1);
+
   if (scheme !== TOKEN_SCHEME || !prefix || !secret) return null;
+  // Prefixes are hex by construction. Rejecting anything else keeps the split
+  // above unambiguous and cannot reject a token this service actually issued.
+  if (!/^[0-9a-f]+$/.test(prefix)) return null;
+
   return { prefix, secret };
 }
 
@@ -195,7 +219,7 @@ export interface MintTokenInput {
  */
 export async function mintToken(input: MintTokenInput): Promise<MintedToken> {
   const id = `tok_${randomBytes(9).toString("base64url")}`;
-  const prefix = randomBytes(PREFIX_BYTES).toString("base64url");
+  const prefix = randomBytes(PREFIX_BYTES).toString("hex");
   const secret = randomBytes(SECRET_BYTES).toString("base64url");
   const scopes = [...new Set((input.scopes ?? DEFAULT_TOKEN_SCOPES).filter(isTokenScope))];
 
