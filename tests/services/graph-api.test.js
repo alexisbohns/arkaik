@@ -383,7 +383,20 @@ async function main() {
 
     // --- Journal + export ---------------------------------------------------
     const journal = await (await api.GET_JOURNAL(new Request(ORIGIN, { headers: bearer(readOnly.plaintext) }), ctx(projectId))).json();
-    check("the journal accumulated every accepted event", journal.journal.length >= 5, String(journal.journal.length));
+    // By identity, not count. A count couples this to how many mutations earlier
+    // assertions happen to make — which has now broken three assertions across
+    // this program, every time for a reason that said nothing about the code.
+    const journalled = journal.journal.map((e) => `${e.type}:${e.node_id ?? e.edge_id ?? ""}`);
+    check(
+      "every accepted mutation reached the journal",
+      ["node.created:V-b", "node.created:AC-x", "node.created:V-fresh"].every((k) => journalled.includes(k)),
+      journalled.join(" | "),
+    );
+    check(
+      "the batch's edge was journalled alongside its node",
+      journalled.some((entry) => entry.startsWith("edge.added:")),
+      journalled.join(" | "),
+    );
     check(
       "no event from a refused mutation is present",
       !journal.journal.some((e) => JSON.stringify(e).includes("V-ghost")),
