@@ -226,7 +226,21 @@ async function main() {
     const listA = await api.LIST_TOKENS();
     const bodyA = await listA.json();
     check("GET /api/tokens returns 200 for a signed-in user", listA.status === 200);
-    check("listing includes the minted tokens", bodyA.tokens.length === 2, String(bodyA.tokens.length));
+    // Assert by identity, not by count: a count couples this to how many tokens
+    // earlier assertions happen to mint, which is exactly how it broke before.
+    const listedIds = new Set(bodyA.tokens.map((t) => t.id));
+    check(
+      "listing includes every token this user minted",
+      listedIds.has(minted.record.id) &&
+        listedIds.has(expired.record.id) &&
+        underscoreSample.every((t) => listedIds.has(t.record.id)),
+    );
+    check(
+      "listing is newest-first",
+      bodyA.tokens.every(
+        (t, i) => i === 0 || Date.parse(bodyA.tokens[i - 1].createdAt) >= Date.parse(t.createdAt),
+      ),
+    );
     check(
       "listing never leaks a secret or hash",
       JSON.stringify(bodyA).indexOf(parsed.secret) === -1 && !JSON.stringify(bodyA).includes("token_hash"),
