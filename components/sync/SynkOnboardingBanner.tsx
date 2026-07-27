@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useAuthStatus } from "@/lib/hooks/useAuthStatus";
 import { syncManager } from "@/lib/sync/sync-manager";
-import type { ProjectBundle } from "@/lib/data/types";
+import type { ProjectSummary } from "@/lib/data/data-provider";
 
 const DISMISSED_KEY = "arkaik:synk-onboarding-dismissed";
 
@@ -34,7 +34,7 @@ function writeDismissed(ids: Set<string>) {
 
 interface SynkOnboardingBannerProps {
   /** The already-loaded local project list (app/projects/page.tsx owns the fetch) — avoids a second listProjects() round-trip. */
-  projects: ProjectBundle[];
+  projects: ProjectSummary[];
 }
 
 /**

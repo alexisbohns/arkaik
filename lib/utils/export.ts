@@ -1,6 +1,7 @@
 import type { Project, ProjectBundle } from "@/lib/data/types";
 import { parseBundle, serializeBundle, validateBundle, type ValidationFinding } from "@arkaik/schema";
 import { getProvider } from "@/lib/data/provider-registry";
+import { HOSTED_ID_PREFIX } from "@/lib/data/remote-provider";
 
 const MAX_RECOMMENDED_EXPORT_BYTES = 4 * 1024 * 1024;
 
@@ -73,8 +74,18 @@ export function parseAndValidateBundle(value: unknown): ProjectBundle {
   return parsed.data;
 }
 
+/**
+ * A free project id for an import: unique, and never in the hosted namespace.
+ *
+ * The `prj_` prefix is how the routing provider tells a hosted project from a
+ * local one (lib/data/routing-provider.ts). That rule is only sound if a local
+ * project can never hold such an id — otherwise an imported bundle whose author
+ * happened to name it `prj_…` would be routed to the server, where it does not
+ * exist. Reserving the namespace here is what makes routing a total function of
+ * the id rather than a guess.
+ */
 async function ensureUniqueProjectId(initialId: string): Promise<string> {
-  let candidate = initialId;
+  let candidate = initialId.startsWith(HOSTED_ID_PREFIX) ? crypto.randomUUID() : initialId;
   while (await getProvider().getProject(candidate)) {
     candidate = crypto.randomUUID();
   }

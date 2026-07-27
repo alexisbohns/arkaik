@@ -17,6 +17,10 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { AuthButton } from "@/components/auth/AuthButton";
 import { getProvider } from "@/lib/data/provider-registry";
 import type { Project, ProjectBundle } from "@/lib/data/types";
+import type { ProjectSummary } from "@/lib/data/data-provider";
+import { Badge } from "@/components/ui/badge";
+import { exportProject as exportProjectBundle } from "@/lib/utils/export";
+import { createRemoteProvider } from "@/lib/data/remote-provider";
 import { archiveProject, importProjectFromFile } from "@/lib/utils/export";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
 import { CreateProjectForm } from "@/components/panels/CreateProjectForm";
@@ -24,7 +28,8 @@ import { PublishDialog } from "@/components/publik/PublishDialog";
 import { ProjectSyncControl } from "@/components/sync/ProjectSyncControl";
 import { RestoreDialog } from "@/components/sync/RestoreDialog";
 import { SynkOnboardingBanner } from "@/components/sync/SynkOnboardingBanner";
-import { HistoryIcon, Share2Icon } from "lucide-react";
+import { CloudIcon, CloudUploadIcon, HistoryIcon, Share2Icon } from "lucide-react";
+import { toast } from "sonner";
 import {
   Select,
   SelectContent,
@@ -46,15 +51,45 @@ const EXAMPLE_SEEDS: Record<ExampleSeed, { fileName: string; data: unknown }> = 
 export default function ProjectsPage() {
   const router = useRouter();
   const auth = useAuthStatus();
-  const [projects, setProjects] = useState<ProjectBundle[]>([]);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<ProjectBundle | null>(null);
-  const [publishTarget, setPublishTarget] = useState<ProjectBundle | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ProjectSummary | null>(null);
+  const [publishTarget, setPublishTarget] = useState<ProjectSummary | null>(null);
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [moving, setMoving] = useState<string | null>(null);
+  const authStatus = useAuthStatus();
+  /** Hosting a project needs somewhere to put it — i.e. a signed-in account. */
+  const canHost = authStatus.state === "signed-in";
+
+  /**
+   * Copy a browser-held project into the account.
+   *
+   * A COPY, not a move: the local original is left exactly where it is. The
+   * hosted project gets a new server-owned id, so the two are genuinely
+   * separate afterwards — and if anything goes wrong the user has lost nothing.
+   * Deleting the local one is left to them, deliberately.
+   */
+  async function moveToAccount(summary: ProjectSummary) {
+    setMoving(summary.project.id);
+    setError(null);
+    try {
+      const bundle = await exportProjectBundle(summary.project.id);
+      const created = await createRemoteProvider().importProject(bundle);
+      toast.success(`"${bundle.project.title}" is now in your account.`);
+      await loadProjects();
+      router.push(`/project/${created.id}`);
+    } catch (err) {
+      console.error("[ProjectsPage] Failed to move project to account:", err);
+      setError(err instanceof Error ? err.message : "Could not move this project to your account.");
+    } finally {
+      setMoving(null);
+    }
+  }
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function loadProjects() {
@@ -238,19 +273,29 @@ export default function ProjectsPage() {
             {projects.map((bundle) => (
               <Card key={bundle.project.id}>
                 <CardHeader>
-                  <CardTitle>{bundle.project.title}</CardTitle>
+                  <CardTitle className="flex items-center gap-2">
+                    <span className="truncate">{bundle.project.title}</span>
+                    {bundle.hosted ? (
+                      <Badge variant="outline" className="shrink-0 gap-1 font-normal">
+                        <CloudIcon className="size-3" />
+                        In your account
+                      </Badge>
+                    ) : null}
+                  </CardTitle>
                   {bundle.project.description && (
                     <CardDescription>{bundle.project.description}</CardDescription>
                   )}
                 </CardHeader>
                 <CardContent className="flex flex-col gap-2">
                   <p className="text-sm text-muted-foreground">
-                    {bundle.nodes.length} node{bundle.nodes.length !== 1 ? "s" : ""} ·{" "}
-                    {bundle.edges.length} edge{bundle.edges.length !== 1 ? "s" : ""}
+                    {bundle.nodeCount} node{bundle.nodeCount !== 1 ? "s" : ""} ·{" "}
+                    {bundle.edgeCount} edge{bundle.edgeCount !== 1 ? "s" : ""}
                   </p>
-                  <ProjectSyncControl projectId={bundle.project.id} />
+                  {/* Synk backs up browser-held projects; a hosted project is
+                      already on the server and has nothing to back up. */}
+                  {bundle.hosted ? null : <ProjectSyncControl projectId={bundle.project.id} />}
                 </CardContent>
-                <CardFooter className="flex items-center gap-2">
+                <CardFooter className="flex flex-wrap items-center gap-2">
                   <Button size="sm" onClick={() => router.push(`/project/${bundle.project.id}`)}>
                     Open
                   </Button>
@@ -258,6 +303,17 @@ export default function ProjectsPage() {
                     <Share2Icon />
                     Publish
                   </Button>
+                  {!bundle.hosted && canHost ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={moving === bundle.project.id}
+                      onClick={() => void moveToAccount(bundle)}
+                    >
+                      <CloudUploadIcon />
+                      {moving === bundle.project.id ? "Moving…" : "Move to account"}
+                    </Button>
+                  ) : null}
                   <Button size="sm" variant="outline" onClick={() => setDeleteTarget(bundle)}>
                     Delete
                   </Button>

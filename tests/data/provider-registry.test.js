@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 
 /**
- * Unit tests for the provider-injection seam (lib/data/provider-registry.ts,
- * issue #243) — the exact prerequisite `docs/spec/services.md` § Synk "Client
- * sync engine" and `docs/rfcs/arkaik-dev.md` (Option B.1) both call for.
+ * The provider seam (lib/data/provider-registry.ts, issue #243) and the routing
+ * that now sits on it.
  *
- * Covers the acceptance list:
- *  - getProvider() defaults to the local provider singleton;
- *  - setProvider() swaps the active provider, and getProvider() reflects it
- *    immediately (module-level injection point, not a cached snapshot).
+ * `getProvider()` no longer returns the local provider directly — it returns a
+ * ROUTER over the local and hosted backends, because a signed-in user has both
+ * kinds of project at once. These tests pin the routing rule and, just as
+ * importantly, that a purely local session still never touches the network.
+ *
+ * Routing is by id prefix (`prj_`), a total function of the id: hosted ids are
+ * minted server-side in that namespace and `lib/utils/export.ts` refuses to give
+ * a local project one. There is no cache here that could go stale.
  */
 
 const fs = require("fs");
@@ -24,36 +27,190 @@ function check(name, cond, detail) {
   }
 }
 
-function main() {
-  const { getProvider, setProvider, defaultProviderMarker } = loadProviderRegistry();
+const HOSTED = "prj_abc123";
+const LOCAL = "local-1";
 
-  check(
-    "getProvider() defaults to the local provider singleton",
-    getProvider() === defaultProviderMarker,
-    JSON.stringify(getProvider()),
-  );
+const jsonResponse = (body) =>
+  new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
-  const customProvider = { __marker: "custom-provider" };
-  setProvider(customProvider);
-  check("setProvider() swaps the active provider", getProvider() === customProvider);
-  check(
-    "getProvider() keeps returning the swapped provider on repeated calls",
-    getProvider() === customProvider,
-  );
+async function main() {
+  const reg = loadProviderRegistry();
+  const { getProvider, setProvider, routing, remote, availability, calls, resetCalls } = reg;
 
-  // Restore the default so this module's global state doesn't leak into any
-  // other test sharing the same process (each test file here runs standalone
-  // via `node`, but this keeps the file correct if that ever changes).
-  setProvider(defaultProviderMarker);
-  check("setProvider() can restore the default provider", getProvider() === defaultProviderMarker);
+  // --- The seam still works ------------------------------------------------
+  const original = getProvider();
+  check("getProvider() returns a provider", typeof original.getNodes === "function");
+
+  const marker = { __marker: "swapped" };
+  setProvider(marker);
+  check("setProvider() swaps the active provider", getProvider() === marker);
+  check("the swap persists across repeated calls", getProvider() === marker);
+  setProvider(original);
+  check("setProvider() can restore the default", getProvider() === original);
+
+  // --- The routing rule ----------------------------------------------------
+  check("a prj_ id is hosted", remote.isHostedProjectId(HOSTED) === true);
+  check("a uuid id is not hosted", remote.isHostedProjectId("8f14e45f-ceea-467a-9f2a-1f0e6b8c4d21") === false);
+  check("an authored id is not hosted", remote.isHostedProjectId("pebbles") === false);
+  check("a lookalike id is not hosted (the prefix must lead)", remote.isHostedProjectId("project-prj_x") === false);
+
+  // --- Local ids never reach the network -----------------------------------
+  {
+    let fetchCalls = 0;
+    const router = routing.createRoutingProvider({
+      local: reg.localFake,
+      remote: remote.createRemoteProvider({
+        fetchImpl: async () => {
+          fetchCalls++;
+          throw new Error("the network must not be reached for a local project");
+        },
+      }),
+      isRemoteAvailable: () => true,
+    });
+
+    resetCalls();
+    await router.getNodes(LOCAL);
+    await router.updateNode(LOCAL, "V-a", { title: "x" });
+    await router.deleteNode(LOCAL, "V-a");
+    await router.deleteNodes(LOCAL, ["V-a"]);
+    await router.deleteEdge(LOCAL, "e-a-b");
+    await router.applyMutations(LOCAL, []);
+    await router.createNode({ id: "V-b", project_id: LOCAL });
+    await router.createEdge({ id: "e", project_id: LOCAL, source_id: "a", target_id: "b" });
+
+    check("every local-id call reached the local provider", calls.length === 8, calls.join(","));
+    check("no local-id call touched the network", fetchCalls === 0, String(fetchCalls));
+    check(
+      "each mutator forwarded its projectId to the backend",
+      calls.every((c) => c.endsWith(`:${LOCAL}`)),
+      calls.join(","),
+    );
+  }
+
+  // --- Hosted ids go to the remote provider --------------------------------
+  {
+    const requests = [];
+    const router = routing.createRoutingProvider({
+      local: reg.localFake,
+      remote: remote.createRemoteProvider({
+        fetchImpl: async (url, init) => {
+          requests.push(`${init?.method ?? "GET"} ${url}`);
+          return jsonResponse({ nodes: [{ id: "V-a" }], edges: [], version: "2", journal: [] });
+        },
+      }),
+      isRemoteAvailable: () => true,
+    });
+
+    resetCalls();
+    await router.getNodes(HOSTED);
+    await router.updateNode(HOSTED, "V-a", { title: "x" });
+
+    check(
+      "a hosted read went to the API",
+      requests.some((r) => r.includes(`/api/graph/projects/${HOSTED}/nodes`)),
+      requests.join(" | "),
+    );
+    check(
+      "a hosted write went to the single mutations endpoint",
+      requests.some((r) => r === `POST /api/graph/projects/${HOSTED}/mutations`),
+      requests.join(" | "),
+    );
+    check("no hosted call reached the local provider", calls.length === 0, calls.join(","));
+  }
+
+  // --- listProjects merges, and degrades rather than blanking ---------------
+  {
+    const router = routing.createRoutingProvider({
+      local: reg.localFake,
+      remote: remote.createRemoteProvider({
+        fetchImpl: async () =>
+          jsonResponse({
+            projects: [
+              {
+                id: HOSTED,
+                title: "Hosted",
+                nodeCount: 3,
+                edgeCount: 2,
+                createdAt: "2026-01-01T00:00:00.000Z",
+                updatedAt: "2026-01-01T00:00:00.000Z",
+              },
+            ],
+          }),
+      }),
+      isRemoteAvailable: () => true,
+    });
+
+    const listed = await router.listProjects();
+    check("listProjects merges both backends", listed.length === 2, JSON.stringify(listed.map((p) => p.project.id)));
+    check("hosted entries are flagged hosted", listed.find((p) => p.project.id === HOSTED)?.hosted === true);
+    check("local entries are not", listed.find((p) => p.project.id === LOCAL)?.hosted === false);
+    check("hosted counts survive the mapping", listed.find((p) => p.project.id === HOSTED)?.nodeCount === 3);
+  }
+  {
+    // A hosted failure must not blank the local list — losing sight of local
+    // projects because the network blinked is the worse failure.
+    const router = routing.createRoutingProvider({
+      local: reg.localFake,
+      remote: remote.createRemoteProvider({ fetchImpl: async () => new Response("nope", { status: 500 }) }),
+      isRemoteAvailable: () => true,
+    });
+    const listed = await router.listProjects();
+    check(
+      "a hosted listing failure degrades to local only",
+      listed.length === 1 && listed[0].hosted === false,
+      JSON.stringify(listed),
+    );
+  }
+  {
+    let fetchCalls = 0;
+    const router = routing.createRoutingProvider({
+      local: reg.localFake,
+      remote: remote.createRemoteProvider({
+        fetchImpl: async () => {
+          fetchCalls++;
+          return jsonResponse({});
+        },
+      }),
+      isRemoteAvailable: () => false,
+    });
+    const listed = await router.listProjects();
+    check("signed out, listProjects never asks the account", fetchCalls === 0);
+    check("signed out, the local list is still returned", listed.length === 1);
+  }
+
+  // --- Import always lands locally -----------------------------------------
+  {
+    const router = routing.createRoutingProvider({
+      local: reg.localFake,
+      remote: remote.createRemoteProvider({
+        fetchImpl: async () => {
+          throw new Error("import must not go to the account implicitly");
+        },
+      }),
+      isRemoteAvailable: () => true,
+    });
+    resetCalls();
+    await router.importProject({ project: { id: "imported", title: "T" }, nodes: [], edges: [] });
+    check("importProject goes to the local provider", calls.includes("importProject:imported"), calls.join(","));
+  }
+
+  // --- The availability flag ------------------------------------------------
+  check("hosted availability defaults to false", availability.isHostedAvailable() === false);
+  availability.setHostedAvailable(true);
+  check("hosted availability can be set", availability.isHostedAvailable() === true);
+  availability.setHostedAvailable(false);
+  check("hosted availability can be cleared", availability.isHostedAvailable() === false);
 
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 
   if (failures > 0) {
-    console.log(`\n${failures} provider-registry test(s) failed.`);
+    console.error(`\n${failures} provider-registry test(s) failed.`);
     process.exit(1);
   }
   console.log("\nAll provider-registry tests passed.");
 }
 
-main();
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

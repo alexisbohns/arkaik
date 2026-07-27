@@ -112,7 +112,7 @@ export function ProjectSwitcher({
                     <div className="grid flex-1 text-left leading-tight">
                       <span className="truncate">{projectBundle.project.title}</span>
                       <span className="truncate text-xs text-muted-foreground">
-                        {projectBundle.nodes.length} node{projectBundle.nodes.length === 1 ? "" : "s"}
+                        {projectBundle.nodeCount} node{projectBundle.nodeCount === 1 ? "" : "s"}
                       </span>
                     </div>
                     {isCurrent ? <CheckIcon className="size-4 text-muted-foreground" /> : null}
