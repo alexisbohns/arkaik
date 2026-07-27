@@ -41,3 +41,31 @@ export function getLimitsForTier(tier: string | null | undefined): TierLimits {
   }
   return TIER_LIMITS.synk;
 }
+
+/**
+ * Limits for HOSTED graph projects (db/migrations/008_graph_projects.sql) — a
+ * separate table from {@link TIER_LIMITS} on purpose.
+ *
+ * Synk's caps describe a *backup* service: one project, 250 entities, 7-day
+ * retention. A hosted project is the thing a person edits all day and an agent
+ * writes to from CI, so reusing those numbers would cap the product at a
+ * quarter of the size of the seed project shipped in this repo. There is no
+ * retention dimension here at all — a project of record is not pruned.
+ *
+ * The shape mirrors Synk's so the M5 billing work flips one column for both.
+ */
+export const HOSTED_LIMITS = {
+  synk: { projects: 3, entities: 5_000 },
+  basik: { projects: 10, entities: 25_000 },
+  klub: { projects: Infinity, entities: Infinity },
+} as const;
+
+export type HostedLimits = (typeof HOSTED_LIMITS)[Tier];
+
+/** Hosted limits for a tier string, falling back to the most restrictive row. */
+export function getHostedLimitsForTier(tier: string | null | undefined): HostedLimits {
+  if (tier && Object.prototype.hasOwnProperty.call(HOSTED_LIMITS, tier)) {
+    return HOSTED_LIMITS[tier as Tier];
+  }
+  return HOSTED_LIMITS.synk;
+}
