@@ -13,6 +13,8 @@ import {
   validateBundle,
   type EventInput,
   type JournalEvent,
+  type MutationOp,
+  type Project,
   type ValidationFinding,
 } from "@arkaik/schema";
 import { appendJournalEvent, journalPathFor, validateBundleAt, type BundleValidation } from "arkaik/io";
@@ -58,6 +60,46 @@ export interface WriteSuccess {
 }
 
 export type WriteResult = WriteRefusal | WriteSuccess;
+
+/** The graph a tool reads, however it was obtained. */
+export interface LoadedGraph {
+  loaded: BundleValidation;
+  nodes: unknown[];
+  edges: unknown[];
+  project: Project;
+  journal: JournalEvent[];
+}
+
+/**
+ * Where the bundle lives — the one thing that differs between running against a
+ * repo file and running against a hosted project.
+ *
+ * `tools.ts` and the 14-tool catalog are written against this interface and know
+ * nothing else, which is what makes local and remote incapable of drifting: the
+ * tools, their schemas, their filters and their result shapes are literally the
+ * same code. A remote session is a different `Store`, not a different server.
+ */
+export interface Store {
+  /** A fresh read per tool call — external edits must be picked up. */
+  load(): Promise<LoadedGraph>;
+  /**
+   * Apply a mutation. Refusals carry pathed findings and write nothing.
+   *
+   * `next` carries BOTH forms of the same change, because the two stores need
+   * different ones: `nodes`/`edges` are the outcome `applyOps` computed here,
+   * which the file store writes directly; `ops` is the intent, which the remote
+   * store sends so the SERVER can recompute it under its own row lock. Sending
+   * an outcome to the server would be a read-modify-write, and two agents on
+   * one project could then clobber each other.
+   */
+  persist(
+    graph: LoadedGraph,
+    next: { nodes?: unknown[]; edges?: unknown[]; ops?: readonly MutationOp[] },
+    inputs: readonly EventInput[],
+  ): Promise<WriteResult>;
+  /** For the startup banner. */
+  describe(): string;
+}
 
 /**
  * The dual-write path (docs/spec/mcp.md § Write Path), in order: derive the
@@ -107,4 +149,37 @@ export function persistMutation(
   }
 
   return { ok: true, warnings: result.warnings, events };
+}
+
+// ---------------------------------------------------------------------------
+// FileStore — the repo bundle (the original, unchanged behaviour)
+// ---------------------------------------------------------------------------
+
+/** A `Store` over `docs/arkaik/bundle.json` + its journal sidecar. */
+export function createFileStore(bundlePath: string): Store {
+  return {
+    async load(): Promise<LoadedGraph> {
+      let loaded: BundleValidation;
+      try {
+        loaded = loadBundle(bundlePath);
+      } catch (error) {
+        throw new Error(`Cannot load bundle at ${bundlePath}: ${(error as Error).message}`);
+      }
+      return {
+        loaded,
+        nodes: loaded.nodes,
+        edges: loaded.edges,
+        project: (loaded.bundle as { project: Project }).project,
+        journal: loaded.journal as JournalEvent[],
+      };
+    },
+
+    async persist(graph, next, inputs) {
+      return persistMutation(bundlePath, graph.loaded, next, inputs);
+    },
+
+    describe() {
+      return `bundle: ${bundlePath}`;
+    },
+  };
 }

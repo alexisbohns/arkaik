@@ -7,7 +7,9 @@
 
 import { startServer } from "./protocol";
 import { buildCatalog } from "./tools";
-import { resolveBundlePath } from "./store";
+import { createFileStore, resolveBundlePath, type Store } from "./store";
+import { createRemoteStore } from "./remote-store";
+import { resolveRemoteConfig } from "./config";
 
 const VERSION = "0.1.0";
 
@@ -16,12 +18,20 @@ const argv = process.argv.slice(2);
 if (argv.includes("--help") || argv.includes("-h")) {
   process.stdout.write(
     [
-      "arkaik-mcp — MCP server over an Arkaik repo bundle (stdio transport)",
+      "arkaik-mcp — MCP server over an Arkaik product graph (stdio transport)",
       "",
-      "Usage: arkaik-mcp [--bundle <path>]",
+      "Usage: arkaik-mcp [--bundle <path>] [--remote] [--project <id>]",
       "",
-      "Bundle resolution: --bundle, then $ARKAIK_BUNDLE, then docs/arkaik/bundle.json.",
-      "The journal is the sibling journal.jsonl sidecar (embedded journal[] wins).",
+      "Repo mode (default):",
+      "  Bundle resolution: --bundle, then $ARKAIK_BUNDLE, then docs/arkaik/bundle.json.",
+      "  The journal is the sibling journal.jsonl sidecar (embedded journal[] wins).",
+      "",
+      "Hosted mode (--remote, or a docs/arkaik/arkaik.json written by `arkaik link`):",
+      "  Project:  --project, then $ARKAIK_PROJECT, then arkaik.json",
+      "  Token:    $ARKAIK_TOKEN (create one at <origin>/settings/tokens)",
+      "  Origin:   $ARKAIK_URL, then arkaik.json, then https://arkaik.app",
+      "",
+      "The tool catalog is identical in both modes.",
       "Docs: docs/spec/mcp.md",
       "",
     ].join("\n"),
@@ -29,11 +39,34 @@ if (argv.includes("--help") || argv.includes("-h")) {
   process.exit(0);
 }
 
-const bundlePath = resolveBundlePath(argv, process.env);
-const { tools, handlers } = buildCatalog({ bundlePath });
+/**
+ * Repo bundle or hosted project — the ONLY thing that differs between the two
+ * modes. The catalog built below is the same either way.
+ */
+function resolveStore(): Store {
+  const remote = resolveRemoteConfig(argv, process.env, process.cwd());
+  if (remote.mode === "remote") {
+    return createRemoteStore({
+      baseUrl: remote.baseUrl,
+      projectId: remote.projectId,
+      token: remote.token,
+    });
+  }
+  return createFileStore(resolveBundlePath(argv, process.env));
+}
+
+let store: Store;
+try {
+  store = resolveStore();
+} catch (error) {
+  process.stderr.write(`arkaik-mcp: ${(error as Error).message}\n`);
+  process.exit(1);
+}
+
+const { tools, handlers } = buildCatalog({ store });
 
 // stderr only — stdout belongs to the protocol.
-process.stderr.write(`arkaik-mcp v${VERSION} — bundle: ${bundlePath}\n`);
+process.stderr.write(`arkaik-mcp v${VERSION} — ${store.describe()}\n`);
 
 startServer({
   serverInfo: { name: "arkaik-mcp", version: VERSION },

@@ -30,7 +30,8 @@ export interface ToolDefinition {
  * for expected, agent-actionable failures (unknown node, refused mutation) —
  * they become `isError` tool results, not protocol errors.
  */
-export type ToolHandler = (args: Record<string, unknown>) => unknown;
+/** A tool handler. May be sync (file-backed) or async (HTTP-backed). */
+export type ToolHandler = (args: Record<string, unknown>) => unknown | Promise<unknown>;
 
 export class ToolError extends Error {
   /** Structured payload serialized as the error content (e.g. validator findings). */
@@ -73,7 +74,16 @@ export function startServer(options: ServerOptions): Promise<void> {
     send({ jsonrpc: "2.0", id, error: { code, message } });
   };
 
-  const handleToolCall = (id: number | string | null, params: Record<string, unknown>) => {
+  /**
+   * Async because a handler may now be backed by HTTP rather than the
+   * filesystem (`RemoteStore`). `await` on a plain value is a no-op, so
+   * file-backed handlers are unaffected — but WITHOUT it a promise-returning
+   * handler serializes as `{}` and the tool silently returns nothing.
+   *
+   * Responses may now complete out of order relative to requests; JSON-RPC
+   * correlates by `id`, so that is exactly what the protocol expects.
+   */
+  const handleToolCall = async (id: number | string | null, params: Record<string, unknown>) => {
     const name = params.name;
     if (typeof name !== "string") {
       respondError(id, JSONRPC_INVALID_PARAMS, "tools/call requires a string `name`.");
@@ -91,7 +101,7 @@ export function startServer(options: ServerOptions): Promise<void> {
         : {};
 
     try {
-      const result = handler(args);
+      const result = await handler(args);
       respond(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });
     } catch (error) {
       if (error instanceof ToolError) {
@@ -102,6 +112,9 @@ export function startServer(options: ServerOptions): Promise<void> {
       }
     }
   };
+
+  /** Tool calls still running; the loop drains these before it resolves. */
+  const inFlight = new Set<Promise<void>>();
 
   const handle = (message: JsonRpcMessage) => {
     const id = message.id ?? null;
@@ -124,9 +137,17 @@ export function startServer(options: ServerOptions): Promise<void> {
       case "tools/list":
         respond(id, { tools: options.tools });
         return;
-      case "tools/call":
-        handleToolCall(id, message.params ?? {});
+      case "tools/call": {
+        // Tracked, not fire-and-forget. A handler may be waiting on HTTP, and
+        // the stream can close while it is in flight — a client that writes a
+        // request and closes stdin would otherwise never receive its response,
+        // because the server would resolve and the process exit first.
+        const settled = handleToolCall(id, message.params ?? {}).finally(() => {
+          inFlight.delete(settled);
+        });
+        inFlight.add(settled);
         return;
+      }
       default:
         if (message.id !== undefined) {
           respondError(id, JSONRPC_METHOD_NOT_FOUND, `Method not found: ${message.method ?? "(none)"}`);
@@ -147,7 +168,12 @@ export function startServer(options: ServerOptions): Promise<void> {
       }
       handle(message);
     });
-    lines.on("close", () => resolvePromise());
+    // Drain before resolving, so a response in flight when stdin closed is
+    // still written. Promise.allSettled — a handler rejection must not prevent
+    // the others from finishing.
+    lines.on("close", () => {
+      void Promise.allSettled([...inFlight]).then(() => resolvePromise());
+    });
   });
 }
 
