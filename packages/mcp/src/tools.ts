@@ -11,8 +11,9 @@ import {
   SPECIES_IDS,
   STATUS_IDS,
   VALUE_IDS,
+  MutationError,
   acceptancesCovering,
-  collectPlaylistNodeRefs,
+  applyOps,
   computeBacklog,
   computeChangelog,
   computeMapSubgraph,
@@ -26,17 +27,12 @@ import {
   type Edge,
   type EventInput,
   type JournalEvent,
+  type MutationOp,
+  type MutationOutcome,
   type Node,
   type Project,
   type ReleaseTaggedEvent,
   type ValueId,
-} from "@arkaik/schema";
-import {
-  diffNodeUpdate,
-  edgeAddedInput,
-  edgeRemovedInput,
-  nodeCreatedInput,
-  nodeDeletedInput,
 } from "@arkaik/schema";
 import type { BundleValidation } from "arkaik/io";
 import { ToolError, type ToolDefinition, type ToolHandler } from "./protocol";
@@ -109,38 +105,22 @@ function unwrap(result: WriteResult): { warnings: unknown[]; events: JournalEven
 const UPDATABLE_NODE_FIELDS = new Set(["title", "description", "status", "platforms", "metadata"]);
 
 /**
- * The `composes` edges a flow's playlist requires but that don't exist yet
- * (docs/spec/mcp.md § Write Path — Playlist composition). Without this, a flow
- * cannot be created with a populated playlist in a single validated mutation
- * (issue #263): `validateBundle`'s `playlist-composes-coherence` rule demands a
- * `composes` edge for every referenced view/sub-flow, but `add_edge` cannot
- * create those until the flow node exists — a deadlock no call ordering
- * escapes. `create_node`/`update_node` synthesize the missing edges (flow → each
- * referenced view/sub-flow) and fold them into the same gated write, mirroring
- * what the app's playlist editor already does (JourneyMap.tsx). Edges that
- * already exist are left untouched; a duplicate reference yields one edge.
+ * Run ops through the shared mutation core, mapping a refusal onto a ToolError.
+ *
+ * The semantics — composes-edge synthesis, the flow-cycle guard, edge-id
+ * normalization, the delete cascade — moved to `@arkaik/schema`'s `applyOps`
+ * (packages/schema/src/mutate.ts) so this server, the browser app, and the
+ * hosted store cannot drift. This server gained the cycle guard in that move:
+ * it previously let a cycle through to `validateBundle`, which caught it as a
+ * `flow-cycle` finding rather than an up-front refusal.
  */
-function synthesizeComposesEdges(flow: Node, existingEdges: Edge[], projectId: string): Edge[] {
-  if (flow.species !== "flow") return [];
-  const entries = flow.metadata?.playlist?.entries;
-  if (!Array.isArray(entries) || entries.length === 0) return [];
-
-  const existingIds = new Set(existingEdges.map((edge) => edge.id));
-  const seen = new Set<string>();
-  const synthesized: Edge[] = [];
-  for (const refId of collectPlaylistNodeRefs(entries)) {
-    const id = edgeId(flow.id, refId);
-    if (existingIds.has(id) || seen.has(id)) continue;
-    seen.add(id);
-    synthesized.push({
-      id,
-      project_id: projectId,
-      source_id: flow.id,
-      target_id: refId,
-      edge_type: "composes",
-    });
+function mutate(graph: LoadedGraph, ops: MutationOp[]): MutationOutcome {
+  try {
+    return applyOps({ projectId: graph.project.id, nodes: graph.nodes, edges: graph.edges }, ops);
+  } catch (err) {
+    if (err instanceof MutationError) throw new ToolError(err.message);
+    throw err;
   }
-  return synthesized;
 }
 
 /** Release list for `get_changelog` with no version: newest first by each version's latest marker. */
@@ -423,20 +403,17 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
           : {}),
       };
 
-      // A flow's playlist requires composes edges the validator would otherwise
-      // reject as missing (issue #263) — synthesize them into the same write.
-      const synthesizedEdges = synthesizeComposesEdges(node, graph.edges, graph.project.id);
-      const next =
-        synthesizedEdges.length > 0
-          ? { nodes: [...graph.nodes, node], edges: [...graph.edges, ...synthesizedEdges] }
-          : { nodes: [...graph.nodes, node] };
-
-      const result = persistMutation(ctx.bundlePath, graph.loaded, next, [
-        nodeCreatedInput(node),
-        ...synthesizedEdges.map(edgeAddedInput),
-      ]);
+      // applyOps folds in the composes edges a populated playlist requires, so
+      // a full flow still lands in one validated write (issue #263).
+      const outcome = mutate(graph, [{ op: "create_node", node }]);
+      const result = persistMutation(
+        ctx.bundlePath,
+        graph.loaded,
+        { nodes: outcome.nodes, edges: outcome.edges },
+        outcome.eventInputs,
+      );
       const { warnings, events } = unwrap(result);
-      return { node, edges: synthesizedEdges, events, warnings };
+      return { node, edges: outcome.synthesizedEdges, events, warnings };
     },
   );
 
@@ -479,25 +456,23 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
 
       const graph = load(ctx);
       const current = findNode(graph.nodes, nodeId);
-      const inputs = diffNodeUpdate(current, patch);
-      if (inputs.length === 0) {
+
+      // applyOps derives no events for a patch that changes nothing, which is
+      // how a no-op stays a no-op: nothing is written and no journal line lands.
+      const outcome = mutate(graph, [{ op: "update_node", node_id: nodeId, patch }]);
+      if (outcome.eventInputs.length === 0) {
         return { node: current, events: [], note: "No-op patch — nothing changed, nothing written." };
       }
 
-      const updated: Node = { ...current, ...patch };
-      const nextNodes = graph.nodes.map((candidate) => (candidate.id === nodeId ? updated : candidate));
-      // Same composes-edge synthesis as create_node (issue #263): a playlist that
-      // now references a view/sub-flow gets its composes edge in this write.
-      const synthesizedEdges = synthesizeComposesEdges(updated, graph.edges, graph.project.id);
-      const next =
-        synthesizedEdges.length > 0 ? { nodes: nextNodes, edges: [...graph.edges, ...synthesizedEdges] } : { nodes: nextNodes };
-
-      const result = persistMutation(ctx.bundlePath, graph.loaded, next, [
-        ...inputs,
-        ...synthesizedEdges.map(edgeAddedInput),
-      ]);
+      const updated = outcome.nodes.find((candidate) => candidate.id === nodeId)!;
+      const result = persistMutation(
+        ctx.bundlePath,
+        graph.loaded,
+        { nodes: outcome.nodes, edges: outcome.edges },
+        outcome.eventInputs,
+      );
       const { warnings, events } = unwrap(result);
-      return { node: updated, edges: synthesizedEdges, events, warnings };
+      return { node: updated, edges: outcome.synthesizedEdges, events, warnings };
     },
   );
 
@@ -517,17 +492,15 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
       const graph = load(ctx);
       const node = findNode(graph.nodes, nodeId);
 
-      const cascadedEdgeIds = graph.edges
-        .filter((edge) => edge.source_id === nodeId || edge.target_id === nodeId)
-        .map((edge) => edge.id);
-      const nextNodes = graph.nodes.filter((candidate) => candidate.id !== nodeId);
-      const nextEdges = graph.edges.filter((edge) => !cascadedEdgeIds.includes(edge.id));
-
-      const result = persistMutation(ctx.bundlePath, graph.loaded, { nodes: nextNodes, edges: nextEdges }, [
-        nodeDeletedInput(nodeId),
-      ]);
+      const outcome = mutate(graph, [{ op: "delete_node", node_id: nodeId }]);
+      const result = persistMutation(
+        ctx.bundlePath,
+        graph.loaded,
+        { nodes: outcome.nodes, edges: outcome.edges },
+        outcome.eventInputs,
+      );
       const { warnings, events } = unwrap(result);
-      return { removed: node, cascadedEdgeIds, events, warnings };
+      return { removed: node, cascadedEdgeIds: outcome.cascadedEdgeIds, events, warnings };
     },
   );
 
@@ -560,13 +533,20 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
         target_id: targetId,
         edge_type: edgeType,
       };
+      // applyOps treats re-adding an identical edge as a no-op (synthesis and an
+      // explicit create can legitimately race for the same composes edge). This
+      // tool is the explicit path, so it keeps saying so out loud.
       if (graph.edges.some((candidate) => candidate.id === edge.id)) {
         throw new ToolError(`Edge "${edge.id}" already exists.`);
       }
 
-      const result = persistMutation(ctx.bundlePath, graph.loaded, { edges: [...graph.edges, edge] }, [
-        edgeAddedInput(edge),
-      ]);
+      const outcome = mutate(graph, [{ op: "create_edge", edge }]);
+      const result = persistMutation(
+        ctx.bundlePath,
+        graph.loaded,
+        { nodes: outcome.nodes, edges: outcome.edges },
+        outcome.eventInputs,
+      );
       const { warnings, events } = unwrap(result);
       return { edge, events, warnings };
     },
@@ -589,10 +569,13 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
       const edge = graph.edges.find((candidate) => candidate.id === edgeIdArg);
       if (!edge) throw new ToolError(`No edge with id "${edgeIdArg}".`);
 
-      const nextEdges = graph.edges.filter((candidate) => candidate.id !== edgeIdArg);
-      const result = persistMutation(ctx.bundlePath, graph.loaded, { edges: nextEdges }, [
-        edgeRemovedInput(edgeIdArg),
-      ]);
+      const outcome = mutate(graph, [{ op: "delete_edge", edge_id: edgeIdArg }]);
+      const result = persistMutation(
+        ctx.bundlePath,
+        graph.loaded,
+        { nodes: outcome.nodes, edges: outcome.edges },
+        outcome.eventInputs,
+      );
       const { warnings, events } = unwrap(result);
       return { removed: edge, events, warnings };
     },

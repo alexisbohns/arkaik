@@ -1,3 +1,5 @@
+import type { MutationOp } from "@arkaik/schema";
+
 import type { Node, Edge, Project, ProjectBundle, JournalEvent } from "./types";
 
 export interface DataProvider {
@@ -23,6 +25,17 @@ export interface DataProvider {
 
   createEdge(edge: Edge): Promise<Edge>;
   deleteEdge(id: string): Promise<void>;
+
+  /**
+   * Apply several mutations atomically — all of them commit, or none do.
+   *
+   * The single-op methods above cannot express "create this node AND this edge
+   * together", which forces callers into a create-then-create sequence with a
+   * hand-rolled rollback when the second half fails. A batch removes that whole
+   * class of half-written state. A remote provider sends one request; the local
+   * one runs a single IndexedDB transaction.
+   */
+  applyMutations(projectId: string, ops: MutationOp[]): Promise<{ nodes: Node[]; edges: Edge[] }>;
 
   exportProject(id: string): Promise<ProjectBundle>;
   importProject(bundle: ProjectBundle): Promise<Project>;

@@ -45,6 +45,9 @@ jobs:
       - name: Acceptance model tests
         run: npm run test:acceptance
 
+      - name: Mutation core tests (applyOps invariants, batch atomicity)
+        run: npm run test:mutate
+
       - name: Deterministic id generator tests
         run: npm run test:id-gen
 
