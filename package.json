@@ -33,6 +33,7 @@
     "test:journal-projections": "node tests/data/journal-projections.test.js",
     "test:emit": "node tests/schema/emit.test.js",
     "test:mutate": "node tests/schema/mutate.test.js",
+    "test:promote": "node tests/schema/promote.test.js",
     "test:emit-events": "node tests/data/emit-events.test.js",
     "test:screenshot-size": "node tests/schema/screenshot-size.test.js",
     "test:migrate": "node tests/data/migrate.test.js && node tests/data/import-roundtrip.test.js && node tests/data/seed-import.test.js",
@@ -41,6 +42,7 @@
     "test:auth": "node tests/services/auth-guard.test.js",
     "test:tokens": "node tests/services/token-auth.test.js",
     "test:graph": "node tests/services/graph-api.test.js",
+    "test:github": "node tests/services/github-webhook.test.js",
     "test:publik": "node tests/services/publik-api.test.js",
     "test:synk": "node tests/services/synk-api.test.js",
     "test:sync": "node tests/sync/sync-manager.test.js"

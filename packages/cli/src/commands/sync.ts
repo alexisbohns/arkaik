@@ -36,7 +36,15 @@
  */
 import { resolve } from "node:path";
 import { writeFileSync } from "node:fs";
-import { makeEvent, serializeBundle, type JournalEvent } from "@arkaik/schema";
+import {
+  computeRefPromotions,
+  makeEvent,
+  promotionPatch,
+  serializeBundle,
+  type JournalEvent,
+  type Node,
+  type Promotion as RefPromotionApplied,
+} from "@arkaik/schema";
 import { readBundle } from "../lib/bundle-io";
 import { appendJournalEvent, journalPathFor } from "../lib/journal-io";
 import { renderEventLine } from "../lib/render-event";
@@ -58,7 +66,7 @@ const PROVIDER_LINES = PROVIDERS.map((p) => {
   return `  ${p.name.padEnd(8)} ${state}— ${p.refTypes.join(", ")}${token}${note}`;
 }).join("\n");
 
-const USAGE = `arkaik sync [--provider <name>] [--dry-run] [path]
+const USAGE = `arkaik sync [--provider <name>] [--dry-run] [--promote] [path]
 
 Mirror external ref status into node metadata.refs. Reads every node's
 metadata.refs, queries each ref's provider for its current external status,
@@ -78,6 +86,9 @@ Arguments:
 
 Options:
   --provider <name> Only sync refs handled by this provider (${PROVIDERS.map((p) => p.name).join(" | ")}).
+  --promote         Also move node statuses that the mirrored ref status implies,
+                    per the project's metadata.ref_policy. Does nothing unless
+                    the project has opted in.
   --dry-run         Report what would change without writing the bundle or
                      appending to the journal.
   -h, --help        Show this help.`;
@@ -124,6 +135,8 @@ export interface RunSyncOptions {
   provider?: string;
   /** Report what would change without writing anything. */
   dryRun?: boolean;
+  /** Apply ref_policy status promotions after mirroring. */
+  promote?: boolean;
   /** Base directory `path` resolves against (default: process.cwd()). */
   cwd?: string;
   /** Source of tokens, keyed by each provider's `tokenEnvVar` (default: process.env). */
@@ -149,6 +162,8 @@ export interface RunSyncResult {
   errors: RefSyncError[];
   /** Node id -> title, gathered from the snapshot as read — for rendering the report. */
   nodeTitles: Map<string, string>;
+  /** Status promotions applied (or, under --dry-run, that would be). */
+  promoted: RefPromotionApplied[];
 }
 
 function fatalResult(bundlePath: string, journalPath: string, dryRun: boolean, message: string): RunSyncResult {
@@ -163,6 +178,7 @@ function fatalResult(bundlePath: string, journalPath: string, dryRun: boolean, m
     skipped: [],
     errors: [],
     nodeTitles: new Map(),
+    promoted: [],
   };
 }
 
@@ -177,6 +193,7 @@ export async function runSync(options: RunSyncOptions = {}): Promise<RunSyncResu
   const filePath = resolve(cwd, options.path ?? DEFAULT_BUNDLE_PATH);
   const journalPath = journalPathFor(filePath);
   const dryRun = options.dryRun ?? false;
+  const promote = options.promote ?? false;
   const httpClient = options.httpClient ?? DEFAULT_HTTP_CLIENT;
   const now = options.now ?? (() => new Date());
   const env = options.env ?? process.env;
@@ -275,11 +292,48 @@ export async function runSync(options: RunSyncOptions = {}): Promise<RunSyncResu
     }
   }
 
+  // --promote: the SELF-HOSTING path to what the GitHub App does for hosted
+  // projects (docs/spec/bundle-format.md § References). Same shared
+  // computeRefPromotions, so an Inkognito deployment and arkaik.app cannot
+  // disagree about what a merged PR means. Still opt-in: a project without
+  // `ref_policy` gets nothing, exactly as before this flag existed.
+  const promoted: RefPromotionApplied[] = [];
+  if (promote) {
+    const plan = computeRefPromotions(bundle as unknown as Parameters<typeof computeRefPromotions>[0]);
+    for (const promotion of plan.promotions) {
+      const node = (bundle.nodes as Node[]).find((candidate) => candidate.id === promotion.node_id);
+      if (!node) continue;
+      promoted.push(promotion);
+      if (dryRun) continue;
+
+      const patch = promotionPatch(node, promotion);
+      Object.assign(node, patch);
+      dirty = true;
+
+      // A normal node.status_changed, carrying `platform` when the promotion is
+      // platform-scoped — the same event a human edit produces, so the journal
+      // reads the same whoever moved it.
+      appendJournalEvent(
+        journalPath,
+        makeEvent(
+          "node.status_changed",
+          {
+            node_id: promotion.node_id,
+            from: promotion.from,
+            to: promotion.to,
+            ...(promotion.platform ? { platform: promotion.platform } : {}),
+          },
+          { actor, ts: syncedAt },
+        ),
+      );
+    }
+  }
+
   if (dirty && !dryRun) {
     writeFileSync(filePath, serializeBundle(bundle as unknown as Parameters<typeof serializeBundle>[0]));
   }
 
-  return { ok: true, bundlePath: filePath, journalPath, dryRun, changed, unchanged, skipped, errors, nodeTitles };
+  return { ok: true, bundlePath: filePath, journalPath, dryRun, changed, unchanged, skipped, errors, nodeTitles, promoted };
 }
 
 /** A rendered `ref.status_changed` line for a change, reusing the shared event renderer. */
@@ -334,6 +388,7 @@ function report(result: RunSyncResult): void {
 export function runSyncCli(args: string[]): void {
   let provider: string | undefined;
   let dryRun = false;
+  let promote = false;
   const positionals: string[] = [];
 
   for (let i = 0; i < args.length; i++) {
@@ -343,6 +398,8 @@ export function runSyncCli(args: string[]): void {
       process.exit(0);
     } else if (arg === "--dry-run") {
       dryRun = true;
+    } else if (arg === "--promote") {
+      promote = true;
     } else if (arg === "--provider") {
       const value = args[++i];
       if (value === undefined) fail(`Missing value for --provider\n\n${USAGE}`);
@@ -356,7 +413,7 @@ export function runSyncCli(args: string[]): void {
 
   const filePath = positionals[0] ?? DEFAULT_BUNDLE_PATH;
 
-  runSync({ path: filePath, provider, dryRun })
+  runSync({ path: filePath, provider, dryRun, promote })
     .then((result) => {
       if (!result.ok) fail(`FATAL: ${result.fatal}`);
       report(result);

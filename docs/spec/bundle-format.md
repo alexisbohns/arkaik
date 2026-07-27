@@ -71,7 +71,8 @@ interface Ref {
 | Rule | Detail |
 |---|---|
 | Mirroring | `external_status` is a *mirror*, never authoritative. Sync tooling (`arkaik sync`, server-side integrations) updates it and records `ref.status_changed` journal events |
-| Mapping | `status_mapped` never overwrites `node.status` automatically; it is advisory display data. Promoting it to the node's status is a deliberate (human or agent) act that produces a normal `node.status_changed` event |
+| Mapping | `status_mapped` never overwrites `node.status` automatically; it is advisory display data. Promoting it to the node's status is a deliberate act that produces a normal `node.status_changed` event |
+| Promotion policy | A project MAY opt in to automatic promotion by declaring `project.metadata.ref_policy` — a map of ref type → external status → `StatusId` (or `null` for "recognised, moves nothing"). `ref_policy: true` selects the defaults (`github-pr`: open → `development`, merged → `live`, closed → nothing). **Absent `ref_policy`, nothing is promoted** — the advisory rule above is unchanged for every bundle that predates this. A promotion is scoped to `ref.platform` when the ref carries one, moving `metadata.platformStatuses[platform]` rather than `node.status`, so shipping on one platform never claims parity across all of them. Archived nodes are never promoted; a node already at the target is skipped, making re-runs no-ops. Implemented once in `computeRefPromotions` (`@arkaik/schema`) and shared by `arkaik sync --promote` and the hosted GitHub App |
 | Unknown types | Consumers MUST preserve refs with unrecognized `type` values and SHOULD render them as generic links |
 
 ## Asset Values
