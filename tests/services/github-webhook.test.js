@@ -89,6 +89,12 @@ async function main() {
     process.exit(1);
   }
   process.env.GITHUB_WEBHOOK_SECRET = SECRET;
+  // getCaller() refuses everyone unless auth is configured, so the repo-link
+  // routes below would all 401 without these. NextAuth itself is stubbed; these
+  // are never used for a real round-trip.
+  process.env.AUTH_SECRET ||= "ghtest-secret";
+  process.env.AUTH_GITHUB_ID ||= "ghtest-id";
+  process.env.AUTH_GITHUB_SECRET ||= "ghtest-secret";
 
   const client = new Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
@@ -297,16 +303,20 @@ async function main() {
           edges: [],
         },
       });
+      check("the fixture project was created", created.ok === true, JSON.stringify(created));
       const projectId = created.id;
       const ctx = { params: Promise.resolve({ projectId }) };
       const origin = "https://arkaik.test";
 
       api.setSession({ user: { id: String(userId), name: "ghtest" } });
 
-      check(
-        "a fresh project has no repo links",
-        (await (await api.LIST_REPOS(new Request(origin), ctx)).json()).repos.length === 0,
-      );
+      const initial = await api.LIST_REPOS(new Request(origin), ctx);
+      const initialBody = await initial.json();
+      // Assert the response is what we think before reading into it — an
+      // unauthenticated 401 here would otherwise surface as a TypeError far
+      // from its cause.
+      check("listing repos is authorized", initial.status === 200, `${initial.status} ${JSON.stringify(initialBody)}`);
+      check("a fresh project has no repo links", initialBody.repos?.length === 0, JSON.stringify(initialBody));
 
       const linked = await api.LINK_REPO(
         new Request(origin, {
@@ -316,10 +326,12 @@ async function main() {
         }),
         ctx,
       );
-      check("linking a repo returns 201", linked.status === 201, String(linked.status));
+      const linkedBody = await linked.json();
+      check("linking a repo returns 201", linked.status === 201, `${linked.status} ${JSON.stringify(linkedBody)}`);
       check(
         "the name is lowercased on write (GitHub is case-insensitive)",
-        (await linked.json()).repo.repoFullName === "acme/ios-app",
+        linkedBody.repo?.repoFullName === "acme/ios-app",
+        JSON.stringify(linkedBody),
       );
 
       check(
