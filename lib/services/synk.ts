@@ -10,7 +10,7 @@ import {
   type ValidationFinding,
 } from "@arkaik/schema";
 
-import { query } from "@/lib/services/db";
+import { query, servicesUnavailable as baseServicesUnavailable } from "@/lib/services/db";
 import { getLimitsForTier } from "@/lib/services/limits";
 
 /**
@@ -50,24 +50,15 @@ export const BUNDLE_SHA256_HEADER = "x-bundle-sha256";
 // Availability (mirrors lib/services/publik.ts § graceful absence)
 // ---------------------------------------------------------------------------
 
-/** True when the services surface has a database configured. */
-export function servicesConfigured(): boolean {
-  return Boolean(process.env.DATABASE_URL);
-}
-
 /**
- * 503 for when `DATABASE_URL` is unset: the local-first app still builds and
- * serves, and the client gets a clear, non-crashing signal that hosted services
- * are absent on this deployment (docs/spec/services.md § Backend — env vars).
+ * Re-exported from lib/services/db.ts, which owns DATABASE_URL, so the three
+ * service surfaces share one definition instead of three drifting copies. The
+ * response body is byte-identical to what this module returned before.
  */
+export { servicesConfigured } from "@/lib/services/db";
+
 export function servicesUnavailable(): Response {
-  return Response.json(
-    {
-      error: "services_unavailable",
-      message: "arkaik services (Synk) are not configured on this deployment.",
-    },
-    { status: 503 },
-  );
+  return baseServicesUnavailable("Synk");
 }
 
 // ---------------------------------------------------------------------------
