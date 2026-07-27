@@ -14,9 +14,21 @@ const SCHEMA_DIR = path.join(__dirname, "..", "..", "packages", "schema");
 const SRC_DIR = path.join(SCHEMA_DIR, "src");
 const BUILD_DIR = path.join(SCHEMA_DIR, ".test-build");
 
-// Order does not matter for output — CommonJS resolves requires lazily — but we
-// transpile every module the entrypoint depends on.
-const MODULES = ["ids", "id-gen", "enums", "playlist", "journal", "journal-events", "bundle", "validate", "acceptance", "parse", "serialize", "projections", "maps", "emit", "derive", "index"];
+/**
+ * Every module in packages/schema/src, discovered rather than listed. Order does
+ * not matter — CommonJS resolves requires lazily.
+ *
+ * This was a hardcoded array, so adding a source file to the schema package
+ * broke every suite here with a `Cannot find module` raised from inside the
+ * build dir, far from the actual cause. scripts/generate/load-schema-package.js
+ * had the same list and the same failure.
+ */
+function schemaModules() {
+  return fs
+    .readdirSync(SRC_DIR)
+    .filter((name) => name.endsWith(".ts") && !name.endsWith(".d.ts"))
+    .map((name) => name.slice(0, -3));
+}
 
 function loadSchema() {
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
@@ -25,6 +37,8 @@ function loadSchema() {
   // packages/schema is "type": "module"; mark the CJS output dir accordingly so
   // the transpiled `.js` files are loaded as CommonJS.
   fs.writeFileSync(path.join(BUILD_DIR, "package.json"), JSON.stringify({ type: "commonjs" }));
+
+  const MODULES = schemaModules();
 
   for (const name of MODULES) {
     const source = fs.readFileSync(path.join(SRC_DIR, `${name}.ts`), "utf8");

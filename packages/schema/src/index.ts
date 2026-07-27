@@ -12,3 +12,4 @@ export * from "./projections";
 export * from "./maps";
 export * from "./emit";
 export * from "./derive";
+export * from "./mutate";

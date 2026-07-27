@@ -26,8 +26,8 @@ export default function ProjectAcceptancesPage() {
   const [selectedNode, setSelectedNode] = useState<DataNode | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
 
-  const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, removeNode } = useNodes(id);
-  const { edges: dataEdges, loading: edgesLoading, addEdge } = useEdges(id);
+  const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, applyMutations } = useNodes(id);
+  const { edges: dataEdges, loading: edgesLoading, syncEdges } = useEdges(id);
   const { project: projectBundle } = useProject(id);
   const { journal } = useJournal(id);
   const { filters, setFilters } = useAcceptanceFilters();
@@ -78,20 +78,39 @@ export default function ProjectAcceptancesPage() {
     return created;
   }
 
+  /**
+   * An acceptance and the `covers` edge anchoring it are one thing, so they are
+   * written as one atomic batch. This previously created the node, created the
+   * edge, and hand-rolled a rollback of the node when the edge failed — a
+   * compensating delete that could itself fail and leave the orphan behind.
+   */
   async function handleCreateAcceptanceForAnchor(anchor: DataNode, title: string): Promise<DataNode> {
-    const created = await handleCreateAcceptance(title);
-    try {
-      await addEdge({
-        id: `e-${created.id}-${anchor.id}`,
-        project_id: id,
-        source_id: created.id,
-        target_id: anchor.id,
-        edge_type: "covers",
-      });
-    } catch (err) {
-      await removeNode(created.id).catch(() => {}); // roll back the just-created node so no orphan acceptance lingers
-      throw err;
-    }
+    const created: DataNode = {
+      id: generateNodeId("acceptance", title, nodesById.keys()),
+      project_id: id,
+      species: "acceptance",
+      title,
+      status: "idea",
+      platforms: ["web", "ios", "android"],
+      metadata: {},
+    };
+
+    const result = await applyMutations([
+      { op: "create_node", node: created },
+      {
+        op: "create_edge",
+        edge: {
+          id: `e-${created.id}-${anchor.id}`,
+          project_id: id,
+          source_id: created.id,
+          target_id: anchor.id,
+          edge_type: "covers",
+        },
+      },
+    ]);
+    syncEdges(result.edges);
+
+    handleSelectNode(created);
     return created;
   }
 

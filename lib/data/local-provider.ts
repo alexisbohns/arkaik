@@ -1,8 +1,7 @@
 import type { DataProvider } from "./data-provider";
-import type { Node, Edge, ProjectBundle, PlaylistEntry } from "./types";
+import type { Node, Edge, ProjectBundle } from "./types";
 import { migrateBundle } from "./migrate";
-import { edgeId } from "@arkaik/schema";
-import { wouldCreateCycle } from "@/lib/utils/cycle";
+import { applyOps, type MutationOp } from "@arkaik/schema";
 import {
   appendJournalEvents,
   assembleBundle,
@@ -10,14 +9,7 @@ import {
   splitBundle,
   type ProjectRecord,
 } from "./db";
-import {
-  diffNodeUpdate,
-  edgeAddedInput,
-  edgeRemovedInput,
-  nodeCreatedInput,
-  nodeDeletedInput,
-  toJournalEvents,
-} from "./emit-events";
+import { toJournalEvents } from "./emit-events";
 
 /**
  * The app's `DataProvider`, backed by IndexedDB (Dexie — see `./db.ts`).
@@ -68,31 +60,6 @@ import {
  * list either.
  */
 
-function collectReferencedFlowIds(entries: PlaylistEntry[]): string[] {
-  const result: string[] = [];
-
-  for (const entry of entries) {
-    if (entry.type === "flow") {
-      result.push(entry.flow_id);
-      continue;
-    }
-
-    if (entry.type === "condition") {
-      result.push(...collectReferencedFlowIds(entry.if_true));
-      result.push(...collectReferencedFlowIds(entry.if_false));
-      continue;
-    }
-
-    if (entry.type === "junction") {
-      for (const playlistCase of entry.cases) {
-        result.push(...collectReferencedFlowIds(playlistCase.entries));
-      }
-    }
-  }
-
-  return result;
-}
-
 function isArchived(record: ProjectRecord): boolean {
   return Boolean(record.snapshot.project.archived_at);
 }
@@ -124,6 +91,63 @@ function notifyMutation(projectId: string): void {
   for (const listener of mutationListeners) {
     listener({ projectId });
   }
+}
+
+/** How to find the project a mutation targets. */
+type Locator =
+  | { by: "project"; id: string }
+  | { by: "node"; id: string }
+  | { by: "edge"; id: string };
+
+/**
+ * The single write path: locate the project, run `ops` through the shared
+ * `applyOps`, and persist the resulting graph + derived events in ONE Dexie
+ * transaction so snapshot and journal always commit together.
+ *
+ * Every graph mutation below funnels through here, which is what makes the
+ * app's semantics identical to the MCP server's and (next) the hosted store's —
+ * the cycle guard, the composes synthesis, the edge-id normalization and the
+ * cascade rules all live in `applyOps`, not in this file.
+ *
+ * `notifyMutation` fires exactly once, after the transaction resolves — never
+ * inside it, and never when it throws (issue #243).
+ */
+async function runOps(locator: Locator, ops: MutationOp[], notFoundMessage: string) {
+  const db = await getDb();
+  if (!db) throw new Error(notFoundMessage);
+
+  let nextNodes: Node[] = [];
+  let nextEdges: Edge[] = [];
+  let projectId = "";
+
+  await db.transaction("rw", db.projects, db.journals, async () => {
+    const record =
+      locator.by === "project"
+        ? await db.projects.get(locator.id)
+        : (await db.projects.toArray()).find((candidate) =>
+            locator.by === "node"
+              ? candidate.snapshot.nodes.some((n) => n.id === locator.id)
+              : candidate.snapshot.edges.some((e) => e.id === locator.id),
+          );
+    if (!record) throw new Error(notFoundMessage);
+
+    projectId = record.snapshot.project.id;
+    const outcome = applyOps(
+      { projectId, nodes: record.snapshot.nodes, edges: record.snapshot.edges },
+      ops,
+    );
+
+    record.snapshot.nodes = outcome.nodes;
+    record.snapshot.edges = outcome.edges;
+    nextNodes = outcome.nodes;
+    nextEdges = outcome.edges;
+
+    await db.projects.put(record);
+    await appendJournalEvents(db, projectId, toJournalEvents(outcome.eventInputs));
+  });
+
+  notifyMutation(projectId);
+  return { nodes: nextNodes, edges: nextEdges, projectId };
 }
 
 export const localProvider: DataProvider = {
@@ -203,152 +227,78 @@ export const localProvider: DataProvider = {
   },
 
   async createNode(node: Node) {
-    const db = await getDb();
-    if (!db) throw new Error(`Project ${node.project_id} not found`);
-    await db.transaction("rw", db.projects, db.journals, async () => {
-      const record = await db.projects.get(node.project_id);
-      if (!record) throw new Error(`Project ${node.project_id} not found`);
-      record.snapshot.nodes.push(node);
-      await db.projects.put(record);
-      await appendJournalEvents(db, node.project_id, toJournalEvents([nodeCreatedInput(node)]));
-    });
-    notifyMutation(node.project_id);
+    await runOps({ by: "project", id: node.project_id }, [{ op: "create_node", node }], `Project ${node.project_id} not found`);
     return node;
   },
 
   async updateNode(id: string, patch: Partial<Omit<Node, "id" | "project_id">>) {
-    const db = await getDb();
-    if (!db) throw new Error(`Node ${id} not found`);
-    let updated: Node | undefined;
-    let projectId: string | undefined;
-    await db.transaction("rw", db.projects, db.journals, async () => {
-      const records = await db.projects.toArray();
-      const record = records.find((r) => r.snapshot.nodes.some((n) => n.id === id));
-      if (!record) throw new Error(`Node ${id} not found`);
-      projectId = record.snapshot.project.id;
-
-      const nodes = record.snapshot.nodes;
-      const idx = nodes.findIndex((n) => n.id === id);
-      const current = nodes[idx];
-      const nextNode = { ...current, ...patch };
-
-      if (nextNode.species === "flow") {
-        const entries = nextNode.metadata?.playlist?.entries;
-        if (Array.isArray(entries)) {
-          const nextNodes = [...nodes];
-          nextNodes[idx] = nextNode;
-          const candidateFlowIds = collectReferencedFlowIds(entries);
-
-          for (const candidateFlowId of candidateFlowIds) {
-            if (wouldCreateCycle(nextNode.id, candidateFlowId, nextNodes)) {
-              throw new Error(`Cannot add Flow ${candidateFlowId}: it would create a circular reference.`);
-            }
-          }
-        }
-      }
-
-      // Diff the patch against the pre-update node (per-key for metadata) and
-      // append the derived event(s). Computed only after the cycle validation
-      // above, so a rejected update never emits.
-      const events = toJournalEvents(diffNodeUpdate(current, patch));
-
-      nodes[idx] = nextNode;
-      updated = nextNode;
-      await db.projects.put(record);
-      await appendJournalEvents(db, record.snapshot.project.id, events);
-    });
-    notifyMutation(projectId!);
-    return updated!;
+    const { nodes } = await runOps(
+      { by: "node", id },
+      [{ op: "update_node", node_id: id, patch }],
+      `Node ${id} not found`,
+    );
+    return nodes.find((candidate) => candidate.id === id)!;
   },
 
   async deleteNode(id: string) {
-    const db = await getDb();
-    if (!db) throw new Error(`Node ${id} not found`);
-    let projectId: string | undefined;
-    await db.transaction("rw", db.projects, db.journals, async () => {
-      const records = await db.projects.toArray();
-      const record = records.find((r) => r.snapshot.nodes.some((n) => n.id === id));
-      if (!record) throw new Error(`Node ${id} not found`);
-      projectId = record.snapshot.project.id;
-      record.snapshot.nodes = record.snapshot.nodes.filter((n) => n.id !== id);
-      // Cascade-remove attached edges. The journal's node.deleted IMPLIES this
-      // cascade, so we do NOT emit edge.removed for them (docs/spec/journal.md:71).
-      record.snapshot.edges = record.snapshot.edges.filter(
-        (e) => e.source_id !== id && e.target_id !== id,
-      );
-      await db.projects.put(record);
-      await appendJournalEvents(db, record.snapshot.project.id, toJournalEvents([nodeDeletedInput(id)]));
-    });
-    notifyMutation(projectId!);
+    await runOps({ by: "node", id }, [{ op: "delete_node", node_id: id }], `Node ${id} not found`);
   },
 
+  /**
+   * Deleting across projects is the one mutation `runOps` cannot express: it
+   * targets every project that happens to hold one of the ids, so it runs
+   * `applyOps` once per affected project inside a single transaction, and fires
+   * one notification per project rather than one per node (issue #243).
+   */
   async deleteNodes(ids: string[]) {
     if (ids.length === 0) return;
     const db = await getDb();
     if (!db) return;
     const idSet = new Set(ids);
-    // One notification per affected project, not one per node (issue #243) —
-    // collected during the transaction, fired after it commits.
     const affectedProjectIds: string[] = [];
+
     await db.transaction("rw", db.projects, db.journals, async () => {
-      const records = await db.projects.toArray();
-      for (const record of records) {
-        // Only ids actually present in this project's snapshot are deleted (and
-        // emitted), so a node.deleted never references a node that never existed.
-        const deletedIds = record.snapshot.nodes.filter((n) => idSet.has(n.id)).map((n) => n.id);
-        if (deletedIds.length === 0) continue;
-        record.snapshot.nodes = record.snapshot.nodes.filter((n) => !idSet.has(n.id));
-        // Cascade-remove edges without emitting edge.removed (docs/spec/journal.md:71).
-        record.snapshot.edges = record.snapshot.edges.filter(
-          (e) => !idSet.has(e.source_id) && !idSet.has(e.target_id),
+      for (const record of await db.projects.toArray()) {
+        if (!record.snapshot.nodes.some((n) => idSet.has(n.id))) continue;
+        const projectId = record.snapshot.project.id;
+        const outcome = applyOps(
+          { projectId, nodes: record.snapshot.nodes, edges: record.snapshot.edges },
+          [{ op: "delete_nodes", node_ids: ids }],
         );
+        record.snapshot.nodes = outcome.nodes;
+        record.snapshot.edges = outcome.edges;
         await db.projects.put(record);
-        await appendJournalEvents(
-          db,
-          record.snapshot.project.id,
-          toJournalEvents(deletedIds.map(nodeDeletedInput)),
-        );
-        affectedProjectIds.push(record.snapshot.project.id);
+        await appendJournalEvents(db, projectId, toJournalEvents(outcome.eventInputs));
+        affectedProjectIds.push(projectId);
       }
     });
-    for (const projectId of affectedProjectIds) {
-      notifyMutation(projectId);
-    }
+
+    for (const projectId of affectedProjectIds) notifyMutation(projectId);
   },
 
   async createEdge(edge: Edge) {
-    const db = await getDb();
-    if (!db) throw new Error(`Project ${edge.project_id} not found`);
-    // Enforce the `e-{source}-{target}` convention at the seam so any edge
-    // creation — including a repoint expressed as delete + create — stays
-    // conformant regardless of the id the caller supplied (issue #215,
-    // docs/spec/bundle-format.md § Identifier Conventions).
-    const normalized: Edge = { ...edge, id: edgeId(edge.source_id, edge.target_id) };
-    await db.transaction("rw", db.projects, db.journals, async () => {
-      const record = await db.projects.get(normalized.project_id);
-      if (!record) throw new Error(`Project ${normalized.project_id} not found`);
-      record.snapshot.edges.push(normalized);
-      await db.projects.put(record);
-      await appendJournalEvents(db, normalized.project_id, toJournalEvents([edgeAddedInput(normalized)]));
-    });
-    notifyMutation(normalized.project_id);
-    return normalized;
+    const { edges } = await runOps(
+      { by: "project", id: edge.project_id },
+      [{ op: "create_edge", edge }],
+      `Project ${edge.project_id} not found`,
+    );
+    // applyOps normalizes the id to the `e-{source}-{target}` convention, so the
+    // stored edge is the one to return — not the caller's input.
+    return edges.find((candidate) => candidate.source_id === edge.source_id && candidate.target_id === edge.target_id)!;
   },
 
   async deleteEdge(id: string) {
-    const db = await getDb();
-    if (!db) throw new Error(`Edge ${id} not found`);
-    let projectId: string | undefined;
-    await db.transaction("rw", db.projects, db.journals, async () => {
-      const records = await db.projects.toArray();
-      const record = records.find((r) => r.snapshot.edges.some((e) => e.id === id));
-      if (!record) throw new Error(`Edge ${id} not found`);
-      projectId = record.snapshot.project.id;
-      record.snapshot.edges = record.snapshot.edges.filter((e) => e.id !== id);
-      await db.projects.put(record);
-      await appendJournalEvents(db, record.snapshot.project.id, toJournalEvents([edgeRemovedInput(id)]));
-    });
-    notifyMutation(projectId!);
+    await runOps({ by: "edge", id }, [{ op: "delete_edge", edge_id: id }], `Edge ${id} not found`);
+  },
+
+  /**
+   * Apply several ops as ONE atomic unit — the seam that lets a caller create a
+   * node and its edge together instead of creating the node, creating the edge,
+   * and hand-rolling a rollback when the second call fails.
+   */
+  async applyMutations(projectId: string, ops: MutationOp[]) {
+    const { nodes, edges } = await runOps({ by: "project", id: projectId }, ops, `Project ${projectId} not found`);
+    return { nodes, edges };
   },
 
   async exportProject(id: string) {

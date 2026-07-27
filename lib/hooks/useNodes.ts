@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import type { Node } from "@/lib/data/types";
+import type { MutationOp } from "@arkaik/schema";
+import type { Edge, Node } from "@/lib/data/types";
 import { getProvider } from "@/lib/data/provider-registry";
 
 export function useNodes(projectId: string) {
@@ -55,5 +56,22 @@ export function useNodes(projectId: string) {
     []
   );
 
-  return { nodes, loading, error, addNode, removeNode, removeNodes, updateNode };
+  /**
+   * Apply several ops as one atomic write and adopt the resulting node list.
+   *
+   * Use this instead of chaining single-op calls whenever a half-applied result
+   * would be wrong — creating a node and the edge that anchors it, say. It
+   * returns the edges too, so a caller holding `useEdges` can sync that half
+   * with `syncEdges`; the write itself already committed as a unit.
+   */
+  const applyMutations = useCallback(
+    async (ops: MutationOp[]): Promise<{ nodes: Node[]; edges: Edge[] }> => {
+      const result = await getProvider().applyMutations(projectId, ops);
+      setNodes(result.nodes);
+      return result;
+    },
+    [projectId],
+  );
+
+  return { nodes, loading, error, addNode, removeNode, removeNodes, updateNode, applyMutations };
 }

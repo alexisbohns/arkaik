@@ -132,10 +132,12 @@ function loadLocalProvider() {
   // db.js — hand-written fake (FAKE_DB_SOURCE above).
   fs.writeFileSync(path.join(BUILD_DIR, "db.js"), FAKE_DB_SOURCE);
 
-  // cycle.js — transpiled as-is; only `import type` deps, so no rewrite needed.
+  // cycle.js — now a thin re-export of @arkaik/schema's wouldCreateCycle (the
+  // implementation moved into packages/schema/src/mutate.ts so every writer
+  // shares it), so its schema require needs rewriting like the others.
   fs.writeFileSync(
     path.join(BUILD_DIR, "cycle.js"),
-    transpile(path.join(ROOT, "lib", "utils", "cycle.ts"), "cycle.ts"),
+    rewriteSchemaRequire(transpile(path.join(ROOT, "lib", "utils", "cycle.ts"), "cycle.ts")),
   );
 
   // emit-events.js — transpiled, @arkaik/schema require rewritten to the real build.
