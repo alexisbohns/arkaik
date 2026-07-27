@@ -269,6 +269,137 @@ async function main() {
       check("a PR mentioning no acceptance produces no ops", unrelated.length === 0);
     }
 
+    // --- Repo links: the surface the webhook resolves against ----------------
+    // Without a link, a delivery finds no projects and does nothing. These
+    // assertions exist because the table and the webhook shipped before any way
+    // to create a row, which made the whole feature unreachable.
+    {
+      const email = `ghtest-${Date.now()}@example.com`;
+      const { rows } = await client.query(
+        `insert into users (name, email) values ('ghtest', $1) returning id`,
+        [email],
+      );
+      const userId = rows[0].id;
+      const ownerId = (await api.owners.resolveOwnerIds(userId))[0];
+      const created = await api.store.createProject({
+        ownerId,
+        tier: "klub",
+        bundle: {
+          schema_version: 2,
+          project: {
+            id: "gp",
+            title: "Linked",
+            metadata: { ref_policy: true },
+            created_at: "2026-01-01T00:00:00.000Z",
+            updated_at: "2026-01-01T00:00:00.000Z",
+          },
+          nodes: [acceptance("AC-guest-checkout", ["web", "ios"])],
+          edges: [],
+        },
+      });
+      const projectId = created.id;
+      const ctx = { params: Promise.resolve({ projectId }) };
+      const origin = "https://arkaik.test";
+
+      api.setSession({ user: { id: String(userId), name: "ghtest" } });
+
+      check(
+        "a fresh project has no repo links",
+        (await (await api.LIST_REPOS(new Request(origin), ctx)).json()).repos.length === 0,
+      );
+
+      const linked = await api.LINK_REPO(
+        new Request(origin, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ repo_full_name: "Acme/iOS-App", platform: "ios" }),
+        }),
+        ctx,
+      );
+      check("linking a repo returns 201", linked.status === 201, String(linked.status));
+      check(
+        "the name is lowercased on write (GitHub is case-insensitive)",
+        (await linked.json()).repo.repoFullName === "acme/ios-app",
+      );
+
+      check(
+        "a malformed repo name is rejected",
+        (
+          await api.LINK_REPO(
+            new Request(origin, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ repo_full_name: "not-a-repo" }),
+            }),
+            ctx,
+          )
+        ).status === 400,
+      );
+      check(
+        "an invalid platform is rejected",
+        (
+          await api.LINK_REPO(
+            new Request(origin, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ repo_full_name: "acme/x", platform: "windows" }),
+            }),
+            ctx,
+          )
+        ).status === 400,
+      );
+
+      // THE END-TO-END POINT: the webhook now finds the link.
+      const found = await pullRequest.linkedProjects("acme/ios-app");
+      check(
+        "the webhook resolves a delivery to the linked project",
+        found.some((l) => l.projectId === projectId && l.platform === "ios"),
+        JSON.stringify(found),
+      );
+      check(
+        "a delivery for a case-different name still resolves",
+        (await pullRequest.linkedProjects("Acme/iOS-App")).some((l) => l.projectId === projectId),
+      );
+
+      // Owner scoping.
+      const { rows: other } = await client.query(
+        `insert into users (name, email) values ('ghtest2', $1) returning id`,
+        [`ghtest2-${Date.now()}@example.com`],
+      );
+      await api.owners.resolveOwnerIds(other[0].id);
+      api.setSession({ user: { id: String(other[0].id), name: "other" } });
+      check(
+        "another owner cannot list this project's repos",
+        (await api.LIST_REPOS(new Request(origin), ctx)).status === 404,
+      );
+      check(
+        "another owner cannot link a repo to it",
+        (
+          await api.LINK_REPO(
+            new Request(origin, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ repo_full_name: "evil/repo" }),
+            }),
+            ctx,
+          )
+        ).status === 404,
+      );
+
+      api.setSession({ user: { id: String(userId), name: "ghtest" } });
+      const unlinked = await api.UNLINK_REPO(new Request(`${origin}?repo=acme%2Fios-app`), ctx);
+      check("unlinking returns 204", unlinked.status === 204, String(unlinked.status));
+      check(
+        "and the webhook no longer resolves it",
+        (await pullRequest.linkedProjects("acme/ios-app")).every((l) => l.projectId !== projectId),
+      );
+
+      await client.query(`delete from graph_projects where id = $1`, [projectId]);
+      await client.query(`delete from owner_members where user_id = any($1::int[])`, [[userId, other[0].id]]);
+      await client.query(`delete from owners where id = any($1::text[])`, [[ownerId, `own-u${other[0].id}`]]);
+      await client.query(`delete from users where id = any($1::int[])`, [[userId, other[0].id]]);
+    }
+
     // --- The delivery ledger -------------------------------------------------
     const deliveryId = `test-delivery-${Date.now()}`;
     check("a fresh delivery is claimed", (await pullRequest.claimDelivery(deliveryId)) === true);

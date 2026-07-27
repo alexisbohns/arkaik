@@ -45,7 +45,11 @@ function loadGithubApi() {
   write("server-only-stub.js", "module.exports = {};\n");
   write(
     "auth-module-stub.js",
-    "module.exports = { auth: async () => null, __setSession: () => {} };\n",
+    "let current = null;\n" +
+      "module.exports = {\n" +
+      "  auth: async () => current,\n" +
+      "  __setSession: (s) => { current = s; },\n" +
+      "};\n",
   );
 
   const COMMON = [
@@ -57,6 +61,7 @@ function loadGithubApi() {
     ["@/lib/services/tokens", "./tokens.js"],
     ["@/lib/services/auth", "./auth.js"],
     ["@/lib/services/graph/store", "./graph-store.js"],
+    ["@/lib/services/graph/repos", "./graph-repos.js"],
     ["@/lib/services/github/verify", "./verify.js"],
     ["@/lib/services/github/pull-request", "./pull-request.js"],
     ["@/auth", "./auth-module-stub.js"],
@@ -70,6 +75,8 @@ function loadGithubApi() {
   write("tokens.js", transpile(src("lib", "services", "tokens.ts"), "tokens.ts", COMMON));
   write("auth.js", transpile(src("lib", "services", "auth.ts"), "auth.ts", COMMON));
   write("graph-store.js", transpile(src("lib", "services", "graph", "store.ts"), "store.ts", COMMON));
+  write("graph-repos.js", transpile(src("lib", "services", "graph", "repos.ts"), "repos.ts", COMMON));
+  write("repos-route.js", transpile(src("app", "api", "graph", "projects", "[projectId]", "repos", "route.ts"), "route.ts", COMMON));
   write("verify.js", transpile(src("lib", "services", "github", "verify.ts"), "verify.ts", COMMON));
   write("pull-request.js", transpile(src("lib", "services", "github", "pull-request.ts"), "pull-request.ts", COMMON));
   write("webhook-route.js", transpile(src("app", "api", "github", "webhook", "route.ts"), "route.ts", COMMON));
@@ -83,6 +90,13 @@ function loadGithubApi() {
     verify: req("verify.js"),
     pullRequest: req("pull-request.js"),
     store: req("graph-store.js"),
+    repos: req("graph-repos.js"),
+    LIST_REPOS: req("repos-route.js").GET,
+    LINK_REPO: req("repos-route.js").POST,
+    UNLINK_REPO: req("repos-route.js").DELETE,
+    owners: req("owners.js"),
+    tokens: req("tokens.js"),
+    setSession: require(path.join(BUILD_DIR, "auth-module-stub.js")).__setSession,
     POST: req("webhook-route.js").POST,
   };
 }
