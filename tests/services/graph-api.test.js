@@ -160,10 +160,51 @@ async function main() {
     check("a dangling-edge bundle is refused with 422", badCreate.status === 422, String(badCreate.status));
     check("the 422 carries pathed findings", Array.isArray((await badCreate.json()).errors));
 
+    // --- Imported history is per-project, not global -------------------------
+    // REGRESSION: event ULIDs travel inside an exported bundle, so two owners
+    // importing the SAME bundle legitimately hold identical event ids. With a
+    // global `primary key (id)` on graph_events the second import collided and
+    // silently dropped its entire journal. seed/pebbles.json ships with a
+    // journal, so this is the ordinary path, not a corner case.
+    const shared = bundle([node("V-a", "view")]);
+    shared.journal = [
+      {
+        id: "01JQZZZZZZZZZZZZZZZZZZZZZZ",
+        type: "node.created",
+        ts: "2026-01-01T00:00:00.000Z",
+        actor: "seed",
+        payload: { node_id: "V-a", species: "view", title: "A" },
+      },
+    ];
+
+    const firstImport = await api.CREATE_PROJECT(jsonReq(`${ORIGIN}/api/graph/projects`, "POST", shared));
+    check("a journal-carrying bundle imports", firstImport.status === 201, String(firstImport.status));
+    const firstId = (await firstImport.json()).id;
+
+    setSession(sessionFor(userB));
+    const secondImport = await api.CREATE_PROJECT(jsonReq(`${ORIGIN}/api/graph/projects`, "POST", shared));
+    check("another owner can import the same bundle", secondImport.status === 201, String(secondImport.status));
+    const secondId = (await secondImport.json()).id;
+
+    const secondJournal = await (await api.GET_JOURNAL(new Request(ORIGIN), ctx(secondId))).json();
+    check(
+      "the second import KEEPS its journal (not swallowed by a global id clash)",
+      secondJournal.journal.length === 1,
+      `got ${secondJournal.journal.length} events`,
+    );
+    setSession(sessionFor(userA));
+    const firstJournal = await (await api.GET_JOURNAL(new Request(ORIGIN), ctx(firstId))).json();
+    check("the first import still has its journal", firstJournal.journal.length === 1);
+
     // --- Owner scoping ------------------------------------------------------
     setSession(sessionFor(userB));
     const otherList = await api.LIST_PROJECTS(new Request(`${ORIGIN}/api/graph/projects`));
-    check("another owner sees no projects", (await otherList.json()).projects.length === 0);
+    const otherIds = (await otherList.json()).projects.map((p) => p.id);
+    check(
+      "another owner's listing never contains this project",
+      !otherIds.includes(projectId),
+      otherIds.join(","),
+    );
     const otherGet = await api.GET_PROJECT(new Request(ORIGIN), ctx(projectId));
     check("another owner gets 404, not 403", otherGet.status === 404, String(otherGet.status));
     const otherMutate = await api.MUTATE(
@@ -237,7 +278,13 @@ async function main() {
     check("the batch emitted two events", batchBody.events.length === 2);
 
     // --- A refused mutation writes NOTHING ---------------------------------
-    const beforeRefusal = await (await api.GET_PROJECT(new Request(ORIGIN), ctx(projectId))).json();
+    // These reads MUST carry a credential: the session is null in this section,
+    // so an unauthenticated GET would 401 and every field below would be
+    // undefined — making the comparisons pass vacuously rather than prove
+    // anything. Asserting the bundle is actually present guards that directly.
+    const readReq = () => new Request(ORIGIN, { headers: bearer(readOnly.plaintext) });
+    const beforeRefusal = await (await api.GET_PROJECT(readReq(), ctx(projectId))).json();
+    check("the pre-refusal read actually returned a bundle", Boolean(beforeRefusal.bundle));
     const refused = await api.MUTATE(
       jsonReq(
         ORIGIN,
@@ -256,8 +303,13 @@ async function main() {
       ctx(projectId),
     );
     check("a dangling edge is refused with 422", refused.status === 422, String(refused.status));
-    const afterRefusal = await (await api.GET_PROJECT(new Request(ORIGIN), ctx(projectId))).json();
-    check("the refused batch left the version alone", afterRefusal.version === beforeRefusal.version);
+    const afterRefusal = await (await api.GET_PROJECT(readReq(), ctx(projectId))).json();
+    check("the post-refusal read actually returned a bundle", Boolean(afterRefusal.bundle));
+    check(
+      "the refused batch left the version alone",
+      Boolean(afterRefusal.version) && afterRefusal.version === beforeRefusal.version,
+      `${beforeRefusal.version} → ${afterRefusal.version}`,
+    );
     check(
       "the refused batch left the snapshot alone",
       afterRefusal.bundle.nodes.length === beforeRefusal.bundle.nodes.length,
@@ -280,7 +332,8 @@ async function main() {
     );
 
     // --- Optimistic concurrency --------------------------------------------
-    const current = await (await api.GET_PROJECT(new Request(ORIGIN), ctx(projectId))).json();
+    const current = await (await api.GET_PROJECT(readReq(), ctx(projectId))).json();
+    check("the concurrency baseline read returned a version", Boolean(current.version));
     const stale = await api.MUTATE(
       jsonReq(
         ORIGIN,
@@ -350,10 +403,9 @@ async function main() {
     // --- Archive ------------------------------------------------------------
     const archived = await api.DELETE_PROJECT(new Request(ORIGIN), ctx(projectId));
     check("DELETE archives the project", archived.status === 204, String(archived.status));
-    check(
-      "an archived project leaves the listing",
-      (await (await api.LIST_PROJECTS(new Request(ORIGIN))).json()).projects.length === 0,
-    );
+    const afterArchive = (await (await api.LIST_PROJECTS(new Request(ORIGIN))).json()).projects.map((p) => p.id);
+    check("an archived project leaves the listing", !afterArchive.includes(projectId), afterArchive.join(","));
+    check("archiving one project does not hide the others", afterArchive.includes(firstId), afterArchive.join(","));
     check(
       "an archived project cannot be mutated",
       (await api.MUTATE(jsonReq(ORIGIN, "POST", { ops: [{ op: "create_node", node: node("V-z", "view") }] }), ctx(projectId))).status === 404,

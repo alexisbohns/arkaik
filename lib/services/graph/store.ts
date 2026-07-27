@@ -281,13 +281,15 @@ export async function createProject(
       ],
     );
 
-    // An imported bundle carries its own history. Events keep their original
-    // ULIDs, so re-importing the same bundle into a *new* project is fine while
-    // a duplicate id inside one project is impossible (the primary key).
+    // An imported bundle carries its own history, and events keep their original
+    // ULIDs. Those ids are unique per project, not globally — two owners
+    // importing the same bundle hold the same event ids — so the conflict target
+    // is the composite key. Targeting `(id)` alone would make the second import
+    // of a journal-carrying bundle silently drop every event.
     for (const event of journal) {
       await client.query(
         `insert into graph_events (id, project_id, event, actor) values ($1, $2, $3, $4)
-         on conflict (id) do nothing`,
+         on conflict (project_id, id) do nothing`,
         [event.id, id, JSON.stringify(event), event.actor ?? "import"],
       );
     }

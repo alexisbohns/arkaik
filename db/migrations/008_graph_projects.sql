@@ -51,9 +51,12 @@ create table if not exists graph_projects (
 -- Listing a caller's projects, and the owner-scoping filter every query applies.
 create index if not exists graph_projects_owner_idx on graph_projects (owner_id);
 
--- The append-only journal. `id` is the event's own ULID (the same id the bundle
--- carries when exported), so re-importing an exported bundle cannot duplicate
--- history: the primary key rejects an event that is already stored.
+-- The append-only journal. `id` is the event's own ULID — the id the bundle
+-- carries when exported — so it is unique per project but NOT globally: two
+-- owners importing the same bundle (the shipped `seed/pebbles.json` carries a
+-- journal) legitimately hold events with identical ids. The primary key is
+-- therefore composite. A global `primary key (id)` would make the second
+-- import collide and silently drop its entire history.
 create table if not exists graph_events (
   id         text        not null,
   project_id text        not null references graph_projects(id) on delete cascade,
@@ -64,7 +67,7 @@ create table if not exists graph_events (
   event      jsonb       not null,
   actor      text        not null,
   created_at timestamptz not null default now(),
-  primary key (id)
+  primary key (project_id, id)
 );
 
 -- Every read of a project's journal is "this project, in order".
