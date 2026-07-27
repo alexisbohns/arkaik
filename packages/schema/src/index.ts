@@ -13,3 +13,4 @@ export * from "./maps";
 export * from "./emit";
 export * from "./derive";
 export * from "./mutate";
+export * from "./promote";

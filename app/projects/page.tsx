@@ -19,6 +19,7 @@ import { getProvider } from "@/lib/data/provider-registry";
 import type { Project, ProjectBundle } from "@/lib/data/types";
 import type { ProjectSummary } from "@/lib/data/data-provider";
 import { Badge } from "@/components/ui/badge";
+import { RepoLinksDialog } from "@/components/settings/RepoLinksDialog";
 import { exportProject as exportProjectBundle } from "@/lib/utils/export";
 import { createRemoteProvider } from "@/lib/data/remote-provider";
 import { archiveProject, importProjectFromFile } from "@/lib/utils/export";
@@ -28,7 +29,7 @@ import { PublishDialog } from "@/components/publik/PublishDialog";
 import { ProjectSyncControl } from "@/components/sync/ProjectSyncControl";
 import { RestoreDialog } from "@/components/sync/RestoreDialog";
 import { SynkOnboardingBanner } from "@/components/sync/SynkOnboardingBanner";
-import { CloudIcon, CloudUploadIcon, HistoryIcon, Share2Icon } from "lucide-react";
+import { CloudIcon, CloudUploadIcon, GithubIcon, HistoryIcon, Share2Icon } from "lucide-react";
 import { toast } from "sonner";
 import {
   Select,
@@ -61,6 +62,7 @@ export default function ProjectsPage() {
   const [importing, setImporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [moving, setMoving] = useState<string | null>(null);
+  const [repoTarget, setRepoTarget] = useState<ProjectSummary | null>(null);
   const authStatus = useAuthStatus();
   /** Hosting a project needs somewhere to put it — i.e. a signed-in account. */
   const canHost = authStatus.state === "signed-in";
@@ -303,6 +305,12 @@ export default function ProjectsPage() {
                     <Share2Icon />
                     Publish
                   </Button>
+                  {bundle.hosted ? (
+                    <Button size="sm" variant="outline" onClick={() => setRepoTarget(bundle)}>
+                      <GithubIcon />
+                      Repos
+                    </Button>
+                  ) : null}
                   {!bundle.hosted && canHost ? (
                     <Button
                       size="sm"
@@ -336,6 +344,14 @@ export default function ProjectsPage() {
         onConfirm={handleArchiveProject}
       />
 
+      <RepoLinksDialog
+        projectId={repoTarget?.project.id ?? ""}
+        projectTitle={repoTarget?.project.title ?? "this project"}
+        open={Boolean(repoTarget)}
+        onOpenChange={(next) => {
+          if (!next) setRepoTarget(null);
+        }}
+      />
       <PublishDialog
         open={Boolean(publishTarget)}
         onOpenChange={(open) => {
