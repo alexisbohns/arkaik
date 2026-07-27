@@ -84,7 +84,7 @@ async function main() {
   // criteria's named unit test) ---
   {
     const { received, unsubscribe } = withRecorder();
-    const updated = await localProvider.updateNode("V-home", { title: "Home v2" });
+    const updated = await localProvider.updateNode(PROJECT_A, "V-home", { title: "Home v2" });
     unsubscribe();
     check("updateNode returns the updated node", updated.title === "Home v2");
     check("updateNode fires exactly one notification", received.length === 1, JSON.stringify(received));
@@ -99,7 +99,7 @@ async function main() {
   {
     const { received, unsubscribe } = withRecorder();
     unsubscribe();
-    await localProvider.updateNode("V-home", { title: "Home v3" });
+    await localProvider.updateNode(PROJECT_A, "V-home", { title: "Home v3" });
     check("no notification is delivered after unsubscribe()", received.length === 0, JSON.stringify(received));
   }
 
@@ -126,7 +126,7 @@ async function main() {
     check("createEdge's notification carries the right projectId", received[0]?.projectId === PROJECT_A);
 
     received.length = 0;
-    await localProvider.deleteEdge(edge.id);
+    await localProvider.deleteEdge(PROJECT_A, edge.id);
     check("deleteEdge fires exactly one notification", received.length === 1, JSON.stringify(received));
     check("deleteEdge's notification carries the right projectId", received[0]?.projectId === PROJECT_A);
     unsubscribe();
@@ -135,7 +135,7 @@ async function main() {
   // --- deleteNode fires exactly one notification ---
   {
     const { received, unsubscribe } = withRecorder();
-    await localProvider.deleteNode("V-settings");
+    await localProvider.deleteNode(PROJECT_A, "V-settings");
     unsubscribe();
     check("deleteNode fires exactly one notification", received.length === 1, JSON.stringify(received));
     check("deleteNode's notification carries the right projectId", received[0]?.projectId === PROJECT_A);
@@ -177,7 +177,7 @@ async function main() {
     const { received, unsubscribe } = withRecorder();
     let threw = false;
     try {
-      await localProvider.updateNode("does-not-exist", { title: "x" });
+      await localProvider.updateNode(PROJECT_A, "does-not-exist", { title: "x" });
     } catch {
       threw = true;
     }
@@ -186,8 +186,14 @@ async function main() {
     check("a failed mutation fires no notification", received.length === 0, JSON.stringify(received));
   }
 
-  // --- deleteNodes (batch) fires one notification per affected project, not
-  // one per node ---
+  // --- deleteNodes is scoped to ONE project ---
+  // This used to delete across every project holding one of the ids, and fired
+  // one notification per affected project. That was an artifact of the id-only
+  // signature: the provider had to scan all projects to find a node, so it could
+  // just as easily delete from all of them. No caller ever wanted it —
+  // useNodes(projectId).removeNodes always operates within one project — and a
+  // remote provider cannot scan. deleteNodes now takes its project explicitly,
+  // and ids belonging to another project are simply not its business.
   {
     const PROJECT_B = "p-b";
     const PROJECT_C = "p-c";
@@ -197,28 +203,30 @@ async function main() {
     await localProvider.saveProject(makeBundle(PROJECT_C, [makeNode("V-c1", PROJECT_C)]));
 
     const { received, unsubscribe } = withRecorder();
-    await localProvider.deleteNodes(["V-b1", "V-b2", "V-c1"]);
+    await localProvider.deleteNodes(PROJECT_B, ["V-b1", "V-b2", "V-c1"]);
     unsubscribe();
 
     check(
-      "deleteNodes fires exactly one notification per affected project (2 projects, 3 nodes)",
-      received.length === 2,
+      "deleteNodes fires exactly one notification for its own project",
+      received.length === 1 && received[0]?.projectId === PROJECT_B,
       JSON.stringify(received),
     );
-    const projectIds = received.map((e) => e.projectId).sort();
+    const remainingB = await localProvider.getNodes(PROJECT_B);
+    check("deleteNodes removed both of its own nodes", remainingB.length === 0, JSON.stringify(remainingB.map((n) => n.id)));
+    const remainingC = await localProvider.getNodes(PROJECT_C);
     check(
-      "deleteNodes' notifications name exactly the affected projects",
-      JSON.stringify(projectIds) === JSON.stringify([PROJECT_B, PROJECT_C]),
-      JSON.stringify(projectIds),
+      "an id from another project is left untouched, not deleted across projects",
+      remainingC.length === 1 && remainingC[0].id === "V-c1",
+      JSON.stringify(remainingC.map((n) => n.id)),
     );
   }
 
   // --- deleteNodes with no ids affected fires nothing ---
   {
     const { received, unsubscribe } = withRecorder();
-    await localProvider.deleteNodes(["does-not-exist"]);
+    await localProvider.deleteNodes(PROJECT_A, ["does-not-exist"]);
     unsubscribe();
-    check("deleteNodes affecting no project fires no notification", received.length === 0, JSON.stringify(received));
+    check("deleteNodes affecting no node fires no notification", received.length === 0, JSON.stringify(received));
   }
 
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });

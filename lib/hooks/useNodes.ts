@@ -37,23 +37,23 @@ export function useNodes(projectId: string) {
   }, []);
 
   const removeNode = useCallback(async (id: string) => {
-    await getProvider().deleteNode(id);
+    await getProvider().deleteNode(projectId, id);
     setNodes((prev) => prev.filter((n) => n.id !== id));
-  }, []);
+  }, [projectId]);
 
   const removeNodes = useCallback(async (ids: string[]) => {
-    await getProvider().deleteNodes(ids);
+    await getProvider().deleteNodes(projectId, ids);
     const idSet = new Set(ids);
     setNodes((prev) => prev.filter((n) => !idSet.has(n.id)));
-  }, []);
+  }, [projectId]);
 
   const updateNode = useCallback(
     async (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => {
-      const updated = await getProvider().updateNode(id, patch);
+      const updated = await getProvider().updateNode(projectId, id, patch);
       setNodes((prev) => prev.map((n) => (n.id === id ? updated : n)));
       return updated;
     },
-    []
+    [projectId]
   );
 
   /**

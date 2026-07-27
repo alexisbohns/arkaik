@@ -30,9 +30,9 @@ export function useEdges(projectId: string) {
   }, []);
 
   const removeEdge = useCallback(async (id: string) => {
-    await getProvider().deleteEdge(id);
+    await getProvider().deleteEdge(projectId, id);
     setEdges((prev) => prev.filter((e) => e.id !== id));
-  }, []);
+  }, [projectId]);
 
   /**
    * Adopt an edge list produced by an atomic batch elsewhere (see `useNodes`'s

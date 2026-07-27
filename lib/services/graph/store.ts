@@ -56,6 +56,9 @@ export interface GraphProjectSummary {
   id: string;
   bundleId: string;
   title: string;
+  /** Split rather than combined: the projects page renders them separately. */
+  nodeCount: number;
+  edgeCount: number;
   entityCount: number;
   version: string;
   createdAt: string;
@@ -137,17 +140,24 @@ export function validateInboundBundle(input: unknown): { ok: boolean; findings: 
 // ---------------------------------------------------------------------------
 
 export async function listProjects(ownerIds: readonly string[]): Promise<GraphProjectSummary[]> {
+  // Counts come from the snapshot rather than a stored column: derived at read
+  // time they cannot drift from the graph, and it needs no extra column to keep
+  // in step with every write.
   const { rows } = await query<{
     id: string;
     bundle_id: string;
     title: string;
+    node_count: number;
+    edge_count: number;
     entity_count: number;
     version: string;
     created_at: Date;
     updated_at: Date;
     archived_at: Date | null;
   }>(
-    `select id, bundle_id, title, entity_count, version, created_at, updated_at, archived_at
+    `select id, bundle_id, title, entity_count, version, created_at, updated_at, archived_at,
+            coalesce(jsonb_array_length(snapshot->'nodes'), 0) as node_count,
+            coalesce(jsonb_array_length(snapshot->'edges'), 0) as edge_count
        from graph_projects
       where owner_id = any($1::text[]) and archived_at is null
       order by updated_at desc`,
@@ -158,6 +168,8 @@ export async function listProjects(ownerIds: readonly string[]): Promise<GraphPr
     id: row.id,
     bundleId: row.bundle_id,
     title: row.title,
+    nodeCount: Number(row.node_count),
+    edgeCount: Number(row.edge_count),
     entityCount: Number(row.entity_count),
     version: String(row.version),
     createdAt: row.created_at.toISOString(),
@@ -296,6 +308,54 @@ export async function createProject(
   });
 
   return { ok: true, id, version: "1" };
+}
+
+/**
+ * Update project-level fields (title, description, version, metadata) without
+ * touching the graph.
+ *
+ * Separate from {@link applyMutation} because these are not graph edits: they
+ * produce no journal events, exactly as the local provider's `saveProject` is on
+ * the documented no-emit list. `id`, `nodes` and `edges` are ignored if present
+ * — the graph is only ever changed through the mutations endpoint, so this
+ * cannot become a second, ungated write path.
+ */
+export async function updateProjectFields(
+  projectId: string,
+  ownerIds: readonly string[],
+  project: Partial<Project>,
+): Promise<{ ok: true; version: string } | StoreFailure> {
+  return withTransaction(async (client) => {
+    const { rows } = await client.query<{ snapshot: SnapshotShape; version: string }>(
+      `select snapshot, version from graph_projects
+        where id = $1 and owner_id = any($2::text[]) and archived_at is null
+        for update`,
+      [projectId, ownerIds],
+    );
+    if (rows.length === 0) return { ok: false, reason: "not_found" } as StoreFailure;
+
+    const snapshot = rows[0].snapshot;
+    const {
+      id: _ignoredId,
+      ...safeFields
+    } = project as Partial<Project> & { nodes?: unknown; edges?: unknown };
+    void _ignoredId;
+    delete (safeFields as { nodes?: unknown }).nodes;
+    delete (safeFields as { edges?: unknown }).edges;
+
+    const nextProject = { ...snapshot.project, ...safeFields, id: snapshot.project.id };
+    const candidate = { ...snapshot, project: nextProject };
+
+    const semantic = validateBundle(candidate);
+    if (!semantic.valid) return { ok: false, reason: "validation", errors: semantic.errors } as StoreFailure;
+
+    const nextVersion = (BigInt(rows[0].version) + BigInt(1)).toString();
+    await client.query(
+      `update graph_projects set snapshot = $2, title = $3, version = $4, updated_at = now() where id = $1`,
+      [projectId, JSON.stringify(candidate), nextProject.title ?? "Untitled", nextVersion],
+    );
+    return { ok: true, version: nextVersion };
+  });
 }
 
 /** Archive (soft-delete). Returns false when the project is not the caller's. */

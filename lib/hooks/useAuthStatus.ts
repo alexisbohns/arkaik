@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import { setHostedAvailable } from "@/lib/data/hosted-availability";
+
 /**
  * Shared client-side view of `GET /api/auth/status` (docs/spec/services.md
  * § Synk → Auth). Originally inlined in `components/auth/AuthButton.tsx`;
@@ -36,6 +38,10 @@ export function useAuthStatus(): AuthStatus {
         if (!res.ok) throw new Error(`status ${res.status}`);
         const data: { configured: boolean; user: AuthStatusUser | null } = await res.json();
         if (!active) return;
+        // The routing provider reads this to decide whether hosted projects are
+        // worth asking for. Set before the state update so the very first render
+        // that knows the user is signed in also knows the account is reachable.
+        setHostedAvailable(Boolean(data.configured && data.user));
         if (!data.configured) {
           setStatus({ state: "unconfigured" });
         } else if (data.user) {
@@ -46,6 +52,7 @@ export function useAuthStatus(): AuthStatus {
       } catch {
         // Treat any failure as "auth unavailable" — degrade to hidden, never
         // block the local-first shell.
+        setHostedAvailable(false);
         if (active) setStatus({ state: "unconfigured" });
       }
     }

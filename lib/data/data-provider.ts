@@ -2,9 +2,26 @@ import type { MutationOp } from "@arkaik/schema";
 
 import type { Node, Edge, Project, ProjectBundle, JournalEvent } from "./types";
 
+/**
+ * What a project listing needs, without loading every project's whole graph.
+ *
+ * `listProjects()` used to return full `ProjectBundle`s, which meant the
+ * projects page read every node, edge, and journal event of every project just
+ * to render titles and counts. That is merely wasteful against IndexedDB and
+ * untenable against a server — so the listing now carries counts instead of
+ * contents.
+ */
+export interface ProjectSummary {
+  project: Project;
+  nodeCount: number;
+  edgeCount: number;
+  /** True when the project lives in the account rather than in this browser. */
+  hosted: boolean;
+}
+
 export interface DataProvider {
   getProject(id: string): Promise<ProjectBundle | undefined>;
-  listProjects(): Promise<ProjectBundle[]>;
+  listProjects(): Promise<ProjectSummary[]>;
   saveProject(bundle: ProjectBundle): Promise<void>;
   archiveProject(id: string): Promise<void>;
 
@@ -18,13 +35,23 @@ export interface DataProvider {
    */
   getJournal(projectId: string): Promise<JournalEvent[]>;
 
+  /**
+   * Mutators all take `projectId` explicitly, including the ones whose subject
+   * id would seem to be enough.
+   *
+   * The local provider could get away without it — it scans every project in
+   * IndexedDB to find the one holding a node id. A remote provider cannot scan,
+   * and a routing provider cannot even tell which backend to ask. Passing the
+   * project makes the contract honest, removes the scan, and is free at every
+   * call site: the hooks are already constructed as `useNodes(projectId)`.
+   */
   createNode(node: Node): Promise<Node>;
-  updateNode(id: string, patch: Partial<Omit<Node, "id" | "project_id">>): Promise<Node>;
-  deleteNode(id: string): Promise<void>;
-  deleteNodes(ids: string[]): Promise<void>;
+  updateNode(projectId: string, id: string, patch: Partial<Omit<Node, "id" | "project_id">>): Promise<Node>;
+  deleteNode(projectId: string, id: string): Promise<void>;
+  deleteNodes(projectId: string, ids: string[]): Promise<void>;
 
   createEdge(edge: Edge): Promise<Edge>;
-  deleteEdge(id: string): Promise<void>;
+  deleteEdge(projectId: string, id: string): Promise<void>;
 
   /**
    * Apply several mutations atomically — all of them commit, or none do.

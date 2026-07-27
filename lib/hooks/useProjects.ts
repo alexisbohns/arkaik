@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { getProvider } from "@/lib/data/provider-registry";
-import type { ProjectBundle } from "@/lib/data/types";
+import type { ProjectSummary } from "@/lib/data/data-provider";
 
 export function useProjects() {
-  const [projects, setProjects] = useState<ProjectBundle[]>([]);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

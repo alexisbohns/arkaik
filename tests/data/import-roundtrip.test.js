@@ -80,6 +80,10 @@ function loadExportModule() {
   Module._load = function (request, parent, isMain) {
     if (request === "@arkaik/schema") return schemaExports;
     if (request.includes("provider-registry")) return stubProviderRegistry;
+    // export.ts reserves the hosted id namespace on import, so it now reads the
+    // prefix constant from remote-provider. Only the constant is needed here —
+    // that module has no runtime deps of its own.
+    if (request.includes("remote-provider")) return { HOSTED_ID_PREFIX: "prj_" };
     return originalLoad.call(this, request, parent, isMain);
   };
   try {
