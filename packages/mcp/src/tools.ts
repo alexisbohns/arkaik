@@ -34,35 +34,40 @@ import {
   type ReleaseTaggedEvent,
   type ValueId,
 } from "@arkaik/schema";
-import type { BundleValidation } from "arkaik/io";
 import { ToolError, type ToolDefinition, type ToolHandler } from "./protocol";
-import { loadBundle, persistMutation, type WriteResult } from "./store";
+import type { LoadedGraph as StoreLoadedGraph, Store, WriteResult } from "./store";
 
 interface ToolContext {
-  bundlePath: string;
+  store: Store;
 }
 
+/** The tools' view of a loaded graph — narrowed from the Store's shape. */
 interface LoadedGraph {
-  loaded: BundleValidation;
+  loaded: StoreLoadedGraph["loaded"];
   nodes: Node[];
   edges: Edge[];
   project: Project;
   journal: JournalEvent[];
 }
 
-function load(ctx: ToolContext): LoadedGraph {
-  let loaded: BundleValidation;
+/**
+ * A fresh read per tool call, from whichever Store this session was given.
+ * Errors become ToolErrors so a bad path or an unreachable server surfaces to
+ * the agent as an actionable message rather than a protocol fault.
+ */
+async function load(ctx: ToolContext): Promise<LoadedGraph> {
+  let graph: StoreLoadedGraph;
   try {
-    loaded = loadBundle(ctx.bundlePath);
+    graph = await ctx.store.load();
   } catch (error) {
-    throw new ToolError(`Cannot load bundle at ${ctx.bundlePath}: ${(error as Error).message}`);
+    throw new ToolError(`Cannot load ${ctx.store.describe()}: ${(error as Error).message}`);
   }
   return {
-    loaded,
-    nodes: loaded.nodes as Node[],
-    edges: loaded.edges as Edge[],
-    project: (loaded.bundle as { project: Project }).project,
-    journal: loaded.journal as JournalEvent[],
+    loaded: graph.loaded,
+    nodes: graph.nodes as Node[],
+    edges: graph.edges as Edge[],
+    project: graph.project,
+    journal: graph.journal,
   };
 }
 
@@ -183,8 +188,8 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
         additionalProperties: false,
       },
     },
-    (args) => {
-      const { nodes, edges } = load(ctx);
+    async (args) => {
+      const { nodes, edges } = await load(ctx);
       const query = typeof args.query === "string" ? args.query.toLowerCase() : undefined;
       const limit = typeof args.limit === "number" && args.limit >= 1 ? Math.floor(args.limit) : 50;
       const anchorCoveringIds =
@@ -223,9 +228,9 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
         additionalProperties: false,
       },
     },
-    (args) => {
+    async (args) => {
       const nodeId = requireString(args, "node_id");
-      const { nodes, edges, journal } = load(ctx);
+      const { nodes, edges, journal } = await load(ctx);
       const node = findNode(nodes, nodeId);
       const nodesById = new Map(nodes.map((candidate) => [candidate.id, candidate]));
 
@@ -286,8 +291,8 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
         additionalProperties: false,
       },
     },
-    (args) => {
-      const { nodes, journal } = load(ctx);
+    async (args) => {
+      const { nodes, journal } = await load(ctx);
       const nodesById = new Map(nodes.map((node) => [node.id, node]));
       if (typeof args.version === "string") {
         return computeChangelog(journal, args.version, { nodesById });
@@ -302,8 +307,8 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
       description: "Open ideas and requests — journal items not yet realized as nodes in the snapshot.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
     },
-    () => {
-      const { nodes, journal } = load(ctx);
+    async () => {
+      const { nodes, journal } = await load(ctx);
       return computeBacklog(journal, { existingNodeIds: new Set(nodes.map((node) => node.id)) });
     },
   );
@@ -314,8 +319,8 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
       description: "Every map the project offers — built-ins plus stored definitions — with live subgraph sizes.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
     },
-    () => {
-      const { nodes, edges, project } = load(ctx);
+    async () => {
+      const { nodes, edges, project } = await load(ctx);
       return {
         maps: listMaps(project).map((definition) => {
           const subgraph = computeMapSubgraph(definition, nodes, edges);
@@ -336,9 +341,9 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
         additionalProperties: false,
       },
     },
-    (args) => {
+    async (args) => {
       const mapId = requireString(args, "map_id");
-      const { nodes, edges, project } = load(ctx);
+      const { nodes, edges, project } = await load(ctx);
       const definition = listMaps(project).find((candidate) => candidate.id === mapId);
       if (!definition) throw new ToolError(`No map with id "${mapId}".`);
       const subgraph = computeMapSubgraph(definition, nodes, edges);
@@ -352,8 +357,8 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
       description: "Run the full validator over the bundle (+ journal sidecar): errors, warnings, and line findings.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
     },
-    () => {
-      const { loaded } = load(ctx);
+    async () => {
+      const { loaded } = await load(ctx);
       return {
         valid: loaded.valid,
         errors: loaded.result.errors,
@@ -384,8 +389,8 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
         additionalProperties: false,
       },
     },
-    (args) => {
-      const graph = load(ctx);
+    async (args) => {
+      const graph = await load(ctx);
       const species = requireString(args, "species") as Node["species"];
       const title = requireString(args, "title");
       const platforms = Array.isArray(args.platforms) ? (args.platforms as Node["platforms"]) : [];
@@ -405,11 +410,11 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
 
       // applyOps folds in the composes edges a populated playlist requires, so
       // a full flow still lands in one validated write (issue #263).
-      const outcome = mutate(graph, [{ op: "create_node", node }]);
-      const result = persistMutation(
-        ctx.bundlePath,
-        graph.loaded,
-        { nodes: outcome.nodes, edges: outcome.edges },
+      const ops: MutationOp[] = [{ op: "create_node", node }];
+      const outcome = mutate(graph, ops);
+      const result = await ctx.store.persist(
+        graph,
+        { nodes: outcome.nodes, edges: outcome.edges, ops },
         outcome.eventInputs,
       );
       const { warnings, events } = unwrap(result);
@@ -442,7 +447,7 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
         additionalProperties: false,
       },
     },
-    (args) => {
+    async (args) => {
       const nodeId = requireString(args, "node_id");
       if (typeof args.patch !== "object" || args.patch === null || Array.isArray(args.patch)) {
         throw new ToolError("`patch` is required and must be an object.");
@@ -454,21 +459,21 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
         }
       }
 
-      const graph = load(ctx);
+      const graph = await load(ctx);
       const current = findNode(graph.nodes, nodeId);
 
       // applyOps derives no events for a patch that changes nothing, which is
       // how a no-op stays a no-op: nothing is written and no journal line lands.
-      const outcome = mutate(graph, [{ op: "update_node", node_id: nodeId, patch }]);
+      const ops: MutationOp[] = [{ op: "update_node", node_id: nodeId, patch }];
+      const outcome = mutate(graph, ops);
       if (outcome.eventInputs.length === 0) {
         return { node: current, events: [], note: "No-op patch — nothing changed, nothing written." };
       }
 
       const updated = outcome.nodes.find((candidate) => candidate.id === nodeId)!;
-      const result = persistMutation(
-        ctx.bundlePath,
-        graph.loaded,
-        { nodes: outcome.nodes, edges: outcome.edges },
+      const result = await ctx.store.persist(
+        graph,
+        { nodes: outcome.nodes, edges: outcome.edges, ops },
         outcome.eventInputs,
       );
       const { warnings, events } = unwrap(result);
@@ -487,16 +492,16 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
         additionalProperties: false,
       },
     },
-    (args) => {
+    async (args) => {
       const nodeId = requireString(args, "node_id");
-      const graph = load(ctx);
+      const graph = await load(ctx);
       const node = findNode(graph.nodes, nodeId);
 
-      const outcome = mutate(graph, [{ op: "delete_node", node_id: nodeId }]);
-      const result = persistMutation(
-        ctx.bundlePath,
-        graph.loaded,
-        { nodes: outcome.nodes, edges: outcome.edges },
+      const ops: MutationOp[] = [{ op: "delete_node", node_id: nodeId }];
+      const outcome = mutate(graph, ops);
+      const result = await ctx.store.persist(
+        graph,
+        { nodes: outcome.nodes, edges: outcome.edges, ops },
         outcome.eventInputs,
       );
       const { warnings, events } = unwrap(result);
@@ -520,11 +525,11 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
         additionalProperties: false,
       },
     },
-    (args) => {
+    async (args) => {
       const sourceId = requireString(args, "source_id");
       const targetId = requireString(args, "target_id");
       const edgeType = requireString(args, "edge_type") as Edge["edge_type"];
-      const graph = load(ctx);
+      const graph = await load(ctx);
 
       const edge: Edge = {
         id: edgeId(sourceId, targetId),
@@ -540,11 +545,11 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
         throw new ToolError(`Edge "${edge.id}" already exists.`);
       }
 
-      const outcome = mutate(graph, [{ op: "create_edge", edge }]);
-      const result = persistMutation(
-        ctx.bundlePath,
-        graph.loaded,
-        { nodes: outcome.nodes, edges: outcome.edges },
+      const ops: MutationOp[] = [{ op: "create_edge", edge }];
+      const outcome = mutate(graph, ops);
+      const result = await ctx.store.persist(
+        graph,
+        { nodes: outcome.nodes, edges: outcome.edges, ops },
         outcome.eventInputs,
       );
       const { warnings, events } = unwrap(result);
@@ -563,17 +568,17 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
         additionalProperties: false,
       },
     },
-    (args) => {
+    async (args) => {
       const edgeIdArg = requireString(args, "edge_id");
-      const graph = load(ctx);
+      const graph = await load(ctx);
       const edge = graph.edges.find((candidate) => candidate.id === edgeIdArg);
       if (!edge) throw new ToolError(`No edge with id "${edgeIdArg}".`);
 
-      const outcome = mutate(graph, [{ op: "delete_edge", edge_id: edgeIdArg }]);
-      const result = persistMutation(
-        ctx.bundlePath,
-        graph.loaded,
-        { nodes: outcome.nodes, edges: outcome.edges },
+      const ops: MutationOp[] = [{ op: "delete_edge", edge_id: edgeIdArg }];
+      const outcome = mutate(graph, ops);
+      const result = await ctx.store.persist(
+        graph,
+        { nodes: outcome.nodes, edges: outcome.edges, ops },
         outcome.eventInputs,
       );
       const { warnings, events } = unwrap(result);
@@ -581,16 +586,16 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
     },
   );
 
-  const journalOnly = (type: "idea.proposed" | "request.filed") => (args: Record<string, unknown>) => {
+  const journalOnly = (type: "idea.proposed" | "request.filed") => async (args: Record<string, unknown>) => {
     const title = requireString(args, "title");
-    const graph = load(ctx);
+    const graph = await load(ctx);
     const payload: Record<string, unknown> = { title };
     if (typeof args.description === "string") payload.description = args.description;
     if (typeof args.node_id === "string") payload.node_id = args.node_id;
     if (type === "request.filed" && typeof args.source === "string") payload.source = args.source;
 
     const input: EventInput = { type, payload };
-    const result = persistMutation(ctx.bundlePath, graph.loaded, {}, [input]);
+    const result = await ctx.store.persist(graph, {}, [input]);
     const { warnings, events } = unwrap(result);
     return { events, warnings };
   };

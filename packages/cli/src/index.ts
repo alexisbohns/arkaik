@@ -15,6 +15,7 @@ import { runSyncCli } from "./commands/sync";
 import { runPackCli } from "./commands/pack";
 import { runOpenCli } from "./commands/open";
 import { runPushCli } from "./commands/push";
+import { runLinkCli } from "./commands/link";
 
 const USAGE = `arkaik — CLI for Arkaik project bundles
 
@@ -31,6 +32,8 @@ Commands:
   open [options] [path]       Validate, then hand off the packed bundle to arkaik.app import.
   push [options] [path]       Validate, pack (journal stripped), and publish to Publik.
                                --delete <id> --key <owner_key> removes a snapshot.
+  link [options] [path]       Point this repo at a hosted project so an agent can edit it.
+                               --list shows the projects your token can reach.
 
 Options:
   -h, --help        Show this help.
@@ -69,6 +72,9 @@ function main(argv: string[]): void {
       return;
     case "push":
       runPushCli(rest);
+      return;
+    case "link":
+      runLinkCli(rest);
       return;
     default:
       console.error(`Unknown command: ${command}\n`);
