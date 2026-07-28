@@ -64,6 +64,15 @@ function loadGithubApi() {
     ["@/lib/services/graph/store", "./graph-store.js"],
     ["@/lib/services/graph/repos", "./graph-repos.js"],
     ["@/lib/services/github/verify", "./verify.js"],
+    // Both new in slice 2, and both reached from modules this loader ALREADY
+    // transpiles: repos.ts imports `paths`, and pull-request.ts imports `paths`
+    // and `app`. Without these two entries the emitted `require("@/lib/…")`
+    // survives verbatim and `loadGithubApi()` throws MODULE_NOT_FOUND at import
+    // time — before its try block, so CI's `services` job fails on push with a
+    // resolution error rather than a test failure. Whenever a transpiled module
+    // grows an `@/…` import, it needs a line here AND a `write(...)` below.
+    ["@/lib/services/github/paths", "./github-paths.js"],
+    ["@/lib/services/github/app", "./github-app.js"],
     ["@/lib/services/github/pull-request", "./pull-request.js"],
     ["@/auth", "./auth-module-stub.js"],
   ];
@@ -80,6 +89,14 @@ function loadGithubApi() {
   write("graph-repos.js", transpile(src("lib", "services", "graph", "repos.ts"), "repos.ts", COMMON));
   write("repos-route.js", transpile(src("app", "api", "graph", "projects", "[projectId]", "repos", "route.ts"), "route.ts", COMMON));
   write("verify.js", transpile(src("lib", "services", "github", "verify.ts"), "verify.ts", COMMON));
+  // REAL, not stubbed, both of them. `paths.ts` is pure, and its segment-boundary
+  // rule is what the monorepo assertions in github-webhook.test.js are about.
+  // `app.ts` is only ever reached through an injected `fetchFiles`, and this
+  // suite deliberately keeps every delivery on a path that needs no changed-file
+  // call (it has no GitHub App credentials), so nothing here calls it — but
+  // pull-request.ts imports it at MODULE scope, so it has to resolve.
+  write("github-paths.js", transpile(src("lib", "services", "github", "paths.ts"), "paths.ts", COMMON));
+  write("github-app.js", transpile(src("lib", "services", "github", "app.ts"), "app.ts", COMMON));
   write("pull-request.js", transpile(src("lib", "services", "github", "pull-request.ts"), "pull-request.ts", COMMON));
   write("webhook-route.js", transpile(src("app", "api", "github", "webhook", "route.ts"), "route.ts", COMMON));
 

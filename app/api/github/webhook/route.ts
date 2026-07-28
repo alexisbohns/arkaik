@@ -91,6 +91,17 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ status: "duplicate", delivery: deliveryId }, { status: 202 });
   }
 
+  // `installation.id` is present on every GitHub App delivery and absent on a
+  // plain repository webhook. It is what lets arkaik call the API back to read
+  // a pull request's changed files, which path-scoped repository links need —
+  // and it is a NUMBER in the payload against a `text` column, so the
+  // conversion happens once, here, at the boundary.
+  const installation = payload.installation as Record<string, unknown> | undefined;
+  const installationId =
+    installation && (typeof installation.id === "number" || typeof installation.id === "string")
+      ? String(installation.id)
+      : null;
+
   const prEvent: PullRequestEvent = {
     action,
     repoFullName: repo.full_name,
@@ -100,6 +111,7 @@ export async function POST(req: Request): Promise<Response> {
     body: typeof pr.body === "string" ? pr.body : "",
     merged: pr.merged === true,
     state: typeof pr.state === "string" ? pr.state : "open",
+    installationId,
   };
 
   try {
@@ -107,8 +119,10 @@ export async function POST(req: Request): Promise<Response> {
     // A typo'd repo link — or no link at all — is the commonest reason "nothing
     // happened", and `{status:"ok", outcomes:[]}` names nothing at all: the one
     // page docs/hosted-projects.md tells people to read would show a green 200
-    // and an empty list. `applyPullRequestEvent` returns one outcome per link,
-    // so an empty list can only mean the repo resolved to no project.
+    // and an empty list. `applyPullRequestEvent` returns one outcome per linked
+    // PROJECT — a monorepo's several path-scoped links to one repository still
+    // produce exactly one — so an empty list can only mean the repo resolved to
+    // no project.
     //
     // Still a 200: not linking a repository is a configuration state, not an
     // error, and a 4xx/5xx here would make GitHub retry a delivery that will
@@ -127,6 +141,12 @@ export async function POST(req: Request): Promise<Response> {
     // a transient failure into a permanently lost transition — the retry would
     // arrive, see the claim, and skip. Re-applying is a no-op by construction
     // (see releaseDelivery), so at-least-once is the right posture here.
+    //
+    // This is also the contract `lib/services/github/app.ts` relies on when it
+    // THROWS a `GithubTransientError` for a 5xx, a rate limit or a socket
+    // error: those are the failures a redelivery can fix, so they must reach
+    // here rather than be reported as a permanent no-op. A missing private key
+    // is the opposite and never throws — no retry can set an env var.
     await releaseDelivery(deliveryId).catch(() => {});
     return Response.json({ error: "internal_error" }, { status: 500 });
   }

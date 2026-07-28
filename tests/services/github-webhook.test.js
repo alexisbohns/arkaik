@@ -54,7 +54,10 @@ let deliveryCounter = 0;
 function prPayload(overrides = {}) {
   return JSON.stringify({
     action: "closed",
-    repository: { full_name: REPO },
+    repository: { full_name: overrides.repo ?? REPO },
+    // Every GitHub App delivery carries this; it is what lets arkaik call the
+    // API back for path-scoped links, and what `recordInstallation` stores.
+    installation: { id: 9001 },
     pull_request: {
       number: 42,
       html_url: "https://github.com/acme/ios-app/pull/42",
@@ -102,6 +105,17 @@ async function main() {
   process.env.AUTH_SECRET ||= "ghtest-secret";
   process.env.AUTH_GITHUB_ID ||= "ghtest-id";
   process.env.AUTH_GITHUB_SECRET ||= "ghtest-secret";
+  // THE GITHUB APP IS DELIBERATELY UNCONFIGURED, and this is an assertion about
+  // this suite's reach, not tidiness. The monorepo block below drives a real
+  // delivery into a repository linked BY PATH, and `needsChangedFiles` returns
+  // true for any mentioning delivery there — explicit `@platform` included — so
+  // `applyPullRequestEvent` really does call `githubApp().listPullRequestFiles`.
+  // `appReadiness` is the first thing that runs inside it and returns a value
+  // (never a throw, never a request) when these are absent, so deleting them
+  // makes "this suite never reaches api.github.com" a PROPERTY of the run
+  // rather than an accident of whatever CI happens to have exported.
+  delete process.env.GITHUB_APP_ID;
+  delete process.env.GITHUB_APP_PRIVATE_KEY;
 
   const client = new Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
@@ -202,8 +216,11 @@ async function main() {
       );
     // planForProject returns `{ ops, warnings }`; these blocks are about the ops.
     const planOps = (...args) => pullRequest.planForProject(...args).ops;
+    /** The scope a single whole-repository link resolves to, through the real resolver. */
+    const wholeRepo = (platform = null) =>
+      pullRequest.resolveRepoScope([{ platform, pathPrefix: "" }], { kind: "not-needed" });
     {
-      const ops = planOps(optedIn, prEvent(), "ios");
+      const ops = planOps(optedIn, prEvent(), wholeRepo("ios"));
       const state = settle(optedIn.nodes[0], ops);
       const ref = prRef(state, "ios");
       check("a bare mention takes the LINK's platform", ref !== undefined, JSON.stringify(state.metadata));
@@ -221,7 +238,7 @@ async function main() {
       const ops = planOps(
         optedIn,
         prEvent({ body: "Implements AC-guest-checkout@ios and AC-guest-checkout@web" }),
-        "ios",
+        wholeRepo("ios"),
       );
       const state = settle(optedIn.nodes[0], ops);
       check("an explicit mention mints a ref per platform: ios", prRef(state, "ios") !== undefined, JSON.stringify(state.metadata));
@@ -236,7 +253,7 @@ async function main() {
       const unrelated = planOps(
         optedIn,
         prEvent({ number: 7, url: "https://github.com/acme/ios-app/pull/7", title: "chore", body: "nothing here" }),
-        "ios",
+        wholeRepo("ios"),
       );
       check("the planner returns an op list", Array.isArray(unrelated), JSON.stringify(unrelated));
       check(
@@ -374,6 +391,16 @@ async function main() {
           outcome?.applied === 0 && outcome?.skipped === "no usable acceptance mention",
           JSON.stringify(outcome),
         );
+        // The refusal is a property of the ID, not of a usable mention sitting
+        // beside the typo: `@windows` is the ONLY thing this body says about
+        // AC-guest-checkout, and the planner still refuses it explicitly rather
+        // than letting the node fall through to the repository link (which
+        // declares `ios` here) as an unnamed acceptance would.
+        check(
+          "an id named ONLY by an unusable suffix earns the planner's refusal too",
+          (outcome?.warnings ?? []).some((w) => w.includes("was not understood")),
+          JSON.stringify(outcome),
+        );
       }
       {
         // The other half: an explicit platform the acceptance does not list.
@@ -451,6 +478,204 @@ async function main() {
       await client.query(`delete from owner_members where user_id = any($1::int[])`, [[userId, other[0].id]]);
       await client.query(`delete from owners where id = any($1::text[])`, [[ownerId, `own-u${other[0].id}`]]);
       await client.query(`delete from users where id = any($1::int[])`, [[userId, other[0].id]]);
+    }
+
+    // --- A MONOREPO: several path-scoped links, ONE project ------------------
+    // The delivery loop used to run per LINK, which was indistinguishable from
+    // per project while a project could link a repository only once. With two
+    // links it would be two loads, two mutations, two version bumps and two
+    // outcomes for one pull request — and the two could write conflicting ref
+    // scopes in an order nothing pins down.
+    {
+      const email = `ghmono-${Date.now()}@example.com`;
+      const { rows } = await client.query(
+        `insert into users (name, email) values ('ghmono', $1) returning id`,
+        [email],
+      );
+      const userId = rows[0].id;
+      const ownerId = (await api.owners.resolveOwnerIds(userId))[0];
+      const created = await api.store.createProject({
+        ownerId,
+        tier: "klub",
+        bundle: {
+          schema_version: 2,
+          project: {
+            id: "gp",
+            title: "Monorepo",
+            metadata: { ref_policy: true },
+            created_at: "2026-01-01T00:00:00.000Z",
+            updated_at: "2026-01-01T00:00:00.000Z",
+          },
+          nodes: [acceptance("AC-checkout", ["web", "ios"]), acceptance("AC-search", ["web", "ios"])],
+          edges: [],
+        },
+      });
+      check("the monorepo fixture project was created", created.ok === true, JSON.stringify(created));
+      const projectId = created.id;
+      const ctx = { params: Promise.resolve({ projectId }) };
+      const origin = "https://arkaik.test";
+      api.setSession({ user: { id: String(userId), name: "ghmono" } });
+
+      const link = async (path, platform) =>
+        api.LINK_REPO(
+          new Request(origin, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ repo_full_name: "acme/monorepo", platform, path }),
+          }),
+          ctx,
+        );
+
+      const first = await link("apps/ios", "ios");
+      const firstBody = await first.json();
+      check("a path-scoped link is created", first.status === 201, `${first.status} ${JSON.stringify(firstBody)}`);
+      check("carrying its normalised prefix", firstBody.repo?.pathPrefix === "apps/ios", JSON.stringify(firstBody));
+
+      // THE ON CONFLICT TARGET: without the four-column key this second insert
+      // either overwrites the first or fails outright.
+      const second = await link("apps/webapp/", "web");
+      const secondBody = await second.json();
+      check(
+        "a SECOND link to the same repository at another path is created, not an overwrite",
+        second.status === 201 && secondBody.repo?.pathPrefix === "apps/webapp",
+        `${second.status} ${JSON.stringify(secondBody)}`,
+      );
+      const listed = await (await api.LIST_REPOS(new Request(origin), ctx)).json();
+      check(
+        "and both survive in the listing, distinguished by path",
+        JSON.stringify((listed.repos ?? []).map((r) => [r.repoFullName, r.pathPrefix, r.platform])) ===
+          JSON.stringify([
+            ["acme/monorepo", "apps/ios", "ios"],
+            ["acme/monorepo", "apps/webapp", "web"],
+          ]),
+        JSON.stringify(listed),
+      );
+      check(
+        "a path with a .. segment is refused with 400, not stored",
+        (await link("apps/../etc", "ios")).status === 400,
+      );
+
+      const before = await api.store.getProject(projectId, [ownerId]);
+      check("precondition: the project is readable before the delivery", before !== null, JSON.stringify(before));
+
+      // THIS DELIVERY DOES CALL FOR THE CHANGED FILES, and used not to.
+      //
+      // The comment that stood here said the opposite: an explicit `@platform`
+      // decides the scope on its own, so the delivery "needs no changed-files
+      // call". That stopped being true when the path matches became one of the
+      // sources that keep a ref moving — `needsChangedFiles` now returns true
+      // for ANY mentioning delivery in a path-scoped repository. The block kept
+      // passing only because GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY happened
+      // to be unset in CI, which is an accident rather than a test.
+      //
+      // They are now DELETED at the top of `main`, so `appReadiness` fails
+      // deterministically, `listPullRequestFiles` returns `{ ok: false }`
+      // without issuing a request, and the repo scope resolves to the
+      // `unavailable` refusal. What that leaves this block verifying is:
+      //
+      //   - GROUPING: two links to one repository are one project, so one
+      //     load, one mutation, one version bump and one outcome;
+      //   - PRECEDENCE: an explicit `@platform` decides even when the changed
+      //     files could not be read at all, because nothing had to be inferred;
+      //   - CONTAINMENT: an unreadable file list narrows nothing and claims
+      //     nothing extra — each acceptance moves its own platform and no base
+      //     status moves.
+      const res = await POST(
+        webhookReq(
+          prPayload({
+            repo: "acme/monorepo",
+            pull_request: {
+              number: 77,
+              html_url: "https://github.com/acme/monorepo/pull/77",
+              body: "Implements AC-checkout@ios and AC-search@web",
+            },
+          }),
+        ),
+      );
+      const json = await res.json();
+      check("the monorepo delivery is accepted", res.status === 200, `${res.status} ${JSON.stringify(json)}`);
+      const mine = (json.outcomes ?? []).filter((o) => o.projectId === projectId);
+      check(
+        "TWO links to one repository produce exactly ONE outcome for the project",
+        mine.length === 1,
+        JSON.stringify(json.outcomes),
+      );
+      check("…which applied something", mine[0]?.applied > 0, JSON.stringify(mine[0]));
+      // An explicit `@platform` outranks the path source, so an unreadable file
+      // list costs this delivery nothing at all — not a refusal, not a warning.
+      // (`assembleOutcome` omits the key entirely when there is nothing to
+      // report, so this is `undefined` and not `[]`.)
+      check(
+        "an unreadable file list warns about nothing when every mention names its own platform",
+        mine[0]?.warnings === undefined,
+        JSON.stringify(mine[0]),
+      );
+
+      const after = await api.store.getProject(projectId, [ownerId]);
+      check(
+        "and ONE version increment, not one per link",
+        Number(after?.version) === Number(before?.version) + 1,
+        `${before?.version} -> ${after?.version}`,
+      );
+      const checkout = after?.bundle.nodes.find((n) => n.id === "AC-checkout");
+      const search = after?.bundle.nodes.find((n) => n.id === "AC-search");
+      check("both acceptances are still readable", checkout !== undefined && search !== undefined, JSON.stringify(after?.bundle?.nodes));
+      check(
+        "both scoped promotions survived the single batch",
+        checkout?.metadata?.platformStatuses?.ios === "live" &&
+          search?.metadata?.platformStatuses?.web === "live",
+        JSON.stringify([checkout?.metadata, search?.metadata]),
+      );
+      check(
+        "and neither base status moved",
+        checkout?.status === "prioritized" && search?.status === "prioritized",
+        JSON.stringify([checkout?.status, search?.status]),
+      );
+
+      // The installation id the payload carried is now stored, which is what a
+      // later delivery without one falls back to.
+      const { rows: stored } = await client.query(
+        `select distinct installation_id from project_repos where project_id = $1`,
+        [projectId],
+      );
+      check(
+        "the delivery's installation id was persisted onto the links",
+        JSON.stringify(stored.map((r) => r.installation_id)) === '["9001"]',
+        JSON.stringify(stored),
+      );
+
+      // DELETE takes the path, and an absent one means the whole-repository
+      // link — which does not exist here, so it must NOT delete either row.
+      const wrong = await api.UNLINK_REPO(new Request(`${origin}?repo=acme%2Fmonorepo`), ctx);
+      const wrongBody = await wrong.json();
+      check("unlinking with no path does not delete a path-scoped link", wrong.status === 404, String(wrong.status));
+      check(
+        "…and the 404 names the prefixes that DO exist",
+        String(wrongBody.message ?? "").includes("apps/ios"),
+        JSON.stringify(wrongBody),
+      );
+      const still = await pullRequest.linkedProjects("acme/monorepo");
+      check(
+        "both links are still there after the refused delete",
+        still.filter((l) => l.projectId === projectId).length === 2,
+        JSON.stringify(still),
+      );
+
+      const gone = await api.UNLINK_REPO(new Request(`${origin}?repo=acme%2Fmonorepo&path=apps%2Fios`), ctx);
+      check("unlinking WITH the path returns 204", gone.status === 204, String(gone.status));
+      const remaining = (await pullRequest.linkedProjects("acme/monorepo")).filter(
+        (l) => l.projectId === projectId,
+      );
+      check(
+        "and removes exactly that one link, leaving its sibling alone",
+        JSON.stringify(remaining.map((l) => l.pathPrefix)) === '["apps/webapp"]',
+        JSON.stringify(remaining),
+      );
+
+      await client.query(`delete from graph_projects where id = $1`, [projectId]);
+      await client.query(`delete from owner_members where user_id = $1`, [userId]);
+      await client.query(`delete from owners where id = $1`, [ownerId]);
+      await client.query(`delete from users where id = $1`, [userId]);
     }
 
     // --- The delivery ledger -------------------------------------------------

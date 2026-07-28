@@ -58,6 +58,12 @@ jobs:
       - name: GitHub PR planning tests (mention grammar, per-platform ref ids)
         run: npm run test:pr-plan
 
+      # The layer below the planner, and in `build` for the same reason: path
+      # matching, the App JWT and the changed-files client are all pure or take
+      # their fetch as a parameter, so none of it needs a database or a socket.
+      - name: GitHub App seam tests (path matching, App JWT, changed-files API)
+        run: npm run test:github-app
+
       - name: Deterministic id generator tests
         run: npm run test:id-gen
 
