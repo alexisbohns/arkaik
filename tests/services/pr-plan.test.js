@@ -3066,15 +3066,50 @@ async function main() {
     // "reopened" and "edited" are all in the webhook's HANDLED_ACTIONS, so a
     // third delivery of this pull request is routine. A frozen ref stays
     // unjustified, so the report repeats — that is honest, and costs nothing.
-    // What must NOT happen is a WRITE: the refs must come out byte-identical, or
-    // the mutation would derive ref.removed/ref.added events forever.
+    //
+    // ASSERTED AS TWO PROPERTIES, because "byte-identical" is one property too
+    // strong and the strong half is false BY DESIGN. `diffRefs`
+    // (packages/schema/src/derive.ts) keys on ref ID ALONE — it emits
+    // `ref.added`/`ref.removed` and nothing whatever for a changed field — so
+    // the churn this block exists to prevent is a change to the ID SET. A
+    // MIRRORED ref's `synced_at` advances on every delivery; that is the mirror
+    // doing its job, and it derives no event. Asserting byte-identity across the
+    // whole set made this test depend on two `new Date()` calls landing in the
+    // same millisecond: green on a laptop, red in CI the moment they straddle a
+    // tick.
     const third = planForProject(bundle([state], true), event({ body: "AC-pay" }), iosOnly);
     const settled = settle(state, third.ops);
     check(
-      "a redelivery leaves the ref set byte-identical, frozen fields included",
-      JSON.stringify(refsOf(settled)) === JSON.stringify(refsOf(state)),
-      () => `${JSON.stringify(refsOf(settled))} vs ${JSON.stringify(refsOf(state))}`,
+      "a redelivery leaves the ref ID SET unchanged, so it derives no ref.added/ref.removed",
+      JSON.stringify(refsOf(settled).map((r) => r.id).sort()) ===
+        JSON.stringify(refsOf(state).map((r) => r.id).sort()),
+      () =>
+        `${JSON.stringify(refsOf(settled).map((r) => r.id))} vs ${JSON.stringify(refsOf(state).map((r) => r.id))}`,
     );
+    {
+      // The freeze itself, where byte-identity IS the property: a frozen ref is
+      // not written at all, so even its timestamp must be untouched.
+      const before = refsOf(state).find((r) => r.platform === "web");
+      const after = refsOf(settled).find((r) => r.platform === "web");
+      check(
+        "precondition: the frozen web ref is present on both sides",
+        before !== undefined && after !== undefined,
+        () => `${JSON.stringify(before)} vs ${JSON.stringify(after)}`,
+      );
+      check(
+        "…and the FROZEN ref is byte-identical, synced_at included — it is not written at all",
+        JSON.stringify(after) === JSON.stringify(before),
+        () => `${JSON.stringify(after)} vs ${JSON.stringify(before)}`,
+      );
+      const mirroredBefore = refsOf(state).find((r) => r.platform === "ios");
+      const mirroredAfter = refsOf(settled).find((r) => r.platform === "ios");
+      check(
+        "…while the mirrored ref keeps its external_status, which is what a redelivery must not disturb",
+        mirroredBefore !== undefined &&
+          mirroredAfter?.external_status === mirroredBefore.external_status,
+        () => `${JSON.stringify(mirroredAfter)} vs ${JSON.stringify(mirroredBefore)}`,
+      );
+    }
     check(
       "…and still says so, because a frozen ref is still frozen on the next delivery",
       third.warnings.find((w) => w.startsWith("AC-pay:"))?.includes("FREEZES it") === true,
