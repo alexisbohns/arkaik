@@ -22,6 +22,8 @@
 /tests/data/.test-build-local-provider/
 /tests/data/.test-build-provider-registry/
 /tests/services/.test-build-publik/
+/tests/services/.test-build-github/
+/tests/services/.test-build-pr-plan/
 /tests/app/.test-build-delivery/
 /tests/app/.test-build-journey-graph/
 /tests/app/.test-build-graph-spotlight/

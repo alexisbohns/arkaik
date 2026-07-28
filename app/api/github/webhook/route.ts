@@ -104,6 +104,22 @@ export async function POST(req: Request): Promise<Response> {
 
   try {
     const outcomes = await applyPullRequestEvent(prEvent);
+    // A typo'd repo link — or no link at all — is the commonest reason "nothing
+    // happened", and `{status:"ok", outcomes:[]}` names nothing at all: the one
+    // page docs/hosted-projects.md tells people to read would show a green 200
+    // and an empty list. `applyPullRequestEvent` returns one outcome per link,
+    // so an empty list can only mean the repo resolved to no project.
+    //
+    // Still a 200: not linking a repository is a configuration state, not an
+    // error, and a 4xx/5xx here would make GitHub retry a delivery that will
+    // resolve to nothing every time. Same `status: "ok"` envelope as below, with
+    // the same `skipped` key `ApplyOutcome` already uses to explain a no-op.
+    if (outcomes.length === 0) {
+      return Response.json(
+        { status: "ok", outcomes, skipped: `no project has linked ${prEvent.repoFullName}` },
+        { status: 200 },
+      );
+    }
     return Response.json({ status: "ok", outcomes }, { status: 200 });
   } catch (err) {
     console.error("[github] webhook failed:", err instanceof Error ? err.message : "unknown error");

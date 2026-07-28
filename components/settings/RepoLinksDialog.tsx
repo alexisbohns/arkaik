@@ -34,6 +34,33 @@ import { PLATFORMS } from "@/lib/config/platforms";
  * for means a PR merged there marks only that platform shipped, with no per-PR
  * annotation and no way to forget — and the remaining platforms then show up as
  * a genuine parity gap rather than false parity.
+ *
+ * That guarantee is now literally true, which it was not when this comment was
+ * written: a PR here naming an acceptance that does NOT list the chosen platform
+ * used to fall back to an UNSCOPED ref, which moves the base status and marks
+ * the acceptance shipped on every platform it does list — so an iOS-linked repo
+ * could mark a web-only acceptance shipped on web. The planner now refuses that
+ * case and reports it (lib/services/github/pull-request.ts, `resolveRefScopes`),
+ * so choosing a platform here can never claim a different one.
+ *
+ * It is the DEFAULT, not the last word: a PR can name its own platform with
+ * `AC-guest-checkout@ios`, which wins over whatever is chosen here. That is what
+ * makes a monorepo workable — link it as "All platforms" and scope per PR — so
+ * the helper text below has to say so, or people will link a monorepo three
+ * times and wonder why they cannot.
+ *
+ * "ALL PLATFORMS" IS A CLAIM, NOT AN ABSTENTION, and the helper text has to say
+ * that too. It leaves PRs moving the acceptance's BASE status, and
+ * `resolvePlatformStatus` falls back to the base for every platform with no
+ * entry of its own (packages/schema/src/acceptance.ts) — so one unscoped merge
+ * marks the acceptance delivered on every platform that has no per-platform
+ * status of its own, which for a fresh acceptance is all of them, and
+ * `hasParityGap` goes quiet. A PARTLY pinned acceptance is worse rather than
+ * safer: the pinned platforms hold, the rest inherit "live", and the parity gap
+ * the pins were recording is erased. Reading this option as "records nothing
+ * per-platform" is exactly
+ * backwards, which is why the suffix is described below as required rather than
+ * as a refinement.
  */
 
 interface RepoLink {
@@ -182,7 +209,14 @@ export function RepoLinksDialog({ projectId, projectTitle, open, onOpenChange }:
           <p className="text-xs text-muted-foreground">
             A pull request moves an acceptance when its title or body mentions the acceptance id (for
             example <code className="font-mono">AC-guest-checkout</code>), and the project has opted in
-            with <code className="font-mono">ref_policy</code>.
+            with <code className="font-mono">ref_policy</code>. A pull request can name its own platform
+            with <code className="font-mono">AC-guest-checkout@ios</code>, which overrides the choice
+            above — link a monorepo as <em>All platforms</em> and scope <em>every</em> pull request that
+            way. Under <em>All platforms</em>, a pull request that names no platform moves the base
+            status, which marks the acceptance shipped on every platform that has no per-platform
+            status of its own — not on none. When a repository is linked to one platform and a pull
+            request names an acceptance that does not list it, nothing is moved at all — the delivery
+            response says so rather than falling back to marking every platform shipped.
           </p>
         </div>
       </DialogContent>

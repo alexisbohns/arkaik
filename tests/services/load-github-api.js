@@ -55,6 +55,7 @@ function loadGithubApi() {
   const COMMON = [
     ["server-only", serverOnlyStub],
     ["@arkaik/schema", schemaIndex],
+    ["@/lib/config/platforms", "./platforms.js"],
     ["@/lib/services/db", "./db.js"],
     ["@/lib/services/limits", "./limits.js"],
     ["@/lib/services/owners", "./owners.js"],
@@ -69,6 +70,7 @@ function loadGithubApi() {
 
   const src = (...parts) => path.join(ROOT, ...parts);
 
+  write("platforms.js", transpile(src("lib", "config", "platforms.ts"), "platforms.ts", COMMON));
   write("db.js", transpile(src("lib", "services", "db.ts"), "db.ts", COMMON));
   write("limits.js", transpile(src("lib", "services", "limits.ts"), "limits.ts", COMMON));
   write("owners.js", transpile(src("lib", "services", "owners.ts"), "owners.ts", COMMON));
