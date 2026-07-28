@@ -51,6 +51,13 @@ jobs:
       - name: Ref promotion policy tests (opt-in, per-platform, guards)
         run: npm run test:promote
 
+      # The layer directly above test:promote. Deliberately in `build`, not
+      # `services`: the whole point is that the PR planner's logic is checked
+      # without a database, so a regression fails on a laptop instead of only
+      # in the Postgres job.
+      - name: GitHub PR planning tests (mention grammar, per-platform ref ids)
+        run: npm run test:pr-plan
+
       - name: Deterministic id generator tests
         run: npm run test:id-gen
 

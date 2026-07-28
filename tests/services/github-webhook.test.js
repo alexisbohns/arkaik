@@ -15,8 +15,15 @@
  *   - with no secret configured the endpoint refuses everything rather than
  *     accepting unauthenticated writes.
  *
- * Plus the planning logic: which nodes a PR touches, per-platform scoping from
- * the repo link, and idempotence — the property that lets a retry be safe.
+ * Plus the halves of the planner that only mean anything with a database
+ * behind them: that a delivery resolves to a linked project at all, and the
+ * delivery ledger that makes a retry safe.
+ *
+ * The PURE planner — the mention grammar, per-platform ref ids, precedence,
+ * promotion folding — lives in pr-plan.test.js, which needs no Postgres and so
+ * runs in CI's `build` job and on a laptop. Only a thin wiring check is kept
+ * here: enough to catch the two halves disagreeing, not a second copy that
+ * would drift.
  *
  * Runs against a real Postgres for the repo-link and delivery-ledger parts.
  */
@@ -165,114 +172,78 @@ async function main() {
       check("an uninteresting action is acknowledged", res.status === 202, String(res.status));
     }
 
-    // --- Mention parsing ----------------------------------------------------
-    check(
-      "an acceptance id in the body is found",
-      pullRequest.mentionedAcceptances({ title: "x", body: "closes AC-guest-checkout" })[0] ===
-        "AC-guest-checkout",
-    );
-    check(
-      "an acceptance id in the title is found",
-      pullRequest.mentionedAcceptances({ title: "AC-a11y-labels: fix", body: "" })[0] === "AC-a11y-labels",
-    );
-    check(
-      "duplicates collapse",
-      pullRequest.mentionedAcceptances({ title: "AC-x", body: "AC-x again" }).length === 1,
-    );
-    check(
-      "unrelated text yields nothing",
-      pullRequest.mentionedAcceptances({ title: "chore: bump deps", body: "no ids here" }).length === 0,
-    );
-
-    // --- External status ----------------------------------------------------
-    check("merged wins over state", pullRequest.prExternalStatus({ merged: true, state: "closed" }) === "merged");
-    check("closed without merge is closed", pullRequest.prExternalStatus({ merged: false, state: "closed" }) === "closed");
-    check("otherwise open", pullRequest.prExternalStatus({ merged: false, state: "open" }) === "open");
-
-    // --- Planning: per-platform scoping from the LINK ------------------------
+    // --- Planning: the wiring, not the grammar -------------------------------
+    // Deliberately thin. pr-plan.test.js owns the behaviour; what is worth
+    // asserting HERE is that the module the route imports is the one that
+    // behaves that way — a stale build or a bad rewrite in the loader would
+    // show up as these three failing while the pure suite stays green.
     const optedIn = {
       project: { id: "gp", title: "T", metadata: { ref_policy: true } },
       nodes: [acceptance("AC-guest-checkout", ["web", "ios"])],
       edges: [],
     };
-    {
-      const ops = pullRequest.planForProject(optedIn, JSON.parse(prPayload()) && {
-        action: "closed",
-        repoFullName: REPO,
-        number: 42,
-        url: "https://github.com/acme/ios-app/pull/42",
-        title: "Guest checkout",
-        body: "Implements AC-guest-checkout",
-        merged: true,
-        state: "closed",
-      }, "ios");
-
-      check("a mentioned acceptance gets ops", ops.length === 2, JSON.stringify(ops.map((o) => o.op)));
-      const refOp = ops[0];
-      check("the first op attaches the ref", refOp.patch.metadata.refs[0].id === "gh-pr-42");
-      check("the ref mirrors the PR state", refOp.patch.metadata.refs[0].external_status === "merged");
-      check(
-        "the ref is scoped to the LINK's platform",
-        refOp.patch.metadata.refs[0].platform === "ios",
-        JSON.stringify(refOp.patch.metadata.refs[0]),
+    const prEvent = (overrides = {}) => ({
+      action: "closed",
+      repoFullName: REPO,
+      number: 42,
+      url: "https://github.com/acme/ios-app/pull/42",
+      title: "Guest checkout",
+      body: "Implements AC-guest-checkout",
+      merged: true,
+      state: "closed",
+      ...overrides,
+    });
+    /** The node as applyOps would leave it: `{ ...current, ...patch }`, in order. */
+    const settle = (node, ops) =>
+      ops.reduce((acc, op) => (op.node_id === node.id ? { ...acc, ...op.patch } : acc), node);
+    const prRef = (state, platform) =>
+      (state.metadata?.refs ?? []).find(
+        (r) => r.url === "https://github.com/acme/ios-app/pull/42" && (r.platform ?? null) === platform,
       );
-      const promoteOp = ops[1];
+    // planForProject returns `{ ops, warnings }`; these blocks are about the ops.
+    const planOps = (...args) => pullRequest.planForProject(...args).ops;
+    {
+      const ops = planOps(optedIn, prEvent(), "ios");
+      const state = settle(optedIn.nodes[0], ops);
+      const ref = prRef(state, "ios");
+      check("a bare mention takes the LINK's platform", ref !== undefined, JSON.stringify(state.metadata));
+      check("with the per-platform ref id", ref?.id === "gh-pr-42-ios", JSON.stringify(ref));
+      check("mirroring the PR state", ref?.external_status === "merged", JSON.stringify(ref));
       check(
-        "the promotion targets that platform only",
-        promoteOp.patch.metadata.platformStatuses.ios === "live" &&
-          promoteOp.patch.metadata.platformStatuses.web === undefined,
-        JSON.stringify(promoteOp.patch.metadata.platformStatuses),
-      );
-    }
-    {
-      // A repo serving every platform declares no platform on the link.
-      const ops = pullRequest.planForProject(optedIn, {
-        action: "closed", repoFullName: REPO, number: 42,
-        url: "https://github.com/acme/ios-app/pull/42",
-        title: "t", body: "AC-guest-checkout", merged: true, state: "closed",
-      }, null);
-      check("an unscoped link moves the base status", ops[1]?.patch.status === "live", JSON.stringify(ops[1]));
-    }
-    {
-      // A link naming a platform the node does not have must not produce a
-      // platformStatuses key validateBundle would reject.
-      const webOnly = {
-        project: { id: "gp", title: "T", metadata: { ref_policy: true } },
-        nodes: [acceptance("AC-guest-checkout", ["web"])],
-        edges: [],
-      };
-      const ops = pullRequest.planForProject(webOnly, {
-        action: "closed", repoFullName: REPO, number: 42,
-        url: "https://github.com/acme/ios-app/pull/42",
-        title: "t", body: "AC-guest-checkout", merged: true, state: "closed",
-      }, "ios");
-      const ref = ops[0].patch.metadata.refs[0];
-      check("a ref never claims a platform the node lacks", ref.platform === undefined, JSON.stringify(ref));
-    }
-    {
-      const notOptedIn = {
-        project: { id: "gp", title: "T" },
-        nodes: [acceptance("AC-guest-checkout", ["web", "ios"])],
-        edges: [],
-      };
-      const ops = pullRequest.planForProject(notOptedIn, {
-        action: "closed", repoFullName: REPO, number: 42,
-        url: "https://github.com/acme/ios-app/pull/42",
-        title: "t", body: "AC-guest-checkout", merged: true, state: "closed",
-      }, "ios");
-      check(
-        "without ref_policy the ref is mirrored but NOTHING is promoted",
-        ops.length === 1 && ops[0].patch.metadata.refs,
-        JSON.stringify(ops.map((o) => o.op)),
+        "and promoting that platform only",
+        state.metadata?.platformStatuses?.ios === "live" &&
+          state.metadata?.platformStatuses?.web === undefined,
+        JSON.stringify(state.metadata?.platformStatuses),
       );
     }
     {
-      const unrelated = pullRequest.planForProject(optedIn, {
-        action: "closed", repoFullName: REPO, number: 7,
-        url: "https://github.com/acme/ios-app/pull/7",
-        title: "chore: bump deps", body: "nothing here", merged: true, state: "closed",
-      }, "ios");
-      check("a PR mentioning no acceptance produces no ops", unrelated.length === 0);
+      // The headline case: one PR, two platforms, one acceptance.
+      const ops = planOps(
+        optedIn,
+        prEvent({ body: "Implements AC-guest-checkout@ios and AC-guest-checkout@web" }),
+        "ios",
+      );
+      const state = settle(optedIn.nodes[0], ops);
+      check("an explicit mention mints a ref per platform: ios", prRef(state, "ios") !== undefined, JSON.stringify(state.metadata));
+      check("…and web", prRef(state, "web") !== undefined, JSON.stringify(state.metadata));
+      check(
+        "and BOTH promotions survive the batch",
+        state.metadata?.platformStatuses?.ios === "live" && state.metadata?.platformStatuses?.web === "live",
+        JSON.stringify(state.metadata?.platformStatuses),
+      );
+    }
+    {
+      const unrelated = planOps(
+        optedIn,
+        prEvent({ number: 7, url: "https://github.com/acme/ios-app/pull/7", title: "chore", body: "nothing here" }),
+        "ios",
+      );
+      check("the planner returns an op list", Array.isArray(unrelated), JSON.stringify(unrelated));
+      check(
+        "a PR mentioning no acceptance touches nothing",
+        unrelated.find((o) => o.node_id === "AC-guest-checkout") === undefined,
+        JSON.stringify(unrelated),
+      );
     }
 
     // --- Repo links: the surface the webhook resolves against ----------------
@@ -372,6 +343,76 @@ async function main() {
         "a delivery for a case-different name still resolves",
         (await pullRequest.linkedProjects("Acme/iOS-App")).some((l) => l.projectId === projectId),
       );
+
+      // --- The report channel, end to end ------------------------------------
+      // `ApplyOutcome.warnings` is the only way a user learns that a delivery
+      // understood the PR and deliberately did nothing. It only means anything
+      // if it survives all the way into the HTTP body, which is what Recent
+      // Deliveries renders — so this asserts on the RESPONSE, not on the
+      // planner. It has to run while the link above is still live: after the
+      // unlink below, the delivery resolves to no project and carries no
+      // outcome to hang a warning on.
+      {
+        const unknownBody = prPayload({
+          pull_request: { body: "Implements AC-guest-checkout@windows" },
+        });
+        const res = await POST(webhookReq(unknownBody));
+        const json = await res.json();
+        // Assert the delivery was accepted before reading into it: a 401 or a
+        // duplicate 202 would otherwise make every assertion below pass by
+        // finding nothing.
+        check("a delivery naming an unknown platform is accepted", res.status === 200, `${res.status} ${JSON.stringify(json)}`);
+        const outcome = (json.outcomes ?? []).find((o) => o.projectId === projectId);
+        check("and produces an outcome for the linked project", outcome !== undefined, JSON.stringify(json));
+        check(
+          "which reports the unusable suffix in the response body",
+          (outcome?.warnings ?? []).some((w) => w.includes("AC-guest-checkout") && w.includes("windows")),
+          JSON.stringify(outcome),
+        );
+        check(
+          "and applies nothing",
+          outcome?.applied === 0 && outcome?.skipped === "no usable acceptance mention",
+          JSON.stringify(outcome),
+        );
+      }
+      {
+        // The other half: an explicit platform the acceptance does not list.
+        // The ref DOES attach, so `applied` is non-zero — without the warning
+        // the response reads as a plain success and the author concludes
+        // Android shipped. AC-guest-checkout is ["web", "ios"].
+        const inapplicableBody = prPayload({
+          pull_request: { body: "Implements AC-guest-checkout@android" },
+        });
+        const res = await POST(webhookReq(inapplicableBody));
+        const json = await res.json();
+        check("a delivery naming an inapplicable platform is accepted", res.status === 200, `${res.status} ${JSON.stringify(json)}`);
+        const outcome = (json.outcomes ?? []).find((o) => o.projectId === projectId);
+        check("and produces an outcome for the linked project", outcome !== undefined, JSON.stringify(json));
+        check(
+          "the mutation went through",
+          outcome?.applied > 0 && outcome?.skipped === undefined,
+          JSON.stringify(outcome),
+        );
+        check(
+          "and the refusal to promote reaches the response body",
+          (outcome?.warnings ?? []).some((w) => w.includes("AC-guest-checkout") && w.includes("android")),
+          JSON.stringify(outcome),
+        );
+        // The point of the warning: the status did NOT move.
+        const after = await api.store.getProject(projectId, [ownerId]);
+        const node = after?.bundle.nodes.find((n) => n.id === "AC-guest-checkout");
+        check("the acceptance is still readable", node !== undefined, JSON.stringify(after?.bundle?.nodes));
+        check(
+          "and android was never marked shipped",
+          node?.metadata?.platformStatuses?.android === undefined,
+          JSON.stringify(node?.metadata),
+        );
+        check(
+          "though the ref is attached, carrying the platform the author asked for",
+          (node?.metadata?.refs ?? []).some((r) => r.platform === "android"),
+          JSON.stringify(node?.metadata?.refs),
+        );
+      }
 
       // Owner scoping.
       const { rows: other } = await client.query(

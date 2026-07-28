@@ -43,6 +43,7 @@
     "test:tokens": "node tests/services/token-auth.test.js",
     "test:graph": "node tests/services/graph-api.test.js",
     "test:github": "node tests/services/github-webhook.test.js",
+    "test:pr-plan": "node tests/services/pr-plan.test.js",
     "test:publik": "node tests/services/publik-api.test.js",
     "test:synk": "node tests/services/synk-api.test.js",
     "test:sync": "node tests/sync/sync-manager.test.js"
