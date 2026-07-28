@@ -46,7 +46,8 @@
     "test:pr-plan": "node tests/services/pr-plan.test.js",
     "test:publik": "node tests/services/publik-api.test.js",
     "test:synk": "node tests/services/synk-api.test.js",
-    "test:sync": "node tests/sync/sync-manager.test.js"
+    "test:sync": "node tests/sync/sync-manager.test.js",
+    "test:github-app": "node tests/services/github-app.test.js"
   },
   "dependencies": {
     "@auth/pg-adapter": "^1.11.2",

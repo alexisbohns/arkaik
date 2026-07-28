@@ -75,6 +75,12 @@ function loadPrPlan() {
   write("server-only-stub.js", "module.exports = {};\n");
   write("db-forbidden.js", forbidden("db", ["query", "servicesConfigured", "servicesUnavailable"]));
   write("store-forbidden.js", forbidden("store", ["getProject", "applyMutation", "createProject"]));
+  // The NETWORK stub, and the reason it throws rather than returning an empty
+  // file list: the resolver takes its fetch as a parameter, so nothing in this
+  // suite should ever reach the real client. If something does, an empty list
+  // would look like "no path-scoped link matched" and the suite would stay
+  // green while the planner quietly called api.github.com per delivery.
+  write("app-forbidden.js", forbidden("github/app", ["githubApp", "createGithubApp"]));
 
   const REWRITES = [
     ["server-only", "./server-only-stub.js"],
@@ -82,6 +88,8 @@ function loadPrPlan() {
     ["@/lib/config/platforms", "./platforms.js"],
     ["@/lib/services/db", "./db-forbidden.js"],
     ["@/lib/services/graph/store", "./store-forbidden.js"],
+    ["@/lib/services/github/app", "./app-forbidden.js"],
+    ["@/lib/services/github/paths", "./paths.js"],
   ];
 
   const src = (...parts) => path.join(ROOT, ...parts);
@@ -89,6 +97,9 @@ function loadPrPlan() {
   // The real platform list, not a stub: the grammar's valid set is derived from
   // it, and a stubbed copy would let the two drift without a test noticing.
   write("platforms.js", transpile(src("lib", "config", "platforms.ts"), "platforms.ts", REWRITES));
+  // The real path matcher, for the same reason and more: segment-boundary
+  // matching IS what several assertions here are about.
+  write("paths.js", transpile(src("lib", "services", "github", "paths.ts"), "paths.ts", REWRITES));
   write(
     "pull-request.js",
     transpile(src("lib", "services", "github", "pull-request.ts"), "pull-request.ts", REWRITES),
@@ -101,4 +112,4 @@ function loadPrPlan() {
   return require(path.join(BUILD_DIR, "pull-request.js"));
 }
 
-module.exports = { loadPrPlan, BUILD_DIR, SCHEMA_BUILD_DIR };
+module.exports = { loadPrPlan, transpile, COMPILER_OPTIONS, BUILD_DIR, SCHEMA_BUILD_DIR };

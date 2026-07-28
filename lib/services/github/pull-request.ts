@@ -13,14 +13,22 @@ import {
 
 import { PLATFORMS } from "@/lib/config/platforms";
 import { query } from "@/lib/services/db";
+import {
+  githubApp,
+  type ChangedFilesResult,
+  type IncompleteCause,
+  type PullRequestRef,
+} from "@/lib/services/github/app";
+import { matchChangedPaths, normalizePathPrefix } from "@/lib/services/github/paths";
 import { applyMutation, getProject } from "@/lib/services/graph/store";
 
 /**
  * Turning a `pull_request` webhook into acceptance status changes.
  *
  * The shape of the work, in order:
- *   1. resolve the repo to the projects that linked it (and the platform each
- *      link declares);
+ *   1. resolve the repo to the projects that linked it, and to the platform
+ *      each project's links declare — reading the PR's changed files first when
+ *      any of those links is scoped to a subtree (see `resolveRepoScope`);
  *   2. find the nodes whose refs point at this PR — attaching one if the PR
  *      body names an acceptance and no ref exists yet;
  *   3. mirror the PR's state onto those refs;
@@ -49,7 +57,10 @@ import { applyMutation, getProject } from "@/lib/services/graph/store";
  * Falling back to it when the code is least sure is exactly backwards: a WRONG
  * platform claim is far worse than a MISSING one.
  *
- * See `resolveRefScopes` for the four cases and what each one does.
+ * See `resolveRefScopes` for the four cases and what each one does, and
+ * `resolveRepoScope` for the one level above it, where a path-scoped link that
+ * could not be resolved refuses rather than borrowing the whole-repository
+ * link's platform.
  *
  * ── One ref per (PR, platform) ──────────────────────────────────────────────
  * A PR can name the same acceptance for several platforms (`AC-x@ios` and
@@ -59,6 +70,69 @@ import { applyMutation, getProject } from "@/lib/services/graph/store";
  * reused verbatim on a match, because `diffRefs` matches by id — re-minting
  * would emit `ref.removed` + `ref.added` on every redelivery and break the
  * idempotence the delivery ledger's release-on-failure posture depends on.
+ *
+ * ── WHICH OF A PULL REQUEST'S REFS A DELIVERY STILL MOVES ───────────────────
+ * Not keyed to WHICH SOURCE DECIDED. A `Ref` records no provenance — it is a
+ * portable bundle type with a spec behind it, not a place to keep this file's
+ * bookkeeping — so "the author's mention wrote this one" is a question this
+ * code cannot ask, and any rule phrased in terms of it is about something the
+ * data does not say.
+ *
+ * THE RULE, in full, and nothing stronger:
+ *
+ *   For a node this delivery RESOLVED A SCOPE FOR — the pull request's current
+ *   title or body names it, and the scope was not refused — a ref for this pull
+ *   request is MIRRORED (`title`, `external_status`, `synced_at` refreshed) and
+ *   PROMOTABLE only while some source speaking on this delivery justifies its
+ *   platform: the `@platform` suffixes in the CURRENT title and body, the
+ *   path-scoped links the CURRENT changed files land in, and — only where no
+ *   path-scoped link matched, the one place `resolveRepoScope` reaches for it —
+ *   the repository link; unioned, plus what this delivery just wrote.
+ *
+ *   A ref no current source justifies is FROZEN: left EXACTLY as it is. Not
+ *   refreshed, not promoted, NOT REMOVED. It keeps its last truthful state.
+ *
+ * Precedence (mention > path > link) still decides which scopes are WRITTEN;
+ * the union decides only which already-written ones this delivery still moves.
+ * Answering the second question with the first is the bug this replaces: a
+ * delivery decided by a MENTION left everything else alone, so a `web` ref
+ * minted from path evidence earlier was refreshed to "merged" and promoted web
+ * for a pull request that no longer touched the web app.
+ *
+ * FREEZING RATHER THAN REMOVING, because removal forces the question "can a
+ * partial file list prove a platform ABSENT?", whose answer is no; freezing
+ * needs no answer, since nothing is taken away on any evidence. It also loses
+ * no history, and it keeps this delivery — and every later webhook delivery —
+ * from writing "merged" onto a ref its own evidence no longer covers.
+ *
+ * What it does NOT buy is containment against `arkaik sync`, which re-fetches
+ * every ref from the GitHub API on its own schedule and will mirror a frozen
+ * ref to "merged" itself; `--promote` then promotes it, because sync computes
+ * over the whole bundle and has no notion of a delivery. Freezing narrows what
+ * THIS code claims. It cannot bind another tool that reads the same bundle —
+ * see the second bullet below, which is the same fact stated as a limit.
+ *
+ * ── WHAT THIS RULE DOES NOT GUARANTEE ───────────────────────────────────────
+ *
+ *   - A FROZEN REF IS NOT DELETED. An acceptance can still show a ref for a
+ *     platform the pull request no longer touches; it simply stops moving. If a
+ *     truthful EARLIER delivery had already mirrored it to a promotable state
+ *     it stays one, because `arkaik sync --promote` computes promotions over
+ *     the whole bundle with no notion of a delivery.
+ *   - A `@platform` AN AUTHOR WROTE BY HAND IS NOT SPECIAL. With no provenance,
+ *     `AC-x@web` written earlier is indistinguishable from a `web` ref inferred
+ *     from a path match, so once `@web` leaves the body and nothing else names
+ *     web it freezes like any other. Editing the pull request is how a scope is
+ *     withdrawn from this delivery's reach as well as how it is added.
+ *   - INCOMPLETE EVIDENCE NARROWS NOTHING (`IncompleteCause` in
+ *     lib/services/github/app.ts): truncated, out of time budget, an unreadable
+ *     page, an unconfigured App. The delivery cannot then tell justified from
+ *     unjustified, so it freezes nothing and mirrors and promotes exactly as it
+ *     did before this slice.
+ *   - A NODE THE PULL REQUEST NO LONGER NAMES freezes nothing; its refs keep
+ *     being mirrored and promoted from, because a body edit must not undo a
+ *     promotion that already landed. A REFUSED scope freezes nothing either —
+ *     see `refusalTail`.
  */
 
 /**
@@ -148,11 +222,32 @@ export interface PullRequestEvent {
   body: string;
   merged: boolean;
   state: string;
+  /**
+   * `installation.id` from the delivery payload, as a string (the payload
+   * carries a number; `project_repos.installation_id` is text, so the
+   * conversion happens once, at the route boundary).
+   *
+   * Null when the delivery did not come from a GitHub App installation — a
+   * plain repository webhook. That is not an error for anything else this file
+   * does; it only means the changed-files API is unreachable, which matters
+   * exclusively to path-scoped links.
+   */
+  installationId: string | null;
 }
 
+/** One row of `project_repos`: ONE link, not one project. */
 export interface LinkedRepo {
   projectId: string;
   platform: string | null;
+  /** `""` is the whole repository (db/migrations/010_repo_path_prefix.sql). */
+  pathPrefix: string;
+  installationId: string | null;
+}
+
+/** The half of a link the scope resolver needs. One project may have several. */
+export interface RepoLinkRow {
+  platform: string | null;
+  pathPrefix: string;
 }
 
 /**
@@ -165,15 +260,62 @@ export function prExternalStatus(event: Pick<PullRequestEvent, "merged" | "state
   return event.state === "closed" ? "closed" : "open";
 }
 
-/** Projects that linked this repo. Lowercased: GitHub is case-insensitive here. */
+/**
+ * The LINKS pointing at this repo — one row per link, so a project that scoped
+ * two subtrees of a monorepo appears twice. Lowercased: GitHub is
+ * case-insensitive about repository names.
+ *
+ * THE `order by` IS NOT COSMETIC. `groupLinksByProject` folds this list, and
+ * `resolveRepoScope` reads "the whole-repository link" out of a project's
+ * group. Unordered rows would make the delivery's resolved scope depend on
+ * whatever order Postgres happened to return — the same pull request producing
+ * `["ios"]` on one run and `[null]`, the strongest claim in the system, on the
+ * next.
+ */
 export async function linkedProjects(repoFullName: string): Promise<LinkedRepo[]> {
-  const { rows } = await query<{ project_id: string; platform: string | null }>(
-    `select project_id, platform
+  const { rows } = await query<{
+    project_id: string;
+    platform: string | null;
+    path_prefix: string;
+    installation_id: string | null;
+  }>(
+    `select project_id, platform, path_prefix, installation_id
        from project_repos
-      where provider = 'github' and repo_full_name = $1`,
+      where provider = 'github' and repo_full_name = $1
+      order by project_id, path_prefix`,
     [repoFullName.toLowerCase()],
   );
-  return rows.map((row) => ({ projectId: row.project_id, platform: row.platform }));
+  return rows.map((row) => ({
+    projectId: row.project_id,
+    platform: row.platform,
+    pathPrefix: row.path_prefix,
+    installationId: row.installation_id,
+  }));
+}
+
+/**
+ * Remember which App installation delivers this repository's webhooks.
+ *
+ * Written from the delivery because nothing else can know it: the id is a
+ * property of (repository, App installation), identical for every project that
+ * linked the repo, and it appears in the payload rather than anywhere a user
+ * could type it.
+ *
+ * It is a REAL read, not bookkeeping: `applyPullRequestEvent` prefers the
+ * payload's id and falls back to this stored one, which is what lets a delivery
+ * that arrives without an `installation` object — a repository webhook
+ * configured alongside the App — still reach the changed-files API. A stale
+ * stored id (the App was reinstalled) fails the token exchange deterministically
+ * and is reported, so it can only help.
+ */
+export async function recordInstallation(repoFullName: string, installationId: string): Promise<void> {
+  await query(
+    `update project_repos
+        set installation_id = $2
+      where provider = 'github' and repo_full_name = $1
+        and installation_id is distinct from $2`,
+    [repoFullName.toLowerCase(), installationId],
+  );
 }
 
 /**
@@ -329,6 +471,510 @@ export function mentionedAcceptances(event: Pick<PullRequestEvent, "title" | "bo
   return { mentions: [...mentions.values()], unknown: [...unknown.values()] };
 }
 
+/* ── Repository scope: which platform a delivery is about, per project ────────
+ *
+ * Slice 1 put this in one column: the repo link's `platform`. A monorepo cannot
+ * say it that way — `apps/ios` and `apps/webapp` live in one repository — so a
+ * project may now hold SEVERAL links to one repository, each scoping a platform
+ * to one subtree, and the delivery decides between them by reading the pull
+ * request's changed files.
+ *
+ * Everything in this section is pure or takes its network call as a parameter,
+ * so all of it is pinned by the database-free suite.
+ */
+
+/** One project's links to the repository this delivery is about. */
+export interface ProjectLinks {
+  projectId: string;
+  links: RepoLinkRow[];
+}
+
+/**
+ * One entry per PROJECT, carrying its links — the shape the delivery loop runs
+ * on.
+ *
+ * The loop used to run per LINK, which was indistinguishable from per project
+ * while a project could only link a repository once. With several links it is
+ * three separate failures: N transactions and therefore N version bumps for one
+ * pull request, N journal batches for one merge, and N outcomes carrying the
+ * same `projectId` — one of them reporting "no matching acceptance" for a pull
+ * request a sibling link matched and applied. The fourth is the worst: two
+ * links resolving separately can write an unscoped ref and a scoped one in
+ * either order, and each pass freezes whichever the other just wrote, so the
+ * same delivery makes opposite claims depending on row order.
+ *
+ * A stable input order (see `linkedProjects`) makes this a fold whose output can
+ * be asserted by identity.
+ */
+export function groupLinksByProject(rows: readonly LinkedRepo[]): ProjectLinks[] {
+  const groups = new Map<string, ProjectLinks>();
+  for (const row of rows) {
+    const group = groups.get(row.projectId) ?? { projectId: row.projectId, links: [] };
+    group.links.push({ platform: row.platform, pathPrefix: row.pathPrefix });
+    groups.set(row.projectId, group);
+  }
+  return [...groups.values()];
+}
+
+/**
+ * Whether this delivery has to read the pull request's changed files.
+ *
+ * TWO conditions, and the second is what keeps the feature quiet:
+ *
+ *   1. some link is path-scoped. A deployment whose links are all whole-repo —
+ *      which is every deployment that existed before this slice — must never
+ *      need a private key and must never touch the network, so this is checked
+ *      first and short-circuits.
+ *
+ *      "PATH-SCOPED" IS DECIDED AFTER NORMALISATION, and the two values that
+ *      make that matter are `"."` and a `..` path. `"."` names the directory it
+ *      sits in, so it normalises to `""` and IS the whole repository — migration
+ *      010's CHECK stores it happily, and the tempting `link.pathPrefix !== ""`
+ *      would make such a link demand a private key and an API call to answer a
+ *      question with no path in it. A prefix that normalises to `null` goes the
+ *      other way and counts as scoped: it is not the whole repository, and
+ *      fetching costs one request while `resolveRepoScope` refuses it properly
+ *      (rule 0) — whereas treating it as whole-repository here is the coercion
+ *      that rule exists to stop.
+ *   2. this delivery RESOLVES A SCOPE for some mentioned acceptance. That is a
+ *      wider condition than "the path source would decide", and the widening
+ *      is deliberate — see below. The only mention it excludes is the one that
+ *      is refused before any source is consulted: an id whose sole `@suffix`
+ *      was not a platform arkaik knows (`planForProject` CASE 2). Everything
+ *      else — a bare `AC-x`, an explicit `AC-x@ios` — resolves a scope, and a
+ *      resolved scope can freeze.
+ *
+ * ── WHY AN EXPLICIT `AC-x@ios` NOW COSTS A REQUEST, WHEN IT USED NOT TO ─────
+ * This condition read "some mention would actually CONSULT the path source",
+ * which is narrower: precedence means an explicit `@platform` decides before
+ * the path source is reached, so such a delivery fetched nothing. That was
+ * correct for DECIDING and wrong for FREEZING. The path matches are one of the
+ * sources whose union says which of this pull request's refs this delivery
+ * still moves (see this file's header), and a delivery that did not fetch has
+ * INCOMPLETE evidence — so it freezes nothing, and a `web` ref inferred from a
+ * path match in an earlier delivery was refreshed to "merged" by every
+ * subsequent `AC-x@ios` delivery and stood there as a promotion `arkaik sync
+ * --promote` fires out of band.
+ *
+ * THE COST, plainly: one extra `GET .../pulls/{n}/files` call — subject to the
+ * same rate limit as any other — on each delivery of a pull request that
+ * mentions an acceptance in a repository some project linked BY PATH, where
+ * every mention carries an explicit `@platform`. Nothing else changes: a
+ * repository with no path-scoped link still never calls GitHub back (condition
+ * 1 short-circuits first), and a pull request mentioning no acceptance still
+ * costs nothing.
+ *
+ * WORTH IT, because the alternative is not "one fewer request" but "a wrong
+ * platform claim nobody sees". The request is bounded (RESOLUTION_BUDGET_MS),
+ * its failure is a value rather than a throw, and a delivery that mentions an
+ * acceptance is already the rare one. The fetch decision is also taken per
+ * DELIVERY, before any project is loaded, so it cannot be narrowed further by
+ * "only if some node actually carries a stale ref" — nothing knows that yet.
+ *
+ * Being over-eager here costs one API request. Being under-eager costs nothing
+ * either, because a scope that was not consulted refuses (`not-consulted`)
+ * rather than falling back — see `resolveRepoScope`.
+ */
+export function needsChangedFiles(
+  event: Pick<PullRequestEvent, "title" | "body">,
+  links: readonly RepoLinkRow[],
+): boolean {
+  if (!links.some((link) => normalizePathPrefix(link.pathPrefix) !== "")) return false;
+
+  const { mentions, unknown } = mentionedAcceptances(event);
+  const explicit = new Set(mentions.filter((m) => m.platform !== null).map((m) => m.id));
+  const unusable = new Set(unknown.map((u) => u.id));
+  // The refused-before-any-source case, spelled exactly as `planForProject`
+  // spells it (`explicit.length === 0 && unknownNodes.has(node.id)`), so the
+  // two cannot drift into fetching for a delivery that consults nothing — or,
+  // far worse, not fetching for one that can freeze.
+  return mentions.some((m) => explicit.has(m.id) || !unusable.has(m.id));
+}
+
+/**
+ * What the delivery knows about the pull request's changed files.
+ *
+ * NO `null` AND NO DEFAULT, deliberately. A caller that has not fetched must
+ * spell `{ kind: "not-needed" }` beside the `needsChangedFiles` call that
+ * justifies it, and `not-needed` refuses rather than falling back — so a future
+ * caller that forgets can only ever under-claim.
+ */
+export type ChangedFilesEvidence =
+  | { kind: "not-needed" }
+  /** `incomplete` empty means the list is WHOLE (`ChangedFiles.incomplete`). */
+  | { kind: "files"; paths: readonly string[]; incomplete: readonly IncompleteCause[] }
+  /** Deterministically unreadable. `reason` is shown to the user verbatim. */
+  | { kind: "unavailable"; reason: string };
+
+/**
+ * The half-sentence a report uses for one reason a file list came up short.
+ *
+ * SEPARATE STRINGS BECAUSE THEY ARE SEPARATE FACTS. One sentence covered all
+ * three and asserted GitHub's 3000-file cap as the cause of every one of them,
+ * so a pull request whose second page timed out was told it "changes more files
+ * than GitHub will list" — a claim about a pull request that does not exist,
+ * pointing its author at nothing they can act on.
+ */
+const INCOMPLETE_CAUSE_TEXT: Record<IncompleteCause, string> = {
+  "github-file-cap": "this pull request changes more files than GitHub will list",
+  "time-budget": "reading the list of changed files ran out of the time budget arkaik gives one delivery",
+  "unreadable-entry": "GitHub returned changed-file entries arkaik could not read",
+};
+
+/**
+ * Every observed cause, joined — never a chosen one. Two causes can hold at
+ * once (the cap and a dropped entry), and reporting one of them would be this
+ * round's defect at one remove.
+ */
+export function describeIncomplete(causes: readonly IncompleteCause[]): string {
+  const parts = causes.map((cause) => INCOMPLETE_CAUSE_TEXT[cause]);
+  if (parts.length <= 1) return parts[0] ?? "";
+  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
+
+/**
+ * The platform scope one project's links resolve to for this delivery.
+ *
+ * THREE STATES, and the middle one is why this is not just a list of platforms:
+ *
+ *   - `links` with platforms — the links contribute a scope;
+ *   - `links` with none — the links are SILENT ("All platforms"), which is the
+ *     ordinary whole-repository arrangement and still writes one unscoped ref;
+ *   - `no-platform` — the links ASKED to be scoped by path and the question
+ *     could not be answered. That is not the same as silent, and collapsing the
+ *     two would answer "I do not know which platform" with a claim about all of
+ *     them (see this file's header).
+ */
+export type RepoScope =
+  | {
+      kind: "links";
+      /** From the path-scoped links this PR's files landed in. */
+      pathPlatforms: string[];
+      /** Those links' prefixes, so a report can name which row to edit. */
+      pathPrefixes: string[];
+      /** From the whole-repository link, the lowest-precedence source. */
+      linkPlatform: string | null;
+      /**
+       * Empty means the changed-file list was WHOLE.
+       *
+       * Non-empty says two things at once, and both are load-bearing: what
+       * matched is still real (a missing file cannot invent a match), and no
+       * ref may be FROZEN on this delivery (a missing file can hide the
+       * evidence that justifies one). Each cause is carried, not collapsed, so
+       * a report names the one it observed.
+       */
+      incomplete: readonly IncompleteCause[];
+    }
+  | {
+      kind: "no-platform";
+      /**
+       * Which of the six ways it failed, for tests to assert by identity.
+       *
+       * `outside-every-prefix` is the only one of the six that rests on a
+       * COMPLETE reading: the files were all read and none of them is inside
+       * any prefix, so the path source genuinely names nothing. The other five
+       * are all "arkaik could not see", and `planForProject` treats them as
+       * incomplete evidence and freezes no ref under them.
+       */
+      reason:
+        | "outside-every-prefix"
+        | "truncated-no-match"
+        | "truncated-platformless-match"
+        | "not-consulted"
+        | "unavailable"
+        | "unusable-prefix";
+      /**
+       * The clause a warning splices after "and". Starts lower-case and carries
+       * NO terminal full stop — the warning supplies that. It may contain
+       * further complete sentences after the first (`unusable-prefix` ends with
+       * an instruction), but it must not end on punctuation.
+       */
+      detail: string;
+      /**
+       * An operator-facing explanation, in complete sentences, appended at the
+       * END of the warning rather than spliced into it.
+       *
+       * This exists because `unavailable`'s explanation comes from
+       * `ChangedFilesResult.reason`, which is written as one-or-more finished
+       * sentences for GitHub's Recent Deliveries. Splicing it after "and" and
+       * then adding the warning's own full stop produced a double period and a
+       * paragraph-long run-on clause. `detail` stays a clause; this stays
+       * sentences; nothing has to be reworded twice.
+       */
+      cause?: string;
+      /**
+       * Every configured path-scoped prefix, so a typo'd one is visible in the
+       * report. Normalised, except under `unusable-prefix` — where the whole
+       * point is that they could not be normalised, so they are quoted as
+       * STORED and the report names the row a human has to go and edit.
+       */
+      prefixes: string[];
+    };
+
+/**
+ * One project's links plus what is known about the changed files, resolved to a
+ * scope.
+ *
+ * The rules, in order:
+ *   (0) a stored prefix that cannot be normalised at all -> refuse, naming the
+ *       row. FIRST, before even rule (a) — see below;
+ *   (a) no path-scoped link at all -> behave exactly as before this slice, and
+ *       do not look at the evidence. This is what keeps a non-monorepo
+ *       deployment unaffected even when a SIBLING project on the same
+ *       repository forced a fetch that failed;
+ *   (b) the files could not be read -> refuse;
+ *   (c) a path-scoped link matched -> its platforms, plus the whole-repository
+ *       link behind it as the lower-precedence source. EXCEPT when the only
+ *       links it matched name NO platform and the list was partial: an unread
+ *       page could have landed in one that does, so that refuses too — see
+ *       below;
+ *   (d) nothing matched and a whole-repository link exists -> that link. It is
+ *       the user's stated fallback: "anything I did not scope is this";
+ *   (e) nothing matched and there is no fallback -> refuse.
+ *
+ * ── WHY (b) DOES NOT FALL BACK TO THE WHOLE-REPOSITORY LINK ────────────────
+ * Its platform is known without any API call, so the temptation is real. But
+ * `''` means "no path-scoped link matched", and that is a fact the delivery did
+ * not establish — the pull request may well have touched only `apps/ios`. Worse,
+ * a whole-repository link with no platform resolves to one UNSCOPED ref, which
+ * moves the base status and marks every platform shipped. Reaching for the
+ * biggest claim in the system at the moment of least knowledge is the exact
+ * failure this file exists to prevent.
+ *
+ * An INCOMPLETE list is asymmetric for the same reason: a missing file can only
+ * REMOVE a match, never invent one, so platforms found in a partial list are
+ * real (rule c stands) but "nothing matched" in a partial list is not evidence
+ * (rule d does not apply, and it refuses instead). The same asymmetry is why
+ * `planForProject` freezes no ref when `incomplete` is non-empty.
+ *
+ * ── WHY (c) HAS AN EXCEPTION, AND WHY IT IS THE SAME RULE ──────────────────
+ * A path-scoped link set to "All platforms" MATCHES WITHOUT NAMING ANYTHING.
+ * With a whole list that is an honest answer — every file was read, the ones
+ * that landed anywhere landed in platform-less links — so precedence falls
+ * through to the whole-repository link, or to one unscoped ref. With a PARTIAL
+ * list it is not an answer at all: the pages arkaik never read are exactly
+ * where a file inside `apps/ios` would be, and "the platform-scoped links
+ * matched nothing" is the claim a partial list cannot make. Falling through
+ * there hands back the largest claim in the system (an unscoped ref moves the
+ * BASE status) on the strength of a page nobody read. It refuses instead, for
+ * the same reason rule (d) does.
+ *
+ * ── WHY (0) EXISTS, AND WHY IT COMES FIRST ─────────────────────────────────
+ * `normalizePathPrefix` returns null for a prefix it cannot make sense of —
+ * today a `..` segment. `linkRepo` refuses those, but the database is not the
+ * only writer: a restore, a hand-edited row, or the next caller can put one
+ * there, and migration 010's CHECK does not forbid `..` (it forbids leading and
+ * trailing slashes, empty segments and edge whitespace — `apps/../ios` passes
+ * all five).
+ *
+ * This used to read `normalizePathPrefix(link.pathPrefix) ?? ""`, and `""` is
+ * not a neutral default here: it is the value that MEANS THE WHOLE REPOSITORY.
+ * So the least trustworthy row in the table was silently promoted from "one
+ * subtree" to "all of it", where it both stopped counting as path-scoped (rule
+ * (a) then behaved as if the project had no monorepo links at all) and became
+ * the FALLBACK rule (d) reaches for — claiming its platform for every pull
+ * request in the repository. Two failures, one `??`.
+ *
+ * Refusing first is what makes that unspellable: a link nobody can interpret
+ * cannot be interpreted as the biggest claim in the system, and the report
+ * names the stored value so the row can be fixed.
+ */
+export function resolveRepoScope(
+  links: readonly RepoLinkRow[],
+  evidence: ChangedFilesEvidence,
+): RepoScope {
+  // Normalised on read as well as on write: a row that predates the check
+  // constraint, or one restored from elsewhere, must not become an
+  // unmatchable link (see lib/services/github/paths.ts).
+  const normalized: { prefix: string; platform: string | null }[] = [];
+  const unusable: string[] = [];
+  for (const link of links) {
+    const prefix = normalizePathPrefix(link.pathPrefix);
+    if (prefix === null) {
+      unusable.push(link.pathPrefix);
+      continue;
+    }
+    normalized.push({ prefix, platform: link.platform });
+  }
+
+  // (0) — before rule (a), so an uninterpretable row can never be read as the
+  // absence of path scoping. The refusal covers the WHOLE project group, not
+  // just the bad row: the pull request may well belong to the subtree that row
+  // was meant to name, so honouring the siblings would answer a question this
+  // delivery cannot answer.
+  if (unusable.length > 0) {
+    return {
+      kind: "no-platform",
+      reason: "unusable-prefix",
+      detail:
+        `arkaik cannot read the path ${unusable.map((p) => `"${p}"`).join(" or ")} stored on one of ` +
+        `them — a ".." segment names no directory — so which subtree of the repository these links ` +
+        `cover is not knowable. Edit the link (or remove and re-add it) with a plain path such as ` +
+        `"apps/ios"`,
+      // As STORED, and including the unusable ones: this is the one report
+      // whose whole job is to point at a row nobody can otherwise see.
+      prefixes: links.map((link) => link.pathPrefix).filter((p) => p !== ""),
+    };
+  }
+
+  const scoped = normalized.filter((link) => link.prefix !== "");
+  const fallback = normalized.find((link) => link.prefix === "") ?? null;
+  const prefixes = scoped.map((link) => link.prefix).sort();
+
+  // (a) The pre-slice-2 world, untouched — and the evidence is never read, so
+  // this cannot be affected by another project's failed fetch.
+  if (scoped.length === 0) {
+    return {
+      kind: "links",
+      pathPlatforms: [],
+      pathPrefixes: [],
+      linkPlatform: fallback?.platform ?? null,
+      // COMPLETE, and not by accident: with no path-scoped link there is no
+      // path source, so there is nothing a longer file list could have added.
+      // This is what lets a plain whole-repository project freeze a stale ref
+      // normally while never making an API call.
+      incomplete: [],
+    };
+  }
+
+  if (evidence.kind === "unavailable") {
+    return {
+      kind: "no-platform",
+      reason: "unavailable",
+      detail: "arkaik could not read which files it changes",
+      // The client's own sentences, kept whole and moved to the end of the
+      // warning rather than spliced mid-clause — see `RepoScope.cause`.
+      cause: evidence.reason,
+      prefixes,
+    };
+  }
+  if (evidence.kind === "not-needed") {
+    // Unreachable while `needsChangedFiles` gates the fetch: it returns true for
+    // exactly the mentions that reach the path source. Kept as a REFUSAL rather
+    // than an assertion so that if the gate ever grows a hole, the hole
+    // under-claims instead of over-claiming.
+    return {
+      kind: "no-platform",
+      reason: "not-consulted",
+      detail: "arkaik did not read its changed files",
+      prefixes,
+    };
+  }
+
+  const match = matchChangedPaths(evidence.paths, scoped);
+
+  if (match.prefixes.length > 0) {
+    // (c) EXCEPT: matched, but every matching link is "All platforms", so the
+    // path source names nothing — AND the list was partial. Falling through
+    // here would answer with the whole-repository link or, with none, with one
+    // unscoped ref, on the strength of pages nobody read. Refuse instead; see
+    // the header above this function.
+    if (match.platforms.length === 0 && evidence.incomplete.length > 0) {
+      return {
+        kind: "no-platform",
+        reason: "truncated-platformless-match",
+        detail:
+          `${describeIncomplete(evidence.incomplete)}, so the only links the files arkaik could ` +
+          `read landed in are ones that name no platform — and a file it could not read might ` +
+          `land in one that does`,
+        prefixes,
+      };
+    }
+    // Note `pathPlatforms` may still be empty on a WHOLE list — a matched link
+    // with no platform ("All platforms" on a shared directory) matches without
+    // contributing, which suppresses (e) and lets precedence fall through.
+    return {
+      kind: "links",
+      pathPlatforms: match.platforms,
+      pathPrefixes: match.prefixes,
+      linkPlatform: fallback?.platform ?? null,
+      incomplete: evidence.incomplete,
+    };
+  }
+
+  if (evidence.incomplete.length > 0) {
+    return {
+      kind: "no-platform",
+      reason: "truncated-no-match",
+      // Names the cause it OBSERVED. This sentence used to assert GitHub's
+      // 3000-file cap whatever had actually happened, so a pull request of
+      // eleven files whose page read timed out was told it was too large.
+      detail:
+        `${describeIncomplete(evidence.incomplete)}, so none of the files arkaik could read are ` +
+        `inside any of them and the ones it could not read might be`,
+      prefixes,
+    };
+  }
+
+  // (d)
+  if (fallback) {
+    return {
+      kind: "links",
+      pathPlatforms: [],
+      pathPrefixes: [],
+      linkPlatform: fallback.platform,
+      // Reached only when `evidence.incomplete` is empty (the branch above
+      // returns otherwise), so this is the file list as GitHub has it.
+      incomplete: [],
+    };
+  }
+
+  // (e)
+  return {
+    kind: "no-platform",
+    reason: "outside-every-prefix",
+    detail: "none of this pull request's changed files are inside any of them",
+    prefixes,
+  };
+}
+
+/**
+ * The network call this delivery needs, if any — injected, with no default.
+ *
+ * A test that forgets to supply one is a type error rather than a suite that
+ * quietly reaches api.github.com.
+ */
+export type FetchChangedFiles = (pr: PullRequestRef) => Promise<ChangedFilesResult>;
+
+/**
+ * Every project's scope for one delivery, with AT MOST ONE fetch.
+ *
+ * The fetch decision is per DELIVERY (the file list is a property of the pull
+ * request, not of a project), while rule (a) inside `resolveRepoScope` is per
+ * PROJECT. That split is the load-bearing part: a project whose links are all
+ * whole-repository must be unaffected either way, and a project that needs the
+ * files must not make a second identical request because a sibling already
+ * asked.
+ *
+ * The fetch happens HERE, before any project is loaded and long before any
+ * mutation, so a transient failure throws with zero writes performed. The route
+ * then releases the delivery claim and GitHub's redelivery redoes the whole
+ * thing from a clean slate — rather than merely relying on re-application being
+ * a no-op, which it is, but which is a worse thing to depend on.
+ */
+export async function resolveDeliveryScopes(input: {
+  groups: readonly ProjectLinks[];
+  event: PullRequestEvent;
+  installationId: string | null;
+  fetchFiles: FetchChangedFiles;
+}): Promise<Map<string, RepoScope>> {
+  const { groups, event, installationId, fetchFiles } = input;
+
+  let evidence: ChangedFilesEvidence = { kind: "not-needed" };
+  if (groups.some((group) => needsChangedFiles(event, group.links))) {
+    const result = await fetchFiles({
+      repoFullName: event.repoFullName,
+      number: event.number,
+      installationId,
+    });
+    evidence = result.ok
+      ? { kind: "files", paths: result.changed.paths, incomplete: result.changed.incomplete }
+      : { kind: "unavailable", reason: result.reason };
+  }
+
+  return new Map(groups.map((group) => [group.projectId, resolveRepoScope(group.links, evidence)]));
+}
+
 interface NodeWithRefs extends Node {
   metadata?: Node["metadata"] & { refs?: Ref[] };
 }
@@ -336,13 +982,30 @@ interface NodeWithRefs extends Node {
 /**
  * One place a platform scope can come from, for one node.
  *
- * `explicit` records the PROVENANCE, because the two kinds are honoured
- * differently when the node does not list the platform. An EXPLICIT platform is
- * a human statement, so it is kept on the ref and `computeRefPromotions` refuses
- * the promotion with `platform-not-applicable`, which the caller reports. An
- * INFERRED one (today: the repo link) means arkaik's own bookkeeping disagrees
- * with itself, and there is no human statement to preserve — so the scope is
- * refused outright. Neither one degrades to an unscoped ref.
+ * `explicit` records the PROVENANCE OF THE SOURCE — not of a ref — and it
+ * decides exactly one thing: what happens when the node does not list the
+ * platform the source named.
+ *
+ * An EXPLICIT platform is a human statement, so it is kept on the ref and
+ * `computeRefPromotions` refuses the promotion with `platform-not-applicable`,
+ * which the caller reports. An INFERRED one (the path match, the repo link)
+ * means arkaik's own bookkeeping disagrees with itself, and there is no human
+ * statement to preserve — so the scope is refused outright. Neither one
+ * degrades to an unscoped ref.
+ *
+ * IT USED TO DECIDE A SECOND THING, AND THAT WAS THE BUG. The reasoning was:
+ * an inferred source is recomputed from current facts, so when an inferred
+ * source DECIDES, its platform set is everything this delivery has evidence
+ * for, and any other ref for this pull request may be dropped — while a
+ * mention, being a human statement rather than an enumeration, drops nothing.
+ * Both halves were wrong in the same way. It made the fate of a ref depend on
+ * WHICH SOURCE DECIDED, and a ref carries no record of which source created it,
+ * so the rule quietly meant "act on refs whose provenance we are guessing at":
+ * an `AC-x@ios` delivery left a stale path-derived `web` ref in place (and
+ * promoted from it), while a path-decided delivery deleted a `web` ref an author
+ * had written by hand. Whether a ref is FROZEN is now a property of the UNION
+ * of the live sources and of the completeness of the evidence — see this file's
+ * header — and needs no provenance at all.
  */
 interface ScopeSource {
   /** How a report names this source to a human: "the repository link". */
@@ -408,8 +1071,9 @@ const sortedScopes = (platforms: readonly PlatformId[]): PlatformId[] => [...pla
  * first is handled here. If you are adding a source and it cannot produce a
  * platform, REFUSE — do not reach for `[null]`.
  *
- * A list rather than a chain of ternaries so that path-scoped links (not built)
- * slot in between mention and link as one more entry, not a rewrite.
+ * A list rather than a chain of ternaries: the path source slotted in between
+ * mention and link as one more entry rather than a rewrite, and the next source
+ * will too.
  */
 function resolveRefScopes(node: Node, sources: readonly ScopeSource[]): ScopeResolution {
   for (const source of sources) {
@@ -423,6 +1087,12 @@ function resolveRefScopes(node: Node, sources: readonly ScopeSource[]): ScopeRes
     // out here instead would leave the mention looking honoured.
     if (source.explicit) return { scopes: sortedScopes(source.platforms) };
 
+    // An INFERRED source decided, filtered to what this acceptance lists: the
+    // platforms it does not list were never claimable here, so writing a ref
+    // for one would be a claim with nowhere to land. (What is WRITTEN is all
+    // this decides. Which already-written refs this delivery still moves is a
+    // separate question answered by the union of the live sources — see this
+    // file's header.)
     const applicable = source.platforms.filter((p) => node.platforms.includes(p));
     if (applicable.length > 0) return { scopes: sortedScopes(applicable) };
 
@@ -430,6 +1100,13 @@ function resolveRefScopes(node: Node, sources: readonly ScopeSource[]): ScopeRes
     // here rather than falling through to the next source: a source that named
     // a platform stated an intent, and quietly trying a different one is the
     // same downgrade wearing a different hat.
+    //
+    // An empty `scopes` is what makes the caller mark this node REFUSED, and a
+    // refused node freezes nothing — a refusal is the statement "this delivery
+    // could not decide", and freezing on it would stop mirroring every ref this
+    // pull request ever left at exactly the moment arkaik admitted it did not
+    // know. Same reasoning as "a refusal promotes nothing", pointed the other
+    // way.
     return { scopes: [], dropped: { label: source.label, platforms: source.platforms } };
   }
 
@@ -459,6 +1136,35 @@ export interface ProjectPlan {
 }
 
 /**
+ * The sentence every refusal ends with — one place, because it is the same fact
+ * three times and it was subtly false in all three.
+ *
+ * WHAT IT USED TO SAY: "A ref this pull request already left on X keeps being
+ * mirrored, but nothing is promoted from it either." The second clause reads as
+ * containment, and it is not. A refused node's refs are still refreshed by the
+ * mirror above — `external_status` moves to "merged" on the merge delivery —
+ * and they are still ATTACHED. `arkaik sync --promote` runs
+ * `computeRefPromotions` over the whole bundle with no per-delivery filter, so
+ * a merged, attached, promotable ref is a promotion waiting to happen. The
+ * refusal scopes THIS delivery's plan and nothing else.
+ *
+ * WHY THE REFRESH IS KEPT RATHER THAN SKIPPED FOR A REFUSED NODE — the other
+ * way to close the gap, and it closes nothing. `arkaik sync` fetches each ref's
+ * CURRENT status from GitHub and writes it before it promotes
+ * (packages/cli/src/commands/sync.ts, steps 2 and 4), so a ref this delivery
+ * left stale at "open" is refreshed to "merged" by sync itself and then
+ * promoted exactly as before. Skipping the refresh would buy no containment and
+ * cost the thing the mirror is for: a ref frozen at "open" on a merged pull
+ * request, which docs/hosted-projects.md promises will not happen. So the code
+ * keeps mirroring and the sentence stops over-promising.
+ */
+const refusalTail = (nodeId: string): string =>
+  `A ref this pull request already left on ${nodeId} keeps being mirrored — including to this ` +
+  `pull request's current state — and THIS plan promotes nothing from it. It is not removed ` +
+  `either, so anything that later computes promotions over the whole bundle (arkaik sync ` +
+  `--promote) can still promote from it.`;
+
+/**
  * The ops that bring one project in line with a PR event: attach the ref where
  * a mention names an uncovered acceptance, mirror the PR's state onto matching
  * refs, then promote under the project's policy.
@@ -469,7 +1175,7 @@ export interface ProjectPlan {
 export function planForProject(
   bundle: { project: { metadata?: Record<string, unknown> }; nodes: Node[]; edges: unknown[] },
   event: PullRequestEvent,
-  platform: string | null,
+  scope: RepoScope,
 ): ProjectPlan {
   const ops: MutationOp[] = [];
   const warnings: string[] = [];
@@ -503,7 +1209,65 @@ export function planForProject(
    */
   const unknownNodes = new Set(unknown.map((u) => u.id));
 
-  const linkPlatform = platform && IS_PLATFORM(platform) ? platform : null;
+  // A stored value that is not a platform is degraded to "this source names
+  // nothing" rather than trusted. `project_repos.platform` and `path_prefix` are
+  // both written only through the repos API and both have a database check
+  // constraint behind them, so this is a floor, not a live case.
+  const pathPlatforms = scope.kind === "links" ? scope.pathPlatforms.filter(IS_PLATFORM) : [];
+  const linkPlatform =
+    scope.kind === "links" && scope.linkPlatform && IS_PLATFORM(scope.linkPlatform)
+      ? scope.linkPlatform
+      : null;
+  /**
+   * WHETHER A PATH-SCOPED LINK MATCHED — which is exactly when the
+   * whole-repository link STOPS SPEAKING on this delivery.
+   *
+   * `resolveRepoScope` reaches for the whole-repository link in rule (d), i.e.
+   * when NO path-scoped link matched; rule (c) carries it along only as the
+   * lower-precedence source for what to WRITE when the matched links named no
+   * platform. So it is not a live source once a path link matched — and letting
+   * it into the justification union there let a whole-repository `ios` fallback
+   * keep a stale `ios` ref moving for a pull request whose files this delivery
+   * had positively read as landing under `apps/webapp` alone. Positive evidence
+   * of where the files ARE was overruled by a fallback that means "anything I
+   * did not scope", about files that WERE scoped.
+   */
+  const pathMatched = scope.kind === "links" && scope.pathPrefixes.length > 0;
+  /**
+   * How a report names the path source.
+   *
+   * The prefixes are the load-bearing half. `ScopeSource.label` is read into
+   * "…the repository link says "ios", which AC-x does not list…", and with
+   * several links on one repository "the repository link" no longer identifies
+   * which row to edit — which is the whole reason that message names both sides.
+   */
+  const pathLabel =
+    scope.kind === "links" && scope.pathPrefixes.length > 0
+      ? `the path-scoped repository link (${scope.pathPrefixes.join(", ")})`
+      : "the path-scoped repository link";
+
+  /**
+   * WHETHER THIS DELIVERY SAW ENOUGH TO TELL JUSTIFIED FROM UNJUSTIFIED — the
+   * gate on every FREEZE below, and on nothing else.
+   *
+   * Presence and absence are not symmetric here (see `resolveRepoScope`): a
+   * file arkaik never read can only hide a match, so a partial list proves
+   * platforms PRESENT and can never prove one ABSENT. Freezing a ref rests on
+   * "no live source names this platform", which is a claim of absence, so it is
+   * made only from a whole list. When this is false the delivery mirrors and
+   * promotes exactly as it did before path-scoped links existed: incomplete
+   * evidence must never narrow anything.
+   *
+   * `outside-every-prefix` is the one refusal reached from a WHOLE list: every
+   * changed file was read and none of them is inside any configured prefix, so
+   * the path source names nothing and that is a fact rather than a blind spot.
+   * (`pathPlatforms` and `linkPlatform` are empty there by construction — the
+   * rule is reached only with no match and no fallback link — so the union
+   * below is correct without them.) The other five refusals are all "arkaik
+   * could not see", and they freeze nothing.
+   */
+  const evidenceComplete =
+    scope.kind === "links" ? scope.incomplete.length === 0 : scope.reason === "outside-every-prefix";
 
   const patched: Node[] = [];
   /**
@@ -529,29 +1293,46 @@ export function planForProject(
    * asked for a link, not for a status claim; adopting it is the strongest claim
    * in this system made out of data written for something else.
    *
-   * ONE predicate gates refreshing, minting, the mixed-scope filter and
-   * `touched`, deliberately. Restricting only the refresh would leave the
-   * mixed-scope filter — which matches on url alone — free to DELETE the very
-   * ref it declines to adopt, which is adoption wearing a worse hat. A ref of
-   * another type at this url is simply not this mirror's business, in either
-   * direction.
+   * ONE predicate gates refreshing, minting, the freeze filter and `touched`,
+   * deliberately. Restricting only the refresh would leave the freeze filter —
+   * which would then match on url alone — free to act on the very ref it
+   * declines to adopt, which is adoption wearing a worse hat. A ref of another
+   * type at this url is simply not this mirror's business, in either direction.
    *
    * KNOWN LIMITATION, accepted: renaming or transferring the repo changes
-   * `html_url`, so the next delivery writes a NEW ref and the old one stays
-   * frozen at its last mirrored status. It is cosmetic — the stale ref has a
-   * different url, so it never enters `touched` and can never be promoted, and
-   * `freeRefId` keeps it from colliding. Repointing refs on a rename would
-   * need the repository-rename event and a way to know which of a node's refs
-   * came from that repo; nothing is built for that.
+   * `html_url`, so the next delivery writes a NEW ref and the old one stays at
+   * its last mirrored status. It is cosmetic — the stale ref has a different
+   * url, so it never enters `touched` and can never be promoted BY THIS
+   * DELIVERY, and `freeRefId` keeps it from colliding. Repointing refs on a
+   * rename would need the repository-rename event and a way to know which of a
+   * node's refs came from that repo; nothing is built for that.
    */
   const isMirrored = (ref: Ref): boolean => ref.url === event.url && ref.type === "github-pr";
+
+  /**
+   * EVERY ID THIS PULL REQUEST NAMES, usably or not.
+   *
+   * `mentionedNodes` alone is not that set, and the difference is a live bug
+   * rather than a nicety. A pull request whose ONLY reference to an acceptance
+   * is `AC-x@ios-tablet` puts the id in the `unknown` channel and nowhere else,
+   * so `mentionedNodes` does not hold it — and the CASE 2 refusal below, gated
+   * on `mentionedNodes.has`, was never reached. The node then took the
+   * "referenced but not named" path: every ref this pull request had already
+   * left on it was mirrored to the merge and promoted from, UNREFUSED. The
+   * typo'd suffix, whose entire purpose is to stop a guess, silently permitted
+   * the strongest form of one.
+   *
+   * The refusal is a property of the ID BEING NAMED, not of a usable mention
+   * happening to sit beside the typo, so this is the set the loop runs on.
+   */
+  const namedNodes = new Set<string>([...mentionedNodes, ...unknownNodes]);
 
   for (const node of nodes) {
     const existing = node.metadata?.refs ?? [];
     // A node is in scope if it already carries one of this mirror's refs for
-    // this PR, or if the PR names it.
+    // this PR, or if the PR names it — usably or not.
     const referencesPr = existing.some(isMirrored);
-    if (!referencesPr && !mentionedNodes.has(node.id)) continue;
+    if (!referencesPr && !namedNodes.has(node.id)) continue;
 
     // ── The scope decision for this node ──────────────────────────────────
     // Scopes are resolved only from a MENTION. A node that is in scope purely
@@ -574,13 +1355,16 @@ export function planForProject(
      * the warning beside it said it had not done.
      */
     let refusedScope = false;
-    if (mentionedNodes.has(node.id)) {
+    if (namedNodes.has(node.id)) {
       const explicit = explicitPlatforms.get(node.id) ?? [];
       if (explicit.length === 0 && unknownNodes.has(node.id)) {
         // CASE 2: the author wrote an `@suffix` for this id that is not a
-        // platform, and the only other mention of it is bare. The bare one is
-        // NOT a fallback — reading it as one hands back the biggest claim in
-        // the system in answer to a typo.
+        // platform, and nothing else this pull request says about the id gives
+        // a usable scope. A bare mention beside it is NOT a fallback — reading
+        // it as one hands back the biggest claim in the system in answer to a
+        // typo — and neither is the id merely being named: this branch is
+        // reached whether or not a bare mention exists, because the refusal
+        // belongs to the ID, not to the company it keeps.
         //
         // No ref is attached at all, not even an unscoped one "for visibility":
         // a stray unscoped ref is a latent base-status promotion that this
@@ -593,16 +1377,59 @@ export function planForProject(
         // HANDLED_ACTIONS, so fixing the suffix re-delivers and works.
         refusedScope = true;
         warnings.push(
-          `${node.id}: an @platform suffix written for this acceptance was not understood, so the ` +
-            `bare mention of ${node.id} was NOT used as a fallback — that would have moved the base ` +
-            `status, marking every platform shipped. The plan attaches no ref and promotes no ` +
-            `status for it; a ref this pull request already left on ${node.id} keeps being mirrored, ` +
-            `but nothing is promoted from it either. Fix the suffix; editing the pull request ` +
-            `re-delivers.`,
+          `${node.id}: an @platform suffix written for this acceptance was not understood, so ` +
+            (mentionedNodes.has(node.id)
+              ? `the bare mention of ${node.id} was NOT used as a fallback — that would have moved ` +
+                `the base status, marking every platform shipped. `
+              : `nothing was inferred from naming ${node.id} at all — the repository link would ` +
+                `have been the fallback, and answering a typo with it is the same guess. `) +
+            `The plan attaches no ref and promotes no status for it. ${refusalTail(node.id)} ` +
+            `Fix the suffix; editing the pull request re-delivers.`,
+        );
+      } else if (explicit.length === 0 && scope.kind === "no-platform") {
+        // CASE 2b: this repository is linked BY PATH — a standing request to
+        // scope every pull request — and that request could not be answered.
+        //
+        // Decided here rather than inside `resolveRefScopes` because no source
+        // NAMES anything in this situation: an empty `platforms` list means
+        // "silent", which is how an ordinary All-platforms link must keep
+        // behaving, and case 4's `[null]` would follow — "nothing anywhere named
+        // a platform, so nothing is being downgraded" is simply false when the
+        // configuration is a standing request to scope.
+        //
+        // Every configured prefix is quoted, not just the ones that failed, so a
+        // typo (`apps/i0s`) is visible in the one channel the user reads.
+        refusedScope = true;
+        warnings.push(
+          `${node.id}: ${event.repoFullName} is linked by path (${scope.prefixes.join(", ")}), and ` +
+            `${scope.detail}. The plan attaches no ref and promotes no status for it — an unscoped ` +
+            `ref here would move the base status, marking every platform shipped. ` +
+            `${refusalTail(node.id)}` +
+            // `cause` is the GitHub client's own finished sentences (a missing
+            // env var, a revoked installation). Appended whole at the end
+            // rather than spliced after "and", which produced a double period
+            // and a paragraph-long clause — see `RepoScope.cause`.
+            //
+            // BEHIND A LEAD-IN, because those sentences are written to follow
+            // "and" and so begin lower-case ("this delivery carries no…").
+            // Dropped in after a full stop they would read as a typo; after a
+            // colon they read as what they are.
+            `${scope.cause ? ` Why arkaik could not read them: ${scope.cause}` : ""}`,
         );
       } else {
         resolution = resolveRefScopes(node, [
           { label: "the mention", platforms: explicit, explicit: true },
+          // BETWEEN mention and link, and `explicit: false` — which is not a
+          // stylistic choice. A path match is inference by construction: the
+          // author wrote Swift under `apps/ios`, they did not write the sentence
+          // "this ships on iOS". So when the acceptance does not list a
+          // path-derived platform, that is arkaik's own bookkeeping disagreeing
+          // with itself and there is no human statement to preserve on the ref.
+          // The mechanical consequence is also the one that is wanted: an
+          // inferred source is FILTERED to the platforms the node lists first,
+          // so a pull request touching `apps/ios` and `apps/webapp` that names a
+          // web-only acceptance is honoured as web rather than refused.
+          { label: pathLabel, platforms: pathPlatforms, explicit: false },
           {
             label: "the repository link",
             platforms: linkPlatform ? [linkPlatform] : [],
@@ -619,8 +1446,7 @@ export function planForProject(
             `${node.id}: ${label} says "${platforms.join(", ")}", which ${node.id} does not list ` +
               `(${node.platforms.join(", ")}). The plan attaches no ref and promotes no status for ` +
               `it — an unscoped ref here would move the base status, marking every platform shipped. ` +
-              `A ref this pull request already left on ${node.id} keeps being mirrored, but nothing ` +
-              `is promoted from it either.`,
+              `${refusalTail(node.id)}`,
           );
         }
       }
@@ -635,17 +1461,96 @@ export function planForProject(
     // refreshed regardless of what the mentions say.
     if (!referencesPr && scopes.length === 0) continue;
 
-    // Mirror EVERY ref pointing at this PR, whatever its scope — not just the
-    // ones this delivery resolves. Otherwise a scoped ref stops being refreshed
-    // the moment its `@platform` disappears from the body and sits at "open"
-    // forever while the PR is merged: a mirror that has quietly stopped
-    // mirroring.
+    /**
+     * ── WHICH OF THIS PULL REQUEST'S REFS THIS DELIVERY STILL MOVES ────────
+     *
+     * THE FAILURE THIS ADDRESSES. Links `apps/ios` -> ios and `apps/webapp` ->
+     * web. Pull request #42 opens touching both trees, so an early delivery
+     * writes `gh-pr-42-ios` AND `gh-pr-42-web`. The author drops the webapp
+     * commits and merges. Nothing about the pull request says "web" any more,
+     * yet `gh-pr-42-web` is refreshed to "merged" and promoted — so web goes
+     * live for a pull request that does not touch the web app.
+     *
+     * THE RULE. Provenance is not available and is not needed. A ref for this
+     * pull request is mirrored and promotable while ANY source SPEAKING ON THIS
+     * DELIVERY justifies its platform — the `@platform` suffixes in the current
+     * title and body, the path-scoped links the current changed files land in,
+     * and (only where no path-scoped link matched) the repository link,
+     * unioned, plus whatever this delivery just wrote. One that no source
+     * justifies is FROZEN: not refreshed, not promoted, NOT REMOVED.
+     *
+     * Precedence still decides what is WRITTEN; this decides only which
+     * already-written refs move, and the two questions have different answers
+     * on purpose: an `AC-x@ios` mention outranks a `web` path match for
+     * writing, while the path match is still perfectly good evidence that a
+     * `web` ref belongs.
+     *
+     * ── WHY FROZEN AND NOT REMOVED ─────────────────────────────────────────
+     * Removal is a claim of ABSENCE, and the file list this rule reads can be
+     * partial — the page arkaik never read is exactly where the contrary
+     * evidence would be. Freezing never makes that claim. It still buys the
+     * containment removal was reached for: a frozen ref is not carried forward
+     * to "merged", so a pull request that stopped touching `apps/webapp` cannot
+     * turn its stale `web` ref into a standing `live` promotion that `arkaik
+     * sync --promote` — which runs `computeRefPromotions` over the whole bundle
+     * with NO per-delivery filter, unlike the `touched` gate below — fires out
+     * of band. It does NOT undo a promotable state an earlier truthful delivery
+     * already wrote; only removal would, and that is what this refuses to do.
+     *
+     * ── WHAT IT DOES NOT COVER ─────────────────────────────────────────────
+     * Only nodes this delivery RESOLVED a scope for, on COMPLETE evidence. A
+     * node reached purely through an existing ref (`referencesPr`, no mention)
+     * has no source speaking about it, so its refs are mirrored and left alone
+     * — a body edit that drops a mention must not undo a promotion that already
+     * landed. A REFUSED node is left alone because a refusal establishes
+     * nothing at all, and an incomplete list freezes nothing whatsoever: see
+     * `evidenceComplete`.
+     */
+    const freezes = mentionedNodes.has(node.id) && !refusedScope && evidenceComplete;
+    const justified = new Set<PlatformId | null>([
+      // What this delivery WROTE is justified by construction — precedence
+      // chose it. Listing it explicitly is what keeps case 4 (nothing named a
+      // platform anywhere, so one unscoped ref) from freezing its own ref.
+      ...scopes,
+      ...(explicitPlatforms.get(node.id) ?? []),
+      // The raw source platforms, NOT filtered to `node.platforms`. The filter
+      // exists to stop a ref being WRITTEN with nowhere to land; a ref that
+      // already exists for such a platform promotes nothing anyway
+      // (`platform-not-applicable`), and freezing it would be a claim this
+      // rule's sentence does not license.
+      ...pathPlatforms,
+      // ONLY WHEN THE PATH SOURCE NAMED NOTHING — the same condition under which
+      // `resolveRefScopes` skips a silent source and lets the link decide what
+      // gets WRITTEN. Keyed on `pathPlatforms`, not on `pathMatched`: a matched
+      // link carrying `platform: null` matches without naming anything, and
+      // keying on the match would then let the link decide the write while being
+      // refused a say in what stays justified — two answers to one question.
+      // Unconditionally, meanwhile, this fallback justified a stale ref for its
+      // own platform even on a delivery whose changed files were positively read
+      // as landing inside a DIFFERENT path-scoped link.
+      ...(pathPlatforms.length === 0 && linkPlatform ? [linkPlatform] : []),
+    ]);
+    /**
+     * A ref this delivery must leave exactly as it is.
+     *
+     * Gated on `isMirrored` like everything else in this loop: a hand-written
+     * `{ type: "url" }` ref at this url is not this mirror's business, and
+     * "frozen" is as much an act on a ref as refreshing it.
+     */
+    const isFrozen = (ref: Ref): boolean =>
+      isMirrored(ref) && freezes && !justified.has((ref.platform ?? null) as PlatformId | null);
+
+    // Mirror EVERY ref pointing at this PR that is not frozen, whatever its
+    // scope — not just the ones this delivery resolves. Otherwise a scoped ref
+    // stops being refreshed the moment its `@platform` disappears from the body
+    // while some other source still names it, and sits at "open" forever while
+    // the PR is merged: a mirror that has quietly stopped mirroring.
     //
     // `type` is NOT rewritten here. It used to be — `type: "github-pr"` sat in
     // this spread — which silently converted a hand-written `{ type: "url" }`
     // ref at the same url into a promotable one; see `isMirrored`.
     const refs: Ref[] = existing.map((ref) =>
-      isMirrored(ref)
+      isMirrored(ref) && !isFrozen(ref)
         ? {
             ...ref,
             title: event.title,
@@ -654,6 +1559,40 @@ export function planForProject(
           }
         : ref,
     );
+
+    const frozen = existing.filter(isFrozen).map((ref) => ref.platform ?? "no platform");
+    if (frozen.length > 0) {
+      // The sources are listed from what this delivery ACTUALLY consulted, not
+      // from the full set the rule can consult. Naming "the path-scoped links"
+      // to someone who has none, or telling them the whole-repository link
+      // "does not speak here" on a delivery where it is the only thing that
+      // decided the scope, is a report that sends the reader to look at the
+      // wrong thing — worse than a shorter one.
+      const consulted = ["an @platform in the pull request's current title or body"];
+      if (pathMatched) consulted.push("the path-scoped repository links its changed files land in");
+      if (pathPlatforms.length === 0 && linkPlatform) consulted.push("the repository link");
+      // Why a source the reader can SEE configured was not consulted. Gated on
+      // the condition that actually excludes it — a path link that matched AND
+      // named a platform — rather than on a bare match: a matched link carrying
+      // no platform leaves the fallback live, and saying otherwise would send
+      // someone to change a link that is working correctly.
+      const fallbackSilent =
+        pathPlatforms.length > 0 && linkPlatform
+          ? ` (the whole-repository link names ${linkPlatform}, but it does not speak here: a ` +
+            `path-scoped link matched and named a platform, which is what that fallback is the ` +
+            `fallback FOR)`
+          : "";
+      warnings.push(
+        `${node.id}: nothing this delivery consulted justifies the ref this pull request left for ` +
+          `${frozen.join(", ")} — not ${consulted.join(", nor ")}${fallbackSilent}. So this plan FREEZES it: it is ` +
+          `not refreshed to this pull request's current state, and this plan promotes nothing ` +
+          `from it. It is NOT removed — ${node.id} still carries a ref for a platform this pull ` +
+          `request no longer touches; it simply stops moving. Note that arkaik sync re-reads refs ` +
+          `from the GitHub API on its own schedule, so with --promote it can still mirror and ` +
+          `promote from a frozen ref; freezing narrows what this webhook claims, not what every ` +
+          `tool reading the bundle claims.`,
+      );
+    }
 
     for (const scope of scopes) {
       if (refs.some((r) => isMirrored(r) && (r.platform ?? null) === scope)) continue;
@@ -668,36 +1607,40 @@ export function planForProject(
       });
     }
 
-    // THE INVARIANT: for one PR on one node, either exactly one unscoped ref or
-    // a set of platform-scoped ones — never a mix.
-    //
-    // Both directions are load-bearing. A leftover UNSCOPED ref beside a scoped
-    // one promotes the base status on this very delivery, marking every platform
-    // shipped at the moment the author asked for one. A leftover SCOPED ref when
-    // an unscoped one is written is worse than redundant: refs written by the
-    // previous version are stored as `gh-pr-<n>` while carrying a platform, so
-    // minting the unscoped id beside one would be a `duplicate-ref-id` — a
-    // validator ERROR that refuses the entire batch on every redelivery.
-    const wroteScoped = scopes.some((s) => s !== null);
-    const wroteUnscoped = scopes.some((s) => s === null);
-    const kept = refs.filter((ref) => {
-      if (!isMirrored(ref)) return true;
-      const scoped = ref.platform != null;
-      return scoped ? !wroteUnscoped : !wroteScoped;
-    });
-
-    const patch = { metadata: { ...node.metadata, refs: kept } };
+    const patch = { metadata: { ...node.metadata, refs } };
     ops.push({ op: "update_node", node_id: node.id, patch });
     patched.push({ ...node, ...patch } as Node);
-    // A REFUSED scope registers NO promotable refs. The mirror above still ran
-    // — the ref stays fresh — but `touched` is what gates both the promotions
-    // and the skip report below, so an empty set is how "attaches no ref and
-    // promotes no status" becomes true of the redelivery as well as the first
-    // delivery. Registering the refreshed ids here instead is what let the
-    // refusal promote on every subsequent delivery of the same PR.
+    // WHAT THIS DELIVERY MAY PROMOTE FROM. Two exclusions, and both have been
+    // wrong at least once:
+    //
+    //   - a REFUSED scope registers nothing. The mirror above still ran — the
+    //     ref stays fresh — but an empty set is how "attaches no ref and
+    //     promotes no status" becomes true of the redelivery as well as the
+    //     first delivery. Registering the refreshed ids here is what once let a
+    //     refusal promote on every subsequent delivery of the same PR;
+    //   - a FROZEN ref does not promote. Its whole definition is that no live
+    //     source justifies its platform, and promoting from what this delivery
+    //     declined to even refresh would be the contradiction in one step.
     touched.set(
       node.id,
-      refusedScope ? new Set<string>() : new Set(kept.filter(isMirrored).map((r) => r.id)),
+      refusedScope
+        ? new Set<string>()
+        : new Set(refs.filter((ref) => isMirrored(ref) && !isFrozen(ref)).map((r) => r.id)),
+    );
+  }
+
+  // An incomplete list is reported only when something was actually planned
+  // from it. Incompleteness with NO match never reaches here — it refuses in
+  // `resolveRepoScope` — and a warning beside zero ops would make
+  // `assembleOutcome` report "no platform scope could be honoured" for a
+  // delivery whose scope was honoured fine.
+  if (scope.kind === "links" && scope.incomplete.length > 0 && ops.length > 0) {
+    warnings.push(
+      `${event.repoFullName}#${event.number}: ${describeIncomplete(scope.incomplete)}, so arkaik ` +
+        `matched the path-scoped repository links against a partial list. A platform it found is ` +
+        `real; one it missed is simply not claimed. Nothing is frozen from a partial list either — ` +
+        `every ref this pull request left is mirrored and promoted from exactly as it would have ` +
+        `been before path-scoped links existed.`,
     );
   }
 
@@ -846,6 +1789,43 @@ export function unknownPlatformWarnings(event: Pick<PullRequestEvent, "title" | 
   );
 }
 
+/**
+ * The App installation id this delivery will authenticate as.
+ *
+ * THE PAYLOAD'S FIRST, THE STORED ONE AS A FALLBACK, and the fallback is the
+ * whole reason this exists. A repository can be wired to arkaik as a plain
+ * repository webhook ALONGSIDE the App: those deliveries carry no `installation`
+ * object at all, so `event.installationId` is null and the changed-files API —
+ * which is authenticated as the installation — would be unreachable. Every
+ * path-scoped link on that repository would then refuse, on every such delivery,
+ * with "this delivery carries no GitHub App installation id". The id is a
+ * property of (repository, installation) and identical for every project that
+ * linked the repo, so the one `recordInstallation` stored from an earlier
+ * App delivery is exactly the right value.
+ *
+ * The payload wins when both exist: a reinstall mints a new id, and the stored
+ * one is then stale. A stale FALLBACK is harmless in the other direction too —
+ * it fails the token exchange deterministically (404, "the installation no
+ * longer exists") and is reported, so it can only ever help.
+ *
+ * SPLIT OUT AND EXPORTED BECAUSE IT IS PURE. Inline in `applyPullRequestEvent`
+ * — an async function whose first statement is a database call — this was
+ * reachable only by the Postgres-gated suite, and no test in either suite
+ * exercised the fallback: deleting it left every suite green.
+ *
+ * Rows are scanned in the order `linkedProjects` returns them, which is ordered
+ * (`order by project_id, path_prefix`), so the chosen id does not depend on
+ * whatever order Postgres felt like. Rows with no stored id are skipped rather
+ * than ending the scan — a repository linked by two projects where only one has
+ * seen an App delivery is ordinary.
+ */
+export function resolveInstallationId(
+  event: Pick<PullRequestEvent, "installationId">,
+  rows: readonly Pick<LinkedRepo, "installationId">[],
+): string | null {
+  return event.installationId ?? rows.find((row) => row.installationId)?.installationId ?? null;
+}
+
 /** What one project's half of a delivery produced, before it becomes a report. */
 export interface OutcomeInput {
   projectId: string;
@@ -908,14 +1888,22 @@ export function assembleOutcome(input: OutcomeInput): ApplyOutcome {
 /**
  * Apply a PR event to every project that linked the repo.
  *
- * EXACTLY ONE OUTCOME PER LINK, including the ones that did nothing — so an
- * EMPTY array means no project has linked this repository at all, which is a
- * different thing from "linked, and nothing matched". `route.ts` relies on that
- * to say so in the response body; keep pushing an outcome per link, or a typo'd
- * repo link starts reading as a silent success again.
+ * EXACTLY ONE OUTCOME PER LINKED PROJECT, including the ones that did nothing —
+ * so an EMPTY array means no project has linked this repository at all, which is
+ * a different thing from "linked, and nothing matched". `route.ts` relies on
+ * that to say so in the response body; keep pushing an outcome per project, or a
+ * typo'd repo link starts reading as a silent success again.
+ *
+ * PER PROJECT, NOT PER LINK — a monorepo yields several rows for one project,
+ * and one pass per row would be one version bump, one journal batch and one
+ * outcome per row for a single pull request. See `groupLinksByProject`.
  */
-export async function applyPullRequestEvent(event: PullRequestEvent): Promise<ApplyOutcome[]> {
-  const links = await linkedProjects(event.repoFullName);
+export async function applyPullRequestEvent(
+  event: PullRequestEvent,
+  options: { fetchFiles?: FetchChangedFiles } = {},
+): Promise<ApplyOutcome[]> {
+  const rows = await linkedProjects(event.repoFullName);
+  const groups = groupLinksByProject(rows);
   const outcomes: ApplyOutcome[] = [];
 
   // Derived from the PR TEXT, so it is the same for every linked project —
@@ -926,14 +1914,36 @@ export async function applyPullRequestEvent(event: PullRequestEvent): Promise<Ap
   // carry the warning, and a mention nobody ever sees is not a report.
   for (const warning of textWarnings) console.warn(`[github] ${event.repoFullName}#${event.number}: ${warning}`);
 
-  for (const link of links) {
+  // The payload's id first, so the very first delivery after installing works
+  // with nothing stored; the stored one as a fallback for a delivery that
+  // carries none. See `resolveInstallationId`.
+  const installationId = resolveInstallationId(event, rows);
+  if (event.installationId && rows.some((row) => row.installationId !== event.installationId)) {
+    // Best effort, and deliberately not awaited into the delivery's success: a
+    // failed write here costs a fallback nothing has needed yet, while letting
+    // it throw would lose a real transition to a bookkeeping error. The JS-side
+    // check keeps the ordinary delivery, where it already matches, from issuing
+    // any query at all.
+    await recordInstallation(event.repoFullName, event.installationId).catch((err) => {
+      console.warn(`[github] could not record installation id: ${err instanceof Error ? err.message : "unknown"}`);
+    });
+  }
+
+  const scopes = await resolveDeliveryScopes({
+    groups,
+    event,
+    installationId,
+    fetchFiles: options.fetchFiles ?? ((pr) => githubApp().listPullRequestFiles(pr)),
+  });
+
+  for (const group of groups) {
     // Owner scoping is by the link itself: a repo can only be linked by someone
     // who owns the project, so the webhook acts within that authority.
-    const loaded = await getProject(link.projectId, await ownerIdsFor(link.projectId));
+    const loaded = await getProject(group.projectId, await ownerIdsFor(group.projectId));
     if (!loaded) {
       outcomes.push(
         assembleOutcome({
-          projectId: link.projectId,
+          projectId: group.projectId,
           textWarnings,
           planWarnings: [],
           opCount: 0,
@@ -946,7 +1956,16 @@ export async function applyPullRequestEvent(event: PullRequestEvent): Promise<Ap
     const { ops, warnings: planWarnings } = planForProject(
       loaded.bundle as unknown as Parameters<typeof planForProject>[0],
       event,
-      link.platform,
+      // Present for every group by construction — `scopes` is built from the
+      // same list. The fallback refuses rather than defaulting to a platform,
+      // because a missing entry would mean the two lists disagree and guessing
+      // then is exactly the direction this file forbids.
+      scopes.get(group.projectId) ?? {
+        kind: "no-platform",
+        reason: "not-consulted",
+        detail: "arkaik could not resolve which of its repository links this pull request belongs to",
+        prefixes: group.links.map((link) => link.pathPrefix),
+      },
     );
     // Logged for the same reason as above: the response body is read by whoever
     // opens Recent Deliveries, the log by whoever is watching the server.
@@ -962,14 +1981,14 @@ export async function applyPullRequestEvent(event: PullRequestEvent): Promise<Ap
     // into the silence it replaced.
     if (ops.length === 0) {
       outcomes.push(
-        assembleOutcome({ projectId: link.projectId, textWarnings, planWarnings, opCount: 0 }),
+        assembleOutcome({ projectId: group.projectId, textWarnings, planWarnings, opCount: 0 }),
       );
       continue;
     }
 
     const result = await applyMutation({
-      projectId: link.projectId,
-      ownerIds: await ownerIdsFor(link.projectId),
+      projectId: group.projectId,
+      ownerIds: await ownerIdsFor(group.projectId),
       ops,
       actor: "github-app",
       tier: "klub", // A webhook must not fail on a tier cap it cannot act on.
@@ -977,7 +1996,7 @@ export async function applyPullRequestEvent(event: PullRequestEvent): Promise<Ap
 
     outcomes.push(
       assembleOutcome({
-        projectId: link.projectId,
+        projectId: group.projectId,
         textWarnings,
         planWarnings,
         opCount: ops.length,

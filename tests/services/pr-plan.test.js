@@ -169,7 +169,7 @@ const refFor = (state, platform) =>
 const mentionFor = (scan, id, platform) =>
   scan.mentions.filter((m) => m.id === id && m.platform === platform);
 
-function main() {
+async function main() {
   const {
     mentionedAcceptances,
     refIdFor,
@@ -177,7 +177,35 @@ function main() {
     planForProject,
     unknownPlatformWarnings,
     assembleOutcome,
+    groupLinksByProject,
+    needsChangedFiles,
+    resolveRepoScope,
+    resolveDeliveryScopes,
+    resolveInstallationId,
   } = loadPrPlan();
+
+  /**
+   * The repository scope a single whole-repository link resolves to — what
+   * every link in the world looked like before path scoping existed.
+   *
+   * Built by calling the REAL `resolveRepoScope` rather than by writing the
+   * object out, so all ~50 slice-1 assertions below become a regression net
+   * proving that a `''`-prefix link still resolves exactly as it used to. A
+   * hand-written literal here would only prove this file agrees with itself.
+   */
+  const wholeRepo = (platform = null) =>
+    resolveRepoScope([{ platform, pathPrefix: "" }], { kind: "not-needed" });
+
+  /**
+   * A path-scoped link set, resolved against a list of changed files.
+   *
+   * `incomplete` is the list of REASONS the file list came up short (empty is a
+   * whole list) — see `IncompleteCause` in lib/services/github/app.ts. It is a
+   * list rather than a boolean because three unrelated things produce it and
+   * every report has to name the one it observed.
+   */
+  const pathScope = (links, filePaths, incomplete = []) =>
+    resolveRepoScope(links, { kind: "files", paths: filePaths, incomplete });
 
   /**
    * The REAL parity projections, not a re-implementation.
@@ -642,7 +670,7 @@ function main() {
   // --- Precedence: an explicit mention beats the repo link ------------------
   {
     const node = acceptance("AC-x", ["web", "ios", "android"]);
-    const ops = planOps(bundle([node], true), event({ body: "AC-x@android" }), "ios");
+    const ops = planOps(bundle([node], true), event({ body: "AC-x@android" }), wholeRepo("ios"));
     const state = settle(node, ops);
     check("an explicit mention wins over the link platform", refFor(state, "android") !== undefined, JSON.stringify(state.metadata));
     check(
@@ -659,7 +687,7 @@ function main() {
   }
   {
     const node = acceptance("AC-x", ["web", "ios"]);
-    const ops = planOps(bundle([node], true), event({ body: "AC-x" }), "ios");
+    const ops = planOps(bundle([node], true), event({ body: "AC-x" }), wholeRepo("ios"));
     const state = settle(node, ops);
     const ref = refFor(state, "ios");
     check("a bare mention inherits the link's platform", ref !== undefined, JSON.stringify(state.metadata));
@@ -673,13 +701,13 @@ function main() {
   }
   {
     const node = acceptance("AC-x", ["web", "ios"]);
-    const ops = planOps(bundle([node], true), event({ body: "AC-x@ios" }), null);
+    const ops = planOps(bundle([node], true), event({ body: "AC-x@ios" }), wholeRepo());
     const state = settle(node, ops);
     check("an explicit mention scopes even an unscoped link", refFor(state, "ios") !== undefined, JSON.stringify(state.metadata));
   }
   {
     const node = acceptance("AC-x", ["web", "ios"]);
-    const ops = planOps(bundle([node], true), event({ body: "AC-x" }), null);
+    const ops = planOps(bundle([node], true), event({ body: "AC-x" }), wholeRepo());
     const state = settle(node, ops);
     const ref = refFor(state, null);
     check("a bare mention in an unscoped repo stays unscoped", ref !== undefined, JSON.stringify(state.metadata));
@@ -696,7 +724,7 @@ function main() {
     // unscoped ref beside it would promote the base status on this very
     // delivery and claim parity everywhere.
     const node = acceptance("AC-x", ["web", "ios"]);
-    const ops = planOps(bundle([node], true), event({ title: "AC-x: guest checkout", body: "fixes AC-x@ios" }), null);
+    const ops = planOps(bundle([node], true), event({ title: "AC-x: guest checkout", body: "fixes AC-x@ios" }), wholeRepo());
     const state = settle(node, ops);
     check("the explicit scope is written", refFor(state, "ios") !== undefined, JSON.stringify(state.metadata));
     check(
@@ -716,7 +744,7 @@ function main() {
     // THE headline case. Fails three ways against the old model: one minted id,
     // id-or-url matching, and the single-refId promotion filter.
     const node = acceptance("AC-x", ["web", "ios", "android"]);
-    const ops = planOps(bundle([node], true), event({ body: "AC-x@ios and AC-x@android" }), null);
+    const ops = planOps(bundle([node], true), event({ body: "AC-x@ios and AC-x@android" }), wholeRepo());
     const state = settle(node, ops);
     const ios = refFor(state, "ios");
     const android = refFor(state, "android");
@@ -751,7 +779,7 @@ function main() {
     // replacing that `.sort()` with `.reverse()` kept the whole suite green.
     const node = acceptance("AC-x", ["web", "ios", "android"]);
     const scopeOrder = (body) => {
-      const state = settle(node, planOps(bundle([node], true), event({ body }), null));
+      const state = settle(node, planOps(bundle([node], true), event({ body }), wholeRepo()));
       return refsOf(state).filter((r) => r.url === PR_URL).map((r) => r.platform ?? null);
     };
     const androidFirst = scopeOrder("AC-x@android and AC-x@ios");
@@ -789,7 +817,7 @@ function main() {
     const ops = planOps(
       bundle([node], true),
       event({ body: "AC-x@ios", title: "Guest checkout, at last" }),
-      null,
+      wholeRepo(),
     );
     const state = settle(node, ops);
     const ref = refFor(state, "ios");
@@ -824,9 +852,9 @@ function main() {
     // adoption as deliberate — fails the governing rule of this file, because it
     // manufactures a status claim nobody made, from a ref the author never
     // opted into promotion. And the restriction has to cover the whole loop, not
-    // just the refresh: the mixed-scope filter matches on url, so a
-    // refresh-only restriction would have left it free to DELETE the ref it
-    // declines to adopt, which is a worse outcome than adopting it.
+    // just the refresh: the reconciliation filter would then match on url
+    // alone, so a refresh-only restriction would have left it free to DELETE
+    // the ref it declines to adopt, which is a worse outcome than adopting it.
     const hand = { id: "hand-1", type: "url", url: PR_URL, title: "the PR", external_status: "merged" };
     const node = acceptance("AC-x", ["web", "ios"], { metadata: { refs: [hand] } });
 
@@ -845,7 +873,7 @@ function main() {
     );
 
     // With no mention, a url-typed ref does not even put the node in scope.
-    const quiet = planForProject(bundle([node], true), event({ body: "no ids here" }), null);
+    const quiet = planForProject(bundle([node], true), event({ body: "no ids here" }), wholeRepo());
     check(
       "a ref of another type does not make the node this mirror's business",
       quiet.ops.find((o) => o.node_id === "AC-x") === undefined,
@@ -853,7 +881,7 @@ function main() {
     );
 
     // With a mention, the delivery does its own work beside it.
-    const plan = planForProject(bundle([node], true), event({ body: "AC-x@ios" }), null);
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x@ios" }), wholeRepo());
     const state = settle(node, plan.ops);
     const kept = refsOf(state).find((r) => r.id === "hand-1");
     check("the hand-written ref survives", kept !== undefined, () => JSON.stringify(refsOf(state)));
@@ -885,7 +913,7 @@ function main() {
   {
     const a = acceptance("AC-a", ["web", "ios"]);
     const b = acceptance("AC-b", ["web", "ios"]);
-    const ops = planOps(bundle([a, b], true), event({ body: "AC-a@ios and AC-b@web" }), null);
+    const ops = planOps(bundle([a, b], true), event({ body: "AC-a@ios and AC-b@web" }), wholeRepo());
     const stateA = settle(a, ops);
     const stateB = settle(b, ops);
 
@@ -925,7 +953,7 @@ function main() {
     // `@ios` its neighbour asked for.
     const a = acceptance("AC-a", ["web", "ios"]);
     const b = acceptance("AC-b", ["web", "ios"]);
-    const ops = planOps(bundle([a, b], true), event({ body: "AC-a@ios and AC-b" }), "web");
+    const ops = planOps(bundle([a, b], true), event({ body: "AC-a@ios and AC-b" }), wholeRepo("web"));
     const stateA = settle(a, ops);
     const stateB = settle(b, ops);
     check("the explicit scope lands on AC-a", refFor(stateA, "ios") !== undefined, JSON.stringify(stateA.metadata));
@@ -978,7 +1006,7 @@ function main() {
       ),
       () => JSON.stringify(computeRefPromotions(bundle([a, b], true)).promotions),
     );
-    const plan = planForProject(bundle([a, b], true), event({ body: "AC-b@ios" }), null);
+    const plan = planForProject(bundle([a, b], true), event({ body: "AC-b@ios" }), wholeRepo());
     const stateA = settle(a, plan.ops);
     const stateB = settle(b, plan.ops);
     check(
@@ -1016,7 +1044,7 @@ function main() {
     // it will be believed.
     const a = acceptance("AC-a", ["web", "ios"]);
     const b = acceptance("AC-b", ["web", "ios", "android"]);
-    const plan = planForProject(bundle([a, b], true), event({ body: "AC-a@ios and AC-b" }), null);
+    const plan = planForProject(bundle([a, b], true), event({ body: "AC-a@ios and AC-b" }), wholeRepo());
     const stateA = settle(a, plan.ops);
     const stateB = settle(b, plan.ops);
     check(
@@ -1053,7 +1081,7 @@ function main() {
     const plan = planForProject(
       bundle([a, b], true),
       event({ title: "AC-a: Apple Pay", body: "Fixes AC-a@ios-tablet and AC-b" }),
-      null,
+      wholeRepo(),
     );
     const stateA = settle(a, plan.ops);
     const stateB = settle(b, plan.ops);
@@ -1118,7 +1146,7 @@ function main() {
       ),
       () => JSON.stringify(computeRefPromotions(bundle([a, b], true)).skipped),
     );
-    const plan = planForProject(bundle([a, b], true), event({ body: "AC-b@ios" }), null);
+    const plan = planForProject(bundle([a, b], true), event({ body: "AC-b@ios" }), wholeRepo());
     const stateB = settle(b, plan.ops);
     check(
       "precondition: this delivery mints the colliding id on AC-b",
@@ -1140,7 +1168,7 @@ function main() {
   {
     // Opt-in is the format's default: refs are mirrored, nothing moves.
     const node = acceptance("AC-x", ["web", "ios", "android"]);
-    const ops = planOps(bundle([node]), event({ body: "AC-x@ios and AC-x@android" }), null);
+    const ops = planOps(bundle([node]), event({ body: "AC-x@ios and AC-x@android" }), wholeRepo());
     const state = settle(node, ops);
     check("without ref_policy the refs still attach", refFor(state, "ios") !== undefined && refFor(state, "android") !== undefined, JSON.stringify(state.metadata));
     check("but the base status does not move", state.status === "prioritized", JSON.stringify(state.status));
@@ -1158,7 +1186,7 @@ function main() {
     // redelivery forever.
     const node = acceptance("AC-x", ["web", "ios"], { metadata: { refs: [ghRef({ platform: "ios" })] } });
     const before = new Date().toISOString();
-    const ops = planOps(bundle([node], true), event({ body: "AC-x", title: "Guest checkout, at last" }), "ios");
+    const ops = planOps(bundle([node], true), event({ body: "AC-x", title: "Guest checkout, at last" }), wholeRepo("ios"));
     const state = settle(node, ops);
     const ref = refFor(state, "ios");
     check("a legacy scoped ref is matched", ref !== undefined, JSON.stringify(state.metadata));
@@ -1203,12 +1231,12 @@ function main() {
     // assert the redelivery actually PLANNED the ref refresh first; without
     // them, the idempotence claim is unfalsifiable.
     const node = acceptance("AC-x", ["web", "ios"]);
-    const first = planOps(bundle([node], true), event({ body: "AC-x@ios" }), null);
+    const first = planOps(bundle([node], true), event({ body: "AC-x@ios" }), wholeRepo());
     const once = settle(node, first);
     check("the first run wrote the scoped ref", refFor(once, "ios")?.id === "gh-pr-42-ios", JSON.stringify(once.metadata));
     check("the first run promoted", once.metadata?.platformStatuses?.ios === "live", JSON.stringify(once.metadata));
 
-    const second = planOps(bundle([once], true), event({ body: "AC-x@ios" }), null);
+    const second = planOps(bundle([once], true), event({ body: "AC-x@ios" }), wholeRepo());
     check("the redelivery returns an op list", Array.isArray(second), JSON.stringify(second));
     const refresh = second.find((o) => o.op === "update_node" && o.node_id === "AC-x");
     check(
@@ -1238,19 +1266,27 @@ function main() {
   }
 
   // --- The mixed-scope hazards ---------------------------------------------
+  //
+  // A node CAN end up carrying both an unscoped and a scoped ref for one pull
+  // request, and pretending otherwise was what removal bought. Freezing does
+  // not buy it: nothing is taken away, so a stale ref of the other shape stays
+  // on the node. What must hold instead — and what these blocks pin — is that
+  // the stale one STOPS MOVING, so this delivery makes exactly one claim.
   {
     // A stale UNSCOPED ref left by the previous version, now that the PR says
-    // @ios. Left in place it promotes the BASE status on this very delivery.
+    // @ios. Refreshed to "merged" it promotes the BASE status on this very
+    // delivery, which resolves every platform with no entry of its own.
     const figma = { id: "fig-1", type: "figma", url: "https://figma.com/x" };
-    const node = acceptance("AC-x", ["web", "ios"], { metadata: { refs: [ghRef(), figma] } });
-    const ops = planOps(bundle([node], true), event({ body: "AC-x@ios" }), null);
+    const stale = ghRef({ synced_at: "2026-01-01T00:00:00.000Z" });
+    const node = acceptance("AC-x", ["web", "ios"], { metadata: { refs: [stale, figma] } });
+    const ops = planOps(bundle([node], true), event({ body: "AC-x@ios" }), wholeRepo());
     const state = settle(node, ops);
     check("the node was planned", state.metadata?.refs?.some((r) => r.url === PR_URL) === true, JSON.stringify(state.metadata));
     check("the scoped ref is written", refFor(state, "ios")?.id === "gh-pr-42-ios", JSON.stringify(refsOf(state)));
     check(
-      "and the stale unscoped ref is REMOVED, not left beside it",
-      refFor(state, null) === undefined,
-      JSON.stringify(refsOf(state)),
+      "and the stale unscoped ref is FROZEN — still there, but byte-identical, so it never reaches merged",
+      JSON.stringify(refFor(state, null)) === JSON.stringify(stale),
+      () => `${JSON.stringify(refFor(state, null))} vs ${JSON.stringify(stale)}`,
     );
     check(
       "so the base status is not promoted",
@@ -1259,8 +1295,8 @@ function main() {
     );
     check("only ios moved", state.metadata?.platformStatuses?.ios === "live", JSON.stringify(state.metadata?.platformStatuses));
     check(
-      "and an unrelated ref is untouched (the removal is targeted, not a wipe)",
-      refsOf(state).find((r) => r.id === "fig-1") !== undefined,
+      "and an unrelated ref of another type is untouched (the freeze is targeted, not a stall)",
+      JSON.stringify(refsOf(state).find((r) => r.id === "fig-1")) === JSON.stringify(figma),
       JSON.stringify(refsOf(state)),
     );
   }
@@ -1268,16 +1304,23 @@ function main() {
     // The reverse, which the previous version's data makes routine: every ref it
     // ever wrote is `gh-pr-<n>` even when scoped, so minting the unscoped id
     // beside one would be a duplicate-ref-id — a validator ERROR that refuses
-    // the whole batch.
-    const node = acceptance("AC-x", ["web", "ios"], { metadata: { refs: [ghRef({ platform: "ios" })] } });
-    const ops = planOps(bundle([node], true), event({ body: "AC-x" }), null);
+    // the whole batch. `freeRefId` is what stops that, and it matters MORE under
+    // freezing than it did under removal, because both refs now coexist.
+    const stale = ghRef({ platform: "ios", synced_at: "2026-01-01T00:00:00.000Z" });
+    const node = acceptance("AC-x", ["web", "ios"], { metadata: { refs: [stale] } });
+    const ops = planOps(bundle([node], true), event({ body: "AC-x" }), wholeRepo());
     const state = settle(node, ops);
     check("the node was planned", Array.isArray(state.metadata?.refs), JSON.stringify(state.metadata));
     check("the unscoped ref is present", refFor(state, null) !== undefined, JSON.stringify(refsOf(state)));
     check(
-      "the scoped one is gone (never both for one PR on one node)",
-      refFor(state, "ios") === undefined,
-      JSON.stringify(refsOf(state)),
+      "the scoped one is still there and FROZEN — freezing keeps history, it does not delete",
+      JSON.stringify(refFor(state, "ios")) === JSON.stringify(stale),
+      () => `${JSON.stringify(refFor(state, "ios"))} vs ${JSON.stringify(stale)}`,
+    );
+    check(
+      "…so this delivery promotes the base status and claims ios by inheritance, not from the frozen ref",
+      state.status === "live" && state.metadata?.platformStatuses === undefined,
+      () => JSON.stringify({ status: state.status, platformStatuses: state.metadata?.platformStatuses }),
     );
     const ids = refsOf(state).map((r) => r.id);
     check("and no two refs share an id", new Set(ids).size === ids.length, JSON.stringify(ids));
@@ -1290,7 +1333,7 @@ function main() {
     // on every redelivery, forever.
     const other = ghRef({ url: "https://github.com/acme/ios-app/pull/42", external_status: "merged" });
     const node = acceptance("AC-x", ["web", "ios"], { metadata: { refs: [other] } });
-    const ops = planOps(bundle([node], true), event({ body: "AC-x" }), null);
+    const ops = planOps(bundle([node], true), event({ body: "AC-x" }), wholeRepo());
     const state = settle(node, ops);
 
     const mine = refFor(state, null);
@@ -1314,7 +1357,7 @@ function main() {
   }
   {
     const node = acceptance("AC-x", ["web", "ios"], { metadata: { refs: [ghRef()] } });
-    const ops = planOps(bundle([node], true), event({ body: "AC-x" }), null);
+    const ops = planOps(bundle([node], true), event({ body: "AC-x" }), wholeRepo());
     const state = settle(node, ops);
     const ref = refFor(state, null);
     check("an existing unscoped ref is updated in place", ref?.id === "gh-pr-42", JSON.stringify(refsOf(state)));
@@ -1329,7 +1372,7 @@ function main() {
     // A ref for a DIFFERENT PR must survive whatever this delivery does.
     const other = { id: "gh-pr-7", type: "github-pr", url: "https://github.com/acme/monorepo/pull/7", external_status: "merged" };
     const node = acceptance("AC-x", ["web", "ios"], { metadata: { refs: [other] } });
-    const ops = planOps(bundle([node], true), event({ body: "AC-x@ios" }), null);
+    const ops = planOps(bundle([node], true), event({ body: "AC-x@ios" }), wholeRepo());
     const state = settle(node, ops);
     check("the scoped ref for this PR is written", refFor(state, "ios") !== undefined, JSON.stringify(refsOf(state)));
     check(
@@ -1349,7 +1392,7 @@ function main() {
     const node = acceptance("AC-x", ["web", "ios"], {
       metadata: { refs: [ghRef({ id: "gh-pr-42-ios", platform: "ios" })] },
     });
-    const ops = planOps(bundle([node], true), event({ body: "no ids here" }), null);
+    const ops = planOps(bundle([node], true), event({ body: "no ids here" }), wholeRepo());
     const state = settle(node, ops);
     const ref = refFor(state, "ios");
     check("a ref whose mention disappeared survives", ref !== undefined, JSON.stringify(state.metadata));
@@ -1375,7 +1418,7 @@ function main() {
     // PR is open; the author then edits the body and mistypes the suffix.
     const node = acceptance("AC-x", ["web", "ios", "android"]);
     const opened = event({ action: "opened", body: "AC-x@ios", merged: false, state: "open" });
-    const afterOpen = settle(node, planOps(bundle([node], true), opened, null));
+    const afterOpen = settle(node, planOps(bundle([node], true), opened, wholeRepo()));
     check(
       "precondition: the first delivery attached the scoped ref",
       refFor(afterOpen, "ios")?.id === "gh-pr-42-ios",
@@ -1395,7 +1438,7 @@ function main() {
     const plan = planForProject(
       bundle([afterOpen], true),
       event({ title: "AC-x: Apple Pay", body: "Fixes AC-x@ios-tablet" }),
-      null,
+      wholeRepo(),
     );
     const state = settle(afterOpen, plan.ops);
 
@@ -1446,46 +1489,63 @@ function main() {
     );
   }
   {
-    // THE BOUNDARY, pinned so the refusal above does not quietly widen into it.
+    // THE CASE THAT USED TO BE A BOUNDARY AND IS NOW THE SAME RULE.
     //
-    // A typo with NO bare mention beside it (`AC-x@ios-tablet` alone) puts the
-    // id in `unknown` and nowhere else, so the PR names no usable acceptance at
-    // all. A node reached only through a ref it already carries is then in the
-    // ordinary refresh-and-promote path — the same path as a body edited to say
-    // "no ids here", which is deliberate: a later edit must not retract a scope
-    // the author asked for explicitly on an earlier delivery, and the ref itself
-    // is that request, still saying `@ios`.
+    // `AC-x@ios-tablet` ALONE puts the id in `unknown` and nowhere else, so it
+    // never reached `mentions` — and the refusal above was gated on the node
+    // being MENTIONED, so it never fired. The node fell into the ordinary
+    // refresh-and-promote path instead, exactly as if the body had said "no ids
+    // here", and every ref this pull request had left on it was mirrored to the
+    // merge and promoted from.
     //
-    // This is NOT the over-claim the refusal exists to stop: the promotion is
-    // scoped to the platform the ref already names, so nothing is claimed that
-    // was not asked for. The typo is still reported — by
-    // `unknownPlatformWarnings`, on the outcome, not here.
+    // The comment that stood here defended that as scoped: the ref names `ios`,
+    // so promoting ios claims nothing extra. That is true of THAT fixture and
+    // false in general — an UNSCOPED ref left by an earlier delivery is the
+    // routine shape, and promoting from it moves the BASE status, which resolves
+    // every platform with no entry of its own. So this fixture uses the unscoped
+    // ref: the maximal-damage case, which is the one a rule has to be tested on.
+    //
+    // The refusal now belongs to the ID BEING NAMED, so it fires here.
     const node = acceptance("AC-x", ["web", "ios", "android"], {
-      metadata: { refs: [ghRef({ id: "gh-pr-42-ios", platform: "ios" })] },
+      metadata: { refs: [ghRef({ id: "gh-pr-42", external_status: "open" })] },
     });
-    const plan = planForProject(bundle([node], true), event({ body: "AC-x@ios-tablet" }), null);
-    const state = settle(node, plan.ops);
+    const mirrored = {
+      ...node,
+      metadata: { refs: [ghRef({ id: "gh-pr-42", external_status: "merged" })] },
+    };
     check(
       "precondition: the typo really did leave no usable mention",
       mentionFor(mentionedAcceptances({ title: "t", body: "AC-x@ios-tablet" }), "AC-x", null)[0] === undefined,
       () => JSON.stringify(mentionedAcceptances({ title: "t", body: "AC-x@ios-tablet" })),
     );
     check(
-      "the existing scoped ref still promotes its OWN platform",
-      state.metadata?.platformStatuses?.ios === "live",
-      () => JSON.stringify(state.metadata?.platformStatuses),
+      "precondition: mirrored to merged, that unscoped ref WOULD move the base status",
+      computeRefPromotions(bundle([mirrored], true)).promotions.some(
+        (p) => p.node_id === "AC-x" && p.ref_id === "gh-pr-42" && p.platform === undefined && p.to === "live",
+      ),
+      () => JSON.stringify(computeRefPromotions(bundle([mirrored], true))),
     );
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x@ios-tablet" }), wholeRepo());
+    const state = settle(node, plan.ops);
     check(
-      "and still claims nothing else",
-      state.status === "prioritized" &&
-        state.metadata?.platformStatuses?.web === undefined &&
-        state.metadata?.platformStatuses?.android === undefined,
+      "an id named ONLY by an unusable suffix promotes nothing at all",
+      state.status === "prioritized" && state.metadata?.platformStatuses === undefined,
       () => JSON.stringify({ status: state.status, platformStatuses: state.metadata?.platformStatuses }),
     );
     check(
-      "the typo is reported by the text channel, which is where it belongs",
+      "…and the ref it already carried is still mirrored, which is what refusalTail promises",
+      refFor(state, null)?.external_status === "merged",
+      () => JSON.stringify(refsOf(state)),
+    );
+    check(
+      "the typo is reported by the text channel",
       unknownPlatformWarnings({ title: "t", body: "AC-x@ios-tablet" }).some((w) => w.includes("ios-tablet")),
       () => JSON.stringify(unknownPlatformWarnings({ title: "t", body: "AC-x@ios-tablet" })),
+    );
+    check(
+      "…and by the planner, which is the only channel that can say a promotion was refused",
+      plan.warnings.find((w) => w.startsWith("AC-x:"))?.includes("was not understood") === true,
+      () => JSON.stringify(plan.warnings),
     );
   }
   {
@@ -1508,7 +1568,7 @@ function main() {
       () => JSON.stringify(computeRefPromotions(bundle([mirrored], true))),
     );
 
-    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), "ios");
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), wholeRepo("ios"));
     const state = settle(node, plan.ops);
     check("the pre-existing ref is still mirrored", refFor(state, "web")?.external_status === "merged", () =>
       JSON.stringify(refsOf(state)),
@@ -1541,7 +1601,7 @@ function main() {
       metadata: { refs: [ghRef({ id: "gh-pr-42-web", platform: "web" }), ghRef({ id: "gh-pr-42" })] },
     });
     const idsBefore = JSON.stringify(refsOf(node).map((r) => [r.id, r.platform ?? null]));
-    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), "ios");
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), wholeRepo("ios"));
     const state = settle(node, plan.ops);
     check(
       "precondition: the refusal fired",
@@ -1574,7 +1634,7 @@ function main() {
     // The direction of the trade is the whole point: a MISSING claim (nothing
     // happens, and a warning says why) beats a WRONG one every time.
     const node = acceptance("AC-x", ["web"]);
-    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), "ios");
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), wholeRepo("ios"));
     const state = settle(node, plan.ops);
     check(
       "an INFERRED platform the node lacks attaches NO ref at all",
@@ -1616,7 +1676,7 @@ function main() {
     // "refuse everything": when the node DOES list the link's platform, the link
     // still scopes the ref exactly as before.
     const node = acceptance("AC-x", ["web", "ios"]);
-    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), "ios");
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), wholeRepo("ios"));
     const state = settle(node, plan.ops);
     check("a link platform the node lists still scopes the ref", refFor(state, "ios") !== undefined, JSON.stringify(state.metadata));
     check("promoting that platform", state.metadata?.platformStatuses?.ios === "live", JSON.stringify(state.metadata?.platformStatuses));
@@ -1630,7 +1690,7 @@ function main() {
     const node = acceptance("AC-x", ["web"], {
       metadata: { refs: [ghRef({ id: "gh-pr-42-web", platform: "web" })] },
     });
-    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), "ios");
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), wholeRepo("ios"));
     const state = settle(node, plan.ops);
     const ref = refFor(state, "web");
     check("a pre-existing ref survives a refused scope", ref !== undefined, JSON.stringify(state.metadata?.refs));
@@ -1652,7 +1712,7 @@ function main() {
     const plan = planForProject(
       bundle([node], true),
       event({ title: "AC-guest-checkout: Apple Pay", body: "Fixes AC-guest-checkout@ios-tablet" }),
-      null,
+      wholeRepo(),
     );
     const state = settle(node, plan.ops);
     // Assert the PRECONDITION first: if the grammar ever stopped producing a
@@ -1699,7 +1759,7 @@ function main() {
     // scope is honoured — refusing here would punish a correct mention because a
     // typo sat next to it, turning a working feature off.
     const node = acceptance("AC-x", ["web", "ios", "android"]);
-    const plan = planForProject(bundle([node], true), event({ body: "AC-x@ios and AC-x@ios-tablet" }), null);
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x@ios and AC-x@ios-tablet" }), wholeRepo());
     const state = settle(node, plan.ops);
     check("a valid suffix beside an unusable one is still honoured", refFor(state, "ios") !== undefined, JSON.stringify(state.metadata?.refs));
     check("promoting only that platform", state.metadata?.platformStatuses?.ios === "live", JSON.stringify(state.metadata?.platformStatuses));
@@ -1718,7 +1778,7 @@ function main() {
     // from an older schema, a hand-edited row, or a future platform removed from
     // the list must degrade to "no platform named", never be written onto a ref.
     const node = acceptance("AC-x", ["web", "ios"]);
-    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), "windows");
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), wholeRepo("windows"));
     const state = settle(node, plan.ops);
     const ref = refFor(state, null);
     check("an unrecognised link platform falls back to an unscoped ref", ref !== undefined, JSON.stringify(state.metadata?.refs));
@@ -1737,7 +1797,7 @@ function main() {
     // An EXPLICIT one does not degrade: an unscoped ref here would promote the
     // base status, which is the parity lie the suffix exists to prevent.
     const node = acceptance("AC-x", ["web"]);
-    const ops = planOps(bundle([node], true), event({ body: "AC-x@ios" }), null);
+    const ops = planOps(bundle([node], true), event({ body: "AC-x@ios" }), wholeRepo());
     const state = settle(node, ops);
     check("an EXPLICIT platform the node lacks is kept on the ref", refFor(state, "ios")?.platform === "ios", JSON.stringify(refsOf(state)));
     check(
@@ -1753,7 +1813,7 @@ function main() {
   }
   {
     const node = acceptance("AC-x", ["web", "ios"], { status: "archived" });
-    const ops = planOps(bundle([node], true), event({ body: "AC-x@ios" }), null);
+    const ops = planOps(bundle([node], true), event({ body: "AC-x@ios" }), wholeRepo());
     const state = settle(node, ops);
     check("an archived node still mirrors the ref", refFor(state, "ios")?.external_status === "merged", JSON.stringify(state.metadata));
     check("but is never resurrected", state.status === "archived", JSON.stringify(state.status));
@@ -1765,7 +1825,7 @@ function main() {
   }
   {
     const node = acceptance("AC-x", ["web", "ios"], { metadata: { platformStatuses: { ios: "live" } } });
-    const ops = planOps(bundle([node], true), event({ body: "AC-x@ios" }), null);
+    const ops = planOps(bundle([node], true), event({ body: "AC-x@ios" }), wholeRepo());
     const state = settle(node, ops);
     check("a node already at the target still gets its ref", refFor(state, "ios") !== undefined, JSON.stringify(state.metadata));
     check(
@@ -1777,7 +1837,7 @@ function main() {
   }
   {
     const node = acceptance("AC-x", ["web", "ios"]);
-    const ops = planOps(bundle([node], true), event({ number: 7, url: "https://github.com/acme/monorepo/pull/7", body: "nothing here" }), "ios");
+    const ops = planOps(bundle([node], true), event({ number: 7, url: "https://github.com/acme/monorepo/pull/7", body: "nothing here" }), wholeRepo("ios"));
     check("the planner returns an op list", Array.isArray(ops), JSON.stringify(ops));
     check("a PR mentioning no acceptance touches nothing", ops.find((o) => o.node_id === "AC-x") === undefined, JSON.stringify(ops));
   }
@@ -1785,7 +1845,7 @@ function main() {
     // An unknown suffix must leave the acceptance alone entirely — not fall back
     // to the repo's link platform.
     const node = acceptance("AC-x", ["web", "ios"]);
-    const ops = planOps(bundle([node], true), event({ body: "AC-x@windows" }), "ios");
+    const ops = planOps(bundle([node], true), event({ body: "AC-x@windows" }), wholeRepo("ios"));
     check("the planner returns an op list", Array.isArray(ops), JSON.stringify(ops));
     check("an unknown platform produces no op at all", ops.find((o) => o.node_id === "AC-x") === undefined, JSON.stringify(ops));
   }
@@ -1799,7 +1859,7 @@ function main() {
       status: "prioritized",
       platforms: ["ios"],
     };
-    const ops = planOps(bundle([view], true), event({ body: "AC-x@ios" }), null);
+    const ops = planOps(bundle([view], true), event({ body: "AC-x@ios" }), wholeRepo());
     const state = settle(view, ops);
     check("a mention matches by id, not by species", refFor(state, "ios") !== undefined, JSON.stringify(state.metadata));
   }
@@ -1844,7 +1904,7 @@ function main() {
     // `applied: 1` on its own reads as success — this line is the whole
     // difference between an honest no-op and a silent one.
     const node = acceptance("AC-x", ["web"]);
-    const plan = planForProject(bundle([node], true), event({ body: "AC-x@ios" }), null);
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x@ios" }), wholeRepo());
     check("the plan attaches the ref", plan.ops.find((o) => o.node_id === "AC-x") !== undefined, JSON.stringify(plan.ops));
     const line = plan.warnings.find((w) => w.includes("AC-x"));
     check("and reports the refusal", line !== undefined, JSON.stringify(plan.warnings));
@@ -1869,7 +1929,7 @@ function main() {
   // /acceptances page with no parity gap, and reasonably concludes it worked.
   {
     const node = acceptance("AC-x", ["web", "ios", "android"]);
-    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), null);
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), wholeRepo());
     const state = settle(node, plan.ops);
     // The promotion has to have HAPPENED for the warning to be about anything.
     check("the base status actually moved", state.status === "live", JSON.stringify(state.status));
@@ -1892,7 +1952,7 @@ function main() {
     // the same statement, so a warning here would be noise on every single PR
     // in an ordinary single-platform project.
     const node = acceptance("AC-x", ["web"]);
-    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), null);
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), wholeRepo());
     const state = settle(node, plan.ops);
     check("the base status moved", state.status === "live", JSON.stringify(state.status));
     check("a single-platform acceptance is not warned about", plan.warnings[0] === undefined, JSON.stringify(plan.warnings));
@@ -1901,7 +1961,7 @@ function main() {
     // A scoped promotion claims exactly what the author asked for. Warning here
     // would train people to ignore the channel.
     const node = acceptance("AC-x", ["web", "ios", "android"]);
-    const plan = planForProject(bundle([node], true), event({ body: "AC-x@ios" }), null);
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x@ios" }), wholeRepo());
     const state = settle(node, plan.ops);
     check("the scoped promotion landed", state.metadata?.platformStatuses?.ios === "live", JSON.stringify(state.metadata));
     check("and a scoped promotion is not warned about", plan.warnings[0] === undefined, JSON.stringify(plan.warnings));
@@ -1937,7 +1997,7 @@ function main() {
       hasParityGap(node) === true,
       () => JSON.stringify({ status: node.status, platformStatuses: node.metadata?.platformStatuses }),
     );
-    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), null);
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), wholeRepo());
     const state = settle(node, plan.ops);
     check("the base status moved", state.status === "live", () => JSON.stringify(state.status));
     check(
@@ -1983,7 +2043,7 @@ function main() {
     const node = acceptance("AC-x", ["web", "ios", "android"], {
       metadata: { platformStatuses: { ios: "development", android: "development" } },
     });
-    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), null);
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), wholeRepo());
     const state = settle(node, plan.ops);
     check("the base status moved", state.status === "live", () => JSON.stringify(state.status));
     check(
@@ -2011,7 +2071,7 @@ function main() {
     const node = acceptance("AC-x", ["web", "ios"], {
       metadata: { platformStatuses: { web: "development", ios: "development" } },
     });
-    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), null);
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), wholeRepo());
     const state = settle(node, plan.ops);
     check("the base status still moved", state.status === "live", () => JSON.stringify(state.status));
     check(
@@ -2030,7 +2090,7 @@ function main() {
     // `already-there` is ordinary idempotence and fires on every redelivery
     // forever; reporting it would bury the one line that means something.
     const node = acceptance("AC-x", ["web", "ios"], { metadata: { platformStatuses: { ios: "live" } } });
-    const plan = planForProject(bundle([node], true), event({ body: "AC-x@ios" }), null);
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x@ios" }), wholeRepo());
     check("the node was planned", plan.ops.find((o) => o.node_id === "AC-x") !== undefined, JSON.stringify(plan.ops));
     check("a no-op redelivery reports nothing", plan.warnings[0] === undefined, JSON.stringify(plan.warnings));
   }
@@ -2045,7 +2105,7 @@ function main() {
       external_status: "merged",
     });
     const node = acceptance("AC-x", ["web", "ios"], { metadata: { refs: [stale] } });
-    const plan = planForProject(bundle([node], true), event({ body: "AC-x@ios" }), null);
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x@ios" }), wholeRepo());
     check(
       "this delivery's ref is written",
       refFor(settle(node, plan.ops), "ios") !== undefined,
@@ -2063,7 +2123,7 @@ function main() {
     // saying where is not a report.
     const a = acceptance("AC-a", ["web"]);
     const b = acceptance("AC-b", ["ios"]);
-    const plan = planForProject(bundle([a, b], true), event({ body: "AC-a@ios and AC-b@web" }), null);
+    const plan = planForProject(bundle([a, b], true), event({ body: "AC-a@ios and AC-b@web" }), wholeRepo());
     check("both nodes were planned", plan.ops.find((o) => o.node_id === "AC-a") !== undefined && plan.ops.find((o) => o.node_id === "AC-b") !== undefined, JSON.stringify(plan.ops));
     check(
       "AC-a's refusal names ios",
@@ -2199,7 +2259,7 @@ function main() {
     const a = acceptance("AC-a", ["web"]);
     const b = acceptance("AC-b", ["web", "ios"]);
     const ev = event({ body: "AC-a and AC-b@ios" });
-    const plan = planForProject(bundle([a, b], true), ev, "ios");
+    const plan = planForProject(bundle([a, b], true), ev, wholeRepo("ios"));
     const outcome = assembleOutcome({
       projectId: "gp",
       textWarnings: unknownPlatformWarnings(ev),
@@ -2229,6 +2289,1709 @@ function main() {
     );
   }
 
+  // ── Path-scoped repository links ─────────────────────────────────────────
+  //
+  // A monorepo holds several apps in one repository, so one project may link it
+  // several times, each link scoping a platform to one subtree. The delivery
+  // decides between them by reading the pull request's changed files.
+  //
+  // The failure this whole section guards is the one the file header names: a
+  // scope that was REQUESTED and could not be honoured must be refused and
+  // reported, never replaced by the whole-repository link's platform — and
+  // least of all by an unscoped ref, which moves the base status and marks
+  // every platform shipped.
+
+  const IOS_LINK = { platform: "ios", pathPrefix: "apps/ios" };
+  const WEB_LINK = { platform: "web", pathPrefix: "apps/webapp" };
+  const ANDROID_LINK = { platform: "android", pathPrefix: "apps/android" };
+  const ALL_LINK = { platform: null, pathPrefix: "" };
+
+  // ── groupLinksByProject: one pass per PROJECT, not per link ──────────────
+  {
+    const rows = [
+      { projectId: "p1", platform: "ios", pathPrefix: "apps/ios", installationId: "9" },
+      { projectId: "p1", platform: "web", pathPrefix: "apps/webapp", installationId: "9" },
+      { projectId: "p2", platform: null, pathPrefix: "", installationId: null },
+    ];
+    const groups = groupLinksByProject(rows);
+    check(
+      "several links to one repository become ONE entry for that project",
+      JSON.stringify(groups.map((g) => g.projectId)) === '["p1","p2"]',
+      () => JSON.stringify(groups),
+    );
+    check(
+      "…carrying both of its links, in the order they arrived",
+      JSON.stringify(groups[0]?.links) ===
+        JSON.stringify([
+          { platform: "ios", pathPrefix: "apps/ios" },
+          { platform: "web", pathPrefix: "apps/webapp" },
+        ]),
+      () => JSON.stringify(groups[0]),
+    );
+    check("and no link is lost", JSON.stringify(groups[1]?.links) === JSON.stringify([{ platform: null, pathPrefix: "" }]), () =>
+      JSON.stringify(groups[1]),
+    );
+  }
+  check("a repository nobody linked groups to nothing", JSON.stringify(groupLinksByProject([])) === "[]");
+
+  // ── ITEM 7a: resolveInstallationId — the STORED id as a fallback ─────────
+  //
+  // No test in either suite exercised the fallback. Deleting the
+  // `rows.find(...)` clause left everything green, and the failure it hides is
+  // the whole reason it exists: a repository wired to arkaik as a plain
+  // repository webhook ALONGSIDE the App delivers payloads with no
+  // `installation` object, so every path-scoped link on it would refuse — on
+  // every one of those deliveries — with "this delivery carries no GitHub App
+  // installation id".
+  {
+    const row = (installationId) => ({ installationId });
+    check(
+      "precondition: with an id in the payload, that is the one used",
+      resolveInstallationId({ installationId: "111" }, [row("999")]) === "111",
+      () => JSON.stringify(resolveInstallationId({ installationId: "111" }, [row("999")])),
+    );
+    check(
+      "a delivery carrying NO installation id falls back to the one stored on the link",
+      resolveInstallationId({ installationId: null }, [row("999")]) === "999",
+      () => JSON.stringify(resolveInstallationId({ installationId: null }, [row("999")])),
+    );
+    check(
+      "…scanning past links that have none, because only one project may have seen an App delivery",
+      resolveInstallationId({ installationId: null }, [row(null), row(null), row("777")]) === "777",
+      () =>
+        JSON.stringify(resolveInstallationId({ installationId: null }, [row(null), row(null), row("777")])),
+    );
+    check(
+      "…and answering null when neither the payload nor any link has one",
+      resolveInstallationId({ installationId: null }, [row(null)]) === null,
+      () => JSON.stringify(resolveInstallationId({ installationId: null }, [row(null)])),
+    );
+    check(
+      "…and null when there are no links at all, rather than undefined",
+      resolveInstallationId({ installationId: null }, []) === null,
+      () => JSON.stringify(resolveInstallationId({ installationId: null }, [])),
+    );
+  }
+
+  // ── needsChangedFiles: when the network is touched at all ────────────────
+  {
+    const bare = { title: "t", body: "Fixes AC-x" };
+    check(
+      "a deployment with only whole-repository links NEVER needs the changed files",
+      needsChangedFiles(bare, [ALL_LINK]) === false,
+      () => "an all-'' link set asked for a fetch",
+    );
+    check(
+      "precondition: the same mention DOES need them once a link is path-scoped",
+      needsChangedFiles(bare, [IOS_LINK, ALL_LINK]) === true,
+    );
+    check(
+      "a pull request mentioning no acceptance needs nothing, monorepo or not",
+      needsChangedFiles({ title: "chore: bump deps", body: "" }, [IOS_LINK, WEB_LINK]) === false,
+    );
+    // AN EXPLICIT `@platform` STILL NEEDS THE CHANGED FILES, even though it
+    // decides the scope on its own. Not for DECIDING — precedence settles that
+    // without the path source — but for RECONCILING: the path matches are one
+    // of the three sources whose union says which of this pull request's refs
+    // are still justified, and a delivery that fetched nothing has an
+    // incomplete view and so may remove nothing. That is exactly how a `web`
+    // ref inferred from a path match in an earlier delivery survived every
+    // later `AC-x@ios` delivery and stood there as a promotion `arkaik sync
+    // --promote` fires out of band.
+    check(
+      "an explicit @platform still needs the changed files — the union that keeps refs justified needs them",
+      needsChangedFiles({ title: "t", body: "Fixes AC-x@ios" }, [IOS_LINK, WEB_LINK]) === true,
+      () => "an explicit mention skipped the fetch, so this delivery could reconcile nothing",
+    );
+    check(
+      "an @suffix that is not a platform takes the unknown-suffix refusal, not the path source",
+      needsChangedFiles({ title: "t", body: "Fixes AC-x@ios-tablet" }, [IOS_LINK, WEB_LINK]) === false,
+    );
+    check(
+      "…and that refusal is what makes it need nothing: it resolves no scope, so it reconciles nothing",
+      needsChangedFiles({ title: "t", body: "Fixes AC-x@ios-tablet" }, [IOS_LINK, ALL_LINK]) === false,
+      () => "an id whose only suffix was unusable asked for a fetch",
+    );
+    check(
+      "an explicit mention ABSORBS the bare one of the same id — one fetch, for the union, either way",
+      needsChangedFiles({ title: "AC-x: checkout", body: "Fixes AC-x@ios" }, [IOS_LINK, WEB_LINK]) === true,
+      "AC-x appears bare in the title and explicit in the body",
+    );
+    check(
+      "the whole-repository short-circuit still comes FIRST: an explicit mention there fetches nothing",
+      needsChangedFiles({ title: "t", body: "Fixes AC-x@ios" }, [ALL_LINK]) === false,
+      () => "a deployment with no path-scoped link at all was made to call GitHub back",
+    );
+    check(
+      "but ONE bare id beside an explicit OTHER id does need them — the case a naive rule misses",
+      needsChangedFiles({ title: "t", body: "Fixes AC-a@ios and AC-b" }, [IOS_LINK, WEB_LINK]) === true,
+      "AC-b is bare and nothing else decides it",
+    );
+  }
+  {
+    // "PATH-SCOPED" IS DECIDED AFTER NORMALISATION, and `"."` is the value that
+    // makes the difference visible. It names the directory it sits in, so it IS
+    // the whole repository — and migration 010's CHECK stores it happily (no
+    // leading or trailing slash, no empty segment, no edge whitespace), so it is
+    // a reachable row rather than a hypothetical one. The tempting
+    // `link.pathPrefix !== ""` would make such a link demand a GitHub App
+    // private key and an API call on every delivery, on a deployment whose
+    // configuration contains no path at all — and then refuse, because the
+    // resolver normalises and finds nothing scoped.
+    const bare = { title: "t", body: "Fixes AC-x" };
+    const DOT_LINK = { platform: "ios", pathPrefix: "." };
+    check(
+      "precondition: this exact mention DOES need the changed files when a link is really scoped",
+      needsChangedFiles(bare, [IOS_LINK]) === true,
+      "otherwise the assertion below passes for the wrong reason",
+    );
+    const asWhole = resolveRepoScope([DOT_LINK], {
+      kind: "files",
+      paths: ["apps/ios/A.swift"],
+      incomplete: [],
+    });
+    check(
+      "precondition: a '.' prefix normalises to the WHOLE repository, not to a subtree",
+      asWhole.kind === "links" &&
+        JSON.stringify(asWhole.pathPrefixes) === "[]" &&
+        asWhole.linkPlatform === "ios",
+      () => JSON.stringify(asWhole),
+    );
+    check(
+      "…so a '.'-prefixed link never asks for the changed files either",
+      needsChangedFiles(bare, [DOT_LINK]) === false,
+      () => "a '.' prefix was read as path-scoped and forced a fetch",
+    );
+  }
+
+  // ── resolveRepoScope: rules (0) and (a)–(e), and (c)'s exception ─────────
+  {
+    const scope = resolveRepoScope([ALL_LINK], { kind: "files", paths: ["x.ts"], incomplete: [] });
+    check(
+      "(a) with no path-scoped link, the evidence is not consulted at all",
+      scope.kind === "links" && scope.linkPlatform === null && scope.pathPrefixes.length === 0,
+      () => JSON.stringify(scope),
+    );
+  }
+  {
+    // The sibling-project case: one project on a repository being unresolvable
+    // must not disturb another whose links are all whole-repository.
+    const unaffected = resolveRepoScope([{ platform: "ios", pathPrefix: "" }], {
+      kind: "unavailable",
+      reason: "GITHUB_APP_PRIVATE_KEY is not set",
+    });
+    check(
+      "(a) …not even when the delivery's fetch failed for a SIBLING project",
+      unaffected.kind === "links" && unaffected.linkPlatform === "ios",
+      () => JSON.stringify(unaffected),
+    );
+  }
+  {
+    const scope = pathScope([IOS_LINK, WEB_LINK, ALL_LINK], ["apps/ios/Checkout.swift"]);
+    check(
+      "(c) a match contributes its platform",
+      scope.kind === "links" && JSON.stringify(scope.pathPlatforms) === '["ios"]',
+      () => JSON.stringify(scope),
+    );
+    check(
+      "…and names the prefix, so a report can say which link to edit",
+      scope.kind === "links" && JSON.stringify(scope.pathPrefixes) === '["apps/ios"]',
+      () => JSON.stringify(scope),
+    );
+  }
+  {
+    const scope = pathScope([IOS_LINK, WEB_LINK, ANDROID_LINK], [
+      "apps/ios/A.swift",
+      "apps/webapp/b.tsx",
+    ]);
+    check(
+      "(c) a pull request across two subtrees contributes both platforms",
+      scope.kind === "links" && JSON.stringify(scope.pathPlatforms) === '["ios","web"]',
+      () => JSON.stringify(scope),
+    );
+  }
+  {
+    // THE SEGMENT-BOUNDARY CASE, at the level that decides a delivery. The
+    // fixture holds both halves so a matcher that matches nothing cannot pass.
+    const inside = pathScope([IOS_LINK], ["apps/ios/main.swift"]);
+    const nearMiss = pathScope([IOS_LINK], ["apps/ios-legacy/main.swift"]);
+    check(
+      "precondition: a file genuinely under apps/ios resolves to ios",
+      inside.kind === "links" && JSON.stringify(inside.pathPlatforms) === '["ios"]',
+      () => JSON.stringify(inside),
+    );
+    check(
+      "a link for apps/ios does NOT claim ios for apps/ios-legacy",
+      nearMiss.kind === "no-platform" && nearMiss.reason === "outside-every-prefix",
+      () => JSON.stringify(nearMiss),
+    );
+  }
+  {
+    const scope = pathScope([IOS_LINK, { platform: "web", pathPrefix: "" }], ["docs/readme.md"]);
+    check(
+      "(d) nothing matched, so the whole-repository link decides",
+      scope.kind === "links" && scope.linkPlatform === "web" && scope.pathPlatforms.length === 0,
+      () => JSON.stringify(scope),
+    );
+  }
+  {
+    const scope = pathScope([IOS_LINK, WEB_LINK], ["docs/readme.md"]);
+    check(
+      "(e) nothing matched and no fallback link exists, so the scope is REFUSED",
+      scope.kind === "no-platform" && scope.reason === "outside-every-prefix",
+      () => JSON.stringify(scope),
+    );
+    check(
+      "…quoting every configured prefix, so a typo'd one is visible",
+      scope.kind === "no-platform" && JSON.stringify(scope.prefixes) === '["apps/ios","apps/webapp"]',
+      () => JSON.stringify(scope),
+    );
+  }
+  {
+    const scope = resolveRepoScope([IOS_LINK, { platform: null, pathPrefix: "" }], {
+      kind: "unavailable",
+      reason: "GITHUB_APP_PRIVATE_KEY is not set on this deployment",
+    });
+    check(
+      "(b) unreadable changed files REFUSE — they do not borrow the whole-repository link",
+      scope.kind === "no-platform" && scope.reason === "unavailable",
+      () => JSON.stringify(scope),
+    );
+    check(
+      "…carrying the reason verbatim, because it is the only channel the user reads",
+      scope.kind === "no-platform" && (scope.cause ?? "").includes("GITHUB_APP_PRIVATE_KEY"),
+      () => JSON.stringify(scope),
+    );
+    // ITEM 5: `detail` is spliced after "and", so it must be a CLAUSE — no
+    // terminal full stop, or the consumer produces "…repository.. The plan".
+    // The client's finished sentences travel in `cause` instead and are
+    // appended whole. Asserted on the CONTRACT rather than on one rendering,
+    // because every branch of `resolveRepoScope` shares the same consumer.
+    check(
+      "…while `detail` stays a clause: no terminal full stop for the warning to double up on",
+      scope.kind === "no-platform" && /[^.]$/.test(scope.detail),
+      () => JSON.stringify(scope.detail),
+    );
+    check(
+      "…and the fallback link's platform is nowhere in the result",
+      scope.kind === "no-platform",
+      () => JSON.stringify(scope),
+    );
+  }
+  {
+    // AN INCOMPLETE LIST IS SAFE IN EXACTLY ONE DIRECTION. A missing file can
+    // only remove a match, never invent one.
+    const matched = pathScope([IOS_LINK, ALL_LINK], ["apps/ios/A.swift"], ["github-file-cap"]);
+    check(
+      "incomplete WITH a match proceeds — the platform found is real",
+      matched.kind === "links" &&
+        JSON.stringify(matched.pathPlatforms) === '["ios"]' &&
+        JSON.stringify(matched.incomplete) === '["github-file-cap"]',
+      () => JSON.stringify(matched),
+    );
+    const nothing = pathScope([IOS_LINK, { platform: "web", pathPrefix: "" }], ["docs/a.md"], ["github-file-cap"]);
+    check(
+      "incomplete WITHOUT a match refuses, and does NOT take rule (d)'s fallback",
+      nothing.kind === "no-platform" && nothing.reason === "truncated-no-match",
+      () => JSON.stringify(nothing),
+    );
+    check(
+      "precondition: the very same links and files DO fall back when the list was complete",
+      pathScope([IOS_LINK, { platform: "web", pathPrefix: "" }], ["docs/a.md"], []).linkPlatform === "web",
+      () => JSON.stringify(pathScope([IOS_LINK, { platform: "web", pathPrefix: "" }], ["docs/a.md"], [])),
+    );
+  }
+  {
+    // ── ITEM 7c: RULE (c) WHEN THE ONLY MATCHING LINK NAMES NO PLATFORM ────
+    //
+    // "All platforms" on a shared directory MATCHES without contributing, which
+    // suppresses rule (e) and lets precedence fall through. On a WHOLE list
+    // that is honest — every file was read, and the ones that landed anywhere
+    // landed in platform-less links. On a PARTIAL one it is not an answer at
+    // all: the page arkaik never read is exactly where a file under `apps/ios`
+    // would be, so falling through hands back the whole-repository link, or one
+    // UNSCOPED ref, on the strength of pages nobody read.
+    const SHARED_LINK = { platform: null, pathPrefix: "packages/shared" };
+    const ANDROID_FALLBACK = { platform: "android", pathPrefix: "" };
+    const files = ["packages/shared/util.ts"];
+
+    const whole = pathScope([SHARED_LINK, IOS_LINK, ANDROID_FALLBACK], files, []);
+    check(
+      "(c) on a WHOLE list, a platform-less match still MATCHES and falls through to the link",
+      whole.kind === "links" &&
+        JSON.stringify(whole.pathPrefixes) === '["packages/shared"]' &&
+        JSON.stringify(whole.pathPlatforms) === "[]" &&
+        whole.linkPlatform === "android",
+      () => JSON.stringify(whole),
+    );
+    const partial = pathScope([SHARED_LINK, IOS_LINK, ANDROID_FALLBACK], files, ["github-file-cap"]);
+    check(
+      "…and on a PARTIAL one it REFUSES instead, by its own reason",
+      partial.kind === "no-platform" && partial.reason === "truncated-platformless-match",
+      () => JSON.stringify(partial),
+    );
+    check(
+      "…rather than borrowing the whole-repository link the complete case legitimately reaches",
+      partial.kind === "no-platform" && !JSON.stringify(partial).includes("android"),
+      () => JSON.stringify(partial),
+    );
+    check(
+      "…naming the cause it observed and every configured prefix",
+      partial.kind === "no-platform" &&
+        partial.detail.includes("more files than GitHub will list") &&
+        JSON.stringify(partial.prefixes) === '["apps/ios","packages/shared"]',
+      () => JSON.stringify(partial),
+    );
+    check(
+      "…while keeping `detail` a clause with no terminal full stop, like every other refusal",
+      partial.kind === "no-platform" && /[^.]$/.test(partial.detail),
+      () => JSON.stringify(partial.detail),
+    );
+    // AND IT IS NOT A BLANKET "PARTIAL LISTS REFUSE": a partial list in which a
+    // platform-NAMING link matched still proceeds, because that match is real.
+    const partialNamed = pathScope([SHARED_LINK, IOS_LINK], ["packages/shared/u.ts", "apps/ios/A.swift"], ["github-file-cap"]);
+    check(
+      "…and a partial list where a platform-NAMING link also matched still proceeds",
+      partialNamed.kind === "links" && JSON.stringify(partialNamed.pathPlatforms) === '["ios"]',
+      () => JSON.stringify(partialNamed),
+    );
+    // THE CONSUMER, so the refusal is not merely a shape: with no explicit
+    // `@platform` this reaches CASE 2b and attaches nothing at all — instead of
+    // the unscoped ref the fall-through would have written.
+    const node = acceptance("AC-x", ["web", "ios"]);
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), partial);
+    check(
+      "…and the planner attaches no ref for it, rather than an unscoped one",
+      plan.ops.length === 0,
+      () => JSON.stringify(plan.ops),
+    );
+    check(
+      "…reporting why, since zero ops is otherwise indistinguishable from nothing matching",
+      plan.warnings.find((w) => w.startsWith("AC-x:"))?.includes("name no platform") === true,
+      () => JSON.stringify(plan.warnings),
+    );
+  }
+  {
+    const matched = pathScope([IOS_LINK, ALL_LINK], ["apps/ios/A.swift"], ["github-file-cap"]);
+
+    // ITEM 2: THE CAUSE TRAVELS WITH THE FLAG. Three unrelated things make a
+    // list short, and this sentence used to assert GitHub's 3000-file cap for
+    // all three — so a pull request of eleven files whose page read timed out
+    // was told it "changes more files than GitHub will list". Asserted by
+    // IDENTITY on each cause's own wording, and on the ABSENCE of the other
+    // two, because "mentions the cap" would pass for a message that mentions
+    // all three.
+    const budget = pathScope([IOS_LINK], ["docs/a.md"], ["time-budget"]);
+    check(
+      "precondition: a time-budget list with no match refuses the same way a capped one does",
+      budget.kind === "no-platform" && budget.reason === "truncated-no-match",
+      () => JSON.stringify(budget),
+    );
+    check(
+      "a time-budget refusal names the TIME BUDGET and does not claim GitHub's file cap",
+      budget.kind === "no-platform" &&
+        budget.detail.includes("ran out of the time budget") &&
+        !budget.detail.includes("more files than GitHub will list"),
+      () => JSON.stringify(budget.detail),
+    );
+    const unreadable = pathScope([IOS_LINK], ["docs/a.md"], ["unreadable-entry"]);
+    check(
+      "an unreadable-entry refusal names THAT, and does not claim GitHub's file cap either",
+      unreadable.kind === "no-platform" &&
+        unreadable.detail.includes("entries arkaik could not read") &&
+        !unreadable.detail.includes("more files than GitHub will list"),
+      () => JSON.stringify(unreadable.detail),
+    );
+    const capped = pathScope([IOS_LINK], ["docs/a.md"], ["github-file-cap"]);
+    check(
+      "…and the one that really IS the cap still says so",
+      capped.kind === "no-platform" &&
+        capped.detail.includes("more files than GitHub will list") &&
+        !capped.detail.includes("time budget"),
+      () => JSON.stringify(capped.detail),
+    );
+    // TWO CAUSES AT ONCE IS A REAL RUN, not a hypothetical: stopping at the cap
+    // and dropping a malformed entry on an earlier page both hold. Reporting
+    // one of them would be this round's defect one level down.
+    const both = pathScope([IOS_LINK], ["docs/a.md"], ["github-file-cap", "unreadable-entry"]);
+    check(
+      "two observed causes are BOTH reported, not one chosen",
+      both.kind === "no-platform" &&
+        both.detail.includes("more files than GitHub will list") &&
+        both.detail.includes("entries arkaik could not read"),
+      () => JSON.stringify(both.detail),
+    );
+  }
+  {
+    // Nested links: adding a MORE SPECIFIC one must narrow the claim, never
+    // widen it. Under "every link that matches" this would be ["ios","web"].
+    const nested = [
+      { platform: "web", pathPrefix: "apps" },
+      { platform: "ios", pathPrefix: "apps/ios" },
+    ];
+    const scope = pathScope(nested, ["apps/ios/A.swift"]);
+    check(
+      "precondition: the outer link does contain the file as a string prefix",
+      "apps/ios/A.swift".startsWith("apps"),
+    );
+    check(
+      "nested links: the longest matching prefix wins",
+      scope.kind === "links" && JSON.stringify(scope.pathPlatforms) === '["ios"]',
+      () => JSON.stringify(scope),
+    );
+  }
+  {
+    const scope = resolveRepoScope([IOS_LINK, ALL_LINK], { kind: "not-needed" });
+    check(
+      "a path-scoped link set that was never consulted REFUSES rather than falling back",
+      scope.kind === "no-platform" && scope.reason === "not-consulted",
+      () => JSON.stringify(scope),
+    );
+  }
+  {
+    // A stored prefix that skipped normalisation — hand-edited, or restored from
+    // elsewhere — must still match, not become a link with no symptom.
+    const scope = pathScope([{ platform: "ios", pathPrefix: "/apps/ios/" }], ["apps/ios/A.swift"]);
+    check(
+      "a denormalised stored prefix is normalised on read too",
+      scope.kind === "links" && JSON.stringify(scope.pathPlatforms) === '["ios"]',
+      () => JSON.stringify(scope),
+    );
+  }
+
+  // ── (0) A STORED PREFIX THAT CANNOT BE NORMALISED AT ALL ─────────────────
+  //
+  // `linkRepo` refuses a `..` path, but it is not the only writer: a restore, a
+  // hand-edited row or the next caller can put one there, and migration 010's
+  // CHECK does not forbid `..` — `apps/../ios` satisfies all five of its
+  // negative rules. This used to read `normalizePathPrefix(p) ?? ""`, and `""`
+  // is not a neutral default: it is the value that MEANS the whole repository.
+  // So the least trustworthy row in the table was silently promoted to the
+  // strongest claim the configuration can make.
+  const BAD_LINK = { platform: "ios", pathPrefix: "apps/../ios" };
+  {
+    const files = { kind: "files", paths: ["docs/readme.md"], incomplete: [] };
+    // PRECONDITION, and the whole point of the fixture: with a WELL-FORMED
+    // path-scoped link in its place, this same input resolves happily to the
+    // whole-repository link's platform. So the refusal below is caused by the
+    // bad prefix and by nothing else about the shape of the case.
+    const healthy = resolveRepoScope([IOS_LINK, { platform: "web", pathPrefix: "" }], files);
+    check(
+      "precondition: with a well-formed prefix the same links resolve to the fallback's platform",
+      healthy.kind === "links" && healthy.linkPlatform === "web",
+      () => JSON.stringify(healthy),
+    );
+
+    const scope = resolveRepoScope([BAD_LINK, { platform: "web", pathPrefix: "" }], files);
+    check(
+      "an unnormalisable stored prefix REFUSES rather than becoming a whole-repository link",
+      scope.kind === "no-platform" && scope.reason === "unusable-prefix",
+      () => JSON.stringify(scope),
+    );
+    check(
+      "…quoting the stored value, which is the only way the row can be found and fixed",
+      scope.kind === "no-platform" && scope.detail.includes("apps/../ios"),
+      () => JSON.stringify(scope),
+    );
+    check(
+      "…and it does not borrow the sibling whole-repository link's platform",
+      scope.kind === "no-platform",
+      () => JSON.stringify(scope),
+    );
+  }
+  {
+    // ── ITEM 7d: THE RENDERED `prefixes` FOR A MIXED LINK SET ──────────────
+    // `unusable-prefix` is the one refusal whose report exists to point at a
+    // ROW, so its `prefixes` is built from the STORED values (including the
+    // unreadable one) rather than from the normalised list — and the empty
+    // whole-repository prefix is filtered out, because "" is not a path anyone
+    // can go and look at.
+    //
+    // No test covered that array. Dropping `.filter((p) => p !== "")` left
+    // every suite green while the delivery said `is linked by path
+    // (apps/../ios, apps/ios, )` — a trailing empty entry in the one message
+    // whose job is to name a row. Building it from `unusable` alone left the
+    // suites green too, while hiding the sibling prefixes a typo lives in.
+    const mixed = [
+      { platform: "web", pathPrefix: "" },
+      BAD_LINK,
+      IOS_LINK,
+    ];
+    const scope = resolveRepoScope(mixed, { kind: "files", paths: ["docs/readme.md"], incomplete: [] });
+    check(
+      "precondition: this mixed link set really takes the unusable-prefix branch",
+      scope.kind === "no-platform" && scope.reason === "unusable-prefix",
+      () => JSON.stringify(scope),
+    );
+    check(
+      "the reported prefixes are the STORED paths, unusable one included, whole-repository one excluded",
+      scope.kind === "no-platform" && JSON.stringify(scope.prefixes) === '["apps/../ios","apps/ios"]',
+      () => JSON.stringify(scope.prefixes),
+    );
+    // And through the consumer, because the array only matters as rendered
+    // text: an empty entry shows up as a dangling ", )" nobody can act on.
+    const node = acceptance("AC-x", ["web", "ios"]);
+    const line = planForProject(bundle([node], true), event({ body: "AC-x" }), scope).warnings.find((w) =>
+      w.startsWith("AC-x:"),
+    );
+    check(
+      "…and the rendered warning lists both real paths",
+      line?.includes("(apps/../ios, apps/ios)") === true,
+      () => JSON.stringify(line),
+    );
+    check(
+      "…with no empty entry left where the whole-repository link was",
+      line?.includes(", )") !== true && line?.includes("(, ") !== true,
+      () => JSON.stringify(line),
+    );
+  }
+  {
+    // THE WORSE HALF OF THE SAME `??`. With no sibling link at all, coercing to
+    // `""` made `scoped` empty, so rule (a) fired — "this project has no
+    // path-scoped links, behave as before slice 2" — and a bare mention then
+    // resolved to case 4's UNSCOPED ref, moving the base status and marking
+    // every platform of the acceptance shipped, from a row nobody can read.
+    const scope = resolveRepoScope([BAD_LINK], {
+      kind: "files",
+      paths: ["apps/ios/A.swift"],
+      incomplete: [],
+    });
+    check(
+      "a link whose ONLY prefix is unnormalisable does not fall through to rule (a)",
+      scope.kind === "no-platform" && scope.reason === "unusable-prefix",
+      () => JSON.stringify(scope),
+    );
+
+    const node = acceptance("AC-x", ["web", "ios"]);
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), scope);
+    const state = settle(node, plan.ops);
+    check(
+      "so the planner attaches no ref for it at all",
+      plan.ops.find((o) => o.node_id === "AC-x") === undefined,
+      () => JSON.stringify(plan.ops),
+    );
+    check(
+      "…and above all no UNSCOPED one, which would move the base status and claim every platform",
+      refsOf(state).find((r) => r.url === PR_URL) === undefined && state.status === "prioritized",
+      () => JSON.stringify({ refs: refsOf(state), status: state.status }),
+    );
+    const line = plan.warnings.find((w) => w.startsWith("AC-x:"));
+    check("the refusal is reported", line !== undefined, () => JSON.stringify(plan.warnings));
+    check(
+      "…naming the unusable path, so the report points at the row rather than at the pull request",
+      line?.includes("apps/../ios") === true,
+      () => JSON.stringify(line),
+    );
+  }
+
+  // ── planForProject with a path-derived scope ─────────────────────────────
+  {
+    const node = acceptance("AC-x", ["web", "ios"]);
+    const scope = pathScope([IOS_LINK, WEB_LINK], ["apps/ios/Checkout.swift"]);
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), scope);
+    const state = settle(node, plan.ops);
+    check(
+      "precondition: the scope really did resolve to ios",
+      scope.kind === "links" && JSON.stringify(scope.pathPlatforms) === '["ios"]',
+      () => JSON.stringify(scope),
+    );
+    check(
+      "a bare mention takes the PATH-derived platform",
+      refFor(state, "ios") !== undefined,
+      () => JSON.stringify(refsOf(state)),
+    );
+    check(
+      "…with the per-platform ref id, and no unscoped ref beside it",
+      refFor(state, "ios")?.id === "gh-pr-42-ios" && refFor(state, null) === undefined,
+      () => JSON.stringify(refsOf(state)),
+    );
+    check(
+      "and ONLY that platform is promoted — the base status does not move",
+      state.metadata?.platformStatuses?.ios === "live" &&
+        state.metadata?.platformStatuses?.web === undefined &&
+        state.status === "prioritized",
+      () => JSON.stringify({ status: state.status, platformStatuses: state.metadata?.platformStatuses }),
+    );
+  }
+
+  // ── FREEZING: A PATH-INFERRED REF MUST NOT OUTLIVE ITS FILES ─────────────
+  //
+  // Path evidence is a property of the DELIVERY, not of the pull request: the
+  // files a pull request changes are edited by the author between deliveries.
+  // A ref written because delivery 1 saw `apps/webapp/pay.tsx` is justified by
+  // nothing once those commits are dropped — but it is still on the node, and
+  // under a "mirror everything for this url" rule it is still refreshed to
+  // "merged" and still promoted. Web goes live for a pull request that does not
+  // touch the web app.
+  //
+  // The answer is FREEZING, not removal: such a ref is left exactly as it is —
+  // not refreshed, not promoted, not deleted. So these assertions are about
+  // what did NOT change on the ref, which is a stronger and narrower claim than
+  // "it is gone".
+  //
+  // These are TWO-DELIVERY sequences because a single delivery cannot reach the
+  // bug at all, which is exactly how it survived the first round.
+  {
+    const node = acceptance("AC-pay", ["web", "ios"]);
+    const opened = event({ action: "opened", body: "AC-pay", merged: false, state: "open" });
+    const both = pathScope([IOS_LINK, WEB_LINK], ["apps/ios/Pay.swift", "apps/webapp/pay.tsx"]);
+    check(
+      "precondition: delivery 1's scope really is both platforms",
+      both.kind === "links" && JSON.stringify(both.pathPlatforms) === '["ios","web"]',
+      () => JSON.stringify(both),
+    );
+    const afterOpen = settle(node, planForProject(bundle([node], true), opened, both).ops);
+    check(
+      "precondition: delivery 1 wrote a ref for EACH matched platform",
+      refFor(afterOpen, "ios") !== undefined && refFor(afterOpen, "web") !== undefined,
+      () => JSON.stringify(refsOf(afterOpen)),
+    );
+    // ITEM 7f's fixture: the exact bytes delivery 1 left on the web ref, so the
+    // freeze can be asserted as "these two fields did not move" rather than as
+    // "it was not promoted", which a dozen other bugs also satisfy.
+    const webBefore = refFor(afterOpen, "web");
+    check(
+      "precondition: that ref carries a mirrored status and a synced_at to freeze",
+      webBefore?.external_status === "open" && typeof webBefore?.synced_at === "string",
+      () => JSON.stringify(webBefore),
+    );
+
+    // THE NON-VACUITY GUARD, and the reason this block is not asserting that
+    // nothing ever happens: mirrored to "merged" and left attached, the web ref
+    // IS promotable by the real `computeRefPromotions`. A stale one would really
+    // move web to live — and `arkaik sync --promote` would fire it later even if
+    // this delivery's `touched` filter held it back, because that command runs
+    // the same plan with no per-delivery filter at all. Freezing is what keeps
+    // the ref from ever REACHING "merged" in the first place.
+    const mirroredBoth = {
+      ...afterOpen,
+      metadata: {
+        ...afterOpen.metadata,
+        refs: refsOf(afterOpen).map((r) => (r.url === PR_URL ? { ...r, external_status: "merged" } : r)),
+      },
+    };
+    check(
+      "precondition: refreshed to merged, the web ref IS promotable — a thawed one would show",
+      computeRefPromotions(bundle([mirroredBoth], true)).promotions.some(
+        (p) => p.node_id === "AC-pay" && p.platform === "web" && p.to === "live",
+      ),
+      () => JSON.stringify(computeRefPromotions(bundle([mirroredBoth], true))),
+    );
+
+    // Delivery 2: the author dropped the webapp commits, and the PR merged.
+    const iosOnly = pathScope([IOS_LINK, WEB_LINK], ["apps/ios/Pay.swift"]);
+    check(
+      "precondition: delivery 2's scope really is ios alone",
+      iosOnly.kind === "links" && JSON.stringify(iosOnly.pathPlatforms) === '["ios"]',
+      () => JSON.stringify(iosOnly),
+    );
+    const plan = planForProject(bundle([afterOpen], true), event({ body: "AC-pay" }), iosOnly);
+    const state = settle(afterOpen, plan.ops);
+
+    // ── ITEM 7f: THE FREEZE ITSELF, FIELD BY FIELD ─────────────────────────
+    check(
+      "the ref whose files are gone is still attached — freezing is not deletion",
+      refFor(state, "web")?.id === "gh-pr-42-web",
+      () => JSON.stringify(refsOf(state)),
+    );
+    check(
+      "…and its external_status did NOT move to merged, which is what stops it going live",
+      refFor(state, "web")?.external_status === "open",
+      () => JSON.stringify(refFor(state, "web")),
+    );
+    check(
+      "…and its synced_at is byte-identical to what the last honest delivery wrote",
+      refFor(state, "web")?.synced_at === webBefore?.synced_at,
+      () => `${JSON.stringify(refFor(state, "web")?.synced_at)} vs ${JSON.stringify(webBefore?.synced_at)}`,
+    );
+    check(
+      "…while the one the files still justify IS refreshed and keeps its id",
+      refFor(state, "ios")?.external_status === "merged" && refFor(state, "ios")?.id === "gh-pr-42-ios",
+      () => JSON.stringify(refsOf(state)),
+    );
+    check(
+      "precondition: delivery 1 (the PR was OPEN) had already moved web to development",
+      afterOpen.metadata?.platformStatuses?.web === "development",
+      () => JSON.stringify(afterOpen.metadata?.platformStatuses),
+    );
+    check(
+      "…so the merge promotes ios to live and leaves web exactly where it was",
+      state.metadata?.platformStatuses?.ios === "live" &&
+        state.metadata?.platformStatuses?.web === "development",
+      () => JSON.stringify(state.metadata?.platformStatuses),
+    );
+    check(
+      "…and the base status still does not move",
+      state.status === "prioritized",
+      () => JSON.stringify({ status: state.status }),
+    );
+    // THE PROJECTION THE WHOLE FEATURE EXISTS FOR, asserted with the real
+    // `hasParityGap` rather than a re-implementation of it: iOS shipped, web did
+    // not, and `/acceptances` says so. Promoting from the stale ref would make
+    // both platforms delivered, delivered === resolved, and the gap DISAPPEAR —
+    // deleting the one thing this feature is for, silently.
+    check(
+      "…so the parity gap this pull request actually left is still reported",
+      hasParityGap(state) === true &&
+        resolvePlatformStatus(state, "ios") === "live" &&
+        resolvePlatformStatus(state, "web") !== "live",
+      () =>
+        JSON.stringify({
+          gap: hasParityGap(state),
+          ios: resolvePlatformStatus(state, "ios"),
+          web: resolvePlatformStatus(state, "web"),
+        }),
+    );
+    const line = plan.warnings.find((w) => w.startsWith("AC-pay:"));
+    check("the freeze is reported, not silent", line !== undefined, () => JSON.stringify(plan.warnings));
+    check(
+      "…naming the scope that stopped moving, and saying FREEZES rather than removes",
+      line?.includes("web") === true && line?.includes("FREEZES it") === true,
+      () => JSON.stringify(line),
+    );
+    check(
+      "…and saying plainly that the ref is NOT removed, so nobody reads this as a deletion",
+      line?.includes("NOT removed") === true && line?.includes("REMOVES it") !== true,
+      () => JSON.stringify(line),
+    );
+    check(
+      "…and naming the sources it checked, since the rule is their UNION",
+      line?.includes("@platform") === true &&
+        line?.includes("path-scoped repository links") === true &&
+        line?.includes("repository link") === true,
+      () => JSON.stringify(line),
+    );
+
+    // IDEMPOTENCE, and it is a DIFFERENT property from removal's. "synchronize",
+    // "reopened" and "edited" are all in the webhook's HANDLED_ACTIONS, so a
+    // third delivery of this pull request is routine. A frozen ref stays
+    // unjustified, so the report repeats — that is honest, and costs nothing.
+    // What must NOT happen is a WRITE: the refs must come out byte-identical, or
+    // the mutation would derive ref.removed/ref.added events forever.
+    const third = planForProject(bundle([state], true), event({ body: "AC-pay" }), iosOnly);
+    const settled = settle(state, third.ops);
+    check(
+      "a redelivery leaves the ref set byte-identical, frozen fields included",
+      JSON.stringify(refsOf(settled)) === JSON.stringify(refsOf(state)),
+      () => `${JSON.stringify(refsOf(settled))} vs ${JSON.stringify(refsOf(state))}`,
+    );
+    check(
+      "…and still says so, because a frozen ref is still frozen on the next delivery",
+      third.warnings.find((w) => w.startsWith("AC-pay:"))?.includes("FREEZES it") === true,
+      () => JSON.stringify(third.warnings),
+    );
+  }
+  {
+    // ── AN EXPLICIT NARROWING FREEZES A STALE INFERRED REF ─────────────────
+    //
+    // The bug this pins: the rule used to key off WHICH SOURCE DECIDED, and a
+    // mention decided alone. So path evidence minted `gh-pr-42-web`, the author
+    // later wrote `AC-x@ios`, the MENTION then decided, nothing else was
+    // considered — and the web ref was refreshed to "merged", stayed in
+    // `touched`, and PROMOTED web for a pull request that no longer touches the
+    // web app.
+    //
+    // Under the union rule the deciding source is irrelevant: web keeps moving
+    // only if some source still names it, and here none does.
+    const before = ghRef({ id: "gh-pr-42-web", platform: "web", synced_at: "2026-01-01T00:00:00.000Z" });
+    const node = acceptance("AC-x", ["web", "ios"], { metadata: { refs: [before] } });
+    const iosOnly = pathScope([IOS_LINK, WEB_LINK], ["apps/ios/A.swift"]);
+    check(
+      "precondition: the path evidence resolves to ios alone and names web nowhere",
+      iosOnly.kind === "links" &&
+        JSON.stringify(iosOnly.pathPlatforms) === '["ios"]' &&
+        iosOnly.linkPlatform === null &&
+        JSON.stringify(iosOnly.incomplete) === "[]",
+      () => JSON.stringify(iosOnly),
+    );
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x@ios" }), iosOnly);
+    const state = settle(node, plan.ops);
+    check(
+      "precondition: the mention's own scope really was written (so the checks below are not vacuous)",
+      refFor(state, "ios") !== undefined,
+      () => JSON.stringify(refsOf(state)),
+    );
+    check(
+      "an explicit narrowing FREEZES the stale inferred ref no source justifies any more",
+      JSON.stringify(refFor(state, "web")) === JSON.stringify(before),
+      () => `${JSON.stringify(refFor(state, "web"))} vs ${JSON.stringify(before)}`,
+    );
+    check(
+      "…so nothing promotes web, which is the claim the refreshed ref used to make",
+      state.metadata?.platformStatuses?.web === undefined &&
+        state.metadata?.platformStatuses?.ios === "live",
+      () => JSON.stringify(state.metadata?.platformStatuses),
+    );
+    check(
+      "…and the parity gap the pull request actually left is reported rather than erased",
+      hasParityGap(state) === true && resolvePlatformStatus(state, "web") !== "live",
+      () => JSON.stringify({ gap: hasParityGap(state), web: resolvePlatformStatus(state, "web") }),
+    );
+    check(
+      "…and the freeze is reported, because a ref that silently stops updating is a lie",
+      plan.warnings.find((w) => w.startsWith("AC-x:"))?.includes("web") === true,
+      () => JSON.stringify(plan.warnings),
+    );
+  }
+  {
+    // ── THE HALF THAT MUST NOT FREEZE ──────────────────────────────────────
+    // The same explicit narrowing, but the path evidence STILL names web. The
+    // rule is a union, not "the mention wins and everything else stops": a
+    // source that still speaks still justifies. Without this, the assertion
+    // above would also pass for a rule that freezes every ref the mention does
+    // not name, which is a different and much more destructive rule.
+    const node = acceptance("AC-x", ["web", "ios"], {
+      metadata: { refs: [ghRef({ id: "gh-pr-42-web", platform: "web" })] },
+    });
+    const both = pathScope([IOS_LINK, WEB_LINK], ["apps/ios/A.swift", "apps/webapp/a.ts"]);
+    check(
+      "precondition: the path source names BOTH platforms on this delivery",
+      both.kind === "links" && JSON.stringify(both.pathPlatforms) === '["ios","web"]',
+      () => JSON.stringify(both),
+    );
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x@ios" }), both);
+    const state = settle(node, plan.ops);
+    check(
+      "a ref the path evidence still covers KEEPS MOVING under a mention that names something else",
+      refFor(state, "web")?.id === "gh-pr-42-web" && refFor(state, "web")?.external_status === "merged",
+      () => JSON.stringify(refsOf(state)),
+    );
+    check(
+      "…and nothing is reported, because nothing stopped",
+      plan.warnings.find((w) => w.startsWith("AC-x:")) === undefined,
+      () => JSON.stringify(plan.warnings),
+    );
+  }
+  {
+    // ── A REF AN AUTHOR NAMED BY HAND IS NOT SPECIAL, AND THE CODE SAYS SO ─
+    //
+    // An older comment promised the opposite ("a ref the AUTHOR named is never
+    // reconciled away") and the code deleted such refs anyway — the claim and
+    // the behaviour disagreed. A `Ref` records no provenance, so the promise was
+    // never keepable: `gh-pr-42-web` written from `AC-x@web` in an earlier
+    // delivery is byte-identical to one inferred from a path match.
+    //
+    // The rule chosen instead is honest about it: editing the pull request is
+    // how a scope is WITHDRAWN from this delivery's reach as well as how it is
+    // added. This test pins the withdrawal, so nobody can restore the
+    // comforting sentence without a red suite.
+    const before = ghRef({ id: "gh-pr-42-web", platform: "web", synced_at: "2026-01-01T00:00:00.000Z" });
+    const node = acceptance("AC-x", ["web", "ios"], { metadata: { refs: [before] } });
+    const iosOnly = pathScope([IOS_LINK, WEB_LINK], ["apps/ios/A.swift"]);
+    // The body no longer says `@web`. It says nothing about platform at all, so
+    // the path source decides.
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), iosOnly);
+    const state = settle(node, plan.ops);
+    check(
+      "a hand-written @platform edited out of the body FREEZES once nothing else justifies it",
+      JSON.stringify(refFor(state, "web")) === JSON.stringify(before) && refFor(state, "ios") !== undefined,
+      () => JSON.stringify(refsOf(state)),
+    );
+    check(
+      "…and the report does not claim it was an inference — it names the sources, not a provenance",
+      plan.warnings.find((w) => w.startsWith("AC-x:"))?.includes("current title or body") === true,
+      () => JSON.stringify(plan.warnings),
+    );
+    // AND IT THAWS, which is what makes the rule liveable: "edited" is in the
+    // webhook's HANDLED_ACTIONS, so putting `@web` back re-delivers, and the
+    // very next delivery mirrors the ref again rather than leaving it stuck.
+    const restored = settle(state, planForProject(bundle([state], true), event({ body: "AC-x@web" }), iosOnly).ops);
+    check(
+      "…and writing @web back into the body starts it moving again on the next delivery",
+      refFor(restored, "web")?.external_status === "merged" &&
+        refFor(restored, "web")?.synced_at !== before.synced_at,
+      () => JSON.stringify(refsOf(restored)),
+    );
+  }
+  {
+    // ── ITEM 7b: THE INCOMPLETE-EVIDENCE BRANCH, BOTH DIRECTIONS ───────────
+    //
+    // An explicit `@platform` mention and a pre-existing ref for a DIFFERENT
+    // platform, run twice: once where the delivery read the whole file list,
+    // once where it could not read it at all. The first freezes; the second
+    // must change nothing whatsoever, because a delivery that could not see
+    // cannot tell a withdrawn scope from an unread page — and narrowing on
+    // non-evidence is the failure this branch exists to prevent.
+    const before = ghRef({ id: "gh-pr-42-web", platform: "web", synced_at: "2026-01-01T00:00:00.000Z" });
+    const withWebRef = () =>
+      acceptance("AC-x", ["web", "ios"], { metadata: { refs: [{ ...before }] } });
+    const body = event({ body: "AC-x@ios" });
+
+    // DIRECTION 1 — a whole list.
+    const whole = pathScope([IOS_LINK, WEB_LINK], ["apps/ios/A.swift"]);
+    check(
+      "precondition: direction 1's evidence really is complete",
+      whole.kind === "links" && JSON.stringify(whole.incomplete) === "[]",
+      () => JSON.stringify(whole),
+    );
+    const frozen = settle(withWebRef(), planForProject(bundle([withWebRef()], true), body, whole).ops);
+    check(
+      "with a WHOLE list, the ref for the unnamed platform freezes",
+      JSON.stringify(refFor(frozen, "web")) === JSON.stringify(before),
+      () => JSON.stringify(refsOf(frozen)),
+    );
+    check(
+      "…and web is not promoted",
+      frozen.metadata?.platformStatuses?.web === undefined &&
+        frozen.metadata?.platformStatuses?.ios === "live",
+      () => JSON.stringify(frozen.metadata?.platformStatuses),
+    );
+
+    // DIRECTION 2 — the file list could not be read AT ALL. `unavailable`, not
+    // a truncated one: the App is unconfigured, which is the commonest way this
+    // happens and the one that reaches `planForProject` as a REFUSED scope
+    // rather than as a `links` scope with a non-empty `incomplete`.
+    const blind = resolveRepoScope([IOS_LINK, WEB_LINK], {
+      kind: "unavailable",
+      reason: "GITHUB_APP_PRIVATE_KEY is not set",
+    });
+    check(
+      "precondition: direction 2's evidence really is unreadable",
+      blind.kind === "no-platform" && blind.reason === "unavailable",
+      () => JSON.stringify(blind),
+    );
+    const plan = planForProject(bundle([withWebRef()], true), body, blind);
+    const kept = settle(withWebRef(), plan.ops);
+    check(
+      "precondition: the explicit mention is still honoured, so this is not a vacuous no-op",
+      refFor(kept, "ios") !== undefined && kept.metadata?.platformStatuses?.ios === "live",
+      () => JSON.stringify(kept.metadata),
+    );
+    check(
+      "with an UNREADABLE list, nothing freezes — the ref is mirrored exactly as before this slice",
+      refFor(kept, "web")?.external_status === "merged" &&
+        refFor(kept, "web")?.synced_at !== before.synced_at,
+      () => JSON.stringify(refsOf(kept)),
+    );
+    check(
+      "…and it is promoted from, exactly as it would have been before path-scoped links existed",
+      kept.metadata?.platformStatuses?.web === "live",
+      () => JSON.stringify(kept.metadata?.platformStatuses),
+    );
+    check(
+      "…and nothing is reported about a freeze that did not happen",
+      plan.warnings.find((w) => w.includes("FREEZES")) === undefined,
+      () => JSON.stringify(plan.warnings),
+    );
+  }
+  {
+    // The truncated variant of the same rule: a PARTIAL list (`incomplete`
+    // non-empty on a `links` scope) narrows nothing either. A partial list can
+    // prove a platform PRESENT and never ABSENT, so freezing on one would be
+    // narrowing on non-evidence.
+    const before = ghRef({ id: "gh-pr-42-web", platform: "web", synced_at: "2026-01-01T00:00:00.000Z" });
+    const node = () => acceptance("AC-x", ["web", "ios"], { metadata: { refs: [{ ...before }] } });
+    const partial = pathScope([IOS_LINK, WEB_LINK], ["apps/ios/A.swift"], ["time-budget"]);
+    check(
+      "precondition: the very same links and files DO freeze the web ref when the list is whole",
+      refFor(
+        settle(
+          node(),
+          planForProject(bundle([node()], true), event({ body: "AC-x" }), pathScope([IOS_LINK, WEB_LINK], ["apps/ios/A.swift"])).ops,
+        ),
+        "web",
+      )?.external_status === "open",
+      () => "the complete-list case did not freeze, so the assertion below proves nothing",
+    );
+    const plan = planForProject(bundle([node()], true), event({ body: "AC-x" }), partial);
+    const state = settle(node(), plan.ops);
+    check(
+      "a partial file list freezes NOTHING — 'absent' is not something a partial list can show",
+      refFor(state, "web")?.external_status === "merged",
+      () => JSON.stringify(refsOf(state)),
+    );
+    check(
+      "…and the ref keeps promoting too: incomplete evidence must not narrow anything",
+      state.metadata?.platformStatuses?.web === "live" &&
+        state.metadata?.platformStatuses?.ios === "live",
+      () => JSON.stringify(state.metadata?.platformStatuses),
+    );
+    check(
+      "…and the delivery says its match was made against a partial list",
+      plan.warnings.some(
+        (w) => w.includes("ran out of the time budget") && w.includes("Nothing is frozen from a partial list"),
+      ),
+      () => JSON.stringify(plan.warnings),
+    );
+    check(
+      "…naming the cause it observed, not GitHub's 3000-file cap",
+      plan.warnings.every((w) => !w.includes("more files than GitHub will list")),
+      () => JSON.stringify(plan.warnings),
+    );
+  }
+  {
+    // AN UNSCOPED REF BESIDE A SCOPED ANSWER. It moves the BASE status, which
+    // resolves every platform without an entry of its own — the largest claim
+    // in the system, sitting next to the narrow one the delivery just made. It
+    // is FROZEN like any other unjustified ref: not refreshed to "merged", so
+    // this delivery cannot turn it into a standing base-status promotion.
+    //
+    // The honest limit, which this also pins: it is NOT removed, so it is still
+    // on the node afterwards.
+    const before = ghRef({ id: "gh-pr-42", synced_at: "2026-01-01T00:00:00.000Z" });
+    const node = acceptance("AC-x", ["web", "ios"], { metadata: { refs: [before] } });
+    const iosOnly = pathScope([IOS_LINK, WEB_LINK], ["apps/ios/A.swift"]);
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), iosOnly);
+    const state = settle(node, plan.ops);
+    check(
+      "precondition: this delivery really did answer with a scoped ref",
+      refFor(state, "ios") !== undefined,
+      () => JSON.stringify(refsOf(state)),
+    );
+    check(
+      "an unscoped ref beside a scoped answer freezes rather than being refreshed",
+      JSON.stringify(refFor(state, null)) === JSON.stringify(before),
+      () => `${JSON.stringify(refFor(state, null))} vs ${JSON.stringify(before)}`,
+    );
+    check(
+      "…so the base status does not move and no platform is claimed by inheritance",
+      state.status === "prioritized" && state.metadata?.platformStatuses?.web === undefined,
+      () => JSON.stringify({ status: state.status, platformStatuses: state.metadata?.platformStatuses }),
+    );
+    check(
+      "…and the report names it as 'no platform' and says it was not removed",
+      plan.warnings.find((w) => w.startsWith("AC-x:"))?.includes("no platform") === true &&
+        plan.warnings.find((w) => w.startsWith("AC-x:"))?.includes("NOT removed") === true,
+      () => JSON.stringify(plan.warnings),
+    );
+  }
+  {
+    // ── ITEM 7a: THE PER-NODE KEY OF THE JUSTIFICATION LOGIC ───────────────
+    //
+    // TWO nodes, each carrying an identical unjustified ref for this pull
+    // request, and the body mentions only ONE of them. `freezes` and
+    // `justified` are computed per node, so only the mentioned one may freeze;
+    // the other has no source speaking about it at all and must keep being
+    // mirrored and promoted from. A lookup that ignored its key — four of those
+    // have existed in this file — would freeze both, and every single-node
+    // fixture in this suite would stay green.
+    const before = ghRef({ id: "gh-pr-42-web", platform: "web", synced_at: "2026-01-01T00:00:00.000Z" });
+    const nodeA = acceptance("AC-a", ["web", "ios"], { metadata: { refs: [{ ...before }] } });
+    const nodeB = acceptance("AC-b", ["web", "ios"], { metadata: { refs: [{ ...before }] } });
+    check(
+      "precondition: the two nodes start with byte-identical refs",
+      JSON.stringify(refsOf(nodeA)) === JSON.stringify(refsOf(nodeB)),
+      () => `${JSON.stringify(refsOf(nodeA))} vs ${JSON.stringify(refsOf(nodeB))}`,
+    );
+    const iosOnly = pathScope([IOS_LINK, WEB_LINK], ["apps/ios/A.swift"]);
+    const plan = planForProject(bundle([nodeA, nodeB], true), event({ body: "Fixes AC-a" }), iosOnly);
+    const stateA = settle(nodeA, plan.ops);
+    const stateB = settle(nodeB, plan.ops);
+    check(
+      "precondition: the mentioned node really was planned for",
+      refFor(stateA, "ios") !== undefined,
+      () => JSON.stringify(refsOf(stateA)),
+    );
+    check(
+      "only the MENTIONED node's unjustified ref freezes",
+      JSON.stringify(refFor(stateA, "web")) === JSON.stringify(before),
+      () => JSON.stringify(refsOf(stateA)),
+    );
+    check(
+      "…while the unmentioned node's identical ref keeps being mirrored",
+      refFor(stateB, "web")?.external_status === "merged" &&
+        refFor(stateB, "web")?.synced_at !== before.synced_at,
+      () => JSON.stringify(refsOf(stateB)),
+    );
+    check(
+      "…and keeps promoting, because a body edit must not undo a promotion that landed",
+      stateB.metadata?.platformStatuses?.web === "live" &&
+        stateA.metadata?.platformStatuses?.web === undefined,
+      () => JSON.stringify([stateA.metadata?.platformStatuses, stateB.metadata?.platformStatuses]),
+    );
+    check(
+      "…and only the mentioned node is reported about",
+      plan.warnings.some((w) => w.startsWith("AC-a:")) &&
+        plan.warnings.every((w) => !w.startsWith("AC-b:")),
+      () => JSON.stringify(plan.warnings),
+    );
+  }
+  {
+    // ── ITEM 7d: THE REPOSITORY-LINK MEMBER OF THE UNION ───────────────────
+    //
+    // The whole-repository link means "anything I did not scope is this". Once
+    // a path-scoped link has MATCHED, the files were scoped — so the fallback
+    // says nothing about them, and `resolveRepoScope` does not reach for it
+    // (rule (d) only fires when nothing matched). It was nonetheless in the
+    // justification union unconditionally, which let it keep a stale `android`
+    // ref moving on a delivery whose files this code had positively read as
+    // landing under `apps/webapp`. Positive evidence overruled by a fallback
+    // about files that were not fallen back on.
+    const before = ghRef({ id: "gh-pr-42-android", platform: "android", synced_at: "2026-01-01T00:00:00.000Z" });
+    const node = () =>
+      acceptance("AC-x", ["web", "ios", "android"], { metadata: { refs: [{ ...before }] } });
+    const ANDROID_FALLBACK = { platform: "android", pathPrefix: "" };
+
+    const matched = pathScope([IOS_LINK, WEB_LINK, ANDROID_FALLBACK], ["apps/webapp/a.ts"]);
+    check(
+      "precondition: a path link matched, and the fallback link still declares android",
+      matched.kind === "links" &&
+        JSON.stringify(matched.pathPrefixes) === '["apps/webapp"]' &&
+        JSON.stringify(matched.pathPlatforms) === '["web"]' &&
+        matched.linkPlatform === "android",
+      () => JSON.stringify(matched),
+    );
+    const plan = planForProject(bundle([node()], true), event({ body: "AC-x" }), matched);
+    const state = settle(node(), plan.ops);
+    check(
+      "precondition: the path source decided, so the delivery answered with a web ref",
+      refFor(state, "web") !== undefined,
+      () => JSON.stringify(refsOf(state)),
+    );
+    check(
+      "the whole-repository link does NOT justify a stale ref once a path link matched",
+      JSON.stringify(refFor(state, "android")) === JSON.stringify(before),
+      () => `${JSON.stringify(refFor(state, "android"))} vs ${JSON.stringify(before)}`,
+    );
+    check(
+      "…so android is not promoted for a pull request whose files landed under apps/webapp",
+      state.metadata?.platformStatuses?.android === undefined &&
+        state.metadata?.platformStatuses?.web === "live",
+      () => JSON.stringify(state.metadata?.platformStatuses),
+    );
+    check(
+      "…and the report says why the fallback is silent instead of listing it as a source consulted",
+      plan.warnings.find((w) => w.startsWith("AC-x:"))?.includes("a path-scoped link matched") === true,
+      () => JSON.stringify(plan.warnings),
+    );
+
+    // THE OTHER DIRECTION, which is what stops the rule from becoming "the
+    // repository link never justifies anything". With NO path link matching,
+    // rule (d) really does reach for the fallback — so it is a live source, and
+    // the very same ref keeps moving.
+    const unmatched = pathScope([IOS_LINK, WEB_LINK, ANDROID_FALLBACK], ["README.md"]);
+    check(
+      "precondition: nothing matched, so rule (d) reaches for the whole-repository link",
+      unmatched.kind === "links" &&
+        JSON.stringify(unmatched.pathPrefixes) === "[]" &&
+        unmatched.linkPlatform === "android",
+      () => JSON.stringify(unmatched),
+    );
+    const fellBack = settle(node(), planForProject(bundle([node()], true), event({ body: "AC-x" }), unmatched).ops);
+    check(
+      "…and there the repository link DOES justify the ref, which keeps being mirrored",
+      refFor(fellBack, "android")?.external_status === "merged" &&
+        refFor(fellBack, "android")?.synced_at !== before.synced_at,
+      () => JSON.stringify(refsOf(fellBack)),
+    );
+    check(
+      "…and promoted from",
+      fellBack.metadata?.platformStatuses?.android === "live",
+      () => JSON.stringify(fellBack.metadata?.platformStatuses),
+    );
+  }
+  {
+    // ── ITEM 3: AN ID NAMED ONLY BY AN UNUSABLE SUFFIX ─────────────────────
+    //
+    // `AC-x@ios-tablet` and nothing else. The id never reaches `mentions`, so a
+    // refusal gated on "this node was mentioned" never fired: the node was
+    // reached only through the ref it already carried, and every ref this pull
+    // request had left on it was mirrored to the merge and PROMOTED — the
+    // repository link's platform claimed in answer to a typo. The refusal is a
+    // property of the ID BEING NAMED, so it fires here exactly as it does when
+    // a bare mention sits beside the typo.
+    const node = acceptance("AC-x", ["web", "ios"], {
+      metadata: { refs: [ghRef({ id: "gh-pr-42-ios", platform: "ios" })] },
+    });
+    const mirrored = {
+      ...node,
+      metadata: { refs: [ghRef({ id: "gh-pr-42-ios", platform: "ios", external_status: "merged" })] },
+    };
+    check(
+      "precondition: that ref IS promotable once mirrored, so a silent promotion would show",
+      computeRefPromotions(bundle([mirrored], true)).promotions.some(
+        (p) => p.node_id === "AC-x" && p.ref_id === "gh-pr-42-ios" && p.to === "live",
+      ),
+      () => JSON.stringify(computeRefPromotions(bundle([mirrored], true))),
+    );
+    const scope = wholeRepo("ios");
+    check(
+      "precondition: the repository link would otherwise have answered with ios",
+      scope.kind === "links" && scope.linkPlatform === "ios",
+      () => JSON.stringify(scope),
+    );
+    const plan = planForProject(bundle([node], true), event({ body: "Fixes AC-x@ios-tablet" }), scope);
+    const state = settle(node, plan.ops);
+    check(
+      "an id named ONLY by an unusable suffix promotes nothing, on this delivery or any redelivery",
+      state.metadata?.platformStatuses === undefined && state.status === "prioritized",
+      () => JSON.stringify({ status: state.status, platformStatuses: state.metadata?.platformStatuses }),
+    );
+    check(
+      "…and no ref is attached for it either",
+      refFor(state, null) === undefined && refFor(state, "web") === undefined,
+      () => JSON.stringify(refsOf(state)),
+    );
+    check(
+      "…while the ref it already carried keeps being mirrored, as a refusal promises",
+      refFor(state, "ios")?.external_status === "merged",
+      () => JSON.stringify(refsOf(state)),
+    );
+    const line = plan.warnings.find((w) => w.startsWith("AC-x:"));
+    check("…and the refusal is reported by the planner, not only by the text scan", line !== undefined, () =>
+      JSON.stringify(plan.warnings),
+    );
+    check(
+      "…without claiming a bare mention was refused when there was none",
+      line?.includes("bare mention") !== true,
+      () => JSON.stringify(line),
+    );
+    check(
+      "…and naming the repository link as the fallback it declined to use",
+      line?.includes("repository link") === true,
+      () => JSON.stringify(line),
+    );
+    // THE CASE THAT MUST STILL REFUSE THE OTHER WAY: a bare mention beside the
+    // typo. Both spellings reach the same branch, which is the point of keying
+    // it on the id.
+    const beside = planForProject(
+      bundle([node], true),
+      event({ title: "AC-x: tablet support", body: "Fixes AC-x@ios-tablet" }),
+      scope,
+    );
+    check(
+      "a bare mention beside the typo still refuses, and says the bare one was not a fallback",
+      beside.warnings.find((w) => w.startsWith("AC-x:"))?.includes("bare mention") === true,
+      () => JSON.stringify(beside.warnings),
+    );
+  }
+  {
+    // A REFUSED SCOPE FREEZES NOTHING. A refusal is the statement "this delivery
+    // could not decide", so it has no justified set to freeze against — and
+    // freezing against an empty one would stop mirroring every ref the pull
+    // request ever left, at precisely the moment arkaik admitted it did not
+    // know. Same direction as "a refusal promotes nothing", pointed backwards.
+    const node = acceptance("AC-x", ["web", "ios"], {
+      metadata: { refs: [ghRef({ id: "gh-pr-42-web", platform: "web" })] },
+    });
+    const idsBefore = JSON.stringify(refsOf(node).map((r) => [r.id, r.platform ?? null]));
+    const refused = resolveRepoScope([IOS_LINK, WEB_LINK], {
+      kind: "unavailable",
+      reason: "GITHUB_APP_PRIVATE_KEY is not set",
+    });
+    check(
+      "precondition: the scope really is a refusal",
+      refused.kind === "no-platform" && refused.reason === "unavailable",
+      () => JSON.stringify(refused),
+    );
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), refused);
+    const state = settle(node, plan.ops);
+    check(
+      "a refused delivery removes no ref",
+      JSON.stringify(refsOf(state).map((r) => [r.id, r.platform ?? null])) === idsBefore,
+      () => `${JSON.stringify(refsOf(state).map((r) => [r.id, r.platform ?? null]))} vs ${idsBefore}`,
+    );
+    check(
+      "…and freezes none either: the mirror keeps running, which is what refusalTail promises",
+      refFor(state, "web")?.external_status === "merged",
+      () => JSON.stringify(refsOf(state)),
+    );
+    check(
+      "…while still promoting nothing from what it mirrored",
+      state.status === "prioritized" && state.metadata?.platformStatuses === undefined,
+      () => JSON.stringify({ status: state.status, platformStatuses: state.metadata?.platformStatuses }),
+    );
+  }
+  {
+    // A node reached ONLY through an existing ref — no mention this delivery —
+    // has no source deciding for it, so nothing freezes and the mirror keeps
+    // running. A body edit that drops a mention must not stop a ref a promotion
+    // already landed on; that rule predates freezing and survives it.
+    const node = acceptance("AC-x", ["web", "ios"], {
+      metadata: { refs: [ghRef({ id: "gh-pr-42-web", platform: "web" })] },
+    });
+    const iosOnly = pathScope([IOS_LINK, WEB_LINK], ["apps/ios/A.swift"]);
+    const plan = planForProject(bundle([node], true), event({ body: "no ids here" }), iosOnly);
+    const state = settle(node, plan.ops);
+    check(
+      "an unmentioned node's ref is not frozen by this delivery's path evidence",
+      refFor(state, "web") !== undefined,
+      () => JSON.stringify(refsOf(state)),
+    );
+    check(
+      "…and is still mirrored",
+      refFor(state, "web")?.external_status === "merged",
+      () => JSON.stringify(refFor(state, "web")),
+    );
+  }
+  {
+    // THE PRECEDENCE, all three sources present and disagreeing.
+    const node = acceptance("AC-x", ["web", "ios", "android"]);
+    const scope = pathScope([IOS_LINK, { platform: "android", pathPrefix: "" }], ["apps/ios/A.swift"]);
+    check(
+      "precondition: the path source says ios and the whole-repository link says android",
+      scope.kind === "links" && JSON.stringify(scope.pathPlatforms) === '["ios"]' && scope.linkPlatform === "android",
+      () => JSON.stringify(scope),
+    );
+    const fromPath = settle(node, planForProject(bundle([node], true), event({ body: "AC-x" }), scope).ops);
+    check(
+      "the PATH beats the whole-repository link",
+      fromPath.metadata?.platformStatuses?.ios === "live" &&
+        fromPath.metadata?.platformStatuses?.android === undefined,
+      () => JSON.stringify(fromPath.metadata?.platformStatuses),
+    );
+    const fromMention = settle(
+      node,
+      planForProject(bundle([node], true), event({ body: "AC-x@web" }), scope).ops,
+    );
+    check(
+      "…and an explicit @platform beats the path",
+      fromMention.metadata?.platformStatuses?.web === "live" &&
+        fromMention.metadata?.platformStatuses?.ios === undefined,
+      () => JSON.stringify(fromMention.metadata?.platformStatuses),
+    );
+  }
+  {
+    // The path source is INFERRED, not explicit, so it is FILTERED to the
+    // platforms the acceptance lists before it decides. This is the whole value
+    // of path scoping on a mixed pull request — and the reason it must not be
+    // marked `explicit`, which would attach a ref claiming iOS on a web-only
+    // acceptance instead.
+    const node = acceptance("AC-web-only", ["web"]);
+    const scope = pathScope([IOS_LINK, WEB_LINK], ["apps/ios/A.swift", "apps/webapp/b.tsx"]);
+    check(
+      "precondition: the path source named BOTH platforms",
+      scope.kind === "links" && JSON.stringify(scope.pathPlatforms) === '["ios","web"]',
+      () => JSON.stringify(scope),
+    );
+    const plan = planForProject(bundle([node], true), event({ body: "AC-web-only" }), scope);
+    const state = settle(node, plan.ops);
+    check(
+      "a mixed pull request is honoured as the subset the acceptance lists",
+      refFor(state, "web") !== undefined && refFor(state, "ios") === undefined,
+      () => JSON.stringify(refsOf(state)),
+    );
+    check(
+      "…promoting web and claiming nothing else",
+      state.metadata?.platformStatuses?.web === "live" && state.status === "prioritized",
+      () => JSON.stringify({ status: state.status, platformStatuses: state.metadata?.platformStatuses }),
+    );
+  }
+  {
+    // …and when NONE of the path platforms apply, it refuses rather than
+    // falling through to the whole-repository link.
+    const node = acceptance("AC-android-only", ["android"]);
+    const scope = pathScope([IOS_LINK, { platform: null, pathPrefix: "" }], ["apps/ios/A.swift"]);
+    const plan = planForProject(bundle([node], true), event({ body: "AC-android-only" }), scope);
+    check("a path platform the acceptance does not list attaches no ref", plan.ops.length === 0, () =>
+      JSON.stringify(plan.ops),
+    );
+    const line = plan.warnings.find((w) => w.startsWith("AC-android-only:"));
+    check("the refusal is reported", line !== undefined, () => JSON.stringify(plan.warnings));
+    check(
+      "…naming WHICH link to edit, which 'the repository link' could not with several of them",
+      line?.includes("apps/ios") === true,
+      () => JSON.stringify(line),
+    );
+    check(
+      "…and both sides of the disagreement",
+      line?.includes("ios") === true && line?.includes("android") === true,
+      () => JSON.stringify(line),
+    );
+  }
+
+  // ── planForProject with a REFUSED scope ─────────────────────────────────
+  {
+    // The refusal must refuse ATTACHMENT and PROMOTION, on the first delivery
+    // and on every redelivery — the exact bug slice 1 shipped and fixed. So the
+    // fixture already carries a promotable ref for this PR.
+    const node = acceptance("AC-x", ["web", "ios"], {
+      metadata: { refs: [ghRef({ id: "gh-pr-42-ios", platform: "ios" })] },
+    });
+    const mirrored = {
+      ...node,
+      metadata: { refs: [ghRef({ id: "gh-pr-42-ios", platform: "ios", external_status: "merged" })] },
+    };
+    check(
+      "precondition: that ref IS promotable once mirrored, so a silent promotion would show",
+      computeRefPromotions(bundle([mirrored], true)).promotions.some(
+        (p) => p.node_id === "AC-x" && p.ref_id === "gh-pr-42-ios" && p.to === "live",
+      ),
+      () => JSON.stringify(computeRefPromotions(bundle([mirrored], true))),
+    );
+
+    const scope = resolveRepoScope([IOS_LINK, WEB_LINK], {
+      kind: "unavailable",
+      reason: "GITHUB_APP_PRIVATE_KEY is not set on this deployment",
+    });
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), scope);
+    const state = settle(node, plan.ops);
+    check("precondition: the scope really was refused", scope.kind === "no-platform", () => JSON.stringify(scope));
+    check(
+      "the ref this PR already left keeps being MIRRORED — the mirror must not freeze",
+      refFor(state, "ios")?.external_status === "merged",
+      () => JSON.stringify(refsOf(state)),
+    );
+    check(
+      "…keeping its stored id verbatim",
+      refFor(state, "ios")?.id === "gh-pr-42-ios",
+      () => JSON.stringify(refsOf(state)),
+    );
+    check(
+      "but NOTHING is promoted from it, on this delivery or any redelivery",
+      state.metadata?.platformStatuses === undefined && state.status === "prioritized",
+      () => JSON.stringify({ status: state.status, platformStatuses: state.metadata?.platformStatuses }),
+    );
+    check(
+      "and NO unscoped ref is written — that would move the base status",
+      refFor(state, null) === undefined,
+      () => JSON.stringify(refsOf(state)),
+    );
+    const line = plan.warnings.find((w) => w.startsWith("AC-x:"));
+    check("the refusal is reported", line !== undefined, () => JSON.stringify(plan.warnings));
+    check(
+      "…quoting the deterministic reason, which is the only channel that names the fix",
+      line?.includes("GITHUB_APP_PRIVATE_KEY") === true,
+      () => JSON.stringify(line),
+    );
+    check(
+      "…listing the configured prefixes, so a typo'd one is visible",
+      line?.includes("apps/ios") === true && line?.includes("apps/webapp") === true,
+      () => JSON.stringify(line),
+    );
+    check(
+      "…and saying what DOES still happen, so the text is not a second lie",
+      line?.includes("mirrored") === true,
+      () => JSON.stringify(line),
+    );
+    // ── ITEM 5: THE RENDERED SENTENCE, NOT JUST ITS PARTS ──────────────────
+    // `detail` was documented as a half-sentence and the `unavailable` branch
+    // assigned FULL sentences to it, which the consumer then spliced after
+    // "and" before adding its own full stop: "…on the repository.. The plan
+    // attaches…". The client's sentences now travel in `cause` and are
+    // appended behind a lead-in instead.
+    check(
+      "…with no double period anywhere in the rendered warning",
+      line?.includes("..") !== true,
+      () => JSON.stringify(line),
+    );
+    check(
+      "…and the client's own sentences appear behind a lead-in, not as a lower-case sentence start",
+      line?.includes("Why arkaik could not read them: GITHUB_APP_PRIVATE_KEY") === true,
+      () => JSON.stringify(line),
+    );
+    check(
+      "…so every sentence in it starts with a capital or with arkaik's own lower-case name",
+      line
+        ?.split(". ")
+        .every((s) => /^[A-Z(“"']/.test(s) || s.startsWith("arkaik") || s.startsWith("acme")) === true,
+      () => JSON.stringify(line?.split(". ").filter((s) => !/^[A-Z(“"']/.test(s) && !s.startsWith("arkaik") && !s.startsWith("acme"))),
+    );
+  }
+  {
+    // An EXPLICIT @platform still wins when the files could not be read: the
+    // author stated the scope, so nothing had to be inferred.
+    const node = acceptance("AC-x", ["web", "ios"]);
+    const scope = resolveRepoScope([IOS_LINK], { kind: "unavailable", reason: "no key" });
+    const state = settle(node, planForProject(bundle([node], true), event({ body: "AC-x@ios" }), scope).ops);
+    check(
+      "an explicit mention survives an unreadable file list",
+      refFor(state, "ios") !== undefined && state.metadata?.platformStatuses?.ios === "live",
+      () => JSON.stringify(state.metadata),
+    );
+    check(
+      "…and still claims nothing else",
+      state.status === "prioritized" && state.metadata?.platformStatuses?.web === undefined,
+      () => JSON.stringify(state.metadata),
+    );
+  }
+  {
+    const node = acceptance("AC-x", ["web", "ios"]);
+    const scope = pathScope([IOS_LINK, ALL_LINK], ["apps/ios/A.swift"], ["github-file-cap"]);
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), scope);
+    check(
+      "precondition: the incomplete-but-matched scope planned something",
+      plan.ops.length > 0,
+      () => JSON.stringify(plan),
+    );
+    check(
+      "a partial file list is reported alongside the platforms it did find",
+      plan.warnings.some((w) => w.includes("more files than GitHub will list")),
+      () => JSON.stringify(plan.warnings),
+    );
+    // ITEM 2 AGAIN, one level up: the PLAN's own partial-list warning named the
+    // 3000-file cap whatever had happened. Same assertion shape as the scope
+    // one — the observed cause present, the two it did not observe absent.
+    const budgetScope = pathScope([IOS_LINK, ALL_LINK], ["apps/ios/A.swift"], ["time-budget"]);
+    const budgetPlan = planForProject(bundle([node], true), event({ body: "AC-x" }), budgetScope);
+    check(
+      "precondition: the time-budget scope also planned something (so the warning is not vacuous)",
+      budgetPlan.ops.length > 0,
+      () => JSON.stringify(budgetPlan),
+    );
+    const budgetLine = budgetPlan.warnings.find((w) => w.startsWith("acme/monorepo#42"));
+    check(
+      "…and the plan's partial-list warning names the TIME BUDGET, not GitHub's file cap",
+      budgetLine !== undefined &&
+        budgetLine.includes("ran out of the time budget") &&
+        !budgetLine.includes("more files than GitHub will list"),
+      () => JSON.stringify(budgetPlan.warnings),
+    );
+    check(
+      "…and says a partial list freezes nothing, which is the rule the code follows",
+      budgetLine?.includes("Nothing is frozen from a partial list") === true,
+      () => JSON.stringify(budgetLine),
+    );
+    const outcome = assembleOutcome({
+      projectId: "gp",
+      textWarnings: [],
+      planWarnings: plan.warnings,
+      opCount: plan.ops.length,
+    });
+    check(
+      "…without `skipped` contradicting it, because something really was applied",
+      outcome.skipped === undefined && outcome.applied > 0,
+      () => JSON.stringify(outcome),
+    );
+  }
+  {
+    // The refusal's ONLY evidence is the warning channel, so it has to survive
+    // the trip through `assembleOutcome` with zero ops.
+    const node = acceptance("AC-x", ["web", "ios"]);
+    const scope = resolveRepoScope([IOS_LINK], { kind: "unavailable", reason: "GITHUB_APP_ID is not set" });
+    const plan = planForProject(bundle([node], true), event({ body: "AC-x" }), scope);
+    const outcome = assembleOutcome({
+      projectId: "gp",
+      textWarnings: [],
+      planWarnings: plan.warnings,
+      opCount: plan.ops.length,
+    });
+    check("precondition: the plan really is empty", plan.ops.length === 0, () => JSON.stringify(plan.ops));
+    check(
+      "a refused delivery reports applied: 0",
+      outcome.applied === 0,
+      () => JSON.stringify(outcome),
+    );
+    check(
+      "…with a `skipped` that AGREES with the warnings rather than saying 'no matching acceptance'",
+      outcome.skipped === "an acceptance was named, but no platform scope could be honoured",
+      () => JSON.stringify(outcome),
+    );
+    check(
+      "…and the reason survives into the response body",
+      (outcome.warnings ?? []).some((w) => w.includes("GITHUB_APP_ID")),
+      () => JSON.stringify(outcome),
+    );
+  }
+
+  // ── resolveDeliveryScopes: the fetch/no-fetch decision ───────────────────
+  //
+  // The load-bearing property of the whole slice: a deployment that is not a
+  // monorepo must never need a private key and must never touch the network.
+
+  /** A `fetchFiles` that records every call — and would record a stray one. */
+  const spyFetch = (result) => {
+    const calls = [];
+    const fn = async (pr) => {
+      calls.push(pr);
+      if (result instanceof Error) throw result;
+      return result;
+    };
+    fn.calls = calls;
+    return fn;
+  };
+  const ev = event({ body: "Fixes AC-x" });
+
+  {
+    const fetchFiles = spyFetch({ ok: true, changed: { paths: [], incomplete: [] } });
+    const groups = groupLinksByProject([
+      { projectId: "p1", platform: "ios", pathPrefix: "", installationId: null },
+      { projectId: "p2", platform: null, pathPrefix: "", installationId: null },
+    ]);
+    check(
+      "precondition: the pull request really does mention an acceptance",
+      mentionedAcceptances(ev).mentions.some((m) => m.id === "AC-x"),
+      () => JSON.stringify(mentionedAcceptances(ev)),
+    );
+    const scopes = await resolveDeliveryScopes({ groups, event: ev, installationId: "9", fetchFiles });
+    check(
+      "ZERO fetches when every link is whole-repository",
+      JSON.stringify(fetchFiles.calls) === "[]",
+      () => JSON.stringify(fetchFiles.calls),
+    );
+    check(
+      "…and each project resolves exactly as it did before path scoping",
+      scopes.get("p1")?.linkPlatform === "ios" && scopes.get("p2")?.linkPlatform === null,
+      () => JSON.stringify([...scopes]),
+    );
+  }
+  {
+    // ONE fetch per delivery, however many projects need it.
+    const fetchFiles = spyFetch({
+      ok: true,
+      changed: { paths: ["apps/ios/A.swift"], incomplete: [] },
+    });
+    const groups = groupLinksByProject([
+      { projectId: "p1", platform: "ios", pathPrefix: "apps/ios", installationId: "9" },
+      { projectId: "p1", platform: "web", pathPrefix: "apps/webapp", installationId: "9" },
+      { projectId: "p2", platform: "android", pathPrefix: "apps/android", installationId: "9" },
+    ]);
+    const scopes = await resolveDeliveryScopes({ groups, event: ev, installationId: "9", fetchFiles });
+    check(
+      "the changed files are fetched once for the whole delivery, for the right pull request",
+      JSON.stringify(fetchFiles.calls) ===
+        JSON.stringify([{ repoFullName: "acme/monorepo", number: 42, installationId: "9" }]),
+      () => JSON.stringify(fetchFiles.calls),
+    );
+    check(
+      "the project whose subtree was touched resolves to that platform",
+      JSON.stringify(scopes.get("p1")?.pathPlatforms) === '["ios"]',
+      () => JSON.stringify([...scopes]),
+    );
+    check(
+      "and the project whose subtree was not is refused, not given someone else's platform",
+      scopes.get("p2")?.kind === "no-platform" && scopes.get("p2")?.reason === "outside-every-prefix",
+      () => JSON.stringify([...scopes]),
+    );
+  }
+  {
+    // THE MIXED CASE, which a fixture with one project cannot see: one
+    // misconfigured monorepo must not break every other project on the repo.
+    const fetchFiles = spyFetch({ ok: false, reason: "GITHUB_APP_PRIVATE_KEY is not set" });
+    const groups = groupLinksByProject([
+      { projectId: "monorepo-project", platform: "ios", pathPrefix: "apps/ios", installationId: null },
+      { projectId: "plain-project", platform: "web", pathPrefix: "", installationId: null },
+    ]);
+    const scopes = await resolveDeliveryScopes({ groups, event: ev, installationId: null, fetchFiles });
+    check(
+      "precondition: the delivery really did attempt a fetch",
+      fetchFiles.calls.length === 1,
+      () => JSON.stringify(fetchFiles.calls),
+    );
+    check(
+      "the path-scoped project refuses, carrying the reason",
+      scopes.get("monorepo-project")?.kind === "no-platform" &&
+        (scopes.get("monorepo-project")?.cause ?? "").includes("GITHUB_APP_PRIVATE_KEY"),
+      () => JSON.stringify([...scopes]),
+    );
+    check(
+      "…while the whole-repository project on the SAME repository is untouched by the failure",
+      scopes.get("plain-project")?.kind === "links" && scopes.get("plain-project")?.linkPlatform === "web",
+      () => JSON.stringify([...scopes]),
+    );
+  }
+  {
+    // A transient failure must propagate, so the route releases the delivery
+    // claim and GitHub redelivers. Swallowing it would lose the transition.
+    const boom = new Error("GitHub returned 503");
+    boom.name = "GithubTransientError";
+    const fetchFiles = spyFetch(boom);
+    const groups = groupLinksByProject([
+      { projectId: "p1", platform: "ios", pathPrefix: "apps/ios", installationId: "9" },
+    ]);
+    let thrown = null;
+    try {
+      await resolveDeliveryScopes({ groups, event: ev, installationId: "9", fetchFiles });
+    } catch (err) {
+      thrown = err;
+    }
+    check(
+      "a transient fetch failure propagates instead of resolving to some scope",
+      thrown === boom,
+      () => String(thrown),
+    );
+  }
+
   if (failures > 0) {
     console.error(`\n${failures} check(s) failed.`);
     process.exit(1);
@@ -2236,8 +3999,13 @@ function main() {
   console.log("\nAll pr-plan checks passed.");
 }
 
-try {
-  main();
-} finally {
-  fs.rmSync(BUILD_DIR, { recursive: true, force: true });
-}
+// `main` is async only because `resolveDeliveryScopes` is — the fetch it takes
+// is a parameter, and this suite passes one that never touches the network.
+main()
+  .catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  })
+  .finally(() => {
+    fs.rmSync(BUILD_DIR, { recursive: true, force: true });
+  });
