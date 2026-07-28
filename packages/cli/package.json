@@ -1,6 +1,7 @@
 {
   "name": "arkaik",
   "version": "0.1.0",
+  "description": "Arkaik CLI — link a repository to a hosted product graph, validate and pack bundles, mirror external ref status.",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -13,12 +14,25 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "src/io.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alexisbohns/arkaik.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/alexisbohns/arkaik/blob/main/docs/hosted-projects.md",
+  "keywords": [
+    "arkaik",
+    "product-graph",
+    "cli"
   ],
   "scripts": {
-    "build": "node build.js"
+    "build": "node build.js",
+    "prepublishOnly": "node build.js"
   },
-  "dependencies": {
+  "devDependencies": {
     "@arkaik/schema": "*"
   }
 }
