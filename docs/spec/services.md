@@ -26,6 +26,39 @@ Three hard boundaries, inherited from [vision.md](../vision.md) and [journal.md]
 2. **No re-projection.** The server never derives a snapshot from a journal or vice versa. It stores what the client sent, verbatim (minus the Publik journal strip below).
 3. **No event-sourcing promises.** M4 sync is whole-bundle backup. The journal rides inside the bundle as opaque history; journal-based merge is a Basik/Klub design problem for M5+.
 
+> ### Boundary 1 no longer holds for hosted projects — decision record
+>
+> **Hosted projects (`graph_projects`, migration 008) deliberately cross boundary 1.**
+> For a project in an account, the server *is* the system of record, and it *does*
+> mutate bundles: `applyMutation` applies ops under a row lock, and the GitHub App
+> promotes acceptance statuses from pull-request events with no browser involved.
+>
+> This is recorded rather than quietly edited because boundary 1 is load-bearing
+> everywhere else, and it still holds everywhere else. Synk and Publik are
+> unchanged: they remain backup and share, storing what the client sent. Boundaries
+> 2 and 3 are untouched even for hosted projects — the server derives *events from
+> the diff it just applied*, which is emission, not re-projection, and there is
+> still no merge.
+>
+> **Why the boundary was worth crossing.** The browser cannot be the system of
+> record for a graph that a coding agent in any repository, and a webhook GitHub
+> calls, both write to. Keeping it there would have required two-way sync, conflict
+> resolution and merge — the M5+ problem boundary 3 defers — to deliver a feature
+> whose whole point is that there is one copy.
+>
+> **What still holds, and is what "validated storage" was protecting.** Every
+> server mutation passes the same `validateBundle` the CLI and MCP use, in the same
+> transaction, and is refused whole on any error. Every change lands as an ordinary
+> journal event with a real actor (`github-app` for the App), so the history says
+> what acted. The format stays portable and export is always available: a hosted
+> project can be exported and re-imported as a local one at any time.
+>
+> **The cost, stated plainly:** hosted projects do not work offline. Local-first
+> projects still do, and remain the default.
+>
+> See [hosted-projects.md](../hosted-projects.md) for the how-to and
+> [bundle-format.md](bundle-format.md) § References for the promotion rules.
+
 ## Backend — Decision Record
 
 **Chosen: Vercel-native.** Next.js route handlers under `app/api/` for compute, **Postgres (Neon via Vercel)** for all storage. No Supabase.

@@ -25,15 +25,40 @@ This is the **audience-symmetry principle** (vision.md § Core Product) made con
 | Not a CLI subcommand | The `arkaik` CLI stays dependency-free; the MCP SDK would end that. The CLI usage text gains a pointer line; an `arkaik mcp` alias MAY wrap the package later |
 | SDK note | `@modelcontextprotocol/sdk` was the default choice; its zod-3 pin against the workspace's zod 4 resolved this to the fallback, taken all the way: the server speaks newline-delimited JSON-RPC directly (`src/protocol.ts`, ~150 lines — `initialize`, `tools/list`, `tools/call`, `ping`) with raw JSON-Schema tool definitions whose enums come from `@arkaik/schema` ids. `@arkaik/schema` remains the only validation authority; the SDK MAY be adopted later without changing the tool catalog |
 
-## Bundle Discovery (Kommit-first)
+## Graph Discovery — two modes, one catalog
 
-The server operates on the **repo bundle** — the Kommit mode where the map already lives next to the code, maintained as a side effect of development. Resolution order:
+The server serves a graph from one of two backends. **The tool catalog is identical in both**, which is the point: the mode is a `Store` implementation (`src/store.ts`), not a second set of tools, so repo and hosted behaviour cannot drift.
+
+### Repo bundle (Kommit-first, the default)
+
+The map lives next to the code, maintained as a side effect of development. Resolution order:
 
 1. `--bundle <path>` argument
 2. `ARKAIK_BUNDLE` environment variable
 3. `docs/arkaik/bundle.json` under the current working directory
 
 The journal is the sidecar resolved by the rules in [journal.md](journal.md) § Storage Shapes. The server MUST reload the bundle per tool call (files are small; external edits — a human, another agent, `git pull` — must be picked up).
+
+### Hosted project (the account backend)
+
+The map lives in an arkaik account and is reached over HTTP, so the app, this server, and the GitHub App all read and write one copy — no sync, no merge, no conflict UI ([hosted-projects.md](../hosted-projects.md), [services.md](services.md) § *Boundary 1 no longer holds for hosted projects*).
+
+Selected by `--remote`, or automatically by a `docs/arkaik/arkaik.json` written by `arkaik link`. Resolution:
+
+| | Order |
+|---|---|
+| Project | `--project`, then `$ARKAIK_PROJECT`, then `arkaik.json` |
+| Origin | `$ARKAIK_URL`, then `arkaik.json`, then `https://arkaik.app` |
+| Token | `$ARKAIK_TOKEN` only — never a file, because a credential in a repo file is a credential in a git history |
+
+`--bundle` always wins, so an explicit path overrides a link file.
+
+Two rules this mode MUST hold:
+
+- **The client sends OPS, not a mutated graph.** The server recomputes under its own row lock, so two writers cannot lose each other's work. `Store.persist` therefore takes an *intent* for the hosted backend where the file backend takes an *outcome*.
+- **A linked repo with no token exits non-zero.** It MUST NOT fall back to a repo bundle: a silent fallback serves a stale graph that looks fine, which is the failure an agent cannot notice.
+
+`propose_idea` and `file_request` are refused against a hosted project — the hosted write path has no journal-only operation yet — with an explicit message rather than a silent drop.
 
 ## Tool Catalog (v1)
 

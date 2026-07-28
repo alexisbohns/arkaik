@@ -6,7 +6,7 @@ order: 3
 
 # Toolchain & Packaging
 
-> Status: **Implemented** — `packages/schema` (`@arkaik/schema`), `packages/cli` (`arkaik`, with the `arkaik/io` subpath export), and `packages/mcp` (`arkaik-mcp`) are live workspace packages; the skill ships as a Claude Code plugin (`plugin/`) with generated assets (now including `.mcp.json`), and `scripts/generate/` drift-checks every generated artifact in CI. The legacy copy-paste skill remains under `docs/arkaik-skill/`. This document remains the normative contract; the MCP server companion is specified in [mcp.md](mcp.md).
+> Status: **Implemented** — `packages/schema` (`@arkaik/schema`), `packages/cli` (`arkaik`, with the `arkaik/io` subpath export), and `packages/mcp` (`arkaik-mcp`) are live workspace packages, with `arkaik` and `arkaik-mcp` published to npm (see [Releasing](#releasing) — publishing is manual); the skill ships as a Claude Code plugin (`plugin/`) with generated assets (now including `.mcp.json`), and `scripts/generate/` drift-checks every generated artifact in CI. The legacy copy-paste skill remains under `docs/arkaik-skill/`. This document remains the normative contract; the MCP server companion is specified in [mcp.md](mcp.md).
 > The key words MUST, SHOULD, and MAY are to be interpreted as in RFC 2119.
 
 ## Why npm
@@ -71,6 +71,39 @@ The agent skill graduates from copy-paste (`docs/arkaik-skill/`) to a managed as
 | Versioning | A version stamp in the skill frontmatter lets `arkaik init --update` upgrade cleanly instead of blind-overwriting local edits |
 | Skill v2 behavior | Dual-write per [journal.md](journal.md): surgical snapshot patches + appended events, validator as the hard gate — unchanged doctrine, new history duty |
 | Second channel | A Claude Code plugin (marketplace-installable) packaging the same generated assets, for users who prefer plugin management over `npx` |
+
+## Releasing
+
+**Both packages are published by hand. Nothing in CI publishes** — there is no
+release workflow and no `NPM_TOKEN`. That is a deliberate note rather than an
+omission, because the absence has already cost twice:
+
+- `arkaik` was never published at all, and *could not have been*: it declared
+  `@arkaik/schema` — a private package — as a runtime `dependency`, so
+  `npm i arkaik` would have failed to resolve it;
+- `arkaik-mcp` on npm drifted twelve days behind `main` and silently lacked
+  hosted mode entirely, so `npx -y arkaik-mcp` in a linked repo served a local
+  bundle instead of the account project. The version had not been bumped either,
+  so a publish would have been rejected as a duplicate.
+
+The rules that keep both from recurring:
+
+| Rule | Why |
+|---|---|
+| `@arkaik/schema` is a **devDependency** of both packages, never a dependency | It is private and not on the registry; both builds esbuild-bundle it, so the published `dist/index.js` imports nothing but `node:` builtins. A runtime dependency on it is unresolvable for consumers |
+| Bump the version in the same commit as the change that ships | npm refuses a duplicate version, so an unbumped package silently stays stale on the registry while `main` moves |
+| Build explicitly before publishing | Both packages have `prepublishOnly`, but it does **not** run when `ignore-scripts=true` is set in the publisher's npm config — a common and otherwise sensible supply-chain setting. Do not rely on it |
+| Verify from the registry, not the working tree | `npm pack <name>` the published tarball and check it contains what you expect. The stale-MCP failure was invisible from a local checkout |
+
+```bash
+npm run build -w arkaik && npm run build -w arkaik-mcp
+npm publish -w arkaik
+npm publish -w arkaik-mcp
+npm view arkaik version && npm view arkaik-mcp version
+```
+
+A tag-triggered workflow with a granular automation token is the durable fix and
+is not built; until it is, the checklist above is the process.
 
 ## Licensing
 
