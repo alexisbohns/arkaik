@@ -44,6 +44,26 @@ one the first time you make a change (see [Dual-write](#dual-write-snapshot--jou
 > | `{{BUNDLE_PATH}}` | Path to the snapshot | `docs/arkaik/bundle.json` |
 > | `{{JOURNAL_PATH}}` | Path to the journal sidecar | `docs/arkaik/journal.jsonl` |
 
+> **Check this first: is the map a file, or an account project?**
+>
+> If `docs/arkaik/arkaik.json` exists in this repository, the map is **hosted** —
+> it lives in an arkaik account, not in a file here. Everything below about
+> *what* to record still applies; everything about *how* to write it does not.
+>
+> | | File map | Hosted map (`docs/arkaik/arkaik.json` present) |
+> |---|---|---|
+> | Where it lives | `{{BUNDLE_PATH}}` in this repo | the account, reached over HTTP |
+> | How you edit it | patch the JSON, append to the journal | the `arkaik-mcp` tools (`create_node`, `update_node`, …) |
+> | Dual-write | you do it, by hand | the server does it — every mutation derives its own journal events |
+>
+> **Do not create or edit `{{BUNDLE_PATH}}` for a hosted map.** Nothing reads it,
+> the account never sees the change, and the next person to look finds two maps
+> disagreeing. If the MCP tools are unavailable, say so and stop rather than
+> falling back to the file — a silent fallback is the failure nobody notices.
+>
+> The tool catalog is identical in both modes, so the rest of this skill reads
+> the same either way. Setup: [hosted-projects.md](https://github.com/alexisbohns/arkaik/blob/main/docs/hosted-projects.md).
+
 ## When to Update the Map
 
 Update the map as a side-effect of your main work whenever you:
