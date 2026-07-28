@@ -37,14 +37,31 @@ Commands:
 
 Options:
   -h, --help        Show this help.
+  -v, --version     Print the version.
 
 Run "arkaik <command> --help" for command-specific help.`;
+
+/**
+ * Substituted from package.json by build.js. Never write this as a literal: the
+ * sibling `arkaik-mcp` did, shipped 0.2.0 announcing itself as "0.1.0", and sent
+ * anyone asking "does my install have hosted mode?" to the wrong answer. There
+ * was no way to ask this of the CLI at all, which is the same problem wearing a
+ * different hat — `npx` resolves a version you never chose, so "which build am I
+ * running?" has to be answerable.
+ */
+declare const __ARKAIK_CLI_VERSION__: string;
+const VERSION = __ARKAIK_CLI_VERSION__;
 
 function main(argv: string[]): void {
   const [command, ...rest] = argv;
 
   if (command === undefined || command === "--help" || command === "-h" || command === "help") {
     console.log(USAGE);
+    process.exit(0);
+  }
+
+  if (command === "--version" || command === "-v" || command === "version") {
+    console.log(VERSION);
     process.exit(0);
   }
 

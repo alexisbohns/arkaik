@@ -1,6 +1,6 @@
 {
   "name": "arkaik",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Arkaik CLI — link a repository to a hosted product graph, validate and pack bundles, mirror external ref status.",
   "license": "MIT",
   "type": "module",

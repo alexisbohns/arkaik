@@ -1,8 +1,8 @@
 /**
- * `arkaik-mcp` — the agent plane (docs/spec/mcp.md). A stdio MCP server over
- * the repo bundle: the same `@arkaik/schema` projections humans see as pages,
- * plus validated dual-write mutations. Spawned per session by the agent host;
- * `npx -y arkaik-mcp` is the whole setup.
+ * `arkaik-mcp` — the agent plane (docs/spec/mcp.md). A stdio MCP server over a
+ * repo bundle or a hosted project: the same `@arkaik/schema` projections humans
+ * see as pages, plus validated dual-write mutations. Spawned per session by the
+ * agent host; `npx -y arkaik-mcp` is the whole setup.
  */
 
 import { startServer } from "./protocol";
@@ -11,7 +11,17 @@ import { createFileStore, resolveBundlePath, type Store } from "./store";
 import { createRemoteStore } from "./remote-store";
 import { resolveRemoteConfig } from "./config";
 
-const VERSION = "0.1.0";
+/**
+ * Substituted from package.json by build.js. NOT a literal, and never to be
+ * turned back into one: it was a literal once, and 0.2.0 shipped announcing
+ * itself as "0.1.0" — the pre-hosted build — through both the banner and
+ * `serverInfo.version`. That field is what an MCP client displays and the
+ * obvious thing to read when asking "does this build have hosted mode?", so a
+ * stale value does not merely fail to help, it argues for the wrong conclusion.
+ * `tests/mcp/version.test.js` fails if the two ever disagree again.
+ */
+declare const __ARKAIK_MCP_VERSION__: string;
+const VERSION = __ARKAIK_MCP_VERSION__;
 
 const argv = process.argv.slice(2);
 

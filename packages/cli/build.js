@@ -22,7 +22,7 @@
  * the root `test:cli` script and CI before the CLI tests spawn the binary).
  */
 import { build } from "esbuild";
-import { chmodSync, cpSync, mkdirSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -49,6 +49,8 @@ function copySkillAssets() {
   console.log(`copied skill assets -> ${relative(dir, SKILL_DIST_DIR)}`);
 }
 
+const { version: VERSION } = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
+
 async function run() {
   await build({
     entryPoints: [ENTRY],
@@ -59,6 +61,8 @@ async function run() {
     format: "esm",
     legalComments: "none",
     banner: { js: "#!/usr/bin/env node" },
+    // From package.json, never a literal in the source — see src/index.ts.
+    define: { __ARKAIK_CLI_VERSION__: JSON.stringify(VERSION) },
   });
   chmodSync(OUT_FILE, 0o755);
   console.log(`built ${relative(dir, OUT_FILE)}`);
