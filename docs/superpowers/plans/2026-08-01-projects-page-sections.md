@@ -1217,8 +1217,8 @@ Replace everything from the `return (` at line 199 through the closing of
     setCreateOpen(true);
   };
 
-  const renderCards = (summaries: ProjectSummary[]) =>
-    summaries.map((summary) => (
+  // `ProjectSection` calls this via `items.map(renderCard)`, so it must set the key.
+  const renderCard = (summary: ProjectSummary) => (
       <ProjectCard
         key={summary.project.id}
         summary={summary}
@@ -1230,7 +1230,7 @@ Replace everything from the `return (` at line 199 through the closing of
         onMoveToAccount={() => void moveToAccount(summary)}
         onDelete={() => setDeleteTarget(summary)}
       />
-    ));
+  );
 
   return (
     <div className="flex flex-1 flex-col bg-background font-sans">
@@ -1300,41 +1300,38 @@ Replace everything from the `return (` at line 199 through the closing of
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {renderCards(grouped.lokal)}
+              {grouped.lokal.map(renderCard)}
             </div>
           )
         ) : (
           <>
             <ProjectSection
               target="hosted"
-              count={grouped.hosted.length}
+              items={grouped.hosted}
+              renderCard={renderCard}
               disabled={importing}
               onCreate={() => openCreateDialog("hosted")}
               onImport={() => openImportPicker("hosted")}
-            >
-              {renderCards(grouped.hosted)}
-            </ProjectSection>
+            />
 
             <ProjectSection
               target="synked"
-              count={grouped.synked.length}
+              items={grouped.synked}
+              renderCard={renderCard}
               disabled={importing}
               onCreate={() => openCreateDialog("synked")}
               onImport={() => openImportPicker("synked")}
               onRestore={() => setRestoreOpen(true)}
-            >
-              {renderCards(grouped.synked)}
-            </ProjectSection>
+            />
 
             <ProjectSection
               target="lokal"
-              count={grouped.lokal.length}
+              items={grouped.lokal}
+              renderCard={renderCard}
               disabled={importing}
               onCreate={() => openCreateDialog("lokal")}
               onImport={() => openImportPicker("lokal")}
-            >
-              {renderCards(grouped.lokal)}
-            </ProjectSection>
+            />
           </>
         )}
       </main>
