@@ -188,10 +188,15 @@ export async function archiveProject(id: string): Promise<void> {
 }
 
 /**
- * Imports a project bundle from a user-selected JSON file.
- * If the project id already exists locally, a new id is generated.
+ * Reads a user-selected JSON file into a validated, timestamp-normalized
+ * {@link ProjectBundle} — WITHOUT storing it anywhere.
+ *
+ * Split out of {@link importProjectFromFile} because the hosted import path
+ * must not write to this browser on its way to the account: the bundle goes
+ * straight to `importProject` on the remote provider, which mints its own id.
+ * The local path below still does the id-uniquing this one deliberately skips.
  */
-export async function importProjectFromFile(file: File): Promise<Project> {
+export async function parseBundleFromFile(file: File): Promise<ProjectBundle> {
   const rawText = await file.text();
   let parsed: unknown;
 
@@ -202,11 +207,15 @@ export async function importProjectFromFile(file: File): Promise<Project> {
   }
 
   const bundle = parseAndValidateBundle(parsed);
+  return { ...bundle, project: normalizeProjectTimestamps(bundle.project) };
+}
 
-  const normalizedBundle: ProjectBundle = {
-    ...bundle,
-    project: normalizeProjectTimestamps(bundle.project),
-  };
+/**
+ * Imports a project bundle from a user-selected JSON file.
+ * If the project id already exists locally, a new id is generated.
+ */
+export async function importProjectFromFile(file: File): Promise<Project> {
+  const normalizedBundle = await parseBundleFromFile(file);
 
   const resolvedProjectId = await ensureUniqueProjectId(normalizedBundle.project.id);
   const finalBundle =

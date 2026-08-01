@@ -121,6 +121,9 @@ jobs:
       - name: Provider-injection seam + mutation-notification tests
         run: npm run test:provider
 
+      - name: Projects page section + create-target routing
+        run: npm run test:project-sections
+
       - name: CLI tests
         run: npm run test:cli
 

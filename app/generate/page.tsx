@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { Suspense, useState, useMemo } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Lightbulb, FileText, GitBranch } from "lucide-react";
+import { parseCreateTarget, type CreateTarget } from "@/lib/data/create-target";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { PromptBuilderForm } from "@/components/generate/PromptBuilderForm";
@@ -29,9 +31,79 @@ const DEFAULT_CONFIG: PromptConfig = {
   targetLlm: "any",
 };
 
+/** Where the section that sent the user here says the result will land.
+ *  Keyed by `CreateTarget` so a new target cannot silently go undescribed. */
+const DESTINATION: Record<CreateTarget, string> = {
+  hosted: "This will land in your account.",
+  synked: "This will land in this browser, backed up to Synk.",
+  lokal: "This will land in this browser only.",
+};
+
+/**
+ * `useSearchParams` opts the tree out of prerendering, so the page body sits
+ * behind a Suspense boundary — without it `next build` fails on `/generate`.
+ *
+ * The fallback renders the same header shell rather than `null`: the header
+ * carries the destination line, which does depend on the search params, so it
+ * cannot simply be hoisted out — but blanking the whole chrome on hydration
+ * would flash an empty page.
+ */
 export default function GeneratePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="relative flex min-h-screen flex-col bg-background font-sans">
+          <GenerateHeader />
+        </div>
+      }
+    >
+      <GeneratePageBody />
+    </Suspense>
+  );
+}
+
+function GenerateHeader({ destination }: { destination?: string }) {
+  return (
+    <header className="flex items-center justify-between border-b px-6 py-3">
+      <div className="flex items-center gap-3">
+        {/* Plain /projects: leaving this page is not a statement that the user
+            has JSON in hand, and a back arrow must never spring a file dialog. */}
+        <Link
+          href="/projects"
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="size-4" />
+        </Link>
+        <h1 className="text-sm font-semibold">Generate with AI</h1>
+        {destination ? <p className="text-xs text-muted-foreground">{destination}</p> : null}
+      </div>
+      <ThemeToggle />
+    </header>
+  );
+}
+
+function GeneratePageBody() {
   const [config, setConfig] = useState<PromptConfig>(DEFAULT_CONFIG);
   const [selectedUseCase, setSelectedUseCase] = useState<UseCase | null>(null);
+  const searchParams = useSearchParams();
+  /**
+   * Where the generated bundle should land once the user comes back to import
+   * it. This page does not create anything — it builds a prompt the user runs
+   * elsewhere — so the section's intent has to survive the round trip through
+   * the URL. A missing or unrecognised value simply means "ask me on import".
+   */
+  const target = parseCreateTarget(searchParams.get("target"));
+
+  /**
+   * The explicit hand-off back to /projects. Separate from the back arrow on
+   * purpose: this one is a statement that the user HAS the generated JSON, and
+   * only it carries `?import=`.
+   */
+  const importHandoff = target ? (
+    <Button variant="outline" size="sm" className="w-full cursor-pointer" asChild>
+      <Link href={`/projects?import=${target}`}>I&apos;ve got my JSON — import it</Link>
+    </Button>
+  ) : null;
 
   const prompt = useMemo(() => {
     if (!selectedUseCase) return "";
@@ -51,15 +123,7 @@ export default function GeneratePage() {
 
   return (
     <div className="relative flex min-h-screen flex-col bg-background font-sans">
-      <header className="flex items-center justify-between border-b px-6 py-3">
-        <div className="flex items-center gap-3">
-          <Link href="/projects" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-            <ArrowLeft className="size-4" />
-          </Link>
-          <h1 className="text-sm font-semibold">Generate with AI</h1>
-        </div>
-        <ThemeToggle />
-      </header>
+      <GenerateHeader destination={target ? DESTINATION[target] : undefined} />
 
       {!selectedUseCase ? (
         <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col items-center px-6 py-16">
@@ -109,11 +173,13 @@ export default function GeneratePage() {
           {/* Output */}
           <div className="hidden lg:flex lg:w-1/2 lg:flex-col lg:gap-4">
             <PromptOutput prompt={prompt} tokenCount={tokenCount} />
+            {importHandoff}
           </div>
 
           {/* Mobile output */}
-          <div className="fixed bottom-0 left-0 right-0 border-t bg-background p-4 lg:hidden">
+          <div className="fixed bottom-0 left-0 right-0 flex flex-col gap-2 border-t bg-background p-4 lg:hidden">
             <PromptOutput prompt={prompt} tokenCount={tokenCount} compact />
+            {importHandoff}
           </div>
         </main>
       )}
