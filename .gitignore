@@ -21,6 +21,7 @@
 /tests/data/.test-build-emit-events/
 /tests/data/.test-build-local-provider/
 /tests/data/.test-build-provider-registry/
+/tests/data/.test-build-project-sections/
 /tests/services/.test-build-publik/
 /tests/services/.test-build-graph/
 /tests/services/.test-build-github/
