@@ -154,21 +154,37 @@ page.
 DB-free only — the services suites no-op without a local Postgres, so everything
 here must run in CI's fast build job.
 
-**Unit — `sectionFor`:**
+This repo has **no React component test harness** — no vitest, no jest, no
+Testing Library. Every suite is a plain `node tests/**/*.test.js` script that
+transpiles the TypeScript under test on the fly via a `load-*.js` helper. So the
+behaviour worth testing has to live in modules that Node can import without a
+DOM. That constraint shapes the design: the two decisions this feature makes are
+extracted out of the page component and into pure modules.
+
+**Unit — `sectionFor` / `groupBySection` (`lib/data/project-sections.ts`):**
+
 - hosted summary → `"hosted"`, regardless of the backup set
 - local summary whose id is in the backup set → `"synked"`
 - local summary whose id is absent → `"lokal"`
 - empty backup set (signed out) → every local summary is `"lokal"`
+- `groupBySection` preserves input order within each bucket
 
-**Component — projects page:**
-- signed out renders a flat list with no section headings
-- signed in places each project under the expected heading
-- an empty section renders its explanation and its create control
-- the Synk callout is absent when no project is Lokal, present when one is
-- Restore from Synk appears only in the Synked menu
-- the Hosted create path calls `importProject` and not the local provider
-- the Synked create path calls `backupNow`, and a rejected `backupNow` still
-  leaves the created project navigable
+**Unit — `parseCreateTarget` / `createInTarget` (`lib/data/create-target.ts`):**
+`createInTarget` takes its three effects — `saveLocal`, `importHosted`,
+`backupNow` — as injected dependencies, so a Node test can prove routing without
+Dexie, `fetch`, or a browser.
+
+- Hosted → calls `importHosted`, never `saveLocal`, returns the server id
+- Synked → calls `saveLocal` then `backupNow`, returns the local id
+- Lokal → calls `saveLocal`, never `backupNow`
+- a rejected `backupNow` still resolves with the created id and a `backupError`
+  message — creation never fails because backup did
+- `parseCreateTarget` accepts the three known values and returns `null` for
+  anything else, including `null` input
+
+**Manual verification** (documented in the plan, not automated): section headings
+and ordering, empty-state rendering, Restore appearing only under Synked, the
+callout disappearing when no project is Lokal, and the `/generate` round trip.
 
 ## Out of scope
 
