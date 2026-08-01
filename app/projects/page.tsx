@@ -13,13 +13,10 @@ import { AuthButton } from "@/components/auth/AuthButton";
 import { getProvider } from "@/lib/data/provider-registry";
 import type { Project, ProjectBundle } from "@/lib/data/types";
 import type { ProjectSummary } from "@/lib/data/data-provider";
-import { RepoLinksDialog } from "@/components/settings/RepoLinksDialog";
 import { exportProject as exportProjectBundle } from "@/lib/utils/export";
 import { createRemoteProvider } from "@/lib/data/remote-provider";
-import { archiveProject, importProjectFromFile, parseBundleFromFile } from "@/lib/utils/export";
-import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
+import { importProjectFromFile, parseBundleFromFile } from "@/lib/utils/export";
 import { CreateProjectForm } from "@/components/panels/CreateProjectForm";
-import { PublishDialog } from "@/components/publik/PublishDialog";
 import { RestoreDialog } from "@/components/sync/RestoreDialog";
 import { SynkOnboardingBanner } from "@/components/sync/SynkOnboardingBanner";
 import { ProjectCard } from "@/components/projects/ProjectCard";
@@ -117,13 +114,9 @@ function ProjectsPageBody() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<ProjectSummary | null>(null);
-  const [publishTarget, setPublishTarget] = useState<ProjectSummary | null>(null);
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [moving, setMoving] = useState<string | null>(null);
-  const [repoTarget, setRepoTarget] = useState<ProjectSummary | null>(null);
   const searchParams = useSearchParams();
   /** Ids of projects with a Synk backup — the ONLY thing that separates Synked from Lokal. */
   const [backedUpIds, setBackedUpIds] = useState<Set<string>>(new Set());
@@ -413,22 +406,6 @@ function ProjectsPageBody() {
     await runImport(file, "lokal", "Failed to import example project");
   }
 
-  async function handleArchiveProject() {
-    if (!deleteTarget || deleting) return;
-    setDeleting(true);
-    setError(null);
-    try {
-      await archiveProject(deleteTarget.project.id);
-      setDeleteTarget(null);
-      await loadProjects();
-    } catch (err) {
-      console.error("[ProjectsPage] Failed to archive project:", err);
-      setError("Failed to archive project");
-    } finally {
-      setDeleting(false);
-    }
-  }
-
   const grouped = groupBySection(projects, backedUpIds);
 
   const openCreateDialog = (target: CreateTarget) => {
@@ -455,17 +432,17 @@ function ProjectsPageBody() {
   );
 
   // `ProjectSection` calls this via `items.map(renderCard)`, so it must set the key.
+  // The card is a link to the project now; publishing, repository links and
+  // deletion all live inside it (the sidebar footer and the Settings page), so
+  // the listing has nothing left to wire but the one thing you cannot do from
+  // inside a local project — moving it into the account.
   const renderCard = (summary: ProjectSummary) => (
     <ProjectCard
       key={summary.project.id}
       summary={summary}
       canHost={canHost}
       moving={moving === summary.project.id}
-      onOpen={() => router.push(`/project/${summary.project.id}`)}
-      onPublish={() => setPublishTarget(summary)}
-      onRepos={() => setRepoTarget(summary)}
       onMoveToAccount={() => void moveToAccount(summary)}
-      onDelete={() => setDeleteTarget(summary)}
     />
   );
 
@@ -607,33 +584,6 @@ function ProjectsPageBody() {
       </main>
 
       <CreateProjectForm open={createOpen} onOpenChange={setCreateOpen} onSubmit={createProject} />
-
-      <DeleteConfirmDialog
-        open={Boolean(deleteTarget)}
-        onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null);
-        }}
-        title="Delete project"
-        description={`Archive \"${deleteTarget?.project.title ?? "this project"}\" and remove it from your list?`}
-        onConfirm={handleArchiveProject}
-      />
-
-      <RepoLinksDialog
-        projectId={repoTarget?.project.id ?? ""}
-        projectTitle={repoTarget?.project.title ?? "this project"}
-        open={Boolean(repoTarget)}
-        onOpenChange={(next) => {
-          if (!next) setRepoTarget(null);
-        }}
-      />
-      <PublishDialog
-        open={Boolean(publishTarget)}
-        onOpenChange={(open) => {
-          if (!open) setPublishTarget(null);
-        }}
-        projectId={publishTarget?.project.id ?? ""}
-        projectTitle={publishTarget?.project.title ?? "this project"}
-      />
 
       <RestoreDialog open={restoreOpen} onOpenChange={setRestoreOpen} />
     </>
