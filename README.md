@@ -19,6 +19,7 @@ It's not a task tracker, not a wiki, not a design tool. It's a navigable, multi-
 - **Publish & share** — Publik snapshots (`arkaik.app/p/{id}`) and full JSON import/export for backup, sharing, and self-hosting
 - **Agent-native** — an `arkaik` CLI, a Claude Code plugin/skill for coding agents that maintain the map as a side effect of development, and machine-readable schema surfaces (`/llms.txt`)
 - **Seed example** — ships with a "Pebbles" example project to explore immediately
+- **⌘K palette** — jump to any map, library, board or setting by typing it, with Tab completion
 - **Dark mode** — light/dark theme toggle
 
 ## Quick Start
@@ -49,7 +50,7 @@ components/
     Canvas.tsx                # React Flow wrapper + node/edge type registry
     nodes/                    # FlowNode, ViewNode, DataModelNode, ApiEndpointNode
     edges/                    # ComposeEdge, CrossLayerEdge, FloatingDottedEdge
-  layout/                     # ProjectSidebar, ProjectSwitcher, StatusBadge, etc.
+  layout/                     # ProjectSidebar, ProjectSwitcher, CommandPalette, StatusBadge, etc.
   panels/                     # NodeDetailPanel, NewNodeForm, PlaylistEditor, etc.
   ui/                         # shadcn/ui primitives (button, card, dialog, etc.)
 lib/
