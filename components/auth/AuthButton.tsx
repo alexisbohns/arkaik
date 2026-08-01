@@ -1,7 +1,8 @@
 "use client";
 
-import { GithubIcon, LogOutIcon, UserRoundIcon } from "lucide-react";
+import { GithubIcon, KeyRoundIcon, LogOutIcon, UserRoundIcon } from "lucide-react";
 import { signIn, signOut } from "next-auth/react";
+import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -83,6 +84,15 @@ export function AuthButton() {
             <span className="truncate text-xs font-normal text-muted-foreground">{user.email}</span>
           ) : null}
         </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {/* Tokens belong to the account, not to a project — so the account menu
+            is the one place they are always reachable from. */}
+        <DropdownMenuItem asChild className="cursor-pointer">
+          <Link href="/settings/tokens">
+            <KeyRoundIcon />
+            <span>Agent tokens</span>
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           className="cursor-pointer"
