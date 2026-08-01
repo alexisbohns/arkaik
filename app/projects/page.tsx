@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { UploadIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -32,15 +33,64 @@ import {
 import { syncManager } from "@/lib/sync/sync-manager";
 import { useAuthStatus } from "@/lib/hooks/useAuthStatus";
 
+/** Where a `?import=` arrival from /generate says the file is headed. */
+const IMPORT_PROMPT_DESTINATION: Record<CreateTarget, string> = {
+  hosted: "It will land in your account.",
+  synked: "It will land in this browser, backed up to Synk.",
+  lokal: "It will land in this browser only.",
+};
+
+/** The injected effects `createInTarget` routes between. Module scope on purpose:
+ *  it captures nothing from the component, and every provider it reaches for is
+ *  itself module-level, so hoisting it makes that independence obvious. */
+const targetDeps = {
+  saveLocal: async (bundle: ProjectBundle) => {
+    await getProvider().saveProject(bundle);
+    return bundle.project.id;
+  },
+  importHosted: async (bundle: ProjectBundle) => {
+    const created = await createRemoteProvider().importProject(bundle);
+    return created.id;
+  },
+  backupNow: (projectId: string) => syncManager.backupNow(projectId),
+};
+
 /**
  * `useSearchParams` opts the tree out of prerendering, so the page body sits
  * behind a Suspense boundary — without it `next build` fails on `/projects`.
+ *
+ * The header stays OUTSIDE the boundary: it needs no search params, and leaving
+ * it inside meant the fallback blanked the logo, the auth button and the theme
+ * toggle, so hydration flashed an empty white page instead of the chrome.
  */
 export default function ProjectsPage() {
   return (
-    <Suspense fallback={null}>
-      <ProjectsPageBody />
-    </Suspense>
+    <div className="flex flex-1 flex-col bg-background font-sans">
+      <ProjectsHeader />
+      <Suspense
+        fallback={
+          <div className="flex flex-1 items-center justify-center">
+            <span className="text-sm text-muted-foreground">Loading…</span>
+          </div>
+        }
+      >
+        <ProjectsPageBody />
+      </Suspense>
+    </div>
+  );
+}
+
+function ProjectsHeader() {
+  return (
+    <header className="flex items-center justify-between border-b px-6 py-3">
+      <Link href="/" aria-label="Go to home" className="inline-flex items-center">
+        <ArkaikLogo className="w-20 shrink-0" />
+      </Link>
+      <div className="flex items-center gap-2">
+        <AuthButton />
+        <ThemeToggle />
+      </div>
+    </header>
   );
 }
 
@@ -63,7 +113,15 @@ function ProjectsPageBody() {
   const [backedUpIds, setBackedUpIds] = useState<Set<string>>(new Set());
   /** Which section the in-flight create/import is destined for. */
   const [createTarget, setCreateTarget] = useState<CreateTarget>("lokal");
+  /**
+   * Which section the file picker was opened for. A ref rather than state
+   * because the value has to survive the trip out to the OS dialog and back
+   * into a change event, and nothing rendered depends on it — turning it into
+   * state would buy a re-render and change nothing on screen.
+   */
   const importTargetRef = useRef<CreateTarget>("lokal");
+  /** Set when we arrive from /generate with `?import=`; drives the inline prompt. */
+  const [importPrompt, setImportPrompt] = useState<CreateTarget | null>(null);
   const signedIn = auth.state === "signed-in";
   /** Hosting a project needs somewhere to put it — i.e. a signed-in account. */
   const canHost = signedIn;
@@ -95,22 +153,38 @@ function ProjectsPageBody() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  async function loadProjects() {
+  /**
+   * Request sequence numbers for the two overlapping loaders below.
+   *
+   * Both are fired from several places now — mount, the sync subscription,
+   * creation and import — so two can easily be in flight at once, and the
+   * network does not promise they resolve in the order they were sent. Without
+   * this, an older response can land last and overwrite newer state: a project
+   * that was just backed up visibly hops back to Lokal and the banner offers to
+   * back it up again. Only the most recently issued request may write.
+   */
+  const projectsSeq = useRef(0);
+  const backedUpSeq = useRef(0);
+
+  const loadProjects = useCallback(async () => {
+    const mine = ++projectsSeq.current;
     setLoading(true);
     try {
       const list = await getProvider().listProjects();
+      if (projectsSeq.current !== mine) return;
       setProjects(list);
     } catch (err) {
+      if (projectsSeq.current !== mine) return;
       console.error("[ProjectsPage] Failed to load projects:", err);
       setError("Failed to load projects");
     } finally {
-      setLoading(false);
+      if (projectsSeq.current === mine) setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
-    loadProjects();
-  }, []);
+    void loadProjects();
+  }, [loadProjects]);
 
   /**
    * The set of project ids Synk holds a backup for.
@@ -121,19 +195,23 @@ function ProjectsPageBody() {
    * banner would then offer to back up a project already sitting under "Synked".
    */
   const loadBackedUpIds = useCallback(async () => {
+    const mine = ++backedUpSeq.current;
     if (!signedIn) {
       setBackedUpIds(new Set());
       return;
     }
     try {
       const res = await fetch("/api/synk/projects", { cache: "no-store" });
+      if (backedUpSeq.current !== mine) return;
       if (!res.ok) {
         setBackedUpIds(new Set());
         return;
       }
       const body = (await res.json()) as { projects?: Array<{ project_id: string }> };
+      if (backedUpSeq.current !== mine) return;
       setBackedUpIds(new Set((body.projects ?? []).map((p) => p.project_id)));
     } catch {
+      if (backedUpSeq.current !== mine) return;
       setBackedUpIds(new Set());
     }
   }, [signedIn]);
@@ -142,38 +220,63 @@ function ProjectsPageBody() {
     void loadBackedUpIds();
   }, [loadBackedUpIds]);
 
-  // A project that just got backed up — via the banner, the per-card control, or
-  // a Synked creation — must hop from Lokal to Synked without a page reload.
+  /**
+   * A project that just got backed up — via the banner, the per-card control, or
+   * a Synked creation — must hop from Lokal to Synked without a page reload.
+   *
+   * The listener is deliberately picky. `syncManager` emits on EVERY status
+   * change: one backup alone walks pending → syncing → backed-up, sign-in
+   * hydration seeds a status per project, and any local edit anywhere sets
+   * pending through the mutation debounce. Refetching on each of those would
+   * turn a free re-render into a storm of no-store GETs. Only a project NEWLY
+   * reaching `backed-up` can change the Synked/Lokal split, so only that
+   * refetches.
+   */
+  const projectsRef = useRef<ProjectSummary[]>(projects);
+  projectsRef.current = projects;
+  const backedUpStatusRef = useRef<Set<string>>(new Set());
+
   useEffect(
     () =>
       syncManager.subscribe(() => {
-        void loadBackedUpIds();
+        const seen = backedUpStatusRef.current;
+        let isNew = false;
+        const next = new Set<string>();
+        for (const summary of projectsRef.current) {
+          const id = summary.project.id;
+          if (syncManager.getStatus(id).state !== "backed-up") continue;
+          next.add(id);
+          if (!seen.has(id)) isNew = true;
+        }
+        backedUpStatusRef.current = next;
+        if (isNew) void loadBackedUpIds();
       }),
     [loadBackedUpIds]
   );
 
-  // Coming back from /generate with a target in hand: open the file picker on
-  // that section and drop the param, so a refresh does not re-open it.
+  // Coming back from /generate with a target in hand. We do NOT open the picker
+  // here: a programmatic click in a mount effect has no transient user
+  // activation, so browsers routinely block the dialog — and with the param
+  // already stripped the user would be left with nothing at all. Instead we
+  // remember the target and render an inline prompt whose button supplies the
+  // click, which always works.
   useEffect(() => {
     const target = parseCreateTarget(searchParams.get("import"));
     if (!target) return;
-    window.history.replaceState(null, "", "/projects");
-    importTargetRef.current = target;
-    fileInputRef.current?.click();
+    setImportPrompt(target);
+    // `replaceState` rather than `router.replace`: this is a cosmetic URL
+    // cleanup, and routing through Next would re-run this effect via a new
+    // `searchParams` object for no benefit. Other params are preserved — only
+    // `import` is consumed here.
+    const rest = new URLSearchParams(searchParams.toString());
+    rest.delete("import");
+    const query = rest.toString();
+    window.history.replaceState(
+      null,
+      "",
+      query ? `${window.location.pathname}?${query}` : window.location.pathname
+    );
   }, [searchParams]);
-
-  /** The injected effects `createInTarget` routes between. */
-  const targetDeps = {
-    saveLocal: async (bundle: ProjectBundle) => {
-      await getProvider().saveProject(bundle);
-      return bundle.project.id;
-    },
-    importHosted: async (bundle: ProjectBundle) => {
-      const created = await createRemoteProvider().importProject(bundle);
-      return created.id;
-    },
-    backupNow: (projectId: string) => syncManager.backupNow(projectId),
-  };
 
   async function createProject(project: Pick<Project, "title" | "description">) {
     setError(null);
@@ -224,27 +327,18 @@ function ProjectsPageBody() {
     setImporting(true);
     setError(null);
     try {
-      let id: string;
-      let backupError: string | null = null;
-
-      if (target === "hosted") {
-        // Straight to the account — never write it to this browser on the way.
-        const bundle = await parseBundleFromFile(file);
-        id = await targetDeps.importHosted(bundle);
-      } else {
-        // The local path does its own id-uniquing, which the hosted one must not.
-        const project = await importProjectFromFile(file);
-        id = project.id;
-        if (target === "synked") {
-          try {
-            await syncManager.backupNow(id);
-          } catch (err) {
-            backupError = err instanceof Error ? err.message : "Backup failed";
-          }
-        }
-      }
+      // Same router as creation, so "what synked means" has exactly one
+      // definition. Only `saveLocal` differs: the local import path does its own
+      // id-uniquing against what is already in this browser, which a hosted
+      // import must not do, so it takes the file rather than the parsed bundle.
+      const bundle = await parseBundleFromFile(file);
+      const { id, backupError } = await createInTarget(target, bundle, {
+        ...targetDeps,
+        saveLocal: async () => (await importProjectFromFile(file)).id,
+      });
 
       if (backupError) toast.error(`Imported, but the backup failed: ${backupError}`);
+      setImportPrompt(null);
       await loadProjects();
       await loadBackedUpIds();
       router.push(`/project/${id}`);
@@ -295,17 +389,7 @@ function ProjectsPageBody() {
   );
 
   return (
-    <div className="flex flex-1 flex-col bg-background font-sans">
-      <header className="flex items-center justify-between border-b px-6 py-3">
-        <Link href="/" aria-label="Go to home" className="inline-flex items-center">
-          <ArkaikLogo className="w-20 shrink-0" />
-        </Link>
-        <div className="flex items-center gap-2">
-          <AuthButton />
-          <ThemeToggle />
-        </div>
-      </header>
-
+    <>
       <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-8 p-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold">Projects</h1>
@@ -341,9 +425,48 @@ function ProjectsPageBody() {
 
         {error && <p className="text-sm text-destructive">{error}</p>}
 
-        {/* Only relevant when something is actually un-backed-up and local. */}
+        {/* The /generate round trip landing. Persistent rather than an auto-opened
+            picker, so the click that opens the dialog comes from the user. */}
+        {importPrompt && (
+          <div className="flex items-start justify-between gap-3 rounded-lg border bg-muted/40 p-4">
+            <div className="flex items-start gap-2">
+              <UploadIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+              <div>
+                <p className="text-sm font-medium">Import your generated JSON</p>
+                <p className="text-xs text-muted-foreground">
+                  {IMPORT_PROMPT_DESTINATION[importPrompt]}
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                size="sm"
+                className="cursor-pointer"
+                disabled={importing}
+                onClick={() => openImportPicker(importPrompt)}
+              >
+                {importing ? "Importing..." : "Choose file"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-6 cursor-pointer"
+                aria-label="Dismiss import prompt"
+                onClick={() => setImportPrompt(null)}
+              >
+                <XIcon className="size-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Only relevant when something is actually un-backed-up and local. The
+            banner gets the FULL list and filters it itself with `backedUpIds`,
+            so it stays correct on its own terms rather than depending on this
+            caller having pre-filtered. */}
         {!loading && grouped.lokal.length > 0 && (
-          <SynkOnboardingBanner projects={grouped.lokal} backedUpIds={backedUpIds} />
+          <SynkOnboardingBanner projects={projects} backedUpIds={backedUpIds} />
         )}
 
         {loading ? (
@@ -428,6 +551,6 @@ function ProjectsPageBody() {
       />
 
       <RestoreDialog open={restoreOpen} onOpenChange={setRestoreOpen} />
-    </div>
+    </>
   );
 }

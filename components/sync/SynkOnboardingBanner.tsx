@@ -33,7 +33,7 @@ function writeDismissed(ids: Set<string>) {
 }
 
 interface SynkOnboardingBannerProps {
-  /** Already filtered to the Lokal bucket by `app/projects/page.tsx`. */
+  /** The full project list. The banner narrows it to backup candidates itself. */
   projects: ProjectSummary[];
   /** Ids Synk already holds a backup for — fetched once by the page, not here. */
   backedUpIds: Set<string>;
@@ -61,8 +61,12 @@ export function SynkOnboardingBanner({ projects, backedUpIds }: SynkOnboardingBa
 
   if (auth.state !== "signed-in") return null;
 
+  // Narrowed here rather than by the caller: a banner that trusted someone else
+  // to have pre-filtered would be silently wrong the moment that changed, and
+  // its own filter would be dead code that never fires.
   const candidates = projects.filter((bundle) => {
     const id = bundle.project.id;
+    if (bundle.hosted) return false; // already on the server; nothing to back up
     if (backedUpIds.has(id)) return false;
     if (dismissed.has(id)) return false;
     if (syncManager.getStatus(id).state === "backed-up") return false; // just backed up this session
