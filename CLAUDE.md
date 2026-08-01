@@ -28,17 +28,24 @@ top-level keys are ignored. Skeleton:
 
 ```yaml
 en:
-  title: Short, benefit-first title             # required
-  summary: One or two sentences, user-facing.   # required
-fr:                                             # recommended — adaptation, informal "Tu"
-  title: Titre court, orienté bénéfice
-  summary: Une ou deux phrases, adaptées, pas traduites littéralement.
-suggested:                                      # optional — prefills triage in the Ariko admin
+  title: "Short, benefit-first title"            # required — always quoted
+  summary: "One or two sentences, user-facing."  # required — always quoted
+fr:                                              # recommended — adaptation, informal "Tu"
+  title: "Titre court, orienté bénéfice"
+  summary: "Une ou deux phrases, adaptées, pas traduites littéralement."
+suggested:                                       # optional — prefills triage in the Ariko admin
   molecule: arkaik       # THIS repo's molecule slug
   type: feature          # feature | improvement | fix | announcement
   tags: [changelog]
   # atom: <slug>         # ONLY when you know the slug exists — never guess
 ```
+
+**Always double-quote every title and summary.** A colon is the natural way to
+write a sentence ("Heads up: it moved", "ton compte : ceux que...") and it is
+exactly what an unquoted YAML value cannot hold — the parser reads `key: value`
+and the whole note fails. Quoting removes the failure mode outright, and makes
+apostrophes and em dashes free too. Slug-ish values (`molecule`, `type`,
+`tags`) need no quotes.
 
 **Tone.** Lead with the benefit, not the mechanism; keep it short; warm and a
 little playful, never corporate; no engineering jargon, ticket numbers, or
@@ -46,7 +53,9 @@ internal names.
 
 **This repo's molecule slug is `arkaik`.** A malformed note fails the
 post-on-merge job loudly (e.g. `en.title is required`); the advisory reminder
-surfaces the same problems at PR-open time. Fix by editing the PR body —
-posting is idempotent.
+surfaces the same problems at PR-open time, as a comment on the PR. **After
+opening a PR, read its comments** instead of assuming the note is fine — the
+reminder clears its own comment once the body is fixed. Fix by editing the PR
+body — posting is idempotent.
 
 Full pipeline docs: [ariko README — "Making it a requirement"](https://github.com/alexisbohns/ariko#lab-note-pipeline-c1--github-connector).
