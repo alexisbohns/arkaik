@@ -751,7 +751,9 @@ export function LibraryFilterBar({
 
 - [ ] **Step 3: Verify the Library page still compiles and lints**
 
-Run: `npx tsc --noEmit && npm run lint`
+Run: `npx tsc --noEmit; npm run lint`
+
+**Lint baseline:** `npm run lint` **already fails on `main`** with `19 problems (16 errors, 3 warnings)`, all `react-hooks/*` rules in ten files unrelated to this work (`app/projects/page.tsx`, `components/maps/*`, `components/panels/PlatformVariants.tsx`, `components/panels/ShotPreviewDialog.tsx`, `components/publik/PublishDialog.tsx`, `components/settings/*`, `components/sync/RestoreDialog.tsx`, `hooks/use-mobile.tsx`). That is pre-existing debt. **Do not fix it, and do not touch those files.** The bar is: no *new* problem in a file this task touched. Note the `;` instead of `&&` above — lint's non-zero exit must not mask the type-check result.
 Expected: clean. `app/project/[id]/library/page.tsx` imports `LibraryFilterBar`, `LibraryDisplayMode` and `LibrarySpeciesFilter` from this module — all three are still exported, so no change is needed there.
 
 - [ ] **Step 4: Commit**
@@ -954,7 +956,9 @@ export function PyramidTierGroup({
 
 - [ ] **Step 3: Type-check and commit**
 
-Run: `npx tsc --noEmit && npm run lint`
+Run: `npx tsc --noEmit; npm run lint`
+
+**Lint baseline:** `npm run lint` **already fails on `main`** with `19 problems (16 errors, 3 warnings)`, all `react-hooks/*` rules in ten files unrelated to this work (`app/projects/page.tsx`, `components/maps/*`, `components/panels/PlatformVariants.tsx`, `components/panels/ShotPreviewDialog.tsx`, `components/publik/PublishDialog.tsx`, `components/settings/*`, `components/sync/RestoreDialog.tsx`, `hooks/use-mobile.tsx`). That is pre-existing debt. **Do not fix it, and do not touch those files.** The bar is: no *new* problem in a file this task touched. Note the `;` instead of `&&` above — lint's non-zero exit must not mask the type-check result.
 Expected: clean.
 
 ```bash
@@ -1119,7 +1123,9 @@ Note what left: the `platform` state, the `PLATFORMS`/`PlatformGaugeList`/`Butto
 
 - [ ] **Step 2: Type-check and lint**
 
-Run: `npx tsc --noEmit && npm run lint`
+Run: `npx tsc --noEmit; npm run lint`
+
+**Lint baseline:** `npm run lint` **already fails on `main`** with `19 problems (16 errors, 3 warnings)`, all `react-hooks/*` rules in ten files unrelated to this work (`app/projects/page.tsx`, `components/maps/*`, `components/panels/PlatformVariants.tsx`, `components/panels/ShotPreviewDialog.tsx`, `components/publik/PublishDialog.tsx`, `components/settings/*`, `components/sync/RestoreDialog.tsx`, `hooks/use-mobile.tsx`). That is pre-existing debt. **Do not fix it, and do not touch those files.** The bar is: no *new* problem in a file this task touched. Note the `;` instead of `&&` above — lint's non-zero exit must not mask the type-check result.
 Expected: clean, with no "unused import" errors — if you see one, an import from the old file survived the rewrite.
 
 - [ ] **Step 3: Commit**
@@ -1180,7 +1186,9 @@ Note the `served/total` text is gone — the global ring's center number replace
 
 - [ ] **Step 2: Type-check and lint**
 
-Run: `npx tsc --noEmit && npm run lint`
+Run: `npx tsc --noEmit; npm run lint`
+
+**Lint baseline:** `npm run lint` **already fails on `main`** with `19 problems (16 errors, 3 warnings)`, all `react-hooks/*` rules in ten files unrelated to this work (`app/projects/page.tsx`, `components/maps/*`, `components/panels/PlatformVariants.tsx`, `components/panels/ShotPreviewDialog.tsx`, `components/publik/PublishDialog.tsx`, `components/settings/*`, `components/sync/RestoreDialog.tsx`, `hooks/use-mobile.tsx`). That is pre-existing debt. **Do not fix it, and do not touch those files.** The bar is: no *new* problem in a file this task touched. Note the `;` instead of `&&` above — lint's non-zero exit must not mask the type-check result.
 Expected: clean.
 
 - [ ] **Step 3: Commit**
@@ -1210,8 +1218,9 @@ Expected: every script ends in its "All … tests passed" line, exit code 0.
 
 - [ ] **Step 2: Type-check, lint and build**
 
-Run: `npx tsc --noEmit && npm run lint && npm run build`
-Expected: all clean. The build is the real check that no client component imported something server-only.
+Run: `npx tsc --noEmit && npm run build; npm run lint`
+
+Expected: `tsc` clean and the build succeeding — the build is the real check that no client component imported something server-only. `npm run lint` is expected to still report the **pre-existing** `19 problems (16 errors, 3 warnings)` that `main` already has, in ten files unrelated to this work. Confirm the count has not grown and that no reported file is one this branch touched. Do not fix the pre-existing problems.
 
 - [ ] **Step 3: Verify in the browser**
 
@@ -1244,4 +1253,5 @@ Expected: clean tree. If not, commit the remainder with a descriptive message.
 - **No chart library.** Do not add Recharts, TanStack Charts, or anything else. The ring is 40 lines of SVG on purpose; the repo has zero chart dependencies and keeps it that way.
 - **There is no React test runner here.** Do not scaffold Jest or Vitest. Component correctness is verified by `tsc`, `lint`, `build`, and Step 3 of Task 11.
 - **Tailwind is v4.** `stroke-*` utilities exist for the core palette and for theme colors like `stroke-muted-foreground/20`.
+- **`npm run lint` fails on `main` already** — `19 problems (16 errors, 3 warnings)`, all `react-hooks/*` in ten files none of these tasks touch. Verified by running eslint on a pristine `main` worktree. Treat that count as the baseline: your bar is "no new problem in a file I touched", not "lint exits 0". Never edit those ten files to make the number go down.
 - **This repo requires a Lab Note in the PR body** (see `CLAUDE.md`) — this change is user-facing, so it needs one. Molecule slug is `arkaik`. Always double-quote every title and summary.
