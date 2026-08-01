@@ -27,8 +27,13 @@ export interface RoutingProviderOptions {
    * Whether hosted projects are reachable — false when signed out or when
    * services are unconfigured. `listProjects()` then returns local projects
    * alone instead of failing the whole listing.
+   *
+   * May answer asynchronously, and in production does: the answer comes from
+   * `/api/auth/status`, which is still in flight when the projects page mounts
+   * and starts listing. Sampling a flag at that instant reads "no account" and
+   * drops the hosted half of the list, so `listProjects()` awaits this.
    */
-  isRemoteAvailable: () => boolean;
+  isRemoteAvailable: () => boolean | Promise<boolean>;
 }
 
 export function createRoutingProvider(options: RoutingProviderOptions): DataProvider {
@@ -49,7 +54,7 @@ export function createRoutingProvider(options: RoutingProviderOptions): DataProv
      */
     async listProjects(): Promise<ProjectSummary[]> {
       const localProjects = await local.listProjects();
-      if (!isRemoteAvailable()) return localProjects;
+      if (!(await isRemoteAvailable())) return localProjects;
 
       try {
         const hosted = await remote.listProjects();

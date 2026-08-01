@@ -194,12 +194,91 @@ async function main() {
     check("importProject goes to the local provider", calls.includes("importProject:imported"), calls.join(","));
   }
 
+  // --- Availability is awaited, not sampled --------------------------------
+  // The page that lists projects mounts before `/api/auth/status` answers. If
+  // `listProjects()` merely samples a flag at that instant it reads the "no
+  // account" default and silently drops every hosted project — the /projects
+  // page showing fewer projects than the in-project switcher.
+  {
+    let fetchCalls = 0;
+    const router = routing.createRoutingProvider({
+      local: reg.localFake,
+      remote: remote.createRemoteProvider({
+        fetchImpl: async () => {
+          fetchCalls++;
+          return jsonResponse({ projects: [] });
+        },
+      }),
+      isRemoteAvailable: async () => false,
+    });
+    const listed = await router.listProjects();
+    check("an async 'not available' is awaited, not treated as truthy", fetchCalls === 0, String(fetchCalls));
+    check("...and the local list still comes back", listed.length === 1);
+  }
+  {
+    const router = routing.createRoutingProvider({
+      local: reg.localFake,
+      remote: remote.createRemoteProvider({
+        fetchImpl: async () =>
+          jsonResponse({
+            projects: [
+              {
+                id: HOSTED,
+                title: "Hosted",
+                nodeCount: 3,
+                edgeCount: 2,
+                createdAt: "2026-01-01T00:00:00.000Z",
+                updatedAt: "2026-01-01T00:00:00.000Z",
+              },
+            ],
+          }),
+      }),
+      // Availability that only settles a tick later, exactly as the real auth
+      // status does — the listing must wait for it.
+      isRemoteAvailable: () => new Promise((resolve) => setTimeout(() => resolve(true), 5)),
+    });
+    const listed = await router.listProjects();
+    check(
+      "a listing started before auth resolves still includes hosted projects",
+      listed.length === 2,
+      JSON.stringify(listed.map((p) => p.project.id)),
+    );
+  }
+
   // --- The availability flag ------------------------------------------------
   check("hosted availability defaults to false", availability.isHostedAvailable() === false);
   availability.setHostedAvailable(true);
   check("hosted availability can be set", availability.isHostedAvailable() === true);
   availability.setHostedAvailable(false);
   check("hosted availability can be cleared", availability.isHostedAvailable() === false);
+
+  // --- Waiting for the answer instead of guessing ---------------------------
+  {
+    const gate = availability.createHostedAvailability();
+    let settled = null;
+    void gate.whenKnown().then((value) => {
+      settled = value;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    check("whenKnown() does not answer before the status is reported", settled === null, String(settled));
+
+    gate.set(true);
+    check("reporting the status answers waiters with it", (await gate.whenKnown()) === true);
+    check("...and the sync read agrees", gate.isAvailable() === true);
+  }
+  {
+    const gate = availability.createHostedAvailability();
+    gate.set(false);
+    check("once known, whenKnown() answers immediately", (await gate.whenKnown()) === false);
+  }
+  {
+    // Nothing must hang forever on a surface where no one reports the status.
+    const gate = availability.createHostedAvailability({ timeoutMs: 5 });
+    const started = Date.now();
+    const answer = await gate.whenKnown();
+    check("whenKnown() gives up and answers with the default", answer === false);
+    check("...promptly", Date.now() - started < 500, String(Date.now() - started));
+  }
 
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 

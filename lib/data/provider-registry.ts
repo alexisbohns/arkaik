@@ -1,5 +1,5 @@
 import type { DataProvider } from "./data-provider";
-import { isHostedAvailable } from "./hosted-availability";
+import { whenHostedAvailabilityKnown } from "./hosted-availability";
 import { localProvider } from "./local-provider";
 import { createRemoteProvider } from "./remote-provider";
 import { createRoutingProvider } from "./routing-provider";
@@ -28,16 +28,21 @@ import { createRoutingProvider } from "./routing-provider";
  * For a local project this is behaviourally identical to before — every call
  * whose project id is not in the hosted `prj_` namespace goes straight to
  * `localProvider`. The only difference is `listProjects()`, which additionally
- * asks the account when {@link isHostedAvailable} says there is one, and falls
- * back to the local list if that request fails.
+ * asks the account when {@link whenHostedAvailabilityKnown} says there is one,
+ * and falls back to the local list if that request fails.
+ *
+ * It *waits* for that answer rather than sampling it: the projects page starts
+ * its listing on mount, before `/api/auth/status` has replied, so a sampled
+ * flag would read the signed-out default and drop every hosted project from
+ * the list.
  *
  * So the local-first app is unaffected: signed out, or with services
- * unconfigured, `isHostedAvailable()` is false and nothing reaches the network.
+ * unconfigured, the answer is false and nothing reaches the network.
  */
 let currentProvider: DataProvider = createRoutingProvider({
   local: localProvider,
   remote: createRemoteProvider(),
-  isRemoteAvailable: isHostedAvailable,
+  isRemoteAvailable: whenHostedAvailabilityKnown,
 });
 
 /** The active `DataProvider`. Defaults to `localProvider`. */
