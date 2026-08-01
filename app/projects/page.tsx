@@ -1,53 +1,36 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { toast } from "sonner";
+
+import { Button } from "@/components/ui/button";
 import { ArkaikLogo } from "@/components/branding/ArkaikLogo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { AuthButton } from "@/components/auth/AuthButton";
 import { getProvider } from "@/lib/data/provider-registry";
 import type { Project, ProjectBundle } from "@/lib/data/types";
 import type { ProjectSummary } from "@/lib/data/data-provider";
-import { Badge } from "@/components/ui/badge";
 import { RepoLinksDialog } from "@/components/settings/RepoLinksDialog";
 import { exportProject as exportProjectBundle } from "@/lib/utils/export";
 import { createRemoteProvider } from "@/lib/data/remote-provider";
-import { archiveProject, importProjectFromFile } from "@/lib/utils/export";
+import { archiveProject, importProjectFromFile, parseBundleFromFile } from "@/lib/utils/export";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
 import { CreateProjectForm } from "@/components/panels/CreateProjectForm";
 import { PublishDialog } from "@/components/publik/PublishDialog";
-import { ProjectSyncControl } from "@/components/sync/ProjectSyncControl";
 import { RestoreDialog } from "@/components/sync/RestoreDialog";
 import { SynkOnboardingBanner } from "@/components/sync/SynkOnboardingBanner";
-import { CloudIcon, CloudUploadIcon, GithubIcon, HistoryIcon, Share2Icon } from "lucide-react";
-import { toast } from "sonner";
+import { ProjectCard } from "@/components/projects/ProjectCard";
+import { ProjectSection } from "@/components/projects/ProjectSection";
+import { groupBySection } from "@/lib/data/project-sections";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  createInTarget,
+  parseCreateTarget,
+  type CreateTarget,
+} from "@/lib/data/create-target";
+import { syncManager } from "@/lib/sync/sync-manager";
 import { useAuthStatus } from "@/lib/hooks/useAuthStatus";
-import pebbles from "@/seed/pebbles.json";
-import arkaikSelfMap from "@/seed/arkaik-self-map.json";
-
-type ExampleSeed = "pebbles" | "arkaik";
-
-const EXAMPLE_SEEDS: Record<ExampleSeed, { fileName: string; data: unknown }> = {
-  pebbles: { fileName: "pebbles.json", data: pebbles },
-  arkaik: { fileName: "arkaik-self-map.json", data: arkaikSelfMap },
-};
 
 export default function ProjectsPage() {
   const router = useRouter();
@@ -63,9 +46,15 @@ export default function ProjectsPage() {
   const [deleting, setDeleting] = useState(false);
   const [moving, setMoving] = useState<string | null>(null);
   const [repoTarget, setRepoTarget] = useState<ProjectSummary | null>(null);
-  const authStatus = useAuthStatus();
+  const searchParams = useSearchParams();
+  /** Ids of projects with a Synk backup — the ONLY thing that separates Synked from Lokal. */
+  const [backedUpIds, setBackedUpIds] = useState<Set<string>>(new Set());
+  /** Which section the in-flight create/import is destined for. */
+  const [createTarget, setCreateTarget] = useState<CreateTarget>("lokal");
+  const importTargetRef = useRef<CreateTarget>("lokal");
+  const signedIn = auth.state === "signed-in";
   /** Hosting a project needs somewhere to put it — i.e. a signed-in account. */
-  const canHost = authStatus.state === "signed-in";
+  const canHost = signedIn;
 
   /**
    * Copy a browser-held project into the account.
@@ -111,18 +100,78 @@ export default function ProjectsPage() {
     loadProjects();
   }, []);
 
+  /**
+   * The set of project ids Synk holds a backup for.
+   *
+   * This used to live inside `SynkOnboardingBanner`. It moved up here because
+   * the sections need the same answer: a local project with a backup is Synked,
+   * without one it is Lokal. Two independent fetches could disagree, and the
+   * banner would then offer to back up a project already sitting under "Synked".
+   */
+  const loadBackedUpIds = useCallback(async () => {
+    if (!signedIn) {
+      setBackedUpIds(new Set());
+      return;
+    }
+    try {
+      const res = await fetch("/api/synk/projects", { cache: "no-store" });
+      if (!res.ok) {
+        setBackedUpIds(new Set());
+        return;
+      }
+      const body = (await res.json()) as { projects?: Array<{ project_id: string }> };
+      setBackedUpIds(new Set((body.projects ?? []).map((p) => p.project_id)));
+    } catch {
+      setBackedUpIds(new Set());
+    }
+  }, [signedIn]);
+
+  useEffect(() => {
+    void loadBackedUpIds();
+  }, [loadBackedUpIds]);
+
+  // A project that just got backed up — via the banner, the per-card control, or
+  // a Synked creation — must hop from Lokal to Synked without a page reload.
+  useEffect(
+    () =>
+      syncManager.subscribe(() => {
+        void loadBackedUpIds();
+      }),
+    [loadBackedUpIds]
+  );
+
+  // Coming back from /generate with a target in hand: open the file picker on
+  // that section and drop the param, so a refresh does not re-open it.
+  useEffect(() => {
+    const target = parseCreateTarget(searchParams.get("import"));
+    if (!target) return;
+    window.history.replaceState(null, "", "/projects");
+    importTargetRef.current = target;
+    fileInputRef.current?.click();
+  }, [searchParams]);
+
+  /** The injected effects `createInTarget` routes between. */
+  const targetDeps = {
+    saveLocal: async (bundle: ProjectBundle) => {
+      await getProvider().saveProject(bundle);
+      return bundle.project.id;
+    },
+    importHosted: async (bundle: ProjectBundle) => {
+      const created = await createRemoteProvider().importProject(bundle);
+      return created.id;
+    },
+    backupNow: (projectId: string) => syncManager.backupNow(projectId),
+  };
+
   async function createProject(project: Pick<Project, "title" | "description">) {
     setError(null);
     const now = new Date().toISOString();
-    const id = crypto.randomUUID();
     const bundle: ProjectBundle = {
       project: {
-        id,
+        id: crypto.randomUUID(),
         title: project.title,
         description: project.description,
-        metadata: {
-          view_card_variant: "compact",
-        },
+        metadata: { view_card_variant: "compact" },
         created_at: now,
         updated_at: now,
         archived_at: null,
@@ -131,27 +180,21 @@ export default function ProjectsPage() {
       edges: [],
     };
 
-    await getProvider().saveProject(bundle);
-    await loadProjects();
-    router.push(`/project/${id}`);
+    try {
+      const { id, backupError } = await createInTarget(createTarget, bundle, targetDeps);
+      if (backupError) toast.error(`Created, but the backup failed: ${backupError}`);
+      await loadProjects();
+      await loadBackedUpIds();
+      router.push(`/project/${id}`);
+    } catch (err) {
+      console.error("[ProjectsPage] Failed to create project:", err);
+      setError(err instanceof Error ? err.message : "Could not create this project.");
+    }
   }
 
-  async function handleImportExample(seed: ExampleSeed) {
-    const selected = EXAMPLE_SEEDS[seed];
-    setImporting(true);
-    setError(null);
-    try {
-      const project = await importProjectFromFile(
-        new File([JSON.stringify(selected.data)], selected.fileName, { type: "application/json" })
-      );
-      await loadProjects();
-      router.push(`/project/${project.id}`);
-    } catch (err) {
-      console.error("[ProjectsPage] Failed to import example project:", err);
-      setError("Failed to import example project");
-    } finally {
-      setImporting(false);
-    }
+  function openImportPicker(target: CreateTarget) {
+    importTargetRef.current = target;
+    fileInputRef.current?.click();
   }
 
   async function handleImportFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -165,16 +208,37 @@ export default function ProjectsPage() {
       return;
     }
 
+    const target = importTargetRef.current;
     setImporting(true);
     setError(null);
     try {
-      const project = await importProjectFromFile(file);
+      let id: string;
+      let backupError: string | null = null;
+
+      if (target === "hosted") {
+        // Straight to the account — never write it to this browser on the way.
+        const bundle = await parseBundleFromFile(file);
+        id = await targetDeps.importHosted(bundle);
+      } else {
+        // The local path does its own id-uniquing, which the hosted one must not.
+        const project = await importProjectFromFile(file);
+        id = project.id;
+        if (target === "synked") {
+          try {
+            await syncManager.backupNow(id);
+          } catch (err) {
+            backupError = err instanceof Error ? err.message : "Backup failed";
+          }
+        }
+      }
+
+      if (backupError) toast.error(`Imported, but the backup failed: ${backupError}`);
       await loadProjects();
-      router.push(`/project/${project.id}`);
+      await loadBackedUpIds();
+      router.push(`/project/${id}`);
     } catch (err) {
       console.error("[ProjectsPage] Failed to import project JSON:", err);
-      const message = err instanceof Error ? err.message : "Failed to import project JSON";
-      setError(message);
+      setError(err instanceof Error ? err.message : "Failed to import project JSON");
     } finally {
       setImporting(false);
     }
@@ -196,6 +260,28 @@ export default function ProjectsPage() {
     }
   }
 
+  const grouped = groupBySection(projects, backedUpIds);
+
+  const openCreateDialog = (target: CreateTarget) => {
+    setCreateTarget(target);
+    setCreateOpen(true);
+  };
+
+  // `ProjectSection` calls this via `items.map(renderCard)`, so it must set the key.
+  const renderCard = (summary: ProjectSummary) => (
+    <ProjectCard
+      key={summary.project.id}
+      summary={summary}
+      canHost={canHost}
+      moving={moving === summary.project.id}
+      onOpen={() => router.push(`/project/${summary.project.id}`)}
+      onPublish={() => setPublishTarget(summary)}
+      onRepos={() => setRepoTarget(summary)}
+      onMoveToAccount={() => void moveToAccount(summary)}
+      onDelete={() => setDeleteTarget(summary)}
+    />
+  );
+
   return (
     <div className="flex flex-1 flex-col bg-background font-sans">
       <header className="flex items-center justify-between border-b px-6 py-3">
@@ -208,127 +294,95 @@ export default function ProjectsPage() {
         </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 p-6">
+      <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-8 p-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold">Projects</h1>
-          <div className="flex items-center gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="application/json,.json"
-              onChange={handleImportFileChange}
-              className="hidden"
-            />
-            <Button
-              variant="outline"
-              disabled={importing}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {importing ? "Importing..." : "Import JSON"}
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href="/generate">Generate with AI</Link>
-            </Button>
-            {auth.state === "signed-in" && (
-              <Button variant="outline" onClick={() => setRestoreOpen(true)}>
-                <HistoryIcon />
-                Restore from Synk
+          {/* One shared picker: `importTargetRef` carries which section asked. */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json,.json"
+            onChange={handleImportFileChange}
+            className="hidden"
+          />
+          {/* Signed out there is only one kind of project, so the sole control
+              sits up here rather than under a heading that says nothing. */}
+          {!signedIn && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                className="cursor-pointer"
+                disabled={importing}
+                onClick={() => openImportPicker("lokal")}
+              >
+                {importing ? "Importing..." : "Import JSON"}
               </Button>
-            )}
-            <Button onClick={() => setCreateOpen(true)}>Create project</Button>
-          </div>
+              <Button variant="outline" className="cursor-pointer" asChild>
+                <Link href="/generate?target=lokal">Generate with AI</Link>
+              </Button>
+              <Button className="cursor-pointer" onClick={() => openCreateDialog("lokal")}>
+                Create project
+              </Button>
+            </div>
+          )}
         </div>
 
         {error && <p className="text-sm text-destructive">{error}</p>}
 
-        {!loading && projects.length > 0 && <SynkOnboardingBanner projects={projects} />}
+        {/* Only relevant when something is actually un-backed-up and local. */}
+        {!loading && grouped.lokal.length > 0 && (
+          <SynkOnboardingBanner projects={grouped.lokal} backedUpIds={backedUpIds} />
+        )}
 
         {loading ? (
           <div className="flex flex-1 items-center justify-center">
             <span className="text-sm text-muted-foreground">Loading…</span>
           </div>
-        ) : projects.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 py-24 text-center">
-            <p className="max-w-xs text-sm text-muted-foreground">
-              No projects yet. Create one, import your JSON, or load the example project.
-            </p>
-            <div className="flex items-center gap-2">
-              <Button onClick={() => setCreateOpen(true)}>Create project</Button>
-              <Select
-                disabled={importing}
-                onValueChange={(value) => {
-                  void handleImportExample(value as ExampleSeed);
-                }}
-              >
-                <SelectTrigger className="w-[220px]" aria-label="Import example project">
-                  <SelectValue placeholder={importing ? "Importing..." : "Import example project"} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="pebbles">Pebbles</SelectItem>
-                  <SelectItem value="arkaik">Arkaik</SelectItem>
-                </SelectContent>
-              </Select>
+        ) : !signedIn ? (
+          /* Signed out: no sections. Hosted and Synked are impossible without an
+             account, and the local-first promise is that signing in ADDS things
+             rather than rearranging what was already there. */
+          grouped.lokal.length === 0 ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-4 py-24 text-center">
+              <p className="max-w-xs text-sm text-muted-foreground">
+                No projects yet. Create one or import your JSON.
+              </p>
             </div>
-          </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {grouped.lokal.map(renderCard)}
+            </div>
+          )
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {projects.map((bundle) => (
-              <Card key={bundle.project.id}>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <span className="truncate">{bundle.project.title}</span>
-                    {bundle.hosted ? (
-                      <Badge variant="outline" className="shrink-0 gap-1 font-normal">
-                        <CloudIcon className="size-3" />
-                        In your account
-                      </Badge>
-                    ) : null}
-                  </CardTitle>
-                  {bundle.project.description && (
-                    <CardDescription>{bundle.project.description}</CardDescription>
-                  )}
-                </CardHeader>
-                <CardContent className="flex flex-col gap-2">
-                  <p className="text-sm text-muted-foreground">
-                    {bundle.nodeCount} node{bundle.nodeCount !== 1 ? "s" : ""} ·{" "}
-                    {bundle.edgeCount} edge{bundle.edgeCount !== 1 ? "s" : ""}
-                  </p>
-                  {/* Synk backs up browser-held projects; a hosted project is
-                      already on the server and has nothing to back up. */}
-                  {bundle.hosted ? null : <ProjectSyncControl projectId={bundle.project.id} />}
-                </CardContent>
-                <CardFooter className="flex flex-wrap items-center gap-2">
-                  <Button size="sm" onClick={() => router.push(`/project/${bundle.project.id}`)}>
-                    Open
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => setPublishTarget(bundle)}>
-                    <Share2Icon />
-                    Publish
-                  </Button>
-                  {bundle.hosted ? (
-                    <Button size="sm" variant="outline" onClick={() => setRepoTarget(bundle)}>
-                      <GithubIcon />
-                      Repos
-                    </Button>
-                  ) : null}
-                  {!bundle.hosted && canHost ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={moving === bundle.project.id}
-                      onClick={() => void moveToAccount(bundle)}
-                    >
-                      <CloudUploadIcon />
-                      {moving === bundle.project.id ? "Moving…" : "Move to account"}
-                    </Button>
-                  ) : null}
-                  <Button size="sm" variant="outline" onClick={() => setDeleteTarget(bundle)}>
-                    Delete
-                  </Button>
-                </CardFooter>
-              </Card>
-            ))}
-          </div>
+          <>
+            <ProjectSection
+              target="hosted"
+              items={grouped.hosted}
+              renderCard={renderCard}
+              disabled={importing}
+              onCreate={() => openCreateDialog("hosted")}
+              onImport={() => openImportPicker("hosted")}
+            />
+
+            <ProjectSection
+              target="synked"
+              items={grouped.synked}
+              renderCard={renderCard}
+              disabled={importing}
+              onCreate={() => openCreateDialog("synked")}
+              onImport={() => openImportPicker("synked")}
+              onRestore={() => setRestoreOpen(true)}
+            />
+
+            <ProjectSection
+              target="lokal"
+              items={grouped.lokal}
+              renderCard={renderCard}
+              disabled={importing}
+              onCreate={() => openCreateDialog("lokal")}
+              onImport={() => openImportPicker("lokal")}
+            />
+          </>
         )}
       </main>
 
