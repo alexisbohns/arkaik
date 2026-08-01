@@ -61,6 +61,77 @@ assert(
   "platform filter keeps only the ios distribution; count is platform-independent",
 );
 
+// --- Display order (rings and bars) and the global all-platform segment sum ---
+
+const {
+  compareStatusesForDisplay,
+  createEmptyRollup,
+  addPlatformStatusToRollup,
+  getPlatformRollupSegments,
+  getRollupTotalSegments,
+} = require(path.join(BUILD_DIR, "platform-status.js"));
+const { getCountedStatuses, STATUS_ORDER } = require(path.join(BUILD_DIR, "config-statuses.js"));
+
+assert(
+  eq(
+    [...getCountedStatuses()].sort(compareStatusesForDisplay),
+    ["live", "releasing", "development", "prioritized", "blocked"],
+  ),
+  "display order is lifecycle-descending with blocked pinned last",
+);
+assert(
+  STATUS_ORDER.blocked > STATUS_ORDER.live,
+  "blocked outranks live in STATUS_ORDER, so pinning it last is real work, not a no-op",
+);
+
+let ringRollup = createEmptyRollup();
+ringRollup = addPlatformStatusToRollup(ringRollup, "web", "live");
+ringRollup = addPlatformStatusToRollup(ringRollup, "web", "live");
+ringRollup = addPlatformStatusToRollup(ringRollup, "web", "blocked");
+ringRollup = addPlatformStatusToRollup(ringRollup, "ios", "live");
+ringRollup = addPlatformStatusToRollup(ringRollup, "android", "development");
+
+const totalSegments = getRollupTotalSegments(ringRollup);
+assert(
+  eq(totalSegments.map((s) => s.status), ["live", "releasing", "development", "prioritized", "blocked"]),
+  "global segments come back in display order, one entry per counted status",
+);
+
+const totalByStatus = Object.fromEntries(totalSegments.map((s) => [s.status, s]));
+assert(totalByStatus.live.count === 3, `global ring sums live across platforms (got ${totalByStatus.live.count})`);
+assert(
+  totalByStatus.development.count === 1 && totalByStatus.blocked.count === 1,
+  "global ring sums the single-platform statuses too",
+);
+assert(
+  totalSegments.reduce((sum, s) => sum + s.count, 0) === 5,
+  "global counts equal the sum of the per-platform totals",
+);
+assert(
+  totalByStatus.live.percentage === 60,
+  `global percentages divide by the grand total, not one platform (got ${totalByStatus.live.percentage})`,
+);
+assert(
+  totalByStatus.releasing.count === 0 && totalByStatus.releasing.ratio === 0,
+  "an absent status is still present, with a zero count and ratio",
+);
+
+const webSegments = getPlatformRollupSegments(ringRollup, "web");
+assert(
+  eq(webSegments.map((s) => s.status), ["live", "releasing", "development", "prioritized", "blocked"]),
+  "per-platform segments use the same display order as the global ring",
+);
+assert(
+  webSegments.find((s) => s.status === "live").percentage === 67,
+  "per-platform percentages divide by that platform's own total",
+);
+
+const emptySegments = getRollupTotalSegments(createEmptyRollup());
+assert(
+  emptySegments.length === 5 && emptySegments.every((s) => s.count === 0 && s.ratio === 0 && s.percentage === 0),
+  "an empty rollup yields all-zero segments and never divides by zero",
+);
+
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 
 if (failures > 0) {
