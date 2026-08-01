@@ -32,6 +32,22 @@ import {
 } from "@/lib/data/create-target";
 import { syncManager } from "@/lib/sync/sync-manager";
 import { useAuthStatus } from "@/lib/hooks/useAuthStatus";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import pebbles from "@/seed/pebbles.json";
+import arkaikSelfMap from "@/seed/arkaik-self-map.json";
+
+type ExampleSeed = "pebbles" | "arkaik";
+
+const EXAMPLE_SEEDS: Record<ExampleSeed, { fileName: string; data: unknown }> = {
+  pebbles: { fileName: "pebbles.json", data: pebbles },
+  arkaik: { fileName: "arkaik-self-map.json", data: arkaikSelfMap },
+};
 
 /** Where a `?import=` arrival from /generate says the file is headed. */
 const IMPORT_PROMPT_DESTINATION: Record<CreateTarget, string> = {
@@ -337,18 +353,13 @@ function ProjectsPageBody() {
     fileInputRef.current?.click();
   }
 
-  async function handleImportFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-
-    const MAX_IMPORT_SIZE = 5 * 1024 * 1024; // 5 MB
-    if (file.size > MAX_IMPORT_SIZE) {
-      setError(`File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum size is 5 MB.`);
-      return;
-    }
-
-    const target = importTargetRef.current;
+  /**
+   * The one import path, shared by the file picker and the example seeds.
+   *
+   * Both end up in the same place — a bundle, routed to a target — so they run
+   * the same code rather than two lookalike copies that can drift.
+   */
+  async function runImport(file: File, target: CreateTarget, failureMessage: string) {
     setImporting(true);
     setError(null);
     try {
@@ -368,11 +379,38 @@ function ProjectsPageBody() {
       await loadBackedUpIds();
       router.push(`/project/${id}`);
     } catch (err) {
-      console.error("[ProjectsPage] Failed to import project JSON:", err);
-      setError(err instanceof Error ? err.message : "Failed to import project JSON");
+      console.error(`[ProjectsPage] ${failureMessage}:`, err);
+      setError(err instanceof Error ? err.message : failureMessage);
     } finally {
       setImporting(false);
     }
+  }
+
+  async function handleImportFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    const MAX_IMPORT_SIZE = 5 * 1024 * 1024; // 5 MB
+    if (file.size > MAX_IMPORT_SIZE) {
+      setError(`File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum size is 5 MB.`);
+      return;
+    }
+
+    await runImport(file, importTargetRef.current, "Failed to import project JSON");
+  }
+
+  /**
+   * An example project is a Lokal project by definition — it is a bundle we
+   * ship, written to this browser — so it goes through the same import as a
+   * hand-picked file, with the target fixed. No size check: the seeds are ours.
+   */
+  async function handleImportExample(seed: ExampleSeed) {
+    const selected = EXAMPLE_SEEDS[seed];
+    const file = new File([JSON.stringify(selected.data)], selected.fileName, {
+      type: "application/json",
+    });
+    await runImport(file, "lokal", "Failed to import example project");
   }
 
   async function handleArchiveProject() {
@@ -397,6 +435,24 @@ function ProjectsPageBody() {
     setCreateTarget(target);
     setCreateOpen(true);
   };
+
+  /** The example seeds. Lokal by nature, so it appears only where Lokal is empty. */
+  const examplePicker = (
+    <Select
+      disabled={importing}
+      onValueChange={(value) => {
+        void handleImportExample(value as ExampleSeed);
+      }}
+    >
+      <SelectTrigger className="w-[220px] cursor-pointer" aria-label="Import example project">
+        <SelectValue placeholder={importing ? "Importing..." : "Import example project"} />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="pebbles">Pebbles</SelectItem>
+        <SelectItem value="arkaik">Arkaik</SelectItem>
+      </SelectContent>
+    </Select>
+  );
 
   // `ProjectSection` calls this via `items.map(renderCard)`, so it must set the key.
   const renderCard = (summary: ProjectSummary) => (
@@ -505,8 +561,11 @@ function ProjectsPageBody() {
           grouped.lokal.length === 0 ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-4 py-24 text-center">
               <p className="max-w-xs text-sm text-muted-foreground">
-                No projects yet. Create one or import your JSON.
+                No projects yet. Create one, import your JSON, or load an example project.
               </p>
+              {/* A signed-out visitor with nothing is exactly who the example is
+                  for — without this the empty state is a dead end. */}
+              {examplePicker}
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -541,6 +600,7 @@ function ProjectsPageBody() {
               disabled={importing}
               onCreate={() => openCreateDialog("lokal")}
               onImport={() => openImportPicker("lokal")}
+              emptyExtra={examplePicker}
             />
           </>
         )}

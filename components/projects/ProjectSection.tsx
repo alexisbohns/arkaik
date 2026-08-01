@@ -16,6 +16,15 @@ interface ProjectSectionProps {
   onImport: () => void;
   onRestore?: () => void;
   disabled?: boolean;
+  /**
+   * Extra content for the empty state, below the create menu.
+   *
+   * It exists for the example project picker, which belongs to Lokal and only
+   * to Lokal: an example is a bundle written to this browser, so there is no
+   * Hosted or Synked equivalent to offer. Rather than teach this component
+   * about seeds, the one section that has something more to say passes it in.
+   */
+  emptyExtra?: ReactNode;
 }
 
 const SECTION_COPY: Record<CreateTarget, { title: string; empty: string }> = {
@@ -54,6 +63,7 @@ export function ProjectSection({
   onImport,
   onRestore,
   disabled,
+  emptyExtra,
 }: ProjectSectionProps) {
   const copy = SECTION_COPY[target];
 
@@ -86,6 +96,7 @@ export function ProjectSection({
             disabled={disabled}
             primaryLabel={`Create your first ${copy.title} project`}
           />
+          {emptyExtra ? <div className="flex items-center gap-2">{emptyExtra}</div> : null}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{items.map(renderCard)}</div>
