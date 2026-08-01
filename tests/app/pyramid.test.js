@@ -102,7 +102,7 @@ assert(
 const totalByStatus = Object.fromEntries(totalSegments.map((s) => [s.status, s]));
 assert(totalByStatus.live?.count === 3, `global ring sums live across platforms (got ${totalByStatus.live?.count})`);
 assert(
-  totalByStatus.development.count === 1 && totalByStatus.blocked.count === 1,
+  totalByStatus.development?.count === 1 && totalByStatus.blocked?.count === 1,
   "global ring sums the single-platform statuses too",
 );
 assert(
@@ -110,11 +110,11 @@ assert(
   "global counts equal the sum of the per-platform totals",
 );
 assert(
-  totalByStatus.live.percentage === 60,
-  `global percentages divide by the grand total, not one platform (got ${totalByStatus.live.percentage})`,
+  totalByStatus.live?.percentage === 60,
+  `global percentages divide by the grand total, not one platform (got ${totalByStatus.live?.percentage})`,
 );
 assert(
-  totalByStatus.releasing.count === 0 && totalByStatus.releasing.ratio === 0,
+  totalByStatus.releasing?.count === 0 && totalByStatus.releasing?.ratio === 0,
   "an absent status is still present, with a zero count and ratio",
 );
 assert(
