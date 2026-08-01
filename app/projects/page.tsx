@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -32,7 +32,19 @@ import {
 import { syncManager } from "@/lib/sync/sync-manager";
 import { useAuthStatus } from "@/lib/hooks/useAuthStatus";
 
+/**
+ * `useSearchParams` opts the tree out of prerendering, so the page body sits
+ * behind a Suspense boundary — without it `next build` fails on `/projects`.
+ */
 export default function ProjectsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ProjectsPageBody />
+    </Suspense>
+  );
+}
+
+function ProjectsPageBody() {
   const router = useRouter();
   const auth = useAuthStatus();
   const [projects, setProjects] = useState<ProjectSummary[]>([]);

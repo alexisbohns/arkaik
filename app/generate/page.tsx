@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { Suspense, useState, useMemo } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Lightbulb, FileText, GitBranch } from "lucide-react";
+import { parseCreateTarget } from "@/lib/data/create-target";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { PromptBuilderForm } from "@/components/generate/PromptBuilderForm";
@@ -29,9 +31,35 @@ const DEFAULT_CONFIG: PromptConfig = {
   targetLlm: "any",
 };
 
+/**
+ * `useSearchParams` opts the tree out of prerendering, so the page body sits
+ * behind a Suspense boundary — without it `next build` fails on `/generate`.
+ */
 export default function GeneratePage() {
+  return (
+    <Suspense fallback={null}>
+      <GeneratePageBody />
+    </Suspense>
+  );
+}
+
+function GeneratePageBody() {
   const [config, setConfig] = useState<PromptConfig>(DEFAULT_CONFIG);
   const [selectedUseCase, setSelectedUseCase] = useState<UseCase | null>(null);
+  const searchParams = useSearchParams();
+  /**
+   * Where the generated bundle should land once the user comes back to import
+   * it. This page does not create anything — it builds a prompt the user runs
+   * elsewhere — so the section's intent has to survive the round trip through
+   * the URL. A missing or unrecognised value simply means "ask me on import".
+   */
+  const target = parseCreateTarget(searchParams.get("target"));
+
+  const DESTINATION: Record<string, string> = {
+    hosted: "This will land in your account.",
+    synked: "This will land in this browser, backed up to Synk.",
+    lokal: "This will land in this browser only.",
+  };
 
   const prompt = useMemo(() => {
     if (!selectedUseCase) return "";
@@ -53,9 +81,15 @@ export default function GeneratePage() {
     <div className="relative flex min-h-screen flex-col bg-background font-sans">
       <header className="flex items-center justify-between border-b px-6 py-3">
         <div className="flex items-center gap-3">
-          <Link href="/projects" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+          <Link
+            href={target ? `/projects?import=${target}` : "/projects"}
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
             <ArrowLeft className="size-4" />
           </Link>
+          {target ? (
+            <p className="text-xs text-muted-foreground">{DESTINATION[target]}</p>
+          ) : null}
           <h1 className="text-sm font-semibold">Generate with AI</h1>
         </div>
         <ThemeToggle />
