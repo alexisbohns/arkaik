@@ -30,10 +30,26 @@ import {
 import { useAuthStatus } from "@/lib/hooks/useAuthStatus";
 import { useProjects } from "@/lib/hooks/useProjects";
 
+/**
+ * The project-scoped pages, which are also the path segment each one lives at —
+ * `buildProjectHref` below appends the value verbatim, so switching project
+ * lands on the same page in the new one. Declared once and shared with
+ * `ProjectSidebar`: two copies drifted apart the moment Settings was added.
+ */
+export type ProjectView =
+  | "overview"
+  | "maps"
+  | "library"
+  | "delivery"
+  | "changelog"
+  | "acceptances"
+  | "pyramid"
+  | "settings";
+
 interface ProjectSwitcherProps {
   currentProjectId: string;
   currentProjectTitle?: string;
-  currentView: "overview" | "maps" | "library" | "delivery" | "changelog" | "acceptances" | "pyramid";
+  currentView: ProjectView;
   currentQueryString?: string;
 }
 

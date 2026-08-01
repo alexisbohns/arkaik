@@ -29,7 +29,9 @@ export default function ProjectLayout({
             ? "acceptances"
             : pathname.startsWith(`/project/${id}/pyramid`)
               ? "pyramid"
-              : "maps";
+              : pathname.startsWith(`/project/${id}/settings`)
+                ? "settings"
+                : "maps";
   const currentSpecies = currentView === "library" ? searchParams.get("species") : null;
   const currentQueryString = currentView === "library" ? searchParams.toString() : "";
 

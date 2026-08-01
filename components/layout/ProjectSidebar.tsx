@@ -21,7 +21,7 @@ import {
   Settings2Icon,
   Share2Icon,
 } from "lucide-react";
-import { ProjectSwitcher } from "@/components/layout/ProjectSwitcher";
+import { ProjectSwitcher, type ProjectView } from "@/components/layout/ProjectSwitcher";
 import { PublishDialog } from "@/components/publik/PublishDialog";
 import {
   Sidebar,
@@ -40,7 +40,7 @@ import {
 interface ProjectSidebarProps {
   projectId: string;
   currentProjectTitle?: string;
-  currentView: "overview" | "maps" | "library" | "delivery" | "changelog" | "acceptances" | "pyramid";
+  currentView: ProjectView;
   currentSpecies: string | null;
   /** Active map id when currentView is "maps" and a specific map is open. */
   currentMapId: string | null;
@@ -73,6 +73,7 @@ export function ProjectSidebar({
   const deliveryHref = `/project/${projectId}/delivery`;
   const changelogHref = `/project/${projectId}/changelog`;
   const pyramidHref = `/project/${projectId}/pyramid`;
+  const settingsHref = `/project/${projectId}/settings`;
   const [publishOpen, setPublishOpen] = useState(false);
 
   return (
@@ -237,9 +238,11 @@ export function ProjectSidebar({
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton disabled tooltip="Settings coming soon">
-              <Settings2Icon />
-              <span>Settings</span>
+            <SidebarMenuButton asChild isActive={currentView === "settings"} tooltip="Settings">
+              <Link href={settingsHref}>
+                <Settings2Icon />
+                <span>Settings</span>
+              </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>

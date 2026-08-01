@@ -1,6 +1,7 @@
 "use client";
 
-import { CloudUploadIcon, GithubIcon, Share2Icon } from "lucide-react";
+import Link from "next/link";
+import { CloudUploadIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -20,77 +21,75 @@ interface ProjectCardProps {
   canHost: boolean;
   /** True while THIS project is being copied into the account. */
   moving: boolean;
-  onOpen: () => void;
-  onPublish: () => void;
-  onRepos: () => void;
   onMoveToAccount: () => void;
-  onDelete: () => void;
 }
 
 /**
- * One project card.
+ * One project card. THE CARD IS THE OPEN BUTTON.
  *
- * No "In your account" badge: the section heading above already says so, and
- * repeating it on every card was noise. "Move to account" stays, because with
- * sections it is now the ONLY way a Lokal or Synked project becomes Hosted.
+ * It used to carry a row of buttons — Open, Publish, Repos, Delete — which made
+ * the common action (open it) one target among four, and put a destructive one
+ * next to it. Each of the others now lives where it belongs once you are inside
+ * the project: Publish in the sidebar footer, repositories and deletion on the
+ * project's Settings page. What is left here is the one thing a listing is for.
+ *
+ * The title is a real `<Link>` stretched over the whole card with
+ * `after:absolute after:inset-0`, rather than an `onClick` on the div: that
+ * keeps keyboard focus, the browser status bar, and open-in-new-tab working,
+ * and announces one link per card to a screen reader instead of a clickable
+ * nothing. Anything else interactive on the card has to sit above that overlay
+ * — hence `relative z-10` on the sync control and the move button.
+ *
+ * "Move to account" stays, because with sections it is the ONLY way a Lokal or
+ * Synked project becomes Hosted. No "In your account" badge: the section
+ * heading above already says so.
  */
-export function ProjectCard({
-  summary,
-  canHost,
-  moving,
-  onOpen,
-  onPublish,
-  onRepos,
-  onMoveToAccount,
-  onDelete,
-}: ProjectCardProps) {
+export function ProjectCard({ summary, canHost, moving, onMoveToAccount }: ProjectCardProps) {
+  const showMove = !summary.hosted && canHost;
+
   return (
-    <Card>
+    <Card className="relative gap-4 transition-colors hover:border-foreground/20 hover:bg-accent/40 focus-within:border-foreground/20">
       <CardHeader>
-        <CardTitle className="truncate">{summary.project.title}</CardTitle>
+        <CardTitle className="truncate">
+          <Link
+            href={`/project/${summary.project.id}`}
+            className="outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-2 focus-visible:after:ring-ring"
+          >
+            {summary.project.title}
+          </Link>
+        </CardTitle>
         {summary.project.description && (
           <CardDescription>{summary.project.description}</CardDescription>
         )}
       </CardHeader>
-      <CardContent className="flex flex-col gap-2">
+      <CardContent>
         <p className="text-sm text-muted-foreground">
           {summary.nodeCount} node{summary.nodeCount !== 1 ? "s" : ""} ·{" "}
           {summary.edgeCount} edge{summary.edgeCount !== 1 ? "s" : ""}
         </p>
-        {/* Synk backs up browser-held projects; a hosted project is already on
-            the server and has nothing to back up. */}
-        {summary.hosted ? null : <ProjectSyncControl projectId={summary.project.id} />}
       </CardContent>
-      <CardFooter className="flex flex-wrap items-center gap-2">
-        <Button size="sm" className="cursor-pointer" onClick={onOpen}>
-          Open
-        </Button>
-        <Button size="sm" variant="outline" className="cursor-pointer" onClick={onPublish}>
-          <Share2Icon />
-          Publish
-        </Button>
-        {summary.hosted ? (
-          <Button size="sm" variant="outline" className="cursor-pointer" onClick={onRepos}>
-            <GithubIcon />
-            Repos
-          </Button>
-        ) : null}
-        {!summary.hosted && canHost ? (
-          <Button
-            size="sm"
-            variant="outline"
-            className="cursor-pointer"
-            disabled={moving}
-            onClick={onMoveToAccount}
-          >
-            <CloudUploadIcon />
-            {moving ? "Moving…" : "Move to account"}
-          </Button>
-        ) : null}
-        <Button size="sm" variant="outline" className="cursor-pointer" onClick={onDelete}>
-          Delete
-        </Button>
-      </CardFooter>
+      {/* Synk backs up browser-held projects; a hosted project is already on the
+          server and has nothing to back up — so a hosted card has no footer at
+          all, and the card is nothing but its link. `empty:hidden` covers the
+          signed-out case, where both children render nothing and the bare
+          footer would otherwise show as padding under the counts. */}
+      {summary.hosted ? null : (
+        <CardFooter className="relative z-10 flex flex-wrap items-center gap-2 empty:hidden">
+          <ProjectSyncControl projectId={summary.project.id} />
+          {showMove ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="cursor-pointer"
+              disabled={moving}
+              onClick={onMoveToAccount}
+            >
+              <CloudUploadIcon />
+              {moving ? "Moving…" : "Move to account"}
+            </Button>
+          ) : null}
+        </CardFooter>
+      )}
     </Card>
   );
 }

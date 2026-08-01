@@ -1,0 +1,133 @@
+"use client";
+
+import { useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { toast } from "sonner";
+
+import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
+import { RepoLinksPanel } from "@/components/settings/RepoLinksPanel";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { SidebarTrigger } from "@/components/ui/sidebar";
+import { isHostedProjectId } from "@/lib/data/remote-provider";
+import { useProject } from "@/lib/hooks/useProject";
+import { archiveProject } from "@/lib/utils/export";
+
+/**
+ * The project's Settings page — the home for everything that configures a
+ * project rather than describes it.
+ *
+ * It exists because the projects listing was carrying this work: every card had
+ * a Repos button and a Delete button next to Open, which made a listing a
+ * control panel and put a destructive action one mis-click from the common one.
+ * Both moved here, and the card became the link it always should have been.
+ *
+ * Deletion sits in a Danger zone at the bottom, behind a confirmation, exactly
+ * because it is the one action here you cannot undo from the UI.
+ */
+export default function ProjectSettingsPage() {
+  const params = useParams();
+  const router = useRouter();
+  const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
+
+  const { project, loading } = useProject(id);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const title = project?.project.title ?? "Untitled project";
+  /**
+   * Repository links are a hosted-only feature: they live in the account
+   * database and the webhook resolves against them, so a browser-held project
+   * has nowhere to put one. Routing on the id prefix rather than on a fetched
+   * flag keeps the answer available on the first render (lib/data/routing-provider.ts).
+   */
+  const hosted = isHostedProjectId(id);
+
+  async function handleDelete() {
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      await archiveProject(id);
+      setDeleteOpen(false);
+      toast.success(`"${title}" was deleted.`);
+      // Back to the listing: staying would leave every other page in this
+      // layout reading a project that is no longer there.
+      router.push("/projects");
+    } catch (err) {
+      console.error("[ProjectSettingsPage] Failed to archive project:", err);
+      toast.error(err instanceof Error ? err.message : "Could not delete this project.");
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <div className="flex h-full w-full flex-col">
+      <header className="flex h-12 shrink-0 items-center gap-3 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <SidebarTrigger className="-ml-1 cursor-pointer" />
+        <Separator orientation="vertical" className="mx-1 h-4" />
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium">{title}</p>
+          <p className="truncate text-xs text-muted-foreground">Settings</p>
+        </div>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6">
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-10">
+          <section className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-lg font-semibold">Linked repositories</h2>
+              <p className="text-sm text-muted-foreground">
+                Pull requests in these repositories can move {title}&rsquo;s acceptances. Naming the
+                platform a repository — or one folder of it — builds for means a merge there marks
+                only that platform shipped.
+              </p>
+            </div>
+            {hosted ? (
+              <RepoLinksPanel projectId={id} />
+            ) : (
+              <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                This project lives in this browser, so there is no account for a repository link to
+                hang off. Move it to your account from the projects page and the links appear here.
+              </p>
+            )}
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-lg font-semibold text-destructive">Danger zone</h2>
+              <p className="text-sm text-muted-foreground">
+                Actions here change the project itself, not what you are looking at.
+              </p>
+            </div>
+            <div className="flex flex-col gap-3 rounded-lg border border-destructive/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">Delete this project</p>
+                <p className="text-sm text-muted-foreground">
+                  {title} disappears from your projects, along with its nodes, edges and history.
+                </p>
+              </div>
+              <Button
+                variant="destructive"
+                className="shrink-0 cursor-pointer"
+                disabled={loading || deleting}
+                onClick={() => setDeleteOpen(true)}
+              >
+                {deleting ? "Deleting…" : "Delete project"}
+              </Button>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <DeleteConfirmDialog
+        open={deleteOpen}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setDeleteOpen(false);
+        }}
+        title="Delete project"
+        description={`Archive "${title}" and remove it from your list?`}
+        onConfirm={() => void handleDelete()}
+      />
+    </div>
+  );
+}
