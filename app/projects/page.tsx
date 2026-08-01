@@ -123,6 +123,16 @@ function ProjectsPageBody() {
   /** Set when we arrive from /generate with `?import=`; drives the inline prompt. */
   const [importPrompt, setImportPrompt] = useState<CreateTarget | null>(null);
   const signedIn = auth.state === "signed-in";
+  /**
+   * One loading state for the whole body, covering BOTH unknowns.
+   *
+   * `signedIn` is false while auth is still resolving, which is indistinguishable
+   * from signed-out — so without this the signed-out branch renders first and
+   * every signed-in user watches the page-level button row this feature removes
+   * appear and then vanish. Folding the auth wait into the same "Loading…" the
+   * project listing already shows keeps it to one spinner rather than two.
+   */
+  const showLoading = loading || auth.state === "loading";
   /** Hosting a project needs somewhere to put it — i.e. a signed-in account. */
   const canHost = signedIn;
 
@@ -166,6 +176,17 @@ function ProjectsPageBody() {
   const projectsSeq = useRef(0);
   const backedUpSeq = useRef(0);
 
+  /**
+   * `signedIn` is a real dependency, not decoration — do not "simplify" it out.
+   *
+   * The listing waits on `whenHostedAvailabilityKnown()`, which gives up and
+   * answers "local only" after a timeout. On a slow `/api/auth/status` the
+   * first listing therefore returns local projects only, and moments later auth
+   * resolves signed-in and the page switches to three sections — with Hosted
+   * permanently empty and no way back short of a manual reload. Re-listing when
+   * `signedIn` flips true is the fix; the sequence guard above keeps the two
+   * overlapping listings from fighting.
+   */
   const loadProjects = useCallback(async () => {
     const mine = ++projectsSeq.current;
     setLoading(true);
@@ -180,7 +201,10 @@ function ProjectsPageBody() {
     } finally {
       if (projectsSeq.current === mine) setLoading(false);
     }
-  }, []);
+    // `signedIn` is not referenced in the body — the dependency is what makes
+    // the re-listing happen, so exhaustive-deps calls it unnecessary. It is not.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signedIn]);
 
   useEffect(() => {
     void loadProjects();
@@ -196,23 +220,24 @@ function ProjectsPageBody() {
    */
   const loadBackedUpIds = useCallback(async () => {
     const mine = ++backedUpSeq.current;
+    // Note the asymmetry with the failure paths below, which is deliberate:
+    // signed out means there are genuinely no backups, while a failed request
+    // means we do not KNOW — and not-knowing must not look like
+    // not-backed-up. Emptying the set on a blip would march every Synked
+    // project across into Lokal and have the banner offer to back them all up
+    // again, so a failure keeps whatever we last knew.
     if (!signedIn) {
       setBackedUpIds(new Set());
       return;
     }
     try {
       const res = await fetch("/api/synk/projects", { cache: "no-store" });
-      if (backedUpSeq.current !== mine) return;
-      if (!res.ok) {
-        setBackedUpIds(new Set());
-        return;
-      }
+      if (backedUpSeq.current !== mine || !res.ok) return;
       const body = (await res.json()) as { projects?: Array<{ project_id: string }> };
       if (backedUpSeq.current !== mine) return;
       setBackedUpIds(new Set((body.projects ?? []).map((p) => p.project_id)));
     } catch {
-      if (backedUpSeq.current !== mine) return;
-      setBackedUpIds(new Set());
+      // Keep the previous set — see above.
     }
   }, [signedIn]);
 
@@ -403,7 +428,7 @@ function ProjectsPageBody() {
           />
           {/* Signed out there is only one kind of project, so the sole control
               sits up here rather than under a heading that says nothing. */}
-          {!signedIn && (
+          {!showLoading && !signedIn && (
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
@@ -465,11 +490,11 @@ function ProjectsPageBody() {
             banner gets the FULL list and filters it itself with `backedUpIds`,
             so it stays correct on its own terms rather than depending on this
             caller having pre-filtered. */}
-        {!loading && grouped.lokal.length > 0 && (
+        {!showLoading && grouped.lokal.length > 0 && (
           <SynkOnboardingBanner projects={projects} backedUpIds={backedUpIds} />
         )}
 
-        {loading ? (
+        {showLoading ? (
           <div className="flex flex-1 items-center justify-center">
             <span className="text-sm text-muted-foreground">Loading…</span>
           </div>

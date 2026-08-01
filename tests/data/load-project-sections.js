@@ -3,8 +3,8 @@
  * running Node process without a bundler — same transpile-on-the-fly approach
  * as the other tests/data loaders.
  *
- * Neither module has a runtime import: their `./data-provider` and `./types`
- * imports are `import type`, which erase. So there is nothing to stub, and the
+ * Neither module has a runtime import: their `./data-provider`, `./types` and
+ * `./create-target` imports are `import type`, which erase. So there is nothing to stub, and the
  * code under test here is the real code, byte for byte.
  */
 

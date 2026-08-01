@@ -4,9 +4,8 @@ const CREATE_TARGETS = ["hosted", "synked", "lokal"] as const;
 
 /**
  * Where a newly created project should land — one per section on `/projects`.
- * Mirrors {@link ProjectSection} in `./project-sections`, but is deliberately a
- * separate type: sections describe where projects *are*, targets describe where
- * a new one is *going*, and only the latter travels through a URL.
+ * Doubles as the name of the section a project already sits in: `sectionFor` in
+ * `./project-sections` returns one of these too.
  */
 export type CreateTarget = (typeof CREATE_TARGETS)[number];
 
