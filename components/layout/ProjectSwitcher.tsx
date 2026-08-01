@@ -1,8 +1,16 @@
 "use client";
 
 import { useMemo } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CheckIcon, ChevronsUpDownIcon, FolderOpenIcon, GithubIcon, LogOutIcon } from "lucide-react";
+import {
+  CheckIcon,
+  ChevronsUpDownIcon,
+  FolderOpenIcon,
+  GithubIcon,
+  KeyRoundIcon,
+  LogOutIcon,
+} from "lucide-react";
 import { signIn, signOut } from "next-auth/react";
 import {
   DropdownMenu,
@@ -138,6 +146,14 @@ export function ProjectSwitcher({
                 <DropdownMenuLabel className="text-xs text-muted-foreground">
                   {authStatus.user.name ?? authStatus.user.email ?? "Account"}
                 </DropdownMenuLabel>
+                {/* Account-level, like sign-out — a token reaches every project
+                    of the account, not the one currently open. */}
+                <DropdownMenuItem asChild className="cursor-pointer gap-2">
+                  <Link href="/settings/tokens">
+                    <KeyRoundIcon className="size-4" />
+                    <span>Agent tokens</span>
+                  </Link>
+                </DropdownMenuItem>
                 <DropdownMenuItem
                   className="cursor-pointer gap-2"
                   onClick={() => void signOut()}
