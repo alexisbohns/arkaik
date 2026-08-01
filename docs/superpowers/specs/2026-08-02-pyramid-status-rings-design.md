@@ -40,18 +40,24 @@ time.
 
 Both changes exist so status color and status order are single-sourced.
 
-**`lib/utils/platform-status.ts`** — the module-local `sortStatusesDescending` (which sorts by
-`STATUS_ORDER` descending, and therefore leads with `blocked` at order 7) is replaced by an
-exported display comparator: lifecycle-descending with `blocked` pinned last.
+**`lib/utils/platform-status.ts`** gains a new exported comparator for *display* order —
+lifecycle-descending with `blocked` pinned last:
 
 ```text
 Live → Releasing → Development → Prioritized → Blocked
 ```
 
-`getPlatformRollupSegments` uses it. That function's only consumer is `PlatformGaugeList`, so the
-new order reaches all six of its call sites — Pyramid, Overview ×2, FlowNode, NodeDetailPanel,
-NodeCard — from a single edit. Existing bars visibly re-order; nothing breaks, and no current test
-asserts the old order.
+`getPlatformRollupSegments` and `getRollupTotalSegments` use it. `getPlatformRollupSegments`'s
+only consumer is `PlatformGaugeList`, so the new order reaches all six of its call sites — Pyramid,
+Overview ×2, FlowNode, NodeDetailPanel, NodeCard — from a single edit. Existing bars visibly
+re-order; nothing breaks, and no current test asserts the old order.
+
+The existing module-local `sortStatusesDescending` **stays**, because it is not a display order.
+`getRollupDisplayStatus` uses it as *severity precedence* — `blocked` sorts first at
+`STATUS_ORDER` 7, so a rollup containing anything blocked reports `blocked`, and that value drives
+the status shown on graph nodes via `system-graph.ts` and `journey-graph.ts`. Reusing one
+comparator for both would silently make `live` outrank `blocked` there. Two comparators, two
+distinct jobs; each gets a doc comment saying which.
 
 **`components/graph/nodes/node-styles.ts`** — `STATUS_STYLES` gains a `stroke` key
 (`stroke-green-500`, `stroke-red-500`, …) beside the existing `badge` and `dot`. One table drives
