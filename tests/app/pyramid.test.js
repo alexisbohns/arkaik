@@ -2,7 +2,9 @@
 
 /**
  * Pyramid aggregation (lib/utils/pyramid.ts) — value element → per-platform
- * status distribution, grouped by tier, over the seeded acceptances.
+ * status distribution, grouped by tier, over the seeded acceptances. Also
+ * covers lib/utils/platform-status.ts: per-platform and all-platform segment
+ * building, and the display order shared by rings and bars.
  */
 
 const fs = require("fs");
@@ -98,7 +100,7 @@ assert(
 );
 
 const totalByStatus = Object.fromEntries(totalSegments.map((s) => [s.status, s]));
-assert(totalByStatus.live.count === 3, `global ring sums live across platforms (got ${totalByStatus.live.count})`);
+assert(totalByStatus.live?.count === 3, `global ring sums live across platforms (got ${totalByStatus.live?.count})`);
 assert(
   totalByStatus.development.count === 1 && totalByStatus.blocked.count === 1,
   "global ring sums the single-platform statuses too",
@@ -115,6 +117,10 @@ assert(
   totalByStatus.releasing.count === 0 && totalByStatus.releasing.ratio === 0,
   "an absent status is still present, with a zero count and ratio",
 );
+assert(
+  totalSegments.every((s) => s.count === 0 || s.ratio > 0),
+  "a nonzero count implies a nonzero ratio",
+);
 
 const webSegments = getPlatformRollupSegments(ringRollup, "web");
 assert(
@@ -122,7 +128,7 @@ assert(
   "per-platform segments use the same display order as the global ring",
 );
 assert(
-  webSegments.find((s) => s.status === "live").percentage === 67,
+  webSegments.find((s) => s.status === "live")?.percentage === 67,
   "per-platform percentages divide by that platform's own total",
 );
 
