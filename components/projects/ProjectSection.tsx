@@ -4,16 +4,18 @@ import type { ReactNode } from "react";
 
 import { SectionCreateMenu } from "./SectionCreateMenu";
 import type { CreateTarget } from "@/lib/data/create-target";
+import type { ProjectSummary } from "@/lib/data/data-provider";
 
 interface ProjectSectionProps {
   target: CreateTarget;
-  count: number;
+  /** This section's projects. The count and the empty state are both derived from it. */
+  items: ProjectSummary[];
+  /** Renders one card. The section owns the grid; the caller owns the card's wiring. */
+  renderCard: (summary: ProjectSummary) => ReactNode;
   onCreate: () => void;
   onImport: () => void;
   onRestore?: () => void;
   disabled?: boolean;
-  /** The card grid. Ignored when `count` is 0. */
-  children: ReactNode;
 }
 
 const SECTION_COPY: Record<CreateTarget, { title: string; empty: string }> = {
@@ -38,44 +40,55 @@ const SECTION_COPY: Record<CreateTarget, { title: string; empty: string }> = {
  * An empty section still renders. It is how the page teaches what the three
  * kinds ARE, and the empty state carries the same create control as the header
  * so the explanation and the action sit together.
+ *
+ * The section takes the projects themselves rather than a count plus an already
+ * built grid: with two inputs, a caller whose filter changed one but not the
+ * other would show an empty state on top of real projects. One input cannot
+ * disagree with itself.
  */
 export function ProjectSection({
   target,
-  count,
+  items,
+  renderCard,
   onCreate,
   onImport,
   onRestore,
   disabled,
-  children,
 }: ProjectSectionProps) {
   const copy = SECTION_COPY[target];
-  const menu = (
-    <SectionCreateMenu
-      target={target}
-      onCreate={onCreate}
-      onImport={onImport}
-      onRestore={onRestore}
-      disabled={disabled}
-    />
-  );
 
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
         <h2 className="flex items-baseline gap-2 text-lg font-semibold">
           {copy.title}
-          <span className="text-sm font-normal text-muted-foreground">{count}</span>
+          <span className="text-sm font-normal text-muted-foreground">{items.length}</span>
         </h2>
-        {menu}
+        <SectionCreateMenu
+          target={target}
+          onCreate={onCreate}
+          onImport={onImport}
+          onRestore={onRestore}
+          disabled={disabled}
+        />
       </div>
 
-      {count === 0 ? (
+      {items.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed px-6 py-10 text-center">
           <p className="max-w-sm text-sm text-muted-foreground">{copy.empty}</p>
-          {menu}
+          {/* A distinct label, so an empty section does not announce two
+              identically-named create buttons to a screen reader. */}
+          <SectionCreateMenu
+            target={target}
+            onCreate={onCreate}
+            onImport={onImport}
+            onRestore={onRestore}
+            disabled={disabled}
+            primaryLabel={`Create your first ${copy.title} project`}
+          />
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{children}</div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{items.map(renderCard)}</div>
       )}
     </section>
   );
