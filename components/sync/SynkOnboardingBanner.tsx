@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useReducer, useState } from "react";
+import { useState } from "react";
 import { CloudUploadIcon, Loader2Icon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 
@@ -33,8 +33,10 @@ function writeDismissed(ids: Set<string>) {
 }
 
 interface SynkOnboardingBannerProps {
-  /** The already-loaded local project list (app/projects/page.tsx owns the fetch) — avoids a second listProjects() round-trip. */
+  /** Already filtered to the Lokal bucket by `app/projects/page.tsx`. */
   projects: ProjectSummary[];
+  /** Ids Synk already holds a backup for — fetched once by the page, not here. */
+  backedUpIds: Set<string>;
 }
 
 /**
@@ -46,48 +48,22 @@ interface SynkOnboardingBannerProps {
  * dismissible inline banner, not a modal wall — hidden entirely for signed-
  * out/unconfigured users (this is the only thing that changes on sign-in),
  * and it disappears on its own once every candidate is backed up.
+ *
+ * The backup id set and the `syncManager` subscription that keeps it fresh now
+ * live in `app/projects/page.tsx`: the page needs the same answer to split
+ * Synked from Lokal, and two independent fetches could disagree — the banner
+ * would then offer to back up a project already sitting under "Synked".
  */
-export function SynkOnboardingBanner({ projects }: SynkOnboardingBannerProps) {
+export function SynkOnboardingBanner({ projects, backedUpIds }: SynkOnboardingBannerProps) {
   const auth = useAuthStatus();
-  const [serverProjectIds, setServerProjectIds] = useState<Set<string> | null>(null);
   const [dismissed, setDismissed] = useState<Set<string>>(() => readDismissed());
   const [backingUpId, setBackingUpId] = useState<string | null>(null);
 
-  // Re-render whenever ANY project's live sync status changes, so a project
-  // that just got backed up (via this banner or the per-card control) drops
-  // out of the candidate list without a page reload.
-  const [, forceUpdate] = useReducer((c: number) => c + 1, 0);
-  useEffect(() => syncManager.subscribe(forceUpdate), []);
-
-  useEffect(() => {
-    if (auth.state !== "signed-in") {
-      setServerProjectIds(null);
-      return;
-    }
-    let active = true;
-    (async () => {
-      try {
-        const res = await fetch("/api/synk/projects", { cache: "no-store" });
-        if (!res.ok) {
-          if (active) setServerProjectIds(new Set());
-          return;
-        }
-        const body = (await res.json()) as { projects?: Array<{ project_id: string }> };
-        if (active) setServerProjectIds(new Set((body.projects ?? []).map((p) => p.project_id)));
-      } catch {
-        if (active) setServerProjectIds(new Set());
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [auth.state]);
-
-  if (auth.state !== "signed-in" || serverProjectIds === null) return null;
+  if (auth.state !== "signed-in") return null;
 
   const candidates = projects.filter((bundle) => {
     const id = bundle.project.id;
-    if (serverProjectIds.has(id)) return false;
+    if (backedUpIds.has(id)) return false;
     if (dismissed.has(id)) return false;
     if (syncManager.getStatus(id).state === "backed-up") return false; // just backed up this session
     return true;
