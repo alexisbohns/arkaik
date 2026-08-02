@@ -32,6 +32,7 @@
 /tests/app/.test-build-graph-spotlight/
 /tests/app/.test-build-coverage/
 /tests/app/.test-build-panels-*/
+/tests/app/.test-build-product-*/
 /packages/cli/.test-build/
 
 # next.js
