@@ -7,23 +7,30 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { serializeBundle } from "@arkaik/schema";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import type { ProjectBundle } from "@/lib/data/types";
+import { usePanelSelfState } from "@/lib/hooks/useProjectPanels";
 import { exportProject, importProject, normalizeProjectTimestamps, parseAndValidateBundle } from "@/lib/utils/export";
 
-interface RawBundleSheetProps {
+interface RawBundlePanelProps {
   projectId: string;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  /** This panel's stack instance, for registering its self-state. */
+  instanceId: string;
 }
 
 /**
- * The raw project-bundle viewer/editor sheet — JSON/YAML view, guarded edit
- * mode, and save-back through the validated import path. Owns its whole state
- * machine. Mount with a fresh `key` per open (the JourneyMap does) so each
- * opening starts from initial state and the load effect stays purely async.
+ * The raw project-bundle viewer/editor — JSON/YAML view, guarded edit mode, and
+ * save-back through the validated import path. Owns its whole state machine.
+ *
+ * It is a column in the panel grid, so mounting *is* opening: there is no
+ * `open` prop to gate the load on, and `PanelEntry.instanceId` already gives one
+ * mount per slot, which is what the old `key`-per-open remount was faking.
+ *
+ * Closing is the stack's, not ours — every close arrives through the guard
+ * below, which answers with the stack's own `resume`. A self-close prop would
+ * be dead API here, and worse, using one to finish a deferred close would
+ * re-enter the guard and read a dirty flag React has not committed yet.
  */
-export function RawBundleSheet({ projectId, open, onOpenChange }: RawBundleSheetProps) {
+export function RawBundlePanel({ projectId, instanceId }: RawBundlePanelProps) {
   const [mode, setMode] = useState<"view" | "edit">("view");
   const [format, setFormat] = useState<"json" | "yaml">("json");
   const [bundle, setBundle] = useState<ProjectBundle | null>(null);
@@ -35,7 +42,10 @@ export function RawBundleSheet({ projectId, open, onOpenChange }: RawBundleSheet
   const [confirmEnterEditOpen, setConfirmEnterEditOpen] = useState(false);
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
   const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
-  const [pendingClose, setPendingClose] = useState(false);
+  // Holds the stack's `resume`, not a boolean: a vetoed close is one the stack
+  // has already computed and is waiting on, so the confirm has to finish *that*
+  // close rather than start a new one.
+  const [pendingClose, setPendingClose] = useState<(() => void) | null>(null);
 
   const baseText = useMemo(() => {
     if (!bundle) return "";
@@ -98,11 +108,9 @@ export function RawBundleSheet({ projectId, open, onOpenChange }: RawBundleSheet
     [projectId],
   );
 
-  // Load the export once per mount (the parent remounts this sheet per open),
+  // Load the export once per mount — the stack mounts one panel per open —
   // keeping the effect free of synchronous setState.
   useEffect(() => {
-    if (!open) return;
-
     let cancelled = false;
 
     exportProject(projectId)
@@ -123,26 +131,27 @@ export function RawBundleSheet({ projectId, open, onOpenChange }: RawBundleSheet
     return () => {
       cancelled = true;
     };
-  }, [open, projectId, syncDrafts]);
+  }, [projectId, syncDrafts]);
 
-  const handleOpenChange = useCallback(
-    (nextOpen: boolean) => {
-      if (nextOpen) {
-        onOpenChange(true);
-        return;
-      }
-
+  // Not a predicate: false vetoes and defers, and we owe the stack a `resume`
+  // once the user has answered the discard confirm — a veto that never resumes
+  // makes every close silently do nothing.
+  const requestClose = useCallback(
+    (resume: () => void) => {
       if (mode === "edit" && hasUnsavedChanges) {
-        setPendingClose(true);
+        // The extra arrow is required: React reads a bare function argument to
+        // a setter as an updater and would call it, closing the panel instantly.
+        setPendingClose(() => resume);
         setConfirmCancelOpen(true);
-        return;
+        return false;
       }
 
-      onOpenChange(false);
-      setMode("view");
+      return true;
     },
-    [hasUnsavedChanges, mode, onOpenChange],
+    [hasUnsavedChanges, mode],
   );
+
+  usePanelSelfState(instanceId, { requestClose, accent: mode === "edit" ? "editing" : null });
 
   const handleFormatChange = useCallback(
     (nextFormat: "json" | "yaml") => {
@@ -212,11 +221,14 @@ export function RawBundleSheet({ projectId, open, onOpenChange }: RawBundleSheet
     setMode("view");
     setConfirmCancelOpen(false);
 
+    // Resume the close the veto deferred, rather than starting a fresh one:
+    // `resume` bypasses the guard, and a re-guarded close would read the dirty
+    // flag React has not committed yet and veto forever.
     if (pendingClose) {
-      onOpenChange(false);
-      setPendingClose(false);
+      pendingClose();
+      setPendingClose(null);
     }
-  }, [bundle, onOpenChange, pendingClose, syncDrafts]);
+  }, [bundle, pendingClose, syncDrafts]);
 
   const handleConfirmSave = useCallback(async () => {
     if (!projectId) {
@@ -246,76 +258,74 @@ export function RawBundleSheet({ projectId, open, onOpenChange }: RawBundleSheet
 
   return (
     <>
-      <Sheet open={open} onOpenChange={handleOpenChange}>
-        <SheetContent className="w-full sm:max-w-3xl">
-          <SheetHeader className="pr-12">
-            <SheetTitle>Raw project bundle</SheetTitle>
-            <SheetDescription>Inspect the full export as JSON or YAML.</SheetDescription>
-            {error && (
-              <span className="text-xs text-destructive" role="status" aria-live="polite">
-                {error}
-              </span>
-            )}
-            <div className="flex items-center justify-between gap-2 pt-2">
-              <div className="flex items-center gap-2">
-                <Button size="sm" className="cursor-pointer" variant={format === "json" ? "default" : "outline"} onClick={() => handleFormatChange("json")}>
-                  JSON
-                </Button>
-                <Button size="sm" className="cursor-pointer" variant={format === "yaml" ? "default" : "outline"} onClick={() => handleFormatChange("yaml")}>
-                  YAML
-                </Button>
-              </div>
-              {mode === "view" ? (
-                <Button size="sm" variant="outline" className="cursor-pointer" onClick={() => setConfirmEnterEditOpen(true)} disabled={!bundle || loading}>
-                  Edit
-                </Button>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Button size="sm" variant="outline" className="cursor-pointer" onClick={handleRequestCancel}>
-                    Cancel
-                  </Button>
-                  <Button size="sm" variant="destructive" className="cursor-pointer" onClick={() => setConfirmSaveOpen(true)}>
-                    Save
-                  </Button>
-                </div>
-              )}
-            </div>
-          </SheetHeader>
-          <div className="min-h-0 flex-1 px-6 pb-6">
-            <div className="group relative h-full">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => void handleCopy()}
-                disabled={!viewportText}
-                className="absolute right-2 top-2 z-10 cursor-pointer opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-              >
-                <CopyIcon className="size-4" />
-                {copied ? "Copied" : "Copy"}
-              </Button>
-              {mode === "edit" ? (
-                <textarea
-                  value={draftText}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    if (format === "json") {
-                      setDraftJson(value);
-                    } else {
-                      setDraftYaml(value);
-                    }
-                  }}
-                  spellCheck={false}
-                  className="h-full w-full resize-none overflow-auto rounded-md border bg-muted/30 p-3 pr-24 font-mono text-xs leading-relaxed outline-none"
-                />
-              ) : (
-                <pre className="h-full overflow-auto rounded-md border bg-muted/30 p-3 pr-24 text-xs leading-relaxed">
-                  <code>{loading ? "Loading raw export..." : baseText || "No export available yet."}</code>
-                </pre>
-              )}
-            </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-3 p-6 pt-0">
+        {/*
+          The toolbar stays in the body rather than moving to the panel header:
+          that slot is one left-aligned row sharing space with a fixed close
+          button, and lifting four controls into it would drag `format`, `mode`
+          and every handler that reads them out of the component that owns them.
+        */}
+        <div className="flex shrink-0 items-center justify-between gap-2 pt-4">
+          <div className="flex items-center gap-2">
+            <Button size="sm" className="cursor-pointer" variant={format === "json" ? "default" : "outline"} onClick={() => handleFormatChange("json")}>
+              JSON
+            </Button>
+            <Button size="sm" className="cursor-pointer" variant={format === "yaml" ? "default" : "outline"} onClick={() => handleFormatChange("yaml")}>
+              YAML
+            </Button>
           </div>
-        </SheetContent>
-      </Sheet>
+          {mode === "view" ? (
+            <Button size="sm" variant="outline" className="cursor-pointer" onClick={() => setConfirmEnterEditOpen(true)} disabled={!bundle || loading}>
+              Edit
+            </Button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" className="cursor-pointer" onClick={handleRequestCancel}>
+                Cancel
+              </Button>
+              <Button size="sm" variant="destructive" className="cursor-pointer" onClick={() => setConfirmSaveOpen(true)}>
+                Save
+              </Button>
+            </div>
+          )}
+        </div>
+        {error && (
+          <span className="shrink-0 text-xs text-destructive" role="status" aria-live="polite">
+            {error}
+          </span>
+        )}
+        <div className="group relative min-h-0 flex-1">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void handleCopy()}
+            disabled={!viewportText}
+            className="absolute right-2 top-2 z-10 cursor-pointer opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+          >
+            <CopyIcon className="size-4" />
+            {copied ? "Copied" : "Copy"}
+          </Button>
+          {mode === "edit" ? (
+            <textarea
+              value={draftText}
+              onChange={(event) => {
+                const value = event.target.value;
+                if (format === "json") {
+                  setDraftJson(value);
+                } else {
+                  setDraftYaml(value);
+                }
+              }}
+              spellCheck={false}
+              className="h-full w-full resize-none overflow-auto rounded-md border bg-muted/30 p-3 pr-24 font-mono text-xs leading-relaxed outline-none"
+            />
+          ) : (
+            <pre className="h-full overflow-auto rounded-md border bg-muted/30 p-3 pr-24 text-xs leading-relaxed">
+              <code>{loading ? "Loading raw export..." : baseText || "No export available yet."}</code>
+            </pre>
+          )}
+        </div>
+      </div>
       <DeleteConfirmDialog
         open={confirmEnterEditOpen}
         onOpenChange={setConfirmEnterEditOpen}
@@ -328,7 +338,9 @@ export function RawBundleSheet({ projectId, open, onOpenChange }: RawBundleSheet
         open={confirmCancelOpen}
         onOpenChange={(nextOpen) => {
           setConfirmCancelOpen(nextOpen);
-          if (!nextOpen) setPendingClose(false);
+          // Backing out of the confirm abandons the deferred close: the stack
+          // is waiting on a `resume` that now must never come.
+          if (!nextOpen) setPendingClose(null);
         }}
         title="Discard unsaved raw changes?"
         description="You have unsaved edits. Discarding now will permanently lose those changes."

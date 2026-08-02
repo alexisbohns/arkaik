@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { EntityId } from "@/components/graph/nodes/EntityBadges";
 import { PanelStack } from "@/components/panels/PanelStack";
 import { NodeDetailPanel, NodeDetailPanelHeader } from "@/components/panels/NodeDetailPanel";
+import { RawBundlePanel } from "@/components/panels/RawBundlePanel";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { Edge, JournalEvent, Node } from "@/lib/data/types";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
@@ -35,10 +36,8 @@ const NO_EDGES: Edge[] = [];
 /**
  * Binds the panel stack to what a panel can be. A node entry resolves its id
  * against the surface's own data and renders `NodeDetailPanel`; the raw entry
- * will render the bundle editor, which needs no surface data at all — which is
- * why pages with no nodes of their own can still host it. Until `RawBundlePanel`
- * lands the raw branch renders a stub, so an empty raw column is a schedule
- * rather than a bug.
+ * renders `RawBundlePanel`, which needs no surface data at all — which is why
+ * pages with no nodes of their own can still host it.
  *
  * Resolving by id rather than holding a node means an edit anywhere reaches
  * every panel showing that node, and a node deleted under the stack takes its
@@ -101,13 +100,15 @@ export function ProjectPanels({
       requestCloseAt={requestCloseAt}
       renderHeader={(entry) => {
         if (entry.payload.kind === "raw")
-          return <span className="text-sm font-medium">Raw bundle</span>;
+          return <span className="truncate text-sm font-medium">Raw project bundle</span>;
 
         const node = nodesById.get(entry.key);
         return node ? <NodeDetailPanelHeader node={node} /> : <EntityId id={entry.key} />;
       }}
       renderBody={(entry, index) => {
-        if (entry.payload.kind === "raw") return null;
+        if (entry.payload.kind === "raw") {
+          return <RawBundlePanel projectId={projectId} instanceId={entry.instanceId} />;
+        }
 
         const node = nodesById.get(entry.key);
 
