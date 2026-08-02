@@ -45,6 +45,18 @@ interface NodeCardProps {
    * is the orphan worth flagging (§ Decision 8).
    */
   productLabels?: string[];
+  /**
+   * This card's selection state, or `undefined` when the surface has no
+   * selection at all.
+   *
+   * **`undefined` and `false` are different answers**, the same distinction
+   * `productLabels` above draws. `undefined` means no selection mechanism
+   * exists here and the card renders exactly as it did before selection did —
+   * no checkbox, no gutter, no layout shift. `false` means the surface *does*
+   * select and this card simply is not selected, which is a box to tick.
+   */
+  selected?: boolean;
+  onToggleSelected?: (nodeId: string) => void;
   onClick: () => void;
 }
 
@@ -108,6 +120,8 @@ export function NodeCard({
   usedInCount,
   scope,
   productLabels,
+  selected,
+  onToggleSelected,
   onClick,
 }: NodeCardProps) {
   const previewItems = playlistPreview.slice(0, 5);
@@ -130,7 +144,33 @@ export function NodeCard({
     >
       <Card className="h-full gap-3 py-4 transition-colors hover:bg-muted/40">
         <CardHeader className="gap-2 px-4">
-          <CardTitle className="line-clamp-2 text-base leading-tight">{node.title}</CardTitle>
+          {/*
+            The title row gains a gutter only when the surface selects. With
+            `selected === undefined` the title is rendered bare, exactly as it
+            was before selection existed — not inside a one-child flex row that
+            would be *almost* the same box. "Almost" is how a gallery of cards
+            drifts a pixel for every project that never asked for this.
+
+            `stopPropagation` on the click is what keeps ticking a box from
+            opening the node: the whole card is a click target.
+          */}
+          {selected === undefined ? (
+            <CardTitle className="line-clamp-2 text-base leading-tight">{node.title}</CardTitle>
+          ) : (
+            <div className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                checked={selected}
+                aria-label={`Select ${node.title}`}
+                className="mt-0.5 size-4 shrink-0 cursor-pointer accent-primary"
+                onClick={(event) => event.stopPropagation()}
+                onChange={() => onToggleSelected?.(node.id)}
+              />
+              <CardTitle className="line-clamp-2 min-w-0 flex-1 text-base leading-tight">
+                {node.title}
+              </CardTitle>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <SpeciesBadge
               species={node.species}

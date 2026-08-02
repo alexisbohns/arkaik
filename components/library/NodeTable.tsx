@@ -38,6 +38,23 @@ interface NodeTableProps {
    * node is in none of them.
    */
   productLabelsByNodeId?: Record<string, string[]>;
+  /**
+   * The selected node ids, or `undefined` when the surface has no selection.
+   *
+   * **`undefined` is not an empty set**, the same distinction
+   * `productLabelsByNodeId` above draws: it means there is no selection
+   * mechanism here, so the checkbox column does not exist and the table renders
+   * exactly the columns it did before. An empty set means the surface selects
+   * and nothing is selected yet.
+   */
+  selectedIds?: ReadonlySet<string>;
+  onToggleSelected?: (nodeId: string) => void;
+  /**
+   * Ticks or clears every row **this table was given** — which is the filtered,
+   * searched, currently-visible list, never the whole library. See the page's
+   * `toggleAllVisible`.
+   */
+  onToggleAll?: () => void;
   onSortChange: (key: NodeSortKey) => void;
   onSelectNode: (node: Node) => void;
 }
@@ -70,13 +87,34 @@ export function NodeTable({
   usedInByNodeId,
   scope,
   productLabelsByNodeId,
+  selectedIds,
+  onToggleSelected,
+  onToggleAll,
   onSortChange,
   onSelectNode,
 }: NodeTableProps) {
+  // Checked only when every visible row is in the set — and `nodes.length > 0`
+  // so an empty table does not render a ticked "select all" over nothing.
+  const allVisibleSelected =
+    selectedIds !== undefined &&
+    nodes.length > 0 &&
+    nodes.every((node) => selectedIds.has(node.id));
+
   return (
     <Table className="text-sm">
       <TableHeader>
         <TableRow>
+          {selectedIds !== undefined && (
+            <TableHead className="w-8">
+              <input
+                type="checkbox"
+                aria-label="Select all visible nodes"
+                className="size-4 cursor-pointer accent-primary"
+                checked={allVisibleSelected}
+                onChange={() => onToggleAll?.()}
+              />
+            </TableHead>
+          )}
           {SORTABLE_COLUMNS.map((column) => (
             <TableHead key={column.key}>
               <button
@@ -102,6 +140,20 @@ export function NodeTable({
           const platforms = scopedPlatforms(node, scope);
           return (
             <TableRow key={node.id} data-wobble-group className="cursor-pointer" onClick={() => onSelectNode(node)}>
+              {selectedIds !== undefined && (
+                // The whole row opens the node, so the cell swallows the click
+                // as well as the box: a fat-fingered tap on the padding around
+                // a checkbox must not navigate away mid-selection.
+                <TableCell className="w-8" onClick={(event) => event.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${node.title}`}
+                    className="size-4 cursor-pointer accent-primary"
+                    checked={selectedIds.has(node.id)}
+                    onChange={() => onToggleSelected?.(node.id)}
+                  />
+                </TableCell>
+              )}
               <TableCell className="font-mono text-xs">{node.id}</TableCell>
               <TableCell className="max-w-[280px] truncate">{node.title}</TableCell>
               <TableCell>{speciesLabelById[node.species] ?? node.species}</TableCell>
