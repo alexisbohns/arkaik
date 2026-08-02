@@ -4,7 +4,7 @@ import { GitBranchIcon, SplitIcon } from "lucide-react";
 import type { Node } from "@/lib/data/types";
 import type { PlatformStatusMap } from "@/lib/data/types";
 import type { PlatformStatusRollup } from "@/lib/utils/platform-status";
-import { getEditablePlatformStatuses } from "@/lib/utils/platform-status";
+import { getEditablePlatformStatuses, withRollupPlatforms } from "@/lib/utils/platform-status";
 import type { SpeciesId } from "@/lib/config/species";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PlatformGaugeList } from "@/components/graph/nodes/PlatformGaugeList";
@@ -96,7 +96,11 @@ export function NodeCard({
           {node.species === "flow" && flowRollup && (
             <div className="space-y-1.5">
               <span className="text-muted-foreground">Platforms</span>
-              <PlatformGaugeList rollup={flowRollup} platforms={node.platforms} showLabels />
+              <PlatformGaugeList
+                rollup={flowRollup}
+                platforms={withRollupPlatforms(node.platforms, flowRollup)}
+                showLabels
+              />
             </div>
           )}
 

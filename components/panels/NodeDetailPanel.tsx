@@ -27,6 +27,7 @@ import { AcceptancesSection } from "@/components/panels/AcceptancesSection";
 import {
   computeFlowPlatformRollup,
   getEditablePlatformStatuses,
+  withRollupPlatforms,
 } from "@/lib/utils/platform-status";
 import { findWhereUsed } from "@/lib/utils/where-used";
 import { computeNodeTimeline } from "@/lib/utils/journal";
@@ -389,7 +390,7 @@ function ComputedPlatformStatusSection({ node, allNodes, allEdges }: { node: Nod
   return (
     <div className="px-6 flex flex-col gap-3">
       <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Computed Platform Statuses</span>
-      <PlatformGaugeList rollup={rollup} platforms={node.platforms} showLabels />
+      <PlatformGaugeList rollup={rollup} platforms={withRollupPlatforms(node.platforms, rollup)} showLabels />
     </div>
   );
 }

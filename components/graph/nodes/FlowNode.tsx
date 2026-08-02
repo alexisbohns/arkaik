@@ -6,6 +6,7 @@ import { ChevronDown, ChevronRight, Info, PlusCircle, Split } from "lucide-react
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { PlatformStatusRollup } from "@/lib/utils/platform-status";
+import { withRollupPlatforms } from "@/lib/utils/platform-status";
 import { PLATFORMS } from "@/lib/config/platforms";
 import { StageIcon } from "@/components/layout/StageIcon";
 import { STATUS_GHOST_STYLES } from "./node-styles";
@@ -115,7 +116,15 @@ function FlowNodeComponent({ data }: NodeProps) {
             {branchSummary}
           </p>
         ) : (
-          <PlatformGaugeList rollup={platformRollup} platforms={platforms.length > 0 ? platforms : PLATFORMS.map((platform) => platform.id)} compact />
+          <PlatformGaugeList
+            rollup={platformRollup}
+            platforms={
+              platforms.length > 0
+                ? withRollupPlatforms(platforms, platformRollup)
+                : PLATFORMS.map((platform) => platform.id)
+            }
+            compact
+          />
         )}
       </div>
       )}

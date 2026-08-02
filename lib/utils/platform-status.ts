@@ -298,6 +298,24 @@ export function getRollupPlatforms(rollup: PlatformStatusRollup): PlatformId[] {
     .filter((platformId) => (rollup.totals[platformId] ?? 0) > 0 || Boolean(rollup.counts[platformId]));
 }
 
+/**
+ * `platforms` widened by whatever the rollup actually counted, in config order.
+ *
+ * The union `PlatformGaugeList` used to apply internally, hoisted to the callers
+ * that genuinely want it. A flow declares its own `platforms`, but its rollup is
+ * aggregated from descendant views and covering acceptances, which can speak to
+ * a platform the flow itself never lists — dropping those bars would hide
+ * counted work. Surfaces that must respect a scope pass their list straight
+ * through instead of calling this.
+ */
+export function withRollupPlatforms(
+  platforms: readonly PlatformId[],
+  rollup: PlatformStatusRollup,
+): PlatformId[] {
+  const widened = new Set<PlatformId>([...platforms, ...getRollupPlatforms(rollup)]);
+  return PLATFORMS.map((platform) => platform.id).filter((platformId) => widened.has(platformId));
+}
+
 export function getRollupDisplayStatus(
   rollup: PlatformStatusRollup,
   fallbackStatus: StatusId,
