@@ -95,7 +95,7 @@ export default function ProjectMapsPage() {
         }}
       >
         <div className="h-full overflow-auto p-4 md:p-6">
-          <div className="mx-auto grid w-full max-w-5xl gap-4 sm:grid-cols-2">
+          <div className="mx-auto grid w-full gap-4 sm:grid-cols-2">
             {maps.map((definition) => {
               const count = counts.get(definition.id) ?? { nodes: 0, edges: 0 };
               const builtIn = definition.id === "journey" || definition.id === "system";

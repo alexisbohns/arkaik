@@ -141,7 +141,7 @@ export default function ChangelogPage() {
       }
     >
       <div className="h-full overflow-auto p-4 md:p-6">
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-8">
+        <div className="flex w-full flex-col gap-8">
           {isEmpty ? (
             <div className="rounded-xl border border-dashed p-10 text-center">
               <p className="text-sm text-muted-foreground">

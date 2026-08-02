@@ -143,7 +143,7 @@ export default function ProjectAcceptancesPage() {
       onCreateAcceptanceForAnchor={handleCreateAcceptanceForAnchor}
     >
       <div className="h-full overflow-auto p-4 md:p-6">
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
+        <div className="flex w-full flex-col gap-4">
           <AcceptanceFilterBar filters={filters} onChange={setFilters} anchorOptions={anchorOptions} />
           <AcceptanceMatrix
             acceptances={filtered}

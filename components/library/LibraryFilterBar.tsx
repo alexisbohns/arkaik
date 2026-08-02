@@ -29,7 +29,7 @@ export function LibraryFilterBar({
   onDisplayModeChange,
 }: LibraryFilterBarProps) {
   return (
-    <div className="rounded-xl border bg-card/70 p-3 md:p-4">
+    <div className="rounded-xl border bg-card p-3 md:p-4">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div className="relative w-full md:max-w-md">
           <SearchIcon className="pointer-events-none absolute left-2 top-2.5 size-4 text-muted-foreground" />

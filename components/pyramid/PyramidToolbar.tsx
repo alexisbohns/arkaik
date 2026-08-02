@@ -34,7 +34,7 @@ export function PyramidToolbar({
   onFilterStepChange,
 }: PyramidToolbarProps) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card/70 p-3">
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-3">
       <SegmentedControl
         options={FILTER_STEPS}
         value={filterStep}

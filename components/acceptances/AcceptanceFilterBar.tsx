@@ -67,7 +67,7 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions }: Accept
   }, [searchDraft, onChange]);
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card/70 p-3 md:p-4">
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-3 md:p-4">
       <div className="relative min-w-[12rem] flex-1">
         <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input

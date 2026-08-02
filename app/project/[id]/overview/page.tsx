@@ -116,7 +116,7 @@ export default function OverviewPage() {
       }
     >
       <div className="h-full overflow-auto p-4 md:p-6">
-        <div className="mx-auto grid w-full max-w-5xl gap-4 md:grid-cols-2">
+        <div className="grid w-full gap-4 md:grid-cols-2">
           {isEmpty ? (
             <div className="rounded-xl border border-dashed p-10 text-center md:col-span-2">
               <p className="text-sm text-muted-foreground">

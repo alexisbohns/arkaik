@@ -258,7 +258,7 @@ export default function ProjectLibraryPage() {
         onCreateNode={handleCreateNodeFromPanel}
       >
         <div className="h-full overflow-auto">
-          <div className="mx-auto w-full max-w-7xl">
+          <div className="w-full">
             <StickyToolbar>
               <LibraryFilterBar
                 search={search}
