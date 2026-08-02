@@ -11,7 +11,7 @@
 const fs = require("fs");
 const { loadCommandPalette, BUILD_DIR } = require("./load-command-palette");
 
-const { buildProjectCommands, rankCommands, completionSuffix, COMMAND_GROUPS } =
+const { buildProjectCommands, buildDocsCommands, rankCommands, completionSuffix, COMMAND_GROUPS } =
   loadCommandPalette();
 
 let failures = 0;
@@ -149,6 +149,113 @@ assert(
   "stray whitespace suppresses the ghost rather than drawing a misaligned one",
 );
 assert(completionSuffix("acc", undefined) === "", "no active row, no ghost");
+
+// --- docs catalogue: the same brain, pointed at the documentation tree ---
+const docsPages = [
+  { href: "/docs", label: "Overview" },
+  { href: "/docs/vision", label: "Vision" },
+  { href: "/docs/conventions", label: "Conventions" },
+  // Title and filename drift apart on purpose here — that is the case the slug
+  // keywords exist for.
+  { href: "/docs/graph-model", label: "The five species" },
+  { href: "/docs/spec/bundle-format", label: "Bundle Format", section: "Spec" },
+  { href: "/docs/spec/journal", label: "Journal", section: "Spec" },
+];
+const docsCommands = buildDocsCommands({ pages: docsPages });
+
+function docsTopLabel(query) {
+  return rankCommands(docsCommands, query)[0]?.command.label;
+}
+
+function docsCommandById(id) {
+  return docsCommands.find((command) => command.id === id);
+}
+
+const docsHrefs = new Set(
+  docsCommands
+    .filter((command) => command.target.kind === "href")
+    .map((command) => command.target.href),
+);
+for (const page of docsPages) {
+  assert(docsHrefs.has(page.href), `docs catalogue reaches ${page.href}`);
+}
+assert(
+  new Set(docsCommands.map((command) => command.id)).size === docsCommands.length,
+  "docs command ids are unique (the href makes them so)",
+);
+assert(
+  docsCommands.every((command) => groupIds.has(command.group)),
+  "every docs command belongs to a declared group",
+);
+assert(
+  docsCommands
+    .filter((command) => command.group === "pages")
+    .every((command) => command.target.kind === "href" && !command.target.external),
+  "docs pages navigate in place — the docs shell is where you already are",
+);
+assert(
+  docsCommands
+    .filter((command) => command.group === "pages")
+    .every((command, index) => command.label === docsPages[index].label),
+  "docs pages keep the sidebar's reading order",
+);
+
+// Ranking: typing the page finds the page.
+assert(docsTopLabel("vision") === "Vision", `"vision" → Vision (got ${docsTopLabel("vision")})`);
+assert(
+  docsTopLabel("bundle") === "Bundle Format",
+  `"bundle" → Bundle Format (got ${docsTopLabel("bundle")})`,
+);
+assert(
+  docsTopLabel("conv") === "Conventions",
+  `"conv" → Conventions (got ${docsTopLabel("conv")})`,
+);
+
+// The address is a synonym: a page whose title says nothing about its filename
+// is still reachable by the filename, hyphens or spaces.
+assert(
+  docsTopLabel("graph-model") === "The five species",
+  `"graph-model" → The five species (got ${docsTopLabel("graph-model")})`,
+);
+assert(
+  docsTopLabel("graph model") === "The five species",
+  `"graph model" → The five species (got ${docsTopLabel("graph model")})`,
+);
+assert(
+  docsTopLabel("spec/journal") === "Journal",
+  `a full slug path finds its page (got ${docsTopLabel("spec/journal")})`,
+);
+assert(
+  completionSuffix("graph-mo", rankCommands(docsCommands, "graph-mo")[0]) === "del",
+  "Tab completes the slug being typed, not the unrelated title",
+);
+
+// The folder trail rides along as the row's hint, so two same-named pages in
+// different sections stay tellable apart.
+assert(
+  docsCommandById("doc:/docs/spec/journal").hint === "Spec",
+  "a nested page shows its section as the hint",
+);
+assert(
+  docsCommandById("doc:/docs/vision").hint === undefined,
+  "a top-level page has no section to show",
+);
+
+// Actions: the theme is shared with the project palette, Publish is not offered.
+assert(
+  docsTopLabel("dark mode") === "Toggle theme",
+  `"dark mode" → Toggle theme in the docs too (got ${docsTopLabel("dark mode")})`,
+);
+assert(
+  docsCommands.every(
+    (command) => !(command.target.kind === "action" && command.target.action === "publish"),
+  ),
+  "the docs palette never offers Publish — there is no project to publish",
+);
+assert(
+  docsCommandById("back-to-app").target.href === "/projects",
+  "the docs palette leads back to the app",
+);
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 

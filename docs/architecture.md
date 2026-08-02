@@ -90,7 +90,7 @@ components/
     HealthCard.tsx          # Doc-health indicators with per-indicator evidence links
     MapsCard.tsx            # Every map with live subgraph counts
   layout/
-    CommandPalette.tsx      # ⌘K overlay: ranked search over every project destination
+    CommandPalette.tsx      # ⌘K overlay: ranked search over a catalogue (project or docs)
     Minimap.tsx             # React Flow minimap wrapper (unused — Canvas uses @xyflow/react MiniMap directly)
     ProjectSidebar.tsx      # Persistent in-project sidebar navigation
     ProjectSwitcher.tsx     # Sidebar header dropdown for cross-project navigation
@@ -174,7 +174,7 @@ lib/utils/docs.ts (filesystem discovery + slug-safe lookup)
   ↕
 components/docs/MarkdownContent.tsx (react-markdown + GFM + highlighting)
 
-Docs pages are rendered from markdown at request/build time using server-side file reads. The home route (`/docs`) is pinned to repository `README.md`, while nested routes resolve to markdown under `docs/`. Unknown paths redirect back to `/docs`.
+Docs pages are rendered from markdown at request/build time using server-side file reads. The home route (`/docs`) is pinned to repository `README.md`, while nested routes resolve to markdown under `docs/`. Unknown paths redirect back to `/docs`. The same index also feeds the docs ⌘K palette (`getDocsSearchPages()` → `components/docs/DocsSearch.tsx`), so the sidebar and the palette can never disagree about what exists.
 
 Prompt generation flow:
 
@@ -292,6 +292,25 @@ dispatches the non-navigating commands; `CommandPalette` renders the overlay and
 - Publish lives in the layout rather than the sidebar, so both triggers open one
   dialog.
 
+The palette is catalogue-agnostic: `buildProjectCommands` and `buildDocsCommands`
+are two lists feeding one overlay, one ranker and one shortcut. A new surface
+needs a builder, not a palette.
+
+### Docs palette (⌘K in /docs)
+
+`components/docs/DocsSearch.tsx` mounts the same overlay in the docs header —
+it owns the trigger button, the shortcut and the open state, because the docs
+shell has no other command state to share. Its catalogue comes from
+`getDocsSearchPages()` (`lib/utils/docs.ts`), the navigation tree flattened back
+into landable pages, and crosses to the client as plain data.
+
+- The page's own address is a synonym, hyphens and spaces both: "graph model"
+  finds `/docs/graph-model` even though its title says *The five species*.
+- The folder trail rides along as the row's hint ("Spec"), so same-named pages in
+  different sections stay tellable apart.
+- Publish is a project action and is simply absent from the catalogue; the theme
+  command is shared, so ⌘K switches it from either space.
+
 ## Theming
 
 - `next-themes` for light/dark mode
@@ -307,8 +326,8 @@ dispatches the non-navigating commands; `CommandPalette` renders the overlay and
 - Panel stack: [lib/utils/panel-stack.ts](../lib/utils/panel-stack.ts), [components/panels/PanelStack.tsx](../components/panels/PanelStack.tsx), [lib/hooks/useNodePanels.tsx](../lib/hooks/useNodePanels.tsx), [components/panels/NodeDetailStack.tsx](../components/panels/NodeDetailStack.tsx)
 - Library orchestration: [app/project/[id]/library/page.tsx](../app/project/[id]/library/page.tsx)
 - Sidebar components: [components/layout/ProjectSidebar.tsx](../components/layout/ProjectSidebar.tsx), [components/layout/ProjectSwitcher.tsx](../components/layout/ProjectSwitcher.tsx)
-- Command palette: [components/layout/CommandPalette.tsx](../components/layout/CommandPalette.tsx), [lib/utils/command-palette.ts](../lib/utils/command-palette.ts)
-- Docs shell + renderer: [app/docs/layout.tsx](../app/docs/layout.tsx), [app/docs/page.tsx](../app/docs/page.tsx), [app/docs/[...slug]/page.tsx](../app/docs/[...slug]/page.tsx), [components/layout/DocsSidebar.tsx](../components/layout/DocsSidebar.tsx), [components/docs/MarkdownContent.tsx](../components/docs/MarkdownContent.tsx), [lib/utils/docs.ts](../lib/utils/docs.ts)
+- Command palette: [components/layout/CommandPalette.tsx](../components/layout/CommandPalette.tsx), [lib/utils/command-palette.ts](../lib/utils/command-palette.ts), [components/docs/DocsSearch.tsx](../components/docs/DocsSearch.tsx)
+- Docs shell + renderer: [app/docs/layout.tsx](../app/docs/layout.tsx), [app/docs/page.tsx](../app/docs/page.tsx), [app/docs/[...slug]/page.tsx](../app/docs/[...slug]/page.tsx), [components/layout/DocsSidebar.tsx](../components/layout/DocsSidebar.tsx), [components/docs/MarkdownContent.tsx](../components/docs/MarkdownContent.tsx), [components/docs/DocsSearch.tsx](../components/docs/DocsSearch.tsx), [lib/utils/docs.ts](../lib/utils/docs.ts)
 - Prompt builder: [app/generate/page.tsx](../app/generate/page.tsx), [components/generate/PromptBuilderForm.tsx](../components/generate/PromptBuilderForm.tsx), [components/generate/PromptOutput.tsx](../components/generate/PromptOutput.tsx), [lib/prompts/assemble.ts](../lib/prompts/assemble.ts), [lib/prompts/blocks.ts](../lib/prompts/blocks.ts), [lib/prompts/types.ts](../lib/prompts/types.ts)
 - React Flow registry: [components/graph/Canvas.tsx](../components/graph/Canvas.tsx)
 - Data hooks: [lib/hooks/useNodes.ts](../lib/hooks/useNodes.ts), [lib/hooks/useEdges.ts](../lib/hooks/useEdges.ts), [lib/hooks/useProject.ts](../lib/hooks/useProject.ts), [lib/hooks/useProjects.ts](../lib/hooks/useProjects.ts)

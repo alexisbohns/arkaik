@@ -4,6 +4,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { cache } from "react";
 import matter from "gray-matter";
+import type { DocsPage } from "@/lib/utils/command-palette";
 
 const REPO_ROOT = process.cwd();
 const DOCS_DIR = path.join(REPO_ROOT, "docs");
@@ -293,3 +294,27 @@ export async function getAllDocEntries(): Promise<DocEntry[]> {
   const { entries } = await getDocsIndex();
   return entries;
 }
+
+/**
+ * The docs ⌘K palette's catalogue: the navigation tree flattened back into the
+ * pages you can actually land on, Overview included. Folder rows are dropped —
+ * the sidebar shows them as headings, and a heading is not a destination.
+ *
+ * Returns plain data, because the docs shell hands it to a client component.
+ */
+export const getDocsSearchPages = cache(async (): Promise<DocsPage[]> => {
+  const { entries } = await getDocsIndex();
+
+  return [
+    // Mirrors getDocsNavigation()'s first row, so both call the README the same.
+    { href: "/docs", label: "Overview" },
+    ...entries.map((entry) => {
+      const section = entry.slugParts.slice(0, -1).map(titleCase).join(" / ");
+      return {
+        href: entry.href,
+        label: entry.navTitle,
+        ...(section ? { section } : {}),
+      };
+    }),
+  ];
+});
