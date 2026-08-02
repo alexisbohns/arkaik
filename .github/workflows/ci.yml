@@ -82,6 +82,9 @@ jobs:
       - name: Map projection + validation tests
         run: npm run test:maps
 
+      - name: Edge semantics table + dialog lookup tests
+        run: npm run test:edge-semantics
+
       - name: Delivery board grouping tests
         run: npm run test:delivery
 

@@ -609,6 +609,21 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     setEdgeDialogOpen(true);
   }, []);
 
+  // The dialog offers only the relationships this ordered pair admits (#317).
+  // Playlist expansion duplicates a node into several visual ids, so resolve
+  // back to the base node before asking what its species is.
+  const pendingSpecies = useMemo(
+    () => ({
+      source: pendingConnection?.source
+        ? nodesById.get(getBaseNodeId(pendingConnection.source))?.species ?? null
+        : null,
+      target: pendingConnection?.target
+        ? nodesById.get(getBaseNodeId(pendingConnection.target))?.species ?? null
+        : null,
+    }),
+    [nodesById, pendingConnection],
+  );
+
   const handleEdgeTypeSelect = useCallback(async (edgeType: EdgeTypeId) => {
     if (!pendingConnection?.source || !pendingConnection?.target) return;
     const sourceId = getBaseNodeId(pendingConnection.source);
@@ -811,6 +826,8 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
           if (!open) setPendingConnection(null);
         }}
         onSelect={handleEdgeTypeSelect}
+        sourceSpecies={pendingSpecies.source}
+        targetSpecies={pendingSpecies.target}
       />
       <DeleteConfirmDialog
         open={deleteNodeDialogOpen}

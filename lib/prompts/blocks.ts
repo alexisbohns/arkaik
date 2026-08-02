@@ -22,7 +22,7 @@ Flows orchestrate views through an ordered playlist. Each playlist entry is one 
 
 ### Edge Types (Relationships)
 - **composes**: Structural hierarchy — flow↔view (a flow contains views/sub-flows)
-- **calls**: A view or flow calls an API endpoint
+- **calls**: Who initiates a call — a view or flow calling an API endpoint, an endpoint fanning out to another endpoint, or an endpoint pushing into a view (webhook, SSE)
 - **displays**: A view displays data from a data model
 - **queries**: An API endpoint reads/writes a data model
 
@@ -47,7 +47,7 @@ export const RULES_BLOCK = `## Rules & Constraints
 7. Flow playlists must not create cycles — a flow cannot contain itself directly or indirectly through sub-flows.
 8. Edge type semantics:
    - \`composes\`: flow → view, flow → flow (sub-flow), or view → flow (view triggers a flow)
-   - \`calls\`: view → api-endpoint, or flow → api-endpoint
+   - \`calls\`: view → api-endpoint, flow → api-endpoint, api-endpoint → api-endpoint (endpoint fan-out), or api-endpoint → view (the server initiates: webhook, SSE, push)
    - \`displays\`: view → data-model
    - \`queries\`: api-endpoint → data-model
 9. Every view or sub-flow referenced in a flow's playlist MUST also have a "composes" edge from that flow to the referenced node.

@@ -3,6 +3,7 @@ import {
   PLATFORM_IDS,
   SPECIES_IDS,
   STATUS_IDS,
+  VALID_EDGE_SEMANTICS,
   VALUE_IDS,
   type EdgeTypeId,
   type SpeciesId,
@@ -73,26 +74,6 @@ function estimateDataUriBytes(dataUri: string): number {
   const padding = payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0;
   return Math.floor((payload.length * 3) / 4) - padding;
 }
-
-const VALID_EDGE_SEMANTICS: Record<EdgeTypeId, ReadonlyArray<[SpeciesId, SpeciesId]>> = {
-  composes: [
-    ["flow", "view"],
-    ["flow", "flow"],
-    ["view", "flow"],
-    ["view", "view"],
-  ],
-  calls: [
-    ["view", "api-endpoint"],
-    ["flow", "api-endpoint"],
-    ["api-endpoint", "api-endpoint"],
-  ],
-  displays: [["view", "data-model"]],
-  queries: [["api-endpoint", "data-model"]],
-  covers: [
-    ["acceptance", "view"],
-    ["acceptance", "flow"],
-  ],
-};
 
 function isIsoDate(value: unknown): boolean {
   return typeof value === "string" && !Number.isNaN(Date.parse(value));
