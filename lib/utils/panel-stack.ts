@@ -13,7 +13,7 @@
  */
 
 export interface PanelEntry<T> {
-  /** Identity of the thing this panel shows — the node id, here. */
+  /** Identity of this panel's subject, whatever the binding decides that is. */
   key: string;
   /**
    * React render key. A *refresh* (same key landing in the same slot) keeps it,
@@ -82,6 +82,20 @@ export function unwindTo<T>(stack: PanelEntry<T>[], depth: number): PanelEntry<T
   const target = Math.max(0, Math.min(depth, stack.length));
   if (target === stack.length) return stack;
   return stack.slice(0, target);
+}
+
+/**
+ * The panels an unwind to `depth` destroys, top-down.
+ *
+ * `unwindTo` truncates a suffix, so it takes every panel from `depth` upward —
+ * not just the one at `depth`. Ordered highest-first because a panel that
+ * refuses to close raises a confirm, and that confirm should belong to
+ * something the user can see rather than a column buried two deep.
+ */
+export function unwindDoomed(depth: number, total: number): number[] {
+  const doomed: number[] = [];
+  for (let index = total - 1; index >= depth; index -= 1) doomed.push(index);
+  return doomed;
 }
 
 /**

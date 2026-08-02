@@ -15,13 +15,13 @@ interface DeliveryBoardProps {
 /** Status columns of (node × platform) items — the product-centered board. */
 export function DeliveryBoard({ columns, speciesLabelById, speciesDescriptionById, onSelectItem }: DeliveryBoardProps) {
   return (
-    <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto pb-2">
+    <div className="flex min-h-0 flex-1 overflow-x-auto border bg-card rounded-xl">
       {columns.map(({ status, label, items }) => {
         const StatusIcon = STATUS_ICONS[status];
 
         return (
-          <section key={status} className="flex w-72 shrink-0 flex-col rounded-xl border bg-card/50">
-            <header className="flex items-center gap-2 border-b px-3 py-2.5">
+          <section key={status} className="flex w-72 shrink-0 flex-col px-2">
+            <header className="flex items-center gap-2 rounded-b-xl bg-background border border-t-0 px-3 py-2.5">
               <StatusIcon className={`size-4 ${STATUS_STYLES[status].badge}`} aria-hidden="true" />
               <h2 className="text-sm font-medium">{label}</h2>
               <span className="ml-auto rounded-full border px-2 py-0.5 text-xs text-muted-foreground">

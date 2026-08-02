@@ -52,6 +52,18 @@ function buildTypesBlock(schemaPackage) {
     "ProjectBundle",
   ]);
 
+  // ProjectMetadata references these by name; without them the listing an
+  // agent authors maps from would point at types it cannot see (maps.md
+  // § MapDefinition, § Display Options).
+  const mapDecls = extractDeclarations("maps.ts", [
+    "MapKind",
+    "MapLayoutHints",
+    "MapFlowPlatformsMode",
+    "MapViewPlatformsMode",
+    "MapDisplayOptions",
+    "MapDefinition",
+  ]);
+
   const journalDecls = extractDeclarations("journal.ts", [
     "JournalEvent",
     "NodeCreatedEvent",
@@ -92,6 +104,7 @@ function buildTypesBlock(schemaPackage) {
     "",
     edge,
     "",
+    ...mapDecls.flatMap((decl) => [decl, ""]),
     projectMetadata,
     "",
     project,

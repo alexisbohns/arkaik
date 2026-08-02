@@ -90,7 +90,7 @@ components/
     HealthCard.tsx          # Doc-health indicators with per-indicator evidence links
     MapsCard.tsx            # Every map with live subgraph counts
   layout/
-    CommandPalette.tsx      # ⌘K overlay: ranked search over every project destination
+    CommandPalette.tsx      # ⌘K overlay: ranked search over a catalogue (project or docs)
     Minimap.tsx             # React Flow minimap wrapper (unused — Canvas uses @xyflow/react MiniMap directly)
     ProjectSidebar.tsx      # Persistent in-project sidebar navigation
     ProjectSwitcher.tsx     # Sidebar header dropdown for cross-project navigation
@@ -106,7 +106,7 @@ components/
     NewNodeForm.tsx         # Dialog form for creating a node with species-aware status/platform defaults
     InsertBetweenDialog.tsx # Dialog for insert-between actions: choose view/flow, search existing, or create inline
     PanelStack.tsx          # Content-agnostic push-panel grid: the surface is cell 0; keyboard, focus, breadcrumb, window
-    NodeDetailStack.tsx     # Binds the stack to nodes: id → node, onNavigate → "push from my index"
+    ProjectPanels.tsx       # Binds the stack to panel kind: node detail (id → node), or the raw bundle
     NodeDetailPanel.tsx     # One panel's body: edit node fields, platform-specific statuses, computed rollups, and flow playlists
     PlaylistEditor.tsx      # Flow-only playlist editor: add/remove/reorder and branch editing
     PlaylistEntryRow.tsx    # Recursive playlist row renderer for condition/junction branches
@@ -174,7 +174,7 @@ lib/utils/docs.ts (filesystem discovery + slug-safe lookup)
   ↕
 components/docs/MarkdownContent.tsx (react-markdown + GFM + highlighting)
 
-Docs pages are rendered from markdown at request/build time using server-side file reads. The home route (`/docs`) is pinned to repository `README.md`, while nested routes resolve to markdown under `docs/`. Unknown paths redirect back to `/docs`.
+Docs pages are rendered from markdown at request/build time using server-side file reads. The home route (`/docs`) is pinned to repository `README.md`, while nested routes resolve to markdown under `docs/`. Unknown paths redirect back to `/docs`. The same index also feeds the docs ⌘K palette (`getDocsSearchPages()` → `components/docs/DocsSearch.tsx`), so the sidebar and the palette can never disagree about what exists.
 
 Prompt generation flow:
 
@@ -213,30 +213,39 @@ Canvas visibility rule (Journey map):
 - Rendered nodes: `flow`, `view`
 - Not rendered here: `data-model`, `api-endpoint` (still persisted; they render on the System map once roadmap CP-C lands — [spec/maps.md](spec/maps.md))
 
-View card variants:
+Card rendering is per map, set from the header's **Display** popover and resolved
+by `resolveMapDisplay` ([spec/maps.md](spec/maps.md) § Display Options). Three
+independent options, not a two-way preset:
 
-- `compact` (default): header + API buttons + platform status icons
-- `large`: header + optional cover + platform status rows + API buttons
+- `images` — the view's screenshot, falling back to its cover art (default on)
+- `flow_platforms` — a flow card's delivery as the Pyramid's `rings` (default) or stacked `bars`
+- `view_platforms` — a view card's availability as footer `chips` (default) or labelled `rows`
 
-Project preference source: `project.metadata.view_card_variant` in [lib/data/types.ts](../lib/data/types.ts)
+Storage: `project.metadata.map_display[mapId]`, plus a definition-level `display`
+for agent-authored custom maps. The superseded project-wide
+`project.metadata.view_card_variant` is no longer read — it still parses and
+round-trips, but every map now starts from the defaults above.
 
 ## Node Detail Panel
 
 Clicking any node pushes a column onto the **panel stack** — an inline grid, no
 overlay and no focus trap, in which the surface itself is the first cell. The
-stack is
-owned by `NodePanelsProvider` in `app/project/[id]/layout.tsx` (a page segment
-would remount on every param change and reset it), rendered by `PanelStack`,
-and bound to nodes by `NodeDetailStack`. Its rule, URL contract (`?node=`) and
-the split across the three files are documented in
-[conventions.md § Panel Stack](conventions.md); the transitions themselves are
-pure, in `lib/utils/panel-stack.ts`.
+stack is owned by `ProjectPanelsProvider` in `app/project/[id]/layout.tsx` (a
+page segment would remount on every param change and reset it), rendered by
+`PanelStack`, and bound to what a panel can be — a node, or the raw bundle — by
+`ProjectPanels`. Its rule, URL contract (`?node=`) and the split across the
+three files are documented in [conventions.md § Panel Stack](conventions.md);
+the transitions themselves are pure, in `lib/utils/panel-stack.ts`.
 
 `NodeDetailPanel` is one panel's body — the stack owns the frame, the chrome
-and the keyboard. The five surfaces that open panels (Journey map, System map,
-library, delivery, acceptances) each render `NodeDetailStack` with their own
-data and handlers; none of them keeps a selected-node of its own.
-`RawBundleSheet` stays a `Sheet`: a project-level raw-JSON view with no
+and the keyboard. Historically only the five node-bearing surfaces (Journey
+map, System map, library, delivery, acceptances) rendered the stack at all; the
+intent, as the pages move onto `PageShell`, is that every project page mounts
+it, since the raw bundle panel needs no node data to be worth reaching. Those
+five pass `ProjectPanels` their own data and handlers and none keeps a
+selected-node of its own; a page that passes none still gets the grid, and a
+`?node=` it cannot resolve renders a body saying so rather than an empty
+column. `RawBundleSheet` stays a `Sheet`: a project-level raw-JSON view with no
 traversal, and genuinely modal.
 
 The body carries:
@@ -262,7 +271,7 @@ The library route (`app/project/[id]/library/page.tsx`) is the project-wide brow
 - **Directory view**: sortable table using `NodeTable` for dense auditing (`id`, `title`, `species`, `status`, `used in`).
 - **Filter controls**: species selection is owned by the sidebar (`?species=` deep links); `LibraryFilterBar` owns text search and the gallery/directory display toggle.
 
-Library interactions reuse the same edit/create surfaces as canvas (`NodeDetailStack`, `NewNodeForm`) so data mutation paths stay identical.
+Library interactions reuse the same edit/create surfaces as canvas (`ProjectPanels`, `NewNodeForm`) so data mutation paths stay identical.
 
 ## Sidebar Navigation
 
@@ -286,6 +295,25 @@ dispatches the non-navigating commands; `CommandPalette` renders the overlay and
 - Publish lives in the layout rather than the sidebar, so both triggers open one
   dialog.
 
+The palette is catalogue-agnostic: `buildProjectCommands` and `buildDocsCommands`
+are two lists feeding one overlay, one ranker and one shortcut. A new surface
+needs a builder, not a palette.
+
+### Docs palette (⌘K in /docs)
+
+`components/docs/DocsSearch.tsx` mounts the same overlay in the docs header —
+it owns the trigger button, the shortcut and the open state, because the docs
+shell has no other command state to share. Its catalogue comes from
+`getDocsSearchPages()` (`lib/utils/docs.ts`), the navigation tree flattened back
+into landable pages, and crosses to the client as plain data.
+
+- The page's own address is a synonym, hyphens and spaces both: "graph model"
+  finds `/docs/graph-model` even though its title says *The five species*.
+- The folder trail rides along as the row's hint ("Spec"), so same-named pages in
+  different sections stay tellable apart.
+- Publish is a project action and is simply absent from the catalogue; the theme
+  command is shared, so ⌘K switches it from either space.
+
 ## Theming
 
 - `next-themes` for light/dark mode
@@ -298,11 +326,11 @@ dispatches the non-navigating commands; `CommandPalette` renders the overlay and
 
 - Graph orchestration: [components/maps/JourneyMap.tsx](../components/maps/JourneyMap.tsx), [lib/utils/journey-graph.ts](../lib/utils/journey-graph.ts), [lib/utils/system-graph.ts](../lib/utils/system-graph.ts)
 - Project shell: [app/project/[id]/layout.tsx](../app/project/[id]/layout.tsx)
-- Panel stack: [lib/utils/panel-stack.ts](../lib/utils/panel-stack.ts), [components/panels/PanelStack.tsx](../components/panels/PanelStack.tsx), [lib/hooks/useNodePanels.tsx](../lib/hooks/useNodePanels.tsx), [components/panels/NodeDetailStack.tsx](../components/panels/NodeDetailStack.tsx)
+- Panel stack: [lib/utils/panel-stack.ts](../lib/utils/panel-stack.ts), [components/panels/PanelStack.tsx](../components/panels/PanelStack.tsx), [lib/hooks/useProjectPanels.tsx](../lib/hooks/useProjectPanels.tsx), [components/panels/ProjectPanels.tsx](../components/panels/ProjectPanels.tsx)
 - Library orchestration: [app/project/[id]/library/page.tsx](../app/project/[id]/library/page.tsx)
 - Sidebar components: [components/layout/ProjectSidebar.tsx](../components/layout/ProjectSidebar.tsx), [components/layout/ProjectSwitcher.tsx](../components/layout/ProjectSwitcher.tsx)
-- Command palette: [components/layout/CommandPalette.tsx](../components/layout/CommandPalette.tsx), [lib/utils/command-palette.ts](../lib/utils/command-palette.ts)
-- Docs shell + renderer: [app/docs/layout.tsx](../app/docs/layout.tsx), [app/docs/page.tsx](../app/docs/page.tsx), [app/docs/[...slug]/page.tsx](../app/docs/[...slug]/page.tsx), [components/layout/DocsSidebar.tsx](../components/layout/DocsSidebar.tsx), [components/docs/MarkdownContent.tsx](../components/docs/MarkdownContent.tsx), [lib/utils/docs.ts](../lib/utils/docs.ts)
+- Command palette: [components/layout/CommandPalette.tsx](../components/layout/CommandPalette.tsx), [lib/utils/command-palette.ts](../lib/utils/command-palette.ts), [components/docs/DocsSearch.tsx](../components/docs/DocsSearch.tsx)
+- Docs shell + renderer: [app/docs/layout.tsx](../app/docs/layout.tsx), [app/docs/page.tsx](../app/docs/page.tsx), [app/docs/[...slug]/page.tsx](../app/docs/[...slug]/page.tsx), [components/layout/DocsSidebar.tsx](../components/layout/DocsSidebar.tsx), [components/docs/MarkdownContent.tsx](../components/docs/MarkdownContent.tsx), [components/docs/DocsSearch.tsx](../components/docs/DocsSearch.tsx), [lib/utils/docs.ts](../lib/utils/docs.ts)
 - Prompt builder: [app/generate/page.tsx](../app/generate/page.tsx), [components/generate/PromptBuilderForm.tsx](../components/generate/PromptBuilderForm.tsx), [components/generate/PromptOutput.tsx](../components/generate/PromptOutput.tsx), [lib/prompts/assemble.ts](../lib/prompts/assemble.ts), [lib/prompts/blocks.ts](../lib/prompts/blocks.ts), [lib/prompts/types.ts](../lib/prompts/types.ts)
 - React Flow registry: [components/graph/Canvas.tsx](../components/graph/Canvas.tsx)
 - Data hooks: [lib/hooks/useNodes.ts](../lib/hooks/useNodes.ts), [lib/hooks/useEdges.ts](../lib/hooks/useEdges.ts), [lib/hooks/useProject.ts](../lib/hooks/useProject.ts), [lib/hooks/useProjects.ts](../lib/hooks/useProjects.ts)

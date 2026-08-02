@@ -1,19 +1,12 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import { XIcon } from "lucide-react";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { isEditableElement } from "@/lib/utils/keyboard";
-import { visibleWindow, type PanelEntry } from "@/lib/utils/panel-stack";
+import { unwindDoomed, visibleWindow, type PanelEntry } from "@/lib/utils/panel-stack";
 
 /**
  * Escape belongs to whatever layer is on top, and Radix marks its open layers
@@ -31,8 +24,6 @@ interface PanelStackProps<T> {
   entries: PanelEntry<T>[];
   /** The surface — canvas, board, list. It is the grid's first cell, not a backdrop. */
   children: ReactNode;
-  /** The surface's name, for the breadcrumb's first crumb. */
-  rootLabel: string;
   labelOf: (entry: PanelEntry<T>) => string;
   /** Panel header content, left of the close button. */
   renderHeader: (entry: PanelEntry<T>, index: number) => ReactNode;
@@ -42,6 +33,36 @@ interface PanelStackProps<T> {
   onUnwindTo: (depth: number) => void;
   /** Fires when the columns change, so a canvas can re-frame itself. */
   onLayoutChange?: () => void;
+  /** The surface cell's accessible name. */
+  surfaceLabel: string;
+  /**
+   * Whether the surface renders as a card — a background and a border of its own.
+   *
+   * Off by default, because most surfaces are already made of cards, tables and
+   * blocks, and wrapping those in another card just draws a box around boxes. A
+   * canvas is the exception: it has no internal edges, so it needs the cell's.
+   * Panels are always cards — they are a distinct thing laid over the page's
+   * subject, and the border is what says so.
+   */
+  surfaceCard?: boolean;
+  /** Per-entry visual accent. "editing" draws a dashed destructive border. */
+  accentOf?: (entry: PanelEntry<T>, index: number) => "editing" | null | undefined;
+  /**
+   * Asked for every panel a close would destroy, in the order given — top-down.
+   * Not a pure predicate: returning false vetoes and *defers*, and that panel
+   * is expected to raise its own confirm and call `resume` once the user has
+   * answered.
+   *
+   * Only the first veto is ever consulted. `resume` commits the whole close and
+   * skips every guard not yet asked, so with two vetoing panels in one doomed
+   * set the second is destroyed without being asked. That bypass is load-bearing
+   * — a panel clears its dirty flag with `setState` and resumes before React has
+   * committed it, so a re-guarded resume would read the stale flag and veto
+   * forever. Unreachable today: there is one raw panel and node panels never
+   * veto. If a second vetoing panel ever ships, the fix is for `commit` to
+   * resume the loop from the next index rather than bypass wholesale.
+   */
+  requestCloseAt?: (index: number, resume: () => void) => boolean;
 }
 
 /**
@@ -57,13 +78,16 @@ interface PanelStackProps<T> {
 export function PanelStack<T>({
   entries,
   children,
-  rootLabel,
   labelOf,
   renderHeader,
   renderBody,
   onCloseAt,
   onUnwindTo,
   onLayoutChange,
+  surfaceLabel,
+  surfaceCard = false,
+  accentOf,
+  requestCloseAt,
 }: PanelStackProps<T>) {
   const isMobile = useIsMobile();
   const { surfaceVisible, firstVisiblePanel, columnCount } = visibleWindow(
@@ -76,10 +100,38 @@ export function PanelStack<T>({
 
   // Closing a panel with focus inside it would drop focus on the document body
   // and lose the tab position. Hand it to whatever panel is on top afterwards.
-  const runClose = useCallback((close: () => void, source: HTMLElement | null) => {
-    restoreFocusRef.current = source?.contains(document.activeElement) ?? false;
-    close();
-  }, []);
+  //
+  // `doomed` is every panel this close destroys, highest first: an unwind takes
+  // a whole suffix, the close button takes exactly one. Each call site says
+  // which it is rather than leaving the stack to infer it.
+  const runClose = useCallback(
+    (doomed: number[], close: () => void, source: HTMLElement | null) => {
+      // Captured before asking, not inside `commit`: a veto opens a dialog that
+      // takes focus, so by the time the user resumes, focus is in the dialog
+      // and the answer would always be no.
+      const hadFocus = source?.contains(document.activeElement) ?? false;
+
+      // Single-shot: a panel that resumes twice would commit twice, and the
+      // second pass publishes another history entry — leaving one Back unable
+      // to undo the close.
+      let committed = false;
+      const commit = () => {
+        if (committed) return;
+        committed = true;
+        restoreFocusRef.current = hadFocus;
+        close();
+      };
+
+      if (requestCloseAt) {
+        for (const index of doomed) {
+          if (!requestCloseAt(index, commit)) return;
+        }
+      }
+
+      commit();
+    },
+    [requestCloseAt],
+  );
 
   useEffect(() => {
     if (!restoreFocusRef.current) return;
@@ -106,66 +158,26 @@ export function PanelStack<T>({
       if (document.querySelector(OPEN_OVERLAY_SELECTOR)) return;
 
       event.preventDefault();
-      runClose(() => onUnwindTo(entries.length - 1), topPanelRef.current);
+      runClose(
+        unwindDoomed(entries.length - 1, entries.length),
+        () => onUnwindTo(entries.length - 1),
+        topPanelRef.current,
+      );
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [entries.length, onUnwindTo, runClose]);
 
+  // The radius and the clip belong to every cell — they define the column's
+  // shape, and the clip is what keeps a canvas or a long trail inside it. Only
+  // the skin is optional.
   const cellClassName =
-    "flex min-w-0 min-h-0 flex-col overflow-hidden rounded-xl border bg-background [&[hidden]]:hidden";
+    "flex min-w-0 min-h-0 flex-col overflow-hidden rounded-xl [&[hidden]]:hidden";
+  const cardClassName = "border bg-card";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {entries.length > 0 && (
-        <div className="flex shrink-0 items-center gap-3 border-b px-4 py-2">
-          <Breadcrumb className="min-w-0 flex-1">
-            <BreadcrumbList className="flex-nowrap overflow-x-auto whitespace-nowrap text-xs">
-              <BreadcrumbItem>
-                <button
-                  type="button"
-                  className="cursor-pointer transition-colors hover:text-foreground"
-                  onClick={() => runClose(() => onUnwindTo(0), topPanelRef.current)}
-                >
-                  {rootLabel}
-                </button>
-              </BreadcrumbItem>
-              {entries.map((entry, index) => {
-                const isLast = index === entries.length - 1;
-
-                // The separator is a sibling `<li>`, never a child of one.
-                return (
-                  <Fragment key={entry.instanceId}>
-                    <BreadcrumbSeparator />
-                    <BreadcrumbItem>
-                      {isLast ? (
-                        <BreadcrumbPage className="max-w-48 truncate">
-                          {labelOf(entry)}
-                        </BreadcrumbPage>
-                      ) : (
-                        <button
-                          type="button"
-                          className="max-w-48 cursor-pointer truncate transition-colors hover:text-foreground"
-                          onClick={() =>
-                            runClose(() => onUnwindTo(index + 1), topPanelRef.current)
-                          }
-                        >
-                          {labelOf(entry)}
-                        </button>
-                      )}
-                    </BreadcrumbItem>
-                  </Fragment>
-                );
-              })}
-            </BreadcrumbList>
-          </Breadcrumb>
-          <span className="hidden shrink-0 text-xs text-muted-foreground md:inline">
-            esc closes the last panel
-          </span>
-        </div>
-      )}
-
       <div
         className={cn(
           "relative grid min-h-0 flex-1 gap-3 p-3",
@@ -179,9 +191,10 @@ export function PanelStack<T>({
           box also keeps the ELK layout and the viewport intact underneath.
         */}
         <section
-          aria-label={rootLabel}
+          aria-label={surfaceLabel}
           className={cn(
             cellClassName,
+            surfaceCard && cardClassName,
             "relative",
             !surfaceVisible && "pointer-events-none invisible absolute inset-3 -z-10",
           )}
@@ -199,7 +212,12 @@ export function PanelStack<T>({
               hidden={index < firstVisiblePanel}
               tabIndex={-1}
               aria-label={labelOf(entry)}
-              className={cn(cellClassName, "outline-none arkaik-panel-enter")}
+              className={cn(
+                cellClassName,
+                cardClassName,
+                "outline-none arkaik-panel-enter",
+                accentOf?.(entry, index) === "editing" && "border-dashed border-destructive",
+              )}
             >
               <header className="flex shrink-0 items-center justify-between gap-2 border-b p-6">
                 <div className="flex min-w-0 items-center gap-2">{renderHeader(entry, index)}</div>
@@ -209,7 +227,7 @@ export function PanelStack<T>({
                   className="shrink-0 cursor-pointer"
                   aria-label={`Close ${labelOf(entry)}`}
                   onClick={(event) =>
-                    runClose(() => onCloseAt(index), event.currentTarget.closest("section"))
+                    runClose([index], () => onCloseAt(index), event.currentTarget.closest("section"))
                   }
                 >
                   <XIcon className="size-4" />

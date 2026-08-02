@@ -94,6 +94,9 @@ jobs:
       - name: Push-panel stack tests
         run: npm run test:panel-stack
 
+      - name: Panel descriptor union tests
+        run: npm run test:project-panels
+
       - name: Command palette ranking tests
         run: npm run test:command-palette
 
@@ -114,6 +117,9 @@ jobs:
 
       - name: Product scope helper and store tests
         run: npm run test:product-scope
+
+      - name: Landing-page redirect tests (signed in → /projects)
+        run: npm run test:root-redirect
 
       - name: Journal write-primitive (emit) tests
         run: npm run test:emit

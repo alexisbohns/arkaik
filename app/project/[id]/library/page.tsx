@@ -8,15 +8,14 @@ import { NodeCard } from "@/components/library/NodeCard";
 import type { PlaylistPreviewItem } from "@/components/library/NodeCard";
 import { NodeTable, type NodeSortKey, type NodeSortState } from "@/components/library/NodeTable";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
-import { NodeDetailStack } from "@/components/panels/NodeDetailStack";
+import { PageShell } from "@/components/layout/PageShell";
+import { StickyToolbar } from "@/components/layout/StickyToolbar";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 import { SPECIES, type SpeciesId } from "@/lib/config/species";
 import { STATUSES, STATUS_ORDER } from "@/lib/config/statuses";
 import type { Node as DataNode } from "@/lib/data/types";
 import { useEdges } from "@/lib/hooks/useEdges";
-import { useNodePanels } from "@/lib/hooks/useNodePanels";
+import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
@@ -41,9 +40,9 @@ const SPECIES_EMPTY_LABELS: Record<LibrarySpeciesFilter, string> = {
   acceptance: "acceptances",
 };
 
-// The sidebar owns species selection; the header subtitle mirrors it so the
-// active filter stays visible on the page itself.
-const SPECIES_SUBTITLE_LABELS: Record<SpeciesId, string> = {
+// The sidebar owns species selection; the header's second line mirrors it so
+// the active filter stays visible on the page itself.
+const SPECIES_META_LABELS: Record<SpeciesId, string> = {
   view: "Views",
   flow: "Flows",
   "data-model": "Data Models",
@@ -147,7 +146,7 @@ export default function ProjectLibraryPage() {
   const searchParams = useSearchParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
 
-  const { openNode } = useNodePanels();
+  const { openNode } = useProjectPanels();
   const [newNodeOpen, setNewNodeOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [displayMode, setDisplayMode] = useState<LibraryDisplayMode>("directory");
@@ -282,28 +281,15 @@ export default function ProjectLibraryPage() {
   }
 
   return (
-    <div className="h-full w-full flex flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <SidebarTrigger className="-ml-1 cursor-pointer" />
-        <Separator orientation="vertical" className="mx-1 h-4" />
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">
-            {projectBundle?.project.title ?? "Untitled project"}
-          </p>
-          <p className="truncate text-xs text-muted-foreground">
-            {speciesFilter === "all" ? "Library" : `Library · ${SPECIES_SUBTITLE_LABELS[speciesFilter]}`}
-          </p>
-        </div>
-        <div className="ml-auto flex items-center gap-3">
-          <Button size="sm" className="cursor-pointer" onClick={() => setNewNodeOpen(true)}>
-            <PlusIcon className="size-4" />
-            New node
-          </Button>
-        </div>
-      </header>
-
-      <NodeDetailStack
-        rootLabel={speciesFilter === "all" ? "Library" : `Library · ${SPECIES_SUBTITLE_LABELS[speciesFilter]}`}
+    <>
+      <PageShell
+        title="Library"
+        meta={speciesFilter === "all" ? undefined : SPECIES_META_LABELS[speciesFilter]}
+        action={{
+          label: "New node",
+          icon: PlusIcon,
+          onClick: () => setNewNodeOpen(true),
+        }}
         allNodes={dataNodes}
         allEdges={dataEdges}
         scope={scope}
@@ -311,15 +297,18 @@ export default function ProjectLibraryPage() {
         onUpdate={handleNodeUpdate}
         onCreateNode={handleCreateNodeFromPanel}
       >
-        <div className="h-full overflow-auto p-4 md:p-6">
-          <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
-            <LibraryFilterBar
-              search={search}
-              displayMode={displayMode}
-              onSearchChange={setSearch}
-              onDisplayModeChange={setDisplayMode}
-            />
+        <div className="h-full overflow-auto">
+          <div className="w-full">
+            <StickyToolbar>
+              <LibraryFilterBar
+                search={search}
+                displayMode={displayMode}
+                onSearchChange={setSearch}
+                onDisplayModeChange={setDisplayMode}
+              />
+            </StickyToolbar>
 
+            <div className="flex flex-col gap-4 px-4 pb-4 md:px-6 md:pb-6">
             {visibleNodes.length === 0 ? (
               <div className="rounded-xl border border-dashed p-10 text-center">
                 {/* An empty list under a named scope is not an empty project.
@@ -335,45 +324,46 @@ export default function ProjectLibraryPage() {
                     <PlusIcon className="size-4" />
                     Create node
                   </Button>
+                </div>
               </div>
+            ) : displayMode === "gallery" ? (
+              <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {visibleNodes.map((node) => (
+                  <li key={node.id}>
+                    <NodeCard
+                      node={node}
+                      speciesLabel={SPECIES_LABEL_BY_ID[node.species] ?? node.species}
+                      speciesDescription={SPECIES_DESCRIPTION_BY_ID[node.species]}
+                      viewPlatformStatuses={node.species === "view" ? getEffectivePlatformStatuses(node, dataNodes, dataEdges) : undefined}
+                      flowRollup={node.species === "flow" ? flowRollupByNodeId[node.id] : undefined}
+                      playlistPreview={playlistPreviewForNode(node, nodesById)}
+                      usedInCount={usedInByNodeId[node.id] ?? 0}
+                      scope={scope}
+                      productLabels={productLabelsByNodeId?.[node.id]}
+                      onClick={() => handleSelectNode(node)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="rounded-xl border bg-card p-3">
+                <NodeTable
+                  nodes={visibleNodes}
+                  sort={sort}
+                  speciesLabelById={SPECIES_LABEL_BY_ID}
+                  statusLabelById={STATUS_LABEL_BY_ID}
+                  usedInByNodeId={usedInByNodeId}
+                  scope={scope}
+                  productLabelsByNodeId={productLabelsByNodeId}
+                  onSortChange={handleSortChange}
+                  onSelectNode={handleSelectNode}
+                />
+              </div>
+            )}
             </div>
-          ) : displayMode === "gallery" ? (
-            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {visibleNodes.map((node) => (
-                <li key={node.id}>
-                  <NodeCard
-                    node={node}
-                    speciesLabel={SPECIES_LABEL_BY_ID[node.species] ?? node.species}
-                    speciesDescription={SPECIES_DESCRIPTION_BY_ID[node.species]}
-                    viewPlatformStatuses={node.species === "view" ? getEffectivePlatformStatuses(node, dataNodes, dataEdges) : undefined}
-                    flowRollup={node.species === "flow" ? flowRollupByNodeId[node.id] : undefined}
-                    playlistPreview={playlistPreviewForNode(node, nodesById)}
-                    usedInCount={usedInByNodeId[node.id] ?? 0}
-                    scope={scope}
-                    productLabels={productLabelsByNodeId?.[node.id]}
-                    onClick={() => handleSelectNode(node)}
-                  />
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="rounded-xl border bg-card p-3">
-              <NodeTable
-                nodes={visibleNodes}
-                sort={sort}
-                speciesLabelById={SPECIES_LABEL_BY_ID}
-                statusLabelById={STATUS_LABEL_BY_ID}
-                usedInByNodeId={usedInByNodeId}
-                scope={scope}
-                productLabelsByNodeId={productLabelsByNodeId}
-                onSortChange={handleSortChange}
-                onSelectNode={handleSelectNode}
-              />
-            </div>
-          )}
           </div>
         </div>
-      </NodeDetailStack>
+      </PageShell>
 
       <NewNodeForm
         open={newNodeOpen}
@@ -381,6 +371,6 @@ export default function ProjectLibraryPage() {
         onSubmit={handleCreateNode}
         defaultValues={speciesFilter !== "all" ? { species: speciesFilter } : undefined}
       />
-    </div>
+    </>
   );
 }

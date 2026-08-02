@@ -19,7 +19,7 @@ It's not a task tracker, not a wiki, not a design tool. It's a navigable, multi-
 - **Publish & share** — Publik snapshots (`arkaik.app/p/{id}`) and full JSON import/export for backup, sharing, and self-hosting
 - **Agent-native** — an `arkaik` CLI, a Claude Code plugin/skill for coding agents that maintain the map as a side effect of development, and machine-readable schema surfaces (`/llms.txt`)
 - **Seed example** — ships with a "Pebbles" example project to explore immediately
-- **⌘K palette** — jump to any map, library, board or setting by typing it, with Tab completion
+- **⌘K palette** — jump to any map, library, board or setting by typing it, with Tab completion; the same palette searches the docs
 - **Dark mode** — light/dark theme toggle
 
 ## Quick Start
@@ -38,7 +38,7 @@ Open [http://localhost:3000](http://localhost:3000) — create a project or load
 ```
 app/
   layout.tsx                  # Root layout: fonts, theme, global CSS
-  page.tsx                    # Home / landing page
+  page.tsx                    # Home / landing page (signed in → /projects)
   projects/page.tsx           # Project list, create, import, seed, restore
   project/[id]/canvas/        # Graph canvas (the Journey map)
   project/[id]/library/       # Filterable node browser

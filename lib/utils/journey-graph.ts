@@ -1,5 +1,10 @@
 import type { Node, Edge } from "@xyflow/react";
-import { computeMapSubgraph, type MapDefinition } from "@arkaik/schema";
+import {
+  computeMapSubgraph,
+  DEFAULT_MAP_DISPLAY,
+  type MapDefinition,
+  type ResolvedMapDisplay,
+} from "@arkaik/schema";
 import type { EdgeTypeId } from "@/lib/config/edge-types";
 import type { Node as DataNode, Edge as DataEdge, PlaylistEntry, Project } from "@/lib/data/types";
 import {
@@ -10,6 +15,7 @@ import {
 } from "@/lib/utils/graph-build";
 import {
   addEffectiveNodeToRollup,
+  collectFlowViewIds,
   computeFlowPlatformRollup,
   createEmptyRollup,
   getEffectivePlatformStatuses,
@@ -33,8 +39,6 @@ import {
  */
 
 export const FLOW_CHILD_SPECIES = new Set<DataNode["species"]>(["flow", "view"]);
-
-export type ViewCardVariant = "compact" | "large";
 
 export interface ViewApiRelation {
   apiId: string;
@@ -168,7 +172,8 @@ export interface JourneyGraphParams {
   explicitRootNode: DataNode | null;
   composeClosure: ComposeClosure;
   expandedFlows: ReadonlySet<string>;
-  viewCardVariant: ViewCardVariant;
+  /** Resolved card rendering for this map (docs/spec/maps.md § Display Options). */
+  display: ResolvedMapDisplay;
   viewApiRelationsByViewId: ReadonlyMap<string, ViewApiRelations>;
   handlers?: JourneyGraphHandlers;
 }
@@ -190,7 +195,7 @@ export function buildJourneyGraph(params: JourneyGraphParams): { nodes: Node[]; 
     explicitRootNode,
     composeClosure,
     expandedFlows,
-    viewCardVariant,
+    display,
     viewApiRelationsByViewId,
     handlers = {},
   } = params;
@@ -232,6 +237,10 @@ export function buildJourneyGraph(params: JourneyGraphParams): { nodes: Node[]; 
       const flowRollup = computeFlowRollup(node.id);
       baseData.status = getRollupDisplayStatus(flowRollup, node.status);
       baseData.platformRollup = flowRollup;
+      baseData.platformDisplay = display.flow_platforms;
+      // The ring set's center number; the bars never show it, but computing it
+      // unconditionally keeps a display flip a pure re-render of the same data.
+      baseData.viewCount = collectFlowViewIds(node, nodesById).size;
       baseData.expanded = expandedFlows.has(node.id);
       if (handlers.onToggleFlow) baseData.onToggle = () => handlers.onToggleFlow!(node.id);
       if (handlers.onAddChild) baseData.onAddChild = () => handlers.onAddChild!(node.id);
@@ -254,7 +263,7 @@ export function buildJourneyGraph(params: JourneyGraphParams): { nodes: Node[]; 
       baseData.platformStatuses = getEffectivePlatformStatuses(node, dataNodes, dataEdges);
       baseData.apiInbound = apiRelations.inbound;
       baseData.apiOutbound = apiRelations.outbound;
-      baseData.viewCardVariant = viewCardVariant;
+      baseData.display = display;
       baseData.coverUrl = coverUrl;
       baseData.platformScreenshots = metadata.platformScreenshots;
       if (handlers.onOpenDetails) baseData.onOpenDetails = () => handlers.onOpenDetails!(node);
@@ -289,6 +298,8 @@ export function buildJourneyGraph(params: JourneyGraphParams): { nodes: Node[]; 
         status: "idea",
         platforms: [],
         platformRollup: createEmptyRollup(),
+        platformDisplay: display.flow_platforms,
+        viewCount: 0,
         renderVariant: "branch",
         branchKind: kind,
         branchSummary: summary,
@@ -695,7 +706,10 @@ export function computeMapCounts(
     explicitRootNode: selection.anchorNode,
     composeClosure: selection.composeClosure,
     expandedFlows: EMPTY_EXPANSION,
-    viewCardVariant: "compact",
+    // Counting is display-blind: how a card draws its platforms changes nothing
+    // about how many cards there are. The defaults keep this call total without
+    // making the count depend on a stored preference.
+    display: DEFAULT_MAP_DISPLAY,
     viewApiRelationsByViewId: EMPTY_VIEW_API_RELATIONS,
   });
   return { nodes: built.nodes.length, edges: built.edges.length };

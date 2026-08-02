@@ -3,6 +3,7 @@
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { CloudDownload, CloudUpload, Info } from "lucide-react";
+import { DEFAULT_MAP_DISPLAY, type ResolvedMapDisplay } from "@arkaik/schema";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { NodeMetadata, PlatformStatusMap, PlatformScreenshotsMap } from "@/lib/data/types";
@@ -11,8 +12,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { scopedPlatforms } from "@/lib/utils/product-scope";
 import { useCanvasProductScope } from "../canvas-scope";
 import { STATUS_GHOST_STYLES, STATUS_ICONS, STATUS_LABELS, STATUS_STYLES, PLATFORM_ICONS, PLATFORM_LABELS } from "./node-styles";
-
-type ViewCardVariant = "compact" | "large";
 
 interface ViewApiRelation {
   apiId: string;
@@ -128,7 +127,7 @@ function ViewNodeComponent({ data }: NodeProps) {
       )
     : declaredPlatforms;
   const platformStatuses = (data.platformStatuses as PlatformStatusMap | undefined) ?? {};
-  const viewCardVariant = (data.viewCardVariant as ViewCardVariant | undefined) ?? "compact";
+  const display = (data.display as ResolvedMapDisplay | undefined) ?? DEFAULT_MAP_DISPLAY;
   const apiInbound = (data.apiInbound as ViewApiRelation[] | undefined) ?? [];
   const apiOutbound = (data.apiOutbound as ViewApiRelation[] | undefined) ?? [];
   const coverUrl = typeof data.coverUrl === "string" ? data.coverUrl : undefined;
@@ -143,7 +142,9 @@ function ViewNodeComponent({ data }: NodeProps) {
   const onOpenDetails = data.onOpenDetails as (() => void) | undefined;
   const onZoomShot = data.onZoomShot as (() => void) | undefined;
   const ghostClass = STATUS_GHOST_STYLES[status];
-  const showLargeVariant = viewCardVariant === "large";
+  const imageUrl = display.images ? firstScreenshot ?? coverUrl : undefined;
+  const showPlatformRows = display.view_platforms === "rows" && platforms.length > 0;
+  const showPlatformChips = display.view_platforms === "chips" && platforms.length > 0;
   const hasInboundApi = apiInbound.length > 0;
   const hasOutboundApi = apiOutbound.length > 0;
   const hasAnyApi = hasInboundApi || hasOutboundApi;
@@ -156,7 +157,7 @@ function ViewNodeComponent({ data }: NodeProps) {
         <div
           role="img"
           aria-label={label}
-          className={`relative flex flex-col gap-3 ${showLargeVariant ? "w-[260px]" : "w-56"} px-4 py-3 rounded-xl bg-background border-2 border-border shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${ghostClass.border}`}
+          className={`relative flex w-60 flex-col gap-3 px-4 py-3 rounded-xl bg-background border-2 border-border shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${ghostClass.border}`}
         >
           <div className="flex items-start justify-between gap-2">
             <span title={label} className="text-sm font-medium leading-tight line-clamp-2">
@@ -179,17 +180,17 @@ function ViewNodeComponent({ data }: NodeProps) {
             )}
           </div>
 
-          {showLargeVariant && (firstScreenshot || coverUrl) && (
+          {imageUrl && (
             <div
               role="img"
               aria-label={`${label} ${firstScreenshot ? "screenshot" : "cover"}`}
               className={`h-28 overflow-hidden rounded-md border border-border bg-muted bg-cover bg-center ${onZoomShot ? "cursor-zoom-in" : ""}`}
-              style={{ backgroundImage: `url(${firstScreenshot ?? coverUrl})` }}
+              style={{ backgroundImage: `url(${imageUrl})` }}
               onClick={onZoomShot ? (event) => { event.stopPropagation(); onZoomShot(); } : undefined}
             />
           )}
 
-          {showLargeVariant && platforms.length > 0 && (
+          {showPlatformRows && (
             <div className="space-y-2">
               {platforms.map((platform) => {
                 const PlatformIcon = PLATFORM_ICONS[platform];
@@ -208,36 +209,24 @@ function ViewNodeComponent({ data }: NodeProps) {
             </div>
           )}
 
-          {!showLargeVariant && (
-            firstScreenshot ? (
-              <div
-                role="img"
-                aria-label={`${label} screenshot`}
-                className={`h-24 overflow-hidden rounded-md border border-border bg-muted bg-cover bg-center ${onZoomShot ? "cursor-zoom-in" : ""}`}
-                style={{ backgroundImage: `url(${firstScreenshot})` }}
-                onClick={onZoomShot ? (event) => { event.stopPropagation(); onZoomShot(); } : undefined}
-              />
-            ) : (
-              <div className="h-2" />
-            )
+          {(hasAnyApi || showPlatformChips) && (
+            <div className="mt-auto flex items-center justify-between gap-3">
+              {hasAnyApi ? (
+                <div className="flex items-center gap-2">
+                  {hasInboundApi && <ApiPopoverButton icon={CloudDownload} label="Inbound APIs" relations={apiInbound} />}
+                  {hasOutboundApi && <ApiPopoverButton icon={CloudUpload} label="Outbound APIs" relations={apiOutbound} />}
+                </div>
+              ) : <div />}
+              {showPlatformChips && (
+                <div className="flex items-center gap-2">
+                  {platforms.map((platform) => {
+                    const platformStatus = platformStatuses[platform] ?? status;
+                    return <PlatformStatusIcon key={platform} platform={platform} status={platformStatus} />;
+                  })}
+                </div>
+              )}
+            </div>
           )}
-
-          <div className="mt-auto flex items-center justify-between gap-3">
-            {hasAnyApi ? (
-              <div className="flex items-center gap-2">
-                {hasInboundApi && <ApiPopoverButton icon={CloudDownload} label="Inbound APIs" relations={apiInbound} />}
-                {hasOutboundApi && <ApiPopoverButton icon={CloudUpload} label="Outbound APIs" relations={apiOutbound} />}
-              </div>
-            ) : <div />}
-            {!showLargeVariant && platforms.length > 0 && (
-              <div className="flex items-center gap-2">
-                {platforms.map((platform) => {
-                  const platformStatus = platformStatuses[platform] ?? status;
-                  return <PlatformStatusIcon key={platform} platform={platform} status={platformStatus} />;
-                })}
-              </div>
-            )}
-          </div>
         </div>
       </div>
       <Handle type="source" position={Position.Bottom} id="bottom" className="opacity-0" />

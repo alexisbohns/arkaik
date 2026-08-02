@@ -24,6 +24,16 @@ function idArrayLiteral(name, ids) {
   return `export const ${name} = [${ids.map((v) => JSON.stringify(v)).join(", ")}] as const;`;
 }
 
+/**
+ * SCHEMA_BLOCK is emitted as a template literal, so anything the extracted
+ * types carry that a template literal reads as syntax has to be escaped —
+ * a doc comment quoting a field name in backticks would otherwise close the
+ * string and leave the generated file unparseable.
+ */
+function escapeForTemplateLiteral(text) {
+  return text.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${");
+}
+
 function generate() {
   const schemaPackage = loadSchemaPackage();
   const { SPECIES_IDS, STATUS_IDS, PLATFORM_IDS, EDGE_TYPE_IDS, SPECIES_PREFIXES } = schemaPackage;
@@ -47,7 +57,7 @@ ${speciesPrefixEntries}
 export const SCHEMA_BLOCK = \`## TypeScript Types (ProjectBundle Schema)
 
 \\\`\\\`\\\`typescript
-${typesBlock}
+${escapeForTemplateLiteral(typesBlock)}
 \\\`\\\`\\\`\`;
 `;
 

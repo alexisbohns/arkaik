@@ -7,7 +7,6 @@
     "version": "0.4.0",
     "root_node_id": "V-landing",
     "metadata": {
-      "view_card_variant": "large",
       "maps": [
         {
           "id": "recording-loop",

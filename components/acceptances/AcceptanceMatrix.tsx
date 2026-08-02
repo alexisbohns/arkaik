@@ -85,7 +85,7 @@ export function AcceptanceMatrix({ acceptances, edges, nodesById, onSelect, proj
         const isCollapsed = collapsed.has(key);
         const AnchorIcon = group.anchorSpecies ? SPECIES_ICONS[group.anchorSpecies] : null;
         return (
-          <section key={key} className="rounded-xl border">
+          <section key={key} className="rounded-xl border bg-card overflow-hidden">
             <button
               type="button"
               className="flex w-full items-center gap-2 border-b px-3 py-2 text-left"

@@ -39,6 +39,46 @@ export interface MapLayoutHints extends Record<string, unknown> {
 }
 
 /**
+ * How a canvas renderer draws its cards (docs/spec/maps.md § Display Options).
+ * Every key is optional and every value is an open enum: an unrecognized value
+ * falls back to the default rather than blanking the card, the same posture as
+ * {@link MapLayoutHints.algorithm}.
+ */
+export interface MapDisplayOptions extends Record<string, unknown> {
+  /** Screenshot (or cover) art on view cards. */
+  images?: boolean;
+  /** A flow card's platform delivery: the Pyramid's rings, or stacked bars. */
+  flow_platforms?: MapFlowPlatformsMode | (string & {});
+  /** A view card's platform availability: circular chips, or labelled rows. */
+  view_platforms?: MapViewPlatformsMode | (string & {});
+}
+
+// Default first in each union and list — the order the pickers read in.
+export type MapFlowPlatformsMode = "rings" | "bars";
+export type MapViewPlatformsMode = "chips" | "rows";
+
+/** {@link MapDisplayOptions} with every key present and every value known. */
+export interface ResolvedMapDisplay {
+  images: boolean;
+  flow_platforms: MapFlowPlatformsMode;
+  view_platforms: MapViewPlatformsMode;
+}
+
+export const MAP_FLOW_PLATFORMS_MODES: readonly MapFlowPlatformsMode[] = ["rings", "bars"];
+export const MAP_VIEW_PLATFORMS_MODES: readonly MapViewPlatformsMode[] = ["chips", "rows"];
+
+/**
+ * What a map draws when nothing says otherwise: the compact reading, with the
+ * Pyramid's rings summing a flow's delivery. Lines stay one click away for the
+ * readings that want the per-platform detail spelled out.
+ */
+export const DEFAULT_MAP_DISPLAY: ResolvedMapDisplay = {
+  images: true,
+  flow_platforms: "rings",
+  view_platforms: "chips",
+};
+
+/**
  * A stored or built-in map definition (docs/spec/maps.md § MapDefinition).
  * Unrecognized `kind` values are preserved and listed as unrenderable, never
  * dropped — the same open-enum posture as {@link Ref.type}.
@@ -61,6 +101,8 @@ export interface MapDefinition extends Record<string, unknown> {
   /** Traversal bound from the root; absent = unbounded. */
   depth?: number;
   layout?: MapLayoutHints;
+  /** Card rendering; the human twin is `project.metadata.map_display[id]`. */
+  display?: MapDisplayOptions;
 }
 
 /** Per-kind selection defaults (docs/spec/maps.md § MapDefinition). */
@@ -114,6 +156,57 @@ export function resolveMapDefaults(definition: MapDefinition): ResolvedMapDefini
     species: definition.species ?? defaults?.species ?? [],
     edge_types: definition.edge_types ?? defaults?.edge_types ?? [],
   };
+}
+
+function pickMode<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return typeof value === "string" && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
+}
+
+function applyDisplayOptions(base: ResolvedMapDisplay, options: unknown): ResolvedMapDisplay {
+  if (typeof options !== "object" || options === null || Array.isArray(options)) return base;
+  const candidate = options as MapDisplayOptions;
+
+  return {
+    images: typeof candidate.images === "boolean" ? candidate.images : base.images,
+    flow_platforms: candidate.flow_platforms === undefined
+      ? base.flow_platforms
+      : pickMode(candidate.flow_platforms, MAP_FLOW_PLATFORMS_MODES, base.flow_platforms),
+    view_platforms: candidate.view_platforms === undefined
+      ? base.view_platforms
+      : pickMode(candidate.view_platforms, MAP_VIEW_PLATFORMS_MODES, base.view_platforms),
+  };
+}
+
+/**
+ * What this map draws, resolved least- to most-specific (docs/spec/maps.md §
+ * Display Options):
+ *
+ * 1. {@link DEFAULT_MAP_DISPLAY};
+ * 2. the definition's own `display` — the agent-authored half;
+ * 3. `project.metadata.map_display[definition.id]` — the human half, and the
+ *    only path open to the built-in maps, which have no stored definition to
+ *    carry a `display` of their own.
+ *
+ * The superseded project-wide `metadata.view_card_variant` is deliberately not
+ * a layer here: display is per map now, and a project-wide preset that quietly
+ * outranked the defaults would mean an old project could never *see* them.
+ * The field still parses and round-trips; nothing reads it.
+ *
+ * Unknown values at any layer fall through to the layer beneath rather than
+ * blanking the card. Pure and total: no project, no definition, no problem.
+ */
+export function resolveMapDisplay(
+  definition?: Pick<MapDefinition, "id" | "display">,
+  project?: Pick<Project, "metadata">,
+): ResolvedMapDisplay {
+  let resolved = applyDisplayOptions({ ...DEFAULT_MAP_DISPLAY }, definition?.display);
+
+  const overrides = project?.metadata?.map_display;
+  if (definition?.id !== undefined && typeof overrides === "object" && overrides !== null) {
+    resolved = applyDisplayOptions(resolved, (overrides as Record<string, unknown>)[definition.id]);
+  }
+
+  return resolved;
 }
 
 /** The subgraph a map selects: fresh arrays of the caller's own elements. */

@@ -10,13 +10,16 @@ import { StageIcon } from "@/components/layout/StageIcon";
 import { STATUS_GHOST_STYLES } from "./node-styles";
 import { useToolbarHover } from "@/lib/hooks/useToolbarHover";
 import { useCanvasScopePlatforms } from "../canvas-scope";
-import { PlatformGaugeList } from "./PlatformGaugeList";
+import { PlatformAvailability } from "./PlatformAvailability";
 
 function FlowNodeComponent({ data }: NodeProps) {
   const status = (data.status as StatusId) ?? "idea";
   const label = String(data.label ?? "Flow");
   const platforms = (data.platforms as PlatformId[]) ?? [];
   const platformRollup = (data.platformRollup as PlatformStatusRollup | undefined) ?? { counts: {}, totals: {} };
+  // Rings unless a map explicitly asked for bars — see DEFAULT_MAP_DISPLAY.
+  const platformDisplay = data.platformDisplay === "bars" ? "bars" : "rings";
+  const viewCount = typeof data.viewCount === "number" ? data.viewCount : 0;
   const expanded = Boolean(data.expanded);
   const stage = data.metadata ? (data.metadata as Record<string, unknown>).stage as string | undefined : undefined;
   const renderVariant = data.renderVariant as string | undefined;
@@ -118,14 +121,30 @@ function FlowNodeComponent({ data }: NodeProps) {
             {branchSummary}
           </p>
         ) : (
-          /* Clamped, not replaced: a flow's rollup can count a platform the
-             flow itself never declares, and under All products that bar must
-             survive. The no-declared-platforms fallback is the scope's menu,
-             not every platform. Both halves live in `flowGaugePlatforms`. */
-          <PlatformGaugeList
+          /* Two independent questions, answered in one place.
+
+             WHICH platforms: `flowGaugePlatforms` — clamped, not replaced. A
+             flow's rollup can count a platform the flow itself never declares,
+             and under All products that track must survive; the
+             no-declared-platforms fallback is the scope's menu, not every
+             platform. The list is the same for both renditions, so flipping the
+             map's Display toggle re-draws the same facts and never changes
+             which platforms the card claims.
+
+             HOW they draw: `PlatformAvailability` — the map's
+             `display.flow_platforms` picks rings (the Pyramid's rendition, one
+             size down, centering the flow's view count) or bars, and the arity
+             rule collapses either to a single unlabelled track when the scope
+             leaves one platform or none. */
+          <PlatformAvailability
             rollup={platformRollup}
             platforms={flowGaugePlatforms(platforms, platformRollup, scopePlatforms)}
-            compact
+            count={viewCount}
+            size="sm"
+            countLabel={viewCount === 1 ? "view" : "views"}
+            platformCountLabel="statuses"
+            multiPlatformShape={platformDisplay}
+            compactBars
           />
         )}
       </div>

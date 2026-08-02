@@ -3,30 +3,31 @@
 import Link from "next/link";
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { type Node, type Edge, type NodeMouseHandler, type Connection, type EdgeMouseHandler } from "@xyflow/react";
-import { Code2Icon, DownloadIcon, PlusIcon } from "lucide-react";
+import { PlusIcon } from "lucide-react";
 import { toast } from "sonner";
-import { buildProductUsageIndex, type MapDefinition } from "@arkaik/schema";
+import {
+  buildProductUsageIndex,
+  resolveMapDisplay,
+  type MapDefinition,
+  type MapDisplayOptions,
+} from "@arkaik/schema";
 import { Canvas } from "@/components/graph/Canvas";
+import { MapDisplayPopover } from "@/components/maps/MapDisplayPopover";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
-import { NodeDetailStack } from "@/components/panels/NodeDetailStack";
-import { RawBundleSheet } from "@/components/panels/RawBundleSheet";
+import { PageShell } from "@/components/layout/PageShell";
 import { ShotPreviewDialog } from "@/components/panels/ShotPreviewDialog";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
 import { InsertBetweenDialog, type InsertEntryType } from "@/components/panels/InsertBetweenDialog";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useProject } from "@/lib/hooks/useProject";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { useJournal } from "@/lib/hooks/useJournal";
-import { useNodePanels } from "@/lib/hooks/useNodePanels";
+import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useElkLayout } from "@/lib/hooks/useElkLayout";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
-import { downloadJson, exportProject } from "@/lib/utils/export";
 import { generateNodeId, edgeId } from "@/lib/utils/id";
 import { wouldCreateCycle } from "@/lib/utils/cycle";
 import type { ProductGraph } from "@/lib/utils/product-scope";
@@ -45,7 +46,6 @@ import {
   buildJourneyGraph,
   computeViewApiRelations,
   resolveJourneySelection,
-  type ViewCardVariant,
 } from "@/lib/utils/journey-graph";
 
 /** Stable identity, so the empty branch never re-triggers the layout effect. */
@@ -72,7 +72,7 @@ interface JourneyMapProps {
 export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   const id = projectId;
 
-  const { openNode, topNodeId } = useNodePanels();
+  const { openNode, topPanelNodeId } = useProjectPanels();
 
   const [expandedFlows, setExpandedFlows] = useState<Set<string>>(new Set());
   const [zoomNode, setZoomNode] = useState<DataNode | null>(null);
@@ -85,10 +85,6 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     parentId: string;
     insertBeforeId: string;
   } | null>(null);
-  const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState<string | null>(null);
-  const [exportWarning, setExportWarning] = useState<string | null>(null);
-  const [rawOpen, setRawOpen] = useState(false);
   const [playlistError, setPlaylistError] = useState<string | null>(null);
 
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, removeNode, removeNodes } = useNodes(id);
@@ -101,9 +97,13 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   const scope = useEffectiveProduct(id, projectBundle);
   const { journal } = useJournal(id);
 
-  const viewCardVariant: ViewCardVariant = projectBundle?.project.metadata?.view_card_variant === "large"
-    ? "large"
-    : "compact";
+  // Built-in maps have no stored definition to carry a `display`, so the id is
+  // what the override record is keyed by — the anonymous mount is the Journey.
+  const mapId = definition?.id ?? "journey";
+  const display = useMemo(
+    () => resolveMapDisplay({ id: mapId, display: definition?.display }, projectBundle?.project),
+    [definition?.display, mapId, projectBundle?.project],
+  );
 
   const nodesById = useMemo(
     () => new Map(dataNodes.map((node) => [node.id, node])),
@@ -176,7 +176,14 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   }, [nodesById]);
 
   // Prune expansion entries whose flow no longer exists.
+  //
+  // These three effects were invisible to `set-state-in-effect` until this file
+  // stopped holding an export handler — that handler made the compiler bail on
+  // the whole component, which took its diagnostics with it. They are all
+  // convergent by construction rather than cascading: this one returns `prev`
+  // untouched when there is nothing to prune, so it settles in one pass.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setExpandedFlows((prev) => {
       const next = new Set<string>();
 
@@ -213,6 +220,8 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
 
     const [firstTopLevelFlowId] = topLevelFlowIds;
     pendingFitFlowRef.current = firstTopLevelFlowId;
+    // Latched by `autoExpandedRef` above — it runs at most once per mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setExpandedFlows((prev) => (prev.size === 0 ? new Set([firstTopLevelFlowId]) : prev));
   }, [edgesLoading, nodesLoading, projectLoading, topLevelFlowIds]);
 
@@ -564,23 +573,34 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     if (dataNode) openNode({ nodeId: dataNode.id });
   }, [dataNodes, openNode]);
 
-  const handleViewCardVariantChange = useCallback(
-    async (variant: ViewCardVariant) => {
+  /**
+   * Display lives per map, not per project: the patch merges into
+   * `metadata.map_display[mapId]` so this map's Journey and its Recording Loop
+   * keep their own answers (docs/spec/maps.md § Display Options).
+   */
+  const handleDisplayChange = useCallback(
+    async (patch: MapDisplayOptions) => {
       if (!projectBundle) return;
+
+      const metadata = projectBundle.project.metadata ?? {};
+      const currentOverrides = metadata.map_display ?? {};
 
       try {
         await updateProject({
           metadata: {
-            ...(projectBundle.project.metadata ?? {}),
-            view_card_variant: variant,
+            ...metadata,
+            map_display: {
+              ...currentOverrides,
+              [mapId]: { ...currentOverrides[mapId], ...patch },
+            },
           },
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown settings save error";
-        toast.error(`Unable to save card preference: ${message}`);
+        toast.error(`Unable to save display preference: ${message}`);
       }
     },
-    [projectBundle, updateProject],
+    [mapId, projectBundle, updateProject],
   );
 
   const handleConnect = useCallback((connection: Connection) => {
@@ -604,38 +624,16 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     setPendingConnection(null);
   }, [pendingConnection, addEdge, id]);
 
-  const handleExport = useCallback(async () => {
-    if (!id) {
-      setExportError("Unable to export: missing project id.");
-      return;
-    }
-
-    setExporting(true);
-    setExportError(null);
-    setExportWarning(null);
-    try {
-      const bundle = await exportProject(id);
-      const result = downloadJson(bundle);
-      setExportWarning(result.warning);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown export error";
-      setExportError(`Unable to export project: ${message}`);
-      setExportWarning(null);
-    } finally {
-      setExporting(false);
-    }
-  }, [id]);
-
   // Escape belongs to the panel stack while it is non-empty (PanelStack owns it).
+  // Export is not here: it acts on the project, so it is registered once in the
+  // project layout and works on every page, not only on this canvas.
   useKeyboardShortcuts({
     onDelete: () => {
       if (deleteNodeDialogOpen || deleteEdgeDialogOpen || newNodeOpen || insertBetweenOpen || edgeDialogOpen) return;
-      if (!topNodeId) return;
-      handleDeleteNodeRequest(topNodeId);
-    },
-    onExport: () => {
-      if (exporting) return;
-      void handleExport();
+      // The panel you can see, not the one the URL names — with a non-node
+      // panel on top there is nothing on screen to delete, and this no-ops.
+      if (!topPanelNodeId) return;
+      handleDeleteNodeRequest(topPanelNodeId);
     },
   });
 
@@ -654,7 +652,7 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
             explicitRootNode,
             composeClosure,
             expandedFlows,
-            viewCardVariant,
+            display,
             viewApiRelationsByViewId,
             handlers: {
               onToggleFlow: toggleFlow,
@@ -670,6 +668,7 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     [
       composeClosure,
       dataEdges,
+      display,
       expandedFlows,
       explicitRootNode,
       handleAddChildNode,
@@ -678,7 +677,6 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
       selection,
       toggleFlow,
       viewApiRelationsByViewId,
-      viewCardVariant,
     ],
   );
 
@@ -694,6 +692,9 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     if (!layoutedNodes.some((node: Node) => node.id.includes(marker))) return;
 
     pendingFitFlowRef.current = null;
+    // The ref is cleared first, so the re-render this causes takes the early
+    // return above rather than bumping the signal again.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFitSignal((value) => value + 1);
   }, [layoutedNodes]);
 
@@ -717,59 +718,31 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   }
 
   return (
-    <div className="h-full w-full flex flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <SidebarTrigger className="-ml-1 cursor-pointer" />
-        <Separator orientation="vertical" className="mx-1 h-4" />
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">
-            {projectBundle?.project.title ?? "Untitled project"}
-          </p>
-          <p className="truncate text-xs text-muted-foreground">
-            {definition && definition.id !== "journey" ? `Maps · ${definition.title}` : "Maps · Journey"}
-          </p>
-        </div>
-        <div className="ml-auto flex items-center gap-3">
-          {exportWarning && (
-            <span className="text-xs text-amber-700" role="status" aria-live="polite">
-              {exportWarning}
-            </span>
-          )}
-          {exportError && (
-            <span className="text-xs text-destructive" role="status" aria-live="polite">
-              {exportError}
-            </span>
-          )}
-          {playlistError && (
-            <span className="text-xs text-destructive" role="status" aria-live="polite">
-              {playlistError}
-            </span>
-          )}
-          <Select value={viewCardVariant} onValueChange={(value) => void handleViewCardVariantChange(value as ViewCardVariant)}>
-            <SelectTrigger className="h-8 w-[160px]" aria-label="View card variant">
-              <SelectValue placeholder="Card style" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="compact">Compact cards</SelectItem>
-              <SelectItem value="large">Large cards</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button size="sm" variant="outline" className="cursor-pointer" onClick={() => setRawOpen(true)}>
-            <Code2Icon className="size-4" />
-            Raw
-          </Button>
-          <Button size="sm" variant="outline" className="cursor-pointer" onClick={handleExport} disabled={exporting}>
-            <DownloadIcon className="size-4" />
-            {exporting ? "Exporting..." : "Export JSON"}
-          </Button>
-          <Button size="sm" className="cursor-pointer" onClick={() => { setNewNodePreset(null); setNewNodeOpen(true); }}>
-            <PlusIcon className="size-4" />
-            New node
-          </Button>
-        </div>
-      </header>
-      <NodeDetailStack
-        rootLabel={definition && definition.id !== "journey" ? `Maps · ${definition.title}` : "Maps · Journey"}
+    <>
+      {/* The title is the map's own name: the sidebar's Maps group already says
+          which section this is, so a `Maps ·` prefix would only repeat it. */}
+      <PageShell
+        title={definition?.title ?? "Journey"}
+        action={{
+          label: "New node",
+          icon: PlusIcon,
+          onClick: () => { setNewNodePreset(null); setNewNodeOpen(true); },
+        }}
+        headerExtra={
+          <>
+            {playlistError && (
+              <span className="text-xs text-destructive" role="status" aria-live="polite">
+                {playlistError}
+              </span>
+            )}
+            <MapDisplayPopover
+              value={display}
+              onChange={(patch) => void handleDisplayChange(patch)}
+              mapTitle={definition?.title ?? "Journey"}
+            />
+          </>
+        }
+        surfaceCard
         onLayoutChange={reframe}
         allNodes={dataNodes}
         allEdges={dataEdges}
@@ -804,14 +777,13 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
         ) : (
           <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} onEdgeClick={handleEdgeClick} fitSignal={fitSignal} scope={scope} />
         )}
-      </NodeDetailStack>
+      </PageShell>
       <ShotPreviewDialog
         open={zoomNode !== null}
         onOpenChange={(open) => { if (!open) setZoomNode(null); }}
         node={zoomNode ?? undefined}
         initialPlatform={zoomPlatform}
       />
-      <RawBundleSheet key={rawOpen ? "raw-open" : "raw-closed"} projectId={id} open={rawOpen} onOpenChange={setRawOpen} />
       <NewNodeForm
         key={newNodePreset ? `preset-${newNodePreset.parentId}-${newNodePreset.species}` : "default"}
         open={newNodeOpen}
@@ -867,6 +839,6 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
         description="This will permanently remove the connection between these two nodes. This action cannot be undone."
         onConfirm={handleDeleteEdgeConfirm}
       />
-    </div>
+    </>
   );
 }

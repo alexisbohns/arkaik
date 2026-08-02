@@ -451,6 +451,59 @@ function computePlaylistRollupRecursive(
   return rollup;
 }
 
+function collectPlaylistViewIdsRecursive(
+  entries: PlaylistEntry[],
+  nodesById: ReadonlyMap<string, Pick<Node, "id" | "species" | "status" | "platforms" | "metadata">>,
+  visited: Set<string>,
+  found: Set<string>,
+) {
+  for (const entry of entries) {
+    if (entry.type === "view") {
+      if (nodesById.has(entry.view_id)) found.add(entry.view_id);
+      continue;
+    }
+
+    if (entry.type === "flow") {
+      if (visited.has(entry.flow_id)) continue;
+      visited.add(entry.flow_id);
+      const subEntries = nodesById.get(entry.flow_id)?.metadata?.playlist?.entries;
+      if (Array.isArray(subEntries)) {
+        collectPlaylistViewIdsRecursive(subEntries, nodesById, visited, found);
+      }
+      visited.delete(entry.flow_id);
+      continue;
+    }
+
+    if (entry.type === "condition") {
+      collectPlaylistViewIdsRecursive(entry.if_true, nodesById, visited, found);
+      collectPlaylistViewIdsRecursive(entry.if_false, nodesById, visited, found);
+      continue;
+    }
+
+    if (entry.type === "junction") {
+      for (const playlistCase of entry.cases) {
+        collectPlaylistViewIdsRecursive(playlistCase.entries, nodesById, visited, found);
+      }
+    }
+  }
+}
+
+/**
+ * The distinct views a flow's playlist reaches, sub-flows included — the unit
+ * `computeFlowPlatformRollup` counts platform statuses over, and so the honest
+ * center number for a flow's global ring. Walks the same entry tree with the
+ * same cycle guard, and counts a view reused twice in one flow once.
+ */
+export function collectFlowViewIds(
+  flowNode: Pick<Node, "id" | "metadata">,
+  nodesById: ReadonlyMap<string, Pick<Node, "id" | "species" | "status" | "platforms" | "metadata">>,
+): Set<string> {
+  const entries = Array.isArray(flowNode.metadata?.playlist?.entries) ? flowNode.metadata.playlist.entries : [];
+  const found = new Set<string>();
+  collectPlaylistViewIdsRecursive(entries, nodesById, new Set([flowNode.id]), found);
+  return found;
+}
+
 export function computePlaylistRollup(
   entries: PlaylistEntry[],
   nodesById: ReadonlyMap<string, Pick<Node, "id" | "species" | "status" | "platforms" | "metadata">>,

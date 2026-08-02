@@ -5,8 +5,20 @@ import type { PlatformStatusRollup, StatusSegment } from "@/lib/utils/platform-s
 import { getPlatformRollupSegments, getRollupTotalSegments } from "@/lib/utils/platform-status";
 import { platformAvailabilityShape } from "@/lib/utils/product-scope";
 import { STATUS_LABELS, STATUS_STYLES } from "./node-styles";
+import { PlatformGaugeList } from "./PlatformGaugeList";
 import { PlatformRingSet } from "./PlatformRingSet";
 import type { StatusRingSize } from "./StatusRing";
+
+/**
+ * How the multi-platform case draws, when the caller gets a say.
+ *
+ * This is a map's `display.flow_platforms` (docs/spec/maps.md § Display
+ * Options) reaching the one component that owns per-platform shape. It answers
+ * a different question from the arity rule and never overrides it: the reader
+ * chooses a *rendition* of the per-platform breakdown, while arity decides
+ * whether there is a breakdown to render at all.
+ */
+export type MultiPlatformShape = "rings" | "bars";
 
 /**
  * All-zero segments — what the track draws at arity 0, where the scope has no
@@ -45,6 +57,13 @@ interface PlatformAvailabilityProps {
    */
   countLabel?: string;
   platformCountLabel?: string;
+  /**
+   * The ≥ 2 rendition. Defaults to the rings, which is what every surface but a
+   * canvas draws and what `DEFAULT_MAP_DISPLAY` asks a canvas for.
+   */
+  multiPlatformShape?: MultiPlatformShape;
+  /** Tightens the `"bars"` rendition for a canvas card. */
+  compactBars?: boolean;
 }
 
 /**
@@ -71,6 +90,14 @@ interface PlatformAvailabilityProps {
  * is `platformAvailabilityShape` in lib/utils/product-scope.ts, where a plain
  * Node test can pin the 2-platform boundary; this component is the switch over
  * it and nothing more.
+ *
+ * **`multiPlatformShape` is a rendition, not a second arity rule.** A map's
+ * Display popover (docs/spec/maps.md § Display Options) lets a reader draw a
+ * flow's delivery as the Pyramid's rings or as stacked bars — but only above
+ * the threshold, because below it there is no per-platform breakdown for either
+ * rendition to be a rendition *of*. So a single-platform product's card reads
+ * identically whichever the map asked for, which is the invariant above stated
+ * once more rather than a case this prop is allowed to reopen.
  */
 export function PlatformAvailability({
   rollup,
@@ -79,9 +106,13 @@ export function PlatformAvailability({
   size = "sm",
   countLabel = "acceptances",
   platformCountLabel,
+  multiPlatformShape = "rings",
+  compactBars = false,
 }: PlatformAvailabilityProps) {
   if (platformAvailabilityShape(platforms) === "rings") {
-    return (
+    return multiPlatformShape === "bars" ? (
+      <PlatformGaugeList rollup={rollup} platforms={platforms} compact={compactBars} />
+    ) : (
       <PlatformRingSet
         rollup={rollup}
         platforms={platforms}

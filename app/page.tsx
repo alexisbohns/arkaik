@@ -1,16 +1,41 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Gochi_Hand } from "next/font/google";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ArkaikLogoBoil } from "@/components/branding/ArkaikLogoBoil";
 import { AsciiTerrainBackground } from "@/components/background/AsciiTerrainBackground";
+import { getSession } from "@/lib/services/auth";
 
 const gochiHand = Gochi_Hand({
   subsets: ["latin"],
   weight: "400",
 });
 
-export default function Home() {
+/**
+ * `force-dynamic` because the landing page's answer depends on the session
+ * cookie. Without it Next would prerender this page at build time, and the
+ * dynamic-usage error `getSession()` swallows (it degrades every failure to
+ * "no session") would silently bake the signed-out landing page in — the
+ * redirect would then never fire for anyone. Deciding per request is the whole
+ * point of the check, so the page has to be dynamic explicitly.
+ */
+export const dynamic = "force-dynamic";
+
+/**
+ * The landing page is for people who are not signed in yet. A signed-in visitor
+ * has already made the choice this page pitches, so send them straight to their
+ * projects instead of making them press "Start building" every time.
+ *
+ * GRACEFUL ABSENCE (docs/spec/services.md § Backend — env rules): `getSession()`
+ * returns null without touching env or Postgres when auth is unconfigured, so
+ * the local-first build renders exactly the page it always did.
+ */
+export default async function Home() {
+  const session = await getSession();
+  if (session?.user) {
+    redirect("/projects");
+  }
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-hidden bg-background font-sans">
@@ -21,7 +46,7 @@ export default function Home() {
         <ThemeToggle />
       </header>
 
-      <main className="relative mx-auto flex w-full max-w-5xl flex-1 flex-col items-center justify-center px-6 pb-14 pt-4">
+      <main className="relative mx-auto flex w-full flex-1 flex-col items-center justify-center px-6 pb-14 pt-4">
         <div className="w-full max-w-[400px] text-center">
           <ArkaikLogoBoil className="mx-auto" />
 

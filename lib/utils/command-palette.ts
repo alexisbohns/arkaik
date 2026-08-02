@@ -8,6 +8,10 @@
  * - **Rank**, so the first row is the one Enter should validate.
  * - **Complete**, so Tab can fill the input with the active row's own wording
  *   (its label, or the synonym the user is actually typing — "screens" → Views).
+ *
+ * One brain, several catalogues: `buildProjectCommands` covers a project's
+ * sidebar, `buildDocsCommands` covers the documentation tree. Everything below
+ * the catalogues is shared — a palette anywhere else only needs a builder.
  */
 
 /** Icon slots the overlay maps to Lucide components — a closed union so a new
@@ -34,10 +38,13 @@ export type CommandIconId =
   | "projects"
   | "tokens";
 
-export type CommandGroupId = "maps" | "library" | "project" | "actions";
+export type CommandGroupId = "pages" | "maps" | "library" | "project" | "actions";
 
-/** Group order in the palette — mirrors the sidebar, so the two read the same. */
+/** Group order in the palette — mirrors the sidebar, so the two read the same.
+ * A palette only ever renders the groups its own catalogue fills, so the docs
+ * ("Pages") and the project ("Maps"…) groups can share one list. */
 export const COMMAND_GROUPS = [
+  { id: "pages", label: "Pages" },
   { id: "maps", label: "Maps" },
   { id: "library", label: "Library" },
   { id: "project", label: "Project" },
@@ -240,6 +247,18 @@ export function completionSuffix(query: string, match: CommandMatch | undefined)
   return match.completion.slice(query.length);
 }
 
+/** Shared by every catalogue: the theme is an app-wide concern, and a palette
+ * that could switch it in one place but not another would just read as a bug. */
+const TOGGLE_THEME_COMMAND: PaletteCommand = {
+  id: "toggle-theme",
+  label: "Toggle theme",
+  group: "actions",
+  icon: "theme",
+  keywords: ["dark mode", "light mode", "appearance"],
+  hint: "Switch light and dark",
+  target: { kind: "action", action: "toggle-theme" },
+};
+
 interface ProjectCommandInput {
   projectId: string;
   /** Custom maps from `project.metadata.maps`, same list the sidebar renders. */
@@ -400,15 +419,7 @@ export function buildProjectCommands({ projectId, customMaps }: ProjectCommandIn
       hint: "Share a Publik snapshot",
       target: { kind: "action", action: "publish" },
     },
-    {
-      id: "toggle-theme",
-      label: "Toggle theme",
-      group: "actions",
-      icon: "theme",
-      keywords: ["dark mode", "light mode", "appearance"],
-      hint: "Switch light and dark",
-      target: { kind: "action", action: "toggle-theme" },
-    },
+    TOGGLE_THEME_COMMAND,
     {
       id: "projects",
       label: "All projects",
@@ -439,4 +450,66 @@ export function buildProjectCommands({ projectId, customMaps }: ProjectCommandIn
   ];
 
   return commands;
+}
+
+/** One page of the documentation, as the docs shell knows it. Plain data on
+ * purpose: it crosses the server/client boundary as a prop. */
+export interface DocsPage {
+  /** Route of the page — unique, so it doubles as the command id. */
+  href: string;
+  label: string;
+  /** Folder trail above the page ("Spec"), shown as the row's hint. */
+  section?: string;
+}
+
+/**
+ * What a page's own address offers a searcher for free. Titles and filenames
+ * drift apart ("The five species" lives at `graph-model`), and people type
+ * whichever one they remember — so the slug becomes a synonym, hyphens and all,
+ * spelled both ways.
+ */
+function slugKeywords(href: string): string[] {
+  const parts = href.replace(/^\/docs\/?/, "").split("/").filter(Boolean);
+  if (parts.length === 0) return ["docs", "documentation", "home", "readme"];
+
+  const keywords = new Set<string>([parts.join("/")]);
+  for (const part of parts) {
+    keywords.add(part);
+    if (part.includes("-")) keywords.add(part.replace(/-/g, " "));
+  }
+  return [...keywords];
+}
+
+interface DocsCommandInput {
+  /** Every navigable docs page, in the order the sidebar lists them. */
+  pages: readonly DocsPage[];
+}
+
+/**
+ * The documentation as one searchable list. Mirrors `DocsSidebar`: the same
+ * pages, the same reading order, minus the folder rows — a folder is a heading,
+ * not somewhere you can land.
+ */
+export function buildDocsCommands({ pages }: DocsCommandInput): PaletteCommand[] {
+  return [
+    ...pages.map<PaletteCommand>((page) => ({
+      id: `doc:${page.href}`,
+      label: page.label,
+      group: "pages",
+      icon: "docs",
+      keywords: slugKeywords(page.href),
+      hint: page.section,
+      target: { kind: "href", href: page.href },
+    })),
+    {
+      id: "back-to-app",
+      label: "Back to the app",
+      group: "actions",
+      icon: "projects",
+      keywords: ["arkaik", "projects", "leave the docs", "home"],
+      hint: "Your projects",
+      target: { kind: "href", href: "/projects" },
+    },
+    TOGGLE_THEME_COMMAND,
+  ];
 }

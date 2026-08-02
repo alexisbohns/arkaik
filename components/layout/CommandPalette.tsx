@@ -72,6 +72,10 @@ interface CommandPaletteProps {
   commands: readonly PaletteCommand[];
   /** Runs the non-navigating commands — the palette itself only knows their id. */
   onAction: (action: CommandActionId) => void;
+  /** What the empty input suggests typing — the catalogue's own vocabulary. */
+  placeholder?: string;
+  /** Read to screen readers on open; says what this palette searches. */
+  description?: string;
 }
 
 interface PaletteSection {
@@ -112,17 +116,27 @@ function Kbd({ children }: { children: React.ReactNode }) {
  * ghost completion, and a keyboard contract that never needs the mouse —
  * Enter validates the first suggestion, Tab fills it in, arrows move.
  */
-export function CommandPalette({ open, onOpenChange, commands, onAction }: CommandPaletteProps) {
+export function CommandPalette({
+  open,
+  onOpenChange,
+  commands,
+  onAction,
+  placeholder = "Jump to a map, a library, a setting…",
+  description = "Search every page and action of this project, then press Enter to go there.",
+}: CommandPaletteProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="top-[15%] translate-y-0 gap-0 overflow-hidden p-0 shadow-2xl sm:max-w-[600px] [&>button]:hidden">
         <DialogTitle className="sr-only">Command palette</DialogTitle>
-        <DialogDescription className="sr-only">
-          Search every page and action of this project, then press Enter to go there.
-        </DialogDescription>
+        <DialogDescription className="sr-only">{description}</DialogDescription>
         {/* Radix unmounts the content on close, so the query and the selection
             reset by construction — no effect resetting state on open. */}
-        <PaletteBody commands={commands} onAction={onAction} onClose={() => onOpenChange(false)} />
+        <PaletteBody
+          commands={commands}
+          onAction={onAction}
+          onClose={() => onOpenChange(false)}
+          placeholder={placeholder}
+        />
       </DialogContent>
     </Dialog>
   );
@@ -132,9 +146,10 @@ interface PaletteBodyProps {
   commands: readonly PaletteCommand[];
   onAction: (action: CommandActionId) => void;
   onClose: () => void;
+  placeholder: string;
 }
 
-function PaletteBody({ commands, onAction, onClose }: PaletteBodyProps) {
+function PaletteBody({ commands, onAction, onClose, placeholder }: PaletteBodyProps) {
   const router = useRouter();
   const modKey = useModKeyLabel();
   const listId = useId();
@@ -278,7 +293,7 @@ function PaletteBody({ commands, onAction, onClose }: PaletteBodyProps) {
             aria-autocomplete="both"
             aria-activedescendant={active ? `${listId}-${activeIndex}` : undefined}
             className="relative w-full bg-transparent py-3.5 text-sm outline-none placeholder:text-muted-foreground"
-            placeholder="Jump to a map, a library, a setting…"
+            placeholder={placeholder}
             value={query}
             onChange={(event) => updateQuery(event.target.value)}
             onKeyDown={handleKeyDown}

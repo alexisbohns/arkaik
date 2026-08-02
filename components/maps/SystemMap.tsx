@@ -3,22 +3,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type Connection, type EdgeMouseHandler, type NodeMouseHandler } from "@xyflow/react";
 import { PlusIcon } from "lucide-react";
-import { buildProductUsageIndex, type MapDefinition } from "@arkaik/schema";
+import {
+  buildProductUsageIndex,
+  resolveMapDisplay,
+  type MapDefinition,
+  type MapDisplayOptions,
+} from "@arkaik/schema";
+import { toast } from "sonner";
 import { Canvas } from "@/components/graph/Canvas";
+import { MapDisplayPopover } from "@/components/maps/MapDisplayPopover";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
+import { PageShell } from "@/components/layout/PageShell";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
-import { NodeDetailStack } from "@/components/panels/NodeDetailStack";
-import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 import type { EdgeTypeId } from "@/lib/config/edge-types";
 import type { Node as DataNode, Edge as DataEdge } from "@/lib/data/types";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useElkLayout } from "@/lib/hooks/useElkLayout";
 import { useJournal } from "@/lib/hooks/useJournal";
-import { useNodePanels } from "@/lib/hooks/useNodePanels";
+import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useProject } from "@/lib/hooks/useProject";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
@@ -61,7 +65,7 @@ type SystemLayoutMode = "tiered" | "organic";
  * there is no expansion state.
  */
 export function SystemMap({ projectId, definition }: SystemMapProps) {
-  const { openNode, topNodeId } = useNodePanels();
+  const { openNode, addressedNodeId } = useProjectPanels();
   // Session-local rendition choice, seeded from the definition's layout hint
   // (organic is the system kind's default — docs/spec/maps.md).
   const [layoutMode, setLayoutMode] = useState<SystemLayoutMode>(() =>
@@ -75,11 +79,15 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
 
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode } = useNodes(projectId);
   const { edges: dataEdges, loading: edgesLoading, addEdge, removeEdge } = useEdges(projectId);
-  const { project: projectBundle } = useProject(projectId);
+  const { project: projectBundle, updateProject } = useProject(projectId);
   // The shell's scope (§ Decision 2), passed down to the canvas cards and to
   // every panel this map opens — never read from a global by the cards
   // themselves. It is also the map's *default* product: `mapScopedNodes` lets
   // the definition's own `product` override it (docs/spec/maps.md § Product Scope).
+  //
+  // Orthogonal to `display` below: the scope decides which nodes this map may
+  // draw and how many platforms any card may claim; the display decides how a
+  // card draws whatever it was given.
   const scope = useEffectiveProduct(projectId, projectBundle);
   const { journal } = useJournal(projectId);
 
@@ -95,6 +103,11 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
     [dataEdges, nodesById, usageIndex],
   );
 
+  const display = useMemo(
+    () => resolveMapDisplay(definition, projectBundle?.project),
+    [definition, projectBundle?.project],
+  );
+
   const graph = useMemo(
     () =>
       buildSystemGraph(
@@ -102,9 +115,37 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
         dataNodes,
         dataEdges,
         { onOpenDetails: (node) => openNode({ nodeId: node.id }) },
+        display,
         { scope, graph: productGraph },
       ),
-    [dataEdges, dataNodes, definition, openNode, productGraph, scope],
+    [dataEdges, dataNodes, definition, display, openNode, productGraph, scope],
+  );
+
+  // The per-map override record — see JourneyMap's twin (docs/spec/maps.md
+  // § Display Options).
+  const handleDisplayChange = useCallback(
+    async (patch: MapDisplayOptions) => {
+      if (!projectBundle) return;
+
+      const metadata = projectBundle.project.metadata ?? {};
+      const currentOverrides = metadata.map_display ?? {};
+
+      try {
+        await updateProject({
+          metadata: {
+            ...metadata,
+            map_display: {
+              ...currentOverrides,
+              [definition.id]: { ...currentOverrides[definition.id], ...patch },
+            },
+          },
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown settings save error";
+        toast.error(`Unable to save display preference: ${message}`);
+      }
+    },
+    [definition.id, projectBundle, updateProject],
   );
 
   const { nodes, layoutVersion } = useElkLayout(
@@ -232,36 +273,36 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
   }
 
   return (
-    <div className="h-full w-full flex flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <SidebarTrigger className="-ml-1 cursor-pointer" />
-        <Separator orientation="vertical" className="mx-1 h-4" />
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">
-            {projectBundle?.project.title ?? "Untitled project"}
-          </p>
-          <p className="truncate text-xs text-muted-foreground">
-            {definition.id !== "system" ? `Maps · ${definition.title}` : "Maps · System"}
-          </p>
-        </div>
-        <div className="ml-auto flex items-center gap-3">
-          <Select value={layoutMode} onValueChange={handleLayoutModeChange}>
-            <SelectTrigger className="h-8 w-[120px]" aria-label="Layout algorithm">
-              <SelectValue placeholder="Layout" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="organic">Organic</SelectItem>
-              <SelectItem value="tiered">Tiered</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button size="sm" className="cursor-pointer" onClick={() => setNewNodeOpen(true)}>
-            <PlusIcon className="size-4" />
-            New node
-          </Button>
-        </div>
-      </header>
-      <NodeDetailStack
-        rootLabel={definition.id !== "system" ? `Maps · ${definition.title}` : "Maps · System"}
+    <>
+      {/* The title is the map's own name: the sidebar's Maps group already says
+          which section this is, so a `Maps ·` prefix would only repeat it. */}
+      <PageShell
+        title={definition.title}
+        action={{
+          label: "New node",
+          icon: PlusIcon,
+          onClick: () => setNewNodeOpen(true),
+        }}
+        headerExtra={
+          <>
+            <Select value={layoutMode} onValueChange={handleLayoutModeChange}>
+              <SelectTrigger className="h-8 w-[120px]" aria-label="Layout algorithm">
+                <SelectValue placeholder="Layout" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="organic">Organic</SelectItem>
+                <SelectItem value="tiered">Tiered</SelectItem>
+              </SelectContent>
+            </Select>
+            <MapDisplayPopover
+              value={display}
+              onChange={(patch) => void handleDisplayChange(patch)}
+              mapTitle={definition.title}
+              controls={{ viewPlatforms: true }}
+            />
+          </>
+        }
+        surfaceCard
         onLayoutChange={reframe}
         allNodes={dataNodes}
         allEdges={dataEdges}
@@ -278,10 +319,10 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
           onEdgeClick={handleEdgeClick}
           fitSignal={fitSignal}
           spotlight
-          spotlightNodeId={topNodeId}
+          spotlightNodeId={addressedNodeId}
           scope={scope}
         />
-      </NodeDetailStack>
+      </PageShell>
       <NewNodeForm open={newNodeOpen} onOpenChange={setNewNodeOpen} onSubmit={handleCreateNode} />
       <EdgeTypeDialog
         open={edgeDialogOpen}
@@ -301,6 +342,6 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
         description="This will permanently remove the connection between these two nodes. This action cannot be undone."
         onConfirm={handleDeleteEdgeConfirm}
       />
-    </div>
+    </>
   );
 }

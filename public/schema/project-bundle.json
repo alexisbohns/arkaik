@@ -115,6 +115,16 @@
             "$ref": "#/$defs/MapDefinition"
           }
         },
+        "map_display": {
+          "description": "Per-map display overrides keyed by map id (docs/spec/maps.md § Display Options) — the only path open to the built-in maps.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/MapDisplayOptions"
+          }
+        },
         "products": {
           "description": "Product definitions (docs/spec/bundle-format.md § Products) — additive; unknown fields preserved.",
           "type": "array",
@@ -180,6 +190,10 @@
             }
           },
           "additionalProperties": {}
+        },
+        "display": {
+          "description": "Card rendering; the human twin is project.metadata.map_display[id].",
+          "$ref": "#/$defs/MapDisplayOptions"
         }
       },
       "required": [
@@ -189,6 +203,25 @@
       ],
       "additionalProperties": {},
       "description": "A stored map definition (docs/spec/maps.md § MapDefinition)."
+    },
+    "MapDisplayOptions": {
+      "type": "object",
+      "properties": {
+        "images": {
+          "description": "Screenshot (or cover) art on view cards.",
+          "type": "boolean"
+        },
+        "flow_platforms": {
+          "description": "A flow card's platform delivery: rings (default) | bars.",
+          "type": "string"
+        },
+        "view_platforms": {
+          "description": "A view card's platform availability: chips (default) | rows.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": {},
+      "description": "How a map draws its cards (docs/spec/maps.md § Display Options)."
     },
     "ProductDefinition": {
       "type": "object",

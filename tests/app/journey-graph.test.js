@@ -67,7 +67,7 @@ const baseParams = {
   composeParentByChild,
   explicitRootNode,
   composeClosure,
-  viewCardVariant: "large",
+  display: { images: true, flow_platforms: "bars", view_platforms: "rows" },
   viewApiRelationsByViewId,
 };
 
@@ -164,7 +164,10 @@ function renderJourney(definition, scope, project = bundle.project) {
       explicitRootNode: selection.anchorNode,
       composeClosure: selection.composeClosure,
       expandedFlows: new Set(),
-      viewCardVariant: "compact",
+      // DEFAULT_MAP_DISPLAY, spelled out: these assertions are about which
+      // nodes a journey selects, and how a card draws its platforms changes
+      // none of them.
+      display: { images: true, flow_platforms: "rings", view_platforms: "chips" },
       viewApiRelationsByViewId: computeViewApiRelations(dataEdges, selection.nodesById),
     }),
   };
