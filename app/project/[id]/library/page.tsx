@@ -166,6 +166,12 @@ export default function ProjectLibraryPage() {
   // never heard of products gets exactly today's library.
   const scope = useEffectiveProduct(id, projectBundle);
 
+  // The project's declared products, in declaration order, for the create
+  // form's picker. Memoized so the dialog is not handed a fresh array identity
+  // on every render; empty when the project declares none, which is what keeps
+  // the form looking exactly as it did before products existed.
+  const productList = useMemo(() => [...scope.productsById.values()], [scope.productsById]);
+
   const nodesById = useMemo(
     () => new Map(dataNodes.map((node) => [node.id, node])),
     [dataNodes],
@@ -370,6 +376,8 @@ export default function ProjectLibraryPage() {
         onOpenChange={setNewNodeOpen}
         onSubmit={handleCreateNode}
         defaultValues={speciesFilter !== "all" ? { species: speciesFilter } : undefined}
+        products={productList}
+        defaultProductId={scope.productId}
       />
     </>
   );

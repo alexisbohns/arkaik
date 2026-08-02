@@ -68,6 +68,12 @@ export default function ProjectDeliveryPage() {
   // nothing flashes when the bundle arrives.
   const scope = useEffectiveProduct(id, projectBundle);
 
+  // The project's declared products, in declaration order, for the create
+  // form's picker. Memoized so the dialog is not handed a fresh array identity
+  // on every render; empty when the project declares none, which is what keeps
+  // the form looking exactly as it did before products existed.
+  const productList = useMemo(() => [...scope.productsById.values()], [scope.productsById]);
+
   const nodesById = useMemo(() => new Map(dataNodes.map((node) => [node.id, node])), [dataNodes]);
 
   // Built once per snapshot — `buildProductUsageIndex` is a graph traversal and
@@ -207,7 +213,13 @@ export default function ProjectDeliveryPage() {
         </div>
       </PageShell>
 
-      <NewNodeForm open={newNodeOpen} onOpenChange={setNewNodeOpen} onSubmit={handleCreateNode} />
+      <NewNodeForm
+        open={newNodeOpen}
+        onOpenChange={setNewNodeOpen}
+        onSubmit={handleCreateNode}
+        products={productList}
+        defaultProductId={scope.productId}
+      />
     </>
   );
 }
