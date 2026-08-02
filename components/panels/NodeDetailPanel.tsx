@@ -29,7 +29,7 @@ import {
   getEditablePlatformStatuses,
   scopedRollupPlatforms,
 } from "@/lib/utils/platform-status";
-import { scopedPlatforms, type ProductScope } from "@/lib/utils/product-scope";
+import type { ProductScope } from "@/lib/utils/product-scope";
 import { findWhereUsed } from "@/lib/utils/where-used";
 import { computeNodeTimeline } from "@/lib/utils/journal";
 import { describeJournalEvent, formatEventDate } from "@/components/journal/describe-event";
@@ -337,7 +337,6 @@ function PlatformVariantsSection({ node, scope, initialPlatform, onUpdate, onZoo
   // Seeded from the FULL stored maps, not the scoped ones: a note or screenshot
   // for a platform outside the effective set is not rendered and not deleted —
   // every handler below patches by spreading these, so it round-trips untouched.
-  const platforms = scopedPlatforms(node, scope);
   const [notes, setNotes] = useState<Partial<Record<PlatformId, string>>>(rawNotes);
   const [statuses, setStatuses] = useState(rawStatuses);
   const [screenshots, setScreenshots] = useState<Partial<Record<PlatformId, string>>>(rawScreenshots);
@@ -382,8 +381,19 @@ function PlatformVariantsSection({ node, scope, initialPlatform, onUpdate, onZoo
   return (
     <div className="px-6 flex flex-col gap-3">
       <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Platform Variants</span>
+      {/* The scope's MENU, not `scopedPlatforms(node, scope)`. How many platform
+          columns a surface shows is a shape decision, and shape decisions are the
+          scope's — same input the Acceptances matrix and the Pyramid read. Per-node
+          `scopedPlatforms` would answer the node's own array whenever no product is
+          declared, so a web-only view would lose two tabs in a project that has
+          never heard of products (§ Degenerate case guarantee).
+
+          A caveat inherited, not introduced: a status written for a platform outside
+          `node.platforms` is invisible everywhere, because `getNodePlatformStatuses`
+          iterates the node's own list. The strip could always do that; it is not
+          this scope's to fix. */}
       <PlatformVariants
-        platforms={platforms}
+        platforms={scope.platforms}
         statuses={statuses}
         notes={notes}
         screenshots={screenshots}

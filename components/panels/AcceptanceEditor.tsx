@@ -7,7 +7,7 @@ import type { StatusId } from "@/lib/config/statuses";
 import type { ValueId } from "@arkaik/schema";
 import { STATUSES } from "@/lib/config/statuses";
 import { getEditablePlatformStatuses } from "@/lib/utils/platform-status";
-import { scopedPlatforms, type ProductScope } from "@/lib/utils/product-scope";
+import type { ProductScope } from "@/lib/utils/product-scope";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { STATUS_ICONS, STATUS_STYLES, SPECIES_ICONS } from "@/components/graph/nodes/node-styles";
 import { PlatformVariants } from "@/components/panels/PlatformVariants";
@@ -83,8 +83,11 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, on
 
       <section className="flex flex-col gap-1.5">
         <span className="text-xs text-muted-foreground">Per-platform status</span>
+        {/* The scope's MENU, not `scopedPlatforms(node, scope)` — see
+            `NodeDetailPanel`'s `PlatformVariantsSection`. Shape decisions read
+            `scope.platforms`; per-node facts read `scopedPlatforms`. */}
         <PlatformVariants
-          platforms={scopedPlatforms(node, scope)}
+          platforms={scope.platforms}
           statuses={statuses}
           notes={node.metadata?.platformNotes}
           screenshots={node.metadata?.platformScreenshots}

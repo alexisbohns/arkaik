@@ -39,10 +39,18 @@ export interface PlatformVariantsProps {
   notes?: Partial<Record<PlatformId, string>>;
   screenshots?: Partial<Record<PlatformId, string>>;
   /**
-   * The node's effective platforms — `scopedPlatforms(node, scope)`, and the
-   * sole input to the arity rule below. Required, because an omitted list used
-   * to mean "every configured platform", which is exactly the admin-view-with-
-   * an-iOS-tab bug this feature exists to close.
+   * The **scope's** platform menu — `scope.platforms` — and the sole input to
+   * the arity rule below. Required, because an omitted list used to mean "every
+   * configured platform", which is exactly the admin-view-with-an-iOS-tab bug
+   * this feature exists to close.
+   *
+   * Deliberately the menu and **not** `scopedPlatforms(node, scope)`: how many
+   * platform columns a surface shows is a *shape* decision, and shape decisions
+   * belong to the scope — the same input the Acceptances matrix reads for its
+   * status columns and the Pyramid for its rings. The per-node answer would
+   * degrade to `node.platforms` whenever no product is declared, collapsing a
+   * web-only view's strip in a project that has never heard of products.
+   * `scopedPlatforms` is for per-node *facts*, like the chips in `PlatformList`.
    */
   platforms: PlatformId[];
   /** Tab opened on mount (e.g. the platform of the clicked Delivery item). */
@@ -58,12 +66,12 @@ export interface PlatformVariantsProps {
  *
  * **The arity rule decides whether there is a strip at all**, read off
  * `platformAvailabilityShape` so this cannot drift from the Pyramid's rings or
- * the Acceptances matrix's status columns: two or more effective platforms get
- * tabs, one or zero get a single unlabelled status and no platform chrome — the
- * same collapse, now on a third surface.
+ * the Acceptances matrix's status columns: two or more platforms in the scope's
+ * menu get tabs, one or zero get a single unlabelled status and no platform
+ * chrome — the same collapse, now on a third surface.
  *
  * **Per-platform notes, statuses, and screenshots for a platform outside the
- * effective set are neither rendered nor deleted.** They sit untouched in
+ * menu are neither rendered nor deleted.** They sit untouched in
  * `metadata`, and every handler here patches by spreading the stored map, so a
  * node edited under a web-only scope round-trips its iOS note intact. Nothing
  * is lost; it is simply not shown.

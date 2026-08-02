@@ -1810,6 +1810,11 @@ git commit -m "feat: one primitive decides whether availability reads as rings o
 > - **`nodeInScope(node, scope, graph?)` takes an optional third argument.** With a `graph` it delegates to `productsOfNode`; without one it degrades to stored membership, which is all a caller holding no edges can honestly answer. Pass the graph.
 > - **`ProductGraph` is `{ edges, nodesById, usageIndex }`**, assembled once per snapshot at the page with `useMemo`. `buildProductUsageIndex` is a traversal — never build it per node. Any surface passing one must already gate on `edgesLoading`.
 > - **An empty product set means two different things, and `nodeInScope` resolves both.** For a flow, view, or acceptance it is *triage* — nobody has assigned it — so it is **out** of every named scope. For a data model or endpoint it is an *orphan* — nothing in the graph reaches it — so it is **in** every named scope, because hiding it would bury exactly the node that needs attention.
+>
+> **Carried forward from Task 16, for every task after it:**
+>
+> - **Shape decisions read `scope.platforms`; per-node facts read `scopedPlatforms(node, scope)`.** *How many platform columns/rings/tabs does this surface show* is the scope's question — `AcceptanceMatrix`, `PlatformAvailability`, and the detail panel's tab strip all read the **menu**, so they cannot disagree. *What does this node ship on* is the node's — chips (`PlatformList`, `NodeCard`) read `scopedPlatforms`. Getting the two the wrong way round is not a style choice: with no products declared `scopedPlatforms` answers `node.platforms`, so a shape driven by it collapses for any node narrower than the menu, in a project that has never heard of products. That is the **degenerate case guarantee** broken (spec § Degenerate case guarantee) — `seed/pebbles.json` has ten single-platform views that would show it.
+> - **A flow's gauges clamp, they never drop the widening.** `scopedRollupPlatforms(declared, rollup, scope.platforms)` at every gauge site, and `flowGaugePlatforms` where an empty `declared` needs the scope's menu as its fallback. Both live in `lib/utils/platform-status.ts`; neither should be re-inlined.
 
 ### Task 11: Acceptances — scoped filter, collapsing columns, the Unanchored rename
 
@@ -2133,13 +2138,15 @@ that key is set is the most confusing possible place to leave it.
 
 - [ ] **Step 1: Collapse the tabs**
 
-In `NodeDetailPanel.tsx`, compute the node's effective platforms with `scopedPlatforms(node, scope)`. Render the platform tab strip only when the result has **two or more** entries. At one or zero, render a single status with no tabs and no platform icon — this is the "no platform tabs, or just one web?" question answered: one status, zero per-platform machinery.
+In `NodeDetailPanel.tsx`, build the platform tab strip from **`scope.platforms`** — the scope's menu. Render it only when the menu has **two or more** entries. At one or zero, render a single status with no tabs and no platform icon — this is the "no platform tabs, or just one web?" question answered: one status, zero per-platform machinery.
+
+**Not `scopedPlatforms(node, scope)`.** How many platform columns a surface shows is a *shape* decision, and shape decisions read the menu — the same input `AcceptanceMatrix` reads for its status columns and `PlatformAvailability` for its rings. `scopedPlatforms` degrades to `node.platforms` when no product is declared, so using it here would collapse a web-only view's strip from three tabs to one in a project that has never heard of products — ten views in `seed/pebbles.json` alone. That breaks the degenerate case guarantee. See the rule carried forward in the Phase D preamble.
 
 Per-platform notes and screenshots for a platform outside the effective set are **not deleted and not rendered**; they round-trip untouched. Add a one-line comment saying so, because a future reader will otherwise assume the data was lost.
 
 - [ ] **Step 2: Scope the chips**
 
-`PlatformList.tsx` and `FlowNode.tsx` render chips for `scopedPlatforms(node, scope)`. Where a canvas node has no access to the scope, pass it down from the canvas rather than reading a global.
+`PlatformList.tsx` and `FlowNode.tsx` render chips for `scopedPlatforms(node, scope)` — chips are a *per-node fact* ("what does this node ship on"), which is the other half of the distinction Step 1 draws. Where a canvas node has no access to the scope, pass it down from the canvas rather than reading a global.
 
 **Both gauge call sites here clamp rather than drop the widening**, exactly as at Task 14
 Step 3. `FlowNode.tsx` and `NodeDetailPanel.tsx`'s `ComputedPlatformStatusSection` both pass

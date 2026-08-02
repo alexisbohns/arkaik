@@ -444,6 +444,70 @@ assert(
   "the fallback DISCRIMINATES on the scope — a fallback to the global list would answer the same thing twice",
 );
 
+// --- Shape decisions read the MENU; per-node facts read scopedPlatforms -------
+//
+// The detail panel's platform tab strip is a *shape* decision — how many
+// platform columns does this surface show — so it reads `scope.platforms`,
+// exactly as the Acceptances matrix reads it for its status columns and the
+// Pyramid for its rings. Reading `scopedPlatforms(node, scope)` there would
+// break the degenerate case: with no products declared that helper answers the
+// node's OWN array, so a view declaring only `["web"]` would collapse from three
+// tabs to one in a project that has never heard of products. The seed has ten
+// such views. The chips are the other half of the distinction and stay per-node:
+// "what does this node ship on" genuinely is a fact about the node.
+
+/** A view whose own array is narrower than every menu — the discriminating case. */
+const webOnlyView = { id: "V-web-only", species: "view", platforms: ["web"], metadata: {} };
+
+assert(
+  eq(bareScope.platforms, ["web", "ios", "android"]),
+  "THE DEGENERATE CASE: with no products declared the strip's menu is every platform, whatever the node declares",
+);
+assert(
+  eq(scopedPlatforms(webOnlyView, bareScope), ["web"]) &&
+    !eq(scopedPlatforms(webOnlyView, bareScope), bareScope.platforms),
+  `…and scopedPlatforms would NOT do — it answers the node's own one-platform array (got ${JSON.stringify(
+    scopedPlatforms(webOnlyView, bareScope),
+  )})`,
+);
+assert(
+  eq(adminScope.platforms, ["web"]),
+  "the menu still collapses the strip to one status under a web-only product — the fix survives the correction",
+);
+
+// Which of the two each call site uses is not observable from a pure function,
+// so it is read off the source — the same technique as the threshold check
+// below, and for the same reason: there is no React test runner here.
+
+const ROOT = path.join(__dirname, "..", "..");
+const readSource = (...parts) => fs.readFileSync(path.join(ROOT, ...parts), "utf8");
+
+/** The props of the one `<PlatformVariants …>` element in a source file. */
+function platformVariantsProps(source) {
+  const start = source.indexOf("<PlatformVariants");
+  return start === -1 ? "" : source.slice(start, source.indexOf(">", start));
+}
+
+for (const [label, file] of [
+  ["the detail panel", ["components", "panels", "NodeDetailPanel.tsx"]],
+  ["the acceptance editor", ["components", "panels", "AcceptanceEditor.tsx"]],
+]) {
+  const props = platformVariantsProps(readSource(...file));
+  assert(
+    /platforms=\{scope\.platforms\}/.test(props),
+    `${label} builds its tab strip from the scope's menu`,
+  );
+  assert(
+    props !== "" && !props.includes("scopedPlatforms"),
+    `…and not from scopedPlatforms, which would break the degenerate case in ${label}`,
+  );
+}
+
+assert(
+  readSource("components", "panels", "AcceptancesSection.tsx").includes("scopedPlatforms(acc, scope)"),
+  "the CHIPS stay per-node — 'what does this node ship on' is a fact about the node, not a shape",
+);
+
 // --- The arity threshold is written once --------------------------------------
 //
 // `platformAvailabilityShape` is the only place the 2-platform boundary lives.
@@ -452,11 +516,7 @@ assert(
 // a boundary that can drift silently, so the source is checked rather than
 // trusted.
 
-const ROOT = path.join(__dirname, "..", "..");
-const variantsSource = fs.readFileSync(
-  path.join(ROOT, "components", "panels", "PlatformVariants.tsx"),
-  "utf8",
-);
+const variantsSource = readSource("components", "panels", "PlatformVariants.tsx");
 
 assert(
   variantsSource.includes("platformAvailabilityShape(platforms)"),
