@@ -18,6 +18,8 @@ interface ProjectPanelsProps {
   children: ReactNode;
   /** The surface's accessible name. */
   surfaceLabel: string;
+  /** Whether the surface renders as a card. Off unless the surface is a canvas. */
+  surfaceCard?: boolean;
   /** Fires when the columns change, so a canvas can re-frame itself. */
   onLayoutChange?: () => void;
   allNodes?: Node[];
@@ -46,6 +48,7 @@ const NO_EDGES: Edge[] = [];
 export function ProjectPanels({
   children,
   surfaceLabel,
+  surfaceCard,
   onLayoutChange,
   allNodes = NO_NODES,
   allEdges = NO_EDGES,
@@ -94,6 +97,7 @@ export function ProjectPanels({
     <PanelStack<PanelDescriptor>
       entries={entries}
       surfaceLabel={surfaceLabel}
+      surfaceCard={surfaceCard}
       onLayoutChange={onLayoutChange}
       labelOf={labelOf}
       accentOf={(entry) => panelStates[entry.instanceId]?.accent}

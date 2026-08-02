@@ -14,6 +14,14 @@ interface PageShellProps {
   headerExtra?: ReactNode;
   /** The surface — canvas, board, list. The panel grid's first cell. */
   children: ReactNode;
+  /**
+   * Draw the surface as a card — its own background and border.
+   *
+   * Off by default: most surfaces are already built from cards, tables and
+   * blocks, so a card around them is a box drawn around boxes. Turn it on for a
+   * canvas, which has no internal edges of its own.
+   */
+  surfaceCard?: boolean;
   onLayoutChange?: () => void;
   /**
    * Node wiring for the detail panels. Optional: a page that passes none still
@@ -42,6 +50,7 @@ export function PageShell({
   action,
   headerExtra,
   children,
+  surfaceCard,
   onLayoutChange,
   ...panelProps
 }: PageShellProps) {
@@ -54,6 +63,7 @@ export function PageShell({
       </PageHeader>
       <ProjectPanels
         surfaceLabel={title}
+        surfaceCard={surfaceCard}
         onLayoutChange={onLayoutChange}
         {...panelProps}
       >

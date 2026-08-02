@@ -275,6 +275,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
             />
           </>
         }
+        surfaceCard
         onLayoutChange={reframe}
         allNodes={dataNodes}
         allEdges={dataEdges}

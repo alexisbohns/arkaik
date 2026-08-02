@@ -35,6 +35,16 @@ interface PanelStackProps<T> {
   onLayoutChange?: () => void;
   /** The surface cell's accessible name. */
   surfaceLabel: string;
+  /**
+   * Whether the surface renders as a card — a background and a border of its own.
+   *
+   * Off by default, because most surfaces are already made of cards, tables and
+   * blocks, and wrapping those in another card just draws a box around boxes. A
+   * canvas is the exception: it has no internal edges, so it needs the cell's.
+   * Panels are always cards — they are a distinct thing laid over the page's
+   * subject, and the border is what says so.
+   */
+  surfaceCard?: boolean;
   /** Per-entry visual accent. "editing" draws a dashed destructive border. */
   accentOf?: (entry: PanelEntry<T>, index: number) => "editing" | null | undefined;
   /**
@@ -75,6 +85,7 @@ export function PanelStack<T>({
   onUnwindTo,
   onLayoutChange,
   surfaceLabel,
+  surfaceCard = false,
   accentOf,
   requestCloseAt,
 }: PanelStackProps<T>) {
@@ -158,8 +169,12 @@ export function PanelStack<T>({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [entries.length, onUnwindTo, runClose]);
 
+  // The radius and the clip belong to every cell — they define the column's
+  // shape, and the clip is what keeps a canvas or a long trail inside it. Only
+  // the skin is optional.
   const cellClassName =
-    "flex min-w-0 min-h-0 flex-col overflow-hidden rounded-xl border bg-background [&[hidden]]:hidden";
+    "flex min-w-0 min-h-0 flex-col overflow-hidden rounded-xl [&[hidden]]:hidden";
+  const cardClassName = "border bg-card";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -179,6 +194,7 @@ export function PanelStack<T>({
           aria-label={surfaceLabel}
           className={cn(
             cellClassName,
+            surfaceCard && cardClassName,
             "relative",
             !surfaceVisible && "pointer-events-none invisible absolute inset-3 -z-10",
           )}
@@ -198,6 +214,7 @@ export function PanelStack<T>({
               aria-label={labelOf(entry)}
               className={cn(
                 cellClassName,
+                cardClassName,
                 "outline-none arkaik-panel-enter",
                 accentOf?.(entry, index) === "editing" && "border-dashed border-destructive",
               )}

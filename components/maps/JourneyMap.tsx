@@ -702,6 +702,7 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
             />
           </>
         }
+        surfaceCard
         onLayoutChange={reframe}
         allNodes={dataNodes}
         allEdges={dataEdges}

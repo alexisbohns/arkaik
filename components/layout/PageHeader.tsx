@@ -60,7 +60,7 @@ export function PageHeader({ title, meta, action, nodes, children }: PageHeaderP
   const ActionIcon = action?.icon;
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-3 bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+    <header className="flex h-12 shrink-0 items-center gap-3 px-3">
       <SidebarTrigger className="-ml-1 cursor-pointer" />
       <Separator orientation="vertical" className="mx-1 h-4" />
       <div className="min-w-0 flex-1">
