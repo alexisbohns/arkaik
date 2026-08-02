@@ -112,6 +112,9 @@ jobs:
       - name: Pyramid aggregation tests
         run: npm run test:pyramid
 
+      - name: Landing-page redirect tests (signed in → /projects)
+        run: npm run test:root-redirect
+
       - name: Journal write-primitive (emit) tests
         run: npm run test:emit
 

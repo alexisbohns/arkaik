@@ -38,7 +38,7 @@ Open [http://localhost:3000](http://localhost:3000) — create a project or load
 ```
 app/
   layout.tsx                  # Root layout: fonts, theme, global CSS
-  page.tsx                    # Home / landing page
+  page.tsx                    # Home / landing page (signed in → /projects)
   projects/page.tsx           # Project list, create, import, seed, restore
   project/[id]/canvas/        # Graph canvas (the Journey map)
   project/[id]/library/       # Filterable node browser
