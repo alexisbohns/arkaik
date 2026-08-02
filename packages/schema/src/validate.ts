@@ -11,7 +11,7 @@ import {
 import { SPECIES_PREFIXES } from "./id-gen";
 import type { PlaylistEntry } from "./playlist";
 import { crossCheckJournal } from "./journal";
-import { isBuiltInMapId } from "./maps";
+import { isBuiltInMapId, MAP_FLOW_PLATFORMS_MODES, MAP_VIEW_PLATFORMS_MODES } from "./maps";
 
 /**
  * Semantic validation for Arkaik ProjectBundles.
@@ -393,6 +393,44 @@ export function validateBundle(input: unknown): ValidationResult {
   // Warning severity only: a stale or dangling map must never fail an import
   // or a CI gate. Non-object entries and missing id/title are shape concerns
   // (parse.ts / the JSON Schema); here we cross-check against the graph.
+  // Display options are renderer hints: an unknown mode falls back to the
+  // default rather than blanking the card, so this stays a warning too.
+  const checkMapDisplay = (display: unknown, path: string, subject: string) => {
+    if (typeof display !== "object" || display === null || Array.isArray(display)) return;
+    const options = display as Record<string, unknown>;
+
+    const modes: Array<[string, readonly string[]]> = [
+      ["flow_platforms", MAP_FLOW_PLATFORMS_MODES],
+      ["view_platforms", MAP_VIEW_PLATFORMS_MODES],
+    ];
+
+    for (const [key, allowed] of modes) {
+      const value = options[key];
+      if (value !== undefined && (typeof value !== "string" || !allowed.includes(value))) {
+        warn(
+          `${path}.${key}`,
+          "map-unknown-display",
+          `${subject} sets ${key} to "${String(value)}"; expected one of ${allowed.join(", ")} (renderers fall back to the default)`,
+        );
+      }
+    }
+
+    if (options.images !== undefined && typeof options.images !== "boolean") {
+      warn(
+        `${path}.images`,
+        "map-unknown-display",
+        `${subject} sets images to a non-boolean value (renderers fall back to the default)`,
+      );
+    }
+  };
+
+  const mapDisplayOverrides = projectMetadata?.map_display;
+  if (typeof mapDisplayOverrides === "object" && mapDisplayOverrides !== null && !Array.isArray(mapDisplayOverrides)) {
+    for (const [mapId, display] of Object.entries(mapDisplayOverrides as Record<string, unknown>)) {
+      checkMapDisplay(display, `project.metadata.map_display.${mapId}`, `Map "${mapId}"`);
+    }
+  }
+
   const storedMaps = projectMetadata?.maps;
   if (Array.isArray(storedMaps)) {
     const seenMapIds = new Set<string>();
@@ -444,6 +482,8 @@ export function validateBundle(input: unknown): ValidationResult {
           }
         });
       }
+
+      checkMapDisplay(map.display, `${path}.display`, `Map "${mapId ?? index}"`);
     });
   }
 

@@ -59,7 +59,7 @@ const baseParams = {
   composeParentByChild,
   explicitRootNode,
   composeClosure,
-  viewCardVariant: "large",
+  display: { images: true, flow_platforms: "bars", view_platforms: "rows" },
   viewApiRelationsByViewId,
 };
 

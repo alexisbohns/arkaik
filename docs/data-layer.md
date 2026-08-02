@@ -80,8 +80,9 @@ interface Project {
 }
 
 interface ProjectMetadata extends Record<string, unknown> {
-  view_card_variant?: "compact" | "large";
+  view_card_variant?: "compact" | "large"; // Deprecated; superseded by map_display, no longer read
   maps?: MapDefinition[]; // Stored map definitions (spec/maps.md § Storage)
+  map_display?: Record<string, MapDisplayOptions>; // Per-map card rendering, keyed by map id
 }
 ```
 

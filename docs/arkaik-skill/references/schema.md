@@ -103,9 +103,60 @@ interface Edge {
   metadata?: Record<string, unknown>;
 }
 
+type MapKind = "journey" | "system";
+
+interface MapLayoutHints extends Record<string, unknown> {
+  direction?: "DOWN" | "RIGHT" | (string & {});
+  /**
+   * Canvas layout algorithm: `"organic"` (force-directed with overlap
+   * removal) or `"layered"` (hierarchical tiers). Renderers fall back to the
+   * kind's default for unknown values (docs/spec/maps.md § MapDefinition).
+   */
+  algorithm?: "layered" | "organic" | (string & {});
+}
+
+type MapFlowPlatformsMode = "rings" | "bars";
+
+type MapViewPlatformsMode = "chips" | "rows";
+
+interface MapDisplayOptions extends Record<string, unknown> {
+  /** Screenshot (or cover) art on view cards. */
+  images?: boolean;
+  /** A flow card's platform delivery: the Pyramid's rings, or stacked bars. */
+  flow_platforms?: MapFlowPlatformsMode | (string & {});
+  /** A view card's platform availability: circular chips, or labelled rows. */
+  view_platforms?: MapViewPlatformsMode | (string & {});
+}
+
+interface MapDefinition extends Record<string, unknown> {
+  /** Kebab-case, unique within the project; built-in ids are reserved. */
+  id: string;
+  title: string;
+  description?: string;
+  /** Selects the renderer and the selection defaults below. */
+  kind: MapKind | (string & {});
+  /** Node filter; defaults by kind (docs/spec/maps.md § MapDefinition). */
+  species?: (SpeciesId | (string & {}))[];
+  /** Edge filter; defaults by kind. */
+  edge_types?: (EdgeTypeId | (string & {}))[];
+  /** Scope anchor; the journey renderer falls back to `project.root_node_id`. */
+  root_node_id?: string;
+  /** Traversal bound from the root; absent = unbounded. */
+  depth?: number;
+  layout?: MapLayoutHints;
+  /** Card rendering; the human twin is `project.metadata.map_display[id]`. */
+  display?: MapDisplayOptions;
+}
+
 interface ProjectMetadata extends Record<string, unknown> {
+  /**
+   * @deprecated Superseded by the per-map `map_display` below. Still parsed,
+   * validated, and round-tripped; no renderer reads it.
+   */
   view_card_variant?: "compact" | "large";
   maps?: MapDefinition[];
+  /** Per-map display overrides keyed by map id — built-ins included. */
+  map_display?: Record<string, MapDisplayOptions>;
 }
 
 interface Project {

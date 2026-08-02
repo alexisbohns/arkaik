@@ -1,5 +1,5 @@
 import type { Node, Edge } from "@xyflow/react";
-import { computeMapSubgraph, type MapDefinition } from "@arkaik/schema";
+import { computeMapSubgraph, DEFAULT_MAP_DISPLAY, type MapDefinition, type ResolvedMapDisplay } from "@arkaik/schema";
 import type { Node as DataNode, Edge as DataEdge } from "@/lib/data/types";
 import { EDGE_TYPE_TO_FLOW_TYPE, SPECIES_TO_NODE_TYPE } from "@/lib/utils/graph-build";
 import { addEffectiveNodeToRollup, createEmptyRollup, getEffectivePlatformStatuses, getRollupDisplayStatus } from "@/lib/utils/platform-status";
@@ -11,16 +11,18 @@ export interface SystemGraphHandlers {
 /**
  * The System map's graph: a direct render of `computeMapSubgraph`
  * (docs/spec/maps.md § Built-in Maps) — every selected node as a card, every
- * surviving cross-layer edge drawn. View cards are forced compact and carry no
- * screenshot/API-popover payload: at whole-product scale (Pebbles: 137 nodes)
- * the DOM weight matters more than per-card affordances. Positions are ELK
- * placeholders; layout tiers the species via partitioning.
+ * surviving cross-layer edge drawn. View cards carry no screenshot or
+ * API-popover payload: at whole-product scale (Pebbles: 137 nodes) the DOM
+ * weight matters more than per-card affordances, so `display.images` has
+ * nothing to show here and only the platform rendition reads across. Positions
+ * are ELK placeholders; layout tiers the species via partitioning.
  */
 export function buildSystemGraph(
   definition: MapDefinition,
   dataNodes: readonly DataNode[],
   dataEdges: readonly DataEdge[],
   handlers: SystemGraphHandlers = {},
+  display: ResolvedMapDisplay = DEFAULT_MAP_DISPLAY,
 ): { nodes: Node[]; edges: Edge[] } {
   const subgraph = computeMapSubgraph(definition, dataNodes, dataEdges);
   const origin = { x: 0, y: 0 };
@@ -39,11 +41,13 @@ export function buildSystemGraph(
       baseData.platformStatuses = getEffectivePlatformStatuses(node, dataNodes, dataEdges);
       baseData.apiInbound = [];
       baseData.apiOutbound = [];
-      baseData.viewCardVariant = "compact";
+      baseData.display = display;
     }
 
     if (node.species === "flow") {
       baseData.platformRollup = createEmptyRollup();
+      baseData.platformDisplay = display.flow_platforms;
+      baseData.viewCount = 0;
       baseData.expanded = false;
     }
 

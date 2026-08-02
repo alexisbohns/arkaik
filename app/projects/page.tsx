@@ -320,7 +320,10 @@ function ProjectsPageBody() {
         id: crypto.randomUUID(),
         title: project.title,
         description: project.description,
-        metadata: { view_card_variant: "compact" },
+        // Card rendering is per map now (spec/maps.md § Display Options), so a
+        // fresh project seeds no legacy `view_card_variant` — the defaults are
+        // what "compact" used to mean.
+        metadata: {},
         created_at: now,
         updated_at: now,
         archived_at: null,

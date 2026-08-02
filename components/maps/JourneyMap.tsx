@@ -4,8 +4,9 @@ import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { type Node, type NodeMouseHandler, type Connection, type EdgeMouseHandler } from "@xyflow/react";
 import { Code2Icon, DownloadIcon, PlusIcon } from "lucide-react";
 import { toast } from "sonner";
-import type { MapDefinition } from "@arkaik/schema";
+import { resolveMapDisplay, type MapDefinition, type MapDisplayOptions } from "@arkaik/schema";
 import { Canvas } from "@/components/graph/Canvas";
+import { MapDisplayPopover } from "@/components/maps/MapDisplayPopover";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
 import { NodeDetailStack } from "@/components/panels/NodeDetailStack";
@@ -15,7 +16,6 @@ import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeFo
 import { InsertBetweenDialog, type InsertEntryType } from "@/components/panels/InsertBetweenDialog";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
@@ -42,7 +42,6 @@ import {
   buildJourneyGraph,
   computeComposeClosure,
   computeViewApiRelations,
-  type ViewCardVariant,
 } from "@/lib/utils/journey-graph";
 
 interface JourneyMapProps {
@@ -83,9 +82,13 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   const { project: projectBundle, loading: projectLoading, updateProject } = useProject(id);
   const { journal } = useJournal(id);
 
-  const viewCardVariant: ViewCardVariant = projectBundle?.project.metadata?.view_card_variant === "large"
-    ? "large"
-    : "compact";
+  // Built-in maps have no stored definition to carry a `display`, so the id is
+  // what the override record is keyed by — the anonymous mount is the Journey.
+  const mapId = definition?.id ?? "journey";
+  const display = useMemo(
+    () => resolveMapDisplay({ id: mapId, display: definition?.display }, projectBundle?.project),
+    [definition?.display, mapId, projectBundle?.project],
+  );
 
   const nodesById = useMemo(
     () => new Map(dataNodes.map((node) => [node.id, node])),
@@ -540,23 +543,34 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     if (dataNode) openNode({ nodeId: dataNode.id });
   }, [dataNodes, openNode]);
 
-  const handleViewCardVariantChange = useCallback(
-    async (variant: ViewCardVariant) => {
+  /**
+   * Display lives per map, not per project: the patch merges into
+   * `metadata.map_display[mapId]` so this map's Journey and its Recording Loop
+   * keep their own answers (docs/spec/maps.md § Display Options).
+   */
+  const handleDisplayChange = useCallback(
+    async (patch: MapDisplayOptions) => {
       if (!projectBundle) return;
+
+      const metadata = projectBundle.project.metadata ?? {};
+      const currentOverrides = metadata.map_display ?? {};
 
       try {
         await updateProject({
           metadata: {
-            ...(projectBundle.project.metadata ?? {}),
-            view_card_variant: variant,
+            ...metadata,
+            map_display: {
+              ...currentOverrides,
+              [mapId]: { ...currentOverrides[mapId], ...patch },
+            },
           },
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown settings save error";
-        toast.error(`Unable to save card preference: ${message}`);
+        toast.error(`Unable to save display preference: ${message}`);
       }
     },
-    [projectBundle, updateProject],
+    [mapId, projectBundle, updateProject],
   );
 
   const handleConnect = useCallback((connection: Connection) => {
@@ -626,7 +640,7 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
         explicitRootNode,
         composeClosure,
         expandedFlows,
-        viewCardVariant,
+        display,
         viewApiRelationsByViewId,
         handlers: {
           onToggleFlow: toggleFlow,
@@ -644,6 +658,7 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
       composeParentByChild,
       dataEdges,
       dataNodes,
+      display,
       expandedFlows,
       explicitRootNode,
       handleAddChildNode,
@@ -652,7 +667,6 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
       openNode,
       toggleFlow,
       viewApiRelationsByViewId,
-      viewCardVariant,
     ],
   );
 
@@ -711,15 +725,11 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
               {playlistError}
             </span>
           )}
-          <Select value={viewCardVariant} onValueChange={(value) => void handleViewCardVariantChange(value as ViewCardVariant)}>
-            <SelectTrigger className="h-8 w-[160px]" aria-label="View card variant">
-              <SelectValue placeholder="Card style" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="compact">Compact cards</SelectItem>
-              <SelectItem value="large">Large cards</SelectItem>
-            </SelectContent>
-          </Select>
+          <MapDisplayPopover
+            value={display}
+            onChange={(patch) => void handleDisplayChange(patch)}
+            mapTitle={definition?.title ?? "Journey"}
+          />
           <Button size="sm" variant="outline" className="cursor-pointer" onClick={() => setRawOpen(true)}>
             <Code2Icon className="size-4" />
             Raw
