@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
 import { PageShell } from "@/components/layout/PageShell";
+import { ProductManagerPanel } from "@/components/settings/ProductManagerPanel";
 import { RepoLinksPanel } from "@/components/settings/RepoLinksPanel";
 import { Button } from "@/components/ui/button";
 import { isHostedProjectId } from "@/lib/data/remote-provider";
@@ -29,7 +30,7 @@ export default function ProjectSettingsPage() {
   const router = useRouter();
   const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
 
-  const { project, loading } = useProject(id);
+  const { project, loading, updateProject } = useProject(id);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -82,6 +83,21 @@ export default function ProjectSettingsPage() {
                   here.
                 </p>
               )}
+            </section>
+
+            <section className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1">
+                <h2 className="text-lg font-semibold">Products</h2>
+                <p className="text-sm text-muted-foreground">
+                  A project can describe a family of apps sharing one graph. Naming them lets every
+                  page scope to one &mdash; and lets a web-only dashboard stop dragging down your
+                  Android numbers.
+                </p>
+              </div>
+              {/* The panel reads the node list itself: member counts and the
+                  reassignment a deletion offers both need it, and nothing else
+                  on this page does. */}
+              <ProductManagerPanel projectId={id} project={project} updateProject={updateProject} />
             </section>
 
             <section className="flex flex-col gap-3">
