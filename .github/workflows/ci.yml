@@ -91,6 +91,9 @@ jobs:
       - name: Neighborhood spotlight tests
         run: npm run test:spotlight
 
+      - name: Push-panel stack tests
+        run: npm run test:panel-stack
+
       - name: Command palette ranking tests
         run: npm run test:command-palette
 
