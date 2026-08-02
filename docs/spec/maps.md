@@ -6,7 +6,7 @@ order: 5
 
 # Maps & Projections
 
-> Status: **Implemented** — the format/projection half lives in `packages/schema/src/maps.ts` + `bundle.ts` + `validate.ts`; the renderers are live at `/project/[id]/maps` (index + custom-map editor) and `/project/[id]/maps/[mapId]` (Journey via `lib/utils/journey-graph.ts`, System via `lib/utils/system-graph.ts` with species-tier ELK partitioning); the Delivery board consumes the delivery reading at `/project/[id]/delivery`; the Overview dashboard composes the aggregations in `lib/utils/coverage.ts` at `/project/[id]/overview` (§ Overview Composition). This document remains the normative contract.
+> Status: **Implemented** — the format/projection half lives in `packages/schema/src/maps.ts` + `bundle.ts` + `validate.ts`; the renderers are live at `/project/[id]/maps` (index + custom-map editor) and `/project/[id]/maps/[mapId]` (Journey via `lib/utils/journey-graph.ts`, System via `lib/utils/system-graph.ts` with species-tier ELK partitioning), each with a Display popover over § Display Options; the Delivery board consumes the delivery reading at `/project/[id]/delivery`; the Overview dashboard composes the aggregations in `lib/utils/coverage.ts` at `/project/[id]/overview` (§ Overview Composition). This document remains the normative contract.
 > The key words MUST, MUST NOT, SHOULD, and MAY are to be interpreted as in RFC 2119.
 
 ## Purpose
@@ -28,6 +28,7 @@ interface MapDefinition extends Record<string, unknown> {
   root_node_id?: string;         // scope anchor; journey falls back to project.root_node_id
   depth?: number;                // traversal bound from the root; absent = unbounded
   layout?: { direction?: "DOWN" | "RIGHT"; algorithm?: "layered" | "organic" };
+  display?: MapDisplayOptions;   // card rendering (§ Display Options)
 }
 ```
 
@@ -39,9 +40,48 @@ interface MapDefinition extends Record<string, unknown> {
 | Unknown kinds | Consumers MUST preserve definitions with unrecognized `kind` values and SHOULD list them as unrenderable rather than dropping them |
 | `layout.algorithm` | `"organic"` = force-directed with overlap removal (structure/cluster reading); `"layered"` = hierarchical tiers (didactic reading). Renderers fall back to the kind's default for unknown values; the built-in System map defaults to `organic` — at whole-product scale the tiered rendition degenerates into an unreadably wide ribbon |
 
+## Display Options
+
+A map is a reading, and how its cards *look* is part of the reading: a delivery
+review wants the platform breakdown loud, a navigation walkthrough wants the
+screenshots. These are per-map, not per-project — one project's Journey and its
+Recording Loop legitimately want different answers.
+
+```ts
+interface MapDisplayOptions extends Record<string, unknown> {
+  images?: boolean;                       // screenshot (or cover) art on view cards
+  flow_platforms?: "bars" | "rings";      // a flow card's platform delivery
+  view_platforms?: "rows" | "chips";      // a view card's platform availability
+}
+```
+
+| Option | `false` / first value | `true` / second value |
+|---|---|---|
+| `images` | View cards carry no art | The view's screenshot, falling back to `metadata.cover_url` |
+| `flow_platforms` | `bars` — one stacked status gauge per platform | `rings` — the Pyramid's ring set, the global ring centering the flow's view count |
+| `view_platforms` | `rows` — a labelled line per platform with its status icon | `chips` — circular platform chips in the card footer |
+
+`resolveMapDisplay(definition, project)` resolves them least- to most-specific:
+
+1. the defaults — `{ images: true, flow_platforms: "bars", view_platforms: "chips" }`;
+2. the legacy project-wide `metadata.view_card_variant` (`"large"` meant labelled
+   platform rows), so a project saved before this section keeps the cards it had;
+3. the definition's own `display` — the agent-authored half;
+4. `project.metadata.map_display[definition.id]` — the human half, and the only
+   path open to the built-in maps, which have no stored definition of their own.
+
+Resolution is key by key, and an unrecognized value at any layer falls through to
+the layer beneath rather than blanking the card — the same posture as
+`layout.algorithm`. Renderers honour only the options they can draw: the System
+map has no flow cards and carries no screenshot payload, so `view_platforms` is
+the only one that reads across.
+
 ## Storage
 
-Custom maps live at **`project.metadata.maps: MapDefinition[]`**.
+Custom maps live at **`project.metadata.maps: MapDefinition[]`**, and per-map
+display overrides at **`project.metadata.map_display: Record<string, MapDisplayOptions>`**,
+keyed by map id — built-in ids included, since `journey` and `system` have no
+stored definition to carry a `display`.
 
 This is a purely additive optional field in an already-`catchall` object (`ProjectMetadataSchema`), so per [bundle-format.md](bundle-format.md) § Schema Versioning it requires **no `schema_version` bump** — the same class of change as `metadata.refs` was. Every existing consumer (app import, published validator, Publik/Synk round-trips, canonical serialization) preserves it today.
 
@@ -104,6 +144,7 @@ Stored map definitions are checked by `validateBundle()` at **warning severity o
 | `map-unknown-root` | `root_node_id` does not resolve to a node |
 | `map-unknown-species` | A `species` entry is not a known species id |
 | `map-unknown-edge-type` | An `edge_types` entry is not a known edge type id |
+| `map-unknown-display` | A `display` (or `map_display[id]`) option holds a value no renderer knows — the renderer falls back to the default |
 
 ## Orphans
 
@@ -111,7 +152,7 @@ Nodes unreachable from any root (the Pebbles seed ships two orphan flows) are no
 
 ## Non-Goals (v1)
 
-- **Per-map layout persistence** — positions are computed (ELK), not stored.
+- **Per-map layout persistence** — positions are computed (ELK), not stored. Card *rendering* is per-map and stored (§ Display Options); card *placement* is not.
 - **Map sharing / cross-project maps** — a definition is project-scoped data.
 - **"Area" / domain tags on nodes** — root-scoping covers the admin-vs-user-app case for now; a first-class area concept is a future format revision if root-scoping proves insufficient.
 - **Journaling map edits** — `project.metadata` changes are not journal events today; unchanged by this spec.

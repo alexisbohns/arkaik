@@ -211,12 +211,18 @@ Canvas visibility rule (Journey map):
 - Rendered nodes: `flow`, `view`
 - Not rendered here: `data-model`, `api-endpoint` (still persisted; they render on the System map once roadmap CP-C lands — [spec/maps.md](spec/maps.md))
 
-View card variants:
+Card rendering is per map, set from the header's **Display** popover and resolved
+by `resolveMapDisplay` ([spec/maps.md](spec/maps.md) § Display Options). Three
+independent options, not a two-way preset:
 
-- `compact` (default): header + API buttons + platform status icons
-- `large`: header + optional cover + platform status rows + API buttons
+- `images` — the view's screenshot, falling back to its cover art
+- `flow_platforms` — a flow card's delivery as stacked `bars` or the Pyramid's `rings`
+- `view_platforms` — a view card's availability as labelled `rows` or footer `chips`
 
-Project preference source: `project.metadata.view_card_variant` in [lib/data/types.ts](../lib/data/types.ts)
+Storage: `project.metadata.map_display[mapId]`, plus a definition-level `display`
+for agent-authored custom maps. The legacy project-wide
+`project.metadata.view_card_variant` still seeds the defaults for projects saved
+before per-map display, so `large` keeps its platform rows.
 
 ## Node Detail Panel
 

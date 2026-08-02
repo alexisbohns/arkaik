@@ -3,29 +3,49 @@ import type { Node, Edge } from "@xyflow/react";
 
 const elk = new ELK();
 
-/** Size lookup matching rendered node dimensions — keep in sync with components. */
+// Chrome every card pays: py-3 (24) + border-2 (4) + the title row (28).
+const CARD_CHROME_HEIGHT = 56;
+const CARD_GAP = 12; // gap-3 between a card's stacked blocks
+
+/**
+ * Size lookup matching rendered node dimensions — keep in sync with components.
+ * Both card species are display-driven now (docs/spec/maps.md § Display
+ * Options), so the height is summed block by block from the same `data` the
+ * component reads rather than from a per-variant constant.
+ */
 function getNodeSize(node: Node): { width: number; height: number } {
+  const data = node.data as Record<string, unknown>;
+
   switch (node.type) {
-    case "flow":
-      return { width: 240, height: 136 };
+    case "flow": {
+      // Synthetic branch cards render a summary paragraph, not platform art.
+      if (data.renderVariant === "branch") return { width: 240, height: 136 };
+      // bars: three h-2 gauges on gap-2 rows (58); rings: one 30px ring row.
+      const platformBlock = data.platformDisplay === "rings" ? 30 : 58;
+      // py-3 (24) + border-2 (4) + the flow's taller title row (38) + gap-3.
+      return { width: 240, height: 24 + 4 + 38 + CARD_GAP + platformBlock };
+    }
     case "view": {
-      const data = node.data as Record<string, unknown>;
-      const isLarge = data.viewCardVariant === "large";
+      const display = data.display as Record<string, unknown> | undefined;
       const platforms = (data.platforms as string[] | undefined) ?? [];
       const screenshots = data.platformScreenshots as Record<string, string> | undefined;
       const hasScreenshot = screenshots != null && Object.values(screenshots).some(Boolean);
       const hasCover = typeof data.coverUrl === "string";
-      const hasImage = hasScreenshot || hasCover;
+      const showsImage = display?.images !== false && (hasScreenshot || hasCover);
+      const showsRows = display?.view_platforms === "rows" && platforms.length > 0;
+      const showsChips = display?.view_platforms !== "rows" && platforms.length > 0;
+      const hasApi =
+        ((data.apiInbound as unknown[] | undefined)?.length ?? 0) > 0 ||
+        ((data.apiOutbound as unknown[] | undefined)?.length ?? 0) > 0;
 
-      if (isLarge) {
-        // base: py-3(24) + title(28) + gap(12) + platformList(platforms*24 + gaps) + footer(36) + border(4)
-        const platformListHeight = platforms.length > 0 ? platforms.length * 24 + 8 : 0;
-        const imageHeight = hasImage ? 112 + 12 : 0; // h-28 + gap-3
-        return { width: 260, height: 104 + platformListHeight + imageHeight };
-      }
-      // compact: py-3(24) + title(28) + gap(12) + spacer/screenshot + gap(12) + footer(36) + border(4)
-      const screenshotHeight = hasScreenshot ? 96 : 8; // h-24 vs h-2
-      return { width: 224, height: 116 + screenshotHeight };
+      let height = CARD_CHROME_HEIGHT;
+      if (showsImage) height += CARD_GAP + 112; // h-28
+      // Rows are text-xs (20) on space-y-2 (8).
+      if (showsRows) height += CARD_GAP + platforms.length * 20 + (platforms.length - 1) * 8;
+      // The footer only exists when it has something in it: API chips, platform chips, or both.
+      if (hasApi || showsChips) height += CARD_GAP + 36;
+
+      return { width: 240, height };
     }
     case "dataModel":
     case "apiEndpoint":

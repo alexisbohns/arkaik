@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type Connection, type EdgeMouseHandler, type NodeMouseHandler } from "@xyflow/react";
 import { PlusIcon } from "lucide-react";
-import type { MapDefinition } from "@arkaik/schema";
+import { resolveMapDisplay, type MapDefinition, type MapDisplayOptions } from "@arkaik/schema";
+import { toast } from "sonner";
 import { Canvas } from "@/components/graph/Canvas";
+import { MapDisplayPopover } from "@/components/maps/MapDisplayPopover";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
@@ -73,20 +75,58 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
 
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode } = useNodes(projectId);
   const { edges: dataEdges, loading: edgesLoading, addEdge, removeEdge } = useEdges(projectId);
-  const { project: projectBundle } = useProject(projectId);
+  const { project: projectBundle, updateProject } = useProject(projectId);
   const { journal } = useJournal(projectId);
 
   const nodesById = useMemo(() => new Map(dataNodes.map((node) => [node.id, node])), [dataNodes]);
 
+  const display = useMemo(
+    () => resolveMapDisplay(definition, projectBundle?.project),
+    [definition, projectBundle?.project],
+  );
+
   const graph = useMemo(
     () =>
-      buildSystemGraph(definition, dataNodes, dataEdges, {
-        onOpenDetails: (node) => {
-          setSelectedNode(node);
-          setPanelOpen(true);
+      buildSystemGraph(
+        definition,
+        dataNodes,
+        dataEdges,
+        {
+          onOpenDetails: (node) => {
+            setSelectedNode(node);
+            setPanelOpen(true);
+          },
         },
-      }),
-    [dataEdges, dataNodes, definition],
+        display,
+      ),
+    [dataEdges, dataNodes, definition, display],
+  );
+
+  // The per-map override record — see JourneyMap's twin (docs/spec/maps.md
+  // § Display Options).
+  const handleDisplayChange = useCallback(
+    async (patch: MapDisplayOptions) => {
+      if (!projectBundle) return;
+
+      const metadata = projectBundle.project.metadata ?? {};
+      const currentOverrides = metadata.map_display ?? {};
+
+      try {
+        await updateProject({
+          metadata: {
+            ...metadata,
+            map_display: {
+              ...currentOverrides,
+              [definition.id]: { ...currentOverrides[definition.id], ...patch },
+            },
+          },
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown settings save error";
+        toast.error(`Unable to save display preference: ${message}`);
+      }
+    },
+    [definition.id, projectBundle, updateProject],
   );
 
   const { nodes, layoutVersion } = useElkLayout(
@@ -236,6 +276,12 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
               <SelectItem value="tiered">Tiered</SelectItem>
             </SelectContent>
           </Select>
+          <MapDisplayPopover
+            value={display}
+            onChange={(patch) => void handleDisplayChange(patch)}
+            mapTitle={definition.title}
+            controls={{ viewPlatforms: true }}
+          />
           <Button size="sm" className="cursor-pointer" onClick={() => setNewNodeOpen(true)}>
             <PlusIcon className="size-4" />
             New node

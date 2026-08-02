@@ -14,7 +14,7 @@ import {
 import { FlowPlaylistSchema, type FlowPlaylist } from "./playlist";
 import { JournalEventSchema } from "./journal-events";
 import type { JournalEvent } from "./journal";
-import type { MapDefinition } from "./maps";
+import type { MapDefinition, MapDisplayOptions } from "./maps";
 
 export type PlatformStatusMap = Partial<Record<PlatformId, StatusId>>;
 export const PlatformStatusMapSchema: z.ZodType<PlatformStatusMap> = z.partialRecord(
@@ -171,6 +171,25 @@ export const EdgeSchema: z.ZodType<Edge> = z.object({
 }).meta({ id: "Edge" });
 
 /**
+ * Card rendering for a canvas map (docs/spec/maps.md § Display Options). As
+ * lenient as the definition around it: the mode fields parse as free strings so
+ * an unknown value is a `validateBundle()` warning and a renderer fallback,
+ * never a parse rejection.
+ */
+export const MapDisplayOptionsSchema: z.ZodType<MapDisplayOptions> = z
+  .object({
+    images: z.boolean().optional().meta({ description: "Screenshot (or cover) art on view cards." }),
+    flow_platforms: z.string().optional().meta({
+      description: "A flow card's platform delivery: bars | rings.",
+    }),
+    view_platforms: z.string().optional().meta({
+      description: "A view card's platform availability: rows | chips.",
+    }),
+  })
+  .catchall(z.unknown())
+  .meta({ id: "MapDisplayOptions", description: "How a map draws its cards (docs/spec/maps.md § Display Options)." });
+
+/**
  * A stored map definition (docs/spec/maps.md). Deliberately lenient: `kind`,
  * `species`, and `edge_types` parse as free strings so an unknown value is a
  * `validateBundle()` *warning* (map-unknown-*), never a parse rejection — a
@@ -203,13 +222,19 @@ export const MapDefinitionSchema: z.ZodType<MapDefinition> = z
       .catchall(z.unknown())
       .optional()
       .meta({ description: "Renderer layout hints (e.g. direction: DOWN | RIGHT)." }),
+    display: MapDisplayOptionsSchema.optional().meta({
+      description: "Card rendering; the human twin is project.metadata.map_display[id].",
+    }),
   })
   .catchall(z.unknown())
   .meta({ id: "MapDefinition", description: "A stored map definition (docs/spec/maps.md § MapDefinition)." });
 
 export interface ProjectMetadata extends Record<string, unknown> {
+  /** Legacy project-wide card preset; per-map `map_display` supersedes it. */
   view_card_variant?: "compact" | "large";
   maps?: MapDefinition[];
+  /** Per-map display overrides keyed by map id — built-ins included. */
+  map_display?: Record<string, MapDisplayOptions>;
 }
 
 export const ProjectMetadataSchema: z.ZodType<ProjectMetadata> = z
@@ -217,6 +242,10 @@ export const ProjectMetadataSchema: z.ZodType<ProjectMetadata> = z
     view_card_variant: z.enum(["compact", "large"]).optional(),
     maps: z.array(MapDefinitionSchema).optional().meta({
       description: "Stored map definitions (docs/spec/maps.md § Storage) — additive; unknown fields preserved.",
+    }),
+    map_display: z.record(z.string(), MapDisplayOptionsSchema).optional().meta({
+      description:
+        "Per-map display overrides keyed by map id (docs/spec/maps.md § Display Options) — the only path open to the built-in maps.",
     }),
   })
   .catchall(z.unknown())

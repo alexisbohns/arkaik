@@ -11,12 +11,15 @@ import { StageIcon } from "@/components/layout/StageIcon";
 import { STATUS_GHOST_STYLES } from "./node-styles";
 import { useToolbarHover } from "@/lib/hooks/useToolbarHover";
 import { PlatformGaugeList } from "./PlatformGaugeList";
+import { PlatformRingSet } from "./PlatformRingSet";
 
 function FlowNodeComponent({ data }: NodeProps) {
   const status = (data.status as StatusId) ?? "idea";
   const label = String(data.label ?? "Flow");
   const platforms = (data.platforms as PlatformId[]) ?? [];
   const platformRollup = (data.platformRollup as PlatformStatusRollup | undefined) ?? { counts: {}, totals: {} };
+  const platformDisplay = data.platformDisplay === "rings" ? "rings" : "bars";
+  const viewCount = typeof data.viewCount === "number" ? data.viewCount : 0;
   const expanded = Boolean(data.expanded);
   const stage = data.metadata ? (data.metadata as Record<string, unknown>).stage as string | undefined : undefined;
   const renderVariant = data.renderVariant as string | undefined;
@@ -114,6 +117,16 @@ function FlowNodeComponent({ data }: NodeProps) {
           <p className="text-xs leading-relaxed text-muted-foreground line-clamp-3">
             {branchSummary}
           </p>
+        ) : platformDisplay === "rings" ? (
+          // The Pyramid's rendition, one size down: the global ring centers the
+          // flow's view count, each platform ring its own delivery breakdown.
+          <PlatformRingSet
+            rollup={platformRollup}
+            count={viewCount}
+            size="sm"
+            countLabel={viewCount === 1 ? "view" : "views"}
+            platformCountLabel="statuses"
+          />
         ) : (
           <PlatformGaugeList rollup={platformRollup} platforms={platforms.length > 0 ? platforms : PLATFORMS.map((platform) => platform.id)} compact />
         )}

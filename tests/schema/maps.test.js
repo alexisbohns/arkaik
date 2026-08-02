@@ -11,10 +11,12 @@ const fs = require("fs");
 
 const {
   BUILT_IN_MAPS,
+  DEFAULT_MAP_DISPLAY,
   computeMapSubgraph,
   isBuiltInMapId,
   listMaps,
   resolveMapDefaults,
+  resolveMapDisplay,
   validateBundle,
 } = loadSchema();
 
@@ -79,6 +81,64 @@ const ids = (elements) => elements.map((el) => el.id).sort();
   assert(
     unknown.species.length === 0 && unknown.edge_types.length === 0,
     "resolveMapDefaults: unknown kind resolves to empty filters",
+  );
+}
+
+// --- resolveMapDisplay (docs/spec/maps.md § Display Options) ----------------
+{
+  const journey = { id: "journey", title: "Journey", kind: "journey" };
+
+  assert(
+    JSON.stringify(resolveMapDisplay()) === JSON.stringify(DEFAULT_MAP_DISPLAY),
+    "resolveMapDisplay with no arguments is the default display",
+  );
+  assert(
+    JSON.stringify(resolveMapDisplay(journey, {})) === JSON.stringify(DEFAULT_MAP_DISPLAY),
+    "a project with no metadata gets the default display",
+  );
+
+  const legacy = resolveMapDisplay(journey, { metadata: { view_card_variant: "large" } });
+  assert(
+    legacy.view_platforms === "rows" && legacy.images === true && legacy.flow_platforms === "bars",
+    "the legacy large preset survives as labelled view platform rows",
+  );
+
+  const authored = resolveMapDisplay(
+    { id: "custom", display: { images: false, flow_platforms: "rings" } },
+    { metadata: {} },
+  );
+  assert(
+    authored.images === false && authored.flow_platforms === "rings" && authored.view_platforms === "chips",
+    "a definition's own display wins over the defaults, key by key",
+  );
+
+  const overridden = resolveMapDisplay(
+    { id: "custom", display: { images: false, flow_platforms: "rings" } },
+    { metadata: { map_display: { custom: { images: true } } } },
+  );
+  assert(
+    overridden.images === true && overridden.flow_platforms === "rings",
+    "the per-map override wins over the definition, key by key",
+  );
+
+  const perMap = { metadata: { map_display: { journey: { view_platforms: "rows" }, loop: { view_platforms: "chips" } } } };
+  assert(
+    resolveMapDisplay({ id: "journey" }, perMap).view_platforms === "rows" &&
+      resolveMapDisplay({ id: "loop" }, perMap).view_platforms === "chips",
+    "two maps in one project resolve to different displays",
+  );
+  assert(
+    resolveMapDisplay({ id: "system" }, perMap).view_platforms === DEFAULT_MAP_DISPLAY.view_platforms,
+    "a map with no override keeps the default",
+  );
+
+  const garbage = resolveMapDisplay(
+    { id: "journey", display: { flow_platforms: "sparklines", images: "yes" } },
+    { metadata: { map_display: { journey: { view_platforms: 7 } } } },
+  );
+  assert(
+    JSON.stringify(garbage) === JSON.stringify(DEFAULT_MAP_DISPLAY),
+    "unknown values fall back rather than blanking the card",
   );
 }
 
@@ -225,7 +285,9 @@ const ids = (elements) => elements.map((el) => el.id).sort();
     { id: "system", title: "Shadow", kind: "system" },
     { id: "dangling", title: "Dangling", kind: "journey", root_node_id: "V-nope" },
     { id: "odd", title: "Odd", kind: "system", species: ["view", "gremlin"], edge_types: ["calls", "wires"] },
+    { id: "gaudy", title: "Gaudy", kind: "journey", display: { flow_platforms: "sparklines" } },
   ];
+  withMaps.project.metadata.map_display = { journey: { view_platforms: "columns", images: "yes" } };
   const result = validateBundle(withMaps);
   const rules = result.findings.map((f) => f.rule);
 
@@ -234,6 +296,15 @@ const ids = (elements) => elements.map((el) => el.id).sort();
   assert(rules.includes("map-unknown-root"), "map-unknown-root fires");
   assert(rules.includes("map-unknown-species"), "map-unknown-species fires");
   assert(rules.includes("map-unknown-edge-type"), "map-unknown-edge-type fires");
+  assert(
+    result.findings.filter((f) => f.rule === "map-unknown-display").length === 3,
+    "map-unknown-display fires on the stored definition and on both bad override keys",
+  );
+  assert(
+    result.findings.some((f) => f.path === "project.metadata.map_display.journey.view_platforms") &&
+      result.findings.some((f) => f.path === "project.metadata.maps[5].display.flow_platforms"),
+    "map-unknown-display paths point at the offending value",
+  );
   assert(
     result.findings.every((f) => f.severity === "warning"),
     "every map finding is warning severity",
