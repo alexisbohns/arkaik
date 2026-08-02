@@ -90,6 +90,7 @@ components/
     HealthCard.tsx          # Doc-health indicators with per-indicator evidence links
     MapsCard.tsx            # Every map with live subgraph counts
   layout/
+    CommandPalette.tsx      # ⌘K overlay: ranked search over every project destination
     Minimap.tsx             # React Flow minimap wrapper (unused — Canvas uses @xyflow/react MiniMap directly)
     ProjectSidebar.tsx      # Persistent in-project sidebar navigation
     ProjectSwitcher.tsx     # Sidebar header dropdown for cross-project navigation
@@ -252,6 +253,20 @@ Project-level navigation is defined in `app/project/[id]/layout.tsx` and rendere
 - The switcher supports cross-project navigation while keeping users in the closest equivalent destination.
 - Keeping navigation in the shared project layout avoids duplicated route chrome in child pages.
 
+### Command palette (⌘K)
+
+The same destinations are reachable by typing. `app/project/[id]/layout.tsx` owns
+the palette's open state (⌘K / Ctrl+K, plus the sidebar's Search row) and
+dispatches the non-navigating commands; `CommandPalette` renders the overlay and
+`lib/utils/command-palette.ts` holds the catalogue and the pure ranking rules
+(prefix > word-start > substring > subsequence, synonyms one tier below labels).
+
+- The catalogue mirrors the sidebar — a destination added there belongs here too,
+  and `tests/app/command-palette.test.js` pins the pairing.
+- Enter validates the top suggestion, Tab fills in its wording, arrows browse.
+- Publish lives in the layout rather than the sidebar, so both triggers open one
+  dialog.
+
 ## Theming
 
 - `next-themes` for light/dark mode
@@ -266,6 +281,7 @@ Project-level navigation is defined in `app/project/[id]/layout.tsx` and rendere
 - Project shell: [app/project/[id]/layout.tsx](../app/project/[id]/layout.tsx)
 - Library orchestration: [app/project/[id]/library/page.tsx](../app/project/[id]/library/page.tsx)
 - Sidebar components: [components/layout/ProjectSidebar.tsx](../components/layout/ProjectSidebar.tsx), [components/layout/ProjectSwitcher.tsx](../components/layout/ProjectSwitcher.tsx)
+- Command palette: [components/layout/CommandPalette.tsx](../components/layout/CommandPalette.tsx), [lib/utils/command-palette.ts](../lib/utils/command-palette.ts)
 - Docs shell + renderer: [app/docs/layout.tsx](../app/docs/layout.tsx), [app/docs/page.tsx](../app/docs/page.tsx), [app/docs/[...slug]/page.tsx](../app/docs/[...slug]/page.tsx), [components/layout/DocsSidebar.tsx](../components/layout/DocsSidebar.tsx), [components/docs/MarkdownContent.tsx](../components/docs/MarkdownContent.tsx), [lib/utils/docs.ts](../lib/utils/docs.ts)
 - Prompt builder: [app/generate/page.tsx](../app/generate/page.tsx), [components/generate/PromptBuilderForm.tsx](../components/generate/PromptBuilderForm.tsx), [components/generate/PromptOutput.tsx](../components/generate/PromptOutput.tsx), [lib/prompts/assemble.ts](../lib/prompts/assemble.ts), [lib/prompts/blocks.ts](../lib/prompts/blocks.ts), [lib/prompts/types.ts](../lib/prompts/types.ts)
 - React Flow registry: [components/graph/Canvas.tsx](../components/graph/Canvas.tsx)

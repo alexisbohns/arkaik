@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import {
   BookOpenIcon,
@@ -16,13 +15,13 @@ import {
   NetworkIcon,
   PyramidIcon,
   RouteIcon,
+  SearchIcon,
   ServerIcon,
   SquareKanbanIcon,
   Settings2Icon,
   Share2Icon,
 } from "lucide-react";
 import { ProjectSwitcher, type ProjectView } from "@/components/layout/ProjectSwitcher";
-import { PublishDialog } from "@/components/publik/PublishDialog";
 import {
   Sidebar,
   SidebarContent,
@@ -36,6 +35,7 @@ import {
   SidebarRail,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
+import { useModKeyLabel } from "@/lib/hooks/useModKeyLabel";
 
 interface ProjectSidebarProps {
   projectId: string;
@@ -47,6 +47,9 @@ interface ProjectSidebarProps {
   /** Custom maps stored at project.metadata.maps, for direct navigation. */
   customMaps: readonly { id: string; title: string }[];
   currentQueryString?: string;
+  /** Opens the ⌘K palette — the same overlay the shortcut summons. */
+  onOpenCommandPalette: () => void;
+  onOpenPublish: () => void;
 }
 
 // One library page per species, driven from here — the sidebar is the only
@@ -66,7 +69,10 @@ export function ProjectSidebar({
   currentMapId,
   customMaps,
   currentQueryString,
+  onOpenCommandPalette,
+  onOpenPublish,
 }: ProjectSidebarProps) {
+  const modKey = useModKeyLabel();
   const overviewHref = `/project/${projectId}/overview`;
   const mapsHref = `/project/${projectId}/maps`;
   const libraryHref = `/project/${projectId}/library`;
@@ -74,7 +80,6 @@ export function ProjectSidebar({
   const changelogHref = `/project/${projectId}/changelog`;
   const pyramidHref = `/project/${projectId}/pyramid`;
   const settingsHref = `/project/${projectId}/settings`;
-  const [publishOpen, setPublishOpen] = useState(false);
 
   return (
     <Sidebar collapsible="icon">
@@ -85,6 +90,23 @@ export function ProjectSidebar({
           currentView={currentView}
           currentQueryString={currentQueryString}
         />
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip="Search and jump"
+              onClick={onOpenCommandPalette}
+              className="cursor-pointer text-sidebar-foreground/70"
+            >
+              <SearchIcon />
+              <span>Search</span>
+              {modKey ? (
+                <kbd className="ml-auto inline-flex items-center rounded border bg-sidebar-accent px-1.5 py-0.5 font-sans text-[10px] font-medium group-data-[collapsible=icon]:hidden">
+                  {modKey === "⌘" ? "⌘K" : "Ctrl+K"}
+                </kbd>
+              ) : null}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarHeader>
 
       <SidebarContent>
@@ -230,7 +252,7 @@ export function ProjectSidebar({
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip="Publish to Publik"
-              onClick={() => setPublishOpen(true)}
+              onClick={onOpenPublish}
               className="cursor-pointer"
             >
               <Share2Icon />
@@ -257,13 +279,6 @@ export function ProjectSidebar({
       </SidebarFooter>
 
       <SidebarRail />
-
-      <PublishDialog
-        open={publishOpen}
-        onOpenChange={setPublishOpen}
-        projectId={projectId}
-        projectTitle={currentProjectTitle ?? "Untitled project"}
-      />
     </Sidebar>
   );
 }
