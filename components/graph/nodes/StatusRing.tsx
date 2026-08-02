@@ -1,18 +1,20 @@
 "use client";
 
 import type { ReactNode } from "react";
+import type { StatusId } from "@/lib/config/statuses";
 import type { StatusSegment } from "@/lib/utils/platform-status";
 import { STATUS_STYLES } from "./node-styles";
 
 /** Circumference is 2πr ≈ 100, so stroke-dasharray takes literal percentages. */
 const RADIUS = 15.9155;
 const CIRCUMFERENCE = 100;
-/** Percentage points shaved off each arc so neighbouring statuses stay distinguishable. */
-const ARC_GAP = 1.6;
 
 const SIZE_STYLES = {
-  sm: { box: "size-[30px]", stroke: 4.5 },
-  lg: { box: "size-[46px]", stroke: 4 },
+  // `gap` must exceed `stroke`: round caps extend each arc by stroke/2 at both
+  // ends, so a hole narrower than the stroke width renders as an overlap rather
+  // than a gap. stroke + 1.5 leaves ~1.5 units of real background between arcs.
+  sm: { box: "size-[30px]", stroke: 4.5, gap: 6 },
+  lg: { box: "size-[46px]", stroke: 4, gap: 5.5 },
 } as const;
 
 export type StatusRingSize = keyof typeof SIZE_STYLES;
@@ -33,16 +35,18 @@ interface StatusRingProps {
  * element reads.
  */
 export function StatusRing({ segments, size = "lg", label, children }: StatusRingProps) {
-  const { box, stroke } = SIZE_STYLES[size];
+  const { box, stroke, gap } = SIZE_STYLES[size];
+  const drawn = segments.filter((segment) => segment.count > 0);
+  // One status means no neighbour to separate from — the ring closes completely.
+  const arcGap = drawn.length > 1 ? gap : 0;
 
-  const arcs: { status: string; length: number; offset: number; className: string }[] = [];
+  const arcs: { status: StatusId; length: number; offset: number; className: string }[] = [];
   let consumed = 0;
-  for (const segment of segments) {
-    if (segment.count === 0) continue;
+  for (const segment of drawn) {
     const span = segment.ratio * CIRCUMFERENCE;
     arcs.push({
       status: segment.status,
-      length: Math.max(span - ARC_GAP, 0.5),
+      length: Math.min(Math.max(span - arcGap, 0.5), CIRCUMFERENCE),
       offset: consumed,
       className: STATUS_STYLES[segment.status].stroke,
     });
@@ -58,7 +62,7 @@ export function StatusRing({ segments, size = "lg", label, children }: StatusRin
           r={RADIUS}
           fill="none"
           strokeWidth={stroke}
-          className="stroke-muted-foreground/20"
+          className="stroke-muted-foreground/25"
         />
         {arcs.map((arc) => (
           <circle
