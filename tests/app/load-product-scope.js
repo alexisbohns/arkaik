@@ -76,6 +76,11 @@ function loadProductScope() {
     flowGaugePlatforms: require(path.join(BUILD_DIR, "platform-status.js")).flowGaugePlatforms,
     // The one schema projection a `ProductGraph` is built from.
     buildProductUsageIndex: require(schemaIndex).buildProductUsageIndex,
+    // The selection algorithm the map helpers restrict the *input* of. The
+    // suite composes the real function rather than restating its semantics —
+    // "species and edge filters compose on top, unchanged" is only a claim if
+    // the thing they compose with is the thing the app calls.
+    computeMapSubgraph: require(schemaIndex).computeMapSubgraph,
   };
 }
 

@@ -3,9 +3,21 @@ import { computeMapSubgraph, type MapDefinition } from "@arkaik/schema";
 import type { Node as DataNode, Edge as DataEdge } from "@/lib/data/types";
 import { EDGE_TYPE_TO_FLOW_TYPE, SPECIES_TO_NODE_TYPE } from "@/lib/utils/graph-build";
 import { addEffectiveNodeToRollup, createEmptyRollup, getEffectivePlatformStatuses, getRollupDisplayStatus } from "@/lib/utils/platform-status";
+import { mapScopedNodes, type ProductGraph, type ProductScope } from "@/lib/utils/product-scope";
 
 export interface SystemGraphHandlers {
   onOpenDetails?: (node: DataNode) => void;
+}
+
+/**
+ * The product restriction, both halves or neither: the scope names the product
+ * and the graph resolves membership. Omitted, the map selects from every node —
+ * which is what it did before products existed, and what it still does for a
+ * project that declares none.
+ */
+export interface SystemGraphScope {
+  scope: ProductScope;
+  graph: ProductGraph;
 }
 
 /**
@@ -15,14 +27,24 @@ export interface SystemGraphHandlers {
  * screenshot/API-popover payload: at whole-product scale (Pebbles: 137 nodes)
  * the DOM weight matters more than per-card affordances. Positions are ELK
  * placeholders; layout tiers the species via partitioning.
+ *
+ * `productScope` narrows what the map may *select* — the definition's own
+ * `product`, else the shell's scope (`mapScopedNodes`). It deliberately does
+ * not narrow what the map may *read*: the status helpers below keep the whole
+ * snapshot, because an acceptance covering a view is evidence about that view
+ * whichever product the reader is scoped to.
  */
 export function buildSystemGraph(
   definition: MapDefinition,
   dataNodes: readonly DataNode[],
   dataEdges: readonly DataEdge[],
   handlers: SystemGraphHandlers = {},
+  productScope?: SystemGraphScope,
 ): { nodes: Node[]; edges: Edge[] } {
-  const subgraph = computeMapSubgraph(definition, dataNodes, dataEdges);
+  const selectableNodes = productScope
+    ? mapScopedNodes(definition, dataNodes, productScope.scope, productScope.graph)
+    : dataNodes;
+  const subgraph = computeMapSubgraph(definition, selectableNodes, dataEdges);
   const origin = { x: 0, y: 0 };
 
   const nodes: Node[] = subgraph.nodes.map((node) => {

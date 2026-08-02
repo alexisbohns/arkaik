@@ -28,6 +28,7 @@ import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
 import { downloadJson, exportProject } from "@/lib/utils/export";
 import { generateNodeId, edgeId } from "@/lib/utils/id";
 import { wouldCreateCycle } from "@/lib/utils/cycle";
+import { resolveJourneyAnchorId } from "@/lib/utils/product-scope";
 import type { SpeciesId } from "@/lib/config/species";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { Node as DataNode, Edge as DataEdge, PlaylistEntry } from "@/lib/data/types";
@@ -56,6 +57,12 @@ interface JourneyMapProps {
  * The Journey map: the navigation-centered compose/playlist drill-down canvas
  * with full editing (vision.md § Core Product). Extracted from the former
  * canvas page; graph construction lives in lib/utils/journey-graph.ts.
+ *
+ * A journey is product-scoped by its **anchor**, not by a node filter
+ * (docs/spec/maps.md § Product Scope): the walk starts at the product's front
+ * door and only reaches what that door composes. A membership filter on top
+ * would cut a shared view out of the middle of a compose chain and silently
+ * truncate the journey below it — the opposite of what the reader asked for.
  */
 export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   const id = projectId;
@@ -84,7 +91,8 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   const { project: projectBundle, loading: projectLoading, updateProject } = useProject(id);
   // The shell's scope (§ Decision 2), passed down to the canvas cards and to
   // every panel this map opens — never read from a global by the cards
-  // themselves. The map's own subgraph filter is Task 17's business.
+  // themselves. It is also this journey's default product, and so reaches the
+  // anchor chain below.
   const scope = useEffectiveProduct(id, projectBundle);
   const { journal } = useJournal(id);
 
@@ -119,11 +127,15 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     return map;
   }, [dataEdges]);
 
+  // The anchor chain — map, then product, then project — lives in
+  // `resolveJourneyAnchorId` so its order is written exactly once
+  // (docs/spec/maps.md § Product Scope). An id that resolves to no node still
+  // yields the unanchored render, exactly as an absent one always has.
   const explicitRootNode = useMemo(() => {
-    const rootNodeId = definition?.root_node_id ?? projectBundle?.project.root_node_id;
+    const rootNodeId = resolveJourneyAnchorId(definition, projectBundle?.project, scope);
     if (!rootNodeId) return null;
     return nodesById.get(rootNodeId) ?? null;
-  }, [definition?.root_node_id, nodesById, projectBundle?.project.root_node_id]);
+  }, [definition, nodesById, projectBundle?.project, scope]);
 
   const composeClosure = useMemo(
     () => computeComposeClosure(explicitRootNode, composeChildIdsByParent, nodesById),

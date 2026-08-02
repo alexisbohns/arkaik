@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type Connection, type EdgeMouseHandler, type NodeMouseHandler } from "@xyflow/react";
 import { PlusIcon } from "lucide-react";
-import type { MapDefinition } from "@arkaik/schema";
+import { buildProductUsageIndex, type MapDefinition } from "@arkaik/schema";
 import { Canvas } from "@/components/graph/Canvas";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
@@ -23,6 +23,7 @@ import { useNodes } from "@/lib/hooks/useNodes";
 import { useProject } from "@/lib/hooks/useProject";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { generateNodeId, edgeId } from "@/lib/utils/id";
+import type { ProductGraph } from "@/lib/utils/product-scope";
 import { buildSystemGraph } from "@/lib/utils/system-graph";
 import type { ElkLayoutOptions } from "@/lib/utils/elk-layout";
 
@@ -77,18 +78,33 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
   const { project: projectBundle } = useProject(projectId);
   // The shell's scope (§ Decision 2), passed down to the canvas cards and to
   // every panel this map opens — never read from a global by the cards
-  // themselves. The map's own subgraph filter is Task 17's business.
+  // themselves. It is also the map's *default* product: `mapScopedNodes` lets
+  // the definition's own `product` override it (docs/spec/maps.md § Product Scope).
   const scope = useEffectiveProduct(projectId, projectBundle);
   const { journal } = useJournal(projectId);
 
   const nodesById = useMemo(() => new Map(dataNodes.map((node) => [node.id, node])), [dataNodes]);
 
+  // Built once per snapshot — `buildProductUsageIndex` is a graph traversal and
+  // must never run per node. The canvas renders nothing until `edgesLoading` is
+  // false (the early return below), so no reader ever sees the empty-edge
+  // answer that would misplace every data model and endpoint for one frame.
+  const usageIndex = useMemo(() => buildProductUsageIndex(dataNodes, dataEdges), [dataEdges, dataNodes]);
+  const productGraph = useMemo<ProductGraph>(
+    () => ({ edges: dataEdges, nodesById, usageIndex }),
+    [dataEdges, nodesById, usageIndex],
+  );
+
   const graph = useMemo(
     () =>
-      buildSystemGraph(definition, dataNodes, dataEdges, {
-        onOpenDetails: (node) => openNode({ nodeId: node.id }),
-      }),
-    [dataEdges, dataNodes, definition, openNode],
+      buildSystemGraph(
+        definition,
+        dataNodes,
+        dataEdges,
+        { onOpenDetails: (node) => openNode({ nodeId: node.id }) },
+        { scope, graph: productGraph },
+      ),
+    [dataEdges, dataNodes, definition, openNode, productGraph, scope],
   );
 
   const { nodes, layoutVersion } = useElkLayout(

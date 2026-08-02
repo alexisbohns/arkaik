@@ -23,6 +23,10 @@ const {
   productScopeOptions,
   platformCountLabel,
   nodeInScope,
+  mapProductId,
+  mapScopedNodes,
+  resolveJourneyAnchorId,
+  computeMapSubgraph,
   productsOfNode,
   productLabelsOfNode,
   scopedPlatforms,
@@ -576,6 +580,155 @@ assert(
 assert(
   eq(scopedPlatforms(adminView, bareScope), ["web", "ios", "android"]),
   "with no products declared, every node keeps its own platforms — today's behaviour, unchanged",
+);
+
+// --- Maps: the anchor chain and MapDefinition.product (Task 17) ---------------
+//
+// Its own fixture, because the anchors are the point: the products above carry
+// no `root_node_id` and giving them one would make the chain's second level
+// indistinguishable from its third in every other assertion in this file.
+
+const ANCHORED_ENDUSER = { id: "enduser", title: "End-user app", platforms: ["web", "ios"], root_node_id: "F-home" };
+/** Deliberately anchorless — the level-2 miss that must fall through to level 3. */
+const ANCHORLESS_ADMIN = { id: "admin", title: "Admin dashboard", platforms: ["web"] };
+
+const anchorBundle = {
+  project: { id: "P3", metadata: { products: [ANCHORED_ENDUSER, ANCHORLESS_ADMIN] } },
+};
+const anchoredProject = { root_node_id: "F-project-root" };
+
+const anchorAll = resolveProductScope(anchorBundle, null);
+const anchorEndUser = resolveProductScope(anchorBundle, "enduser");
+const anchorAdmin = resolveProductScope(anchorBundle, "admin");
+const anchorBare = resolveProductScope(noProducts, null);
+
+const journeyMap = { id: "journey", title: "Journey", kind: "journey" };
+
+// Level 1 — the map's own root wins over both levels beneath it.
+assert(
+  resolveJourneyAnchorId({ ...journeyMap, root_node_id: "F-map" }, anchoredProject, anchorEndUser) === "F-map",
+  "level 1: the map's own root_node_id wins over the product's and the project's",
+);
+// Level 2 — the scoped product's own front door.
+assert(
+  resolveJourneyAnchorId(journeyMap, anchoredProject, anchorEndUser) === "F-home",
+  "level 2: with no map root, the scoped product's root_node_id beats the project's",
+);
+// Level 3 — twice: no scope at all, and a scoped product that declares no anchor.
+assert(
+  resolveJourneyAnchorId(journeyMap, anchoredProject, anchorAll) === "F-project-root",
+  "level 3: under All products the project's root_node_id anchors the journey",
+);
+assert(
+  resolveJourneyAnchorId(journeyMap, anchoredProject, anchorAdmin) === "F-project-root",
+  "level 3: a scoped product with NO root_node_id falls through to the project's, it does not blank the map",
+);
+assert(
+  resolveJourneyAnchorId(journeyMap, anchoredProject, anchorBare) === "F-project-root" &&
+    resolveJourneyAnchorId(undefined, anchoredProject, anchorBare) === "F-project-root",
+  "with no products declared the chain is exactly today's `definition ?? project`",
+);
+assert(
+  resolveJourneyAnchorId(journeyMap, { root_node_id: undefined }, anchorAdmin) === undefined &&
+    resolveJourneyAnchorId(journeyMap, undefined, anchorAdmin) === undefined,
+  "nothing anchored anywhere yields undefined — the unanchored render, never a throw",
+);
+// Leniency: a blank stored anchor is not a declaration and must not swallow the
+// levels beneath it. `resolveProducts` never validates these strings.
+assert(
+  resolveJourneyAnchorId({ ...journeyMap, root_node_id: "  " }, anchoredProject, anchorEndUser) === "F-home",
+  "a blank map root falls through rather than anchoring the journey on nothing",
+);
+
+// A map's own `product` beats the shell's scope — and reaches the anchor chain,
+// so a pinned map opens on its own product's front door under any scope.
+assert(
+  mapProductId({ ...journeyMap, product: "admin" }, anchorEndUser) === "admin",
+  "the map's own product wins over a disagreeing global scope",
+);
+assert(
+  mapProductId(journeyMap, anchorEndUser) === "enduser",
+  "a map declaring no product inherits the global scope",
+);
+assert(
+  mapProductId(journeyMap, anchorAll) === null && mapProductId({ ...journeyMap, product: "  " }, anchorAll) === null,
+  "no map product and no scope is All products; a blank stored product is not a declaration",
+);
+assert(
+  resolveJourneyAnchorId({ ...journeyMap, product: "enduser" }, anchoredProject, anchorAdmin) === "F-home",
+  "the map's product reaches the anchor chain: a pinned map opens on ITS product's root under any scope",
+);
+
+// --- MapDefinition.product restricts the subgraph -----------------------------
+//
+// Composed with the real `computeMapSubgraph`, on the Library fixture above, so
+// "species and edge filters compose on top, unchanged" is exercised rather than
+// asserted. `mapScopedNodes` restricts the *input*; the algorithm then runs
+// untouched.
+
+const systemMap = { id: "system", title: "System", kind: "system" };
+const subgraphIds = (definition, scope) =>
+  computeMapSubgraph(definition, mapScopedNodes(definition, libraryNodes, scope, libraryGraph), libraryEdges)
+    .nodes.map((node) => node.id)
+    .sort();
+
+assert(
+  eq(subgraphIds(systemMap, allScope), ["DM-audit", "DM-orphan", "DM-shared", "EP-audit-log", "V-admin", "V-feed"]),
+  "unfiltered: the system kind selects every view, endpoint and data model",
+);
+assert(
+  eq(subgraphIds({ ...systemMap, product: "enduser" }, allScope), ["DM-orphan", "DM-shared", "V-feed"]),
+  "product: 'enduser' drops the admin view, its endpoint and its private model — and keeps the orphan",
+);
+assert(
+  eq(subgraphIds({ ...systemMap, product: "admin" }, allScope), [
+    "DM-audit",
+    "DM-orphan",
+    "DM-shared",
+    "EP-audit-log",
+    "V-admin",
+  ]),
+  "product: 'admin' keeps the shared model — a restriction, not a partition",
+);
+assert(
+  eq(subgraphIds({ ...systemMap, product: "enduser" }, adminScope), ["DM-orphan", "DM-shared", "V-feed"]),
+  "the map's own product governs the subgraph too — the global scope does not get a second vote",
+);
+assert(
+  eq(subgraphIds(systemMap, adminScope), [
+    "DM-audit",
+    "DM-orphan",
+    "DM-shared",
+    "EP-audit-log",
+    "V-admin",
+  ]),
+  "a map declaring no product follows the global scope, like every other surface",
+);
+// Species and edge filters compose on top of the restriction, unchanged.
+assert(
+  eq(subgraphIds({ ...systemMap, product: "admin", species: ["data-model"] }, allScope), [
+    "DM-audit",
+    "DM-orphan",
+    "DM-shared",
+  ]),
+  "a species filter composes on top of the product restriction",
+);
+{
+  const scoped = computeMapSubgraph(
+    { ...systemMap, product: "enduser", edge_types: ["queries"] },
+    mapScopedNodes({ ...systemMap, product: "enduser" }, libraryNodes, allScope, libraryGraph),
+    libraryEdges,
+  );
+  assert(
+    eq(scoped.edges.map((edge) => `${edge.source_id}->${edge.target_id}`), ["V-feed->DM-shared"]),
+    "edges survive only when BOTH endpoints did: V-admin->DM-shared is gone with its source",
+  );
+}
+// The degenerate-case guarantee, at the one seam this task adds.
+assert(
+  mapScopedNodes(systemMap, libraryNodes, bareScope, libraryGraph) === libraryNodes &&
+    mapScopedNodes(systemMap, libraryNodes, allScope, libraryGraph) === libraryNodes,
+  "no map product under no scope returns the caller's own array — not a filtered copy of it",
 );
 
 // --- The store: one value, shared by every consumer -------------------------

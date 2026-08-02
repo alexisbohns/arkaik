@@ -29,7 +29,7 @@ import {
 } from "@/lib/utils/coverage";
 import { computeBacklog } from "@/lib/utils/journal";
 import { getRollupPlatforms } from "@/lib/utils/platform-status";
-import type { ProductGraph } from "@/lib/utils/product-scope";
+import { mapScopedNodes, type ProductGraph } from "@/lib/utils/product-scope";
 import { computeScopedPyramidTiers } from "@/lib/utils/pyramid";
 
 /**
@@ -129,10 +129,17 @@ export default function OverviewPage() {
   const maps = useMemo<MapsCardEntry[]>(() => {
     if (!projectBundle) return [];
     return listMaps(projectBundle.project).map((definition) => {
-      const subgraph = computeMapSubgraph(definition, dataNodes, dataEdges);
+      // Counted through the same restriction the canvas draws through, so the
+      // card can never advertise a node count the map does not show
+      // (docs/spec/maps.md § MapDefinition).
+      const subgraph = computeMapSubgraph(
+        definition,
+        mapScopedNodes(definition, dataNodes, scope, productGraph),
+        dataEdges,
+      );
       return { definition, nodeCount: subgraph.nodes.length, edgeCount: subgraph.edges.length };
     });
-  }, [dataEdges, dataNodes, projectBundle]);
+  }, [dataEdges, dataNodes, productGraph, projectBundle, scope]);
 
   if (nodesLoading || edgesLoading || projectLoading || journalLoading) {
     return (

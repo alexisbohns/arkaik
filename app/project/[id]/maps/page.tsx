@@ -3,7 +3,13 @@
 import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { PlusIcon } from "lucide-react";
-import { computeMapSubgraph, listMaps, MAP_KINDS, type MapDefinition } from "@arkaik/schema";
+import {
+  buildProductUsageIndex,
+  computeMapSubgraph,
+  listMaps,
+  MAP_KINDS,
+  type MapDefinition,
+} from "@arkaik/schema";
 import { MapCard } from "@/components/maps/MapCard";
 import { MapEditorDialog } from "@/components/maps/MapEditorDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
@@ -12,7 +18,9 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useNodes } from "@/lib/hooks/useNodes";
+import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
+import { mapScopedNodes, type ProductGraph } from "@/lib/utils/product-scope";
 
 /**
  * The maps index: every reading the project offers — the built-ins plus the
@@ -30,6 +38,23 @@ export default function ProjectMapsPage() {
   const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
   const { project: projectBundle, loading: projectLoading, updateProject } = useProject(id);
 
+  // The shell's scope (§ Decision 2) is a map's *default* product; a stored
+  // definition's own `product` overrides it (`mapScopedNodes`). The counts on
+  // these cards go through the same restriction the canvas draws through, or a
+  // card would advertise a node count the map it links to does not show.
+  const scope = useEffectiveProduct(id, projectBundle);
+
+  const nodesById = useMemo(() => new Map(dataNodes.map((node) => [node.id, node])), [dataNodes]);
+
+  // Built once per snapshot — `buildProductUsageIndex` is a graph traversal and
+  // must never run per node, let alone per map. The page renders nothing until
+  // `edgesLoading` is false, so no reader sees the empty-edge answer.
+  const usageIndex = useMemo(() => buildProductUsageIndex(dataNodes, dataEdges), [dataEdges, dataNodes]);
+  const productGraph = useMemo<ProductGraph>(
+    () => ({ edges: dataEdges, nodesById, usageIndex }),
+    [dataEdges, nodesById, usageIndex],
+  );
+
   const maps = useMemo(
     () => (projectBundle ? listMaps(projectBundle.project) : []),
     [projectBundle],
@@ -44,11 +69,15 @@ export default function ProjectMapsPage() {
     () =>
       new Map(
         maps.map((definition) => {
-          const subgraph = computeMapSubgraph(definition, dataNodes, dataEdges);
+          const subgraph = computeMapSubgraph(
+            definition,
+            mapScopedNodes(definition, dataNodes, scope, productGraph),
+            dataEdges,
+          );
           return [definition.id, { nodes: subgraph.nodes.length, edges: subgraph.edges.length }];
         }),
       ),
-    [dataEdges, dataNodes, maps],
+    [dataEdges, dataNodes, maps, productGraph, scope],
   );
 
   async function saveStoredMaps(nextStored: MapDefinition[]) {
