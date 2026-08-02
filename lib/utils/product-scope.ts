@@ -233,6 +233,46 @@ export function productsOfNode(
 }
 
 /**
+ * The products this node belongs to, as **titles ready to render**, in the
+ * project's declaration order.
+ *
+ * Display only — {@link productsOfNode} owns the membership answer and this adds
+ * nothing to it but ordering and a label. Both are worth doing once rather than
+ * per surface: a `Set`'s iteration order is insertion order, which for a data
+ * model reached by three products is whatever the traversal happened to hit
+ * first, and "Used by: Admin, End-user" flipping between renders of the same
+ * graph reads as a change when nothing changed.
+ *
+ * Ids the project no longer declares sort last and render as themselves. They
+ * are the stale-key case `ProductScopeSelector` also has to survive, and the
+ * honest thing to show is the id — dropping it would silently under-report who
+ * touches a data model.
+ *
+ * `title` is not validated by `resolveProducts` — a definition missing one is a
+ * shape fault owned by the parser, so at runtime it can be absent whatever the
+ * type says. Falling back to the id keeps a real badge instead of a blank one,
+ * exactly as `productScopeOptions` does.
+ *
+ * An **empty result keeps both its meanings** and the caller resolves them, as
+ * with {@link productsOfNode}: for a flow, view, or acceptance it is *nobody has
+ * assigned this yet*; for a data model or endpoint it is *nothing reaches this*
+ * — the orphan the Library marks "Unattached" (§ Decision 8).
+ */
+export function productLabelsOfNode(
+  node: Pick<Node, "id" | "species" | "metadata">,
+  scope: ProductScope,
+  graph: ProductGraph,
+): string[] {
+  const products = productsOfNode(node, graph);
+  const declared = [...scope.productsById.keys()].filter((id) => products.has(id));
+  const undeclared = [...products].filter((id) => !scope.productsById.has(id));
+  return [...declared, ...undeclared].map((id) => {
+    const title = scope.productsById.get(id)?.title;
+    return typeof title === "string" && title.trim() !== "" ? title : id;
+  });
+}
+
+/**
  * Does this node belong in the scope? `null` scope matches everything.
  *
  * **With a `graph`** the answer comes from {@link productsOfNode}, so every

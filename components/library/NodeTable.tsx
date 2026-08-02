@@ -1,7 +1,9 @@
 "use client";
 
 import { ArrowUpDownIcon } from "lucide-react";
+import { PRODUCT_MEMBERSHIP_SPECIES } from "@arkaik/schema";
 import type { Node } from "@/lib/data/types";
+import { scopedPlatforms, type ProductScope } from "@/lib/utils/product-scope";
 import {
   Table,
   TableBody,
@@ -25,8 +27,31 @@ interface NodeTableProps {
   speciesLabelById: Record<string, string>;
   statusLabelById: Record<string, string>;
   usedInByNodeId: Record<string, number>;
+  /** The surface's product scope — resolved once at the page, never per row. */
+  scope: ProductScope;
+  /**
+   * `nodeId → product titles`, from `productLabelsOfNode`.
+   *
+   * **`undefined` is not an empty map.** It means the project declares no
+   * products, and the table renders exactly the columns it did before this
+   * feature existed. A map with an empty entry means products exist and this
+   * node is in none of them.
+   */
+  productLabelsByNodeId?: Record<string, string[]>;
   onSortChange: (key: NodeSortKey) => void;
   onSelectNode: (node: Node) => void;
+}
+
+/**
+ * The Product cell, mirroring `NodeCard`'s badge and for the same reason: a flow
+ * stores its membership, a data model only ever derives one from who reaches it,
+ * and an empty derivation is the finding rather than a blank. A table column is
+ * already labelled, so the cell drops the card's "Used by:" prefix and keeps
+ * only what the two cases genuinely differ on — "Unattached" versus "-".
+ */
+function productCellText(node: Node, labels: string[]): string {
+  if (labels.length > 0) return labels.join(", ");
+  return PRODUCT_MEMBERSHIP_SPECIES.includes(node.species) ? "-" : "Unattached";
 }
 
 const SORTABLE_COLUMNS: Array<{ key: NodeSortKey; label: string }> = [
@@ -43,6 +68,8 @@ export function NodeTable({
   speciesLabelById,
   statusLabelById,
   usedInByNodeId,
+  scope,
+  productLabelsByNodeId,
   onSortChange,
   onSelectNode,
 }: NodeTableProps) {
@@ -65,12 +92,14 @@ export function NodeTable({
               </button>
             </TableHead>
           ))}
+          {productLabelsByNodeId !== undefined && <TableHead>Product</TableHead>}
           <TableHead>Platforms</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {nodes.map((node) => {
           const usedInCount = usedInByNodeId[node.id] ?? 0;
+          const platforms = scopedPlatforms(node, scope);
           return (
             <TableRow key={node.id} data-wobble-group className="cursor-pointer" onClick={() => onSelectNode(node)}>
               <TableCell className="font-mono text-xs">{node.id}</TableCell>
@@ -78,7 +107,10 @@ export function NodeTable({
               <TableCell>{speciesLabelById[node.species] ?? node.species}</TableCell>
               <TableCell>{statusLabelById[node.status] ?? node.status}</TableCell>
               <TableCell>{usedInCount > 0 ? `${usedInCount} flow${usedInCount === 1 ? "" : "s"}` : "-"}</TableCell>
-              <TableCell>{node.platforms.length > 0 ? node.platforms.join(", ") : "-"}</TableCell>
+              {productLabelsByNodeId !== undefined && (
+                <TableCell>{productCellText(node, productLabelsByNodeId[node.id] ?? [])}</TableCell>
+              )}
+              <TableCell>{platforms.length > 0 ? platforms.join(", ") : "-"}</TableCell>
             </TableRow>
           );
         })}

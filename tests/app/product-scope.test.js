@@ -22,7 +22,11 @@ const {
   productScopeOptions,
   platformCountLabel,
   nodeInScope,
+  productsOfNode,
+  productLabelsOfNode,
   scopedPlatforms,
+  scopedRollupPlatforms,
+  buildProductUsageIndex,
   getProductScopeId,
   setProductScopeId,
   subscribeProductScope,
@@ -231,6 +235,167 @@ assert(
 assert(
   nodeInScope(dataModel, adminScope) === false,
   "a species that never stores membership never matches a named scope by its stored key",
+);
+
+// --- The Library's scoped list (Task 14) -------------------------------------
+//
+// `app/project/[id]/library/page.tsx` filters with `nodeInScope(node, scope,
+// graph)` and nothing else, so every claim the Library makes about visibility is
+// a claim about these four assertions. The graph is the point: without one,
+// `nodeInScope` degrades to stored membership and the whole system layer
+// disappears from every named scope.
+
+/** Triage: a flow nobody has assigned. Visible under All products only. */
+const unassignedFlow = { id: "F-loose", species: "flow", platforms: ["web"], metadata: {} };
+/** Reached only from the admin view — the "hidden under end-user" case. */
+const auditModel = { id: "DM-audit", species: "data-model", platforms: ["web"], metadata: {} };
+/** Reached from both views. */
+const sharedModel = { id: "DM-shared", species: "data-model", platforms: ["web"], metadata: {} };
+/** Reached by nothing at all — the orphan § Decision 8 keeps in every scope. */
+const orphanModel = { id: "DM-orphan", species: "data-model", platforms: ["web"], metadata: {} };
+const adminEndpoint = { id: "EP-audit-log", species: "api-endpoint", platforms: ["web"], metadata: {} };
+
+const libraryNodes = [
+  adminView,
+  endUserView,
+  unassignedFlow,
+  auditModel,
+  sharedModel,
+  orphanModel,
+  adminEndpoint,
+];
+const libraryEdges = [
+  { edge_type: "queries", source_id: "V-admin", target_id: "DM-audit" },
+  { edge_type: "queries", source_id: "V-admin", target_id: "DM-shared" },
+  { edge_type: "queries", source_id: "V-feed", target_id: "DM-shared" },
+  { edge_type: "calls", source_id: "V-admin", target_id: "EP-audit-log" },
+];
+const libraryGraph = {
+  edges: libraryEdges,
+  nodesById: new Map(libraryNodes.map((node) => [node.id, node])),
+  usageIndex: buildProductUsageIndex(libraryNodes, libraryEdges),
+};
+
+// Preconditions. Without these the visibility assertions below could pass for
+// the wrong reason — an "orphan" that is really in `admin`, or a "hidden" model
+// that is hidden because the traversal found nobody rather than found admin.
+assert(
+  productsOfNode(orphanModel, libraryGraph).size === 0,
+  "precondition: nothing in the graph reaches DM-orphan",
+);
+assert(
+  eq([...productsOfNode(auditModel, libraryGraph)], ["admin"]),
+  `precondition: DM-audit is reached by admin and only admin (got ${JSON.stringify([
+    ...productsOfNode(auditModel, libraryGraph),
+  ])})`,
+);
+
+assert(
+  nodeInScope(orphanModel, adminScope, libraryGraph) === true &&
+    nodeInScope(orphanModel, endUserScope, libraryGraph) === true &&
+    nodeInScope(orphanModel, allScope, libraryGraph) === true,
+  "an orphan data model shows under EVERY named scope — hiding it would bury the node that needs attention most",
+);
+assert(
+  nodeInScope(auditModel, endUserScope, libraryGraph) === false,
+  "a data model only the admin views reach is hidden under end-user — the 'what does this app touch?' answer",
+);
+assert(
+  nodeInScope(auditModel, adminScope, libraryGraph) === true &&
+    nodeInScope(adminEndpoint, adminScope, libraryGraph) === true,
+  "the same model, and an endpoint reached the same way, are both in under admin",
+);
+assert(
+  nodeInScope(sharedModel, adminScope, libraryGraph) === true &&
+    nodeInScope(sharedModel, endUserScope, libraryGraph) === true,
+  "a data model both products reach appears under both — membership is not exclusive",
+);
+assert(
+  nodeInScope(unassignedFlow, adminScope, libraryGraph) === false &&
+    nodeInScope(unassignedFlow, endUserScope, libraryGraph) === false,
+  "an unassigned flow is OUT of every named scope — the empty set means triage, not 'everywhere'",
+);
+assert(
+  nodeInScope(unassignedFlow, allScope, libraryGraph) === true,
+  "…and IN under All products, which is where triage is done",
+);
+
+// --- productLabelsOfNode — the badges themselves -----------------------------
+
+assert(
+  eq(productLabelsOfNode(sharedModel, allScope, libraryGraph), ["End-user app", "Admin dashboard"]),
+  `"Used by" reads in DECLARATION order, not the index's alphabetical one (got ${JSON.stringify(
+    productLabelsOfNode(sharedModel, allScope, libraryGraph),
+  )})`,
+);
+assert(
+  eq(libraryGraph.usageIndex.get("DM-shared"), ["admin", "enduser"]),
+  "precondition: the usage index itself sorts alphabetically, so the ordering above is doing real work",
+);
+assert(
+  eq(productLabelsOfNode(orphanModel, allScope, libraryGraph), []),
+  "an orphan has no labels — the card renders 'Unattached' from the emptiness, not from a sentinel string",
+);
+assert(
+  eq(productLabelsOfNode(adminView, allScope, libraryGraph), ["Admin dashboard"]),
+  "a view badges the title of the product it stores",
+);
+assert(
+  eq(productLabelsOfNode(unassignedFlow, allScope, libraryGraph), []),
+  "an unassigned flow has no labels either — same emptiness, different reading, resolved by the caller",
+);
+
+const untitledBundle = { project: { metadata: { products: [{ id: "public-api", platforms: [] }] } } };
+const untitledScope = resolveProductScope(untitledBundle, null);
+assert(
+  eq(productLabelsOfNode({ id: "V-x", species: "view", metadata: { product: "public-api" } }, untitledScope, libraryGraph), [
+    "public-api",
+  ]),
+  "a product with no title badges its id rather than an empty pill",
+);
+assert(
+  eq(productLabelsOfNode(ghostView, allScope, libraryGraph), ["ghost"]),
+  "a membership pointing at a product the project no longer declares renders the id — never silently dropped",
+);
+
+// --- The clamp: rollup widening, then the scope's menu -----------------------
+//
+// `NodeCard` calls `scopedRollupPlatforms` for a flow's gauge list. The seed has
+// exactly this shape: `F-swap-glyph` declares web/ios while its descendant
+// `V-glyphs-list` declares android, so the rollup counts a platform the flow
+// never lists. Both halves matter — dropping the widening loses counted work
+// under All products; skipping the clamp re-admits a platform the product
+// cannot ship.
+
+const swapGlyphDeclared = ["web", "ios"];
+const swapGlyphRollup = { counts: { android: { live: 1 } }, totals: { android: 1 } };
+
+assert(
+  eq(scopedRollupPlatforms(swapGlyphDeclared, swapGlyphRollup, allScope.platforms), ["web", "ios", "android"]),
+  `under All products the widened android bar SURVIVES — today's behaviour, exactly preserved (got ${JSON.stringify(
+    scopedRollupPlatforms(swapGlyphDeclared, swapGlyphRollup, allScope.platforms),
+  )})`,
+);
+assert(
+  eq(scopedRollupPlatforms(swapGlyphDeclared, swapGlyphRollup, adminScope.platforms), ["web"]),
+  `under a web-only scope the same bar CLAMPS OUT (got ${JSON.stringify(
+    scopedRollupPlatforms(swapGlyphDeclared, swapGlyphRollup, adminScope.platforms),
+  )})`,
+);
+assert(
+  eq(scopedRollupPlatforms(swapGlyphDeclared, swapGlyphRollup, bareScope.platforms), ["web", "ios", "android"]),
+  "with no products declared the menu is every platform, so nothing clamps — the degenerate case is untouched",
+);
+// The clamp is a filter ON TOP OF the widening, not a replacement for it. This
+// is what a `scopedPlatforms(node, scope)` shortcut would get wrong: it never
+// consults the rollup, so it answers ["web","ios"] under All products and the
+// android bar — real counted work — vanishes.
+assert(
+  !eq(
+    scopedRollupPlatforms(swapGlyphDeclared, swapGlyphRollup, allScope.platforms),
+    scopedPlatforms({ species: "flow", platforms: swapGlyphDeclared, metadata: {} }, allScope),
+  ),
+  "the clamp is NOT scopedPlatforms — the two disagree about android under All products, which is the whole reason for the composition",
 );
 
 // --- scopedPlatforms — the headline assertion --------------------------------

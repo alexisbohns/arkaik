@@ -309,19 +309,8 @@ export function getRollupPlatforms(rollup: PlatformStatusRollup): PlatformId[] {
  * web/ios, its rollup counts android via `V-glyphs-list`), which is enough to
  * make the widening load-bearing rather than hypothetical.
  *
- * **Under a product scope, clamp — do not drop the widening:**
- *
- * ```ts
- * withRollupPlatforms(declared, rollup).filter((p) => scope.platforms.includes(p))
- * ```
- *
- * Under "All products" the menu is the union of every declared product, so the
- * widened platform is in it and the bar still shows — today's behavior, exactly
- * preserved. Under a web-only scope the menu is `["web"]` and the widened
- * android bar clamps out, which is the whole point of the feature. Skipping the
- * widening instead would lose real rollup information in the unscoped case,
- * which is the common one; clamping loses it only where the product genuinely
- * cannot ship that platform.
+ * **Under a product scope, clamp — do not drop the widening.** That composition
+ * is {@link scopedRollupPlatforms}; call it rather than rewriting it.
  */
 export function withRollupPlatforms(
   platforms: readonly PlatformId[],
@@ -329,6 +318,36 @@ export function withRollupPlatforms(
 ): PlatformId[] {
   const widened = new Set<PlatformId>([...platforms, ...getRollupPlatforms(rollup)]);
   return PLATFORMS.map((platform) => platform.id).filter((platformId) => widened.has(platformId));
+}
+
+/**
+ * {@link withRollupPlatforms}, clamped to a product scope's platform menu.
+ *
+ * **A filter on top of the widening, never a replacement for it.** Under "All
+ * products" `scopePlatforms` is the union of every declared product's menu, so a
+ * platform the rollup counted but the flow never declared is still in it and the
+ * bar survives — today's behavior, exactly preserved. Under a web-only scope the
+ * menu is `["web"]` and that widened android bar clamps out, which is the whole
+ * point of the feature. Passing `scopedPlatforms(node, scope)` straight through
+ * instead would drop counted work in the unscoped case, which is the common one;
+ * clamping loses it only where the product genuinely cannot ship that platform.
+ *
+ * The seed has exactly one flow that exercises this — `F-swap-glyph` declares
+ * web/ios while its descendant `V-glyphs-list` declares android — so the
+ * difference between the two implementations is real data, not a hypothetical.
+ *
+ * Takes the menu as a plain array rather than a `ProductScope` so this module
+ * keeps its own dependencies: `product-scope.ts` imports platform-status, and
+ * the reverse import would close a cycle. Three call sites share it (the library
+ * card, the canvas flow node, the detail panel's computed status section), which
+ * is why it is a named function and not an expression repeated three times.
+ */
+export function scopedRollupPlatforms(
+  platforms: readonly PlatformId[],
+  rollup: PlatformStatusRollup,
+  scopePlatforms: readonly PlatformId[],
+): PlatformId[] {
+  return withRollupPlatforms(platforms, rollup).filter((platformId) => scopePlatforms.includes(platformId));
 }
 
 export function getRollupDisplayStatus(

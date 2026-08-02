@@ -24,6 +24,14 @@ const MODULES = [
   // label names its platform), so this one is no longer elided as a type-only
   // import and has to exist on disk for the require to resolve.
   ["lib/config/platforms.ts", "platforms"],
+  // platform-status.ts is not part of product-scope.ts's module graph — it is
+  // built for one export, `scopedRollupPlatforms`, the clamp the library card
+  // composes from a flow's widened rollup and the scope's menu. The clamp is the
+  // one piece of Task 14 that a "test" could easily restate instead of exercise,
+  // so the suite calls the real function; that means the real module on disk,
+  // and therefore its own statuses config too.
+  ["lib/config/statuses.ts", "statuses"],
+  ["lib/utils/platform-status.ts", "platform-status"],
   ["lib/utils/product-scope.ts", "product-scope"],
   ["lib/utils/product-scope-store.ts", "product-scope-store"],
 ];
@@ -45,11 +53,12 @@ function loadProductScope() {
     });
 
     // `@/lib/data/types` is imported type-only and is elided by the transpiler;
-    // `@arkaik/schema` and `@/lib/config/platforms` are real requires and are
-    // pointed at the schema test build and the sibling output respectively.
+    // `@arkaik/schema` and the two `@/lib/config/*` modules are real requires and
+    // are pointed at the schema test build and the sibling outputs respectively.
     const rewritten = outputText
       .replace(/require\((['"])@arkaik\/schema\1\)/g, `require(${JSON.stringify(schemaIndex)})`)
-      .replace(/require\((['"])@\/lib\/config\/platforms\1\)/g, `require("./platforms.js")`);
+      .replace(/require\((['"])@\/lib\/config\/platforms\1\)/g, `require("./platforms.js")`)
+      .replace(/require\((['"])@\/lib\/config\/statuses\1\)/g, `require("./statuses.js")`);
     fs.writeFileSync(path.join(BUILD_DIR, `${outName}.js`), rewritten);
   }
 
@@ -59,6 +68,11 @@ function loadProductScope() {
   return {
     ...require(path.join(BUILD_DIR, "product-scope.js")),
     ...require(path.join(BUILD_DIR, "product-scope-store.js")),
+    // Picked, not spread: platform-status exports a `getRollupPlatforms` and a
+    // pile of status helpers that have no business shadowing anything here.
+    scopedRollupPlatforms: require(path.join(BUILD_DIR, "platform-status.js")).scopedRollupPlatforms,
+    // The one schema projection a `ProductGraph` is built from.
+    buildProductUsageIndex: require(schemaIndex).buildProductUsageIndex,
   };
 }
 

@@ -1,11 +1,14 @@
 "use client";
 
 import { GitBranchIcon, SplitIcon } from "lucide-react";
+import { PRODUCT_MEMBERSHIP_SPECIES } from "@arkaik/schema";
 import type { Node } from "@/lib/data/types";
 import type { PlatformStatusMap } from "@/lib/data/types";
 import type { PlatformStatusRollup } from "@/lib/utils/platform-status";
-import { getEditablePlatformStatuses, withRollupPlatforms } from "@/lib/utils/platform-status";
+import { getEditablePlatformStatuses, scopedRollupPlatforms } from "@/lib/utils/platform-status";
+import { scopedPlatforms, type ProductScope } from "@/lib/utils/product-scope";
 import type { SpeciesId } from "@/lib/config/species";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PlatformGaugeList } from "@/components/graph/nodes/PlatformGaugeList";
 import { PlatformList } from "@/components/graph/nodes/PlatformList";
@@ -30,7 +33,56 @@ interface NodeCardProps {
   flowRollup?: PlatformStatusRollup;
   playlistPreview: PlaylistPreviewItem[];
   usedInCount: number;
+  /** The surface's product scope — resolved once at the page, never per card. */
+  scope: ProductScope;
+  /**
+   * This node's products as titles, from `productLabelsOfNode`.
+   *
+   * **`undefined` and `[]` are different answers.** `undefined` means the
+   * project declares no products at all, and the card renders exactly as it did
+   * before this feature existed — no badge, no new word. `[]` means products
+   * exist and this node is in none of them, which for a data model or endpoint
+   * is the orphan worth flagging (§ Decision 8).
+   */
+  productLabels?: string[];
   onClick: () => void;
+}
+
+/**
+ * The product annotation, which reads differently for the two halves of the
+ * graph — the same split {@link productsOfNode} draws.
+ *
+ * A flow, view, or acceptance *stores* its membership, so its badge is a
+ * statement of fact: this belongs to the Admin dashboard. A data model or
+ * endpoint only ever derives one from who reaches it, so its badge is a
+ * traversal result and says so — "Used by: End-user, Admin" — and an empty
+ * traversal is itself the finding: nothing reaches this node.
+ *
+ * That asymmetry is why an unassigned flow renders nothing here while an
+ * unreached data model renders "Unattached". "No product yet" is a gap in
+ * authoring that the All-products list already surfaces by showing the node;
+ * "nothing points at this" is a gap in the graph, and it is the one a reader
+ * scanning a library of hundreds of cards needs pointed out.
+ */
+function ProductAnnotation({ species, labels }: { species: SpeciesId; labels: string[] }) {
+  const derived = !PRODUCT_MEMBERSHIP_SPECIES.includes(species);
+
+  if (labels.length === 0) {
+    if (!derived) return null;
+    return <Badge variant="outline">Unattached</Badge>;
+  }
+
+  if (derived) {
+    return <Badge variant="secondary">Used by: {labels.join(", ")}</Badge>;
+  }
+
+  return (
+    <>
+      {labels.map((label) => (
+        <Badge key={label} variant="secondary">{label}</Badge>
+      ))}
+    </>
+  );
 }
 
 function PlaylistItemIcon({ type }: { type: PlaylistPreviewItem["type"] }) {
@@ -54,9 +106,14 @@ export function NodeCard({
   flowRollup,
   playlistPreview,
   usedInCount,
+  scope,
+  productLabels,
   onClick,
 }: NodeCardProps) {
   const previewItems = playlistPreview.slice(0, 5);
+  // With no products declared this returns `node.platforms` unchanged, which is
+  // what keeps a product-less project pixel-identical to today.
+  const platforms = scopedPlatforms(node, scope);
 
   return (
     <article
@@ -82,6 +139,9 @@ export function NodeCard({
               onClick={(e) => { e.stopPropagation(); }}
             />
             <EntityId id={node.id} />
+            {productLabels !== undefined && (
+              <ProductAnnotation species={node.species} labels={productLabels} />
+            )}
           </div>
         </CardHeader>
 
@@ -89,16 +149,19 @@ export function NodeCard({
           {node.species === "view" && (
             <div className="space-y-1.5">
               <span className="text-muted-foreground">Platforms</span>
-              <PlatformList platforms={node.platforms} platformStatuses={viewPlatformStatuses} />
+              <PlatformList platforms={platforms} platformStatuses={viewPlatformStatuses} />
             </div>
           )}
 
           {node.species === "flow" && flowRollup && (
             <div className="space-y-1.5">
               <span className="text-muted-foreground">Platforms</span>
+              {/* Clamped, not replaced: the rollup can count a platform the flow
+                  never declares, and under All products that bar must survive.
+                  See `scopedRollupPlatforms`. */}
               <PlatformGaugeList
                 rollup={flowRollup}
-                platforms={withRollupPlatforms(node.platforms, flowRollup)}
+                platforms={scopedRollupPlatforms(node.platforms, flowRollup, scope.platforms)}
                 showLabels
               />
             </div>
@@ -117,7 +180,7 @@ export function NodeCard({
               <div className="space-y-1.5">
                 <span className="text-muted-foreground">Platforms</span>
                 <PlatformList
-                  platforms={node.platforms}
+                  platforms={platforms}
                   platformStatuses={getEditablePlatformStatuses(node)}
                 />
               </div>
@@ -127,9 +190,9 @@ export function NodeCard({
           {node.species !== "view" && node.species !== "flow" && node.species !== "acceptance" && (
             <div className="space-y-1.5">
               <span className="text-muted-foreground">Platforms</span>
-              {node.platforms.length > 0 ? (
+              {platforms.length > 0 ? (
                 <div className="flex flex-wrap items-center gap-2">
-                  {node.platforms.map((platformId) => {
+                  {platforms.map((platformId) => {
                     const PlatformIcon = PLATFORM_ICONS[platformId];
                     return (
                       <span key={platformId} className="inline-flex items-center gap-1.5 text-muted-foreground">
