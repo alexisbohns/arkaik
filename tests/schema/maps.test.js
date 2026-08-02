@@ -97,27 +97,34 @@ const ids = (elements) => elements.map((el) => el.id).sort();
     "a project with no metadata gets the default display",
   );
 
+  assert(
+    DEFAULT_MAP_DISPLAY.flow_platforms === "rings" &&
+      DEFAULT_MAP_DISPLAY.view_platforms === "chips" &&
+      DEFAULT_MAP_DISPLAY.images === true,
+    "the default display is rings + chips, images on",
+  );
+
   const legacy = resolveMapDisplay(journey, { metadata: { view_card_variant: "large" } });
   assert(
-    legacy.view_platforms === "rows" && legacy.images === true && legacy.flow_platforms === "bars",
-    "the legacy large preset survives as labelled view platform rows",
+    JSON.stringify(legacy) === JSON.stringify(DEFAULT_MAP_DISPLAY),
+    "the superseded view_card_variant is not a resolution layer — it no longer moves anything",
   );
 
   const authored = resolveMapDisplay(
-    { id: "custom", display: { images: false, flow_platforms: "rings" } },
+    { id: "custom", display: { images: false, flow_platforms: "bars" } },
     { metadata: {} },
   );
   assert(
-    authored.images === false && authored.flow_platforms === "rings" && authored.view_platforms === "chips",
+    authored.images === false && authored.flow_platforms === "bars" && authored.view_platforms === "chips",
     "a definition's own display wins over the defaults, key by key",
   );
 
   const overridden = resolveMapDisplay(
-    { id: "custom", display: { images: false, flow_platforms: "rings" } },
+    { id: "custom", display: { images: false, flow_platforms: "bars" } },
     { metadata: { map_display: { custom: { images: true } } } },
   );
   assert(
-    overridden.images === true && overridden.flow_platforms === "rings",
+    overridden.images === true && overridden.flow_platforms === "bars",
     "the per-map override wins over the definition, key by key",
   );
 

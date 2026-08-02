@@ -201,11 +201,11 @@
           "type": "boolean"
         },
         "flow_platforms": {
-          "description": "A flow card's platform delivery: bars | rings.",
+          "description": "A flow card's platform delivery: rings (default) | bars.",
           "type": "string"
         },
         "view_platforms": {
-          "description": "A view card's platform availability: rows | chips.",
+          "description": "A view card's platform availability: chips (default) | rows.",
           "type": "string"
         }
       },

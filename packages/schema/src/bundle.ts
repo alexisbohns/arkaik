@@ -180,10 +180,10 @@ export const MapDisplayOptionsSchema: z.ZodType<MapDisplayOptions> = z
   .object({
     images: z.boolean().optional().meta({ description: "Screenshot (or cover) art on view cards." }),
     flow_platforms: z.string().optional().meta({
-      description: "A flow card's platform delivery: bars | rings.",
+      description: "A flow card's platform delivery: rings (default) | bars.",
     }),
     view_platforms: z.string().optional().meta({
-      description: "A view card's platform availability: rows | chips.",
+      description: "A view card's platform availability: chips (default) | rows.",
     }),
   })
   .catchall(z.unknown())
@@ -230,7 +230,10 @@ export const MapDefinitionSchema: z.ZodType<MapDefinition> = z
   .meta({ id: "MapDefinition", description: "A stored map definition (docs/spec/maps.md § MapDefinition)." });
 
 export interface ProjectMetadata extends Record<string, unknown> {
-  /** Legacy project-wide card preset; per-map `map_display` supersedes it. */
+  /**
+   * @deprecated Superseded by the per-map `map_display` below. Still parsed,
+   * validated, and round-tripped; no renderer reads it.
+   */
   view_card_variant?: "compact" | "large";
   maps?: MapDefinition[];
   /** Per-map display overrides keyed by map id — built-ins included. */

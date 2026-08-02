@@ -110,8 +110,8 @@ export function MapDisplayPopover({
                 value={value.flow_platforms}
                 onChange={(next) => onChange({ flow_platforms: next as MapFlowPlatformsMode })}
                 options={[
-                  { id: "bars", label: "Lines", icon: ListIcon },
                   { id: "rings", label: "Rings", icon: PieChartIcon },
+                  { id: "bars", label: "Lines", icon: ListIcon },
                 ]}
               />
             </Field>
@@ -125,8 +125,8 @@ export function MapDisplayPopover({
                 value={value.view_platforms}
                 onChange={(next) => onChange({ view_platforms: next as MapViewPlatformsMode })}
                 options={[
-                  { id: "rows", label: "Lines", icon: RowsIcon },
                   { id: "chips", label: "Chips", icon: CircleDashedIcon },
+                  { id: "rows", label: "Lines", icon: RowsIcon },
                 ]}
               />
             </Field>

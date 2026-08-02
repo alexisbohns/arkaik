@@ -20,8 +20,9 @@ function getNodeSize(node: Node): { width: number; height: number } {
     case "flow": {
       // Synthetic branch cards render a summary paragraph, not platform art.
       if (data.renderVariant === "branch") return { width: 240, height: 136 };
-      // bars: three h-2 gauges on gap-2 rows (58); rings: one 30px ring row.
-      const platformBlock = data.platformDisplay === "rings" ? 30 : 58;
+      // rings (the default): one 30px ring row; bars: three h-2 gauges on
+      // gap-2 rows. Both fallbacks match the components' own.
+      const platformBlock = data.platformDisplay === "bars" ? 58 : 30;
       // py-3 (24) + border-2 (4) + the flow's taller title row (38) + gap-3.
       return { width: 240, height: 24 + 4 + 38 + CARD_GAP + platformBlock };
     }

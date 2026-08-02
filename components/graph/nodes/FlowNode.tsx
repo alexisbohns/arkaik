@@ -18,7 +18,8 @@ function FlowNodeComponent({ data }: NodeProps) {
   const label = String(data.label ?? "Flow");
   const platforms = (data.platforms as PlatformId[]) ?? [];
   const platformRollup = (data.platformRollup as PlatformStatusRollup | undefined) ?? { counts: {}, totals: {} };
-  const platformDisplay = data.platformDisplay === "rings" ? "rings" : "bars";
+  // Rings unless a map explicitly asked for bars — see DEFAULT_MAP_DISPLAY.
+  const platformDisplay = data.platformDisplay === "bars" ? "bars" : "rings";
   const viewCount = typeof data.viewCount === "number" ? data.viewCount : 0;
   const expanded = Boolean(data.expanded);
   const stage = data.metadata ? (data.metadata as Record<string, unknown>).stage as string | undefined : undefined;

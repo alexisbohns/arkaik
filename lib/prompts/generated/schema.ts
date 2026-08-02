@@ -115,16 +115,16 @@ interface MapLayoutHints extends Record<string, unknown> {
   algorithm?: "layered" | "organic" | (string & {});
 }
 
-type MapFlowPlatformsMode = "bars" | "rings";
+type MapFlowPlatformsMode = "rings" | "bars";
 
-type MapViewPlatformsMode = "rows" | "chips";
+type MapViewPlatformsMode = "chips" | "rows";
 
 interface MapDisplayOptions extends Record<string, unknown> {
   /** Screenshot (or cover) art on view cards. */
   images?: boolean;
-  /** A flow card's platform delivery: stacked bars, or the Pyramid's rings. */
+  /** A flow card's platform delivery: the Pyramid's rings, or stacked bars. */
   flow_platforms?: MapFlowPlatformsMode | (string & {});
-  /** A view card's platform availability: labelled rows, or circular chips. */
+  /** A view card's platform availability: circular chips, or labelled rows. */
   view_platforms?: MapViewPlatformsMode | (string & {});
 }
 
@@ -149,7 +149,10 @@ interface MapDefinition extends Record<string, unknown> {
 }
 
 interface ProjectMetadata extends Record<string, unknown> {
-  /** Legacy project-wide card preset; per-map \`map_display\` supersedes it. */
+  /**
+   * @deprecated Superseded by the per-map \`map_display\` below. Still parsed,
+   * validated, and round-tripped; no renderer reads it.
+   */
   view_card_variant?: "compact" | "large";
   maps?: MapDefinition[];
   /** Per-map display overrides keyed by map id — built-ins included. */

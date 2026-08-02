@@ -47,14 +47,15 @@ export interface MapLayoutHints extends Record<string, unknown> {
 export interface MapDisplayOptions extends Record<string, unknown> {
   /** Screenshot (or cover) art on view cards. */
   images?: boolean;
-  /** A flow card's platform delivery: stacked bars, or the Pyramid's rings. */
+  /** A flow card's platform delivery: the Pyramid's rings, or stacked bars. */
   flow_platforms?: MapFlowPlatformsMode | (string & {});
-  /** A view card's platform availability: labelled rows, or circular chips. */
+  /** A view card's platform availability: circular chips, or labelled rows. */
   view_platforms?: MapViewPlatformsMode | (string & {});
 }
 
-export type MapFlowPlatformsMode = "bars" | "rings";
-export type MapViewPlatformsMode = "rows" | "chips";
+// Default first in each union and list — the order the pickers read in.
+export type MapFlowPlatformsMode = "rings" | "bars";
+export type MapViewPlatformsMode = "chips" | "rows";
 
 /** {@link MapDisplayOptions} with every key present and every value known. */
 export interface ResolvedMapDisplay {
@@ -63,13 +64,17 @@ export interface ResolvedMapDisplay {
   view_platforms: MapViewPlatformsMode;
 }
 
-export const MAP_FLOW_PLATFORMS_MODES: readonly MapFlowPlatformsMode[] = ["bars", "rings"];
-export const MAP_VIEW_PLATFORMS_MODES: readonly MapViewPlatformsMode[] = ["rows", "chips"];
+export const MAP_FLOW_PLATFORMS_MODES: readonly MapFlowPlatformsMode[] = ["rings", "bars"];
+export const MAP_VIEW_PLATFORMS_MODES: readonly MapViewPlatformsMode[] = ["chips", "rows"];
 
-/** What a map draws when nothing says otherwise — the former "compact" card. */
+/**
+ * What a map draws when nothing says otherwise: the compact reading, with the
+ * Pyramid's rings summing a flow's delivery. Lines stay one click away for the
+ * readings that want the per-platform detail spelled out.
+ */
 export const DEFAULT_MAP_DISPLAY: ResolvedMapDisplay = {
   images: true,
-  flow_platforms: "bars",
+  flow_platforms: "rings",
   view_platforms: "chips",
 };
 
@@ -175,13 +180,15 @@ function applyDisplayOptions(base: ResolvedMapDisplay, options: unknown): Resolv
  * Display Options):
  *
  * 1. {@link DEFAULT_MAP_DISPLAY};
- * 2. the legacy project-wide `metadata.view_card_variant` (`"large"` meant
- *    labelled platform rows), so a project saved before per-map display keeps
- *    the cards it had;
- * 3. the definition's own `display` — the agent-authored half;
- * 4. `project.metadata.map_display[definition.id]` — the human half, and the
+ * 2. the definition's own `display` — the agent-authored half;
+ * 3. `project.metadata.map_display[definition.id]` — the human half, and the
  *    only path open to the built-in maps, which have no stored definition to
  *    carry a `display` of their own.
+ *
+ * The superseded project-wide `metadata.view_card_variant` is deliberately not
+ * a layer here: display is per map now, and a project-wide preset that quietly
+ * outranked the defaults would mean an old project could never *see* them.
+ * The field still parses and round-trips; nothing reads it.
  *
  * Unknown values at any layer fall through to the layer beneath rather than
  * blanking the card. Pure and total: no project, no definition, no problem.
@@ -190,16 +197,9 @@ export function resolveMapDisplay(
   definition?: Pick<MapDefinition, "id" | "display">,
   project?: Pick<Project, "metadata">,
 ): ResolvedMapDisplay {
-  const metadata = project?.metadata;
+  let resolved = applyDisplayOptions({ ...DEFAULT_MAP_DISPLAY }, definition?.display);
 
-  let resolved: ResolvedMapDisplay = { ...DEFAULT_MAP_DISPLAY };
-  if (metadata?.view_card_variant === "large") {
-    resolved = { ...resolved, view_platforms: "rows" };
-  }
-
-  resolved = applyDisplayOptions(resolved, definition?.display);
-
-  const overrides = metadata?.map_display;
+  const overrides = project?.metadata?.map_display;
   if (definition?.id !== undefined && typeof overrides === "object" && overrides !== null) {
     resolved = applyDisplayOptions(resolved, (overrides as Record<string, unknown>)[definition.id]);
   }

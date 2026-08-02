@@ -50,25 +50,28 @@ Recording Loop legitimately want different answers.
 ```ts
 interface MapDisplayOptions extends Record<string, unknown> {
   images?: boolean;                       // screenshot (or cover) art on view cards
-  flow_platforms?: "bars" | "rings";      // a flow card's platform delivery
-  view_platforms?: "rows" | "chips";      // a view card's platform availability
+  flow_platforms?: "rings" | "bars";      // a flow card's platform delivery
+  view_platforms?: "chips" | "rows";      // a view card's platform availability
 }
 ```
 
-| Option | `false` / first value | `true` / second value |
+| Option | Default (listed first) | Alternative |
 |---|---|---|
-| `images` | View cards carry no art | The view's screenshot, falling back to `metadata.cover_url` |
-| `flow_platforms` | `bars` — one stacked status gauge per platform | `rings` — the Pyramid's ring set, the global ring centering the flow's view count |
-| `view_platforms` | `rows` — a labelled line per platform with its status icon | `chips` — circular platform chips in the card footer |
+| `images` | `true` — the view's screenshot, falling back to `metadata.cover_url` | `false` — view cards carry no art |
+| `flow_platforms` | `rings` — the Pyramid's ring set, the global ring centering the flow's view count | `bars` — one stacked status gauge per platform |
+| `view_platforms` | `chips` — circular platform chips in the card footer | `rows` — a labelled line per platform with its status icon |
 
 `resolveMapDisplay(definition, project)` resolves them least- to most-specific:
 
-1. the defaults — `{ images: true, flow_platforms: "bars", view_platforms: "chips" }`;
-2. the legacy project-wide `metadata.view_card_variant` (`"large"` meant labelled
-   platform rows), so a project saved before this section keeps the cards it had;
-3. the definition's own `display` — the agent-authored half;
-4. `project.metadata.map_display[definition.id]` — the human half, and the only
+1. the defaults — `{ images: true, flow_platforms: "rings", view_platforms: "chips" }`;
+2. the definition's own `display` — the agent-authored half;
+3. `project.metadata.map_display[definition.id]` — the human half, and the only
    path open to the built-in maps, which have no stored definition of their own.
+
+The superseded project-wide `metadata.view_card_variant` is deliberately **not**
+a layer: display is per map now, and a project-wide preset that quietly outranked
+the defaults would mean a project saved before this section could never see them.
+The field still parses, validates, and round-trips; no renderer reads it.
 
 Resolution is key by key, and an unrecognized value at any layer falls through to
 the layer beneath rather than blanking the card — the same posture as

@@ -217,14 +217,14 @@ Card rendering is per map, set from the header's **Display** popover and resolve
 by `resolveMapDisplay` ([spec/maps.md](spec/maps.md) § Display Options). Three
 independent options, not a two-way preset:
 
-- `images` — the view's screenshot, falling back to its cover art
-- `flow_platforms` — a flow card's delivery as stacked `bars` or the Pyramid's `rings`
-- `view_platforms` — a view card's availability as labelled `rows` or footer `chips`
+- `images` — the view's screenshot, falling back to its cover art (default on)
+- `flow_platforms` — a flow card's delivery as the Pyramid's `rings` (default) or stacked `bars`
+- `view_platforms` — a view card's availability as footer `chips` (default) or labelled `rows`
 
 Storage: `project.metadata.map_display[mapId]`, plus a definition-level `display`
-for agent-authored custom maps. The legacy project-wide
-`project.metadata.view_card_variant` still seeds the defaults for projects saved
-before per-map display, so `large` keeps its platform rows.
+for agent-authored custom maps. The superseded project-wide
+`project.metadata.view_card_variant` is no longer read — it still parses and
+round-trips, but every map now starts from the defaults above.
 
 ## Node Detail Panel
 
