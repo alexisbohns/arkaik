@@ -66,7 +66,7 @@ interface ProductDefinition extends Record<string, unknown> {
 
 Definitions live at **`project.metadata.products: ProductDefinition[]`**, following the `project.metadata.maps` precedent ([maps.md](maps.md) § Storage) exactly: a purely additive optional field in an already-`catchall` object, so it requires **no `schema_version` bump**, and unknown fields on a definition are preserved and ignored.
 
-A definition **declares** a product when its `id` is a non-blank string. An entry whose `id` is missing, blank, or whitespace-only is dropped by `resolveProducts` and declares nothing — though it is still reported (§ Validation below). Duplicate ids resolve **first-wins**, so every projection stays deterministic on a bundle the validator has already warned about.
+A definition **declares** a product when its `id` is a non-blank string; `resolveProducts` drops everything else, and a dropped entry declares nothing. The two dropped shapes are reported in different places, by design. An `id` that is **missing or not a string** is a shape fault — `id` is required, so the parser rejects such a bundle and `validateBundle()` stays silent rather than repeating the rejection. An `id` that parses as a string but is **blank or whitespace-only** is well-shaped and reaches the validator, which reports it as `product-invalid-id` (§ Validation below). Duplicate ids resolve **first-wins**, so every projection stays deterministic on a bundle the validator has already warned about.
 
 ### Membership
 

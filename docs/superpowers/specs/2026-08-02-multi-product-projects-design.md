@@ -224,9 +224,10 @@ treat unknown values as opaque strings — they select nothing rather than throw
 
 | Function | Contract |
 |---|---|
-| `resolveProducts(project)` | Stored definitions in order; non-object entries skipped; duplicate ids resolve first-wins. Same lenient posture as `resolveMaps`. |
+| `resolveProducts(project)` | Stored definitions in order; non-object entries, blank/whitespace-only ids, and duplicate ids skipped, the last resolving first-wins. Same lenient posture as `resolveMaps`. The blank-id skip matches `validate.ts`'s `.trim()` test, so both modules mean the same thing by "declared". |
 | `productOf(node)` | Stored membership, or `null`. Meaningful only for flow/view/acceptance. |
-| `productsUsingNode(nodeId, nodes, edges)` | Reverse traversal over `displays` / `queries` / `calls`. Built once per snapshot as an index, never recomputed per card. |
+| `buildProductUsageIndex(nodes, edges)` | Builds the `nodeId → sorted product ids` index for the system layer, once per snapshot. Walks **forward** from every membership-bearing node along `calls` / `displays` / `queries`, following each edge in its stored direction and hopping only into `api-endpoint` / `data-model` targets. |
+| `productsUsingNode(nodeId, index)` | A plain **lookup** into that index — never a traversal. `[]` for an unknown node, or one no product reaches. |
 | `productPlatforms(project, productId \| null)` | **The scope's platform menu**, and the sole input to the arity rule. A `productId` returns that product's list; `null` returns the union of all declared products; a project declaring no products returns `PLATFORM_IDS`. Takes the id rather than the definition because that is what the scope holds; an unknown id resolves like `null`. |
 | `effectiveNodePlatforms(node, product)` | `node.platforms ∩ product.platforms`, taking the resolved definition. Returns `node.platforms` unchanged when `product` is `null`. What makes the containment warning degrade safely. |
 
@@ -281,8 +282,9 @@ framework-free, database-free `node` test scripts exactly.
 - `productPlatforms` across all three scope cases: a named product, `null` (union), and a project
   declaring no products (`PLATFORM_IDS`).
 - `effectiveNodePlatforms` intersection, including the empty result for a platform-less product.
-- `productsUsingNode` reverse traversal, including a node reached by two products and an orphan
-  reached by none.
+- `buildProductUsageIndex` forward traversal, including a node reached by two products, an orphan
+  reached by none, and a model touched only by Admin that must **not** inherit the end-user app
+  through a shared neighbour.
 - Unassigned flows, views, and anchorless acceptances warn in a project that declares products,
   and stay silent in one that does not.
 - One assertion per new validation rule confirming **warning** severity and that
