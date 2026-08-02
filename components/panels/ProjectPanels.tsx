@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, type ReactNode } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import { EntityId } from "@/components/graph/nodes/EntityBadges";
 import { PanelStack } from "@/components/panels/PanelStack";
 import { NodeDetailPanel, NodeDetailPanelHeader } from "@/components/panels/NodeDetailPanel";
@@ -64,6 +66,9 @@ export function ProjectPanels({
   const { entries, openNode, closeAt, unwindTo, pruneMissingNodes, panelStates } =
     useProjectPanels();
 
+  const params = useParams();
+  const projectId = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
+
   const nodesById = useMemo(() => new Map(allNodes.map((node) => [node.id, node])), [allNodes]);
 
   // An empty list is the loading window, not a deleted project — pruning then
@@ -113,7 +118,33 @@ export function ProjectPanels({
         if (entry.payload.kind === "raw") return null;
 
         const node = nodesById.get(entry.key);
-        if (!node) return null;
+
+        // Say so rather than dropping the entry. Suppression would collapse
+        // three cases nothing here can tell apart — a page that carries no
+        // nodes at all, a page whose nodes have not arrived yet (the same
+        // window the prune above refuses to act in), and an id that names
+        // nothing — and in every one of them the trail and the `?node=` URL
+        // would still promise a panel the user cannot see. It also spares the
+        // loading case a body that flickers in and out.
+        if (!node)
+          return (
+            <div className="min-h-0 flex-1 overflow-y-auto p-6">
+              <div className="rounded-xl border border-dashed p-10 text-center">
+                <p className="text-sm text-muted-foreground">
+                  This page has no node with that id — it may live on another surface, or it may no
+                  longer exist.
+                </p>
+                <div className="mt-4">
+                  <Link
+                    href={`/project/${projectId}/library`}
+                    className="text-sm underline underline-offset-4"
+                  >
+                    Look for it in the Library
+                  </Link>
+                </div>
+              </div>
+            </div>
+          );
 
         return (
           <NodeDetailPanel
