@@ -2,21 +2,17 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { type Node, type NodeMouseHandler, type Connection, type EdgeMouseHandler } from "@xyflow/react";
-import { Code2Icon, DownloadIcon, PlusIcon } from "lucide-react";
+import { PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 import { resolveMapDisplay, type MapDefinition, type MapDisplayOptions } from "@arkaik/schema";
 import { Canvas } from "@/components/graph/Canvas";
 import { MapDisplayPopover } from "@/components/maps/MapDisplayPopover";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
-import { ProjectPanels } from "@/components/panels/ProjectPanels";
-import { RawBundleSheet } from "@/components/panels/RawBundleSheet";
+import { PageShell } from "@/components/layout/PageShell";
 import { ShotPreviewDialog } from "@/components/panels/ShotPreviewDialog";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
 import { InsertBetweenDialog, type InsertEntryType } from "@/components/panels/InsertBetweenDialog";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useProject } from "@/lib/hooks/useProject";
@@ -72,9 +68,11 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     insertBeforeId: string;
   } | null>(null);
   const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState<string | null>(null);
-  const [exportWarning, setExportWarning] = useState<string | null>(null);
-  const [rawOpen, setRawOpen] = useState(false);
+  // Export outcomes are recorded but not rendered here: the button that starts
+  // an export moves to the project switcher next, and a message stranded on the
+  // map's header would name a control the user can no longer see.
+  const [, setExportError] = useState<string | null>(null);
+  const [, setExportWarning] = useState<string | null>(null);
   const [playlistError, setPlaylistError] = useState<string | null>(null);
 
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, removeNode, removeNodes } = useNodes(id);
@@ -699,56 +697,30 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   }
 
   return (
-    <div className="h-full w-full flex flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <SidebarTrigger className="-ml-1 cursor-pointer" />
-        <Separator orientation="vertical" className="mx-1 h-4" />
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">
-            {projectBundle?.project.title ?? "Untitled project"}
-          </p>
-          <p className="truncate text-xs text-muted-foreground">
-            {definition && definition.id !== "journey" ? `Maps · ${definition.title}` : "Maps · Journey"}
-          </p>
-        </div>
-        <div className="ml-auto flex items-center gap-3">
-          {exportWarning && (
-            <span className="text-xs text-amber-700" role="status" aria-live="polite">
-              {exportWarning}
-            </span>
-          )}
-          {exportError && (
-            <span className="text-xs text-destructive" role="status" aria-live="polite">
-              {exportError}
-            </span>
-          )}
-          {playlistError && (
-            <span className="text-xs text-destructive" role="status" aria-live="polite">
-              {playlistError}
-            </span>
-          )}
-          <MapDisplayPopover
-            value={display}
-            onChange={(patch) => void handleDisplayChange(patch)}
-            mapTitle={definition?.title ?? "Journey"}
-          />
-          <Button size="sm" variant="outline" className="cursor-pointer" onClick={() => setRawOpen(true)}>
-            <Code2Icon className="size-4" />
-            Raw
-          </Button>
-          <Button size="sm" variant="outline" className="cursor-pointer" onClick={handleExport} disabled={exporting}>
-            <DownloadIcon className="size-4" />
-            {exporting ? "Exporting..." : "Export JSON"}
-          </Button>
-          <Button size="sm" className="cursor-pointer" onClick={() => { setNewNodePreset(null); setNewNodeOpen(true); }}>
-            <PlusIcon className="size-4" />
-            New node
-          </Button>
-        </div>
-      </header>
-      <ProjectPanels
-        surfaceLabel={definition && definition.id !== "journey" ? `Maps · ${definition.title}` : "Maps · Journey"}
-        rootLabel={definition && definition.id !== "journey" ? `Maps · ${definition.title}` : "Maps · Journey"}
+    <>
+      {/* The title is the map's own name: the sidebar's Maps group already says
+          which section this is, so a `Maps ·` prefix would only repeat it. */}
+      <PageShell
+        title={definition?.title ?? "Journey"}
+        action={{
+          label: "New node",
+          icon: PlusIcon,
+          onClick: () => { setNewNodePreset(null); setNewNodeOpen(true); },
+        }}
+        headerExtra={
+          <>
+            {playlistError && (
+              <span className="text-xs text-destructive" role="status" aria-live="polite">
+                {playlistError}
+              </span>
+            )}
+            <MapDisplayPopover
+              value={display}
+              onChange={(patch) => void handleDisplayChange(patch)}
+              mapTitle={definition?.title ?? "Journey"}
+            />
+          </>
+        }
         onLayoutChange={reframe}
         allNodes={dataNodes}
         allEdges={dataEdges}
@@ -762,14 +734,13 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
         }}
       >
         <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} onEdgeClick={handleEdgeClick} fitSignal={fitSignal} />
-      </ProjectPanels>
+      </PageShell>
       <ShotPreviewDialog
         open={zoomNode !== null}
         onOpenChange={(open) => { if (!open) setZoomNode(null); }}
         node={zoomNode ?? undefined}
         initialPlatform={zoomPlatform}
       />
-      <RawBundleSheet key={rawOpen ? "raw-open" : "raw-closed"} projectId={id} open={rawOpen} onOpenChange={setRawOpen} />
       <NewNodeForm
         key={newNodePreset ? `preset-${newNodePreset.parentId}-${newNodePreset.species}` : "default"}
         open={newNodeOpen}
@@ -825,6 +796,6 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
         description="This will permanently remove the connection between these two nodes. This action cannot be undone."
         onConfirm={handleDeleteEdgeConfirm}
       />
-    </div>
+    </>
   );
 }
