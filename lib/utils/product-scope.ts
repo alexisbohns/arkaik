@@ -118,6 +118,40 @@ export function platformCountLabel(platforms: unknown): string {
 }
 
 /**
+ * **What to call ONE product on screen, written once.**
+ *
+ * `title` is not validated by `resolveProducts` — a definition needs only an id
+ * to resolve, and bundles are hand-edited and agent-edited, so at runtime the
+ * title can be absent, blank, or not a string whatever the type says. Falling
+ * back to the id keeps a real, clickable row instead of a blank one.
+ *
+ * It lives here rather than in each surface because the fallback has to be
+ * **identical everywhere**: the settings manager's row, the dialog that deletes
+ * that row, the scope selector and the node picker all name the same malformed
+ * product, and a user who reads `admin-dashboard` in one place and an empty pill
+ * in another cannot tell they are the same thing. Four copies of a one-line rule
+ * stay in sync exactly until one of them does not.
+ *
+ * It lives *next to* {@link productLabels} because that is the plural, ordered
+ * form of the same fallback — over ids and a scope rather than over a definition
+ * — and the two answers must never disagree. It is deliberately NOT in
+ * lib/utils/product-editing.ts, which would be the other natural home: that
+ * module is not part of this one's module graph, and importing it here would
+ * make every test loader that builds product-scope.ts (pyramid, delivery,
+ * coverage, acceptance-matrix, journey-graph) build product-editing.ts too, for
+ * a display rule none of them exercise.
+ *
+ * Tolerates `null` so a dialog rendering on its way out, with its subject
+ * already cleared, gets an empty string rather than a throw.
+ */
+export function productDisplayTitle(
+  product: Pick<ProductDefinition, "id" | "title"> | null | undefined,
+): string {
+  if (!product) return "";
+  return typeof product.title === "string" && product.title.trim() !== "" ? product.title : product.id;
+}
+
+/**
  * The selector's options, in declaration order. **Products only** — the "All
  * products" entry is the selector's own affordance, not a product, so an empty
  * result here means "this project has no products" and the control does not
@@ -129,17 +163,17 @@ export function platformCountLabel(platforms: unknown): string {
  * `metadata` of its own, and every caller that has to remember that is a caller
  * that can forget.
  *
- * `title` is not validated by `resolveProducts` — a definition missing one is a
- * shape fault owned by the parser and the JSON Schema, so at runtime it can be
- * absent whatever the type says. Falling back to the id keeps a real, clickable
- * row instead of a blank one.
+ * The title fallback is {@link productDisplayTitle}'s, not a copy of it — a
+ * definition missing a title is a shape fault the parser owns, so at runtime it
+ * can be absent whatever the type says, and the row the selector shows for it
+ * has to read identically to the row the settings manager shows.
  */
 export function productScopeOptions(
   bundle: { project?: Pick<Project, "metadata"> } | undefined | null,
 ): ProductScopeOption[] {
   return resolveProducts(bundle?.project).map((product) => ({
     id: product.id,
-    label: typeof product.title === "string" && product.title.trim() !== "" ? product.title : product.id,
+    label: productDisplayTitle(product),
     platformLabel: platformCountLabel(product.platforms),
   }));
 }
@@ -290,8 +324,9 @@ export function productLabels(ids: Iterable<string>, scope: ProductScope): strin
   const declared = [...scope.productsById.keys()].filter((id) => products.has(id));
   const undeclared = [...products].filter((id) => !scope.productsById.has(id));
   return [...declared, ...undeclared].map((id) => {
-    const title = scope.productsById.get(id)?.title;
-    return typeof title === "string" && title.trim() !== "" ? title : id;
+    // The singular fallback, not a copy of it — an id the project no longer
+    // declares has no definition to read a title from, and reads as itself.
+    return productDisplayTitle(scope.productsById.get(id) ?? { id, title: "" });
   });
 }
 

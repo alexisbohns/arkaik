@@ -21,6 +21,7 @@ const {
   platformAvailabilityShape,
   resolveProductScope,
   productScopeOptions,
+  productDisplayTitle,
   platformCountLabel,
   nodeInScope,
   mapProductId,
@@ -211,6 +212,28 @@ assert(
   productScopeOptions({ project: { metadata: { products: [{ id: "p", title: "   ", platforms: ["ios"] }] } } })[0]
     .label === "p",
   "a whitespace-only title falls back too — a row of spaces is still a blank row",
+);
+
+// The singular fallback the settings manager, its delete dialog and the picker
+// all name a product with. It is asserted directly rather than only through
+// `productScopeOptions` because those callers hold a definition, not a bundle,
+// and a fourth inline copy of the rule is exactly what it exists to prevent.
+assert(
+  productDisplayTitle({ id: "admin", title: "Admin dashboard" }) === "Admin dashboard",
+  "productDisplayTitle uses the title when there is one",
+);
+assert(
+  productDisplayTitle({ id: "admin" }) === "admin",
+  "productDisplayTitle falls back to the id — resolveProducts requires an id and nothing else",
+);
+assert(
+  productDisplayTitle({ id: "admin", title: "   " }) === "admin" &&
+    productDisplayTitle({ id: "admin", title: 7 }) === "admin",
+  "productDisplayTitle falls back on a blank or non-string title too",
+);
+assert(
+  productDisplayTitle(null) === "" && productDisplayTitle(undefined) === "",
+  "productDisplayTitle survives a missing product — the delete dialog renders on its way out",
 );
 
 assert(platformCountLabel([]) === "No platforms", "arity 0 is a real state: 'No platforms'");

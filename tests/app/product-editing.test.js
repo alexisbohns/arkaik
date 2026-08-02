@@ -37,6 +37,7 @@ const {
   platformMenuFor,
   constrainPlatforms,
   withProductMembership,
+  platformLabel,
   applyProductPlan,
 } = loadProductEditing();
 
@@ -305,6 +306,18 @@ test("degenerate case: with no products declared, no plan changes anything", () 
 
   // And the node form is unchanged: every platform stays on offer.
   assert.deepEqual(platformMenuFor(null), ["web", "ios", "android"]);
+});
+
+test("platformLabel names a platform this build knows", () => {
+  assert.equal(platformLabel("ios"), "iOS");
+  assert.equal(platformLabel("web"), "Web");
+});
+
+test("platformLabel echoes an id it does not know rather than blanking it", () => {
+  // Showing the junk is what tells a bundle's author their file says something
+  // this build does not understand.
+  assert.equal(platformLabel("watchos"), "watchos");
+  assert.equal(platformLabel(undefined), "undefined");
 });
 
 console.log("\napply-product-plan");

@@ -57,6 +57,10 @@ function loadProductEditing() {
   }
 
   return {
+    // Picked, not spread: PLATFORMS itself has no business shadowing anything
+    // here, but `platformLabel` is a rule this suite asserts — the unknown-id
+    // fallback every product surface leans on.
+    platformLabel: require(path.join(BUILD_DIR, "platforms.js")).platformLabel,
     ...require(path.join(BUILD_DIR, "product-editing.js")),
     ...require(path.join(BUILD_DIR, "apply-product-plan.js")),
   };
