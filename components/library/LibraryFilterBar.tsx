@@ -2,13 +2,18 @@
 
 import { SearchIcon, Grid3X3Icon, Table2Icon } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { type SpeciesId } from "@/lib/config/species";
-import { cn } from "@/lib/utils";
 
 // Species selection is owned by the sidebar (?species= deep links); this bar
 // only carries search and the display-mode toggle.
 export type LibrarySpeciesFilter = "all" | SpeciesId;
 export type LibraryDisplayMode = "gallery" | "directory";
+
+const DISPLAY_MODES: readonly SegmentedControlOption<LibraryDisplayMode>[] = [
+  { id: "gallery", label: "Grid", icon: Grid3X3Icon },
+  { id: "directory", label: "Table", icon: Table2Icon },
+];
 
 interface LibraryFilterBarProps {
   search: string;
@@ -37,36 +42,12 @@ export function LibraryFilterBar({
           />
         </div>
 
-        <div className="inline-flex items-center rounded-md border bg-background p-1">
-          <button
-            type="button"
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors",
-              displayMode === "gallery"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-            )}
-            onClick={() => onDisplayModeChange("gallery")}
-            aria-pressed={displayMode === "gallery"}
-          >
-            <Grid3X3Icon className="size-3.5" />
-            Grid
-          </button>
-          <button
-            type="button"
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors",
-              displayMode === "directory"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-            )}
-            onClick={() => onDisplayModeChange("directory")}
-            aria-pressed={displayMode === "directory"}
-          >
-            <Table2Icon className="size-3.5" />
-            Table
-          </button>
-        </div>
+        <SegmentedControl
+          options={DISPLAY_MODES}
+          value={displayMode}
+          onChange={onDisplayModeChange}
+          ariaLabel="Display mode"
+        />
       </div>
     </div>
   );
