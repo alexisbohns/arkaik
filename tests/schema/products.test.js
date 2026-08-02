@@ -438,6 +438,26 @@ assert(
   "an acceptance that covers something derives membership and is not reported unassigned",
 );
 
+// One acceptance, two anchors, one product — derived membership does not span.
+const oneProduct = findingsFor(
+  bundleWith(
+    [{ id: "app", title: "A", platforms: ["web"] }],
+    [
+      node({ id: "V-a", metadata: { product: "app" } }),
+      node({ id: "V-b", metadata: { product: "app" } }),
+      node({ id: "AC-1", species: "acceptance", metadata: {} }),
+    ],
+    [
+      { id: "e1", project_id: "p", edge_type: "covers", source_id: "AC-1", target_id: "V-a" },
+      { id: "e2", project_id: "p", edge_type: "covers", source_id: "AC-1", target_id: "V-b" },
+    ],
+  ),
+);
+assert(
+  !oneProduct.rules.includes("acceptance-covers-span-products"),
+  "an acceptance whose anchors all sit in one product is not reported as spanning",
+);
+
 // The degenerate case is silent
 const PRODUCT_RULES = [
   "product-duplicate-id",
@@ -507,6 +527,7 @@ const everyResult = [
   unassigned,
   anchorless,
   spanning,
+  oneProduct,
 ];
 assert(
   everyResult
