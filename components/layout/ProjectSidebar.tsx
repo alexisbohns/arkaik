@@ -18,6 +18,7 @@ import {
   ServerIcon,
   SquareKanbanIcon,
 } from "lucide-react";
+import { ProductScopeSelector } from "@/components/layout/ProductScopeSelector";
 import { ProjectSwitcher, type ProjectView } from "@/components/layout/ProjectSwitcher";
 import {
   Sidebar,
@@ -30,11 +31,19 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import type { ProjectBundle } from "@/lib/data/types";
 import { useModKeyLabel } from "@/lib/hooks/useModKeyLabel";
 
 interface ProjectSidebarProps {
   projectId: string;
-  currentProjectTitle?: string;
+  /**
+   * The loaded bundle. The sidebar took only the title before; the product
+   * selector needs `project.metadata.products` too, and the title is right
+   * there on the same object — passing both would be two props that can
+   * disagree. `undefined` until `useProject` resolves, which the switcher
+   * renders as "Loading project..." and the selector renders as nothing.
+   */
+  project: ProjectBundle | undefined;
   currentView: ProjectView;
   currentSpecies: string | null;
   /** Active map id when currentView is "maps" and a specific map is open. */
@@ -60,7 +69,7 @@ const LIBRARY_ITEMS = [
 
 export function ProjectSidebar({
   projectId,
-  currentProjectTitle,
+  project,
   currentView,
   currentSpecies,
   currentMapId,
@@ -83,12 +92,13 @@ export function ProjectSidebar({
       <SidebarHeader>
         <ProjectSwitcher
           currentProjectId={projectId}
-          currentProjectTitle={currentProjectTitle}
+          currentProjectTitle={project?.project.title}
           currentView={currentView}
           currentQueryString={currentQueryString}
           onOpenPublish={onOpenPublish}
           onOpenRaw={onOpenRaw}
         />
+        <ProductScopeSelector projectId={projectId} project={project} />
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton

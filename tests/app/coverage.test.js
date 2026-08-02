@@ -17,6 +17,11 @@ const {
   computeDeliverySnapshot,
   computeUnreachableFromRoot,
   computeHealthIndicators,
+  resolveProductScope,
+  computeDeliveryItems,
+  groupItemsByStatus,
+  getCountedStatuses,
+  buildProductUsageIndex,
 } = loadCoverage();
 
 let failures = 0;
@@ -262,6 +267,139 @@ assert(seedById.get("open-backlog").count === 3, `seed backlog has 3 open items 
 assert(
   eq(seedHealth, computeHealthIndicators(bundle.nodes, bundle.edges, bundle.journal, { rootNodeId: bundle.project.root_node_id })),
   "health projection is deterministic",
+);
+
+// ================== The Overview under a product scope =========================
+//
+// The Overview summarises the Delivery board and the platform gauges, so a
+// scope it applied differently would be a second answer to the same question.
+// Fixture: two products, and the RFC's headline complaint stated as data — a
+// web-only Admin whose view nonetheless declares three platforms (a *warning*
+// in validateBundle, not an error, so the projections must survive it).
+
+const scopeBundle = {
+  project: {
+    id: "P",
+    title: "P",
+    metadata: {
+      products: [
+        { id: "app", title: "End-user app", platforms: ["web", "ios", "android"] },
+        { id: "admin", title: "Admin", platforms: ["web"] },
+      ],
+    },
+  },
+};
+
+const viewApp = {
+  id: "V-app", project_id: "p", species: "view", title: "App home", status: "development",
+  platforms: ["web", "ios", "android"], metadata: { product: "app" },
+};
+const viewAdmin = {
+  id: "V-admin", project_id: "p", species: "view", title: "Admin console", status: "development",
+  platforms: ["web", "ios", "android"], metadata: { product: "admin" },
+};
+const accApp = {
+  id: "AC-app", project_id: "p", species: "acceptance", title: "App promise", status: "live",
+  platforms: ["web", "ios", "android"],
+};
+const accAdmin = {
+  id: "AC-admin", project_id: "p", species: "acceptance", title: "Admin promise", status: "development",
+  platforms: ["web", "android"],
+};
+const scopeNodes = [viewApp, viewAdmin, accApp, accAdmin];
+const scopeEdges = [
+  { id: "e1", project_id: "p", source_id: "AC-app", target_id: "V-app", edge_type: "covers" },
+  { id: "e2", project_id: "p", source_id: "AC-admin", target_id: "V-admin", edge_type: "covers" },
+];
+const scopeGraph = {
+  edges: scopeEdges,
+  nodesById: new Map(scopeNodes.map((node) => [node.id, node])),
+  usageIndex: buildProductUsageIndex(scopeNodes, scopeEdges),
+};
+
+const allScope = resolveProductScope(scopeBundle, null);
+const adminScope = resolveProductScope(scopeBundle, "admin");
+
+// --- Platform gauges: the rollup drops out-of-scope views and clips platforms --
+
+const bareRollup = computeProductRollup(scopeNodes, scopeEdges);
+assert(
+  eq(bareRollup.totals, { web: 2, ios: 1, android: 2 }),
+  `precondition: unscoped, the admin view pads android (got ${JSON.stringify(bareRollup.totals)})`,
+);
+
+const allRollup = computeProductRollup(scopeNodes, scopeEdges, undefined, { scope: allScope, graph: scopeGraph });
+assert(
+  eq(allRollup.totals, { web: 2, ios: 1, android: 1 }),
+  `THE FIX: under All products a web-only product's view contributes web alone (got ${JSON.stringify(allRollup.totals)})`,
+);
+
+const adminRollup = computeProductRollup(scopeNodes, scopeEdges, undefined, { scope: adminScope, graph: scopeGraph });
+assert(
+  eq(adminRollup.totals, { web: 1 }) && eq(adminRollup.counts, { web: { development: 1 } }),
+  `the admin scope rolls up the admin view only, on web only (got ${JSON.stringify(adminRollup.counts)})`,
+);
+assert(
+  eq(
+    computeProductRollup([viewAdmin], scopeEdges, undefined, { scope: adminScope, graph: scopeGraph }).counts,
+    { web: { development: 1 } },
+  ),
+  "clipping the view's platforms does not cost it the covering acceptance its effective status comes from",
+);
+
+// --- Delivery snapshot: the board's own items, scoped identically --------------
+
+const snapshotFor = (scope) => computeDeliverySnapshot(scopeNodes, undefined, undefined, { scope, graph: scopeGraph });
+const boardFor = (scope) => {
+  const columns = getCountedStatuses();
+  const grouped = groupItemsByStatus(computeDeliveryItems(scopeNodes, ["view"], { scope, graph: scopeGraph }), columns);
+  return columns.map((status) => ({ status, count: grouped.get(status)?.length ?? 0 }));
+};
+
+assert(
+  eq(snapshotFor(allScope).statuses, boardFor(allScope)) && eq(snapshotFor(adminScope).statuses, boardFor(adminScope)),
+  "a scoped snapshot is the scoped board's own columns, under both scopes",
+);
+assert(
+  computeDeliverySnapshot(scopeNodes).totalItems === 6 && snapshotFor(allScope).totalItems === 4,
+  `All products drops the admin view's iOS and Android items (6 unscoped, got ${snapshotFor(allScope).totalItems})`,
+);
+assert(
+  snapshotFor(adminScope).totalItems === 1,
+  `the admin scope leaves one (view x platform) item (got ${snapshotFor(adminScope).totalItems})`,
+);
+
+// --- The degenerate case: no products declared, byte-identical to today --------
+//
+// Asserted over the real seed rather than a fixture, because the seed is what
+// every existing golden above is pinned to: if a scope carrying no products
+// moved any of these numbers, it would have moved them for every user.
+
+const noProductScope = resolveProductScope({ project: { id: "Q", title: "Q", metadata: {} } }, null);
+const seedGraph = {
+  edges: bundle.edges,
+  nodesById,
+  usageIndex: buildProductUsageIndex(bundle.nodes, bundle.edges),
+};
+
+assert(
+  eq(
+    computeProductRollup(bundle.nodes, bundle.edges, undefined, { scope: noProductScope, graph: seedGraph }),
+    seedRollup,
+  ),
+  "a project declaring no products rolls up byte-identically to today, over the seed",
+);
+assert(
+  eq(
+    computeDeliverySnapshot(bundle.nodes, undefined, undefined, { scope: noProductScope, graph: seedGraph }),
+    seedSnapshot,
+  ),
+  "a project declaring no products snapshots byte-identically to today, over the seed",
+);
+assert(
+  eq(computeProductRollup(bundle.nodes, bundle.edges, undefined, {}), seedRollup) &&
+    eq(computeDeliverySnapshot(bundle.nodes, undefined, undefined, {}), seedSnapshot),
+  "an options object carrying no scope is the same as no options at all",
 );
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });

@@ -81,6 +81,8 @@ interface NodeMetadata extends Record<string, unknown> {
   gherkin?: string;
   /** Acceptance nodes: value elements served — the Why (spec §3.2). */
   values?: ValueId[];
+  /** Product membership; meaningful on flow, view, and acceptance only. */
+  product?: string;
 }
 
 interface Node {
@@ -141,6 +143,8 @@ interface MapDefinition extends Record<string, unknown> {
   edge_types?: (EdgeTypeId | (string & {}))[];
   /** Scope anchor; the journey renderer falls back to \`project.root_node_id\`. */
   root_node_id?: string;
+  /** Product scope; absent = every product (docs/spec/bundle-format.md § Products). */
+  product?: string;
   /** Traversal bound from the root; absent = unbounded. */
   depth?: number;
   layout?: MapLayoutHints;
@@ -157,6 +161,7 @@ interface ProjectMetadata extends Record<string, unknown> {
   maps?: MapDefinition[];
   /** Per-map display overrides keyed by map id — built-ins included. */
   map_display?: Record<string, MapDisplayOptions>;
+  products?: ProductDefinition[];
 }
 
 interface Project {

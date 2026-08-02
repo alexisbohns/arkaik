@@ -140,9 +140,12 @@ function ProjectChrome({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarProvider defaultOpen>
+      {/* The whole bundle, not just the title: the product selector in the
+          sidebar header reads `project.metadata.products`, and two props off the
+          same object could disagree. */}
       <ProjectSidebar
         projectId={id}
-        currentProjectTitle={project?.project.title}
+        project={project}
         currentView={currentView}
         currentSpecies={currentSpecies}
         currentMapId={currentMapId}

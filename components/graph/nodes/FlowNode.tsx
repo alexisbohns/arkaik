@@ -5,13 +5,12 @@ import { Handle, Position, NodeToolbar, type NodeProps } from "@xyflow/react";
 import { ChevronDown, ChevronRight, Info, PlusCircle, Split } from "lucide-react";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
-import type { PlatformStatusRollup } from "@/lib/utils/platform-status";
-import { PLATFORMS } from "@/lib/config/platforms";
+import { flowGaugePlatforms, type PlatformStatusRollup } from "@/lib/utils/platform-status";
 import { StageIcon } from "@/components/layout/StageIcon";
 import { STATUS_GHOST_STYLES } from "./node-styles";
 import { useToolbarHover } from "@/lib/hooks/useToolbarHover";
-import { PlatformGaugeList } from "./PlatformGaugeList";
-import { PlatformRingSet } from "./PlatformRingSet";
+import { useCanvasScopePlatforms } from "../canvas-scope";
+import { PlatformAvailability } from "./PlatformAvailability";
 
 function FlowNodeComponent({ data }: NodeProps) {
   const status = (data.status as StatusId) ?? "idea";
@@ -31,6 +30,9 @@ function FlowNodeComponent({ data }: NodeProps) {
   const onAddChild = data.onAddChild as (() => void) | undefined;
   const ghostClass = STATUS_GHOST_STYLES[status];
   const { isHovered, nodeProps, toolbarProps } = useToolbarHover();
+  // From the canvas, never from a global — React Flow owns this component's
+  // props, so the scope arrives through the context `Canvas` publishes.
+  const scopePlatforms = useCanvasScopePlatforms();
   const isBranch = renderVariant === "branch";
   const isConditionBranch = isBranch && branchKind === "condition";
   const isInteractive = Boolean(onToggle);
@@ -118,18 +120,32 @@ function FlowNodeComponent({ data }: NodeProps) {
           <p className="text-xs leading-relaxed text-muted-foreground line-clamp-3">
             {branchSummary}
           </p>
-        ) : platformDisplay === "rings" ? (
-          // The Pyramid's rendition, one size down: the global ring centers the
-          // flow's view count, each platform ring its own delivery breakdown.
-          <PlatformRingSet
+        ) : (
+          /* Two independent questions, answered in one place.
+
+             WHICH platforms: `flowGaugePlatforms` — clamped, not replaced. A
+             flow's rollup can count a platform the flow itself never declares,
+             and under All products that track must survive; the
+             no-declared-platforms fallback is the scope's menu, not every
+             platform. The list is the same for both renditions, so flipping the
+             map's Display toggle re-draws the same facts and never changes
+             which platforms the card claims.
+
+             HOW they draw: `PlatformAvailability` — the map's
+             `display.flow_platforms` picks rings (the Pyramid's rendition, one
+             size down, centering the flow's view count) or bars, and the arity
+             rule collapses either to a single unlabelled track when the scope
+             leaves one platform or none. */
+          <PlatformAvailability
             rollup={platformRollup}
+            platforms={flowGaugePlatforms(platforms, platformRollup, scopePlatforms)}
             count={viewCount}
             size="sm"
             countLabel={viewCount === 1 ? "view" : "views"}
             platformCountLabel="statuses"
+            multiPlatformShape={platformDisplay}
+            compactBars
           />
-        ) : (
-          <PlatformGaugeList rollup={platformRollup} platforms={platforms.length > 0 ? platforms : PLATFORMS.map((platform) => platform.id)} compact />
         )}
       </div>
       )}

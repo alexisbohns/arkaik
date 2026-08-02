@@ -20,9 +20,13 @@ import { useEdges } from "@/lib/hooks/useEdges";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useNodes } from "@/lib/hooks/useNodes";
+import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
+import { useProject } from "@/lib/hooks/useProject";
 import { computeDeliveryItems, groupItemsByStatus, type DeliveryItem } from "@/lib/utils/delivery";
 import { generateNodeId } from "@/lib/utils/id";
+import type { ProductGraph } from "@/lib/utils/product-scope";
 import { matchesSearch } from "@/lib/utils/search";
+import { buildProductUsageIndex } from "@arkaik/schema";
 
 const SPECIES_LABEL_BY_ID = Object.fromEntries(
   SPECIES.map((species) => [species.id, species.label]),
@@ -55,9 +59,25 @@ export default function ProjectDeliveryPage() {
 
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
+  const { project: projectBundle } = useProject(id);
   const { journal } = useJournal(id);
+  // The shell's scope, never a URL param (§ Decision 2). `projectBundle` is
+  // `undefined` until `useProject`'s effect lands, and a scope resolved from
+  // nothing declares no products — which resolves to every platform and every
+  // node, i.e. today's board. So the first render is already correct and
+  // nothing flashes when the bundle arrives.
+  const scope = useEffectiveProduct(id, projectBundle);
 
   const nodesById = useMemo(() => new Map(dataNodes.map((node) => [node.id, node])), [dataNodes]);
+
+  // Built once per snapshot — `buildProductUsageIndex` is a graph traversal and
+  // must never run per node. The board renders nothing until `edgesLoading` is
+  // false, so no reader ever sees the empty-edge answer.
+  const usageIndex = useMemo(() => buildProductUsageIndex(dataNodes, dataEdges), [dataNodes, dataEdges]);
+  const productGraph = useMemo<ProductGraph>(
+    () => ({ edges: dataEdges, nodesById, usageIndex }),
+    [dataEdges, nodesById, usageIndex],
+  );
 
   const statusColumns = useMemo<readonly StatusId[]>(
     () => (showAllStatuses ? ALL_STATUS_COLUMNS : getCountedStatuses(DEFAULT_COUNTED_STATUS_PRESET_ID)),
@@ -66,7 +86,7 @@ export default function ProjectDeliveryPage() {
 
   const columns = useMemo(() => {
     const searched = dataNodes.filter((node) => matchesSearch(node, search));
-    const items = computeDeliveryItems(searched, speciesFilter);
+    const items = computeDeliveryItems(searched, speciesFilter, { scope, graph: productGraph });
     const grouped = groupItemsByStatus(
       items,
       statusColumns,
@@ -78,7 +98,7 @@ export default function ProjectDeliveryPage() {
       label: STATUS_LABEL_BY_ID[status] ?? status,
       items: grouped.get(status) ?? [],
     }));
-  }, [dataNodes, platformFilter, search, speciesFilter, statusColumns]);
+  }, [dataNodes, platformFilter, productGraph, scope, search, speciesFilter, statusColumns]);
 
   const totalItems = useMemo(() => columns.reduce((sum, column) => sum + column.items.length, 0), [columns]);
 
@@ -140,6 +160,7 @@ export default function ProjectDeliveryPage() {
         }}
         allNodes={dataNodes}
         allEdges={dataEdges}
+        scope={scope}
         journal={journal}
         onUpdate={handleNodeUpdate}
         onCreateNode={handleCreateNodeFromPanel}
@@ -154,12 +175,19 @@ export default function ProjectDeliveryPage() {
             onToggleSpecies={handleToggleSpecies}
             onShowAllStatusesChange={setShowAllStatuses}
             onSearchChange={setSearch}
+            projectId={id}
+            project={projectBundle}
           />
 
           {totalItems === 0 ? (
             <div className="rounded-xl border border-dashed p-10 text-center">
               <p className="text-sm text-muted-foreground">
-                No delivery items match. Pick a species, widen the platform filter, or create a node.
+                {/* Advice the reader can act on: under a scoped product the platform
+                    filter is hidden (arity ≤ 1), so pointing at it is a dead end —
+                    the thing actually narrowing the board is the product. */}
+                {scope.productId === null
+                  ? "No delivery items match. Pick a species, widen the platform filter, or create a node."
+                  : "No delivery items match. Pick a species, try another product, or create a node."}
               </p>
               <div className="mt-4">
                 <Button size="sm" className="cursor-pointer" onClick={() => setNewNodeOpen(true)}>

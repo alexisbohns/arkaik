@@ -14,8 +14,11 @@ import {
 } from "@/components/pyramid/PyramidToolbar";
 import { VALUES, VALUE_TIERS_CONFIG } from "@/lib/config/values";
 import type { PyramidElement } from "@/lib/utils/pyramid";
-import { computePyramidAggregation } from "@/lib/utils/pyramid";
+import { computeScopedPyramidTiers } from "@/lib/utils/pyramid";
+import { useEdges } from "@/lib/hooks/useEdges";
 import { useNodes } from "@/lib/hooks/useNodes";
+import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
+import { useProject } from "@/lib/hooks/useProject";
 
 const VALUE_LABEL = new Map(VALUES.map((v) => [v.id, v.label]));
 const VALUE_DESCRIPTION = new Map(VALUES.map((v) => [v.id, v.description]));
@@ -29,9 +32,10 @@ function matchesStep(element: PyramidElement, step: PyramidFilterStep) {
 
 /**
  * The Pyramid: "How well is each value element delivered?" — the value-delivery
- * radar (spec §9.2). Each element carries four status rings (global + one per
- * platform); a three-step filter picks the slice worth looking at, and the view
- * switcher trades the icon-led cards for one-line rows.
+ * radar (spec §9.2). Each element carries its availability — four status rings
+ * (global + one per platform) for a scope shipping on two or more, a single bar
+ * and a count for one or none; a three-step filter picks the slice worth
+ * looking at, and the view switcher trades the icon-led cards for one-line rows.
  */
 export default function PyramidPage() {
   const params = useParams();
@@ -40,13 +44,36 @@ export default function PyramidPage() {
   const [viewMode, setViewMode] = useState<PyramidViewMode>("cards");
   const [filterStep, setFilterStep] = useState<PyramidFilterStep>("all");
 
-  const { nodes: dataNodes, loading } = useNodes(id);
+  const { nodes: dataNodes, loading: nodesLoading } = useNodes(id);
+  // Gated on below alongside the nodes, as /acceptances does: an acceptance's
+  // product comes from the anchors it covers, so aggregating before the edges
+  // land would scope a scoped pyramid by stored keys alone and then correct
+  // itself a frame later.
+  const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
+  const { project: projectBundle } = useProject(id);
+
+  // `useProject` resolves in an effect, so this is the no-products scope on the
+  // first render — every platform, all acceptances — which is also exactly what
+  // a project that declares no products resolves to for good. Nothing flashes.
+  const scope = useEffectiveProduct(id, projectBundle);
 
   const acceptances = useMemo(
     () => dataNodes.filter((node) => node.species === "acceptance"),
     [dataNodes],
   );
-  const tiers = useMemo(() => computePyramidAggregation(acceptances), [acceptances]);
+  const nodesById = useMemo(
+    () => new Map(dataNodes.map((node) => [node.id, node])),
+    [dataNodes],
+  );
+  // Scoping the *acceptances* as well as the platform menu: a pyramid for Admin
+  // has to aggregate Admin's acceptances, and membership follows an
+  // acceptance's anchors before its stored key (§ Decision 5). Both steps live
+  // in `computeScopedPyramidTiers`, which the Overview's card calls too — the
+  // two surfaces draw the same pyramid, so they compose it once.
+  const tiers = useMemo(
+    () => computeScopedPyramidTiers(acceptances, dataEdges, nodesById, scope),
+    [acceptances, dataEdges, nodesById, scope],
+  );
 
   const visibleTiers = useMemo(
     () =>
@@ -60,7 +87,7 @@ export default function PyramidPage() {
     [tiers, filterStep],
   );
 
-  if (loading) {
+  if (nodesLoading || edgesLoading) {
     return (
       <div className="h-full w-full flex items-center justify-center">
         <span className="text-muted-foreground text-sm">Loading pyramid...</span>
@@ -97,6 +124,7 @@ export default function PyramidPage() {
                   label={VALUE_LABEL.get(element.value) ?? element.value}
                   description={VALUE_DESCRIPTION.get(element.value) ?? ""}
                   href={`/project/${id}/acceptances?value=${element.value}`}
+                  platforms={scope.platforms}
                 />
               ));
               return (

@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type Connection, type EdgeMouseHandler, type NodeMouseHandler } from "@xyflow/react";
 import { PlusIcon } from "lucide-react";
-import { resolveMapDisplay, type MapDefinition, type MapDisplayOptions } from "@arkaik/schema";
+import {
+  buildProductUsageIndex,
+  resolveMapDisplay,
+  type MapDefinition,
+  type MapDisplayOptions,
+} from "@arkaik/schema";
 import { toast } from "sonner";
 import { Canvas } from "@/components/graph/Canvas";
 import { MapDisplayPopover } from "@/components/maps/MapDisplayPopover";
@@ -20,7 +25,9 @@ import { useJournal } from "@/lib/hooks/useJournal";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useProject } from "@/lib/hooks/useProject";
+import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { generateNodeId, edgeId } from "@/lib/utils/id";
+import type { ProductGraph } from "@/lib/utils/product-scope";
 import { buildSystemGraph } from "@/lib/utils/system-graph";
 import type { ElkLayoutOptions } from "@/lib/utils/elk-layout";
 
@@ -73,9 +80,28 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode } = useNodes(projectId);
   const { edges: dataEdges, loading: edgesLoading, addEdge, removeEdge } = useEdges(projectId);
   const { project: projectBundle, updateProject } = useProject(projectId);
+  // The shell's scope (§ Decision 2), passed down to the canvas cards and to
+  // every panel this map opens — never read from a global by the cards
+  // themselves. It is also the map's *default* product: `mapScopedNodes` lets
+  // the definition's own `product` override it (docs/spec/maps.md § Product Scope).
+  //
+  // Orthogonal to `display` below: the scope decides which nodes this map may
+  // draw and how many platforms any card may claim; the display decides how a
+  // card draws whatever it was given.
+  const scope = useEffectiveProduct(projectId, projectBundle);
   const { journal } = useJournal(projectId);
 
   const nodesById = useMemo(() => new Map(dataNodes.map((node) => [node.id, node])), [dataNodes]);
+
+  // Built once per snapshot — `buildProductUsageIndex` is a graph traversal and
+  // must never run per node. The canvas renders nothing until `edgesLoading` is
+  // false (the early return below), so no reader ever sees the empty-edge
+  // answer that would misplace every data model and endpoint for one frame.
+  const usageIndex = useMemo(() => buildProductUsageIndex(dataNodes, dataEdges), [dataEdges, dataNodes]);
+  const productGraph = useMemo<ProductGraph>(
+    () => ({ edges: dataEdges, nodesById, usageIndex }),
+    [dataEdges, nodesById, usageIndex],
+  );
 
   const display = useMemo(
     () => resolveMapDisplay(definition, projectBundle?.project),
@@ -90,8 +116,9 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
         dataEdges,
         { onOpenDetails: (node) => openNode({ nodeId: node.id }) },
         display,
+        { scope, graph: productGraph },
       ),
-    [dataEdges, dataNodes, definition, display, openNode],
+    [dataEdges, dataNodes, definition, display, openNode, productGraph, scope],
   );
 
   // The per-map override record — see JourneyMap's twin (docs/spec/maps.md
@@ -279,6 +306,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
         onLayoutChange={reframe}
         allNodes={dataNodes}
         allEdges={dataEdges}
+        scope={scope}
         journal={journal}
         onUpdate={handleNodeUpdate}
         onCreateNode={handleCreateNodeFromPanel}
@@ -292,6 +320,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
           fitSignal={fitSignal}
           spotlight
           spotlightNodeId={addressedNodeId}
+          scope={scope}
         />
       </PageShell>
       <NewNodeForm open={newNodeOpen} onOpenChange={setNewNodeOpen} onSubmit={handleCreateNode} />

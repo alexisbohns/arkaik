@@ -1,7 +1,7 @@
 /**
  * Parity-matrix projections for the /acceptances surface (spec §9.1): filter
  * acceptances by the filter-bar criteria, and group them under the view/flow
- * they cover (product-level last). Pure functions over nodes/edges, built on
+ * they cover (unanchored last). Pure functions over nodes/edges, built on
  * the schema projections (resolvePlatformStatus/hasParityGap) — no stored state.
  */
 
@@ -10,6 +10,14 @@ import type { PlatformId } from "@/lib/config/platforms";
 import type { StatusId } from "@/lib/config/statuses";
 import { resolvePlatformStatus, hasParityGap, type ValueId } from "@arkaik/schema";
 import { matchesSearch } from "@/lib/utils/search";
+// `productsOfAcceptance` lives in product-scope.ts, with the resolver for every
+// other species — one module answers "which products does this node belong to?".
+// Re-exported here because this module was its home and its test still asks for
+// it by name. The dependency runs one way only: product-scope knows nothing
+// about the matrix.
+import { coveredAnchorIds, productsOfAcceptance } from "@/lib/utils/product-scope";
+
+export { productsOfAcceptance };
 
 export interface AcceptanceFilters {
   search: string;
@@ -18,6 +26,14 @@ export interface AcceptanceFilters {
   value: ValueId | "all";
   anchor: string | "all";
   parityGap: boolean;
+  /**
+   * The product scope, not a filter-bar control: it comes from the shell's
+   * global scope, never from the URL. `null` is "All products" — a real member
+   * of the domain rather than an absence, which is why it is not `"all"` like
+   * its neighbours: those name a *column* that could be missing, this names a
+   * *frame* that is always present.
+   */
+  product: string | null;
 }
 
 export const EMPTY_FILTERS: AcceptanceFilters = {
@@ -27,14 +43,15 @@ export const EMPTY_FILTERS: AcceptanceFilters = {
   value: "all",
   anchor: "all",
   parityGap: false,
+  product: null,
 };
 
-/** Anchor ids an acceptance covers (outgoing `covers` edges). */
-function coveredAnchorIds(acceptanceId: string, edges: readonly Edge[]): string[] {
-  return edges
-    .filter((e) => e.edge_type === "covers" && e.source_id === acceptanceId)
-    .map((e) => e.target_id);
-}
+/**
+ * The heading of the `anchorId: null` bucket. Exported so the label lives in the
+ * module a plain Node test can reach, rather than inline in a component this
+ * repo has no runner for.
+ */
+export const UNANCHORED_GROUP_LABEL = "Unanchored";
 
 /** True if any applicable platform of the acceptance resolves to `status`. */
 function hasResolvedStatusOnAny(acceptance: Node, status: StatusId): boolean {
@@ -46,13 +63,22 @@ function hasResolvedStatusOnAny(acceptance: Node, status: StatusId): boolean {
  * `search` matches title, description, or gherkin. `status` matches when the
  * (optionally platform-scoped) resolved status equals it. `anchor` keeps
  * acceptances whose `covers` edges include that node id.
+ *
+ * `product` is applied first because it is the frame the rest of the filters
+ * read inside, not another criterion: a scoped product keeps only the
+ * acceptances {@link productsOfAcceptance} places in it, and an acceptance it
+ * places nowhere is dropped rather than shown everywhere.
  */
 export function filterAcceptances(
   acceptances: readonly Node[],
   edges: readonly Edge[],
+  nodesById: ReadonlyMap<string, Node>,
   filters: AcceptanceFilters,
 ): Node[] {
   return acceptances.filter((acc) => {
+    if (filters.product !== null && !productsOfAcceptance(acc, edges, nodesById).has(filters.product)) {
+      return false;
+    }
     if (filters.search) {
       const gherkin = typeof acc.metadata?.gherkin === "string" ? acc.metadata.gherkin : "";
       if (!matchesSearch({ title: acc.title, description: `${acc.description ?? ""} ${gherkin}` }, filters.search)) {
@@ -75,7 +101,14 @@ export function filterAcceptances(
 }
 
 export interface AnchorGroup {
-  /** null = product-level (0 covers edges). */
+  /**
+   * `null` = **unanchored**: 0 covers edges, or none that resolve. It used to
+   * read "product-level", which under products says the opposite of what this
+   * bucket means — these are not statements standing above every product, they
+   * are ideas in intake that have not been attached to a view or flow yet
+   * (§ Decision 5). The label is {@link UNANCHORED_GROUP_LABEL}; the `null`
+   * contract itself is unchanged.
+   */
   anchorId: string | null;
   anchorNode: Node | null;
   anchorSpecies: Node["species"] | null;
@@ -84,9 +117,9 @@ export interface AnchorGroup {
 }
 
 /**
- * Group acceptances under the view/flow they cover, product-level last. An
+ * Group acceptances under the view/flow they cover, unanchored last. An
  * acceptance covering n anchors appears in each of the n groups (spec §9.1).
- * Anchor groups are ordered by title; the product-level bucket is always last.
+ * Anchor groups are ordered by title; the unanchored bucket is always last.
  */
 export function groupAcceptancesByAnchor(
   acceptances: readonly Node[],
@@ -94,11 +127,11 @@ export function groupAcceptancesByAnchor(
   nodesById: ReadonlyMap<string, Node>,
 ): { groups: AnchorGroup[] } {
   const byAnchor = new Map<string, Node[]>();
-  const product: Node[] = [];
+  const unanchored: Node[] = [];
   for (const acc of acceptances) {
     const anchors = coveredAnchorIds(acc.id, edges).filter((id) => nodesById.has(id));
     if (anchors.length === 0) {
-      product.push(acc);
+      unanchored.push(acc);
       continue;
     }
     for (const anchorId of anchors) {
@@ -122,13 +155,13 @@ export function groupAcceptancesByAnchor(
     .sort((a, b) => (a.anchorNode?.title ?? "").localeCompare(b.anchorNode?.title ?? ""));
 
   const groups = [...anchorGroups];
-  if (product.length > 0) {
+  if (unanchored.length > 0) {
     groups.push({
       anchorId: null,
       anchorNode: null,
       anchorSpecies: null,
-      acceptances: product,
-      gapCount: product.filter((a) => hasParityGap(a)).length,
+      acceptances: unanchored,
+      gapCount: unanchored.filter((a) => hasParityGap(a)).length,
     });
   }
   return { groups };

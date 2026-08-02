@@ -8,20 +8,31 @@ import { PLATFORM_ICONS, PLATFORM_LABELS, STATUS_STYLES } from "./node-styles";
 
 interface PlatformGaugeListProps {
   rollup?: PlatformStatusRollup;
-  platforms?: PlatformId[];
+  /**
+   * The platforms to draw a bar for — **authoritative**, and required.
+   *
+   * This list used to be unioned with whatever the rollup happened to carry,
+   * which quietly let a platform outside the caller's scope back into the
+   * display. Callers that want the rollup's own platforms included now say so
+   * with `withRollupPlatforms` (see `FlowNode`, `NodeCard`, `NodeDetailPanel`),
+   * so the widening is a decision at the call site rather than a rule baked in
+   * here. It stays required because under membership-only semantics an omitted
+   * list renders nothing at all — better a compile error than a blank gauge.
+   */
+  platforms: PlatformId[];
   compact?: boolean;
   showLabels?: boolean;
 }
 
 export function PlatformGaugeList({
   rollup = { counts: {}, totals: {} },
-  platforms = [],
+  platforms,
   compact = false,
   showLabels = false,
 }: PlatformGaugeListProps) {
-  const activePlatforms = PLATFORMS.filter(
-    (platform) => platforms.includes(platform.id) || Boolean(rollup.counts[platform.id]),
-  );
+  // PLATFORMS drives the stacking order (web, ios, android) — the given list is
+  // a membership test, never an ordering.
+  const activePlatforms = PLATFORMS.filter((platform) => platforms.includes(platform.id));
 
   if (activePlatforms.length === 0) {
     return null;

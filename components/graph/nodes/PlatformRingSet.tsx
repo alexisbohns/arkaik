@@ -8,14 +8,16 @@ import { PLATFORM_ICONS, PLATFORM_LABELS, STATUS_LABELS } from "./node-styles";
 import { StatusBreakdownPopover } from "./StatusBreakdownPopover";
 import { StatusRing, type StatusRingSize } from "./StatusRing";
 
-// Rings read Web → Android → iOS. PLATFORMS' own order (web, ios, android) drives
-// the bar stacking in PlatformGaugeList's four remaining call sites, so it stays put.
+// Rings read Web → Android → iOS, whatever order the caller hands them in — the
+// ring set re-sorts by RING_ORDER so a scope that narrows the list can never
+// reshuffle it. PLATFORMS' own order (web, ios, android) still drives the bar
+// stacking in PlatformGaugeList's four remaining call sites, so it stays put;
+// here it survives only as the default list when `platforms` is omitted.
 const RING_ORDER: readonly PlatformId[] = ["web", "android", "ios"];
 const rank = (id: PlatformId) => {
   const index = RING_ORDER.indexOf(id);
   return index === -1 ? RING_ORDER.length : index;
 };
-const RING_PLATFORMS = [...PLATFORMS].sort((left, right) => rank(left.id) - rank(right.id));
 
 const TRIGGER_CLASS = "cursor-help";
 
@@ -36,6 +38,12 @@ interface PlatformRingSetProps {
   rollup: PlatformStatusRollup;
   /** Center of the global ring — the count the caller already computed. */
   count: number;
+  /**
+   * The platforms to draw a ring for. Omitted means every platform the app
+   * knows about, which is what every pre-product call site wants; a scoped
+   * surface passes its own effective list instead.
+   */
+  platforms?: PlatformId[];
   size?: StatusRingSize;
   /** Names what `count` counts, for the popover footers. */
   countLabel?: string;
@@ -59,10 +67,14 @@ interface PlatformRingSetProps {
 export function PlatformRingSet({
   rollup,
   count,
+  platforms,
   size = "lg",
   countLabel = "acceptances",
   platformCountLabel = countLabel,
 }: PlatformRingSetProps) {
+  const ringPlatforms = (platforms ?? PLATFORMS.map((platform) => platform.id))
+    .slice()
+    .sort((left, right) => rank(left) - rank(right));
   const totalSegments = getRollupTotalSegments(rollup);
   const statusTotal = totalSegments.reduce((sum, segment) => sum + segment.count, 0);
   const centerText = size === "lg" ? "text-sm" : "text-[11px]";
@@ -94,16 +106,16 @@ export function PlatformRingSet({
         </HoverCardContent>
       </HoverCard>
 
-      {RING_PLATFORMS.map((platform) => {
-        const segments = getPlatformRollupSegments(rollup, platform.id);
+      {ringPlatforms.map((platform) => {
+        const segments = getPlatformRollupSegments(rollup, platform);
         // Summed from the segments, not read from `rollup.totals`, so the footer
         // count and the rows above it can never disagree.
         const platformTotal = segments.reduce((sum, segment) => sum + segment.count, 0);
-        const Icon = PLATFORM_ICONS[platform.id];
-        const label = PLATFORM_LABELS[platform.id];
+        const Icon = PLATFORM_ICONS[platform];
+        const label = PLATFORM_LABELS[platform];
 
         return (
-          <HoverCard key={platform.id} openDelay={150}>
+          <HoverCard key={platform} openDelay={150}>
             <HoverCardTrigger asChild>
               <span className={TRIGGER_CLASS}>
                 <StatusRing segments={segments} size={size} label={describeRing(label, segments)}>

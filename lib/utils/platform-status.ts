@@ -298,6 +298,91 @@ export function getRollupPlatforms(rollup: PlatformStatusRollup): PlatformId[] {
     .filter((platformId) => (rollup.totals[platformId] ?? 0) > 0 || Boolean(rollup.counts[platformId]));
 }
 
+/**
+ * `platforms` widened by whatever the rollup actually counted, in config order.
+ *
+ * The union `PlatformGaugeList` used to apply internally, hoisted to the callers
+ * that genuinely want it. A flow declares its own `platforms`, but its rollup is
+ * aggregated from descendant views and covering acceptances, which can speak to
+ * a platform the flow itself never lists — dropping those bars would hide
+ * counted work. The seed has exactly one such flow (`F-swap-glyph` declares
+ * web/ios, its rollup counts android via `V-glyphs-list`), which is enough to
+ * make the widening load-bearing rather than hypothetical.
+ *
+ * **Under a product scope, clamp — do not drop the widening.** That composition
+ * is {@link scopedRollupPlatforms}; call it rather than rewriting it.
+ */
+export function withRollupPlatforms(
+  platforms: readonly PlatformId[],
+  rollup: PlatformStatusRollup,
+): PlatformId[] {
+  const widened = new Set<PlatformId>([...platforms, ...getRollupPlatforms(rollup)]);
+  return PLATFORMS.map((platform) => platform.id).filter((platformId) => widened.has(platformId));
+}
+
+/**
+ * {@link withRollupPlatforms}, clamped to a product scope's platform menu.
+ *
+ * **A filter on top of the widening, never a replacement for it.** Under "All
+ * products" `scopePlatforms` is the union of every declared product's menu, so a
+ * platform the rollup counted but the flow never declared is still in it and the
+ * bar survives — today's behavior, exactly preserved. Under a web-only scope the
+ * menu is `["web"]` and that widened android bar clamps out, which is the whole
+ * point of the feature. Passing `scopedPlatforms(node, scope)` straight through
+ * instead would drop counted work in the unscoped case, which is the common one;
+ * clamping loses it only where the product genuinely cannot ship that platform.
+ *
+ * The seed has exactly one flow that exercises this — `F-swap-glyph` declares
+ * web/ios while its descendant `V-glyphs-list` declares android — so the
+ * difference between the two implementations is real data, not a hypothetical.
+ *
+ * Takes the menu as a plain array rather than a `ProductScope` so this module
+ * keeps its own dependencies: `product-scope.ts` imports platform-status, and
+ * the reverse import would close a cycle. Three call sites share it (the library
+ * card, the canvas flow node, the detail panel's computed status section), which
+ * is why it is a named function and not an expression repeated three times.
+ */
+export function scopedRollupPlatforms(
+  platforms: readonly PlatformId[],
+  rollup: PlatformStatusRollup,
+  scopePlatforms: readonly PlatformId[],
+): PlatformId[] {
+  return withRollupPlatforms(platforms, rollup).filter((platformId) => scopePlatforms.includes(platformId));
+}
+
+/**
+ * The gauge tracks a canvas flow card draws — {@link scopedRollupPlatforms},
+ * plus the empty-`platforms` fallback that call site has always had.
+ *
+ * A flow that declares nothing (and a synthetic branch node, which declares
+ * `[]` by construction) would otherwise render no tracks at all, because
+ * `PlatformGaugeList` returns `null` on an empty list. `FlowNode` therefore fell
+ * back to **every** configured platform — which is a scope leak of exactly the
+ * kind this feature exists to close: under a web-only product that fallback put
+ * an iOS and an Android track on the card. The fallback is the *scope's menu*,
+ * so under All products (or a project with no products at all) it is still
+ * every platform and the card is pixel-identical to today.
+ *
+ * Extracted from the component rather than left inline because this repo has no
+ * React test runner: as a pure function the product-scope suite can pin the
+ * fallback, and the difference between `PLATFORM_IDS` and a one-entry menu is
+ * precisely the regression that would otherwise be invisible until someone
+ * opened a scoped map.
+ */
+export function flowGaugePlatforms(
+  platforms: readonly PlatformId[],
+  rollup: PlatformStatusRollup,
+  scopePlatforms: readonly PlatformId[],
+): PlatformId[] {
+  if (platforms.length > 0) {
+    return scopedRollupPlatforms(platforms, rollup, scopePlatforms);
+  }
+  // Re-ordered through PLATFORMS rather than returned as given: every other
+  // platform list in this module is config-ordered, and a menu is a membership
+  // set, never an ordering.
+  return PLATFORMS.map((platform) => platform.id).filter((platformId) => scopePlatforms.includes(platformId));
+}
+
 export function getRollupDisplayStatus(
   rollup: PlatformStatusRollup,
   fallbackStatus: StatusId,

@@ -12,6 +12,7 @@ import type { Edge, JournalEvent, Node } from "@/lib/data/types";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import type { PanelEntry } from "@/lib/utils/panel-stack";
 import type { PanelDescriptor } from "@/lib/utils/project-panels";
+import { resolveProductScope, type ProductScope } from "@/lib/utils/product-scope";
 
 interface ProjectPanelsProps {
   /** The surface — canvas, board, or list. The grid's first cell. */
@@ -24,6 +25,17 @@ interface ProjectPanelsProps {
   onLayoutChange?: () => void;
   allNodes?: Node[];
   allEdges?: Edge[];
+  /**
+   * The surface's product scope, forwarded to every node panel it opens.
+   *
+   * A prop rather than a `useEffectiveProduct` call of its own, for the same
+   * reason every surface takes one: a panel shows what the surface behind it
+   * was showing, so when the deferred per-surface override lands the panel must
+   * follow that surface and not the global. Optional because the shell is now
+   * mounted by pages that carry no nodes at all — Settings, Changelog, Maps —
+   * where the only panel is the raw bundle and there is nothing to scope.
+   */
+  scope?: ProductScope;
   journal?: JournalEvent[];
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
   onDelete?: (nodeId: string) => void;
@@ -34,6 +46,13 @@ interface ProjectPanelsProps {
 
 const NO_NODES: Node[] = [];
 const NO_EDGES: Edge[] = [];
+/**
+ * All products, every platform — what `resolveProductScope` answers for a
+ * project that declares none, and so exactly the pre-products behaviour. Built
+ * once at module scope: it is a default prop value, and a fresh object per
+ * render would defeat the memoized sections downstream of it.
+ */
+const UNSCOPED: ProductScope = resolveProductScope(undefined, null);
 
 /**
  * Binds the panel stack to what a panel can be. A node entry resolves its id
@@ -52,6 +71,7 @@ export function ProjectPanels({
   onLayoutChange,
   allNodes = NO_NODES,
   allEdges = NO_EDGES,
+  scope = UNSCOPED,
   journal,
   onUpdate,
   onDelete,
@@ -146,6 +166,7 @@ export function ProjectPanels({
         return (
           <NodeDetailPanel
             node={node}
+            scope={scope}
             initialPlatform={entry.payload.initialPlatform}
             onUpdate={onUpdate}
             onDelete={onDelete}

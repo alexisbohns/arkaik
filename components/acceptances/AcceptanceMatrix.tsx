@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
-import type { Node, Edge } from "@/lib/data/types";
+import type { Node, Edge, ProjectBundle } from "@/lib/data/types";
 import { resolvePlatformStatus, hasParityGap } from "@arkaik/schema";
-import { groupAcceptancesByAnchor } from "@/lib/utils/acceptance-matrix";
-import { PLATFORMS } from "@/lib/config/platforms";
+import { groupAcceptancesByAnchor, UNANCHORED_GROUP_LABEL } from "@/lib/utils/acceptance-matrix";
+import { PLATFORMS, type PlatformId } from "@/lib/config/platforms";
+import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { STATUS_ICONS, STATUS_STYLES, STATUS_LABELS, SPECIES_ICONS } from "@/components/graph/nodes/node-styles";
 import { ValueBadge } from "@/components/values/ValueBadge";
 import { EntityId } from "@/components/graph/nodes/EntityBadges";
@@ -15,18 +16,63 @@ interface AcceptanceMatrixProps {
   edges: Edge[];
   nodesById: ReadonlyMap<string, Node>;
   onSelect: (node: Node) => void;
+  projectId: string;
+  /** The bundle products live on. `undefined` until `useProject` resolves. */
+  project: ProjectBundle | undefined;
 }
 
-function PlatformCell({ acceptance, platformId }: { acceptance: Node; platformId: (typeof PLATFORMS)[number]["id"] }) {
-  const status = resolvePlatformStatus(acceptance, platformId);
+const PLATFORM_LABELS = new Map<PlatformId, string>(PLATFORMS.map((platform) => [platform.id, platform.label]));
+
+/** One status column: a platform to resolve against, plus the heading it earns. */
+interface StatusColumn {
+  key: string;
+  label: string;
+  /** `null` only at arity 0, where there is no platform to resolve against. */
+  platform: PlatformId | null;
+}
+
+/**
+ * A cell's status: the column's platform when there is one, the acceptance's own
+ * lifecycle status when there is not. Arity 0 is a product that does not track
+ * availability at all (a CLI, a public API), so `status` *is* the whole answer —
+ * `resolvePlatformStatus` has nothing to be asked about.
+ */
+function StatusCell({ acceptance, platform }: { acceptance: Node; platform: PlatformId | null }) {
+  const status = platform === null ? acceptance.status : resolvePlatformStatus(acceptance, platform);
   if (!status) return <span className="text-muted-foreground/40" aria-label="Not applicable">—</span>;
   const Icon = STATUS_ICONS[status];
-  return <Icon className={`size-4 ${STATUS_STYLES[status].badge}`} aria-label={`${platformId}: ${STATUS_LABELS[status]}`} />;
+  const label = platform === null ? STATUS_LABELS[status] : `${platform}: ${STATUS_LABELS[status]}`;
+  return <Icon className={`size-4 ${STATUS_STYLES[status].badge}`} aria-label={label} />;
 }
 
-export function AcceptanceMatrix({ acceptances, edges, nodesById, onSelect }: AcceptanceMatrixProps) {
+export function AcceptanceMatrix({ acceptances, edges, nodesById, onSelect, projectId, project }: AcceptanceMatrixProps) {
+  const scope = useEffectiveProduct(projectId, project);
   const { groups } = useMemo(() => groupAcceptancesByAnchor(acceptances, edges, nodesById), [acceptances, edges, nodesById]);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  /**
+   * The arity rule, in table form — the same one `PlatformAvailability` renders
+   * as rings or a bar, read off the same `isMultiPlatform` so the two surfaces
+   * cannot disagree. At ≥ 2 the columns are the scope's platforms. At ≤ 1 there
+   * is one column headed `Status` and **no platform name in it**: scoped to a
+   * web-only admin product the reader wants a status with no notion of platform,
+   * and dropping the name is what makes arity 0 and arity 1 render identically
+   * rather than approximately so.
+   *
+   * A project that declares no products resolves to every platform, so this is
+   * exactly today's header — including on the first render, before `useProject`
+   * has resolved and while `project` is still `undefined`.
+   */
+  const statusColumns = useMemo<StatusColumn[]>(() => {
+    if (scope.isMultiPlatform) {
+      return scope.platforms.map((platform) => ({
+        key: platform,
+        label: PLATFORM_LABELS.get(platform) ?? platform,
+        platform,
+      }));
+    }
+    return [{ key: "status", label: "Status", platform: scope.platforms[0] ?? null }];
+  }, [scope]);
 
   if (groups.length === 0) {
     return <p className="text-sm text-muted-foreground">No acceptances match these filters.</p>;
@@ -35,7 +81,7 @@ export function AcceptanceMatrix({ acceptances, edges, nodesById, onSelect }: Ac
   return (
     <div className="flex flex-col gap-4">
       {groups.map((group) => {
-        const key = group.anchorId ?? "__product__";
+        const key = group.anchorId ?? "__unanchored__";
         const isCollapsed = collapsed.has(key);
         const AnchorIcon = group.anchorSpecies ? SPECIES_ICONS[group.anchorSpecies] : null;
         return (
@@ -48,9 +94,10 @@ export function AcceptanceMatrix({ acceptances, edges, nodesById, onSelect }: Ac
             >
               {isCollapsed ? <ChevronRightIcon className="size-4" /> : <ChevronDownIcon className="size-4" />}
               {AnchorIcon && <AnchorIcon className="size-4 text-muted-foreground" />}
-              <span className="font-medium">{group.anchorNode ? group.anchorNode.title : "Product-level"}</span>
+              <span className="font-medium">{group.anchorNode ? group.anchorNode.title : UNANCHORED_GROUP_LABEL}</span>
               <span className="text-xs text-muted-foreground">
-                · {group.anchorSpecies ?? "no anchor"} · {group.acceptances.length} acceptance{group.acceptances.length === 1 ? "" : "s"}
+                {/* "Unanchored · no anchor" said it twice; the heading already says it. */}
+                {group.anchorSpecies ? `· ${group.anchorSpecies} ` : ""}· {group.acceptances.length} acceptance{group.acceptances.length === 1 ? "" : "s"}
                 {group.gapCount > 0 && <span className="text-amber-600"> · {group.gapCount} gap{group.gapCount === 1 ? "" : "s"}</span>}
               </span>
             </button>
@@ -61,7 +108,9 @@ export function AcceptanceMatrix({ acceptances, edges, nodesById, onSelect }: Ac
                   <tr className="text-xs text-muted-foreground">
                     <th className="px-3 py-1.5 text-left font-normal">Acceptance</th>
                     <th className="px-3 py-1.5 text-left font-normal">Values</th>
-                    {PLATFORMS.map((p) => <th key={p.id} className="px-2 py-1.5 text-center font-normal">{p.label}</th>)}
+                    {statusColumns.map((column) => (
+                      <th key={column.key} className="px-2 py-1.5 text-center font-normal">{column.label}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -84,9 +133,9 @@ export function AcceptanceMatrix({ acceptances, edges, nodesById, onSelect }: Ac
                           {(acc.metadata?.values ?? []).map((v) => <ValueBadge key={v} valueId={v} />)}
                         </div>
                       </td>
-                      {PLATFORMS.map((p) => (
-                        <td key={p.id} className="px-2 py-2 text-center">
-                          <span className="inline-flex justify-center"><PlatformCell acceptance={acc} platformId={p.id} /></span>
+                      {statusColumns.map((column) => (
+                        <td key={column.key} className="px-2 py-2 text-center">
+                          <span className="inline-flex justify-center"><StatusCell acceptance={acc} platform={column.platform} /></span>
                         </td>
                       ))}
                     </tr>

@@ -1,6 +1,7 @@
 "use client";
 
-import { PlatformRingSet } from "@/components/graph/nodes/PlatformRingSet";
+import { PlatformAvailability } from "@/components/graph/nodes/PlatformAvailability";
+import type { PlatformId } from "@/lib/config/platforms";
 import { VALUE_TIERS_CONFIG } from "@/lib/config/values";
 import { mergeRollups } from "@/lib/utils/platform-status";
 import type { PyramidTier } from "@/lib/utils/pyramid";
@@ -10,11 +11,20 @@ const TIER_LABEL = new Map(VALUE_TIERS_CONFIG.map((t) => [t.id, t.label]));
 
 interface PyramidCardProps {
   tiers: PyramidTier[];
+  /** The scope's effective platforms — rings at two or more, one bar below. */
+  platforms: PlatformId[];
   projectId: string;
 }
 
-/** Value delivery at a glance — one ring set per tier (spec §9.3). */
-export function PyramidCard({ tiers, projectId }: PyramidCardProps) {
+/**
+ * Value delivery at a glance — one availability set per tier (spec §9.3).
+ *
+ * `PlatformAvailability`, not `PlatformRingSet`, for the same reason the Pyramid
+ * page's own element cards use it: the shape is the scope's business, and a card
+ * that picked rings for itself would show three of them for a web-only product
+ * two of whose rings can only ever be empty.
+ */
+export function PyramidCard({ tiers, platforms, projectId }: PyramidCardProps) {
   return (
     <OverviewSection title="Value pyramid" href={`/project/${projectId}/pyramid`} linkLabel="Pyramid">
       <div className="flex flex-col gap-2.5">
@@ -34,8 +44,9 @@ export function PyramidCard({ tiers, projectId }: PyramidCardProps) {
                   {addressed}/{tier.elements.length}
                 </span>
               </span>
-              <PlatformRingSet
+              <PlatformAvailability
                 rollup={rollup}
+                platforms={platforms}
                 count={addressed}
                 size="sm"
                 countLabel="elements addressed"

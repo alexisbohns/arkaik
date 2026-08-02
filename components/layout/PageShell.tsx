@@ -5,6 +5,7 @@ import { PageHeader, type PageAction } from "@/components/layout/PageHeader";
 import { ProjectPanels } from "@/components/panels/ProjectPanels";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { Edge, JournalEvent, Node } from "@/lib/data/types";
+import type { ProductScope } from "@/lib/utils/product-scope";
 
 interface PageShellProps {
   title: string;
@@ -29,6 +30,8 @@ interface PageShellProps {
    */
   allNodes?: Node[];
   allEdges?: Edge[];
+  /** The surface's product scope, forwarded to every node panel it opens. */
+  scope?: ProductScope;
   journal?: JournalEvent[];
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
   onDelete?: (nodeId: string) => void;

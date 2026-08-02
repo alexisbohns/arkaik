@@ -17,15 +17,19 @@ import type { Node as DataNode } from "@/lib/data/types";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useNodes } from "@/lib/hooks/useNodes";
+import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
+import { useProject } from "@/lib/hooks/useProject";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { findWhereUsed } from "@/lib/utils/where-used";
 import { generateNodeId } from "@/lib/utils/id";
+import { nodeInScope, productLabelsOfNode, type ProductGraph } from "@/lib/utils/product-scope";
 import { matchesSearch } from "@/lib/utils/search";
 import {
   computeFlowPlatformRollup,
   createEmptyRollup,
   getEffectivePlatformStatuses,
 } from "@/lib/utils/platform-status";
+import { buildProductUsageIndex } from "@arkaik/schema";
 
 const SPECIES_EMPTY_LABELS: Record<LibrarySpeciesFilter, string> = {
   all: "nodes",
@@ -155,11 +159,26 @@ export default function ProjectLibraryPage() {
 
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
+  const { project: projectBundle } = useProject(id);
   const { journal } = useJournal(id);
+  // The shell's scope, never a URL param (§ Decision 2). With no products
+  // declared it resolves to every platform and every node, so a project that has
+  // never heard of products gets exactly today's library.
+  const scope = useEffectiveProduct(id, projectBundle);
 
   const nodesById = useMemo(
     () => new Map(dataNodes.map((node) => [node.id, node])),
     [dataNodes],
+  );
+
+  // Built once per snapshot — `buildProductUsageIndex` is a graph traversal and
+  // must never run per card. The page renders nothing until `edgesLoading` is
+  // false, so no reader ever sees the empty-edge answer (which would call every
+  // data model an orphan).
+  const usageIndex = useMemo(() => buildProductUsageIndex(dataNodes, dataEdges), [dataNodes, dataEdges]);
+  const productGraph = useMemo<ProductGraph>(
+    () => ({ edges: dataEdges, nodesById, usageIndex }),
+    [dataEdges, nodesById, usageIndex],
   );
 
   const usedInByNodeId = useMemo(
@@ -170,13 +189,33 @@ export default function ProjectLibraryPage() {
   const visibleNodes = useMemo(() => {
     const filtered = dataNodes.filter((node) => {
       if (speciesFilter !== "all" && node.species !== speciesFilter) return false;
+      // One membership rule for every species, shared with Acceptances and
+      // Delivery: flows and views by stored membership, acceptances by their
+      // anchors, the system layer by reachability — and an unreached data model
+      // stays visible in every scope rather than being buried (§ Decision 8).
+      if (!nodeInScope(node, scope, productGraph)) return false;
       return matchesSearch(node, search);
     });
 
     return sortNodes(filtered, sort, usedInByNodeId);
-  }, [dataNodes, search, sort, speciesFilter, usedInByNodeId]);
+  }, [dataNodes, productGraph, scope, search, sort, speciesFilter, usedInByNodeId]);
+
+  // `undefined` when the project declares no products, which is what makes the
+  // badge and the table column disappear entirely rather than render blank.
+  const productLabelsByNodeId = useMemo<Record<string, string[]> | undefined>(() => {
+    if (scope.productsById.size === 0) return undefined;
+    return Object.fromEntries(
+      visibleNodes.map((node) => [node.id, productLabelsOfNode(node, scope, productGraph)]),
+    );
+  }, [productGraph, scope, visibleNodes]);
 
   const emptyLabel = SPECIES_EMPTY_LABELS[speciesFilter];
+  // `title` is not validated by `resolveProducts`, so fall back to the id the
+  // way `ProductScopeSelector` does rather than naming a blank product.
+  const scopeLabel =
+    typeof scope.product?.title === "string" && scope.product.title.trim() !== ""
+      ? scope.product.title
+      : scope.productId;
 
   const flowRollupByNodeId = useMemo(
     () => Object.fromEntries(
@@ -253,6 +292,7 @@ export default function ProjectLibraryPage() {
         }}
         allNodes={dataNodes}
         allEdges={dataEdges}
+        scope={scope}
         journal={journal}
         onUpdate={handleNodeUpdate}
         onCreateNode={handleCreateNodeFromPanel}
@@ -271,7 +311,14 @@ export default function ProjectLibraryPage() {
             <div className="flex flex-col gap-4 px-4 pb-4 md:px-6 md:pb-6">
             {visibleNodes.length === 0 ? (
               <div className="rounded-xl border border-dashed p-10 text-center">
-                <p className="text-sm text-muted-foreground">No {emptyLabel} yet. Create one to get started.</p>
+                {/* An empty list under a named scope is not an empty project.
+                    "No views yet" beside a library that holds forty of them
+                    reads as data loss; say which product is empty instead. */}
+                <p className="text-sm text-muted-foreground">
+                  {scope.productId === null
+                    ? `No ${emptyLabel} yet. Create one to get started.`
+                    : `No ${emptyLabel} in ${scopeLabel}.`}
+                </p>
                 <div className="mt-4">
                   <Button size="sm" className="cursor-pointer" onClick={() => setNewNodeOpen(true)}>
                     <PlusIcon className="size-4" />
@@ -291,6 +338,8 @@ export default function ProjectLibraryPage() {
                       flowRollup={node.species === "flow" ? flowRollupByNodeId[node.id] : undefined}
                       playlistPreview={playlistPreviewForNode(node, nodesById)}
                       usedInCount={usedInByNodeId[node.id] ?? 0}
+                      scope={scope}
+                      productLabels={productLabelsByNodeId?.[node.id]}
                       onClick={() => handleSelectNode(node)}
                     />
                   </li>
@@ -304,6 +353,8 @@ export default function ProjectLibraryPage() {
                   speciesLabelById={SPECIES_LABEL_BY_ID}
                   statusLabelById={STATUS_LABEL_BY_ID}
                   usedInByNodeId={usedInByNodeId}
+                  scope={scope}
+                  productLabelsByNodeId={productLabelsByNodeId}
                   onSortChange={handleSortChange}
                   onSelectNode={handleSelectNode}
                 />

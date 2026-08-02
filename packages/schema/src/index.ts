@@ -10,6 +10,7 @@ export * from "./parse";
 export * from "./serialize";
 export * from "./projections";
 export * from "./maps";
+export * from "./products";
 export * from "./emit";
 export * from "./derive";
 export * from "./mutate";

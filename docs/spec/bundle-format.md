@@ -50,6 +50,74 @@ interface Project {
 
 `project.version` is the *current* version label of the mapped product (free-form string; semver recommended, not required). Version *history* lives in the journal as `release.tagged` events — a Level 1 bundle carries only the label.
 
+## Products
+
+A project describes a *family* of apps sharing one graph — an end-user app, a web-only back office, a public API — not a single product with three platforms. A **product** names one app in that family and the platforms it can ship on:
+
+```ts
+interface ProductDefinition extends Record<string, unknown> {
+  id: string;                // kebab-case, unique within the project
+  title: string;
+  description?: string;
+  platforms: PlatformId[];   // the menu this product may ship on; MAY be []
+  root_node_id?: string;     // this product's journey anchor
+}
+```
+
+Definitions live at **`project.metadata.products: ProductDefinition[]`**, following the `project.metadata.maps` precedent ([maps.md](maps.md) § Storage) exactly: a purely additive optional field in an already-`catchall` object, so it requires **no `schema_version` bump**, and unknown fields on a definition are preserved and ignored.
+
+A definition **declares** a product when its `id` is a non-blank string; `resolveProducts` drops everything else, and a dropped entry declares nothing. The two dropped shapes are reported in different places, by design. An `id` that is **missing or not a string** is a shape fault — `id` is required, so the parser rejects such a bundle and `validateBundle()` stays silent rather than repeating the rejection. An `id` that parses as a string but is **blank or whitespace-only** is well-shaped and reaches the validator, which reports it as `product-invalid-id` (§ Validation below). Duplicate ids resolve **first-wins**, so every projection stays deterministic on a bundle the validator has already warned about.
+
+### Membership
+
+| Species | Membership |
+|---|---|
+| `flow`, `view`, `acceptance` | **Stored** in `node.metadata.product` — one product `id` |
+| `data-model`, `api-endpoint` | **Derived** from consumers; producers MUST NOT store `metadata.product` |
+
+Shared substrate is the norm, so the system layer never claims a product of its own. Derived membership walks outward from **every node that stores membership** along `calls` / `displays` / `queries` edges, following each edge **in its stored direction** and hopping only into `data-model` and `api-endpoint` targets; every node so reached is used by that product. (In practice the walk starts at flows and views: `edge-semantics` admits none of those three edge types out of an acceptance, so an acceptance seeds nothing.) `productsUsingNode` (`@arkaik/schema`) is a lookup into an index built once per snapshot, never a per-card traversal.
+
+Both restrictions are load-bearing. Following each edge in its stored direction keeps the walk pointed *down* into the system layer: the Journey renderer projects a `calls` edge sourced at an api-endpoint as a View's inbound/read affordance ([graph-model.md](../graph-model.md) § Edge Types), and a direction-blind walk would follow exactly that shape back up into another product's views. And any *undirected* formulation is all-pairs within a connected component, which would make a data model that only Admin touches report as used by the end-user app merely because the two products share some other model.
+
+A node reached by no consumer belongs to no product. Consumers scoping by product MUST still show such orphans under every scope rather than hiding them — burying the nodes that most need attention is the failure mode this format exists to end ([maps.md](maps.md) § Orphans).
+
+### Platforms
+
+`node.platforms` stays authoritative; every existing projection keeps reading it unchanged. A product's `platforms` is a **menu**, and a node's list SHOULD be a subset of its product's. A violation is a **warning, never an error**, because the menu is edited independently of the node: narrowing Admin from `[web, ios]` to `[web]` is a product decision, and it MUST NOT fail CI on nodes nobody touched.
+
+Readers intersect rather than trust: `effectiveNodePlatforms(node, product)` returns `node.platforms ∩ product.platforms` in `PLATFORM_IDS` order, so an out-of-menu platform drops out of the display instead of corrupting it — which is exactly why an error would buy no safety the intersection does not already provide.
+
+`platforms: []` means availability is not a tracked dimension for this product (a CLI, a public API). Such a product carries a **single lifecycle status**: the intersection above is empty for every node in it, so there is no per-platform breakdown to render.
+
+### The degenerate case
+
+A bundle with **no `products` key behaves exactly as it did before products existed**: one implicit product spanning `PLATFORM_IDS`, every node in it, no warnings, and no migration. `productPlatforms(project, productId)` states the whole rule — a project declaring no products returns `PLATFORM_IDS`; `null` (All products) returns the union of every declared menu; a product id returns that product's own menu; and an unknown id resolves like `null`, because a stale scope MUST degrade rather than throw.
+
+`MapDefinition.product` scopes a stored map to one product ([maps.md](maps.md) § MapDefinition), so "the therapist app map" is data rather than a parallel mechanism.
+
+### Validation
+
+Product findings are reported by `validateBundle()` at **warning severity only**, matching stored maps ([maps.md](maps.md) § Validation): a stale definition or a dangling membership must never fail an import or a CI gate. `validateBundle().valid` stays `true` for every finding below.
+
+| Rule id | Severity | Fires when |
+|---|---|---|
+| `product-duplicate-id` | `warning` | Two stored definitions share an `id`; resolution is first-wins. Read from the stored array itself, so it needs no valid declaration |
+| `product-invalid-id` | `warning` | A stored `id` is not kebab-case. A blank id is reported here and does **not** count as a declaration — it must not switch the gated rules on and bury the real problem |
+| `product-unknown-reference` | `warning` | `node.metadata.product` names no declared product — **regardless of whether the project declares any** |
+| `product-membership-wrong-species` | `warning` | `metadata.product` on any species other than flow, view, or acceptance — **regardless of whether the project declares any** |
+| `product-platform-not-in-menu` | `warning` | `node.platforms ⊄ product.platforms`, for a node whose membership names a declared product |
+| `unassigned-membership` | `warning` | A flow or view carries no membership, in a project that declares products |
+| `acceptance-product-unassigned` | `warning` | An acceptance covers nothing *and* names no product, in a project that declares products. An acceptance that covers something derives its membership from the anchor |
+| `acceptance-covers-span-products` | `warning` | An acceptance's `covers` anchors sit in two or more products, in a project that declares products |
+
+**Four of the eight are ungated**, for two different reasons. `product-duplicate-id` and `product-invalid-id` read the stored array itself, so they fire wherever `project.metadata.products` exists at all — which is precisely what keeps a blank id visible instead of swallowing it. `product-unknown-reference` and `product-membership-wrong-species` are statements about a single node's own stored field, true or false regardless of project state — the same posture that leaves `gherkin-species` and `values-species` ungated. The motivating case for the latter pair is the author who writes `metadata.product` on a handful of nodes before adding `project.metadata.products`; gating them would make exactly that mistake invisible.
+
+**The other four require at least one declared product**, because "out of menu", "unassigned", and "spans two products" say nothing until something is declared.
+
+The invariant that holds either way, and that the test suite asserts across every species: a bundle with no `products` key and no `metadata.product` on any node raises **zero** product findings.
+
+Absent membership is a **triage state**, not "applies everywhere" — an unassigned flow, view, or anchorless acceptance appears under "All products" only, so the warnings above read as an inbox rather than as noise duplicated into every scope. Shape faults (`products` not an array, a definition missing `title`) stay where they belong, in the parser and the JSON Schema.
+
 ## References
 
 v2 adds typed external references to nodes, under `metadata.refs` (placed in `NodeMetadata` alongside `platformStatuses` and friends):

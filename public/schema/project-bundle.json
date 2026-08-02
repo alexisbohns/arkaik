@@ -124,6 +124,13 @@
           "additionalProperties": {
             "$ref": "#/$defs/MapDisplayOptions"
           }
+        },
+        "products": {
+          "description": "Product definitions (docs/spec/bundle-format.md § Products) — additive; unknown fields preserved.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProductDefinition"
+          }
         }
       },
       "additionalProperties": {},
@@ -164,6 +171,10 @@
         },
         "root_node_id": {
           "description": "Scope anchor: the subgraph is the undirected neighborhood reachable from this node.",
+          "type": "string"
+        },
+        "product": {
+          "description": "Product scope; absent = every product.",
           "type": "string"
         },
         "depth": {
@@ -211,6 +222,50 @@
       },
       "additionalProperties": {},
       "description": "How a map draws its cards (docs/spec/maps.md § Display Options)."
+    },
+    "ProductDefinition": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Kebab-case, unique within the project."
+        },
+        "title": {
+          "type": "string",
+          "description": "Display title."
+        },
+        "description": {
+          "description": "What this product is.",
+          "type": "string"
+        },
+        "platforms": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Platform"
+          },
+          "description": "The platforms this product can ship on; empty means availability is not tracked."
+        },
+        "root_node_id": {
+          "description": "This product's journey anchor.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "platforms"
+      ],
+      "additionalProperties": {},
+      "description": "A product definition (docs/spec/bundle-format.md § Products)."
+    },
+    "Platform": {
+      "type": "string",
+      "enum": [
+        "web",
+        "ios",
+        "android"
+      ],
+      "description": "Target platform."
     },
     "Node": {
       "type": "object",
@@ -283,15 +338,6 @@
       ],
       "description": "Lifecycle status of a node."
     },
-    "Platform": {
-      "type": "string",
-      "enum": [
-        "web",
-        "ios",
-        "android"
-      ],
-      "description": "Target platform."
-    },
     "NodeMetadata": {
       "type": "object",
       "properties": {
@@ -327,6 +373,10 @@
           "items": {
             "$ref": "#/$defs/Value"
           }
+        },
+        "product": {
+          "description": "Product membership (docs/spec/bundle-format.md § Products); flow, view, and acceptance only.",
+          "type": "string"
         }
       },
       "additionalProperties": {},

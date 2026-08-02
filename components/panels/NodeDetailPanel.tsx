@@ -27,13 +27,22 @@ import { AcceptancesSection } from "@/components/panels/AcceptancesSection";
 import {
   computeFlowPlatformRollup,
   getEditablePlatformStatuses,
+  scopedRollupPlatforms,
 } from "@/lib/utils/platform-status";
+import type { ProductScope } from "@/lib/utils/product-scope";
 import { findWhereUsed } from "@/lib/utils/where-used";
 import { computeNodeTimeline } from "@/lib/utils/journal";
 import { describeJournalEvent, formatEventDate } from "@/components/journal/describe-event";
 
 interface NodeDetailPanelProps {
   node: Node;
+  /**
+   * The surface's product scope. Every platform-bearing section below reads its
+   * shape from this — tabs at two or more effective platforms, a single status
+   * at one or zero — so the panel says the same thing the Pyramid and the
+   * Acceptances matrix say about the same node.
+   */
+  scope: ProductScope;
   /** Platform tab the variants section opens on (e.g. the clicked Delivery item's platform). */
   initialPlatform?: PlatformId;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
@@ -315,15 +324,19 @@ function HistorySection({ node, journal, allNodes }: HistorySectionProps) {
 
 interface PlatformVariantsSectionProps {
   node: Node;
+  scope: ProductScope;
   initialPlatform?: PlatformId;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
   onZoomShot?: (platform: PlatformId) => void;
 }
 
-function PlatformVariantsSection({ node, initialPlatform, onUpdate, onZoomShot }: PlatformVariantsSectionProps) {
+function PlatformVariantsSection({ node, scope, initialPlatform, onUpdate, onZoomShot }: PlatformVariantsSectionProps) {
   const rawNotes = (node.metadata?.platformNotes ?? {}) as Partial<Record<PlatformId, string>>;
   const rawStatuses = getEditablePlatformStatuses(node);
   const rawScreenshots = (node.metadata?.platformScreenshots ?? {}) as Partial<Record<PlatformId, string>>;
+  // Seeded from the FULL stored maps, not the scoped ones: a note or screenshot
+  // for a platform outside the effective set is not rendered and not deleted —
+  // every handler below patches by spreading these, so it round-trips untouched.
   const [notes, setNotes] = useState<Partial<Record<PlatformId, string>>>(rawNotes);
   const [statuses, setStatuses] = useState(rawStatuses);
   const [screenshots, setScreenshots] = useState<Partial<Record<PlatformId, string>>>(rawScreenshots);
@@ -368,7 +381,19 @@ function PlatformVariantsSection({ node, initialPlatform, onUpdate, onZoomShot }
   return (
     <div className="px-6 flex flex-col gap-3">
       <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Platform Variants</span>
+      {/* The scope's MENU, not `scopedPlatforms(node, scope)`. How many platform
+          columns a surface shows is a shape decision, and shape decisions are the
+          scope's — same input the Acceptances matrix and the Pyramid read. Per-node
+          `scopedPlatforms` would answer the node's own array whenever no product is
+          declared, so a web-only view would lose two tabs in a project that has
+          never heard of products (§ Degenerate case guarantee).
+
+          A caveat inherited, not introduced: a status written for a platform outside
+          `node.platforms` is invisible everywhere, because `getNodePlatformStatuses`
+          iterates the node's own list. The strip could always do that; it is not
+          this scope's to fix. */}
       <PlatformVariants
+        platforms={scope.platforms}
         statuses={statuses}
         notes={notes}
         screenshots={screenshots}
@@ -382,14 +407,26 @@ function PlatformVariantsSection({ node, initialPlatform, onUpdate, onZoomShot }
   );
 }
 
-function ComputedPlatformStatusSection({ node, allNodes, allEdges }: { node: Node; allNodes: Node[]; allEdges: Edge[] }) {
+function ComputedPlatformStatusSection({
+  node,
+  scope,
+  allNodes,
+  allEdges,
+}: { node: Node; scope: ProductScope; allNodes: Node[]; allEdges: Edge[] }) {
   const nodesById = new Map(allNodes.map((n) => [n.id, n]));
   const rollup = computeFlowPlatformRollup(node, nodesById, allNodes, allEdges);
 
   return (
     <div className="px-6 flex flex-col gap-3">
       <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Computed Platform Statuses</span>
-      <PlatformGaugeList rollup={rollup} platforms={node.platforms} showLabels />
+      {/* Clamped, not replaced: a flow's rollup can count a platform the flow
+          never declares (the seed's `F-swap-glyph`), and under All products that
+          bar must survive. See `scopedRollupPlatforms`. */}
+      <PlatformGaugeList
+        rollup={rollup}
+        platforms={scopedRollupPlatforms(node.platforms, rollup, scope.platforms)}
+        showLabels
+      />
     </div>
   );
 }
@@ -423,6 +460,7 @@ export function NodeDetailPanelHeader({ node }: { node: Node }) {
  */
 export function NodeDetailPanel({
   node,
+  scope,
   initialPlatform,
   onUpdate,
   onDelete,
@@ -444,6 +482,7 @@ export function NodeDetailPanel({
         <AcceptancesSection
           key={`acceptances-${node.id}`}
           node={node}
+          scope={scope}
           allNodes={allNodes}
           allEdges={allEdges}
           onNavigate={onNavigate}
@@ -454,6 +493,7 @@ export function NodeDetailPanel({
         <AcceptanceEditor
           key={`acceptance-${node.id}`}
           node={node}
+          scope={scope}
           allNodes={allNodes}
           allEdges={allEdges}
           onUpdate={onUpdate}
@@ -464,6 +504,7 @@ export function NodeDetailPanel({
         <PlatformVariantsSection
           key={`pv-${node.id}-${initialPlatform ?? ""}`}
           node={node}
+          scope={scope}
           initialPlatform={initialPlatform}
           onUpdate={onUpdate}
           onZoomShot={onZoomShot ? (platform) => onZoomShot(node, platform) : undefined}
@@ -473,6 +514,7 @@ export function NodeDetailPanel({
         <ComputedPlatformStatusSection
           key={`computed-${node.id}`}
           node={node}
+          scope={scope}
           allNodes={allNodes}
           allEdges={allEdges}
         />

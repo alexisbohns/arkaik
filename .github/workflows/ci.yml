@@ -115,6 +115,9 @@ jobs:
       - name: Pyramid aggregation tests
         run: npm run test:pyramid
 
+      - name: Product scope helper and store tests
+        run: npm run test:product-scope
+
       - name: Landing-page redirect tests (signed in → /projects)
         run: npm run test:root-redirect
 

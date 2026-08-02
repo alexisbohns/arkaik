@@ -6,6 +6,16 @@ import type { PlatformStatusMap } from "@/lib/data/types";
 import { PLATFORM_ICONS, STATUS_ICONS, STATUS_STYLES, STATUS_LABELS } from "./node-styles";
 
 interface PlatformListProps {
+  /**
+   * The chips to draw — the node's **effective** platforms, i.e.
+   * `scopedPlatforms(node, scope)`, resolved by the caller.
+   *
+   * Deliberately not `node.platforms`: a stored array that predates products
+   * can over-claim (a web-only admin view still listing all three), and this
+   * component has no scope to intersect it against. Every call site resolves it
+   * — `NodeCard`, `AcceptancesSection` — so there is one answer per surface
+   * rather than one per component.
+   */
   platforms: PlatformId[];
   platformStatuses?: PlatformStatusMap;
 }

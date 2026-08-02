@@ -1,10 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { type Node, type NodeMouseHandler, type Connection, type EdgeMouseHandler } from "@xyflow/react";
+import { type Node, type Edge, type NodeMouseHandler, type Connection, type EdgeMouseHandler } from "@xyflow/react";
 import { PlusIcon } from "lucide-react";
 import { toast } from "sonner";
-import { resolveMapDisplay, type MapDefinition, type MapDisplayOptions } from "@arkaik/schema";
+import {
+  buildProductUsageIndex,
+  resolveMapDisplay,
+  type MapDefinition,
+  type MapDisplayOptions,
+} from "@arkaik/schema";
 import { Canvas } from "@/components/graph/Canvas";
 import { MapDisplayPopover } from "@/components/maps/MapDisplayPopover";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
@@ -13,15 +19,18 @@ import { PageShell } from "@/components/layout/PageShell";
 import { ShotPreviewDialog } from "@/components/panels/ShotPreviewDialog";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
 import { InsertBetweenDialog, type InsertEntryType } from "@/components/panels/InsertBetweenDialog";
+import { Button } from "@/components/ui/button";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useProject } from "@/lib/hooks/useProject";
+import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useElkLayout } from "@/lib/hooks/useElkLayout";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
 import { generateNodeId, edgeId } from "@/lib/utils/id";
 import { wouldCreateCycle } from "@/lib/utils/cycle";
+import type { ProductGraph } from "@/lib/utils/product-scope";
 import type { SpeciesId } from "@/lib/config/species";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { Node as DataNode, Edge as DataEdge, PlaylistEntry } from "@/lib/data/types";
@@ -35,9 +44,12 @@ import {
 } from "@/lib/utils/graph-build";
 import {
   buildJourneyGraph,
-  computeComposeClosure,
   computeViewApiRelations,
+  resolveJourneySelection,
 } from "@/lib/utils/journey-graph";
+
+/** Stable identity, so the empty branch never re-triggers the layout effect. */
+const EMPTY_GRAPH: { nodes: Node[]; edges: Edge[] } = { nodes: [], edges: [] };
 
 interface JourneyMapProps {
   projectId: string;
@@ -49,6 +61,13 @@ interface JourneyMapProps {
  * The Journey map: the navigation-centered compose/playlist drill-down canvas
  * with full editing (vision.md § Core Product). Extracted from the former
  * canvas page; graph construction lives in lib/utils/journey-graph.ts.
+ *
+ * A journey is product-scoped exactly as the System map is — the anchor **and**
+ * a membership filter over the candidate nodes, both resolved once by
+ * `resolveJourneySelection` (docs/spec/maps.md § Product Scope). When the
+ * anchor does not resolve inside the scoped product, the canvas is replaced by
+ * an empty state that names the reason; drawing another product's graph under
+ * this one's platform menu is the bug that shape exists to prevent.
  */
 export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   const id = projectId;
@@ -71,6 +90,11 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, removeNode, removeNodes } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading, addEdge, removeEdge } = useEdges(id);
   const { project: projectBundle, loading: projectLoading, updateProject } = useProject(id);
+  // The shell's scope (§ Decision 2), passed down to the canvas cards and to
+  // every panel this map opens — never read from a global by the cards
+  // themselves. It is also this journey's default product, and so reaches the
+  // anchor chain below.
+  const scope = useEffectiveProduct(id, projectBundle);
   const { journal } = useJournal(id);
 
   // Built-in maps have no stored definition to carry a `display`, so the id is
@@ -97,27 +121,33 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     return map;
   }, [dataEdges]);
 
-  const composeParentByChild = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const edge of dataEdges) {
-      if (edge.edge_type !== "composes") continue;
-      if (!map.has(edge.target_id)) {
-        map.set(edge.target_id, edge.source_id);
-      }
-    }
-    return map;
-  }, [dataEdges]);
-
-  const explicitRootNode = useMemo(() => {
-    const rootNodeId = definition?.root_node_id ?? projectBundle?.project.root_node_id;
-    if (!rootNodeId) return null;
-    return nodesById.get(rootNodeId) ?? null;
-  }, [definition?.root_node_id, nodesById, projectBundle?.project.root_node_id]);
-
-  const composeClosure = useMemo(
-    () => computeComposeClosure(explicitRootNode, composeChildIdsByParent, nodesById),
-    [composeChildIdsByParent, explicitRootNode, nodesById],
+  // Built once per snapshot — `buildProductUsageIndex` is a graph traversal and
+  // must never run per node. The canvas renders nothing until `edgesLoading` is
+  // false, so no reader sees the empty-edge answer.
+  const usageIndex = useMemo(() => buildProductUsageIndex(dataNodes, dataEdges), [dataEdges, dataNodes]);
+  const productGraph = useMemo<ProductGraph>(
+    () => ({ edges: dataEdges, nodesById, usageIndex }),
+    [dataEdges, nodesById, usageIndex],
   );
+
+  // The membership restriction, the anchor chain, and the compose closure — one
+  // function, shared with the maps index and the Overview's Maps card so a card
+  // cannot advertise a count this canvas does not draw (docs/spec/maps.md
+  // § Product Scope).
+  const selection = useMemo(
+    () =>
+      resolveJourneySelection({
+        definition,
+        dataNodes,
+        dataEdges,
+        project: projectBundle?.project,
+        scope,
+        graph: productGraph,
+      }),
+    [dataEdges, dataNodes, definition, productGraph, projectBundle?.project, scope],
+  );
+
+  const { anchorNode: explicitRootNode, composeClosure } = selection;
 
   const topLevelFlowIds = useMemo(() => {
     if (explicitRootNode) {
@@ -125,11 +155,11 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     }
 
     return new Set(
-      dataNodes
-        .filter((node) => node.species === "flow" && !composeParentByChild.has(node.id))
+      selection.nodes
+        .filter((node) => node.species === "flow" && !selection.composeParentByChild.has(node.id))
         .map((node) => node.id),
     );
-  }, [composeClosure, composeParentByChild, dataNodes, explicitRootNode]);
+  }, [composeClosure, explicitRootNode, selection]);
 
   const allFlowIds = useMemo(
     () => new Set(dataNodes.filter((node) => node.species === "flow").map((node) => node.id)),
@@ -607,42 +637,44 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     },
   });
 
-  // Build graph topology - ELK will compute positions asynchronously.
+  // Build graph topology - ELK will compute positions asynchronously. Skipped
+  // outright when the selection has nothing to draw: the render below shows the
+  // empty state instead, and laying out a graph nobody sees is a real ELK pass.
   const graphData = useMemo(
     () =>
-      buildJourneyGraph({
-        dataNodes,
-        dataEdges,
-        nodesById,
-        composeParentByChild,
-        explicitRootNode,
-        composeClosure,
-        expandedFlows,
-        display,
-        viewApiRelationsByViewId,
-        handlers: {
-          onToggleFlow: toggleFlow,
-          onAddChild: (flowId) => handleAddChildNode(flowId, "view"),
-          onOpenDetails: (node) => openNode({ nodeId: node.id }),
-          onZoomShot: (node) => {
-            setZoomNode(node);
-            setZoomPlatform(undefined);
-          },
-          onInsertBetween: handleInsertBetween,
-        },
-      }),
+      selection.emptyReason !== null
+        ? EMPTY_GRAPH
+        : buildJourneyGraph({
+            dataNodes: selection.nodes,
+            dataEdges,
+            nodesById: selection.nodesById,
+            composeParentByChild: selection.composeParentByChild,
+            explicitRootNode,
+            composeClosure,
+            expandedFlows,
+            display,
+            viewApiRelationsByViewId,
+            handlers: {
+              onToggleFlow: toggleFlow,
+              onAddChild: (flowId) => handleAddChildNode(flowId, "view"),
+              onOpenDetails: (node) => openNode({ nodeId: node.id }),
+              onZoomShot: (node) => {
+                setZoomNode(node);
+                setZoomPlatform(undefined);
+              },
+              onInsertBetween: handleInsertBetween,
+            },
+          }),
     [
       composeClosure,
-      composeParentByChild,
       dataEdges,
-      dataNodes,
       display,
       expandedFlows,
       explicitRootNode,
       handleAddChildNode,
       handleInsertBetween,
-      nodesById,
       openNode,
+      selection,
       toggleFlow,
       viewApiRelationsByViewId,
     ],
@@ -668,6 +700,14 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
 
   const nodes = layoutedNodes;
   const edges = graphData.edges;
+
+  // The product this journey reads through, as a reader would name it. Falls
+  // back to the id for a scope pointing at a product the project no longer
+  // declares, exactly as the selector and the Library badges do.
+  const productLabel =
+    selection.productId === null
+      ? null
+      : scope.productsById.get(selection.productId)?.title?.trim() || selection.productId;
 
   if (nodesLoading || edgesLoading || projectLoading) {
     return (
@@ -706,6 +746,7 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
         onLayoutChange={reframe}
         allNodes={dataNodes}
         allEdges={dataEdges}
+        scope={scope}
         journal={journal}
         onUpdate={handleNodeUpdate}
         onDelete={handleDeleteNodeRequest}
@@ -715,7 +756,27 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
           setZoomPlatform(platform);
         }}
       >
-        <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} onEdgeClick={handleEdgeClick} fitSignal={fitSignal} />
+        {selection.emptyReason !== null ? (
+          /* An unresolved anchor under a named product is answered in words,
+             never with the unanchored parentless-roots render: that fallback
+             would draw whatever this product happens to own with no explanation
+             of why the journey is not the journey (docs/spec/maps.md
+             § Subgraph Algorithm, rule 4). */
+          <div className="h-full w-full flex items-center justify-center p-6">
+            <div className="rounded-xl border border-dashed p-10 text-center">
+              <p className="text-sm text-muted-foreground">
+                {selection.emptyReason === "no-anchor"
+                  ? `${productLabel} has no journey anchor yet — give it a root node in Settings, or read it on the System map.`
+                  : `This map is anchored on ${selection.anchorId}, which is not part of ${productLabel} — switch products, or read ${productLabel} on the System map.`}
+              </p>
+              <Button asChild size="sm" variant="outline" className="mt-4 cursor-pointer">
+                <Link href={`/project/${id}/maps/system`}>Open the System map</Link>
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} onEdgeClick={handleEdgeClick} fitSignal={fitSignal} scope={scope} />
+        )}
       </PageShell>
       <ShotPreviewDialog
         open={zoomNode !== null}
