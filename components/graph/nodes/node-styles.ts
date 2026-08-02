@@ -17,15 +17,17 @@ import {
   Figma, Github, Gitlab, Ticket, GitPullRequest, GitMerge, ExternalLink, Link2,
 } from "lucide-react";
 
-export const STATUS_STYLES: Record<StatusId, { badge: string; dot: string }> = {
-  idea:        { badge: "text-gray-400",    dot: "bg-gray-400"    },
-  backlog:     { badge: "text-gray-500",    dot: "bg-gray-500"    },
-  prioritized: { badge: "text-blue-400",    dot: "bg-blue-400"    },
-  development: { badge: "text-blue-500",    dot: "bg-blue-500"    },
-  releasing:   { badge: "text-purple-500",  dot: "bg-purple-500"  },
-  live:        { badge: "text-green-500",   dot: "bg-green-500"   },
-  archived:    { badge: "text-gray-400",    dot: "bg-gray-400"    },
-  blocked:     { badge: "text-red-500",     dot: "bg-red-500"     },
+// One row per status: text color, dot fill, and SVG arc stroke. A ring, a bar
+// and a badge therefore can never drift apart on color.
+export const STATUS_STYLES: Record<StatusId, { badge: string; dot: string; stroke: string }> = {
+  idea:        { badge: "text-gray-400",    dot: "bg-gray-400",    stroke: "stroke-gray-400"   },
+  backlog:     { badge: "text-gray-500",    dot: "bg-gray-500",    stroke: "stroke-gray-500"   },
+  prioritized: { badge: "text-blue-400",    dot: "bg-blue-400",    stroke: "stroke-blue-400"   },
+  development: { badge: "text-blue-500",    dot: "bg-blue-500",    stroke: "stroke-blue-500"   },
+  releasing:   { badge: "text-purple-500",  dot: "bg-purple-500",  stroke: "stroke-purple-500" },
+  live:        { badge: "text-green-500",   dot: "bg-green-500",   stroke: "stroke-green-500"  },
+  archived:    { badge: "text-gray-400",    dot: "bg-gray-400",    stroke: "stroke-gray-400"   },
+  blocked:     { badge: "text-red-500",     dot: "bg-red-500",     stroke: "stroke-red-500"    },
 };
 
 export const STATUS_ICONS: Record<StatusId, LucideIcon> = {

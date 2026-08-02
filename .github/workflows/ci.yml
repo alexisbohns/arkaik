@@ -91,6 +91,9 @@ jobs:
       - name: Neighborhood spotlight tests
         run: npm run test:spotlight
 
+      - name: Command palette ranking tests
+        run: npm run test:command-palette
+
       - name: Overview coverage projection tests
         run: npm run test:coverage
 

@@ -25,6 +25,22 @@ export function isDeleteShortcut(event: KeyboardEvent): boolean {
   return event.key === "Delete" || event.key === "Backspace";
 }
 
+/** ⌘K / Ctrl+K — the command palette. Unlike the destructive shortcuts it is
+ * deliberately live inside inputs too: a modifier chord never competes with
+ * typing, and a palette you have to click out of a field to reach is a palette
+ * nobody uses. */
+export function isCommandPaletteShortcut(event: KeyboardEvent): boolean {
+  if (event.altKey || event.shiftKey) {
+    return false;
+  }
+
+  if (!event.metaKey && !event.ctrlKey) {
+    return false;
+  }
+
+  return event.key.toLowerCase() === "k";
+}
+
 export function isExportShortcut(event: KeyboardEvent): boolean {
   if (event.altKey || event.shiftKey) {
     return false;

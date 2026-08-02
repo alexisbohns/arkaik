@@ -45,10 +45,11 @@ docs/                   # This documentation
 ## Keyboard Shortcuts
 
 - Journey-map shortcuts are wired in `components/maps/JourneyMap.tsx` using `lib/hooks/useKeyboardShortcuts.ts`.
+- The ⌘K command palette is wired in `app/project/[id]/layout.tsx` (`isCommandPaletteShortcut`), so it answers from every project page.
 - Shortcut key checks and focus guards live in `lib/utils/keyboard.ts`.
 - Keep shortcut handlers thin: they should call existing page handlers (`handleDeleteNodeRequest`, `handleExport`) instead of duplicating business logic.
 - Delete shortcuts must not directly mutate storage. Always route through the existing confirmation dialog flow.
-- Ignore destructive shortcuts when focus is in editable controls (`input`, `textarea`, `contenteditable`, or combobox/textbox roles).
+- Ignore destructive shortcuts when focus is in editable controls (`input`, `textarea`, `contenteditable`, or combobox/textbox roles). Modifier chords such as ⌘K are the exception — they cannot collide with typing, and stay live inside inputs.
 - **Escape belongs to the panel stack while it is non-empty**, and `PanelStack` owns it: it pops one panel, wherever the pointer is. Surfaces must not also bind Escape to a close — with the stack empty, Escape falls through to whatever the page wants it for. An open Radix layer (dialog, popover, select, menu) still wins over the stack.
 
 ## Panel Stack

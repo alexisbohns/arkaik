@@ -21,7 +21,14 @@
  * would allow.
  */
 
-import type { EventInput, JournalEvent, Project, ValidationFinding } from "@arkaik/schema";
+import {
+  validateBundle,
+  type EventInput,
+  type JournalEvent,
+  type Project,
+  type ValidationFinding,
+  type ValidationResult,
+} from "@arkaik/schema";
 
 import type { LoadedGraph, Store, WriteResult } from "./store";
 
@@ -72,21 +79,42 @@ export function createRemoteStore(options: RemoteStoreOptions): Store {
 
       const nodes = (bundle.nodes ?? []) as unknown[];
       const edges = (bundle.edges ?? []) as unknown[];
+      const folded = { ...bundle, journal };
+
+      // `loaded` is a real BundleValidation, not a look-alike. It used to carry
+      // only the fields the read tools touch (bundle/nodes/edges/journal) behind
+      // a cast, and `validate_bundle` — the one read tool that reads `result` /
+      // `valid` / `sidecarFindings` — crashed on the missing `result` (#303).
+      // A shape the type system was told to stop checking is exactly where that
+      // kind of drift hides, so the cast is gone and every field is populated.
+      //
+      // The findings are computed HERE rather than asked of the server: hosted
+      // mode fetches the whole bundle plus its journal, so this runs the same
+      // `validateBundle` over the same graph the server validated — one
+      // validator, one verdict, whichever side of the wire the graph lives on.
+      //
+      // Lazily, though: every tool call loads, and only `validate_bundle` ever
+      // looks, so `list_nodes` must not pay for a full validator pass.
+      let validation: ValidationResult | undefined;
+      const validate = () => (validation ??= validateBundle(folded));
 
       return {
-        // `loaded` mirrors the file store's BundleValidation shape closely
-        // enough for the read tools, which only ever touch bundle/nodes/edges/
-        // journal. The server has already validated everything it stores, so
-        // there are no findings to carry here.
         loaded: {
-          bundle: { ...bundle, journal },
+          bundle: folded,
           nodes,
           edges,
           journal,
           sidecarLoaded: false,
-          errors: [] as ValidationFinding[],
-          warnings: [] as ValidationFinding[],
-        } as unknown as LoadedGraph["loaded"],
+          // Nothing was folded in from a JSONL sidecar, so there are no line
+          // findings — hosted journals arrive already parsed.
+          sidecarFindings: [],
+          get result(): ValidationResult {
+            return validate();
+          },
+          get valid(): boolean {
+            return validate().errors.length === 0;
+          },
+        },
         nodes,
         edges,
         project: bundle.project as Project,
