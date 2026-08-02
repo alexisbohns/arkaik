@@ -175,12 +175,20 @@ New rules, all warning-severity:
 |---|---|
 | `product-duplicate-id` | Two definitions share an `id`; resolution is first-wins |
 | `product-invalid-id` | `id` is not kebab-case |
-| `product-unknown-reference` | `node.metadata.product` names no declared product |
+| `product-unknown-reference` | `node.metadata.product` names no declared product — **fires regardless of whether the project declares any**, since membership naming a product that does not exist is a dangling reference either way |
 | `product-platform-not-in-menu` | `node.platforms ⊄ product.platforms` |
-| `product-membership-wrong-species` | Membership on a data model or API endpoint |
+| `product-membership-wrong-species` | Membership on a data model or API endpoint — **fires regardless of whether the project declares any**, since that species derives membership and must never store it |
 | `acceptance-product-unassigned` | Anchorless acceptance with no membership, in a project that declares products |
 | `unassigned-membership` | Flow or view with no membership, in a project that declares products |
 | `acceptance-covers-span-products` | Derived membership spans two products |
+
+The two rules marked above are local authoring mistakes true in *any* project, so they are not
+scoped to projects that declare products — the same reasoning that leaves `gherkin-species` and
+`values-species` ungated in `validate.ts`. The motivating case is the author who writes
+`metadata.product` on a handful of nodes before adding `project.metadata.products`; gating those
+two would make exactly that mistake invisible. The remaining rules stay scoped, because
+"unassigned" and "out of menu" have no meaning until something is declared. A project with no
+`products` key and no `metadata.product` on any node still raises **zero** product findings.
 
 Containment is a warning rather than an error — unlike rule 16, its structural twin — because
 rule 16 compares two fields *on the same node*, so a violation is always a local authoring

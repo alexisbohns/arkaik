@@ -470,7 +470,10 @@ export function validateBundle(input: unknown): ValidationResult {
         warn(`${path}.id`, "product-duplicate-id", `Duplicate product id "${productId}" — the first wins`);
       } else {
         seenProductIds.add(productId);
-        declaredProductIds.add(productId);
+        // A blank id still warns below, but must not count as a *declaration*:
+        // it would switch the membership rules on and bury the real problem
+        // under one `unassigned-membership` per flow, view, and acceptance.
+        if (productId.trim() !== "") declaredProductIds.add(productId);
       }
 
       if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(productId)) {
@@ -480,97 +483,119 @@ export function validateBundle(input: unknown): ValidationResult {
   }
 
   const hasProducts = declaredProductIds.size > 0;
-  const products = hasProducts ? resolveProducts({ metadata: projectMetadata }) : [];
-  const menuByProduct = new Map<string, Set<string>>(
-    products.map((product) => [
-      product.id,
-      new Set<string>(Array.isArray(product.platforms) ? (product.platforms as string[]) : []),
-    ]),
-  );
 
+  // `acceptanceId → covers targets`, built once and read twice: the unassigned
+  // rule asks only whether an acceptance covers anything, the span rule needs
+  // the targets. A covers edge with a non-string endpoint is left out of both —
+  // it is already a shape error, and an anchor that cannot be resolved is no
+  // evidence that an acceptance derives its membership from somewhere.
+  const anchorsByAcceptance = new Map<string, string[]>();
+  for (const edge of edges) {
+    if (edge.edge_type !== "covers") continue;
+    const source = typeof edge.source_id === "string" ? edge.source_id : undefined;
+    const target = typeof edge.target_id === "string" ? edge.target_id : undefined;
+    if (source === undefined || target === undefined) continue;
+    const list = anchorsByAcceptance.get(source) ?? [];
+    list.push(target);
+    anchorsByAcceptance.set(source, list);
+  }
+
+  const menuByProduct = new Map<string, Set<string>>();
   if (hasProducts) {
-    const productByNodeId = new Map<string, string>();
-    const indexByNodeId = new Map<string, number>();
+    for (const definition of resolveProducts({ metadata: projectMetadata })) {
+      menuByProduct.set(
+        definition.id,
+        new Set<string>(Array.isArray(definition.platforms) ? (definition.platforms as string[]) : []),
+      );
+    }
+  }
 
-    nodes.forEach((node, index) => {
-      const nodeId = typeof node.id === "string" ? node.id : `#${index}`;
-      const species = node.species as string | undefined;
-      const base = `nodes[${index}]`;
-      indexByNodeId.set(nodeId, index);
-      const metadata = (node.metadata ?? {}) as Record<string, unknown>;
-      const membership = typeof metadata.product === "string" ? metadata.product : undefined;
-      const storesMembership =
-        species !== undefined && (PRODUCT_MEMBERSHIP_SPECIES as readonly string[]).includes(species);
+  const productByNodeId = new Map<string, string>();
+  const indexByNodeId = new Map<string, number>();
 
-      if (membership !== undefined && !storesMembership) {
-        warn(
-          `${base}.metadata.product`,
-          "product-membership-wrong-species",
-          `Node ${nodeId}: ${species} membership is derived from consumers and must not be stored`,
-        );
-        return;
-      }
+  // This loop runs whether or not the project declares products. Membership
+  // stored on a species that *derives* it, and membership naming a product that
+  // does not exist, are local authoring mistakes in any project — the same
+  // reasoning that leaves `gherkin-species` / `values-species` above ungated,
+  // and the motivating case is exactly the author who wrote `metadata.product`
+  // on a few nodes before adding `project.metadata.products`. Only the two
+  // "unassigned" rules need a declared product to mean anything.
+  nodes.forEach((node, index) => {
+    const nodeId = typeof node.id === "string" ? node.id : `#${index}`;
+    const species = node.species as string | undefined;
+    const base = `nodes[${index}]`;
+    indexByNodeId.set(nodeId, index);
+    const metadata = (node.metadata ?? {}) as Record<string, unknown>;
+    const membership = typeof metadata.product === "string" ? metadata.product : undefined;
+    const storesMembership =
+      species !== undefined && (PRODUCT_MEMBERSHIP_SPECIES as readonly string[]).includes(species);
 
-      if (!storesMembership) return;
-
-      if (membership === undefined) {
-        if (species === "acceptance") {
-          const covers = edges.some((edge) => edge.edge_type === "covers" && edge.source_id === nodeId);
-          if (!covers) {
-            warn(
-              `${base}.metadata.product`,
-              "acceptance-product-unassigned",
-              `Acceptance ${nodeId} covers nothing and names no product — it will show only under "All products"`,
-            );
-          }
-        } else {
-          warn(
-            `${base}.metadata.product`,
-            "unassigned-membership",
-            `Node ${nodeId}: no product membership — it will show only under "All products"`,
-          );
-        }
-        return;
-      }
-
-      productByNodeId.set(nodeId, membership);
-
-      if (!declaredProductIds.has(membership)) {
-        warn(
-          `${base}.metadata.product`,
-          "product-unknown-reference",
-          `Node ${nodeId}: product "${membership}" is not declared on the project`,
-        );
-        return;
-      }
-
-      const menu = menuByProduct.get(membership);
-      const nodePlatforms = Array.isArray(node.platforms) ? (node.platforms as unknown[]) : [];
-      if (menu) {
-        for (const platform of nodePlatforms) {
-          if (typeof platform === "string" && !menu.has(platform)) {
-            warn(
-              `${base}.platforms`,
-              "product-platform-not-in-menu",
-              `Node ${nodeId}: platform "${platform}" is not in product "${membership}"'s menu`,
-            );
-          }
-        }
-      }
-    });
-
-    // An acceptance whose covers anchors span two products (RFC decision 3).
-    const anchorsByAcceptance = new Map<string, string[]>();
-    for (const edge of edges) {
-      if (edge.edge_type !== "covers") continue;
-      const source = typeof edge.source_id === "string" ? edge.source_id : undefined;
-      const target = typeof edge.target_id === "string" ? edge.target_id : undefined;
-      if (source === undefined || target === undefined) continue;
-      const list = anchorsByAcceptance.get(source) ?? [];
-      list.push(target);
-      anchorsByAcceptance.set(source, list);
+    if (membership !== undefined && !storesMembership) {
+      // `storesMembership` inverts a three-species allowlist, so "not a
+      // flow/view/acceptance" also catches a missing or bogus species (already
+      // a `valid-species` error). Name the species only when it is a real one.
+      const detail = SPECIES_IDS.includes(species as SpeciesId)
+        ? `${species} membership is derived from consumers and must not be stored`
+        : "metadata.product is only meaningful on flow, view, and acceptance nodes";
+      warn(`${base}.metadata.product`, "product-membership-wrong-species", `Node ${nodeId}: ${detail}`);
+      return;
     }
 
+    if (!storesMembership) return;
+
+    if (membership === undefined) {
+      // Nothing to say about assignment until the project declares products.
+      if (!hasProducts) return;
+      if (species === "acceptance") {
+        // An acceptance that covers something derives its membership from the
+        // anchor, so only an anchorless one is genuinely unassigned.
+        if (!anchorsByAcceptance.has(nodeId)) {
+          warn(
+            `${base}.metadata.product`,
+            "acceptance-product-unassigned",
+            `Acceptance ${nodeId} covers nothing and names no product — it will show only under "All products"`,
+          );
+        }
+      } else {
+        warn(
+          `${base}.metadata.product`,
+          "unassigned-membership",
+          `Node ${nodeId}: no product membership — it will show only under "All products"`,
+        );
+      }
+      return;
+    }
+
+    productByNodeId.set(nodeId, membership);
+
+    if (!declaredProductIds.has(membership)) {
+      warn(
+        `${base}.metadata.product`,
+        "product-unknown-reference",
+        `Node ${nodeId}: product "${membership}" is not declared on the project`,
+      );
+      return;
+    }
+
+    const menu = menuByProduct.get(membership);
+    const nodePlatforms = Array.isArray(node.platforms) ? (node.platforms as unknown[]) : [];
+    if (menu) {
+      for (const platform of nodePlatforms) {
+        if (typeof platform === "string" && !menu.has(platform)) {
+          warn(
+            `${base}.platforms`,
+            "product-platform-not-in-menu",
+            `Node ${nodeId}: platform "${platform}" is not in product "${membership}"'s menu`,
+          );
+        }
+      }
+    }
+  });
+
+  // An acceptance whose covers anchors span two products (RFC decision 3). Left
+  // inside the gate: with nothing declared, every anchor already reported
+  // `product-unknown-reference` and a span finding would only repeat it.
+  if (hasProducts) {
     for (const [acceptanceId, anchors] of anchorsByAcceptance) {
       // A dangling source is already a `dangling-edge` error; without a node
       // index there is no honest path to hang this warning on, so skip it.

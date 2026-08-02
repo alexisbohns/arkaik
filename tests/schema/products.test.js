@@ -265,12 +265,68 @@ assert(ids.rules.includes("product-duplicate-id"), "a duplicate product id is re
 assert(ids.rules.includes("product-invalid-id"), "a non-kebab-case product id is reported");
 assert(ids.result.valid === true, "product id problems never invalidate the bundle");
 
+// A clean, unique, kebab-case set says nothing.
+const cleanIds = findingsFor(
+  bundleWith(
+    [
+      { id: "app", title: "A", platforms: ["web"] },
+      { id: "admin-dashboard", title: "B", platforms: ["web"] },
+    ],
+    [node({ metadata: { product: "app" } })],
+  ),
+);
+assert(
+  !cleanIds.rules.includes("product-duplicate-id") && !cleanIds.rules.includes("product-invalid-id"),
+  "a well-formed unique product set raises no id findings",
+);
+
+// A blank id is one finding, not a project-wide cascade: it must not count as
+// a declaration and switch the membership rules on.
+const blankId = findingsFor(
+  bundleWith([{ id: "", title: "Blank", platforms: ["web"] }], [node({ metadata: {} })]),
+);
+assert(blankId.rules.includes("product-invalid-id"), "a blank product id is reported");
+assert(
+  !blankId.rules.includes("unassigned-membership"),
+  "a blank product id is not a declaration — it does not switch on the membership rules",
+);
+
 // Unknown reference
 const unknown = findingsFor(
   bundleWith([{ id: "app", title: "A", platforms: ["web"] }], [node({ metadata: { product: "ghost" } })]),
 );
 assert(unknown.rules.includes("product-unknown-reference"), "membership naming no declared product is reported");
 assert(unknown.result.valid === true, "an unknown product reference never invalidates the bundle");
+assert(
+  !cleanIds.rules.includes("product-unknown-reference"),
+  "membership naming a declared product is not reported",
+);
+
+// Membership is a local authoring mistake in *any* project: a node naming a
+// product before `project.metadata.products` exists is still a dangling
+// reference, and a data model never stores membership at all.
+const undeclared = findingsFor({
+  version: "2",
+  project: { id: "p", title: "P", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z" },
+  nodes: [
+    node({ metadata: { product: "app" } }),
+    node({ id: "DM-2", species: "data-model", metadata: { product: "app" } }),
+  ],
+  edges: [],
+});
+assert(
+  undeclared.rules.includes("product-unknown-reference"),
+  "membership is reported even when the project declares no products",
+);
+assert(
+  undeclared.rules.includes("product-membership-wrong-species"),
+  "membership on a data model is reported even when the project declares no products",
+);
+assert(
+  !undeclared.rules.includes("unassigned-membership") &&
+    !undeclared.rules.includes("acceptance-product-unassigned"),
+  "the unassigned rules stay silent until the project declares products",
+);
 
 // Containment
 const containment = findingsFor(
@@ -284,6 +340,10 @@ assert(
   "a node platform outside its product's menu is reported",
 );
 assert(containment.result.valid === true, "containment is a warning, never an error");
+assert(
+  !cleanIds.rules.includes("product-platform-not-in-menu"),
+  "a node fully inside its product's menu is not reported",
+);
 
 // Membership on the wrong species
 const wrongSpecies = findingsFor(
@@ -295,6 +355,42 @@ const wrongSpecies = findingsFor(
 assert(
   wrongSpecies.rules.includes("product-membership-wrong-species"),
   "membership on a data model is reported",
+);
+assert(
+  wrongSpecies.result.findings.some((f) => f.message.includes("data-model membership is derived")),
+  "the wrong-species message names the species",
+);
+
+// A flow stores membership like any other member species.
+const flowMembership = findingsFor(
+  bundleWith(
+    [{ id: "app", title: "A", platforms: ["web"] }],
+    [
+      node({
+        id: "F-1",
+        species: "flow",
+        metadata: { product: "app", playlist: { entries: [] } },
+      }),
+    ],
+  ),
+);
+assert(
+  !flowMembership.rules.includes("product-membership-wrong-species"),
+  "a flow storing membership is not reported as the wrong species",
+);
+
+// A node with no species at all must not produce an "undefined membership"
+// message — it falls back rather than interpolating the missing value.
+const noSpecies = findingsFor(
+  bundleWith([{ id: "app", title: "A", platforms: ["web"] }], [node({ species: undefined, metadata: { product: "app" } })]),
+);
+assert(
+  noSpecies.result.findings.some(
+    (f) =>
+      f.rule === "product-membership-wrong-species" &&
+      f.message.includes("only meaningful on flow, view, and acceptance nodes"),
+  ),
+  "a node with no species gets the fallback wrong-species message, not \"undefined membership\"",
 );
 
 // Unassigned flow/view
@@ -337,6 +433,10 @@ assert(
   spanning.rules.includes("acceptance-covers-span-products"),
   "an acceptance covering two products is reported",
 );
+assert(
+  !spanning.rules.includes("acceptance-product-unassigned"),
+  "an acceptance that covers something derives membership and is not reported unassigned",
+);
 
 // The degenerate case is silent
 const PRODUCT_RULES = [
@@ -366,11 +466,51 @@ assert(
   "a project declaring no products raises no product findings",
 );
 
-// Every product finding across every fixture above is a warning.
-const everyBundle = [idsBundle, unknown, containment, wrongSpecies, unassigned, anchorless, spanning];
+// The degenerate-case guarantee, asserted across every species rather than
+// inferred from the one-view fixture above: no `products` key and no
+// `metadata.product` anywhere means not one product finding. Two of the rules
+// fire regardless of whether products are declared, so this is what keeps them
+// honest — every project that has never heard of products stays silent.
+const untouched = validateBundle({
+  version: "2",
+  project: {
+    id: "p",
+    title: "P",
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:00.000Z",
+  },
+  nodes: [
+    node({ metadata: {} }),
+    node({ id: "F-1", species: "flow", metadata: { playlist: { entries: [] } } }),
+    node({ id: "DM-1", species: "data-model", metadata: {} }),
+    node({ id: "API-1", species: "api-endpoint", metadata: {} }),
+    node({ id: "AC-1", species: "acceptance", metadata: {} }),
+  ],
+  edges: [],
+});
 assert(
-  everyBundle
-    .flatMap((entry) => (entry.result ? entry.result.findings : validateBundle(entry).findings))
+  untouched.findings.filter((f) => PRODUCT_RULES.includes(f.rule)).length === 0,
+  "a bundle with no product metadata anywhere raises zero product findings, across every species",
+);
+
+// Every product finding across every fixture above is a warning.
+const everyResult = [
+  ids,
+  cleanIds,
+  blankId,
+  unknown,
+  undeclared,
+  containment,
+  wrongSpecies,
+  flowMembership,
+  noSpecies,
+  unassigned,
+  anchorless,
+  spanning,
+];
+assert(
+  everyResult
+    .flatMap((entry) => entry.result.findings)
     .filter((f) => PRODUCT_RULES.includes(f.rule))
     .every((f) => f.severity === "warning"),
   "every product finding is warning severity",
