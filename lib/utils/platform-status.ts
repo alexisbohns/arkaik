@@ -305,8 +305,23 @@ export function getRollupPlatforms(rollup: PlatformStatusRollup): PlatformId[] {
  * that genuinely want it. A flow declares its own `platforms`, but its rollup is
  * aggregated from descendant views and covering acceptances, which can speak to
  * a platform the flow itself never lists — dropping those bars would hide
- * counted work. Surfaces that must respect a scope pass their list straight
- * through instead of calling this.
+ * counted work. The seed has exactly one such flow (`F-swap-glyph` declares
+ * web/ios, its rollup counts android via `V-glyphs-list`), which is enough to
+ * make the widening load-bearing rather than hypothetical.
+ *
+ * **Under a product scope, clamp — do not drop the widening:**
+ *
+ * ```ts
+ * withRollupPlatforms(declared, rollup).filter((p) => scope.platforms.includes(p))
+ * ```
+ *
+ * Under "All products" the menu is the union of every declared product, so the
+ * widened platform is in it and the bar still shows — today's behavior, exactly
+ * preserved. Under a web-only scope the menu is `["web"]` and the widened
+ * android bar clamps out, which is the whole point of the feature. Skipping the
+ * widening instead would lose real rollup information in the unscoped case,
+ * which is the common one; clamping loses it only where the product genuinely
+ * cannot ship that platform.
  */
 export function withRollupPlatforms(
   platforms: readonly PlatformId[],

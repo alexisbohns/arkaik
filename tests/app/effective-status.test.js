@@ -3,7 +3,8 @@
 /**
  * Rollup seam (lib/utils/platform-status.ts) — a view's effective per-platform
  * status from covering acceptances, with stored fallback; the flow rollup
- * extended by directly-covering acceptances (spec §3.4).
+ * extended by directly-covering acceptances (spec §3.4); and the widening rule
+ * that decides which platforms a gauge draws a bar for.
  */
 
 const fs = require("fs");
@@ -15,6 +16,7 @@ const {
   getNodePlatformStatuses,
   computePlaylistRollup,
   computeFlowPlatformRollup,
+  withRollupPlatforms,
 } = loadEffectiveStatus();
 
 let failures = 0;
@@ -78,6 +80,71 @@ assert(
   "flow rollup counts the effective (weakest) status of a covered descendant view",
 );
 
+// ====================== withRollupPlatforms (the widening) ===================
+//
+// Which platforms a gauge draws a bar for. `PlatformGaugeList` used to union its
+// `platforms` prop with the rollup internally; that union now lives here, called
+// explicitly by the flow-shaped call sites. Two guarantees: set union with the
+// rollup's own platforms, and PLATFORMS config order (web, ios, android)
+// regardless of argument order.
+
+const emptyRollup = { counts: {}, totals: {} };
+const threeRollup = {
+  counts: { web: { live: 3 }, ios: { development: 2 }, android: { prioritized: 1 } },
+  totals: { web: 3, ios: 2, android: 1 },
+};
+const androidOnlyRollup = { counts: { android: { live: 1 } }, totals: { android: 1 } };
+
+// The regression this rule exists to prevent: a flow declaring less than its
+// rollup counted. Without the widening the android bar silently disappears.
+assert(
+  eq(withRollupPlatforms(["web"], threeRollup), ["web", "ios", "android"]),
+  "a declared list narrower than the rollup is widened by what the rollup counted",
+);
+assert(
+  eq(withRollupPlatforms(["web", "ios"], androidOnlyRollup), ["web", "ios", "android"]),
+  "the widening adds only what is missing — declared entries are not dropped",
+);
+
+// The other direction: a declared platform the rollup never counted still gets a
+// bar (an empty one), because the node genuinely claims that platform.
+assert(
+  eq(withRollupPlatforms(["web", "ios", "android"], androidOnlyRollup), ["web", "ios", "android"]),
+  "a declared list wider than the rollup is preserved, not narrowed to what was counted",
+);
+assert(
+  eq(withRollupPlatforms(["web", "ios"], emptyRollup), ["web", "ios"]),
+  "an empty rollup returns the declared list unchanged",
+);
+assert(eq(withRollupPlatforms([], emptyRollup), []), "nothing declared and nothing counted is empty");
+
+// Ordering is PLATFORMS' (web, ios, android), never the argument's — the gauge
+// stacks bars in this order and must not reshuffle when a caller reorders.
+assert(
+  eq(withRollupPlatforms(["android", "web"], emptyRollup), ["web", "android"]),
+  "ordering follows PLATFORMS config order, not argument order",
+);
+assert(
+  eq(withRollupPlatforms(["android", "ios", "web"], emptyRollup), ["web", "ios", "android"]),
+  "a fully reversed argument comes back in config order",
+);
+
+// Discrimination check: the ordering assertion above is only meaningful if
+// config order and argument order actually differ, so pin that they do. If
+// `withRollupPlatforms` were mutated to `[...new Set([...declared, ...rollup])]`
+// — preserving argument order — the assertion above flips to FAIL, not to a
+// vacuous PASS.
+assert(
+  !eq(["android", "web"], withRollupPlatforms(["android", "web"], emptyRollup)),
+  "the ordering fixture is discriminating: argument order and config order really differ",
+);
+
+// The union is a set, not a concatenation — a platform in both inputs appears once.
+assert(
+  withRollupPlatforms(["android"], androidOnlyRollup).filter((p) => p === "android").length === 1,
+  "a platform present in both the declared list and the rollup is not duplicated",
+);
+
 // =========================== Seed goldens ====================================
 
 const ROOT = path.join(__dirname, "..", "..");
@@ -101,6 +168,22 @@ const swapEff = computeFlowPlatformRollup(byId("F-swap-glyph"), nodesById, bundl
 assert(
   (swapEff.counts.web?.live ?? 0) === (swapBase.counts.web?.live ?? 0) + 1,
   "seed: F-swap-glyph flow rollup gains one web:live from AC-buy-community-glyph",
+);
+
+// The seed's one flow whose rollup outruns its own platforms: F-swap-glyph
+// declares web/ios, but its descendant V-glyphs-list declares android, so the
+// rollup counts a platform the flow never claims. Arguably a seed authoring
+// smell — but it is real data, and it is what makes withRollupPlatforms
+// load-bearing rather than hypothetical. Do NOT "fix" the seed to make this
+// pass; the widening is what keeps that android bar on screen.
+const swapDeclared = byId("F-swap-glyph").platforms;
+assert(
+  !swapDeclared.includes("android") && (swapEff.totals.android ?? 0) > 0,
+  "seed: F-swap-glyph's rollup counts android while the flow itself declares only web/ios",
+);
+assert(
+  eq(withRollupPlatforms(swapDeclared, swapEff), ["web", "ios", "android"]),
+  "seed: the widening keeps F-swap-glyph's android bar, which its declared list alone would drop",
 );
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });

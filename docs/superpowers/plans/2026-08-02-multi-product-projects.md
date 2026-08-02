@@ -1926,6 +1926,27 @@ Build the usage index once per snapshot with `useMemo(() => buildProductUsageInd
 
 Any platform chips rendered on library cards use `scopedPlatforms(node, scope)`.
 
+**The flow gauge is the exception — clamp, do not drop the widening.** `NodeCard.tsx`'s
+`PlatformGaugeList` passes `withRollupPlatforms(node.platforms, flowRollup)` (Task 9),
+because a flow's rollup is aggregated from descendant views and can count a platform the
+flow itself never declares. Scoping it is a **filter on top of** that widening, not a
+replacement for it:
+
+```tsx
+withRollupPlatforms(node.platforms, flowRollup).filter((p) => scope.platforms.includes(p))
+```
+
+Under "All products" the menu is the union of every declared product, so the widened
+platform is in it and the bar still shows — today's behavior, exactly preserved. Under a
+web-only scope the menu is `["web"]` and the widened android bar clamps out. Passing
+`scopedPlatforms(node, scope)` straight through instead would silently drop counted work
+in the unscoped case, which is the common one. Same rule, same reasoning, at Task 16 Step 2.
+
+**The data smell this rests on is real — do not "fix" it.** The seed's `F-swap-glyph`
+declares web/ios while its descendant `V-glyphs-list` declares android, which is arguably
+a seed authoring bug. It is nonetheless real data the code must handle, and it is what
+makes the widening load-bearing rather than hypothetical. Leave `seed/pebbles.json` alone.
+
 - [ ] **Step 4: Verify**
 
 Run: `npx tsc --noEmit`
@@ -1994,6 +2015,21 @@ Per-platform notes and screenshots for a platform outside the effective set are 
 - [ ] **Step 2: Scope the chips**
 
 `PlatformList.tsx` and `FlowNode.tsx` render chips for `scopedPlatforms(node, scope)`. Where a canvas node has no access to the scope, pass it down from the canvas rather than reading a global.
+
+**Both gauge call sites here clamp rather than drop the widening**, exactly as at Task 14
+Step 3. `FlowNode.tsx` and `NodeDetailPanel.tsx`'s `ComputedPlatformStatusSection` both pass
+`withRollupPlatforms(...)` (Task 9), because a flow's rollup can count a platform the flow
+itself never declares (`F-swap-glyph` in the seed). Scope them by filtering that result:
+
+```tsx
+withRollupPlatforms(declared, rollup).filter((p) => scope.platforms.includes(p))
+```
+
+"All products" is the union of every menu, so the widened bar survives it unchanged; a
+web-only scope clamps it out. Replacing the widening with `scopedPlatforms(node, scope)`
+would lose counted work in the unscoped case. Note `FlowNode`'s existing empty-`platforms`
+branch (`platforms.length > 0 ? … : PLATFORMS.map(…)`) needs the scope's menu as its
+fallback rather than every platform.
 
 - [ ] **Step 3: Verify**
 
