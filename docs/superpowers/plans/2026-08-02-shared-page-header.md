@@ -272,6 +272,13 @@ git commit -m "feat: a panel descriptor union, so a non-node panel can share the
 
 ### Task 2: Widen the panels context
 
+> **Superseded in part by review.** The code block below is what was dispatched; the shipped module
+> differs in four ways the review required, and `lib/hooks/useProjectPanels.tsx` is the truth:
+> `topNodeId` split into `addressedNodeId` (what `?node=` names) and `topPanelNodeId` (Delete's
+> target, `null` when the top panel is not a node); `pruneMissing` renamed `pruneMissingNodes`;
+> a `RegisteredPanelState` type for what the registry stores, normalised in the setter; and a
+> `commitEntries` helper the three mutators share. Later tasks in this plan already use the new names.
+
 **Files:**
 - Rename: `lib/hooks/useNodePanels.tsx` → `lib/hooks/useProjectPanels.tsx`
 - Modify: `app/project/[id]/layout.tsx:10`, `components/panels/NodeDetailStack.tsx:9,50`
@@ -1013,7 +1020,7 @@ export function ProjectPanels({
   onCreateAcceptanceForAnchor,
   onZoomShot,
 }: ProjectPanelsProps) {
-  const { entries, openNode, closeAt, unwindTo, pruneMissing, panelStates } = useProjectPanels();
+  const { entries, openNode, closeAt, unwindTo, pruneMissingNodes, panelStates } = useProjectPanels();
 
   const nodesById = useMemo(() => new Map(allNodes.map((node) => [node.id, node])), [allNodes]);
 
@@ -1022,8 +1029,8 @@ export function ProjectPanels({
   // It is also what every page that passes no nodes at all looks like.
   useEffect(() => {
     if (nodesById.size === 0) return;
-    pruneMissing(new Set(nodesById.keys()));
-  }, [nodesById, pruneMissing]);
+    pruneMissingNodes(new Set(nodesById.keys()));
+  }, [nodesById, pruneMissingNodes]);
 
   const labelOf = useCallback(
     (entry: { key: string }) =>
@@ -1035,7 +1042,7 @@ export function ProjectPanels({
     (index: number) => {
       const entry = entries[index];
       if (!entry) return true;
-      return panelStates[entry.instanceId]?.canClose?.() ?? true;
+      return panelStates[entry.instanceId]?.canClose() ?? true;
     },
     [entries, panelStates],
   );
