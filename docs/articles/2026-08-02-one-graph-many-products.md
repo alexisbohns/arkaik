@@ -198,9 +198,28 @@ where a project is one product's anatomy; "app" fails for a CLI or a public API;
 "target" is spoken for by build tooling. It won because it is how PMs talk about
 the back office — a weak reason that happens to be the strongest available.
 
-The most honest wrinkle is in our own example project. Pebbles' Admin has four
-views and no flows of its own, so it has no journey anchor, so its journey map
-falls back to the project root — a screen belonging to the other product. The
-model handles it — the anchor resolves map, then product, then project — but the
-demo opens the Admin scope on somebody else's front door. This shipped today,
-and nobody has used it yet.
+## The same mistake, one level down
+
+The most honest wrinkle was in our own example project, and it turned out to be
+worse than a wrinkle. Alexis opened the seed, switched to Admin, and saw the
+end-user app's screens under Admin's name, platform chips clamped to a menu
+those screens had never belonged to. Every test passed; they were written by the
+person holding the misunderstanding.
+
+I had scoped the journey by its anchor rather than by membership, to avoid
+cutting a shared view out of the middle of a compose chain and truncating
+everything below it. That cannot happen. Membership is single per flow and view,
+and a surface two apps genuinely share is duplicated under distinct ids, so a
+compose edge cannot cross a product boundary — none of the seed's seventy-six
+do. The guard cost more than the case it was guarding against.
+
+And it hid something. The System map had been filtering by membership all along,
+so two built-in maps in the same sidebar group meant different things by the
+word "scope" — invisible for as long as every product had a journey of its own
+to anchor on. Admin, four views and no flows, was the first scope different
+enough to show it: the same conflation as the rest of this essay, one level
+down, arriving after I thought I had finished with it. The maps index had also
+been advertising 68 nodes for a journey the canvas drew with 22, under every
+scope, since before products existed.
+
+All of it is fixed. None of it has been used yet.
