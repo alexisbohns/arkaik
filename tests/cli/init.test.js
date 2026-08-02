@@ -119,7 +119,17 @@ const validatorScriptPath = path.join(dir, SKILL_DIR_REL, "scripts", "validate-b
   check("references/values.md installed", existsSync(valuesRefPath));
   check("SKILL.md contains the Acceptances section", skill.includes("## Acceptances — the parity layer"));
   check("SKILL.md contains the Value mapping section", skill.includes("### Value mapping"));
-  check("SKILL.md frontmatter version is 3.0.0", /^version:\s*3\.0\.0/m.test(skill));
+  // Derived from the authored skill rather than pinned to a literal: the point
+  // is that `init` installs the packaged version, not that the version is any
+  // particular number. A literal here goes stale on every skill bump and fails
+  // CI for a change that was deliberate.
+  const authoredSkill = readFileSync(path.join(ROOT, "docs", "arkaik-skill", "skill.md"), "utf8");
+  const authoredVersion = authoredSkill.match(/^version:\s*(\S+)/m)?.[1];
+  check(
+    `SKILL.md frontmatter version matches the authored skill (${authoredVersion})`,
+    Boolean(authoredVersion) && new RegExp(`^version:\\s*${authoredVersion}$`, "m").test(skill),
+    skill.slice(0, 200),
+  );
   check(
     "SKILL.md example renders the kebab-case PROJECT_ID (not the display name)",
     skill.includes('"project_id": "widget-co"'),
