@@ -2,6 +2,7 @@ import { z } from "zod";
 import { SPECIES_IDS, STATUS_IDS, PLATFORM_IDS, EDGE_TYPE_IDS, VALUE_IDS, VALUE_TIER_IDS } from "./ids";
 
 export { SPECIES_IDS, STATUS_IDS, PLATFORM_IDS, EDGE_TYPE_IDS, VALUE_IDS, VALUE_TIER_IDS, VALUE_TIERS } from "./ids";
+export { VALID_EDGE_SEMANTICS, isValidEdgeSemantic, edgeTypesForSpeciesPair } from "./ids";
 export type { SpeciesId, StatusId, PlatformId, EdgeTypeId, ValueId, ValueTierId } from "./ids";
 
 export const SpeciesSchema = z.enum(SPECIES_IDS).meta({

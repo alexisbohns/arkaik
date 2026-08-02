@@ -19,6 +19,7 @@ const CASES = [
   { file: "valid-bundle.json", expectValid: true },
   { file: "valid-level2.json", expectValid: true },
   { file: "api-endpoint-fanout.json", expectValid: true },
+  { file: "api-endpoint-inbound.json", expectValid: true },
   { file: "duplicate-node-id.json", expectValid: false },
   { file: "dangling-edge.json", expectValid: false },
   { file: "invalid-view-card-variant.json", expectValid: false },

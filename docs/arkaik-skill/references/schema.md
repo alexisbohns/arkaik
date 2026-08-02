@@ -338,8 +338,11 @@ exist in the bundle's `nodes` array.
 | `calls` | view → api-endpoint | View calls this API |
 | `calls` | flow → api-endpoint | Flow calls this API |
 | `calls` | api-endpoint → api-endpoint | Endpoint calls another (internal or third-party) API — e.g. a server action / BFF route fanning out to external APIs |
+| `calls` | api-endpoint → view | The server initiates: a webhook, an SSE stream, a push landing on this view (the View card's inbound/read affordance) |
 | `displays` | view → data-model | View displays data from this model |
 | `queries` | api-endpoint → data-model | API reads or writes this model |
+| `covers` | acceptance → view | Acceptance anchors a testable promise to this view |
+| `covers` | acceptance → flow | Acceptance anchors a testable promise to this flow |
 
 Any other source → target combination for a given edge type is invalid.
 

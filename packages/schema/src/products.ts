@@ -146,11 +146,12 @@ export type ProductUsageIndex = ReadonlyMap<string, string[]>;
  * only into `api-endpoint` / `data-model` targets.
  *
  * The species restriction is load-bearing twice over. `calls` also runs
- * API → View (the inbound/read affordance, docs/graph-model.md § Edge Types),
- * so an unrestricted walk climbs back into another product's views. And any
- * *undirected* formulation is all-pairs within a connected component, which
- * would make a data model that only Admin touches report "used by End-user"
- * purely because the two products share some other model.
+ * API → View — the inbound/read affordance, admitted by `VALID_EDGE_SEMANTICS`
+ * (docs/graph-model.md § Edge Types) — so an unrestricted walk climbs back into
+ * another product's views. And any *undirected* formulation is all-pairs within
+ * a connected component, which would make a data model that only Admin touches
+ * report "used by End-user" purely because the two products share some other
+ * model.
  */
 export function buildProductUsageIndex(
   nodes: readonly Pick<Node, "id" | "species" | "metadata">[],

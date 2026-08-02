@@ -195,6 +195,15 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
     setEdgeDialogOpen(true);
   }, []);
 
+  // The dialog offers only the relationships this ordered pair admits (#317).
+  const pendingSpecies = useMemo(
+    () => ({
+      source: pendingConnection?.source ? nodesById.get(pendingConnection.source)?.species ?? null : null,
+      target: pendingConnection?.target ? nodesById.get(pendingConnection.target)?.species ?? null : null,
+    }),
+    [nodesById, pendingConnection],
+  );
+
   const handleEdgeTypeSelect = useCallback(
     async (edgeType: EdgeTypeId) => {
       if (!pendingConnection?.source || !pendingConnection?.target) return;
@@ -331,6 +340,8 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
           if (!open) setPendingConnection(null);
         }}
         onSelect={handleEdgeTypeSelect}
+        sourceSpecies={pendingSpecies.source}
+        targetSpecies={pendingSpecies.target}
       />
       <DeleteConfirmDialog
         open={deleteEdgeDialogOpen}

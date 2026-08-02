@@ -60,6 +60,51 @@ assert(firstTopLevelFlowId === "F-record-pebble", `first top-level flow is F-rec
 
 const viewApiRelationsByViewId = computeViewApiRelations(dataEdges, nodesById);
 
+// --- `calls` projects onto the View card in both directions (issue #317) ----
+// The inbound half shipped with the API popover but no bundle ever carried the
+// shape, so nothing pinned it until the validator was taught to admit it.
+{
+  const view = { id: "V-feed", species: "view", title: "Feed", status: "live" };
+  const push = { id: "API-stream", species: "api-endpoint", title: "Stream", status: "live" };
+  const fetch = { id: "API-page", species: "api-endpoint", title: "Page", status: "development" };
+  const byId = new Map([view, push, fetch].map((node) => [node.id, node]));
+
+  const relations = computeViewApiRelations(
+    [
+      { id: "e1", edge_type: "calls", source_id: push.id, target_id: view.id },
+      { id: "e2", edge_type: "calls", source_id: view.id, target_id: fetch.id },
+    ],
+    byId,
+  );
+
+  const projected = relations.get("V-feed");
+  assert(projected !== undefined, "a view with calls edges in both directions is projected");
+  assert(
+    projected.inbound.length === 1 && projected.inbound[0].apiId === "API-stream",
+    "api-endpoint → view projects as the view's inbound/read affordance",
+  );
+  assert(
+    projected.outbound.length === 1 && projected.outbound[0].apiId === "API-page",
+    "view → api-endpoint projects as the view's outbound/write affordance",
+  );
+  assert(
+    projected.inbound[0].status === "live" && projected.outbound[0].status === "development",
+    "each relation carries its own endpoint's status, not the view's",
+  );
+
+  const deduped = computeViewApiRelations(
+    [
+      { id: "e1", edge_type: "calls", source_id: push.id, target_id: view.id },
+      { id: "e1-again", edge_type: "calls", source_id: push.id, target_id: view.id },
+    ],
+    byId,
+  );
+  assert(
+    deduped.get("V-feed").inbound.length === 1,
+    "a duplicated inbound edge lists the endpoint once",
+  );
+}
+
 const baseParams = {
   dataNodes,
   dataEdges,

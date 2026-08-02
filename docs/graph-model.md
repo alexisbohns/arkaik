@@ -200,7 +200,7 @@ Source:
 | Edge Type | Use |
 |---|---|
 | `composes` | Composition hierarchy and ordered flow sequences |
-| `calls` | View/flow to API relationship, or API endpoint to API endpoint (first-party endpoint fanning out to internal/external APIs) |
+| `calls` | View/flow to API relationship (either direction — `calls` names the initiator), or API endpoint to API endpoint (first-party endpoint fanning out to internal/external APIs) |
 | `displays` | View to data-model relationship |
 | `queries` | API to data-model relationship |
 | `covers` | Acceptance to view/flow relationship — anchors a testable promise to the surface(s) it covers |
@@ -209,10 +209,20 @@ Config source: [lib/config/edge-types.ts](../lib/config/edge-types.ts)
 
 Rendering mapping source: [lib/utils/journey-graph.ts](../lib/utils/journey-graph.ts), [lib/utils/system-graph.ts](../lib/utils/system-graph.ts)
 
-`calls` edges between a view and API endpoint are projected into View card UI:
+`calls` edges between a view and API endpoint are projected into View card UI.
+The edge's direction names the *initiator*, so both directions are legal and
+mean different things:
 
-- API -> View: inbound/read affordance (`cloud-download` icon)
-- View -> API: outbound/write affordance (`cloud-upload` icon)
+- API -> View: inbound/read affordance (`cloud-download` icon) — the server
+  opens the channel: a webhook, a server-sent events stream, a push.
+- View -> API: outbound/write affordance (`cloud-upload` icon) — the view
+  initiates the request.
+
+Because `calls` runs upward as well as downward, anything that walks it must say
+which direction it means. `buildProductUsageIndex`
+([packages/schema/src/products.ts](../packages/schema/src/products.ts)) restricts
+hops to system-layer targets for exactly this reason — a direction-blind walk
+would climb an inbound edge back up into another product's views.
 
 `calls` edges between two API endpoints (a first-party endpoint fanning out to
 internal/external APIs) have no view endpoint to project onto, so they surface only

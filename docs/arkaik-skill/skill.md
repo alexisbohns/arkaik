@@ -184,7 +184,7 @@ larger restructuring. Follow these rules strictly:
 - Every `source_id` and `target_id` must reference existing node IDs
 - Edge type semantics:
   - `composes`: flow -> view, flow -> flow (sub-flow), view -> flow (triggers)
-  - `calls`: view -> api-endpoint, flow -> api-endpoint, api-endpoint -> api-endpoint (endpoint fan-out to internal/external APIs)
+  - `calls`: view -> api-endpoint, flow -> api-endpoint, api-endpoint -> api-endpoint (endpoint fan-out to internal/external APIs), api-endpoint -> view (the server initiates: webhook, SSE, push)
   - `displays`: view -> data-model
   - `queries`: api-endpoint -> data-model
   - `covers`: acceptance -> view, acceptance -> flow
