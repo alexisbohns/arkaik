@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -31,6 +31,13 @@ import type { SpeciesId } from "@/lib/config/species";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { NodeMetadata } from "@/lib/data/types";
+import { PRODUCT_MEMBERSHIP_SPECIES, type ProductDefinition } from "@arkaik/schema";
+import { ProductPicker } from "@/components/panels/ProductPicker";
+import {
+  constrainPlatforms,
+  platformMenuFor,
+  withProductMembership,
+} from "@/lib/utils/product-editing";
 
 export interface NewNodeFormData {
   title: string;
@@ -46,22 +53,84 @@ interface NewNodeFormProps {
   onSubmit: (data: NewNodeFormData) => void;
   /** Pre-fill species when opening from an "Add child" action. */
   defaultValues?: Partial<Pick<NewNodeFormData, "species">>;
+  /**
+   * The project's declared products. **Empty means the picker never renders** —
+   * a project that has never heard of products must see no new field, no new
+   * label, and no new word (§ degenerate-case guarantee).
+   */
+  products?: readonly ProductDefinition[];
+  /**
+   * The scope the user is standing in, pre-filled into the picker (§ D1).
+   *
+   * Visible and editable, never silent: creating a node under a named scope
+   * without this produced a node that vanished from the scope the moment it was
+   * created, because an unassigned flow or view shows under All products only.
+   */
+  defaultProductId?: string | null;
 }
 
-export function NewNodeForm({ open, onOpenChange, onSubmit, defaultValues }: NewNodeFormProps) {
+export function NewNodeForm({
+  open,
+  onOpenChange,
+  onSubmit,
+  defaultValues,
+  products = [],
+  defaultProductId = null,
+}: NewNodeFormProps) {
   const [title, setTitle] = useState("");
   const [species, setSpecies] = useState<SpeciesId>(defaultValues?.species ?? "view");
   const [status, setStatus] = useState<StatusId>("idea");
   const [platforms, setPlatforms] = useState<PlatformId[]>([]);
-  const usesSingleStatusField = species === "data-model" || species === "api-endpoint";
-  const usesPlatformDefaultStatus = species === "view";
-  const allowsPlatformEditing = species !== "flow";
+  const [product, setProduct] = useState<string | null>(defaultProductId);
+
+  // Only three species *store* membership; the system layer derives it from who
+  // consumes it and must never be offered the control.
+  const storesProduct = PRODUCT_MEMBERSHIP_SPECIES.includes(species);
+  const showsProductPicker = products.length > 0 && storesProduct;
+
+  // The containment rule at its source (§ D4): a node may only claim platforms
+  // its product ships on. An unassigned node — or a project with no products —
+  // gets every platform, which is today's behaviour unchanged.
+  const platformMenu = platformMenuFor(
+    storesProduct && product !== null ? products.find((p) => p.id === product) ?? null : null,
+  );
+
+  // A platform-less product means availability is not a tracked dimension here
+  // (a CLI, a public API), so there is nothing to toggle — RFC decision 2.
+  const allowsPlatformEditing = species !== "flow" && platformMenu.length > 0;
+
+  // A view's status is normally the *default* it stamps onto each platform it
+  // claims. Inside a platform-less product there are no platforms to stamp, so
+  // the same field becomes the node's one status — RFC decision 2, and the other
+  // half of what "no platform toggles" has to mean. Without this the view would
+  // lose its status field entirely, and submit would write an empty
+  // `platformStatuses` map that no read surface can get a status out of.
+  const usesPlatformDefaultStatus = species === "view" && platformMenu.length > 0;
+  const usesSingleStatusField =
+    species === "data-model" ||
+    species === "api-endpoint" ||
+    (species === "view" && platformMenu.length === 0);
+
+  /**
+   * Re-seed the scoped default whenever the dialog opens.
+   *
+   * These call sites mount the form once and keep it mounted, so the initial
+   * `useState` runs long before the user picks a scope: without this, switching
+   * to Admin and creating a view would pre-fill whatever scope the page was
+   * first rendered under. Keyed on `open` so an in-progress edit is never
+   * overwritten — the dialog is modal, and the scope selector sits behind it.
+   */
+  useEffect(() => {
+    if (!open) return;
+    setProduct(defaultProductId);
+  }, [open, defaultProductId]);
 
   function resetForm() {
     setTitle("");
     setSpecies(defaultValues?.species ?? "view");
     setStatus("idea");
     setPlatforms([]);
+    setProduct(defaultProductId);
   }
 
   function handleOpenChange(nextOpen: boolean) {
@@ -75,19 +144,49 @@ export function NewNodeForm({ open, onOpenChange, onSubmit, defaultValues }: New
     );
   }
 
+  /**
+   * Switching to a narrower product drops the platforms it does not ship on,
+   * rather than storing a claim the product forbids and letting
+   * `effectiveNodePlatforms` silently hide it at render time.
+   */
+  function handleProductChange(nextProduct: string | null) {
+    setProduct(nextProduct);
+    const nextMenu = platformMenuFor(
+      nextProduct === null ? null : products.find((p) => p.id === nextProduct) ?? null,
+    );
+    setPlatforms((previous) => constrainPlatforms(previous, nextMenu));
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim()) return;
 
-    const metadata: NodeMetadata | undefined = species === "view"
+    const platformStatuses = usesPlatformDefaultStatus
       ? {
           platformStatuses: Object.fromEntries(
             platforms.map((platformId) => [platformId, status]),
           ) as Record<PlatformId, StatusId>,
         }
-      : undefined;
+      : {};
 
-    onSubmit({ title: title.trim(), species, status, platforms, metadata });
+    // Membership only for the species that store it, and only when the project
+    // has products at all. `withProductMembership` removes the key for null
+    // rather than blanking it — unassigned has to mean absent. The two
+    // contributions are *merged*: a view in a product needs both, and either one
+    // overwriting the other would silently drop the other's key.
+    const membership = storesProduct && products.length > 0
+      ? withProductMembership(undefined, product)
+      : {};
+
+    const metadata: NodeMetadata = { ...membership, ...platformStatuses };
+
+    onSubmit({
+      title: title.trim(),
+      species,
+      status,
+      platforms,
+      metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+    });
     resetForm();
   }
 
@@ -124,6 +223,18 @@ export function NewNodeForm({ open, onOpenChange, onSubmit, defaultValues }: New
               </SelectContent>
             </Select>
           </div>
+          {showsProductPicker && (
+            <ProductPicker
+              products={products}
+              value={product}
+              onChange={handleProductChange}
+              hint={
+                product === null
+                  ? "Unassigned nodes appear under All products only."
+                  : undefined
+              }
+            />
+          )}
           {(usesSingleStatusField || usesPlatformDefaultStatus) && (
             <div className="flex flex-col gap-1.5">
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
