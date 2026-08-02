@@ -6,10 +6,8 @@ import { PlusIcon } from "lucide-react";
 import { DeliveryBoard } from "@/components/delivery/DeliveryBoard";
 import { DeliveryFilterBar, type DeliveryPlatformFilter } from "@/components/delivery/DeliveryFilterBar";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
-import { NodeDetailStack } from "@/components/panels/NodeDetailStack";
+import { PageShell } from "@/components/layout/PageShell";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 import { SPECIES, type SpeciesId } from "@/lib/config/species";
 import {
   DEFAULT_COUNTED_STATUS_PRESET_ID,
@@ -20,9 +18,8 @@ import {
 import type { Node as DataNode } from "@/lib/data/types";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useJournal } from "@/lib/hooks/useJournal";
-import { useNodePanels } from "@/lib/hooks/useNodePanels";
+import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useNodes } from "@/lib/hooks/useNodes";
-import { useProject } from "@/lib/hooks/useProject";
 import { computeDeliveryItems, groupItemsByStatus, type DeliveryItem } from "@/lib/utils/delivery";
 import { generateNodeId } from "@/lib/utils/id";
 import { matchesSearch } from "@/lib/utils/search";
@@ -54,11 +51,10 @@ export default function ProjectDeliveryPage() {
   const [search, setSearch] = useState("");
   const [newNodeOpen, setNewNodeOpen] = useState(false);
 
-  const { openNode } = useNodePanels();
+  const { openNode } = useProjectPanels();
 
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
-  const { project: projectBundle } = useProject(id);
   const { journal } = useJournal(id);
 
   const nodesById = useMemo(() => new Map(dataNodes.map((node) => [node.id, node])), [dataNodes]);
@@ -134,24 +130,14 @@ export default function ProjectDeliveryPage() {
   }
 
   return (
-    <div className="h-full w-full flex flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <SidebarTrigger className="-ml-1 cursor-pointer" />
-        <Separator orientation="vertical" className="mx-1 h-4" />
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{projectBundle?.project.title ?? "Untitled project"}</p>
-          <p className="truncate text-xs text-muted-foreground">Delivery</p>
-        </div>
-        <div className="ml-auto flex items-center gap-3">
-          <Button size="sm" className="cursor-pointer" onClick={() => setNewNodeOpen(true)}>
-            <PlusIcon className="size-4" />
-            New node
-          </Button>
-        </div>
-      </header>
-
-      <NodeDetailStack
-        rootLabel="Delivery"
+    <>
+      <PageShell
+        title="Delivery"
+        action={{
+          label: "New node",
+          icon: PlusIcon,
+          onClick: () => setNewNodeOpen(true),
+        }}
         allNodes={dataNodes}
         allEdges={dataEdges}
         journal={journal}
@@ -191,9 +177,9 @@ export default function ProjectDeliveryPage() {
             />
           )}
         </div>
-      </NodeDetailStack>
+      </PageShell>
 
       <NewNodeForm open={newNodeOpen} onOpenChange={setNewNodeOpen} onSubmit={handleCreateNode} />
-    </div>
+    </>
   );
 }

@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { SidebarTrigger } from "@/components/ui/sidebar";
-import { Separator } from "@/components/ui/separator";
+import { PageShell } from "@/components/layout/PageShell";
+import { StickyToolbar } from "@/components/layout/StickyToolbar";
 import { PyramidElementCard } from "@/components/pyramid/PyramidElementCard";
 import { PyramidElementRow } from "@/components/pyramid/PyramidElementRow";
 import { PyramidTierGroup } from "@/components/pyramid/PyramidTierGroup";
@@ -16,7 +16,6 @@ import { VALUES, VALUE_TIERS_CONFIG } from "@/lib/config/values";
 import type { PyramidElement } from "@/lib/utils/pyramid";
 import { computePyramidAggregation } from "@/lib/utils/pyramid";
 import { useNodes } from "@/lib/hooks/useNodes";
-import { useProject } from "@/lib/hooks/useProject";
 
 const VALUE_LABEL = new Map(VALUES.map((v) => [v.id, v.label]));
 const VALUE_DESCRIPTION = new Map(VALUES.map((v) => [v.id, v.description]));
@@ -42,7 +41,6 @@ export default function PyramidPage() {
   const [filterStep, setFilterStep] = useState<PyramidFilterStep>("all");
 
   const { nodes: dataNodes, loading } = useNodes(id);
-  const { project: projectBundle } = useProject(id);
 
   const acceptances = useMemo(
     () => dataNodes.filter((node) => node.species === "acceptance"),
@@ -71,25 +69,19 @@ export default function PyramidPage() {
   }
 
   return (
-    <div className="h-full w-full flex flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <SidebarTrigger className="-ml-1 cursor-pointer" />
-        <Separator orientation="vertical" className="mx-1 h-4" />
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{projectBundle?.project.title ?? "Untitled project"}</p>
-          <p className="truncate text-xs text-muted-foreground">Value pyramid</p>
-        </div>
-      </header>
+    <PageShell title="Value pyramid">
+      <div className="h-full overflow-auto">
+        <div className="mx-auto w-full max-w-6xl">
+          <StickyToolbar>
+            <PyramidToolbar
+              viewMode={viewMode}
+              filterStep={filterStep}
+              onViewModeChange={setViewMode}
+              onFilterStepChange={setFilterStep}
+            />
+          </StickyToolbar>
 
-      <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6">
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-          <PyramidToolbar
-            viewMode={viewMode}
-            filterStep={filterStep}
-            onViewModeChange={setViewMode}
-            onFilterStepChange={setFilterStep}
-          />
-
+          <div className="flex flex-col gap-6 px-4 pb-4 md:px-6 md:pb-6">
           {visibleTiers.length === 0 ? (
             <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
               No value element matches this filter.
@@ -124,8 +116,9 @@ export default function PyramidPage() {
               );
             })
           )}
+          </div>
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }

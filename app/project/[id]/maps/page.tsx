@@ -7,9 +7,7 @@ import { computeMapSubgraph, listMaps, MAP_KINDS, type MapDefinition } from "@ar
 import { MapCard } from "@/components/maps/MapCard";
 import { MapEditorDialog } from "@/components/maps/MapEditorDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { SidebarTrigger } from "@/components/ui/sidebar";
+import { PageShell } from "@/components/layout/PageShell";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useProject } from "@/lib/hooks/useProject";
@@ -84,59 +82,49 @@ export default function ProjectMapsPage() {
   }
 
   return (
-    <div className="h-full w-full flex flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <SidebarTrigger className="-ml-1 cursor-pointer" />
-        <Separator orientation="vertical" className="mx-1 h-4" />
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{projectBundle?.project.title ?? "Untitled project"}</p>
-          <p className="truncate text-xs text-muted-foreground">Maps</p>
-        </div>
-        <div className="ml-auto flex items-center gap-3">
-          <Button
-            size="sm"
-            className="cursor-pointer"
-            onClick={() => {
-              setEditorTarget(undefined);
-              setEditorOpen(true);
-            }}
-          >
-            <PlusIcon className="size-4" />
-            New map
-          </Button>
-        </div>
-      </header>
+    <>
+      <PageShell
+        title="Maps"
+        action={{
+          label: "New map",
+          icon: PlusIcon,
+          onClick: () => {
+            setEditorTarget(undefined);
+            setEditorOpen(true);
+          },
+        }}
+      >
+        <div className="h-full overflow-auto p-4 md:p-6">
+          <div className="mx-auto grid w-full gap-4 sm:grid-cols-2">
+            {maps.map((definition) => {
+              const count = counts.get(definition.id) ?? { nodes: 0, edges: 0 };
+              const builtIn = definition.id === "journey" || definition.id === "system";
+              const renderable = (MAP_KINDS as readonly string[]).includes(definition.kind);
 
-      <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6">
-        <div className="mx-auto grid w-full max-w-5xl gap-4 sm:grid-cols-2">
-          {maps.map((definition) => {
-            const count = counts.get(definition.id) ?? { nodes: 0, edges: 0 };
-            const builtIn = definition.id === "journey" || definition.id === "system";
-            const renderable = (MAP_KINDS as readonly string[]).includes(definition.kind);
-
-            return (
-              <MapCard
-                key={definition.id}
-                definition={definition}
-                href={`/project/${id}/maps/${definition.id}`}
-                nodeCount={count.nodes}
-                edgeCount={count.edges}
-                builtIn={builtIn}
-                renderable={renderable}
-                onEdit={
-                  builtIn
-                    ? undefined
-                    : () => {
-                        setEditorTarget(definition);
-                        setEditorOpen(true);
-                      }
-                }
-                onDelete={builtIn ? undefined : () => setDeleteTarget(definition)}
-              />
-            );
-          })}
+              return (
+                <MapCard
+                  key={definition.id}
+                  definition={definition}
+                  href={`/project/${id}/maps/${definition.id}`}
+                  nodeCount={count.nodes}
+                  edgeCount={count.edges}
+                  builtIn={builtIn}
+                  renderable={renderable}
+                  onEdit={
+                    builtIn
+                      ? undefined
+                      : () => {
+                          setEditorTarget(definition);
+                          setEditorOpen(true);
+                        }
+                  }
+                  onDelete={builtIn ? undefined : () => setDeleteTarget(definition)}
+                />
+              );
+            })}
+          </div>
         </div>
-      </div>
+      </PageShell>
 
       <MapEditorDialog
         open={editorOpen}
@@ -156,6 +144,6 @@ export default function ProjectMapsPage() {
         confirmLabel="Delete"
         onConfirm={() => void handleDeleteMap()}
       />
-    </div>
+    </>
   );
 }

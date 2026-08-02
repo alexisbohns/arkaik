@@ -46,7 +46,7 @@ export default async function Home() {
         <ThemeToggle />
       </header>
 
-      <main className="relative mx-auto flex w-full max-w-5xl flex-1 flex-col items-center justify-center px-6 pb-14 pt-4">
+      <main className="relative mx-auto flex w-full flex-1 flex-col items-center justify-center px-6 pb-14 pt-4">
         <div className="w-full max-w-[400px] text-center">
           <ArkaikLogoBoil className="mx-auto" />
 

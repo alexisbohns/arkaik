@@ -9,18 +9,15 @@ import { Canvas } from "@/components/graph/Canvas";
 import { MapDisplayPopover } from "@/components/maps/MapDisplayPopover";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
+import { PageShell } from "@/components/layout/PageShell";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
-import { NodeDetailStack } from "@/components/panels/NodeDetailStack";
-import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 import type { EdgeTypeId } from "@/lib/config/edge-types";
 import type { Node as DataNode, Edge as DataEdge } from "@/lib/data/types";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useElkLayout } from "@/lib/hooks/useElkLayout";
 import { useJournal } from "@/lib/hooks/useJournal";
-import { useNodePanels } from "@/lib/hooks/useNodePanels";
+import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useProject } from "@/lib/hooks/useProject";
 import { generateNodeId, edgeId } from "@/lib/utils/id";
@@ -61,7 +58,7 @@ type SystemLayoutMode = "tiered" | "organic";
  * there is no expansion state.
  */
 export function SystemMap({ projectId, definition }: SystemMapProps) {
-  const { openNode, topNodeId } = useNodePanels();
+  const { openNode, addressedNodeId } = useProjectPanels();
   // Session-local rendition choice, seeded from the definition's layout hint
   // (organic is the system kind's default — docs/spec/maps.md).
   const [layoutMode, setLayoutMode] = useState<SystemLayoutMode>(() =>
@@ -249,42 +246,36 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
   }
 
   return (
-    <div className="h-full w-full flex flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <SidebarTrigger className="-ml-1 cursor-pointer" />
-        <Separator orientation="vertical" className="mx-1 h-4" />
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">
-            {projectBundle?.project.title ?? "Untitled project"}
-          </p>
-          <p className="truncate text-xs text-muted-foreground">
-            {definition.id !== "system" ? `Maps · ${definition.title}` : "Maps · System"}
-          </p>
-        </div>
-        <div className="ml-auto flex items-center gap-3">
-          <Select value={layoutMode} onValueChange={handleLayoutModeChange}>
-            <SelectTrigger className="h-8 w-[120px]" aria-label="Layout algorithm">
-              <SelectValue placeholder="Layout" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="organic">Organic</SelectItem>
-              <SelectItem value="tiered">Tiered</SelectItem>
-            </SelectContent>
-          </Select>
-          <MapDisplayPopover
-            value={display}
-            onChange={(patch) => void handleDisplayChange(patch)}
-            mapTitle={definition.title}
-            controls={{ viewPlatforms: true }}
-          />
-          <Button size="sm" className="cursor-pointer" onClick={() => setNewNodeOpen(true)}>
-            <PlusIcon className="size-4" />
-            New node
-          </Button>
-        </div>
-      </header>
-      <NodeDetailStack
-        rootLabel={definition.id !== "system" ? `Maps · ${definition.title}` : "Maps · System"}
+    <>
+      {/* The title is the map's own name: the sidebar's Maps group already says
+          which section this is, so a `Maps ·` prefix would only repeat it. */}
+      <PageShell
+        title={definition.title}
+        action={{
+          label: "New node",
+          icon: PlusIcon,
+          onClick: () => setNewNodeOpen(true),
+        }}
+        headerExtra={
+          <>
+            <Select value={layoutMode} onValueChange={handleLayoutModeChange}>
+              <SelectTrigger className="h-8 w-[120px]" aria-label="Layout algorithm">
+                <SelectValue placeholder="Layout" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="organic">Organic</SelectItem>
+                <SelectItem value="tiered">Tiered</SelectItem>
+              </SelectContent>
+            </Select>
+            <MapDisplayPopover
+              value={display}
+              onChange={(patch) => void handleDisplayChange(patch)}
+              mapTitle={definition.title}
+              controls={{ viewPlatforms: true }}
+            />
+          </>
+        }
+        surfaceCard
         onLayoutChange={reframe}
         allNodes={dataNodes}
         allEdges={dataEdges}
@@ -300,9 +291,9 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
           onEdgeClick={handleEdgeClick}
           fitSignal={fitSignal}
           spotlight
-          spotlightNodeId={topNodeId}
+          spotlightNodeId={addressedNodeId}
         />
-      </NodeDetailStack>
+      </PageShell>
       <NewNodeForm open={newNodeOpen} onOpenChange={setNewNodeOpen} onSubmit={handleCreateNode} />
       <EdgeTypeDialog
         open={edgeDialogOpen}
@@ -322,6 +313,6 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
         description="This will permanently remove the connection between these two nodes. This action cannot be undone."
         onConfirm={handleDeleteEdgeConfirm}
       />
-    </div>
+    </>
   );
 }

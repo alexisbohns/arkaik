@@ -12,8 +12,7 @@ import { ParityCard } from "@/components/overview/ParityCard";
 import { PlatformGaugesCard } from "@/components/overview/PlatformGaugesCard";
 import { PyramidCard } from "@/components/overview/PyramidCard";
 import { ReleasePulseCard } from "@/components/overview/ReleasePulseCard";
-import { Separator } from "@/components/ui/separator";
-import { SidebarTrigger } from "@/components/ui/sidebar";
+import { PageShell } from "@/components/layout/PageShell";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useNodes } from "@/lib/hooks/useNodes";
@@ -103,26 +102,21 @@ export default function OverviewPage() {
   const isEmpty = dataNodes.length === 0 && journal.length === 0;
 
   return (
-    <div className="h-full w-full flex flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <SidebarTrigger className="-ml-1 cursor-pointer" />
-        <Separator orientation="vertical" className="mx-1 h-4" />
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{projectBundle?.project.title ?? "Untitled project"}</p>
-          <p className="truncate text-xs text-muted-foreground">Overview</p>
-        </div>
-        {projectBundle?.project.version && (
-          <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+    <PageShell
+      title="Overview"
+      headerExtra={
+        projectBundle?.project.version ? (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span>Current version</span>
             <span className="rounded-full border px-2 py-0.5 font-medium text-foreground">
               {projectBundle.project.version}
             </span>
           </div>
-        )}
-      </header>
-
-      <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6">
-        <div className="mx-auto grid w-full max-w-5xl gap-4 md:grid-cols-2">
+        ) : null
+      }
+    >
+      <div className="h-full overflow-auto p-4 md:p-6">
+        <div className="grid w-full gap-4 md:grid-cols-2">
           {isEmpty ? (
             <div className="rounded-xl border border-dashed p-10 text-center md:col-span-2">
               <p className="text-sm text-muted-foreground">
@@ -145,6 +139,6 @@ export default function OverviewPage() {
           )}
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }

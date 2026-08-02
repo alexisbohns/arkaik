@@ -78,7 +78,7 @@ const targetDeps = {
  */
 export default function ProjectsPage() {
   return (
-    <div className="flex flex-1 flex-col bg-background font-sans">
+    <div className="flex flex-1 flex-col font-sans">
       <ProjectsHeader />
       <Suspense
         fallback={

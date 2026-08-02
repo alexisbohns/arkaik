@@ -9,13 +9,14 @@
  */
 
 const fs = require("fs");
-const { loadPanelStack, BUILD_DIR } = require("./load-panel-stack");
+const { loadPanelStack, BUILD_DIR } = require("./load-panel-utils");
 
 const {
   initStack,
   openFrom,
   closeAt,
   unwindTo,
+  unwindDoomed,
   reconcileArrival,
   visibleFrom,
   visibleWindow,
@@ -117,6 +118,25 @@ assert(
 assert(unwindTo(withABC, 3) === withABC, "unwinding to the current depth is a no-op");
 assert(unwindTo(withABC, 9) === withABC, "unwinding past the top is a no-op");
 assert(unwindTo(withABC, 1)[0] === withABC[0], "unwinding keeps the surviving entries' identity");
+
+// --- what an unwind destroys ---
+assert(
+  JSON.stringify(unwindDoomed(0, 4)) === "[3,2,1,0]",
+  `unwinding to the surface takes the whole stack (got ${JSON.stringify(unwindDoomed(0, 4))})`,
+);
+assert(
+  JSON.stringify(unwindDoomed(3, 4)) === "[3]",
+  `Escape takes only the top panel (got ${JSON.stringify(unwindDoomed(3, 4))})`,
+);
+assert(
+  unwindDoomed(4, 4).length === 0,
+  "unwinding to the current depth destroys nothing — no panel gets asked",
+);
+assert(unwindDoomed(9, 4).length === 0, "unwinding past the top destroys nothing");
+assert(
+  unwindDoomed(1, 5).every((index, position, all) => position === 0 || all[position - 1] > index),
+  `the doomed set is always descending, so the confirm belongs to the visible panel (got ${JSON.stringify(unwindDoomed(1, 5))})`,
+);
 
 // --- reconcileArrival, path 1: the id is already the top (we published it) ---
 assert(

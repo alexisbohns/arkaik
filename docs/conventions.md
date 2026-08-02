@@ -11,13 +11,13 @@ components/
   layout/               # Shell UI: project sidebar, switcher, breadcrumb, minimap, badges
   panels/               # The push-panel stack, its panel content, and forms
     PanelStack.tsx      # Content-agnostic column stack: keyboard, breadcrumb, visibility
-    NodeDetailStack.tsx # Binds the stack to nodes — NodeDetailPanel as the content
+    ProjectPanels.tsx   # Binds the stack to panel kind: node detail, or the raw bundle
   ui/                   # shadcn/ui primitives (do not edit directly — use CLI)
 lib/
   config/               # Typed const arrays: species, statuses, platforms, edge types
   data/                 # DataProvider interface + implementations
   hooks/                # React hooks for state management
-    useNodePanels.tsx   # Panel-stack provider + the `?node=` contract
+    useProjectPanels.tsx # Panel-stack provider + the `?node=` contract
   prompts/              # Prompt assembly blocks/types for the AI prompt builder
   utils/                # Helpers: layout, export, cn()
 public/
@@ -31,7 +31,7 @@ docs/                   # This documentation
 ## State Management
 
 - **No global store for domain data.** No Zustand, Redux, or Context-based state for nodes, edges, projects, or the journal — those flow through hooks and props.
-- **Route-shell UI state may use a scoped provider**, mounted in the project layout alongside `SidebarProvider`. The panel stack (`NodePanelsProvider`) is the one that exists; the bar for adding another is that a page segment cannot own the state, because it remounts when its dynamic params change.
+- **Route-shell UI state may use a scoped provider**, mounted in the project layout alongside `SidebarProvider`. The panel stack (`ProjectPanelsProvider`) is the one that exists; the bar for adding another is that a page segment cannot own the state, because it remounts when its dynamic params change.
 - Reusable state logic lives in hooks: `useNodes`, `useEdges`, `useProject`, `useProjects`, `useJournal`.
 - Hook intent:
   - `useNodes` and `useEdges` handle project graph CRUD.
@@ -94,10 +94,13 @@ Three pieces, deliberately separable — only the third knows what a node is:
 
 - `lib/utils/panel-stack.ts` — pure transitions, no React and no DOM. Covered by `tests/app/panel-stack.test.js` (`npm run test:panel-stack`).
 - `components/panels/PanelStack.tsx` — renders the columns; owns the keyboard, focus, breadcrumb, visibility rule and animation. Content-agnostic.
-- `lib/hooks/useNodePanels.tsx` + `components/panels/NodeDetailStack.tsx` — the binding: node id ⇄ descriptor ⇄ `?node=`, with `NodeDetailPanel` as the content.
+- `lib/hooks/useProjectPanels.tsx` + `components/panels/ProjectPanels.tsx` — the binding: what a panel can be (a node, or the raw bundle), node id ⇄ descriptor ⇄ `?node=`, with `NodeDetailPanel` as a node panel's content.
 
-The URL contract: **`?node=` addresses the top panel only**, on whatever route
-you are on, composing with the filters already there (`?species=view&node=…`).
+The URL contract: **`?node=` addresses the top *node* panel only**, on whatever
+route you are on, composing with the filters already there
+(`?species=view&node=…`). It scans past a panel that is not a node — the raw
+bundle is a tool rather than a location, so opening it over a node panel leaves
+that node's address standing.
 The stack below the top is client state by design — it is exploration history,
 not an address. User actions publish the new top themselves; `reconcileArrival`
 handles the arrivals nobody published (cold load, Back, Forward), inferring

@@ -94,6 +94,9 @@ jobs:
       - name: Push-panel stack tests
         run: npm run test:panel-stack
 
+      - name: Panel descriptor union tests
+        run: npm run test:project-panels
+
       - name: Command palette ranking tests
         run: npm run test:command-palette
 

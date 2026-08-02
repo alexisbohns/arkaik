@@ -5,7 +5,6 @@ import {
   BookOpenIcon,
   ClipboardCheckIcon,
   DatabaseIcon,
-  FileTextIcon,
   GitBranchIcon,
   HistoryIcon,
   LayoutDashboardIcon,
@@ -18,14 +17,11 @@ import {
   SearchIcon,
   ServerIcon,
   SquareKanbanIcon,
-  Settings2Icon,
-  Share2Icon,
 } from "lucide-react";
 import { ProjectSwitcher, type ProjectView } from "@/components/layout/ProjectSwitcher";
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupLabel,
   SidebarHeader,
@@ -33,7 +29,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
-  SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { useModKeyLabel } from "@/lib/hooks/useModKeyLabel";
 
@@ -50,6 +45,8 @@ interface ProjectSidebarProps {
   /** Opens the ⌘K palette — the same overlay the shortcut summons. */
   onOpenCommandPalette: () => void;
   onOpenPublish: () => void;
+  /** Pushes the raw bundle onto the panel stack — project-scoped, like Publish. */
+  onOpenRaw: () => void;
 }
 
 // One library page per species, driven from here — the sidebar is the only
@@ -71,6 +68,7 @@ export function ProjectSidebar({
   currentQueryString,
   onOpenCommandPalette,
   onOpenPublish,
+  onOpenRaw,
 }: ProjectSidebarProps) {
   const modKey = useModKeyLabel();
   const overviewHref = `/project/${projectId}/overview`;
@@ -79,7 +77,6 @@ export function ProjectSidebar({
   const deliveryHref = `/project/${projectId}/delivery`;
   const changelogHref = `/project/${projectId}/changelog`;
   const pyramidHref = `/project/${projectId}/pyramid`;
-  const settingsHref = `/project/${projectId}/settings`;
 
   return (
     <Sidebar collapsible="icon">
@@ -89,6 +86,8 @@ export function ProjectSidebar({
           currentProjectTitle={currentProjectTitle}
           currentView={currentView}
           currentQueryString={currentQueryString}
+          onOpenPublish={onOpenPublish}
+          onOpenRaw={onOpenRaw}
         />
         <SidebarMenu>
           <SidebarMenuItem>
@@ -245,39 +244,6 @@ export function ProjectSidebar({
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
-
-      <SidebarSeparator />
-
-      <SidebarFooter>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              tooltip="Publish to Publik"
-              onClick={onOpenPublish}
-              className="cursor-pointer"
-            >
-              <Share2Icon />
-              <span>Publish</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild isActive={currentView === "settings"} tooltip="Settings">
-              <Link href={settingsHref}>
-                <Settings2Icon />
-                <span>Settings</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild tooltip="Documentation">
-              <a href="/docs" target="_blank" rel="noreferrer">
-                <FileTextIcon />
-                <span>Documentation</span>
-              </a>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
 
       <SidebarRail />
     </Sidebar>
