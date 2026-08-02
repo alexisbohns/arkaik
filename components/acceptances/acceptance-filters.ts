@@ -15,6 +15,13 @@ function oneOf<T extends string>(value: string | null, allowed: readonly string[
   return value && allowed.includes(value) ? (value as T) : "all";
 }
 
+/**
+ * `product` is deliberately absent from `KEYS` and always read back as `null`.
+ * The scope is global to the shell and persisted per project in localStorage
+ * (lib/hooks/useProductScope.ts), not per surface in the URL — the page layers
+ * the live scope on top of what this returns. Threading it through the query
+ * string too would give the same value two homes that could disagree.
+ */
 function readFilters(params: URLSearchParams): AcceptanceFilters {
   return {
     search: params.get("search") ?? "",
@@ -23,6 +30,7 @@ function readFilters(params: URLSearchParams): AcceptanceFilters {
     value: oneOf(params.get("value"), VALUE_IDS),
     anchor: params.get("anchor") || "all",
     parityGap: params.get("parity_gap") === "1",
+    product: null,
   };
 }
 

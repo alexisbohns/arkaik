@@ -10,6 +10,7 @@ import { useEdges } from "@/lib/hooks/useEdges";
 import { useNodePanels } from "@/lib/hooks/useNodePanels";
 import { useProject } from "@/lib/hooks/useProject";
 import { useJournal } from "@/lib/hooks/useJournal";
+import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { useAcceptanceFilters } from "@/components/acceptances/acceptance-filters";
 import { filterAcceptances } from "@/lib/utils/acceptance-matrix";
 import { AcceptanceFilterBar } from "@/components/acceptances/AcceptanceFilterBar";
@@ -48,9 +49,18 @@ export default function ProjectAcceptancesPage() {
         .sort((a, b) => a.title.localeCompare(b.title)),
     [dataNodes],
   );
+  // The product scope is not a filter-bar control, so it is layered on here
+  // rather than read from the URL: the bar owns what the reader typed, the
+  // shell owns which app they are looking at. Membership lives on nodes, so
+  // this narrows correctly even before `useProject` has resolved the bundle.
+  const scope = useEffectiveProduct(id, projectBundle);
+  const scopedFilters = useMemo(
+    () => ({ ...filters, product: scope.productId }),
+    [filters, scope.productId],
+  );
   const filtered = useMemo(
-    () => filterAcceptances(acceptances, dataEdges, filters),
-    [acceptances, dataEdges, filters],
+    () => filterAcceptances(acceptances, dataEdges, nodesById, scopedFilters),
+    [acceptances, dataEdges, nodesById, scopedFilters],
   );
 
   function handleSelectNode(node: DataNode) {
@@ -165,12 +175,20 @@ export default function ProjectAcceptancesPage() {
       >
         <div className="h-full overflow-auto p-4 md:p-6">
           <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
-            <AcceptanceFilterBar filters={filters} onChange={setFilters} anchorOptions={anchorOptions} />
+            <AcceptanceFilterBar
+              filters={filters}
+              onChange={setFilters}
+              anchorOptions={anchorOptions}
+              projectId={id}
+              project={projectBundle}
+            />
             <AcceptanceMatrix
               acceptances={filtered}
               edges={dataEdges}
               nodesById={nodesById}
               onSelect={handleSelectNode}
+              projectId={id}
+              project={projectBundle}
             />
           </div>
         </div>

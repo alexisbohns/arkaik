@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { SearchIcon, TriangleAlertIcon, XIcon } from "lucide-react";
+import type { ProjectBundle } from "@/lib/data/types";
 import type { AcceptanceFilters } from "@/lib/utils/acceptance-matrix";
 import { EMPTY_FILTERS } from "@/lib/utils/acceptance-matrix";
 import { PLATFORMS } from "@/lib/config/platforms";
 import { STATUSES } from "@/lib/config/statuses";
 import { VALUES } from "@/lib/config/values";
+import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -22,11 +24,35 @@ interface AcceptanceFilterBarProps {
   filters: AcceptanceFilters;
   onChange: (next: AcceptanceFilters) => void;
   anchorOptions: AnchorOption[];
+  projectId: string;
+  /** The bundle products live on. `undefined` until `useProject` resolves. */
+  project: ProjectBundle | undefined;
 }
 
 const ALL = "all";
 
-export function AcceptanceFilterBar({ filters, onChange, anchorOptions }: AcceptanceFilterBarProps) {
+export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectId, project }: AcceptanceFilterBarProps) {
+  const scope = useEffectiveProduct(projectId, project);
+  // The same arity rule the matrix reads for its columns: a control that can
+  // only ever say "Web" is not a choice, it is the scope repeated. A project
+  // declaring no products resolves to every platform, so this is today's bar.
+  const showPlatformFilter = scope.isMultiPlatform;
+  const platformOptions = useMemo(
+    () => PLATFORMS.filter((platform) => scope.platforms.includes(platform.id)),
+    [scope],
+  );
+
+  // A stale platform filter must not outlive the control that could clear it:
+  // scoped to a web-only product, `platform=android` would silently empty the
+  // list with nothing on screen to explain why. Reset through the same
+  // `onChange` the control uses, so the URL stays the one source of truth. The
+  // early return makes this idempotent — the echo back through `filters` is
+  // already `"all"`, so it cannot loop.
+  useEffect(() => {
+    if (showPlatformFilter || filters.platform === ALL) return;
+    onChange({ ...filters, platform: "all" });
+  }, [showPlatformFilter, filters, onChange]);
+
   const isFiltered =
     filters.search !== "" || filters.platform !== "all" || filters.status !== "all" ||
     filters.value !== "all" || filters.anchor !== "all" || filters.parityGap;
@@ -79,16 +105,18 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions }: Accept
         />
       </div>
 
-      <Select value={filters.platform} onValueChange={(v) => onChange({ ...filters, platform: v === ALL ? "all" : (v as AcceptanceFilters["platform"]) })}>
-        <SelectTrigger className="w-[8rem]" aria-label="Platform"><SelectValue placeholder="Platforms" /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ALL}>Platforms</SelectItem>
-          {PLATFORMS.map((p) => {
-            const Icon = PLATFORM_ICONS[p.id];
-            return <SelectItem key={p.id} value={p.id}><span className="inline-flex items-center gap-2"><Icon className="size-3.5" />{p.label}</span></SelectItem>;
-          })}
-        </SelectContent>
-      </Select>
+      {showPlatformFilter && (
+        <Select value={filters.platform} onValueChange={(v) => onChange({ ...filters, platform: v === ALL ? "all" : (v as AcceptanceFilters["platform"]) })}>
+          <SelectTrigger className="w-[8rem]" aria-label="Platform"><SelectValue placeholder="Platforms" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Platforms</SelectItem>
+            {platformOptions.map((p) => {
+              const Icon = PLATFORM_ICONS[p.id];
+              return <SelectItem key={p.id} value={p.id}><span className="inline-flex items-center gap-2"><Icon className="size-3.5" />{p.label}</span></SelectItem>;
+            })}
+          </SelectContent>
+        </Select>
+      )}
 
       <Select value={filters.status} onValueChange={(v) => onChange({ ...filters, status: v === ALL ? "all" : (v as AcceptanceFilters["status"]) })}>
         <SelectTrigger className="w-[9rem]" aria-label="Status"><SelectValue placeholder="Status" /></SelectTrigger>
