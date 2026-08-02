@@ -1111,6 +1111,50 @@ git commit -m "refactor: bind the stack to panel kind, not to nodes alone"
 
 ---
 
+### Task 6b: Catch the docs up to both renames
+
+Tasks 2 and 6 renamed `useNodePanels.tsx` → `useProjectPanels.tsx` and `NodeDetailStack.tsx` →
+`ProjectPanels.tsx`. The prose docs still name the old modules, and one of them carries a dead
+relative link.
+
+**Files:**
+- Modify: `docs/conventions.md:14,20,34,97`
+- Modify: `docs/architecture.md:109,234,236,243,271,307`
+
+- [ ] **Step 1: Update every stale reference**
+
+Run `grep -rn "useNodePanels\|NodePanelsProvider\|NodeDetailStack" docs/ --include="*.md"` and fix
+each hit **outside `docs/superpowers/`** (the spec and plan are dated records of intent — leave them).
+
+Apply the renames, and correct the descriptions that are now wrong rather than only the names:
+
+- `conventions.md:14` — `NodeDetailStack.tsx # Binds the stack to nodes` becomes
+  `ProjectPanels.tsx # Binds the stack to panel kind: node detail, or the raw bundle`
+- `conventions.md:20` — `useNodePanels.tsx` → `useProjectPanels.tsx`
+- `conventions.md:34` and `architecture.md:234` — `NodePanelsProvider` → `ProjectPanelsProvider`
+- `architecture.md:236,243,271` and `conventions.md:97` — `NodeDetailStack` → `ProjectPanels`
+- `architecture.md:307` — the two relative links must point at the real files now:
+  `[lib/hooks/useProjectPanels.tsx](../lib/hooks/useProjectPanels.tsx)` and
+  `[components/panels/ProjectPanels.tsx](../components/panels/ProjectPanels.tsx)`
+
+`architecture.md:234-243` also still says the stack is "bound to nodes" and that only the four
+surfaces render it. Both became false in Tasks 6 and 8–10: a panel is now a node *or* the raw
+bundle, and every project page renders the grid. Correct those two sentences.
+
+- [ ] **Step 2: Verify no stale reference survives**
+
+Run: `grep -rn "useNodePanels\|NodePanelsProvider\|NodeDetailStack" docs/ --include="*.md" | grep -v "docs/superpowers/"`
+Expected: no output
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add docs/conventions.md docs/architecture.md
+git commit -m "docs: catch the panel docs up to the rename"
+```
+
+---
+
 ### Task 7: `PageShell`
 
 **Files:**
