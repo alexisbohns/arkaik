@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useProject } from "@/lib/hooks/useProject";
-import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
+import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useElkLayout } from "@/lib/hooks/useElkLayout";
@@ -95,12 +95,7 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   // themselves. It is also this journey's default product, and so reaches the
   // anchor chain below.
   const scope = useEffectiveProduct(id, projectBundle);
-
-  // The project's declared products, in declaration order, for the create
-  // form's picker. Memoized so the dialog is not handed a fresh array identity
-  // on every render; empty when the project declares none, which is what keeps
-  // the form looking exactly as it did before products existed.
-  const productList = useMemo(() => [...scope.productsById.values()], [scope.productsById]);
+  const productList = useProductList(scope);
   const { journal } = useJournal(id);
 
   // Built-in maps have no stored definition to carry a `display`, so the id is

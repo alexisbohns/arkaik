@@ -25,7 +25,7 @@ import { useJournal } from "@/lib/hooks/useJournal";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useProject } from "@/lib/hooks/useProject";
-import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
+import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
 import { generateNodeId, edgeId } from "@/lib/utils/id";
 import { mapProductId, type ProductGraph } from "@/lib/utils/product-scope";
 import { buildSystemGraph } from "@/lib/utils/system-graph";
@@ -89,12 +89,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
   // draw and how many platforms any card may claim; the display decides how a
   // card draws whatever it was given.
   const scope = useEffectiveProduct(projectId, projectBundle);
-
-  // The project's declared products, in declaration order, for the create
-  // form's picker. Memoized so the dialog is not handed a fresh array identity
-  // on every render; empty when the project declares none, which is what keeps
-  // the form looking exactly as it did before products existed.
-  const productList = useMemo(() => [...scope.productsById.values()], [scope.productsById]);
+  const productList = useProductList(scope);
   const { journal } = useJournal(projectId);
 
   const nodesById = useMemo(() => new Map(dataNodes.map((node) => [node.id, node])), [dataNodes]);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useSyncExternalStore } from "react";
+import type { ProductDefinition } from "@arkaik/schema";
 import type { ProjectBundle } from "@/lib/data/types";
 import {
   getProductScopeId,
@@ -64,4 +65,22 @@ export function useEffectiveProduct(
   const { productId, setScope } = useProductScope(projectId);
   const scope = useMemo(() => resolveProductScope(project, productId), [project, productId]);
   return useMemo(() => ({ ...scope, setScope }), [scope, setScope]);
+}
+
+/**
+ * The project's declared products as an array, in declaration order — what the
+ * create forms hand to `ProductPicker`.
+ *
+ * A one-liner with a hook around it, because the alternative is the same
+ * `[...scope.productsById.values()]` written at every surface that can create a
+ * node: the array identity feeds a dialog's props, so an unmemoized spread hands
+ * it a new array on every render of the page behind it, and the memo is only
+ * correct if its dependency is `productsById` rather than `scope` (which
+ * `useEffectiveProduct` rebuilds whenever `setScope` changes identity).
+ *
+ * Empty when the project declares no products, which is the value every caller
+ * guards on to render nothing at all — the degenerate-case guarantee.
+ */
+export function useProductList(scope: ProductScope): ProductDefinition[] {
+  return useMemo(() => [...scope.productsById.values()], [scope.productsById]);
 }
