@@ -302,11 +302,23 @@ export default function ProjectLibraryPage() {
    * Worse, switching to a project state with no products at all flips
    * `selectionEnabled` false, which removes every checkbox and the bar — leaving
    * held ids with no surface able to show or clear them. Both cases are the same
-   * bug, so both are cleared by the same effect keyed on the scope id.
+   * bug, so both are cleared by the same subject key.
+   *
+   * Adjusted **during render** rather than in an effect, which is what React
+   * documents for "reset state when a prop changes" and what
+   * `react-hooks/set-state-in-effect` exists to push callers towards: an effect
+   * would let one commit paint with the old selection still live under the new
+   * scope, and would cost a second render every time. Setting state while
+   * rendering *this* component restarts the render before anything is shown.
    */
-  useEffect(() => {
-    setSelectedIds((previous) => (previous.size === 0 ? previous : new Set()));
-  }, [scope.productId, selectionEnabled]);
+  const [selectionSubject, setSelectionSubject] = useState(
+    () => `${scope.productId ?? ""}:${selectionEnabled}`,
+  );
+  const currentSubject = `${scope.productId ?? ""}:${selectionEnabled}`;
+  if (selectionSubject !== currentSubject) {
+    setSelectionSubject(currentSubject);
+    if (selectedIds.size > 0) setSelectedIds(new Set());
+  }
 
   /**
    * ONE write, never a loop of single updates: `planProductMove` decides which

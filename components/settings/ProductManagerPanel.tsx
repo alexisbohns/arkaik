@@ -347,6 +347,11 @@ export function ProductManagerPanel({ projectId, project, updateProject }: Produ
       </div>
 
       <ProductFormDialog
+        // Keyed on the subject AND on the open flag, so every opening is a
+        // mount and the fields seed themselves from the product being edited.
+        // Including `formOpen` is what makes reopening on the *same* product
+        // discard an abandoned edit instead of resuming it.
+        key={`${editing?.id ?? "new"}:${formOpen}`}
         open={formOpen}
         onOpenChange={(open) => {
           if (!open && saving) return;
@@ -364,6 +369,9 @@ export function ProductManagerPanel({ projectId, project, updateProject }: Produ
       />
 
       <ProductDeleteDialog
+        // Keyed on the product, so opening the dialog mounts it fresh — that
+        // mount is what resets the destination select to Unassigned.
+        key={deleting?.id ?? "none"}
         open={deleting !== null}
         onOpenChange={(open) => {
           if (!open && !deleteBusy) setDeleting(null);

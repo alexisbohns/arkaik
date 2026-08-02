@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { ProductDefinition } from "@arkaik/schema";
 
 import { Button } from "@/components/ui/button";
@@ -76,17 +76,19 @@ export function ProductDeleteDialog({
   onConfirm,
   busy,
 }: ProductDeleteDialogProps) {
-  const [reassignTo, setReassignTo] = useState<string>(UNASSIGNED);
-
   /**
-   * Default to unassigned every time the dialog opens. A destination remembered
-   * from the previous deletion is exactly the state that moves forty nodes
-   * somewhere nobody chose, and the safe default is the one whose consequence
-   * is visible in the list rather than buried in another product.
+   * Unassigned every time the dialog opens. A destination remembered from the
+   * previous deletion is exactly the state that moves forty nodes somewhere
+   * nobody chose, and the safe default is the one whose consequence is visible
+   * in the list rather than buried in another product.
+   *
+   * Freshness comes from the **caller**, which keys this component on the
+   * product being deleted, so opening it is a mount and `useState`'s initial
+   * value is the reset. The rejected alternative was an effect resetting on
+   * `open` — a `setState` in an effect body, which cascades a second render on
+   * every open and which `react-hooks/set-state-in-effect` rejects outright.
    */
-  useEffect(() => {
-    if (open) setReassignTo(UNASSIGNED);
-  }, [open, product]);
+  const [reassignTo, setReassignTo] = useState<string>(UNASSIGNED);
 
   // The title-or-id fallback is `productDisplayTitle`'s, so a product with no
   // stored title is named identically in the dialog that deletes it and in the

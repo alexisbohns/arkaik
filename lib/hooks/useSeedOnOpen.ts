@@ -30,7 +30,16 @@ export function useSeedOnOpen<T>(open: boolean, value: T, seed: (value: T) => vo
   // every render does not turn this into an every-render effect. Only `open` is
   // allowed to decide when it runs.
   const seedRef = useRef(seed);
-  seedRef.current = seed;
+
+  // Refreshed in an effect, not during render: writing a ref while rendering is
+  // a side effect in the render phase, which `react-hooks/refs` rejects and
+  // which concurrent rendering may run more than once per commit. Declared
+  // *before* the seeding effect so that on an opening render the callback is
+  // already current by the time the effect below reads it — effects in one
+  // component run in declaration order.
+  useEffect(() => {
+    seedRef.current = seed;
+  });
 
   useEffect(() => {
     const opening = open && !wasOpen.current;

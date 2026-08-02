@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { ProductDefinition } from "@arkaik/schema";
 
 import { Button } from "@/components/ui/button";
@@ -72,35 +72,37 @@ export function ProductFormDialog({
   onSave,
   busy,
 }: ProductFormDialogProps) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [platforms, setPlatforms] = useState<PlatformId[]>([]);
-
   /**
-   * Re-seed whenever the dialog opens, keyed on `open` as well as on the
-   * product: reopening on the *same* product then discards an abandoned edit
-   * rather than resuming it, and opening "Add product" straight after an edit
-   * cannot inherit the edited title.
+   * Seeded once per opening, from the props the dialog was mounted with.
+   *
+   * Freshness comes from the **caller**, which keys this component on both the
+   * product and the open flag, so every opening is a mount: reopening on the
+   * same product discards an abandoned edit rather than resuming it, and
+   * opening "Add product" straight after an edit cannot inherit the edited
+   * title. *Rejected:* an effect re-seeding on `open` — a `setState` in an
+   * effect body, which paints once with the previous product's values before
+   * correcting itself, and which `react-hooks/set-state-in-effect` rejects. It
+   * also had to depend on `product?.id` rather than on the product object, with
+   * a lint suppression, because a definition is re-derived on every project
+   * write and an identity dependency would clear whatever the user had typed.
+   * A mount has neither problem and needs no suppression.
    *
    * Every read is defensive because a stored definition is only as well-formed
    * as whoever wrote the bundle — `resolveProducts` drops blank and duplicate
    * ids but does not repair a `title` that is a number or a missing `platforms`
    * array, and this form must render it, not crash on it.
    */
-  useEffect(() => {
-    if (!open) return;
-    setTitle(typeof product?.title === "string" ? product.title : "");
-    setDescription(typeof product?.description === "string" ? product.description : "");
-    setPlatforms(
-      Array.isArray(product?.platforms) ? (product.platforms as PlatformId[]).filter(isKnownPlatform) : [],
-    );
-    // Depends on the product's **id**, not on the product object: a definition
-    // is re-derived from `project` on every project write, so an identity
-    // dependency would re-seed — clearing whatever the user had typed — on a
-    // concurrent write to unrelated project metadata. Harmless today only
-    // because the one writer batches its write with this dialog's close.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, product?.id]);
+  const [title, setTitle] = useState(() =>
+    typeof product?.title === "string" ? product.title : "",
+  );
+  const [description, setDescription] = useState(() =>
+    typeof product?.description === "string" ? product.description : "",
+  );
+  const [platforms, setPlatforms] = useState<PlatformId[]>(() =>
+    Array.isArray(product?.platforms)
+      ? (product.platforms as PlatformId[]).filter(isKnownPlatform)
+      : [],
+  );
 
   const editing = product !== null;
   const id = editing ? product.id : deriveProductId(title, existingIds);
