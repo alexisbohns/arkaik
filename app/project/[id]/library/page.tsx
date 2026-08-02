@@ -306,6 +306,7 @@ export default function ProjectLibraryPage() {
         rootLabel={speciesFilter === "all" ? "Library" : `Library · ${SPECIES_SUBTITLE_LABELS[speciesFilter]}`}
         allNodes={dataNodes}
         allEdges={dataEdges}
+        scope={scope}
         journal={journal}
         onUpdate={handleNodeUpdate}
         onCreateNode={handleCreateNodeFromPanel}

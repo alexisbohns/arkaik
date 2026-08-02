@@ -169,6 +169,7 @@ export default function ProjectAcceptancesPage() {
         rootLabel="Acceptances"
         allNodes={dataNodes}
         allEdges={dataEdges}
+        scope={scope}
         journal={journal}
         onUpdate={handleNodeUpdate}
         onCreateAcceptanceForAnchor={handleCreateAcceptanceForAnchor}

@@ -7,6 +7,7 @@ import type { StatusId } from "@/lib/config/statuses";
 import type { ValueId } from "@arkaik/schema";
 import { STATUSES } from "@/lib/config/statuses";
 import { getEditablePlatformStatuses } from "@/lib/utils/platform-status";
+import { scopedPlatforms, type ProductScope } from "@/lib/utils/product-scope";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { STATUS_ICONS, STATUS_STYLES, SPECIES_ICONS } from "@/components/graph/nodes/node-styles";
 import { PlatformVariants } from "@/components/panels/PlatformVariants";
@@ -16,11 +17,13 @@ interface AcceptanceEditorProps {
   node: Node;
   allNodes: Node[];
   allEdges: Edge[];
+  /** The surface's product scope — decides how many platform tabs this editor has. */
+  scope: ProductScope;
   onUpdate: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
   onNavigate?: (node: Node) => void;
 }
 
-export function AcceptanceEditor({ node, allNodes, allEdges, onUpdate, onNavigate }: AcceptanceEditorProps) {
+export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, onNavigate }: AcceptanceEditorProps) {
   const [gherkin, setGherkin] = useState(node.metadata?.gherkin ?? "");
   const nodeRef = useRef(node);
   useEffect(() => { nodeRef.current = node; }, [node]);
@@ -81,6 +84,7 @@ export function AcceptanceEditor({ node, allNodes, allEdges, onUpdate, onNavigat
       <section className="flex flex-col gap-1.5">
         <span className="text-xs text-muted-foreground">Per-platform status</span>
         <PlatformVariants
+          platforms={scopedPlatforms(node, scope)}
           statuses={statuses}
           notes={node.metadata?.platformNotes}
           screenshots={node.metadata?.platformScreenshots}
@@ -97,7 +101,7 @@ export function AcceptanceEditor({ node, allNodes, allEdges, onUpdate, onNavigat
       <section className="flex flex-col gap-1.5">
         <span className="text-xs text-muted-foreground">Covers</span>
         {coveredAnchors.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Product-level (covers nothing).</p>
+          <p className="text-xs text-muted-foreground">Unanchored (covers nothing).</p>
         ) : (
           <ul className="flex flex-col gap-1">
             {coveredAnchors.map((anchor) => {

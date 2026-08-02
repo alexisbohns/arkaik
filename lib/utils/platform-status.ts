@@ -350,6 +350,39 @@ export function scopedRollupPlatforms(
   return withRollupPlatforms(platforms, rollup).filter((platformId) => scopePlatforms.includes(platformId));
 }
 
+/**
+ * The gauge tracks a canvas flow card draws — {@link scopedRollupPlatforms},
+ * plus the empty-`platforms` fallback that call site has always had.
+ *
+ * A flow that declares nothing (and a synthetic branch node, which declares
+ * `[]` by construction) would otherwise render no tracks at all, because
+ * `PlatformGaugeList` returns `null` on an empty list. `FlowNode` therefore fell
+ * back to **every** configured platform — which is a scope leak of exactly the
+ * kind this feature exists to close: under a web-only product that fallback put
+ * an iOS and an Android track on the card. The fallback is the *scope's menu*,
+ * so under All products (or a project with no products at all) it is still
+ * every platform and the card is pixel-identical to today.
+ *
+ * Extracted from the component rather than left inline because this repo has no
+ * React test runner: as a pure function the product-scope suite can pin the
+ * fallback, and the difference between `PLATFORM_IDS` and a one-entry menu is
+ * precisely the regression that would otherwise be invisible until someone
+ * opened a scoped map.
+ */
+export function flowGaugePlatforms(
+  platforms: readonly PlatformId[],
+  rollup: PlatformStatusRollup,
+  scopePlatforms: readonly PlatformId[],
+): PlatformId[] {
+  if (platforms.length > 0) {
+    return scopedRollupPlatforms(platforms, rollup, scopePlatforms);
+  }
+  // Re-ordered through PLATFORMS rather than returned as given: every other
+  // platform list in this module is config-ordered, and a menu is a membership
+  // set, never an ordering.
+  return PLATFORMS.map((platform) => platform.id).filter((platformId) => scopePlatforms.includes(platformId));
+}
+
 export function getRollupDisplayStatus(
   rollup: PlatformStatusRollup,
   fallbackStatus: StatusId,

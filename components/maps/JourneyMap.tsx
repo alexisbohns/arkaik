@@ -20,6 +20,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useProject } from "@/lib/hooks/useProject";
+import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useNodePanels } from "@/lib/hooks/useNodePanels";
 import { useElkLayout } from "@/lib/hooks/useElkLayout";
@@ -81,6 +82,10 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, removeNode, removeNodes } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading, addEdge, removeEdge } = useEdges(id);
   const { project: projectBundle, loading: projectLoading, updateProject } = useProject(id);
+  // The shell's scope (§ Decision 2), passed down to the canvas cards and to
+  // every panel this map opens — never read from a global by the cards
+  // themselves. The map's own subgraph filter is Task 17's business.
+  const scope = useEffectiveProduct(id, projectBundle);
   const { journal } = useJournal(id);
 
   const viewCardVariant: ViewCardVariant = projectBundle?.project.metadata?.view_card_variant === "large"
@@ -739,6 +744,7 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
         onLayoutChange={reframe}
         allNodes={dataNodes}
         allEdges={dataEdges}
+        scope={scope}
         journal={journal}
         onUpdate={handleNodeUpdate}
         onDelete={handleDeleteNodeRequest}
@@ -748,7 +754,7 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
           setZoomPlatform(platform);
         }}
       >
-        <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} onEdgeClick={handleEdgeClick} fitSignal={fitSignal} />
+        <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} onEdgeClick={handleEdgeClick} fitSignal={fitSignal} scopePlatforms={scope.platforms} />
       </NodeDetailStack>
       <ShotPreviewDialog
         open={zoomNode !== null}

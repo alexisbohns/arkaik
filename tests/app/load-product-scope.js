@@ -71,6 +71,9 @@ function loadProductScope() {
     // Picked, not spread: platform-status exports a `getRollupPlatforms` and a
     // pile of status helpers that have no business shadowing anything here.
     scopedRollupPlatforms: require(path.join(BUILD_DIR, "platform-status.js")).scopedRollupPlatforms,
+    // The canvas flow card's gauge list, fallback included — the one branch of
+    // Task 16 that is pure enough to assert rather than read.
+    flowGaugePlatforms: require(path.join(BUILD_DIR, "platform-status.js")).flowGaugePlatforms,
     // The one schema projection a `ProductGraph` is built from.
     buildProductUsageIndex: require(schemaIndex).buildProductUsageIndex,
   };

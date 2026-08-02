@@ -12,6 +12,7 @@ import {
 import type { PlatformStatusMap } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 import { STATUSES } from "@/lib/config/statuses";
+import { platformAvailabilityShape } from "@/lib/utils/product-scope";
 import {
   Select,
   SelectContent,
@@ -37,6 +38,13 @@ export interface PlatformVariantsProps {
   statuses?: PlatformStatusMap;
   notes?: Partial<Record<PlatformId, string>>;
   screenshots?: Partial<Record<PlatformId, string>>;
+  /**
+   * The node's effective platforms — `scopedPlatforms(node, scope)`, and the
+   * sole input to the arity rule below. Required, because an omitted list used
+   * to mean "every configured platform", which is exactly the admin-view-with-
+   * an-iOS-tab bug this feature exists to close.
+   */
+  platforms: PlatformId[];
   /** Tab opened on mount (e.g. the platform of the clicked Delivery item). */
   initialPlatform?: PlatformId;
   onStatusChange?: (platform: PlatformId, value: StatusId | undefined) => void;
@@ -45,22 +53,56 @@ export interface PlatformVariantsProps {
   onZoomShot?: (platform: PlatformId) => void;
 }
 
+/**
+ * The per-platform editor — one tab strip over status, notes, and a screenshot.
+ *
+ * **The arity rule decides whether there is a strip at all**, read off
+ * `platformAvailabilityShape` so this cannot drift from the Pyramid's rings or
+ * the Acceptances matrix's status columns: two or more effective platforms get
+ * tabs, one or zero get a single unlabelled status and no platform chrome — the
+ * same collapse, now on a third surface.
+ *
+ * **Per-platform notes, statuses, and screenshots for a platform outside the
+ * effective set are neither rendered nor deleted.** They sit untouched in
+ * `metadata`, and every handler here patches by spreading the stored map, so a
+ * node edited under a web-only scope round-trips its iOS note intact. Nothing
+ * is lost; it is simply not shown.
+ */
 export function PlatformVariants({
   statuses = {},
   notes = {},
   screenshots = {},
+  platforms,
   initialPlatform,
   onStatusChange,
   onNotesChange,
   onScreenshotChange,
   onZoomShot,
 }: PlatformVariantsProps) {
-  const [activeTab, setActiveTab] = useState<PlatformId>(initialPlatform ?? PLATFORMS[0].id);
+  const showTabs = platformAvailabilityShape(platforms) === "rings";
+  // At arity 0 there is no platform to bind an editor to — editing and
+  // validation at arity 0 are P3 (§ Decision 3) — so the fields fall back to
+  // the first configured platform rather than disappearing and stranding
+  // whatever notes or screenshot the node already carries. Arity 0 and 1 still
+  // render identically, because neither draws a tab or a platform name.
+  const [selectedTab, setActiveTab] = useState<PlatformId>(() => {
+    if (initialPlatform && platforms.includes(initialPlatform)) return initialPlatform;
+    return platforms[0] ?? PLATFORMS[0].id;
+  });
+  // Derived rather than synced by an effect: the scope can change under a mounted
+  // panel, and a selection left pointing at a platform that just left the menu
+  // would edit a field nothing renders. Falling back in render means there is no
+  // frame where the two disagree.
+  const activeTab = platforms.includes(selectedTab) ? selectedTab : platforms[0] ?? PLATFORMS[0].id;
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const currentStatus = statuses[activeTab];
   const currentNotes = notes[activeTab] ?? "";
   const currentScreenshot = screenshots[activeTab];
+  // No platform name at arity ≤ 1: the scope selector already says "Admin — Web
+  // only", so repeating it on every label is chrome that earns nothing — and
+  // dropping it is what makes arity 0 and arity 1 literally identical.
+  const platformSuffix = showTabs ? ` for ${PLATFORM_LABELS[activeTab]}` : "";
 
   async function handleFile(file: File) {
     if (!file.type.startsWith("image/")) return;
@@ -84,30 +126,35 @@ export function PlatformVariants({
 
   return (
     <div className="flex flex-col gap-3">
-      <div role="tablist" className="flex border-b border-border">
-        {PLATFORMS.map((p) => {
-          const PlatformIcon = PLATFORM_ICONS[p.id];
+      {showTabs && (
+        <div role="tablist" className="flex border-b border-border">
+          {/* PLATFORMS drives the order (web, iOS, Android); the effective set is
+              a membership test, so the strip never reorders itself when the
+              scope changes. */}
+          {PLATFORMS.filter((p) => platforms.includes(p.id)).map((p) => {
+            const PlatformIcon = PLATFORM_ICONS[p.id];
 
-          return (
-            <button
-              key={p.id}
-              type="button"
-              role="tab"
-              aria-selected={p.id === activeTab}
-              onClick={() => setActiveTab(p.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors border-b-2 -mb-px ${
-                p.id === activeTab
-                  ? "border-foreground text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <PlatformIcon className="size-3.5" />
-              {PLATFORM_LABELS[p.id]}
-            </button>
-          );
-        })}
-      </div>
-      <div role="tabpanel" className="flex flex-col gap-3">
+            return (
+              <button
+                key={p.id}
+                type="button"
+                role="tab"
+                aria-selected={p.id === activeTab}
+                onClick={() => setActiveTab(p.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors border-b-2 -mb-px ${
+                  p.id === activeTab
+                    ? "border-foreground text-foreground"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <PlatformIcon className="size-3.5" />
+                {PLATFORM_LABELS[p.id]}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <div role={showTabs ? "tabpanel" : undefined} className="flex flex-col gap-3">
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
             Status
@@ -122,7 +169,7 @@ export function PlatformVariants({
               }
             }}
           >
-            <SelectTrigger aria-label={`Status for ${PLATFORM_LABELS[activeTab]}`}>
+            <SelectTrigger aria-label={`Status${platformSuffix}`}>
               <SelectValue placeholder="No status" />
             </SelectTrigger>
             <SelectContent>
@@ -155,7 +202,7 @@ export function PlatformVariants({
             id={`platform-notes-${activeTab}`}
             value={currentNotes}
             onChange={(e) => onNotesChange?.(activeTab, e.target.value)}
-            placeholder={`Notes for ${PLATFORM_LABELS[activeTab]}…`}
+            placeholder={showTabs ? `Notes for ${PLATFORM_LABELS[activeTab]}…` : "Notes…"}
             rows={3}
             className="border-input bg-transparent text-sm text-foreground leading-relaxed resize-none rounded-md border px-3 py-2 outline-none placeholder:text-muted-foreground focus:ring-[3px] focus:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
           />
@@ -168,7 +215,7 @@ export function PlatformVariants({
             <div className="relative group">
               <img
                 src={currentScreenshot}
-                alt={`Screenshot for ${PLATFORM_LABELS[activeTab]}`}
+                alt={`Screenshot${platformSuffix}`}
                 className={`max-h-40 w-full object-contain rounded-md border border-border ${onZoomShot ? "cursor-zoom-in" : ""}`}
                 onClick={onZoomShot ? () => onZoomShot(activeTab) : undefined}
               />

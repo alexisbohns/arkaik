@@ -5,11 +5,11 @@ import { Handle, Position, NodeToolbar, type NodeProps } from "@xyflow/react";
 import { ChevronDown, ChevronRight, Info, PlusCircle, Split } from "lucide-react";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
-import { withRollupPlatforms, type PlatformStatusRollup } from "@/lib/utils/platform-status";
-import { PLATFORMS } from "@/lib/config/platforms";
+import { flowGaugePlatforms, type PlatformStatusRollup } from "@/lib/utils/platform-status";
 import { StageIcon } from "@/components/layout/StageIcon";
 import { STATUS_GHOST_STYLES } from "./node-styles";
 import { useToolbarHover } from "@/lib/hooks/useToolbarHover";
+import { useCanvasScopePlatforms } from "../canvas-scope";
 import { PlatformGaugeList } from "./PlatformGaugeList";
 
 function FlowNodeComponent({ data }: NodeProps) {
@@ -27,6 +27,9 @@ function FlowNodeComponent({ data }: NodeProps) {
   const onAddChild = data.onAddChild as (() => void) | undefined;
   const ghostClass = STATUS_GHOST_STYLES[status];
   const { isHovered, nodeProps, toolbarProps } = useToolbarHover();
+  // From the canvas, never from a global — React Flow owns this component's
+  // props, so the scope arrives through the context `Canvas` publishes.
+  const scopePlatforms = useCanvasScopePlatforms();
   const isBranch = renderVariant === "branch";
   const isConditionBranch = isBranch && branchKind === "condition";
   const isInteractive = Boolean(onToggle);
@@ -115,13 +118,13 @@ function FlowNodeComponent({ data }: NodeProps) {
             {branchSummary}
           </p>
         ) : (
+          /* Clamped, not replaced: a flow's rollup can count a platform the
+             flow itself never declares, and under All products that bar must
+             survive. The no-declared-platforms fallback is the scope's menu,
+             not every platform. Both halves live in `flowGaugePlatforms`. */
           <PlatformGaugeList
             rollup={platformRollup}
-            platforms={
-              platforms.length > 0
-                ? withRollupPlatforms(platforms, platformRollup)
-                : PLATFORMS.map((platform) => platform.id)
-            }
+            platforms={flowGaugePlatforms(platforms, platformRollup, scopePlatforms)}
             compact
           />
         )}

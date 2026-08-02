@@ -172,6 +172,7 @@ export default function ProjectDeliveryPage() {
         rootLabel="Delivery"
         allNodes={dataNodes}
         allEdges={dataEdges}
+        scope={scope}
         journal={journal}
         onUpdate={handleNodeUpdate}
         onCreateNode={handleCreateNodeFromPanel}

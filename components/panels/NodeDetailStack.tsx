@@ -7,6 +7,7 @@ import { NodeDetailPanel, NodeDetailPanelHeader } from "@/components/panels/Node
 import type { PlatformId } from "@/lib/config/platforms";
 import type { Edge, JournalEvent, Node } from "@/lib/data/types";
 import { useNodePanels, type NodePanelEntry } from "@/lib/hooks/useNodePanels";
+import type { ProductScope } from "@/lib/utils/product-scope";
 
 interface NodeDetailStackProps {
   /** The surface — canvas, board, or list. The grid's first cell. */
@@ -17,6 +18,8 @@ interface NodeDetailStackProps {
   onLayoutChange?: () => void;
   allNodes: Node[];
   allEdges: Edge[];
+  /** The surface's product scope, forwarded to every panel it opens. */
+  scope: ProductScope;
   journal?: JournalEvent[];
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
   onDelete?: (nodeId: string) => void;
@@ -40,6 +43,7 @@ export function NodeDetailStack({
   onLayoutChange,
   allNodes,
   allEdges,
+  scope,
   journal,
   onUpdate,
   onDelete,
@@ -75,6 +79,7 @@ export function NodeDetailStack({
         return (
           <NodeDetailPanel
             node={node}
+            scope={scope}
             initialPlatform={entry.payload.initialPlatform}
             onUpdate={onUpdate}
             onDelete={onDelete}

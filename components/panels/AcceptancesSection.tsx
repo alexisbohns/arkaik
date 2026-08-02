@@ -3,6 +3,7 @@
 import type { Node, Edge } from "@/lib/data/types";
 import { acceptancesCovering, hasParityGap } from "@arkaik/schema";
 import { getEditablePlatformStatuses } from "@/lib/utils/platform-status";
+import { scopedPlatforms, type ProductScope } from "@/lib/utils/product-scope";
 import { PlatformList } from "@/components/graph/nodes/PlatformList";
 import { EntityId } from "@/components/graph/nodes/EntityBadges";
 import { Button } from "@/components/ui/button";
@@ -13,11 +14,13 @@ interface AcceptancesSectionProps {
   node: Node;
   allNodes: Node[];
   allEdges: Edge[];
+  /** The surface's product scope — the chips show each acceptance's effective platforms. */
+  scope: ProductScope;
   onNavigate?: (node: Node) => void;
   onCreate?: (anchor: Node, title: string) => Promise<Node>;
 }
 
-export function AcceptancesSection({ node, allNodes, allEdges, onNavigate, onCreate }: AcceptancesSectionProps) {
+export function AcceptancesSection({ node, allNodes, allEdges, scope, onNavigate, onCreate }: AcceptancesSectionProps) {
   const covering = acceptancesCovering(node.id, allNodes, allEdges);
   return (
     <section className="px-6 flex flex-col gap-2">
@@ -59,7 +62,7 @@ export function AcceptancesSection({ node, allNodes, allEdges, onNavigate, onCre
                   {acc.title}
                 </span>
                 <EntityId id={acc.id} />
-                <PlatformList platforms={acc.platforms} platformStatuses={getEditablePlatformStatuses(acc)} />
+                <PlatformList platforms={scopedPlatforms(acc, scope)} platformStatuses={getEditablePlatformStatuses(acc)} />
               </button>
             </li>
           ))}

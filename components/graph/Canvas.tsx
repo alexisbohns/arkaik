@@ -5,6 +5,8 @@ import { ReactFlow, Controls, Background, type Node, type Edge, type NodeMouseHa
 import "@xyflow/react/dist/style.css";
 import { useTheme } from "next-themes";
 import { applySpotlight, buildSpotlightIndex } from "@/lib/utils/graph-spotlight";
+import type { PlatformId } from "@/lib/config/platforms";
+import { CanvasScopeProvider } from "./canvas-scope";
 import { FlowNode } from "./nodes/FlowNode";
 import { ViewNode } from "./nodes/ViewNode";
 import { DataModelNode } from "./nodes/DataModelNode";
@@ -41,6 +43,15 @@ interface CanvasProps {
   spotlight?: boolean;
   /** External spotlight pin (e.g. the map's panel-selected node); hover takes precedence. */
   spotlightNodeId?: string | null;
+  /**
+   * The product scope's platform menu, published to the node cards.
+   *
+   * React Flow renders node components itself, so this is the canvas's way of
+   * handing them the scope instead of letting them reach for a global. Omitted
+   * it defaults to every configured platform — a canvas with no scope draws
+   * exactly what it drew before products existed.
+   */
+  scopePlatforms?: readonly PlatformId[];
 }
 
 export function Canvas({
@@ -52,6 +63,7 @@ export function Canvas({
   fitSignal,
   spotlight = false,
   spotlightNodeId = null,
+  scopePlatforms,
 }: CanvasProps) {
   const reactFlowRef = useRef<ReactFlowInstance<Node, Edge> | null>(null);
   const lastFitSignal = useRef(fitSignal);
@@ -127,27 +139,29 @@ export function Canvas({
   }, [onNodeClick]);
 
   return (
-    <div className="h-full w-full">
-      <ReactFlow
-        nodes={display.nodes}
-        edges={display.edges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        colorMode={isDark ? "dark" : "light"}
-        style={flowStyle}
-        fitView
-        minZoom={0.05}
-        onInit={handleInit}
-        onNodeClick={handleNodeClick}
-        onConnect={onConnect}
-        onEdgeClick={onEdgeClick}
-        onNodeMouseEnter={spotlight ? handleNodeMouseEnter : undefined}
-        onNodeMouseLeave={spotlight ? handleNodeMouseLeave : undefined}
-      >
-        <Controls />
-        <Minimap />
-        <Background />
-      </ReactFlow>
-    </div>
+    <CanvasScopeProvider platforms={scopePlatforms}>
+      <div className="h-full w-full">
+        <ReactFlow
+          nodes={display.nodes}
+          edges={display.edges}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          colorMode={isDark ? "dark" : "light"}
+          style={flowStyle}
+          fitView
+          minZoom={0.05}
+          onInit={handleInit}
+          onNodeClick={handleNodeClick}
+          onConnect={onConnect}
+          onEdgeClick={onEdgeClick}
+          onNodeMouseEnter={spotlight ? handleNodeMouseEnter : undefined}
+          onNodeMouseLeave={spotlight ? handleNodeMouseLeave : undefined}
+        >
+          <Controls />
+          <Minimap />
+          <Background />
+        </ReactFlow>
+      </div>
+    </CanvasScopeProvider>
   );
 }

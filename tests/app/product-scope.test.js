@@ -14,6 +14,7 @@
  */
 
 const fs = require("fs");
+const path = require("path");
 const { loadProductScope, BUILD_DIR } = require("./load-product-scope");
 
 const {
@@ -26,6 +27,7 @@ const {
   productLabelsOfNode,
   scopedPlatforms,
   scopedRollupPlatforms,
+  flowGaugePlatforms,
   buildProductUsageIndex,
   getProductScopeId,
   setProductScopeId,
@@ -396,6 +398,79 @@ assert(
     scopedPlatforms({ species: "flow", platforms: swapGlyphDeclared, metadata: {} }, allScope),
   ),
   "the clamp is NOT scopedPlatforms — the two disagree about android under All products, which is the whole reason for the composition",
+);
+
+// --- The canvas flow card's fallback -----------------------------------------
+//
+// `FlowNode` draws its gauge list from `flowGaugePlatforms`. Two branches, both
+// leaks before Task 16: the declared branch is the clamp above, and the
+// *undeclared* branch used to fall back to `PLATFORMS.map(...)` — every
+// platform, whatever the scope. A flow that declares nothing is not rare: every
+// synthetic condition/junction branch node the journey graph emits carries
+// `platforms: []`.
+
+const noRollup = { counts: {}, totals: {} };
+
+assert(
+  eq(flowGaugePlatforms([], noRollup, adminScope.platforms), ["web"]),
+  `THE FALLBACK: a flow declaring no platforms under a web-only scope draws ONE track, not three (got ${JSON.stringify(
+    flowGaugePlatforms([], noRollup, adminScope.platforms),
+  )})`,
+);
+assert(
+  eq(flowGaugePlatforms([], noRollup, allScope.platforms), ["web", "ios", "android"]),
+  "under All products the same flow still draws every track — the fallback is the scope's menu, and that menu is the union",
+);
+assert(
+  eq(flowGaugePlatforms([], noRollup, bareScope.platforms), ["web", "ios", "android"]),
+  "with no products declared the fallback is every platform, exactly as before products existed",
+);
+assert(
+  eq(flowGaugePlatforms([], noRollup, []), []),
+  "an arity-0 scope draws no tracks — PlatformGaugeList's own empty guard then renders nothing, which is the honest answer",
+);
+assert(
+  eq(
+    flowGaugePlatforms(swapGlyphDeclared, swapGlyphRollup, adminScope.platforms),
+    scopedRollupPlatforms(swapGlyphDeclared, swapGlyphRollup, adminScope.platforms),
+  ),
+  "a flow that DOES declare platforms takes the clamp branch unchanged — the fallback is not a second policy",
+);
+assert(
+  !eq(
+    flowGaugePlatforms([], noRollup, adminScope.platforms),
+    flowGaugePlatforms([], noRollup, allScope.platforms),
+  ),
+  "the fallback DISCRIMINATES on the scope — a fallback to the global list would answer the same thing twice",
+);
+
+// --- The arity threshold is written once --------------------------------------
+//
+// `platformAvailabilityShape` is the only place the 2-platform boundary lives.
+// Three surfaces now switch on it (Pyramid rings, Acceptances columns, and the
+// detail panel's platform tabs); a second `>= 2` spelled out in any of them is
+// a boundary that can drift silently, so the source is checked rather than
+// trusted.
+
+const ROOT = path.join(__dirname, "..", "..");
+const variantsSource = fs.readFileSync(
+  path.join(ROOT, "components", "panels", "PlatformVariants.tsx"),
+  "utf8",
+);
+
+assert(
+  variantsSource.includes("platformAvailabilityShape(platforms)"),
+  "the detail panel's tab strip asks platformAvailabilityShape for its shape",
+);
+assert(
+  !/platforms\.length\s*(>=|>|<=|<)\s*[0-9]/.test(variantsSource),
+  "…and nowhere writes the threshold out a second time",
+);
+assert(
+  platformAvailabilityShape([]) === "bar" &&
+    platformAvailabilityShape(["web"]) === "bar" &&
+    platformAvailabilityShape(["web", "ios"]) === "rings",
+  "the boundary itself: 0 and 1 collapse to one status, 2 earns tabs",
 );
 
 // --- scopedPlatforms — the headline assertion --------------------------------

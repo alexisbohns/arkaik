@@ -21,6 +21,7 @@ import { useJournal } from "@/lib/hooks/useJournal";
 import { useNodePanels } from "@/lib/hooks/useNodePanels";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useProject } from "@/lib/hooks/useProject";
+import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { generateNodeId, edgeId } from "@/lib/utils/id";
 import { buildSystemGraph } from "@/lib/utils/system-graph";
 import type { ElkLayoutOptions } from "@/lib/utils/elk-layout";
@@ -74,6 +75,10 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode } = useNodes(projectId);
   const { edges: dataEdges, loading: edgesLoading, addEdge, removeEdge } = useEdges(projectId);
   const { project: projectBundle } = useProject(projectId);
+  // The shell's scope (§ Decision 2), passed down to the canvas cards and to
+  // every panel this map opens — never read from a global by the cards
+  // themselves. The map's own subgraph filter is Task 17's business.
+  const scope = useEffectiveProduct(projectId, projectBundle);
   const { journal } = useJournal(projectId);
 
   const nodesById = useMemo(() => new Map(dataNodes.map((node) => [node.id, node])), [dataNodes]);
@@ -244,6 +249,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
         onLayoutChange={reframe}
         allNodes={dataNodes}
         allEdges={dataEdges}
+        scope={scope}
         journal={journal}
         onUpdate={handleNodeUpdate}
         onCreateNode={handleCreateNodeFromPanel}
@@ -257,6 +263,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
           fitSignal={fitSignal}
           spotlight
           spotlightNodeId={topNodeId}
+          scopePlatforms={scope.platforms}
         />
       </NodeDetailStack>
       <NewNodeForm open={newNodeOpen} onOpenChange={setNewNodeOpen} onSubmit={handleCreateNode} />
