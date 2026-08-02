@@ -20,6 +20,31 @@ import {
   type ProductDefinition,
 } from "@arkaik/schema";
 
+/** Rings-and-aggregate, or one bar. There is no third shape. */
+export type PlatformAvailabilityShape = "rings" | "bar";
+
+/**
+ * **The arity rule, and the only place its threshold is written**
+ * (docs/superpowers/specs/2026-08-02-multi-product-projects-design.md § 3, § 4).
+ *
+ * Two or more effective platforms earn per-platform chrome: an aggregate plus
+ * one ring (or column) per platform. One or zero earn a single bar — and they
+ * earn the *same* bar deliberately. At arity 1 the aggregate and the lone
+ * platform ring carry identical numbers, so four rings collapse to one, and a
+ * lone ring standing beside three-ring cards from another scope reads as *data
+ * missing* rather than *absent*. At arity 0 — availability is simply not a
+ * tracked dimension for a CLI or a public API — there is nothing that could be
+ * missing, so the same bar says so without inventing a third shape.
+ *
+ * It lives here rather than inside `PlatformAvailability` because no component
+ * in this repo can be exercised by a test: as a pure function the product-scope
+ * suite can pin the 2-platform boundary, which is the one an off-by-one would
+ * break silently across every surface that composes the primitive.
+ */
+export function platformAvailabilityShape(platforms: readonly PlatformId[]): PlatformAvailabilityShape {
+  return platforms.length >= 2 ? "rings" : "bar";
+}
+
 /** Everything a surface needs to pick its shape and filter its nodes. */
 export interface ProductScope {
   /** `null` = All products. A real member of the domain, not an absence. */
@@ -27,7 +52,7 @@ export interface ProductScope {
   product: ProductDefinition | null;
   /** The platform menu — the sole input to the arity rule. */
   platforms: PlatformId[];
-  /** True when the surface renders per-platform columns/rings. */
+  /** True when the surface renders per-platform columns/rings — {@link platformAvailabilityShape}. */
   isMultiPlatform: boolean;
   /** Every declared product by id, so per-node lookups cost nothing. */
   productsById: Map<string, ProductDefinition>;
@@ -48,7 +73,10 @@ export function resolveProductScope(
   const productsById = new Map(products.map((candidate) => [candidate.id, candidate]));
   const product = productId === null ? null : productsById.get(productId) ?? null;
   const platforms = productPlatforms(project, productId);
-  return { productId, product, platforms, isMultiPlatform: platforms.length >= 2, productsById };
+  // Derived, never re-derived: a second `>= 2` here is a second arity rule
+  // waiting to drift from the one the primitive renders.
+  const isMultiPlatform = platformAvailabilityShape(platforms) === "rings";
+  return { productId, product, platforms, isMultiPlatform, productsById };
 }
 
 /** One row of the sidebar's product selector — everything it needs to render. */

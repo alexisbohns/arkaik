@@ -17,6 +17,7 @@ const fs = require("fs");
 const { loadProductScope, BUILD_DIR } = require("./load-product-scope");
 
 const {
+  platformAvailabilityShape,
   resolveProductScope,
   productScopeOptions,
   platformCountLabel,
@@ -69,6 +70,29 @@ const ghostView = { id: "V-ghost", species: "view", platforms: ["web", "android"
 /** A species that never stores membership; it is derived from consumers. */
 const dataModel = { id: "DM-user", species: "data-model", platforms: ["web", "ios"], metadata: { product: "admin" } };
 
+// --- platformAvailabilityShape — the arity rule itself -----------------------
+//
+// `components/graph/nodes/PlatformAvailability.tsx` is a switch over this one
+// function, and eight surfaces inherit its answer. No React test runner exists
+// here, so the component cannot be rendered — but the decision it makes is pure,
+// and this is where it is pinned. The 2-platform case is the load-bearing one:
+// an off-by-one to `> 2` would leave a two-platform product rendering a single
+// bar, and no surface exercises that until the Pyramid adopts the primitive.
+
+assert(platformAvailabilityShape(["web", "ios", "android"]) === "rings", "arity 3 renders rings");
+assert(
+  platformAvailabilityShape(["web", "ios"]) === "rings",
+  "arity 2 renders rings — THE BOUNDARY: two is already worth per-platform chrome",
+);
+assert(
+  platformAvailabilityShape(["web"]) === "bar",
+  "arity 1 renders a bar — the aggregate ring and the lone platform ring would carry identical numbers",
+);
+assert(
+  platformAvailabilityShape([]) === "bar",
+  "arity 0 renders a bar too, identically to arity 1 — 'not tracked' and 'tracked on one runtime' are the same picture",
+);
+
 // --- resolveProductScope -----------------------------------------------------
 
 const allScope = resolveProductScope(bundle, null);
@@ -104,6 +128,17 @@ assert(
   "a project declaring no products degenerates to every platform, unchanged from today",
 );
 assert(bareScope.isMultiPlatform === true, "the degenerate case stays multi-platform");
+
+// `isMultiPlatform` is the same rule wearing a boolean, and it is asserted to be
+// derived rather than re-implemented — two copies of `>= 2` is exactly how a
+// surface reading the flag and a surface composing the primitive end up
+// disagreeing about a two-platform product.
+assert(
+  [allScope, endUserScope, adminScope, apiScope, bareScope].every(
+    (scope) => scope.isMultiPlatform === (platformAvailabilityShape(scope.platforms) === "rings"),
+  ),
+  "isMultiPlatform agrees with platformAvailabilityShape at every arity in this fixture",
+);
 
 const undefinedScope = resolveProductScope(undefined, null);
 assert(
