@@ -14,7 +14,7 @@
  * warnings, exactly as it does for stored maps.
  */
 
-import type { Node, Project } from "./bundle";
+import type { Edge, Node, Project } from "./bundle";
 import { PLATFORM_IDS, type PlatformId, type SpeciesId } from "./ids";
 
 /**
@@ -145,7 +145,7 @@ export type ProductUsageIndex = ReadonlyMap<string, string[]>;
  */
 export function buildProductUsageIndex(
   nodes: readonly Pick<Node, "id" | "species" | "metadata">[],
-  edges: readonly { edge_type: string; source_id: string; target_id: string }[],
+  edges: readonly Pick<Edge, "edge_type" | "source_id" | "target_id">[],
 ): ProductUsageIndex {
   const speciesById = new Map<string, SpeciesId>();
   for (const node of nodes) speciesById.set(node.id, node.species);
@@ -160,26 +160,37 @@ export function buildProductUsageIndex(
     outgoing.set(edge.source_id, list);
   }
 
+  // One seed set per distinct product, not per membership-bearing node — a
+  // product spread across many views walks the downstream graph once.
+  const seedsByProduct = new Map<string, Set<string>>();
+  for (const node of nodes) {
+    const product = productOf(node);
+    if (product === null) continue;
+    const seeds = seedsByProduct.get(product) ?? new Set<string>();
+    for (const next of outgoing.get(node.id) ?? []) seeds.add(next);
+    seedsByProduct.set(product, seeds);
+  }
+
   const byNode = new Map<string, Set<string>>();
 
-  for (const node of nodes) {
-    const product = productOf(node as Pick<Node, "species" | "metadata">);
-    if (product === null) continue;
+  for (const [product, seeds] of seedsByProduct) {
+    const visited = new Set<string>(seeds);
+    let frontier = [...seeds];
 
-    const queue = [...(outgoing.get(node.id) ?? [])];
-    const seen = new Set<string>(queue);
+    while (frontier.length > 0) {
+      const next: string[] = [];
+      for (const current of frontier) {
+        const products = byNode.get(current) ?? new Set<string>();
+        products.add(product);
+        byNode.set(current, products);
 
-    while (queue.length > 0) {
-      const current = queue.shift()!;
-      const products = byNode.get(current) ?? new Set<string>();
-      products.add(product);
-      byNode.set(current, products);
-
-      for (const next of outgoing.get(current) ?? []) {
-        if (seen.has(next)) continue;
-        seen.add(next);
-        queue.push(next);
+        for (const neighbor of outgoing.get(current) ?? []) {
+          if (visited.has(neighbor)) continue;
+          visited.add(neighbor);
+          next.push(neighbor);
+        }
       }
+      frontier = next;
     }
   }
 
