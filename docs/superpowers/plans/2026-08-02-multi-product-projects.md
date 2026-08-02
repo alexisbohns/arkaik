@@ -2294,12 +2294,27 @@ git commit -m "docs: products in the graph model, the agent skill, and the RFC s
 
 **Files:** none — this task runs `gh`.
 
-- [ ] **Step 1: Check the repo's issue conventions**
+**DONE — six issues opened** (three planned, plus three findings that surfaced during
+implementation and are recorded as findings, not committed scope):
+
+| # | Title | Labels |
+| --- | --- | --- |
+| [#314](https://github.com/alexisbohns/arkaik/issues/314) | Product management UI (RFC products, P3) | `enhancement`, `ui` |
+| [#315](https://github.com/alexisbohns/arkaik/issues/315) | Per-surface product override | `enhancement`, `ui` |
+| [#316](https://github.com/alexisbohns/arkaik/issues/316) | Acceptance-first intake: file an idea before it has flows or views | `enhancement`, `ux` |
+| [#317](https://github.com/alexisbohns/arkaik/issues/317) | Edge semantics: `api-endpoint → view` is rendered but rejected by the validator (finding, pre-existing) | `bug`, `graph` |
+| [#318](https://github.com/alexisbohns/arkaik/issues/318) | System-layer platform narrowing: `scopedPlatforms` clips data models to a product that may not reach them (finding) | `question`, `graph` |
+| [#319](https://github.com/alexisbohns/arkaik/issues/319) | MCP: `get_map` and `list_maps` ignore `MapDefinition.product` (finding) | `bug` |
+
+The bodies opened are longer than the drafts below — each was written to stand alone
+months from now. The drafts are left as written, as the plan's record of intent.
+
+- [x] **Step 1: Check the repo's issue conventions**
 
 Run: `gh issue list --limit 5 --json number,title,labels`
 Expected: a list. Match the existing title style and reuse existing labels; do not invent new ones.
 
-- [ ] **Step 2: Open the P3 issue**
+- [x] **Step 2: Open the P3 issue** — #314
 
 ```bash
 gh issue create --title "Product management UI (RFC products P3)" --body "$(cat <<'EOF'
@@ -2318,7 +2333,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 3: Open the per-surface override issue**
+- [x] **Step 3: Open the per-surface override issue** — #315
 
 ```bash
 gh issue create --title "Per-surface product override" --body "$(cat <<'EOF'
@@ -2331,7 +2346,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 4: Open the acceptance-intake issue**
+- [x] **Step 4: Open the acceptance-intake issue** — #316
 
 ```bash
 gh issue create --title "Acceptance-first intake: file an idea before it has flows or views" --body "$(cat <<'EOF'
@@ -2349,10 +2364,10 @@ EOF
 )"
 ```
 
-- [ ] **Step 5: Record the numbers**
+- [x] **Step 5: Record the numbers**
 
 Run: `gh issue list --limit 5 --json number,title`
-Expected: the three new issues. Note their numbers — the article and the PR body reference them.
+Expected: the new issues. Recorded in the table above: #314, #315, #316 (planned) and #317, #318, #319 (findings) — the article and the PR body reference them.
 
 ---
 
