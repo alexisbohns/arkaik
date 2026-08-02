@@ -61,7 +61,7 @@ type SystemLayoutMode = "tiered" | "organic";
  * there is no expansion state.
  */
 export function SystemMap({ projectId, definition }: SystemMapProps) {
-  const { openNode, topNodeId } = useProjectPanels();
+  const { openNode, addressedNodeId } = useProjectPanels();
   // Session-local rendition choice, seeded from the definition's layout hint
   // (organic is the system kind's default — docs/spec/maps.md).
   const [layoutMode, setLayoutMode] = useState<SystemLayoutMode>(() =>
@@ -300,7 +300,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
           onEdgeClick={handleEdgeClick}
           fitSignal={fitSignal}
           spotlight
-          spotlightNodeId={topNodeId}
+          spotlightNodeId={addressedNodeId}
         />
       </NodeDetailStack>
       <NewNodeForm open={newNodeOpen} onOpenChange={setNewNodeOpen} onSubmit={handleCreateNode} />

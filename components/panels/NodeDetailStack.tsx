@@ -7,7 +7,7 @@ import { NodeDetailPanel, NodeDetailPanelHeader } from "@/components/panels/Node
 import type { PlatformId } from "@/lib/config/platforms";
 import type { Edge, JournalEvent, Node } from "@/lib/data/types";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
-import type { PanelDescriptor } from "@/lib/utils/project-panels";
+import { isNodeEntry, type PanelDescriptor } from "@/lib/utils/project-panels";
 
 interface NodeDetailStackProps {
   /** The surface — canvas, board, or list. The grid's first cell. */
@@ -48,7 +48,7 @@ export function NodeDetailStack({
   onCreateAcceptanceForAnchor,
   onZoomShot,
 }: NodeDetailStackProps) {
-  const { entries, openNode, closeAt, unwindTo, pruneMissing } = useProjectPanels();
+  const { entries, openNode, closeAt, unwindTo, pruneMissingNodes } = useProjectPanels();
 
   const nodesById = useMemo(() => new Map(allNodes.map((node) => [node.id, node])), [allNodes]);
 
@@ -56,8 +56,8 @@ export function NodeDetailStack({
   // would close a panel restored from `?node=` before its node ever arrived.
   useEffect(() => {
     if (nodesById.size === 0) return;
-    pruneMissing(new Set(nodesById.keys()));
-  }, [nodesById, pruneMissing]);
+    pruneMissingNodes(new Set(nodesById.keys()));
+  }, [nodesById, pruneMissingNodes]);
 
   return (
     <PanelStack<PanelDescriptor>
@@ -76,7 +76,7 @@ export function NodeDetailStack({
         return (
           <NodeDetailPanel
             node={node}
-            initialPlatform={entry.payload.kind === "node" ? entry.payload.initialPlatform : undefined}
+            initialPlatform={isNodeEntry(entry) ? entry.payload.initialPlatform : undefined}
             onUpdate={onUpdate}
             onDelete={onDelete}
             allNodes={allNodes}

@@ -58,7 +58,7 @@ interface JourneyMapProps {
 export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   const id = projectId;
 
-  const { openNode, topNodeId } = useProjectPanels();
+  const { openNode, topPanelNodeId } = useProjectPanels();
 
   const [expandedFlows, setExpandedFlows] = useState<Set<string>>(new Set());
   const [zoomNode, setZoomNode] = useState<DataNode | null>(null);
@@ -620,8 +620,10 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   useKeyboardShortcuts({
     onDelete: () => {
       if (deleteNodeDialogOpen || deleteEdgeDialogOpen || newNodeOpen || insertBetweenOpen || edgeDialogOpen) return;
-      if (!topNodeId) return;
-      handleDeleteNodeRequest(topNodeId);
+      // The panel you can see, not the one the URL names — with a non-node
+      // panel on top there is nothing on screen to delete, and this no-ops.
+      if (!topPanelNodeId) return;
+      handleDeleteNodeRequest(topPanelNodeId);
     },
     onExport: () => {
       if (exporting) return;
