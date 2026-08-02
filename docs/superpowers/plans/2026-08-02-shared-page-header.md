@@ -616,8 +616,15 @@ git commit -m "refactor: widen the panel stack to carry a panel that is not a no
 **Files:**
 - Create: `lib/hooks/usePanelBreadcrumbs.ts`
 
-Read `lib/hooks/useNodes.ts` first to confirm the hook's export shape; this task assumes
-`useNodes(projectId)` returns `{ nodes }` as it does at `app/project/[id]/maps/page.tsx:29`.
+**The hook takes the node list; it must not fetch its own.** `useNodes(projectId)` is a one-shot
+fetch into per-instance state, not a live query — every caller gets an independent copy that only its
+own mutations update. A header that called it would issue a second read on pages that already have
+one, and, worse, would keep showing a node's **old title in the crumb after a rename**, because the
+rename goes through the surface's copy. So the caller passes the nodes it already holds, and the
+header forwards them.
+
+Pages with no node data of their own pass none. There, a node crumb falls back to the entry key —
+only reachable by hand-editing `?node=` onto such a route, where the panel body is empty anyway.
 
 - [ ] **Step 1: Write the implementation**
 
@@ -627,8 +634,7 @@ Create `lib/hooks/usePanelBreadcrumbs.ts`:
 "use client";
 
 import { useMemo } from "react";
-import { useParams } from "next/navigation";
-import { useNodes } from "@/lib/hooks/useNodes";
+import type { Node } from "@/lib/data/types";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { RAW_PANEL_KEY } from "@/lib/utils/project-panels";
 
@@ -638,21 +644,20 @@ export interface PanelCrumb {
   onClick?: () => void;
 }
 
+const NO_NODES: Node[] = [];
+
 /**
  * The panel trail, flattened for the header to render.
  *
- * Labels resolve here rather than in the surface, which is what lets the header
- * show a trail on pages that hold no node data of their own — Overview,
- * Settings, Pyramid, Changelog, the Maps index.
+ * `nodes` comes from the caller rather than a fetch of our own: `useNodes` holds
+ * per-instance state, so a second copy here would show a node's old title in the
+ * crumb after a rename went through the surface's copy.
  *
  * Returns an empty list when nothing is open, which is the header's signal to
  * show the page's own meta line instead.
  */
-export function usePanelBreadcrumbs(rootLabel: string): PanelCrumb[] {
-  const params = useParams();
-  const projectId = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
+export function usePanelBreadcrumbs(rootLabel: string, nodes: Node[] = NO_NODES): PanelCrumb[] {
   const { entries, unwindTo } = useProjectPanels();
-  const { nodes } = useNodes(projectId);
 
   const titlesById = useMemo(
     () => new Map(nodes.map((node) => [node.id, node.title])),
@@ -715,6 +720,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import type { Node } from "@/lib/data/types";
 import { usePanelBreadcrumbs } from "@/lib/hooks/usePanelBreadcrumbs";
 
 export interface PageAction {
@@ -730,6 +736,11 @@ interface PageHeaderProps {
   /** Line two when no panel is open — counts, filters, whatever the page wants. */
   meta?: ReactNode;
   action?: PageAction;
+  /**
+   * The page's own node list, for naming the crumbs. Passed rather than fetched
+   * so a rename on the surface reaches the trail — see `usePanelBreadcrumbs`.
+   */
+  nodes?: Node[];
   /** Right-side controls, left of the action: display options, a version pill. */
   children?: ReactNode;
 }
@@ -746,8 +757,8 @@ interface PageHeaderProps {
  * The project's own name is deliberately absent — the sidebar names it, and it
  * is the same on every page of a project.
  */
-export function PageHeader({ title, meta, action, children }: PageHeaderProps) {
-  const crumbs = usePanelBreadcrumbs(title);
+export function PageHeader({ title, meta, action, nodes, children }: PageHeaderProps) {
+  const crumbs = usePanelBreadcrumbs(title, nodes);
   const ActionIcon = action?.icon;
 
   return (
@@ -1221,7 +1232,9 @@ export function PageShell({
 }: PageShellProps) {
   return (
     <div className="flex h-full w-full flex-col">
-      <PageHeader title={title} meta={meta} action={action}>
+      {/* The header names the crumbs from the same node list the panels resolve
+          against, so a rename reaches both at once. */}
+      <PageHeader title={title} meta={meta} action={action} nodes={panelProps.allNodes}>
         {headerExtra}
       </PageHeader>
       <ProjectPanels
