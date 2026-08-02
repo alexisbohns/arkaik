@@ -96,8 +96,11 @@ Three pieces, deliberately separable — only the third knows what a node is:
 - `components/panels/PanelStack.tsx` — renders the columns; owns the keyboard, focus, breadcrumb, visibility rule and animation. Content-agnostic.
 - `lib/hooks/useProjectPanels.tsx` + `components/panels/ProjectPanels.tsx` — the binding: what a panel can be (a node, or the raw bundle), node id ⇄ descriptor ⇄ `?node=`, with `NodeDetailPanel` as a node panel's content.
 
-The URL contract: **`?node=` addresses the top panel only**, on whatever route
-you are on, composing with the filters already there (`?species=view&node=…`).
+The URL contract: **`?node=` addresses the top *node* panel only**, on whatever
+route you are on, composing with the filters already there
+(`?species=view&node=…`). It scans past a panel that is not a node — the raw
+bundle is a tool rather than a location, so opening it over a node panel leaves
+that node's address standing.
 The stack below the top is client state by design — it is exploration history,
 not an address. User actions publish the new top themselves; `reconcileArrival`
 handles the arrivals nobody published (cold load, Back, Forward), inferring
