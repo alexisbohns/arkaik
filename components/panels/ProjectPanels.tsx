@@ -78,10 +78,10 @@ export function ProjectPanels({
   );
 
   const canCloseAt = useCallback(
-    (index: number) => {
+    (index: number, resume: () => void) => {
       const entry = entries[index];
       if (!entry) return true;
-      return panelStates[entry.instanceId]?.canClose() ?? true;
+      return panelStates[entry.instanceId]?.canClose(resume) ?? true;
     },
     [entries, panelStates],
   );

@@ -44,15 +44,19 @@ export type OpenNodeInput = Omit<NodePanelDescriptor, "kind">;
  * must be able to refuse a close, and edit mode must be visible on the cell.
  */
 export interface PanelSelfState {
-  /** Return false to veto the close. The panel is expected to raise its own confirm. */
-  canClose?: () => boolean;
+  /**
+   * Consulted before this panel is closed. Return false to veto — the panel is
+   * expected to raise its own confirm and then call `resume`, which re-runs the
+   * close the user originally asked for, guard bypassed.
+   */
+  canClose?: (resume: () => void) => boolean;
   /** Visual state of the cell. "editing" draws a dashed destructive border. */
   accent?: "editing" | null;
 }
 
 /** What the registry holds: the normalised form of what a panel handed in. */
 export interface RegisteredPanelState {
-  canClose: () => boolean;
+  canClose: (resume: () => void) => boolean;
   accent: "editing" | null;
 }
 
@@ -328,7 +332,7 @@ export function usePanelSelfState(instanceId: string, state: PanelSelfState): vo
 
   useEffect(() => {
     registerPanelState(instanceId, {
-      canClose: () => canCloseRef.current?.() ?? true,
+      canClose: (resume) => canCloseRef.current?.(resume) ?? true,
       accent,
     });
 

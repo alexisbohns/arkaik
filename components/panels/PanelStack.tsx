@@ -51,8 +51,12 @@ interface PanelStackProps<T> {
   surfaceLabel?: string;
   /** Per-entry visual accent. "editing" draws a dashed destructive border. */
   accentOf?: (entry: PanelEntry<T>, index: number) => "editing" | null | undefined;
-  /** Consulted before closing. Returning false vetoes — the panel raises its own confirm. */
-  canCloseAt?: (index: number) => boolean;
+  /**
+   * Consulted for every panel a close would destroy, top-down. Returning false
+   * vetoes; that panel raises its own confirm and calls `resume` to finish the
+   * close the user asked for.
+   */
+  canCloseAt?: (index: number, resume: () => void) => boolean;
 }
 
 /**
@@ -91,15 +95,27 @@ export function PanelStack<T>({
 
   // Closing a panel with focus inside it would drop focus on the document body
   // and lose the tab position. Hand it to whatever panel is on top afterwards.
-  // A panel may refuse outright — an unsaved draft raises its own confirm and
-  // vetoes, then calls back once the user has answered.
+  //
+  // `fromIndex` is the lowest panel a close destroys — an unwind takes every
+  // panel above it too, so every one of them gets asked. Top-down, because the
+  // panel most likely to hold an unsaved draft is the one on screen, and the
+  // confirm that appears should belong to something the user can see.
   const runClose = useCallback(
-    (index: number, close: () => void, source: HTMLElement | null) => {
-      if (canCloseAt && !canCloseAt(index)) return;
-      restoreFocusRef.current = source?.contains(document.activeElement) ?? false;
-      close();
+    (fromIndex: number, close: () => void, source: HTMLElement | null) => {
+      const commit = () => {
+        restoreFocusRef.current = source?.contains(document.activeElement) ?? false;
+        close();
+      };
+
+      if (canCloseAt) {
+        for (let index = entries.length - 1; index >= fromIndex; index -= 1) {
+          if (!canCloseAt(index, commit)) return;
+        }
+      }
+
+      commit();
     },
-    [canCloseAt],
+    [canCloseAt, entries.length],
   );
 
   useEffect(() => {
