@@ -11,6 +11,13 @@ const MODULES = [
   ["lib/config/statuses.ts", "config-statuses"],
   ["lib/config/values.ts", "config-values"],
   ["lib/utils/platform-status.ts", "platform-status"],
+  // `computeScopedPyramidTiers` composes the Acceptances surface's own filter,
+  // so pyramid.ts requires acceptance-matrix.ts at runtime now — and with it
+  // product-scope.ts and search.ts. Missing any of these is a MODULE_NOT_FOUND
+  // at require time rather than a compile error.
+  ["lib/utils/search.ts", "search"],
+  ["lib/utils/product-scope.ts", "product-scope"],
+  ["lib/utils/acceptance-matrix.ts", "acceptance-matrix"],
   ["lib/utils/pyramid.ts", "pyramid"],
 ];
 
@@ -20,6 +27,9 @@ const SPECIFIER_MAP = {
   "@/lib/config/values": "./config-values",
   "@/lib/data/types": "./types", // type-only in this graph
   "@/lib/utils/platform-status": "./platform-status",
+  "@/lib/utils/search": "./search",
+  "@/lib/utils/product-scope": "./product-scope",
+  "@/lib/utils/acceptance-matrix": "./acceptance-matrix",
 };
 
 function loadPyramid() {
@@ -49,7 +59,15 @@ function loadPyramid() {
   for (const [, outName] of MODULES) {
     delete require.cache[path.join(BUILD_DIR, `${outName}.js`)];
   }
-  return require(path.join(BUILD_DIR, "pyramid.js"));
+  // The matrix filter and the scope resolver come back beside the aggregation so
+  // the suite can compose the scoped pyramid *longhand* and compare it against
+  // the shared `computeScopedPyramidTiers` both surfaces call — a restatement
+  // built from the same real functions, not a paraphrase of one of them.
+  return {
+    ...require(path.join(BUILD_DIR, "pyramid.js")),
+    ...require(path.join(BUILD_DIR, "acceptance-matrix.js")),
+    ...require(path.join(BUILD_DIR, "product-scope.js")),
+  };
 }
 
 module.exports = { loadPyramid, BUILD_DIR };

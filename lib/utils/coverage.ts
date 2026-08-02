@@ -1,9 +1,10 @@
 import { SPECIES, type SpeciesId } from "@/lib/config/species";
 import { getCountedStatuses, type CountedStatusPresetId, type StatusId } from "@/lib/config/statuses";
 import type { Edge, JournalEvent, Node, ReleaseTaggedEvent } from "@/lib/data/types";
-import { computeDeliveryItems, groupItemsByStatus } from "@/lib/utils/delivery";
+import { computeDeliveryItems, groupItemsByStatus, type DeliveryOptions } from "@/lib/utils/delivery";
 import { computeBacklog, computeChangelog } from "@/lib/utils/journal";
 import { addEffectiveNodeToRollup, createEmptyRollup, type PlatformStatusRollup } from "@/lib/utils/platform-status";
+import { nodeInScope, scopedPlatforms } from "@/lib/utils/product-scope";
 import { orderEvents } from "@arkaik/schema";
 
 /**
@@ -13,6 +14,18 @@ import { orderEvents } from "@arkaik/schema";
  * minimal inputs, JSON-serializable results — the app renders these, and the
  * MCP server (CP-F) will serve the identical aggregations to agents.
  */
+
+/**
+ * The scope inputs the Overview's platform-aware projections take — the same
+ * shape, and the same meaning, as {@link DeliveryOptions}.
+ *
+ * An alias rather than a second interface on purpose: the Overview *summarises*
+ * the Delivery board, so a scoping option that could drift from the board's is
+ * how the summary comes to contradict the thing it summarises. Absent = no
+ * scoping at all, byte-for-byte today's numbers, which is what a caller holding
+ * no `ProjectBundle` yet should pass.
+ */
+export type CoverageScopeOptions = DeliveryOptions;
 
 // --- Inventory: the census ---------------------------------------------------
 
@@ -71,16 +84,38 @@ export function computeInventory(
  * acceptance-derived (effective) per-platform statuses via the rollup seam
  * (`addEffectiveNodeToRollup`); uncovered views fall back to their stored
  * statuses.
+ *
+ * With a `scope` the gauges stop lying about their denominators, on the same
+ * two counts as the Delivery board (spec § Decision 3): a view `nodeInScope`
+ * rejects contributes nothing, and each survivor contributes only the platforms
+ * `scopedPlatforms` leaves it — its **own product's** menu, not the scope's
+ * platform union, so a web-only back-office view stops padding the Android
+ * gauge even under All products. The clip is applied by handing the rollup a
+ * platform-narrowed copy of the view rather than by teaching
+ * `addEffectiveNodeToRollup` about products: the full `nodes` list still goes
+ * in beside it, so the covering acceptances a view's effective status is
+ * derived from are exactly the ones they were before.
  */
 export function computeProductRollup(
   nodes: readonly Node[],
   edges: readonly Edge[],
   presetId?: CountedStatusPresetId,
+  options?: CoverageScopeOptions,
 ): PlatformStatusRollup {
+  const scope = options?.scope;
+
   return nodes
     .filter((node) => node.species === "view")
+    .filter((node) => scope === undefined || nodeInScope(node, scope, options?.graph))
     .reduce(
-      (rollup, node) => addEffectiveNodeToRollup(rollup, node, nodes, edges, presetId),
+      (rollup, node) =>
+        addEffectiveNodeToRollup(
+          rollup,
+          scope === undefined ? node : { ...node, platforms: scopedPlatforms(node, scope) },
+          nodes,
+          edges,
+          presetId,
+        ),
       createEmptyRollup(),
     );
 }
@@ -140,13 +175,19 @@ export interface DeliverySnapshot {
  * The Delivery board's numbers without the board: (node × platform) items via
  * `computeDeliveryItems`, bucketed by `groupItemsByStatus`. Defaults mirror
  * the board's defaults (views, counted-preset columns).
+ *
+ * `options` is handed straight to `computeDeliveryItems`, so a scoped snapshot
+ * is the scoped board's own item expansion and the two can only ever agree.
+ * The Overview is a summary of that board; a summary that scoped differently
+ * would be a second answer to the same question.
  */
 export function computeDeliverySnapshot(
   nodes: readonly Node[],
   species: readonly SpeciesId[] = ["view"],
   statuses: readonly StatusId[] = getCountedStatuses(),
+  options?: CoverageScopeOptions,
 ): DeliverySnapshot {
-  const items = computeDeliveryItems(nodes, species);
+  const items = computeDeliveryItems(nodes, species, options);
   const groups = groupItemsByStatus(items, statuses);
 
   const statusCounts = statuses.map((status) => ({ status, count: groups.get(status)?.length ?? 0 }));

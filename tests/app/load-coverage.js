@@ -76,7 +76,20 @@ function loadCoverage() {
   for (const [, outName] of MODULES) {
     delete require.cache[path.join(BUILD_DIR, `${outName}.js`)];
   }
-  return require(path.join(BUILD_DIR, "coverage.js"));
+  // coverage.ts's own exports, plus the pieces the suite needs to check a
+  // *scoped* Overview against the surfaces it summarises: the scope resolver
+  // (built from a bundle, as the pages do, rather than hand-assembled), the
+  // Delivery board's own projection, and the counted-status columns. The
+  // cross-surface claim is worth nothing if the suite asserts it against a
+  // restatement of one side.
+  return {
+    ...require(path.join(BUILD_DIR, "coverage.js")),
+    ...require(path.join(BUILD_DIR, "product-scope.js")),
+    computeDeliveryItems: require(path.join(BUILD_DIR, "delivery.js")).computeDeliveryItems,
+    groupItemsByStatus: require(path.join(BUILD_DIR, "delivery.js")).groupItemsByStatus,
+    getCountedStatuses: require(path.join(BUILD_DIR, "config-statuses.js")).getCountedStatuses,
+    buildProductUsageIndex: require(schemaIndex).buildProductUsageIndex,
+  };
 }
 
 module.exports = { loadCoverage, BUILD_DIR, SCHEMA_BUILD_DIR };

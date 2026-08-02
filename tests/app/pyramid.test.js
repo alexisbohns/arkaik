@@ -11,7 +11,13 @@ const fs = require("fs");
 const path = require("path");
 const { loadPyramid, BUILD_DIR } = require("./load-pyramid");
 
-const { computePyramidAggregation } = loadPyramid();
+const {
+  computePyramidAggregation,
+  computeScopedPyramidTiers,
+  filterAcceptances,
+  EMPTY_FILTERS,
+  resolveProductScope,
+} = loadPyramid();
 
 let failures = 0;
 function assert(cond, message) {
@@ -137,12 +143,9 @@ assert(
 
 // --- Product scope: the acceptances feeding the projection -------------------
 //
-// The page narrows the acceptances with `filterAcceptances` before aggregating
-// — product membership is an anchor-traversal question, not a value one — so
-// this asserts the composition the page performs, using both real functions.
-
-const { loadAcceptanceMatrix, BUILD_DIR: MATRIX_BUILD_DIR } = require("./load-acceptance-matrix");
-const { filterAcceptances, EMPTY_FILTERS } = loadAcceptanceMatrix();
+// The surfaces narrow the acceptances with `filterAcceptances` before
+// aggregating — product membership is an anchor-traversal question, not a value
+// one — so this asserts the composition they perform, using both real functions.
 
 const consoleView = { id: "V-console", project_id: "p", species: "view", title: "Console", status: "live", platforms: ["web"], metadata: { product: "admin" } };
 const homeView = { id: "V-home", project_id: "p", species: "view", title: "Home", status: "live", platforms: ["web", "ios", "android"], metadata: { product: "end-user" } };
@@ -159,10 +162,14 @@ const scopeAcceptances = [accArchive, accHome];
 
 const effortOf = (tiers_) => tiers_.flatMap((t) => t.elements).find((e) => e.value === "reduces-effort");
 
-/** Exactly what app/project/[id]/pyramid/page.tsx composes. */
+/**
+ * What the Pyramid page and the Overview's card both draw — the shared
+ * composition itself, not a copy of it.
+ */
 function pyramidForScope(productId, platforms) {
-  const scoped = filterAcceptances(scopeAcceptances, scopeEdges, scopeNodesById, { ...EMPTY_FILTERS, product: productId });
-  return effortOf(computePyramidAggregation(scoped, { platforms }));
+  return effortOf(
+    computeScopedPyramidTiers(scopeAcceptances, scopeEdges, scopeNodesById, { productId, platforms }),
+  );
 }
 
 const allProducts = pyramidForScope(null, ["web", "ios", "android"]);
@@ -181,6 +188,65 @@ const endUserScoped = pyramidForScope("end-user", ["web", "ios", "android"]);
 assert(
   endUserScoped.acceptanceCount === 1 && endUserScoped.rollup.counts.ios !== undefined,
   `an acceptance anchored to an admin view is not in end-user, whatever its stored key says (got count ${endUserScoped.acceptanceCount})`,
+);
+
+// --- One pyramid, two surfaces (Overview ≡ Pyramid page) ---------------------
+//
+// The Overview's PyramidCard and the Pyramid page render the same projection for
+// the same scope. Since Task 15 that is structural — both call
+// `computeScopedPyramidTiers` — so what is worth asserting is that the shared
+// function really performs *both* steps, and that the fixture can tell.
+
+const scopeBundle = {
+  project: {
+    id: "P",
+    title: "P",
+    metadata: {
+      products: [
+        { id: "end-user", title: "End-user app", platforms: ["web", "ios", "android"] },
+        { id: "admin", title: "Admin", platforms: ["web"] },
+      ],
+    },
+  },
+};
+const adminScope = resolveProductScope(scopeBundle, "admin");
+
+const sharedAdmin = computeScopedPyramidTiers(scopeAcceptances, scopeEdges, scopeNodesById, adminScope);
+// The longhand, built from the same two real functions rather than paraphrased.
+const longhandAdmin = computePyramidAggregation(
+  filterAcceptances(scopeAcceptances, scopeEdges, scopeNodesById, {
+    ...EMPTY_FILTERS,
+    product: adminScope.productId,
+  }),
+  { platforms: adminScope.platforms },
+);
+assert(
+  eq(sharedAdmin, longhandAdmin),
+  "the shared composition is exactly filterAcceptances -> computePyramidAggregation(platforms)",
+);
+
+// The half-fix the Overview would plausibly have shipped: scope the platform
+// menu, forget the acceptances. If this matched, the assertion above would be
+// vacuous — so it is asserted NOT to.
+const menuOnlyAdmin = computePyramidAggregation(scopeAcceptances, { platforms: adminScope.platforms });
+assert(
+  !eq(sharedAdmin, menuOnlyAdmin),
+  "the fixture discriminates: scoping the platform menu alone gives a different pyramid",
+);
+assert(
+  effortOf(sharedAdmin).acceptanceCount === 1 && effortOf(menuOnlyAdmin).acceptanceCount === 2,
+  `and the difference is the acceptance count the two screens would have disagreed about (shared ${
+    effortOf(sharedAdmin).acceptanceCount
+  } vs menu-only ${effortOf(menuOnlyAdmin).acceptanceCount})`,
+);
+
+// The degenerate case over the real seed: no products declared, so the scoped
+// composition must be byte-identical to today's bare aggregation.
+const seedNodesById = new Map(bundle.nodes.map((node) => [node.id, node]));
+const noProductScope = resolveProductScope({ project: { id: "Q", title: "Q", metadata: {} } }, null);
+assert(
+  eq(computeScopedPyramidTiers(acceptances, bundle.edges, seedNodesById, noProductScope), tiers),
+  "a project declaring no products composes byte-identical tiers to the unscoped aggregation, over the seed",
 );
 
 // --- Display order (rings and bars) and the global all-platform segment sum ---
@@ -259,7 +325,6 @@ assert(
 );
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
-fs.rmSync(MATRIX_BUILD_DIR, { recursive: true, force: true });
 
 if (failures > 0) {
   console.error(`\n${failures} assertion(s) failed`);

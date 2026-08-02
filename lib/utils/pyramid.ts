@@ -1,12 +1,14 @@
 import type { PlatformId } from "@/lib/config/platforms";
 import { VALUES, VALUE_TIERS_CONFIG, type ValueId, type ValueTierId } from "@/lib/config/values";
-import type { Node } from "@/lib/data/types";
+import type { Edge, Node } from "@/lib/data/types";
+import { EMPTY_FILTERS, filterAcceptances } from "@/lib/utils/acceptance-matrix";
 import {
   addPlatformStatusToRollup,
   createEmptyRollup,
   getNodePlatformStatuses,
   type PlatformStatusRollup,
 } from "@/lib/utils/platform-status";
+import type { ProductScope } from "@/lib/utils/product-scope";
 
 /**
  * Pyramid aggregation — the value-delivery radar (spec §9.2). For each of the
@@ -91,4 +93,32 @@ export function computePyramidAggregation(
       return { value: value.id, tier: value.tier, acceptanceCount: entry.count, rollup: entry.rollup };
     }),
   }));
+}
+
+/**
+ * **The scoped pyramid, composed once for every surface that draws one** — the
+ * Pyramid page and the Overview's `PyramidCard`.
+ *
+ * Two steps, and both are load-bearing. `filterAcceptances` narrows to the
+ * acceptances the scope actually contains, anchors before stored keys
+ * (§ Decision 5); `platforms` then narrows each element's per-platform
+ * distribution to the scope's menu.
+ *
+ * It is one function rather than two copies because the *easy half is a
+ * plausible mistake*: passing `scope.platforms` alone re-shapes the rings while
+ * still counting every product's acceptances, so the same scope would report a
+ * different number of acceptances on the Overview than on the Pyramid. That is
+ * a divergence nobody would see until they compared two screens, and no amount
+ * of care at two call sites prevents it — sharing the composition does.
+ */
+export function computeScopedPyramidTiers(
+  acceptances: readonly Node[],
+  edges: readonly Edge[],
+  nodesById: ReadonlyMap<string, Node>,
+  scope: Pick<ProductScope, "productId" | "platforms">,
+): PyramidTier[] {
+  return computePyramidAggregation(
+    filterAcceptances(acceptances, edges, nodesById, { ...EMPTY_FILTERS, product: scope.productId }),
+    { platforms: scope.platforms },
+  );
 }

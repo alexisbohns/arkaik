@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useParams } from "next/navigation";
-import { computeMapSubgraph, computeParityGaps, listMaps } from "@arkaik/schema";
+import { buildProductUsageIndex, computeMapSubgraph, computeParityGaps, listMaps } from "@arkaik/schema";
 import { BacklogCard } from "@/components/overview/BacklogCard";
 import { DeliverySnapshotCard } from "@/components/overview/DeliverySnapshotCard";
 import { HealthCard } from "@/components/overview/HealthCard";
@@ -17,7 +17,9 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useNodes } from "@/lib/hooks/useNodes";
+import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
+import { EMPTY_FILTERS, filterAcceptances } from "@/lib/utils/acceptance-matrix";
 import {
   computeDeliverySnapshot,
   computeHealthIndicators,
@@ -27,7 +29,8 @@ import {
 } from "@/lib/utils/coverage";
 import { computeBacklog } from "@/lib/utils/journal";
 import { getRollupPlatforms } from "@/lib/utils/platform-status";
-import { computePyramidAggregation } from "@/lib/utils/pyramid";
+import type { ProductGraph } from "@/lib/utils/product-scope";
+import { computeScopedPyramidTiers } from "@/lib/utils/pyramid";
 
 /**
  * The Overview: "Where does this product stand?" — the strategist reading
@@ -45,9 +48,25 @@ export default function OverviewPage() {
   const { project: projectBundle, loading: projectLoading } = useProject(id);
   const { journal, loading: journalLoading } = useJournal(id);
 
+  // The shell's scope, never a URL param (§ Decision 2). `projectBundle` is
+  // `undefined` until `useProject`'s effect lands, and a scope resolved from
+  // nothing declares no products — every platform, every node, i.e. today's
+  // Overview. So the first render is already right and nothing flashes.
+  const scope = useEffectiveProduct(id, projectBundle);
+
   const nodesById = useMemo(
     () => new Map(dataNodes.map((node) => [node.id, node])),
     [dataNodes],
+  );
+
+  // Built once per snapshot — `buildProductUsageIndex` is a graph traversal and
+  // must never run per node. The page renders nothing until `edgesLoading` is
+  // false, so no reader ever sees the empty-edge answer; membership derived
+  // from anchors and consumers would otherwise be wrong for one frame.
+  const usageIndex = useMemo(() => buildProductUsageIndex(dataNodes, dataEdges), [dataNodes, dataEdges]);
+  const productGraph = useMemo<ProductGraph>(
+    () => ({ edges: dataEdges, nodesById, usageIndex }),
+    [dataEdges, nodesById, usageIndex],
   );
 
   const inventory = useMemo(
@@ -55,7 +74,13 @@ export default function OverviewPage() {
     [dataEdges, dataNodes, journal],
   );
 
-  const rollup = useMemo(() => computeProductRollup(dataNodes, dataEdges), [dataNodes, dataEdges]);
+  const rollup = useMemo(
+    () => computeProductRollup(dataNodes, dataEdges, undefined, { scope, graph: productGraph }),
+    [dataEdges, dataNodes, productGraph, scope],
+  );
+  // Already the scope's own platforms by construction — every surviving view was
+  // clipped to its product's menu — so this stays "platforms with counted work",
+  // which is what the gauges have always drawn.
   const gaugePlatforms = useMemo(() => getRollupPlatforms(rollup), [rollup]);
 
   const releases = useMemo(
@@ -68,12 +93,29 @@ export default function OverviewPage() {
     [dataNodes, journal],
   );
 
-  const snapshot = useMemo(() => computeDeliverySnapshot(dataNodes), [dataNodes]);
+  // Species and status columns stay at their defaults (views, counted preset);
+  // only the scope is new, and it is the board's own, so the snapshot and the
+  // board it summarises expand the same items.
+  const snapshot = useMemo(
+    () => computeDeliverySnapshot(dataNodes, undefined, undefined, { scope, graph: productGraph }),
+    [dataNodes, productGraph, scope],
+  );
 
-  const parityGaps = useMemo(() => computeParityGaps(dataNodes), [dataNodes]);
-  const pyramidTiers = useMemo(
-    () => computePyramidAggregation(dataNodes.filter((node) => node.species === "acceptance")),
+  const acceptances = useMemo(
+    () => dataNodes.filter((node) => node.species === "acceptance"),
     [dataNodes],
+  );
+  // Parity reads the acceptances the scope contains, resolved anchors-first like
+  // everywhere else (§ Decision 5) — an admin acceptance is not an end-user
+  // parity gap. `ParityCard` itself decides whether parity is a question at all.
+  const scopedAcceptances = useMemo(
+    () => filterAcceptances(acceptances, dataEdges, nodesById, { ...EMPTY_FILTERS, product: scope.productId }),
+    [acceptances, dataEdges, nodesById, scope.productId],
+  );
+  const parityGaps = useMemo(() => computeParityGaps(scopedAcceptances), [scopedAcceptances]);
+  const pyramidTiers = useMemo(
+    () => computeScopedPyramidTiers(acceptances, dataEdges, nodesById, scope),
+    [acceptances, dataEdges, nodesById, scope],
   );
 
   const health = useMemo(
@@ -133,8 +175,8 @@ export default function OverviewPage() {
           ) : (
             <>
               <PlatformGaugesCard rollup={rollup} platforms={gaugePlatforms} projectId={id} />
-              <ParityCard gaps={parityGaps} projectId={id} />
-              <PyramidCard tiers={pyramidTiers} projectId={id} />
+              <ParityCard gaps={parityGaps} platforms={scope.platforms} projectId={id} />
+              <PyramidCard tiers={pyramidTiers} platforms={scope.platforms} projectId={id} />
               <DeliverySnapshotCard snapshot={snapshot} projectId={id} />
               <ReleasePulseCard releases={releases} projectId={id} />
               <BacklogCard backlog={backlog} projectId={id} />

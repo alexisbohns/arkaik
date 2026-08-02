@@ -13,9 +13,8 @@ import {
   type PyramidViewMode,
 } from "@/components/pyramid/PyramidToolbar";
 import { VALUES, VALUE_TIERS_CONFIG } from "@/lib/config/values";
-import { EMPTY_FILTERS, filterAcceptances } from "@/lib/utils/acceptance-matrix";
 import type { PyramidElement } from "@/lib/utils/pyramid";
-import { computePyramidAggregation } from "@/lib/utils/pyramid";
+import { computeScopedPyramidTiers } from "@/lib/utils/pyramid";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
@@ -68,16 +67,12 @@ export default function PyramidPage() {
   );
   // Scoping the *acceptances* as well as the platform menu: a pyramid for Admin
   // has to aggregate Admin's acceptances, and membership follows an
-  // acceptance's anchors before its stored key (§ Decision 5). That precedence
-  // lives in `filterAcceptances`, which the Acceptances surface already runs —
-  // re-deriving it here is how two surfaces come to disagree about one node.
-  const scopedAcceptances = useMemo(
-    () => filterAcceptances(acceptances, dataEdges, nodesById, { ...EMPTY_FILTERS, product: scope.productId }),
-    [acceptances, dataEdges, nodesById, scope.productId],
-  );
+  // acceptance's anchors before its stored key (§ Decision 5). Both steps live
+  // in `computeScopedPyramidTiers`, which the Overview's card calls too — the
+  // two surfaces draw the same pyramid, so they compose it once.
   const tiers = useMemo(
-    () => computePyramidAggregation(scopedAcceptances, { platforms: scope.platforms }),
-    [scopedAcceptances, scope.platforms],
+    () => computeScopedPyramidTiers(acceptances, dataEdges, nodesById, scope),
+    [acceptances, dataEdges, nodesById, scope],
   );
 
   const visibleTiers = useMemo(
