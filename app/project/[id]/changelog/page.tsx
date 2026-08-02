@@ -4,8 +4,7 @@ import { useMemo } from "react";
 import { useParams } from "next/navigation";
 import { LightbulbIcon, MessageSquareTextIcon, TagIcon } from "lucide-react";
 import { orderEvents } from "@arkaik/schema";
-import { Separator } from "@/components/ui/separator";
-import { SidebarTrigger } from "@/components/ui/sidebar";
+import { PageShell } from "@/components/layout/PageShell";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useProject } from "@/lib/hooks/useProject";
 import { useJournal } from "@/lib/hooks/useJournal";
@@ -128,25 +127,20 @@ export default function ChangelogPage() {
   const isEmpty = journal.length === 0;
 
   return (
-    <div className="h-full w-full flex flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <SidebarTrigger className="-ml-1 cursor-pointer" />
-        <Separator orientation="vertical" className="mx-1 h-4" />
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{projectBundle?.project.title ?? "Untitled project"}</p>
-          <p className="truncate text-xs text-muted-foreground">Changelog</p>
-        </div>
-        {projectBundle?.project.version && (
-          <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+    <PageShell
+      title="Changelog"
+      headerExtra={
+        projectBundle?.project.version ? (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span>Current version</span>
             <span className="rounded-full border px-2 py-0.5 font-medium text-foreground">
               {projectBundle.project.version}
             </span>
           </div>
-        )}
-      </header>
-
-      <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6">
+        ) : null
+      }
+    >
+      <div className="h-full overflow-auto p-4 md:p-6">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-8">
           {isEmpty ? (
             <div className="rounded-xl border border-dashed p-10 text-center">
@@ -177,6 +171,6 @@ export default function ChangelogPage() {
           )}
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }

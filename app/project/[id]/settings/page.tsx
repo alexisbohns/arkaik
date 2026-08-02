@@ -5,10 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
+import { PageShell } from "@/components/layout/PageShell";
 import { RepoLinksPanel } from "@/components/settings/RepoLinksPanel";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 import { isHostedProjectId } from "@/lib/data/remote-provider";
 import { useProject } from "@/lib/hooks/useProject";
 import { archiveProject } from "@/lib/utils/export";
@@ -61,63 +60,57 @@ export default function ProjectSettingsPage() {
   }
 
   return (
-    <div className="flex h-full w-full flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <SidebarTrigger className="-ml-1 cursor-pointer" />
-        <Separator orientation="vertical" className="mx-1 h-4" />
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{title}</p>
-          <p className="truncate text-xs text-muted-foreground">Settings</p>
-        </div>
-      </header>
-
-      <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6">
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-10">
-          <section className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1">
-              <h2 className="text-lg font-semibold">Linked repositories</h2>
-              <p className="text-sm text-muted-foreground">
-                Pull requests in these repositories can move {title}&rsquo;s acceptances. Naming the
-                platform a repository — or one folder of it — builds for means a merge there marks
-                only that platform shipped.
-              </p>
-            </div>
-            {hosted ? (
-              <RepoLinksPanel projectId={id} />
-            ) : (
-              <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                This project lives in this browser, so there is no account for a repository link to
-                hang off. Move it to your account from the projects page and the links appear here.
-              </p>
-            )}
-          </section>
-
-          <section className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1">
-              <h2 className="text-lg font-semibold text-destructive">Danger zone</h2>
-              <p className="text-sm text-muted-foreground">
-                Actions here change the project itself, not what you are looking at.
-              </p>
-            </div>
-            <div className="flex flex-col gap-3 rounded-lg border border-destructive/40 p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <p className="text-sm font-medium">Delete this project</p>
+    <>
+      <PageShell title="Settings">
+        <div className="h-full overflow-auto p-4 md:p-6">
+          <div className="mx-auto flex w-full max-w-3xl flex-col gap-10">
+            <section className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1">
+                <h2 className="text-lg font-semibold">Linked repositories</h2>
                 <p className="text-sm text-muted-foreground">
-                  {title} disappears from your projects, along with its nodes, edges and history.
+                  Pull requests in these repositories can move {title}&rsquo;s acceptances. Naming
+                  the platform a repository — or one folder of it — builds for means a merge there
+                  marks only that platform shipped.
                 </p>
               </div>
-              <Button
-                variant="destructive"
-                className="shrink-0 cursor-pointer"
-                disabled={loading || deleting}
-                onClick={() => setDeleteOpen(true)}
-              >
-                {deleting ? "Deleting…" : "Delete project"}
-              </Button>
-            </div>
-          </section>
+              {hosted ? (
+                <RepoLinksPanel projectId={id} />
+              ) : (
+                <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                  This project lives in this browser, so there is no account for a repository link
+                  to hang off. Move it to your account from the projects page and the links appear
+                  here.
+                </p>
+              )}
+            </section>
+
+            <section className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1">
+                <h2 className="text-lg font-semibold text-destructive">Danger zone</h2>
+                <p className="text-sm text-muted-foreground">
+                  Actions here change the project itself, not what you are looking at.
+                </p>
+              </div>
+              <div className="flex flex-col gap-3 rounded-lg border border-destructive/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">Delete this project</p>
+                  <p className="text-sm text-muted-foreground">
+                    {title} disappears from your projects, along with its nodes, edges and history.
+                  </p>
+                </div>
+                <Button
+                  variant="destructive"
+                  className="shrink-0 cursor-pointer"
+                  disabled={loading || deleting}
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  {deleting ? "Deleting…" : "Delete project"}
+                </Button>
+              </div>
+            </section>
+          </div>
         </div>
-      </div>
+      </PageShell>
 
       <DeleteConfirmDialog
         open={deleteOpen}
@@ -128,6 +121,6 @@ export default function ProjectSettingsPage() {
         description={`Archive "${title}" and remove it from your list?`}
         onConfirm={() => void handleDelete()}
       />
-    </div>
+    </>
   );
 }
