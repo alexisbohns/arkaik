@@ -4,7 +4,12 @@
     "title": "Test Project",
     "version": "1.4.0",
     "created_at": "2026-01-01T00:00:00.000Z",
-    "updated_at": "2026-01-01T00:00:00.000Z"
+    "updated_at": "2026-01-01T00:00:00.000Z",
+    "metadata": {
+      "products": [
+        { "id": "admin-dashboard", "title": "Admin Dashboard", "platforms": ["web"] }
+      ]
+    }
   },
   "nodes": [
     {
@@ -15,6 +20,7 @@
       "status": "idea",
       "platforms": ["web"],
       "metadata": {
+        "product": "admin-dashboard",
         "platformScreenshots": { "web": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" },
         "refs": [
           {

@@ -223,8 +223,8 @@ export const MapDefinitionSchema: z.ZodType<MapDefinition> = z
 export const ProductDefinitionSchema: z.ZodType<ProductDefinition> = z
   .object({
     id: z.string().meta({ description: "Kebab-case, unique within the project." }),
-    title: z.string(),
-    description: z.string().optional(),
+    title: z.string().meta({ description: "Display title." }),
+    description: z.string().optional().meta({ description: "What this product is." }),
     platforms: z.array(PlatformSchema).meta({
       description: "The platforms this product can ship on; empty means availability is not tracked.",
     }),

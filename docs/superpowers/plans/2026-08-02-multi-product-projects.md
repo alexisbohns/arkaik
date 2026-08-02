@@ -659,17 +659,24 @@ Insert above `ProjectMetadata` (near the existing `MapDefinitionSchema`):
  * zod-free types and projections live in `./products`.
  */
 export const ProductDefinitionSchema: z.ZodType<ProductDefinition> = z
-  .looseObject({
+  .object({
     id: z.string().meta({ description: "Kebab-case, unique within the project." }),
-    title: z.string(),
-    description: z.string().optional(),
+    title: z.string().meta({ description: "Display title." }),
+    description: z.string().optional().meta({ description: "What this product is." }),
     platforms: z.array(PlatformSchema).meta({
       description: "The platforms this product can ship on; empty means availability is not tracked.",
     }),
     root_node_id: z.string().optional().meta({ description: "This product's journey anchor." }),
   })
+  .catchall(z.unknown())
   .meta({ id: "ProductDefinition", description: "A product definition (docs/spec/bundle-format.md § Products)." });
 ```
+
+Note: `MapDefinitionSchema` in this repo actually builds leniency via
+`.object({...}).catchall(z.unknown())`, not `z.looseObject(...)` — even though
+`z.looseObject` exists in this zod version. They're equivalent (`looseObject()`
+constructs exactly `ZodObject` with `catchall: unknown()`), so match the
+`.catchall` form the neighboring schemas use.
 
 Add the type import at the top of `bundle.ts`, beside the existing `import type { MapDefinition } from "./maps";`:
 
