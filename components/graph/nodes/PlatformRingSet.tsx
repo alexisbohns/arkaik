@@ -45,7 +45,8 @@ interface PlatformRingSetProps {
  * Global + one ring per platform, each hover-revealing its status breakdown.
  * The global ring's arcs count platform *statuses* (one acceptance live on three
  * platforms contributes three), while its center shows the acceptance count —
- * the footer says both so the two numbers never look like a contradiction.
+ * both the footer and the accessible name state the two numbers together, so
+ * neither a sighted nor a screen-reader user meets one without the other.
  */
 export function PlatformRingSet({ rollup, count, size = "lg", countLabel = "acceptances" }: PlatformRingSetProps) {
   const totalSegments = getRollupTotalSegments(rollup);
