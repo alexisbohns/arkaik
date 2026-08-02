@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { PageShell } from "@/components/layout/PageShell";
+import { StickyToolbar } from "@/components/layout/StickyToolbar";
 import { PyramidElementCard } from "@/components/pyramid/PyramidElementCard";
 import { PyramidElementRow } from "@/components/pyramid/PyramidElementRow";
 import { PyramidTierGroup } from "@/components/pyramid/PyramidTierGroup";
@@ -69,15 +70,18 @@ export default function PyramidPage() {
 
   return (
     <PageShell title="Value pyramid">
-      <div className="h-full overflow-auto p-4 md:p-6">
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-          <PyramidToolbar
-            viewMode={viewMode}
-            filterStep={filterStep}
-            onViewModeChange={setViewMode}
-            onFilterStepChange={setFilterStep}
-          />
+      <div className="h-full overflow-auto">
+        <div className="mx-auto w-full max-w-6xl">
+          <StickyToolbar>
+            <PyramidToolbar
+              viewMode={viewMode}
+              filterStep={filterStep}
+              onViewModeChange={setViewMode}
+              onFilterStepChange={setFilterStep}
+            />
+          </StickyToolbar>
 
+          <div className="flex flex-col gap-6 px-4 pb-4 md:px-6 md:pb-6">
           {visibleTiers.length === 0 ? (
             <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
               No value element matches this filter.
@@ -112,6 +116,7 @@ export default function PyramidPage() {
               );
             })
           )}
+          </div>
         </div>
       </div>
     </PageShell>

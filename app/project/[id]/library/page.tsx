@@ -9,6 +9,7 @@ import type { PlaylistPreviewItem } from "@/components/library/NodeCard";
 import { NodeTable, type NodeSortKey, type NodeSortState } from "@/components/library/NodeTable";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
 import { PageShell } from "@/components/layout/PageShell";
+import { StickyToolbar } from "@/components/layout/StickyToolbar";
 import { Button } from "@/components/ui/button";
 import { SPECIES, type SpeciesId } from "@/lib/config/species";
 import { STATUSES, STATUS_ORDER } from "@/lib/config/statuses";
@@ -256,15 +257,18 @@ export default function ProjectLibraryPage() {
         onUpdate={handleNodeUpdate}
         onCreateNode={handleCreateNodeFromPanel}
       >
-        <div className="h-full overflow-auto p-4 md:p-6">
-          <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
-            <LibraryFilterBar
-              search={search}
-              displayMode={displayMode}
-              onSearchChange={setSearch}
-              onDisplayModeChange={setDisplayMode}
-            />
+        <div className="h-full overflow-auto">
+          <div className="mx-auto w-full max-w-7xl">
+            <StickyToolbar>
+              <LibraryFilterBar
+                search={search}
+                displayMode={displayMode}
+                onSearchChange={setSearch}
+                onDisplayModeChange={setDisplayMode}
+              />
+            </StickyToolbar>
 
+            <div className="flex flex-col gap-4 px-4 pb-4 md:px-6 md:pb-6">
             {visibleNodes.length === 0 ? (
               <div className="rounded-xl border border-dashed p-10 text-center">
                 <p className="text-sm text-muted-foreground">No {emptyLabel} yet. Create one to get started.</p>
@@ -305,6 +309,7 @@ export default function ProjectLibraryPage() {
                 />
               </div>
             )}
+            </div>
           </div>
         </div>
       </PageShell>
