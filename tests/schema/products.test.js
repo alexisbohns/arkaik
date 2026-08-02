@@ -15,6 +15,7 @@ const {
   effectiveNodePlatforms,
   buildProductUsageIndex,
   productsUsingNode,
+  validateBundle,
 } = loadSchema();
 
 let failures = 0;
@@ -216,6 +217,163 @@ const looseUsage = buildProductUsageIndex(usageNodes, looseEdges);
 assert(
   JSON.stringify(productsUsingNode("DM-orphan", looseUsage)) === JSON.stringify([]),
   "a consumer with no membership contributes no product",
+);
+
+// --- validation: every product finding is a warning -------------------------
+function findingsFor(bundle) {
+  const result = validateBundle(bundle);
+  return { result, rules: result.findings.map((f) => f.rule) };
+}
+
+const node = (over) => ({
+  id: "V-1",
+  project_id: "p",
+  species: "view",
+  title: "V",
+  status: "live",
+  platforms: ["web"],
+  ...over,
+});
+
+// Timestamps are required at error severity, so every fixture here carries
+// them: the whole point of the block is asserting `valid === true` while
+// product findings pile up, and a missing created_at would mask that.
+const bundleWith = (products, nodes, edges = []) => ({
+  version: "2",
+  project: {
+    id: "p",
+    title: "P",
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:00.000Z",
+    metadata: { products },
+  },
+  nodes,
+  edges,
+});
+
+// Duplicate + malformed ids
+const idsBundle = bundleWith(
+  [
+    { id: "app", title: "A", platforms: ["web"] },
+    { id: "app", title: "B", platforms: ["web"] },
+    { id: "Not Kebab", title: "C", platforms: ["web"] },
+  ],
+  [node({ metadata: { product: "app" } })],
+);
+const ids = findingsFor(idsBundle);
+assert(ids.rules.includes("product-duplicate-id"), "a duplicate product id is reported");
+assert(ids.rules.includes("product-invalid-id"), "a non-kebab-case product id is reported");
+assert(ids.result.valid === true, "product id problems never invalidate the bundle");
+
+// Unknown reference
+const unknown = findingsFor(
+  bundleWith([{ id: "app", title: "A", platforms: ["web"] }], [node({ metadata: { product: "ghost" } })]),
+);
+assert(unknown.rules.includes("product-unknown-reference"), "membership naming no declared product is reported");
+assert(unknown.result.valid === true, "an unknown product reference never invalidates the bundle");
+
+// Containment
+const containment = findingsFor(
+  bundleWith(
+    [{ id: "admin", title: "Admin", platforms: ["web"] }],
+    [node({ platforms: ["web", "ios"], metadata: { product: "admin" } })],
+  ),
+);
+assert(
+  containment.rules.includes("product-platform-not-in-menu"),
+  "a node platform outside its product's menu is reported",
+);
+assert(containment.result.valid === true, "containment is a warning, never an error");
+
+// Membership on the wrong species
+const wrongSpecies = findingsFor(
+  bundleWith(
+    [{ id: "app", title: "A", platforms: ["web"] }],
+    [node({ id: "DM-1", species: "data-model", metadata: { product: "app" } })],
+  ),
+);
+assert(
+  wrongSpecies.rules.includes("product-membership-wrong-species"),
+  "membership on a data model is reported",
+);
+
+// Unassigned flow/view
+const unassigned = findingsFor(
+  bundleWith([{ id: "app", title: "A", platforms: ["web"] }], [node({ metadata: {} })]),
+);
+assert(unassigned.rules.includes("unassigned-membership"), "an unassigned view is reported when products exist");
+
+// Unassigned anchorless acceptance
+const anchorless = findingsFor(
+  bundleWith(
+    [{ id: "app", title: "A", platforms: ["web"] }],
+    [node({ id: "AC-1", species: "acceptance", metadata: {} })],
+  ),
+);
+assert(
+  anchorless.rules.includes("acceptance-product-unassigned"),
+  "an anchorless acceptance with no membership is reported",
+);
+
+// Covers spanning two products
+const spanning = findingsFor(
+  bundleWith(
+    [
+      { id: "app", title: "A", platforms: ["web"] },
+      { id: "admin", title: "B", platforms: ["web"] },
+    ],
+    [
+      node({ id: "V-a", metadata: { product: "app" } }),
+      node({ id: "V-b", metadata: { product: "admin" } }),
+      node({ id: "AC-1", species: "acceptance", metadata: {} }),
+    ],
+    [
+      { id: "e1", project_id: "p", edge_type: "covers", source_id: "AC-1", target_id: "V-a" },
+      { id: "e2", project_id: "p", edge_type: "covers", source_id: "AC-1", target_id: "V-b" },
+    ],
+  ),
+);
+assert(
+  spanning.rules.includes("acceptance-covers-span-products"),
+  "an acceptance covering two products is reported",
+);
+
+// The degenerate case is silent
+const PRODUCT_RULES = [
+  "product-duplicate-id",
+  "product-invalid-id",
+  "product-unknown-reference",
+  "product-platform-not-in-menu",
+  "product-membership-wrong-species",
+  "unassigned-membership",
+  "acceptance-product-unassigned",
+  "acceptance-covers-span-products",
+];
+
+const silent = validateBundle({
+  version: "2",
+  project: {
+    id: "p",
+    title: "P",
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:00.000Z",
+  },
+  nodes: [node({ metadata: {} })],
+  edges: [],
+});
+assert(
+  silent.findings.every((f) => !PRODUCT_RULES.includes(f.rule)),
+  "a project declaring no products raises no product findings",
+);
+
+// Every product finding across every fixture above is a warning.
+const everyBundle = [idsBundle, unknown, containment, wrongSpecies, unassigned, anchorless, spanning];
+assert(
+  everyBundle
+    .flatMap((entry) => (entry.result ? entry.result.findings : validateBundle(entry).findings))
+    .filter((f) => PRODUCT_RULES.includes(f.rule))
+    .every((f) => f.severity === "warning"),
+  "every product finding is warning severity",
 );
 
 process.exit(failures === 0 ? 0 : 1);

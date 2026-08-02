@@ -12,6 +12,8 @@ import { SPECIES_PREFIXES } from "./id-gen";
 import type { PlaylistEntry } from "./playlist";
 import { crossCheckJournal } from "./journal";
 import { isBuiltInMapId } from "./maps";
+import { PRODUCT_MEMBERSHIP_SPECIES, resolveProducts } from "./products";
+import type { ProjectMetadata } from "./bundle";
 
 /**
  * Semantic validation for Arkaik ProjectBundles.
@@ -445,6 +447,145 @@ export function validateBundle(input: unknown): ValidationResult {
         });
       }
     });
+  }
+
+  // --- Products (docs/spec/bundle-format.md § Products) ---
+  // Warning severity only, matching the stored-maps block above. Containment
+  // here is cross-object and time-dependent — narrowing a product's platform
+  // menu would retroactively invalidate every node in it — so an error would
+  // fail CI on what is a product decision, not a corruption. Every projection
+  // degrades safely anyway: `effectiveNodePlatforms` intersects.
+  const storedProducts = projectMetadata?.products;
+  const declaredProductIds = new Set<string>();
+
+  if (Array.isArray(storedProducts)) {
+    const seenProductIds = new Set<string>();
+    storedProducts.forEach((definition, index) => {
+      if (typeof definition !== "object" || definition === null || Array.isArray(definition)) return;
+      const product = definition as Record<string, unknown>;
+      const path = `project.metadata.products[${index}]`;
+      const productId = typeof product.id === "string" ? product.id : undefined;
+      if (productId === undefined) return;
+
+      if (seenProductIds.has(productId)) {
+        warn(`${path}.id`, "product-duplicate-id", `Duplicate product id "${productId}" — the first wins`);
+      } else {
+        seenProductIds.add(productId);
+        declaredProductIds.add(productId);
+      }
+
+      if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(productId)) {
+        warn(`${path}.id`, "product-invalid-id", `Product id "${productId}" is not kebab-case`);
+      }
+    });
+  }
+
+  const hasProducts = declaredProductIds.size > 0;
+  const products = hasProducts ? resolveProducts({ metadata: projectMetadata as ProjectMetadata | undefined }) : [];
+  const menuByProduct = new Map<string, Set<string>>(
+    products.map((product) => [
+      product.id,
+      new Set<string>(Array.isArray(product.platforms) ? (product.platforms as string[]) : []),
+    ]),
+  );
+
+  if (hasProducts) {
+    const productByNodeId = new Map<string, string>();
+    const indexByNodeId = new Map<string, number>();
+
+    nodes.forEach((node, index) => {
+      const nodeId = typeof node.id === "string" ? node.id : `#${index}`;
+      const species = node.species as string | undefined;
+      const base = `nodes[${index}]`;
+      indexByNodeId.set(nodeId, index);
+      const metadata = (node.metadata ?? {}) as Record<string, unknown>;
+      const membership = typeof metadata.product === "string" ? metadata.product : undefined;
+      const storesMembership =
+        species !== undefined && (PRODUCT_MEMBERSHIP_SPECIES as readonly string[]).includes(species);
+
+      if (membership !== undefined && !storesMembership) {
+        warn(
+          `${base}.metadata.product`,
+          "product-membership-wrong-species",
+          `Node ${nodeId}: ${species} membership is derived from consumers and must not be stored`,
+        );
+        return;
+      }
+
+      if (!storesMembership) return;
+
+      if (membership === undefined) {
+        if (species === "acceptance") {
+          const covers = edges.some((edge) => edge.edge_type === "covers" && edge.source_id === nodeId);
+          if (!covers) {
+            warn(
+              `${base}.metadata.product`,
+              "acceptance-product-unassigned",
+              `Acceptance ${nodeId} covers nothing and names no product — it will show only under "All products"`,
+            );
+          }
+        } else {
+          warn(
+            `${base}.metadata.product`,
+            "unassigned-membership",
+            `Node ${nodeId}: no product membership — it will show only under "All products"`,
+          );
+        }
+        return;
+      }
+
+      productByNodeId.set(nodeId, membership);
+
+      if (!declaredProductIds.has(membership)) {
+        warn(
+          `${base}.metadata.product`,
+          "product-unknown-reference",
+          `Node ${nodeId}: product "${membership}" is not declared on the project`,
+        );
+        return;
+      }
+
+      const menu = menuByProduct.get(membership);
+      const nodePlatforms = Array.isArray(node.platforms) ? (node.platforms as unknown[]) : [];
+      if (menu) {
+        for (const platform of nodePlatforms) {
+          if (typeof platform === "string" && !menu.has(platform)) {
+            warn(
+              `${base}.platforms`,
+              "product-platform-not-in-menu",
+              `Node ${nodeId}: platform "${platform}" is not in product "${membership}"'s menu`,
+            );
+          }
+        }
+      }
+    });
+
+    // An acceptance whose covers anchors span two products (RFC decision 3).
+    const anchorsByAcceptance = new Map<string, string[]>();
+    for (const edge of edges) {
+      if (edge.edge_type !== "covers") continue;
+      const source = typeof edge.source_id === "string" ? edge.source_id : undefined;
+      const target = typeof edge.target_id === "string" ? edge.target_id : undefined;
+      if (source === undefined || target === undefined) continue;
+      const list = anchorsByAcceptance.get(source) ?? [];
+      list.push(target);
+      anchorsByAcceptance.set(source, list);
+    }
+
+    for (const [acceptanceId, anchors] of anchorsByAcceptance) {
+      // A dangling source is already a `dangling-edge` error; without a node
+      // index there is no honest path to hang this warning on, so skip it.
+      const acceptanceIndex = indexByNodeId.get(acceptanceId);
+      if (acceptanceIndex === undefined) continue;
+      const spanned = new Set(anchors.map((id) => productByNodeId.get(id)).filter((id): id is string => Boolean(id)));
+      if (spanned.size > 1) {
+        warn(
+          `nodes[${acceptanceIndex}].metadata.product`,
+          "acceptance-covers-span-products",
+          `Acceptance ${acceptanceId} covers anchors in ${[...spanned].sort().join(" and ")} — statuses may conflate products`,
+        );
+      }
+    }
   }
 
   // --- Edge checks ---
