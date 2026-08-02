@@ -5,13 +5,20 @@ import { PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 import { resolveProducts, type ProductDefinition } from "@arkaik/schema";
 
+import { ProductDeleteDialog } from "@/components/settings/ProductDeleteDialog";
 import { ProductFormDialog } from "@/components/settings/ProductFormDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PLATFORMS, type PlatformId } from "@/lib/config/platforms";
 import type { ProjectBundle, ProjectMetadata } from "@/lib/data/types";
 import { useNodes } from "@/lib/hooks/useNodes";
-import { membersOfProduct, upsertProduct, type ProductDraft } from "@/lib/utils/product-editing";
+import { applyProductPlan } from "@/lib/utils/apply-product-plan";
+import {
+  membersOfProduct,
+  planProductDeletion,
+  upsertProduct,
+  type ProductDraft,
+} from "@/lib/utils/product-editing";
 import { platformCountLabel } from "@/lib/utils/product-scope";
 
 /**
@@ -51,11 +58,13 @@ interface ProductManagerPanelProps {
 }
 
 export function ProductManagerPanel({ projectId, project, updateProject }: ProductManagerPanelProps) {
-  const { nodes } = useNodes(projectId);
+  const { nodes, applyMutations } = useNodes(projectId);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ProductDefinition | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState<ProductDefinition | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   /**
    * The resolved definitions, which is also what an edit is written back from.
@@ -85,6 +94,9 @@ export function ProductManagerPanel({ projectId, project, updateProject }: Produ
     return PLATFORMS.map((platform) => platform.id).filter((platform) => used.has(platform));
   }, [editing, nodes]);
 
+  /** `planToOps`' input — the freshest node list, never a snapshot taken at open. */
+  const nodesById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+
   async function handleSave(draft: ProductDraft) {
     if (saving) return;
     setSaving(true);
@@ -99,6 +111,42 @@ export function ProductManagerPanel({ projectId, project, updateProject }: Produ
       toast.error(err instanceof Error ? err.message : "Could not save this product.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  /**
+   * Deletion, as ONE plan (§ D3). The plan is computed here at confirm time
+   * from the current `products` and `nodes` rather than when the dialog opened,
+   * so a refetch in between is reflected instead of overwritten — and
+   * `applyProductPlan` owns the ordering of the two writes it spans, which is
+   * why neither store is touched directly in this function.
+   */
+  async function handleDelete(reassignTo: string | null) {
+    if (!deleting || deleteBusy) return;
+    const target = deleting;
+    setDeleteBusy(true);
+    const plan = planProductDeletion(products, nodes, target.id, reassignTo);
+    try {
+      await applyProductPlan(plan, {
+        nodesById,
+        projectMetadata: project?.project.metadata,
+        updateProject,
+        applyMutations,
+      });
+      const moved = plan.reassignments.length;
+      toast.success(
+        moved === 0
+          ? `"${displayTitle(target)}" was deleted.`
+          : `"${displayTitle(target)}" was deleted; ${moved} node${moved === 1 ? "" : "s"} ${
+              reassignTo === null ? "are now unassigned" : "moved"
+            }.`,
+      );
+      setDeleting(null);
+    } catch (err) {
+      console.error("[ProductManagerPanel] Failed to delete product:", err);
+      toast.error(err instanceof Error ? err.message : "Could not delete this product.");
+    } finally {
+      setDeleteBusy(false);
     }
   }
 
@@ -147,6 +195,13 @@ export function ProductManagerPanel({ projectId, project, updateProject }: Produ
                     >
                       Edit
                     </Button>
+                    <Button
+                      variant="ghost"
+                      className="cursor-pointer text-destructive"
+                      onClick={() => setDeleting(product)}
+                    >
+                      Delete
+                    </Button>
                   </div>
                 </li>
               );
@@ -184,6 +239,20 @@ export function ProductManagerPanel({ projectId, project, updateProject }: Produ
         memberPlatforms={memberPlatforms}
         onSave={(draft) => void handleSave(draft)}
         busy={saving}
+      />
+
+      <ProductDeleteDialog
+        open={deleting !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleteBusy) setDeleting(null);
+        }}
+        product={deleting}
+        // Read from the live counts, so the number moves with a refetch rather
+        // than freezing at whatever it was when the dialog opened.
+        memberCount={deleting ? memberCounts[deleting.id] ?? 0 : 0}
+        otherProducts={products.filter((product) => product.id !== deleting?.id)}
+        onConfirm={(reassignTo) => void handleDelete(reassignTo)}
+        busy={deleteBusy}
       />
     </>
   );
