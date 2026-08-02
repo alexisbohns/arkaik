@@ -151,21 +151,29 @@ export function NodeCard({
             would be *almost* the same box. "Almost" is how a gallery of cards
             drifts a pixel for every project that never asked for this.
 
-            `stopPropagation` on the click is what keeps ticking a box from
-            opening the node: the whole card is a click target.
+            The GUTTER swallows the click, not just the input. The whole card
+            opens the node, so a tap landing on the pixels above or beside a
+            4×4 box — which is most of a comfortable tap target — would navigate
+            away mid-selection. The span covers exactly the checkbox's slot and
+            no more: clicking the title still opens the node, which is what a
+            title is for.
           */}
           {selected === undefined ? (
             <CardTitle className="line-clamp-2 text-base leading-tight">{node.title}</CardTitle>
           ) : (
             <div className="flex items-start gap-2">
-              <input
-                type="checkbox"
-                checked={selected}
-                aria-label={`Select ${node.title}`}
-                className="mt-0.5 size-4 shrink-0 cursor-pointer accent-primary"
+              <span
+                className="-m-1 flex shrink-0 items-start p-1"
                 onClick={(event) => event.stopPropagation()}
-                onChange={() => onToggleSelected?.(node.id)}
-              />
+              >
+                <input
+                  type="checkbox"
+                  checked={selected}
+                  aria-label={`Select ${node.title}`}
+                  className="mt-0.5 size-4 cursor-pointer accent-primary"
+                  onChange={() => onToggleSelected?.(node.id)}
+                />
+              </span>
               <CardTitle className="line-clamp-2 min-w-0 flex-1 text-base leading-tight">
                 {node.title}
               </CardTitle>

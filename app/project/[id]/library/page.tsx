@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { PlusIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -241,16 +241,33 @@ export default function ProjectLibraryPage() {
   }
 
   /**
-   * Selection is scoped to what is on screen. Ticking "all" while a species
-   * filter or a search is active must not quietly select the nodes the filter
-   * is hiding — a bulk move is exactly where an invisible selection does damage.
+   * Select-all is a UNION, and un-select-all a SUBTRACTION — never a
+   * replacement.
+   *
+   * The requirement is that ticking "all" while a species filter or a search is
+   * active must not quietly select the nodes the filter is *hiding*; a bulk move
+   * is exactly where an invisible selection does damage. Adding only the visible
+   * ids satisfies that outright.
+   *
+   * *Rejected:* replacing the set with the visible ids, which satisfies the same
+   * requirement and then silently destroys an off-screen selection — tick a
+   * node, search for something else, tick "all", and the first node is gone with
+   * no feedback but a changed count. Selection deliberately survives a filter
+   * change (that is what makes the bar's count equal what the move will touch),
+   * so a control labelled "all visible nodes" must not be the one thing that
+   * reaches outside the visible list to delete.
    */
   function toggleAllVisible() {
-    setSelectedIds((previous) =>
-      visibleNodes.length > 0 && visibleNodes.every((node) => previous.has(node.id))
-        ? new Set()
-        : new Set(visibleNodes.map((node) => node.id)),
-    );
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      const allVisibleSelected =
+        visibleNodes.length > 0 && visibleNodes.every((node) => previous.has(node.id));
+      for (const node of visibleNodes) {
+        if (allVisibleSelected) next.delete(node.id);
+        else next.add(node.id);
+      }
+      return next;
+    });
   }
 
   // Ids survive a filter change (an id hidden by a search is still selected),
@@ -261,6 +278,30 @@ export default function ProjectLibraryPage() {
     () => dataNodes.filter((node) => selectedIds.has(node.id)),
     [dataNodes, selectedIds],
   );
+
+  // What the bar has to explain: "7 selected" over three ticked rows is an
+  // unexplained number, and the only way out of it would be all-or-nothing
+  // Clear. Counted here because the page is what owns the notion of "visible".
+  const hiddenSelectedCount = useMemo(() => {
+    const visibleIds = new Set(visibleNodes.map((node) => node.id));
+    return selectedNodes.filter((node) => !visibleIds.has(node.id)).length;
+  }, [selectedNodes, visibleNodes]);
+
+  /**
+   * A scope change is a change of subject, and the selection does not survive
+   * it.
+   *
+   * Under All products a user can tick an Admin flow and an end-user view; on
+   * switching to End-user app the Admin flow is neither shown nor mentioned by
+   * any filter the user set, yet it would still be in the set and still be moved.
+   * Worse, switching to a project state with no products at all flips
+   * `selectionEnabled` false, which removes every checkbox and the bar — leaving
+   * held ids with no surface able to show or clear them. Both cases are the same
+   * bug, so both are cleared by the same effect keyed on the scope id.
+   */
+  useEffect(() => {
+    setSelectedIds((previous) => (previous.size === 0 ? previous : new Set()));
+  }, [scope.productId, selectionEnabled]);
 
   /**
    * ONE write, never a loop of single updates: `planProductMove` decides which
@@ -398,18 +439,23 @@ export default function ProjectLibraryPage() {
                 onSearchChange={setSearch}
                 onDisplayModeChange={setDisplayMode}
               />
+              {/* Inside the sticky band, not in the scrolling column: the bar
+                  acts on rows the user ticked a screenful down, and a control
+                  that scrolls away from its own selection is unreachable exactly
+                  when it is needed. */}
+              {selectionEnabled && (
+                <LibrarySelectionBar
+                  selected={selectedNodes}
+                  hiddenCount={hiddenSelectedCount}
+                  products={productList}
+                  onClear={() => setSelectedIds(new Set())}
+                  onMove={(productId) => void handleMoveToProduct(productId)}
+                  busy={moving}
+                />
+              )}
             </StickyToolbar>
 
             <div className="flex flex-col gap-4 px-4 pb-4 md:px-6 md:pb-6">
-            {selectionEnabled && (
-              <LibrarySelectionBar
-                selected={selectedNodes}
-                products={productList}
-                onClear={() => setSelectedIds(new Set())}
-                onMove={(productId) => void handleMoveToProduct(productId)}
-                busy={moving}
-              />
-            )}
             {visibleNodes.length === 0 ? (
               <div className="rounded-xl border border-dashed p-10 text-center">
                 {/* An empty list under a named scope is not an empty project.

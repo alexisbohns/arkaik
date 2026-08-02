@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { ArrowUpDownIcon } from "lucide-react";
 import { PRODUCT_MEMBERSHIP_SPECIES } from "@arkaik/schema";
 import type { Node } from "@/lib/data/types";
@@ -50,9 +51,10 @@ interface NodeTableProps {
   selectedIds?: ReadonlySet<string>;
   onToggleSelected?: (nodeId: string) => void;
   /**
-   * Ticks or clears every row **this table was given** — which is the filtered,
-   * searched, currently-visible list, never the whole library. See the page's
-   * `toggleAllVisible`.
+   * Adds every row **this table was given** to the selection, or removes them
+   * all when they are already in it — the filtered, searched, currently-visible
+   * list, never the whole library, and never at the expense of a selection made
+   * under another filter. See the page's `toggleAllVisible`.
    */
   onToggleAll?: () => void;
   onSortChange: (key: NodeSortKey) => void;
@@ -100,6 +102,25 @@ export function NodeTable({
     nodes.length > 0 &&
     nodes.every((node) => selectedIds.has(node.id));
 
+  /**
+   * SOME-BUT-NOT-ALL is a third state, and a native checkbox has no attribute
+   * for it — `indeterminate` is an IDLE property, settable only from JavaScript,
+   * which is why this needs a ref rather than a prop. Without it a partial
+   * selection renders an empty box indistinguishable from "nothing selected",
+   * and the control would misreport what a click is about to do: the box is
+   * unchecked, so clicking it *adds* the rest, while it looks like clicking will
+   * do nothing at all.
+   */
+  const someVisibleSelected =
+    selectedIds !== undefined && nodes.some((node) => selectedIds.has(node.id));
+  const selectAllRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someVisibleSelected && !allVisibleSelected;
+    }
+  }, [allVisibleSelected, someVisibleSelected]);
+
   return (
     <Table className="text-sm">
       <TableHeader>
@@ -107,6 +128,7 @@ export function NodeTable({
           {selectedIds !== undefined && (
             <TableHead className="w-8">
               <input
+                ref={selectAllRef}
                 type="checkbox"
                 aria-label="Select all visible nodes"
                 className="size-4 cursor-pointer accent-primary"
@@ -147,7 +169,11 @@ export function NodeTable({
                 <TableCell className="w-8" onClick={(event) => event.stopPropagation()}>
                   <input
                     type="checkbox"
-                    aria-label={`Select ${node.title}`}
+                    // Titles are not unique in this app — two products' "Home"
+                    // views are ordinary — and the adjacent column already
+                    // renders the id, so the accessible name says both rather
+                    // than reading out three identical "Select Home" boxes.
+                    aria-label={`Select ${node.title} (${node.id})`}
                     className="size-4 cursor-pointer accent-primary"
                     checked={selectedIds.has(node.id)}
                     onChange={() => onToggleSelected?.(node.id)}
