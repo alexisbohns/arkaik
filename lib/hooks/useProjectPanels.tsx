@@ -45,18 +45,20 @@ export type OpenNodeInput = Omit<NodePanelDescriptor, "kind">;
  */
 export interface PanelSelfState {
   /**
-   * Consulted before this panel is closed. Return false to veto — the panel is
-   * expected to raise its own confirm and then call `resume`, which re-runs the
-   * close the user originally asked for, guard bypassed.
+   * Asked before this panel is closed — not a pure predicate. Return true to
+   * let the close through, or false to veto and *defer*: the panel raises its
+   * own confirm and calls `resume` once the user has answered, which finishes
+   * the close they originally asked for. A panel that vetoes without ever
+   * calling `resume` makes the close silently do nothing, forever.
    */
-  canClose?: (resume: () => void) => boolean;
+  requestClose?: (resume: () => void) => boolean;
   /** Visual state of the cell. "editing" draws a dashed destructive border. */
   accent?: "editing" | null;
 }
 
 /** What the registry holds: the normalised form of what a panel handed in. */
 export interface RegisteredPanelState {
-  canClose: (resume: () => void) => boolean;
+  requestClose: (resume: () => void) => boolean;
   accent: "editing" | null;
 }
 
@@ -98,8 +100,14 @@ interface ProjectPanelsValue {
    * keeps a panel's registered state, while a *swap* (a different subject taking
    * the slot) drops it — an unsaved-draft veto must not outlive the draft and
    * start blocking closes for the entity that replaced it.
+   *
+   * Typed as possibly-`undefined` per key because it genuinely is for every
+   * panel that has not registered — which is all of them until a panel opts in.
+   * `tsconfig` has `strict` but not `noUncheckedIndexedAccess`, so without this
+   * the compiler would call the lookup always-present and invite someone to
+   * delete the `?.` guards that are the only thing keeping closes working.
    */
-  panelStates: Record<string, RegisteredPanelState>;
+  panelStates: Record<string, RegisteredPanelState | undefined>;
   /** Registers one panel's self-state; `null` deregisters it on unmount. */
   registerPanelState: (instanceId: string, state: PanelSelfState | null) => void;
 }
@@ -261,7 +269,7 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
       return {
         ...previous,
         [instanceId]: {
-          canClose: state.canClose ?? (() => true),
+          requestClose: state.requestClose ?? (() => true),
           accent: state.accent ?? null,
         },
       };
@@ -312,7 +320,7 @@ export function useProjectPanels(): ProjectPanelsValue {
 /**
  * Register what this panel wants the stack to know about it.
  *
- * `canClose` is read through a ref that an effect keeps current, rather than one
+ * `requestClose` is read through a ref that an effect keeps current, rather than one
  * written during render: a render pass can be discarded and replayed, so a
  * render-phase write can latch a value from a pass that was never committed —
  * and this very file discards a pass every time it reconciles an arriving
@@ -324,15 +332,15 @@ export function usePanelSelfState(instanceId: string, state: PanelSelfState): vo
   const { registerPanelState } = useProjectPanels();
   const accent = state.accent ?? null;
 
-  const canCloseRef = useRef(state.canClose);
+  const requestCloseRef = useRef(state.requestClose);
 
   useEffect(() => {
-    canCloseRef.current = state.canClose;
+    requestCloseRef.current = state.requestClose;
   });
 
   useEffect(() => {
     registerPanelState(instanceId, {
-      canClose: (resume) => canCloseRef.current?.(resume) ?? true,
+      requestClose: (resume) => requestCloseRef.current?.(resume) ?? true,
       accent,
     });
 

@@ -52,11 +52,21 @@ interface PanelStackProps<T> {
   /** Per-entry visual accent. "editing" draws a dashed destructive border. */
   accentOf?: (entry: PanelEntry<T>, index: number) => "editing" | null | undefined;
   /**
-   * Consulted for every panel a close would destroy, in the order given —
-   * top-down. Returning false vetoes; that panel raises its own confirm and
-   * calls `resume` to finish the close the user asked for.
+   * Asked for every panel a close would destroy, in the order given — top-down.
+   * Not a pure predicate: returning false vetoes and *defers*, and that panel
+   * is expected to raise its own confirm and call `resume` once the user has
+   * answered.
+   *
+   * Only the first veto is ever consulted. `resume` commits the whole close and
+   * skips every guard not yet asked, so with two vetoing panels in one doomed
+   * set the second is destroyed without being asked. That bypass is load-bearing
+   * — a panel clears its dirty flag with `setState` and resumes before React has
+   * committed it, so a re-guarded resume would read the stale flag and veto
+   * forever. Unreachable today: there is one raw panel and node panels never
+   * veto. If a second vetoing panel ever ships, the fix is for `commit` to
+   * resume the loop from the next index rather than bypass wholesale.
    */
-  canCloseAt?: (index: number, resume: () => void) => boolean;
+  requestCloseAt?: (index: number, resume: () => void) => boolean;
 }
 
 /**
@@ -82,7 +92,7 @@ export function PanelStack<T>({
   showBreadcrumbs = true,
   surfaceLabel,
   accentOf,
-  canCloseAt,
+  requestCloseAt,
 }: PanelStackProps<T>) {
   const isMobile = useIsMobile();
   const { surfaceVisible, firstVisiblePanel, columnCount } = visibleWindow(
@@ -105,20 +115,27 @@ export function PanelStack<T>({
       // takes focus, so by the time the user resumes, focus is in the dialog
       // and the answer would always be no.
       const hadFocus = source?.contains(document.activeElement) ?? false;
+
+      // Single-shot: a panel that resumes twice would commit twice, and the
+      // second pass publishes another history entry — leaving one Back unable
+      // to undo the close.
+      let committed = false;
       const commit = () => {
+        if (committed) return;
+        committed = true;
         restoreFocusRef.current = hadFocus;
         close();
       };
 
-      if (canCloseAt) {
+      if (requestCloseAt) {
         for (const index of doomed) {
-          if (!canCloseAt(index, commit)) return;
+          if (!requestCloseAt(index, commit)) return;
         }
       }
 
       commit();
     },
-    [canCloseAt],
+    [requestCloseAt],
   );
 
   useEffect(() => {

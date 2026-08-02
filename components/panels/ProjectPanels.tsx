@@ -7,7 +7,8 @@ import { NodeDetailPanel, NodeDetailPanelHeader } from "@/components/panels/Node
 import type { PlatformId } from "@/lib/config/platforms";
 import type { Edge, JournalEvent, Node } from "@/lib/data/types";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
-import { RAW_PANEL_KEY, type PanelDescriptor } from "@/lib/utils/project-panels";
+import type { PanelEntry } from "@/lib/utils/panel-stack";
+import type { PanelDescriptor } from "@/lib/utils/project-panels";
 
 interface ProjectPanelsProps {
   /** The surface — canvas, board, or list. The grid's first cell. */
@@ -36,8 +37,10 @@ const NO_EDGES: Edge[] = [];
 /**
  * Binds the panel stack to what a panel can be. A node entry resolves its id
  * against the surface's own data and renders `NodeDetailPanel`; the raw entry
- * renders the bundle editor, which needs no surface data at all — which is why
- * pages with no nodes of their own can still host it.
+ * will render the bundle editor, which needs no surface data at all — which is
+ * why pages with no nodes of their own can still host it. Until `RawBundlePanel`
+ * lands the raw branch renders a stub, so an empty raw column is a schedule
+ * rather than a bug.
  *
  * Resolving by id rather than holding a node means an edit anywhere reaches
  * every panel showing that node, and a node deleted under the stack takes its
@@ -71,17 +74,20 @@ export function ProjectPanels({
     pruneMissingNodes(new Set(nodesById.keys()));
   }, [nodesById, pruneMissingNodes]);
 
+  // Branching on `kind` rather than on the key keeps one way to spot a raw
+  // entry: the key/kind equivalence is an invariant the union does not enforce,
+  // so a second test of it is a second thing that can drift.
   const labelOf = useCallback(
-    (entry: { key: string }) =>
-      entry.key === RAW_PANEL_KEY ? "Raw bundle" : nodesById.get(entry.key)?.title ?? entry.key,
+    (entry: PanelEntry<PanelDescriptor>) =>
+      entry.payload.kind === "raw" ? "Raw bundle" : nodesById.get(entry.key)?.title ?? entry.key,
     [nodesById],
   );
 
-  const canCloseAt = useCallback(
+  const requestCloseAt = useCallback(
     (index: number, resume: () => void) => {
       const entry = entries[index];
       if (!entry) return true;
-      return panelStates[entry.instanceId]?.canClose(resume) ?? true;
+      return panelStates[entry.instanceId]?.requestClose(resume) ?? true;
     },
     [entries, panelStates],
   );
@@ -95,7 +101,7 @@ export function ProjectPanels({
       onLayoutChange={onLayoutChange}
       labelOf={labelOf}
       accentOf={(entry) => panelStates[entry.instanceId]?.accent}
-      canCloseAt={canCloseAt}
+      requestCloseAt={requestCloseAt}
       renderHeader={(entry) => {
         if (entry.payload.kind === "raw")
           return <span className="text-sm font-medium">Raw bundle</span>;
