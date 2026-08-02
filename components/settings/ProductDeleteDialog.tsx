@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { productDisplayTitle } from "@/lib/utils/product-scope";
 
 /**
  * Delete a product, and decide what happens to the nodes that named it (§ D3).
@@ -87,7 +88,10 @@ export function ProductDeleteDialog({
     if (open) setReassignTo(UNASSIGNED);
   }, [open, product]);
 
-  const title = displayTitle(product);
+  // The title-or-id fallback is `productDisplayTitle`'s, so a product with no
+  // stored title is named identically in the dialog that deletes it and in the
+  // row it was deleted from.
+  const title = productDisplayTitle(product);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -116,7 +120,7 @@ export function ProductDeleteDialog({
                 <SelectItem value={UNASSIGNED}>Leave them unassigned</SelectItem>
                 {otherProducts.map((other) => (
                   <SelectItem key={other.id} value={other.id}>
-                    {displayTitle(other)}
+                    {productDisplayTitle(other)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -152,16 +156,4 @@ export function ProductDeleteDialog({
       </DialogContent>
     </Dialog>
   );
-}
-
-/**
- * The same title-or-id fallback the manager list and `ProductScopeSelector`
- * use, so a product with no stored `title` is named identically in the dialog
- * that deletes it and the row it was deleted from.
- */
-function displayTitle(product: ProductDefinition | null): string {
-  if (!product) return "";
-  return typeof product.title === "string" && product.title.trim() !== ""
-    ? product.title
-    : product.id;
 }

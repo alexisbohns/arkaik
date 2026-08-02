@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { PLATFORMS, type PlatformId } from "@/lib/config/platforms";
+import { PLATFORMS, platformLabel, type PlatformId } from "@/lib/config/platforms";
 import { deriveProductId, type ProductDraft } from "@/lib/utils/product-editing";
 
 /**
@@ -94,7 +94,13 @@ export function ProductFormDialog({
     setPlatforms(
       Array.isArray(product?.platforms) ? (product.platforms as PlatformId[]).filter(isKnownPlatform) : [],
     );
-  }, [open, product]);
+    // Depends on the product's **id**, not on the product object: a definition
+    // is re-derived from `project` on every project write, so an identity
+    // dependency would re-seed — clearing whatever the user had typed — on a
+    // concurrent write to unrelated project metadata. Harmless today only
+    // because the one writer batches its write with this dialog's close.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, product?.id]);
 
   const editing = product !== null;
   const id = editing ? product.id : deriveProductId(title, existingIds);
@@ -229,9 +235,4 @@ export function ProductFormDialog({
 /** A stored platform this build recognises — anything else is not a toggle. */
 function isKnownPlatform(platform: unknown): platform is PlatformId {
   return PLATFORMS.some((entry) => entry.id === platform);
-}
-
-/** The human label for a platform id, falling back to the id itself. */
-function platformLabel(platform: PlatformId): string {
-  return PLATFORMS.find((entry) => entry.id === platform)?.label ?? platform;
 }

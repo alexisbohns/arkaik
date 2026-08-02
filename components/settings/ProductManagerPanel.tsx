@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 import { resolveProducts, type ProductDefinition } from "@arkaik/schema";
@@ -9,7 +9,7 @@ import { ProductDeleteDialog } from "@/components/settings/ProductDeleteDialog";
 import { ProductFormDialog } from "@/components/settings/ProductFormDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { PLATFORMS, type PlatformId } from "@/lib/config/platforms";
+import { PLATFORMS, platformLabel, type PlatformId } from "@/lib/config/platforms";
 import type { ProjectBundle, ProjectMetadata } from "@/lib/data/types";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { applyProductPlan } from "@/lib/utils/apply-product-plan";
@@ -19,7 +19,7 @@ import {
   upsertProduct,
   type ProductDraft,
 } from "@/lib/utils/product-editing";
-import { platformCountLabel } from "@/lib/utils/product-scope";
+import { platformCountLabel, productDisplayTitle } from "@/lib/utils/product-scope";
 
 /**
  * The Products section of project settings — where a human can finally do what
@@ -58,7 +58,7 @@ interface ProductManagerPanelProps {
 }
 
 export function ProductManagerPanel({ projectId, project, updateProject }: ProductManagerPanelProps) {
-  const { nodes, applyMutations } = useNodes(projectId);
+  const { nodes, loading: nodesLoading, applyMutations } = useNodes(projectId);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ProductDefinition | null>(null);
@@ -67,11 +67,23 @@ export function ProductManagerPanel({ projectId, project, updateProject }: Produ
   const [deleteBusy, setDeleteBusy] = useState(false);
 
   /**
-   * The resolved definitions, which is also what an edit is written back from.
-   * `resolveProducts` drops entries with a blank or duplicate id, so saving here
-   * normalizes those out of the stored array — deliberate, because an entry it
-   * drops is one the whole app already cannot see, and leaving it in the bundle
-   * only preserves something no surface can address or delete.
+   * How many members a *failed* deletion already moved, per product id.
+   *
+   * `applyProductPlan` writes memberships before definitions, so the likely
+   * failure — the project write — leaves the nodes moved and the product still
+   * there. A retry then recomputes the plan, finds no members left, and moves
+   * zero, so without this the success toast would say the product was deleted
+   * and never mention the nodes that changed hands on the first attempt. A ref
+   * rather than state because nothing renders from it; it only makes the final
+   * sentence true.
+   */
+  const alreadyMoved = useRef<Map<string, number>>(new Map());
+
+  /**
+   * The definitions as **resolved**, for everything that reads: rows, counts,
+   * ids, reassignment targets. What an edit is written *back* from is the raw
+   * stored array (see {@link handleSave}) — resolving drops entries, and a save
+   * must not delete one as a side effect of an unrelated rename.
    */
   const products = useMemo(() => resolveProducts(project?.project), [project]);
 
@@ -89,7 +101,12 @@ export function ProductManagerPanel({ projectId, project, updateProject }: Produ
     if (!editing) return [];
     const used = new Set<PlatformId>();
     for (const node of membersOfProduct(nodes, editing.id)) {
-      for (const platform of node.platforms ?? []) used.add(platform);
+      // `Array.isArray` rather than `?? []`: a node's `platforms` is required by
+      // the schema, but this panel reads whatever the store holds, and a bundle
+      // that carries a string or an object there must render the same leniency
+      // every product read gets — not throw and take the settings page with it.
+      if (!Array.isArray(node.platforms)) continue;
+      for (const platform of node.platforms) used.add(platform);
     }
     return PLATFORMS.map((platform) => platform.id).filter((platform) => used.has(platform));
   }, [editing, nodes]);
@@ -97,15 +114,40 @@ export function ProductManagerPanel({ projectId, project, updateProject }: Produ
   /** `planToOps`' input — the freshest node list, never a snapshot taken at open. */
   const nodesById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
 
+  /**
+   * Create or rename, written back onto the **stored** array rather than the
+   * resolved one.
+   *
+   * Resolving drops entries — blank ids, and every copy after the first of a
+   * duplicated id — so writing the resolved list back would delete them. The
+   * blank-id half of that is harmless (an entry the app cannot address is not
+   * data anyone can lose), but the duplicate half is not: renaming product A
+   * would silently delete the shadowed second copy of B, clearing the
+   * `product-duplicate-id` validator warning by *rename* rather than by fix. A
+   * warning that self-clears is worse than one that stays, because the second
+   * definition is gone and nothing ever said so.
+   *
+   * `upsertProduct` handles the raw array unchanged: it replaces the **first**
+   * match by index, which is exactly `resolveProducts`' first-wins reading, and
+   * its own doc comment already covers the duplicated case. `existingIds` still
+   * comes from the resolved list, which is safe in both directions — a
+   * duplicate shares its id with the entry that shadowed it, and a blank id can
+   * never collide with a derived one.
+   */
   async function handleSave(draft: ProductDraft) {
     if (saving) return;
     setSaving(true);
+    const stored = project?.project.metadata?.products;
     try {
       await updateProject({
-        metadata: { ...(project?.project.metadata ?? {}), products: upsertProduct(products, draft) },
+        metadata: {
+          ...(project?.project.metadata ?? {}),
+          products: upsertProduct(Array.isArray(stored) ? stored : [], draft),
+        },
       });
       toast.success(editing ? `"${draft.title}" was updated.` : `"${draft.title}" was created.`);
       setFormOpen(false);
+      setEditing(null);
     } catch (err) {
       console.error("[ProductManagerPanel] Failed to save product:", err);
       toast.error(err instanceof Error ? err.message : "Could not save this product.");
@@ -120,31 +162,78 @@ export function ProductManagerPanel({ projectId, project, updateProject }: Produ
    * so a refetch in between is reflected instead of overwritten — and
    * `applyProductPlan` owns the ordering of the two writes it spans, which is
    * why neither store is touched directly in this function.
+   *
+   * **IT REFUSES TO RUN BEFORE THE NODES ARE READ.** `useNodes` starts at `[]`
+   * and fills in from an effect, so on a cold settings page there is a window
+   * where every row says "0 nodes" and a deletion confirmed inside it plans
+   * against an empty list: no reassignments, `applyMutations` skipped entirely,
+   * and only the definition removed. That strands every member holding
+   * `metadata.product` for a product nobody declares — verbatim the state
+   * apply-product-plan.ts reorders its two writes to avoid, and the one it calls
+   * worse precisely because every read surface survives it silently. One fast
+   * click reaches it, and nothing undoes it. Confirm-time derivation is no help:
+   * the list is empty at confirm time too. So the guard is the load flag, and it
+   * is mirrored in the button and in the count each row shows, so the UI never
+   * asserts a number it has not read.
    */
   async function handleDelete(reassignTo: string | null) {
-    if (!deleting || deleteBusy) return;
+    if (!deleting || deleteBusy || nodesLoading) return;
     const target = deleting;
     setDeleteBusy(true);
     const plan = planProductDeletion(products, nodes, target.id, reassignTo);
+    /**
+     * Did the membership half commit? `applyProductPlan` reports success or
+     * failure for the pair, and the two failures need different sentences: the
+     * memberships failing changed nothing, while the definitions failing left
+     * the nodes moved. Wrapping the callback is the only way to learn which
+     * from the outside, and it is honest — the wrapper adds no behaviour, it
+     * only records that the call it forwards returned.
+     */
+    let membershipsWritten = false;
     try {
       await applyProductPlan(plan, {
         nodesById,
         projectMetadata: project?.project.metadata,
         updateProject,
-        applyMutations,
+        applyMutations: async (ops) => {
+          const result = await applyMutations(ops);
+          membershipsWritten = true;
+          return result;
+        },
       });
-      const moved = plan.reassignments.length;
+      // Members moved on an earlier failed attempt count towards what the user
+      // is told happened — see `alreadyMoved`.
+      const moved = plan.reassignments.length + (alreadyMoved.current.get(target.id) ?? 0);
+      alreadyMoved.current.delete(target.id);
       toast.success(
         moved === 0
-          ? `"${displayTitle(target)}" was deleted.`
-          : `"${displayTitle(target)}" was deleted; ${moved} node${moved === 1 ? "" : "s"} ${
+          ? `"${productDisplayTitle(target)}" was deleted.`
+          : `"${productDisplayTitle(target)}" was deleted; ${moved} node${moved === 1 ? "" : "s"} ${
               reassignTo === null ? "are now unassigned" : "moved"
             }.`,
       );
       setDeleting(null);
     } catch (err) {
       console.error("[ProductManagerPanel] Failed to delete product:", err);
-      toast.error(err instanceof Error ? err.message : "Could not delete this product.");
+      /**
+       * Memberships are written first, so the failure the user is most likely
+       * to hit — the project write — has already moved the nodes. Reporting
+       * that as "could not delete this product" is true about the product and
+       * false about everything else that just changed. Naming the half that
+       * landed is what makes the retry safe to offer: it recomputes the plan,
+       * finds no members left, and retries the project write alone.
+       */
+      const moved = membershipsWritten ? plan.reassignments.length : 0;
+      if (moved > 0) {
+        alreadyMoved.current.set(target.id, moved + (alreadyMoved.current.get(target.id) ?? 0));
+        toast.error(
+          `"${productDisplayTitle(target)}" was not deleted, but ${moved} node${
+            moved === 1 ? " has" : "s have"
+          } already moved out of it. Try again to finish.`,
+        );
+      } else {
+        toast.error(err instanceof Error ? err.message : "Could not delete this product.");
+      }
     } finally {
       setDeleteBusy(false);
     }
@@ -168,7 +257,7 @@ export function ProductManagerPanel({ projectId, project, updateProject }: Produ
                   className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="min-w-0">
-                    <p className="text-sm font-medium">{displayTitle(product)}</p>
+                    <p className="text-sm font-medium">{productDisplayTitle(product)}</p>
                     {typeof product.description === "string" && product.description.trim() !== "" ? (
                       <p className="text-sm text-muted-foreground">{product.description}</p>
                     ) : null}
@@ -178,9 +267,12 @@ export function ProductManagerPanel({ projectId, project, updateProject }: Produ
                           {platformLabel(platform)}
                         </Badge>
                       ))}
+                      {/* "counting…" rather than 0 while the nodes load: a row
+                          that asserts a number it has not read is the same lie
+                          the delete guard exists to stop, one line earlier. */}
                       <span className="text-xs text-muted-foreground">
-                        {platformCountLabel(product.platforms)} &middot; {count} node
-                        {count === 1 ? "" : "s"}
+                        {platformCountLabel(product.platforms)} &middot;{" "}
+                        {nodesLoading ? "counting…" : `${count} node${count === 1 ? "" : "s"}`}
                       </span>
                     </div>
                   </div>
@@ -188,6 +280,7 @@ export function ProductManagerPanel({ projectId, project, updateProject }: Produ
                     <Button
                       variant="outline"
                       className="cursor-pointer"
+                      disabled={saving || deleteBusy}
                       onClick={() => {
                         setEditing(product);
                         setFormOpen(true);
@@ -195,9 +288,13 @@ export function ProductManagerPanel({ projectId, project, updateProject }: Produ
                     >
                       Edit
                     </Button>
+                    {/* Held back until the node list has arrived: a deletion
+                        planned against the empty initial list moves nobody and
+                        strands every member (see `handleDelete`). */}
                     <Button
                       variant="ghost"
                       className="cursor-pointer text-destructive"
+                      disabled={saving || deleteBusy || nodesLoading}
                       onClick={() => setDeleting(product)}
                     >
                       Delete
@@ -233,6 +330,10 @@ export function ProductManagerPanel({ projectId, project, updateProject }: Produ
         onOpenChange={(open) => {
           if (!open && saving) return;
           setFormOpen(open);
+          // Clear the subject with the dialog. `editing` is the panel's "am I
+          // editing?" flag and `handleSave`'s toast reads it, so leaving it set
+          // after a cancel means the flag outlives the dialog it describes.
+          if (!open) setEditing(null);
         }}
         product={editing}
         existingIds={products.map((product) => product.id)}
@@ -256,21 +357,4 @@ export function ProductManagerPanel({ projectId, project, updateProject }: Produ
       />
     </>
   );
-}
-
-/**
- * What to call a product on screen. A stored definition may carry no `title` at
- * all — `resolveProducts` requires an id and nothing else — and falling back to
- * the id is what `ProductScopeSelector` and `productScopeOptions` already do, so
- * the same malformed product reads the same way everywhere.
- */
-function displayTitle(product: ProductDefinition): string {
-  return typeof product.title === "string" && product.title.trim() !== ""
-    ? product.title
-    : product.id;
-}
-
-/** The human label for a stored platform id, echoing an unknown one verbatim. */
-function platformLabel(platform: unknown): string {
-  return PLATFORMS.find((entry) => entry.id === platform)?.label ?? String(platform);
 }
