@@ -38,27 +38,22 @@ interface PageHeaderProps {
 }
 
 /**
- * The one project header. Two lines: the page's name, and below it either the
- * page's own meta or the panel trail.
+ * The one project header, for pages under `ProjectPanelsProvider` — it reads the
+ * panel stack, so despite the generic name it will throw anywhere else. That
+ * throw is the point: a header that quietly rendered no trail would hide the
+ * wiring mistake.
  *
- * The second line is why it exists. Breadcrumbs used to mount in a row of their
- * own the moment a panel opened, which pushed the surface down every single
- * time; here the row is always present and only its contents change, so
- * opening a panel costs no layout. `min-h-4` is what makes "always present"
- * true for a page that passes no meta at all — without it that row collapses to
- * nothing and the title visibly re-centres the moment a panel opens. It is a
- * floor rather than a fixed height, so a meta richer than one line of text
- * still shows in full.
+ * Breadcrumbs used to mount in a row of their own the moment a panel opened,
+ * which pushed the surface down every single time. Here the second line is
+ * always present and only its contents change, so opening a panel costs no
+ * layout. `min-h-4` is what keeps that true for a page passing no meta at all,
+ * whose row would otherwise collapse and re-centre the title on every open.
  *
- * That equality is what the breadcrumb classes below defend. The stock list
- * wraps and sizes itself at `text-sm`, either of which would make the trail
- * taller than the `text-xs` line it stands in for; and a long trail turns the
- * list into a scroll container, which on a platform with classic scrollbars
- * reserves gutter height inside a header that has none to give. Hence
- * `flex-nowrap`, `text-xs`, and a scrollbar that takes no space.
- *
- * The project's own name is deliberately absent — the sidebar names it, and it
- * is the same on every page of a project.
+ * The breadcrumb classes defend the same equality. The stock list wraps and
+ * sizes itself at `text-sm`, either of which makes the trail taller than the
+ * `text-xs` line it stands in for; and a long trail turns the list into a
+ * scroll container, which on a platform with classic scrollbars reserves gutter
+ * height inside a header that has none to give.
  */
 export function PageHeader({ title, meta, action, nodes, children }: PageHeaderProps) {
   const crumbs = usePanelBreadcrumbs(title, nodes);
@@ -70,12 +65,12 @@ export function PageHeader({ title, meta, action, nodes, children }: PageHeaderP
       <Separator orientation="vertical" className="mx-1 h-4" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{title}</p>
-        <div className="min-h-4 truncate text-xs text-muted-foreground">
+        <div className="min-h-4 overflow-hidden text-xs text-muted-foreground">
           {crumbs.length > 0 ? (
             <Breadcrumb>
               <BreadcrumbList className="flex-nowrap gap-1 overflow-x-auto whitespace-nowrap text-xs [scrollbar-width:none] sm:gap-1 [&::-webkit-scrollbar]:hidden">
                 {crumbs.map((crumb, index) => (
-                  <Fragment key={`${crumb.label}-${index}`}>
+                  <Fragment key={crumb.id}>
                     {index > 0 && <BreadcrumbSeparator />}
                     <BreadcrumbItem>
                       {crumb.onClick ? (
@@ -95,12 +90,12 @@ export function PageHeader({ title, meta, action, nodes, children }: PageHeaderP
               </BreadcrumbList>
             </Breadcrumb>
           ) : (
-            meta
+            <span className="block truncate">{meta}</span>
           )}
         </div>
       </div>
       {(children || action) && (
-        <div className="ml-auto flex shrink-0 items-center gap-3">
+        <div className="flex shrink-0 items-center gap-3">
           {children}
           {action && (
             <Button

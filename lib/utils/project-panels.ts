@@ -58,6 +58,36 @@ export function topNodeKey(entries: ProjectPanelEntry[]): string | null {
   return null;
 }
 
+/** A crumb before it knows how to navigate: what to show, and where it goes. */
+export interface PanelCrumbSpec {
+  label: string;
+  /** Stable React key — the entry's `instanceId`, or `"root"` for the surface. */
+  id: string;
+  /** Depth to unwind to, or `null` for the last crumb: you are already there. */
+  depth: number | null;
+}
+
+/**
+ * The panel trail as labels and depths. Pure so the depth mapping — the part
+ * that silently rots when panels change shape — is testable without React.
+ */
+export function buildPanelCrumbs(
+  entries: ProjectPanelEntry[],
+  rootLabel: string,
+  titleOf: (nodeId: string) => string | undefined,
+): PanelCrumbSpec[] {
+  if (entries.length === 0) return [];
+
+  return [
+    { label: rootLabel, id: "root", depth: 0 },
+    ...entries.map((entry, index) => ({
+      label: entry.key === RAW_PANEL_KEY ? "Raw bundle" : titleOf(entry.key) ?? entry.key,
+      id: entry.instanceId,
+      depth: index === entries.length - 1 ? null : index + 1,
+    })),
+  ];
+}
+
 /**
  * Drop node panels whose node no longer exists — deleted out from under the
  * stack. Non-node panels are not subject to the node lifecycle and always

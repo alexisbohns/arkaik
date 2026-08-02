@@ -5,13 +5,18 @@
  * things the union makes newly breakable: a non-node panel must survive a node
  * prune, it must not be what the URL addresses, and pushing it must not close
  * what is already open.
+ *
+ * Also pins the crumb mapping, whose depths the header hands straight to
+ * `unwindTo` — an off-by-one there sends a click to the wrong panel, and looks
+ * like working navigation until you count the columns.
  */
 
 const fs = require("fs");
 const { loadPanelStack, loadProjectPanels, BUILD_DIR } = require("./load-panel-utils");
 
 const { openFrom, initStack } = loadPanelStack();
-const { RAW_PANEL_KEY, isNodeEntry, topNodeKey, pruneNodeEntries } = loadProjectPanels();
+const { RAW_PANEL_KEY, isNodeEntry, topNodeKey, pruneNodeEntries, buildPanelCrumbs } =
+  loadProjectPanels();
 
 let failures = 0;
 function assert(cond, message) {
@@ -78,6 +83,46 @@ assert(topNodeKey(rawThenC) === "C", "the node above Raw is the address");
 assert(
   keys(pruneNodeEntries(rawThenC, new Set(["A", "C"]))) === `A · ${RAW_PANEL_KEY} · C`,
   "a prune keeps Raw where it sits, mid-stack",
+);
+
+// --- crumbs: the depth mapping the header binds to unwindTo ---
+const crumbTitles = { A: "Alpha", B: "Beta", [RAW_PANEL_KEY]: "never wins" };
+const titleOf = (id) => crumbTitles[id];
+
+assert(
+  buildPanelCrumbs([], "Canvas", titleOf).length === 0,
+  "an empty stack has no crumbs — the header shows the page's own meta instead",
+);
+
+const crumbs = buildPanelCrumbs(rawThenC, "Canvas", titleOf);
+assert(
+  crumbs.length === rawThenC.length + 1,
+  `every panel gets a crumb, plus the surface (got ${crumbs.length})`,
+);
+assert(
+  crumbs[0].label === "Canvas" && crumbs[0].id === "root" && crumbs[0].depth === 0,
+  "the root crumb is the surface, unwinding to depth 0",
+);
+assert(
+  crumbs.slice(1, -1).every((crumb, index) => crumb.depth === index + 1),
+  `the panel at index i unwinds to depth i + 1 (got ${JSON.stringify(crumbs.map((c) => c.depth))})`,
+);
+assert(
+  crumbs[crumbs.length - 1].depth === null,
+  "the last crumb has nowhere to go — you are already there",
+);
+assert(
+  crumbs.slice(1).every((crumb, index) => crumb.id === rawThenC[index].instanceId),
+  "each panel crumb is keyed by its entry's instanceId, so a rename cannot remount it",
+);
+assert(
+  crumbs[1].label === "Alpha" && crumbs[2].label === "Beta",
+  "a node crumb shows the title titleOf hands back",
+);
+assert(crumbs[3].label === "Raw bundle", "Raw is labelled from the union, never from titleOf");
+assert(
+  crumbs[4].label === "C",
+  "a node titleOf does not know falls back to its key — a crumb is never blank",
 );
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });

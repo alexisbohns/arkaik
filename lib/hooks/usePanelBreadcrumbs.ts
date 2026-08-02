@@ -3,10 +3,12 @@
 import { useMemo } from "react";
 import type { Node } from "@/lib/data/types";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
-import { RAW_PANEL_KEY } from "@/lib/utils/project-panels";
+import { buildPanelCrumbs } from "@/lib/utils/project-panels";
 
 export interface PanelCrumb {
   label: string;
+  /** Stable React key, carried through from `PanelCrumbSpec`. */
+  id: string;
   /** Absent on the last crumb — you are already there. */
   onClick?: () => void;
 }
@@ -20,8 +22,10 @@ const NO_NODES: Node[] = [];
  * per-instance state, so a second copy here would show a node's old title in the
  * crumb after a rename went through the surface's copy.
  *
- * Returns an empty list when nothing is open, which is the header's signal to
- * show the page's own meta line instead.
+ * Labels and depths come from `buildPanelCrumbs`, which is pure and therefore
+ * tested; what is left here is the React half — the context, the memoisation,
+ * and binding each depth to `unwindTo`. Returns an empty list when nothing is
+ * open, which is the header's signal to show the page's own meta line instead.
  */
 export function usePanelBreadcrumbs(rootLabel: string, nodes: Node[] = NO_NODES): PanelCrumb[] {
   const { entries, unwindTo } = useProjectPanels();
@@ -31,19 +35,15 @@ export function usePanelBreadcrumbs(rootLabel: string, nodes: Node[] = NO_NODES)
     [nodes],
   );
 
-  return useMemo(() => {
-    if (entries.length === 0) return [];
-
-    const crumbs: PanelCrumb[] = [{ label: rootLabel, onClick: () => unwindTo(0) }];
-
-    entries.forEach((entry, index) => {
-      const label =
-        entry.key === RAW_PANEL_KEY ? "Raw bundle" : titlesById.get(entry.key) ?? entry.key;
-      const isLast = index === entries.length - 1;
-
-      crumbs.push({ label, onClick: isLast ? undefined : () => unwindTo(index + 1) });
-    });
-
-    return crumbs;
-  }, [entries, rootLabel, titlesById, unwindTo]);
+  return useMemo(
+    () =>
+      buildPanelCrumbs(entries, rootLabel, (nodeId) => titlesById.get(nodeId)).map(
+        ({ label, id, depth }) => ({
+          label,
+          id,
+          onClick: depth === null ? undefined : () => unwindTo(depth),
+        }),
+      ),
+    [entries, rootLabel, titlesById, unwindTo],
+  );
 }
