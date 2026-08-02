@@ -974,16 +974,17 @@ git commit -m "feat: create a node into the product you are standing in"
 **Files:**
 - Modify: `app/project/[id]/library/page.tsx`
 - Modify: `app/project/[id]/delivery/page.tsx`
-- Modify: `app/project/[id]/acceptances/page.tsx`
 - Modify: `components/maps/JourneyMap.tsx`
 - Modify: `components/maps/SystemMap.tsx`
 
 Every one of these already resolves a scope through `useEffectiveProduct` (or receives one as a prop) and already renders `<NewNodeForm …/>`. The change at each site is the same two props.
 
+**The Acceptances page is not one of them, and that is not an oversight.** It creates through a dialog of its own (`components/panels/NewAcceptanceForm.tsx`) rather than through `NewNodeForm`, because an acceptance has no species, platforms or status to collect. It carries the scope's product by the same rule — do not "fix" its absence from this list.
+
 - [ ] **Step 1: Find every call site**
 
 Run: `grep -rn "<NewNodeForm" --include='*.tsx' app components`
-Expected: five results, one per file listed above. If there are more, every one gets the same treatment.
+Expected: four results, one per file listed above. If there are more, every one gets the same treatment.
 
 - [ ] **Step 2: Add the products list at each site**
 
@@ -1009,8 +1010,8 @@ Hoist the array into a `useMemo` where the file already memoizes similar derivat
 
 - [ ] **Step 3: Verify no call site was missed**
 
-Run: `grep -rn "<NewNodeForm" -A6 --include='*.tsx' app components | grep -c "products="`
-Expected: `5`
+Run: `grep -rn "<NewNodeForm" -A8 --include='*.tsx' app components | grep -c "products="`
+Expected: `4`
 
 - [ ] **Step 4: Verify types compile**
 
