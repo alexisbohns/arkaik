@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useParams } from "next/navigation";
-import { buildProductUsageIndex, computeMapSubgraph, computeParityGaps, listMaps } from "@arkaik/schema";
+import { buildProductUsageIndex, computeParityGaps, listMaps } from "@arkaik/schema";
 import { BacklogCard } from "@/components/overview/BacklogCard";
 import { DeliverySnapshotCard } from "@/components/overview/DeliverySnapshotCard";
 import { HealthCard } from "@/components/overview/HealthCard";
@@ -28,8 +28,9 @@ import {
   computeReleasePulse,
 } from "@/lib/utils/coverage";
 import { computeBacklog } from "@/lib/utils/journal";
+import { computeMapCounts } from "@/lib/utils/journey-graph";
 import { getRollupPlatforms } from "@/lib/utils/platform-status";
-import { mapScopedNodes, type ProductGraph } from "@/lib/utils/product-scope";
+import { type ProductGraph } from "@/lib/utils/product-scope";
 import { computeScopedPyramidTiers } from "@/lib/utils/pyramid";
 
 /**
@@ -129,15 +130,17 @@ export default function OverviewPage() {
   const maps = useMemo<MapsCardEntry[]>(() => {
     if (!projectBundle) return [];
     return listMaps(projectBundle.project).map((definition) => {
-      // Counted through the same restriction the canvas draws through, so the
-      // card can never advertise a node count the map does not show
-      // (docs/spec/maps.md § MapDefinition).
-      const subgraph = computeMapSubgraph(
-        definition,
-        mapScopedNodes(definition, dataNodes, scope, productGraph),
+      // Counted through the renderer each kind actually draws with, so the card
+      // can never advertise a node count the map does not show
+      // (docs/spec/maps.md § Product Scope).
+      const counts = computeMapCounts(definition, {
+        dataNodes,
         dataEdges,
-      );
-      return { definition, nodeCount: subgraph.nodes.length, edgeCount: subgraph.edges.length };
+        project: projectBundle.project,
+        scope,
+        graph: productGraph,
+      });
+      return { definition, nodeCount: counts.nodes, edgeCount: counts.edges };
     });
   }, [dataEdges, dataNodes, productGraph, projectBundle, scope]);
 

@@ -32,7 +32,7 @@
         {
           "id": "admin",
           "title": "Admin",
-          "description": "The web-only back office: analytics, glyph moderation and upload, domain curation. No journey anchor of its own, so it falls back to the project root.",
+          "description": "The web-only back office: analytics, glyph moderation and upload, domain curation. No journey anchor of its own yet, so its Journey map says so rather than borrowing the end-user app's front door.",
           "platforms": [
             "web"
           ]

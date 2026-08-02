@@ -25,7 +25,8 @@ interface MapDefinition extends Record<string, unknown> {
   kind: "journey" | "system";    // selects the renderer and the defaults below
   species?: SpeciesId[];         // node filter; defaults by kind
   edge_types?: EdgeTypeId[];     // edge filter; defaults by kind
-  root_node_id?: string;         // scope anchor; journey falls back to project.root_node_id
+  root_node_id?: string;         // scope anchor; journey falls back to the product's, then — only
+                                 // when no product is named — to project.root_node_id
   product?: string;              // product scope; absent = every product
   depth?: number;                // traversal bound from the root; absent = unbounded
   layout?: { direction?: "DOWN" | "RIGHT"; algorithm?: "layered" | "organic" };
@@ -36,7 +37,7 @@ interface MapDefinition extends Record<string, unknown> {
 |---|---|
 | Defaults by kind | `journey`: `species: ["flow","view"]`, `edge_types: ["composes"]`. `system`: `species: ["view","api-endpoint","data-model"]`, `edge_types: ["calls","displays","queries"]` |
 | Reserved ids | `journey` and `system` name the built-in maps every project has implicitly. A stored definition MUST NOT reuse them (validator warning `map-shadows-built-in`) |
-| `product` | Scopes the map to one product ([bundle-format.md](bundle-format.md) § Products); absent selects every product. It composes with `root_node_id` rather than competing with it — the anchor still scopes the walk. Full semantics in § Product Scope below |
+| `product` | Scopes the map to one product ([bundle-format.md](bundle-format.md) § Products); absent selects every product. It composes with `root_node_id` rather than competing with it: the product restricts which nodes exist for this map, and the anchor then scopes the walk through them — a `journey` is scoped by **both**, and an anchor outside the product is no anchor at all. Full semantics in § Product Scope below |
 | Unknown fields | Preserved and ignored, like every other format object (`Record<string, unknown>`) |
 | Unknown kinds | Consumers MUST preserve definitions with unrecognized `kind` values and SHOULD list them as unrenderable rather than dropping them |
 | `layout.algorithm` | `"organic"` = force-directed with overlap removal (structure/cluster reading); `"layered"` = hierarchical tiers (didactic reading). Renderers fall back to the kind's default for unknown values; the built-in System map defaults to `organic` — at whole-product scale the tiered rendition degenerates into an unreadably wide ribbon |
@@ -66,24 +67,58 @@ one. The built-in Journey and System maps declare no `product`, so they follow t
 every other surface does, and a project declaring no products resolves the whole rule to "no
 filter".
 
-**The journey anchor** resolves in strict order, and the fallback chain is written as a single
-expression so it cannot be reordered by a local-looking edit:
+**The journey anchor** resolves in strict order, and the chain is written as a single expression so
+it cannot be reordered by a local-looking edit:
 
 1. the map's own `root_node_id`;
 2. the resolved product's `root_node_id`;
-3. `project.root_node_id`.
+3. `project.root_node_id` — **only when the resolved product is `null`.**
 
-A blank or absent value at any level falls **through** to the next: a product that declares no
-anchor does not blank the map, it inherits the project's. Nothing anchored anywhere yields the
-unanchored render, never an error. Level 2 is what makes a product an app rather than a tag —
-Admin opens on Admin's own front door.
+A blank or absent value at levels 1 and 2 falls **through** to the next; `resolveProducts` is lenient
+by contract, so a stored blank must not swallow the level beneath it. Level 2 is what makes a product
+an app rather than a tag — Admin opens on Admin's own front door.
 
-**Which surfaces the restriction applies to** differs by renderer kind, and deliberately:
+**Level 3 stops at the product boundary**, and that exception is load-bearing. `project.root_node_id`
+is the *project's* front door, which on every real project is the end-user app's; falling through to
+it under a named scope made a web-only Admin scope render the end-user app's landing view and walk
+the end-user app's compose chain, drawn under Admin's name with Admin's platform menu clamped over
+it — foreign content wearing another product's rules. A named product that declares no anchor has no
+journey **yet**, and the honest render for that is an empty state saying so (below), not somebody
+else's map. The exception is exactly two cases wide, and both are cases where nobody named a product:
+**All products**, and a project that declares no products at all. For those two the chain is
+byte-identical to the pre-products `definition ?? project`, and nothing anchored anywhere still
+yields the unanchored render, never an error.
+
+**How the restriction applies** is now the same for both renderer kinds, and the difference that used
+to be here was the bug:
 
 | Renderer | How `product` scopes it |
 |---|---|
-| `system` (and every subgraph **count**: the maps index, the Overview's Maps card) | The resolved product restricts the candidate nodes **before** § Subgraph Algorithm runs; species and edge filters then compose on top unchanged. Counts go through the same restriction as the canvas, so a card can never advertise a node count the map it links to does not show |
-| `journey` | Scoped by its **anchor** only. A membership filter on top would cut a shared view out of the middle of a compose chain and silently truncate the journey below it — the opposite of what the reader asked for |
+| `system` | The resolved product restricts the candidate nodes **before** § Subgraph Algorithm runs; species and edge filters then compose on top unchanged |
+| `journey` | The same restriction, **plus** the anchor. `mapScopedNodes` runs first, and the anchor chain is then resolved against what survived: an anchor the product does not contain does not resolve. The compose walk, the parent index and the playlist lookups all read the restricted set, so a journey can no more show another product's view than a System map can |
+
+The earlier rule — journey scoped by its anchor *only* — rested on the premise that a membership
+filter would cut a shared view out of the middle of a compose chain and truncate the journey below
+it. That premise does not hold: membership is **single** per flow and view, and a surface two
+products share is duplicated under distinct ids ([products RFC](../rfcs/products.md), decision 3), so
+a `composes` edge never crosses a product boundary in the first place. What the missing filter
+actually bought was the ability for one built-in map to disagree with the other about the same scope.
+
+**An unresolved anchor under a named product is an empty state, not a fallback.** The journey
+renderer names which of the two things went wrong — nothing anchors this product, or the declared
+anchor is not part of it — and offers the System map, which is scoped and populated either way. The
+unanchored parentless-roots render (§ Built-in Maps) stays exactly where it belongs: the
+All-products / no-products case, where it is the fresh-project view of a graph nobody has rooted yet.
+
+**Counts go through the renderer that draws them.** The maps index and the Overview's Maps card
+count each map through its own renderer — `computeMapSubgraph` for `system`, and for `journey` the
+collapsed `buildJourneyGraph` render (no flow expanded) — so a card can never advertise a node count
+the map it links to does not show. Counting a journey with `computeMapSubgraph` did exactly that,
+twice over: the built-in Journey carries no `root_node_id` of its own, so step 3 never ran for it and
+it counted every flow and view in the project; and a stored journey that *does* carry one was counted
+by step 3's **undirected** BFS, which walks up out of the anchor and back down through everything
+above it. Journey expansion only ever *adds* — a flow's playlist, plus visual duplicates of nodes
+already counted — so the collapsed count is a floor the map always shows.
 
 Membership is resolved per species — stored for flows and views, anchors-first for acceptances,
 derived from consumers for data models and API endpoints — and an *orphan* endpoint or model, which
@@ -112,11 +147,20 @@ these four steps are unchanged by it:
 
 The function is deterministic, pure, and generic over the node/edge element type (callers pass full app nodes or raw parsed JSON and get the same elements back).
 
+**The `journey` renderer does not run this algorithm** — it consumes the definition's anchor and
+species and owns its own walk (§ Built-in Maps), so rules 3 and 4 describe `system` and any future
+direct-projection kind, not it. The journey's own equivalents, and where they differ, deliberately:
+
+| Rule | `journey`'s equivalent |
+|---|---|
+| 3. Scope | A **directed** compose walk down from the anchor, not an undirected BFS. A journey answers *"where does this take the reader next"*; walking up out of the anchor would put the whole product above it back on the canvas, which is why counting a journey with this function was wrong (§ Product Scope) |
+| 4. Unresolvable root | Under a named product, an empty canvas with the reason in words (§ Product Scope) — rule 4's posture, said out loud. Under **All products** and in a project declaring no products, an unresolvable or absent root instead renders the **parentless flow and view roots**: that is the fresh-project view of a graph nobody has rooted yet, it predates products, and it is deliberately kept |
+
 ## Built-in Maps
 
 | Map | Kind | Answers | Rendering |
 |---|---|---|---|
-| **Journey** | `journey` | "How does a user move through the product?" | The existing canvas: compose closure from the root (resolved by the anchor chain in § Product Scope), playlist expansion, flows collapsible, visual node duplication for reuse |
+| **Journey** | `journey` | "How does a user move through the product?" | The existing canvas: compose closure from the root (product-restricted candidates and the anchor chain, both in § Product Scope), playlist expansion, flows collapsible, visual node duplication for reuse. With no root resolved and no product named, the parentless flow/view roots |
 | **System** | `system` | "Which screens render this model? What does this endpoint feed?" | Direct render of `computeMapSubgraph`: all selected species as cards, cross-layer edges drawn, ELK-layered by species tier (views / api-endpoints / data-models) |
 
 **Renderer division of labor:** System is a *direct* projection render. Journey consumes the definition's root and species but owns its drawing logic (playlist ordering, expansion state, visual duplication of reused views) — renderer logic over a projection, exactly as `ReleaseCard` is renderer logic over `computeChangelog`. Delivery and Overview (vision.md § Core Product) are projections too, but render as a board and a dashboard rather than a canvas; Delivery's item semantics live with its implementation (`lib/utils/delivery.ts`), and the Overview's composition is specified in § Overview Composition below.
@@ -133,7 +177,7 @@ The Overview answers *"where does this product stand?"* — a dashboard of pure 
 | Backlog | `computeBacklog` (journal.md § Projections) | Changelog |
 | Inventory | `computeInventory` — node/edge/journal census; per-species totals + node-level status tallies | Library (per species) |
 | Health | `computeHealthIndicators` (below) | Per-indicator evidence |
-| Maps | `listMaps` + `computeMapSubgraph` counts, product-restricted like the canvas (§ Product Scope) | Maps index |
+| Maps | `listMaps` + `computeMapCounts` — each map counted through the renderer that draws it, product-restricted like the canvas (§ Product Scope) | Maps index |
 
 **Health indicators** (fixed order; `count` of offenders, 0 = healthy; offending node ids included where the offenders are nodes):
 

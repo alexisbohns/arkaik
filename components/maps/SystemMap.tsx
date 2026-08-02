@@ -279,7 +279,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
           fitSignal={fitSignal}
           spotlight
           spotlightNodeId={topNodeId}
-          scopePlatforms={scope.platforms}
+          scope={scope}
         />
       </NodeDetailStack>
       <NewNodeForm open={newNodeOpen} onOpenChange={setNewNodeOpen} onSubmit={handleCreateNode} />

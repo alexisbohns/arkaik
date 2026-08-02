@@ -289,8 +289,8 @@ drift between the Pyramid and the Overview.
 | **Library** | Flows and views by stored membership; data models and endpoints by reachability, orphans always visible under an "unattached" marker; a "used by" badge from `productsUsingNode`. |
 | **Overview** | `PlatformGaugesCard`, `ParityCard`, `PyramidCard`, `DeliverySnapshotCard` inherit via the primitive and the scoped projections. |
 | **Node detail panel** | Platform tabs collapse to the effective set; at arity ≤ 1, no tabs — a single status. |
-| **Maps / journey** | Journey root resolves `product.root_node_id` → `project.root_node_id`; `MapDefinition.product` filters the subgraph. |
-| **Canvas nodes** | `FlowNode` and `PlatformList` chips show effective platforms. |
+| **Maps / journey** | Journey root resolves the map's `root_node_id` → `product.root_node_id`, and only when **no product is named** falls through to `project.root_node_id` — a named product does not inherit the project's front door, it gets an empty state naming the missing anchor. `MapDefinition.product` filters the subgraph, for the journey exactly as for the system map. |
+| **Canvas nodes** | `FlowNode` gauges clamp to the scope's menu; `ViewNode` and `PlatformList` chips show effective platforms (`scopedPlatforms`, per node). |
 
 Eight surfaces is what makes P2 an M rather than an S. If the work wants splitting, the natural
 seam is **primitives + Acceptances + Pyramid** first, then **Library + Delivery + Overview +

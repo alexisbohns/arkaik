@@ -5,9 +5,11 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { CloudDownload, CloudUpload, Info } from "lucide-react";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
-import type { PlatformStatusMap, PlatformScreenshotsMap } from "@/lib/data/types";
+import type { NodeMetadata, PlatformStatusMap, PlatformScreenshotsMap } from "@/lib/data/types";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { scopedPlatforms } from "@/lib/utils/product-scope";
+import { useCanvasProductScope } from "../canvas-scope";
 import { STATUS_GHOST_STYLES, STATUS_ICONS, STATUS_LABELS, STATUS_STYLES, PLATFORM_ICONS, PLATFORM_LABELS } from "./node-styles";
 
 type ViewCardVariant = "compact" | "large";
@@ -106,14 +108,36 @@ function InlineStatusIcon({ status }: { status: StatusId }) {
 function ViewNodeComponent({ data }: NodeProps) {
   const status = (data.status as StatusId) ?? "idea";
   const label = String(data.label ?? "View");
-  const platforms = (data.platforms as PlatformId[]) ?? [];
+  const declaredPlatforms = (data.platforms as PlatformId[]) ?? [];
+  // From the canvas, never from a global — React Flow owns this component's
+  // props, so the scope arrives through the context `Canvas` publishes.
+  //
+  // Clamped per NODE, not against the scope's menu: a view's chips answer "what
+  // does this view ship on", and the honest menu for that is the view's **own**
+  // product's. Under All products the scope's list is the union of every
+  // product, so clamping against it would leave a web-only admin view carrying
+  // a stale three-platform array still claiming Android — the exact leak the
+  // Library and Delivery surfaces already fixed with this same helper. With no
+  // scope published (no products declared, or a canvas rendered bare) it
+  // answers the node's own array, unchanged from before products existed.
+  const scope = useCanvasProductScope();
+  const platforms = scope
+    ? scopedPlatforms(
+        { species: "view", platforms: declaredPlatforms, metadata: data.metadata as NodeMetadata | undefined },
+        scope,
+      )
+    : declaredPlatforms;
   const platformStatuses = (data.platformStatuses as PlatformStatusMap | undefined) ?? {};
   const viewCardVariant = (data.viewCardVariant as ViewCardVariant | undefined) ?? "compact";
   const apiInbound = (data.apiInbound as ViewApiRelation[] | undefined) ?? [];
   const apiOutbound = (data.apiOutbound as ViewApiRelation[] | undefined) ?? [];
   const coverUrl = typeof data.coverUrl === "string" ? data.coverUrl : undefined;
   const platformScreenshots = (data.platformScreenshots as PlatformScreenshotsMap | undefined) ?? {};
-  const firstScreenshot = platforms.reduce<string | undefined>(
+  // Deliberately the *declared* list: the clamp governs what the card claims to
+  // ship on, not which artwork it can find. Narrowing this too would blank the
+  // thumbnail of a view whose only screenshot happens to sit on a platform the
+  // clamp removed, which tells the reader nothing and loses the picture.
+  const firstScreenshot = declaredPlatforms.reduce<string | undefined>(
     (found, p) => found ?? platformScreenshots[p], undefined,
   );
   const onOpenDetails = data.onOpenDetails as (() => void) | undefined;

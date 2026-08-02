@@ -3,13 +3,7 @@
 import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { PlusIcon } from "lucide-react";
-import {
-  buildProductUsageIndex,
-  computeMapSubgraph,
-  listMaps,
-  MAP_KINDS,
-  type MapDefinition,
-} from "@arkaik/schema";
+import { buildProductUsageIndex, listMaps, MAP_KINDS, type MapDefinition } from "@arkaik/schema";
 import { MapCard } from "@/components/maps/MapCard";
 import { MapEditorDialog } from "@/components/maps/MapEditorDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
@@ -20,7 +14,8 @@ import { useEdges } from "@/lib/hooks/useEdges";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
-import { mapScopedNodes, type ProductGraph } from "@/lib/utils/product-scope";
+import { computeMapCounts } from "@/lib/utils/journey-graph";
+import { type ProductGraph } from "@/lib/utils/product-scope";
 
 /**
  * The maps index: every reading the project offers — the built-ins plus the
@@ -39,9 +34,10 @@ export default function ProjectMapsPage() {
   const { project: projectBundle, loading: projectLoading, updateProject } = useProject(id);
 
   // The shell's scope (§ Decision 2) is a map's *default* product; a stored
-  // definition's own `product` overrides it (`mapScopedNodes`). The counts on
-  // these cards go through the same restriction the canvas draws through, or a
-  // card would advertise a node count the map it links to does not show.
+  // definition's own `product` overrides it (`mapProductId`). The counts on
+  // these cards go through `computeMapCounts`, which counts each kind through
+  // its own renderer — or a card would advertise a node count the map it links
+  // to does not show.
   const scope = useEffectiveProduct(id, projectBundle);
 
   const nodesById = useMemo(() => new Map(dataNodes.map((node) => [node.id, node])), [dataNodes]);
@@ -68,16 +64,18 @@ export default function ProjectMapsPage() {
   const counts = useMemo(
     () =>
       new Map(
-        maps.map((definition) => {
-          const subgraph = computeMapSubgraph(
-            definition,
-            mapScopedNodes(definition, dataNodes, scope, productGraph),
+        maps.map((definition) => [
+          definition.id,
+          computeMapCounts(definition, {
+            dataNodes,
             dataEdges,
-          );
-          return [definition.id, { nodes: subgraph.nodes.length, edges: subgraph.edges.length }];
-        }),
+            project: projectBundle?.project,
+            scope,
+            graph: productGraph,
+          }),
+        ]),
       ),
-    [dataEdges, dataNodes, maps, productGraph, scope],
+    [dataEdges, dataNodes, maps, productGraph, projectBundle?.project, scope],
   );
 
   async function saveStoredMaps(nextStored: MapDefinition[]) {

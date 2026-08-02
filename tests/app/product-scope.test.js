@@ -512,6 +512,24 @@ assert(
   "the CHIPS stay per-node — 'what does this node ship on' is a fact about the node, not a shape",
 );
 
+// The canvas cards ask the same two questions and must ask them the same way.
+// A React Flow node component takes no props but its `data`, so both reach the
+// scope through the context `Canvas` publishes — and which of the two functions
+// each one calls is the whole distinction.
+{
+  const viewNode = readSource("components", "graph", "nodes", "ViewNode.tsx");
+  assert(
+    viewNode.includes("useCanvasProductScope()") && /scopedPlatforms\(\s*\{\s*species: "view"/.test(viewNode),
+    "ViewNode's chips clamp PER NODE — under All products the scope's menu is the union, so clamping against it would leave a stale web-only view still claiming Android",
+  );
+  const flowNode = readSource("components", "graph", "nodes", "FlowNode.tsx");
+  assert(
+    flowNode.includes("flowGaugePlatforms(platforms, platformRollup, scopePlatforms)") &&
+      !flowNode.includes("scopedPlatforms("),
+    "…while FlowNode's gauges keep the MENU — a gauge list is a shape, and `scopedPlatforms` never consults the rollup that widened it",
+  );
+}
+
 // --- The arity threshold is written once --------------------------------------
 //
 // `platformAvailabilityShape` is the only place the 2-platform boundary lives.
@@ -619,9 +637,31 @@ assert(
   resolveJourneyAnchorId(journeyMap, anchoredProject, anchorAll) === "F-project-root",
   "level 3: under All products the project's root_node_id anchors the journey",
 );
+// **This assertion was inverted deliberately.** It used to read "a scoped
+// product with NO root_node_id falls through to the project's, it does not
+// blank the map" — and that fall-through was the bug. `project.root_node_id` is
+// the *end-user app's* front door on every real project; handing it to Admin
+// made the journey walk the end-user app's compose chain under Admin's name and
+// Admin's platform menu. A named product that declares no anchor has no journey
+// yet, and the renderer says so in words (`emptyReason: "no-anchor"`) instead of
+// borrowing someone else's map.
 assert(
-  resolveJourneyAnchorId(journeyMap, anchoredProject, anchorAdmin) === "F-project-root",
-  "level 3: a scoped product with NO root_node_id falls through to the project's, it does not blank the map",
+  resolveJourneyAnchorId(journeyMap, anchoredProject, anchorAdmin) === undefined,
+  "level 3 STOPS at the product boundary: a scoped product with NO root_node_id does NOT inherit the project's",
+);
+// The exception is exactly two cases wide, and both are the ones where no
+// product was named at all. Asserted against the same `anchoredProject`, so the
+// difference is the scope and nothing else.
+assert(
+  resolveJourneyAnchorId(journeyMap, anchoredProject, anchorAll) === "F-project-root" &&
+    resolveJourneyAnchorId(journeyMap, anchoredProject, anchorBare) === "F-project-root",
+  "…while All products and a project declaring no products still reach level 3 — the degenerate cases are untouched",
+);
+// A named product that DOES declare an anchor is unaffected: the exception
+// removes level 3, never level 2.
+assert(
+  resolveJourneyAnchorId(journeyMap, anchoredProject, anchorEndUser) === "F-home",
+  "…and a named product that declares its own anchor still opens on it",
 );
 assert(
   resolveJourneyAnchorId(journeyMap, anchoredProject, anchorBare) === "F-project-root" &&

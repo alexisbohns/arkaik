@@ -386,14 +386,29 @@ export function mapProductId(
 /**
  * The journey's anchor node id, or `undefined` when nothing anchors it.
  *
- * The fallback chain is a single expression on purpose: three levels that read
- * top-down in precedence order cannot be reordered by an edit that looks local.
- * Each level is `declared`-guarded so a blank stored value falls through rather
- * than swallowing the levels beneath it — `resolveProducts` is lenient by
- * contract and a stored product may carry any `root_node_id` at all.
+ * The chain is a single expression on purpose: levels that read top-down in
+ * precedence order cannot be reordered by an edit that looks local. Each level
+ * is `declared`-guarded so a blank stored value falls through rather than
+ * swallowing the levels beneath it — `resolveProducts` is lenient by contract
+ * and a stored product may carry any `root_node_id` at all.
  *
- * The middle level is what makes a product an app rather than a tag: Admin
- * opens on Admin's own front door instead of the end-user app's.
+ * 1. the map's own `root_node_id`;
+ * 2. the resolved product's `root_node_id`;
+ * 3. `project.root_node_id` — **only when no product is resolved**.
+ *
+ * Level 2 is what makes a product an app rather than a tag: Admin opens on
+ * Admin's own front door instead of the end-user app's. Level 3 is the
+ * *project's* front door, and that is exactly why it stops at the product
+ * boundary: falling through to it under a named scope hands Admin the end-user
+ * app's landing view, and the journey then walks the end-user app's compose
+ * chain under Admin's name and Admin's platform menu — foreign content wearing
+ * another product's rules. A named product that declares no anchor has no
+ * journey yet, and the honest render for that is an empty state saying so, not
+ * somebody else's map.
+ *
+ * "No product is resolved" is `mapProductId(...) === null`, which covers both
+ * cases where level 3 is still right: All products, and a project that declares
+ * no products at all. Those two are byte-identical to the pre-products chain.
  */
 export function resolveJourneyAnchorId(
   definition: Pick<MapDefinition, "root_node_id" | "product"> | undefined | null,
@@ -403,10 +418,12 @@ export function resolveJourneyAnchorId(
   const productId = mapProductId(definition, scope);
   const product = productId === null ? undefined : scope.productsById.get(productId);
 
-  // Anchor precedence — the map's own root, then the product's, then the
-  // project's. Do not reorder.
+  // Anchor precedence — the map's own root, then the product's, then (only
+  // when nothing named a product) the project's. Do not reorder.
   return (
-    declared(definition?.root_node_id) ?? declared(product?.root_node_id) ?? declared(project?.root_node_id)
+    declared(definition?.root_node_id) ??
+    declared(product?.root_node_id) ??
+    (productId === null ? declared(project?.root_node_id) : undefined)
   );
 }
 

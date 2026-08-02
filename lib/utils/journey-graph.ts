@@ -1,6 +1,7 @@
 import type { Node, Edge } from "@xyflow/react";
+import { computeMapSubgraph, type MapDefinition } from "@arkaik/schema";
 import type { EdgeTypeId } from "@/lib/config/edge-types";
-import type { Node as DataNode, Edge as DataEdge, PlaylistEntry } from "@/lib/data/types";
+import type { Node as DataNode, Edge as DataEdge, PlaylistEntry, Project } from "@/lib/data/types";
 import {
   EDGE_TYPE_TO_FLOW_TYPE,
   SPECIES_TO_NODE_TYPE,
@@ -15,6 +16,13 @@ import {
   getRollupDisplayStatus,
   type PlatformStatusRollup,
 } from "@/lib/utils/platform-status";
+import {
+  mapProductId,
+  mapScopedNodes,
+  resolveJourneyAnchorId,
+  type ProductGraph,
+  type ProductScope,
+} from "@/lib/utils/product-scope";
 
 /**
  * The Journey map's graph construction (docs/spec/maps.md § Built-in Maps) —
@@ -527,4 +535,168 @@ export function buildJourneyGraph(params: JourneyGraphParams): { nodes: Node[]; 
   }
 
   return { nodes: visibleNodes, edges: visibleEdges };
+}
+
+/* --- Selection: what a journey may draw, and why it sometimes draws nothing --
+ *
+ * Everything between "a map definition plus a scope" and "the arguments
+ * `buildJourneyGraph` takes" lives here, in one function, because it has three
+ * consumers — the canvas, the maps index, and the Overview's Maps card — and
+ * two of them used to answer it differently from the one that draws.
+ */
+
+/** Why a journey has nothing to draw. `null` = it does. */
+export type JourneyEmptyReason =
+  /** A product is scoped and nothing — map, product, project — anchors it. */
+  | "no-anchor"
+  /** An anchor is declared, but the scoped product does not contain it. */
+  | "anchor-outside-product"
+  | null;
+
+export interface JourneySelection {
+  /** The nodes this journey may select from — membership-restricted. */
+  nodes: readonly DataNode[];
+  /** Indexed over {@link JourneySelection.nodes}, not over the whole snapshot. */
+  nodesById: Map<string, DataNode>;
+  composeChildIdsByParent: Map<string, string[]>;
+  composeParentByChild: Map<string, string>;
+  /** The product this journey reads through — `null` for All products. */
+  productId: string | null;
+  /** The resolved anchor id, or `undefined` when nothing anchors this journey. */
+  anchorId?: string;
+  /** The anchor, or `null` when it does not resolve inside {@link JourneySelection.nodes}. */
+  anchorNode: DataNode | null;
+  composeClosure: ComposeClosure;
+  emptyReason: JourneyEmptyReason;
+}
+
+export interface JourneySelectionParams {
+  definition?: Pick<MapDefinition, "root_node_id" | "product"> | null;
+  dataNodes: readonly DataNode[];
+  dataEdges: readonly DataEdge[];
+  project?: Pick<Project, "root_node_id"> | null;
+  scope: ProductScope;
+  graph: ProductGraph;
+}
+
+/**
+ * The journey's selection: membership-restricted nodes, the resolved anchor,
+ * and the compose closure the renderer walks.
+ *
+ * **Membership-filtered, like every other map.** `buildSystemGraph` has always
+ * run its candidates through `mapScopedNodes`; the journey did not, and the two
+ * built-in maps therefore disagreed about the same scope — Admin's System map
+ * showed Admin, Admin's Journey showed the end-user app. The old justification
+ * was that a filter would cut a shared view out of the middle of a compose
+ * chain, but membership is *single* per flow and view (RFC decision 3: a
+ * surface shared by two products is duplicated under distinct ids), so a
+ * compose chain cannot cross a product boundary in the first place.
+ *
+ * **An unresolved anchor is an empty state, not somebody else's map.** Under a
+ * named product `emptyReason` says which of the two things went wrong, and the
+ * renderer says it in words. Under All products — and in a project that
+ * declares no products — `emptyReason` stays `null` and an unanchored journey
+ * falls back to the parentless flow/view roots exactly as it always has: that
+ * is the fresh-project render, and nothing about products should touch it.
+ */
+export function resolveJourneySelection(params: JourneySelectionParams): JourneySelection {
+  const { definition, dataNodes, dataEdges, project, scope, graph } = params;
+
+  const productId = mapProductId(definition, scope);
+  const nodes = mapScopedNodes(definition, dataNodes, scope, graph);
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
+
+  // Built over the *restricted* set: an edge whose other end is out of scope is
+  // not a parent link this journey may walk, and leaving it in would let the
+  // unanchored fallback mistake an in-scope root for a child.
+  const composeChildIdsByParent = new Map<string, string[]>();
+  const composeParentByChild = new Map<string, string>();
+  for (const edge of dataEdges) {
+    if (edge.edge_type !== "composes") continue;
+    if (!nodesById.has(edge.source_id) || !nodesById.has(edge.target_id)) continue;
+    const children = composeChildIdsByParent.get(edge.source_id) ?? [];
+    children.push(edge.target_id);
+    composeChildIdsByParent.set(edge.source_id, children);
+    if (!composeParentByChild.has(edge.target_id)) {
+      composeParentByChild.set(edge.target_id, edge.source_id);
+    }
+  }
+
+  const anchorId = resolveJourneyAnchorId(definition, project, scope);
+  const anchorNode = anchorId === undefined ? null : nodesById.get(anchorId) ?? null;
+  const composeClosure = computeComposeClosure(anchorNode, composeChildIdsByParent, nodesById);
+
+  const emptyReason: JourneyEmptyReason =
+    anchorNode !== null || productId === null
+      ? null
+      : anchorId === undefined
+        ? "no-anchor"
+        : "anchor-outside-product";
+
+  return {
+    nodes,
+    nodesById,
+    composeChildIdsByParent,
+    composeParentByChild,
+    productId,
+    anchorId,
+    anchorNode,
+    composeClosure,
+    emptyReason,
+  };
+}
+
+/** Collapsed: the render a reader sees on opening, before touching anything. */
+const EMPTY_EXPANSION: ReadonlySet<string> = new Set<string>();
+/** Counting does not care which APIs a view card would offer. */
+const EMPTY_VIEW_API_RELATIONS: ReadonlyMap<string, ViewApiRelations> = new Map();
+
+/**
+ * The node/edge counts a map card advertises — **the map's own render, counted**
+ * (docs/spec/maps.md § Product Scope).
+ *
+ * A journey is not `computeMapSubgraph`. The built-in Journey carries no
+ * `root_node_id` of its own, so the algorithm's step 3 never runs for it and it
+ * returned every flow and view in the project — 68 against a canvas of 22. A
+ * stored journey that *does* carry one fared no better: step 3's BFS is
+ * undirected by design ("the neighborhood of this anchor"), so `recording-loop`
+ * walked *up* out of its flow and back down through the whole product — 64
+ * against a canvas of 1. Neither number was ever drawn.
+ *
+ * So a journey counts what `buildJourneyGraph` builds, by building it: the
+ * collapsed render, no flow expanded, no handlers. Expansion only ever *adds*
+ * (a flow's playlist, plus visual duplicates of nodes already counted), so the
+ * count is a floor the map always shows and never an advertisement it cannot
+ * honour. Every other kind keeps `computeMapSubgraph`, which is its renderer.
+ */
+export function computeMapCounts(
+  definition: MapDefinition,
+  params: Omit<JourneySelectionParams, "definition">,
+): { nodes: number; edges: number } {
+  const { dataNodes, dataEdges, project, scope, graph } = params;
+
+  if (definition.kind !== "journey") {
+    const subgraph = computeMapSubgraph(
+      definition,
+      mapScopedNodes(definition, dataNodes, scope, graph),
+      dataEdges,
+    );
+    return { nodes: subgraph.nodes.length, edges: subgraph.edges.length };
+  }
+
+  const selection = resolveJourneySelection({ definition, dataNodes, dataEdges, project, scope, graph });
+  if (selection.emptyReason !== null) return { nodes: 0, edges: 0 };
+
+  const built = buildJourneyGraph({
+    dataNodes: selection.nodes,
+    dataEdges,
+    nodesById: selection.nodesById,
+    composeParentByChild: selection.composeParentByChild,
+    explicitRootNode: selection.anchorNode,
+    composeClosure: selection.composeClosure,
+    expandedFlows: EMPTY_EXPANSION,
+    viewCardVariant: "compact",
+    viewApiRelationsByViewId: EMPTY_VIEW_API_RELATIONS,
+  });
+  return { nodes: built.nodes.length, edges: built.edges.length };
 }

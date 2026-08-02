@@ -5,7 +5,7 @@ import { ReactFlow, Controls, Background, type Node, type Edge, type NodeMouseHa
 import "@xyflow/react/dist/style.css";
 import { useTheme } from "next-themes";
 import { applySpotlight, buildSpotlightIndex } from "@/lib/utils/graph-spotlight";
-import type { PlatformId } from "@/lib/config/platforms";
+import type { ProductScope } from "@/lib/utils/product-scope";
 import { CanvasScopeProvider } from "./canvas-scope";
 import { FlowNode } from "./nodes/FlowNode";
 import { ViewNode } from "./nodes/ViewNode";
@@ -44,14 +44,15 @@ interface CanvasProps {
   /** External spotlight pin (e.g. the map's panel-selected node); hover takes precedence. */
   spotlightNodeId?: string | null;
   /**
-   * The product scope's platform menu, published to the node cards.
+   * The product scope, published to the node cards.
    *
    * React Flow renders node components itself, so this is the canvas's way of
-   * handing them the scope instead of letting them reach for a global. Omitted
-   * it defaults to every configured platform — a canvas with no scope draws
-   * exactly what it drew before products existed.
+   * handing them the scope instead of letting them reach for a global. Omitted,
+   * the cards fall back to every configured platform and to each node's own
+   * array — a canvas with no scope draws exactly what it drew before products
+   * existed.
    */
-  scopePlatforms?: readonly PlatformId[];
+  scope?: ProductScope;
 }
 
 export function Canvas({
@@ -63,7 +64,7 @@ export function Canvas({
   fitSignal,
   spotlight = false,
   spotlightNodeId = null,
-  scopePlatforms,
+  scope,
 }: CanvasProps) {
   const reactFlowRef = useRef<ReactFlowInstance<Node, Edge> | null>(null);
   const lastFitSignal = useRef(fitSignal);
@@ -139,7 +140,7 @@ export function Canvas({
   }, [onNodeClick]);
 
   return (
-    <CanvasScopeProvider platforms={scopePlatforms}>
+    <CanvasScopeProvider scope={scope}>
       <div className="h-full w-full">
         <ReactFlow
           nodes={display.nodes}
