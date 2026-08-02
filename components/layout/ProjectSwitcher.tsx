@@ -6,10 +6,13 @@ import { useRouter } from "next/navigation";
 import {
   CheckIcon,
   ChevronsUpDownIcon,
+  FileTextIcon,
   FolderOpenIcon,
   GithubIcon,
   KeyRoundIcon,
   LogOutIcon,
+  Settings2Icon,
+  Share2Icon,
 } from "lucide-react";
 import { signIn, signOut } from "next-auth/react";
 import {
@@ -51,6 +54,7 @@ interface ProjectSwitcherProps {
   currentProjectTitle?: string;
   currentView: ProjectView;
   currentQueryString?: string;
+  onOpenPublish: () => void;
 }
 
 export function ProjectSwitcher({
@@ -58,11 +62,13 @@ export function ProjectSwitcher({
   currentProjectTitle,
   currentView,
   currentQueryString,
+  onOpenPublish,
 }: ProjectSwitcherProps) {
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
   const { projects, loading } = useProjects();
   const authStatus = useAuthStatus();
+  const settingsHref = `/project/${currentProjectId}/settings`;
 
   const sortedProjects = useMemo(
     () => [...projects].sort((left, right) => left.project.title.localeCompare(right.project.title)),
@@ -144,21 +150,36 @@ export function ProjectSwitcher({
                 );
               })
             )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className="cursor-pointer gap-2" onClick={onOpenPublish}>
+              <Share2Icon className="size-4" />
+              <span>Publish</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild className="cursor-pointer gap-2">
+              <Link href={settingsHref}>
+                <Settings2Icon className="size-4" />
+                <span>Settings</span>
+              </Link>
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild className="cursor-pointer gap-2">
+              <a href="/docs" target="_blank" rel="noreferrer">
+                <FileTextIcon className="size-4" />
+                <span>Documentation</span>
+              </a>
+            </DropdownMenuItem>
             {authStatus.state === "signed-out" && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="cursor-pointer gap-2"
-                  onClick={() => void signIn("github")}
-                >
-                  <GithubIcon className="size-4" />
-                  <span>Sign in with GitHub</span>
-                </DropdownMenuItem>
-              </>
+              <DropdownMenuItem
+                className="cursor-pointer gap-2"
+                onClick={() => void signIn("github")}
+              >
+                <GithubIcon className="size-4" />
+                <span>Sign in with GitHub</span>
+              </DropdownMenuItem>
             )}
             {authStatus.state === "signed-in" && (
               <>
-                <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-xs text-muted-foreground">
                   {authStatus.user.name ?? authStatus.user.email ?? "Account"}
                 </DropdownMenuLabel>
