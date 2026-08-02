@@ -16,7 +16,15 @@
 const fs = require("fs");
 const { loadProductScope, BUILD_DIR } = require("./load-product-scope");
 
-const { resolveProductScope, nodeInScope, scopedPlatforms } = loadProductScope();
+const {
+  resolveProductScope,
+  nodeInScope,
+  scopedPlatforms,
+  getProductScopeId,
+  setProductScopeId,
+  subscribeProductScope,
+  resetProductScopeStore,
+} = loadProductScope();
 
 let failures = 0;
 function assert(cond, message) {
@@ -168,6 +176,69 @@ assert(
   eq(scopedPlatforms(adminView, bareScope), ["web", "ios", "android"]),
   "with no products declared, every node keeps its own platforms — today's behaviour, unchanged",
 );
+
+// --- The store: one value, shared by every consumer -------------------------
+//
+// The sidebar selector and every surface each call `useProductScope`. If that
+// hook held per-component `useState`, picking a product would relabel the
+// selector and change nothing else — the feature would be inert. What makes it
+// shared is this store, so this is where that is asserted. `useSyncExternalStore`
+// adds no logic of its own; it only wires `subscribe` / `getSnapshot` to React.
+
+resetProductScopeStore();
+
+// Two independent consumers, standing in for the selector and a surface.
+let selectorNotifications = 0;
+let surfaceNotifications = 0;
+const unsubscribeSelector = subscribeProductScope(() => selectorNotifications++);
+const unsubscribeSurface = subscribeProductScope(() => surfaceNotifications++);
+
+assert(getProductScopeId("P1") === null, "a project with nothing stored starts at All products");
+
+// The selector sets; the surface must observe it.
+setProductScopeId("P1", "admin");
+assert(
+  selectorNotifications === 1 && surfaceNotifications === 1,
+  `one set notifies EVERY subscriber, not just the setter (got ${selectorNotifications}/${surfaceNotifications})`,
+);
+assert(
+  getProductScopeId("P1") === "admin",
+  "the snapshot a second consumer reads is the value the first one set — the scope is shared",
+);
+
+// Snapshot stability: useSyncExternalStore re-reads on every render and warns
+// if the value is not referentially cached. A primitive makes that free.
+assert(
+  getProductScopeId("P1") === getProductScopeId("P1"),
+  "repeated snapshot reads are referentially equal, so React never loops",
+);
+
+setProductScopeId("P1", "admin");
+assert(
+  selectorNotifications === 1,
+  "setting the value it already holds notifies no one — no render storm from a re-select",
+);
+
+setProductScopeId("P1", null);
+assert(
+  getProductScopeId("P1") === null && selectorNotifications === 2,
+  "returning to All products is a real transition, notified like any other",
+);
+
+assert(
+  getProductScopeId("P2") === null,
+  "scope is keyed per project — setting P1 never moved P2",
+);
+
+unsubscribeSelector();
+setProductScopeId("P1", "enduser");
+assert(
+  selectorNotifications === 2 && surfaceNotifications === 3,
+  `unsubscribing stops notifications for that consumer only (got ${selectorNotifications}/${surfaceNotifications})`,
+);
+
+unsubscribeSurface();
+resetProductScopeStore();
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 

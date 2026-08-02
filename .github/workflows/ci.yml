@@ -112,6 +112,9 @@ jobs:
       - name: Pyramid aggregation tests
         run: npm run test:pyramid
 
+      - name: Product scope helper and store tests
+        run: npm run test:product-scope
+
       - name: Journal write-primitive (emit) tests
         run: npm run test:emit
 

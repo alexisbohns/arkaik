@@ -41,7 +41,8 @@
 
 | File | Responsibility | Action |
 |---|---|---|
-| `lib/hooks/useProductScope.ts` | Global scope value, persisted per project; `useEffectiveProduct` resolver | Create |
+| `lib/utils/product-scope-store.ts` | The one shared scope value, persisted per project; `useSyncExternalStore` store | Create |
+| `lib/hooks/useProductScope.ts` | Binds that store to React; `useEffectiveProduct` resolver | Create |
 | `components/layout/ProductScopeSelector.tsx` | The shell control; renders nothing when no products | Create |
 | `components/layout/ProjectSidebar.tsx` | Mounts the selector under `ProjectSwitcher` | Modify |
 | `components/graph/nodes/PlatformAvailability.tsx` | **Owns the arity rule** — rings at ≥2, bar + count at ≤1 | Create |
@@ -1354,7 +1355,7 @@ Create `lib/utils/product-scope.ts`:
  */
 
 import type { PlatformId } from "@/lib/config/platforms";
-import type { Node, ProjectBundle } from "@/lib/data/types";
+import type { Node, Project } from "@/lib/data/types";
 import {
   effectiveNodePlatforms,
   productOf,
@@ -1376,10 +1377,13 @@ export interface ProductScope {
   productsById: Map<string, ProductDefinition>;
 }
 
+// Products live on `bundle.project.metadata` — `ProjectBundle` has no
+// `metadata` of its own, so this takes the bundle and drills in itself.
 export function resolveProductScope(
-  project: Pick<ProjectBundle, "metadata"> | undefined,
+  bundle: { project?: Pick<Project, "metadata"> } | undefined | null,
   productId: string | null,
 ): ProductScope {
+  const project = bundle?.project;
   const products = resolveProducts(project);
   const productsById = new Map(products.map((candidate) => [candidate.id, candidate]));
   const product = productId === null ? null : productsById.get(productId) ?? null;
@@ -1413,22 +1417,45 @@ export function scopedPlatforms(
 ): PlatformId[] {
   const ownId = productOf(node);
   const own = ownId === null ? null : scope.productsById.get(ownId) ?? null;
-  return effectiveNodePlatforms(node, own ?? scope.product) as PlatformId[];
+  return effectiveNodePlatforms(node, own ?? scope.product);
 }
 ```
 
-- [ ] **Step 2: Write the hooks**
+- [ ] **Step 2: Write the shared store**
+
+The scope value must live in **one** place. Two independent callers read it —
+the Task 8 selector and every surface via `useEffectiveProduct` — so a
+`useState` inside the hook would give each its own copy, and picking a product
+would relabel the selector and change nothing else. A same-tab
+`localStorage.setItem` fires no `storage` event, so persistence does not
+propagate either.
+
+Create `lib/utils/product-scope-store.ts`: a module-level
+`Map<projectId, string | null>` lazily hydrated from
+`localStorage` (guard `typeof window === "undefined"`, and wrap the access in
+try/catch for private-mode browsers), plus a `Set` of listeners. Export
+`getProductScopeId(projectId)`, `setProductScopeId(projectId, next)` (a no-op
+when the value is unchanged, so re-selecting causes no render storm),
+`subscribeProductScope(listener)` returning an unsubscribe, and
+`resetProductScopeStore()` as a test seam. This mirrors
+`lib/sync/sync-manager.ts:176`, the repo's existing `useSyncExternalStore`
+store.
+
+- [ ] **Step 3: Write the hooks**
 
 Create `lib/hooks/useProductScope.ts`:
 
 ```ts
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 import type { ProjectBundle } from "@/lib/data/types";
+import {
+  getProductScopeId,
+  setProductScopeId,
+  subscribeProductScope,
+} from "@/lib/utils/product-scope-store";
 import { resolveProductScope, type ProductScope } from "@/lib/utils/product-scope";
-
-const STORAGE_PREFIX = "arkaik:product-scope:";
 
 /**
  * The global product scope, persisted per project in localStorage.
@@ -1438,25 +1465,27 @@ const STORAGE_PREFIX = "arkaik:product-scope:";
  * them while fighting the existing `species` / `panel` param handling in
  * app/project/[id]/layout.tsx. The trade-off — a shared link does not carry
  * scope — is fine, because a link to a node is about the node.
+ *
+ * The value lives in the store, not in this hook, so the selector and every
+ * surface see the same one.
+ *
+ * `getServerSnapshot` is `null` because localStorage does not exist during SSR.
+ * React renders that during hydration and re-reads the store immediately after,
+ * so there is no mismatch. Nothing visibly flashes either, for a reason
+ * external to this hook: `useProject` loads the bundle in an effect, so
+ * `project` is `undefined` on the server *and* on the client's first render,
+ * and with no products declared `productPlatforms` short-circuits to every
+ * platform — every field of the resolved scope except `productId` is identical
+ * across that boundary whatever localStorage held.
  */
 export function useProductScope(projectId: string) {
-  const [productId, setProductId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem(`${STORAGE_PREFIX}${projectId}`);
-    setProductId(stored === null || stored === "" ? null : stored);
-  }, [projectId]);
-
-  const setScope = useCallback(
-    (next: string | null) => {
-      setProductId(next);
-      if (typeof window === "undefined") return;
-      if (next === null) window.localStorage.removeItem(`${STORAGE_PREFIX}${projectId}`);
-      else window.localStorage.setItem(`${STORAGE_PREFIX}${projectId}`, next);
-    },
-    [projectId],
+  const productId = useSyncExternalStore(
+    subscribeProductScope,
+    () => getProductScopeId(projectId),
+    () => null,
   );
+
+  const setScope = useCallback((next: string | null) => setProductScopeId(projectId, next), [projectId]);
 
   return { productId, setScope };
 }
@@ -1468,25 +1497,47 @@ export function useProductScope(projectId: string) {
  * per-surface override milestone changes exactly this function to
  * `override ?? global`, which is why no surface may read the global value
  * itself.
+ *
+ * Memoized because the result carries a `Map` and feeds the `useMemo`
+ * dependency lists of the scoped projections in Tasks 11-13. An object rebuilt
+ * every render would defeat every one of them.
  */
 export function useEffectiveProduct(
   projectId: string,
   project: ProjectBundle | undefined,
 ): ProductScope & { setScope: (next: string | null) => void } {
   const { productId, setScope } = useProductScope(projectId);
-  return { ...resolveProductScope(project, productId), setScope };
+  const scope = useMemo(() => resolveProductScope(project, productId), [project, productId]);
+  return useMemo(() => ({ ...scope, setScope }), [scope, setScope]);
 }
 ```
 
-- [ ] **Step 3: Verify it compiles**
+- [ ] **Step 4: Test the pure parts**
+
+`lib/utils/product-scope.ts` and `lib/utils/product-scope-store.ts` are both
+loadable in plain Node; the hook is not (no React test runner here). Create
+`tests/app/product-scope.test.js` + `tests/app/load-product-scope.js` on the
+`tests/app/load-pyramid.js` pattern, register `test:product-scope` in
+`package.json`, and add a step to the fast-tests job in
+`.github/workflows/ci.yml` beside its siblings.
+
+Two assertions carry the task. First: under "All products", a web-only
+product's view with a stale three-platform `platforms` array yields `["web"]`,
+not the union — the fixture needs a second, multi-platform product or the union
+is not genuinely wider and the assertion is decorative. Second: subscribe two
+listeners to the store, set once, and assert both fire and both snapshots
+agree — that is the sharing the whole feature rests on.
+
+- [ ] **Step 5: Verify it compiles**
 
 Run: `npx tsc --noEmit`
-Expected: no errors. If `ProjectBundle` does not expose `metadata`, read `lib/data/types.ts` and use the type that does.
+Expected: no errors.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add lib/hooks/useProductScope.ts lib/utils/product-scope.ts
+git add lib/hooks/useProductScope.ts lib/utils/product-scope.ts lib/utils/product-scope-store.ts \
+  tests/app/product-scope.test.js tests/app/load-product-scope.js package.json .github/workflows/ci.yml
 git commit -m "feat: a per-project product scope every surface resolves through one hook"
 ```
 
@@ -1503,7 +1554,7 @@ git commit -m "feat: a per-project product scope every surface resolves through 
 Create `components/layout/ProductScopeSelector.tsx`. Requirements:
 
 - Props: `{ projectId: string; project: ProjectBundle | undefined }`.
-- Calls `resolveProducts(project)`. **If the list is empty, return `null`** — a project with no products shows no new control and no new concept.
+- Calls `resolveProducts(project?.project)` — products live on `bundle.project.metadata`, and passing the bundle itself is a hard `TS2345`. **If the list is empty, return `null`** — a project with no products shows no new control and no new concept.
 - Otherwise renders a `Select` from `components/ui/select.tsx` (read that file for the exact primitive names before writing) with an "All products" option plus one option per product, each showing the product title and its platform count as secondary text (`Web only`, `3 platforms`, `No platforms`).
 - Reads and writes through `useProductScope(projectId)`.
 - Sits inside `SidebarHeader`, directly beneath `ProjectSwitcher`, and matches its width and typography.
