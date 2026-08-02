@@ -110,6 +110,45 @@ export function ProjectSidebar({
       </SidebarHeader>
 
       <SidebarContent>
+        {/* Project first — Overview is the landing page of a project. */}
+        <SidebarGroup>
+          <SidebarGroupLabel>Project</SidebarGroupLabel>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={currentView === "overview"} tooltip="Overview">
+                <Link href={overviewHref}>
+                  <LayoutDashboardIcon />
+                  <span>Overview</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={currentView === "pyramid"} tooltip="Value pyramid">
+                <Link href={pyramidHref}>
+                  <PyramidIcon />
+                  <span>Pyramid</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={currentView === "delivery"} tooltip="Delivery board">
+                <Link href={deliveryHref}>
+                  <SquareKanbanIcon />
+                  <span>Delivery</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={currentView === "changelog"} tooltip="Changelog">
+                <Link href={changelogHref}>
+                  <HistoryIcon />
+                  <span>Changelog</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
+
         <SidebarGroup>
           <SidebarGroupLabel>Maps</SidebarGroupLabel>
           <SidebarMenu>
@@ -203,44 +242,6 @@ export function ProjectSidebar({
                 </SidebarMenuButton>
               </SidebarMenuItem>
             ))}
-          </SidebarMenu>
-        </SidebarGroup>
-
-        <SidebarGroup>
-          <SidebarGroupLabel>Project</SidebarGroupLabel>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={currentView === "overview"} tooltip="Overview">
-                <Link href={overviewHref}>
-                  <LayoutDashboardIcon />
-                  <span>Overview</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={currentView === "pyramid"} tooltip="Value pyramid">
-                <Link href={pyramidHref}>
-                  <PyramidIcon />
-                  <span>Pyramid</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={currentView === "delivery"} tooltip="Delivery board">
-                <Link href={deliveryHref}>
-                  <SquareKanbanIcon />
-                  <span>Delivery</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={currentView === "changelog"} tooltip="Changelog">
-                <Link href={changelogHref}>
-                  <HistoryIcon />
-                  <span>Changelog</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
