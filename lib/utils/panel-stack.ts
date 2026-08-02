@@ -13,7 +13,7 @@
  */
 
 export interface PanelEntry<T> {
-  /** Identity of the thing this panel shows — the node id, here. */
+  /** Identity of this panel's subject, whatever the binding decides that is. */
   key: string;
   /**
    * React render key. A *refresh* (same key landing in the same slot) keeps it,

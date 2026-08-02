@@ -9,7 +9,7 @@
  */
 
 const fs = require("fs");
-const { loadPanelStack, BUILD_DIR } = require("./load-panel-stack");
+const { loadPanelStack, BUILD_DIR } = require("./load-panel-utils");
 
 const {
   initStack,
