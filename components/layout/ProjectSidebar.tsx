@@ -41,12 +41,12 @@ import { useModKeyLabel } from "@/lib/hooks/useModKeyLabel";
 
 interface ProjectSidebarProps {
   projectId: string;
-  currentProjectTitle?: string;
   /**
-   * The loaded bundle, for the product selector — products live at
-   * `project.project.metadata`, and the sidebar held only the id and the title.
-   * `undefined` until `useProject` resolves, which the selector treats as
-   * "no products yet" and renders nothing for.
+   * The loaded bundle. The sidebar took only the title before; the product
+   * selector needs `project.metadata.products` too, and the title is right
+   * there on the same object — passing both would be two props that can
+   * disagree. `undefined` until `useProject` resolves, which the switcher
+   * renders as "Loading project..." and the selector renders as nothing.
    */
   project: ProjectBundle | undefined;
   currentView: ProjectView;
@@ -72,7 +72,6 @@ const LIBRARY_ITEMS = [
 
 export function ProjectSidebar({
   projectId,
-  currentProjectTitle,
   project,
   currentView,
   currentSpecies,
@@ -96,7 +95,7 @@ export function ProjectSidebar({
       <SidebarHeader>
         <ProjectSwitcher
           currentProjectId={projectId}
-          currentProjectTitle={currentProjectTitle}
+          currentProjectTitle={project?.project.title}
           currentView={currentView}
           currentQueryString={currentQueryString}
         />

@@ -71,16 +71,18 @@ export interface ProductScopeOption {
  *
  * Takes `unknown` deliberately: `resolveProducts` is lenient by contract and a
  * stored definition may carry no `platforms` array at all, which reads the same
- * as an empty one.
+ * as an empty one. For the same reason the arity-1 case only names an entry it
+ * recognises — a junk id must degrade to the neutral count ("1 platform"), not
+ * be echoed back at the reader as "null only".
  */
 export function platformCountLabel(platforms: unknown): string {
   const list = Array.isArray(platforms) ? platforms : [];
   if (list.length === 0) return "No platforms";
   if (list.length === 1) {
     const only = PLATFORMS.find((platform) => platform.id === list[0]);
-    return `${only?.label ?? String(list[0])} only`;
+    if (only) return `${only.label} only`;
   }
-  return `${list.length} platforms`;
+  return `${list.length} platform${list.length === 1 ? "" : "s"}`;
 }
 
 /**

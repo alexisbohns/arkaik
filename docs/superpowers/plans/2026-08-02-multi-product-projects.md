@@ -20,6 +20,7 @@
 3. **There is no browser driver.** UI tasks are verified statically (`npx tsc --noEmit`, `npm run lint`) and handed to Alexis with a checklist at the end.
 4. **Commit after every task.** Message style follows the repo: lowercase `feat:` / `fix:` / `docs:` / `chore:`, benefit-first where it is user-facing.
 5. **Never edit generated files by hand.** `docs/arkaik-skill/references/schema.md`, `public/schema/*.json`, `app/llms-full.txt`, `docs/arkaik-skill/scripts/validate-bundle.js` and the plugin channel are all outputs of `npm run generate`.
+6. **Rendering a lucide icon the tree has never used before requires `npm run generate`, and the two wobble artifacts must be committed with it.** `scripts/generate` scans every lucide import and writes `lib/wobble/wobble-registry.generated.ts` and `app/wobble.generated.css`; `.github/workflows/ci.yml:28` then gates on `git diff --exit-code` over both. So a new icon is a **red CI run**, and until the registry knows it, that one icon renders flat while every other icon in the app wobbles. Tasks 8 and 11-17 all add icons. The check is: `npm run generate && git status --short` — clean, or stage what moved.
 
 ---
 
@@ -1565,6 +1566,13 @@ In `components/layout/ProjectSidebar.tsx`, inside `SidebarHeader` after the `<Pr
 
 - [ ] **Step 3: Verify**
 
+Run: `npm run generate && git status --short`
+Expected: no unstaged generated files. The selector's leading icon is a lucide
+icon the tree has not used before, so `lib/wobble/wobble-registry.generated.ts`
+and `app/wobble.generated.css` both move and both must be committed — see
+Ground rule 6. This is the same trap as the commit immediately preceding this
+branch ("regenerate the wobble registry for the new toolbar icons").
+
 Run: `npx tsc --noEmit`
 Expected: no errors.
 
@@ -1574,7 +1582,8 @@ Expected: the same problem count as before this task (see Ground rule 1).
 - [ ] **Step 4: Commit**
 
 ```bash
-git add components/layout/ProductScopeSelector.tsx components/layout/ProjectSidebar.tsx
+git add components/layout/ProductScopeSelector.tsx components/layout/ProjectSidebar.tsx \
+  lib/wobble/wobble-registry.generated.ts app/wobble.generated.css
 git commit -m "feat: switch between the products in a project from the sidebar"
 ```
 

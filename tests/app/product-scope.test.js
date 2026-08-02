@@ -125,8 +125,12 @@ assert(
 // render over them.
 
 assert(
-  eq(productScopeOptions(noProducts), []) && eq(productScopeOptions(undefined), []),
-  "no products (or no bundle yet) yields no options — THE SELECTOR RENDERS NOTHING, so a project that never heard of products is untouched",
+  eq(productScopeOptions(noProducts), []),
+  "a project declaring no products yields no options — THE SELECTOR RENDERS NOTHING, so a project that never heard of products is untouched",
+);
+assert(
+  eq(productScopeOptions(undefined), []),
+  "an unloaded bundle yields no options too — no empty select flashes while useProject's effect runs",
 );
 
 const options = productScopeOptions(bundle);
@@ -163,6 +167,10 @@ assert(
   "arity n counts: '3 platforms'",
 );
 assert(platformCountLabel(["web", "ios"]) === "2 platforms", "arity 2 counts too — only 1 is special-cased");
+assert(
+  platformCountLabel(["bogus"]) === "1 platform" && platformCountLabel([null]) === "1 platform",
+  "an unrecognised single entry falls back to the neutral count — never echoed back as 'null only'",
+);
 
 // --- nodeInScope -------------------------------------------------------------
 

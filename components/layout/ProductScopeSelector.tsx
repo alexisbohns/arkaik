@@ -56,6 +56,13 @@ export function ProductScopeSelector({ projectId, project }: ProductScopeSelecto
   // A scope pointing at a product this project no longer declares degrades to
   // "All products", matching `resolveProductScope` — a stale localStorage value
   // must never leave the trigger blank.
+  //
+  // Displayed, not healed, and deliberately so. Clearing the stored id here
+  // would mean a project momentarily missing a product — a half-synced bundle,
+  // a branch being switched — permanently forgetting a scope the user chose,
+  // and the selector would be writing state as a side effect of rendering. The
+  // cost is the opposite case: re-declaring that product silently restores the
+  // scope. Restoring a choice the user made is the better failure.
   const selected = options.find((option) => option.id === productId) ?? null;
 
   return (
@@ -76,18 +83,30 @@ export function ProductScopeSelector({ projectId, project }: ProductScopeSelecto
             <span className="truncate">{selected ? selected.label : "All products"}</span>
           </SelectValue>
         </SelectTrigger>
+        {/* A two-line option would otherwise announce and match as its two
+            lines run together — "End-user app3 platforms". Two separate
+            mechanisms, so two fixes: `textValue` seeds Radix's typeahead key,
+            which is otherwise the item's `textContent`; `aria-hidden` drops the
+            secondary line from the accessible name, which Radix derives from
+            the whole ItemText subtree via `aria-labelledby` and which
+            `textValue` does not reach. The secondary line is decoration — the
+            name is the title. */}
         <SelectContent align="start" className="min-w-56">
-          <SelectItem value={ALL_PRODUCTS}>
+          <SelectItem value={ALL_PRODUCTS} textValue="All products">
             <span className="grid text-left leading-tight">
               <span className="truncate">All products</span>
-              <span className="truncate text-xs text-muted-foreground">Everything in the project</span>
+              <span aria-hidden className="truncate text-xs text-muted-foreground">
+                Everything in the project
+              </span>
             </span>
           </SelectItem>
           {options.map((option) => (
-            <SelectItem key={option.id} value={option.id}>
+            <SelectItem key={option.id} value={option.id} textValue={option.label}>
               <span className="grid text-left leading-tight">
                 <span className="truncate">{option.label}</span>
-                <span className="truncate text-xs text-muted-foreground">{option.platformLabel}</span>
+                <span aria-hidden className="truncate text-xs text-muted-foreground">
+                  {option.platformLabel}
+                </span>
               </span>
             </SelectItem>
           ))}

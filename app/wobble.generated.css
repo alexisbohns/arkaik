@@ -18,6 +18,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-blocks { filter: url(#wob-blocks); }
 .lucide-book-open { filter: url(#wob-book-open); }
 .lucide-bot { filter: url(#wob-bot); }
+.lucide-boxes { filter: url(#wob-boxes); }
 .lucide-calendar { filter: url(#wob-calendar); }
 .lucide-check { filter: url(#wob-check); }
 .lucide-chevron-down { filter: url(#wob-chevron-down); }

@@ -101,7 +101,6 @@ export default function ProjectLayout({
       <SidebarProvider defaultOpen>
         <ProjectSidebar
           projectId={id}
-          currentProjectTitle={project?.project.title}
           project={project}
           currentView={currentView}
           currentSpecies={currentSpecies}

@@ -21,6 +21,7 @@ export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "blocks", seed: 11 },
   { name: "book-open", seed: 15 },
   { name: "bot", seed: 2 },
+  { name: "boxes", seed: 6 },
   { name: "calendar", seed: 7 },
   { name: "check", seed: 11 },
   { name: "chevron-down", seed: 19 },
