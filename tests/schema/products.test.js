@@ -148,4 +148,26 @@ assert(
   "a node with no platforms array yields []",
 );
 
+// The PLATFORM_IDS ordering guarantee is load-bearing for UI columns and
+// rings, and every other fixture here happens to store platforms already in
+// canonical order — so assert it against deliberately reversed input.
+const reorderedProject = {
+  id: "p",
+  title: "P",
+  metadata: { products: [{ id: "app", title: "App", platforms: ["android", "web"] }] },
+};
+assert(
+  JSON.stringify(productPlatforms(reorderedProject, "app")) === JSON.stringify(["web", "android"]),
+  "productPlatforms returns PLATFORM_IDS order, not stored order",
+);
+assert(
+  JSON.stringify(
+    effectiveNodePlatforms(
+      { species: "view", platforms: ["android", "web"] },
+      { id: "app", title: "App", platforms: ["android", "ios", "web"] },
+    ),
+  ) === JSON.stringify(["web", "android"]),
+  "effectiveNodePlatforms returns PLATFORM_IDS order, not stored order",
+);
+
 process.exit(failures === 0 ? 0 : 1);

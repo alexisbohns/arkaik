@@ -5,8 +5,9 @@
  * while data models and API endpoints derive it from who consumes them.
  *
  * Same doctrine as {@link ./maps}: pure functions, minimal `Pick<>` inputs,
- * immutable, deliberately **zod-free** (type-only imports) so the module stays
- * browser-safe and adds nothing to the standalone validator bundle.
+ * immutable, deliberately **zod-free** (`./ids` carries no runtime dependencies
+ * of its own) so the module stays browser-safe and adds nothing to the
+ * standalone validator bundle.
  *
  * Everything here is lenient. A stale or malformed product definition must
  * never fail an import or a CI gate — `validateBundle()` reports those as
@@ -86,10 +87,10 @@ export function productPlatforms(
   if (products.length === 0) return [...PLATFORM_IDS];
 
   const named = productId === null ? undefined : products.find((product) => product.id === productId);
-  const menus = named ? [named] : products;
+  const contributing = named ? [named] : products;
 
   const union = new Set<string>();
-  for (const product of menus) {
+  for (const product of contributing) {
     if (!Array.isArray(product.platforms)) continue;
     for (const platform of product.platforms) union.add(platform as string);
   }

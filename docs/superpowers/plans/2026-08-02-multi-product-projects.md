@@ -365,6 +365,28 @@ assert(
   JSON.stringify(effectiveNodePlatforms({ species: "view" }, appProduct)) === JSON.stringify([]),
   "a node with no platforms array yields []",
 );
+
+// The PLATFORM_IDS ordering guarantee is load-bearing for UI columns and
+// rings, and every other fixture here happens to store platforms already in
+// canonical order — so assert it against deliberately reversed input.
+const reorderedProject = {
+  id: "p",
+  title: "P",
+  metadata: { products: [{ id: "app", title: "App", platforms: ["android", "web"] }] },
+};
+assert(
+  JSON.stringify(productPlatforms(reorderedProject, "app")) === JSON.stringify(["web", "android"]),
+  "productPlatforms returns PLATFORM_IDS order, not stored order",
+);
+assert(
+  JSON.stringify(
+    effectiveNodePlatforms(
+      { species: "view", platforms: ["android", "web"] },
+      { id: "app", title: "App", platforms: ["android", "ios", "web"] },
+    ),
+  ) === JSON.stringify(["web", "android"]),
+  "effectiveNodePlatforms returns PLATFORM_IDS order, not stored order",
+);
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -374,7 +396,7 @@ Expected: `FAIL` lines for the new assertions (or a `TypeError` on the first `pr
 
 - [ ] **Step 3: Write the minimal implementation**
 
-Append to `packages/schema/src/products.ts`, and change the import line to `import { PLATFORM_IDS, type PlatformId, type SpeciesId } from "./ids";` (`PLATFORM_IDS` is a value, so it is a real import, not type-only — `ids.ts` has no zod dependency, so the module stays validator-safe):
+Append to `packages/schema/src/products.ts`, and change the import line to `import { PLATFORM_IDS, type PlatformId, type SpeciesId } from "./ids";` (`PLATFORM_IDS` is a value, so it is a real import, not type-only — `ids.ts` has no zod dependency, so the module stays validator-safe). Because this makes the import a mix of value and type-only, also reword the module header's stale "deliberately **zod-free** (type-only imports)" parenthetical to "deliberately **zod-free** (`./ids` carries no runtime dependencies of its own)" — still zod-free, the old wording just no longer describes the import:
 
 ```ts
 /**
@@ -398,10 +420,10 @@ export function productPlatforms(
   if (products.length === 0) return [...PLATFORM_IDS];
 
   const named = productId === null ? undefined : products.find((product) => product.id === productId);
-  const menus = named ? [named] : products;
+  const contributing = named ? [named] : products;
 
   const union = new Set<string>();
-  for (const product of menus) {
+  for (const product of contributing) {
     if (!Array.isArray(product.platforms)) continue;
     for (const platform of product.platforms) union.add(platform as string);
   }
