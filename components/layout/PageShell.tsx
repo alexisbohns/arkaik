@@ -54,8 +54,6 @@ export function PageShell({
       </PageHeader>
       <ProjectPanels
         surfaceLabel={title}
-        rootLabel={title}
-        showBreadcrumbs={false}
         onLayoutChange={onLayoutChange}
         {...panelProps}
       >

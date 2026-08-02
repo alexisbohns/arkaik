@@ -1,14 +1,7 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import { XIcon } from "lucide-react";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
@@ -31,8 +24,6 @@ interface PanelStackProps<T> {
   entries: PanelEntry<T>[];
   /** The surface — canvas, board, list. It is the grid's first cell, not a backdrop. */
   children: ReactNode;
-  /** The surface's name, for the breadcrumb's first crumb. */
-  rootLabel: string;
   labelOf: (entry: PanelEntry<T>) => string;
   /** Panel header content, left of the close button. */
   renderHeader: (entry: PanelEntry<T>, index: number) => ReactNode;
@@ -42,13 +33,8 @@ interface PanelStackProps<T> {
   onUnwindTo: (depth: number) => void;
   /** Fires when the columns change, so a canvas can re-frame itself. */
   onLayoutChange?: () => void;
-  /**
-   * The legacy in-body breadcrumb row. `PageShell` passes false — the header
-   * owns the trail now. Removed once every surface is on `PageShell`.
-   */
-  showBreadcrumbs?: boolean;
   /** The surface cell's accessible name. */
-  surfaceLabel?: string;
+  surfaceLabel: string;
   /** Per-entry visual accent. "editing" draws a dashed destructive border. */
   accentOf?: (entry: PanelEntry<T>, index: number) => "editing" | null | undefined;
   /**
@@ -82,14 +68,12 @@ interface PanelStackProps<T> {
 export function PanelStack<T>({
   entries,
   children,
-  rootLabel,
   labelOf,
   renderHeader,
   renderBody,
   onCloseAt,
   onUnwindTo,
   onLayoutChange,
-  showBreadcrumbs = true,
   surfaceLabel,
   accentOf,
   requestCloseAt,
@@ -179,64 +163,6 @@ export function PanelStack<T>({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {showBreadcrumbs && entries.length > 0 && (
-        <div className="flex shrink-0 items-center gap-3 border-b px-4 py-2">
-          <Breadcrumb className="min-w-0 flex-1">
-            <BreadcrumbList className="flex-nowrap overflow-x-auto whitespace-nowrap text-xs">
-              <BreadcrumbItem>
-                <button
-                  type="button"
-                  className="cursor-pointer transition-colors hover:text-foreground"
-                  onClick={() =>
-                    runClose(
-                      unwindDoomed(0, entries.length),
-                      () => onUnwindTo(0),
-                      topPanelRef.current,
-                    )
-                  }
-                >
-                  {rootLabel}
-                </button>
-              </BreadcrumbItem>
-              {entries.map((entry, index) => {
-                const isLast = index === entries.length - 1;
-
-                // The separator is a sibling `<li>`, never a child of one.
-                return (
-                  <Fragment key={entry.instanceId}>
-                    <BreadcrumbSeparator />
-                    <BreadcrumbItem>
-                      {isLast ? (
-                        <BreadcrumbPage className="max-w-48 truncate">
-                          {labelOf(entry)}
-                        </BreadcrumbPage>
-                      ) : (
-                        <button
-                          type="button"
-                          className="max-w-48 cursor-pointer truncate transition-colors hover:text-foreground"
-                          onClick={() =>
-                            runClose(
-                              unwindDoomed(index + 1, entries.length),
-                              () => onUnwindTo(index + 1),
-                              topPanelRef.current,
-                            )
-                          }
-                        >
-                          {labelOf(entry)}
-                        </button>
-                      )}
-                    </BreadcrumbItem>
-                  </Fragment>
-                );
-              })}
-            </BreadcrumbList>
-          </Breadcrumb>
-          <span className="hidden shrink-0 text-xs text-muted-foreground md:inline">
-            esc closes the last panel
-          </span>
-        </div>
-      )}
-
       <div
         className={cn(
           "relative grid min-h-0 flex-1 gap-3 p-3",
@@ -250,7 +176,7 @@ export function PanelStack<T>({
           box also keeps the ELK layout and the viewport intact underneath.
         */}
         <section
-          aria-label={surfaceLabel ?? rootLabel}
+          aria-label={surfaceLabel}
           className={cn(
             cellClassName,
             "relative",

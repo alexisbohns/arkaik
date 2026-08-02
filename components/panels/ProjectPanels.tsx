@@ -17,10 +17,6 @@ interface ProjectPanelsProps {
   children: ReactNode;
   /** The surface's accessible name. */
   surfaceLabel: string;
-  /** The legacy in-body breadcrumb row, for surfaces not yet on PageShell. */
-  showBreadcrumbs?: boolean;
-  /** The surface's name, for that legacy row's first crumb. */
-  rootLabel: string;
   /** Fires when the columns change, so a canvas can re-frame itself. */
   onLayoutChange?: () => void;
   allNodes?: Node[];
@@ -51,8 +47,6 @@ const NO_EDGES: Edge[] = [];
 export function ProjectPanels({
   children,
   surfaceLabel,
-  showBreadcrumbs,
-  rootLabel,
   onLayoutChange,
   allNodes = NO_NODES,
   allEdges = NO_EDGES,
@@ -101,8 +95,6 @@ export function ProjectPanels({
     <PanelStack<PanelDescriptor>
       entries={entries}
       surfaceLabel={surfaceLabel}
-      showBreadcrumbs={showBreadcrumbs}
-      rootLabel={rootLabel}
       onLayoutChange={onLayoutChange}
       labelOf={labelOf}
       accentOf={(entry) => panelStates[entry.instanceId]?.accent}
