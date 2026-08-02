@@ -219,6 +219,26 @@ function ProductSection({ node, scope, onUpdate }: ProductSectionProps) {
   if (!onUpdate) return null;
 
   const stored = productOf(node);
+  // Whether the membership RESOLVES, not merely whether one is stored. A key
+  // naming a product the project no longer declares degrades to "Unassigned" in
+  // the trigger (`ProductPicker` displays it, deliberately, rather than healing
+  // it), so keying the hint off `stored === null` would suppress the explanation
+  // in exactly the case that needs one most: the trigger says Unassigned and
+  // nothing on screen says why.
+  const resolved = stored !== null && scope.productsById.has(stored);
+  // The two unresolved cases get different sentences because they are different
+  // situations and have different fixes. Never-assigned is a normal state — the
+  // node is in triage and the hint just says where to find it. A stale key is a
+  // fault: something named a product that no longer exists, the id is the only
+  // trace of it left, and echoing it back is what lets a reader recognise a
+  // rename or a deletion they can undo. Collapsing both into one sentence would
+  // throw that id away, and it is unrecoverable from the UI once the select is
+  // touched.
+  const hint = resolved
+    ? undefined
+    : stored === null
+      ? "Unassigned nodes appear under All products only."
+      : `Assigned to "${stored}", which this project no longer declares — it appears under All products only.`;
 
   return (
     <div className="px-6">
@@ -232,7 +252,7 @@ function ProductSection({ node, scope, onUpdate }: ProductSectionProps) {
         onChange={(nextProduct) =>
           void onUpdate(node.id, { metadata: withProductMembership(node.metadata, nextProduct) })
         }
-        hint={stored === null ? "Unassigned nodes appear under All products only." : undefined}
+        hint={hint}
       />
     </div>
   );

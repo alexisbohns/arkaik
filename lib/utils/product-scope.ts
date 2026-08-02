@@ -237,22 +237,9 @@ export function productsOfNode(
  * The products this node belongs to, as **titles ready to render**, in the
  * project's declaration order.
  *
- * Display only — {@link productsOfNode} owns the membership answer and this adds
- * nothing to it but ordering and a label. Both are worth doing once rather than
- * per surface: a `Set`'s iteration order is insertion order, which for a data
- * model reached by three products is whatever the traversal happened to hit
- * first, and "Used by: Admin, End-user" flipping between renders of the same
- * graph reads as a change when nothing changed.
- *
- * Ids the project no longer declares sort last and render as themselves. They
- * are the stale-key case `ProductScopeSelector` also has to survive, and the
- * honest thing to show is the id — dropping it would silently under-report who
- * touches a data model.
- *
- * `title` is not validated by `resolveProducts` — a definition missing one is a
- * shape fault owned by the parser, so at runtime it can be absent whatever the
- * type says. Falling back to the id keeps a real badge instead of a blank one,
- * exactly as `productScopeOptions` does.
+ * Display only, and a composition of two functions that each own one half:
+ * {@link productsOfNode} answers the membership, {@link productLabels} owns the
+ * ordering and the title fallback. Neither rule is written here.
  *
  * An **empty result keeps both its meanings** and the caller resolves them, as
  * with {@link productsOfNode}: for a flow, view, or acceptance it is *nobody has
@@ -264,7 +251,42 @@ export function productLabelsOfNode(
   scope: ProductScope,
   graph: ProductGraph,
 ): string[] {
-  const products = productsOfNode(node, graph);
+  return productLabels(productsOfNode(node, graph), scope);
+}
+
+/**
+ * **The ordering and the title fallback, written once** — a set of product ids
+ * as titles ready to render. {@link productLabelsOfNode} is this function plus a
+ * membership answer, and holds no copy of either rule.
+ *
+ * It is separate from `productLabelsOfNode` for the caller that already *has*
+ * the ids: the acceptance editor derives its own membership through
+ * {@link productsOfAcceptance} (anchors, no traversal), and routing that through
+ * `productLabelsOfNode` would re-enter {@link productsOfNode} and demand a
+ * `usageIndex` — a full `buildProductUsageIndex` traversal — to answer a question
+ * about a species that never consults it. The editor duplicated both rules inline
+ * instead, which is exactly the drift this module exists to prevent.
+ *
+ * **Declaration order first, undeclared ids last.** A `Set` iterates in insertion
+ * order, which for a data model reached by three products is whatever the
+ * traversal happened to hit first; "Used by: Admin, End-user" flipping between
+ * renders of the same graph reads as a change when nothing changed. Ids the
+ * project no longer declares sort last and render as themselves — they are the
+ * stale-key case `ProductScopeSelector` also has to survive, and the honest thing
+ * to show is the id, since dropping it would silently under-report who touches a
+ * node.
+ *
+ * `title` is not validated by `resolveProducts` — a definition missing one is a
+ * shape fault owned by the parser, so at runtime it can be absent whatever the
+ * type says. Falling back to the id keeps a real badge instead of a blank one,
+ * exactly as `productScopeOptions` does.
+ *
+ * Takes an `Iterable` rather than a `Set` so a caller holding an array of ids
+ * need not build one; membership is tested against the *scope*, never against
+ * the argument, so order of iteration is the only thing read from it.
+ */
+export function productLabels(ids: Iterable<string>, scope: ProductScope): string[] {
+  const products = ids instanceof Set ? ids : new Set(ids);
   const declared = [...scope.productsById.keys()].filter((id) => products.has(id));
   const undeclared = [...products].filter((id) => !scope.productsById.has(id));
   return [...declared, ...undeclared].map((id) => {

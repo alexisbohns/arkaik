@@ -8,7 +8,7 @@ import type { ValueId } from "@arkaik/schema";
 import { STATUSES } from "@/lib/config/statuses";
 import { getEditablePlatformStatuses } from "@/lib/utils/platform-status";
 import type { ProductScope } from "@/lib/utils/product-scope";
-import { productsOfAcceptance } from "@/lib/utils/product-scope";
+import { productLabels, productsOfAcceptance } from "@/lib/utils/product-scope";
 import { withProductMembership } from "@/lib/utils/product-editing";
 import { productOf } from "@arkaik/schema";
 import { ProductPicker } from "@/components/panels/ProductPicker";
@@ -82,20 +82,12 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, on
    */
   const anchorCount = coveredAnchors.length;
   const derivedProducts = productsOfAcceptance(node, allEdges, nodesById);
-  // Declaration order, then ids the project no longer declares — the ordering
-  // `productLabelsOfNode` applies, for the same reason: a Set iterates in
-  // insertion order, which here is whatever the anchor list happened to hit
-  // first, and a label pair that flips between renders of an unchanged graph
-  // reads as a change.
-  const derivedLabels = [
-    ...[...scope.productsById.keys()].filter((id) => derivedProducts.has(id)),
-    ...[...derivedProducts].filter((id) => !scope.productsById.has(id)),
-  ]
-    .map((id) => {
-      const title = scope.productsById.get(id)?.title;
-      return typeof title === "string" && title.trim() !== "" ? title : id;
-    })
-    .join(", ");
+  // `productLabels`, not an inline sort-and-title: the declaration ordering and
+  // the title-falls-back-to-the-id rule are `product-scope`'s to hold, and a
+  // second copy here is a copy that drifts. Not `productLabelsOfNode`, which
+  // would re-enter `productsOfNode` and demand a `usageIndex` this editor has no
+  // reason to build for a species that never consults one.
+  const derivedLabels = productLabels(derivedProducts, scope).join(", ");
   const anchorNoun = `${anchorCount} node${anchorCount === 1 ? "" : "s"}`;
 
   return (
