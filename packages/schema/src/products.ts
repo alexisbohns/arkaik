@@ -37,9 +37,18 @@ export interface ProductDefinition extends Record<string, unknown> {
 export const PRODUCT_MEMBERSHIP_SPECIES: readonly SpeciesId[] = ["flow", "view", "acceptance"];
 
 /**
- * Stored definitions in order, with non-objects and duplicate ids dropped.
- * Duplicates resolve **first-wins** so that `productOf` is deterministic even
- * for a bundle `validateBundle()` has already warned about.
+ * Stored definitions in order, with non-objects, blank ids, and duplicate ids
+ * dropped. Duplicates resolve **first-wins** so that `productOf` is
+ * deterministic even for a bundle `validateBundle()` has already warned about.
+ *
+ * A blank or whitespace-only id is **not a declaration**, matching the `.trim()`
+ * test `validate.ts` uses to decide whether the gated product rules switch on.
+ * The two modules must agree on the word "declared": if they did not, a project
+ * whose only definition has a blank id would be product-less to the validator
+ * and platform-less to `productPlatforms`, and the arity rule would collapse to
+ * a single status for a project that has simply never heard of products.
+ * Such an id still earns a `product-invalid-id` warning — dropped here, not
+ * hidden.
  */
 export function resolveProducts(project: Pick<Project, "metadata"> | undefined | null): ProductDefinition[] {
   const stored = project?.metadata?.products;
@@ -51,7 +60,7 @@ export function resolveProducts(project: Pick<Project, "metadata"> | undefined |
   for (const entry of stored) {
     if (typeof entry !== "object" || entry === null || Array.isArray(entry)) continue;
     const candidate = entry as Record<string, unknown>;
-    if (typeof candidate.id !== "string" || seen.has(candidate.id)) continue;
+    if (typeof candidate.id !== "string" || candidate.id.trim() === "" || seen.has(candidate.id)) continue;
     seen.add(candidate.id);
     products.push(candidate as unknown as ProductDefinition);
   }

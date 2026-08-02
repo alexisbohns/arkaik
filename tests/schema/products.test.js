@@ -65,6 +65,22 @@ const dupes = {
 assert(resolveProducts(dupes).length === 1, "resolveProducts drops duplicate ids");
 assert(resolveProducts(dupes)[0].title === "First", "duplicate ids resolve first-wins");
 
+// A blank id is not a declaration — the same `.trim()` rule `validate.ts` uses
+// to decide whether the gated rules switch on. The two modules must agree, or
+// validation would call such a project product-less while `productPlatforms`
+// called it platform-less, and the arity rule would render a single status for
+// a project that has simply never heard of products.
+const blankIdProject = {
+  id: "p",
+  title: "P",
+  metadata: { products: [{ id: "   ", title: "Blank", platforms: ["web"] }] },
+};
+assert(resolveProducts(blankIdProject).length === 0, "a blank product id is not a declaration");
+assert(
+  JSON.stringify(productPlatforms(blankIdProject, null)) === JSON.stringify(["web", "ios", "android"]),
+  "a project whose only product has a blank id is degenerate, not platform-less",
+);
+
 // --- productOf -------------------------------------------------------------
 assert(
   productOf({ species: "view", metadata: { product: "admin" } }) === "admin",
