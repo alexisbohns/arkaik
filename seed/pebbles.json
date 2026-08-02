@@ -16,6 +16,27 @@
           "kind": "journey",
           "root_node_id": "F-record-pebble"
         }
+      ],
+      "products": [
+        {
+          "id": "app",
+          "title": "Pebbles",
+          "description": "The end-user diary app — the product every flow and view below belongs to unless it says otherwise.",
+          "platforms": [
+            "web",
+            "ios",
+            "android"
+          ],
+          "root_node_id": "V-landing"
+        },
+        {
+          "id": "admin",
+          "title": "Admin",
+          "description": "The web-only back office: analytics, glyph moderation and upload, domain curation. No journey anchor of its own, so it falls back to the project root.",
+          "platforms": [
+            "web"
+          ]
+        }
       ]
     },
     "created_at": "2026-04-01T00:00:00.000Z",
@@ -58,7 +79,8 @@
             "url": "https://notion.so/pebbles/landing-brief",
             "title": "Landing brief"
           }
-        ]
+        ],
+        "product": "app"
       }
     },
     {
@@ -72,7 +94,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-register",
@@ -85,7 +110,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-home",
@@ -98,7 +126,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-timeline",
@@ -111,7 +142,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-pebble-record",
@@ -126,7 +160,8 @@
         "android"
       ],
       "metadata": {
-        "stage": "deprecated"
+        "stage": "deprecated",
+        "product": "app"
       }
     },
     {
@@ -142,7 +177,8 @@
         "android"
       ],
       "metadata": {
-        "stage": "deprecated"
+        "stage": "deprecated",
+        "product": "app"
       }
     },
     {
@@ -158,7 +194,8 @@
         "android"
       ],
       "metadata": {
-        "stage": "deprecated"
+        "stage": "deprecated",
+        "product": "app"
       }
     },
     {
@@ -174,7 +211,8 @@
         "android"
       ],
       "metadata": {
-        "stage": "deprecated"
+        "stage": "deprecated",
+        "product": "app"
       }
     },
     {
@@ -190,7 +228,8 @@
         "android"
       ],
       "metadata": {
-        "stage": "deprecated"
+        "stage": "deprecated",
+        "product": "app"
       }
     },
     {
@@ -206,7 +245,8 @@
         "android"
       ],
       "metadata": {
-        "stage": "deprecated"
+        "stage": "deprecated",
+        "product": "app"
       }
     },
     {
@@ -222,7 +262,8 @@
         "android"
       ],
       "metadata": {
-        "stage": "deprecated"
+        "stage": "deprecated",
+        "product": "app"
       }
     },
     {
@@ -236,7 +277,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-pebble-detail",
@@ -255,7 +299,8 @@
           "ios": "live",
           "web": "idea",
           "android": "idea"
-        }
+        },
+        "product": "app"
       }
     },
     {
@@ -271,7 +316,8 @@
         "android"
       ],
       "metadata": {
-        "stage": "deprecated"
+        "stage": "deprecated",
+        "product": "app"
       }
     },
     {
@@ -287,7 +333,8 @@
         "android"
       ],
       "metadata": {
-        "stage": "deprecated"
+        "stage": "deprecated",
+        "product": "app"
       }
     },
     {
@@ -301,7 +348,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-collection-detail",
@@ -314,7 +364,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-collection-create",
@@ -327,7 +380,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-collection-edit",
@@ -340,7 +396,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-souls-list",
@@ -353,7 +412,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-soul-detail",
@@ -366,7 +428,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-soul-create",
@@ -379,7 +444,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-soul-edit",
@@ -392,7 +460,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-glyphs-list",
@@ -405,7 +476,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-glyph-detail",
@@ -418,7 +492,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-glyph-carve",
@@ -431,7 +508,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-glyph-attach",
@@ -446,7 +526,8 @@
         "android"
       ],
       "metadata": {
-        "stage": "deprecated"
+        "stage": "deprecated",
+        "product": "app"
       }
     },
     {
@@ -460,7 +541,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-collection-rise",
@@ -473,7 +557,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-achievements",
@@ -486,7 +573,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-weekly-cairn-intro",
@@ -499,7 +589,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-weekly-cairn",
@@ -512,7 +605,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-weekly-cairn-review",
@@ -525,7 +621,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-monthly-cairn-intro",
@@ -538,7 +637,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-monthly-cairn",
@@ -551,7 +653,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-monthly-cairn-review",
@@ -564,7 +669,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-onboarding-intro",
@@ -575,7 +683,10 @@
       "status": "development",
       "platforms": [
         "ios"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-onboarding-concept",
@@ -586,7 +697,10 @@
       "status": "development",
       "platforms": [
         "ios"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-onboarding-qualify",
@@ -597,7 +711,10 @@
       "status": "development",
       "platforms": [
         "ios"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-onboarding-carving",
@@ -608,7 +725,10 @@
       "status": "development",
       "platforms": [
         "ios"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-settings",
@@ -620,7 +740,10 @@
       "platforms": [
         "web",
         "ios"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-profile",
@@ -633,7 +756,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "F-record-pebble",
@@ -663,7 +789,8 @@
               "view_id": "V-karma-flash"
             }
           ]
-        }
+        },
+        "product": "app"
       }
     },
     {
@@ -702,7 +829,8 @@
               "view_id": "V-home"
             }
           ]
-        }
+        },
+        "product": "app"
       }
     },
     {
@@ -767,7 +895,8 @@
               ]
             }
           ]
-        }
+        },
+        "product": "app"
       }
     },
     {
@@ -823,7 +952,8 @@
               ]
             }
           ]
-        }
+        },
+        "product": "app"
       }
     },
     {
@@ -879,7 +1009,8 @@
               ]
             }
           ]
-        }
+        },
+        "product": "app"
       }
     },
     {
@@ -910,7 +1041,8 @@
               "view_id": "V-weekly-cairn-review"
             }
           ]
-        }
+        },
+        "product": "app"
       }
     },
     {
@@ -941,7 +1073,8 @@
               "view_id": "V-monthly-cairn-review"
             }
           ]
-        }
+        },
+        "product": "app"
       }
     },
     {
@@ -993,7 +1126,8 @@
               ]
             }
           ]
-        }
+        },
+        "product": "app"
       }
     },
     {
@@ -1566,7 +1700,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-pebble-visual",
@@ -1579,7 +1716,10 @@
         "web",
         "ios",
         "android"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "DM-pebble-engine",
@@ -1604,7 +1744,10 @@
       "platforms": [
         "web",
         "ios"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-docs-slug",
@@ -1616,7 +1759,10 @@
       "platforms": [
         "web",
         "ios"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-docs-legal-notice",
@@ -1628,7 +1774,10 @@
       "platforms": [
         "web",
         "ios"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-docs-terms",
@@ -1640,7 +1789,10 @@
       "platforms": [
         "web",
         "ios"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-docs-privacy",
@@ -1652,7 +1804,10 @@
       "platforms": [
         "web",
         "ios"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "F-legal-consent",
@@ -1674,7 +1829,8 @@
               "view_id": "V-register"
             }
           ]
-        }
+        },
+        "product": "app"
       }
     },
     {
@@ -1687,7 +1843,10 @@
       "platforms": [
         "ios",
         "web"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "V-admin-analytics",
@@ -1698,7 +1857,10 @@
       "status": "development",
       "platforms": [
         "web"
-      ]
+      ],
+      "metadata": {
+        "product": "admin"
+      }
     },
     {
       "id": "V-admin-glyph-moderation",
@@ -1709,7 +1871,10 @@
       "status": "development",
       "platforms": [
         "web"
-      ]
+      ],
+      "metadata": {
+        "product": "admin"
+      }
     },
     {
       "id": "V-admin-glyph-upload",
@@ -1720,7 +1885,10 @@
       "status": "development",
       "platforms": [
         "web"
-      ]
+      ],
+      "metadata": {
+        "product": "admin"
+      }
     },
     {
       "id": "V-admin-domains",
@@ -1731,7 +1899,10 @@
       "status": "development",
       "platforms": [
         "web"
-      ]
+      ],
+      "metadata": {
+        "product": "admin"
+      }
     },
     {
       "id": "API-admin-list-domains",
@@ -2056,7 +2227,10 @@
       "status": "development",
       "platforms": [
         "web"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "DM-karma-events",
@@ -2123,7 +2297,10 @@
       "status": "development",
       "platforms": [
         "ios"
-      ]
+      ],
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "DM-glyph-entitlements",
@@ -2159,7 +2336,10 @@
         "web",
         "ios"
       ],
-      "project_id": "pebbles"
+      "project_id": "pebbles",
+      "metadata": {
+        "product": "app"
+      }
     },
     {
       "id": "F-swap-glyph",
@@ -2183,7 +2363,8 @@
               "view_id": "V-glyph-swap-drawer"
             }
           ]
-        }
+        },
+        "product": "app"
       },
       "project_id": "pebbles"
     },
