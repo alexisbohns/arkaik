@@ -138,6 +138,12 @@ a rollup is keyed entirely by platform, so a scope with no platforms genuinely h
 
 ### 5. Anchorless acceptances are an intake state, and carry stored membership
 
+**Anchors win, and stored membership is the anchorless answer.** An acceptance that covers one or
+more views or flows derives its product(s) from those anchors; its own `metadata.product` is read
+only when it covers nothing (RFC decision 3). Membership is a property of what an acceptance
+*covers* — letting a stored key out-vote the graph would let an acceptance claim a product none of
+its anchors belong to, and the claim would survive every later re-anchoring untouched.
+
 An acceptance with zero `covers` edges has nothing to derive membership from. These are not
 cross-cutting NFRs floating above every app — they are **ideas in intake**, filed before the
 flows and views exist, waiting to be decomposed.
@@ -152,6 +158,12 @@ flows and views exist, waiting to be decomposed.
 
 An acceptance whose *derived* membership spans two products earns a warning too (RFC decision 3),
 never an error: the graph stays importable and the matrix shows it under both scopes.
+
+**A consequence, not a second rule:** an acceptance anchored only to *unassigned* views or flows
+derives an empty membership, so it lands in triage — visible under "All products" only —
+whatever its own `metadata.product` says. That falls straight out of anchors-first: its anchors
+are in triage, so it is. Reading the stored key as a fallback here would be a second rule, and it
+would let an acceptance sit under Admin while every view it covers sits in the inbox.
 
 **Unassigned flows and views follow the same rule.** In a project that declares products, a flow
 or view with no `metadata.product` belongs to no product: it appears under "All products" only,

@@ -1798,6 +1798,12 @@ git commit -m "feat: one primitive decides whether availability reads as rings o
 
 ## Phase D — Surfaces
 
+> **Carried forward from Task 11, for every task after it:**
+>
+> - **`filterAcceptances` now takes four arguments** — `(acceptances, edges, nodesById, filters)`. `nodesById` sits beside `edges` (matching `groupAcceptancesByAnchor`) because resolving an acceptance's product means resolving its anchors. A new call site that passes three will fail to typecheck rather than silently mis-scope, but knowing beats discovering.
+> - **The product scope is never a URL param.** It is the shell's, persisted per project in localStorage (§ Decision 2); each surface layers `scope.productId` onto its own filters at the page. Tasks 13 and 14 have their own filter bars and must do the same.
+> - **An acceptance's product comes from its anchors** when it has any, from stored `metadata.product` only when it has none (§ Decision 5). Any later task that derives acceptance membership must use the same precedence, or two surfaces will disagree about the same node.
+
 ### Task 11: Acceptances — scoped filter, collapsing columns, the Unanchored rename
 
 **Files:**
@@ -1810,10 +1816,12 @@ git commit -m "feat: one primitive decides whether availability reads as rings o
 
 Add to `tests/app/acceptance-matrix.test.js` (follow the file's existing fixture and `assert` style — read it first):
 
-- `filterAcceptances` with `{ product: "admin" }` keeps only acceptances whose stored membership is `admin`, **plus** anchorless acceptances whose membership is `admin`.
+- `filterAcceptances` with `{ product: "admin" }` keeps acceptances whose **anchors** are in `admin`, **plus** anchorless acceptances whose stored membership is `admin`.
 - `filterAcceptances` with `{ product: "admin" }` drops an anchorless acceptance with **no** membership.
 - `filterAcceptances` with `{ product: null }` keeps everything, including unassigned ones.
-- An acceptance with covers anchors is scoped by the *anchor's* product, not its own metadata.
+- An acceptance with covers anchors is scoped by the *anchor's* product, not its own metadata. Build a fixture where the two **disagree** — an acceptance storing `end-user` that covers an `admin` view — or the assertion is vacuous.
+- An acceptance whose anchors span two products appears under both scopes.
+- An acceptance anchored only to an *unassigned* view is dropped from every product scope, even though it stores one — the anchors-first consequence in § Decision 5.
 - `groupAcceptancesByAnchor` returns the anchorless bucket with `anchorId: null` as before — assert the bucket still comes last, and that any user-facing label constant now reads `Unanchored`.
 
 - [ ] **Step 2: Run to verify it fails**
@@ -1826,8 +1834,9 @@ Expected: `FAIL` lines for the new assertions.
 In `lib/utils/acceptance-matrix.ts`:
 
 - Add `product: string | null` to `AcceptanceFilters` and `product: null` to `EMPTY_FILTERS`.
-- Add a `productOfAcceptance(acceptance, edges, nodesById)` helper: stored `metadata.product` when present; otherwise the set of `productOf(anchor)` across its covers anchors.
-- In `filterAcceptances`, when `filters.product !== null`, keep an acceptance only when its resolved product set contains the scope. An acceptance with an **empty** resolved set (anchorless, unassigned) is dropped — it belongs to triage, visible only under All products.
+- Add a `productsOfAcceptance(acceptance, edges, nodesById)` helper returning the set of products an acceptance belongs to. **Anchors win:** when it covers one or more resolvable anchors, the set is `productOf(anchor)` across them; stored `metadata.product` is read **only** when it covers nothing. Membership is a property of what an acceptance covers, and a stored key that out-voted the graph could claim a product none of its anchors belong to (spec § Decision 5, RFC decision 3).
+- In `filterAcceptances`, when `filters.product !== null`, keep an acceptance only when its resolved product set contains the scope. An acceptance with an **empty** resolved set is dropped — it belongs to triage, visible only under All products. That covers two cases and needs no branch for either: anchorless-and-unassigned, and anchored only to views or flows that are themselves unassigned.
+- `product` stays **out** of the URL `KEYS` in `components/acceptances/acceptance-filters.ts`, and `readFilters` always returns `product: null`; the page layers the live scope on top. The scope is the shell's, persisted per project in localStorage (§ Decision 2), and giving it a second home in the query string is two values that can disagree. **The same holds for Tasks 13 and 14**, which have their own filter bars.
 - Rename the user-facing label of the `anchorId: null` bucket to `Unanchored` wherever it is rendered. The `AnchorGroup.anchorId === null` contract does not change; only the label and the doc comment do. Update the comment at `:78` — "null = product-level (0 covers edges)" now means the wrong thing.
 
 - [ ] **Step 4: Run to verify it passes**
@@ -2067,6 +2076,19 @@ git commit -m "feat: overview cards report the product you are looking at"
 - Modify: `components/panels/NodeDetailPanel.tsx`
 - Modify: `components/graph/nodes/PlatformList.tsx`
 - Modify: `components/graph/nodes/FlowNode.tsx`
+- Modify: `components/panels/AcceptanceEditor.tsx`
+
+- [ ] **Step 0: Finish the Unanchored rename**
+
+`components/panels/AcceptanceEditor.tsx:100` still reads `Product-level (covers nothing).` — the
+last survivor of the rename Task 11 did on the matrix. Make it read **`Unanchored (covers
+nothing).`**
+
+Not cosmetic: with products in the model, "product-level" reads as *belongs to a product*, which
+is the exact opposite of what the string describes. An acceptance covering nothing belongs to no
+product by derivation — it is in intake, and it is the one kind of acceptance whose stored
+`metadata.product` is even consulted (§ Decision 5). Leaving the old wording in the editor where
+that key is set is the most confusing possible place to leave it.
 
 - [ ] **Step 1: Collapse the tabs**
 
@@ -2101,7 +2123,7 @@ Expected: no type errors, no new lint problems.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add components/panels/NodeDetailPanel.tsx components/graph/nodes
+git add components/panels/NodeDetailPanel.tsx components/panels/AcceptanceEditor.tsx components/graph/nodes
 git commit -m "feat: an admin view stops showing iOS tabs it can never have"
 ```
 
