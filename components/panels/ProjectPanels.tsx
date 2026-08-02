@@ -100,7 +100,7 @@ export function ProjectPanels({
       requestCloseAt={requestCloseAt}
       renderHeader={(entry) => {
         if (entry.payload.kind === "raw")
-          return <span className="truncate text-sm font-medium">Raw project bundle</span>;
+          return <span className="truncate text-sm font-medium">Raw bundle</span>;
 
         const node = nodesById.get(entry.key);
         return node ? <NodeDetailPanelHeader node={node} /> : <EntityId id={entry.key} />;
