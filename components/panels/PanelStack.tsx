@@ -14,6 +14,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { isEditableElement } from "@/lib/utils/keyboard";
 import { visibleWindow, type PanelEntry } from "@/lib/utils/panel-stack";
+import { unwindDoomed } from "@/lib/utils/project-panels";
 
 /**
  * Escape belongs to whatever layer is on top, and Radix marks its open layers
@@ -52,9 +53,9 @@ interface PanelStackProps<T> {
   /** Per-entry visual accent. "editing" draws a dashed destructive border. */
   accentOf?: (entry: PanelEntry<T>, index: number) => "editing" | null | undefined;
   /**
-   * Consulted for every panel a close would destroy, top-down. Returning false
-   * vetoes; that panel raises its own confirm and calls `resume` to finish the
-   * close the user asked for.
+   * Consulted for every panel a close would destroy, in the order given —
+   * top-down. Returning false vetoes; that panel raises its own confirm and
+   * calls `resume` to finish the close the user asked for.
    */
   canCloseAt?: (index: number, resume: () => void) => boolean;
 }
@@ -96,26 +97,29 @@ export function PanelStack<T>({
   // Closing a panel with focus inside it would drop focus on the document body
   // and lose the tab position. Hand it to whatever panel is on top afterwards.
   //
-  // `fromIndex` is the lowest panel a close destroys — an unwind takes every
-  // panel above it too, so every one of them gets asked. Top-down, because the
-  // panel most likely to hold an unsaved draft is the one on screen, and the
-  // confirm that appears should belong to something the user can see.
+  // `doomed` is every panel this close destroys, highest first: an unwind takes
+  // a whole suffix, the close button takes exactly one. Each call site says
+  // which it is rather than leaving the stack to infer it.
   const runClose = useCallback(
-    (fromIndex: number, close: () => void, source: HTMLElement | null) => {
+    (doomed: number[], close: () => void, source: HTMLElement | null) => {
+      // Captured before asking, not inside `commit`: a veto opens a dialog that
+      // takes focus, so by the time the user resumes, focus is in the dialog
+      // and the answer would always be no.
+      const hadFocus = source?.contains(document.activeElement) ?? false;
       const commit = () => {
-        restoreFocusRef.current = source?.contains(document.activeElement) ?? false;
+        restoreFocusRef.current = hadFocus;
         close();
       };
 
       if (canCloseAt) {
-        for (let index = entries.length - 1; index >= fromIndex; index -= 1) {
+        for (const index of doomed) {
           if (!canCloseAt(index, commit)) return;
         }
       }
 
       commit();
     },
-    [canCloseAt, entries.length],
+    [canCloseAt],
   );
 
   useEffect(() => {
@@ -143,7 +147,11 @@ export function PanelStack<T>({
       if (document.querySelector(OPEN_OVERLAY_SELECTOR)) return;
 
       event.preventDefault();
-      runClose(entries.length - 1, () => onUnwindTo(entries.length - 1), topPanelRef.current);
+      runClose(
+        unwindDoomed(entries.length - 1, entries.length),
+        () => onUnwindTo(entries.length - 1),
+        topPanelRef.current,
+      );
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -163,7 +171,13 @@ export function PanelStack<T>({
                 <button
                   type="button"
                   className="cursor-pointer transition-colors hover:text-foreground"
-                  onClick={() => runClose(0, () => onUnwindTo(0), topPanelRef.current)}
+                  onClick={() =>
+                    runClose(
+                      unwindDoomed(0, entries.length),
+                      () => onUnwindTo(0),
+                      topPanelRef.current,
+                    )
+                  }
                 >
                   {rootLabel}
                 </button>
@@ -185,7 +199,11 @@ export function PanelStack<T>({
                           type="button"
                           className="max-w-48 cursor-pointer truncate transition-colors hover:text-foreground"
                           onClick={() =>
-                            runClose(index + 1, () => onUnwindTo(index + 1), topPanelRef.current)
+                            runClose(
+                              unwindDoomed(index + 1, entries.length),
+                              () => onUnwindTo(index + 1),
+                              topPanelRef.current,
+                            )
                           }
                         >
                           {labelOf(entry)}
@@ -250,7 +268,7 @@ export function PanelStack<T>({
                   className="shrink-0 cursor-pointer"
                   aria-label={`Close ${labelOf(entry)}`}
                   onClick={(event) =>
-                    runClose(index, () => onCloseAt(index), event.currentTarget.closest("section"))
+                    runClose([index], () => onCloseAt(index), event.currentTarget.closest("section"))
                   }
                 >
                   <XIcon className="size-4" />

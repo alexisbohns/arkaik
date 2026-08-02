@@ -15,8 +15,14 @@ const fs = require("fs");
 const { loadPanelStack, loadProjectPanels, BUILD_DIR } = require("./load-panel-utils");
 
 const { openFrom, initStack } = loadPanelStack();
-const { RAW_PANEL_KEY, isNodeEntry, topNodeKey, pruneNodeEntries, buildPanelCrumbs } =
-  loadProjectPanels();
+const {
+  RAW_PANEL_KEY,
+  isNodeEntry,
+  topNodeKey,
+  pruneNodeEntries,
+  buildPanelCrumbs,
+  unwindDoomed,
+} = loadProjectPanels();
 
 let failures = 0;
 function assert(cond, message) {
@@ -123,6 +129,25 @@ assert(crumbs[3].label === "Raw bundle", "Raw is labelled from the union, never 
 assert(
   crumbs[4].label === "C",
   "a node titleOf does not know falls back to its key — a crumb is never blank",
+);
+
+// --- what a close destroys ---
+assert(
+  JSON.stringify(unwindDoomed(0, 4)) === "[3,2,1,0]",
+  `unwinding to the surface takes the whole stack (got ${JSON.stringify(unwindDoomed(0, 4))})`,
+);
+assert(
+  JSON.stringify(unwindDoomed(3, 4)) === "[3]",
+  `Escape takes only the top panel (got ${JSON.stringify(unwindDoomed(3, 4))})`,
+);
+assert(
+  unwindDoomed(4, 4).length === 0,
+  "unwinding to the current depth destroys nothing — no panel gets asked",
+);
+assert(unwindDoomed(9, 4).length === 0, "unwinding past the top destroys nothing");
+assert(
+  unwindDoomed(1, 5).every((index, position, all) => position === 0 || all[position - 1] > index),
+  `the doomed set is always descending, so the confirm belongs to the visible panel (got ${JSON.stringify(unwindDoomed(1, 5))})`,
 );
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
