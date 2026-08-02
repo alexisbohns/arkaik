@@ -7,21 +7,48 @@ import { CommandPalette } from "@/components/layout/CommandPalette";
 import { ProjectSidebar } from "@/components/layout/ProjectSidebar";
 import { PublishDialog } from "@/components/publik/PublishDialog";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { NODE_PANEL_PARAM, ProjectPanelsProvider } from "@/lib/hooks/useProjectPanels";
+import {
+  NODE_PANEL_PARAM,
+  ProjectPanelsProvider,
+  useProjectPanels,
+} from "@/lib/hooks/useProjectPanels";
 import { useProject } from "@/lib/hooks/useProject";
+import { useProjectExport } from "@/lib/hooks/useProjectExport";
 import { buildProjectCommands, type CommandActionId } from "@/lib/utils/command-palette";
-import { isCommandPaletteShortcut } from "@/lib/utils/keyboard";
+import {
+  isCommandPaletteShortcut,
+  isEditableElement,
+  isExportShortcut,
+} from "@/lib/utils/keyboard";
 
+// The panel stack lives here, not in a page: a page segment remounts whenever
+// its dynamic params change, which would reset the stack on every click.
 export default function ProjectLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  return (
+    <ProjectPanelsProvider>
+      <ProjectChrome>{children}</ProjectChrome>
+    </ProjectPanelsProvider>
+  );
+}
+
+/**
+ * Everything below the provider. Split out precisely so it can call
+ * `useProjectPanels` — a hook read in the same component that renders its
+ * provider sees no context at all, and the raw bundle item in the switcher
+ * needs `openRaw` from up here.
+ */
+function ProjectChrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const params = useParams();
   const searchParams = useSearchParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
   const { project } = useProject(id);
+  const { openRaw } = useProjectPanels();
+  const { exportBundle } = useProjectExport(id);
   const { theme, setTheme } = useTheme();
   const [paletteOpen, setPaletteOpen] = useState(false);
   // Owned here rather than in the sidebar: the palette reaches Publish too, and
@@ -83,6 +110,23 @@ export default function ProjectLayout({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // Registered here rather than on the Journey map, now that the button that
+  // starts an export is in the switcher: a shortcut that only fired on one of
+  // seven pages would contradict the menu item sitting on all of them. Still
+  // inert inside a field — ⌘E is a text-editing chord on macOS, and the raw
+  // bundle editor is a textarea.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || !isExportShortcut(event)) return;
+      if (isEditableElement(event.target)) return;
+      event.preventDefault();
+      void exportBundle();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [exportBundle]);
+
   const handleCommandAction = useCallback(
     (action: CommandActionId) => {
       if (action === "publish") {
@@ -94,39 +138,36 @@ export default function ProjectLayout({
     [setTheme, theme],
   );
 
-  // The panel stack lives here, not in a page: a page segment remounts whenever
-  // its dynamic params change, which would reset the stack on every click.
   return (
-    <ProjectPanelsProvider>
-      <SidebarProvider defaultOpen>
-        <ProjectSidebar
-          projectId={id}
-          currentProjectTitle={project?.project.title}
-          currentView={currentView}
-          currentSpecies={currentSpecies}
-          currentMapId={currentMapId}
-          customMaps={customMaps}
-          currentQueryString={currentQueryString}
-          onOpenCommandPalette={() => setPaletteOpen(true)}
-          onOpenPublish={() => setPublishOpen(true)}
-        />
-        <SidebarInset className="h-svh overflow-hidden">
-          {children}
-        </SidebarInset>
+    <SidebarProvider defaultOpen>
+      <ProjectSidebar
+        projectId={id}
+        currentProjectTitle={project?.project.title}
+        currentView={currentView}
+        currentSpecies={currentSpecies}
+        currentMapId={currentMapId}
+        customMaps={customMaps}
+        currentQueryString={currentQueryString}
+        onOpenCommandPalette={() => setPaletteOpen(true)}
+        onOpenPublish={() => setPublishOpen(true)}
+        onOpenRaw={openRaw}
+      />
+      <SidebarInset className="h-svh overflow-hidden">
+        {children}
+      </SidebarInset>
 
-        <CommandPalette
-          open={paletteOpen}
-          onOpenChange={setPaletteOpen}
-          commands={commands}
-          onAction={handleCommandAction}
-        />
-        <PublishDialog
-          open={publishOpen}
-          onOpenChange={setPublishOpen}
-          projectId={id}
-          projectTitle={project?.project.title ?? "Untitled project"}
-        />
-      </SidebarProvider>
-    </ProjectPanelsProvider>
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        commands={commands}
+        onAction={handleCommandAction}
+      />
+      <PublishDialog
+        open={publishOpen}
+        onOpenChange={setPublishOpen}
+        projectId={id}
+        projectTitle={project?.project.title ?? "Untitled project"}
+      />
+    </SidebarProvider>
   );
 }

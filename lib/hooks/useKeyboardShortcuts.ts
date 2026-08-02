@@ -1,30 +1,25 @@
 import { useEffect } from "react";
-import { isDeleteShortcut, isEditableElement, isExportShortcut } from "@/lib/utils/keyboard";
+import { isDeleteShortcut, isEditableElement } from "@/lib/utils/keyboard";
 
+/**
+ * Surface-scoped shortcuts. Export used to live here too, and no longer does:
+ * it acts on the project rather than on what a surface has selected, so it is
+ * registered once in `app/project/[id]/layout.tsx` — two registrations would
+ * have raced on the map that mounted this hook.
+ */
 interface KeyboardShortcutOptions {
   /** Optional: while the panel stack is non-empty, Escape belongs to it. */
   onEscape?: () => void;
   onDelete: () => void;
-  onExport: () => void;
 }
 
 export function useKeyboardShortcuts({
   onEscape,
   onDelete,
-  onExport,
 }: KeyboardShortcutOptions): void {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.repeat) {
-        return;
-      }
-
-      if (isExportShortcut(event)) {
-        if (isEditableElement(event.target)) {
-          return;
-        }
-        event.preventDefault();
-        onExport();
         return;
       }
 
@@ -47,5 +42,5 @@ export function useKeyboardShortcuts({
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [onDelete, onEscape, onExport]);
+  }, [onDelete, onEscape]);
 }

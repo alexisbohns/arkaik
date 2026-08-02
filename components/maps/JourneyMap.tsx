@@ -20,7 +20,6 @@ import { useJournal } from "@/lib/hooks/useJournal";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useElkLayout } from "@/lib/hooks/useElkLayout";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
-import { downloadJson, exportProject } from "@/lib/utils/export";
 import { generateNodeId, edgeId } from "@/lib/utils/id";
 import { wouldCreateCycle } from "@/lib/utils/cycle";
 import type { SpeciesId } from "@/lib/config/species";
@@ -67,12 +66,6 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     parentId: string;
     insertBeforeId: string;
   } | null>(null);
-  const [exporting, setExporting] = useState(false);
-  // Export outcomes are recorded but not rendered here: the button that starts
-  // an export moves to the project switcher next, and a message stranded on the
-  // map's header would name a control the user can no longer see.
-  const [, setExportError] = useState<string | null>(null);
-  const [, setExportWarning] = useState<string | null>(null);
   const [playlistError, setPlaylistError] = useState<string | null>(null);
 
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, removeNode, removeNodes } = useNodes(id);
@@ -153,7 +146,14 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   }, [nodesById]);
 
   // Prune expansion entries whose flow no longer exists.
+  //
+  // These three effects were invisible to `set-state-in-effect` until this file
+  // stopped holding an export handler — that handler made the compiler bail on
+  // the whole component, which took its diagnostics with it. They are all
+  // convergent by construction rather than cascading: this one returns `prev`
+  // untouched when there is nothing to prune, so it settles in one pass.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setExpandedFlows((prev) => {
       const next = new Set<string>();
 
@@ -190,6 +190,8 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
 
     const [firstTopLevelFlowId] = topLevelFlowIds;
     pendingFitFlowRef.current = firstTopLevelFlowId;
+    // Latched by `autoExpandedRef` above — it runs at most once per mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setExpandedFlows((prev) => (prev.size === 0 ? new Set([firstTopLevelFlowId]) : prev));
   }, [edgesLoading, nodesLoading, projectLoading, topLevelFlowIds]);
 
@@ -592,29 +594,9 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     setPendingConnection(null);
   }, [pendingConnection, addEdge, id]);
 
-  const handleExport = useCallback(async () => {
-    if (!id) {
-      setExportError("Unable to export: missing project id.");
-      return;
-    }
-
-    setExporting(true);
-    setExportError(null);
-    setExportWarning(null);
-    try {
-      const bundle = await exportProject(id);
-      const result = downloadJson(bundle);
-      setExportWarning(result.warning);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown export error";
-      setExportError(`Unable to export project: ${message}`);
-      setExportWarning(null);
-    } finally {
-      setExporting(false);
-    }
-  }, [id]);
-
   // Escape belongs to the panel stack while it is non-empty (PanelStack owns it).
+  // Export is not here: it acts on the project, so it is registered once in the
+  // project layout and works on every page, not only on this canvas.
   useKeyboardShortcuts({
     onDelete: () => {
       if (deleteNodeDialogOpen || deleteEdgeDialogOpen || newNodeOpen || insertBetweenOpen || edgeDialogOpen) return;
@@ -622,10 +604,6 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
       // panel on top there is nothing on screen to delete, and this no-ops.
       if (!topPanelNodeId) return;
       handleDeleteNodeRequest(topPanelNodeId);
-    },
-    onExport: () => {
-      if (exporting) return;
-      void handleExport();
     },
   });
 
@@ -682,6 +660,9 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     if (!layoutedNodes.some((node: Node) => node.id.includes(marker))) return;
 
     pendingFitFlowRef.current = null;
+    // The ref is cleared first, so the re-render this causes takes the early
+    // return above rather than bumping the signal again.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFitSignal((value) => value + 1);
   }, [layoutedNodes]);
 

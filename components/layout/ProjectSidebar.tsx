@@ -45,6 +45,8 @@ interface ProjectSidebarProps {
   /** Opens the ⌘K palette — the same overlay the shortcut summons. */
   onOpenCommandPalette: () => void;
   onOpenPublish: () => void;
+  /** Pushes the raw bundle onto the panel stack — project-scoped, like Publish. */
+  onOpenRaw: () => void;
 }
 
 // One library page per species, driven from here — the sidebar is the only
@@ -66,6 +68,7 @@ export function ProjectSidebar({
   currentQueryString,
   onOpenCommandPalette,
   onOpenPublish,
+  onOpenRaw,
 }: ProjectSidebarProps) {
   const modKey = useModKeyLabel();
   const overviewHref = `/project/${projectId}/overview`;
@@ -84,6 +87,7 @@ export function ProjectSidebar({
           currentView={currentView}
           currentQueryString={currentQueryString}
           onOpenPublish={onOpenPublish}
+          onOpenRaw={onOpenRaw}
         />
         <SidebarMenu>
           <SidebarMenuItem>

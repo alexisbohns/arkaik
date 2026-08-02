@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import {
   CheckIcon,
   ChevronsUpDownIcon,
+  Code2Icon,
+  DownloadIcon,
   FileTextIcon,
   FolderOpenIcon,
   GithubIcon,
@@ -31,6 +33,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useAuthStatus } from "@/lib/hooks/useAuthStatus";
+import { useProjectExport } from "@/lib/hooks/useProjectExport";
 import { useProjects } from "@/lib/hooks/useProjects";
 
 /**
@@ -55,6 +58,7 @@ interface ProjectSwitcherProps {
   currentView: ProjectView;
   currentQueryString?: string;
   onOpenPublish: () => void;
+  onOpenRaw: () => void;
 }
 
 export function ProjectSwitcher({
@@ -63,11 +67,13 @@ export function ProjectSwitcher({
   currentView,
   currentQueryString,
   onOpenPublish,
+  onOpenRaw,
 }: ProjectSwitcherProps) {
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
   const { projects, loading } = useProjects();
   const authStatus = useAuthStatus();
+  const { exportBundle, exporting } = useProjectExport(currentProjectId);
   const settingsHref = `/project/${currentProjectId}/settings`;
 
   const sortedProjects = useMemo(
@@ -86,6 +92,15 @@ export function ProjectSwitcher({
 
   function handleProjectSelect(projectId: string) {
     router.push(buildProjectHref(projectId));
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  }
+
+  // Same reason as switching project: on mobile the sidebar is a sheet over the
+  // content, so the raw panel would open behind it and look like nothing did.
+  function handleOpenRaw() {
+    onOpenRaw();
     if (isMobile) {
       setOpenMobile(false);
     }
@@ -154,6 +169,18 @@ export function ProjectSwitcher({
             <DropdownMenuItem className="cursor-pointer gap-2" onClick={onOpenPublish}>
               <Share2Icon className="size-4" />
               <span>Publish</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="cursor-pointer gap-2"
+              onClick={() => void exportBundle()}
+              disabled={exporting}
+            >
+              <DownloadIcon className="size-4" />
+              <span>{exporting ? "Exporting..." : "Export JSON"}</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem className="cursor-pointer gap-2" onClick={handleOpenRaw}>
+              <Code2Icon className="size-4" />
+              <span>Raw bundle</span>
             </DropdownMenuItem>
             <DropdownMenuItem asChild className="cursor-pointer gap-2">
               <Link href={settingsHref}>
