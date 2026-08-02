@@ -2,7 +2,8 @@ import { useEffect } from "react";
 import { isDeleteShortcut, isEditableElement, isExportShortcut } from "@/lib/utils/keyboard";
 
 interface KeyboardShortcutOptions {
-  onEscape: () => void;
+  /** Optional: while the panel stack is non-empty, Escape belongs to it. */
+  onEscape?: () => void;
   onDelete: () => void;
   onExport: () => void;
 }
@@ -28,7 +29,7 @@ export function useKeyboardShortcuts({
       }
 
       if (event.key === "Escape") {
-        onEscape();
+        onEscape?.();
         return;
       }
 

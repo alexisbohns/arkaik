@@ -22,7 +22,7 @@ app/
       page.tsx          # Markdown document route mapped from docs/**/*.md
   project/
     [id]/
-      layout.tsx        # Shared project shell with persistent sidebar + project switcher
+      layout.tsx        # Shared project shell: persistent sidebar, switcher, panel-stack provider
       page.tsx          # Redirects to /project/[id]/overview — a project opens on the global picture
       canvas/
         page.tsx        # Redirects to /project/[id]/maps/journey (old links keep working)
@@ -51,7 +51,7 @@ The Journey map (`components/maps/JourneyMap.tsx`) is the core of the graph rend
 3. Computes per-platform view statuses and flow rollup gauges
 4. Maps domain nodes to React Flow nodes with position, type, card-variant preference, and toggle handlers
 5. Renders the `Canvas` component with computed nodes and edges
-6. Opens `NodeDetailPanel` on node click for viewing/editing properties
+6. Pushes a detail panel on node click, onto the stack owned by the project layout
 7. Opens `NewNodeForm` (Dialog) via a floating "New node" button for creating nodes
 8. Opens `InsertBetweenDialog` from compose-edge insert actions for search-or-create insertion in flow playlists
 
@@ -105,7 +105,9 @@ components/
   panels/
     NewNodeForm.tsx         # Dialog form for creating a node with species-aware status/platform defaults
     InsertBetweenDialog.tsx # Dialog for insert-between actions: choose view/flow, search existing, or create inline
-    NodeDetailPanel.tsx     # Slide-in sheet: edit node fields, platform-specific statuses, computed rollups, and flow playlists
+    PanelStack.tsx          # Content-agnostic push-panel grid: the surface is cell 0; keyboard, focus, breadcrumb, window
+    NodeDetailStack.tsx     # Binds the stack to nodes: id → node, onNavigate → "push from my index"
+    NodeDetailPanel.tsx     # One panel's body: edit node fields, platform-specific statuses, computed rollups, and flow playlists
     PlaylistEditor.tsx      # Flow-only playlist editor: add/remove/reorder and branch editing
     PlaylistEntryRow.tsx    # Recursive playlist row renderer for condition/junction branches
     NodeSearchCombobox.tsx  # Search-or-create selector for flow/view references
@@ -226,10 +228,27 @@ before per-map display, so `large` keeps its platform rows.
 
 ## Node Detail Panel
 
-Clicking any node opens a slide-in `Sheet` (`NodeDetailPanel`) with:
+Clicking any node pushes a column onto the **panel stack** — an inline grid, no
+overlay and no focus trap, in which the surface itself is the first cell. The
+stack is
+owned by `NodePanelsProvider` in `app/project/[id]/layout.tsx` (a page segment
+would remount on every param change and reset it), rendered by `PanelStack`,
+and bound to nodes by `NodeDetailStack`. Its rule, URL contract (`?node=`) and
+the split across the three files are documented in
+[conventions.md § Panel Stack](conventions.md); the transitions themselves are
+pure, in `lib/utils/panel-stack.ts`.
+
+`NodeDetailPanel` is one panel's body — the stack owns the frame, the chrome
+and the keyboard. The five surfaces that open panels (Journey map, System map,
+library, delivery, acceptances) each render `NodeDetailStack` with their own
+data and handlers; none of them keeps a selected-node of its own.
+`RawBundleSheet` stays a `Sheet`: a project-level raw-JSON view with no
+traversal, and genuinely modal.
+
+The body carries:
 
 - **Editable fields**: title, description, and species-aware status/platform controls
-- **Connections**: cross-layer nodes (data-model, api-endpoint) with click-to-navigate
+- **Connections**: cross-layer nodes (data-model, api-endpoint); clicking one pushes it as the next panel
 - **Where Used**: reverse reference list showing which flow playlists currently include the selected node
 - **Platform Variants** (view only): per-platform status + notes stored in `node.metadata`
 - **Computed gauges** (`flow`): read-only per-platform rollups built from descendant views
@@ -249,7 +268,7 @@ The library route (`app/project/[id]/library/page.tsx`) is the project-wide brow
 - **Directory view**: sortable table using `NodeTable` for dense auditing (`id`, `title`, `species`, `status`, `used in`).
 - **Filter controls**: species selection is owned by the sidebar (`?species=` deep links); `LibraryFilterBar` owns text search and the gallery/directory display toggle.
 
-Library interactions reuse the same edit/create surfaces as canvas (`NodeDetailPanel`, `NewNodeForm`) so data mutation paths stay identical.
+Library interactions reuse the same edit/create surfaces as canvas (`NodeDetailStack`, `NewNodeForm`) so data mutation paths stay identical.
 
 ## Sidebar Navigation
 
@@ -285,6 +304,7 @@ dispatches the non-navigating commands; `CommandPalette` renders the overlay and
 
 - Graph orchestration: [components/maps/JourneyMap.tsx](../components/maps/JourneyMap.tsx), [lib/utils/journey-graph.ts](../lib/utils/journey-graph.ts), [lib/utils/system-graph.ts](../lib/utils/system-graph.ts)
 - Project shell: [app/project/[id]/layout.tsx](../app/project/[id]/layout.tsx)
+- Panel stack: [lib/utils/panel-stack.ts](../lib/utils/panel-stack.ts), [components/panels/PanelStack.tsx](../components/panels/PanelStack.tsx), [lib/hooks/useNodePanels.tsx](../lib/hooks/useNodePanels.tsx), [components/panels/NodeDetailStack.tsx](../components/panels/NodeDetailStack.tsx)
 - Library orchestration: [app/project/[id]/library/page.tsx](../app/project/[id]/library/page.tsx)
 - Sidebar components: [components/layout/ProjectSidebar.tsx](../components/layout/ProjectSidebar.tsx), [components/layout/ProjectSwitcher.tsx](../components/layout/ProjectSwitcher.tsx)
 - Command palette: [components/layout/CommandPalette.tsx](../components/layout/CommandPalette.tsx), [lib/utils/command-palette.ts](../lib/utils/command-palette.ts)

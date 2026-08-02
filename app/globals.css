@@ -324,4 +324,29 @@
   .react-flow__edge.arkaik-dim {
     opacity: 0.15;
   }
+
+  /* Push-panel columns (components/panels/PanelStack.tsx). A new panel always
+     arrives in the rightmost grid cell, so a full-cell translate reads as
+     "pushed in from the right". Keyframes rather than Tailwind utilities
+     because tw-animate-css is not installed here. */
+  @keyframes arkaik-panel-in {
+    from {
+      transform: translateX(2rem);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  .arkaik-panel-enter {
+    animation: arkaik-panel-in 180ms ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .arkaik-panel-enter {
+      animation: none;
+    }
+  }
 }
