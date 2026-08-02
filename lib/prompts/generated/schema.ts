@@ -81,6 +81,8 @@ interface NodeMetadata extends Record<string, unknown> {
   gherkin?: string;
   /** Acceptance nodes: value elements served — the Why (spec §3.2). */
   values?: ValueId[];
+  /** Product membership; meaningful on flow, view, and acceptance only. */
+  product?: string;
 }
 
 interface Node {
@@ -106,6 +108,7 @@ interface Edge {
 interface ProjectMetadata extends Record<string, unknown> {
   view_card_variant?: "compact" | "large";
   maps?: MapDefinition[];
+  products?: ProductDefinition[];
 }
 
 interface Project {

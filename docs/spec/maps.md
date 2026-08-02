@@ -26,6 +26,7 @@ interface MapDefinition extends Record<string, unknown> {
   species?: SpeciesId[];         // node filter; defaults by kind
   edge_types?: EdgeTypeId[];     // edge filter; defaults by kind
   root_node_id?: string;         // scope anchor; journey falls back to project.root_node_id
+  product?: string;              // product scope; absent = every product
   depth?: number;                // traversal bound from the root; absent = unbounded
   layout?: { direction?: "DOWN" | "RIGHT"; algorithm?: "layered" | "organic" };
 }
@@ -35,6 +36,7 @@ interface MapDefinition extends Record<string, unknown> {
 |---|---|
 | Defaults by kind | `journey`: `species: ["flow","view"]`, `edge_types: ["composes"]`. `system`: `species: ["view","api-endpoint","data-model"]`, `edge_types: ["calls","displays","queries"]` |
 | Reserved ids | `journey` and `system` name the built-in maps every project has implicitly. A stored definition MUST NOT reuse them (validator warning `map-shadows-built-in`) |
+| `product` | Scopes the map to one product ([bundle-format.md](bundle-format.md) § Products); absent selects every product. It composes with `root_node_id` rather than competing with it — the anchor still scopes the walk, and when the definition sets no anchor the scoped product's own `root_node_id` is the fallback, ahead of `project.root_node_id` |
 | Unknown fields | Preserved and ignored, like every other format object (`Record<string, unknown>`) |
 | Unknown kinds | Consumers MUST preserve definitions with unrecognized `kind` values and SHOULD list them as unrenderable rather than dropping them |
 | `layout.algorithm` | `"organic"` = force-directed with overlap removal (structure/cluster reading); `"layered"` = hierarchical tiers (didactic reading). Renderers fall back to the kind's default for unknown values; the built-in System map defaults to `organic` — at whole-product scale the tiered rendition degenerates into an unreadably wide ribbon |
