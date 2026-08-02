@@ -8,6 +8,10 @@ import type { ValueId } from "@arkaik/schema";
 import { STATUSES } from "@/lib/config/statuses";
 import { getEditablePlatformStatuses } from "@/lib/utils/platform-status";
 import type { ProductScope } from "@/lib/utils/product-scope";
+import { productsOfAcceptance } from "@/lib/utils/product-scope";
+import { withProductMembership } from "@/lib/utils/product-editing";
+import { productOf } from "@arkaik/schema";
+import { ProductPicker } from "@/components/panels/ProductPicker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { STATUS_ICONS, STATUS_STYLES, SPECIES_ICONS } from "@/components/graph/nodes/node-styles";
 import { PlatformVariants } from "@/components/panels/PlatformVariants";
@@ -50,6 +54,50 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, on
     onUpdate(node.id, { metadata: { ...node.metadata, ...next } });
   }
 
+  /* --- Product (§ D5) ------------------------------------------------------
+   *
+   * The control is **always** shown once the project declares products, but what
+   * it displays depends on whether this acceptance covers anything.
+   *
+   * `productsOfAcceptance` is the authority and is asked rather than
+   * re-implemented: anchors govern when there are any, and the stored key is the
+   * answer only for an acceptance that covers nothing — the intake case, where a
+   * PM files an idea knowing which app it is for long before they know which
+   * screens it needs. Reading the stored value first would let a stale key
+   * out-vote the graph it is attached to.
+   *
+   * So when anchors exist the trigger shows the **derived** product(s) — the live
+   * answer every read surface already agrees on — via `displayOverride`, while
+   * the select still edits and reports the stored fallback. The two rejected
+   * alternatives are recorded in the spec: hiding the control the moment a
+   * `covers` edge appears makes a field materialise and vanish as edges change,
+   * and treating it as a plain editable field lets a user set a value the graph
+   * silently ignores.
+   *
+   * `anchorCount` counts *resolvable* anchors, not `covers` edges, because that
+   * is what the derivation counts: a dangling edge to a node this snapshot does
+   * not hold is skipped by `productsOfAcceptance`, and a hint promising "the 2
+   * nodes it covers" decide the answer when only one of them exists would be
+   * telling the reader something false about their own graph.
+   */
+  const anchorCount = coveredAnchors.length;
+  const derivedProducts = productsOfAcceptance(node, allEdges, nodesById);
+  // Declaration order, then ids the project no longer declares — the ordering
+  // `productLabelsOfNode` applies, for the same reason: a Set iterates in
+  // insertion order, which here is whatever the anchor list happened to hit
+  // first, and a label pair that flips between renders of an unchanged graph
+  // reads as a change.
+  const derivedLabels = [
+    ...[...scope.productsById.keys()].filter((id) => derivedProducts.has(id)),
+    ...[...derivedProducts].filter((id) => !scope.productsById.has(id)),
+  ]
+    .map((id) => {
+      const title = scope.productsById.get(id)?.title;
+      return typeof title === "string" && title.trim() !== "" ? title : id;
+    })
+    .join(", ");
+  const anchorNoun = `${anchorCount} node${anchorCount === 1 ? "" : "s"}`;
+
   return (
     <div className="px-6 flex flex-col gap-5">
       <section className="flex flex-col gap-1.5">
@@ -64,6 +112,38 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, on
           </SelectContent>
         </Select>
       </section>
+
+      {scope.productsById.size > 0 && (
+        <section>
+          <ProductPicker
+            products={[...scope.productsById.values()]}
+            value={productOf(node)}
+            // `onUpdate` directly rather than `patchMetadata`: unassigning must
+            // *remove* the key (`withProductMembership` owns that rule — a stored
+            // `product: ""` names a product that cannot exist), and a spread
+            // merge can only ever add or overwrite one. The rest of the metadata
+            // — gherkin, values, platformStatuses — is carried through by
+            // `withProductMembership` itself, which is what `patchMetadata`
+            // would otherwise have been here for.
+            onChange={(nextProduct) =>
+              void onUpdate(node.id, { metadata: withProductMembership(node.metadata, nextProduct) })
+            }
+            label={anchorCount > 0 ? "Product (from what it covers)" : "Product"}
+            // Only when anchored: unanchored, the stored value *is* the answer,
+            // and overriding its display with itself would be a lie by ceremony.
+            displayOverride={
+              anchorCount > 0 ? { text: derivedLabels || "Unassigned" } : undefined
+            }
+            hint={
+              anchorCount > 0
+                ? derivedLabels
+                  ? `This acceptance belongs to ${derivedLabels}, taken from the ${anchorNoun} it covers. The value you set here applies only if it stops covering anything.`
+                  : `The ${anchorNoun} this covers have no product yet, so it appears under All products. The value you set here applies only if it stops covering anything.`
+                : "This acceptance covers nothing, so its product is whatever you set here."
+            }
+          />
+        </section>
+      )}
 
       <section className="flex flex-col gap-1.5">
         <span className="text-xs text-muted-foreground">Gherkin — the How (one Given/When/Then)</span>

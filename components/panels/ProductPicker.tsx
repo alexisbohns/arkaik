@@ -39,6 +39,27 @@ interface ProductPickerProps {
   label?: string;
   /** Secondary line under the control — the caller's explanation, if any. */
   hint?: string;
+  /**
+   * Render `text` in the trigger **instead of** the selected option's label,
+   * while the menu keeps selecting and reporting `value` unchanged.
+   *
+   * It exists for exactly one caller: the acceptance editor (§ D5). An
+   * acceptance's membership is derived from its `covers` anchors, so when it has
+   * any, the live answer is the derived product(s) while `value` is the stored
+   * fallback that only applies if the acceptance stops covering anything. Without
+   * this the trigger would render the fallback as though it were the answer —
+   * which is the precise confusion `productsOfAcceptance` was written to prevent.
+   *
+   * *Rejected:* a separate read-only "derived product" line above an ordinary
+   * picker, which puts two different answers to "what product is this?" on
+   * screen at once and leaves the reader to guess which one the app believes.
+   * *Rejected:* forking a `DerivedProductPicker`, which would duplicate the
+   * `UNASSIGNED` sentinel and the stale-key degradation — the two rules this
+   * component exists to keep in one place.
+   *
+   * The stored value is still fully editable; only its *display* is deferred.
+   */
+  displayOverride?: { text: string };
   disabled?: boolean;
 }
 
@@ -53,6 +74,7 @@ export function ProductPicker({
   onChange,
   label = "Product",
   hint,
+  displayOverride,
   disabled,
 }: ProductPickerProps) {
   // A stored membership naming a product this project no longer declares
@@ -70,7 +92,10 @@ export function ProductPicker({
         disabled={disabled}
       >
         <SelectTrigger aria-label={label}>
-          <SelectValue />
+          {/* `SelectValue` renders the *selected* option, which is the stored
+              value. When a caller has a different live answer it supplies the
+              text itself — see `displayOverride`. */}
+          {displayOverride ? <span>{displayOverride.text}</span> : <SelectValue />}
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
