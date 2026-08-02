@@ -56,6 +56,8 @@ export interface MapDefinition extends Record<string, unknown> {
   edge_types?: (EdgeTypeId | (string & {}))[];
   /** Scope anchor; the journey renderer falls back to `project.root_node_id`. */
   root_node_id?: string;
+  /** Product scope; absent = every product (docs/spec/bundle-format.md § Products). */
+  product?: string;
   /** Traversal bound from the root; absent = unbounded. */
   depth?: number;
   layout?: MapLayoutHints;

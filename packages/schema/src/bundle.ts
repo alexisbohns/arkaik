@@ -15,6 +15,7 @@ import { FlowPlaylistSchema, type FlowPlaylist } from "./playlist";
 import { JournalEventSchema } from "./journal-events";
 import type { JournalEvent } from "./journal";
 import type { MapDefinition } from "./maps";
+import type { ProductDefinition } from "./products";
 
 export type PlatformStatusMap = Partial<Record<PlatformId, StatusId>>;
 export const PlatformStatusMapSchema: z.ZodType<PlatformStatusMap> = z.partialRecord(
@@ -110,6 +111,8 @@ export interface NodeMetadata extends Record<string, unknown> {
   gherkin?: string;
   /** Acceptance nodes: value elements served — the Why (spec §3.2). */
   values?: ValueId[];
+  /** Product membership; meaningful on flow, view, and acceptance only. */
+  product?: string;
 }
 
 export const NodeMetadataSchema: z.ZodType<NodeMetadata> = z
@@ -125,6 +128,9 @@ export const NodeMetadataSchema: z.ZodType<NodeMetadata> = z
     }),
     values: z.array(ValueSchema).optional().meta({
       description: "Acceptance nodes only: 1..n Bain value elements served (the Why).",
+    }),
+    product: z.string().optional().meta({
+      description: "Product membership (docs/spec/bundle-format.md § Products); flow, view, and acceptance only.",
     }),
   })
   .catchall(z.unknown())
@@ -197,6 +203,7 @@ export const MapDefinitionSchema: z.ZodType<MapDefinition> = z
     root_node_id: z.string().optional().meta({
       description: "Scope anchor: the subgraph is the undirected neighborhood reachable from this node.",
     }),
+    product: z.string().optional().meta({ description: "Product scope; absent = every product." }),
     depth: z.number().optional().meta({ description: "Traversal bound from the root; absent = unbounded." }),
     layout: z
       .object({ direction: z.string().optional() })
@@ -207,9 +214,29 @@ export const MapDefinitionSchema: z.ZodType<MapDefinition> = z
   .catchall(z.unknown())
   .meta({ id: "MapDefinition", description: "A stored map definition (docs/spec/maps.md § MapDefinition)." });
 
+/**
+ * A product definition (docs/spec/bundle-format.md § Products). Deliberately
+ * lenient, exactly like `MapDefinitionSchema`: unknown keys round-trip, and the
+ * cross-checks against the graph live in `validate.ts` as warnings. The
+ * zod-free types and projections live in `./products`.
+ */
+export const ProductDefinitionSchema: z.ZodType<ProductDefinition> = z
+  .object({
+    id: z.string().meta({ description: "Kebab-case, unique within the project." }),
+    title: z.string(),
+    description: z.string().optional(),
+    platforms: z.array(PlatformSchema).meta({
+      description: "The platforms this product can ship on; empty means availability is not tracked.",
+    }),
+    root_node_id: z.string().optional().meta({ description: "This product's journey anchor." }),
+  })
+  .catchall(z.unknown())
+  .meta({ id: "ProductDefinition", description: "A product definition (docs/spec/bundle-format.md § Products)." });
+
 export interface ProjectMetadata extends Record<string, unknown> {
   view_card_variant?: "compact" | "large";
   maps?: MapDefinition[];
+  products?: ProductDefinition[];
 }
 
 export const ProjectMetadataSchema: z.ZodType<ProjectMetadata> = z
@@ -217,6 +244,9 @@ export const ProjectMetadataSchema: z.ZodType<ProjectMetadata> = z
     view_card_variant: z.enum(["compact", "large"]).optional(),
     maps: z.array(MapDefinitionSchema).optional().meta({
       description: "Stored map definitions (docs/spec/maps.md § Storage) — additive; unknown fields preserved.",
+    }),
+    products: z.array(ProductDefinitionSchema).optional().meta({
+      description: "Product definitions (docs/spec/bundle-format.md § Products) — additive; unknown fields preserved.",
     }),
   })
   .catchall(z.unknown())
