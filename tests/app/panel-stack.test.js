@@ -18,6 +18,7 @@ const {
   unwindTo,
   reconcileArrival,
   visibleFrom,
+  visibleWindow,
 } = loadPanelStack();
 
 let failures = 0;
@@ -148,11 +149,31 @@ assert(
   "a missing id on an empty stack returns the same array — no render loop",
 );
 
-// --- visibility rule: the surface plus the two topmost panels ---
+// --- visibility rule: the surface is a column like any other ---
 assert(visibleFrom(0, 2) === 0, "an empty stack has nothing to skip");
-assert(visibleFrom(2, 2) === 0, "two panels both render");
-assert(visibleFrom(6, 2) === 4, "a six-deep stack renders only its top two panels");
-assert(visibleFrom(6, 1) === 5, "mobile renders exactly one panel, always the top");
+assert(visibleFrom(2, 2) === 0, "two cells both render");
+assert(visibleFrom(6, 2) === 4, "six cells render only the top two");
+assert(visibleFrom(6, 1) === 5, "one column renders only the topmost cell");
+
+const win = (panels, columns) => {
+  const w = visibleWindow(panels, columns);
+  return `${w.surfaceVisible ? "surface" : "-"}|from:${w.firstVisiblePanel}|cols:${w.columnCount}`;
+};
+
+// Two columns — the femfolk window. The surface is pushed out by the same rule
+// that hides deep panels, so the newest two things are always what you see.
+assert(win(0, 2) === "surface|from:0|cols:1", `no panels: the surface alone (${win(0, 2)})`);
+assert(win(1, 2) === "surface|from:0|cols:2", `one panel: surface + panel (${win(1, 2)})`);
+assert(win(2, 2) === "-|from:0|cols:2", `two panels: both panels, surface retires (${win(2, 2)})`);
+assert(win(3, 2) === "-|from:1|cols:2", `three panels: the top two only (${win(3, 2)})`);
+assert(win(6, 2) === "-|from:4|cols:2", `six panels: still the top two (${win(6, 2)})`);
+
+// One column — below 768px, exactly one cell, always the newest.
+assert(win(0, 1) === "surface|from:0|cols:1", `mobile, no panels: the surface (${win(0, 1)})`);
+assert(win(1, 1) === "-|from:0|cols:1", `mobile, one panel: the panel replaces the surface (${win(1, 1)})`);
+assert(win(3, 1) === "-|from:2|cols:1", `mobile, three panels: the top one (${win(3, 1)})`);
+
+assert(win(2, 0) === win(2, 1), "a nonsensical column budget floors at one");
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 

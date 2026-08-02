@@ -179,6 +179,9 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   const autoExpandedRef = useRef(false);
   const pendingFitFlowRef = useRef<string | null>(null);
   const [fitSignal, setFitSignal] = useState(0);
+  // The canvas is a grid cell now: opening a panel narrows it and closing one
+  // gives the room back, so re-frame rather than leave the map half off-cell.
+  const reframe = useCallback(() => setFitSignal((value) => value + 1), []);
   useEffect(() => {
     if (autoExpandedRef.current || nodesLoading || edgesLoading || projectLoading) return;
     if (topLevelFlowIds.size === 0) return;
@@ -731,11 +734,9 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
           </Button>
         </div>
       </header>
-      <div className="flex-1 min-h-0 relative">
-        <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} onEdgeClick={handleEdgeClick} fitSignal={fitSignal} />
-      </div>
       <NodeDetailStack
         rootLabel={definition && definition.id !== "journey" ? `Maps · ${definition.title}` : "Maps · Journey"}
+        onLayoutChange={reframe}
         allNodes={dataNodes}
         allEdges={dataEdges}
         journal={journal}
@@ -746,7 +747,9 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
           setZoomNode(node);
           setZoomPlatform(platform);
         }}
-      />
+      >
+        <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} onEdgeClick={handleEdgeClick} fitSignal={fitSignal} />
+      </NodeDetailStack>
       <ShotPreviewDialog
         open={zoomNode !== null}
         onOpenChange={(open) => { if (!open) setZoomNode(null); }}

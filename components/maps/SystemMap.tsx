@@ -110,6 +110,10 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
     return () => cancelAnimationFrame(frame);
   }, [layoutVersion]);
 
+  // The canvas is a grid cell now: opening a panel narrows it and closing one
+  // gives the room back, so re-frame rather than leave the map half off-cell.
+  const reframe = useCallback(() => setFitSignal((value) => value + 1), []);
+
   const handleLayoutModeChange = useCallback((value: string) => {
     pendingFitRef.current = true;
     setLayoutMode(value === "tiered" ? "tiered" : "organic");
@@ -235,7 +239,15 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
           </Button>
         </div>
       </header>
-      <div className="flex-1 min-h-0 relative">
+      <NodeDetailStack
+        rootLabel={definition.id !== "system" ? `Maps · ${definition.title}` : "Maps · System"}
+        onLayoutChange={reframe}
+        allNodes={dataNodes}
+        allEdges={dataEdges}
+        journal={journal}
+        onUpdate={handleNodeUpdate}
+        onCreateNode={handleCreateNodeFromPanel}
+      >
         <Canvas
           nodes={nodes}
           edges={graph.edges}
@@ -246,15 +258,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
           spotlight
           spotlightNodeId={topNodeId}
         />
-      </div>
-      <NodeDetailStack
-        rootLabel={definition.id !== "system" ? `Maps · ${definition.title}` : "Maps · System"}
-        allNodes={dataNodes}
-        allEdges={dataEdges}
-        journal={journal}
-        onUpdate={handleNodeUpdate}
-        onCreateNode={handleCreateNodeFromPanel}
-      />
+      </NodeDetailStack>
       <NewNodeForm open={newNodeOpen} onOpenChange={setNewNodeOpen} onSubmit={handleCreateNode} />
       <EdgeTypeDialog
         open={edgeDialogOpen}

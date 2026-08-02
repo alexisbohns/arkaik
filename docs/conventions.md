@@ -53,13 +53,31 @@ docs/                   # This documentation
 
 ## Panel Stack
 
-Reading a node must not cost you the graph. Node details render as non-modal
-columns pushed in from the right — never an overlay, never a focus trap — so
-the map, board, or list behind them stays visible and clickable.
+Reading a node must not cost you the graph. Node details are **inline grid
+columns, not an overlay** — nothing floats over anything. Opening a panel
+narrows the surface beside it; the surface only leaves once the trail is deep
+enough to need the room.
 
-**One rule generates the behaviour: a click in panel `i` owns everything above
-`i`.** Depth 0 is the surface itself, so a canvas click always leaves exactly
-one panel open (a swap); a click *inside* a panel pushes a new one.
+The surface — canvas, board, list — **is a cell in that grid**, at index 0. It
+is pushed out of the window by the same rule that hides deep panels, which is
+what makes the whole thing read as one strip of columns rather than a page with
+things stuck to its edge.
+
+```
+main
+└─ wrapper
+   ├─ header        the surface's own toolbar, full width
+   └─ panel grid    breadcrumb row, then the columns
+```
+
+**Two columns, one below 768px, newest always on the right.** With no panels the
+surface has the grid to itself; one panel gives `surface | panel`; two retires
+the surface and shows `A | B`; deeper always shows the last two. Cells outside
+that window stay mounted, so unwinding brings them back untouched.
+
+**One rule generates the traversal: a click in panel `i` owns everything above
+`i`.** Depth 0 is the surface, so a click on it always leaves exactly one panel
+open (a swap); a click *inside* a panel pushes a new one.
 
 | Action | Before | After | URL |
 |---|---|---|---|
@@ -84,10 +102,12 @@ not an address. User actions publish the new top themselves; `reconcileArrival`
 handles the arrivals nobody published (cold load, Back, Forward), inferring
 intent from where the id already sits in the stack.
 
-Two things to keep in mind when touching it:
+Four things to keep in mind when touching it:
 
 - **`openNode` must stay identity-stable.** It is a dependency of the graph builders, so an identity that changed with the address would re-run the ELK layout on every open.
 - **Panels resolve their node by id**, against the surface's own `allNodes`. An edit reaches every panel showing that node, and a node deleted under the stack takes its panels with it — no `selectedNode` copy to keep in step.
+- **Panels leave the window with `hidden`; the surface does not.** A React Flow canvas measures its container, and `display:none` gives it zero size and NaN geometry. The surface goes `invisible absolute` instead, keeping a real box — which also keeps its ELK layout and viewport intact.
+- **A surface that measures itself needs `onLayoutChange`.** The columns resize as panels come and go; the maps use it to re-frame rather than show a clipped corner.
 
 ## Styling
 

@@ -150,40 +150,6 @@ export default function ProjectDeliveryPage() {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 p-4 md:p-6">
-        <DeliveryFilterBar
-          platform={platformFilter}
-          species={speciesFilter}
-          showAllStatuses={showAllStatuses}
-          search={search}
-          onPlatformChange={setPlatformFilter}
-          onToggleSpecies={handleToggleSpecies}
-          onShowAllStatusesChange={setShowAllStatuses}
-          onSearchChange={setSearch}
-        />
-
-        {totalItems === 0 ? (
-          <div className="rounded-xl border border-dashed p-10 text-center">
-            <p className="text-sm text-muted-foreground">
-              No delivery items match. Pick a species, widen the platform filter, or create a node.
-            </p>
-            <div className="mt-4">
-              <Button size="sm" className="cursor-pointer" onClick={() => setNewNodeOpen(true)}>
-                <PlusIcon className="size-4" />
-                Create node
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <DeliveryBoard
-            columns={columns}
-            speciesLabelById={SPECIES_LABEL_BY_ID}
-            speciesDescriptionById={SPECIES_DESCRIPTION_BY_ID}
-            onSelectItem={handleSelectItem}
-          />
-        )}
-      </div>
-
       <NodeDetailStack
         rootLabel="Delivery"
         allNodes={dataNodes}
@@ -191,7 +157,41 @@ export default function ProjectDeliveryPage() {
         journal={journal}
         onUpdate={handleNodeUpdate}
         onCreateNode={handleCreateNodeFromPanel}
-      />
+      >
+        <div className="flex h-full flex-col gap-4 overflow-auto p-4 md:p-6">
+          <DeliveryFilterBar
+            platform={platformFilter}
+            species={speciesFilter}
+            showAllStatuses={showAllStatuses}
+            search={search}
+            onPlatformChange={setPlatformFilter}
+            onToggleSpecies={handleToggleSpecies}
+            onShowAllStatusesChange={setShowAllStatuses}
+            onSearchChange={setSearch}
+          />
+
+          {totalItems === 0 ? (
+            <div className="rounded-xl border border-dashed p-10 text-center">
+              <p className="text-sm text-muted-foreground">
+                No delivery items match. Pick a species, widen the platform filter, or create a node.
+              </p>
+              <div className="mt-4">
+                <Button size="sm" className="cursor-pointer" onClick={() => setNewNodeOpen(true)}>
+                  <PlusIcon className="size-4" />
+                  Create node
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <DeliveryBoard
+              columns={columns}
+              speciesLabelById={SPECIES_LABEL_BY_ID}
+              speciesDescriptionById={SPECIES_DESCRIPTION_BY_ID}
+              onSelectItem={handleSelectItem}
+            />
+          )}
+        </div>
+      </NodeDetailStack>
 
       <NewNodeForm open={newNodeOpen} onOpenChange={setNewNodeOpen} onSubmit={handleCreateNode} />
     </div>

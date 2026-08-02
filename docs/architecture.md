@@ -104,7 +104,7 @@ components/
   panels/
     NewNodeForm.tsx         # Dialog form for creating a node with species-aware status/platform defaults
     InsertBetweenDialog.tsx # Dialog for insert-between actions: choose view/flow, search existing, or create inline
-    PanelStack.tsx          # Content-agnostic push-panel columns: keyboard, focus, breadcrumb, visibility, animation
+    PanelStack.tsx          # Content-agnostic push-panel grid: the surface is cell 0; keyboard, focus, breadcrumb, window
     NodeDetailStack.tsx     # Binds the stack to nodes: id → node, onNavigate → "push from my index"
     NodeDetailPanel.tsx     # One panel's body: edit node fields, platform-specific statuses, computed rollups, and flow playlists
     PlaylistEditor.tsx      # Flow-only playlist editor: add/remove/reorder and branch editing
@@ -221,8 +221,9 @@ Project preference source: `project.metadata.view_card_variant` in [lib/data/typ
 
 ## Node Detail Panel
 
-Clicking any node pushes a column onto the **panel stack** — non-modal, no
-overlay, no focus trap, so the surface behind it stays live. The stack is
+Clicking any node pushes a column onto the **panel stack** — an inline grid, no
+overlay and no focus trap, in which the surface itself is the first cell. The
+stack is
 owned by `NodePanelsProvider` in `app/project/[id]/layout.tsx` (a page segment
 would remount on every param change and reset it), rendered by `PanelStack`,
 and bound to nodes by `NodeDetailStack`. Its rule, URL contract (`?node=`) and

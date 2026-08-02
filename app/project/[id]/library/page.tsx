@@ -265,23 +265,31 @@ export default function ProjectLibraryPage() {
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6">
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
-          <LibraryFilterBar
-            search={search}
-            displayMode={displayMode}
-            onSearchChange={setSearch}
-            onDisplayModeChange={setDisplayMode}
-          />
+      <NodeDetailStack
+        rootLabel={speciesFilter === "all" ? "Library" : `Library · ${SPECIES_SUBTITLE_LABELS[speciesFilter]}`}
+        allNodes={dataNodes}
+        allEdges={dataEdges}
+        journal={journal}
+        onUpdate={handleNodeUpdate}
+        onCreateNode={handleCreateNodeFromPanel}
+      >
+        <div className="h-full overflow-auto p-4 md:p-6">
+          <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
+            <LibraryFilterBar
+              search={search}
+              displayMode={displayMode}
+              onSearchChange={setSearch}
+              onDisplayModeChange={setDisplayMode}
+            />
 
-          {visibleNodes.length === 0 ? (
-            <div className="rounded-xl border border-dashed p-10 text-center">
-              <p className="text-sm text-muted-foreground">No {emptyLabel} yet. Create one to get started.</p>
-              <div className="mt-4">
-                <Button size="sm" className="cursor-pointer" onClick={() => setNewNodeOpen(true)}>
-                  <PlusIcon className="size-4" />
-                  Create node
-                </Button>
+            {visibleNodes.length === 0 ? (
+              <div className="rounded-xl border border-dashed p-10 text-center">
+                <p className="text-sm text-muted-foreground">No {emptyLabel} yet. Create one to get started.</p>
+                <div className="mt-4">
+                  <Button size="sm" className="cursor-pointer" onClick={() => setNewNodeOpen(true)}>
+                    <PlusIcon className="size-4" />
+                    Create node
+                  </Button>
               </div>
             </div>
           ) : displayMode === "gallery" ? (
@@ -314,17 +322,9 @@ export default function ProjectLibraryPage() {
               />
             </div>
           )}
+          </div>
         </div>
-      </div>
-
-      <NodeDetailStack
-        rootLabel={speciesFilter === "all" ? "Library" : `Library · ${SPECIES_SUBTITLE_LABELS[speciesFilter]}`}
-        allNodes={dataNodes}
-        allEdges={dataEdges}
-        journal={journal}
-        onUpdate={handleNodeUpdate}
-        onCreateNode={handleCreateNodeFromPanel}
-      />
+      </NodeDetailStack>
 
       <NewNodeForm
         open={newNodeOpen}

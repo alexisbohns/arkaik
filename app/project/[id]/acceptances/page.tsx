@@ -155,18 +155,6 @@ export default function ProjectAcceptancesPage() {
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6">
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
-          <AcceptanceFilterBar filters={filters} onChange={setFilters} anchorOptions={anchorOptions} />
-          <AcceptanceMatrix
-            acceptances={filtered}
-            edges={dataEdges}
-            nodesById={nodesById}
-            onSelect={handleSelectNode}
-          />
-        </div>
-      </div>
-
       <NodeDetailStack
         rootLabel="Acceptances"
         allNodes={dataNodes}
@@ -174,7 +162,19 @@ export default function ProjectAcceptancesPage() {
         journal={journal}
         onUpdate={handleNodeUpdate}
         onCreateAcceptanceForAnchor={handleCreateAcceptanceForAnchor}
-      />
+      >
+        <div className="h-full overflow-auto p-4 md:p-6">
+          <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
+            <AcceptanceFilterBar filters={filters} onChange={setFilters} anchorOptions={anchorOptions} />
+            <AcceptanceMatrix
+              acceptances={filtered}
+              edges={dataEdges}
+              nodesById={nodesById}
+              onSelect={handleSelectNode}
+            />
+          </div>
+        </div>
+      </NodeDetailStack>
     </div>
   );
 }

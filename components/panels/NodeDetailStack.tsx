@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import { EntityId } from "@/components/graph/nodes/EntityBadges";
 import { PanelStack } from "@/components/panels/PanelStack";
 import { NodeDetailPanel, NodeDetailPanelHeader } from "@/components/panels/NodeDetailPanel";
@@ -9,8 +9,12 @@ import type { Edge, JournalEvent, Node } from "@/lib/data/types";
 import { useNodePanels, type NodePanelEntry } from "@/lib/hooks/useNodePanels";
 
 interface NodeDetailStackProps {
-  /** The surface behind the stack — the breadcrumb's first crumb. */
+  /** The surface — canvas, board, or list. The grid's first cell. */
+  children: ReactNode;
+  /** The surface's name, for the breadcrumb's first crumb. */
   rootLabel: string;
+  /** Fires when the columns change, so a canvas can re-frame itself. */
+  onLayoutChange?: () => void;
   allNodes: Node[];
   allEdges: Edge[];
   journal?: JournalEvent[];
@@ -31,7 +35,9 @@ interface NodeDetailStackProps {
  * panels with it.
  */
 export function NodeDetailStack({
+  children,
   rootLabel,
+  onLayoutChange,
   allNodes,
   allEdges,
   journal,
@@ -56,6 +62,7 @@ export function NodeDetailStack({
     <PanelStack<NodePanelEntry["payload"]>
       entries={entries}
       rootLabel={rootLabel}
+      onLayoutChange={onLayoutChange}
       labelOf={(entry) => nodesById.get(entry.key)?.title ?? entry.key}
       renderHeader={(entry) => {
         const node = nodesById.get(entry.key);
@@ -83,6 +90,8 @@ export function NodeDetailStack({
       }}
       onCloseAt={closeAt}
       onUnwindTo={unwindTo}
-    />
+    >
+      {children}
+    </PanelStack>
   );
 }

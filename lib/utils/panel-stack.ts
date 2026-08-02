@@ -113,9 +113,39 @@ export function reconcileArrival<T>(
 }
 
 /**
- * Index of the first panel to render. Everything below stays mounted but
+ * Index of the first cell to render. Everything below stays mounted but
  * hidden, so unwinding brings a panel back with its scroll position intact.
  */
 export function visibleFrom(length: number, maxVisible: number): number {
   return Math.max(0, length - Math.max(1, maxVisible));
+}
+
+export interface VisibleWindow {
+  /** Is the surface — the canvas, board, or list — still one of the columns? */
+  surfaceVisible: boolean;
+  /** Index of the leftmost rendered panel. Panels before it are hidden. */
+  firstVisiblePanel: number;
+  /** How many columns the grid shows, surface included. */
+  columnCount: number;
+}
+
+/**
+ * Which cells the grid renders. The surface is a cell like any other, sitting
+ * at index 0 — so it is pushed out of view by the same rule that hides deep
+ * panels, rather than being a backdrop the panels float over.
+ *
+ * With room for two columns: no panels shows the surface alone; one panel
+ * shows surface + panel; two shows the two panels and retires the surface;
+ * deeper always shows the last two panels. Newest on the right, always.
+ */
+export function visibleWindow(panelCount: number, maxColumns: number): VisibleWindow {
+  const columns = Math.max(1, maxColumns);
+  const cells = panelCount + 1;
+  const from = visibleFrom(cells, columns);
+
+  return {
+    surfaceVisible: from === 0,
+    firstVisiblePanel: Math.max(0, from - 1),
+    columnCount: Math.min(cells, columns),
+  };
 }
