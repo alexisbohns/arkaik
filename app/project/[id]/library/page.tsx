@@ -8,7 +8,7 @@ import { NodeCard } from "@/components/library/NodeCard";
 import type { PlaylistPreviewItem } from "@/components/library/NodeCard";
 import { NodeTable, type NodeSortKey, type NodeSortState } from "@/components/library/NodeTable";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
-import { NodeDetailPanel } from "@/components/panels/NodeDetailPanel";
+import { NodeDetailStack } from "@/components/panels/NodeDetailStack";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -16,6 +16,7 @@ import { SPECIES, type SpeciesId } from "@/lib/config/species";
 import { STATUSES, STATUS_ORDER } from "@/lib/config/statuses";
 import type { Node as DataNode } from "@/lib/data/types";
 import { useEdges } from "@/lib/hooks/useEdges";
+import { useNodePanels } from "@/lib/hooks/useNodePanels";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useProject } from "@/lib/hooks/useProject";
 import { useJournal } from "@/lib/hooks/useJournal";
@@ -143,8 +144,7 @@ export default function ProjectLibraryPage() {
   const searchParams = useSearchParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
 
-  const [selectedNode, setSelectedNode] = useState<DataNode | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
+  const { openNode } = useNodePanels();
   const [newNodeOpen, setNewNodeOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [displayMode, setDisplayMode] = useState<LibraryDisplayMode>("directory");
@@ -191,13 +191,11 @@ export default function ProjectLibraryPage() {
   );
 
   async function handleNodeUpdate(nodeId: string, patch: Partial<Omit<DataNode, "id" | "project_id">>) {
-    const updatedNode = await updateNode(nodeId, patch);
-    setSelectedNode(updatedNode);
+    await updateNode(nodeId, patch);
   }
 
   function handleSelectNode(node: DataNode) {
-    setSelectedNode(node);
-    setPanelOpen(true);
+    openNode({ nodeId: node.id });
   }
 
   function handleSortChange(key: NodeSortKey) {
@@ -319,15 +317,12 @@ export default function ProjectLibraryPage() {
         </div>
       </div>
 
-      <NodeDetailPanel
-        open={panelOpen}
-        onOpenChange={setPanelOpen}
-        node={selectedNode ?? undefined}
-        onUpdate={handleNodeUpdate}
+      <NodeDetailStack
+        rootLabel={speciesFilter === "all" ? "Library" : `Library · ${SPECIES_SUBTITLE_LABELS[speciesFilter]}`}
         allNodes={dataNodes}
         allEdges={dataEdges}
         journal={journal}
-        onNavigate={setSelectedNode}
+        onUpdate={handleNodeUpdate}
         onCreateNode={handleCreateNodeFromPanel}
       />
 

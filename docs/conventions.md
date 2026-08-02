@@ -9,12 +9,15 @@ components/
   graph/                # React Flow canvas, custom nodes, custom edges
   generate/             # Prompt builder form/output components for /generate
   layout/               # Shell UI: project sidebar, switcher, breadcrumb, minimap, badges
-  panels/               # Slide-in panels and forms
+  panels/               # The push-panel stack, its panel content, and forms
+    PanelStack.tsx      # Content-agnostic column stack: keyboard, breadcrumb, visibility
+    NodeDetailStack.tsx # Binds the stack to nodes — NodeDetailPanel as the content
   ui/                   # shadcn/ui primitives (do not edit directly — use CLI)
 lib/
   config/               # Typed const arrays: species, statuses, platforms, edge types
   data/                 # DataProvider interface + implementations
   hooks/                # React hooks for state management
+    useNodePanels.tsx   # Panel-stack provider + the `?node=` contract
   prompts/              # Prompt assembly blocks/types for the AI prompt builder
   utils/                # Helpers: layout, export, cn()
 public/
@@ -27,7 +30,8 @@ docs/                   # This documentation
 
 ## State Management
 
-- **No global store.** No Zustand, Redux, or Context-based state.
+- **No global store for domain data.** No Zustand, Redux, or Context-based state for nodes, edges, projects, or the journal — those flow through hooks and props.
+- **Route-shell UI state may use a scoped provider**, mounted in the project layout alongside `SidebarProvider`. The panel stack (`NodePanelsProvider`) is the one that exists; the bar for adding another is that a page segment cannot own the state, because it remounts when its dynamic params change.
 - Reusable state logic lives in hooks: `useNodes`, `useEdges`, `useProject`, `useProjects`, `useJournal`.
 - Hook intent:
   - `useNodes` and `useEdges` handle project graph CRUD.
@@ -45,6 +49,45 @@ docs/                   # This documentation
 - Keep shortcut handlers thin: they should call existing page handlers (`handleDeleteNodeRequest`, `handleExport`) instead of duplicating business logic.
 - Delete shortcuts must not directly mutate storage. Always route through the existing confirmation dialog flow.
 - Ignore destructive shortcuts when focus is in editable controls (`input`, `textarea`, `contenteditable`, or combobox/textbox roles).
+- **Escape belongs to the panel stack while it is non-empty**, and `PanelStack` owns it: it pops one panel, wherever the pointer is. Surfaces must not also bind Escape to a close — with the stack empty, Escape falls through to whatever the page wants it for. An open Radix layer (dialog, popover, select, menu) still wins over the stack.
+
+## Panel Stack
+
+Reading a node must not cost you the graph. Node details render as non-modal
+columns pushed in from the right — never an overlay, never a focus trap — so
+the map, board, or list behind them stays visible and clickable.
+
+**One rule generates the behaviour: a click in panel `i` owns everything above
+`i`.** Depth 0 is the surface itself, so a canvas click always leaves exactly
+one panel open (a swap); a click *inside* a panel pushes a new one.
+
+| Action | Before | After | URL |
+|---|---|---|---|
+| Click a node on the surface | `canvas` | `canvas · A` | → `?node=A` |
+| Click another node on the surface | `canvas · A` | `canvas · B` | → `?node=B` |
+| Click a reference **inside** panel A | `canvas · A` | `canvas · A · B` | → `?node=B` |
+| Esc, or close the top panel | `canvas · A · B` | `canvas · A` | → `?node=A` |
+| Close a panel that isn't the top | `canvas · A · B` | `canvas · B` | unchanged |
+| Breadcrumb jump to panel `i` | `canvas · A · B` | `canvas · A` | → `?node=A` |
+| Browser Back | `canvas · A · B` | `canvas · A` | → `?node=A` |
+
+Three pieces, deliberately separable — only the third knows what a node is:
+
+- `lib/utils/panel-stack.ts` — pure transitions, no React and no DOM. Covered by `tests/app/panel-stack.test.js` (`npm run test:panel-stack`).
+- `components/panels/PanelStack.tsx` — renders the columns; owns the keyboard, focus, breadcrumb, visibility rule and animation. Content-agnostic.
+- `lib/hooks/useNodePanels.tsx` + `components/panels/NodeDetailStack.tsx` — the binding: node id ⇄ descriptor ⇄ `?node=`, with `NodeDetailPanel` as the content.
+
+The URL contract: **`?node=` addresses the top panel only**, on whatever route
+you are on, composing with the filters already there (`?species=view&node=…`).
+The stack below the top is client state by design — it is exploration history,
+not an address. User actions publish the new top themselves; `reconcileArrival`
+handles the arrivals nobody published (cold load, Back, Forward), inferring
+intent from where the id already sits in the stack.
+
+Two things to keep in mind when touching it:
+
+- **`openNode` must stay identity-stable.** It is a dependency of the graph builders, so an identity that changed with the address would re-run the ELK layout on every open.
+- **Panels resolve their node by id**, against the surface's own `allNodes`. An edit reaches every panel showing that node, and a node deleted under the stack takes its panels with it — no `selectedNode` copy to keep in step.
 
 ## Styling
 

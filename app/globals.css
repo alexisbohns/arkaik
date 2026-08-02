@@ -324,4 +324,45 @@
   .react-flow__edge.arkaik-dim {
     opacity: 0.15;
   }
+
+  /* Push-panel columns (components/panels/PanelStack.tsx). A new column always
+     enters at the right edge of the stack, so a full-width translate reads as
+     "pushed in from off-screen"; closing plays it backwards. Keyframes rather
+     than Tailwind utilities because tw-animate-css is not installed here. */
+  @keyframes arkaik-panel-in {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes arkaik-panel-out {
+    from {
+      transform: translateX(0);
+      opacity: 1;
+    }
+    to {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+  }
+
+  .arkaik-panel-enter {
+    animation: arkaik-panel-in 180ms ease-out;
+  }
+
+  .arkaik-panel-exit {
+    animation: arkaik-panel-out 160ms ease-in forwards;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .arkaik-panel-enter,
+    .arkaik-panel-exit {
+      animation: none;
+    }
+  }
 }

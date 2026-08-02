@@ -6,11 +6,10 @@ import { PlusIcon } from "lucide-react";
 import { DeliveryBoard } from "@/components/delivery/DeliveryBoard";
 import { DeliveryFilterBar, type DeliveryPlatformFilter } from "@/components/delivery/DeliveryFilterBar";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
-import { NodeDetailPanel } from "@/components/panels/NodeDetailPanel";
+import { NodeDetailStack } from "@/components/panels/NodeDetailStack";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import type { PlatformId } from "@/lib/config/platforms";
 import { SPECIES, type SpeciesId } from "@/lib/config/species";
 import {
   DEFAULT_COUNTED_STATUS_PRESET_ID,
@@ -21,6 +20,7 @@ import {
 import type { Node as DataNode } from "@/lib/data/types";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useJournal } from "@/lib/hooks/useJournal";
+import { useNodePanels } from "@/lib/hooks/useNodePanels";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useProject } from "@/lib/hooks/useProject";
 import { computeDeliveryItems, groupItemsByStatus, type DeliveryItem } from "@/lib/utils/delivery";
@@ -52,9 +52,9 @@ export default function ProjectDeliveryPage() {
   const [speciesFilter, setSpeciesFilter] = useState<SpeciesId[]>(["view"]);
   const [showAllStatuses, setShowAllStatuses] = useState(false);
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<{ node: DataNode; platform: PlatformId } | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
   const [newNodeOpen, setNewNodeOpen] = useState(false);
+
+  const { openNode } = useNodePanels();
 
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
@@ -93,13 +93,11 @@ export default function ProjectDeliveryPage() {
   }
 
   function handleSelectItem(item: DeliveryItem) {
-    setSelected({ node: item.node, platform: item.platform });
-    setPanelOpen(true);
+    openNode({ nodeId: item.node.id, initialPlatform: item.platform });
   }
 
   async function handleNodeUpdate(nodeId: string, patch: Partial<Omit<DataNode, "id" | "project_id">>) {
-    const updatedNode = await updateNode(nodeId, patch);
-    setSelected((previous) => (previous ? { ...previous, node: updatedNode } : previous));
+    await updateNode(nodeId, patch);
   }
 
   async function handleCreateNodeFromPanel(species: "flow" | "view", title: string) {
@@ -186,16 +184,12 @@ export default function ProjectDeliveryPage() {
         )}
       </div>
 
-      <NodeDetailPanel
-        open={panelOpen}
-        onOpenChange={setPanelOpen}
-        node={selected?.node ?? undefined}
-        initialPlatform={selected?.platform}
-        onUpdate={handleNodeUpdate}
+      <NodeDetailStack
+        rootLabel="Delivery"
         allNodes={dataNodes}
         allEdges={dataEdges}
         journal={journal}
-        onNavigate={(node) => setSelected((previous) => ({ node, platform: previous?.platform ?? node.platforms[0] ?? "web" }))}
+        onUpdate={handleNodeUpdate}
         onCreateNode={handleCreateNodeFromPanel}
       />
 

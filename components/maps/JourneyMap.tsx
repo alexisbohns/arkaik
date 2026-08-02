@@ -8,7 +8,7 @@ import type { MapDefinition } from "@arkaik/schema";
 import { Canvas } from "@/components/graph/Canvas";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
-import { NodeDetailPanel } from "@/components/panels/NodeDetailPanel";
+import { NodeDetailStack } from "@/components/panels/NodeDetailStack";
 import { RawBundleSheet } from "@/components/panels/RawBundleSheet";
 import { ShotPreviewDialog } from "@/components/panels/ShotPreviewDialog";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
@@ -21,6 +21,7 @@ import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useProject } from "@/lib/hooks/useProject";
 import { useJournal } from "@/lib/hooks/useJournal";
+import { useNodePanels } from "@/lib/hooks/useNodePanels";
 import { useElkLayout } from "@/lib/hooks/useElkLayout";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
 import { downloadJson, exportProject } from "@/lib/utils/export";
@@ -58,9 +59,9 @@ interface JourneyMapProps {
 export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   const id = projectId;
 
+  const { openNode, topNodeId } = useNodePanels();
+
   const [expandedFlows, setExpandedFlows] = useState<Set<string>>(new Set());
-  const [selectedNode, setSelectedNode] = useState<DataNode | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
   const [zoomNode, setZoomNode] = useState<DataNode | null>(null);
   const [zoomPlatform, setZoomPlatform] = useState<PlatformId | undefined>(undefined);
   const [newNodeOpen, setNewNodeOpen] = useState(false);
@@ -235,8 +236,8 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     await removeNodes(idsToDelete);
     setDeleteNodeDialogOpen(false);
     setDeleteNodeTarget(null);
-    setPanelOpen(false);
-    setSelectedNode(null);
+    // Panels for the deleted nodes close themselves — the stack resolves its
+    // entries against `dataNodes` and drops the ones that no longer resolve.
   }, [deleteNodeTarget, deleteNodeCascade, getDescendantIds, removeNodes]);
 
   const [deleteEdgeTarget, setDeleteEdgeTarget] = useState<DataEdge | null>(null);
@@ -292,15 +293,10 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
 
   const handleNodeUpdate = useCallback(
     async (nodeId: string, patch: Partial<Omit<DataNode, "id" | "project_id">>) => {
-      const updated = await updateNode(nodeId, patch);
-      setSelectedNode(updated);
+      await updateNode(nodeId, patch);
     },
     [updateNode],
   );
-
-  const handleNavigate = useCallback((targetNode: DataNode) => {
-    setSelectedNode(targetNode);
-  }, []);
 
   const handleCreateNodeFromPanel = useCallback(
     async (species: "flow" | "view", title: string) => {
@@ -538,11 +534,8 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   const handleNodeClick = useCallback<NodeMouseHandler>((_event, xyNode) => {
     const dataNodeId = getBaseNodeId(xyNode.id);
     const dataNode = dataNodes.find((n) => n.id === dataNodeId);
-    if (dataNode) {
-      setSelectedNode(dataNode);
-      setPanelOpen(true);
-    }
-  }, [dataNodes]);
+    if (dataNode) openNode({ nodeId: dataNode.id });
+  }, [dataNodes, openNode]);
 
   const handleViewCardVariantChange = useCallback(
     async (variant: ViewCardVariant) => {
@@ -606,15 +599,12 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     }
   }, [id]);
 
+  // Escape belongs to the panel stack while it is non-empty (PanelStack owns it).
   useKeyboardShortcuts({
-    onEscape: () => {
-      if (!panelOpen) return;
-      setPanelOpen(false);
-    },
     onDelete: () => {
       if (deleteNodeDialogOpen || deleteEdgeDialogOpen || newNodeOpen || insertBetweenOpen || edgeDialogOpen) return;
-      if (!selectedNode) return;
-      handleDeleteNodeRequest(selectedNode.id);
+      if (!topNodeId) return;
+      handleDeleteNodeRequest(topNodeId);
     },
     onExport: () => {
       if (exporting) return;
@@ -638,10 +628,7 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
         handlers: {
           onToggleFlow: toggleFlow,
           onAddChild: (flowId) => handleAddChildNode(flowId, "view"),
-          onOpenDetails: (node) => {
-            setSelectedNode(node);
-            setPanelOpen(true);
-          },
+          onOpenDetails: (node) => openNode({ nodeId: node.id }),
           onZoomShot: (node) => {
             setZoomNode(node);
             setZoomPlatform(undefined);
@@ -659,6 +646,7 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
       handleAddChildNode,
       handleInsertBetween,
       nodesById,
+      openNode,
       toggleFlow,
       viewApiRelationsByViewId,
       viewCardVariant,
@@ -746,16 +734,13 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
       <div className="flex-1 min-h-0 relative">
         <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} onEdgeClick={handleEdgeClick} fitSignal={fitSignal} />
       </div>
-      <NodeDetailPanel
-        open={panelOpen}
-        onOpenChange={setPanelOpen}
-        node={selectedNode ?? undefined}
-        onUpdate={handleNodeUpdate}
-        onDelete={handleDeleteNodeRequest}
+      <NodeDetailStack
+        rootLabel={definition && definition.id !== "journey" ? `Maps · ${definition.title}` : "Maps · Journey"}
         allNodes={dataNodes}
         allEdges={dataEdges}
         journal={journal}
-        onNavigate={handleNavigate}
+        onUpdate={handleNodeUpdate}
+        onDelete={handleDeleteNodeRequest}
         onCreateNode={handleCreateNodeFromPanel}
         onZoomShot={(node, platform) => {
           setZoomNode(node);

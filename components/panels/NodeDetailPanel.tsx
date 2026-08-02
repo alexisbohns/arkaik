@@ -2,22 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetBody,
-  SheetClose,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { X } from "lucide-react";
 import type { Node, Edge, JournalEvent } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
@@ -43,9 +33,7 @@ import { computeNodeTimeline } from "@/lib/utils/journal";
 import { describeJournalEvent, formatEventDate } from "@/components/journal/describe-event";
 
 interface NodeDetailPanelProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  node?: Node;
+  node: Node;
   /** Platform tab the variants section opens on (e.g. the clicked Delivery item's platform). */
   initialPlatform?: PlatformId;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
@@ -406,9 +394,34 @@ function ComputedPlatformStatusSection({ node, allNodes, allEdges }: { node: Nod
   );
 }
 
+/**
+ * What identifies the panel, for the stack's per-panel header — species badge
+ * and entity id, the chrome the `SheetHeader` used to carry. The close button
+ * belongs to `PanelStack`, which owns every panel's frame.
+ */
+export function NodeDetailPanelHeader({ node }: { node: Node }) {
+  const speciesConfig = SPECIES.find((s) => s.id === node.species);
+  const speciesLabel = speciesConfig?.label ?? node.species;
+
+  return (
+    <>
+      <SpeciesBadge
+        species={node.species}
+        label={speciesLabel}
+        description={speciesConfig?.description}
+        showLabel
+      />
+      <EntityId id={node.id} />
+    </>
+  );
+}
+
+/**
+ * The body of one panel in the stack: every section that describes a node.
+ * It renders a column inside whatever frame it is given — the stack owns the
+ * chrome, the address, and the keyboard.
+ */
 export function NodeDetailPanel({
-  open,
-  onOpenChange,
   node,
   initialPlatform,
   onUpdate,
@@ -422,120 +435,83 @@ export function NodeDetailPanel({
   onZoomShot,
 }: NodeDetailPanelProps) {
   void onDelete;
-  const speciesConfig = SPECIES.find((s) => s.id === node?.species);
-  const speciesLabel = speciesConfig?.label ?? node?.species;
-  const speciesDescription = speciesConfig?.description;
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent onOpenAutoFocus={(e) => e.preventDefault()}>
-        <SheetHeader>
-          <SheetTitle className="sr-only">
-            {node ? `${speciesLabel}: ${node.title}` : "Node details"}
-          </SheetTitle>
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              {node && speciesLabel && (
-                <SpeciesBadge
-                  species={node.species}
-                  label={speciesLabel}
-                  description={speciesDescription}
-                  showLabel
-                />
-              )}
-              {node && <EntityId id={node.id} />}
-            </div>
-            <SheetClose asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="shrink-0 cursor-pointer"
-                aria-label="Close panel"
-              >
-                <X className="size-4" />
-              </Button>
-            </SheetClose>
-          </div>
-        </SheetHeader>
-        {node && (
-          <SheetBody className="flex flex-col gap-4 pb-6">
-            <NodeFields key={node.id} node={node} onUpdate={onUpdate} />
-            <RefsSection key={`refs-${node.id}`} node={node} />
-            {(node.species === "view" || node.species === "flow") && allNodes && allEdges && (
-              <AcceptancesSection
-                key={`acceptances-${node.id}`}
-                node={node}
-                allNodes={allNodes}
-                allEdges={allEdges}
-                onNavigate={onNavigate}
-                onCreate={onCreateAcceptanceForAnchor}
-              />
-            )}
-            {node.species === "acceptance" && allNodes && allEdges && onUpdate && (
-              <AcceptanceEditor
-                key={`acceptance-${node.id}`}
-                node={node}
-                allNodes={allNodes}
-                allEdges={allEdges}
-                onUpdate={onUpdate}
-                onNavigate={onNavigate}
-              />
-            )}
-            {node.species === "view" && (
-              <PlatformVariantsSection
-                key={`pv-${node.id}-${initialPlatform ?? ""}`}
-                node={node}
-                initialPlatform={initialPlatform}
-                onUpdate={onUpdate}
-                onZoomShot={onZoomShot ? (platform) => onZoomShot(node, platform) : undefined}
-              />
-            )}
-            {node.species === "flow" && allNodes && allEdges && (
-              <ComputedPlatformStatusSection
-                key={`computed-${node.id}`}
-                node={node}
-                allNodes={allNodes}
-                allEdges={allEdges}
-              />
-            )}
-            {node.species === "flow" && allNodes && (
-              <PlaylistEditor
-                key={`playlist-${node.id}`}
-                node={node}
-                allNodes={allNodes}
-                onUpdate={onUpdate}
-                onCreateNode={onCreateNode}
-              />
-            )}
-            {(node.species === "view" || node.species === "flow") && allNodes && onNavigate && (
-              <InvocationSection
-                key={`inv-${node.id}`}
-                node={node}
-                allNodes={allNodes}
-                onNavigate={onNavigate}
-              />
-            )}
-            {allNodes && allEdges && onNavigate && (
-              <ConnectionsSection
-                key={`conn-${node.id}`}
-                node={node}
-                allNodes={allNodes}
-                allEdges={allEdges}
-                onNavigate={onNavigate}
-              />
-            )}
-            {journal && (
-              <HistorySection
-                key={`history-${node.id}`}
-                node={node}
-                journal={journal}
-                allNodes={allNodes ?? []}
-              />
-            )}
-          </SheetBody>
-        )}
-      </SheetContent>
-    </Sheet>
+    <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-4 pb-6">
+      <NodeFields key={node.id} node={node} onUpdate={onUpdate} />
+      <RefsSection key={`refs-${node.id}`} node={node} />
+      {(node.species === "view" || node.species === "flow") && allNodes && allEdges && (
+        <AcceptancesSection
+          key={`acceptances-${node.id}`}
+          node={node}
+          allNodes={allNodes}
+          allEdges={allEdges}
+          onNavigate={onNavigate}
+          onCreate={onCreateAcceptanceForAnchor}
+        />
+      )}
+      {node.species === "acceptance" && allNodes && allEdges && onUpdate && (
+        <AcceptanceEditor
+          key={`acceptance-${node.id}`}
+          node={node}
+          allNodes={allNodes}
+          allEdges={allEdges}
+          onUpdate={onUpdate}
+          onNavigate={onNavigate}
+        />
+      )}
+      {node.species === "view" && (
+        <PlatformVariantsSection
+          key={`pv-${node.id}-${initialPlatform ?? ""}`}
+          node={node}
+          initialPlatform={initialPlatform}
+          onUpdate={onUpdate}
+          onZoomShot={onZoomShot ? (platform) => onZoomShot(node, platform) : undefined}
+        />
+      )}
+      {node.species === "flow" && allNodes && allEdges && (
+        <ComputedPlatformStatusSection
+          key={`computed-${node.id}`}
+          node={node}
+          allNodes={allNodes}
+          allEdges={allEdges}
+        />
+      )}
+      {node.species === "flow" && allNodes && (
+        <PlaylistEditor
+          key={`playlist-${node.id}`}
+          node={node}
+          allNodes={allNodes}
+          onUpdate={onUpdate}
+          onCreateNode={onCreateNode}
+        />
+      )}
+      {(node.species === "view" || node.species === "flow") && allNodes && onNavigate && (
+        <InvocationSection
+          key={`inv-${node.id}`}
+          node={node}
+          allNodes={allNodes}
+          onNavigate={onNavigate}
+        />
+      )}
+      {allNodes && allEdges && onNavigate && (
+        <ConnectionsSection
+          key={`conn-${node.id}`}
+          node={node}
+          allNodes={allNodes}
+          allEdges={allEdges}
+          onNavigate={onNavigate}
+        />
+      )}
+      {journal && (
+        <HistorySection
+          key={`history-${node.id}`}
+          node={node}
+          journal={journal}
+          allNodes={allNodes ?? []}
+        />
+      )}
+    </div>
   );
 }
 
