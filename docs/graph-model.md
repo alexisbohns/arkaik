@@ -127,17 +127,73 @@ Sources:
 - [components/panels/NodeDetailPanel.tsx](../components/panels/NodeDetailPanel.tsx)
 - [components/maps/JourneyMap.tsx](../components/maps/JourneyMap.tsx), [lib/utils/journey-graph.ts](../lib/utils/journey-graph.ts)
 
+## Products
+
+A project describes a *family* of apps sharing one graph — an end-user app, a web-only back office, a public API — not one product with three platforms. A **product** names one app in that family and the platforms it may ship on.
+
+Definitions live at `project.metadata.products: ProductDefinition[]` (`id`, `title`, `description?`, `platforms[]`, `root_node_id?`), following the stored-maps precedent exactly: an additive optional field in an already-catchall object, so no `schema_version` bump.
+
+Membership is stored by some species and derived by others:
+
+| Species | Membership |
+|---|---|
+| `flow`, `view` | **Stored** in `node.metadata.product` — one product id |
+| `acceptance` | **Anchors first** — the products of the views/flows its `covers` edges reach. Stored `metadata.product` answers only for an acceptance that covers nothing |
+| `data-model`, `api-endpoint` | **Derived** from consumers — a walk out of the membership-bearing flows and views along `calls` / `displays` / `queries`, each edge in its stored direction, hopping only into system-layer targets. Producers MUST NOT store `metadata.product` |
+
+Shared substrate is the norm, so the system layer never claims a product of its own, and a restriction is not a partition — a data model two products both reach appears in both.
+
+An absent answer is a **triage state**, not "applies everywhere". An unassigned flow, view, or anchorless acceptance appears under "All products" only. An *orphan* data model or endpoint — reached by no consumer — stays visible under **every** scope instead, because burying the node that most needs attention is the failure this model exists to end ([spec/maps.md](spec/maps.md) § Orphans).
+
+Each product may carry its own journey anchor, and the map resolves it in strict order — the map definition's `root_node_id`, then the product's, then `project.root_node_id` ([spec/maps.md](spec/maps.md) § Product Scope). That middle level is what makes a product an app rather than a tag: Admin opens on Admin's own front door.
+
+A project declaring **no** products behaves exactly as it did before products existed: one implicit product spanning every platform, every node in it, no warnings, no migration.
+
+Normative text — the definition, membership, and the eight warning-severity validator rules: [spec/bundle-format.md](spec/bundle-format.md) § Products.
+
+Projections: [packages/schema/src/products.ts](../packages/schema/src/products.ts) (`resolveProducts`, `productOf`, `productPlatforms`, `effectiveNodePlatforms`, `buildProductUsageIndex` / `productsUsingNode`).
+
+App-side scope resolution (the one membership answer every surface asks): [lib/utils/product-scope.ts](../lib/utils/product-scope.ts), [lib/hooks/useProductScope.ts](../lib/hooks/useProductScope.ts).
+
 ## Platforms
 
 Platforms are configured in:
 
 - [lib/config/platforms.ts](../lib/config/platforms.ts)
 
-Views can target one or more platforms; per-platform notes/statuses are stored in node metadata.
+Nodes target one or more platforms; per-platform notes/statuses/screenshots are stored in node metadata, keyed by platform.
+
+**`node.platforms` stays authoritative.** A product supplies a *menu* — the platforms that product may ship on — and readers intersect rather than trust: `effectiveNodePlatforms(node, product)` returns `node.platforms ∩ product.platforms` in `PLATFORM_IDS` order, so a platform outside the menu drops out of the display instead of corrupting it. That is why containment is a validator **warning** and never an error (§ Products).
+
+### The arity rule
+
+A surface never picks a per-platform shape for itself; it counts. The scope's platform menu — `productPlatforms(project, productId)` — is the sole input:
+
+| Effective platforms | Shape |
+|---|---|
+| ≥ 2 | The aggregate plus one ring / column / tab per platform |
+| 1 | A single bar (or a single column headed `Status`), carrying no platform name |
+| 0 | The same single bar — availability is simply not a tracked dimension here (a CLI, a public API) |
+
+**1 and 0 render identically, deliberately.** At arity 1 the aggregate and the lone platform ring carry the same numbers, and a lone ring standing beside three-ring cards from another scope reads as *data missing* rather than *absent*; at arity 0 there is nothing that could be missing, so the same bar says so without inventing a third shape. A project declaring no products resolves to every platform, so the ≥ 2 row is today's rendering unchanged.
+
+The threshold is written once, in `platformAvailabilityShape` ([lib/utils/product-scope.ts](../lib/utils/product-scope.ts)); the switch over it is [components/graph/nodes/PlatformAvailability.tsx](../components/graph/nodes/PlatformAvailability.tsx), which every platform-bearing surface composes rather than choosing a shape itself. Platform filters and detail-panel tabs read the same arity and hide themselves at ≤ 1.
+
+### Shape versus fact
+
+Two different questions read two different sources. Swapping them breaks the degenerate case, so the distinction is load-bearing:
+
+| Question | Read |
+|---|---|
+| *How many columns / rings / tabs does this surface show?* | `scope.platforms` — the scope's **menu** |
+| *What does this node actually ship on?* | `scopedPlatforms(node, scope)` — the node's own `platforms`, intersected with the menu of **the node's own product** |
+
+`scopedPlatforms` intersects against the node's product, not the scope's list, and that is the whole delivery fix: under "All products" the scope's list is the union of every product, so intersecting a node against *it* would leave a web-only admin view contributing to the Android column exactly as it did before products existed.
 
 Source:
 
 - [lib/data/types.ts](../lib/data/types.ts)
+- [lib/utils/product-scope.ts](../lib/utils/product-scope.ts)
 
 ## Edge Types
 
@@ -211,3 +267,25 @@ change — `journey` and `system` map kinds' species defaults in
 have no acceptance-specific branches. `lib/utils/graph-build.ts` already maps
 `acceptance` to React Flow node type `"acceptance"` as a forward-fix
 placeholder for when Canvas registration lands. Step 5 is done (seed).
+
+2026-08-02 — products: a product is project metadata, not a species, so this
+change touches the checklist sideways. Step 1 is done, but not in
+`lib/config/*` — the definitions are *data*
+([spec/bundle-format.md](spec/bundle-format.md) § Products), and the config
+files stayed untouched precisely because a product is authored per project
+rather than compiled in. Step 2 needed no change: membership never joins the
+graph builders, it restricts the node list handed to them
+(`mapScopedNodes`, [lib/utils/product-scope.ts](../lib/utils/product-scope.ts)),
+so [lib/utils/journey-graph.ts](../lib/utils/journey-graph.ts) and
+[lib/utils/system-graph.ts](../lib/utils/system-graph.ts) have no
+product-specific branches. Step 3 needed none either — no new node or edge
+type. Steps 5 and 6 are done ([seed/pebbles.json](../seed/pebbles.json) gains a
+web-only `admin` product beside the three-platform `app`, so the example
+project exercises both arities of the rule below; this document, above). **Step 4 is deferred**: no form or panel writes `metadata.product`
+today, so products are authorable only by an agent or by hand-editing a bundle
+— the P3 milestone ([rfcs/products.md](rfcs/products.md) § Phased plan) owns
+the product manager, the picker in the node forms, and bulk reassignment. Also
+deferred: the **per-surface product override**. The global scope in the sidebar
+is the whole of it for now; every projection already takes the product as an
+argument and every surface already resolves through `useEffectiveProduct`, so
+that milestone changes one function to `override ?? global` and adds a control.

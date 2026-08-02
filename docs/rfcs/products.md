@@ -6,10 +6,24 @@ order: 91
 
 # RFC: Products — multi-product projects and per-product platform availability
 
-> Status: **Open decision.** This RFC maps the design space, makes a
-> recommendation, and sketches a phased plan. It does **not** commit a build.
+> Status: **Decided and shipped through P2.** [Option A](#a-products-as-project-level-definitions-nodes-carry-membership-platforms-constrained-by-product--recommended)
+> was adopted as recommended — products as project-level definitions, membership
+> stored on flows and views, derived for acceptances and the system layer,
+> platform-less products per decision 2, and the degenerate-case guarantee.
+> P0 (spec), P1 (schema package) and P2 (every read surface) have shipped, along
+> with P4's dogfood half — the Pebbles seed carries a web-only Admin product, and
+> the plugin skill teaches the membership rules. **P3 (editing UI) and the
+> per-surface override have not**, so products remain authorable only by an agent
+> or by hand-editing a bundle.
+> Design spec: [`docs/superpowers/specs/2026-08-02-multi-product-projects-design.md`](../superpowers/specs/2026-08-02-multi-product-projects-design.md).
+> Implementation plan: [`docs/superpowers/plans/2026-08-02-multi-product-projects.md`](../superpowers/plans/2026-08-02-multi-product-projects.md).
+> Normative format: [`docs/spec/bundle-format.md`](../spec/bundle-format.md) § Products;
+> model overview: [`docs/graph-model.md`](../graph-model.md) § Products.
+>
+> **The rest of this document is left as written** — it is the reasoning record,
+> rejected options included, and reads as of the decision rather than of today.
 > Source: real projects (Pbbls, Oxymore, teale) whose graphs span several
-> apps with different platform availability, which today's model cannot express.
+> apps with different platform availability, which the model could not express.
 
 ## Problem
 

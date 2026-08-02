@@ -1,6 +1,6 @@
 ---
 name: arkaik
-version: 3.0.0
+version: 3.1.0
 description: >
   Maintain the Arkaik product graph map for {{PRODUCT_NAME}} — add, update, or
   remove nodes and edges in the ProjectBundle JSON that describes its screens,
@@ -174,6 +174,9 @@ larger restructuring. Follow these rules strictly:
   capitalized words; physical tables/views use the exact DB identifier verbatim.
 - Every `node.project_id` must match `project.id`
 - `platforms` must contain at least one of: `"web"`, `"ios"`, `"android"`
+- If the project declares products (`project.metadata.products`), flows and views
+  also carry `metadata.product` and their `platforms` stay inside that product's
+  menu — see [Products](#products--which-app-does-this-node-belong-to)
 - Flow nodes must have `metadata.playlist` with at least one entry
 
 **Edge rules:**
@@ -303,6 +306,72 @@ acceptance. **If unsure, omit them** — enrichment passes exist; a wrong value 
 worse than a missing one. Consult `references/values.md` (one-line definitions
 per element) only when actually mapping — do not load it otherwise.
 <!-- values:end -->
+
+## Products — which app does this node belong to?
+
+A project may describe a **family** of apps sharing one graph: an end-user app, a
+web-only back office, a public API. Each is a **product**, declared once in
+`project.metadata.products` with an `id`, a `title`, and the `platforms` it may
+ship on. Most projects declare none, and a project with no `products` key behaves
+exactly as it always has — do not invent products for one.
+
+But when a project *does* declare them, **you are the only author of membership**:
+no form, panel, or dialog in the app writes any of the fields below. If you don't
+write them, nobody does.
+
+**Where membership is stored — and where it must never be:**
+
+| Species | What you write |
+|---|---|
+| `flow`, `view` | `metadata.product` — exactly one declared product id |
+| `acceptance` | Usually **nothing**. Membership comes from the views and flows its `covers` edges reach. Write `metadata.product` only when the acceptance covers nothing (below) |
+| `data-model`, `api-endpoint` | **Never.** Membership is derived from whoever consumes them, walking `calls` / `displays` / `queries` inward from the flows and views. Writing `metadata.product` here is a validator warning (`product-membership-wrong-species`) |
+
+That last row is the one to get right. The system layer is shared substrate: a
+data model both the end-user app and the admin touch belongs to both, and a
+stored key could only ever claim one of them.
+
+**Keep `platforms` inside the product's menu.** `node.platforms` stays
+authoritative and unchanged in meaning, but it *should* be a subset of its
+product's `platforms`. A view in a web-only admin product is `["web"]`, not
+`["web", "ios", "android"]`. Readers intersect the two lists, so an out-of-menu
+platform is dropped from every display anyway and only earns you a
+`product-platform-not-in-menu` warning.
+
+**An anchorless acceptance should name its product.** An acceptance with zero
+`covers` edges is legal — a product-level promise — but it has no anchor to
+derive membership from, so it sits under "All products" only until you say which
+app it is about (`acceptance-product-unassigned`):
+
+```json
+{
+  "id": "AC-audit-log-retention",
+  "project_id": "{{PROJECT_ID}}",
+  "species": "acceptance",
+  "title": "Audit log retention",
+  "status": "backlog",
+  "platforms": ["web"],
+  "metadata": {
+    "gherkin": "Given an admin action older than 90 days, When I open the audit log, Then it is no longer listed.",
+    "values": ["reduces-risk"],
+    "product": "admin"
+  }
+}
+```
+
+This is the one rule no example project can teach you by imitation: in the
+Pebbles seed all three acceptances anchor on a view or flow via `covers`, so
+every one of them derives its product and stores nothing. The anchorless case has
+no worked example anywhere — write the key yourself.
+
+**Stored maps take a product too.** A `MapDefinition` in `project.metadata.maps`
+has an optional `product`, which makes "the admin systems map" data rather than a
+feature request. As with everything above, there is no UI control for it: a map's
+`product` is set by writing it.
+
+When in doubt, leave membership off. An unassigned flow or view is a visible
+triage state the validator names (`unassigned-membership`); a *wrongly* assigned
+one is invisible, and quietly wrong in every rollup that reads it.
 
 ## Full Schema Reference
 
