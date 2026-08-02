@@ -1177,6 +1177,26 @@ git commit -m "docs: catch the panel docs up to the rename"
 
 **Files:**
 - Create: `components/layout/PageShell.tsx`
+- Modify: `components/panels/ProjectPanels.tsx` (the unresolvable-node fallback, below)
+
+**Land the unresolvable-node fallback in this task**, because this task is what makes it reachable.
+Once every page mounts the grid, a `?node=<id>` URL on a page that passes no `allNodes` — Overview,
+Settings, Pyramid, Changelog, the Maps index — reconciles into a node entry the binding cannot
+resolve, and `renderBody`'s `if (!node) return null` gives the user an empty bordered column.
+
+Do **not** suppress the entry. Suppression cannot tell apart the three cases it would swallow: the
+page genuinely has no nodes, the nodes have not loaded yet (the window `ProjectPanels`' prune
+deliberately protects by early-returning), and the id is bogus. Collapsing all three into "nothing
+happened" is worse than an empty column, because the crumb trail and the URL still name a panel that
+silently vanished — and the loading case would flicker.
+
+Render an explicit fallback body instead: a muted line saying the node is not on this page, and a
+link to the project's Library. It doubles as the unknown-id state.
+
+Note the blast radius is already smaller than it looks: on the five surfaces that *do* pass
+`allNodes`, `?node=BOGUS` self-heals — `pruneMissingNodes` drops it and `commitEntries` republishes
+the URL without the param. The empty column only persists where the prune early-returns, which is
+exactly the node-less pages this task adds.
 
 - [ ] **Step 1: Write the implementation**
 
