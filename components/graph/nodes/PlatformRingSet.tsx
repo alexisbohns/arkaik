@@ -17,6 +17,8 @@ const rank = (id: PlatformId) => {
 };
 const RING_PLATFORMS = [...PLATFORMS].sort((left, right) => rank(left.id) - rank(right.id));
 
+const TRIGGER_CLASS = "cursor-help rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
 /**
  * The ring's accessible name. Radix's hover card is mouse/focus-oriented, so this
  * string is the only path by which a screen reader gets the breakdown — it has to
@@ -55,17 +57,20 @@ export function PlatformRingSet({ rollup, count, size = "lg", countLabel = "acce
     <div className={`flex ${size === "lg" ? "gap-2.5" : "gap-2"}`}>
       <HoverCard openDelay={150}>
         <HoverCardTrigger asChild>
-          <span tabIndex={0} className="cursor-help rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <span tabIndex={0} className={TRIGGER_CLASS}>
             <StatusRing
               segments={totalSegments}
               size={size}
-              label={describeRing(`All platforms, ${count} ${countLabel}`, totalSegments)}
+              label={describeRing(
+                `All platforms, ${count} ${countLabel} across ${statusTotal} platform statuses`,
+                totalSegments,
+              )}
             >
               <span className={`font-semibold tabular-nums ${centerText}`}>{count}</span>
             </StatusRing>
           </span>
         </HoverCardTrigger>
-        <HoverCardContent className="w-60 p-3" align="center">
+        <HoverCardContent className="w-60 p-3">
           <StatusBreakdownPopover
             title="All platforms"
             segments={totalSegments}
@@ -76,20 +81,22 @@ export function PlatformRingSet({ rollup, count, size = "lg", countLabel = "acce
 
       {RING_PLATFORMS.map((platform) => {
         const segments = getPlatformRollupSegments(rollup, platform.id);
-        const platformTotal = rollup.totals[platform.id] ?? 0;
+        // Summed from the segments, not read from `rollup.totals`, so the footer
+        // count and the rows above it can never disagree.
+        const platformTotal = segments.reduce((sum, segment) => sum + segment.count, 0);
         const Icon = PLATFORM_ICONS[platform.id];
         const label = PLATFORM_LABELS[platform.id];
 
         return (
           <HoverCard key={platform.id} openDelay={150}>
             <HoverCardTrigger asChild>
-              <span tabIndex={0} className="cursor-help rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <span tabIndex={0} className={TRIGGER_CLASS}>
                 <StatusRing segments={segments} size={size} label={describeRing(label, segments)}>
                   <Icon className={`${centerIcon} text-muted-foreground`} />
                 </StatusRing>
               </span>
             </HoverCardTrigger>
-            <HoverCardContent className="w-60 p-3" align="center">
+            <HoverCardContent className="w-60 p-3">
               <StatusBreakdownPopover
                 title={label}
                 icon={Icon}
