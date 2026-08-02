@@ -10,7 +10,7 @@
  * argument, not a different code path.
  */
 
-import type { PlatformId } from "@/lib/config/platforms";
+import { PLATFORMS, type PlatformId } from "@/lib/config/platforms";
 import type { Node, Project } from "@/lib/data/types";
 import {
   effectiveNodePlatforms,
@@ -49,6 +49,65 @@ export function resolveProductScope(
   const product = productId === null ? null : productsById.get(productId) ?? null;
   const platforms = productPlatforms(project, productId);
   return { productId, product, platforms, isMultiPlatform: platforms.length >= 2, productsById };
+}
+
+/** One row of the sidebar's product selector — everything it needs to render. */
+export interface ProductScopeOption {
+  id: string;
+  /** The product's `title`, or its id when the definition carries none. */
+  label: string;
+  /** Secondary text: `No platforms` | `Web only` | `3 platforms`. */
+  platformLabel: string;
+}
+
+/**
+ * The platform count as a phrase, from the product's **own** menu.
+ *
+ * Three distinct states, not two: `[]` is meaningful — availability is simply
+ * not a tracked dimension for a CLI or a public API — so "No platforms" is a
+ * real answer rather than an error or a blank. Arity 1 names the platform
+ * instead of counting it, because "1 platform" tells a reader less than "Web
+ * only" does at the same width.
+ *
+ * Takes `unknown` deliberately: `resolveProducts` is lenient by contract and a
+ * stored definition may carry no `platforms` array at all, which reads the same
+ * as an empty one.
+ */
+export function platformCountLabel(platforms: unknown): string {
+  const list = Array.isArray(platforms) ? platforms : [];
+  if (list.length === 0) return "No platforms";
+  if (list.length === 1) {
+    const only = PLATFORMS.find((platform) => platform.id === list[0]);
+    return `${only?.label ?? String(list[0])} only`;
+  }
+  return `${list.length} platforms`;
+}
+
+/**
+ * The selector's options, in declaration order. **Products only** — the "All
+ * products" entry is the selector's own affordance, not a product, so an empty
+ * result here means "this project has no products" and the control does not
+ * render at all. That emptiness is the design guarantee: a project that has
+ * never heard of products shows no new concept.
+ *
+ * Takes the bundle and drills into `bundle.project` itself, like
+ * `resolveProductScope` above and for the same reason: `ProjectBundle` has no
+ * `metadata` of its own, and every caller that has to remember that is a caller
+ * that can forget.
+ *
+ * `title` is not validated by `resolveProducts` — a definition missing one is a
+ * shape fault owned by the parser and the JSON Schema, so at runtime it can be
+ * absent whatever the type says. Falling back to the id keeps a real, clickable
+ * row instead of a blank one.
+ */
+export function productScopeOptions(
+  bundle: { project?: Pick<Project, "metadata"> } | undefined | null,
+): ProductScopeOption[] {
+  return resolveProducts(bundle?.project).map((product) => ({
+    id: product.id,
+    label: typeof product.title === "string" && product.title.trim() !== "" ? product.title : product.id,
+    platformLabel: platformCountLabel(product.platforms),
+  }));
 }
 
 /**

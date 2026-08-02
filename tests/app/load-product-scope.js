@@ -20,6 +20,10 @@ const ROOT = path.join(__dirname, "..", "..");
 const BUILD_DIR = path.join(__dirname, ".test-build-product-scope");
 
 const MODULES = [
+  // Built because product-scope.ts imports PLATFORMS as a *value* (the arity-1
+  // label names its platform), so this one is no longer elided as a type-only
+  // import and has to exist on disk for the require to resolve.
+  ["lib/config/platforms.ts", "platforms"],
   ["lib/utils/product-scope.ts", "product-scope"],
   ["lib/utils/product-scope-store.ts", "product-scope-store"],
 ];
@@ -40,12 +44,12 @@ function loadProductScope() {
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true },
     });
 
-    // `@/lib/config/platforms` and `@/lib/data/types` are imported type-only and
-    // are elided by the transpiler, so `@arkaik/schema` is the only require left.
-    const rewritten = outputText.replace(
-      /require\((['"])@arkaik\/schema\1\)/g,
-      `require(${JSON.stringify(schemaIndex)})`,
-    );
+    // `@/lib/data/types` is imported type-only and is elided by the transpiler;
+    // `@arkaik/schema` and `@/lib/config/platforms` are real requires and are
+    // pointed at the schema test build and the sibling output respectively.
+    const rewritten = outputText
+      .replace(/require\((['"])@arkaik\/schema\1\)/g, `require(${JSON.stringify(schemaIndex)})`)
+      .replace(/require\((['"])@\/lib\/config\/platforms\1\)/g, `require("./platforms.js")`);
     fs.writeFileSync(path.join(BUILD_DIR, `${outName}.js`), rewritten);
   }
 

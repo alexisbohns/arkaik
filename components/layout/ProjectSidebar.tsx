@@ -21,6 +21,7 @@ import {
   Settings2Icon,
   Share2Icon,
 } from "lucide-react";
+import { ProductScopeSelector } from "@/components/layout/ProductScopeSelector";
 import { ProjectSwitcher, type ProjectView } from "@/components/layout/ProjectSwitcher";
 import {
   Sidebar,
@@ -35,11 +36,19 @@ import {
   SidebarRail,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
+import type { ProjectBundle } from "@/lib/data/types";
 import { useModKeyLabel } from "@/lib/hooks/useModKeyLabel";
 
 interface ProjectSidebarProps {
   projectId: string;
   currentProjectTitle?: string;
+  /**
+   * The loaded bundle, for the product selector — products live at
+   * `project.project.metadata`, and the sidebar held only the id and the title.
+   * `undefined` until `useProject` resolves, which the selector treats as
+   * "no products yet" and renders nothing for.
+   */
+  project: ProjectBundle | undefined;
   currentView: ProjectView;
   currentSpecies: string | null;
   /** Active map id when currentView is "maps" and a specific map is open. */
@@ -64,6 +73,7 @@ const LIBRARY_ITEMS = [
 export function ProjectSidebar({
   projectId,
   currentProjectTitle,
+  project,
   currentView,
   currentSpecies,
   currentMapId,
@@ -90,6 +100,7 @@ export function ProjectSidebar({
           currentView={currentView}
           currentQueryString={currentQueryString}
         />
+        <ProductScopeSelector projectId={projectId} project={project} />
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton

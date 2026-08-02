@@ -18,6 +18,8 @@ const { loadProductScope, BUILD_DIR } = require("./load-product-scope");
 
 const {
   resolveProductScope,
+  productScopeOptions,
+  platformCountLabel,
   nodeInScope,
   scopedPlatforms,
   getProductScopeId,
@@ -114,6 +116,53 @@ assert(
   staleScope.product === null && eq(staleScope.platforms, ["web", "ios", "android"]),
   "a stale scope id degrades to the union rather than to nothing",
 );
+
+// --- The sidebar selector's pure parts ---------------------------------------
+//
+// There is no React test runner here, so ProductScopeSelector cannot be
+// rendered. Everything in it that is a decision rather than markup lives in
+// these two functions, and is asserted here instead: the component is a thin
+// render over them.
+
+assert(
+  eq(productScopeOptions(noProducts), []) && eq(productScopeOptions(undefined), []),
+  "no products (or no bundle yet) yields no options — THE SELECTOR RENDERS NOTHING, so a project that never heard of products is untouched",
+);
+
+const options = productScopeOptions(bundle);
+assert(
+  eq(
+    options,
+    [
+      { id: "enduser", label: "End-user app", platformLabel: "3 platforms" },
+      { id: "admin", label: "Admin dashboard", platformLabel: "Web only" },
+    ],
+  ),
+  `every declared product becomes one option, in declaration order (got ${JSON.stringify(options)})`,
+);
+
+const untitled = { project: { metadata: { products: [{ id: "public-api", platforms: [] }] } } };
+assert(
+  eq(productScopeOptions(untitled), [
+    { id: "public-api", label: "public-api", platformLabel: "No platforms" },
+  ]),
+  "a definition with no title falls back to its id rather than rendering a blank row",
+);
+assert(
+  productScopeOptions({ project: { metadata: { products: [{ id: "p", title: "   ", platforms: ["ios"] }] } } })[0]
+    .label === "p",
+  "a whitespace-only title falls back too — a row of spaces is still a blank row",
+);
+
+assert(platformCountLabel([]) === "No platforms", "arity 0 is a real state: 'No platforms'");
+assert(platformCountLabel(undefined) === "No platforms", "a missing platforms array reads like an empty one");
+assert(platformCountLabel(["web"]) === "Web only", "arity 1 names the platform: 'Web only'");
+assert(platformCountLabel(["ios"]) === "iOS only", "arity 1 uses the platform's own label, not its id");
+assert(
+  platformCountLabel(["web", "ios", "android"]) === "3 platforms",
+  "arity n counts: '3 platforms'",
+);
+assert(platformCountLabel(["web", "ios"]) === "2 platforms", "arity 2 counts too — only 1 is special-cased");
 
 // --- nodeInScope -------------------------------------------------------------
 
