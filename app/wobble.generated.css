@@ -73,10 +73,13 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-info { filter: url(#wob-info); }
 .lucide-key-round { filter: url(#wob-key-round); }
 .lucide-landmark { filter: url(#wob-landmark); }
+.lucide-layers { filter: url(#wob-layers); }
 .lucide-layout-dashboard { filter: url(#wob-layout-dashboard); }
+.lucide-layout-grid { filter: url(#wob-layout-grid); }
 .lucide-leaf { filter: url(#wob-leaf); }
 .lucide-lightbulb { filter: url(#wob-lightbulb); }
 .lucide-link2 { filter: url(#wob-link2); }
+.lucide-list { filter: url(#wob-list); }
 .lucide-loader-circle { filter: url(#wob-loader-circle); }
 .lucide-log-out { filter: url(#wob-log-out); }
 .lucide-map { filter: url(#wob-map); }
