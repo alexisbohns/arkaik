@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { PlatformRingSet } from "@/components/graph/nodes/PlatformRingSet";
+import { PlatformAvailability } from "@/components/graph/nodes/PlatformAvailability";
 import { ValueIcon } from "@/components/values/ValueBadge";
 import type { PyramidElementViewProps } from "./PyramidElementCard";
 
-/** List row: the same content on one line, rings right-aligned. */
-export function PyramidElementRow({ element, label, description, href }: PyramidElementViewProps) {
+/** List row: the same content on one line, availability right-aligned. */
+export function PyramidElementRow({ element, label, description, href, platforms }: PyramidElementViewProps) {
   const served = element.acceptanceCount > 0;
 
   return (
@@ -17,11 +17,18 @@ export function PyramidElementRow({ element, label, description, href }: Pyramid
       <ValueIcon valueId={element.value} className="size-5 shrink-0 text-muted-foreground" />
       <div className="flex min-w-0 flex-1 items-baseline gap-2.5">
         <span className="truncate text-sm font-medium">{label}</span>
-        {/* The ring set is incompressible, so on a narrow viewport the description
-            yields entirely rather than squeezing the label into the rings. */}
+        {/* The availability block is incompressible at either arity, so on a
+            narrow viewport the description yields entirely rather than
+            squeezing the label into it. */}
         <span className="hidden truncate text-xs text-muted-foreground sm:inline">{description}</span>
       </div>
-      <PlatformRingSet rollup={element.rollup} count={element.acceptanceCount} size="sm" />
+      <PlatformAvailability
+        rollup={element.rollup}
+        platforms={platforms}
+        count={element.acceptanceCount}
+        size="sm"
+        countLabel="acceptances"
+      />
     </Link>
   );
 }

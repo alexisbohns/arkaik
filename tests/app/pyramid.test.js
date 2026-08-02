@@ -55,12 +55,132 @@ assert(
   "an unserved value element has zero acceptances and an empty rollup",
 );
 
-// Platform filter narrows the distribution but not the count.
-const iosTiers = computePyramidAggregation(acceptances, "ios");
+// Platform menu narrows the distribution but not the count.
+const iosTiers = computePyramidAggregation(acceptances, { platforms: ["ios"] });
 const iosDesign = iosTiers.flatMap((t) => t.elements).find((e) => e.value === "design-aesthetics");
 assert(
   iosDesign.acceptanceCount === 2 && eq(iosDesign.rollup.counts, { ios: { live: 2 } }),
-  "platform filter keeps only the ios distribution; count is platform-independent",
+  "platform menu keeps only the ios distribution; count is platform-independent",
+);
+
+// --- The platform menu (product scope, § Decision 3) -------------------------
+//
+// A fixture of its own rather than the seed, because the seed's web statuses
+// are all uncounted: a web-only assertion over it would pass against an empty
+// rollup and so could not tell a working menu from a broken one.
+
+const menuAcceptances = [
+  {
+    id: "AC-shell", project_id: "p", species: "acceptance", title: "Shell polish", status: "live",
+    platforms: ["web", "ios"], metadata: { values: ["design-aesthetics"] },
+  },
+  {
+    id: "AC-motion", project_id: "p", species: "acceptance", title: "Motion pass", status: "backlog",
+    platforms: ["web", "ios", "android"],
+    metadata: {
+      values: ["design-aesthetics"],
+      platformStatuses: { web: "development", ios: "live", android: "blocked" },
+    },
+  },
+];
+const designOf = (tiers_) => tiers_.flatMap((t) => t.elements).find((e) => e.value === "design-aesthetics");
+
+const everyPlatform = computePyramidAggregation(menuAcceptances);
+assert(
+  eq(designOf(everyPlatform).rollup.counts, {
+    web: { live: 1, development: 1 },
+    ios: { live: 2 },
+    android: { blocked: 1 },
+  }),
+  "no menu counts every platform the acceptances carry",
+);
+
+const webOnly = computePyramidAggregation(menuAcceptances, { platforms: ["web"] });
+assert(
+  eq(designOf(webOnly).rollup.counts, { web: { live: 1, development: 1 } }),
+  `a web-only menu counts web statuses and drops the ios and android ones (got ${JSON.stringify(designOf(webOnly).rollup.counts)})`,
+);
+assert(
+  eq(designOf(webOnly).rollup.totals, { web: 2 }),
+  `a web-only menu's totals follow its counts (got ${JSON.stringify(designOf(webOnly).rollup.totals)})`,
+);
+
+// The degenerate case, asserted rather than assumed: a project declaring no
+// products resolves to the full menu, and must render exactly as today.
+assert(
+  eq(computePyramidAggregation(menuAcceptances, { platforms: ["web", "ios", "android"] }), everyPlatform),
+  "the full menu is byte-identical to no menu at all (degenerate case)",
+);
+assert(
+  eq(computePyramidAggregation(acceptances, { platforms: ["web", "ios", "android"] }), tiers),
+  "the full menu is byte-identical to no menu at all over the seeded bundle too",
+);
+
+// `acceptanceCount` counts acceptances, not platform statuses, so no menu may
+// move it — including the empty menu an arity-0 product (a CLI, a public API)
+// resolves to.
+const countsUnderMenus = [
+  undefined,
+  { platforms: ["web", "ios", "android"] },
+  { platforms: ["web"] },
+  { platforms: ["ios"] },
+  { platforms: [] },
+].map((options) => designOf(computePyramidAggregation(menuAcceptances, options)).acceptanceCount);
+assert(
+  countsUnderMenus.every((count) => count === 2),
+  `acceptanceCount is 2 under every platform menu, empty included (got ${JSON.stringify(countsUnderMenus)})`,
+);
+assert(
+  eq(designOf(computePyramidAggregation(menuAcceptances, { platforms: [] })).rollup, { counts: {}, totals: {} }),
+  "an empty menu counts nothing rather than falling back to every platform",
+);
+
+// --- Product scope: the acceptances feeding the projection -------------------
+//
+// The page narrows the acceptances with `filterAcceptances` before aggregating
+// — product membership is an anchor-traversal question, not a value one — so
+// this asserts the composition the page performs, using both real functions.
+
+const { loadAcceptanceMatrix, BUILD_DIR: MATRIX_BUILD_DIR } = require("./load-acceptance-matrix");
+const { filterAcceptances, EMPTY_FILTERS } = loadAcceptanceMatrix();
+
+const consoleView = { id: "V-console", project_id: "p", species: "view", title: "Console", status: "live", platforms: ["web"], metadata: { product: "admin" } };
+const homeView = { id: "V-home", project_id: "p", species: "view", title: "Home", status: "live", platforms: ["web", "ios", "android"], metadata: { product: "end-user" } };
+// Its stored key names the *other* product, so "anchors win" is not vacuous here.
+const accArchive = { id: "AC-archive", project_id: "p", species: "acceptance", title: "Bulk archive", status: "live", platforms: ["web"], metadata: { values: ["reduces-effort"], product: "end-user" } };
+const accHome = { id: "AC-home", project_id: "p", species: "acceptance", title: "Home hero", status: "live", platforms: ["web", "ios", "android"], metadata: { values: ["reduces-effort"] } };
+const scopeNodes = [consoleView, homeView, accArchive, accHome];
+const scopeNodesById = new Map(scopeNodes.map((n) => [n.id, n]));
+const scopeEdges = [
+  { id: "e1", project_id: "p", source_id: "AC-archive", target_id: "V-console", edge_type: "covers" },
+  { id: "e2", project_id: "p", source_id: "AC-home", target_id: "V-home", edge_type: "covers" },
+];
+const scopeAcceptances = [accArchive, accHome];
+
+const effortOf = (tiers_) => tiers_.flatMap((t) => t.elements).find((e) => e.value === "reduces-effort");
+
+/** Exactly what app/project/[id]/pyramid/page.tsx composes. */
+function pyramidForScope(productId, platforms) {
+  const scoped = filterAcceptances(scopeAcceptances, scopeEdges, scopeNodesById, { ...EMPTY_FILTERS, product: productId });
+  return effortOf(computePyramidAggregation(scoped, { platforms }));
+}
+
+const allProducts = pyramidForScope(null, ["web", "ios", "android"]);
+assert(
+  allProducts.acceptanceCount === 2,
+  `All products aggregates every acceptance (got ${allProducts.acceptanceCount})`,
+);
+
+const adminScoped = pyramidForScope("admin", ["web"]);
+assert(
+  adminScoped.acceptanceCount === 1 && eq(adminScoped.rollup.counts, { web: { live: 1 } }),
+  `scoping to admin aggregates only admin's acceptances (got count ${adminScoped.acceptanceCount}, ${JSON.stringify(adminScoped.rollup.counts)})`,
+);
+
+const endUserScoped = pyramidForScope("end-user", ["web", "ios", "android"]);
+assert(
+  endUserScoped.acceptanceCount === 1 && endUserScoped.rollup.counts.ios !== undefined,
+  `an acceptance anchored to an admin view is not in end-user, whatever its stored key says (got count ${endUserScoped.acceptanceCount})`,
 );
 
 // --- Display order (rings and bars) and the global all-platform segment sum ---
@@ -139,6 +259,7 @@ assert(
 );
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
+fs.rmSync(MATRIX_BUILD_DIR, { recursive: true, force: true });
 
 if (failures > 0) {
   console.error(`\n${failures} assertion(s) failed`);

@@ -31,14 +31,33 @@ export interface PyramidTier {
   elements: PyramidElement[];
 }
 
+export interface PyramidAggregationOptions {
+  /**
+   * The scope's platform **menu** — the distribution counts a resolved status
+   * only when its platform is on it. Omitted means "no menu": every platform
+   * the acceptances carry is counted, which is what a project with no products
+   * declared must keep getting. A single-platform scope is `{ platforms: [p] }`,
+   * and an empty menu is a real member of the domain rather than a mistake —
+   * arity 0 (a CLI, a public API) genuinely has nothing to count, so `[]`
+   * yields an empty rollup instead of falling back to everything.
+   */
+  platforms?: PlatformId[];
+}
+
 /**
- * @param acceptances acceptance nodes (caller filters `species === "acceptance"`).
- * @param platform when set, the distribution counts only that platform.
+ * @param acceptances acceptance nodes (caller filters `species === "acceptance"`,
+ *   and — under a product scope — narrows them with `filterAcceptances`; product
+ *   membership is an anchor-traversal question, not a value one, so it stays out
+ *   of here).
+ * @param options see {@link PyramidAggregationOptions}.
  */
 export function computePyramidAggregation(
   acceptances: readonly Node[],
-  platform?: PlatformId,
+  options?: PyramidAggregationOptions,
 ): PyramidTier[] {
+  // `null` is "no menu", distinct from an empty menu — see the option's doc.
+  const menu = options?.platforms ? new Set<PlatformId>(options.platforms) : null;
+
   const byValue = new Map<ValueId, { count: number; rollup: PlatformStatusRollup }>(
     VALUES.map((value) => [value.id, { count: 0, rollup: createEmptyRollup() }]),
   );
@@ -50,9 +69,13 @@ export function computePyramidAggregation(
     for (const valueId of values) {
       const entry = byValue.get(valueId);
       if (!entry) continue; // an unknown id is a validation error elsewhere; ignore here
+      // Deliberately outside the platform loop: `acceptanceCount` counts
+      // acceptances carrying this element, not platform statuses, so the menu
+      // must not reach it. Narrowing the scope to one platform re-shapes the
+      // rings; it does not make an acceptance stop existing.
       entry.count += 1;
       for (const platformId of Object.keys(resolved) as PlatformId[]) {
-        if (platform !== undefined && platformId !== platform) continue;
+        if (menu !== null && !menu.has(platformId)) continue;
         const status = resolved[platformId];
         if (status) {
           entry.rollup = addPlatformStatusToRollup(entry.rollup, platformId, status);
