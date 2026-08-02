@@ -16,8 +16,10 @@ export function PyramidElementRow({ element, label, description, href }: Pyramid
     >
       <ValueIcon valueId={element.value} className="size-5 shrink-0 text-muted-foreground" />
       <div className="flex min-w-0 flex-1 items-baseline gap-2.5">
-        <span className="shrink-0 text-sm font-medium">{label}</span>
-        <span className="truncate text-xs text-muted-foreground">{description}</span>
+        <span className="truncate text-sm font-medium">{label}</span>
+        {/* The ring set is incompressible, so on a narrow viewport the description
+            yields entirely rather than squeezing the label into the rings. */}
+        <span className="hidden truncate text-xs text-muted-foreground sm:inline">{description}</span>
       </div>
       <PlatformRingSet rollup={element.rollup} count={element.acceptanceCount} size="sm" />
     </Link>

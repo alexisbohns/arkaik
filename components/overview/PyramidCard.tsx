@@ -39,6 +39,7 @@ export function PyramidCard({ tiers, projectId }: PyramidCardProps) {
                 count={addressed}
                 size="sm"
                 countLabel="elements addressed"
+                platformCountLabel="platform statuses"
               />
             </div>
           );

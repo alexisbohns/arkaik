@@ -17,7 +17,7 @@ const rank = (id: PlatformId) => {
 };
 const RING_PLATFORMS = [...PLATFORMS].sort((left, right) => rank(left.id) - rank(right.id));
 
-const TRIGGER_CLASS = "cursor-help rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring";
+const TRIGGER_CLASS = "cursor-help";
 
 /**
  * The ring's accessible name. Radix's hover card is mouse/focus-oriented, so this
@@ -39,6 +39,14 @@ interface PlatformRingSetProps {
   size?: StatusRingSize;
   /** Names what `count` counts, for the popover footers. */
   countLabel?: string;
+  /**
+   * Names what a *platform* ring's footer counts, which is platform statuses —
+   * not always the same unit as `count`. A merged rollup (e.g. a whole tier)
+   * collapses element identity, so the per-platform number can't inherit a
+   * label like "elements addressed". Defaults to `countLabel`, which is right
+   * whenever the rollup covers a single element.
+   */
+  platformCountLabel?: string;
 }
 
 /**
@@ -48,7 +56,13 @@ interface PlatformRingSetProps {
  * both the footer and the accessible name state the two numbers together, so
  * neither a sighted nor a screen-reader user meets one without the other.
  */
-export function PlatformRingSet({ rollup, count, size = "lg", countLabel = "acceptances" }: PlatformRingSetProps) {
+export function PlatformRingSet({
+  rollup,
+  count,
+  size = "lg",
+  countLabel = "acceptances",
+  platformCountLabel = countLabel,
+}: PlatformRingSetProps) {
   const totalSegments = getRollupTotalSegments(rollup);
   const statusTotal = totalSegments.reduce((sum, segment) => sum + segment.count, 0);
   const centerText = size === "lg" ? "text-sm" : "text-[11px]";
@@ -58,7 +72,7 @@ export function PlatformRingSet({ rollup, count, size = "lg", countLabel = "acce
     <div className={`flex ${size === "lg" ? "gap-2.5" : "gap-2"}`}>
       <HoverCard openDelay={150}>
         <HoverCardTrigger asChild>
-          <span tabIndex={0} className={TRIGGER_CLASS}>
+          <span className={TRIGGER_CLASS}>
             <StatusRing
               segments={totalSegments}
               size={size}
@@ -91,7 +105,7 @@ export function PlatformRingSet({ rollup, count, size = "lg", countLabel = "acce
         return (
           <HoverCard key={platform.id} openDelay={150}>
             <HoverCardTrigger asChild>
-              <span tabIndex={0} className={TRIGGER_CLASS}>
+              <span className={TRIGGER_CLASS}>
                 <StatusRing segments={segments} size={size} label={describeRing(label, segments)}>
                   <Icon className={`${centerIcon} text-muted-foreground`} />
                 </StatusRing>
@@ -102,7 +116,7 @@ export function PlatformRingSet({ rollup, count, size = "lg", countLabel = "acce
                 title={label}
                 icon={Icon}
                 segments={segments}
-                footer={`${platformTotal} ${countLabel} on ${label}`}
+                footer={`${platformTotal} ${platformCountLabel} on ${label}`}
               />
             </HoverCardContent>
           </HoverCard>

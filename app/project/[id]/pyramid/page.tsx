@@ -97,6 +97,16 @@ export default function PyramidPage() {
           ) : (
             visibleTiers.map((tier) => {
               const config = TIER_CONFIG.get(tier.tier);
+              const View = viewMode === "cards" ? PyramidElementCard : PyramidElementRow;
+              const items = tier.visible.map((element) => (
+                <View
+                  key={element.value}
+                  element={element}
+                  label={VALUE_LABEL.get(element.value) ?? element.value}
+                  description={VALUE_DESCRIPTION.get(element.value) ?? ""}
+                  href={`/project/${id}/acceptances?value=${element.value}`}
+                />
+              ));
               return (
                 <PyramidTierGroup
                   key={tier.tier}
@@ -106,29 +116,9 @@ export default function PyramidPage() {
                   addressedCount={tier.addressedCount}
                 >
                   {viewMode === "cards" ? (
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                      {tier.visible.map((element) => (
-                        <PyramidElementCard
-                          key={element.value}
-                          element={element}
-                          label={VALUE_LABEL.get(element.value) ?? element.value}
-                          description={VALUE_DESCRIPTION.get(element.value) ?? ""}
-                          href={`/project/${id}/acceptances?value=${element.value}`}
-                        />
-                      ))}
-                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{items}</div>
                   ) : (
-                    <div className="overflow-hidden rounded-xl border bg-card">
-                      {tier.visible.map((element) => (
-                        <PyramidElementRow
-                          key={element.value}
-                          element={element}
-                          label={VALUE_LABEL.get(element.value) ?? element.value}
-                          description={VALUE_DESCRIPTION.get(element.value) ?? ""}
-                          href={`/project/${id}/acceptances?value=${element.value}`}
-                        />
-                      ))}
-                    </div>
+                    <div className="overflow-hidden rounded-xl border bg-card">{items}</div>
                   )}
                 </PyramidTierGroup>
               );
