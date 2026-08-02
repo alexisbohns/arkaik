@@ -6,7 +6,8 @@ import { PanelStack } from "@/components/panels/PanelStack";
 import { NodeDetailPanel, NodeDetailPanelHeader } from "@/components/panels/NodeDetailPanel";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { Edge, JournalEvent, Node } from "@/lib/data/types";
-import { useNodePanels, type NodePanelEntry } from "@/lib/hooks/useNodePanels";
+import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
+import type { PanelDescriptor } from "@/lib/utils/project-panels";
 
 interface NodeDetailStackProps {
   /** The surface — canvas, board, or list. The grid's first cell. */
@@ -47,7 +48,7 @@ export function NodeDetailStack({
   onCreateAcceptanceForAnchor,
   onZoomShot,
 }: NodeDetailStackProps) {
-  const { entries, openNode, closeAt, unwindTo, pruneMissing } = useNodePanels();
+  const { entries, openNode, closeAt, unwindTo, pruneMissing } = useProjectPanels();
 
   const nodesById = useMemo(() => new Map(allNodes.map((node) => [node.id, node])), [allNodes]);
 
@@ -59,7 +60,7 @@ export function NodeDetailStack({
   }, [nodesById, pruneMissing]);
 
   return (
-    <PanelStack<NodePanelEntry["payload"]>
+    <PanelStack<PanelDescriptor>
       entries={entries}
       rootLabel={rootLabel}
       onLayoutChange={onLayoutChange}
@@ -75,7 +76,7 @@ export function NodeDetailStack({
         return (
           <NodeDetailPanel
             node={node}
-            initialPlatform={entry.payload.initialPlatform}
+            initialPlatform={entry.payload.kind === "node" ? entry.payload.initialPlatform : undefined}
             onUpdate={onUpdate}
             onDelete={onDelete}
             allNodes={allNodes}

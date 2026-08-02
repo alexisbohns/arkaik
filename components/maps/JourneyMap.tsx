@@ -21,7 +21,7 @@ import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useProject } from "@/lib/hooks/useProject";
 import { useJournal } from "@/lib/hooks/useJournal";
-import { useNodePanels } from "@/lib/hooks/useNodePanels";
+import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useElkLayout } from "@/lib/hooks/useElkLayout";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
 import { downloadJson, exportProject } from "@/lib/utils/export";
@@ -58,7 +58,7 @@ interface JourneyMapProps {
 export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   const id = projectId;
 
-  const { openNode, topNodeId } = useNodePanels();
+  const { openNode, topNodeId } = useProjectPanels();
 
   const [expandedFlows, setExpandedFlows] = useState<Set<string>>(new Set());
   const [zoomNode, setZoomNode] = useState<DataNode | null>(null);

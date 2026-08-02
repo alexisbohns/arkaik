@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import type { Node as DataNode } from "@/lib/data/types";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
-import { useNodePanels } from "@/lib/hooks/useNodePanels";
+import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useProject } from "@/lib/hooks/useProject";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useAcceptanceFilters } from "@/components/acceptances/acceptance-filters";
@@ -24,7 +24,7 @@ export default function ProjectAcceptancesPage() {
   const params = useParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
 
-  const { openNode } = useNodePanels();
+  const { openNode } = useProjectPanels();
 
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, applyMutations } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading, syncEdges } = useEdges(id);

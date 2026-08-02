@@ -16,7 +16,7 @@ import { SPECIES, type SpeciesId } from "@/lib/config/species";
 import { STATUSES, STATUS_ORDER } from "@/lib/config/statuses";
 import type { Node as DataNode } from "@/lib/data/types";
 import { useEdges } from "@/lib/hooks/useEdges";
-import { useNodePanels } from "@/lib/hooks/useNodePanels";
+import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useProject } from "@/lib/hooks/useProject";
 import { useJournal } from "@/lib/hooks/useJournal";
@@ -144,7 +144,7 @@ export default function ProjectLibraryPage() {
   const searchParams = useSearchParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
 
-  const { openNode } = useNodePanels();
+  const { openNode } = useProjectPanels();
   const [newNodeOpen, setNewNodeOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [displayMode, setDisplayMode] = useState<LibraryDisplayMode>("directory");

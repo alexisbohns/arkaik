@@ -7,7 +7,7 @@ import { CommandPalette } from "@/components/layout/CommandPalette";
 import { ProjectSidebar } from "@/components/layout/ProjectSidebar";
 import { PublishDialog } from "@/components/publik/PublishDialog";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { NODE_PANEL_PARAM, NodePanelsProvider } from "@/lib/hooks/useNodePanels";
+import { NODE_PANEL_PARAM, ProjectPanelsProvider } from "@/lib/hooks/useProjectPanels";
 import { useProject } from "@/lib/hooks/useProject";
 import { buildProjectCommands, type CommandActionId } from "@/lib/utils/command-palette";
 import { isCommandPaletteShortcut } from "@/lib/utils/keyboard";
@@ -97,7 +97,7 @@ export default function ProjectLayout({
   // The panel stack lives here, not in a page: a page segment remounts whenever
   // its dynamic params change, which would reset the stack on every click.
   return (
-    <NodePanelsProvider>
+    <ProjectPanelsProvider>
       <SidebarProvider defaultOpen>
         <ProjectSidebar
           projectId={id}
@@ -127,6 +127,6 @@ export default function ProjectLayout({
           projectTitle={project?.project.title ?? "Untitled project"}
         />
       </SidebarProvider>
-    </NodePanelsProvider>
+    </ProjectPanelsProvider>
   );
 }

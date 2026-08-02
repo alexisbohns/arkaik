@@ -20,7 +20,7 @@ import {
 import type { Node as DataNode } from "@/lib/data/types";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useJournal } from "@/lib/hooks/useJournal";
-import { useNodePanels } from "@/lib/hooks/useNodePanels";
+import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useProject } from "@/lib/hooks/useProject";
 import { computeDeliveryItems, groupItemsByStatus, type DeliveryItem } from "@/lib/utils/delivery";
@@ -54,7 +54,7 @@ export default function ProjectDeliveryPage() {
   const [search, setSearch] = useState("");
   const [newNodeOpen, setNewNodeOpen] = useState(false);
 
-  const { openNode } = useNodePanels();
+  const { openNode } = useProjectPanels();
 
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading } = useEdges(id);

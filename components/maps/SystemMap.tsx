@@ -20,7 +20,7 @@ import type { Node as DataNode, Edge as DataEdge } from "@/lib/data/types";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useElkLayout } from "@/lib/hooks/useElkLayout";
 import { useJournal } from "@/lib/hooks/useJournal";
-import { useNodePanels } from "@/lib/hooks/useNodePanels";
+import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useProject } from "@/lib/hooks/useProject";
 import { generateNodeId, edgeId } from "@/lib/utils/id";
@@ -61,7 +61,7 @@ type SystemLayoutMode = "tiered" | "organic";
  * there is no expansion state.
  */
 export function SystemMap({ projectId, definition }: SystemMapProps) {
-  const { openNode, topNodeId } = useNodePanels();
+  const { openNode, topNodeId } = useProjectPanels();
   // Session-local rendition choice, seeded from the definition's layout hint
   // (organic is the system kind's default — docs/spec/maps.md).
   const [layoutMode, setLayoutMode] = useState<SystemLayoutMode>(() =>
