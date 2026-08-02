@@ -8,7 +8,7 @@ import { Canvas } from "@/components/graph/Canvas";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
-import { NodeDetailPanel } from "@/components/panels/NodeDetailPanel";
+import { NodeDetailStack } from "@/components/panels/NodeDetailStack";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
@@ -18,6 +18,7 @@ import type { Node as DataNode, Edge as DataEdge } from "@/lib/data/types";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useElkLayout } from "@/lib/hooks/useElkLayout";
 import { useJournal } from "@/lib/hooks/useJournal";
+import { useNodePanels } from "@/lib/hooks/useNodePanels";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useProject } from "@/lib/hooks/useProject";
 import { generateNodeId, edgeId } from "@/lib/utils/id";
@@ -58,8 +59,7 @@ type SystemLayoutMode = "tiered" | "organic";
  * there is no expansion state.
  */
 export function SystemMap({ projectId, definition }: SystemMapProps) {
-  const [selectedNode, setSelectedNode] = useState<DataNode | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
+  const { openNode, topNodeId } = useNodePanels();
   // Session-local rendition choice, seeded from the definition's layout hint
   // (organic is the system kind's default — docs/spec/maps.md).
   const [layoutMode, setLayoutMode] = useState<SystemLayoutMode>(() =>
@@ -81,12 +81,9 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
   const graph = useMemo(
     () =>
       buildSystemGraph(definition, dataNodes, dataEdges, {
-        onOpenDetails: (node) => {
-          setSelectedNode(node);
-          setPanelOpen(true);
-        },
+        onOpenDetails: (node) => openNode({ nodeId: node.id }),
       }),
-    [dataEdges, dataNodes, definition],
+    [dataEdges, dataNodes, definition, openNode],
   );
 
   const { nodes, layoutVersion } = useElkLayout(
@@ -113,6 +110,10 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
     return () => cancelAnimationFrame(frame);
   }, [layoutVersion]);
 
+  // The canvas is a grid cell now: opening a panel narrows it and closing one
+  // gives the room back, so re-frame rather than leave the map half off-cell.
+  const reframe = useCallback(() => setFitSignal((value) => value + 1), []);
+
   const handleLayoutModeChange = useCallback((value: string) => {
     pendingFitRef.current = true;
     setLayoutMode(value === "tiered" ? "tiered" : "organic");
@@ -121,12 +122,9 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
   const handleNodeClick = useCallback<NodeMouseHandler>(
     (_event, xyNode) => {
       const dataNode = nodesById.get(xyNode.id);
-      if (dataNode) {
-        setSelectedNode(dataNode);
-        setPanelOpen(true);
-      }
+      if (dataNode) openNode({ nodeId: dataNode.id });
     },
-    [nodesById],
+    [nodesById, openNode],
   );
 
   const handleConnect = useCallback((connection: Connection) => {
@@ -170,8 +168,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
 
   const handleNodeUpdate = useCallback(
     async (nodeId: string, patch: Partial<Omit<DataNode, "id" | "project_id">>) => {
-      const updated = await updateNode(nodeId, patch);
-      setSelectedNode(updated);
+      await updateNode(nodeId, patch);
     },
     [updateNode],
   );
@@ -242,7 +239,15 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
           </Button>
         </div>
       </header>
-      <div className="flex-1 min-h-0 relative">
+      <NodeDetailStack
+        rootLabel={definition.id !== "system" ? `Maps · ${definition.title}` : "Maps · System"}
+        onLayoutChange={reframe}
+        allNodes={dataNodes}
+        allEdges={dataEdges}
+        journal={journal}
+        onUpdate={handleNodeUpdate}
+        onCreateNode={handleCreateNodeFromPanel}
+      >
         <Canvas
           nodes={nodes}
           edges={graph.edges}
@@ -251,20 +256,9 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
           onEdgeClick={handleEdgeClick}
           fitSignal={fitSignal}
           spotlight
-          spotlightNodeId={panelOpen ? selectedNode?.id ?? null : null}
+          spotlightNodeId={topNodeId}
         />
-      </div>
-      <NodeDetailPanel
-        open={panelOpen}
-        onOpenChange={setPanelOpen}
-        node={selectedNode ?? undefined}
-        onUpdate={handleNodeUpdate}
-        allNodes={dataNodes}
-        allEdges={dataEdges}
-        journal={journal}
-        onNavigate={setSelectedNode}
-        onCreateNode={handleCreateNodeFromPanel}
-      />
+      </NodeDetailStack>
       <NewNodeForm open={newNodeOpen} onOpenChange={setNewNodeOpen} onSubmit={handleCreateNode} />
       <EdgeTypeDialog
         open={edgeDialogOpen}

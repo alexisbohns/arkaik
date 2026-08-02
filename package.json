@@ -24,6 +24,7 @@
     "test:delivery": "node tests/app/delivery.test.js",
     "test:journey-graph": "node tests/app/journey-graph.test.js",
     "test:spotlight": "node tests/app/graph-spotlight.test.js",
+    "test:panel-stack": "node tests/app/panel-stack.test.js",
     "test:command-palette": "node tests/app/command-palette.test.js",
     "test:coverage": "node tests/app/coverage.test.js",
     "test:effective-status": "node tests/app/effective-status.test.js",

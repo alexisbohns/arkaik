@@ -1,19 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useParams } from "next/navigation";
 import { PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 import type { Node as DataNode } from "@/lib/data/types";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
+import { useNodePanels } from "@/lib/hooks/useNodePanels";
 import { useProject } from "@/lib/hooks/useProject";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useAcceptanceFilters } from "@/components/acceptances/acceptance-filters";
 import { filterAcceptances } from "@/lib/utils/acceptance-matrix";
 import { AcceptanceFilterBar } from "@/components/acceptances/AcceptanceFilterBar";
 import { AcceptanceMatrix } from "@/components/acceptances/AcceptanceMatrix";
-import { NodeDetailPanel } from "@/components/panels/NodeDetailPanel";
+import { NodeDetailStack } from "@/components/panels/NodeDetailStack";
 import { generateNodeId } from "@/lib/utils/id";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -23,8 +24,7 @@ export default function ProjectAcceptancesPage() {
   const params = useParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
 
-  const [selectedNode, setSelectedNode] = useState<DataNode | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
+  const { openNode } = useNodePanels();
 
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, applyMutations } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading, syncEdges } = useEdges(id);
@@ -54,13 +54,11 @@ export default function ProjectAcceptancesPage() {
   );
 
   function handleSelectNode(node: DataNode) {
-    setSelectedNode(node);
-    setPanelOpen(true);
+    openNode({ nodeId: node.id });
   }
 
   async function handleNodeUpdate(nodeId: string, patch: Partial<Omit<DataNode, "id" | "project_id">>) {
-    const updatedNode = await updateNode(nodeId, patch);
-    setSelectedNode(updatedNode);
+    await updateNode(nodeId, patch);
   }
 
   async function handleCreateAcceptance(title: string) {
@@ -157,29 +155,26 @@ export default function ProjectAcceptancesPage() {
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6">
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
-          <AcceptanceFilterBar filters={filters} onChange={setFilters} anchorOptions={anchorOptions} />
-          <AcceptanceMatrix
-            acceptances={filtered}
-            edges={dataEdges}
-            nodesById={nodesById}
-            onSelect={handleSelectNode}
-          />
-        </div>
-      </div>
-
-      <NodeDetailPanel
-        open={panelOpen}
-        onOpenChange={setPanelOpen}
-        node={selectedNode ?? undefined}
-        onUpdate={handleNodeUpdate}
+      <NodeDetailStack
+        rootLabel="Acceptances"
         allNodes={dataNodes}
         allEdges={dataEdges}
         journal={journal}
-        onNavigate={setSelectedNode}
+        onUpdate={handleNodeUpdate}
         onCreateAcceptanceForAnchor={handleCreateAcceptanceForAnchor}
-      />
+      >
+        <div className="h-full overflow-auto p-4 md:p-6">
+          <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
+            <AcceptanceFilterBar filters={filters} onChange={setFilters} anchorOptions={anchorOptions} />
+            <AcceptanceMatrix
+              acceptances={filtered}
+              edges={dataEdges}
+              nodesById={nodesById}
+              onSelect={handleSelectNode}
+            />
+          </div>
+        </div>
+      </NodeDetailStack>
     </div>
   );
 }
