@@ -1803,6 +1803,13 @@ git commit -m "feat: one primitive decides whether availability reads as rings o
 > - **`filterAcceptances` now takes four arguments** — `(acceptances, edges, nodesById, filters)`. `nodesById` sits beside `edges` (matching `groupAcceptancesByAnchor`) because resolving an acceptance's product means resolving its anchors. A new call site that passes three will fail to typecheck rather than silently mis-scope, but knowing beats discovering.
 > - **The product scope is never a URL param.** It is the shell's, persisted per project in localStorage (§ Decision 2); each surface layers `scope.productId` onto its own filters at the page. Tasks 13 and 14 have their own filter bars and must do the same.
 > - **An acceptance's product comes from its anchors** when it has any, from stored `metadata.product` only when it has none (§ Decision 5). Any later task that derives acceptance membership must use the same precedence, or two surfaces will disagree about the same node.
+>
+> **Carried forward from Task 13, for every task after it:**
+>
+> - **`productsOfNode(node, graph)` in `lib/utils/product-scope.ts` is the single entry point** for "which products does this node belong to?", for *every* species: stored membership for flows and views, anchors-first for acceptances, the usage index for data models and endpoints. Tasks 15-17 must call it rather than re-deriving membership — three surfaces asked the question three ways before it existed, and two disagreed about the same acceptance. `productsOfAcceptance` moved here from `lib/utils/acceptance-matrix.ts` (which now re-exports it); there is one copy.
+> - **`nodeInScope(node, scope, graph?)` takes an optional third argument.** With a `graph` it delegates to `productsOfNode`; without one it degrades to stored membership, which is all a caller holding no edges can honestly answer. Pass the graph.
+> - **`ProductGraph` is `{ edges, nodesById, usageIndex }`**, assembled once per snapshot at the page with `useMemo`. `buildProductUsageIndex` is a traversal — never build it per node. Any surface passing one must already gate on `edgesLoading`.
+> - **An empty product set means two different things, and `nodeInScope` resolves both.** For a flow, view, or acceptance it is *triage* — nobody has assigned it — so it is **out** of every named scope. For a data model or endpoint it is an *orphan* — nothing in the graph reaches it — so it is **in** every named scope, because hiding it would bury exactly the node that needs attention.
 
 ### Task 11: Acceptances — scoped filter, collapsing columns, the Unanchored rename
 
@@ -1919,9 +1926,13 @@ git commit -m "feat: the pyramid reads as one bar when a product ships on one pl
 
 **Files:**
 - Modify: `lib/utils/delivery.ts:30-52`
+- Modify: `lib/utils/product-scope.ts` — the resolver, see Step 3b
+- Modify: `lib/utils/acceptance-matrix.ts` — `productsOfAcceptance` moves out
 - Modify: `components/delivery/DeliveryFilterBar.tsx`
 - Modify: `app/project/[id]/delivery/page.tsx`
 - Modify: `tests/app/delivery.test.js`
+
+**Delivery renders acceptances too.** `SPECIES_OPTIONS` in `DeliveryFilterBar` offers Views, Acceptances, API Endpoints, and Data Models, and the existing suite asserts acceptance expansion. So this surface is the third to need node→product resolution, and Step 3b unifies it.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1949,6 +1960,24 @@ Give `computeDeliveryItems` a third parameter `options?: { scope?: ProductScope 
 
 **Keep the flow exclusion exactly as it is** — the comment at `delivery.ts:19-27` explains why flows are dropped regardless of the species filter, and that reasoning is unchanged.
 
+- [ ] **Step 3b: Promote one resolver into `lib/utils/product-scope.ts`**
+
+Delivery is the third surface needing node→product resolution, so unify it here rather than adding a third spelling. Add:
+
+```ts
+productsOfNode(node, { edges, nodesById, usageIndex }): Set<string>
+```
+
+- `flow` / `view` — stored `metadata.product`; empty set when absent.
+- `acceptance` — **anchors-first** (§ Decision 5). Move `productsOfAcceptance` and its private `coveredAnchorIds` out of `lib/utils/acceptance-matrix.ts` into `product-scope.ts`; the matrix imports and re-exports them. The dependency runs one way only — `product-scope.ts` must never import the matrix — so there is no cycle.
+- `data-model` / `api-endpoint` — `productsUsingNode(node.id, usageIndex)` from `@arkaik/schema`.
+
+Then `nodeInScope(node, scope, graph?)` delegates to it, keeping the 2-arg form working (it degrades to stored membership). **An empty set means two different things**: triage for the species that store membership (out of every named scope), an orphan for the system layer (in every named scope — hiding it would bury exactly the node needing attention, and Task 14 gives Library the same rule).
+
+`computeDeliveryItems` takes `graph` alongside `scope` in its options; the page builds `usageIndex` with one `useMemo` per snapshot and already gates on `edgesLoading`.
+
+This is what makes an acceptance covering an `admin` view scope identically on Delivery and Acceptances whatever its stored key says — structurally, not by convention.
+
 - [ ] **Step 4: Run to verify it passes**
 
 Run: `npm run test:delivery`
@@ -1957,6 +1986,8 @@ Expected: all `PASS`.
 - [ ] **Step 5: Scope the filter bar**
 
 `DeliveryFilterBar.tsx` builds its platform options from the scope's platforms and hides the platform control at arity ≤ 1, resetting the filter to `"all"` on hide — same rule as Task 11 Step 5.
+
+The board's empty state must stop saying "widen the platform filter" under a named scope, where that control is hidden and the product is what is actually narrowing the board. Offer "try another product" instead.
 
 - [ ] **Step 6: Verify**
 
@@ -1982,12 +2013,22 @@ git commit -m "feat: a web-only product stops dragging down the Android delivery
 
 - [ ] **Step 1: Filter the list**
 
-In the library page, when the scope is a product:
+**Task 13 already built this — do not write a second membership rule.** `nodeInScope(node, scope, graph)` in `lib/utils/product-scope.ts` implements every bullet below, for every species, via `productsOfNode`. Call it:
 
-- `flow` / `view` / `acceptance` — keep when `nodeInScope(node, scope)`.
-- `data-model` / `api-endpoint` — keep when `productsUsingNode(node.id, usageIndex)` includes the scope, **or** when that list is empty. An orphan belongs to no product and must stay visible in every scope; hiding it would bury exactly the node that needs attention.
+```tsx
+const usageIndex = useMemo(() => buildProductUsageIndex(nodes, edges), [nodes, edges]);
+const graph = useMemo(() => ({ edges, nodesById, usageIndex }), [edges, nodesById, usageIndex]);
+// …
+nodes.filter((node) => nodeInScope(node, scope, graph))
+```
 
-Build the usage index once per snapshot with `useMemo(() => buildProductUsageIndex(nodes, edges), [nodes, edges])` — never per card.
+What that gives you, for reference — the behaviour is already implemented and tested in `tests/app/delivery.test.js`:
+
+- `flow` / `view` — stored membership; unassigned nodes are triage, visible under All products only.
+- `acceptance` — anchors-first, stored key only when it covers nothing (§ Decision 5).
+- `data-model` / `api-endpoint` — kept when `productsUsingNode(node.id, usageIndex)` includes the scope, **or** when that list is empty. An orphan belongs to no product and must stay visible in every scope; hiding it would bury exactly the node that needs attention.
+
+Build the usage index once per snapshot with `useMemo(() => buildProductUsageIndex(nodes, edges), [nodes, edges])` — never per card. Gate on `edgesLoading` before passing the graph.
 
 - [ ] **Step 2: Badge the cards**
 

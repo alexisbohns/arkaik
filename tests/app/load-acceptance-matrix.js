@@ -8,10 +8,17 @@ const BUILD_DIR = path.join(__dirname, ".test-build-acceptance-matrix");
 
 const MODULES = [
   ["lib/utils/search.ts", "search"],
+  // `productsOfAcceptance` lives in product-scope.ts now (one resolver for every
+  // species); the matrix imports it, so both it and its own PLATFORMS value
+  // import have to exist on disk.
+  ["lib/config/platforms.ts", "config-platforms"],
+  ["lib/utils/product-scope.ts", "product-scope"],
   ["lib/utils/acceptance-matrix.ts", "acceptance-matrix"],
 ];
 const SPECIFIER_MAP = {
   "@/lib/utils/search": "./search",
+  "@/lib/config/platforms": "./config-platforms",
+  "@/lib/utils/product-scope": "./product-scope",
   "@/lib/data/types": "./types", // type-only in this graph
 };
 

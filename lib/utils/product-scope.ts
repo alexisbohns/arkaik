@@ -11,13 +11,16 @@
  */
 
 import { PLATFORMS, type PlatformId } from "@/lib/config/platforms";
-import type { Node, Project } from "@/lib/data/types";
+import type { Edge, Node, Project } from "@/lib/data/types";
 import {
   effectiveNodePlatforms,
+  PRODUCT_MEMBERSHIP_SPECIES,
   productOf,
   productPlatforms,
+  productsUsingNode,
   resolveProducts,
   type ProductDefinition,
+  type ProductUsageIndex,
 } from "@arkaik/schema";
 
 /** Rings-and-aggregate, or one bar. There is no third shape. */
@@ -140,14 +143,125 @@ export function productScopeOptions(
   }));
 }
 
+/** Anchor ids an acceptance covers (outgoing `covers` edges). */
+export function coveredAnchorIds(acceptanceId: string, edges: readonly Edge[]): string[] {
+  return edges
+    .filter((e) => e.edge_type === "covers" && e.source_id === acceptanceId)
+    .map((e) => e.target_id);
+}
+
 /**
- * Does this node belong in the scope? Flows, views, and acceptances match by
- * stored membership; `null` scope matches everything. A node with no membership
- * is in triage and shows only under "All products".
+ * The products an acceptance belongs to — possibly none, possibly several.
+ *
+ * **Anchors govern when there are any** (RFC decision 3): an acceptance is a
+ * statement about the views and flows it covers, so its membership is theirs.
+ * Stored `metadata.product` is the answer only for an acceptance with nothing
+ * to derive from — the intake case (§ Decision 5), where a PM files an idea
+ * knowing which app it is for long before they know which screens it needs.
+ * Reading the stored value first would let a stale key on an anchored
+ * acceptance out-vote the graph it is attached to.
+ *
+ * Unresolvable anchors are skipped, exactly as `groupAcceptancesByAnchor`
+ * skips them, so a dangling `covers` edge cannot make an acceptance both
+ * anchored-for-membership and unanchored-for-grouping.
+ *
+ * An **empty** result is meaningful and is not the same as "everywhere": it is
+ * triage. Either the acceptance is anchorless and unassigned, or every anchor it
+ * covers is itself unassigned. Both show under All products only.
  */
-export function nodeInScope(node: Pick<Node, "species" | "metadata">, scope: ProductScope): boolean {
+export function productsOfAcceptance(
+  acceptance: Pick<Node, "id" | "species" | "metadata">,
+  edges: readonly Edge[],
+  nodesById: ReadonlyMap<string, Node>,
+): Set<string> {
+  const anchors = coveredAnchorIds(acceptance.id, edges)
+    .map((anchorId) => nodesById.get(anchorId))
+    .filter((anchor): anchor is Node => anchor !== undefined);
+
+  if (anchors.length === 0) {
+    const stored = productOf(acceptance);
+    return stored === null ? new Set<string>() : new Set([stored]);
+  }
+
+  const products = new Set<string>();
+  for (const anchor of anchors) {
+    const product = productOf(anchor);
+    if (product !== null) products.add(product);
+  }
+  return products;
+}
+
+/**
+ * The graph a full membership answer needs. Assembled once per snapshot at the
+ * page — `usageIndex` is `buildProductUsageIndex(nodes, edges)`, which is a
+ * traversal and must never run per node.
+ */
+export interface ProductGraph {
+  edges: readonly Edge[];
+  nodesById: ReadonlyMap<string, Node>;
+  usageIndex: ProductUsageIndex;
+}
+
+/**
+ * **The one answer to "which products does this node belong to?"** — every
+ * species, one function. Three surfaces asked the question three ways before
+ * this existed, and two of them disagreed about the same acceptance.
+ *
+ * - `flow` / `view` — stored `metadata.product`. They are the only species a
+ *   human assigns directly.
+ * - `acceptance` — {@link productsOfAcceptance}: anchors first, stored key only
+ *   when it covers nothing (§ Decision 5).
+ * - `data-model` / `api-endpoint` — derived from consumers via the usage index.
+ *
+ * An **empty set means different things** for the two halves, which is why
+ * {@link nodeInScope} and not this function decides what to do with it: for a
+ * species that stores membership, empty means *nobody has said yet* — triage.
+ * For the system layer it means *nothing in the graph reaches this* — an orphan.
+ */
+export function productsOfNode(
+  node: Pick<Node, "id" | "species" | "metadata">,
+  graph: ProductGraph,
+): Set<string> {
+  if (node.species === "acceptance") {
+    return productsOfAcceptance(node, graph.edges, graph.nodesById);
+  }
+  if (PRODUCT_MEMBERSHIP_SPECIES.includes(node.species)) {
+    const stored = productOf(node);
+    return stored === null ? new Set<string>() : new Set([stored]);
+  }
+  return new Set(productsUsingNode(node.id, graph.usageIndex));
+}
+
+/**
+ * Does this node belong in the scope? `null` scope matches everything.
+ *
+ * **With a `graph`** the answer comes from {@link productsOfNode}, so every
+ * surface that passes one scopes identically — an acceptance covering an admin
+ * view lands in `admin` on Delivery and on Acceptances, whatever its stored key
+ * says. The two readings of an empty set are resolved here:
+ *
+ * - a flow, view, or acceptance with no products is **out** of every named
+ *   scope. Nobody has assigned it; it belongs to triage, visible under All
+ *   products where it can be found and fixed.
+ * - a data model or endpoint with no products is **in** every named scope. It is
+ *   an orphan — reached by nothing — and hiding it would bury exactly the node
+ *   that needs attention. Task 14 gives Library the same rule.
+ *
+ * **Without a `graph`** it degrades to stored membership only, which is all a
+ * caller holding no edges can honestly answer. That form predates the resolver
+ * and stays for callers that have no graph to give.
+ */
+export function nodeInScope(
+  node: Pick<Node, "id" | "species" | "metadata">,
+  scope: ProductScope,
+  graph?: ProductGraph,
+): boolean {
   if (scope.productId === null) return true;
-  return productOf(node) === scope.productId;
+  if (graph === undefined) return productOf(node) === scope.productId;
+
+  const products = productsOfNode(node, graph);
+  if (products.size === 0) return !PRODUCT_MEMBERSHIP_SPECIES.includes(node.species);
+  return products.has(scope.productId);
 }
 
 /**

@@ -21,6 +21,9 @@ const MODULES = [
   ["lib/config/species.ts", "config-species"],
   ["lib/config/statuses.ts", "config-statuses"],
   ["lib/utils/platform-status.ts", "platform-status"],
+  // delivery.ts's scoped projection imports the product-scope helpers as
+  // values, so this one is no longer elided and has to exist on disk.
+  ["lib/utils/product-scope.ts", "product-scope"],
   ["lib/utils/delivery.ts", "delivery"],
   ["lib/utils/journal.ts", "journal"],
   ["lib/utils/coverage.ts", "coverage"],
@@ -33,6 +36,7 @@ const SPECIFIER_MAP = {
   "@/lib/config/statuses": "./config-statuses",
   "@/lib/data/types": "./types", // type-only in this graph
   "@/lib/utils/platform-status": "./platform-status",
+  "@/lib/utils/product-scope": "./product-scope",
   "@/lib/utils/delivery": "./delivery",
   "@/lib/utils/journal": "./journal",
 };

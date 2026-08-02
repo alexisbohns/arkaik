@@ -8,8 +8,16 @@
 import type { Node, Edge } from "@/lib/data/types";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { StatusId } from "@/lib/config/statuses";
-import { productOf, resolvePlatformStatus, hasParityGap, type ValueId } from "@arkaik/schema";
+import { resolvePlatformStatus, hasParityGap, type ValueId } from "@arkaik/schema";
 import { matchesSearch } from "@/lib/utils/search";
+// `productsOfAcceptance` lives in product-scope.ts, with the resolver for every
+// other species — one module answers "which products does this node belong to?".
+// Re-exported here because this module was its home and its test still asks for
+// it by name. The dependency runs one way only: product-scope knows nothing
+// about the matrix.
+import { coveredAnchorIds, productsOfAcceptance } from "@/lib/utils/product-scope";
+
+export { productsOfAcceptance };
 
 export interface AcceptanceFilters {
   search: string;
@@ -44,54 +52,6 @@ export const EMPTY_FILTERS: AcceptanceFilters = {
  * repo has no runner for.
  */
 export const UNANCHORED_GROUP_LABEL = "Unanchored";
-
-/** Anchor ids an acceptance covers (outgoing `covers` edges). */
-function coveredAnchorIds(acceptanceId: string, edges: readonly Edge[]): string[] {
-  return edges
-    .filter((e) => e.edge_type === "covers" && e.source_id === acceptanceId)
-    .map((e) => e.target_id);
-}
-
-/**
- * The products an acceptance belongs to — possibly none, possibly several.
- *
- * **Anchors govern when there are any** (RFC decision 3): an acceptance is a
- * statement about the views and flows it covers, so its membership is theirs.
- * Stored `metadata.product` is the answer only for an acceptance with nothing
- * to derive from — the intake case (§ Decision 5), where a PM files an idea
- * knowing which app it is for long before they know which screens it needs.
- * Reading the stored value first would let a stale key on an anchored
- * acceptance out-vote the graph it is attached to.
- *
- * Unresolvable anchors are skipped, exactly as {@link groupAcceptancesByAnchor}
- * skips them, so a dangling `covers` edge cannot make an acceptance both
- * anchored-for-membership and unanchored-for-grouping.
- *
- * An **empty** result is meaningful and is not the same as "everywhere": it is
- * triage. Either the acceptance is anchorless and unassigned, or every anchor it
- * covers is itself unassigned. Both show under All products only.
- */
-export function productsOfAcceptance(
-  acceptance: Node,
-  edges: readonly Edge[],
-  nodesById: ReadonlyMap<string, Node>,
-): Set<string> {
-  const anchors = coveredAnchorIds(acceptance.id, edges)
-    .map((anchorId) => nodesById.get(anchorId))
-    .filter((anchor): anchor is Node => anchor !== undefined);
-
-  if (anchors.length === 0) {
-    const stored = productOf(acceptance);
-    return stored === null ? new Set<string>() : new Set([stored]);
-  }
-
-  const products = new Set<string>();
-  for (const anchor of anchors) {
-    const product = productOf(anchor);
-    if (product !== null) products.add(product);
-  }
-  return products;
-}
 
 /** True if any applicable platform of the acceptance resolves to `status`. */
 function hasResolvedStatusOnAny(acceptance: Node, status: StatusId): boolean {
