@@ -14,7 +14,7 @@
  */
 
 import type { Node, Project } from "./bundle";
-import type { PlatformId, SpeciesId } from "./ids";
+import { PLATFORM_IDS, type PlatformId, type SpeciesId } from "./ids";
 
 /**
  * A product: one app in the family. `platforms` is a *menu*, not a claim — a
@@ -63,4 +63,57 @@ export function productOf(node: Pick<Node, "species" | "metadata">): string | nu
   if (!PRODUCT_MEMBERSHIP_SPECIES.includes(node.species)) return null;
   const product = node.metadata?.product;
   return typeof product === "string" ? product : null;
+}
+
+/**
+ * The scope's platform **menu** — the sole input to the arity rule that every
+ * surface reads.
+ *
+ * - a known `productId` → that product's own list;
+ * - `null` (All products) → the union of every declared product's list;
+ * - an unknown id → same as `null`, because a stale scope must degrade, not throw;
+ * - a project declaring no products → `PLATFORM_IDS`, the degenerate case that
+ *   makes today's behavior fall out unchanged.
+ *
+ * The result is always ordered by `PLATFORM_IDS` so that columns, tabs, and
+ * rings never reorder themselves when the scope changes.
+ */
+export function productPlatforms(
+  project: Pick<Project, "metadata"> | undefined | null,
+  productId: string | null,
+): PlatformId[] {
+  const products = resolveProducts(project);
+  if (products.length === 0) return [...PLATFORM_IDS];
+
+  const named = productId === null ? undefined : products.find((product) => product.id === productId);
+  const menus = named ? [named] : products;
+
+  const union = new Set<string>();
+  for (const product of menus) {
+    if (!Array.isArray(product.platforms)) continue;
+    for (const platform of product.platforms) union.add(platform as string);
+  }
+
+  return PLATFORM_IDS.filter((platform) => union.has(platform));
+}
+
+/**
+ * `node.platforms ∩ product.platforms`, ordered by `PLATFORM_IDS`.
+ *
+ * This intersection is why the containment rule can be a *warning*: a platform
+ * outside the product's menu simply drops out of the display rather than
+ * corrupting it. A `null` product means "no menu to intersect against" and
+ * returns the node's own list unchanged.
+ */
+export function effectiveNodePlatforms(
+  node: Pick<Node, "platforms">,
+  product: ProductDefinition | null | undefined,
+): PlatformId[] {
+  const own = Array.isArray(node.platforms) ? node.platforms : [];
+  if (!product || !Array.isArray(product.platforms)) {
+    return PLATFORM_IDS.filter((platform) => own.includes(platform));
+  }
+
+  const menu = new Set<string>(product.platforms as string[]);
+  return PLATFORM_IDS.filter((platform) => own.includes(platform) && menu.has(platform));
 }
