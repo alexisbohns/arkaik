@@ -13,8 +13,7 @@ import { Button } from "@/components/ui/button";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { isEditableElement } from "@/lib/utils/keyboard";
-import { visibleWindow, type PanelEntry } from "@/lib/utils/panel-stack";
-import { unwindDoomed } from "@/lib/utils/project-panels";
+import { unwindDoomed, visibleWindow, type PanelEntry } from "@/lib/utils/panel-stack";
 
 /**
  * Escape belongs to whatever layer is on top, and Radix marks its open layers

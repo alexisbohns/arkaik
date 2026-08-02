@@ -89,20 +89,6 @@ export function buildPanelCrumbs(
 }
 
 /**
- * The panels an unwind to `depth` destroys, top-down.
- *
- * `unwindTo` truncates a suffix, so it takes every panel from `depth` upward —
- * not just the one at `depth`. Ordered highest-first because a panel that
- * refuses to close raises a confirm, and that confirm should belong to
- * something the user can see rather than a column buried two deep.
- */
-export function unwindDoomed(depth: number, total: number): number[] {
-  const doomed: number[] = [];
-  for (let index = total - 1; index >= depth; index -= 1) doomed.push(index);
-  return doomed;
-}
-
-/**
  * Drop node panels whose node no longer exists — deleted out from under the
  * stack. Non-node panels are not subject to the node lifecycle and always
  * survive. Returns the same array when nothing changed, so callers can set

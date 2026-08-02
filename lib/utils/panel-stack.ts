@@ -85,6 +85,20 @@ export function unwindTo<T>(stack: PanelEntry<T>[], depth: number): PanelEntry<T
 }
 
 /**
+ * The panels an unwind to `depth` destroys, top-down.
+ *
+ * `unwindTo` truncates a suffix, so it takes every panel from `depth` upward —
+ * not just the one at `depth`. Ordered highest-first because a panel that
+ * refuses to close raises a confirm, and that confirm should belong to
+ * something the user can see rather than a column buried two deep.
+ */
+export function unwindDoomed(depth: number, total: number): number[] {
+  const doomed: number[] = [];
+  for (let index = total - 1; index >= depth; index -= 1) doomed.push(index);
+  return doomed;
+}
+
+/**
  * Reconcile the stack with an id arriving from the URL — a cold load, Back, or
  * Forward. Three paths, because a history entry carries an id and no intent:
  *
