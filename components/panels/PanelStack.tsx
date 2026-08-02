@@ -42,6 +42,17 @@ interface PanelStackProps<T> {
   onUnwindTo: (depth: number) => void;
   /** Fires when the columns change, so a canvas can re-frame itself. */
   onLayoutChange?: () => void;
+  /**
+   * The legacy in-body breadcrumb row. `PageShell` passes false — the header
+   * owns the trail now. Removed once every surface is on `PageShell`.
+   */
+  showBreadcrumbs?: boolean;
+  /** The surface cell's accessible name. */
+  surfaceLabel?: string;
+  /** Per-entry visual accent. "editing" draws a dashed destructive border. */
+  accentOf?: (entry: PanelEntry<T>, index: number) => "editing" | null | undefined;
+  /** Consulted before closing. Returning false vetoes — the panel raises its own confirm. */
+  canCloseAt?: (index: number) => boolean;
 }
 
 /**
@@ -64,6 +75,10 @@ export function PanelStack<T>({
   onCloseAt,
   onUnwindTo,
   onLayoutChange,
+  showBreadcrumbs = true,
+  surfaceLabel,
+  accentOf,
+  canCloseAt,
 }: PanelStackProps<T>) {
   const isMobile = useIsMobile();
   const { surfaceVisible, firstVisiblePanel, columnCount } = visibleWindow(
@@ -76,10 +91,16 @@ export function PanelStack<T>({
 
   // Closing a panel with focus inside it would drop focus on the document body
   // and lose the tab position. Hand it to whatever panel is on top afterwards.
-  const runClose = useCallback((close: () => void, source: HTMLElement | null) => {
-    restoreFocusRef.current = source?.contains(document.activeElement) ?? false;
-    close();
-  }, []);
+  // A panel may refuse outright — an unsaved draft raises its own confirm and
+  // vetoes, then calls back once the user has answered.
+  const runClose = useCallback(
+    (index: number, close: () => void, source: HTMLElement | null) => {
+      if (canCloseAt && !canCloseAt(index)) return;
+      restoreFocusRef.current = source?.contains(document.activeElement) ?? false;
+      close();
+    },
+    [canCloseAt],
+  );
 
   useEffect(() => {
     if (!restoreFocusRef.current) return;
@@ -106,7 +127,7 @@ export function PanelStack<T>({
       if (document.querySelector(OPEN_OVERLAY_SELECTOR)) return;
 
       event.preventDefault();
-      runClose(() => onUnwindTo(entries.length - 1), topPanelRef.current);
+      runClose(entries.length - 1, () => onUnwindTo(entries.length - 1), topPanelRef.current);
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -118,7 +139,7 @@ export function PanelStack<T>({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {entries.length > 0 && (
+      {showBreadcrumbs && entries.length > 0 && (
         <div className="flex shrink-0 items-center gap-3 border-b px-4 py-2">
           <Breadcrumb className="min-w-0 flex-1">
             <BreadcrumbList className="flex-nowrap overflow-x-auto whitespace-nowrap text-xs">
@@ -126,7 +147,7 @@ export function PanelStack<T>({
                 <button
                   type="button"
                   className="cursor-pointer transition-colors hover:text-foreground"
-                  onClick={() => runClose(() => onUnwindTo(0), topPanelRef.current)}
+                  onClick={() => runClose(0, () => onUnwindTo(0), topPanelRef.current)}
                 >
                   {rootLabel}
                 </button>
@@ -148,7 +169,7 @@ export function PanelStack<T>({
                           type="button"
                           className="max-w-48 cursor-pointer truncate transition-colors hover:text-foreground"
                           onClick={() =>
-                            runClose(() => onUnwindTo(index + 1), topPanelRef.current)
+                            runClose(index + 1, () => onUnwindTo(index + 1), topPanelRef.current)
                           }
                         >
                           {labelOf(entry)}
@@ -179,7 +200,7 @@ export function PanelStack<T>({
           box also keeps the ELK layout and the viewport intact underneath.
         */}
         <section
-          aria-label={rootLabel}
+          aria-label={surfaceLabel ?? rootLabel}
           className={cn(
             cellClassName,
             "relative",
@@ -199,7 +220,11 @@ export function PanelStack<T>({
               hidden={index < firstVisiblePanel}
               tabIndex={-1}
               aria-label={labelOf(entry)}
-              className={cn(cellClassName, "outline-none arkaik-panel-enter")}
+              className={cn(
+                cellClassName,
+                "outline-none arkaik-panel-enter",
+                accentOf?.(entry, index) === "editing" && "border-dashed border-destructive",
+              )}
             >
               <header className="flex shrink-0 items-center justify-between gap-2 border-b p-6">
                 <div className="flex min-w-0 items-center gap-2">{renderHeader(entry, index)}</div>
@@ -209,7 +234,7 @@ export function PanelStack<T>({
                   className="shrink-0 cursor-pointer"
                   aria-label={`Close ${labelOf(entry)}`}
                   onClick={(event) =>
-                    runClose(() => onCloseAt(index), event.currentTarget.closest("section"))
+                    runClose(index, () => onCloseAt(index), event.currentTarget.closest("section"))
                   }
                 >
                   <XIcon className="size-4" />
