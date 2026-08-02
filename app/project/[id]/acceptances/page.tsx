@@ -14,7 +14,7 @@ import { useAcceptanceFilters } from "@/components/acceptances/acceptance-filter
 import { filterAcceptances } from "@/lib/utils/acceptance-matrix";
 import { AcceptanceFilterBar } from "@/components/acceptances/AcceptanceFilterBar";
 import { AcceptanceMatrix } from "@/components/acceptances/AcceptanceMatrix";
-import { NodeDetailStack } from "@/components/panels/NodeDetailStack";
+import { ProjectPanels } from "@/components/panels/ProjectPanels";
 import { generateNodeId } from "@/lib/utils/id";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -155,7 +155,8 @@ export default function ProjectAcceptancesPage() {
         </div>
       </header>
 
-      <NodeDetailStack
+      <ProjectPanels
+        surfaceLabel="Acceptances"
         rootLabel="Acceptances"
         allNodes={dataNodes}
         allEdges={dataEdges}
@@ -174,7 +175,7 @@ export default function ProjectAcceptancesPage() {
             />
           </div>
         </div>
-      </NodeDetailStack>
+      </ProjectPanels>
     </div>
   );
 }

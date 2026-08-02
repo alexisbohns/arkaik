@@ -6,7 +6,7 @@ import { PlusIcon } from "lucide-react";
 import { DeliveryBoard } from "@/components/delivery/DeliveryBoard";
 import { DeliveryFilterBar, type DeliveryPlatformFilter } from "@/components/delivery/DeliveryFilterBar";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
-import { NodeDetailStack } from "@/components/panels/NodeDetailStack";
+import { ProjectPanels } from "@/components/panels/ProjectPanels";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -150,7 +150,8 @@ export default function ProjectDeliveryPage() {
         </div>
       </header>
 
-      <NodeDetailStack
+      <ProjectPanels
+        surfaceLabel="Delivery"
         rootLabel="Delivery"
         allNodes={dataNodes}
         allEdges={dataEdges}
@@ -191,7 +192,7 @@ export default function ProjectDeliveryPage() {
             />
           )}
         </div>
-      </NodeDetailStack>
+      </ProjectPanels>
 
       <NewNodeForm open={newNodeOpen} onOpenChange={setNewNodeOpen} onSubmit={handleCreateNode} />
     </div>

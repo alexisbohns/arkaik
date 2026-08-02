@@ -10,7 +10,7 @@ import { MapDisplayPopover } from "@/components/maps/MapDisplayPopover";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
-import { NodeDetailStack } from "@/components/panels/NodeDetailStack";
+import { ProjectPanels } from "@/components/panels/ProjectPanels";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
@@ -283,7 +283,8 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
           </Button>
         </div>
       </header>
-      <NodeDetailStack
+      <ProjectPanels
+        surfaceLabel={definition.id !== "system" ? `Maps · ${definition.title}` : "Maps · System"}
         rootLabel={definition.id !== "system" ? `Maps · ${definition.title}` : "Maps · System"}
         onLayoutChange={reframe}
         allNodes={dataNodes}
@@ -302,7 +303,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
           spotlight
           spotlightNodeId={addressedNodeId}
         />
-      </NodeDetailStack>
+      </ProjectPanels>
       <NewNodeForm open={newNodeOpen} onOpenChange={setNewNodeOpen} onSubmit={handleCreateNode} />
       <EdgeTypeDialog
         open={edgeDialogOpen}

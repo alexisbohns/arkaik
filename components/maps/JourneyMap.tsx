@@ -9,7 +9,7 @@ import { Canvas } from "@/components/graph/Canvas";
 import { MapDisplayPopover } from "@/components/maps/MapDisplayPopover";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
-import { NodeDetailStack } from "@/components/panels/NodeDetailStack";
+import { ProjectPanels } from "@/components/panels/ProjectPanels";
 import { RawBundleSheet } from "@/components/panels/RawBundleSheet";
 import { ShotPreviewDialog } from "@/components/panels/ShotPreviewDialog";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
@@ -746,7 +746,8 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
           </Button>
         </div>
       </header>
-      <NodeDetailStack
+      <ProjectPanels
+        surfaceLabel={definition && definition.id !== "journey" ? `Maps · ${definition.title}` : "Maps · Journey"}
         rootLabel={definition && definition.id !== "journey" ? `Maps · ${definition.title}` : "Maps · Journey"}
         onLayoutChange={reframe}
         allNodes={dataNodes}
@@ -761,7 +762,7 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
         }}
       >
         <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} onEdgeClick={handleEdgeClick} fitSignal={fitSignal} />
-      </NodeDetailStack>
+      </ProjectPanels>
       <ShotPreviewDialog
         open={zoomNode !== null}
         onOpenChange={(open) => { if (!open) setZoomNode(null); }}

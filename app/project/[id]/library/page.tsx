@@ -8,7 +8,7 @@ import { NodeCard } from "@/components/library/NodeCard";
 import type { PlaylistPreviewItem } from "@/components/library/NodeCard";
 import { NodeTable, type NodeSortKey, type NodeSortState } from "@/components/library/NodeTable";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
-import { NodeDetailStack } from "@/components/panels/NodeDetailStack";
+import { ProjectPanels } from "@/components/panels/ProjectPanels";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -265,7 +265,8 @@ export default function ProjectLibraryPage() {
         </div>
       </header>
 
-      <NodeDetailStack
+      <ProjectPanels
+        surfaceLabel={speciesFilter === "all" ? "Library" : `Library · ${SPECIES_SUBTITLE_LABELS[speciesFilter]}`}
         rootLabel={speciesFilter === "all" ? "Library" : `Library · ${SPECIES_SUBTITLE_LABELS[speciesFilter]}`}
         allNodes={dataNodes}
         allEdges={dataEdges}
@@ -324,7 +325,7 @@ export default function ProjectLibraryPage() {
           )}
           </div>
         </div>
-      </NodeDetailStack>
+      </ProjectPanels>
 
       <NewNodeForm
         open={newNodeOpen}
