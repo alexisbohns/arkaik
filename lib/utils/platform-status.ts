@@ -12,12 +12,42 @@ import type { Edge, Node, PlaylistEntry, PlatformStatusMap } from "@/lib/data/ty
 export type PlatformStatusCounts = Partial<Record<PlatformId, Partial<Record<StatusId, number>>>>;
 export type PlatformTotals = Partial<Record<PlatformId, number>>;
 
+/**
+ * Invariant: for every platform `p`, `totals[p]` equals the sum of
+ * `counts[p]`'s counted statuses — maintained by `addPlatformStatusToRollup`
+ * and rebuilt from scratch by `mergeRollups`. A rollup that violates this
+ * yields segments whose `count` and `ratio` disagree.
+ */
 export interface PlatformStatusRollup {
   counts: PlatformStatusCounts;
   totals: PlatformTotals;
 }
 
-function sortStatusesDescending(left: StatusId, right: StatusId) {
+/**
+ * Severity precedence for `getRollupDisplayStatus` — highest `STATUS_ORDER`
+ * first, which deliberately puts `blocked` (7) ahead of `live` (5) so a rollup
+ * containing anything blocked reports blocked. That value colors graph nodes
+ * (`system-graph.ts`, `journey-graph.ts`). This is **not** a display order —
+ * rings and bars use `compareStatusesForDisplay`.
+ */
+function compareStatusesBySeverity(left: StatusId, right: StatusId) {
+  return STATUS_ORDER[right] - STATUS_ORDER[left];
+}
+
+/**
+ * Display order for status segments — lifecycle-descending with `blocked`
+ * pinned last, so a ring reads Live → Releasing → Development → Prioritized →
+ * Blocked and never opens on a red arc at 12 o'clock. This guarantee is scoped
+ * to the `delivery` preset's counted statuses (prioritized, development,
+ * releasing, live, blocked) — `archived` sits at `STATUS_ORDER` 6, above
+ * `live`, so a future preset that counted a terminal status like `archived`
+ * would need the pin widened to cover it too. Shared by the rings and the
+ * `PlatformGaugeList` bars so the two can never disagree.
+ */
+export function compareStatusesForDisplay(left: StatusId, right: StatusId) {
+  const leftIsLast = left === "blocked";
+  const rightIsLast = right === "blocked";
+  if (leftIsLast !== rightIsLast) return leftIsLast ? 1 : -1;
   return STATUS_ORDER[right] - STATUS_ORDER[left];
 }
 
@@ -210,25 +240,56 @@ export function mergeRollups(...rollups: PlatformStatusRollup[]): PlatformStatus
   }, createEmptyRollup());
 }
 
+/** One counted status's share of a ring or bar. Always one entry per counted status, zeros included. */
+export interface StatusSegment {
+  status: StatusId;
+  count: number;
+  ratio: number;
+  percentage: number;
+}
+
+function buildSegments(
+  countFor: (status: StatusId) => number,
+  total: number,
+  presetId: CountedStatusPresetId,
+): StatusSegment[] {
+  return [...getCountedStatuses(presetId)].sort(compareStatusesForDisplay).map((status) => {
+    const count = countFor(status);
+    const ratio = total === 0 ? 0 : count / total;
+
+    return { status, count, ratio, percentage: Math.round(ratio * 100) };
+  });
+}
+
 export function getPlatformRollupSegments(
   rollup: PlatformStatusRollup,
   platformId: PlatformId,
   presetId: CountedStatusPresetId = DEFAULT_COUNTED_STATUS_PRESET_ID,
-) {
-  const total = rollup.totals[platformId] ?? 0;
-  const countedStatuses = getCountedStatuses(presetId);
+): StatusSegment[] {
+  return buildSegments(
+    (status) => rollup.counts[platformId]?.[status] ?? 0,
+    rollup.totals[platformId] ?? 0,
+    presetId,
+  );
+}
 
-  return [...countedStatuses].sort(sortStatusesDescending).map((status) => {
-    const count = rollup.counts[platformId]?.[status] ?? 0;
-    const ratio = total === 0 ? 0 : count / total;
+/**
+ * The same segments, summed across every platform — the global ring. Percentages
+ * divide by the grand total, so one acceptance live on three platforms counts
+ * three times here, exactly as it does across the three platform rings.
+ */
+export function getRollupTotalSegments(
+  rollup: PlatformStatusRollup,
+  presetId: CountedStatusPresetId = DEFAULT_COUNTED_STATUS_PRESET_ID,
+): StatusSegment[] {
+  const total = PLATFORMS.reduce((sum, platform) => sum + (rollup.totals[platform.id] ?? 0), 0);
 
-    return {
-      status,
-      count,
-      ratio,
-      percentage: Math.round(ratio * 100),
-    };
-  });
+  return buildSegments(
+    (status) =>
+      PLATFORMS.reduce((sum, platform) => sum + (rollup.counts[platform.id]?.[status] ?? 0), 0),
+    total,
+    presetId,
+  );
 }
 
 export function getRollupPlatforms(rollup: PlatformStatusRollup): PlatformId[] {
@@ -242,7 +303,7 @@ export function getRollupDisplayStatus(
   fallbackStatus: StatusId,
   presetId: CountedStatusPresetId = DEFAULT_COUNTED_STATUS_PRESET_ID,
 ): StatusId {
-  const countedStatuses = [...getCountedStatuses(presetId)].sort(sortStatusesDescending);
+  const countedStatuses = [...getCountedStatuses(presetId)].sort(compareStatusesBySeverity);
 
   for (const status of countedStatuses) {
     const hasStatus = Object.values(rollup.counts).some((platformCounts) => (platformCounts?.[status] ?? 0) > 0);

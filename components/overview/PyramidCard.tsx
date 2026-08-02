@@ -1,36 +1,46 @@
 "use client";
 
-import { PlatformGaugeList } from "@/components/graph/nodes/PlatformGaugeList";
+import { PlatformRingSet } from "@/components/graph/nodes/PlatformRingSet";
 import { VALUE_TIERS_CONFIG } from "@/lib/config/values";
-import { PLATFORMS } from "@/lib/config/platforms";
 import { mergeRollups } from "@/lib/utils/platform-status";
 import type { PyramidTier } from "@/lib/utils/pyramid";
 import { OverviewSection } from "./OverviewSection";
 
 const TIER_LABEL = new Map(VALUE_TIERS_CONFIG.map((t) => [t.id, t.label]));
-const ALL_PLATFORMS = PLATFORMS.map((p) => p.id);
 
 interface PyramidCardProps {
   tiers: PyramidTier[];
   projectId: string;
 }
 
-/** Value delivery at a glance — four tier gauges (spec §9.3). */
+/** Value delivery at a glance — one ring set per tier (spec §9.3). */
 export function PyramidCard({ tiers, projectId }: PyramidCardProps) {
   return (
     <OverviewSection title="Value pyramid" href={`/project/${projectId}/pyramid`} linkLabel="Pyramid">
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-2.5">
         {tiers.map((tier) => {
           const rollup = mergeRollups(...tier.elements.map((element) => element.rollup));
-          const total = tier.elements.length;
-          const served = tier.elements.filter((element) => element.acceptanceCount > 0).length;
+          // Elements addressed, not acceptances summed: an acceptance carrying two
+          // values from the same tier would be counted twice by a naive sum, so the
+          // one number that is exactly true here is how many of the tier's elements
+          // anything speaks to at all.
+          const addressed = tier.elements.filter((element) => element.acceptanceCount > 0).length;
+
           return (
-            <div key={tier.tier} className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{TIER_LABEL.get(tier.tier)}</span>
-                <span>{served}/{total}</span>
-              </div>
-              <PlatformGaugeList rollup={rollup} platforms={ALL_PLATFORMS} compact />
+            <div key={tier.tier} className="flex items-center justify-between gap-3">
+              <span className="truncate text-xs text-muted-foreground">
+                {TIER_LABEL.get(tier.tier)}
+                <span className="ml-1.5 opacity-70">
+                  {addressed}/{tier.elements.length}
+                </span>
+              </span>
+              <PlatformRingSet
+                rollup={rollup}
+                count={addressed}
+                size="sm"
+                countLabel="elements addressed"
+                platformCountLabel="platform statuses"
+              />
             </div>
           );
         })}
