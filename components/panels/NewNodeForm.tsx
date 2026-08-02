@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -33,6 +33,7 @@ import type { PlatformId } from "@/lib/config/platforms";
 import type { NodeMetadata } from "@/lib/data/types";
 import { PRODUCT_MEMBERSHIP_SPECIES, type ProductDefinition } from "@arkaik/schema";
 import { ProductPicker } from "@/components/panels/ProductPicker";
+import { useSeedOnOpen } from "@/lib/hooks/useSeedOnOpen";
 import {
   constrainPlatforms,
   platformMenuFor,
@@ -88,12 +89,23 @@ export function NewNodeForm({
   const storesProduct = PRODUCT_MEMBERSHIP_SPECIES.includes(species);
   const showsProductPicker = products.length > 0 && storesProduct;
 
+  /**
+   * The definition an id names, or `null` for unassigned — and for an id this
+   * project no longer declares, which `platformMenuFor` reads as "every
+   * platform" rather than as none.
+   *
+   * One lookup, three callers (the menu below, the change handler, the open
+   * seed). Written out at each site they drifted immediately: the menu guarded
+   * on `product !== null` and the handler on `nextProduct === null`, which are
+   * the same rule spelled twice and one edit away from disagreeing.
+   */
+  const findProduct = (id: string | null) =>
+    id === null ? null : products.find((candidate) => candidate.id === id) ?? null;
+
   // The containment rule at its source (§ D4): a node may only claim platforms
   // its product ships on. An unassigned node — or a project with no products —
   // gets every platform, which is today's behaviour unchanged.
-  const platformMenu = platformMenuFor(
-    storesProduct && product !== null ? products.find((p) => p.id === product) ?? null : null,
-  );
+  const platformMenu = platformMenuFor(storesProduct ? findProduct(product) : null);
 
   // A platform-less product means availability is not a tracked dimension here
   // (a CLI, a public API), so there is nothing to toggle — RFC decision 2.
@@ -112,18 +124,22 @@ export function NewNodeForm({
     (species === "view" && platformMenu.length === 0);
 
   /**
-   * Re-seed the scoped default whenever the dialog opens.
+   * Re-seed the scoped default on each closed → open transition, and never
+   * once the dialog is already open.
    *
    * These call sites mount the form once and keep it mounted, so the initial
    * `useState` runs long before the user picks a scope: without this, switching
    * to Admin and creating a view would pre-fill whatever scope the page was
-   * first rendered under. Keyed on `open` so an in-progress edit is never
-   * overwritten — the dialog is modal, and the scope selector sits behind it.
+   * first rendered under.
+   *
+   * The transition, not merely `open`, because `defaultProductId` moves on its
+   * own — `useEffectiveProduct` resolves against a bundle that arrives in an
+   * effect, so a dialog opened in that window would have the user's choice
+   * overwritten a beat later. `useSeedOnOpen` owns that latch; the seed goes
+   * through `handleProductChange` so the platform constraint runs in the same
+   * step rather than leaving a selection the seeded product forbids.
    */
-  useEffect(() => {
-    if (!open) return;
-    setProduct(defaultProductId);
-  }, [open, defaultProductId]);
+  useSeedOnOpen(open, defaultProductId, handleProductChange);
 
   function resetForm() {
     setTitle("");
@@ -151,9 +167,7 @@ export function NewNodeForm({
    */
   function handleProductChange(nextProduct: string | null) {
     setProduct(nextProduct);
-    const nextMenu = platformMenuFor(
-      nextProduct === null ? null : products.find((p) => p.id === nextProduct) ?? null,
-    );
+    const nextMenu = platformMenuFor(findProduct(nextProduct));
     setPlatforms((previous) => constrainPlatforms(previous, nextMenu));
   }
 
