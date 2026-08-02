@@ -89,6 +89,17 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, on
   // reason to build for a species that never consults one.
   const derivedLabels = productLabels(derivedProducts, scope).join(", ");
   const anchorNoun = `${anchorCount} node${anchorCount === 1 ? "" : "s"}`;
+  /**
+   * A stored key naming a product the project no longer declares — the stranded
+   * remnant of a rename or a deletion. Only meaningful when nothing is anchored,
+   * because with anchors the stored key is inert anyway and the hint already
+   * says so.
+   */
+  const storedProductId = productOf(node);
+  const staleProductId =
+    anchorCount === 0 && storedProductId !== null && !scope.productsById.has(storedProductId)
+      ? storedProductId
+      : null;
 
   return (
     <div className="px-6 flex flex-col gap-5">
@@ -131,7 +142,17 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, on
                 ? derivedLabels
                   ? `This acceptance belongs to ${derivedLabels}, taken from the ${anchorNoun} it covers. The value you set here applies only if it stops covering anything.`
                   : `The ${anchorNoun} this covers have no product yet, so it appears under All products. The value you set here applies only if it stops covering anything.`
-                : "This acceptance covers nothing, so its product is whatever you set here."
+                : staleProductId
+                  // The stored key names a product the project no longer
+                  // declares, so the picker degrades its trigger to
+                  // "Unassigned" — and the id is about to be overwritten the
+                  // moment the control is touched. Echoing it is the only trace
+                  // left of the rename or deletion that stranded it, and it is
+                  // what lets a reader recognise their own product rather than
+                  // silently accept an unassignment they never asked for. Same
+                  // sentence `NodeDetailPanel` uses, for the same state.
+                  ? `Assigned to "${staleProductId}", which this project no longer declares — it appears under All products only.`
+                  : "This acceptance covers nothing, so its product is whatever you set here."
             }
           />
         </section>

@@ -32,7 +32,7 @@ type NodeLike = Pick<Node, "id" | "species" | "metadata">;
  * Kebab-case, ASCII, no leading or trailing dash. Accents are folded rather
  * than dropped so that "Créateur" becomes "createur" and not "cr-ateur".
  */
-export function slugifyProductTitle(title: string): string {
+function slugifyProductTitle(title: string): string {
   return title
     .toLowerCase()
     .normalize("NFD")

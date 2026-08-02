@@ -24,7 +24,12 @@ import { useProject } from "@/lib/hooks/useProject";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { findWhereUsed } from "@/lib/utils/where-used";
 import { generateNodeId } from "@/lib/utils/id";
-import { nodeInScope, productLabelsOfNode, type ProductGraph } from "@/lib/utils/product-scope";
+import {
+  nodeInScope,
+  productDisplayTitle,
+  productLabelsOfNode,
+  type ProductGraph,
+} from "@/lib/utils/product-scope";
 import { matchesSearch } from "@/lib/utils/search";
 import { applyProductPlan } from "@/lib/utils/apply-product-plan";
 import { planProductMove } from "@/lib/utils/product-editing";
@@ -343,12 +348,9 @@ export default function ProjectLibraryPage() {
   }
 
   const emptyLabel = SPECIES_EMPTY_LABELS[speciesFilter];
-  // `title` is not validated by `resolveProducts`, so fall back to the id the
-  // way `ProductScopeSelector` does rather than naming a blank product.
-  const scopeLabel =
-    typeof scope.product?.title === "string" && scope.product.title.trim() !== ""
-      ? scope.product.title
-      : scope.productId;
+  // `title` is not validated by `resolveProducts`, so fall back to the id
+  // rather than naming a blank product — the one rule, from its one home.
+  const scopeLabel = scope.product ? productDisplayTitle(scope.product) : scope.productId;
 
   const flowRollupByNodeId = useMemo(
     () => Object.fromEntries(

@@ -1,6 +1,10 @@
 "use client";
 
 import type { ProductDefinition } from "@arkaik/schema";
+// The blank-title fallback is one rule with one home. This component renders
+// the products the three assignment forms offer, so a private copy here would
+// be the copy most users actually read.
+import { productDisplayTitle } from "@/lib/utils/product-scope";
 import {
   Select,
   SelectContent,
@@ -63,11 +67,6 @@ interface ProductPickerProps {
   disabled?: boolean;
 }
 
-/** The product's `title`, or its id when the definition carries none. */
-function productLabel(product: ProductDefinition): string {
-  return typeof product.title === "string" && product.title.trim() !== "" ? product.title : product.id;
-}
-
 export function ProductPicker({
   products,
   value,
@@ -101,7 +100,7 @@ export function ProductPicker({
           <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
           {products.map((product) => (
             <SelectItem key={product.id} value={product.id}>
-              {productLabel(product)}
+              {productDisplayTitle(product)}
             </SelectItem>
           ))}
         </SelectContent>

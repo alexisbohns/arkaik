@@ -180,7 +180,28 @@ export function ProductManagerPanel({ projectId, project, updateProject }: Produ
     if (!deleting || deleteBusy || nodesLoading) return;
     const target = deleting;
     setDeleteBusy(true);
-    const plan = planProductDeletion(products, nodes, target.id, reassignTo);
+    /**
+     * Planned against the **stored** array, exactly as `handleSave` is and for
+     * exactly its reason. `plan.products` is written back verbatim, so planning
+     * against `resolveProducts`' output would make deleting product A also drop
+     * the shadowed second copy of a duplicated B — clearing a
+     * `product-duplicate-id` warning by deletion rather than by fix, which is
+     * the harm the save path was hardened against. Two write paths in one
+     * component must not disagree about what the stored array is.
+     *
+     * The plan's own guards are unaffected: a duplicate shares the surviving
+     * entry's id, so `declared` and the destination check read the same answer
+     * from either array. `products` stays the source for the rows, the counts
+     * and the reassignment targets, which are all display of what the app can
+     * actually address.
+     */
+    const stored = project?.project.metadata?.products;
+    const plan = planProductDeletion(
+      Array.isArray(stored) ? stored : [],
+      nodes,
+      target.id,
+      reassignTo,
+    );
     /**
      * Did the membership half commit? `applyProductPlan` reports success or
      * failure for the pair, and the two failures need different sentences: the

@@ -157,19 +157,24 @@ offers **Add product**.
 
 ### 4. `components/panels/ProductPicker.tsx`
 
-One select, three consumers. It **renders only when the project declares
+One select, four consumers. It **renders only when the project declares
 products** and the species stores membership (`PRODUCT_MEMBERSHIP_SPECIES`). A
 project that never heard of products sees no new control anywhere — the same
 opt-in guarantee `ProductScopeSelector` already keeps, and the reason the
 degenerate case stays byte-identical to today.
 
 - **`NewNodeForm`** gains `products` and `defaultProductId`, threaded from
-  `scope` at all five call sites. Prefilled to the current scope (D1). Changing
+  `scope` at all four call sites. Prefilled to the current scope (D1). Changing
   species away from a membership-bearing one drops `metadata.product` from the
   payload; changing product runs `constrainPlatforms` over the toggles (D4).
 - **`NodeDetailPanel`** gets the same picker on its edit path, so membership is
   changeable per node.
 - **`AcceptanceEditor`** renders it per D5.
+- **`NewAcceptanceForm`** (added during implementation) replaces the Acceptances
+  page's `window.prompt`. The prompt could only ask for a title, so an acceptance
+  filed under a named scope silently landed outside it — the same vanishing-node
+  bug as the create form's, in the one species the original scan missed because
+  it never used `NewNodeForm` at all. A title field and a picker, nothing else.
 
 ### 5. Library bulk move
 

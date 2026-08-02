@@ -958,7 +958,7 @@ In the JSX, insert the picker immediately after the Species field and before the
 - [ ] **Step 6: Verify types compile**
 
 Run: `npx tsc --noEmit -p tsconfig.json`
-Expected: no new errors. The five call sites still compile because `products` and `defaultProductId` are optional and default to the pre-products behaviour.
+Expected: no new errors. The four call sites still compile because `products` and `defaultProductId` are optional and default to the pre-products behaviour.
 
 - [ ] **Step 7: Commit**
 
@@ -969,7 +969,7 @@ git commit -m "feat: create a node into the product you are standing in"
 
 ---
 
-## Task 4: Thread products into all five call sites
+## Task 4: Thread products into all four call sites
 
 **Files:**
 - Modify: `app/project/[id]/library/page.tsx`
