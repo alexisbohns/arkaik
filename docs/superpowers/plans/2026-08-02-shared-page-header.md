@@ -34,7 +34,7 @@
 | `components/panels/NodeDetailStack.tsx` | `components/panels/ProjectPanels.tsx` |
 | `components/panels/RawBundleSheet.tsx` | `components/panels/RawBundlePanel.tsx` (rewritten, see above) |
 
-**Modify:** `components/panels/PanelStack.tsx`, `components/layout/ProjectSwitcher.tsx`, `components/layout/ProjectSidebar.tsx`, `app/project/[id]/layout.tsx`, `tests/app/load-panel-stack.js`, `package.json`, and the ten surfaces listed in Tasks 8–10.
+**Modify:** `components/panels/PanelStack.tsx`, `components/layout/ProjectSwitcher.tsx`, `components/layout/ProjectSidebar.tsx`, `app/project/[id]/layout.tsx`, `tests/app/load-panel-utils.js` (renamed from `load-panel-stack.js` in Task 1), `package.json`, and the ten surfaces listed in Tasks 8–10.
 
 ---
 
@@ -300,7 +300,6 @@ import {
   type ReactNode,
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import type { PlatformId } from "@/lib/config/platforms";
 import {
   closeAt as closeStackAt,
   initStack,
@@ -313,6 +312,7 @@ import {
   pruneNodeEntries,
   topNodeKey,
   RAW_PANEL_KEY,
+  type NodePanelDescriptor,
   type PanelDescriptor,
   type ProjectPanelEntry,
 } from "@/lib/utils/project-panels";
@@ -320,11 +320,12 @@ import {
 /** The search param that addresses the top node panel, on whatever route you're on. */
 export const NODE_PANEL_PARAM = "node";
 
-export interface NodePanelDescriptor {
-  nodeId: string;
-  /** Platform tab the variants section opens on — the Delivery board's column. */
-  initialPlatform?: PlatformId;
-}
+/**
+ * What `openNode` takes. `NodePanelDescriptor` carries the `kind: "node"`
+ * discriminant, which callers should not have to spell — they are calling
+ * `openNode`, so the kind is implied.
+ */
+export type OpenNodeInput = Omit<NodePanelDescriptor, "kind">;
 
 /**
  * What a panel can tell the stack about itself — things the stack cannot see
@@ -346,7 +347,7 @@ interface ProjectPanelsValue {
    * Open a node from a depth. Depth 0 is the surface itself (a canvas, board,
    * or list click); the panel at index `i` is depth `i + 1`.
    */
-  openNode: (descriptor: NodePanelDescriptor, fromDepth?: number) => void;
+  openNode: (descriptor: OpenNodeInput, fromDepth?: number) => void;
   /** Open the raw bundle on top of whatever is open, or reveal the one already there. */
   openRaw: () => void;
   closeAt: (index: number) => void;
@@ -416,7 +417,7 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const openNode = useCallback(
-    (descriptor: NodePanelDescriptor, fromDepth = 0) => {
+    (descriptor: OpenNodeInput, fromDepth = 0) => {
       setEntries((previous) => {
         // The Delivery board opens a node on a platform; following a reference
         // out of that panel stays on the platform you were reading. A raw
