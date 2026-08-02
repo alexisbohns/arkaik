@@ -118,3 +118,77 @@ export function effectiveNodePlatforms(
   const menu = new Set<string>(product.platforms as string[]);
   return PLATFORM_IDS.filter((platform) => own.includes(platform) && menu.has(platform));
 }
+
+/** Species whose membership is derived from consumers rather than stored. */
+const SYSTEM_LAYER_SPECIES: readonly SpeciesId[] = ["api-endpoint", "data-model"];
+
+/** Edge types along which a consumer reaches the system layer. */
+const USAGE_EDGE_TYPES = new Set<string>(["calls", "displays", "queries"]);
+
+/**
+ * `nodeId → sorted product ids`, covering the system layer only. Built once per
+ * snapshot; {@link productsUsingNode} is a lookup, never a traversal.
+ */
+export type ProductUsageIndex = ReadonlyMap<string, string[]>;
+
+/**
+ * Walk outward from every membership-bearing flow/view along `calls` /
+ * `displays` / `queries`, following each edge **in its stored direction** and
+ * only into `api-endpoint` / `data-model` targets.
+ *
+ * The species restriction is load-bearing twice over. `calls` also runs
+ * API → View (the inbound/read affordance, docs/graph-model.md § Edge Types),
+ * so an unrestricted walk climbs back into another product's views. And any
+ * *undirected* formulation is all-pairs within a connected component, which
+ * would make a data model that only Admin touches report "used by End-user"
+ * purely because the two products share some other model.
+ */
+export function buildProductUsageIndex(
+  nodes: readonly Pick<Node, "id" | "species" | "metadata">[],
+  edges: readonly { edge_type: string; source_id: string; target_id: string }[],
+): ProductUsageIndex {
+  const speciesById = new Map<string, SpeciesId>();
+  for (const node of nodes) speciesById.set(node.id, node.species);
+
+  const outgoing = new Map<string, string[]>();
+  for (const edge of edges) {
+    if (!USAGE_EDGE_TYPES.has(edge.edge_type)) continue;
+    const targetSpecies = speciesById.get(edge.target_id);
+    if (targetSpecies === undefined || !SYSTEM_LAYER_SPECIES.includes(targetSpecies)) continue;
+    const list = outgoing.get(edge.source_id) ?? [];
+    list.push(edge.target_id);
+    outgoing.set(edge.source_id, list);
+  }
+
+  const byNode = new Map<string, Set<string>>();
+
+  for (const node of nodes) {
+    const product = productOf(node as Pick<Node, "species" | "metadata">);
+    if (product === null) continue;
+
+    const queue = [...(outgoing.get(node.id) ?? [])];
+    const seen = new Set<string>(queue);
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      const products = byNode.get(current) ?? new Set<string>();
+      products.add(product);
+      byNode.set(current, products);
+
+      for (const next of outgoing.get(current) ?? []) {
+        if (seen.has(next)) continue;
+        seen.add(next);
+        queue.push(next);
+      }
+    }
+  }
+
+  const index = new Map<string, string[]>();
+  for (const [nodeId, products] of byNode) index.set(nodeId, [...products].sort());
+  return index;
+}
+
+/** Products that reach this node, or `[]`. A lookup into {@link buildProductUsageIndex}. */
+export function productsUsingNode(nodeId: string, index: ProductUsageIndex): string[] {
+  return index.get(nodeId) ?? [];
+}

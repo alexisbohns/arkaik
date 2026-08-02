@@ -13,6 +13,8 @@ const {
   productOf,
   productPlatforms,
   effectiveNodePlatforms,
+  buildProductUsageIndex,
+  productsUsingNode,
 } = loadSchema();
 
 let failures = 0;
@@ -168,6 +170,52 @@ assert(
     ),
   ) === JSON.stringify(["web", "android"]),
   "effectiveNodePlatforms returns PLATFORM_IDS order, not stored order",
+);
+
+// --- productsUsingNode -----------------------------------------------------
+// V-admin (admin) --displays--> DM-shared <--displays-- V-user (app)
+// V-admin --displays--> DM-adminonly           (must NOT read as used by app)
+// V-user  --calls--> API-x --queries--> DM-deep (two hops from a view)
+// DM-orphan has no edges at all.
+// API-x --calls--> V-user is the inbound affordance and must not climb back up.
+const usageNodes = [
+  { id: "V-admin", species: "view", platforms: ["web"], metadata: { product: "admin" } },
+  { id: "V-user", species: "view", platforms: ["web"], metadata: { product: "app" } },
+  { id: "V-loose", species: "view", platforms: ["web"] },
+  { id: "DM-shared", species: "data-model", platforms: ["web"] },
+  { id: "DM-adminonly", species: "data-model", platforms: ["web"] },
+  { id: "DM-deep", species: "data-model", platforms: ["web"] },
+  { id: "DM-orphan", species: "data-model", platforms: ["web"] },
+  { id: "API-x", species: "api-endpoint", platforms: ["web"] },
+];
+const usageEdges = [
+  { id: "e1", edge_type: "displays", source_id: "V-admin", target_id: "DM-shared" },
+  { id: "e2", edge_type: "displays", source_id: "V-user", target_id: "DM-shared" },
+  { id: "e3", edge_type: "displays", source_id: "V-admin", target_id: "DM-adminonly" },
+  { id: "e4", edge_type: "calls", source_id: "V-user", target_id: "API-x" },
+  { id: "e5", edge_type: "queries", source_id: "API-x", target_id: "DM-deep" },
+  { id: "e6", edge_type: "calls", source_id: "API-x", target_id: "V-user" },
+];
+
+const usage = buildProductUsageIndex(usageNodes, usageEdges);
+const using = (id) => productsUsingNode(id, usage);
+
+assert(JSON.stringify(using("DM-shared")) === JSON.stringify(["admin", "app"]), "a shared data model lists both products, sorted");
+assert(
+  JSON.stringify(using("DM-adminonly")) === JSON.stringify(["admin"]),
+  "a data model touched only by admin does NOT inherit app through a shared neighbour",
+);
+assert(JSON.stringify(using("DM-deep")) === JSON.stringify(["app"]), "usage traverses view -> api -> data model");
+assert(JSON.stringify(using("API-x")) === JSON.stringify(["app"]), "an endpoint is used by its caller's product");
+assert(JSON.stringify(using("DM-orphan")) === JSON.stringify([]), "an orphan data model is used by no product");
+assert(JSON.stringify(using("V-user")) === JSON.stringify([]), "the index covers the system layer only, not views");
+assert(JSON.stringify(using("nope")) === JSON.stringify([]), "an unknown node id yields []");
+
+const looseEdges = [{ id: "e7", edge_type: "displays", source_id: "V-loose", target_id: "DM-orphan" }];
+const looseUsage = buildProductUsageIndex(usageNodes, looseEdges);
+assert(
+  JSON.stringify(productsUsingNode("DM-orphan", looseUsage)) === JSON.stringify([]),
+  "a consumer with no membership contributes no product",
 );
 
 process.exit(failures === 0 ? 0 : 1);
