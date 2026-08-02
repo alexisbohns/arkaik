@@ -45,7 +45,7 @@ docs/                   # This documentation
 ## Keyboard Shortcuts
 
 - Journey-map shortcuts are wired in `components/maps/JourneyMap.tsx` using `lib/hooks/useKeyboardShortcuts.ts`.
-- The ⌘K command palette is wired in `app/project/[id]/layout.tsx` (`isCommandPaletteShortcut`), so it answers from every project page.
+- The ⌘K command palette is wired in `app/project/[id]/layout.tsx` (`isCommandPaletteShortcut`), so it answers from every project page. The docs space wires the same shortcut in `components/docs/DocsSearch.tsx` — one overlay, one ranker, a catalogue each (`buildProjectCommands` / `buildDocsCommands`).
 - Shortcut key checks and focus guards live in `lib/utils/keyboard.ts`.
 - Keep shortcut handlers thin: they should call existing page handlers (`handleDeleteNodeRequest`, `handleExport`) instead of duplicating business logic.
 - Delete shortcuts must not directly mutate storage. Always route through the existing confirmation dialog flow.
