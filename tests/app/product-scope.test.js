@@ -90,7 +90,16 @@ assert(
 );
 assert(
   platformAvailabilityShape([]) === "bar",
-  "arity 0 renders a bar too, identically to arity 1 — 'not tracked' and 'tracked on one runtime' are the same picture",
+  "arity 0 renders a bar too — 'not tracked' and 'tracked on one runtime' are the same picture",
+);
+// The identity is the point, not a by-product of both happening to say "bar".
+// `PlatformAvailability`'s bar branch carries no platform icon at either arity
+// and has one markup path for both, so 1 and 0 render identically; a later
+// change that reintroduced icon-at-arity-1 would have to split this answer
+// first.
+assert(
+  platformAvailabilityShape([]) === platformAvailabilityShape(["web"]),
+  "arity 0 and arity 1 are the SAME shape — no platform icon at either, so the two are pixel-identical",
 );
 
 // --- resolveProductScope -----------------------------------------------------

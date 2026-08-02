@@ -118,9 +118,23 @@ aggregate ring and the single platform ring carry identical numbers, so four rin
 one.
 
 A lone ring beside three-ring cards in another scope reads as *data missing* rather than *absent*.
-So arity ≤ 1 renders a single bar (the `PlatformGaugeList` idiom, already arity-aware) with the
-acceptance count as text beside it. The bar reads unambiguously as "one track", and it gives the
-platform-less case a sensible home: a bar with no platform icon.
+So arity ≤ 1 renders a single bar (the `PlatformGaugeList` idiom) with the acceptance count as text
+beside it. The bar reads unambiguously as "one track", and it gives the platform-less case a
+sensible home.
+
+**The bar carries no platform icon at any arity ≤ 1 — not at 0, and not at 1 either.** The
+originating requirement was to see, scoped to a web-only admin product, "the current status without
+any notion of platform (as there is only one)", and *without any notion of platform* is explicit.
+It holds on its own terms too: the scope selector already reads "Admin — Web only", so repeating a
+Web icon on every card and row is chrome that earns nothing. This is also what makes decision 3's
+"arity 0 is rendered identically to arity 1" literally true rather than approximately true — with
+an icon at arity 1 the two shapes differed by an icon and its gutter.
+
+Because there is no icon to draw, the bar is not a `PlatformGaugeList` call: that component's empty
+guard returns `null` at arity 0, which would strand the count beside a phantom gap. `PlatformAvailability`
+renders the track itself, one markup path for both arities, so nothing has to be kept identical by
+hand. At arity 0 the track is the muted, all-zero fill the app already shows for an empty rollup —
+a rollup is keyed entirely by platform, so a scope with no platforms genuinely has nothing counted.
 
 ### 5. Anchorless acceptances are an intake state, and carry stored membership
 

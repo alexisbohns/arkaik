@@ -1650,14 +1650,43 @@ git commit -m "refactor: rings and gauges render the platforms they are given"
 
 Create `components/graph/nodes/PlatformAvailability.tsx`:
 
+**The shape decision is extracted, not inlined.** There is no React test runner
+here, so a rule eight surfaces inherit would otherwise be unpinned — and the
+2-platform boundary is the one an off-by-one breaks silently. Put
+`platformAvailabilityShape(platforms): "rings" | "bar"` in
+`lib/utils/product-scope.ts` (already the app-side arity module, already loadable
+by `tests/app/load-product-scope.js`), have `resolveProductScope`'s
+`isMultiPlatform` **derive** from it rather than re-compare, and make the
+component a thin switch over it. Assert arity 3/2/1/0 in
+`tests/app/product-scope.test.js`.
+
+**The bar carries no platform icon — at arity 1 as well as arity 0** (spec § 4).
+So it is *not* a `PlatformGaugeList` call: that component's empty guard returns
+`null` at arity 0, stranding the count beside a phantom gap, and delegating only
+at arity 1 would leave two markup paths to keep identical by hand. Render the
+track directly, one path for both arities:
+
 ```tsx
 "use client";
 
 import type { PlatformId } from "@/lib/config/platforms";
-import type { PlatformStatusRollup } from "@/lib/utils/platform-status";
-import { PlatformGaugeList } from "./PlatformGaugeList";
+import type { PlatformStatusRollup, StatusSegment } from "@/lib/utils/platform-status";
+import { getPlatformRollupSegments, getRollupTotalSegments } from "@/lib/utils/platform-status";
+import { platformAvailabilityShape } from "@/lib/utils/product-scope";
+import { STATUS_LABELS, STATUS_STYLES } from "./node-styles";
 import { PlatformRingSet } from "./PlatformRingSet";
 import type { StatusRingSize } from "./StatusRing";
+
+/** All-zero segments — the track at arity 0, where nothing can be counted. */
+const NOTHING_COUNTED = getRollupTotalSegments({ counts: {}, totals: {} });
+
+/** The bar's accessible name; the icon that used to carry it is gone by design. */
+function describeTrack(segments: readonly StatusSegment[]): string {
+  const present = segments.filter((segment) => segment.count > 0);
+  if (present.length === 0) return "Status: nothing counted yet";
+  const parts = present.map((segment) => `${segment.count} ${STATUS_LABELS[segment.status].toLowerCase()}`);
+  return `Status: ${parts.join(", ")}`;
+}
 
 interface PlatformAvailabilityProps {
   rollup: PlatformStatusRollup;
@@ -1665,6 +1694,7 @@ interface PlatformAvailabilityProps {
   platforms: PlatformId[];
   count: number;
   size?: StatusRingSize;
+  /** Defaults to `PlatformRingSet`'s own default: in the bar the count is visible text. */
   countLabel?: string;
   platformCountLabel?: string;
 }
@@ -1676,9 +1706,11 @@ interface PlatformAvailabilityProps {
  * platform, as before. One or zero → a single bar with the count beside it: at
  * arity 1 the aggregate ring and the platform ring carry identical numbers, and
  * a lone ring beside three-ring cards in another scope reads as *data missing*
- * rather than *absent*. Arity 0 (a CLI, a public API) renders the same bar with
- * no platform icon, because "availability is not tracked here" and "tracked on
- * exactly one runtime" are the same picture.
+ * rather than *absent*.
+ *
+ * **The bar carries no platform icon at either arity, so 1 and 0 render
+ * identically — that is the invariant, not a coincidence.** Nothing below may
+ * grow an arity-dependent branch.
  *
  * Every platform-bearing surface composes this rather than choosing a shape
  * itself, so the Pyramid and the Overview can never disagree.
@@ -1688,10 +1720,10 @@ export function PlatformAvailability({
   platforms,
   count,
   size = "sm",
-  countLabel,
+  countLabel = "acceptances",
   platformCountLabel,
 }: PlatformAvailabilityProps) {
-  if (platforms.length >= 2) {
+  if (platformAvailabilityShape(platforms) === "rings") {
     return (
       <PlatformRingSet
         rollup={rollup}
@@ -1704,10 +1736,32 @@ export function PlatformAvailability({
     );
   }
 
+  // Destructured, not length-tested: `only` is the platform in scope, and its
+  // absence at arity 0 means nothing to count — not a second case to render.
+  const [only] = platforms;
+  const segments = only ? getPlatformRollupSegments(rollup, only) : NOTHING_COUNTED;
+  const counted = segments.some((segment) => segment.count > 0);
+
   return (
     <div className="flex items-center gap-2">
       <div className="w-24 sm:w-32">
-        <PlatformGaugeList rollup={rollup} platforms={platforms} compact />
+        <div className="flex h-2 overflow-hidden rounded-md bg-muted" role="img" aria-label={describeTrack(segments)}>
+          {counted ? (
+            segments.map((segment) => {
+              if (segment.count === 0) return null;
+              return (
+                <div
+                  key={segment.status}
+                  className={STATUS_STYLES[segment.status].dot}
+                  style={{ width: `${segment.ratio * 100}%` }}
+                  title={`${segment.status}: ${segment.percentage}%`}
+                />
+              );
+            })
+          ) : (
+            <div className="h-full w-full bg-muted-foreground/25" title="No counted statuses" />
+          )}
+        </div>
       </div>
       <span className="text-xs tabular-nums text-muted-foreground">
         {count}
@@ -1718,17 +1772,25 @@ export function PlatformAvailability({
 }
 ```
 
-At arity 0, `PlatformGaugeList` returns `null` from its own empty guard, leaving the count alone. Verify that reads acceptably; if a bare number looks broken, render a single neutral track with no icon instead — but do **not** add a second shape rule.
+This aligns with **Task 11** by construction, not by coincidence: the acceptances
+matrix renders "a single status column headed `Status` with no platform icon" at
+arity ≤ 1, and the Pyramid's bar drops its icon for the same reason. One rule,
+two surfaces.
 
 - [ ] **Step 2: Verify**
 
 Run: `npx tsc --noEmit`
 Expected: no errors.
 
+Run: `npm run test:product-scope`
+Expected: all `PASS`. Then prove the boundary assertions discriminate: mutate the
+threshold in `platformAvailabilityShape` from `>= 2` to `> 2`, re-run, confirm
+**exactly one** failure (the arity-2 assertion), restore, confirm green.
+
 - [ ] **Step 3: Commit**
 
 ```bash
-git add components/graph/nodes/PlatformAvailability.tsx
+git add components/graph/nodes/PlatformAvailability.tsx lib/utils/product-scope.ts tests/app/product-scope.test.js
 git commit -m "feat: one primitive decides whether availability reads as rings or a bar"
 ```
 
