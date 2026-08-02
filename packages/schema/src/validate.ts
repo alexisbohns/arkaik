@@ -13,7 +13,6 @@ import type { PlaylistEntry } from "./playlist";
 import { crossCheckJournal } from "./journal";
 import { isBuiltInMapId } from "./maps";
 import { PRODUCT_MEMBERSHIP_SPECIES, resolveProducts } from "./products";
-import type { ProjectMetadata } from "./bundle";
 
 /**
  * Semantic validation for Arkaik ProjectBundles.
@@ -481,7 +480,7 @@ export function validateBundle(input: unknown): ValidationResult {
   }
 
   const hasProducts = declaredProductIds.size > 0;
-  const products = hasProducts ? resolveProducts({ metadata: projectMetadata as ProjectMetadata | undefined }) : [];
+  const products = hasProducts ? resolveProducts({ metadata: projectMetadata }) : [];
   const menuByProduct = new Map<string, Set<string>>(
     products.map((product) => [
       product.id,
