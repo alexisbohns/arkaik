@@ -96,7 +96,14 @@ export function upsertProduct(
   else delete next.description;
 
   if (!existing) return [...products, next];
-  return products.map((product) => (product.id === draft.id ? next : product));
+
+  // Only the **first** match is replaced. `resolveProducts` is first-wins, so in
+  // a bundle that somehow carries a duplicate id the first entry is the one the
+  // whole app sees and therefore the only one an edit means. Replacing both
+  // would leave two identical definitions and quietly launder a bundle the
+  // validator is supposed to keep warning about (`product-duplicate-id`).
+  const at = products.indexOf(existing);
+  return products.map((product, index) => (index === at ? next : product));
 }
 
 /** The definitions without this one. Membership is {@link planProductDeletion}'s job. */
@@ -140,16 +147,42 @@ export interface ProductPlan {
   reassignments: ProductReassignment[];
 }
 
-/** Delete a product and say what happens to its members (§ D3). */
+/**
+ * Delete a product and say what happens to its members (§ D3).
+ *
+ * Two guards, both about not manufacturing the exact stale key that
+ * `apply-product-plan.ts` reorders its two writes to avoid.
+ *
+ * **The destination must survive the deletion.** `reassignTo` is normalized to
+ * `null` when it names the product being deleted, or a product this project does
+ * not declare. The dialog offers neither, but the argument is a plain string and
+ * the cost of trusting it is a plan that rewrites every member to point at a
+ * product the very same plan removes — nodes carrying a key nobody declares,
+ * which every read surface silently degrades to unassigned. Unassigning them
+ * outright reaches the same place *visibly*.
+ *
+ * **An undeclared product has no members to answer for.** Deleting an id that is
+ * not in `products` is a no-op rather than a sweep of every node whose stored key
+ * happens to match: nodes can carry a key for a product that was never declared
+ * (a half-synced bundle, a hand-edited file), and a project that has never heard
+ * of products must not have its metadata rewritten by a deletion it did not
+ * declare. That is the degenerate-case guarantee, asserted below.
+ */
 export function planProductDeletion(
   products: readonly ProductDefinition[],
   nodes: readonly NodeLike[],
   id: string,
   reassignTo: string | null,
 ): ProductPlan {
+  const remaining = removeProduct(products, id);
+  const declared = products.some((product) => product.id === id);
+  const destination = remaining.some((product) => product.id === reassignTo) ? reassignTo : null;
+
   return {
-    products: removeProduct(products, id),
-    reassignments: membersOfProduct(nodes, id).map((node) => ({ nodeId: node.id, product: reassignTo })),
+    products: remaining,
+    reassignments: declared
+      ? membersOfProduct(nodes, id).map((node) => ({ nodeId: node.id, product: destination }))
+      : [],
   };
 }
 
@@ -169,14 +202,32 @@ export function planProductMove(
   productId: string | null,
 ): ProductPlan {
   const wanted = new Set(nodeIds);
+  // A blank target is the same request as "unassign" — see
+  // {@link withProductMembership}. Normalized here as well as there so that the
+  // "already in the target" filter compares against the value that will actually
+  // be written, rather than skipping a node whose membership is a stored "".
+  const target = normalizeMembership(productId);
+
   return {
     products: null,
     reassignments: nodes
       .filter((node) => wanted.has(node.id))
       .filter((node) => PRODUCT_MEMBERSHIP_SPECIES.includes(node.species))
-      .filter((node) => productOf(node) !== productId)
-      .map((node) => ({ nodeId: node.id, product: productId })),
+      .filter((node) => normalizeMembership(productOf(node)) !== target)
+      .map((node) => ({ nodeId: node.id, product: target })),
   };
+}
+
+/**
+ * A membership value as it will be stored: a real id, or `null`.
+ *
+ * `""` and `"   "` are not products. `resolveProducts` drops a definition whose
+ * id is blank, so a blank membership names something that cannot exist and can
+ * only ever resolve to unassigned — which makes it a slower, invisible spelling
+ * of `null`, and the one an empty text field or a cleared select produces.
+ */
+function normalizeMembership(product: string | null | undefined): string | null {
+  return typeof product === "string" && product.trim() !== "" ? product : null;
 }
 
 /**
@@ -184,7 +235,9 @@ export function planProductMove(
  *
  * Removed rather than blanked: `productOf` reads any string, so `product: ""`
  * would be a membership naming a product that cannot exist, and
- * `resolveProducts` would never match it. Unassigned has to mean *absent*.
+ * `resolveProducts` would never match it. Unassigned has to mean *absent*, so a
+ * blank or whitespace-only argument is treated exactly as `null` — otherwise
+ * this function would write the very value its own contract forbids.
  *
  * The rest of the metadata is carried through untouched — `platformStatuses`,
  * notes and screenshots all live in the same object, and a patch that replaced
@@ -194,9 +247,10 @@ export function withProductMembership(
   metadata: NodeMetadata | undefined,
   product: string | null,
 ): NodeMetadata {
+  const membership = normalizeMembership(product);
   const next: Record<string, unknown> = { ...(metadata ?? {}) };
-  if (product === null) delete next.product;
-  else next.product = product;
+  if (membership === null) delete next.product;
+  else next.product = membership;
   return next as NodeMetadata;
 }
 
@@ -207,16 +261,28 @@ export function withProductMembership(
  * Pure, and here rather than in the executor deliberately: this is where the
  * "preserve the rest of the metadata" rule is actually applied, and it is worth
  * an assertion.
+ *
+ * **A node the map does not know is dropped, not patched.** A plan is computed
+ * from one snapshot and executed against whatever the store holds a moment
+ * later — a delete dialog left open across a refetch, a bulk selection that
+ * outlives the list it was made in — so a missing id is reachable, not
+ * theoretical. Patching it anyway would send `withProductMembership(undefined,
+ * …)`, an object built from *no* prior metadata, and since a patch replaces
+ * `metadata` wholesale that op would delete the node's `platformStatuses`, notes
+ * and screenshots as a side effect of a product change. Emitting nothing loses
+ * only the membership edit, which the user can see did not happen.
  */
 export function planToOps(
   plan: ProductPlan,
   nodesById: ReadonlyMap<string, NodeLike>,
 ): { op: "update_node"; node_id: string; patch: { metadata: NodeMetadata } }[] {
-  return plan.reassignments.map(({ nodeId, product }) => ({
-    op: "update_node" as const,
-    node_id: nodeId,
-    patch: { metadata: withProductMembership(nodesById.get(nodeId)?.metadata, product) },
-  }));
+  return plan.reassignments
+    .filter(({ nodeId }) => nodesById.has(nodeId))
+    .map(({ nodeId, product }) => ({
+      op: "update_node" as const,
+      node_id: nodeId,
+      patch: { metadata: withProductMembership(nodesById.get(nodeId)?.metadata, product) },
+    }));
 }
 
 /**

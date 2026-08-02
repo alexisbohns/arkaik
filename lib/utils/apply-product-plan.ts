@@ -40,6 +40,16 @@ export interface ProductPlanStores {
  *
  * `products: null` means the definitions are untouched, so the project write is
  * skipped entirely rather than saved unchanged.
+ *
+ * The project write sends `{ ...projectMetadata, products }` built from the
+ * caller's **snapshot**, so another `metadata` field changed between that read
+ * and this write is reverted to its snapshot value. That is a last-write-wins
+ * seam this function cannot close on its own — but it is exactly the shape every
+ * other `updateProject` caller has, and `useProject`'s `updateProject`
+ * (lib/hooks/useProject.ts) narrows it deliberately: it re-reads the stored
+ * bundle and patches project-level fields onto the freshest copy, so concurrent
+ * *node and edge* edits survive. Only a concurrent edit to another
+ * `project.metadata` key loses, and settings is the one place that writes them.
  */
 export async function applyProductPlan(plan: ProductPlan, stores: ProductPlanStores): Promise<void> {
   const ops = planToOps(plan, stores.nodesById);
