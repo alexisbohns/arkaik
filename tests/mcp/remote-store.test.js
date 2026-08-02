@@ -15,6 +15,8 @@
  *     agents cannot clobber each other;
  *   - a 422 from the server surfaces as the same refusal a local validator
  *     failure produces;
+ *   - `validate_bundle` — the one read tool that reads past bundle/nodes/edges/
+ *     journal — returns the SAME verdict from either store (#303);
  *   - configuration resolution: a link file is picked up, --bundle still wins,
  *     and hosted mode without a token fails loudly rather than silently
  *     serving a stale local file.
@@ -200,14 +202,79 @@ async function main() {
     const node = resultText(detail.responses, 4);
     check("get_node resolves against the hosted graph", node?.node?.id === "V-home", JSON.stringify(node));
 
+    // --- The validator gate is reachable in hosted mode (#303) -------------
+    // Every other read tool touches only bundle/nodes/edges/journal, so a
+    // `loaded` that merely resembled the file store's BundleValidation went
+    // unnoticed until `validate_bundle` reached for `result` and crashed. The
+    // skill makes this tool a hard gate, so a hosted project could not run the
+    // check it is told never to skip.
+    const hostedValid = await rpc(remoteEnv, [], [initialize, call(5, "validate_bundle", {})]);
+    const hostedVerdict = resultText(hostedValid.responses, 5);
+    // The crash was a -32603 protocol fault, not a tool error, so this asserts
+    // a result came back at all — an `isError` check alone would sail past it.
+    check(
+      "validate_bundle answers instead of crashing in hosted mode",
+      hostedVerdict !== undefined && !isError(hostedValid.responses, 5),
+      JSON.stringify(hostedValid.responses.find((r) => r.id === 5)),
+    );
+    check(
+      "the verdict is the full shape, sidecar findings included",
+      hostedVerdict?.valid === true &&
+        Array.isArray(hostedVerdict.errors) &&
+        Array.isArray(hostedVerdict.warnings) &&
+        Array.isArray(hostedVerdict.sidecarFindings),
+      JSON.stringify(hostedVerdict),
+    );
+
+    // One bundle, both stores, one tool: the parity the crash broke. This is
+    // the check that makes this class of drift visible at all — a file-mode-only
+    // suite cannot see it.
+    const fileValid = await rpc({}, ["--bundle", bundlePath], [initialize, call(5, "validate_bundle", {})]);
+    const fileVerdict = resultText(fileValid.responses, 5);
+    check(
+      "repo mode and hosted mode return the same verdict for the same bundle",
+      JSON.stringify(fileVerdict) === JSON.stringify(hostedVerdict),
+      `file: ${JSON.stringify(fileVerdict)} vs hosted: ${JSON.stringify(hostedVerdict)}`,
+    );
+
+    // And it must be a real verdict, not a hardcoded "clean". Serve a graph
+    // with a dangling edge and the same findings the file store would report
+    // have to come back — the client holds the whole bundle, so it runs the
+    // same validator over the same graph.
+    const healthy = state.bundle;
+    state.bundle = {
+      ...makeBundle(),
+      edges: [
+        { id: "e-V-home-V-ghost", project_id: "gp", edge_type: "composes", source_id: "V-home", target_id: "V-ghost" },
+      ],
+    };
+    const brokenRemote = await rpc(remoteEnv, [], [initialize, call(6, "validate_bundle", {})]);
+    const brokenVerdict = resultText(brokenRemote.responses, 6);
+
+    const brokenPath = path.join(tmp, "broken.json");
+    fs.writeFileSync(brokenPath, JSON.stringify(state.bundle, null, 2));
+    const brokenFile = await rpc({}, ["--bundle", brokenPath], [initialize, call(6, "validate_bundle", {})]);
+
+    state.bundle = healthy;
+    check(
+      "a broken hosted graph reports invalid with pathed findings",
+      brokenVerdict?.valid === false && brokenVerdict.errors.length > 0,
+      JSON.stringify(brokenVerdict),
+    );
+    check(
+      "and reports exactly what the file store reports",
+      JSON.stringify(resultText(brokenFile.responses, 6)) === JSON.stringify(brokenVerdict),
+      `file: ${JSON.stringify(resultText(brokenFile.responses, 6))} vs hosted: ${JSON.stringify(brokenVerdict)}`,
+    );
+
     // --- Writes send OPS, not a mutated graph ------------------------------
     state.receivedOps.length = 0;
     const write = await rpc(
       remoteEnv,
       [],
-      [initialize, call(5, "create_node", { species: "view", title: "Brand New", platforms: ["web"] })],
+      [initialize, call(7, "create_node", { species: "view", title: "Brand New", platforms: ["web"] })],
     );
-    const created = resultText(write.responses, 5);
+    const created = resultText(write.responses, 7);
     check("create_node succeeds against the hosted API", created?.node?.id === "V-brand-new", JSON.stringify(created));
     check("the write reached the mutations endpoint", state.receivedOps.length === 1, JSON.stringify(state.requests));
     check(
@@ -226,10 +293,10 @@ async function main() {
     const refused = await rpc(
       remoteEnv,
       [],
-      [initialize, call(6, "create_node", { species: "view", title: "Doomed", platforms: ["web"] })],
+      [initialize, call(8, "create_node", { species: "view", title: "Doomed", platforms: ["web"] })],
     );
-    check("a 422 from the server becomes a tool error", isError(refused.responses, 6));
-    const refusalBody = resultText(refused.responses, 6);
+    check("a 422 from the server becomes a tool error", isError(refused.responses, 8));
+    const refusalBody = resultText(refused.responses, 8);
     check(
       "the refusal carries the server's pathed findings",
       JSON.stringify(refusalBody).includes("dangling-edge"),
@@ -306,13 +373,13 @@ async function main() {
     const badToken = await rpc(
       { ARKAIK_URL: baseUrl, ARKAIK_TOKEN: "ark_deadbeef_nope", ARKAIK_PROJECT: PROJECT_ID },
       [],
-      [initialize, call(7, "list_nodes", {})],
+      [initialize, call(9, "list_nodes", {})],
     );
-    check("an invalid token produces a tool error", isError(badToken.responses, 7));
+    check("an invalid token produces a tool error", isError(badToken.responses, 9));
     check(
       "the error points at the token, not at a parse failure",
-      JSON.stringify(resultText(badToken.responses, 7)).includes("ARKAIK_TOKEN"),
-      JSON.stringify(resultText(badToken.responses, 7)),
+      JSON.stringify(resultText(badToken.responses, 9)).includes("ARKAIK_TOKEN"),
+      JSON.stringify(resultText(badToken.responses, 9)),
     );
   } finally {
     server.close();

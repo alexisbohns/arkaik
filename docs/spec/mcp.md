@@ -53,10 +53,11 @@ Selected by `--remote`, or automatically by a `docs/arkaik/arkaik.json` written 
 
 `--bundle` always wins, so an explicit path overrides a link file.
 
-Two rules this mode MUST hold:
+Three rules this mode MUST hold:
 
 - **The client sends OPS, not a mutated graph.** The server recomputes under its own row lock, so two writers cannot lose each other's work. `Store.persist` therefore takes an *intent* for the hosted backend where the file backend takes an *outcome*.
 - **A linked repo with no token exits non-zero.** It MUST NOT fall back to a repo bundle: a silent fallback serves a stale graph that looks fine, which is the failure an agent cannot notice.
+- **`load()` returns a real `BundleValidation`, not a look-alike.** Most read tools touch only `bundle`/`nodes`/`edges`/`journal`, so a hosted `loaded` carrying just those passed unnoticed until `validate_bundle` — which also reads `result`, `valid` and `sidecarFindings` — crashed on it, putting the skill's hard validator gate out of reach for every hosted project. Hosted mode fetches the whole bundle plus its journal, so the findings come from running the same `validateBundle` over the same graph the server validated: one validator, one verdict, either side of the wire.
 
 `propose_idea` and `file_request` are refused against a hosted project — the hosted write path has no journal-only operation yet — with an explicit message rather than a silent drop.
 
@@ -121,6 +122,8 @@ A flow's playlist and its `composes` edges are two views of one relationship: th
 ## Testing
 
 `tests/mcp/run-mcp-tests.js` follows the CLI harness pattern: spawn the built server against a tmpdir fixture bundle + journal sidecar, speak JSON-RPC over stdio (`initialize`, `tools/list`, `tools/call`), and assert: read-tool shapes; a write round-trip (update → journal line appended → `validate_bundle` clean → snapshot canonical); and the gate (a mutation that would dangle an edge is refused with pathed findings and the files untouched).
+
+`tests/mcp/remote-store.test.js` runs the same built server against a stub of the hosted API. Assertions that a tool *behaves the same through both stores* belong here rather than in the file-mode suite, which by construction cannot see hosted-only drift: `validate_bundle` returning a verdict identical to repo mode — clean and broken — is checked that way.
 
 ## Non-Goals (v1)
 
