@@ -103,6 +103,9 @@ jobs:
       - name: Command palette ranking tests
         run: npm run test:command-palette
 
+      - name: Keyboard shortcut catalogue tests
+        run: npm run test:keyboard-shortcuts
+
       - name: Overview coverage projection tests
         run: npm run test:coverage
 

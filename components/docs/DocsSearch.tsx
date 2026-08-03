@@ -11,7 +11,8 @@ import {
   type CommandActionId,
   type DocsPage,
 } from "@/lib/utils/command-palette";
-import { isCommandPaletteShortcut } from "@/lib/utils/keyboard";
+import { KeyboardShortcutsDialog } from "@/components/layout/KeyboardShortcutsDialog";
+import { isCommandPaletteShortcut, isShortcutsDialogShortcut } from "@/lib/utils/keyboard";
 import { cn } from "@/lib/utils";
 
 interface DocsSearchProps {
@@ -30,6 +31,7 @@ export function DocsSearch({ pages, className }: DocsSearchProps) {
   const modKey = useModKeyLabel();
   const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   const commands = useMemo(() => buildDocsCommands({ pages }), [pages]);
 
@@ -44,10 +46,25 @@ export function DocsSearch({ pages, className }: DocsSearchProps) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || !isShortcutsDialogShortcut(event)) return;
+      event.preventDefault();
+      setShortcutsOpen((current) => !current);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   // Publish is a project action and has no meaning here, so the docs catalogue
   // never offers it — the theme is the only action to dispatch.
   const handleAction = useCallback(
     (action: CommandActionId) => {
+      if (action === "show-shortcuts") {
+        setShortcutsOpen(true);
+        return;
+      }
       if (action !== "toggle-theme") return;
       setTheme(theme === "dark" ? "light" : "dark");
     },
@@ -83,6 +100,7 @@ export function DocsSearch({ pages, className }: DocsSearchProps) {
         placeholder="Jump to a page of the documentation…"
         description="Search every page of the documentation, then press Enter to go there."
       />
+      <KeyboardShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
     </>
   );
 }

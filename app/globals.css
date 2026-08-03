@@ -111,6 +111,49 @@
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
   }
+
+  /* Swipes never turn into browser back/forward navigation, a page-wide
+     bounce, or a pull-to-refresh — they stay inside whatever is being
+     scrolled. */
+  html,
+  body {
+    overscroll-behavior: none;
+  }
+
+  .overflow-auto,
+  .overflow-x-auto,
+  .overflow-y-auto,
+  .overflow-scroll,
+  .overflow-x-scroll,
+  .overflow-y-scroll,
+  [data-slot="table-container"] {
+    overscroll-behavior: contain;
+  }
+
+  /* Controls are for clicking, not for selecting text. */
+  button,
+  summary,
+  label,
+  [role="button"],
+  [role="tab"],
+  [role="menuitem"],
+  [role="menuitemcheckbox"],
+  [role="menuitemradio"],
+  [role="option"],
+  [data-slot="button"],
+  [data-slot="dropdown-menu-item"],
+  [data-slot="sidebar-menu-button"] {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* …but text inputs and editable regions inside them still select. */
+  input,
+  textarea,
+  [contenteditable="true"] {
+    -webkit-user-select: text;
+    user-select: text;
+  }
 }
 
 @layer components {

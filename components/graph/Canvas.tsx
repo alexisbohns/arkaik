@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ReactFlow, Controls, Background, type Node, type Edge, type NodeMouseHandler, type OnConnect, type EdgeMouseHandler, type ReactFlowInstance } from "@xyflow/react";
+import { ReactFlow, Controls, Background, type Node, type Edge, type NodeMouseHandler, type OnConnect, type OnNodesChange, type EdgeMouseHandler, type ReactFlowInstance } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useTheme } from "next-themes";
 import { applySpotlight, buildSpotlightIndex } from "@/lib/utils/graph-spotlight";
+import type { MapMinimapColorMode } from "@arkaik/schema";
 import type { ProductScope } from "@/lib/utils/product-scope";
 import { CanvasScopeProvider } from "./canvas-scope";
 import { FlowNode } from "./nodes/FlowNode";
@@ -53,6 +54,8 @@ interface CanvasProps {
    * existed.
    */
   scope?: ProductScope;
+  /** What a minimap node's fill encodes (docs/spec/maps.md § Display Options). */
+  minimapColor?: MapMinimapColorMode;
 }
 
 export function Canvas({
@@ -65,6 +68,7 @@ export function Canvas({
   spotlight = false,
   spotlightNodeId = null,
   scope,
+  minimapColor,
 }: CanvasProps) {
   const reactFlowRef = useRef<ReactFlowInstance<Node, Edge> | null>(null);
   const lastFitSignal = useRef(fitSignal);
@@ -79,10 +83,51 @@ export function Canvas({
 
   const anchorId = spotlight ? hoveredNodeId ?? spotlightNodeId : null;
 
-  const display = useMemo(() => {
+  const spotlit = useMemo(() => {
     if (!anchorId || !spotlightIndex) return { nodes, edges };
     return applySpotlight(nodes, edges, anchorId, spotlightIndex);
   }, [anchorId, edges, nodes, spotlightIndex]);
+
+  /**
+   * Measured node sizes, echoed back onto the nodes we hand React Flow.
+   *
+   * The canvas is prop-driven: parents own `nodes`, so React Flow's dimension
+   * changes are never applied to those objects and `node.measured` stays
+   * undefined. The graph itself doesn't care (it reads its own internals), but
+   * the minimap reads `internals.userNode` and skips anything without
+   * dimensions — which drew an empty frame. Keeping the sizes here and merging
+   * them back in is what makes nodes visible in the minimap.
+   */
+  const [measured, setMeasured] = useState<Record<string, { width: number; height: number }>>({});
+
+  const handleNodesChange = useCallback<OnNodesChange>((changes) => {
+    setMeasured((current) => {
+      let next: Record<string, { width: number; height: number }> | null = null;
+
+      for (const change of changes) {
+        if (change.type !== "dimensions" || !change.dimensions) continue;
+        const { width, height } = change.dimensions;
+        const known = current[change.id];
+        if (known && known.width === width && known.height === height) continue;
+        next ??= { ...current };
+        next[change.id] = { width, height };
+      }
+
+      return next ?? current;
+    });
+  }, []);
+
+  const display = useMemo(() => {
+    const nodesWithSize = spotlit.nodes.map((node) => {
+      const size = measured[node.id];
+      if (!size || (node.measured?.width === size.width && node.measured?.height === size.height)) {
+        return node;
+      }
+      return { ...node, measured: size };
+    });
+
+    return { nodes: nodesWithSize, edges: spotlit.edges };
+  }, [measured, spotlit]);
 
   const handleNodeMouseEnter = useCallback<NodeMouseHandler>((_event, node) => {
     setHoveredNodeId(node.id);
@@ -152,6 +197,7 @@ export function Canvas({
           fitView
           minZoom={0.05}
           onInit={handleInit}
+          onNodesChange={handleNodesChange}
           onNodeClick={handleNodeClick}
           onConnect={onConnect}
           onEdgeClick={onEdgeClick}
@@ -159,7 +205,7 @@ export function Canvas({
           onNodeMouseLeave={spotlight ? handleNodeMouseLeave : undefined}
         >
           <Controls />
-          <Minimap />
+          <Minimap colorBy={minimapColor} />
           <Background />
         </ReactFlow>
       </div>

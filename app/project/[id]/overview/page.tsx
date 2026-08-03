@@ -29,7 +29,7 @@ import {
 import { computeBacklog } from "@/lib/utils/journal";
 import { computeMapCounts } from "@/lib/utils/journey-graph";
 import { getRollupPlatforms } from "@/lib/utils/platform-status";
-import { type ProductGraph } from "@/lib/utils/product-scope";
+import { productScopeMetaLabel, type ProductGraph } from "@/lib/utils/product-scope";
 import { computeScopedPyramidTiers } from "@/lib/utils/pyramid";
 
 /**
@@ -156,6 +156,7 @@ export default function OverviewPage() {
   return (
     <PageShell
       title="Overview"
+      meta={productScopeMetaLabel(scope)}
       headerExtra={
         projectBundle?.project.version ? (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">

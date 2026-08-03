@@ -32,6 +32,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-circle-check { filter: url(#wob-circle-check); }
 .lucide-circle-check-big { filter: url(#wob-circle-check-big); }
 .lucide-circle-dashed { filter: url(#wob-circle-dashed); }
+.lucide-circle-dot { filter: url(#wob-circle-dot); }
 .lucide-circle-dot-dashed { filter: url(#wob-circle-dot-dashed); }
 .lucide-circle-fading-arrow-up { filter: url(#wob-circle-fading-arrow-up); }
 .lucide-circle-gauge { filter: url(#wob-circle-gauge); }
@@ -77,6 +78,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-image-plus { filter: url(#wob-image-plus); }
 .lucide-info { filter: url(#wob-info); }
 .lucide-key-round { filter: url(#wob-key-round); }
+.lucide-keyboard { filter: url(#wob-keyboard); }
 .lucide-landmark { filter: url(#wob-landmark); }
 .lucide-layers { filter: url(#wob-layers); }
 .lucide-layout-dashboard { filter: url(#wob-layout-dashboard); }

@@ -28,6 +28,7 @@
     "test:spotlight": "node tests/app/graph-spotlight.test.js",
     "test:panel-stack": "node tests/app/panel-stack.test.js",
     "test:project-panels": "node tests/app/project-panels.test.js",
+    "test:keyboard-shortcuts": "node tests/app/keyboard-shortcuts.test.js",
     "test:command-palette": "node tests/app/command-palette.test.js",
     "test:coverage": "node tests/app/coverage.test.js",
     "test:effective-status": "node tests/app/effective-status.test.js",

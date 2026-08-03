@@ -66,6 +66,40 @@ export const SPECIES_ICONS: Record<SpeciesId, LucideIcon> = {
   acceptance: ClipboardCheck,
 };
 
+/**
+ * Species → minimap fill. Hex, not Tailwind classes: React Flow paints minimap
+ * nodes as SVG rects, and an SVG `fill` can't take a class name.
+ *
+ * Data models and API endpoints reuse the border colors their cards already
+ * wear (amber-500, teal-500), so a species keeps one identity across the map
+ * and the minimap. Flow and view cards are status-colored and had no species
+ * color to inherit, so they take violet-500 and blue-500 — far enough apart to
+ * stay legible at minimap scale, where a node is a few pixels wide.
+ */
+export const SPECIES_MINIMAP_FILL: Record<SpeciesId, string> = {
+  flow:           "#8b5cf6", // violet-500
+  view:           "#3b82f6", // blue-500
+  "data-model":   "#f59e0b", // amber-500
+  "api-endpoint": "#14b8a6", // teal-500
+  acceptance:     "#22c55e", // green-500
+};
+
+/**
+ * Status → minimap fill, the hex twin of {@link STATUS_STYLES}. Kept beside it
+ * so a status can't read as one color on a card badge and another in the
+ * minimap; the comments name the Tailwind shade each one mirrors.
+ */
+export const STATUS_MINIMAP_FILL: Record<StatusId, string> = {
+  idea:        "#9ca3af", // gray-400
+  backlog:     "#6b7280", // gray-500
+  prioritized: "#60a5fa", // blue-400
+  development: "#3b82f6", // blue-500
+  releasing:   "#a855f7", // purple-500
+  live:        "#22c55e", // green-500
+  archived:    "#9ca3af", // gray-400
+  blocked:     "#ef4444", // red-500
+};
+
 export const PLATFORM_DOT_STYLES: Record<PlatformId, string> = {
   web:     "bg-green-500",
   ios:     "bg-blue-500",

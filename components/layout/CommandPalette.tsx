@@ -12,6 +12,7 @@ import {
   GitBranchIcon,
   HistoryIcon,
   KeyRoundIcon,
+  KeyboardIcon,
   LayoutDashboardIcon,
   MapIcon,
   MapPinnedIcon,
@@ -62,6 +63,7 @@ const COMMAND_ICONS: Record<CommandIconId, LucideIcon> = {
   docs: FileTextIcon,
   publish: Share2Icon,
   theme: SunMoonIcon,
+  shortcuts: KeyboardIcon,
   projects: FolderOpenIcon,
   tokens: KeyRoundIcon,
 };

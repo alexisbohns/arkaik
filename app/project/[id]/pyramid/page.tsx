@@ -15,11 +15,11 @@ import {
 import { VALUES, VALUE_TIERS_CONFIG } from "@/lib/config/values";
 import type { PyramidElement } from "@/lib/utils/pyramid";
 import { computeScopedPyramidTiers } from "@/lib/utils/pyramid";
+import { PRODUCT_OVERRIDE_PARAM, productScopeMetaLabel } from "@/lib/utils/product-scope";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEffectiveProduct, useProductOverride } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
-import { PRODUCT_OVERRIDE_PARAM } from "@/lib/utils/product-scope";
 
 const VALUE_LABEL = new Map(VALUES.map((v) => [v.id, v.label]));
 const VALUE_DESCRIPTION = new Map(VALUES.map((v) => [v.id, v.description]));
@@ -114,7 +114,7 @@ export default function PyramidPage() {
   }
 
   return (
-    <PageShell title="Value pyramid">
+    <PageShell title="Value pyramid" meta={productScopeMetaLabel(scope)}>
       <div className="h-full overflow-auto">
         <div className="mx-auto w-full max-w-6xl">
           <StickyToolbar>
