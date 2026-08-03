@@ -14,6 +14,7 @@ import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { DecisionLog } from "@/components/decisions/DecisionLog";
 import { PageShell } from "@/components/layout/PageShell";
 import { generateNodeId } from "@/lib/utils/id";
+import { withDecisionStatus } from "@/lib/utils/decision";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -63,7 +64,7 @@ export default function ProjectDecisionsPage() {
         title,
         status: lifecycleStatusForDecision("proposed"),
         platforms: [],
-        metadata: { decision_status: "proposed" },
+        metadata: withDecisionStatus(undefined, "proposed"),
       });
       handleSelectNode(created);
     } catch (err) {
