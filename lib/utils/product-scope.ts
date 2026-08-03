@@ -5,9 +5,9 @@
  * surface renders per-platform or single-status.
  *
  * Every function here takes the product (or a scope carrying it) as an
- * *argument* and never reads scope state. That is what keeps the deferred
- * per-surface-override milestone cheap: an override becomes a different
- * argument, not a different code path.
+ * *argument* and never reads scope state. That is what kept the per-surface
+ * override (#315) cheap — it landed as a different argument to the same
+ * functions, not a second code path — and it is why it must stay true.
  */
 
 import { PLATFORMS, type PlatformId } from "@/lib/config/platforms";
@@ -191,10 +191,81 @@ export function productScopeOptions(
  * word either. `scope.productsById` is built from the same
  * `resolveProducts(project)` call the selector's options are, so the two
  * checks can never disagree.
+ *
+ * It takes the **resolved scope**, so on a surface carrying a `?product=`
+ * override (#315) it names the narrowed product rather than the shell's. That
+ * is the wanted reading rather than a coincidence: the header is then the one
+ * line on screen explaining why the surface beneath it shows less than the
+ * sidebar says.
  */
 export function productScopeMetaLabel(scope: ProductScope): string | undefined {
   if (scope.productsById.size === 0) return undefined;
   return scope.productId === null ? "All products" : productDisplayTitle(scope.product);
+}
+
+/* --- Per-surface override ----------------------------------------------------
+ *
+ * A surface may narrow the shell's scope and may never widen or sidestep it
+ * (docs/superpowers/specs/2026-08-03-per-surface-product-override-design.md
+ * § Decision 2). Both rules are pure functions here rather than logic inside the
+ * control, because no component in this repo can be exercised by a test.
+ */
+
+/** The query param a surface stores its override in. Written once. */
+export const PRODUCT_OVERRIDE_PARAM = "product";
+
+/**
+ * **The product a surface actually reads through** — the shell's scope, then
+ * the surface's own override.
+ *
+ * This resolves to `global ?? override`, which is the opposite order to the one
+ * issue #315 predicted (`override ?? global`), and deliberately. Narrow-only
+ * means an override is only ever legitimate while `globalId` is `null`, so the
+ * two formulas agree wherever one exists — and this order additionally makes a
+ * leftover param **inert** rather than load-bearing. That is what lets the
+ * control disappear under a named scope without rewriting the URL: a design
+ * where the control was hidden but the param still applied would show a
+ * narrowed surface with nothing on screen to explain it.
+ *
+ * An override naming a product the project does not declare is **ignored**, not
+ * applied. Two routes reach that without anyone doing anything strange — a link
+ * shared into a different project, and Library's own params, which
+ * `app/project/[id]/layout.tsx` carries across a project switch. Applying a
+ * stale id would filter to nothing, and an empty surface arrived at by someone
+ * else's link cannot explain itself.
+ *
+ * Note this differs from a stale *localStorage* global scope, which
+ * `resolveProductScope` still keeps and still filters by. That asymmetry is
+ * pre-existing and out of scope for #315; it is recorded in the spec's
+ * § Decision 4 so the difference stays a decision rather than an accident.
+ */
+export function resolveEffectiveProductId(
+  bundle: { project?: Pick<Project, "metadata"> } | undefined | null,
+  globalId: string | null,
+  rawOverride: string | null | undefined,
+): string | null {
+  if (globalId !== null) return globalId;
+  const candidate = declared(rawOverride);
+  if (candidate === undefined) return null;
+  return resolveProducts(bundle?.project).some((product) => product.id === candidate) ? candidate : null;
+}
+
+/**
+ * May this surface offer an override at all?
+ *
+ * Two conditions, one predicate: the shell must be showing All products (there
+ * is nothing a named scope could narrow *to* that is not itself), and the
+ * project must declare products. The second half is the degenerate-case
+ * guarantee — a project that has never declared a product shows no new control
+ * and no new concept — and it is `productScopeOptions` rather than a second
+ * count of the same thing, so the control cannot render for a project the
+ * sidebar selector considers empty.
+ */
+export function canOverrideProduct(
+  bundle: { project?: Pick<Project, "metadata"> } | undefined | null,
+  globalId: string | null,
+): boolean {
+  return globalId === null && productScopeOptions(bundle).length > 0;
 }
 
 /** Anchor ids an acceptance covers (outgoing `covers` edges). */

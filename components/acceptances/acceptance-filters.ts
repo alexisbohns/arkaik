@@ -17,10 +17,14 @@ function oneOf<T extends string>(value: string | null, allowed: readonly string[
 
 /**
  * `product` is deliberately absent from `KEYS` and always read back as `null`.
- * The scope is global to the shell and persisted per project in localStorage
- * (lib/hooks/useProductScope.ts), not per surface in the URL — the page layers
- * the live scope on top of what this returns. Threading it through the query
- * string too would give the same value two homes that could disagree.
+ *
+ * There *is* a `?product=` param since #315 — the per-surface override — but it
+ * is not an acceptance filter and this module must not touch it. Two
+ * consequences, both wanted: the page layers the live scope on top of what this
+ * returns (`useEffectiveProduct` owns the param), and "Clear filters", which
+ * deletes every key in `KEYS`, leaves the override alone. Narrowing to one app
+ * is a scope, not a filter, and clearing a search box must not silently widen
+ * the surface back out.
  */
 function readFilters(params: URLSearchParams): AcceptanceFilters {
   return {

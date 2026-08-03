@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { PageShell } from "@/components/layout/PageShell";
 import { StickyToolbar } from "@/components/layout/StickyToolbar";
@@ -15,10 +15,10 @@ import {
 import { VALUES, VALUE_TIERS_CONFIG } from "@/lib/config/values";
 import type { PyramidElement } from "@/lib/utils/pyramid";
 import { computeScopedPyramidTiers } from "@/lib/utils/pyramid";
-import { productScopeMetaLabel } from "@/lib/utils/product-scope";
+import { PRODUCT_OVERRIDE_PARAM, productScopeMetaLabel } from "@/lib/utils/product-scope";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useNodes } from "@/lib/hooks/useNodes";
-import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
+import { useEffectiveProduct, useProductOverride } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
 
 const VALUE_LABEL = new Map(VALUES.map((v) => [v.id, v.label]));
@@ -57,6 +57,7 @@ export default function PyramidPage() {
   // first render — every platform, all acceptances — which is also exactly what
   // a project that declares no products resolves to for good. Nothing flashes.
   const scope = useEffectiveProduct(id, projectBundle);
+  const { overrideId } = useProductOverride(id, projectBundle);
 
   const acceptances = useMemo(
     () => dataNodes.filter((node) => node.species === "acceptance"),
@@ -88,6 +89,22 @@ export default function PyramidPage() {
     [tiers, filterStep],
   );
 
+  // The one cross-surface link between two surfaces that both own the override,
+  // and so the one place "navigation drops the param" is the wrong answer:
+  // narrow the pyramid to Admin, click an element, and landing on every
+  // product's acceptances reads as a bug. It carries the *override* and not
+  // `scope.productId`, because a global scope needs no carrying — the sidebar
+  // already narrows the destination, and writing it into the URL would turn an
+  // ambient scope into a surface override on arrival.
+  const acceptancesHref = useCallback(
+    (value: string) => {
+      const params = new URLSearchParams({ value });
+      if (overrideId !== null) params.set(PRODUCT_OVERRIDE_PARAM, overrideId);
+      return `/project/${id}/acceptances?${params.toString()}`;
+    },
+    [id, overrideId],
+  );
+
   if (nodesLoading || edgesLoading) {
     return (
       <div className="h-full w-full flex items-center justify-center">
@@ -106,6 +123,8 @@ export default function PyramidPage() {
               filterStep={filterStep}
               onViewModeChange={setViewMode}
               onFilterStepChange={setFilterStep}
+              projectId={id}
+              project={projectBundle}
             />
           </StickyToolbar>
 
@@ -124,7 +143,7 @@ export default function PyramidPage() {
                   element={element}
                   label={VALUE_LABEL.get(element.value) ?? element.value}
                   description={VALUE_DESCRIPTION.get(element.value) ?? ""}
-                  href={`/project/${id}/acceptances?value=${element.value}`}
+                  href={acceptancesHref(element.value)}
                   platforms={scope.platforms}
                 />
               ));

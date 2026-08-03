@@ -61,11 +61,12 @@ export default function ProjectDeliveryPage() {
   const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
   const { project: projectBundle } = useProject(id);
   const { journal } = useJournal(id);
-  // The shell's scope, never a URL param (§ Decision 2). `projectBundle` is
-  // `undefined` until `useProject`'s effect lands, and a scope resolved from
-  // nothing declares no products — which resolves to every platform and every
-  // node, i.e. today's board. So the first render is already correct and
-  // nothing flashes when the bundle arrives.
+  // The shell's scope, narrowed by this surface's own `?product=` when it has
+  // one (#315). `projectBundle` is `undefined` until `useProject`'s effect
+  // lands, and a scope resolved from nothing declares no products — which
+  // resolves to every platform and every node, i.e. today's board. So the first
+  // render is already correct and nothing flashes when the bundle arrives, and
+  // an override cannot apply before the bundle can validate it.
   const scope = useEffectiveProduct(id, projectBundle);
   const productList = useProductList(scope);
 

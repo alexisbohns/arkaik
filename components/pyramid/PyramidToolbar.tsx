@@ -2,6 +2,8 @@
 
 import { CircleCheckBigIcon, CircleDashedIcon, LayersIcon, LayoutGridIcon, ListIcon } from "lucide-react";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
+import { ProductOverrideSelector } from "@/components/layout/ProductOverrideSelector";
+import type { ProjectBundle } from "@/lib/data/types";
 
 export type PyramidViewMode = "cards" | "list";
 /** Which slice of the 30 elements to show. Most are unserved most of the time. */
@@ -25,6 +27,9 @@ interface PyramidToolbarProps {
   filterStep: PyramidFilterStep;
   onViewModeChange: (mode: PyramidViewMode) => void;
   onFilterStepChange: (step: PyramidFilterStep) => void;
+  projectId: string;
+  /** The bundle products live on. `undefined` until `useProject` resolves. */
+  project: ProjectBundle | undefined;
 }
 
 export function PyramidToolbar({
@@ -32,15 +37,23 @@ export function PyramidToolbar({
   filterStep,
   onViewModeChange,
   onFilterStepChange,
+  projectId,
+  project,
 }: PyramidToolbarProps) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-3">
-      <SegmentedControl
-        options={FILTER_STEPS}
-        value={filterStep}
-        onChange={onFilterStepChange}
-        ariaLabel="Which value elements to show"
-      />
+      {/* The control and the step filter are both "what am I looking at"; the
+          view mode is "how" — so the toolbar's justify-between still separates
+          two meaningful groups rather than three loose controls. */}
+      <div className="flex flex-wrap items-center gap-3">
+        <ProductOverrideSelector projectId={projectId} project={project} />
+        <SegmentedControl
+          options={FILTER_STEPS}
+          value={filterStep}
+          onChange={onFilterStepChange}
+          ariaLabel="Which value elements to show"
+        />
+      </div>
       <SegmentedControl
         options={VIEW_MODES}
         value={viewMode}

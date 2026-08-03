@@ -170,9 +170,10 @@ export default function ProjectLibraryPage() {
   const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
   const { project: projectBundle, updateProject } = useProject(id);
   const { journal } = useJournal(id);
-  // The shell's scope, never a URL param (§ Decision 2). With no products
-  // declared it resolves to every platform and every node, so a project that has
-  // never heard of products gets exactly today's library.
+  // The shell's scope, narrowed by this surface's own `?product=` when it has
+  // one (#315). With no products declared it resolves to every platform and
+  // every node, so a project that has never heard of products gets exactly
+  // today's library.
   const scope = useEffectiveProduct(id, projectBundle);
   const productList = useProductList(scope);
 
@@ -452,6 +453,8 @@ export default function ProjectLibraryPage() {
                 displayMode={displayMode}
                 onSearchChange={setSearch}
                 onDisplayModeChange={setDisplayMode}
+                projectId={id}
+                project={projectBundle}
               />
               {/* Inside the sticky band, not in the scrolling column: the bar
                   acts on rows the user ticked a screenful down, and a control

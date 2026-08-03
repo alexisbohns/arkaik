@@ -2,13 +2,7 @@
 
 import { useMemo } from "react";
 import { BoxesIcon } from "lucide-react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { ProductSelect } from "@/components/layout/ProductSelect";
 import type { ProjectBundle } from "@/lib/data/types";
 import { useProductScope } from "@/lib/hooks/useProductScope";
 import { productScopeOptions } from "@/lib/utils/product-scope";
@@ -31,14 +25,19 @@ import { productScopeOptions } from "@/lib/utils/product-scope";
  * The same emptiness covers the first render and SSR for free: `useProject`
  * loads the bundle in an effect, so `project` is `undefined` until it lands and
  * there is no options list to flash.
+ *
+ * A scope pointing at a product this project no longer declares degrades to
+ * "All products" in the trigger — `ProductSelect`'s own fallback — matching
+ * `resolveProductScope`; a stale localStorage value must never leave the
+ * trigger blank.
+ *
+ * Displayed, not healed, and deliberately so. Clearing the stored id here
+ * would mean a project momentarily missing a product — a half-synced bundle, a
+ * branch being switched — permanently forgetting a scope the user chose, and
+ * the selector would be writing state as a side effect of rendering. The cost
+ * is the opposite case: re-declaring that product silently restores the
+ * scope. Restoring a choice the user made is the better failure.
  */
-
-/**
- * Radix reserves the empty string for "no selection", so "All products" — a
- * real member of the domain, not an absence — needs a sentinel of its own. The
- * store still holds `null` for it; the sentinel never leaves this file.
- */
-const ALL_PRODUCTS = "__all__";
 
 interface ProductScopeSelectorProps {
   projectId: string;
@@ -53,65 +52,18 @@ export function ProductScopeSelector({ projectId, project }: ProductScopeSelecto
 
   if (options.length === 0) return null;
 
-  // A scope pointing at a product this project no longer declares degrades to
-  // "All products", matching `resolveProductScope` — a stale localStorage value
-  // must never leave the trigger blank.
-  //
-  // Displayed, not healed, and deliberately so. Clearing the stored id here
-  // would mean a project momentarily missing a product — a half-synced bundle,
-  // a branch being switched — permanently forgetting a scope the user chose,
-  // and the selector would be writing state as a side effect of rendering. The
-  // cost is the opposite case: re-declaring that product silently restores the
-  // scope. Restoring a choice the user made is the better failure.
-  const selected = options.find((option) => option.id === productId) ?? null;
-
   return (
     <div className="group-data-[collapsible=icon]:hidden">
-      <Select
-        value={selected ? selected.id : ALL_PRODUCTS}
-        onValueChange={(next) => setScope(next === ALL_PRODUCTS ? null : next)}
-      >
-        <SelectTrigger
-          aria-label="Product"
-          className="h-8 w-full gap-2 border-sidebar-border bg-sidebar text-sm text-sidebar-foreground shadow-none focus:ring-sidebar-ring"
-        >
-          <BoxesIcon className="size-4 shrink-0 text-sidebar-foreground/70" />
-          {/* Children make Radix render this instead of portaling the selected
-              item's text in — so the trigger stays one line while the options
-              below carry their second, secondary one. */}
-          <SelectValue>
-            <span className="truncate">{selected ? selected.label : "All products"}</span>
-          </SelectValue>
-        </SelectTrigger>
-        {/* A two-line option would otherwise announce and match as its two
-            lines run together — "End-user app3 platforms". Two separate
-            mechanisms, so two fixes: `textValue` seeds Radix's typeahead key,
-            which is otherwise the item's `textContent`; `aria-hidden` drops the
-            secondary line from the accessible name, which Radix derives from
-            the whole ItemText subtree via `aria-labelledby` and which
-            `textValue` does not reach. The secondary line is decoration — the
-            name is the title. */}
-        <SelectContent align="start" className="min-w-56">
-          <SelectItem value={ALL_PRODUCTS} textValue="All products">
-            <span className="grid text-left leading-tight">
-              <span className="truncate">All products</span>
-              <span aria-hidden className="truncate text-xs text-muted-foreground">
-                Everything in the project
-              </span>
-            </span>
-          </SelectItem>
-          {options.map((option) => (
-            <SelectItem key={option.id} value={option.id} textValue={option.label}>
-              <span className="grid text-left leading-tight">
-                <span className="truncate">{option.label}</span>
-                <span aria-hidden className="truncate text-xs text-muted-foreground">
-                  {option.platformLabel}
-                </span>
-              </span>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <ProductSelect
+        value={productId}
+        onChange={setScope}
+        options={options}
+        ariaLabel="Product"
+        allProductsHint="Everything in the project"
+        triggerIcon={<BoxesIcon className="size-4 shrink-0 text-sidebar-foreground/70" />}
+        triggerClassName="h-8 w-full gap-2 border-sidebar-border bg-sidebar text-sm text-sidebar-foreground shadow-none focus:ring-sidebar-ring"
+        contentClassName="min-w-56"
+      />
     </div>
   );
 }
