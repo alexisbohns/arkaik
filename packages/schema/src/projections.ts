@@ -116,6 +116,8 @@ export interface ChangelogOptions {
    * Snapshot nodes keyed by id, used only to resolve platform filtering when the
    * `to` marker is platform-scoped. Absent → a platform-scoped changelog keeps
    * only events that name the platform themselves (e.g. `node.status_changed`).
+   * A `deliverable.shipped` event's `node_ids` are resolved through this same
+   * snapshot, the same way `edge.added` endpoints are.
    */
   nodesById?: ReadonlyMap<string, Pick<Node, "platforms">>;
 }
@@ -142,6 +144,9 @@ function eventAffectsPlatform(
   if (ev.type === "edge.added") {
     const edge = ev as EdgeAddedEvent;
     return onPlatform(edge.source_id) || onPlatform(edge.target_id);
+  }
+  if (ev.type === "deliverable.shipped" && Array.isArray(ev.node_ids)) {
+    return (ev.node_ids as unknown[]).some(onPlatform);
   }
   return false;
 }

@@ -6081,6 +6081,17 @@
       "summary": "Streak counter — edited note: counts calendar weeks, not rolling 7 days.",
       "url": "https://github.com/example/pebbles/pull/91",
       "node_ids": ["V-home"]
+    },
+    {
+      "id": "01K0DELIVSEED0000000000000",
+      "ts": "2026-05-15T10:00:00.000Z",
+      "actor": "arkaik-cli",
+      "type": "deliverable.shipped",
+      "deliverable_id": "pr-56",
+      "title": "Pebble recording gets a celebration",
+      "summary": "Recording a pebble now ends on a small celebration view.",
+      "url": "https://github.com/example/pebbles/pull/56",
+      "node_ids": ["V-record-celebration"]
     }
   ]
 }

@@ -192,8 +192,8 @@ const nodesById = new Map(bundle.nodes.map((node) => [node.id, node]));
 
 const inventory = computeInventory(bundle.nodes, bundle.edges, bundle.journal);
 assert(
-  inventory.nodeCount === 152 && inventory.edgeCount === 283 && inventory.journalEventCount === 182,
-  `seed census 152/283/182 (got ${inventory.nodeCount}/${inventory.edgeCount}/${inventory.journalEventCount})`,
+  inventory.nodeCount === 152 && inventory.edgeCount === 283 && inventory.journalEventCount === 183,
+  `seed census 152/283/183 (got ${inventory.nodeCount}/${inventory.edgeCount}/${inventory.journalEventCount})`,
 );
 assert(
   eq(
@@ -218,9 +218,9 @@ const seedPulse = computeReleasePulse(bundle.journal, { nodesById });
 assert(
   eq(
     seedPulse.map((entry) => [entry.version, entry.platform ?? null, entry.eventCount]),
-    [["0.4.0", "ios", 5], ["0.3.0", null, 5], ["0.2.0", null, 151]],
+    [["0.4.0", "ios", 6], ["0.3.0", null, 6], ["0.2.0", null, 151]],
   ),
-  `seed pulse [0.4.0 ios 5, 0.3.0 — 5, 0.2.0 — 151] (got ${JSON.stringify(seedPulse.map((e) => [e.version, e.platform ?? null, e.eventCount]))})`,
+  `seed pulse [0.4.0 ios 6, 0.3.0 — 6, 0.2.0 — 151] (got ${JSON.stringify(seedPulse.map((e) => [e.version, e.platform ?? null, e.eventCount]))})`,
 );
 
 const seedSnapshot = computeDeliverySnapshot(bundle.nodes);

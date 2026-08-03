@@ -144,10 +144,12 @@ export function runRelease(args: string[]): void {
   console.log(
     changelog.fromVersion ? `  Changes since ${changelog.fromVersion}:\n` : `  Initial changes:\n`,
   );
-  // Platform-scoped drafts list only deliverables carrying that platform —
-  // Changelog.deliverables is deliberately platform-independent (see its doc).
+  // Platform-scoped drafts keep deliverables that carry that platform OR no
+  // platform at all — an unscoped claim covers every platform (the #293
+  // monorepo-scoping convention). Changelog.deliverables is deliberately
+  // platform-independent (see its doc).
   const draftDeliverables = changelog.platform
-    ? changelog.deliverables.filter((d) => d.platform === changelog.platform)
+    ? changelog.deliverables.filter((d) => d.platform === undefined || d.platform === changelog.platform)
     : changelog.deliverables;
 
   if (draftDeliverables.length > 0) {

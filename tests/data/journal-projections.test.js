@@ -124,6 +124,23 @@ function main() {
     ids(clIosNoNodes.events),
   );
 
+  // Platform-scoped changelog also walks deliverable.shipped node_ids, the
+  // same way it walks edge.added endpoints (#293 unscoped-covers-all fix).
+  const deliverableIos = { id: "01P", ts: "2026-01-05T12:00:00.000Z", type: "deliverable.shipped", deliverable_id: "pr-ios", title: "iOS settings sync", node_ids: ["V-settings"] };
+  const deliverableWeb = { id: "01Q", ts: "2026-01-05T13:00:00.000Z", type: "deliverable.shipped", deliverable_id: "pr-web", title: "Profile web polish", node_ids: ["V-profile"] };
+  const journalWithDeliverable = [...JOURNAL, deliverableIos, deliverableWeb];
+  const clIosDeliverable = computeChangelog(journalWithDeliverable, "1.2", { nodesById: NODES_BY_ID });
+  check(
+    "platform-scoped changelog includes a deliverable.shipped event whose node_ids touch that platform",
+    clIosDeliverable.events.some((e) => e.id === "01P"),
+    ids(clIosDeliverable.events),
+  );
+  check(
+    "platform-scoped changelog excludes a deliverable.shipped event whose node_ids are on a different platform only",
+    !clIosDeliverable.events.some((e) => e.id === "01Q"),
+    ids(clIosDeliverable.events),
+  );
+
   check("changelog to an unknown version is empty", computeChangelog(JOURNAL, "9.9").events.length === 0);
   check("changelog(empty journal) is empty", computeChangelog([], "1.0").events.length === 0);
 
