@@ -14,6 +14,10 @@ export type { StatusId };
 /** @deprecated Use StatusId */
 export type Status = StatusId;
 
+// Note the trap at the top of the order: `archived` (6) outranks `live` (5).
+// A counted preset that ever includes a terminal status would both sort it
+// first in severity and report it as the rollup's display status — today's
+// `delivery` preset stops at `live`, which is what keeps that from biting.
 export const STATUS_ORDER: Record<StatusId, number> = Object.fromEntries(
   STATUSES.map((status) => [status.id, status.order]),
 ) as Record<StatusId, number>;

@@ -204,14 +204,14 @@ assert(
 );
 
 const seedRollup = computeProductRollup(bundle.nodes, bundle.edges);
-assert(eq(seedRollup.totals, { web: 30, ios: 31, android: 18 }), `seed rollup totals web 30 / ios 31 / android 18 (got ${JSON.stringify(seedRollup.totals)})`);
+assert(eq(seedRollup.totals, { web: 31, ios: 31, android: 18 }), `seed rollup totals web 31 / ios 31 / android 18 (got ${JSON.stringify(seedRollup.totals)})`);
 assert(
   eq(seedRollup.counts, {
-    web: { development: 25, live: 5 },
+    web: { development: 25, live: 5, backlog: 1 },
     ios: { development: 25, live: 6 },
     android: { development: 13, live: 5 },
   }),
-  "seed rollup counts: V-pebble-detail now contributes android:development from its covering acceptances",
+  "seed rollup counts: with backlog counted, AC-pebble-draw-in-animation's stored web status now lands one web:backlog item",
 );
 
 const seedPulse = computeReleasePulse(bundle.journal, { nodesById });

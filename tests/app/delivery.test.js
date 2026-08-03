@@ -29,14 +29,14 @@ function assert(cond, message) {
 
 const nodes = [
   {
-    // The headline case: live on iOS, prioritized on Android, idea on web.
+    // The headline case: live on iOS, backlog on Android, idea on web.
     id: "V-split",
     project_id: "p",
     species: "view",
     title: "Split",
     status: "idea",
     platforms: ["web", "ios", "android"],
-    metadata: { platformStatuses: { ios: "live", android: "prioritized" } },
+    metadata: { platformStatuses: { ios: "live", android: "backlog" } },
   },
   {
     // No explicit platform statuses — every platform falls back to node.status.
@@ -85,8 +85,8 @@ const nodes = [
   },
 ];
 
-const DELIVERY_PRESET = ["prioritized", "development", "releasing", "live", "blocked"];
-const ALL_STATUSES = ["idea", "backlog", "prioritized", "development", "releasing", "live", "archived", "blocked"];
+const DELIVERY_PRESET = ["backlog", "development", "releasing", "live"];
+const ALL_STATUSES = ["idea", "discovery", "backlog", "development", "releasing", "live", "archived"];
 
 const key = (item) => `${item.node.id}:${item.platform}=${item.status}`;
 
@@ -99,7 +99,7 @@ const key = (item) => `${item.node.id}:${item.platform}=${item.status}`;
       JSON.stringify([
         "V-plain:ios=development",
         "V-plain:web=development",
-        "V-split:android=prioritized",
+        "V-split:android=backlog",
         "V-split:ios=live",
         "V-split:web=idea",
       ]),
@@ -136,8 +136,8 @@ const key = (item) => `${item.node.id}:${item.platform}=${item.status}`;
   );
   assert(
     preset.get("live").map(key).join() === "V-split:ios=live" &&
-      preset.get("prioritized").map(key).join() === "V-split:android=prioritized",
-    "the same node lands in two columns for two platforms (live on iOS, prioritized on Android)",
+      preset.get("backlog").map(key).join() === "V-split:android=backlog",
+    "the same node lands in two columns for two platforms (live on iOS, backlog on Android)",
   );
   assert(
     [...preset.values()].flat().every((item) => item.status !== "idea"),

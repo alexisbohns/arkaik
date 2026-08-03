@@ -1711,7 +1711,7 @@ export function planForProject(
     // PARTIAL — the ordinary mid-rollout state — they diverge, and gating on
     // `inheriting.length < 2` suppressed this warning exactly where it matters
     // most. AC-x lists [web, ios] with `{web: "live"}` and a base of
-    // "prioritized" has a REAL parity gap (`hasParityGap` true, ios reported
+    // "backlog" has a REAL parity gap (`hasParityGap` true, ios reported
     // missing). A bare mention moves the base to "live", ios inherits it,
     // delivered === resolved, and the gap DISAPPEARS — the single thing this
     // feature exists to surface, deleted. `inheriting` was `[ios]`, length 1,
