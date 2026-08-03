@@ -70,7 +70,7 @@ Those 4 pre-existing lint warnings are not yours. Do not "fix" them; do not add 
 - Modify: `lib/utils/product-scope.ts` (add after `productScopeOptions`, ~line 179)
 - Test: `tests/app/product-scope.test.js`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Open `tests/app/product-scope.test.js`. Add `resolveEffectiveProductId` and `canOverrideProduct` to the destructured import from `loadProductScope()` at the top (the list starting `platformAvailabilityShape,`).
 
@@ -139,7 +139,7 @@ const BUNDLE = { project: { metadata: { products: [ENDUSER, ADMIN] } } };
 const NO_PRODUCTS = { project: { metadata: {} } };
 ```
 
-- [ ] **Step 2: Run the test and watch it fail**
+- [x] **Step 2: Run the test and watch it fail**
 
 ```bash
 npm run test:product-scope
@@ -147,7 +147,7 @@ npm run test:product-scope
 
 Expected: `TypeError: resolveEffectiveProductId is not a function`. If instead you see `FAIL:` lines, the functions already exist and you are on the wrong branch — stop and check.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `lib/utils/product-scope.ts`, insert after `productScopeOptions` (which ends around line 179, just before the `/** Anchor ids an acceptance covers */` comment):
 
@@ -220,7 +220,7 @@ export function canOverrideProduct(
 
 `declared()` is the existing private helper further down the file (a value counts only when it is a non-blank string). Function declarations hoist, so calling it from above its definition is fine — this is the same helper the map precedence chain uses, and reusing it is what keeps "blank means absent" one rule.
 
-- [ ] **Step 4: Run the test and watch it pass**
+- [x] **Step 4: Run the test and watch it pass**
 
 ```bash
 npm run test:product-scope
@@ -228,7 +228,7 @@ npm run test:product-scope
 
 Expected: the ten new `PASS:` lines, then `All product-scope tests passed`.
 
-- [ ] **Step 5: Typecheck**
+- [x] **Step 5: Typecheck**
 
 ```bash
 npx tsc --noEmit
@@ -236,7 +236,7 @@ npx tsc --noEmit
 
 Expected: no output.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add lib/utils/product-scope.ts tests/app/product-scope.test.js
@@ -252,7 +252,7 @@ git commit -m "feat(products): resolve a surface's effective product, narrow-onl
 
 No test: these are React hooks and this repo has no component runner (`tests/app/load-product-scope.js` says so in its own docstring). Everything testable was extracted in Task 1 for exactly this reason. Verification is typecheck plus lint.
 
-- [ ] **Step 1: Rewrite `useEffectiveProduct` to read the param**
+- [x] **Step 1: Rewrite `useEffectiveProduct` to read the param**
 
 Replace the imports at the top of `lib/hooks/useProductScope.ts`:
 
@@ -317,7 +317,7 @@ export function useEffectiveProduct(
 
 `setScope` still sets the **global** scope — the sidebar selector is its only caller and this milestone does not change that.
 
-- [ ] **Step 2: Add the write hook**
+- [x] **Step 2: Add the write hook**
 
 Append to the same file, after `useEffectiveProduct`:
 
@@ -371,7 +371,7 @@ export function useProductOverride(
 
 Note `overrideId` reuses `resolveEffectiveProductId` rather than reading the raw param: under a named global scope that returns the global id, but `canOverride` is then `false` and the control does not render, so the value is never displayed. One function, no second rule.
 
-- [ ] **Step 3: Correct the `useProductScope` docstring**
+- [x] **Step 3: Correct the `useProductScope` docstring**
 
 The docstring above `useProductScope` (starting "The global product scope, persisted per project in localStorage") explains why the scope is *not* a URL param. That reasoning is still right for the **global** value and must not be deleted. Append one paragraph to it so the file does not read as if no param exists:
 
@@ -382,7 +382,7 @@ The docstring above `useProductScope` (starting "The global product scope, persi
  * makes it per-surface. See `resolveEffectiveProductId`.
 ```
 
-- [ ] **Step 4: Typecheck and lint**
+- [x] **Step 4: Typecheck and lint**
 
 ```bash
 npx tsc --noEmit && npm run lint
@@ -390,7 +390,7 @@ npx tsc --noEmit && npm run lint
 
 Expected: no tsc output; lint still `✖ 4 problems (0 errors, 4 warnings)`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add lib/hooks/useProductScope.ts
@@ -407,7 +407,7 @@ Pure refactor: `ProductScopeSelector` must look and behave identically afterward
 - Create: `components/layout/ProductSelect.tsx`
 - Modify: `components/layout/ProductScopeSelector.tsx`
 
-- [ ] **Step 1: Create the shared component**
+- [x] **Step 1: Create the shared component**
 
 ```tsx
 "use client";
@@ -511,7 +511,7 @@ export function ProductSelect({
 }
 ```
 
-- [ ] **Step 2: Rebuild `ProductScopeSelector` on it**
+- [x] **Step 2: Rebuild `ProductScopeSelector` on it**
 
 Replace the body of `components/layout/ProductScopeSelector.tsx` below its existing file-level docstring. **Keep that docstring** — it records why one control, why nothing renders for a product-less project, and why a stale scope is displayed rather than healed. Delete only the `ALL_PRODUCTS` constant (it moved) and the JSX.
 
@@ -559,7 +559,7 @@ export function ProductScopeSelector({ projectId, project }: ProductScopeSelecto
 
 The stale-scope comment that sat above `const selected = ...` moves with the logic: keep the short form now in `ProductSelect`, and leave the long "displayed, not healed" reasoning in `ProductScopeSelector`'s file docstring where it explains the *decision* rather than the line.
 
-- [ ] **Step 3: Typecheck and lint**
+- [x] **Step 3: Typecheck and lint**
 
 ```bash
 npx tsc --noEmit && npm run lint
@@ -567,7 +567,7 @@ npx tsc --noEmit && npm run lint
 
 Expected: no tsc output; lint unchanged at 0 errors, 4 warnings.
 
-- [ ] **Step 4: Verify the sidebar still works**
+- [x] **Step 4: Verify the sidebar still works**
 
 ```bash
 npm run dev
@@ -575,7 +575,7 @@ npm run dev
 
 Open a project with declared products (the `pebbles` seed has them). The sidebar selector must show the same trigger, the same two-line options, and switching must still narrow every surface. Stop the server when done.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add components/layout/ProductSelect.tsx components/layout/ProductScopeSelector.tsx
@@ -589,7 +589,7 @@ git commit -m "refactor(products): one product select body, two callers (#315)"
 **Files:**
 - Create: `components/layout/ProductOverrideSelector.tsx`
 
-- [ ] **Step 1: Write it**
+- [x] **Step 1: Write it**
 
 ```tsx
 "use client";
@@ -649,7 +649,7 @@ export function ProductOverrideSelector({ projectId, project }: ProductOverrideS
 }
 ```
 
-- [ ] **Step 2: Typecheck and lint**
+- [x] **Step 2: Typecheck and lint**
 
 ```bash
 npx tsc --noEmit && npm run lint
@@ -657,7 +657,7 @@ npx tsc --noEmit && npm run lint
 
 Expected: no tsc output. The new file is not imported yet, so lint may flag nothing — 0 errors, 4 warnings.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add components/layout/ProductOverrideSelector.tsx
@@ -675,7 +675,7 @@ Both bars already receive `projectId` and `project`, so this is placement only.
 - Modify: `components/acceptances/AcceptanceFilterBar.tsx`
 - Modify: `components/acceptances/acceptance-filters.ts` (docstring)
 
-- [ ] **Step 1: Delivery**
+- [x] **Step 1: Delivery**
 
 In `components/delivery/DeliveryFilterBar.tsx`, add the import:
 
@@ -698,7 +698,7 @@ Insert the control as the **first** child of that innermost `flex flex-wrap` row
       <ProductOverrideSelector projectId={projectId} project={project} />
 ```
 
-- [ ] **Step 2: Acceptances**
+- [x] **Step 2: Acceptances**
 
 In `components/acceptances/AcceptanceFilterBar.tsx`, add the same import. The returned JSX opens:
 
@@ -713,7 +713,7 @@ Insert the control as the first child, immediately before that search `<div>`:
       <ProductOverrideSelector projectId={projectId} project={project} />
 ```
 
-- [ ] **Step 3: Stop the docstring lying**
+- [x] **Step 3: Stop the docstring lying**
 
 `components/acceptances/acceptance-filters.ts` has a docstring above `readFilters` saying the scope "is global to the shell and persisted per project in localStorage … not per surface in the URL". Half of that is now false. Replace it with:
 
@@ -731,7 +731,7 @@ Insert the control as the first child, immediately before that search `<div>`:
  */
 ```
 
-- [ ] **Step 4: Typecheck and lint**
+- [x] **Step 4: Typecheck and lint**
 
 ```bash
 npx tsc --noEmit && npm run lint
@@ -739,7 +739,7 @@ npx tsc --noEmit && npm run lint
 
 Expected: no tsc output; 0 errors, 4 warnings.
 
-- [ ] **Step 5: Verify in the browser**
+- [x] **Step 5: Verify in the browser**
 
 ```bash
 npm run dev
@@ -753,7 +753,7 @@ On a project with products, sidebar set to **All products**:
 5. Set the sidebar to a named product — **both controls disappear** and the surfaces follow the sidebar.
 6. Set the sidebar back to All products — the earlier override returns (the param was never rewritten).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add components/delivery/DeliveryFilterBar.tsx components/acceptances/AcceptanceFilterBar.tsx components/acceptances/acceptance-filters.ts
@@ -772,7 +772,7 @@ Neither bar knows about the project today, so both gain two props.
 - Modify: `components/library/LibraryFilterBar.tsx`
 - Modify: `app/project/[id]/library/page.tsx`
 
-- [ ] **Step 1: `PyramidToolbar` takes the props and hosts the control**
+- [x] **Step 1: `PyramidToolbar` takes the props and hosts the control**
 
 Add the imports:
 
@@ -830,7 +830,7 @@ Replace the returned JSX with:
 
 The new wrapper keeps the toolbar's `justify-between` meaningful: the control and the step filter are both "what am I looking at", the view mode is "how", and they stay on opposite ends.
 
-- [ ] **Step 2: Pass them from the Pyramid page**
+- [x] **Step 2: Pass them from the Pyramid page**
 
 In `app/project/[id]/pyramid/page.tsx`, the render is:
 
@@ -856,7 +856,7 @@ Add the two props. `id` and `projectBundle` are already in scope (`useProject(id
 />
 ```
 
-- [ ] **Step 3: `LibraryFilterBar` takes the props and hosts the control**
+- [x] **Step 3: `LibraryFilterBar` takes the props and hosts the control**
 
 Add the imports:
 
@@ -906,7 +906,7 @@ Inside the returned JSX, the left cluster is the search `<div className="relativ
       </div>
 ```
 
-- [ ] **Step 4: Pass them from the Library page**
+- [x] **Step 4: Pass them from the Library page**
 
 In `app/project/[id]/library/page.tsx`:
 
@@ -921,7 +921,7 @@ In `app/project/[id]/library/page.tsx`:
 />
 ```
 
-- [ ] **Step 5: Typecheck and lint**
+- [x] **Step 5: Typecheck and lint**
 
 ```bash
 npx tsc --noEmit && npm run lint
@@ -929,7 +929,7 @@ npx tsc --noEmit && npm run lint
 
 Expected: no tsc output; 0 errors, 4 warnings.
 
-- [ ] **Step 6: Verify in the browser**
+- [x] **Step 6: Verify in the browser**
 
 ```bash
 npm run dev
@@ -941,7 +941,7 @@ Sidebar on All products, project with products:
 3. Library's `?species=` and `?product=` coexist; changing one keeps the other.
 4. Both controls disappear when the sidebar names a product.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add components/pyramid/PyramidToolbar.tsx components/library/LibraryFilterBar.tsx "app/project/[id]/pyramid/page.tsx" "app/project/[id]/library/page.tsx"
@@ -955,7 +955,7 @@ git commit -m "feat(pyramid,library): per-surface product control in the toolbar
 **Files:**
 - Modify: `app/project/[id]/pyramid/page.tsx:126`
 
-- [ ] **Step 1: Build the href from the scope**
+- [x] **Step 1: Build the href from the scope**
 
 The link today is:
 
@@ -1004,7 +1004,7 @@ Add `useCallback` to the existing `react` import if it is not already there. The
 href={acceptancesHref(element.value)}
 ```
 
-- [ ] **Step 2: Typecheck and lint**
+- [x] **Step 2: Typecheck and lint**
 
 ```bash
 npx tsc --noEmit && npm run lint
@@ -1012,7 +1012,7 @@ npx tsc --noEmit && npm run lint
 
 Expected: no tsc output; 0 errors, 4 warnings.
 
-- [ ] **Step 3: Verify in the browser**
+- [x] **Step 3: Verify in the browser**
 
 ```bash
 npm run dev
@@ -1020,7 +1020,7 @@ npm run dev
 
 Sidebar on All products. On `/project/<id>/pyramid`, narrow to a product, click an addressed element. You land on `/acceptances?product=<id>&value=<value>`, the Acceptances control reads that product, and the list is filtered to it. With no override on the Pyramid, the link carries `value` only, exactly as before.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add "app/project/[id]/pyramid/page.tsx"
@@ -1040,7 +1040,7 @@ Several docstrings assert that the scope is never a URL param, or predict the wr
 - Modify: `lib/utils/product-scope.ts` (file header, lines 1-11)
 - Modify: `docs/superpowers/specs/2026-08-02-multi-product-projects-design.md` (§ Decision 2)
 
-- [ ] **Step 1: Delivery page**
+- [x] **Step 1: Delivery page**
 
 Replace the comment above `const scope = useEffectiveProduct(id, projectBundle);` — currently "The shell's scope, never a URL param (§ Decision 2)…" — with:
 
@@ -1053,7 +1053,7 @@ Replace the comment above `const scope = useEffectiveProduct(id, projectBundle);
   // an override cannot apply before the bundle can validate it.
 ```
 
-- [ ] **Step 2: Library page**
+- [x] **Step 2: Library page**
 
 Replace "The shell's scope, never a URL param (§ Decision 2). With no products declared…" with:
 
@@ -1064,7 +1064,7 @@ Replace "The shell's scope, never a URL param (§ Decision 2). With no products 
   // today's library.
 ```
 
-- [ ] **Step 3: Acceptances page**
+- [x] **Step 3: Acceptances page**
 
 Replace "The product scope is not a filter-bar control, so it is layered on here rather than read from the URL…" with:
 
@@ -1077,7 +1077,7 @@ Replace "The product scope is not a filter-bar control, so it is layered on here
   // narrows correctly even before `useProject` has resolved the bundle.
 ```
 
-- [ ] **Step 4: `product-scope.ts` file header**
+- [x] **Step 4: `product-scope.ts` file header**
 
 The header ends "That is what keeps the deferred per-surface-override milestone cheap: an override becomes a different argument, not a different code path." Replace that sentence with:
 
@@ -1088,7 +1088,7 @@ The header ends "That is what keeps the deferred per-surface-override milestone 
  * functions, not a second code path — and it is why it must stay true.
 ```
 
-- [ ] **Step 5: Products design doc**
+- [x] **Step 5: Products design doc**
 
 In `docs/superpowers/specs/2026-08-02-multi-product-projects-design.md`, § Decision 2 says per-surface override "is deferred to a follow-up issue" and predicts `override ?? global`. Append to that section:
 
@@ -1102,7 +1102,7 @@ summary, and the maps already resolve a per-surface product through `mapProductI
 `2026-08-03-per-surface-product-override-design.md`.
 ```
 
-- [ ] **Step 6: Full verification**
+- [x] **Step 6: Full verification**
 
 ```bash
 npm run test:product-scope && npx tsc --noEmit && npm run lint && npm run build
@@ -1110,7 +1110,7 @@ npm run test:product-scope && npx tsc --noEmit && npm run lint && npm run build
 
 Expected: `All product-scope tests passed`; no tsc output; `✖ 4 problems (0 errors, 4 warnings)`; build succeeds.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add "app/project/[id]/delivery/page.tsx" "app/project/[id]/library/page.tsx" "app/project/[id]/acceptances/page.tsx" lib/utils/product-scope.ts docs/superpowers/specs/2026-08-02-multi-product-projects-design.md
@@ -1121,13 +1121,13 @@ git commit -m "docs(products): record the shipped override precedence and surfac
 
 ## Task 9: Open the PR
 
-- [ ] **Step 1: Push**
+- [x] **Step 1: Push**
 
 ```bash
 git push -u origin per-surface-product-override
 ```
 
-- [ ] **Step 2: Open the PR with a Lab Note**
+- [x] **Step 2: Open the PR with a Lab Note**
 
 This is a user-facing change, so `CLAUDE.md`'s Lab Note gate applies: the body **must** carry a `## Lab Note` section with exactly one ```yaml fence, `en.title` and `en.summary` required, every title and summary double-quoted, `suggested.molecule: arkaik`.
 
@@ -1168,7 +1168,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 3: Read the PR's own comments**
+- [x] **Step 3: Read the PR's own comments**
 
 `CLAUDE.md` is explicit: after opening, read the comments rather than assuming the note is fine. The advisory reminder posts problems as a PR comment and clears it once the body is fixed.
 
