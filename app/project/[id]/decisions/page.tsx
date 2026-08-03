@@ -1,0 +1,136 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { useParams } from "next/navigation";
+import { PlusIcon } from "lucide-react";
+import { toast } from "sonner";
+import type { Node as DataNode } from "@/lib/data/types";
+import { useNodes } from "@/lib/hooks/useNodes";
+import { useEdges } from "@/lib/hooks/useEdges";
+import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
+import { useProject } from "@/lib/hooks/useProject";
+import { useJournal } from "@/lib/hooks/useJournal";
+import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
+import { DecisionLog } from "@/components/decisions/DecisionLog";
+import { PageShell } from "@/components/layout/PageShell";
+import { generateNodeId } from "@/lib/utils/id";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { lifecycleStatusForDecision } from "@arkaik/schema";
+
+export default function ProjectDecisionsPage() {
+  const params = useParams();
+  const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
+
+  const { openNode } = useProjectPanels();
+  const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode } = useNodes(id);
+  const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
+  const { project: projectBundle } = useProject(id);
+  const { journal } = useJournal(id);
+  const scope = useEffectiveProduct(id, projectBundle);
+
+  const [newOpen, setNewOpen] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+
+  const decisions = useMemo(
+    () => dataNodes.filter((node) => node.species === "decision"),
+    [dataNodes],
+  );
+  const nodesById = useMemo(() => new Map(dataNodes.map((n) => [n.id, n])), [dataNodes]);
+
+  function handleSelectNode(node: DataNode) {
+    openNode({ nodeId: node.id });
+  }
+
+  async function handleNodeUpdate(nodeId: string, patch: Partial<Omit<DataNode, "id" | "project_id">>) {
+    await updateNode(nodeId, patch);
+  }
+
+  // A new decision is born proposed; the lifecycle status carries the synced
+  // value from day one (proposed → discovery, spec §2). Decisions carry no
+  // platforms — availability is not a tracked dimension for them.
+  async function handleCreateDecision() {
+    const title = newTitle.trim();
+    if (title === "") return;
+    setNewOpen(false);
+    setNewTitle("");
+    try {
+      const created = await addNode({
+        id: generateNodeId("decision", title, nodesById.keys()),
+        project_id: id,
+        species: "decision",
+        title,
+        status: lifecycleStatusForDecision("proposed"),
+        platforms: [],
+        metadata: { decision_status: "proposed" },
+      });
+      handleSelectNode(created);
+    } catch (err) {
+      toast.error("Couldn't create the decision.");
+      console.error(err);
+    }
+  }
+
+  if (nodesLoading || edgesLoading) {
+    return (
+      <div className="h-full w-full flex items-center justify-center">
+        <span className="text-muted-foreground text-sm">Loading decisions...</span>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <PageShell
+        title="Decisions"
+        meta={`${decisions.length} total`}
+        action={{ label: "New decision", icon: PlusIcon, onClick: () => setNewOpen(true) }}
+        allNodes={dataNodes}
+        allEdges={dataEdges}
+        scope={scope}
+        journal={journal}
+        onUpdate={handleNodeUpdate}
+      >
+        <div className="h-full overflow-auto p-4 md:p-6">
+          <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+            <DecisionLog
+              decisions={decisions}
+              allEdges={dataEdges}
+              journal={journal}
+              onSelect={handleSelectNode}
+            />
+          </div>
+        </div>
+      </PageShell>
+      <Dialog open={newOpen} onOpenChange={setNewOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New decision</DialogTitle>
+            <DialogDescription className="sr-only">
+              Name the decision — the What. Context, consequences, and status are set in its panel.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="flex flex-col gap-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleCreateDecision();
+            }}
+          >
+            <Input
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              placeholder="Short decision statement — the What"
+              aria-label="Decision title"
+              autoFocus
+            />
+            <Button type="submit" disabled={newTitle.trim() === ""}>
+              Create
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}

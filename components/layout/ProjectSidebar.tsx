@@ -14,6 +14,7 @@ import {
   NetworkIcon,
   PyramidIcon,
   RouteIcon,
+  ScaleIcon,
   SearchIcon,
   ServerIcon,
   SquareKanbanIcon,
@@ -234,6 +235,14 @@ export function ProjectSidebar({
                 <Link href={`/project/${projectId}/acceptances`}>
                   <ClipboardCheckIcon />
                   <span>Acceptances</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={currentView === "decisions"} tooltip="Decisions">
+                <Link href={`/project/${projectId}/decisions`}>
+                  <ScaleIcon />
+                  <span>Decisions</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
