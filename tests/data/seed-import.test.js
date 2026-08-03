@@ -92,6 +92,10 @@ for (const rel of BUNDLES) {
 {
   const rel = "seed/pebbles.json";
   const bundle = JSON.parse(fs.readFileSync(path.join(ROOT, rel), "utf8"));
+  assert(
+    bundle.schema_version === 2,
+    `${rel}: TEST PRECONDITION — seed still declares schema_version 2. Pebbles seed regenerated at v3? This block's premise (old-vocabulary backlog remaps to idea) is gone — rewrite it alongside the seed change`,
+  );
   const oldBacklogIds = bundle.nodes.filter((n) => n.status === "backlog").map((n) => n.id);
   assert(oldBacklogIds.length > 0, `${rel}: fixture still carries old-vocabulary backlog nodes (test precondition)`);
 

@@ -403,7 +403,7 @@ function v2StatusBundle() {
   const out = migrateBundle(fresh);
   assert(
     out.schema_version === CURRENT_SCHEMA_VERSION && CURRENT_SCHEMA_VERSION === 3,
-    "fresh create: an unversioned empty bundle is stamped with the current schema_version (3)",
+    "fresh create: an unversioned empty bundle is stamped with the current schema_version (3 — pinned on purpose: re-check the creation seam when bumping)",
   );
   assert(eq(out.nodes, []) && eq(out.edges, []), "fresh create: nothing else changes on an empty bundle");
 }

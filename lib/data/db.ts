@@ -219,20 +219,25 @@ async function migrateLegacyLocalStorage(db: ArkaikDB): Promise<void> {
  * - Errors are swallowed (logged): a failed sweep leaves the affected rows
  *   unstamped and simply retries on the next open, exactly like the legacy
  *   localStorage import above — a migration failure must never lock the DB out.
+ * - The read + rewrites run in ONE `rw` transaction on `projects` (the file's
+ *   convention — see migrateLegacyLocalStorage and the provider's writers), so
+ *   a concurrent tab's write can't be clobbered by a stale put from this loop.
  */
 async function migrateStoredProjects(db: ArkaikDB): Promise<void> {
   try {
-    const records = await db.projects.toArray();
-    for (const record of records) {
-      const declared = (record.snapshot as { schema_version?: unknown }).schema_version;
-      if (typeof declared === "number" && declared >= CURRENT_SCHEMA_VERSION) continue;
-      // A snapshot is a bundle without its journal; the chain accepts that
-      // as-is (`journal` is optional) and never adds one back — splitBundle
-      // here only re-asserts the no-journal-in-snapshot invariant. The record
-      // spread keeps any future fields beyond {id, snapshot}.
-      const { snapshot } = splitBundle(migrateBundle(record.snapshot));
-      await db.projects.put({ ...record, snapshot });
-    }
+    await db.transaction("rw", db.projects, async () => {
+      const records = await db.projects.toArray();
+      for (const record of records) {
+        const declared = (record.snapshot as { schema_version?: unknown }).schema_version;
+        if (typeof declared === "number" && declared >= CURRENT_SCHEMA_VERSION) continue;
+        // A snapshot is a bundle without its journal; the chain accepts that
+        // as-is (`journal` is optional) and never adds one back — splitBundle
+        // here only re-asserts the no-journal-in-snapshot invariant. The record
+        // spread keeps any future fields beyond {id, snapshot}.
+        const { snapshot } = splitBundle(migrateBundle(record.snapshot));
+        await db.projects.put({ ...record, snapshot });
+      }
+    });
   } catch (err) {
     console.error("[LocalProvider] Stored-project schema sweep failed (will retry):", err);
   }
