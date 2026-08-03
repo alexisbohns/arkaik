@@ -19,6 +19,7 @@ const BUILD_DIR = path.join(__dirname, ".test-build-journey-graph");
 const MODULES = [
   ["lib/config/platforms.ts", "config-platforms"],
   ["lib/config/statuses.ts", "config-statuses"],
+  ["lib/utils/blocked.ts", "blocked"],
   ["lib/utils/platform-status.ts", "platform-status"],
   ["lib/utils/graph-build.ts", "graph-build"],
   // The membership restriction and the anchor chain the journey now resolves
@@ -34,6 +35,7 @@ const SPECIFIER_MAP = {
   "@/lib/config/statuses": "./config-statuses",
   "@/lib/config/edge-types": "./config-edge-types", // type-only in this graph
   "@/lib/data/types": "./types", // type-only in this graph
+  "@/lib/utils/blocked": "./blocked",
   "@/lib/utils/platform-status": "./platform-status",
   "@/lib/utils/graph-build": "./graph-build",
   "@/lib/utils/product-scope": "./product-scope",

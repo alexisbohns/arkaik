@@ -1,60 +1,105 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
-import { LightbulbIcon, MessageSquareTextIcon, TagIcon } from "lucide-react";
+import {
+  ExternalLinkIcon,
+  LightbulbIcon,
+  MessageSquareTextIcon,
+  PackageIcon,
+  ScaleIcon,
+  TagIcon,
+} from "lucide-react";
 import { orderEvents } from "@arkaik/schema";
 import { PageShell } from "@/components/layout/PageShell";
+import { DecisionStatusBadge } from "@/components/layout/DecisionStatusBadge";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
 import { useJournal } from "@/lib/hooks/useJournal";
-import { computeBacklog, computeChangelog, type Backlog, type Changelog } from "@/lib/utils/journal";
+import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
+import {
+  computeBacklog,
+  computeCommitments,
+  computeDeliverables,
+  type Backlog,
+  type Deliverable,
+} from "@/lib/utils/journal";
 import { describeJournalEvent, formatEventDate } from "@/components/journal/describe-event";
+import type { DecisionStatusId } from "@/lib/config/decision-statuses";
 import { PLATFORM_LABELS } from "@/components/graph/nodes/node-styles";
 import { productScopeMetaLabel } from "@/lib/utils/product-scope";
-import type { Node, ReleaseTaggedEvent } from "@/lib/data/types";
+import type { Node, JournalEvent, ReleaseTaggedEvent } from "@/lib/data/types";
 
-interface ReleaseEntry {
-  tag: ReleaseTaggedEvent;
-  changelog: Changelog;
+/** One deliverable row: title, note, PR link, touched-node chips. */
+function DeliverableRow({ deliverable, nodesById }: { deliverable: Deliverable; nodesById: Map<string, Node> }) {
+  return (
+    <div className="flex items-start gap-2 rounded-md border px-3 py-2 text-sm">
+      <PackageIcon className="size-3.5 shrink-0 text-muted-foreground mt-0.5" aria-hidden="true" />
+      <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+        <div className="flex items-center gap-2 min-w-0">
+          <p className="truncate font-medium">{deliverable.title}</p>
+          {deliverable.url && (
+            <a
+              href={deliverable.url}
+              target="_blank"
+              rel="noreferrer"
+              className="shrink-0 text-muted-foreground hover:text-foreground"
+              aria-label={`Open pull request: ${deliverable.title}`}
+            >
+              <ExternalLinkIcon className="size-3.5" />
+            </a>
+          )}
+        </div>
+        {deliverable.summary && <p className="text-xs text-muted-foreground">{deliverable.summary}</p>}
+        {deliverable.node_ids.length > 0 && (
+          <div className="flex flex-wrap gap-1 pt-0.5">
+            {deliverable.node_ids.map((id) => (
+              <span key={id} className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
+                {nodesById.get(id)?.title ?? id}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+      <span className="text-xs text-muted-foreground shrink-0">{formatEventDate(deliverable.ts)}</span>
+    </div>
+  );
 }
 
-function ReleaseCard({ entry, nodesById }: { entry: ReleaseEntry; nodesById: Map<string, Node> }) {
-  const { tag, changelog } = entry;
-
+/** A release card: version marker + note + its deliverables (not the raw feed). */
+function ReleaseCard({
+  tag,
+  deliverables,
+  nodesById,
+}: {
+  tag: ReleaseTaggedEvent;
+  deliverables: Deliverable[];
+  nodesById: Map<string, Node>;
+}) {
   return (
     <div className="rounded-xl border bg-card p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <TagIcon className="size-4 text-muted-foreground" aria-hidden="true" />
-          <span className="text-sm font-semibold">{changelog.toVersion}</span>
-          {changelog.platform && (
+          <span className="text-sm font-semibold">{tag.version}</span>
+          {tag.platform && (
             <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
-              {PLATFORM_LABELS[changelog.platform]}
+              {PLATFORM_LABELS[tag.platform] ?? tag.platform}
             </span>
           )}
         </div>
         <span className="text-xs text-muted-foreground">{formatEventDate(tag.ts)}</span>
       </div>
       {tag.notes && <p className="text-sm text-muted-foreground">{tag.notes}</p>}
-      {changelog.events.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No changes recorded for this release.</p>
+      {deliverables.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No deliverables recorded for this release.</p>
       ) : (
-        <div className="flex flex-col gap-0.5">
-          {changelog.events.map((event) => {
-            const { icon: Icon, text, meta } = describeJournalEvent(event, nodesById);
-
-            return (
-              <div key={event.id} className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm">
-                <Icon className="size-3.5 shrink-0 text-muted-foreground mt-0.5" aria-hidden="true" />
-                <div className="flex-1 min-w-0">
-                  <p className="truncate">{text}</p>
-                  {meta && <p className="text-xs text-muted-foreground truncate">{meta}</p>}
-                </div>
-              </div>
-            );
-          })}
+        <div className="flex flex-col gap-1.5">
+          {deliverables.map((deliverable) => (
+            <DeliverableRow key={deliverable.deliverable_id} deliverable={deliverable} nodesById={nodesById} />
+          ))}
         </div>
       )}
     </div>
@@ -88,6 +133,51 @@ function BacklogList({ backlog }: { backlog: Backlog }) {
   );
 }
 
+/** A commitment or decision feed row. Clickable when `onOpen` is given (decisions deep-link to their node). */
+function FeedRow({
+  event,
+  nodesById,
+  trailing,
+  onOpen,
+}: {
+  event: JournalEvent;
+  nodesById: Map<string, Node>;
+  trailing?: ReactNode;
+  onOpen?: () => void;
+}) {
+  const { icon: Icon, text, meta } = describeJournalEvent(event, nodesById);
+
+  const content = (
+    <>
+      <Icon className="size-3.5 shrink-0 text-muted-foreground mt-0.5" aria-hidden="true" />
+      <div className="flex-1 min-w-0">
+        <p className="truncate">{text}</p>
+        {meta && <p className="text-xs text-muted-foreground truncate">{meta}</p>}
+      </div>
+      {trailing}
+      <span className="text-xs text-muted-foreground shrink-0">{formatEventDate(event.ts)}</span>
+    </>
+  );
+
+  if (onOpen) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm text-left w-full cursor-pointer hover:bg-muted/50 transition-colors"
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return <div className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm">{content}</div>;
+}
+
+function SectionHeading({ children }: { children: ReactNode }) {
+  return <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{children}</h3>;
+}
+
 export default function ChangelogPage() {
   const params = useParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
@@ -95,26 +185,42 @@ export default function ChangelogPage() {
   const { project: projectBundle, loading: projectLoading } = useProject(id);
   const { nodes: dataNodes, loading: nodesLoading } = useNodes(id);
   const { journal, loading: journalLoading } = useJournal(id);
+  const { openNode } = useProjectPanels();
   // Display only — the changelog itself stays unscoped; this just fills the
   // header's meta line with the same scope name every other surface shows.
   const scope = useEffectiveProduct(id, projectBundle);
 
   const nodesById = useMemo(() => new Map(dataNodes.map((node) => [node.id, node])), [dataNodes]);
 
-  const releases = useMemo<ReleaseEntry[]>(() => {
+  const deliverables = useMemo(() => computeDeliverables(journal), [journal]);
+  const unreleased = useMemo(
+    () => deliverables.filter((d) => d.releaseVersion === null).reverse(),
+    [deliverables],
+  );
+
+  const releases = useMemo(() => {
     const tags = orderEvents(
       journal.filter((event): event is ReleaseTaggedEvent => event.type === "release.tagged"),
     );
-    // A re-tagged version resolves to its latest occurrence (computeChangelog's own rule);
-    // keep the last one per version, most-recent release first.
+    // A re-tagged version resolves to its latest occurrence (latest content);
+    // keep the last occurrence per version, most-recent first by each
+    // version's first appearance — a re-tag updates a card in place rather
+    // than reshuffling.
     const byVersion = new Map<string, ReleaseTaggedEvent>();
     for (const tag of tags) byVersion.set(tag.version, tag);
 
     return [...byVersion.values()].reverse().map((tag) => ({
       tag,
-      changelog: computeChangelog(journal, tag.version, { nodesById }),
+      deliverables: deliverables.filter((d) => d.releaseVersion === tag.version),
     }));
-  }, [journal, nodesById]);
+  }, [journal, deliverables]);
+
+  const commitments = useMemo(() => computeCommitments(journal).reverse(), [journal]);
+
+  const decisionEvents = useMemo(
+    () => orderEvents(journal.filter((event) => event.type === "decision.status_changed")).reverse(),
+    [journal],
+  );
 
   const backlog = useMemo(
     () => computeBacklog(journal, { existingNodeIds: new Set(dataNodes.map((node) => node.id)) }),
@@ -147,35 +253,104 @@ export default function ChangelogPage() {
       }
     >
       <div className="h-full overflow-auto p-4 md:p-6">
-        <div className="flex w-full flex-col gap-8">
-          {isEmpty ? (
-            <div className="rounded-xl border border-dashed p-10 text-center">
-              <p className="text-sm text-muted-foreground">
-                No journal yet. Releases and updates will appear here once history is recorded.
-              </p>
-            </div>
-          ) : (
-            <>
-              <section className="flex flex-col gap-4">
-                <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Releases</h2>
-                {releases.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No releases tagged yet.</p>
+        {isEmpty ? (
+          <div className="rounded-xl border border-dashed p-10 text-center">
+            <p className="text-sm text-muted-foreground">
+              No journal yet. Releases and updates will appear here once history is recorded.
+            </p>
+          </div>
+        ) : (
+          <div className="grid w-full gap-6 lg:grid-cols-2 items-start">
+            {/* Design: the funnel — open backlog → commitments → decisions. */}
+            <section className="rounded-xl border bg-card/50 p-4 flex flex-col gap-5">
+              <h2 className="text-sm font-semibold">Design</h2>
+
+              <div className="flex flex-col gap-3">
+                <SectionHeading>Backlog</SectionHeading>
+                <BacklogList backlog={backlog} />
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <SectionHeading>Commitments</SectionHeading>
+                {commitments.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No commitments yet.</p>
                 ) : (
-                  <div className="flex flex-col gap-6">
-                    {releases.map((entry) => (
-                      <ReleaseCard key={entry.tag.id} entry={entry} nodesById={nodesById} />
+                  <div className="flex flex-col gap-0.5">
+                    {commitments.map((event) => (
+                      <FeedRow key={event.id} event={event} nodesById={nodesById} />
                     ))}
                   </div>
                 )}
-              </section>
+              </div>
 
-              <section className="flex flex-col gap-3">
-                <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Backlog</h2>
-                <BacklogList backlog={backlog} />
-              </section>
-            </>
-          )}
-        </div>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <SectionHeading>Decisions</SectionHeading>
+                  <Link
+                    href={`/project/${id}/decisions`}
+                    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    <ScaleIcon className="size-3.5" aria-hidden="true" />
+                    Decision Log →
+                  </Link>
+                </div>
+                {decisionEvents.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No decision activity yet.</p>
+                ) : (
+                  <div className="flex flex-col gap-0.5">
+                    {decisionEvents.map((event) => (
+                      <FeedRow
+                        key={event.id}
+                        event={event}
+                        nodesById={nodesById}
+                        trailing={
+                          typeof event.to === "string" ? (
+                            <DecisionStatusBadge status={event.to as DecisionStatusId} className="shrink-0" />
+                          ) : undefined
+                        }
+                        onOpen={typeof event.node_id === "string" ? () => openNode({ nodeId: event.node_id as string }) : undefined}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* Delivery: unreleased deliverables, then releases newest-first. */}
+            <section className="rounded-xl border bg-card/50 p-4 flex flex-col gap-5">
+              <h2 className="text-sm font-semibold">Delivery</h2>
+
+              {unreleased.length > 0 && (
+                <div className="flex flex-col gap-3">
+                  <SectionHeading>Unreleased</SectionHeading>
+                  <div className="flex flex-col gap-1.5">
+                    {unreleased.map((deliverable) => (
+                      <DeliverableRow key={deliverable.deliverable_id} deliverable={deliverable} nodesById={nodesById} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-3">
+                <SectionHeading>Releases</SectionHeading>
+                {releases.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No releases tagged yet.</p>
+                ) : (
+                  <div className="flex flex-col gap-4">
+                    {releases.map((entry) => (
+                      <ReleaseCard
+                        key={entry.tag.id}
+                        tag={entry.tag}
+                        deliverables={entry.deliverables}
+                        nodesById={nodesById}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
+          </div>
+        )}
       </div>
     </PageShell>
   );

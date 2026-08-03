@@ -25,6 +25,7 @@ import type {
   ReleaseTaggedEvent,
   IdeaProposedEvent,
   RequestFiledEvent,
+  NodeStatusChangedEvent,
 } from "./journal";
 import type { Node } from "./bundle";
 import type { PlatformId } from "./ids";
@@ -96,6 +97,13 @@ export interface Changelog {
   platform?: PlatformId;
   /** The events strictly between the two markers, in journal order. */
   events: JournalEvent[];
+  /**
+   * The deliverables whose release resolves to `toVersion`, in shipped order
+   * (§ Releases). Deliberately independent of a `fromVersion` override and of
+   * platform scoping: release association is the grouping, and a
+   * platform-scoped consumer filters on `Deliverable.platform` itself.
+   */
+  deliverables: Deliverable[];
 }
 
 export interface ChangelogOptions {
@@ -108,6 +116,8 @@ export interface ChangelogOptions {
    * Snapshot nodes keyed by id, used only to resolve platform filtering when the
    * `to` marker is platform-scoped. Absent → a platform-scoped changelog keeps
    * only events that name the platform themselves (e.g. `node.status_changed`).
+   * A `deliverable.shipped` event's `node_ids` are resolved through this same
+   * snapshot, the same way `edge.added` endpoints are.
    */
   nodesById?: ReadonlyMap<string, Pick<Node, "platforms">>;
 }
@@ -134,6 +144,9 @@ function eventAffectsPlatform(
   if (ev.type === "edge.added") {
     const edge = ev as EdgeAddedEvent;
     return onPlatform(edge.source_id) || onPlatform(edge.target_id);
+  }
+  if (ev.type === "deliverable.shipped" && Array.isArray(ev.node_ids)) {
+    return (ev.node_ids as unknown[]).some(onPlatform);
   }
   return false;
 }
@@ -163,7 +176,7 @@ export function computeChangelog(
     }
   }
   if (toIndex === -1) {
-    return { fromVersion: null, toVersion, events: [] };
+    return { fromVersion: null, toVersion, events: [], deliverables: [] };
   }
 
   const platform = asString((ordered[toIndex] as ReleaseTaggedEvent).platform) as PlatformId | undefined;
@@ -199,6 +212,7 @@ export function computeChangelog(
     toVersion,
     ...(platform ? { platform } : {}),
     events: slice,
+    deliverables: computeDeliverables(ordered).filter((d) => d.releaseVersion === toVersion),
   };
 }
 
@@ -261,4 +275,116 @@ export function computeBacklog(events: readonly JournalEvent[], options: Backlog
     requests: items.filter((item): item is RequestFiledEvent => item.type === "request.filed"),
     items,
   };
+}
+
+// --- Deliverables ---------------------------------------------------------
+
+/**
+ * One deliverable, resolved from its `deliverable.shipped` occurrences
+ * (docs/spec/journal.md § Releases): content from the LATEST occurrence,
+ * anchored at the FIRST — the first occurrence is when it shipped, and later
+ * re-appends edit content without moving it between releases.
+ */
+export interface Deliverable {
+  deliverable_id: string;
+  title: string;
+  summary?: string;
+  url?: string;
+  /** Graph entities the deliverable touched. Empty when the event carried none. */
+  node_ids: string[];
+  platform?: PlatformId;
+  /** The first occurrence's timestamp — when the deliverable shipped. */
+  ts: string;
+  /** The release whose changelog slice contains the anchor, or `null` (unreleased). */
+  releaseVersion: string | null;
+}
+
+/**
+ * Every deliverable in the journal, in shipped (first-occurrence) order. A
+ * release's slice boundaries follow {@link computeChangelog}: the version's
+ * LAST marker is the `to` boundary, the nearest preceding `release.tagged` of
+ * any version the `from`. Events without a string `deliverable_id` are skipped
+ * (render-never-crash). Latest-wins is strict: a re-append that omits a field
+ * drops it (a missing `title` falls back to the id, not to an earlier
+ * occurrence's title). An empty journal yields `[]`.
+ */
+export function computeDeliverables(events: readonly JournalEvent[]): Deliverable[] {
+  const ordered = orderEvents(events);
+
+  // First-occurrence index (anchor) and latest occurrence (content) per id.
+  const firstIndex = new Map<string, number>();
+  const latest = new Map<string, JournalEvent>();
+  ordered.forEach((ev, i) => {
+    if (ev.type !== "deliverable.shipped") return;
+    const id = asString(ev.deliverable_id);
+    if (id === undefined) return;
+    if (!firstIndex.has(id)) firstIndex.set(id, i);
+    latest.set(id, ev);
+  });
+  if (firstIndex.size === 0) return [];
+
+  // Latest marker per version (re-tag resolves latest-wins), then each
+  // version's (from, to) window exactly as computeChangelog slices it.
+  const markerLatest = new Map<string, number>();
+  ordered.forEach((ev, i) => {
+    if (ev.type !== "release.tagged") return;
+    const version = asString((ev as ReleaseTaggedEvent).version);
+    if (version !== undefined) markerLatest.set(version, i);
+  });
+  const windows: { version: string; from: number; to: number }[] = [];
+  for (const [version, toIndex] of markerLatest) {
+    let fromIndex = -1;
+    for (let i = toIndex - 1; i >= 0; i -= 1) {
+      if (ordered[i].type === "release.tagged") {
+        fromIndex = i;
+        break;
+      }
+    }
+    windows.push({ version, from: fromIndex, to: toIndex });
+  }
+  const releaseOf = (index: number): string | null => {
+    for (const w of windows) {
+      if (index > w.from && index < w.to) return w.version;
+    }
+    return null;
+  };
+
+  // Map insertion order is first-occurrence order — already "shipped order".
+  const out: Deliverable[] = [];
+  for (const [id, anchorIndex] of firstIndex) {
+    const ev = latest.get(id);
+    if (ev === undefined) continue;
+    const summary = asString(ev.summary);
+    const url = asString(ev.url);
+    const platform = asString(ev.platform) as PlatformId | undefined;
+    out.push({
+      deliverable_id: id,
+      title: asString(ev.title) ?? id,
+      ...(summary !== undefined ? { summary } : {}),
+      ...(url !== undefined ? { url } : {}),
+      node_ids: Array.isArray(ev.node_ids)
+        ? (ev.node_ids as unknown[]).filter((n): n is string => typeof n === "string")
+        : [],
+      ...(platform !== undefined ? { platform } : {}),
+      ts: asString(ordered[anchorIndex].ts) ?? "",
+      releaseVersion: releaseOf(anchorIndex),
+    });
+  }
+  return out;
+}
+
+// --- Commitments ----------------------------------------------------------
+
+/**
+ * The ordered commitment transitions — `idea → discovery` and
+ * `discovery → backlog` — the Design panel's feed. Legacy pre-v3 ids never
+ * match (history is read as written). An empty journal yields `[]`.
+ */
+export function computeCommitments(events: readonly JournalEvent[]): NodeStatusChangedEvent[] {
+  return orderEvents(events).filter((ev): ev is NodeStatusChangedEvent => {
+    if (ev.type !== "node.status_changed") return false;
+    const from = asString(ev.from);
+    const to = asString(ev.to);
+    return (from === "idea" && to === "discovery") || (from === "discovery" && to === "backlog");
+  });
 }

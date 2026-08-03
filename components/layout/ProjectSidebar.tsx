@@ -6,7 +6,6 @@ import {
   ClipboardCheckIcon,
   DatabaseIcon,
   GitBranchIcon,
-  HistoryIcon,
   LayoutDashboardIcon,
   MapIcon,
   MapPinnedIcon,
@@ -15,6 +14,7 @@ import {
   PyramidIcon,
   RouteIcon,
   ScaleIcon,
+  ScrollTextIcon,
   SearchIcon,
   ServerIcon,
   SquareKanbanIcon,
@@ -151,7 +151,7 @@ export function ProjectSidebar({
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={currentView === "changelog"} tooltip="Changelog">
                 <Link href={changelogHref}>
-                  <HistoryIcon />
+                  <ScrollTextIcon />
                   <span>Changelog</span>
                 </Link>
               </SidebarMenuButton>

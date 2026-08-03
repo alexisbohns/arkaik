@@ -92,6 +92,7 @@ export function PlatformRingSet({
                 `All platforms, ${count} ${countLabel} across ${statusTotal} platform statuses`,
                 totalSegments,
               )}
+              blockedCount={rollup.blocked ?? 0}
             >
               <span className={`font-semibold tabular-nums ${centerText}`}>{count}</span>
             </StatusRing>

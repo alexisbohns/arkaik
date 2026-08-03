@@ -33,6 +33,7 @@ export const JOURNAL_EVENT_TYPES = [
   "edge.added",
   "edge.removed",
   "release.tagged",
+  "deliverable.shipped",
   "idea.proposed",
   "request.filed",
   "ref.added",
@@ -128,6 +129,21 @@ export interface ReleaseTaggedEvent extends JournalEvent {
   platform?: PlatformId;
 }
 
+/**
+ * A unit of shipped work (typically one merged PR): entity changes + a summary
+ * note. Re-appending with the same `deliverable_id` edits — consumers resolve
+ * content latest-wins, anchored at the first occurrence (when it shipped).
+ */
+export interface DeliverableShippedEvent extends JournalEvent {
+  type: "deliverable.shipped";
+  deliverable_id: string;
+  title: string;
+  summary?: string;
+  url?: string;
+  node_ids?: string[];
+  platform?: PlatformId;
+}
+
 /** An idea, before (or linked to) any node. */
 export interface IdeaProposedEvent extends JournalEvent {
   type: "idea.proposed";
@@ -181,6 +197,7 @@ export type KnownJournalEvent =
   | EdgeAddedEvent
   | EdgeRemovedEvent
   | ReleaseTaggedEvent
+  | DeliverableShippedEvent
   | IdeaProposedEvent
   | RequestFiledEvent
   | RefAddedEvent
@@ -485,6 +502,21 @@ export function crossCheckJournal(bundle: Record<string, unknown>): JournalFindi
           });
         }
       }
+    }
+    // deliverable.shipped carries an ARRAY of node refs — NODE_REF_FIELDS
+    // handles scalar fields only, so the array is walked here.
+    if (ev.type === "deliverable.shipped" && Array.isArray(ev.node_ids)) {
+      (ev.node_ids as unknown[]).forEach((raw, i) => {
+        const ref = str(raw);
+        if (ref !== undefined && !everNodes.has(ref)) {
+          findings.push({
+            path: `journal[${index}].node_ids[${i}]`,
+            rule: "journal-dangling-node-ref",
+            message: `journal[${index}] (${ev.type}): references node "${ref}" that never existed in the snapshot or journal.`,
+            severity: "error",
+          });
+        }
+      });
     }
     if (ev.type === "edge.removed") {
       const ref = str(ev.edge_id);

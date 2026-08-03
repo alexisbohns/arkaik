@@ -66,15 +66,17 @@ function ProjectChrome({ children }: { children: React.ReactNode }) {
         ? "delivery"
         : pathname.startsWith(`/project/${id}/changelog`)
           ? "changelog"
-          : pathname.startsWith(`/project/${id}/acceptances`)
-            ? "acceptances"
-            : pathname.startsWith(`/project/${id}/decisions`)
-              ? "decisions"
-              : pathname.startsWith(`/project/${id}/pyramid`)
-                ? "pyramid"
-                : pathname.startsWith(`/project/${id}/settings`)
-                  ? "settings"
-                  : "maps";
+          : pathname.startsWith(`/project/${id}/history`)
+            ? "history"
+            : pathname.startsWith(`/project/${id}/acceptances`)
+              ? "acceptances"
+              : pathname.startsWith(`/project/${id}/decisions`)
+                ? "decisions"
+                : pathname.startsWith(`/project/${id}/pyramid`)
+                  ? "pyramid"
+                  : pathname.startsWith(`/project/${id}/settings`)
+                    ? "settings"
+                    : "maps";
   const currentSpecies = currentView === "library" ? searchParams.get("species") : null;
   // The species filter travels across projects; an open panel does not — its
   // node id means nothing in the project you are switching to.

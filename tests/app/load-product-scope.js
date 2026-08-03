@@ -31,6 +31,7 @@ const MODULES = [
   // so the suite calls the real function; that means the real module on disk,
   // and therefore its own statuses config too.
   ["lib/config/statuses.ts", "statuses"],
+  ["lib/utils/blocked.ts", "blocked"],
   ["lib/utils/platform-status.ts", "platform-status"],
   ["lib/utils/product-scope.ts", "product-scope"],
   ["lib/utils/product-scope-store.ts", "product-scope-store"],
@@ -58,7 +59,8 @@ function loadProductScope() {
     const rewritten = outputText
       .replace(/require\((['"])@arkaik\/schema\1\)/g, `require(${JSON.stringify(schemaIndex)})`)
       .replace(/require\((['"])@\/lib\/config\/platforms\1\)/g, `require("./platforms.js")`)
-      .replace(/require\((['"])@\/lib\/config\/statuses\1\)/g, `require("./statuses.js")`);
+      .replace(/require\((['"])@\/lib\/config\/statuses\1\)/g, `require("./statuses.js")`)
+      .replace(/require\((['"])@\/lib\/utils\/blocked\1\)/g, `require("./blocked.js")`);
     fs.writeFileSync(path.join(BUILD_DIR, `${outName}.js`), rewritten);
   }
 

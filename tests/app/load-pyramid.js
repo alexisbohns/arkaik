@@ -10,6 +10,7 @@ const MODULES = [
   ["lib/config/platforms.ts", "config-platforms"],
   ["lib/config/statuses.ts", "config-statuses"],
   ["lib/config/values.ts", "config-values"],
+  ["lib/utils/blocked.ts", "blocked"],
   ["lib/utils/platform-status.ts", "platform-status"],
   // `computeScopedPyramidTiers` composes the Acceptances surface's own filter,
   // so pyramid.ts requires acceptance-matrix.ts at runtime now — and with it
@@ -26,6 +27,7 @@ const SPECIFIER_MAP = {
   "@/lib/config/statuses": "./config-statuses",
   "@/lib/config/values": "./config-values",
   "@/lib/data/types": "./types", // type-only in this graph
+  "@/lib/utils/blocked": "./blocked",
   "@/lib/utils/platform-status": "./platform-status",
   "@/lib/utils/search": "./search",
   "@/lib/utils/product-scope": "./product-scope",

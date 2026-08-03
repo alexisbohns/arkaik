@@ -144,10 +144,31 @@ export function runRelease(args: string[]): void {
   console.log(
     changelog.fromVersion ? `  Changes since ${changelog.fromVersion}:\n` : `  Initial changes:\n`,
   );
-  if (changelog.events.length === 0) {
-    console.log("  (no changes in this release)");
+  // Platform-scoped drafts keep deliverables that carry that platform OR no
+  // platform at all — an unscoped claim covers every platform (the #293
+  // monorepo-scoping convention). Changelog.deliverables is deliberately
+  // platform-independent (see its doc).
+  const draftDeliverables = changelog.platform
+    ? changelog.deliverables.filter((d) => d.platform === undefined || d.platform === changelog.platform)
+    : changelog.deliverables;
+
+  if (draftDeliverables.length > 0) {
+    console.log("  Deliverables:");
+    draftDeliverables.forEach((d) => {
+      console.log(`  - ${d.title}${d.summary ? ` — ${d.summary}` : ""}${d.url ? ` (${d.url})` : ""}`);
+    });
+    console.log("");
+  }
+  // With a Deliverables section above, the flat list is the *other* events —
+  // repeating each deliverable as "Shipped: …" would double-list it.
+  const draftEvents =
+    draftDeliverables.length > 0
+      ? changelog.events.filter((ev) => ev.type !== "deliverable.shipped")
+      : changelog.events;
+  if (draftEvents.length === 0) {
+    console.log(draftDeliverables.length > 0 ? "  (no other events in this release)" : "  (no changes in this release)");
   } else {
-    changelog.events.forEach((ev) => console.log(`  - ${renderEventLine(ev, nodesById)}`));
+    draftEvents.forEach((ev) => console.log(`  - ${renderEventLine(ev, nodesById)}`));
   }
   console.log("");
 

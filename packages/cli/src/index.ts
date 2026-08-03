@@ -11,6 +11,7 @@ import { runInit } from "./commands/init";
 import { runValidate } from "./commands/validate";
 import { runLog } from "./commands/log";
 import { runRelease } from "./commands/release";
+import { runDeliverable } from "./commands/deliverable";
 import { runSyncCli } from "./commands/sync";
 import { runPackCli } from "./commands/pack";
 import { runOpenCli } from "./commands/open";
@@ -27,6 +28,7 @@ Commands:
   validate [path]             Validate a project bundle (folds in a journal.jsonl sidecar).
   log [--node <id>] [path]    Print the journal: project changelog, or one node's timeline.
   release <version> [path]    Tag a release (append release.tagged) and draft its notes.
+  deliverable <title> [path]  Record a deliverable (append deliverable.shipped).
   sync [options] [path]       Mirror external ref status (GitHub issues/PRs) into node refs.
   pack [options] [path]       Produce a single self-contained interchange bundle (embeds the journal).
   open [options] [path]       Validate, then hand off the packed bundle to arkaik.app import.
@@ -77,6 +79,9 @@ function main(argv: string[]): void {
       return;
     case "release":
       runRelease(rest);
+      return;
+    case "deliverable":
+      runDeliverable(rest);
       return;
     case "sync":
       runSyncCli(rest);
