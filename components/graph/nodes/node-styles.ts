@@ -12,8 +12,8 @@ import {
   Database,
   Plug,
   ClipboardCheck,
-  Lightbulb, CircleDashed, CircleDotDashed, CirclePlay, CircleFadingArrowUp,
-  CircleCheckBig, CircleSlash, CircleX,
+  Lightbulb, Compass, CircleDashed, CirclePlay, CircleFadingArrowUp,
+  CircleCheckBig, CircleSlash,
   Figma, Github, Gitlab, Ticket, GitPullRequest, GitMerge, ExternalLink, Link2,
 } from "lucide-react";
 
@@ -21,35 +21,32 @@ import {
 // and a badge therefore can never drift apart on color.
 export const STATUS_STYLES: Record<StatusId, { badge: string; dot: string; stroke: string }> = {
   idea:        { badge: "text-gray-400",    dot: "bg-gray-400",    stroke: "stroke-gray-400"   },
-  backlog:     { badge: "text-gray-500",    dot: "bg-gray-500",    stroke: "stroke-gray-500"   },
-  prioritized: { badge: "text-blue-400",    dot: "bg-blue-400",    stroke: "stroke-blue-400"   },
+  discovery:   { badge: "text-violet-400",  dot: "bg-violet-400",  stroke: "stroke-violet-400" },
+  backlog:     { badge: "text-blue-400",    dot: "bg-blue-400",    stroke: "stroke-blue-400"   },
   development: { badge: "text-blue-500",    dot: "bg-blue-500",    stroke: "stroke-blue-500"   },
   releasing:   { badge: "text-purple-500",  dot: "bg-purple-500",  stroke: "stroke-purple-500" },
   live:        { badge: "text-green-500",   dot: "bg-green-500",   stroke: "stroke-green-500"  },
   archived:    { badge: "text-gray-400",    dot: "bg-gray-400",    stroke: "stroke-gray-400"   },
-  blocked:     { badge: "text-red-500",     dot: "bg-red-500",     stroke: "stroke-red-500"    },
 };
 
 export const STATUS_ICONS: Record<StatusId, LucideIcon> = {
   idea:        Lightbulb,
+  discovery:   Compass,
   backlog:     CircleDashed,
-  prioritized: CircleDotDashed,
   development: CirclePlay,
   releasing:   CircleFadingArrowUp,
   live:        CircleCheckBig,
   archived:    CircleSlash,
-  blocked:     CircleX,
 };
 
 export const STATUS_LABELS: Record<StatusId, string> = {
   idea:        "Idea",
+  discovery:   "Discovery",
   backlog:     "Backlog",
-  prioritized: "Prioritized",
   development: "Development",
   releasing:   "Releasing",
   live:        "Live",
   archived:    "Archived",
-  blocked:     "Blocked",
 };
 
 export const PLATFORM_ICONS: Record<PlatformId, LucideIcon> = {
@@ -91,13 +88,12 @@ export const SPECIES_MINIMAP_FILL: Record<SpeciesId, string> = {
  */
 export const STATUS_MINIMAP_FILL: Record<StatusId, string> = {
   idea:        "#9ca3af", // gray-400
-  backlog:     "#6b7280", // gray-500
-  prioritized: "#60a5fa", // blue-400
+  discovery:   "#a78bfa", // violet-400
+  backlog:     "#60a5fa", // blue-400
   development: "#3b82f6", // blue-500
   releasing:   "#a855f7", // purple-500
   live:        "#22c55e", // green-500
   archived:    "#9ca3af", // gray-400
-  blocked:     "#ef4444", // red-500
 };
 
 export const PLATFORM_DOT_STYLES: Record<PlatformId, string> = {
@@ -120,13 +116,12 @@ export const PLATFORM_BORDER_STYLES: Record<PlatformId, string> = {
 
 export const STATUS_GHOST_STYLES: Record<StatusId, { wrapper: string; border: string }> = {
   idea:        { wrapper: "opacity-60", border: "border-dashed" },
+  discovery:   { wrapper: "",           border: ""              },
   backlog:     { wrapper: "",           border: ""              },
-  prioritized: { wrapper: "",           border: ""              },
   development: { wrapper: "",           border: ""              },
   releasing:   { wrapper: "",           border: ""              },
   live:        { wrapper: "",           border: ""              },
   archived:    { wrapper: "opacity-60", border: ""              },
-  blocked:     { wrapper: "",           border: ""              },
 };
 
 // Known `Ref.type` values (docs/spec/bundle-format.md § References). Keyed by

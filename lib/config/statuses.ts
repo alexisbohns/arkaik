@@ -2,13 +2,12 @@ import type { StatusId } from "@arkaik/schema";
 
 export const STATUSES = [
   { id: "idea",        label: "Idea",        order: 0 },
-  { id: "backlog",     label: "Backlog",     order: 1 },
-  { id: "prioritized", label: "Prioritized", order: 2 },
+  { id: "discovery",   label: "Discovery",   order: 1 },
+  { id: "backlog",     label: "Backlog",     order: 2 },
   { id: "development", label: "Development", order: 3 },
   { id: "releasing",   label: "Releasing",   order: 4 },
   { id: "live",        label: "Live",        order: 5 },
   { id: "archived",    label: "Archived",    order: 6 },
-  { id: "blocked",     label: "Blocked",     order: 7 },
 ] as const satisfies readonly { id: StatusId; label: string; order: number }[];
 
 export type { StatusId };
@@ -20,7 +19,7 @@ export const STATUS_ORDER: Record<StatusId, number> = Object.fromEntries(
 ) as Record<StatusId, number>;
 
 export const COUNTED_STATUS_PRESETS = {
-  delivery: ["prioritized", "development", "releasing", "live", "blocked"],
+  delivery: ["backlog", "development", "releasing", "live"],
 } as const satisfies Record<string, readonly StatusId[]>;
 
 export type CountedStatusPresetId = keyof typeof COUNTED_STATUS_PRESETS;
