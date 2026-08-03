@@ -112,19 +112,22 @@
     color: hsl(var(--foreground));
   }
 
-  /* Horizontal swipes never turn into browser back/forward navigation or a
-     page-wide shift — they stay inside whatever is being scrolled. */
+  /* Swipes never turn into browser back/forward navigation, a page-wide
+     bounce, or a pull-to-refresh — they stay inside whatever is being
+     scrolled. */
   html,
   body {
-    overscroll-behavior-x: none;
+    overscroll-behavior: none;
   }
 
   .overflow-auto,
   .overflow-x-auto,
+  .overflow-y-auto,
   .overflow-scroll,
   .overflow-x-scroll,
+  .overflow-y-scroll,
   [data-slot="table-container"] {
-    overscroll-behavior-x: contain;
+    overscroll-behavior: contain;
   }
 
   /* Controls are for clicking, not for selecting text. */
