@@ -178,6 +178,25 @@ export function productScopeOptions(
   }));
 }
 
+/**
+ * The scope's name for the header's meta line — the second row `PageHeader`
+ * shows in place of the breadcrumb trail when no panel is open (Overview,
+ * Delivery, Pyramid and Changelog otherwise pass no `meta` at all and sat
+ * permanently blank).
+ *
+ * **`undefined` when the project declares no products**, matching
+ * `ProductScopeSelector`'s own guard (`productScopeOptions(project).length
+ * === 0`): a project that has never heard of products must keep looking
+ * exactly as it did before the feature existed, so the header grows no new
+ * word either. `scope.productsById` is built from the same
+ * `resolveProducts(project)` call the selector's options are, so the two
+ * checks can never disagree.
+ */
+export function productScopeMetaLabel(scope: ProductScope): string | undefined {
+  if (scope.productsById.size === 0) return undefined;
+  return scope.productId === null ? "All products" : productDisplayTitle(scope.product);
+}
+
 /** Anchor ids an acceptance covers (outgoing `covers` edges). */
 export function coveredAnchorIds(acceptanceId: string, edges: readonly Edge[]): string[] {
   return edges
