@@ -68,6 +68,7 @@ interface JournalEvent {
 | `node.created` | `node_id`, `species`, `title` | Node added to the graph |
 | `node.updated` | `node_id`, `fields[]`, optional `from`/`to` for scalars | Non-status fields changed |
 | `node.status_changed` | `node_id`, `from`, `to`, `platform?` | Lifecycle transition; `platform` present when a per-platform view status moved. Historical events MAY carry the pre-v3 ids `prioritized`/`blocked` in `from`/`to`; validators MUST accept them — history is never rewritten |
+| `decision.status_changed` | `node_id`, `from`, `to` | A decision moved between decision states (`metadata.decision_status`); `from`/`to` are decision-status ids, not lifecycle ids |
 | `node.deleted` | `node_id` | Node removed. **Implies** cascade removal of every edge referencing it — writers do not emit the cascaded `edge.removed` events, and consumers/validators MUST apply the cascade |
 | `edge.added` | `edge_id`, `source_id`, `target_id`, `edge_type` | Relationship created |
 | `edge.removed` | `edge_id` | Relationship removed (non-cascade) |
@@ -84,7 +85,7 @@ The journal is **not** event sourcing, and v1 makes no replay promises. The rule
 
 1. **The snapshot is authoritative for current state. The journal is authoritative for history.**
 2. Writers (the skill, the CLI, later the app) **dual-write**: patch the snapshot *and* append the matching event in the same change.
-3. The validator cross-checks the two **by value, never by timestamp** (per-node timestamps don't exist and clocks lie): the last `node.status_changed.to` for a node must equal its current `status`; every node has a `node.created`; no event references a node or edge that never existed. Any mismatch is a validation error naming both sides.
+3. The validator cross-checks the two **by value, never by timestamp** (per-node timestamps don't exist and clocks lie): the last `node.status_changed.to` for a node must equal its current `status`; every node has a `node.created`; no event references a node or edge that never existed. Any mismatch is a validation error naming both sides. The same rule extends to decisions: the last `decision.status_changed.to` for a node must equal its current `metadata.decision_status` (absent reads as `proposed`). A node with at least one `decision.status_changed` event but no longer present in the snapshot (legitimately deleted after its last transition) is not cross-checked.
 4. Divergence is repaired **explicitly**: `arkaik doctor` appends corrective events to make history consistent with the snapshot (the snapshot wins). Consumers MUST NOT silently re-project the snapshot from the journal — that would launder drift instead of surfacing it.
 
 ## Releases, Compaction & Growth

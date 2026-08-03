@@ -18,10 +18,10 @@ block below — run `npm run generate`.
 
 <!-- GENERATED:SCHEMA:START -->
 ```typescript
-type SpeciesId = "flow" | "view" | "data-model" | "api-endpoint" | "acceptance";
+type SpeciesId = "flow" | "view" | "data-model" | "api-endpoint" | "acceptance" | "decision";
 type StatusId = "idea" | "discovery" | "backlog" | "development" | "releasing" | "live" | "archived";
 type PlatformId = "web" | "ios" | "android";
-type EdgeTypeId = "composes" | "calls" | "displays" | "queries" | "covers";
+type EdgeTypeId = "composes" | "calls" | "displays" | "queries" | "covers" | "supersedes" | "generates" | "impacts";
 
 type PlaylistEntry =
   | { type: "view"; view_id: string }
@@ -85,6 +85,14 @@ interface NodeMetadata extends Record<string, unknown> {
   values?: ValueId[];
   /** Product membership; meaningful on flow, view, and acceptance only. */
   product?: string;
+  /** Decision nodes: the decision's own status (spec §2). Not a lifecycle status. */
+  decision_status?: DecisionStatusId;
+  /** Decision nodes: Context — the Why (markdown). */
+  context?: string;
+  /** Decision nodes: Consequences — the How (markdown). */
+  consequences?: string;
+  /** Decision nodes: ISO 8601 date the decision was actually made (backfill-friendly; node.created events carry the write date, not this). */
+  decided_at?: string;
 }
 
 interface Node {
@@ -289,6 +297,7 @@ type KnownJournalEvent =
   | NodeCreatedEvent
   | NodeUpdatedEvent
   | NodeStatusChangedEvent
+  | DecisionStatusChangedEvent
   | NodeDeletedEvent
   | EdgeAddedEvent
   | EdgeRemovedEvent

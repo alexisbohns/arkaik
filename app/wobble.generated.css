@@ -34,12 +34,14 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-circle-check-big { filter: url(#wob-circle-check-big); }
 .lucide-circle-dashed { filter: url(#wob-circle-dashed); }
 .lucide-circle-dot { filter: url(#wob-circle-dot); }
+.lucide-circle-dot-dashed { filter: url(#wob-circle-dot-dashed); }
 .lucide-circle-fading-arrow-up { filter: url(#wob-circle-fading-arrow-up); }
 .lucide-circle-gauge { filter: url(#wob-circle-gauge); }
 .lucide-circle-play { filter: url(#wob-circle-play); }
 .lucide-circle-plus { filter: url(#wob-circle-plus); }
 .lucide-circle-slash { filter: url(#wob-circle-slash); }
 .lucide-circle-user { filter: url(#wob-circle-user); }
+.lucide-circle-x { filter: url(#wob-circle-x); }
 .lucide-clipboard-check { filter: url(#wob-clipboard-check); }
 .lucide-cloud { filter: url(#wob-cloud); }
 .lucide-cloud-download { filter: url(#wob-cloud-download); }
@@ -106,8 +108,10 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-plus { filter: url(#wob-plus); }
 .lucide-pyramid { filter: url(#wob-pyramid); }
 .lucide-refresh-cw { filter: url(#wob-refresh-cw); }
+.lucide-replace { filter: url(#wob-replace); }
 .lucide-route { filter: url(#wob-route); }
 .lucide-rows2 { filter: url(#wob-rows2); }
+.lucide-scale { filter: url(#wob-scale); }
 .lucide-search { filter: url(#wob-search); }
 .lucide-server { filter: url(#wob-server); }
 .lucide-settings2 { filter: url(#wob-settings2); }
@@ -125,6 +129,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-sunrise { filter: url(#wob-sunrise); }
 .lucide-table2 { filter: url(#wob-table2); }
 .lucide-tag { filter: url(#wob-tag); }
+.lucide-thumbs-up { filter: url(#wob-thumbs-up); }
 .lucide-ticket { filter: url(#wob-ticket); }
 .lucide-timer { filter: url(#wob-timer); }
 .lucide-trash2 { filter: url(#wob-trash2); }
