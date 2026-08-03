@@ -14,10 +14,17 @@
 
 import type { Node, NodeMetadata } from "@/lib/data/types";
 
+/** A raw `blocked_by` value as it should be read: trimmed and non-empty, or `undefined`. */
+export function normalizeBlockedBy(raw: string | undefined): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const trimmed = raw.trim();
+  return trimmed === "" ? undefined : trimmed;
+}
+
 /** The blocking reason as it should be read: a trimmed non-empty string, or `undefined`. */
 export function blockedByOf(metadata: NodeMetadata | undefined): string | undefined {
   const raw = metadata?.blocked_by;
-  return typeof raw === "string" && raw.trim() !== "" ? raw : undefined;
+  return normalizeBlockedBy(typeof raw === "string" ? raw : undefined);
 }
 
 /** Whether this node is blocked at its current status. */
@@ -39,9 +46,9 @@ export function withBlockedBy(
   metadata: NodeMetadata | undefined,
   blockedBy: string | null,
 ): NodeMetadata {
-  const value = typeof blockedBy === "string" && blockedBy.trim() !== "" ? blockedBy.trim() : null;
+  const value = normalizeBlockedBy(blockedBy ?? undefined);
   const next: Record<string, unknown> = { ...(metadata ?? {}) };
-  if (value === null) delete next.blocked_by;
+  if (value === undefined) delete next.blocked_by;
   else next.blocked_by = value;
   return next as NodeMetadata;
 }

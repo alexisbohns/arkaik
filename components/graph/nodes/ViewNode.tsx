@@ -109,7 +109,7 @@ function InlineStatusIcon({ status, blockedBy }: { status: StatusId; blockedBy?:
   const label = blockedBy ? `${STATUS_LABELS[status]} (blocked)` : STATUS_LABELS[status];
 
   return (
-    <span className="relative inline-flex items-center" aria-label={label}>
+    <span role="img" className="relative inline-flex items-center" aria-label={label}>
       <StatusIcon className={`size-5 ${statusStyles.badge}`} aria-hidden="true" />
       {blockedBy && (
         <Ban className="absolute -right-1 -bottom-1 w-2.5 h-2.5 text-red-500" aria-hidden="true" />

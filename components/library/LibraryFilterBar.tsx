@@ -54,7 +54,7 @@ export function LibraryFilterBar({
             variant={blockedOnly ? "default" : "outline"}
             aria-pressed={blockedOnly}
             onClick={() => onBlockedOnlyChange(!blockedOnly)}
-            className={blockedOnly ? "bg-red-500 text-white hover:bg-red-500/90" : "text-red-500 hover:text-red-600"}
+            className={blockedOnly ? "bg-red-500 text-white hover:bg-red-500/90" : "text-red-600 hover:text-red-700"}
           >
             <BanIcon className="size-4" /> Blocked
           </Button>

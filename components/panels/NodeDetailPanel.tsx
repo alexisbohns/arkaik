@@ -33,7 +33,7 @@ import {
 import type { ProductScope } from "@/lib/utils/product-scope";
 import { ProductPicker } from "@/components/panels/ProductPicker";
 import { withProductMembership } from "@/lib/utils/product-editing";
-import { withBlockedBy } from "@/lib/utils/blocked";
+import { normalizeBlockedBy, withBlockedBy } from "@/lib/utils/blocked";
 import { productOf } from "@arkaik/schema";
 import { findWhereUsed } from "@/lib/utils/where-used";
 import { computeNodeTimeline } from "@/lib/utils/journal";
@@ -77,7 +77,7 @@ function NodeFields({ node, onUpdate, allNodes, onNavigate }: NodeFieldsProps) {
   const [blockedBy, setBlockedBy] = useState(node.metadata?.blocked_by ?? "");
   const lastSavedTitleRef = useRef(node.title);
   const lastSavedDescriptionRef = useRef(node.description ?? "");
-  const lastSavedBlockedByRef = useRef(node.metadata?.blocked_by ?? "");
+  const lastSavedBlockedByRef = useRef(normalizeBlockedBy(node.metadata?.blocked_by) ?? "");
   const titleEditRef = useRef<HTMLDivElement>(null);
   const descriptionEditRef = useRef<HTMLDivElement>(null);
 
@@ -116,17 +116,20 @@ function NodeFields({ node, onUpdate, allNodes, onNavigate }: NodeFieldsProps) {
     return () => clearTimeout(timeout);
   }, [description, node.id, onUpdate]);
 
-  // Same debounced autosave as the description above. `withBlockedBy` owns the
-  // "empty means *absent*, never `blocked_by: \"\"`" rule and carries the rest
-  // of the metadata through untouched — a patch replaces `metadata` wholesale.
+  // Same debounced autosave as the description above, compared on the
+  // NORMALIZED value so whitespace-only edits never fire a no-op wholesale
+  // metadata write. `withBlockedBy` owns the "empty means *absent*, never
+  // `blocked_by: \"\"`" rule and carries the rest of the metadata through
+  // untouched — a patch replaces `metadata` wholesale.
   useEffect(() => {
-    if (blockedBy === lastSavedBlockedByRef.current) {
+    const normalized = normalizeBlockedBy(blockedBy) ?? "";
+    if (normalized === lastSavedBlockedByRef.current) {
       return;
     }
 
     const timeout = setTimeout(() => {
-      lastSavedBlockedByRef.current = blockedBy;
-      void onUpdate?.(node.id, { metadata: withBlockedBy(node.metadata, blockedBy || null) });
+      lastSavedBlockedByRef.current = normalized;
+      void onUpdate?.(node.id, { metadata: withBlockedBy(node.metadata, normalized || null) });
     }, AUTOSAVE_DELAY_MS);
 
     return () => clearTimeout(timeout);
@@ -134,7 +137,7 @@ function NodeFields({ node, onUpdate, allNodes, onNavigate }: NodeFieldsProps) {
 
   // When the value names a node this panel can see, surface its title — and
   // navigate through the same affordance every other node link here uses.
-  const blockedNode = allNodes?.find((n) => n.id === blockedBy.trim());
+  const blockedNode = allNodes?.find((n) => n.id === normalizeBlockedBy(blockedBy));
 
   function handleStatusChange(value: StatusId) {
     setStatus(value);
