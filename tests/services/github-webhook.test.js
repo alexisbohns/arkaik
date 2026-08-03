@@ -87,7 +87,7 @@ function acceptance(id, platforms, extra = {}) {
     project_id: "gp",
     species: "acceptance",
     title: id,
-    status: "prioritized",
+    status: "backlog",
     platforms,
     ...extra,
   };
@@ -628,7 +628,7 @@ async function main() {
       );
       check(
         "and neither base status moved",
-        checkout?.status === "prioritized" && search?.status === "prioritized",
+        checkout?.status === "backlog" && search?.status === "backlog",
         JSON.stringify([checkout?.status, search?.status]),
       );
 

@@ -22,6 +22,7 @@ import {
   edgeId,
   hasParityGap,
   listMaps,
+  normalizeStatus,
   orderEvents,
   resolvePlatformStatus,
   type Edge,
@@ -77,6 +78,20 @@ function requireString(args: Record<string, unknown>, key: string): string {
     throw new ToolError(`\`${key}\` is required and must be a non-empty string.`);
   }
   return value;
+}
+
+/**
+ * A caller-supplied status, normalized. The advertised enums carry only the
+ * current seven ids, but an agent replaying older instructions may still say
+ * `prioritized` or `blocked` — those map to their v3 meaning rather than
+ * refusing, and anything else is refused naming the ids that are accepted.
+ */
+function normalizeStatusArg(value: string): Node["status"] {
+  const normalized = normalizeStatus(value);
+  if (normalized === undefined) {
+    throw new ToolError(`"${value}" is not a status (expected one of: ${STATUS_IDS.join(", ")}).`);
+  }
+  return normalized;
 }
 
 function findNode(nodes: Node[], nodeId: string): Node {
@@ -192,6 +207,7 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
       const { nodes, edges } = await load(ctx);
       const query = typeof args.query === "string" ? args.query.toLowerCase() : undefined;
       const limit = typeof args.limit === "number" && args.limit >= 1 ? Math.floor(args.limit) : 50;
+      const status = typeof args.status === "string" ? normalizeStatusArg(args.status) : undefined;
       const anchorCoveringIds =
         typeof args.anchor === "string"
           ? new Set(acceptancesCovering(args.anchor, nodes, edges).map((node) => node.id))
@@ -199,7 +215,7 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
 
       const matches = nodes.filter((node) => {
         if (typeof args.species === "string" && node.species !== args.species) return false;
-        if (typeof args.status === "string" && node.status !== args.status) return false;
+        if (status !== undefined && node.status !== status) return false;
         if (typeof args.platform === "string" && !node.platforms.includes(args.platform as Node["platforms"][number]))
           return false;
         if (typeof args.value === "string" && (node.species !== "acceptance" || !(node.metadata?.values ?? []).includes(args.value as ValueId))) return false;
@@ -400,7 +416,7 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
         project_id: graph.project.id,
         title,
         species,
-        status: typeof args.status === "string" ? (args.status as Node["status"]) : "idea",
+        status: typeof args.status === "string" ? normalizeStatusArg(args.status) : "idea",
         platforms,
         ...(typeof args.description === "string" ? { description: args.description } : {}),
         ...(typeof args.metadata === "object" && args.metadata !== null
@@ -458,6 +474,9 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
           throw new ToolError(`Field "${key}" cannot be patched (allowed: ${[...UPDATABLE_NODE_FIELDS].join(", ")}).`);
         }
       }
+      // A legacy id in the patch lands at its current-vocabulary meaning; an
+      // unknown one is refused here, before the mutation runs.
+      if (typeof patch.status === "string") patch.status = normalizeStatusArg(patch.status);
 
       const graph = await load(ctx);
       const current = findNode(graph.nodes, nodeId);

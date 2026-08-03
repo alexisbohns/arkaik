@@ -93,7 +93,7 @@ function acceptance(id, platforms, extra = {}) {
     project_id: "gp",
     species: "acceptance",
     title: id,
-    status: "prioritized",
+    status: "backlog",
     platforms,
     ...extra,
   };
@@ -720,6 +720,38 @@ async function main() {
     check("and moving the base status", state.status === "live", JSON.stringify(state.status));
   }
   {
+    // THE LEGACY-POLICY CONTRACT (schema_version 3). A hand-written ref_policy
+    // may still speak the pre-v3 vocabulary — `computeRefPromotions` honours
+    // "prioritized" at its current-status meaning (packages/schema/src/promote.ts),
+    // so the node is written "backlog"; the dead id itself must never land in a
+    // status position. An unknown target, by contrast, is a policy typo:
+    // skipped, never guessed at.
+    const node = acceptance("AC-x", ["web"], { status: "development" });
+    const legacyPolicy = { "github-pr": { open: null, merged: "prioritized", closed: null } };
+    const ops = planOps(bundle([node], legacyPolicy), event({ body: "AC-x" }), wholeRepo());
+    const state = settle(node, ops);
+    check(
+      "a policy target in the legacy vocabulary is normalized before it is written",
+      state.status === "backlog",
+      JSON.stringify(state.status),
+    );
+    check(
+      "and the dead id never lands in a status position",
+      state.status !== "prioritized",
+      JSON.stringify(state.status),
+    );
+
+    const typoPolicy = { "github-pr": { open: null, merged: "shipped", closed: null } };
+    const typoOps = planOps(bundle([node], typoPolicy), event({ body: "AC-x" }), wholeRepo());
+    const typoState = settle(node, typoOps);
+    check(
+      "an unknown policy target moves nothing — a typo is skipped, never guessed at",
+      typoState.status === "development",
+      JSON.stringify(typoState.status),
+    );
+    check("…while the ref still attaches", refFor(typoState, null) !== undefined, JSON.stringify(typoState.metadata));
+  }
+  {
     // An explicit scope ABSORBS the bare mention of the same id — otherwise the
     // unscoped ref beside it would promote the base status on this very
     // delivery and claim parity everywhere.
@@ -734,7 +766,7 @@ async function main() {
     );
     check(
       "so the base status is untouched",
-      state.status === "prioritized",
+      state.status === "backlog",
       JSON.stringify({ status: state.status, platformStatuses: state.metadata?.platformStatuses }),
     );
   }
@@ -898,7 +930,7 @@ async function main() {
     );
     check(
       "and promotes only the platform it was asked for — the base status stays put",
-      state.status === "prioritized" && state.metadata?.platformStatuses?.ios === "live",
+      state.status === "backlog" && state.metadata?.platformStatuses?.ios === "live",
       () => JSON.stringify({ status: state.status, platformStatuses: state.metadata?.platformStatuses }),
     );
   }
@@ -943,7 +975,7 @@ async function main() {
     );
     check(
       "and neither base status moves",
-      stateA.status === "prioritized" && stateB.status === "prioritized",
+      stateA.status === "backlog" && stateB.status === "backlog",
       JSON.stringify([stateA.status, stateB.status]),
     );
   }
@@ -1021,7 +1053,7 @@ async function main() {
     );
     check(
       "and AC-a, whose ref belongs to another repository's PR, is NOT",
-      stateA.metadata?.platformStatuses === undefined && stateA.status === "prioritized",
+      stateA.metadata?.platformStatuses === undefined && stateA.status === "backlog",
       () => JSON.stringify({ status: stateA.status, platformStatuses: stateA.metadata?.platformStatuses }),
     );
     check(
@@ -1054,7 +1086,7 @@ async function main() {
     );
     check(
       "precondition: AC-a was scoped instead, so its base did not move",
-      stateA.status === "prioritized" && stateA.metadata?.platformStatuses?.ios === "live",
+      stateA.status === "backlog" && stateA.metadata?.platformStatuses?.ios === "live",
       () => JSON.stringify({ status: stateA.status, platformStatuses: stateA.metadata?.platformStatuses }),
     );
     const lineB = plan.warnings.find((w) => w.startsWith("AC-b:"));
@@ -1100,7 +1132,7 @@ async function main() {
     check(
       "AC-a is refused: no ref, no status",
       refsOf(stateA).find((r) => r.url === PR_URL) === undefined &&
-        stateA.status === "prioritized" &&
+        stateA.status === "backlog" &&
         stateA.metadata?.platformStatuses === undefined,
       () => JSON.stringify({ refs: refsOf(stateA), status: stateA.status }),
     );
@@ -1171,7 +1203,7 @@ async function main() {
     const ops = planOps(bundle([node]), event({ body: "AC-x@ios and AC-x@android" }), wholeRepo());
     const state = settle(node, ops);
     check("without ref_policy the refs still attach", refFor(state, "ios") !== undefined && refFor(state, "android") !== undefined, JSON.stringify(state.metadata));
-    check("but the base status does not move", state.status === "prioritized", JSON.stringify(state.status));
+    check("but the base status does not move", state.status === "backlog", JSON.stringify(state.status));
     check(
       "and no platformStatuses are invented",
       state.metadata?.platformStatuses === undefined,
@@ -1290,7 +1322,7 @@ async function main() {
     );
     check(
       "so the base status is not promoted",
-      state.status === "prioritized",
+      state.status === "backlog",
       JSON.stringify({ status: state.status, platformStatuses: state.metadata?.platformStatuses }),
     );
     check("only ios moved", state.metadata?.platformStatuses?.ios === "live", JSON.stringify(state.metadata?.platformStatuses));
@@ -1382,7 +1414,7 @@ async function main() {
     );
     check(
       "its promotion is NOT applied by this delivery",
-      state.status === "prioritized",
+      state.status === "backlog",
       JSON.stringify({ status: state.status, platformStatuses: state.metadata?.platformStatuses }),
     );
   }
@@ -1472,7 +1504,7 @@ async function main() {
     );
     check(
       "and does not move the base status either",
-      state.status === "prioritized",
+      state.status === "backlog",
       () => JSON.stringify(state.status),
     );
     const line = plan.warnings.find((w) => w.startsWith("AC-x:"));
@@ -1529,7 +1561,7 @@ async function main() {
     const state = settle(node, plan.ops);
     check(
       "an id named ONLY by an unusable suffix promotes nothing at all",
-      state.status === "prioritized" && state.metadata?.platformStatuses === undefined,
+      state.status === "backlog" && state.metadata?.platformStatuses === undefined,
       () => JSON.stringify({ status: state.status, platformStatuses: state.metadata?.platformStatuses }),
     );
     check(
@@ -1580,7 +1612,7 @@ async function main() {
     );
     check(
       "but nothing is promoted from it",
-      state.metadata?.platformStatuses === undefined && state.status === "prioritized",
+      state.metadata?.platformStatuses === undefined && state.status === "backlog",
       () => JSON.stringify({ status: state.status, platformStatuses: state.metadata?.platformStatuses }),
     );
     const line = plan.warnings.find((w) => w.startsWith("AC-x:"));
@@ -1615,7 +1647,7 @@ async function main() {
     );
     check(
       "and promotes from neither of them, mixed as they are",
-      state.status === "prioritized" && state.metadata?.platformStatuses === undefined,
+      state.status === "backlog" && state.metadata?.platformStatuses === undefined,
       () => JSON.stringify({ status: state.status, platformStatuses: state.metadata?.platformStatuses }),
     );
   }
@@ -1648,7 +1680,7 @@ async function main() {
     );
     check(
       "so nothing is promoted: the base status is untouched",
-      state.status === "prioritized" && state.metadata?.platformStatuses === undefined,
+      state.status === "backlog" && state.metadata?.platformStatuses === undefined,
       JSON.stringify({ status: state.status, platformStatuses: state.metadata?.platformStatuses }),
     );
     check(
@@ -1738,7 +1770,7 @@ async function main() {
     );
     check(
       "and the base status does not move (which would mark web, ios AND android shipped)",
-      state.status === "prioritized" && state.metadata?.platformStatuses === undefined,
+      state.status === "backlog" && state.metadata?.platformStatuses === undefined,
       JSON.stringify({ status: state.status, platformStatuses: state.metadata?.platformStatuses }),
     );
     check(
@@ -1765,7 +1797,7 @@ async function main() {
     check("promoting only that platform", state.metadata?.platformStatuses?.ios === "live", JSON.stringify(state.metadata?.platformStatuses));
     check(
       "and the base status still does not move",
-      state.status === "prioritized",
+      state.status === "backlog",
       JSON.stringify(state.status),
     );
   }
@@ -1807,7 +1839,7 @@ async function main() {
     );
     check(
       "and NOTHING is promoted (platform-not-applicable)",
-      state.status === "prioritized" && state.metadata?.platformStatuses === undefined,
+      state.status === "backlog" && state.metadata?.platformStatuses === undefined,
       JSON.stringify({ status: state.status, platformStatuses: state.metadata?.platformStatuses }),
     );
   }
@@ -1856,7 +1888,7 @@ async function main() {
       project_id: "gp",
       species: "view",
       title: "A view that happens to carry an AC- id",
-      status: "prioritized",
+      status: "backlog",
       platforms: ["ios"],
     };
     const ops = planOps(bundle([view], true), event({ body: "AC-x@ios" }), wholeRepo());
@@ -1912,7 +1944,7 @@ async function main() {
     const state = settle(node, plan.ops);
     check(
       "while promoting nothing at all",
-      state.status === "prioritized" && state.metadata?.platformStatuses === undefined,
+      state.status === "backlog" && state.metadata?.platformStatuses === undefined,
       JSON.stringify({ status: state.status, platformStatuses: state.metadata?.platformStatuses }),
     );
   }
@@ -1971,7 +2003,7 @@ async function main() {
     // worst outcome anywhere in this file.
     //
     // AC-x lists [web, ios] with `platformStatuses {web: "live"}` over a base of
-    // "prioritized": an ordinary mid-rollout acceptance. Web shipped, iOS did
+    // "backlog": an ordinary mid-rollout acceptance. Web shipped, iOS did
     // not, and `hasParityGap` says exactly that. A bare mention moves the BASE
     // to "live"; iOS has no entry of its own, so `resolvePlatformStatus`
     // resolves it to "live" too, delivered === resolved, and the parity gap
@@ -2872,7 +2904,7 @@ async function main() {
     );
     check(
       "…and above all no UNSCOPED one, which would move the base status and claim every platform",
-      refsOf(state).find((r) => r.url === PR_URL) === undefined && state.status === "prioritized",
+      refsOf(state).find((r) => r.url === PR_URL) === undefined && state.status === "backlog",
       () => JSON.stringify({ refs: refsOf(state), status: state.status }),
     );
     const line = plan.warnings.find((w) => w.startsWith("AC-x:"));
@@ -2909,7 +2941,7 @@ async function main() {
       "and ONLY that platform is promoted — the base status does not move",
       state.metadata?.platformStatuses?.ios === "live" &&
         state.metadata?.platformStatuses?.web === undefined &&
-        state.status === "prioritized",
+        state.status === "backlog",
       () => JSON.stringify({ status: state.status, platformStatuses: state.metadata?.platformStatuses }),
     );
   }
@@ -3022,7 +3054,7 @@ async function main() {
     );
     check(
       "…and the base status still does not move",
-      state.status === "prioritized",
+      state.status === "backlog",
       () => JSON.stringify({ status: state.status }),
     );
     // THE PROJECTION THE WHOLE FEATURE EXISTS FOR, asserted with the real
@@ -3380,7 +3412,7 @@ async function main() {
     );
     check(
       "…so the base status does not move and no platform is claimed by inheritance",
-      state.status === "prioritized" && state.metadata?.platformStatuses?.web === undefined,
+      state.status === "backlog" && state.metadata?.platformStatuses?.web === undefined,
       () => JSON.stringify({ status: state.status, platformStatuses: state.metadata?.platformStatuses }),
     );
     check(
@@ -3549,7 +3581,7 @@ async function main() {
     const state = settle(node, plan.ops);
     check(
       "an id named ONLY by an unusable suffix promotes nothing, on this delivery or any redelivery",
-      state.metadata?.platformStatuses === undefined && state.status === "prioritized",
+      state.metadata?.platformStatuses === undefined && state.status === "backlog",
       () => JSON.stringify({ status: state.status, platformStatuses: state.metadata?.platformStatuses }),
     );
     check(
@@ -3623,7 +3655,7 @@ async function main() {
     );
     check(
       "…while still promoting nothing from what it mirrored",
-      state.status === "prioritized" && state.metadata?.platformStatuses === undefined,
+      state.status === "backlog" && state.metadata?.platformStatuses === undefined,
       () => JSON.stringify({ status: state.status, platformStatuses: state.metadata?.platformStatuses }),
     );
   }
@@ -3698,7 +3730,7 @@ async function main() {
     );
     check(
       "…promoting web and claiming nothing else",
-      state.metadata?.platformStatuses?.web === "live" && state.status === "prioritized",
+      state.metadata?.platformStatuses?.web === "live" && state.status === "backlog",
       () => JSON.stringify({ status: state.status, platformStatuses: state.metadata?.platformStatuses }),
     );
   }
@@ -3764,7 +3796,7 @@ async function main() {
     );
     check(
       "but NOTHING is promoted from it, on this delivery or any redelivery",
-      state.metadata?.platformStatuses === undefined && state.status === "prioritized",
+      state.metadata?.platformStatuses === undefined && state.status === "backlog",
       () => JSON.stringify({ status: state.status, platformStatuses: state.metadata?.platformStatuses }),
     );
     check(
@@ -3826,7 +3858,7 @@ async function main() {
     );
     check(
       "…and still claims nothing else",
-      state.status === "prioritized" && state.metadata?.platformStatuses?.web === undefined,
+      state.status === "backlog" && state.metadata?.platformStatuses?.web === undefined,
       () => JSON.stringify(state.metadata),
     );
   }

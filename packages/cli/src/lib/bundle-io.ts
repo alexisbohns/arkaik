@@ -5,9 +5,22 @@
  * the `id -> node` map in one place so the commands stay focused on their flow.
  */
 import { existsSync, readFileSync } from "node:fs";
-import type { Node } from "@arkaik/schema";
+import { migrateStatusVocabulary, type Node, type ProjectBundle } from "@arkaik/schema";
 
-/** Read + parse a bundle JSON file. Throws on a missing file, bad JSON, or non-object. */
+/**
+ * Read + parse a bundle JSON file. Throws on a missing file, bad JSON, or
+ * non-object.
+ *
+ * Legacy status ids are migrated IN MEMORY on every read (`prioritized` ->
+ * `backlog`, `blocked` -> `development` + `metadata.blocked_by`; the full
+ * vocabulary remap for pre-v3 bundles) — `migrateStatusVocabulary` is
+ * version-gated and returns the same reference for a current bundle, so this
+ * costs nothing on the ordinary path. Commands that rewrite the file (`sync`,
+ * `pack`) serialize the object returned here, so the migrated form persists
+ * naturally on the next write. Gated on a `nodes` array because the migration
+ * is total only on bundle-shaped data; anything else is handed to the caller's
+ * own shape checks untouched.
+ */
 export function readBundle(filePath: string): Record<string, unknown> {
   if (!existsSync(filePath)) throw new Error(`File not found: ${filePath}`);
   let parsed: unknown;
@@ -19,7 +32,9 @@ export function readBundle(filePath: string): Record<string, unknown> {
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error("Bundle must be a JSON object.");
   }
-  return parsed as Record<string, unknown>;
+  const record = parsed as Record<string, unknown>;
+  if (!Array.isArray(record.nodes)) return record;
+  return migrateStatusVocabulary(record as unknown as ProjectBundle) as unknown as Record<string, unknown>;
 }
 
 /**
