@@ -12,7 +12,7 @@
  */
 
 import { z } from "zod";
-import { EdgeTypeSchema, PlatformSchema, SpeciesSchema, StatusSchema } from "./enums";
+import { AnyStatusSchema, EdgeTypeSchema, PlatformSchema, SpeciesSchema } from "./enums";
 import type { JournalEvent } from "./journal";
 
 /** Shared envelope fields (docs/spec/journal.md § Event Envelope). */
@@ -60,8 +60,10 @@ export const NodeStatusChangedEventSchema = z
     ...envelope,
     type: z.literal("node.status_changed"),
     node_id: z.string(),
-    from: StatusSchema,
-    to: StatusSchema,
+    // History is never rewritten (docs/spec/journal.md): pre-v3 events keep
+    // their legacy status ids, so strict per-type validation must accept them.
+    from: AnyStatusSchema,
+    to: AnyStatusSchema,
     platform: PlatformSchema.optional(),
   })
   .catchall(z.unknown());

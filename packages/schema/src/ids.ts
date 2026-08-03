@@ -10,13 +10,12 @@ export type SpeciesId = (typeof SPECIES_IDS)[number];
 
 export const STATUS_IDS = [
   "idea",
+  "discovery",
   "backlog",
-  "prioritized",
   "development",
   "releasing",
   "live",
   "archived",
-  "blocked",
 ] as const;
 export type StatusId = (typeof STATUS_IDS)[number];
 
