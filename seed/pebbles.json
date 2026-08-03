@@ -6002,7 +6002,7 @@
       "edge_type": "covers"
     },
     {
-      "id": "01K0DECISIONSEED000000001",
+      "id": "01K0DECISIONSEED0000000001",
       "ts": "2026-08-03T09:00:00.000Z",
       "actor": "claude-code",
       "type": "node.created",
@@ -6011,7 +6011,7 @@
       "title": "Adopt the wobble animation for glyphs"
     },
     {
-      "id": "01K0DECISIONSEED000000002",
+      "id": "01K0DECISIONSEED0000000002",
       "ts": "2026-08-03T09:00:01.000Z",
       "actor": "claude-code",
       "type": "node.created",
@@ -6020,7 +6020,7 @@
       "title": "Linear fade for glyph transitions"
     },
     {
-      "id": "01K0DECISIONSEED000000003",
+      "id": "01K0DECISIONSEED0000000003",
       "ts": "2026-08-03T09:00:02.000Z",
       "actor": "claude-code",
       "type": "edge.added",
@@ -6030,7 +6030,7 @@
       "edge_type": "supersedes"
     },
     {
-      "id": "01K0DECISIONSEED000000004",
+      "id": "01K0DECISIONSEED0000000004",
       "ts": "2026-08-03T09:00:03.000Z",
       "actor": "claude-code",
       "type": "edge.added",
@@ -6040,7 +6040,7 @@
       "edge_type": "generates"
     },
     {
-      "id": "01K0DECISIONSEED000000005",
+      "id": "01K0DECISIONSEED0000000005",
       "ts": "2026-08-03T09:00:04.000Z",
       "actor": "claude-code",
       "type": "edge.added",
