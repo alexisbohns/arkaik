@@ -932,8 +932,12 @@ assert(
   resolveEffectiveProductId(bundle, null, null) === null &&
     resolveEffectiveProductId(bundle, null, undefined) === null &&
     resolveEffectiveProductId(bundle, null, "") === null &&
-    resolveEffectiveProductId(bundle, null, "   ") === null,
-  "absent, empty and blank overrides are all just All products",
+    resolveEffectiveProductId(bundle, null, "   ") === null &&
+    // Not reachable through `useSearchParams`, which only ever yields strings —
+    // pinned because `declared()`'s `typeof` guard is the only thing standing
+    // between a hand-built caller and a junk id reaching `resolveProducts`.
+    resolveEffectiveProductId(bundle, null, 42) === null,
+  "absent, empty, blank and non-string overrides are all just All products",
 );
 
 assert(

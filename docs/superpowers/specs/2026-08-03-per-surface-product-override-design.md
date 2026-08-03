@@ -108,6 +108,13 @@ display but not the scope. That is pre-existing, it changes behaviour on all eig
 is out of scope for this issue. Recorded here so the difference between the two paths is a decision
 rather than an accident.
 
+**And it stays in the URL.** After a project switch the param still reads `product=admin` while
+the control displays All products, because nothing rewrites it — the same non-healing the
+control relies on when the global scope is named. The tail is that a project which *later*
+declares a product called `admin` silently narrows on the next load. That is the same trade-off
+recorded above for a stale localStorage scope, and it resolves the same way: restoring a choice
+the user made is the better failure.
+
 ## Architecture
 
 ### The rule, as one pure function

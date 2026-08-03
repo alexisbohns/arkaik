@@ -38,7 +38,10 @@ export function LibraryFilterBar({
   return (
     <div className="rounded-xl border bg-card p-3 md:p-4">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <div className="flex w-full flex-1 items-center gap-2 md:max-w-xl">
+        {/* `md:max-w-md`, not wider: the control renders `null` for a project
+            with no products, and this row must then be exactly the width it was
+            before the control existed. */}
+        <div className="flex w-full flex-1 items-center gap-2 md:max-w-md">
           <ProductOverrideSelector projectId={projectId} project={project} />
           <div className="relative min-w-0 flex-1">
             <SearchIcon className="pointer-events-none absolute left-2 top-2.5 size-4 text-muted-foreground" />
