@@ -37,6 +37,8 @@ Node, Edge, Project, playlist, platform, and status semantics are unchanged from
 
 **Why v2 requires an explicit bump even though it is additive:** the published v1 JSON Schema declares `additionalProperties: false` on the bundle root and on `Project`. Any bundle carrying `schema_version`, `journal`, or `project.version` is *non-conformant to v1 by construction*. The v2 JSON Schema (generated from the canonical source, see [toolchain.md](toolchain.md)) relaxes this to "unknown fields are allowed and preserved."
 
+**v3: status vocabulary overhaul** (`discovery` added; `prioritized`/`blocked` removed; `blocked_by` metadata; old `backlog` → `idea`). Migration stamps `schema_version: 3`.
+
 **Known consumer defect to fix before v2 ships:** `rewriteBundleProjectId` (`lib/utils/export.ts`) reconstructs imported bundles as `{ project, nodes, edges }` and silently drops any other top-level key when an imported project's ID collides locally. All import paths MUST round-trip unknown fields.
 
 ## Project Additions

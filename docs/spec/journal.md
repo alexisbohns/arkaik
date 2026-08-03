@@ -67,7 +67,7 @@ interface JournalEvent {
 |---|---|---|
 | `node.created` | `node_id`, `species`, `title` | Node added to the graph |
 | `node.updated` | `node_id`, `fields[]`, optional `from`/`to` for scalars | Non-status fields changed |
-| `node.status_changed` | `node_id`, `from`, `to`, `platform?` | Lifecycle transition; `platform` present when a per-platform view status moved |
+| `node.status_changed` | `node_id`, `from`, `to`, `platform?` | Lifecycle transition; `platform` present when a per-platform view status moved. Historical events MAY carry the pre-v3 ids `prioritized`/`blocked` in `from`/`to`; validators MUST accept them — history is never rewritten |
 | `node.deleted` | `node_id` | Node removed. **Implies** cascade removal of every edge referencing it — writers do not emit the cascaded `edge.removed` events, and consumers/validators MUST apply the cascade |
 | `edge.added` | `edge_id`, `source_id`, `target_id`, `edge_type` | Relationship created |
 | `edge.removed` | `edge_id` | Relationship removed (non-cascade) |

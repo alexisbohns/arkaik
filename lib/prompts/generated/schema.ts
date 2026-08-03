@@ -3,7 +3,7 @@
 // (docs/spec/toolchain.md § @arkaik/schema).
 
 export const SPECIES_IDS = ["flow", "view", "data-model", "api-endpoint", "acceptance"] as const;
-export const STATUS_IDS = ["idea", "backlog", "prioritized", "development", "releasing", "live", "archived", "blocked"] as const;
+export const STATUS_IDS = ["idea", "discovery", "backlog", "development", "releasing", "live", "archived"] as const;
 export const PLATFORM_IDS = ["web", "ios", "android"] as const;
 export const EDGE_TYPE_IDS = ["composes", "calls", "displays", "queries", "covers"] as const;
 
@@ -19,7 +19,7 @@ export const SCHEMA_BLOCK = `## TypeScript Types (ProjectBundle Schema)
 
 \`\`\`typescript
 type SpeciesId = "flow" | "view" | "data-model" | "api-endpoint" | "acceptance";
-type StatusId = "idea" | "backlog" | "prioritized" | "development" | "releasing" | "live" | "archived" | "blocked";
+type StatusId = "idea" | "discovery" | "backlog" | "development" | "releasing" | "live" | "archived";
 type PlatformId = "web" | "ios" | "android";
 type EdgeTypeId = "composes" | "calls" | "displays" | "queries" | "covers";
 
@@ -72,6 +72,8 @@ interface Ref {
 
 interface NodeMetadata extends Record<string, unknown> {
   stage?: string;
+  /** Non-empty = the node is blocked at its current status. A node id (rendered as a link) or free text. */
+  blocked_by?: string;
   playlist?: FlowPlaylist;
   platformNotes?: PlatformNotesMap;
   platformStatuses?: PlatformStatusMap;

@@ -90,8 +90,10 @@ for (const rel of BUNDLES) {
 }
 
 // Both shipped seeds were upgraded in place to the v3 vocabulary (the pebbles
-// seed's old `backlog` someday-pile statuses — node-level AND inside
-// platformStatuses — became `idea`). They now declare schema_version 3
+// seed's old `backlog` someday-pile statuses inside platformStatuses became
+// `idea`; its two acceptances were curated to the new `backlog` — ready to
+// deliver — which the coverage/pyramid goldens pin). They now declare
+// schema_version 3
 // natively, so the migration chain must treat them as already current: the
 // non-idempotent v2→3 backlog→idea remap must NOT re-run, and nothing in them
 // may carry a dead legacy id (`prioritized`, `blocked`).

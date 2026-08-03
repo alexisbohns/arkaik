@@ -13,7 +13,7 @@ It's not a task tracker, not a wiki, not a design tool. It's a navigable, multi-
 - **5-species graph** — flows, views, data models, API endpoints, and acceptances as first-class node types
 - **Playlist composition** — flows contain ordered sequences of views and sub-flows, with condition and junction branching
 - **Per-platform tracking** — Web, iOS, Android variants with independent statuses and notes per view
-- **8 lifecycle statuses** — idea, backlog, prioritized, development, releasing, live, archived, blocked
+- **7 lifecycle statuses** — idea, discovery, backlog, development, releasing, live, archived — plus a `blocked_by` flag for nodes stalled by a dependency
 - **Journal & changelog** — an append-only event log records how the graph changed; releases, timelines, and a backlog are derived from it
 - **Local-first** — all data in your browser (IndexedDB), works offline, no account required; optional Synk backups with a free account
 - **Publish & share** — Publik snapshots (`arkaik.app/p/{id}`) and full JSON import/export for backup, sharing, and self-hosting

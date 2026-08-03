@@ -294,7 +294,7 @@
           "type": "string"
         },
         "status": {
-          "$ref": "#/$defs/Status"
+          "$ref": "#/$defs/AnyStatus"
         },
         "platforms": {
           "type": "array",
@@ -328,24 +328,29 @@
       ],
       "description": "The species of a node. flow = ordered sequence of views/sub-flows. view = reusable page or screen. data-model = data entity/table. api-endpoint = API endpoint. acceptance = a testable promise (one Given/When/Then) with per-platform status."
     },
-    "Status": {
+    "AnyStatus": {
       "type": "string",
       "enum": [
         "idea",
+        "discovery",
         "backlog",
-        "prioritized",
         "development",
         "releasing",
         "live",
         "archived",
+        "prioritized",
         "blocked"
       ],
-      "description": "Lifecycle status of a node."
+      "description": "Lifecycle status as stored: the current vocabulary, or a legacy id (prioritized, blocked) accepted from pre-v3 bundles and migrated on load."
     },
     "NodeMetadata": {
       "type": "object",
       "properties": {
         "stage": {
+          "type": "string"
+        },
+        "blocked_by": {
+          "description": "Non-empty = blocked at the current status. A node id (rendered as a link) or free text naming the dependency.",
           "type": "string"
         },
         "playlist": {
@@ -530,7 +535,7 @@
         "$ref": "#/$defs/Platform"
       },
       "additionalProperties": {
-        "$ref": "#/$defs/Status"
+        "$ref": "#/$defs/AnyStatus"
       },
       "description": "Per-platform status overrides for view nodes."
     },
@@ -569,7 +574,7 @@
         },
         "status_mapped": {
           "description": "Optional mapping of external_status into the arkaik lifecycle. Advisory display data — never mutates node.status.",
-          "$ref": "#/$defs/Status"
+          "$ref": "#/$defs/AnyStatus"
         },
         "platform": {
           "description": "Optional scoping to one platform variant.",

@@ -114,6 +114,26 @@ Statuses are configured in:
 
 - [lib/config/statuses.ts](../lib/config/statuses.ts)
 
+The lifecycle vocabulary is seven statuses:
+
+| Status | Meaning |
+|---|---|
+| `idea` | Raw capture — request, intuition, opportunity. The inbox. |
+| `discovery` | Actively being made ready to deliver, via design or specification. |
+| `backlog` | Ready to be delivered; waiting to start. |
+| `development` | Being implemented or executed. |
+| `releasing` | Implementation done; awaiting validation (QA) or effective release/distribution. |
+| `live` | Fully available. |
+| `archived` | Retired from the working set. |
+
+The table reads top to bottom as the usual path, but transitions are documented, not enforced — `status` stays a free assignment, and a node can jump or move backwards without ceremony.
+
+Being blocked is not a status. A node stalled by a dependency keeps its lifecycle status and sets `metadata.blocked_by`: non-empty means *blocked at the current status*. The value is a node id (rendered as a link in the detail panel) or free text naming the dependency; absence means unblocked.
+
+Status is orthogonal to the **stage** axis (`metadata.stage`: `beta`, `monitoring`, `deprecated` — [lib/config/stages.ts](../lib/config/stages.ts)), which qualifies *exposure* of something already built and is unchanged by this vocabulary.
+
+**Legacy** (since bundle `schema_version` 3): `prioritized` reads as `backlog`, and `blocked` reads as `development` with `blocked_by` set. The one-time migration also remapped old `backlog` to `idea` — the id survives with a different meaning (the old `backlog` was the unprioritized pile; the new one means ready to deliver), which is why that remap is keyed on the version bump rather than being a parse-time alias. Journal history keeps the old ids as written, and parsers accept them forever — see [spec/bundle-format.md](spec/bundle-format.md) § Schema Versioning.
+
 Rollup behavior:
 
 - `acceptance` is the primary carrier of stored per-platform status values (`metadata.platformStatuses`).

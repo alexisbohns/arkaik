@@ -145,7 +145,7 @@ A **map is a named, parameterized projection over (snapshot, journal)**: a scope
 |---|---|---|---|
 | **Journey** | Navigation | "How does a user move through the product?" | Compose/playlist drill-down canvas (today's canvas, with the traversal fixed) |
 | **System** | The model | "Which screens render this data model? What does this endpoint feed?" | System-layer species (views, API endpoints, data models) as cards, cross-layer edges drawn, ELK-layered by species tier |
-| **Delivery** | Product status | "What is in flight on Android? What shipped on iOS?" | Board of (node × platform) items grouped by status — a view `live` on iOS and `prioritized` on Android appears in **both** columns, by design |
+| **Delivery** | Product status | "What is in flight on Android? What shipped on iOS?" | Board of (node × platform) items grouped by status — a view `live` on iOS and `backlog` on Android appears in **both** columns, by design |
 | **Overview** | The whole | "Where does this product stand?" | Dashboard: per-platform delivery gauges, release pulse and backlog from the journal, inventory, coverage/health indicators |
 
 **Custom maps are data**, not features: a `MapDefinition` stored at `project.metadata.maps` scopes any archetype to a root anchor — the admin area versus the user app is two saved maps, not a format extension. Humans create them in a dialog; **agents author them by writing JSON**. ("Area" tags remain a future format revision if root-scoping proves insufficient — see Open Questions.)
