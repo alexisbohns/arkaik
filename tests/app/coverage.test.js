@@ -39,8 +39,8 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // --- Inventory: all species always present, config order, zero-safe ---------
 const emptyInventory = computeInventory([], [], []);
 assert(
-  eq(emptyInventory.species.map((s) => s.species), ["flow", "view", "data-model", "api-endpoint", "acceptance"]),
-  "inventory lists all five species in config order even when empty",
+  eq(emptyInventory.species.map((s) => s.species), ["flow", "view", "data-model", "api-endpoint", "acceptance", "decision"]),
+  "inventory lists all six species in config order even when empty",
 );
 assert(
   emptyInventory.nodeCount === 0 && emptyInventory.edgeCount === 0 && emptyInventory.journalEventCount === 0,
@@ -198,9 +198,9 @@ assert(
 assert(
   eq(
     inventory.species.map((entry) => [entry.species, entry.total]),
-    [["flow", 10], ["view", 58], ["data-model", 30], ["api-endpoint", 49], ["acceptance", 3]],
+    [["flow", 10], ["view", 58], ["data-model", 30], ["api-endpoint", 49], ["acceptance", 3], ["decision", 0]],
   ),
-  "seed species totals flow 10 / view 58 / data-model 30 / api-endpoint 49 / acceptance 3",
+  "seed species totals flow 10 / view 58 / data-model 30 / api-endpoint 49 / acceptance 3 / decision 0 (seed carries no decision nodes)",
 );
 
 const seedRollup = computeProductRollup(bundle.nodes, bundle.edges);
