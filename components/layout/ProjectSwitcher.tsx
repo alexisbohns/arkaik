@@ -11,6 +11,7 @@ import {
   FileTextIcon,
   FolderOpenIcon,
   GithubIcon,
+  HistoryIcon,
   KeyRoundIcon,
   LogOutIcon,
   Settings2Icon,
@@ -48,6 +49,7 @@ export type ProjectView =
   | "library"
   | "delivery"
   | "changelog"
+  | "history"
   | "acceptances"
   | "decisions"
   | "pyramid"
@@ -187,6 +189,12 @@ export function ProjectSwitcher({
               <Link href={settingsHref}>
                 <Settings2Icon className="size-4" />
                 <span>Settings</span>
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild className="cursor-pointer gap-2">
+              <Link href={`/project/${currentProjectId}/history`}>
+                <HistoryIcon className="size-4" />
+                <span>History</span>
               </Link>
             </DropdownMenuItem>
 
