@@ -236,8 +236,10 @@ export function diffNodeUpdate(current: Node, patch: Partial<Node>): EventInput[
         }
       } else if (key === "decision_status") {
         // A decision transition gets its own event (cycle 2); it is never a
-        // node.updated field path. Absent reads as "proposed" on both sides so
-        // from/to stay valid enum members (spec §4).
+        // node.updated field path. Absent reads as proposed on either side
+        // (parse boundaries reject out-of-vocabulary values, so absence is
+        // the only reachable default case) — keeping from/to valid enum
+        // members (spec §4).
         const from = prevMeta[key] ?? "proposed";
         const to = nextMeta[key] ?? "proposed";
         if (!valueEqual(from, to)) {

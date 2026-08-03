@@ -523,7 +523,12 @@ export function crossCheckJournal(bundle: Record<string, unknown>): JournalFindi
   // --- Decision status agreement, per node with at least one decision event ---
   // A decision with no decision.status_changed event is legal — it may predate
   // the vocabulary — so only nodes the journal actually tracked are compared.
+  // A node absent from the snapshot may have been legitimately deleted after
+  // its last transition (node.deleted, no cascade obligation here) — skip it,
+  // mirroring how the project-status check above iterates snapshot state
+  // rather than journal state.
   for (const [nodeId, last] of lastDecisionStatus) {
+    if (!snapshotDecisionStatus.has(nodeId)) continue;
     const current = snapshotDecisionStatus.get(nodeId) ?? "proposed";
     if (last !== current) {
       findings.push({

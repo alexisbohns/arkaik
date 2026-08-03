@@ -180,6 +180,25 @@ assert(
   "agreeing journal produces no decision finding",
 );
 
+// Regression: a decision created, transitioned, then legitimately deleted
+// must not be flagged — it has no snapshot entry to disagree with, and
+// node.deleted carries no cascade obligation for a decision-status check.
+const deletedBundle = {
+  schema_version: 3,
+  project: { id: "p1", title: "P", created_at: "2026-08-01T00:00:00.000Z", updated_at: "2026-08-03T00:00:00.000Z" },
+  nodes: [],
+  edges: [],
+  journal: [
+    { id: "01J0000000000000000000DDDA", ts: "2026-08-01T00:00:00.000Z", type: "node.created", node_id: "DEC-gone", species: "decision", title: "Gone" },
+    { id: "01J0000000000000000000DDDB", ts: "2026-08-02T00:00:00.000Z", type: "decision.status_changed", node_id: "DEC-gone", from: "proposed", to: "approved" },
+    { id: "01J0000000000000000000DDDC", ts: "2026-08-03T00:00:00.000Z", type: "node.deleted", node_id: "DEC-gone" },
+  ],
+};
+assert(
+  !crossCheckJournal(deletedBundle).some((f) => f.rule === "journal-decision-status-mismatch"),
+  "a decision deleted after its last transition produces no decision-status-mismatch finding",
+);
+
 // --- Validator rules (spec §7) — warnings, never bricks ----------------------
 const { validateBundle } = loadSchema();
 
@@ -213,6 +232,10 @@ const clean = validateBundle(bundle);
 assert(
   !clean.warnings.some((f) => f.rule.startsWith("decision-")),
   "a well-formed decision produces no decision warnings",
+);
+assert(
+  !clean.errors.some((f) => f.rule === "platforms-non-empty"),
+  "a decision's empty platforms array is not a platforms-non-empty error",
 );
 
 process.exit(failures > 0 ? 1 : 0);

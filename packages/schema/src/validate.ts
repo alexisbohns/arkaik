@@ -10,7 +10,8 @@ import {
   type ValueId,
 } from "./ids";
 import { SPECIES_PREFIXES } from "./id-gen";
-import { DECISION_STATUS_IDS, lifecycleStatusForDecision, type DecisionStatusId } from "./decision";
+import { decisionStatusOf, lifecycleStatusForDecision } from "./decision";
+import type { NodeMetadata } from "./bundle";
 import type { PlaylistEntry } from "./playlist";
 import { crossCheckJournal } from "./journal";
 import { isBuiltInMapId, MAP_FLOW_PLATFORMS_MODES, MAP_MINIMAP_COLOR_MODES, MAP_VIEW_PLATFORMS_MODES } from "./maps";
@@ -364,9 +365,7 @@ export function validateBundle(input: unknown): ValidationResult {
       );
     }
     if (species === "decision") {
-      const effective = (DECISION_STATUS_IDS as readonly string[]).includes(decisionStatus as string)
-        ? (decisionStatus as DecisionStatusId)
-        : "proposed";
+      const effective = decisionStatusOf({ metadata: node.metadata as NodeMetadata | undefined });
       const expected = lifecycleStatusForDecision(effective);
       if (node.status !== expected) {
         warn(
