@@ -279,7 +279,7 @@ async function main() {
         ownerId,
         tier: "klub",
         bundle: {
-          schema_version: 2,
+          schema_version: 3,
           project: {
             id: "gp",
             title: "Linked",
@@ -498,7 +498,7 @@ async function main() {
         ownerId,
         tier: "klub",
         bundle: {
-          schema_version: 2,
+          schema_version: 3,
           project: {
             id: "gp",
             title: "Monorepo",
