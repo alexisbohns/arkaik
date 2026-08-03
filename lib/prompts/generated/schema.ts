@@ -128,6 +128,8 @@ interface MapDisplayOptions extends Record<string, unknown> {
   flow_platforms?: MapFlowPlatformsMode | (string & {});
   /** A view card's platform availability: circular chips, or labelled rows. */
   view_platforms?: MapViewPlatformsMode | (string & {});
+  /** What a minimap node's fill encodes: its status, or its species. */
+  minimap_color?: MapMinimapColorMode | (string & {});
 }
 
 interface MapDefinition extends Record<string, unknown> {

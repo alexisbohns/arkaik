@@ -191,6 +191,9 @@ export const MapDisplayOptionsSchema: z.ZodType<MapDisplayOptions> = z
     view_platforms: z.string().optional().meta({
       description: "A view card's platform availability: chips (default) | rows.",
     }),
+    minimap_color: z.string().optional().meta({
+      description: "What a minimap node's fill encodes: status (default) | species.",
+    }),
   })
   .catchall(z.unknown())
   .meta({ id: "MapDisplayOptions", description: "How a map draws its cards (docs/spec/maps.md § Display Options)." });

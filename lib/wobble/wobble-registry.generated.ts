@@ -35,6 +35,7 @@ export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "circle-check", seed: 8 },
   { name: "circle-check-big", seed: 19 },
   { name: "circle-dashed", seed: 17 },
+  { name: "circle-dot", seed: 7 },
   { name: "circle-dot-dashed", seed: 11 },
   { name: "circle-fading-arrow-up", seed: 13 },
   { name: "circle-gauge", seed: 15 },

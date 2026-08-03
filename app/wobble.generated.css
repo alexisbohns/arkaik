@@ -32,6 +32,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-circle-check { filter: url(#wob-circle-check); }
 .lucide-circle-check-big { filter: url(#wob-circle-check-big); }
 .lucide-circle-dashed { filter: url(#wob-circle-dashed); }
+.lucide-circle-dot { filter: url(#wob-circle-dot); }
 .lucide-circle-dot-dashed { filter: url(#wob-circle-dot-dashed); }
 .lucide-circle-fading-arrow-up { filter: url(#wob-circle-fading-arrow-up); }
 .lucide-circle-gauge { filter: url(#wob-circle-gauge); }

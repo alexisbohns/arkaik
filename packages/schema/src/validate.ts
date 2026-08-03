@@ -12,7 +12,7 @@ import {
 import { SPECIES_PREFIXES } from "./id-gen";
 import type { PlaylistEntry } from "./playlist";
 import { crossCheckJournal } from "./journal";
-import { isBuiltInMapId, MAP_FLOW_PLATFORMS_MODES, MAP_VIEW_PLATFORMS_MODES } from "./maps";
+import { isBuiltInMapId, MAP_FLOW_PLATFORMS_MODES, MAP_MINIMAP_COLOR_MODES, MAP_VIEW_PLATFORMS_MODES } from "./maps";
 import { PRODUCT_MEMBERSHIP_SPECIES, resolveProducts } from "./products";
 
 /**
@@ -384,6 +384,7 @@ export function validateBundle(input: unknown): ValidationResult {
     const modes: Array<[string, readonly string[]]> = [
       ["flow_platforms", MAP_FLOW_PLATFORMS_MODES],
       ["view_platforms", MAP_VIEW_PLATFORMS_MODES],
+      ["minimap_color", MAP_MINIMAP_COLOR_MODES],
     ];
 
     for (const [key, allowed] of modes) {

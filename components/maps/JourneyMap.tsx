@@ -792,7 +792,7 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
             </div>
           </div>
         ) : (
-          <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} onEdgeClick={handleEdgeClick} fitSignal={fitSignal} scope={scope} />
+          <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} onEdgeClick={handleEdgeClick} fitSignal={fitSignal} scope={scope} minimapColor={display.minimap_color} />
         )}
       </PageShell>
       <ShotPreviewDialog

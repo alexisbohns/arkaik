@@ -3,16 +3,19 @@
 import type { ReactNode } from "react";
 import {
   CircleDashedIcon,
+  CircleDotIcon,
   EyeIcon,
   EyeOffIcon,
   ListIcon,
   PieChartIcon,
   RowsIcon,
+  ShapesIcon,
   SlidersHorizontalIcon,
 } from "lucide-react";
 import {
   type MapDisplayOptions,
   type MapFlowPlatformsMode,
+  type MapMinimapColorMode,
   type MapViewPlatformsMode,
   type ResolvedMapDisplay,
 } from "@arkaik/schema";
@@ -25,12 +28,14 @@ export interface MapDisplayControls {
   images?: boolean;
   flowPlatforms?: boolean;
   viewPlatforms?: boolean;
+  minimapColor?: boolean;
 }
 
 const ALL_CONTROLS: Required<MapDisplayControls> = {
   images: true,
   flowPlatforms: true,
   viewPlatforms: true,
+  minimapColor: true,
 };
 
 interface MapDisplayPopoverProps {
@@ -68,7 +73,7 @@ export function MapDisplayPopover({
   mapTitle,
   controls = ALL_CONTROLS,
 }: MapDisplayPopoverProps) {
-  const { images = false, flowPlatforms = false, viewPlatforms = false } = controls;
+  const { images = false, flowPlatforms = false, viewPlatforms = false, minimapColor = false } = controls;
 
   return (
     <Popover>
@@ -132,7 +137,22 @@ export function MapDisplayPopover({
             </Field>
           )}
 
-          {!images && !flowPlatforms && !viewPlatforms && (
+          {minimapColor && (
+            <Field label="Minimap color" hint="What a node's fill means in the bird's-eye view.">
+              <SegmentedControl
+                ariaLabel="Minimap node color"
+                className="w-full [&>button]:flex-1"
+                value={value.minimap_color}
+                onChange={(next) => onChange({ minimap_color: next as MapMinimapColorMode })}
+                options={[
+                  { id: "status", label: "Status", icon: CircleDotIcon },
+                  { id: "species", label: "Species", icon: ShapesIcon },
+                ]}
+              />
+            </Field>
+          )}
+
+          {!images && !flowPlatforms && !viewPlatforms && !minimapColor && (
             <p className="text-xs text-muted-foreground">This map has nothing to tweak.</p>
           )}
         </div>

@@ -308,7 +308,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
               value={display}
               onChange={(patch) => void handleDisplayChange(patch)}
               mapTitle={definition.title}
-              controls={{ viewPlatforms: true }}
+              controls={{ viewPlatforms: true, minimapColor: true }}
             />
           </>
         }
@@ -328,6 +328,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
           onConnect={handleConnect}
           onEdgeClick={handleEdgeClick}
           fitSignal={fitSignal}
+          minimapColor={display.minimap_color}
           spotlight
           spotlightNodeId={addressedNodeId}
           scope={scope}
