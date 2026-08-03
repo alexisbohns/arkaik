@@ -13,6 +13,7 @@ import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import type { PanelEntry } from "@/lib/utils/panel-stack";
 import type { PanelDescriptor } from "@/lib/utils/project-panels";
 import { resolveProductScope, type ProductScope } from "@/lib/utils/product-scope";
+import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 
 interface ProjectPanelsProps {
   /** The surface — canvas, board, or list. The grid's first cell. */
@@ -41,6 +42,12 @@ interface ProjectPanelsProps {
   onDelete?: (nodeId: string) => void;
   onCreateNode?: (species: "flow" | "view", title: string) => Promise<Node>;
   onCreateAcceptanceForAnchor?: (anchor: Node, title: string) => Promise<Node>;
+  /**
+   * The acceptance decompose gestures (`useAcceptanceIntake`), forwarded to
+   * every acceptance panel this grid opens. Omitted by pages whose panels are
+   * read-only, and then the Covers list is the read-only list it always was.
+   */
+  intake?: AcceptanceIntake;
   onZoomShot?: (node: Node, platform: PlatformId) => void;
 }
 
@@ -77,6 +84,7 @@ export function ProjectPanels({
   onDelete,
   onCreateNode,
   onCreateAcceptanceForAnchor,
+  intake,
   onZoomShot,
 }: ProjectPanelsProps) {
   const { entries, openNode, closeAt, unwindTo, pruneMissingNodes, panelStates } =
@@ -176,6 +184,7 @@ export function ProjectPanels({
             onNavigate={(target) => openNode({ nodeId: target.id }, index + 1)}
             onCreateNode={onCreateNode}
             onCreateAcceptanceForAnchor={onCreateAcceptanceForAnchor}
+            intake={intake}
             onZoomShot={onZoomShot}
           />
         );

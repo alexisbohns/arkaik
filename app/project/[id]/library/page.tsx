@@ -22,6 +22,7 @@ import { useNodes } from "@/lib/hooks/useNodes";
 import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
 import { useJournal } from "@/lib/hooks/useJournal";
+import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { findWhereUsed } from "@/lib/utils/where-used";
 import { generateNodeId } from "@/lib/utils/id";
 import {
@@ -169,12 +170,20 @@ export default function ProjectLibraryPage() {
   const speciesFilter = parseSpeciesFilter(searchParams.get("species"));
 
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, applyMutations } = useNodes(id);
-  const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
+  const { edges: dataEdges, loading: edgesLoading, syncEdges } = useEdges(id);
+  const intake = useAcceptanceIntake({
+    projectId: id,
+    nodes: dataNodes,
+    edges: dataEdges,
+    applyMutations,
+    syncEdges,
+  });
   const { project: projectBundle, updateProject } = useProject(id);
   const { journal } = useJournal(id);
-  // The shell's scope, never a URL param (§ Decision 2). With no products
-  // declared it resolves to every platform and every node, so a project that has
-  // never heard of products gets exactly today's library.
+  // The shell's scope, narrowed by this surface's own `?product=` when it has
+  // one (#315). With no products declared it resolves to every platform and
+  // every node, so a project that has never heard of products gets exactly
+  // today's library.
   const scope = useEffectiveProduct(id, projectBundle);
   const productList = useProductList(scope);
 
@@ -446,6 +455,7 @@ export default function ProjectLibraryPage() {
         journal={journal}
         onUpdate={handleNodeUpdate}
         onCreateNode={handleCreateNodeFromPanel}
+        intake={intake}
       >
         <div className="h-full overflow-auto">
           <div className="w-full">
@@ -457,6 +467,8 @@ export default function ProjectLibraryPage() {
                 onSearchChange={setSearch}
                 onDisplayModeChange={setDisplayMode}
                 onBlockedOnlyChange={setBlockedOnly}
+                projectId={id}
+                project={projectBundle}
               />
               {/* Inside the sticky band, not in the scrolling column: the bar
                   acts on rows the user ticked a screenful down, and a control

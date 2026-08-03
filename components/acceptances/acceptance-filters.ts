@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { PLATFORM_IDS, STATUS_IDS, VALUE_IDS } from "@arkaik/schema";
+import { useQueryWriter } from "@/lib/hooks/useQueryWriter";
 import type { AcceptanceFilters } from "@/lib/utils/acceptance-matrix";
 import { EMPTY_FILTERS } from "@/lib/utils/acceptance-matrix";
 
@@ -17,10 +18,14 @@ function oneOf<T extends string>(value: string | null, allowed: readonly string[
 
 /**
  * `product` is deliberately absent from `KEYS` and always read back as `null`.
- * The scope is global to the shell and persisted per project in localStorage
- * (lib/hooks/useProductScope.ts), not per surface in the URL — the page layers
- * the live scope on top of what this returns. Threading it through the query
- * string too would give the same value two homes that could disagree.
+ *
+ * There *is* a `?product=` param since #315 — the per-surface override — but it
+ * is not an acceptance filter and this module must not touch it. Two
+ * consequences, both wanted: the page layers the live scope on top of what this
+ * returns (`useEffectiveProduct` owns the param), and "Clear filters", which
+ * deletes every key in `KEYS`, leaves the override alone. Narrowing to one app
+ * is a scope, not a filter, and clearing a search box must not silently widen
+ * the surface back out.
  */
 function readFilters(params: URLSearchParams): AcceptanceFilters {
   return {
@@ -40,25 +45,27 @@ export function useAcceptanceFilters(): {
   setFilters: (next: AcceptanceFilters) => void;
   reset: () => void;
 } {
-  const router = useRouter();
-  const pathname = usePathname();
+  const writeQuery = useQueryWriter();
   const searchParams = useSearchParams();
   const filters = useMemo(() => readFilters(new URLSearchParams(searchParams.toString())), [searchParams]);
 
+  // Writes through `useQueryWriter`, which reads the live query at call time.
+  // Rebuilding from the closed-over `searchParams` would drop a `?product=`
+  // written by `useProductOverride` since this render — same bar, second writer.
+  // Only `KEYS` are touched, so anything else on the URL survives untouched.
   const setFilters = useCallback(
     (next: AcceptanceFilters) => {
-      const params = new URLSearchParams(searchParams.toString());
-      for (const key of KEYS) params.delete(key);
-      if (next.search) params.set("search", next.search);
-      if (next.platform !== "all") params.set("platform", next.platform);
-      if (next.status !== "all") params.set("status", next.status);
-      if (next.value !== "all") params.set("value", next.value);
-      if (next.anchor !== "all") params.set("anchor", next.anchor);
-      if (next.parityGap) params.set("parity_gap", "1");
-      const qs = params.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      writeQuery((params) => {
+        for (const key of KEYS) params.delete(key);
+        if (next.search) params.set("search", next.search);
+        if (next.platform !== "all") params.set("platform", next.platform);
+        if (next.status !== "all") params.set("status", next.status);
+        if (next.value !== "all") params.set("value", next.value);
+        if (next.anchor !== "all") params.set("anchor", next.anchor);
+        if (next.parityGap) params.set("parity_gap", "1");
+      });
     },
-    [router, pathname, searchParams],
+    [writeQuery],
   );
 
   const reset = useCallback(() => setFilters(EMPTY_FILTERS), [setFilters]);

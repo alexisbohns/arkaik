@@ -92,6 +92,14 @@ about the node.
 **The selector renders only when the project declares products.** A project with no products
 shows no new control and no new concept.
 
+**Shipped in #315**, with two amendments to the prediction above. The override is
+**narrow-only** — the control renders only while the global scope is All products — so the
+resolution is `global ?? override`, not `override ?? global`; the two agree wherever an
+override is legitimate, and this order makes a leftover param inert. And it landed on **four**
+surfaces (Delivery, Pyramid, Acceptances, Library), not all eight: Overview is a project
+summary, and the maps already resolve a per-surface product through `mapProductId`. See
+`2026-08-03-per-surface-product-override-design.md`.
+
 ### 3. The arity rule — a surface's shape follows its platform count
 
 Every platform-bearing surface reads the scope's effective platform set and picks its shape from

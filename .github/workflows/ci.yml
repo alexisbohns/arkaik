@@ -115,6 +115,9 @@ jobs:
       - name: Acceptance matrix util tests
         run: npm run test:acceptance-matrix
 
+      - name: Acceptance-first intake rule tests
+        run: npm run test:acceptance-intake
+
       - name: Effective platform-status seam tests
         run: npm run test:effective-status
 

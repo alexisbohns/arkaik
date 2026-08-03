@@ -4,6 +4,7 @@ import { useEffect, useMemo } from "react";
 import { SearchIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ProductOverrideSelector } from "@/components/layout/ProductOverrideSelector";
 import { PLATFORMS, type PlatformId } from "@/lib/config/platforms";
 import type { SpeciesId } from "@/lib/config/species";
 import type { ProjectBundle } from "@/lib/data/types";
@@ -71,6 +72,7 @@ export function DeliveryFilterBar({
     <div className="rounded-xl border bg-card/70 p-3 md:p-4">
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <ProductOverrideSelector projectId={projectId} project={project} />
           {showPlatformFilter && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Platform</span>

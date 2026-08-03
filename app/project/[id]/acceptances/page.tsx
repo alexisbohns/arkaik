@@ -10,6 +10,7 @@ import { useEdges } from "@/lib/hooks/useEdges";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useProject } from "@/lib/hooks/useProject";
 import { useJournal } from "@/lib/hooks/useJournal";
+import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
 import { useAcceptanceFilters } from "@/components/acceptances/acceptance-filters";
 import { filterAcceptances } from "@/lib/utils/acceptance-matrix";
@@ -29,6 +30,13 @@ export default function ProjectAcceptancesPage() {
   const { edges: dataEdges, loading: edgesLoading, syncEdges } = useEdges(id);
   const { project: projectBundle } = useProject(id);
   const { journal } = useJournal(id);
+  const intake = useAcceptanceIntake({
+    projectId: id,
+    nodes: dataNodes,
+    edges: dataEdges,
+    applyMutations,
+    syncEdges,
+  });
   const { filters, setFilters } = useAcceptanceFilters();
   const [newAcceptanceOpen, setNewAcceptanceOpen] = useState(false);
 
@@ -48,10 +56,12 @@ export default function ProjectAcceptancesPage() {
         .sort((a, b) => a.title.localeCompare(b.title)),
     [dataNodes],
   );
-  // The product scope is not a filter-bar control, so it is layered on here
-  // rather than read from the URL: the bar owns what the reader typed, the
-  // shell owns which app they are looking at. Membership lives on nodes, so
-  // this narrows correctly even before `useProject` has resolved the bundle.
+  // The product scope *is* read from the URL now (#315), but not by the filter
+  // bar's own hook: `useEffectiveProduct` owns `?product=` and
+  // `useAcceptanceFilters` deliberately does not list it in `KEYS`, so Clear
+  // cannot widen the surface back out. The bar owns what the reader typed; the
+  // scope owns which app they are looking at. Membership lives on nodes, so this
+  // narrows correctly even before `useProject` has resolved the bundle.
   const scope = useEffectiveProduct(id, projectBundle);
   const productList = useProductList(scope);
   const scopedFilters = useMemo(
@@ -167,6 +177,7 @@ export default function ProjectAcceptancesPage() {
         journal={journal}
         onUpdate={handleNodeUpdate}
         onCreateAcceptanceForAnchor={handleCreateAcceptanceForAnchor}
+        intake={intake}
       >
         <div className="h-full overflow-auto p-4 md:p-6">
           <div className="flex w-full flex-col gap-4">

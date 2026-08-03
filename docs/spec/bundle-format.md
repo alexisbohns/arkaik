@@ -170,7 +170,10 @@ uses the same `metadata.platformStatuses` mechanic as views; `platforms` lists
 the platforms where the behavior is expected ("availability").
 
 `covers` edges (acceptance → view | flow) anchor the promise to surfaces. Zero
-covers edges is legal (a product-level acceptance). Stored per-platform status
+covers edges is legal, and it is **intake**, not "applies everywhere": an idea
+filed before the flows and views exist, carrying `metadata.product` from day one
+and waiting to be decomposed (§ Products). It is anchorless, and the app calls
+it that. Stored per-platform status
 lives on acceptances; covered views compute theirs (validator: missing
 `gherkin`/`values` on an acceptance are warnings; unknown value ids are errors;
 `gherkin`/`values` on other species are warnings).

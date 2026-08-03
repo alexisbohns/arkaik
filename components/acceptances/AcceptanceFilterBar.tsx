@@ -4,12 +4,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { SearchIcon, TriangleAlertIcon, XIcon } from "lucide-react";
 import type { ProjectBundle } from "@/lib/data/types";
 import type { AcceptanceFilters } from "@/lib/utils/acceptance-matrix";
-import { EMPTY_FILTERS } from "@/lib/utils/acceptance-matrix";
+import { EMPTY_FILTERS, UNANCHORED_FILTER } from "@/lib/utils/acceptance-matrix";
 import { PLATFORMS } from "@/lib/config/platforms";
 import { STATUSES } from "@/lib/config/statuses";
 import { VALUES } from "@/lib/config/values";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { Input } from "@/components/ui/input";
+import { ProductOverrideSelector } from "@/components/layout/ProductOverrideSelector";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PLATFORM_ICONS, STATUS_ICONS, STATUS_STYLES } from "@/components/graph/nodes/node-styles";
@@ -94,6 +95,7 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectI
 
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-3 md:p-4">
+      <ProductOverrideSelector projectId={projectId} project={project} />
       <div className="relative min-w-[12rem] flex-1">
         <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
@@ -144,6 +146,10 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectI
         <SelectTrigger className="w-[11rem]" aria-label="Anchor"><SelectValue placeholder="Anchor" /></SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL}>All anchors</SelectItem>
+          {/* The intake inbox: ideas filed before their flows and views exist.
+              First, not sorted in among the anchors, because it is the one entry
+              here that names an absence rather than a node. */}
+          <SelectItem value={UNANCHORED_FILTER}>Unanchored (intake)</SelectItem>
           {anchorOptions.map((a) => <SelectItem key={a.id} value={a.id}>{a.title}</SelectItem>)}
         </SelectContent>
       </Select>

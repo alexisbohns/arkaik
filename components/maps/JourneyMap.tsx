@@ -25,6 +25,7 @@ import { useEdges } from "@/lib/hooks/useEdges";
 import { useProject } from "@/lib/hooks/useProject";
 import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
 import { useJournal } from "@/lib/hooks/useJournal";
+import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useElkLayout } from "@/lib/hooks/useElkLayout";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
@@ -87,8 +88,15 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   } | null>(null);
   const [playlistError, setPlaylistError] = useState<string | null>(null);
 
-  const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, removeNode, removeNodes } = useNodes(id);
-  const { edges: dataEdges, loading: edgesLoading, addEdge, removeEdge } = useEdges(id);
+  const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, removeNode, removeNodes, applyMutations } = useNodes(id);
+  const { edges: dataEdges, loading: edgesLoading, addEdge, removeEdge, syncEdges } = useEdges(id);
+  const intake = useAcceptanceIntake({
+    projectId: id,
+    nodes: dataNodes,
+    edges: dataEdges,
+    applyMutations,
+    syncEdges,
+  });
   const { project: projectBundle, loading: projectLoading, updateProject } = useProject(id);
   // The shell's scope (§ Decision 2), passed down to the canvas cards and to
   // every panel this map opens — never read from a global by the cards
@@ -768,6 +776,7 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
         onUpdate={handleNodeUpdate}
         onDelete={handleDeleteNodeRequest}
         onCreateNode={handleCreateNodeFromPanel}
+        intake={intake}
         onZoomShot={(node, platform) => {
           setZoomNode(node);
           setZoomPlatform(platform);
