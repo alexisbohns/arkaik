@@ -77,6 +77,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-image-plus { filter: url(#wob-image-plus); }
 .lucide-info { filter: url(#wob-info); }
 .lucide-key-round { filter: url(#wob-key-round); }
+.lucide-keyboard { filter: url(#wob-keyboard); }
 .lucide-landmark { filter: url(#wob-landmark); }
 .lucide-layers { filter: url(#wob-layers); }
 .lucide-layout-dashboard { filter: url(#wob-layout-dashboard); }

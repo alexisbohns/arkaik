@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useParams, useSearchParams } from "next/navigation";
 import { useTheme } from "next-themes";
 import { CommandPalette } from "@/components/layout/CommandPalette";
+import { KeyboardShortcutsDialog } from "@/components/layout/KeyboardShortcutsDialog";
 import { ProjectSidebar } from "@/components/layout/ProjectSidebar";
 import { PublishDialog } from "@/components/publik/PublishDialog";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
@@ -19,6 +20,7 @@ import {
   isCommandPaletteShortcut,
   isEditableElement,
   isExportShortcut,
+  isShortcutsDialogShortcut,
 } from "@/lib/utils/keyboard";
 
 // The panel stack lives here, not in a page: a page segment remounts whenever
@@ -54,6 +56,7 @@ function ProjectChrome({ children }: { children: React.ReactNode }) {
   // Owned here rather than in the sidebar: the palette reaches Publish too, and
   // one dialog with two triggers beats two dialogs.
   const [publishOpen, setPublishOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   const currentView = pathname.startsWith(`/project/${id}/overview`)
     ? "overview"
@@ -110,6 +113,19 @@ function ProjectChrome({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // ⌘? — the cheat sheet, registered next to ⌘K for the same reason: it is a
+  // property of the app, not of the page you happen to be on.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || !isShortcutsDialogShortcut(event)) return;
+      event.preventDefault();
+      setShortcutsOpen((open) => !open);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   // Registered here rather than on the Journey map, now that the button that
   // starts an export is in the switcher: a shortcut that only fired on one of
   // seven pages would contradict the menu item sitting on all of them. Still
@@ -131,6 +147,10 @@ function ProjectChrome({ children }: { children: React.ReactNode }) {
     (action: CommandActionId) => {
       if (action === "publish") {
         setPublishOpen(true);
+        return;
+      }
+      if (action === "show-shortcuts") {
+        setShortcutsOpen(true);
         return;
       }
       setTheme(theme === "dark" ? "light" : "dark");
@@ -165,6 +185,7 @@ function ProjectChrome({ children }: { children: React.ReactNode }) {
         commands={commands}
         onAction={handleCommandAction}
       />
+      <KeyboardShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} inProject />
       <PublishDialog
         open={publishOpen}
         onOpenChange={setPublishOpen}
