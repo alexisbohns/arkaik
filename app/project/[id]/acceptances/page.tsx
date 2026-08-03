@@ -10,6 +10,7 @@ import { useEdges } from "@/lib/hooks/useEdges";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useProject } from "@/lib/hooks/useProject";
 import { useJournal } from "@/lib/hooks/useJournal";
+import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
 import { useAcceptanceFilters } from "@/components/acceptances/acceptance-filters";
 import { filterAcceptances } from "@/lib/utils/acceptance-matrix";
@@ -29,6 +30,13 @@ export default function ProjectAcceptancesPage() {
   const { edges: dataEdges, loading: edgesLoading, syncEdges } = useEdges(id);
   const { project: projectBundle } = useProject(id);
   const { journal } = useJournal(id);
+  const intake = useAcceptanceIntake({
+    projectId: id,
+    nodes: dataNodes,
+    edges: dataEdges,
+    applyMutations,
+    syncEdges,
+  });
   const { filters, setFilters } = useAcceptanceFilters();
   const [newAcceptanceOpen, setNewAcceptanceOpen] = useState(false);
 
@@ -169,6 +177,7 @@ export default function ProjectAcceptancesPage() {
         journal={journal}
         onUpdate={handleNodeUpdate}
         onCreateAcceptanceForAnchor={handleCreateAcceptanceForAnchor}
+        intake={intake}
       >
         <div className="h-full overflow-auto p-4 md:p-6">
           <div className="flex w-full flex-col gap-4">

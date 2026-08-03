@@ -53,6 +53,22 @@ export const EMPTY_FILTERS: AcceptanceFilters = {
  */
 export const UNANCHORED_GROUP_LABEL = "Unanchored";
 
+/**
+ * The `anchor` filter value that means "the intake inbox" — acceptances covering
+ * nothing, rather than acceptances covering one named node.
+ *
+ * A sentinel in the same field rather than a second control, because it answers
+ * the same question the field already asks ("anchored to what?") and one of its
+ * answers is "nothing yet". It cannot collide with a node id: every node id
+ * carries a species prefix (`V-`, `F-`, …), and this has none.
+ *
+ * It exists because filing an idea before its flows and views (§ Decision 5) is
+ * only half a workflow if you cannot find the ideas again — the unanchored
+ * *group* is always last in the matrix, which is the least reachable place on a
+ * long page.
+ */
+export const UNANCHORED_FILTER = "unanchored";
+
 /** True if any applicable platform of the acceptance resolves to `status`. */
 function hasResolvedStatusOnAny(acceptance: Node, status: StatusId): boolean {
   return acceptance.platforms.some((p) => resolvePlatformStatus(acceptance, p) === status);
@@ -94,7 +110,14 @@ export function filterAcceptances(
       }
     }
     if (filters.value !== "all" && !(acc.metadata?.values ?? []).includes(filters.value)) return false;
-    if (filters.anchor !== "all" && !coveredAnchorIds(acc.id, edges).includes(filters.anchor)) return false;
+    if (filters.anchor === UNANCHORED_FILTER) {
+      // Resolvable anchors, the same test `groupAcceptancesByAnchor` applies, so
+      // the filter and the "Unanchored" group it exists to reach never disagree
+      // about an acceptance whose only `covers` edge dangles.
+      if (coveredAnchorIds(acc.id, edges).some((id) => nodesById.has(id))) return false;
+    } else if (filters.anchor !== "all" && !coveredAnchorIds(acc.id, edges).includes(filters.anchor)) {
+      return false;
+    }
     if (filters.parityGap && !hasParityGap(acc)) return false;
     return true;
   });

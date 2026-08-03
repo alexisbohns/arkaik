@@ -22,6 +22,7 @@ import type { Node as DataNode, Edge as DataEdge } from "@/lib/data/types";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useElkLayout } from "@/lib/hooks/useElkLayout";
 import { useJournal } from "@/lib/hooks/useJournal";
+import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useProject } from "@/lib/hooks/useProject";
@@ -77,8 +78,15 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
   const [deleteEdgeTarget, setDeleteEdgeTarget] = useState<DataEdge | null>(null);
   const [deleteEdgeDialogOpen, setDeleteEdgeDialogOpen] = useState(false);
 
-  const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode } = useNodes(projectId);
-  const { edges: dataEdges, loading: edgesLoading, addEdge, removeEdge } = useEdges(projectId);
+  const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, applyMutations } = useNodes(projectId);
+  const { edges: dataEdges, loading: edgesLoading, addEdge, removeEdge, syncEdges } = useEdges(projectId);
+  const intake = useAcceptanceIntake({
+    projectId: projectId,
+    nodes: dataNodes,
+    edges: dataEdges,
+    applyMutations,
+    syncEdges,
+  });
   const { project: projectBundle, updateProject } = useProject(projectId);
   // The shell's scope (§ Decision 2), passed down to the canvas cards and to
   // every panel this map opens — never read from a global by the cards
@@ -320,6 +328,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
         journal={journal}
         onUpdate={handleNodeUpdate}
         onCreateNode={handleCreateNodeFromPanel}
+        intake={intake}
       >
         <Canvas
           nodes={nodes}

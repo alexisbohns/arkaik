@@ -24,6 +24,7 @@ import { PlatformGaugeList } from "@/components/graph/nodes/PlatformGaugeList";
 import { PlaylistEditor } from "@/components/panels/PlaylistEditor";
 import { AcceptanceEditor } from "@/components/panels/AcceptanceEditor";
 import { AcceptancesSection } from "@/components/panels/AcceptancesSection";
+import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import {
   computeFlowPlatformRollup,
   getEditablePlatformStatuses,
@@ -56,6 +57,8 @@ interface NodeDetailPanelProps {
   onNavigate?: (node: Node) => void;
   onCreateNode?: (species: "flow" | "view", title: string) => Promise<Node>;
   onCreateAcceptanceForAnchor?: (anchor: Node, title: string) => Promise<Node>;
+  /** The acceptance decompose gestures, on surfaces whose panels can write. */
+  intake?: AcceptanceIntake;
   onZoomShot?: (node: Node, platform: PlatformId) => void;
 }
 
@@ -551,6 +554,7 @@ export function NodeDetailPanel({
   onNavigate,
   onCreateNode,
   onCreateAcceptanceForAnchor,
+  intake,
   onZoomShot,
 }: NodeDetailPanelProps) {
   void onDelete;
@@ -580,6 +584,7 @@ export function NodeDetailPanel({
           allEdges={allEdges}
           onUpdate={onUpdate}
           onNavigate={onNavigate}
+          intake={intake}
         />
       )}
       {node.species === "view" && (

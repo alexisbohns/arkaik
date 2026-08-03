@@ -6,6 +6,7 @@ import { ProjectPanels } from "@/components/panels/ProjectPanels";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { Edge, JournalEvent, Node } from "@/lib/data/types";
 import type { ProductScope } from "@/lib/utils/product-scope";
+import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 
 interface PageShellProps {
   title: string;
@@ -37,6 +38,8 @@ interface PageShellProps {
   onDelete?: (nodeId: string) => void;
   onCreateNode?: (species: "flow" | "view", title: string) => Promise<Node>;
   onCreateAcceptanceForAnchor?: (anchor: Node, title: string) => Promise<Node>;
+  /** The acceptance decompose gestures — see `useAcceptanceIntake`. */
+  intake?: AcceptanceIntake;
   onZoomShot?: (node: Node, platform: PlatformId) => void;
 }
 

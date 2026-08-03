@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { SearchIcon, TriangleAlertIcon, XIcon } from "lucide-react";
 import type { ProjectBundle } from "@/lib/data/types";
 import type { AcceptanceFilters } from "@/lib/utils/acceptance-matrix";
-import { EMPTY_FILTERS } from "@/lib/utils/acceptance-matrix";
+import { EMPTY_FILTERS, UNANCHORED_FILTER } from "@/lib/utils/acceptance-matrix";
 import { PLATFORMS } from "@/lib/config/platforms";
 import { STATUSES } from "@/lib/config/statuses";
 import { VALUES } from "@/lib/config/values";
@@ -146,6 +146,10 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectI
         <SelectTrigger className="w-[11rem]" aria-label="Anchor"><SelectValue placeholder="Anchor" /></SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL}>All anchors</SelectItem>
+          {/* The intake inbox: ideas filed before their flows and views exist.
+              First, not sorted in among the anchors, because it is the one entry
+              here that names an absence rather than a node. */}
+          <SelectItem value={UNANCHORED_FILTER}>Unanchored (intake)</SelectItem>
           {anchorOptions.map((a) => <SelectItem key={a.id} value={a.id}>{a.title}</SelectItem>)}
         </SelectContent>
       </Select>

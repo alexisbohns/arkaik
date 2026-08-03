@@ -18,6 +18,7 @@ import {
 import type { Node as DataNode } from "@/lib/data/types";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useJournal } from "@/lib/hooks/useJournal";
+import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
@@ -57,8 +58,15 @@ export default function ProjectDeliveryPage() {
 
   const { openNode } = useProjectPanels();
 
-  const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode } = useNodes(id);
-  const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
+  const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, applyMutations } = useNodes(id);
+  const { edges: dataEdges, loading: edgesLoading, syncEdges } = useEdges(id);
+  const intake = useAcceptanceIntake({
+    projectId: id,
+    nodes: dataNodes,
+    edges: dataEdges,
+    applyMutations,
+    syncEdges,
+  });
   const { project: projectBundle } = useProject(id);
   const { journal } = useJournal(id);
   // The shell's scope, narrowed by this surface's own `?product=` when it has
@@ -167,6 +175,7 @@ export default function ProjectDeliveryPage() {
         journal={journal}
         onUpdate={handleNodeUpdate}
         onCreateNode={handleCreateNodeFromPanel}
+        intake={intake}
       >
         <div className="flex h-full flex-col gap-4 overflow-auto p-4 md:p-6">
           <DeliveryFilterBar
