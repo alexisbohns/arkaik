@@ -2,10 +2,10 @@
 // Built from packages/schema/src via `npm run generate`
 // (docs/spec/toolchain.md § @arkaik/schema).
 
-export const SPECIES_IDS = ["flow", "view", "data-model", "api-endpoint", "acceptance"] as const;
+export const SPECIES_IDS = ["flow", "view", "data-model", "api-endpoint", "acceptance", "decision"] as const;
 export const STATUS_IDS = ["idea", "discovery", "backlog", "development", "releasing", "live", "archived"] as const;
 export const PLATFORM_IDS = ["web", "ios", "android"] as const;
-export const EDGE_TYPE_IDS = ["composes", "calls", "displays", "queries", "covers"] as const;
+export const EDGE_TYPE_IDS = ["composes", "calls", "displays", "queries", "covers", "supersedes", "generates", "impacts"] as const;
 
 export const SPECIES_PREFIXES: Record<(typeof SPECIES_IDS)[number], string> = {
   "flow": "F-",
@@ -13,15 +13,16 @@ export const SPECIES_PREFIXES: Record<(typeof SPECIES_IDS)[number], string> = {
   "data-model": "DM-",
   "api-endpoint": "API-",
   "acceptance": "AC-",
+  "decision": "DEC-",
 };
 
 export const SCHEMA_BLOCK = `## TypeScript Types (ProjectBundle Schema)
 
 \`\`\`typescript
-type SpeciesId = "flow" | "view" | "data-model" | "api-endpoint" | "acceptance";
+type SpeciesId = "flow" | "view" | "data-model" | "api-endpoint" | "acceptance" | "decision";
 type StatusId = "idea" | "discovery" | "backlog" | "development" | "releasing" | "live" | "archived";
 type PlatformId = "web" | "ios" | "android";
-type EdgeTypeId = "composes" | "calls" | "displays" | "queries" | "covers";
+type EdgeTypeId = "composes" | "calls" | "displays" | "queries" | "covers" | "supersedes" | "generates" | "impacts";
 
 type PlaylistEntry =
   | { type: "view"; view_id: string }
@@ -85,6 +86,14 @@ interface NodeMetadata extends Record<string, unknown> {
   values?: ValueId[];
   /** Product membership; meaningful on flow, view, and acceptance only. */
   product?: string;
+  /** Decision nodes: the decision's own status (spec §2). Not a lifecycle status. */
+  decision_status?: DecisionStatusId;
+  /** Decision nodes: Context — the Why (markdown). */
+  context?: string;
+  /** Decision nodes: Consequences — the How (markdown). */
+  consequences?: string;
+  /** Decision nodes: ISO 8601 date the decision was actually made (backfill-friendly; node.created events carry the write date, not this). */
+  decided_at?: string;
 }
 
 interface Node {
@@ -289,6 +298,7 @@ type KnownJournalEvent =
   | NodeCreatedEvent
   | NodeUpdatedEvent
   | NodeStatusChangedEvent
+  | DecisionStatusChangedEvent
   | NodeDeletedEvent
   | EdgeAddedEvent
   | EdgeRemovedEvent

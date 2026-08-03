@@ -2,6 +2,7 @@ import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { SpeciesId } from "@/lib/config/species";
 import type { RefType } from "@/lib/data/types";
+import type { DecisionStatusId } from "@/lib/config/decision-statuses";
 import type { LucideIcon } from "lucide-react";
 import {
   Monitor,
@@ -12,8 +13,10 @@ import {
   Database,
   Plug,
   ClipboardCheck,
+  Scale,
   Lightbulb, Compass, CircleDashed, CirclePlay, CircleFadingArrowUp,
   CircleCheckBig, CircleSlash,
+  ThumbsUp, CircleX, Replace, CircleDotDashed,
   Figma, Github, Gitlab, Ticket, GitPullRequest, GitMerge, ExternalLink, Link2,
 } from "lucide-react";
 
@@ -61,6 +64,7 @@ export const SPECIES_ICONS: Record<SpeciesId, LucideIcon> = {
   "data-model": Database,
   "api-endpoint": Plug,
   acceptance: ClipboardCheck,
+  decision: Scale,
 };
 
 /**
@@ -79,6 +83,7 @@ export const SPECIES_MINIMAP_FILL: Record<SpeciesId, string> = {
   "data-model":   "#f59e0b", // amber-500
   "api-endpoint": "#14b8a6", // teal-500
   acceptance:     "#22c55e", // green-500
+  decision:       "#f43f5e", // rose-500 — unclaimed by any existing species identity
 };
 
 /**
@@ -151,3 +156,33 @@ export const REF_TYPE_LABELS: Record<string, string> = {
 
 export const REF_TYPE_ICON_FALLBACK: LucideIcon = Link2;
 export const REF_TYPE_LABEL_FALLBACK = "Link";
+
+// One row per decision status — badge text color, dot fill. The exhaustive
+// Record is the compile-time gate for future vocabulary edits, exactly like
+// STATUS_STYLES above.
+export const DECISION_STATUS_STYLES: Record<DecisionStatusId, { badge: string; dot: string }> = {
+  proposed:   { badge: "text-gray-400",   dot: "bg-gray-400"   },
+  approved:   { badge: "text-blue-400",   dot: "bg-blue-400"   },
+  enacted:    { badge: "text-green-500",  dot: "bg-green-500"  },
+  rejected:   { badge: "text-red-400",    dot: "bg-red-400"    },
+  deprecated: { badge: "text-amber-500",  dot: "bg-amber-500"  },
+  superseded: { badge: "text-violet-400", dot: "bg-violet-400" },
+};
+
+export const DECISION_STATUS_ICONS: Record<DecisionStatusId, LucideIcon> = {
+  proposed:   CircleDotDashed,
+  approved:   ThumbsUp,
+  enacted:    CircleCheckBig,
+  rejected:   CircleX,
+  deprecated: CircleSlash,
+  superseded: Replace,
+};
+
+export const DECISION_STATUS_LABELS: Record<DecisionStatusId, string> = {
+  proposed:   "Proposed",
+  approved:   "Approved",
+  enacted:    "Enacted",
+  rejected:   "Rejected",
+  deprecated: "Deprecated",
+  superseded: "Superseded",
+};

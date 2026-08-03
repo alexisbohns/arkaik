@@ -324,7 +324,8 @@
         "view",
         "data-model",
         "api-endpoint",
-        "acceptance"
+        "acceptance",
+        "decision"
       ],
       "description": "The species of a node. flow = ordered sequence of views/sub-flows. view = reusable page or screen. data-model = data entity/table. api-endpoint = API endpoint. acceptance = a testable promise (one Given/When/Then) with per-platform status."
     },
@@ -385,6 +386,22 @@
         },
         "product": {
           "description": "Product membership (docs/spec/bundle-format.md § Products); flow, view, and acceptance only.",
+          "type": "string"
+        },
+        "decision_status": {
+          "description": "Decision nodes only: proposed | approved | enacted | rejected | deprecated | superseded. The node's lifecycle status is kept in sync (spec §2).",
+          "$ref": "#/$defs/DecisionStatus"
+        },
+        "context": {
+          "description": "Decision nodes only: Context — the Why (markdown).",
+          "type": "string"
+        },
+        "consequences": {
+          "description": "Decision nodes only: Consequences — the How (markdown).",
+          "type": "string"
+        },
+        "decided_at": {
+          "description": "Decision nodes only: ISO 8601 date the decision was made.",
           "type": "string"
         }
       },
@@ -629,6 +646,18 @@
       ],
       "description": "A Bain B2C Elements-of-Value element served by an acceptance (spec §3.2)."
     },
+    "DecisionStatus": {
+      "type": "string",
+      "enum": [
+        "proposed",
+        "approved",
+        "enacted",
+        "rejected",
+        "deprecated",
+        "superseded"
+      ],
+      "description": "Decision nodes only: proposed → approved (agreed, not yet reality) → enacted (in effect); terminal: rejected, deprecated, superseded. Not a lifecycle status — the node's status field is kept in sync (proposed→discovery, approved→backlog, enacted→live, terminals→archived)."
+    },
     "Edge": {
       "type": "object",
       "properties": {
@@ -676,7 +705,10 @@
         "calls",
         "displays",
         "queries",
-        "covers"
+        "covers",
+        "supersedes",
+        "generates",
+        "impacts"
       ],
       "description": "composes = structural hierarchy (flow↔view). calls = view/flow → api-endpoint, or api-endpoint → api-endpoint (endpoint fan-out to internal/external APIs). displays = view → data-model. queries = api-endpoint → data-model. covers = acceptance → view/flow (which surface the acceptance is proven on)."
     },

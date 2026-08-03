@@ -25,6 +25,7 @@ import { PlatformGaugeList } from "@/components/graph/nodes/PlatformGaugeList";
 import { PlaylistEditor } from "@/components/panels/PlaylistEditor";
 import { AcceptanceEditor } from "@/components/panels/AcceptanceEditor";
 import { AcceptancesSection } from "@/components/panels/AcceptancesSection";
+import { DecisionEditor } from "@/components/panels/DecisionEditor";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import {
   computeFlowPlatformRollup,
@@ -366,13 +367,22 @@ interface ConnectionsSectionProps {
 }
 
 function ConnectionsSection({ node, allNodes, allEdges, onNavigate }: ConnectionsSectionProps) {
+  // DecisionEditor owns decision-typed edges (supersedes/generates/impacts) for
+  // a decision node itself — its "Decision links" section already lists both
+  // directions (supersedes/supersededBy/generates/impacts). This section shows
+  // them only from the OTHER endpoint's side, so a non-decision node can see
+  // which decisions impact/generate it ("decided by") without a decision node
+  // double-listing its own edges.
+  const isDecisionEdge = (e: Edge) =>
+    e.edge_type === "supersedes" || e.edge_type === "generates" || e.edge_type === "impacts";
   const crossLayerNodes = allEdges
     .filter((e) => e.edge_type !== "composes" && (e.source_id === node.id || e.target_id === node.id))
+    .filter((e) => !(node.species === "decision" && isDecisionEdge(e)))
     .map((e) => {
       const otherId = e.source_id === node.id ? e.target_id : e.source_id;
       return allNodes.find((n) => n.id === otherId);
     })
-    .filter((n): n is Node => !!n && (n.species === "data-model" || n.species === "api-endpoint"));
+    .filter((n): n is Node => !!n && (n.species === "data-model" || n.species === "api-endpoint" || n.species === "decision"));
 
   const uniqueCrossLayerNodes = [...new Map(crossLayerNodes.map((n) => [n.id, n])).values()];
 
@@ -637,6 +647,16 @@ export function NodeDetailPanel({
           onUpdate={onUpdate}
           onNavigate={onNavigate}
           intake={intake}
+        />
+      )}
+      {node.species === "decision" && allNodes && allEdges && onUpdate && (
+        <DecisionEditor
+          key={`decision-${node.id}`}
+          node={node}
+          allNodes={allNodes}
+          allEdges={allEdges}
+          onUpdate={onUpdate}
+          onNavigate={onNavigate}
         />
       )}
       {node.species === "view" && (

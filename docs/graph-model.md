@@ -4,7 +4,7 @@ The graph is built from nodes and edges with structure driven by persisted relat
 
 ## Species
 
-Current taxonomy has exactly 5 species.
+Current taxonomy has exactly 6 species.
 
 | Level | Species | Role | React Flow node type |
 |---|---|---|---|
@@ -13,6 +13,7 @@ Current taxonomy has exactly 5 species.
 | — | `data-model` | Data entity/table | `dataModel` |
 | — | `api-endpoint` | API endpoint | `apiEndpoint` |
 | — | `acceptance` | A testable promise: What (`title`), How (`metadata.gherkin`, one Given/When/Then), Why (`metadata.values`, Bain elements), with per-platform status in `metadata.platformStatuses`. Id prefix `AC-`. | `acceptance` |
+| — | `decision` | an ADR-style decision record: Context (why), Decision (what), Consequences (how), with its own decision status (`metadata.decision_status`). Id prefix `DEC-`. | `decision` |
 
 Config source: [lib/config/species.ts](../lib/config/species.ts)
 
@@ -147,6 +148,67 @@ Sources:
 - [components/panels/NodeDetailPanel.tsx](../components/panels/NodeDetailPanel.tsx)
 - [components/maps/JourneyMap.tsx](../components/maps/JourneyMap.tsx), [lib/utils/journey-graph.ts](../lib/utils/journey-graph.ts)
 
+## Decisions
+
+`decision` (§ Species) is an ADR-style record — Context/Why, Decision/What,
+Consequences/How — carrying its own status vocabulary in
+`metadata.decision_status`, distinct from the node lifecycle:
+
+| `decision_status` | Meaning |
+|---|---|
+| `proposed` | Drafted, under consideration. |
+| `approved` | Agreed — but not yet reality. |
+| `enacted` | In effect: the implementing change shipped. |
+| `rejected` | Considered and declined. *(terminal)* |
+| `deprecated` | Was enacted; no longer recommended, nothing replaces it. *(terminal)* |
+| `superseded` | Replaced by a later decision (see the `supersedes` edge). *(terminal)* |
+
+As with the node lifecycle above, the table reads top to bottom as the usual
+path, but transitions are documented, never enforced.
+
+**Lifecycle sync.** The node's global `status` stays meaningful — every
+existing surface (library badges, filters, counts) keeps working without
+branching by species — via `lifecycleStatusForDecision(decisionStatus)`:
+
+| `decision_status` | Synced `status` |
+|---|---|
+| `proposed` | `discovery` |
+| `approved` | `backlog` |
+| `enacted` | `live` |
+| `rejected` / `deprecated` / `superseded` | `archived` |
+
+The mapping is applied at write time by the decision editor (and documented
+for agents/CLI); the validator cross-checks it as the `decision-lifecycle-mismatch`
+**warning**, never an error — a hand-edited bundle must not brick on a stale
+sync.
+
+`metadata.decided_at` (optional, ISO 8601) exists so a historical backfill can
+date a decision correctly: a bulk-imported `node.created` journal event
+carries the backfill run's timestamp, not the day the decision was actually
+made — `decided_at` is the only place the real date lives.
+
+Decisions carry no `platforms` (an empty array, exempt from the
+platforms-non-empty validator error — see [spec/bundle-format.md](spec/bundle-format.md))
+and are excluded from delivery/coverage rollups and from the Journey/System
+maps by construction (see the Taxonomy Update Checklist note below).
+
+Model source: [packages/schema/src/decision.ts](../packages/schema/src/decision.ts).
+
+Decision surfaces:
+
+- **Decision Log** (`/project/[id]/decisions`) — decisions newest-first (by
+  `decided_at`, falling back to journal `node.created`), decision-status
+  badge, filter chips by decision status, supersession chains rendered
+  inline.
+- **Node detail panel** (`components/panels/NodeDetailPanel.tsx`) — Context
+  and Consequences textareas, the decision-status dropdown, `decided_at`, and
+  the supersedes/generates/impacts connections.
+- **Library** (`/project/[id]/library`) — gallery card and directory row like
+  any other species; the decision-status badge stands in for platform chips.
+- **Not present**: the canvas (Journey/System maps) and the Delivery board —
+  same posture as acceptance today (no custom Canvas registration; excluded
+  from `SPECIES_OPTIONS` / map-kind species defaults).
+
 ## Products
 
 A project describes a *family* of apps sharing one graph — an end-user app, a web-only back office, a public API — not one product with three platforms. A **product** names one app in that family and the platforms it may ship on.
@@ -224,6 +286,14 @@ Source:
 | `displays` | View to data-model relationship |
 | `queries` | API to data-model relationship |
 | `covers` | Acceptance to view/flow relationship — anchors a testable promise to the surface(s) it covers |
+| `supersedes` | Decision to decision — the source replaces the target; recording it also moves the target to `decision_status: superseded` |
+| `generates` | Decision to acceptance — the decision produced this testable promise |
+| `impacts` | Decision to flow \| view \| data-model \| api-endpoint — the decision affects this existing node (or spawned it) |
+
+`generates` and `impacts` are deliberately disjoint by design: an acceptance
+is *generated* by a decision, never merely *impacted*, so `impacts` does not
+admit an `acceptance` target — consumers must never infer an edge's meaning
+from its endpoints.
 
 Config source: [lib/config/edge-types.ts](../lib/config/edge-types.ts)
 
@@ -276,6 +346,8 @@ Current custom registrations:
 
 `acceptance` nodes and `covers` edges have no custom Canvas registration yet — they render with generic node/edge components, and the map-kind defaults exclude them (see the dated note under the Taxonomy Update Checklist).
 
+`decision` nodes and the `supersedes`/`generates`/`impacts` edges have no custom Canvas registration either, same posture — the map-kind defaults exclude them too (see the 2026-08-03 note under the Taxonomy Update Checklist).
+
 Edge registration is also in [components/graph/Canvas.tsx](../components/graph/Canvas.tsx).
 
 ## Taxonomy Update Checklist
@@ -319,3 +391,28 @@ deferred: the **per-surface product override**. The global scope in the sidebar
 is the whole of it for now; every projection already takes the product as an
 argument and every surface already resolves through `useEffectiveProduct`, so
 that milestone changes one function to `override ?? global` and adds a control.
+
+2026-08-03 — decisions: steps 1, 2, and 4 are done; step 3 (Canvas
+registration) is **deferred**, same posture as acceptance — no custom node/edge
+components for `decision`/`supersedes`/`generates`/`impacts` yet. Step 2
+needed no change: the `journey` and `system` map kinds' species defaults in
+[packages/schema/src/maps.ts](../packages/schema/src/maps.ts) (`KIND_DEFAULTS`)
+list species explicitly and do not include `decision`, so
+[lib/utils/journey-graph.ts](../lib/utils/journey-graph.ts) and
+[lib/utils/system-graph.ts](../lib/utils/system-graph.ts) needed no
+decision-specific branches. `lib/utils/graph-build.ts` already maps `decision`
+to React Flow node type `"decision"` and `supersedes`/`generates`/`impacts` to
+their own edge types, as forward-fix placeholders for when Canvas
+registration lands (same pattern as `acceptance`/`covers`). Step 1 is done
+([lib/config/species.ts](../lib/config/species.ts),
+[lib/config/edge-types.ts](../lib/config/edge-types.ts)). Step 4 is done: the
+node detail panel branches on `node.species === "decision"` for the
+Context/Consequences/decision-status/`decided_at` editor and the
+supersedes/generates/impacts connections, and the library gallery card swaps
+in the decision-status badge. **Step 5 is done**: `seed/pebbles.json` carries
+a worked example exercising the full edge grammar (`DEC-adopt-glyph-wobble`
+supersedes `DEC-linear-glyph-fade`, generates an acceptance, impacts a view),
+and `seed/arkaik-self-map.json` carries cycle 1's own standing decisions
+(§7 of
+[2026-08-03-decisions-species-design.md](superpowers/specs/2026-08-03-decisions-species-design.md)).
+Step 6 is this note.

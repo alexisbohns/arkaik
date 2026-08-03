@@ -6,6 +6,7 @@ export const SPECIES = [
   { id: "data-model", level: null, label: "Data Model",   description: "parallel layer: data model" },
   { id: "api-endpoint", level: null, label: "API Endpoint", description: "parallel layer: API endpoint" },
   { id: "acceptance", level: null, label: "Acceptance", description: "a testable promise: What (title), How (gherkin), Why (values), status per platform" },
+  { id: "decision",   level: null, label: "Decision",     description: "an ADR-style decision record: Context (why), Decision (what), Consequences (how), with its own decision status" },
 ] as const satisfies readonly {
   id: SpeciesId;
   level: number | null;

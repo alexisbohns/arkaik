@@ -178,6 +178,82 @@ lives on acceptances; covered views compute theirs (validator: missing
 `gherkin`/`values` on an acceptance are warnings; unknown value ids are errors;
 `gherkin`/`values` on other species are warnings).
 
+### Decision Nodes
+
+A `decision` node (id prefix `DEC-`) is an ADR-style record: `title` +
+`description` hold the Decision/What, `metadata.context` (markdown) holds the
+Context/Why, `metadata.consequences` (markdown) holds the Consequences/How.
+Four metadata fields are meaningful on decision nodes only:
+
+```ts
+interface NodeMetadata {
+  // ... unchanged fields
+  decision_status?: DecisionStatus;  // decision nodes only — see below
+  context?: string;                  // decision nodes only — markdown, the Why
+  consequences?: string;             // decision nodes only — markdown, the How
+  decided_at?: string;               // decision nodes only — ISO 8601 date
+}
+```
+
+`decided_at` is optional and exists for historical backfill: a bulk-imported
+`node.created` journal event carries the backfill run's timestamp, not the
+day the decision was actually made, so `decided_at` is the only place the
+real date lives.
+
+`metadata.decision_status` is its own enum, distinct from the node lifecycle
+`status` (the `metadata.platformStatuses` precedent, not a species-specific
+`status` vocabulary):
+
+```ts
+type DecisionStatus =
+  | "proposed" | "approved" | "enacted"
+  | "rejected" | "deprecated" | "superseded";  // last three are terminal
+```
+
+The node's global `status` is kept in sync at write time via
+`lifecycleStatusForDecision` (`@arkaik/schema`), so every status-driven
+surface keeps working without branching by species:
+
+| `decision_status` | Synced `status` |
+|---|---|
+| `proposed` | `discovery` |
+| `approved` | `backlog` |
+| `enacted` | `live` |
+| `rejected` / `deprecated` / `superseded` | `archived` |
+
+`validateBundle()` cross-checks the mapping as a **warning**
+(`decision-lifecycle-mismatch`), never an error — a hand-edited bundle must
+not brick on a stale sync. `decision_status` present on a non-`decision` node
+is also a warning (`decision-status-wrong-species`); an unknown
+`decision_status` value is rejected at the schema-parse boundary, same
+posture as an unknown lifecycle status.
+
+Three edge types are decision-only:
+
+| Edge type | Legal pairs | Meaning |
+|---|---|---|
+| `supersedes` | `decision → decision` | Source replaces target; recording it also moves the target to `decision_status: superseded` |
+| `generates` | `decision → acceptance` | The decision produced this testable promise |
+| `impacts` | `decision → flow \| view \| data-model \| api-endpoint` | The decision affects this existing node (or spawned it) |
+
+`generates` and `impacts` are deliberately disjoint: an acceptance is
+*generated* by a decision, never merely *impacted*, so `impacts` does not
+admit an `acceptance` target — consumers MUST NOT infer an edge's meaning
+from its endpoints.
+
+Decisions legitimately carry an empty `platforms` array — they are
+platform-agnostic records, not something that ships. `platforms-non-empty`
+exempts the `decision` species for exactly this reason, the same way the
+Products section's rules gate on species.
+
+**All of the above is additive: no `schema_version` bump.** Every field is
+optional metadata, every enum member and edge type is new vocabulary, and the
+one new journal event (`decision.status_changed`, [journal.md](journal.md) §
+Event Vocabulary) follows the forward-compatibility rule in the Event
+Envelope — this is the same posture as the Products addition earlier in this
+document. Old bundles parse unchanged; a bundle with no `decision` nodes
+renders empty states.
+
 ## Identifier Conventions
 
 IDs are deterministic and human-readable. This subsumes and canonicalizes the rules in `docs/arkaik-skill/references/schema.md`.

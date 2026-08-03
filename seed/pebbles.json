@@ -2408,6 +2408,36 @@
         "values": ["rewards-me", "affiliation-belonging"],
         "platformStatuses": { "web": "live", "ios": "idea" }
       }
+    },
+    {
+      "id": "DEC-adopt-glyph-wobble",
+      "project_id": "pebbles",
+      "species": "decision",
+      "title": "Adopt the wobble animation for glyphs",
+      "description": "Glyph state changes animate with the wobble easing curve rather than a linear fade.",
+      "status": "live",
+      "platforms": [],
+      "metadata": {
+        "decision_status": "enacted",
+        "context": "Linear fades made state changes easy to miss in usability tests.",
+        "consequences": "All glyph transitions route through the shared wobble easing; bespoke per-view animations are retired.",
+        "decided_at": "2026-06-15"
+      }
+    },
+    {
+      "id": "DEC-linear-glyph-fade",
+      "project_id": "pebbles",
+      "species": "decision",
+      "title": "Linear fade for glyph transitions",
+      "description": "Glyph state changes use a simple linear fade.",
+      "status": "archived",
+      "platforms": [],
+      "metadata": {
+        "decision_status": "superseded",
+        "context": "First pass — simplest possible transition.",
+        "consequences": "Cheap to implement; proved too subtle in testing.",
+        "decided_at": "2026-05-01"
+      }
     }
   ],
   "edges": [
@@ -4378,6 +4408,27 @@
       "source_id": "AC-buy-community-glyph",
       "target_id": "F-swap-glyph",
       "edge_type": "covers"
+    },
+    {
+      "id": "e-DEC-adopt-glyph-wobble-DEC-linear-glyph-fade",
+      "project_id": "pebbles",
+      "source_id": "DEC-adopt-glyph-wobble",
+      "target_id": "DEC-linear-glyph-fade",
+      "edge_type": "supersedes"
+    },
+    {
+      "id": "e-DEC-adopt-glyph-wobble-AC-pebble-draw-in-animation",
+      "project_id": "pebbles",
+      "source_id": "DEC-adopt-glyph-wobble",
+      "target_id": "AC-pebble-draw-in-animation",
+      "edge_type": "generates"
+    },
+    {
+      "id": "e-DEC-adopt-glyph-wobble-V-record-celebration",
+      "project_id": "pebbles",
+      "source_id": "DEC-adopt-glyph-wobble",
+      "target_id": "V-record-celebration",
+      "edge_type": "impacts"
     }
   ],
   "journal": [
@@ -5949,6 +6000,54 @@
       "source_id": "AC-buy-community-glyph",
       "target_id": "F-swap-glyph",
       "edge_type": "covers"
+    },
+    {
+      "id": "01K0DECISIONSEED0000000001",
+      "ts": "2026-08-03T09:00:00.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DEC-adopt-glyph-wobble",
+      "species": "decision",
+      "title": "Adopt the wobble animation for glyphs"
+    },
+    {
+      "id": "01K0DECISIONSEED0000000002",
+      "ts": "2026-08-03T09:00:01.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DEC-linear-glyph-fade",
+      "species": "decision",
+      "title": "Linear fade for glyph transitions"
+    },
+    {
+      "id": "01K0DECISIONSEED0000000003",
+      "ts": "2026-08-03T09:00:02.000Z",
+      "actor": "claude-code",
+      "type": "edge.added",
+      "edge_id": "e-DEC-adopt-glyph-wobble-DEC-linear-glyph-fade",
+      "source_id": "DEC-adopt-glyph-wobble",
+      "target_id": "DEC-linear-glyph-fade",
+      "edge_type": "supersedes"
+    },
+    {
+      "id": "01K0DECISIONSEED0000000004",
+      "ts": "2026-08-03T09:00:03.000Z",
+      "actor": "claude-code",
+      "type": "edge.added",
+      "edge_id": "e-DEC-adopt-glyph-wobble-AC-pebble-draw-in-animation",
+      "source_id": "DEC-adopt-glyph-wobble",
+      "target_id": "AC-pebble-draw-in-animation",
+      "edge_type": "generates"
+    },
+    {
+      "id": "01K0DECISIONSEED0000000005",
+      "ts": "2026-08-03T09:00:04.000Z",
+      "actor": "claude-code",
+      "type": "edge.added",
+      "edge_id": "e-DEC-adopt-glyph-wobble-V-record-celebration",
+      "source_id": "DEC-adopt-glyph-wobble",
+      "target_id": "V-record-celebration",
+      "edge_type": "impacts"
     }
   ]
 }

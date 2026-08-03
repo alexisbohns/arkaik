@@ -49,6 +49,7 @@ const SPECIES_EMPTY_LABELS: Record<LibrarySpeciesFilter, string> = {
   "data-model": "data models",
   "api-endpoint": "API endpoints",
   acceptance: "acceptances",
+  decision: "decisions",
 };
 
 // The sidebar owns species selection; the header's second line mirrors it so
@@ -59,6 +60,7 @@ const SPECIES_META_LABELS: Record<SpeciesId, string> = {
   "data-model": "Data Models",
   "api-endpoint": "API Endpoints",
   acceptance: "Acceptances",
+  decision: "Decisions",
 };
 
 const SPECIES_LABEL_BY_ID = Object.fromEntries(

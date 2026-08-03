@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ClipboardCheckIcon, DatabaseIcon, GitBranchIcon, MonitorIcon, ServerIcon, type LucideIcon } from "lucide-react";
+import { ClipboardCheckIcon, DatabaseIcon, GitBranchIcon, MonitorIcon, ServerIcon, ScaleIcon, type LucideIcon } from "lucide-react";
 import { STATUS_LABELS, STATUS_STYLES } from "@/components/graph/nodes/node-styles";
 import { STATUSES } from "@/lib/config/statuses";
 import type { SpeciesId } from "@/lib/config/species";
@@ -15,6 +15,7 @@ const SPECIES_ICONS: Record<SpeciesId, LucideIcon> = {
   "data-model": DatabaseIcon,
   "api-endpoint": ServerIcon,
   acceptance: ClipboardCheckIcon,
+  decision: ScaleIcon,
 };
 
 const SPECIES_PLURALS: Record<SpeciesId, string> = {
@@ -23,6 +24,7 @@ const SPECIES_PLURALS: Record<SpeciesId, string> = {
   "data-model": "Data Models",
   "api-endpoint": "API Endpoints",
   acceptance: "Acceptances",
+  decision: "Decisions",
 };
 
 interface InventoryCardProps {

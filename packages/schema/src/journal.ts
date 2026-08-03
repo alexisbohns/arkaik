@@ -15,6 +15,7 @@
  */
 
 import type { SpeciesId, StatusId, PlatformId, EdgeTypeId } from "./ids";
+import type { DecisionStatusId } from "./decision";
 import { normalizeStatus } from "./legacy-status";
 
 /**
@@ -27,6 +28,7 @@ export const JOURNAL_EVENT_TYPES = [
   "node.created",
   "node.updated",
   "node.status_changed",
+  "decision.status_changed",
   "node.deleted",
   "edge.added",
   "edge.removed",
@@ -84,6 +86,14 @@ export interface NodeStatusChangedEvent extends JournalEvent {
   from: StatusId;
   to: StatusId;
   platform?: PlatformId;
+}
+
+/** A decision moved between decision states (metadata.decision_status). */
+export interface DecisionStatusChangedEvent extends JournalEvent {
+  type: "decision.status_changed";
+  node_id: string;
+  from: DecisionStatusId;
+  to: DecisionStatusId;
 }
 
 /**
@@ -166,6 +176,7 @@ export type KnownJournalEvent =
   | NodeCreatedEvent
   | NodeUpdatedEvent
   | NodeStatusChangedEvent
+  | DecisionStatusChangedEvent
   | NodeDeletedEvent
   | EdgeAddedEvent
   | EdgeRemovedEvent
@@ -290,6 +301,7 @@ export function parseJournalLines(text: string): JournalParseResult {
 const NODE_REF_FIELDS: Record<string, readonly string[]> = {
   "node.updated": ["node_id"],
   "node.status_changed": ["node_id"],
+  "decision.status_changed": ["node_id"],
   "node.deleted": ["node_id"],
   "edge.added": ["source_id", "target_id"],
   "ref.added": ["node_id"],
@@ -372,9 +384,18 @@ export function crossCheckJournal(bundle: Record<string, unknown>): JournalFindi
   const nodesRaw = Array.isArray(bundle.nodes) ? (bundle.nodes as Record<string, unknown>[]) : [];
   const edgesRaw = Array.isArray(bundle.edges) ? (bundle.edges as Record<string, unknown>[]) : [];
   const snapshotNodeStatus = new Map<string, unknown>();
+  const snapshotDecisionStatus = new Map<string, unknown>();
   for (const n of nodesRaw) {
     const id = str(n?.id);
-    if (id !== undefined) snapshotNodeStatus.set(id, (n as Record<string, unknown>).status);
+    if (id !== undefined) {
+      snapshotNodeStatus.set(id, (n as Record<string, unknown>).status);
+      const metadata = (n as Record<string, unknown>).metadata;
+      const decisionStatus =
+        metadata && typeof metadata === "object" && !Array.isArray(metadata)
+          ? (metadata as Record<string, unknown>).decision_status
+          : undefined;
+      snapshotDecisionStatus.set(id, decisionStatus ?? "proposed");
+    }
   }
   const snapshotEdgeIds = new Set<string>();
   for (const e of edgesRaw) {
@@ -429,6 +450,7 @@ export function crossCheckJournal(bundle: Record<string, unknown>): JournalFindi
   const ordered = orderEvents(valid.map((v) => v.ev));
   const created = new Set<string>();
   const lastProjectStatus = new Map<string, string>();
+  const lastDecisionStatus = new Map<string, string>();
   for (const ev of ordered) {
     if (ev.type === "node.created") {
       const nid = str(ev.node_id);
@@ -438,6 +460,12 @@ export function crossCheckJournal(bundle: Record<string, unknown>): JournalFindi
       if (nid && ev.platform === undefined) {
         const to = str(ev.to);
         if (to !== undefined) lastProjectStatus.set(nid, to);
+      }
+    } else if (ev.type === "decision.status_changed") {
+      const nid = str(ev.node_id);
+      if (nid) {
+        const to = str(ev.to);
+        if (to !== undefined) lastDecisionStatus.set(nid, to);
       }
     }
   }
@@ -487,6 +515,26 @@ export function crossCheckJournal(bundle: Record<string, unknown>): JournalFindi
         path: "journal",
         rule: "journal-status-mismatch",
         message: `Node "${nodeId}": journal's last node.status_changed.to "${last}" disagrees with snapshot status "${String(status)}".`,
+        severity: "error",
+      });
+    }
+  }
+
+  // --- Decision status agreement, per node with at least one decision event ---
+  // A decision with no decision.status_changed event is legal — it may predate
+  // the vocabulary — so only nodes the journal actually tracked are compared.
+  // A node absent from the snapshot may have been legitimately deleted after
+  // its last transition (node.deleted, no cascade obligation here) — skip it,
+  // mirroring how the project-status check above iterates snapshot state
+  // rather than journal state.
+  for (const [nodeId, last] of lastDecisionStatus) {
+    if (!snapshotDecisionStatus.has(nodeId)) continue;
+    const current = snapshotDecisionStatus.get(nodeId) ?? "proposed";
+    if (last !== current) {
+      findings.push({
+        path: "journal",
+        rule: "journal-decision-status-mismatch",
+        message: `Node "${nodeId}": journal's last decision.status_changed.to "${last}" disagrees with snapshot decision_status "${String(current)}".`,
         severity: "error",
       });
     }

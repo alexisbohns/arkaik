@@ -12,7 +12,7 @@
  */
 
 import { z } from "zod";
-import { AnyStatusSchema, EdgeTypeSchema, PlatformSchema, SpeciesSchema } from "./enums";
+import { AnyStatusSchema, DecisionStatusSchema, EdgeTypeSchema, PlatformSchema, SpeciesSchema } from "./enums";
 import type { JournalEvent } from "./journal";
 
 /** Shared envelope fields (docs/spec/journal.md § Event Envelope). */
@@ -65,6 +65,16 @@ export const NodeStatusChangedEventSchema = z
     from: AnyStatusSchema,
     to: AnyStatusSchema,
     platform: PlatformSchema.optional(),
+  })
+  .catchall(z.unknown());
+
+export const DecisionStatusChangedEventSchema = z
+  .object({
+    ...envelope,
+    type: z.literal("decision.status_changed"),
+    node_id: z.string(),
+    from: DecisionStatusSchema,
+    to: DecisionStatusSchema,
   })
   .catchall(z.unknown());
 
@@ -150,6 +160,7 @@ export const JOURNAL_EVENT_SCHEMAS = {
   "node.created": NodeCreatedEventSchema,
   "node.updated": NodeUpdatedEventSchema,
   "node.status_changed": NodeStatusChangedEventSchema,
+  "decision.status_changed": DecisionStatusChangedEventSchema,
   "node.deleted": NodeDeletedEventSchema,
   "edge.added": EdgeAddedEventSchema,
   "edge.removed": EdgeRemovedEventSchema,
@@ -170,6 +181,7 @@ export const KnownJournalEventSchema = z.union([
   NodeCreatedEventSchema,
   NodeUpdatedEventSchema,
   NodeStatusChangedEventSchema,
+  DecisionStatusChangedEventSchema,
   NodeDeletedEventSchema,
   EdgeAddedEventSchema,
   EdgeRemovedEventSchema,

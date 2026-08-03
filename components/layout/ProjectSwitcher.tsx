@@ -49,6 +49,7 @@ export type ProjectView =
   | "delivery"
   | "changelog"
   | "acceptances"
+  | "decisions"
   | "pyramid"
   | "settings";
 

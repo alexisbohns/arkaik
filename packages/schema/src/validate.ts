@@ -10,6 +10,8 @@ import {
   type ValueId,
 } from "./ids";
 import { SPECIES_PREFIXES } from "./id-gen";
+import { decisionStatusOf, lifecycleStatusForDecision } from "./decision";
+import type { NodeMetadata } from "./bundle";
 import type { PlaylistEntry } from "./playlist";
 import { crossCheckJournal } from "./journal";
 import { isBuiltInMapId, MAP_FLOW_PLATFORMS_MODES, MAP_MINIMAP_COLOR_MODES, MAP_VIEW_PLATFORMS_MODES } from "./maps";
@@ -210,10 +212,13 @@ export function validateBundle(input: unknown): ValidationResult {
       error(`${base}.status`, "valid-status", `Node ${nodeId}: invalid status "${node.status}"`);
     }
 
-    // Platforms
+    // Platforms. Decisions are platform-agnostic records (spec §1): an empty
+    // array is their expected shape, not missing data.
     const platforms = node.platforms as unknown[] | undefined;
     if (!platforms || platforms.length === 0) {
-      error(`${base}.platforms`, "platforms-non-empty", `Node ${nodeId}: platforms array is empty or missing`);
+      if (species !== "decision") {
+        error(`${base}.platforms`, "platforms-non-empty", `Node ${nodeId}: platforms array is empty or missing`);
+      }
     } else {
       for (const p of platforms) {
         if (!PLATFORM_IDS.includes(p as (typeof PLATFORM_IDS)[number])) {
@@ -348,6 +353,27 @@ export function validateBundle(input: unknown): ValidationResult {
           );
         }
       });
+    }
+
+    // Decision rules (spec §7). Warnings only: hand-edited bundles must not brick.
+    const decisionStatus = md.decision_status;
+    if (decisionStatus !== undefined && species !== "decision") {
+      warn(
+        `${base}.metadata.decision_status`,
+        "decision-status-wrong-species",
+        `decision_status is meaningful on decision nodes only; "${nodeId}" is a ${species}.`,
+      );
+    }
+    if (species === "decision") {
+      const effective = decisionStatusOf({ metadata: node.metadata as NodeMetadata | undefined });
+      const expected = lifecycleStatusForDecision(effective);
+      if (node.status !== expected) {
+        warn(
+          `${base}.status`,
+          "decision-lifecycle-mismatch",
+          `Decision "${nodeId}" is ${effective}, whose lifecycle status should be "${expected}", but status is "${node.status}" (spec §2).`,
+        );
+      }
     }
 
     // Flow must have playlist

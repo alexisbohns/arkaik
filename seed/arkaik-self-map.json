@@ -166,6 +166,51 @@
       "description": "project + nodes + edges payload persisted in store.",
       "status": "live",
       "platforms": ["web"]
+    },
+    {
+      "id": "DEC-two-axes-stay",
+      "project_id": "arkaik-self-map",
+      "species": "decision",
+      "title": "Two axes: status is delivery, stage is exposure",
+      "description": "Node status stays a pure delivery lifecycle; exposure concerns live on the separate stage axis instead of being folded into status.",
+      "status": "live",
+      "platforms": [],
+      "metadata": {
+        "decision_status": "enacted",
+        "context": "Early proposals for the status overhaul considered adding `limited` and `deprecated` as statuses in their own right, but that would have conflated exposure — how visible or available a node is — with delivery lifecycle, where a node sits in the build pipeline.",
+        "consequences": "The stage axis keeps expressing exposure on its own terms; the status list stays a clean seven-value delivery lifecycle with no exposure concepts mixed in; `limited` and `deprecated` were rejected as statuses and never entered the vocabulary.",
+        "decided_at": "2026-08-03"
+      }
+    },
+    {
+      "id": "DEC-blocked-is-a-flag",
+      "project_id": "arkaik-self-map",
+      "species": "decision",
+      "title": "Blocked is a flag, not a status",
+      "description": "A blocked node keeps its lifecycle status; blockage is recorded as a metadata flag instead of a status value.",
+      "status": "live",
+      "platforms": [],
+      "metadata": {
+        "decision_status": "enacted",
+        "context": "A blocked node parked in a dedicated `blocked` status lost its lifecycle position the moment it got blocked — there was no way to tell whether it had been in backlog or in development.",
+        "consequences": "`metadata.blocked_by` now carries the dependency reference directly; a blocked node keeps its underlying status untouched; the node library filters on the flag rather than on a separate status value.",
+        "decided_at": "2026-08-03"
+      }
+    },
+    {
+      "id": "DEC-migration-hard-cutover",
+      "project_id": "arkaik-self-map",
+      "species": "decision",
+      "title": "Status migrations: hard cutover + permanent aliases",
+      "description": "The v2-to-v3 status vocabulary remap runs once, at import, with the retired ids accepted forever afterward as parse-time aliases.",
+      "status": "live",
+      "platforms": [],
+      "metadata": {
+        "decision_status": "enacted",
+        "context": "Soft-deprecating the old ids (`prioritized`, `blocked`, and the pre-v3 meaning of `backlog`) would have left every consumer — the app, the CLI, the MCP server — carrying dual-vocabulary branches forever.",
+        "consequences": "A one-time, version-gated remap runs on any bundle below schema_version 3 and stamps the new version; the retired ids `prioritized` and `blocked` are accepted as permanent parse-time aliases from then on; journal history is never rewritten, so historical events keep their original vocabulary.",
+        "decided_at": "2026-08-03"
+      }
     }
   ],
   "edges": [
@@ -273,6 +318,34 @@
       "source_id": "API-local-import-project",
       "target_id": "DM-project-bundle",
       "edge_type": "queries"
+    },
+    {
+      "id": "e-DEC-two-axes-stay-DM-project-bundle",
+      "project_id": "arkaik-self-map",
+      "source_id": "DEC-two-axes-stay",
+      "target_id": "DM-project-bundle",
+      "edge_type": "impacts"
+    },
+    {
+      "id": "e-DEC-blocked-is-a-flag-DM-project-bundle",
+      "project_id": "arkaik-self-map",
+      "source_id": "DEC-blocked-is-a-flag",
+      "target_id": "DM-project-bundle",
+      "edge_type": "impacts"
+    },
+    {
+      "id": "e-DEC-migration-hard-cutover-API-local-save-project",
+      "project_id": "arkaik-self-map",
+      "source_id": "DEC-migration-hard-cutover",
+      "target_id": "API-local-save-project",
+      "edge_type": "impacts"
+    },
+    {
+      "id": "e-DEC-migration-hard-cutover-API-local-import-project",
+      "project_id": "arkaik-self-map",
+      "source_id": "DEC-migration-hard-cutover",
+      "target_id": "API-local-import-project",
+      "edge_type": "impacts"
     }
   ]
 }

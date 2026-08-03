@@ -24,8 +24,11 @@
  * - updateNode(patch)   → {@link diffNodeUpdate}: `status` → `node.status_changed`
  *                         (project-level); a `metadata.platformStatuses[p]` delta
  *                         → `node.status_changed` + `platform`; `metadata.refs`
- *                         gained/lost → `ref.added` / `ref.removed`; any other
- *                         changed field path → `node.updated` with `fields[]`.
+ *                         gained/lost → `ref.added` / `ref.removed`;
+ *                         `metadata.decision_status` → `decision.status_changed`
+ *                         (never a `node.updated` field path, cycle 2); any
+ *                         other changed field path → `node.updated` with
+ *                         `fields[]`.
  *
  * ## Asset exclusion (hard rule, docs/spec/journal.md:61, docs/vision.md § Asset Policy)
  * Events MUST NOT embed asset payloads. Editors may rewrite the *whole*
@@ -230,6 +233,17 @@ export function diffNodeUpdate(current: Node, patch: Partial<Node>): EventInput[
         // so a screenshot data-URI is structurally excluded from the event.
         for (const platform of changedMapKeys(prevMeta[key], nextMeta[key])) {
           changedPaths.push(`metadata.${key}.${platform}`);
+        }
+      } else if (key === "decision_status") {
+        // A decision transition gets its own event (cycle 2); it is never a
+        // node.updated field path. Absent reads as proposed on either side
+        // (parse boundaries reject out-of-vocabulary values, so absence is
+        // the only reachable default case) — keeping from/to valid enum
+        // members (spec §4).
+        const from = prevMeta[key] ?? "proposed";
+        const to = nextMeta[key] ?? "proposed";
+        if (!valueEqual(from, to)) {
+          events.push({ type: "decision.status_changed", payload: { node_id: nodeId, from, to } });
         }
       } else if (!valueEqual(prevMeta[key], nextMeta[key])) {
         changedPaths.push(`metadata.${key}`);

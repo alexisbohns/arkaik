@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { SPECIES_IDS, STATUS_IDS, PLATFORM_IDS, EDGE_TYPE_IDS, VALUE_IDS, VALUE_TIER_IDS } from "./ids";
 import { LEGACY_STATUS_IDS } from "./legacy-status";
+import { DECISION_STATUS_IDS } from "./decision";
 
 export { SPECIES_IDS, STATUS_IDS, PLATFORM_IDS, EDGE_TYPE_IDS, VALUE_IDS, VALUE_TIER_IDS, VALUE_TIERS } from "./ids";
 export { VALID_EDGE_SEMANTICS, isValidEdgeSemantic, edgeTypesForSpeciesPair } from "./ids";
@@ -50,4 +51,10 @@ export const ValueTierSchema = z.enum(VALUE_TIER_IDS).meta({
 export const ValueSchema = z.enum(VALUE_IDS).meta({
   id: "Value",
   description: "A Bain B2C Elements-of-Value element served by an acceptance (spec §3.2).",
+});
+
+export const DecisionStatusSchema = z.enum(DECISION_STATUS_IDS).meta({
+  id: "DecisionStatus",
+  description:
+    "Decision nodes only: proposed → approved (agreed, not yet reality) → enacted (in effect); terminal: rejected, deprecated, superseded. Not a lifecycle status — the node's status field is kept in sync (proposed→discovery, approved→backlog, enacted→live, terminals→archived).",
 });
