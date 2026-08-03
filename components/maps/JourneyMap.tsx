@@ -23,14 +23,14 @@ import { Button } from "@/components/ui/button";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useProject } from "@/lib/hooks/useProject";
-import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
+import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useElkLayout } from "@/lib/hooks/useElkLayout";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
 import { generateNodeId, edgeId } from "@/lib/utils/id";
 import { wouldCreateCycle } from "@/lib/utils/cycle";
-import type { ProductGraph } from "@/lib/utils/product-scope";
+import { productDisplayTitle, type ProductGraph } from "@/lib/utils/product-scope";
 import type { SpeciesId } from "@/lib/config/species";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { Node as DataNode, Edge as DataEdge, PlaylistEntry } from "@/lib/data/types";
@@ -95,6 +95,7 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   // themselves. It is also this journey's default product, and so reaches the
   // anchor chain below.
   const scope = useEffectiveProduct(id, projectBundle);
+  const productList = useProductList(scope);
   const { journal } = useJournal(id);
 
   // Built-in maps have no stored definition to carry a `display`, so the id is
@@ -719,10 +720,11 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   // The product this journey reads through, as a reader would name it. Falls
   // back to the id for a scope pointing at a product the project no longer
   // declares, exactly as the selector and the Library badges do.
-  const productLabel =
-    selection.productId === null
-      ? null
-      : scope.productsById.get(selection.productId)?.title?.trim() || selection.productId;
+  const productLabel = (() => {
+    if (selection.productId === null) return null;
+    const product = scope.productsById.get(selection.productId);
+    return product ? productDisplayTitle(product) : selection.productId;
+  })();
 
   if (nodesLoading || edgesLoading || projectLoading) {
     return (
@@ -805,6 +807,8 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
         onOpenChange={handleNewNodeOpenChange}
         onSubmit={handleAddNode}
         defaultValues={newNodePreset ?? undefined}
+        products={productList}
+        defaultProductId={selection.productId}
       />
       <InsertBetweenDialog
         open={insertBetweenOpen}

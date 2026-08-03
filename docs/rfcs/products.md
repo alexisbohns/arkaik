@@ -6,17 +6,26 @@ order: 91
 
 # RFC: Products — multi-product projects and per-product platform availability
 
-> Status: **Decided and shipped through P2.** [Option A](#a-products-as-project-level-definitions-nodes-carry-membership-platforms-constrained-by-product--recommended)
+> Status: **Decided and shipped through P3.** [Option A](#a-products-as-project-level-definitions-nodes-carry-membership-platforms-constrained-by-product--recommended)
 > was adopted as recommended — products as project-level definitions, membership
 > stored on flows and views, derived for acceptances and the system layer,
 > platform-less products per decision 2, and the degenerate-case guarantee.
 > P0 (spec), P1 (schema package) and P2 (every read surface) have shipped, along
 > with P4's dogfood half — the Pebbles seed carries a web-only Admin product, and
-> the plugin skill teaches the membership rules. **P3 (editing UI) and the
-> per-surface override have not**, so products remain authorable only by an agent
-> or by hand-editing a bundle.
-> Design spec: [`docs/superpowers/specs/2026-08-02-multi-product-projects-design.md`](../superpowers/specs/2026-08-02-multi-product-projects-design.md).
-> Implementation plan: [`docs/superpowers/plans/2026-08-02-multi-product-projects.md`](../superpowers/plans/2026-08-02-multi-product-projects.md).
+> the plugin skill teaches the membership rules. **P3 (editing UI) has now
+> shipped too**: products are created, renamed, re-platformed and deleted from
+> project settings, assigned from the node and acceptance forms, and moved in
+> bulk from the Library. Products no longer require an agent or a hand-edited
+> bundle.
+>
+> **Two things remain.** The per-surface product override is still deferred, and
+> there is no UI for a product's `root_node_id` — a product created in the app
+> therefore has no journey anchor until one is set by hand, and its Journey page
+> says so rather than borrowing the project's front door.
+> Design spec: [`docs/superpowers/specs/2026-08-02-multi-product-projects-design.md`](../superpowers/specs/2026-08-02-multi-product-projects-design.md);
+> P3's own: [`docs/superpowers/specs/2026-08-02-product-management-ui-design.md`](../superpowers/specs/2026-08-02-product-management-ui-design.md).
+> Implementation plan: [`docs/superpowers/plans/2026-08-02-multi-product-projects.md`](../superpowers/plans/2026-08-02-multi-product-projects.md);
+> P3's own: [`docs/superpowers/plans/2026-08-02-product-management-ui.md`](../superpowers/plans/2026-08-02-product-management-ui.md).
 > Normative format: [`docs/spec/bundle-format.md`](../spec/bundle-format.md) § Products;
 > model overview: [`docs/graph-model.md`](../graph-model.md) § Products.
 >
@@ -238,9 +247,10 @@ Sizes as in vision.md (S/M/L).
   platforms; product badge + filter in Library; product grouping/filter on
   Delivery, Pyramid, Acceptances matrix; `MapDefinition.product` scope;
   per-product journey anchors.
-- **P3 — Editing (M)**: product manager in project settings (create, rename,
-  set platforms, delete-with-reassign); product picker in node forms; bulk
-  "move to product".
+- **P3 — Editing (M)** — *shipped.* Product manager in project settings (create,
+  rename, set platforms, delete-with-reassign); product picker in node forms;
+  bulk "move to product". A product's `root_node_id` was left out and is the one
+  piece still only reachable by hand.
 - **P4 — Toolchain & dogfood (S)**: CLI surfaces products in `validate`/`log`;
   plugin skill teaches membership rules; seed Pebbles gains an Admin product
   (web-only) so the degenerate and constrained paths are both exercised by

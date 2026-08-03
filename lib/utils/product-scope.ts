@@ -118,6 +118,40 @@ export function platformCountLabel(platforms: unknown): string {
 }
 
 /**
+ * **What to call ONE product on screen, written once.**
+ *
+ * `title` is not validated by `resolveProducts` — a definition needs only an id
+ * to resolve, and bundles are hand-edited and agent-edited, so at runtime the
+ * title can be absent, blank, or not a string whatever the type says. Falling
+ * back to the id keeps a real, clickable row instead of a blank one.
+ *
+ * It lives here rather than in each surface because the fallback has to be
+ * **identical everywhere**: the settings manager's row, the dialog that deletes
+ * that row, the scope selector and the node picker all name the same malformed
+ * product, and a user who reads `admin-dashboard` in one place and an empty pill
+ * in another cannot tell they are the same thing. Four copies of a one-line rule
+ * stay in sync exactly until one of them does not.
+ *
+ * It lives *next to* {@link productLabels} because that is the plural, ordered
+ * form of the same fallback — over ids and a scope rather than over a definition
+ * — and the two answers must never disagree. It is deliberately NOT in
+ * lib/utils/product-editing.ts, which would be the other natural home: that
+ * module is not part of this one's module graph, and importing it here would
+ * make every test loader that builds product-scope.ts (pyramid, delivery,
+ * coverage, acceptance-matrix, journey-graph) build product-editing.ts too, for
+ * a display rule none of them exercise.
+ *
+ * Tolerates `null` so a dialog rendering on its way out, with its subject
+ * already cleared, gets an empty string rather than a throw.
+ */
+export function productDisplayTitle(
+  product: Pick<ProductDefinition, "id" | "title"> | null | undefined,
+): string {
+  if (!product) return "";
+  return typeof product.title === "string" && product.title.trim() !== "" ? product.title : product.id;
+}
+
+/**
  * The selector's options, in declaration order. **Products only** — the "All
  * products" entry is the selector's own affordance, not a product, so an empty
  * result here means "this project has no products" and the control does not
@@ -129,17 +163,17 @@ export function platformCountLabel(platforms: unknown): string {
  * `metadata` of its own, and every caller that has to remember that is a caller
  * that can forget.
  *
- * `title` is not validated by `resolveProducts` — a definition missing one is a
- * shape fault owned by the parser and the JSON Schema, so at runtime it can be
- * absent whatever the type says. Falling back to the id keeps a real, clickable
- * row instead of a blank one.
+ * The title fallback is {@link productDisplayTitle}'s, not a copy of it — a
+ * definition missing a title is a shape fault the parser owns, so at runtime it
+ * can be absent whatever the type says, and the row the selector shows for it
+ * has to read identically to the row the settings manager shows.
  */
 export function productScopeOptions(
   bundle: { project?: Pick<Project, "metadata"> } | undefined | null,
 ): ProductScopeOption[] {
   return resolveProducts(bundle?.project).map((product) => ({
     id: product.id,
-    label: typeof product.title === "string" && product.title.trim() !== "" ? product.title : product.id,
+    label: productDisplayTitle(product),
     platformLabel: platformCountLabel(product.platforms),
   }));
 }
@@ -237,22 +271,9 @@ export function productsOfNode(
  * The products this node belongs to, as **titles ready to render**, in the
  * project's declaration order.
  *
- * Display only — {@link productsOfNode} owns the membership answer and this adds
- * nothing to it but ordering and a label. Both are worth doing once rather than
- * per surface: a `Set`'s iteration order is insertion order, which for a data
- * model reached by three products is whatever the traversal happened to hit
- * first, and "Used by: Admin, End-user" flipping between renders of the same
- * graph reads as a change when nothing changed.
- *
- * Ids the project no longer declares sort last and render as themselves. They
- * are the stale-key case `ProductScopeSelector` also has to survive, and the
- * honest thing to show is the id — dropping it would silently under-report who
- * touches a data model.
- *
- * `title` is not validated by `resolveProducts` — a definition missing one is a
- * shape fault owned by the parser, so at runtime it can be absent whatever the
- * type says. Falling back to the id keeps a real badge instead of a blank one,
- * exactly as `productScopeOptions` does.
+ * Display only, and a composition of two functions that each own one half:
+ * {@link productsOfNode} answers the membership, {@link productLabels} owns the
+ * ordering and the title fallback. Neither rule is written here.
  *
  * An **empty result keeps both its meanings** and the caller resolves them, as
  * with {@link productsOfNode}: for a flow, view, or acceptance it is *nobody has
@@ -264,12 +285,48 @@ export function productLabelsOfNode(
   scope: ProductScope,
   graph: ProductGraph,
 ): string[] {
-  const products = productsOfNode(node, graph);
+  return productLabels(productsOfNode(node, graph), scope);
+}
+
+/**
+ * **The ordering and the title fallback, written once** — a set of product ids
+ * as titles ready to render. {@link productLabelsOfNode} is this function plus a
+ * membership answer, and holds no copy of either rule.
+ *
+ * It is separate from `productLabelsOfNode` for the caller that already *has*
+ * the ids: the acceptance editor derives its own membership through
+ * {@link productsOfAcceptance} (anchors, no traversal), and routing that through
+ * `productLabelsOfNode` would re-enter {@link productsOfNode} and demand a
+ * `usageIndex` — a full `buildProductUsageIndex` traversal — to answer a question
+ * about a species that never consults it. The editor duplicated both rules inline
+ * instead, which is exactly the drift this module exists to prevent.
+ *
+ * **Declaration order first, undeclared ids last.** A `Set` iterates in insertion
+ * order, which for a data model reached by three products is whatever the
+ * traversal happened to hit first; "Used by: Admin, End-user" flipping between
+ * renders of the same graph reads as a change when nothing changed. Ids the
+ * project no longer declares sort last and render as themselves — they are the
+ * stale-key case `ProductScopeSelector` also has to survive, and the honest thing
+ * to show is the id, since dropping it would silently under-report who touches a
+ * node.
+ *
+ * `title` is not validated by `resolveProducts` — a definition missing one is a
+ * shape fault owned by the parser, so at runtime it can be absent whatever the
+ * type says. Falling back to the id keeps a real badge instead of a blank one,
+ * exactly as `productScopeOptions` does.
+ *
+ * Takes an `Iterable` rather than a `Set` so a caller holding an array of ids
+ * need not build one; membership is tested against the *scope*, never against
+ * the argument, so order of iteration is the only thing read from it.
+ */
+export function productLabels(ids: Iterable<string>, scope: ProductScope): string[] {
+  const products = ids instanceof Set ? ids : new Set(ids);
   const declared = [...scope.productsById.keys()].filter((id) => products.has(id));
   const undeclared = [...products].filter((id) => !scope.productsById.has(id));
   return [...declared, ...undeclared].map((id) => {
-    const title = scope.productsById.get(id)?.title;
-    return typeof title === "string" && title.trim() !== "" ? title : id;
+    // The singular fallback, not a copy of it — an id the project no longer
+    // declares has no definition to read a title from, and reads as itself.
+    return productDisplayTitle(scope.productsById.get(id) ?? { id, title: "" });
   });
 }
 

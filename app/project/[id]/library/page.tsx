@@ -1,11 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { PlusIcon } from "lucide-react";
+import { toast } from "sonner";
 import { LibraryFilterBar, type LibraryDisplayMode, type LibrarySpeciesFilter } from "@/components/library/LibraryFilterBar";
 import { NodeCard } from "@/components/library/NodeCard";
 import type { PlaylistPreviewItem } from "@/components/library/NodeCard";
+import { LibrarySelectionBar } from "@/components/library/LibrarySelectionBar";
 import { NodeTable, type NodeSortKey, type NodeSortState } from "@/components/library/NodeTable";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
 import { PageShell } from "@/components/layout/PageShell";
@@ -17,13 +19,20 @@ import type { Node as DataNode } from "@/lib/data/types";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useNodes } from "@/lib/hooks/useNodes";
-import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
+import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { findWhereUsed } from "@/lib/utils/where-used";
 import { generateNodeId } from "@/lib/utils/id";
-import { nodeInScope, productLabelsOfNode, type ProductGraph } from "@/lib/utils/product-scope";
+import {
+  nodeInScope,
+  productDisplayTitle,
+  productLabelsOfNode,
+  type ProductGraph,
+} from "@/lib/utils/product-scope";
 import { matchesSearch } from "@/lib/utils/search";
+import { applyProductPlan } from "@/lib/utils/apply-product-plan";
+import { planProductMove } from "@/lib/utils/product-editing";
 import {
   computeFlowPlatformRollup,
   createEmptyRollup,
@@ -157,14 +166,15 @@ export default function ProjectLibraryPage() {
 
   const speciesFilter = parseSpeciesFilter(searchParams.get("species"));
 
-  const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode } = useNodes(id);
+  const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, applyMutations } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
-  const { project: projectBundle } = useProject(id);
+  const { project: projectBundle, updateProject } = useProject(id);
   const { journal } = useJournal(id);
   // The shell's scope, never a URL param (§ Decision 2). With no products
   // declared it resolves to every platform and every node, so a project that has
   // never heard of products gets exactly today's library.
   const scope = useEffectiveProduct(id, projectBundle);
+  const productList = useProductList(scope);
 
   const nodesById = useMemo(
     () => new Map(dataNodes.map((node) => [node.id, node])),
@@ -209,13 +219,150 @@ export default function ProjectLibraryPage() {
     );
   }, [productGraph, scope, visibleNodes]);
 
+  /**
+   * SELECTION ONLY EXISTS WHERE IT HAS SOMETHING TO DO (§ D6, degenerate case).
+   *
+   * Moving nodes between products is the only bulk action there is, so a project
+   * declaring no products gets no checkboxes and no bar — a column of boxes
+   * whose sole outcome is a bar reading "3 selected / Clear" is a control that
+   * exists to be dismissed, and the guarantee that a product-less project looks
+   * exactly as it did before products existed outranks a selection mechanism
+   * with nothing to offer. When the second action arrives (bulk status, bulk
+   * delete), this gate is the one line that changes, and the components below
+   * already treat selection as general: they know nothing about products.
+   */
+  const selectionEnabled = productList.length > 0;
+
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
+  const [moving, setMoving] = useState(false);
+
+  function toggleSelected(nodeId: string) {
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(nodeId)) next.delete(nodeId);
+      else next.add(nodeId);
+      return next;
+    });
+  }
+
+  /**
+   * Select-all is a UNION, and un-select-all a SUBTRACTION — never a
+   * replacement.
+   *
+   * The requirement is that ticking "all" while a species filter or a search is
+   * active must not quietly select the nodes the filter is *hiding*; a bulk move
+   * is exactly where an invisible selection does damage. Adding only the visible
+   * ids satisfies that outright.
+   *
+   * *Rejected:* replacing the set with the visible ids, which satisfies the same
+   * requirement and then silently destroys an off-screen selection — tick a
+   * node, search for something else, tick "all", and the first node is gone with
+   * no feedback but a changed count. Selection deliberately survives a filter
+   * change (that is what makes the bar's count equal what the move will touch),
+   * so a control labelled "all visible nodes" must not be the one thing that
+   * reaches outside the visible list to delete.
+   */
+  function toggleAllVisible() {
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      const allVisibleSelected =
+        visibleNodes.length > 0 && visibleNodes.every((node) => previous.has(node.id));
+      for (const node of visibleNodes) {
+        if (allVisibleSelected) next.delete(node.id);
+        else next.add(node.id);
+      }
+      return next;
+    });
+  }
+
+  // Ids survive a filter change (an id hidden by a search is still selected),
+  // so the bar resolves them against the full node list rather than the visible
+  // one — it counts species, and a count of what is merely on screen would be a
+  // different number from what the move will touch.
+  const selectedNodes = useMemo(
+    () => dataNodes.filter((node) => selectedIds.has(node.id)),
+    [dataNodes, selectedIds],
+  );
+
+  // What the bar has to explain: "7 selected" over three ticked rows is an
+  // unexplained number, and the only way out of it would be all-or-nothing
+  // Clear. Counted here because the page is what owns the notion of "visible".
+  const hiddenSelectedCount = useMemo(() => {
+    const visibleIds = new Set(visibleNodes.map((node) => node.id));
+    return selectedNodes.filter((node) => !visibleIds.has(node.id)).length;
+  }, [selectedNodes, visibleNodes]);
+
+  /**
+   * A scope change is a change of subject, and the selection does not survive
+   * it.
+   *
+   * Under All products a user can tick an Admin flow and an end-user view; on
+   * switching to End-user app the Admin flow is neither shown nor mentioned by
+   * any filter the user set, yet it would still be in the set and still be moved.
+   * Worse, switching to a project state with no products at all flips
+   * `selectionEnabled` false, which removes every checkbox and the bar — leaving
+   * held ids with no surface able to show or clear them. Both cases are the same
+   * bug, so both are cleared by the same subject key.
+   *
+   * Adjusted **during render** rather than in an effect, which is what React
+   * documents for "reset state when a prop changes" and what
+   * `react-hooks/set-state-in-effect` exists to push callers towards: an effect
+   * would let one commit paint with the old selection still live under the new
+   * scope, and would cost a second render every time. Setting state while
+   * rendering *this* component restarts the render before anything is shown.
+   */
+  const [selectionSubject, setSelectionSubject] = useState(
+    () => `${scope.productId ?? ""}:${selectionEnabled}`,
+  );
+  const currentSubject = `${scope.productId ?? ""}:${selectionEnabled}`;
+  if (selectionSubject !== currentSubject) {
+    setSelectionSubject(currentSubject);
+    if (selectedIds.size > 0) setSelectedIds(new Set());
+  }
+
+  /**
+   * ONE write, never a loop of single updates: `planProductMove` decides which
+   * of the selected nodes can actually hold a membership, and `applyProductPlan`
+   * commits every patch as a single atomic mutation. A per-node loop would leave
+   * a half-moved shelf behind on the first failure.
+   *
+   * An empty plan is reported, not written — everything selected is already in
+   * the target (or derives its product), and a silent no-op reads as a bug.
+   */
+  async function handleMoveToProduct(productId: string | null) {
+    if (moving) return;
+    setMoving(true);
+    const plan = planProductMove(dataNodes, [...selectedIds], productId);
+    try {
+      if (plan.reassignments.length === 0) {
+        toast.info("Those nodes are already there.");
+      } else {
+        await applyProductPlan(plan, {
+          nodesById,
+          projectMetadata: projectBundle?.project.metadata,
+          updateProject,
+          applyMutations,
+        });
+        const moved = plan.reassignments.length;
+        toast.success(
+          productId === null
+            ? `${moved} node${moved === 1 ? "" : "s"} unassigned.`
+            : `${moved} node${moved === 1 ? "" : "s"} moved.`,
+        );
+      }
+      setSelectedIds(new Set());
+    } catch (err) {
+      console.error("[LibraryPage] Failed to move nodes:", err);
+      toast.error(err instanceof Error ? err.message : "Could not move those nodes.");
+    } finally {
+      setMoving(false);
+    }
+  }
+
   const emptyLabel = SPECIES_EMPTY_LABELS[speciesFilter];
-  // `title` is not validated by `resolveProducts`, so fall back to the id the
-  // way `ProductScopeSelector` does rather than naming a blank product.
-  const scopeLabel =
-    typeof scope.product?.title === "string" && scope.product.title.trim() !== ""
-      ? scope.product.title
-      : scope.productId;
+  // `title` is not validated by `resolveProducts`, so fall back to the id
+  // rather than naming a blank product — the one rule, from its one home.
+  const scopeLabel = scope.product ? productDisplayTitle(scope.product) : scope.productId;
 
   const flowRollupByNodeId = useMemo(
     () => Object.fromEntries(
@@ -306,6 +453,20 @@ export default function ProjectLibraryPage() {
                 onSearchChange={setSearch}
                 onDisplayModeChange={setDisplayMode}
               />
+              {/* Inside the sticky band, not in the scrolling column: the bar
+                  acts on rows the user ticked a screenful down, and a control
+                  that scrolls away from its own selection is unreachable exactly
+                  when it is needed. */}
+              {selectionEnabled && (
+                <LibrarySelectionBar
+                  selected={selectedNodes}
+                  hiddenCount={hiddenSelectedCount}
+                  products={productList}
+                  onClear={() => setSelectedIds(new Set())}
+                  onMove={(productId) => void handleMoveToProduct(productId)}
+                  busy={moving}
+                />
+              )}
             </StickyToolbar>
 
             <div className="flex flex-col gap-4 px-4 pb-4 md:px-6 md:pb-6">
@@ -340,6 +501,8 @@ export default function ProjectLibraryPage() {
                       usedInCount={usedInByNodeId[node.id] ?? 0}
                       scope={scope}
                       productLabels={productLabelsByNodeId?.[node.id]}
+                      selected={selectionEnabled ? selectedIds.has(node.id) : undefined}
+                      onToggleSelected={toggleSelected}
                       onClick={() => handleSelectNode(node)}
                     />
                   </li>
@@ -355,6 +518,9 @@ export default function ProjectLibraryPage() {
                   usedInByNodeId={usedInByNodeId}
                   scope={scope}
                   productLabelsByNodeId={productLabelsByNodeId}
+                  selectedIds={selectionEnabled ? selectedIds : undefined}
+                  onToggleSelected={toggleSelected}
+                  onToggleAll={toggleAllVisible}
                   onSortChange={handleSortChange}
                   onSelectNode={handleSelectNode}
                 />
@@ -370,6 +536,8 @@ export default function ProjectLibraryPage() {
         onOpenChange={setNewNodeOpen}
         onSubmit={handleCreateNode}
         defaultValues={speciesFilter !== "all" ? { species: speciesFilter } : undefined}
+        products={productList}
+        defaultProductId={scope.productId}
       />
     </>
   );

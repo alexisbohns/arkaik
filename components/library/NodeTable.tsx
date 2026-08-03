@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { ArrowUpDownIcon } from "lucide-react";
 import { PRODUCT_MEMBERSHIP_SPECIES } from "@arkaik/schema";
 import type { Node } from "@/lib/data/types";
@@ -38,6 +39,24 @@ interface NodeTableProps {
    * node is in none of them.
    */
   productLabelsByNodeId?: Record<string, string[]>;
+  /**
+   * The selected node ids, or `undefined` when the surface has no selection.
+   *
+   * **`undefined` is not an empty set**, the same distinction
+   * `productLabelsByNodeId` above draws: it means there is no selection
+   * mechanism here, so the checkbox column does not exist and the table renders
+   * exactly the columns it did before. An empty set means the surface selects
+   * and nothing is selected yet.
+   */
+  selectedIds?: ReadonlySet<string>;
+  onToggleSelected?: (nodeId: string) => void;
+  /**
+   * Adds every row **this table was given** to the selection, or removes them
+   * all when they are already in it — the filtered, searched, currently-visible
+   * list, never the whole library, and never at the expense of a selection made
+   * under another filter. See the page's `toggleAllVisible`.
+   */
+  onToggleAll?: () => void;
   onSortChange: (key: NodeSortKey) => void;
   onSelectNode: (node: Node) => void;
 }
@@ -70,13 +89,54 @@ export function NodeTable({
   usedInByNodeId,
   scope,
   productLabelsByNodeId,
+  selectedIds,
+  onToggleSelected,
+  onToggleAll,
   onSortChange,
   onSelectNode,
 }: NodeTableProps) {
+  // Checked only when every visible row is in the set — and `nodes.length > 0`
+  // so an empty table does not render a ticked "select all" over nothing.
+  const allVisibleSelected =
+    selectedIds !== undefined &&
+    nodes.length > 0 &&
+    nodes.every((node) => selectedIds.has(node.id));
+
+  /**
+   * SOME-BUT-NOT-ALL is a third state, and a native checkbox has no attribute
+   * for it — `indeterminate` is an IDLE property, settable only from JavaScript,
+   * which is why this needs a ref rather than a prop. Without it a partial
+   * selection renders an empty box indistinguishable from "nothing selected",
+   * and the control would misreport what a click is about to do: the box is
+   * unchecked, so clicking it *adds* the rest, while it looks like clicking will
+   * do nothing at all.
+   */
+  const someVisibleSelected =
+    selectedIds !== undefined && nodes.some((node) => selectedIds.has(node.id));
+  const selectAllRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someVisibleSelected && !allVisibleSelected;
+    }
+  }, [allVisibleSelected, someVisibleSelected]);
+
   return (
     <Table className="text-sm">
       <TableHeader>
         <TableRow>
+          {selectedIds !== undefined && (
+            <TableHead className="w-8">
+              <input
+                ref={selectAllRef}
+                type="checkbox"
+                aria-label="Select all visible nodes"
+                className="size-4 cursor-pointer accent-primary"
+                checked={allVisibleSelected}
+                onChange={() => onToggleAll?.()}
+              />
+            </TableHead>
+          )}
           {SORTABLE_COLUMNS.map((column) => (
             <TableHead key={column.key}>
               <button
@@ -102,6 +162,24 @@ export function NodeTable({
           const platforms = scopedPlatforms(node, scope);
           return (
             <TableRow key={node.id} data-wobble-group className="cursor-pointer" onClick={() => onSelectNode(node)}>
+              {selectedIds !== undefined && (
+                // The whole row opens the node, so the cell swallows the click
+                // as well as the box: a fat-fingered tap on the padding around
+                // a checkbox must not navigate away mid-selection.
+                <TableCell className="w-8" onClick={(event) => event.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    // Titles are not unique in this app — two products' "Home"
+                    // views are ordinary — and the adjacent column already
+                    // renders the id, so the accessible name says both rather
+                    // than reading out three identical "Select Home" boxes.
+                    aria-label={`Select ${node.title} (${node.id})`}
+                    className="size-4 cursor-pointer accent-primary"
+                    checked={selectedIds.has(node.id)}
+                    onChange={() => onToggleSelected?.(node.id)}
+                  />
+                </TableCell>
+              )}
               <TableCell className="font-mono text-xs">{node.id}</TableCell>
               <TableCell className="max-w-[280px] truncate">{node.title}</TableCell>
               <TableCell>{speciesLabelById[node.species] ?? node.species}</TableCell>

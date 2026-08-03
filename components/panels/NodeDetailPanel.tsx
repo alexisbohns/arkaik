@@ -30,6 +30,9 @@ import {
   scopedRollupPlatforms,
 } from "@/lib/utils/platform-status";
 import type { ProductScope } from "@/lib/utils/product-scope";
+import { ProductPicker } from "@/components/panels/ProductPicker";
+import { withProductMembership } from "@/lib/utils/product-editing";
+import { productOf } from "@arkaik/schema";
 import { findWhereUsed } from "@/lib/utils/where-used";
 import { computeNodeTimeline } from "@/lib/utils/journal";
 import { describeJournalEvent, formatEventDate } from "@/components/journal/describe-event";
@@ -173,6 +176,84 @@ function NodeFields({ node, onUpdate }: NodeFieldsProps) {
           </Select>
         </div>
       )}
+    </div>
+  );
+}
+
+interface ProductSectionProps {
+  node: Node;
+  scope: ProductScope;
+  onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
+}
+
+/**
+ * Which product this node belongs to — the edit path for the key the read
+ * surfaces already scope on.
+ *
+ * **Renders nothing at all in a project that declares no products.** Not a
+ * disabled field, not an empty select, not the word "product": `productsById` is
+ * empty exactly when the project has never heard of the concept, and the whole
+ * feature's guarantee is that such a project looks byte-identical to how it did
+ * before products existed. The guard lives here rather than inside
+ * `ProductPicker` because only the call site knows which layout to omit.
+ *
+ * **Flows and views only, though `PRODUCT_MEMBERSHIP_SPECIES` also lists
+ * acceptances.** An acceptance already gets a picker from `AcceptanceEditor`,
+ * which is the only place that can say the true thing about it — its membership
+ * is derived from its `covers` anchors (§ D5) and this control cannot express
+ * that. Testing `PRODUCT_MEMBERSHIP_SPECIES` here, as the plan's sketch did,
+ * would put two pickers on the same acceptance panel disagreeing about the same
+ * node. Data models and API endpoints derive membership from their consumers and
+ * are excluded for the original reason: a stored key on one is a value every read
+ * surface ignores and the validator warns about
+ * (`product-membership-wrong-species`).
+ *
+ * Without `onUpdate` there is no save path, so the control does not render —
+ * showing an assignment that silently fails to persist is worse than showing
+ * none. The species-scoped read-only surfaces (the Library card, the graph node)
+ * already report membership for panels opened that way.
+ */
+function ProductSection({ node, scope, onUpdate }: ProductSectionProps) {
+  if (scope.productsById.size === 0) return null;
+  if (node.species !== "flow" && node.species !== "view") return null;
+  if (!onUpdate) return null;
+
+  const stored = productOf(node);
+  // Whether the membership RESOLVES, not merely whether one is stored. A key
+  // naming a product the project no longer declares degrades to "Unassigned" in
+  // the trigger (`ProductPicker` displays it, deliberately, rather than healing
+  // it), so keying the hint off `stored === null` would suppress the explanation
+  // in exactly the case that needs one most: the trigger says Unassigned and
+  // nothing on screen says why.
+  const resolved = stored !== null && scope.productsById.has(stored);
+  // The two unresolved cases get different sentences because they are different
+  // situations and have different fixes. Never-assigned is a normal state — the
+  // node is in triage and the hint just says where to find it. A stale key is a
+  // fault: something named a product that no longer exists, the id is the only
+  // trace of it left, and echoing it back is what lets a reader recognise a
+  // rename or a deletion they can undo. Collapsing both into one sentence would
+  // throw that id away, and it is unrecoverable from the UI once the select is
+  // touched.
+  const hint = resolved
+    ? undefined
+    : stored === null
+      ? "Unassigned nodes appear under All products only."
+      : `Assigned to "${stored}", which this project no longer declares — it appears under All products only.`;
+
+  return (
+    <div className="px-6">
+      <ProductPicker
+        products={[...scope.productsById.values()]}
+        value={stored}
+        // Routed through `withProductMembership`, never assembled here: it owns
+        // the "unassigned means *absent*, never `product: \"\"`" rule and it
+        // carries the rest of the metadata (platformStatuses, notes,
+        // screenshots) through untouched — a patch replaces `metadata` wholesale.
+        onChange={(nextProduct) =>
+          void onUpdate(node.id, { metadata: withProductMembership(node.metadata, nextProduct) })
+        }
+        hint={hint}
+      />
     </div>
   );
 }
@@ -477,6 +558,7 @@ export function NodeDetailPanel({
   return (
     <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-4 pb-6">
       <NodeFields key={node.id} node={node} onUpdate={onUpdate} />
+      <ProductSection key={`product-${node.id}`} node={node} scope={scope} onUpdate={onUpdate} />
       <RefsSection key={`refs-${node.id}`} node={node} />
       {(node.species === "view" || node.species === "flow") && allNodes && allEdges && (
         <AcceptancesSection

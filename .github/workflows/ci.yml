@@ -121,6 +121,9 @@ jobs:
       - name: Product scope helper and store tests
         run: npm run test:product-scope
 
+      - name: Product editing rule tests
+        run: npm run test:product-editing
+
       - name: Landing-page redirect tests (signed in → /projects)
         run: npm run test:root-redirect
 

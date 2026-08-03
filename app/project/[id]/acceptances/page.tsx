@@ -1,21 +1,22 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { PlusIcon } from "lucide-react";
 import { toast } from "sonner";
-import type { Node as DataNode } from "@/lib/data/types";
+import type { Node as DataNode, NodeMetadata } from "@/lib/data/types";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useProject } from "@/lib/hooks/useProject";
 import { useJournal } from "@/lib/hooks/useJournal";
-import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
+import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
 import { useAcceptanceFilters } from "@/components/acceptances/acceptance-filters";
 import { filterAcceptances } from "@/lib/utils/acceptance-matrix";
 import { AcceptanceFilterBar } from "@/components/acceptances/AcceptanceFilterBar";
 import { AcceptanceMatrix } from "@/components/acceptances/AcceptanceMatrix";
 import { PageShell } from "@/components/layout/PageShell";
+import { NewAcceptanceForm, type NewAcceptanceFormData } from "@/components/panels/NewAcceptanceForm";
 import { generateNodeId } from "@/lib/utils/id";
 
 export default function ProjectAcceptancesPage() {
@@ -29,6 +30,7 @@ export default function ProjectAcceptancesPage() {
   const { project: projectBundle } = useProject(id);
   const { journal } = useJournal(id);
   const { filters, setFilters } = useAcceptanceFilters();
+  const [newAcceptanceOpen, setNewAcceptanceOpen] = useState(false);
 
   const acceptances = useMemo(
     () => dataNodes.filter((node) => node.species === "acceptance"),
@@ -51,6 +53,7 @@ export default function ProjectAcceptancesPage() {
   // shell owns which app they are looking at. Membership lives on nodes, so
   // this narrows correctly even before `useProject` has resolved the bundle.
   const scope = useEffectiveProduct(id, projectBundle);
+  const productList = useProductList(scope);
   const scopedFilters = useMemo(
     () => ({ ...filters, product: scope.productId }),
     [filters, scope.productId],
@@ -68,7 +71,14 @@ export default function ProjectAcceptancesPage() {
     await updateNode(nodeId, patch);
   }
 
-  async function handleCreateAcceptance(title: string) {
+  /**
+   * `metadata` carries the product the create dialog collected, and is the only
+   * thing this path gained: everything else about a new acceptance — idea
+   * status, every platform — is still decided here rather than asked for. It is
+   * threaded through rather than written as a second create path so the anchored
+   * variant below stays the *only* other way an acceptance is born.
+   */
+  async function handleCreateAcceptance(title: string, metadata: NodeMetadata = {}) {
     const created = await addNode({
       id: generateNodeId("acceptance", title, nodesById.keys()),
       project_id: id,
@@ -77,10 +87,20 @@ export default function ProjectAcceptancesPage() {
       status: "idea",
       // seed all platforms so a new acceptance renders in the parity matrix immediately (library/delivery seed []).
       platforms: ["web", "ios", "android"],
-      metadata: {},
+      metadata,
     });
     handleSelectNode(created);
     return created;
+  }
+
+  async function handleNewAcceptance({ title, metadata }: NewAcceptanceFormData) {
+    setNewAcceptanceOpen(false);
+    try {
+      await handleCreateAcceptance(title, metadata ?? {});
+    } catch (err) {
+      toast.error("Couldn't create the acceptance.");
+      console.error(err);
+    }
   }
 
   /**
@@ -128,52 +148,53 @@ export default function ProjectAcceptancesPage() {
   }
 
   return (
-    <PageShell
-      title="Acceptances"
-      meta={`${acceptances.length} total · ${filtered.length} shown`}
-      action={{
-        label: "New acceptance",
-        icon: PlusIcon,
-        // Lightweight create affordance: acceptances are primarily created at scale by
-        // the retro-population agents (via MCP), so this surface uses a simple prompt
-        // rather than the richer NewNodeForm dialog the library/delivery pages use.
-        onClick: async () => {
-          const title = window.prompt("Acceptance title (the What):");
-          if (!title || !title.trim()) return;
-          try {
-            await handleCreateAcceptance(title.trim());
-          } catch (err) {
-            toast.error("Couldn't create the acceptance.");
-            console.error(err);
-          }
-        },
-      }}
-      allNodes={dataNodes}
-      allEdges={dataEdges}
-      scope={scope}
-      journal={journal}
-      onUpdate={handleNodeUpdate}
-      onCreateAcceptanceForAnchor={handleCreateAcceptanceForAnchor}
-    >
-      <div className="h-full overflow-auto p-4 md:p-6">
-        <div className="flex w-full flex-col gap-4">
-          <AcceptanceFilterBar
-            filters={filters}
-            onChange={setFilters}
-            anchorOptions={anchorOptions}
-            projectId={id}
-            project={projectBundle}
-          />
-          <AcceptanceMatrix
-            acceptances={filtered}
-            edges={dataEdges}
-            nodesById={nodesById}
-            onSelect={handleSelectNode}
-            projectId={id}
-            project={projectBundle}
-          />
+    <>
+      <PageShell
+        title="Acceptances"
+        meta={`${acceptances.length} total · ${filtered.length} shown`}
+        action={{
+          label: "New acceptance",
+          icon: PlusIcon,
+          // A dialog rather than the `window.prompt` this used to be: a prompt
+          // returns a string and nothing else, so an acceptance created under a
+          // named scope carried no product and vanished from the scope it was
+          // created in. `NewAcceptanceForm` is the smallest surface that can ask.
+          onClick: () => setNewAcceptanceOpen(true),
+        }}
+        allNodes={dataNodes}
+        allEdges={dataEdges}
+        scope={scope}
+        journal={journal}
+        onUpdate={handleNodeUpdate}
+        onCreateAcceptanceForAnchor={handleCreateAcceptanceForAnchor}
+      >
+        <div className="h-full overflow-auto p-4 md:p-6">
+          <div className="flex w-full flex-col gap-4">
+            <AcceptanceFilterBar
+              filters={filters}
+              onChange={setFilters}
+              anchorOptions={anchorOptions}
+              projectId={id}
+              project={projectBundle}
+            />
+            <AcceptanceMatrix
+              acceptances={filtered}
+              edges={dataEdges}
+              nodesById={nodesById}
+              onSelect={handleSelectNode}
+              projectId={id}
+              project={projectBundle}
+            />
+          </div>
         </div>
-      </div>
-    </PageShell>
+      </PageShell>
+      <NewAcceptanceForm
+        open={newAcceptanceOpen}
+        onOpenChange={setNewAcceptanceOpen}
+        onSubmit={handleNewAcceptance}
+        products={productList}
+        defaultProductId={scope.productId}
+      />
+    </>
   );
 }

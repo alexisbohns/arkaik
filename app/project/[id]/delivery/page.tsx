@@ -20,7 +20,7 @@ import { useEdges } from "@/lib/hooks/useEdges";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useNodes } from "@/lib/hooks/useNodes";
-import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
+import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
 import { computeDeliveryItems, groupItemsByStatus, type DeliveryItem } from "@/lib/utils/delivery";
 import { generateNodeId } from "@/lib/utils/id";
@@ -67,6 +67,7 @@ export default function ProjectDeliveryPage() {
   // node, i.e. today's board. So the first render is already correct and
   // nothing flashes when the bundle arrives.
   const scope = useEffectiveProduct(id, projectBundle);
+  const productList = useProductList(scope);
 
   const nodesById = useMemo(() => new Map(dataNodes.map((node) => [node.id, node])), [dataNodes]);
 
@@ -207,7 +208,13 @@ export default function ProjectDeliveryPage() {
         </div>
       </PageShell>
 
-      <NewNodeForm open={newNodeOpen} onOpenChange={setNewNodeOpen} onSubmit={handleCreateNode} />
+      <NewNodeForm
+        open={newNodeOpen}
+        onOpenChange={setNewNodeOpen}
+        onSubmit={handleCreateNode}
+        products={productList}
+        defaultProductId={scope.productId}
+      />
     </>
   );
 }

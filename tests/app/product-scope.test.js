@@ -21,6 +21,7 @@ const {
   platformAvailabilityShape,
   resolveProductScope,
   productScopeOptions,
+  productDisplayTitle,
   platformCountLabel,
   nodeInScope,
   mapProductId,
@@ -29,6 +30,7 @@ const {
   computeMapSubgraph,
   productsOfNode,
   productLabelsOfNode,
+  productLabels,
   scopedPlatforms,
   scopedRollupPlatforms,
   flowGaugePlatforms,
@@ -212,6 +214,28 @@ assert(
   "a whitespace-only title falls back too — a row of spaces is still a blank row",
 );
 
+// The singular fallback the settings manager, its delete dialog and the picker
+// all name a product with. It is asserted directly rather than only through
+// `productScopeOptions` because those callers hold a definition, not a bundle,
+// and a fourth inline copy of the rule is exactly what it exists to prevent.
+assert(
+  productDisplayTitle({ id: "admin", title: "Admin dashboard" }) === "Admin dashboard",
+  "productDisplayTitle uses the title when there is one",
+);
+assert(
+  productDisplayTitle({ id: "admin" }) === "admin",
+  "productDisplayTitle falls back to the id — resolveProducts requires an id and nothing else",
+);
+assert(
+  productDisplayTitle({ id: "admin", title: "   " }) === "admin" &&
+    productDisplayTitle({ id: "admin", title: 7 }) === "admin",
+  "productDisplayTitle falls back on a blank or non-string title too",
+);
+assert(
+  productDisplayTitle(null) === "" && productDisplayTitle(undefined) === "",
+  "productDisplayTitle survives a missing product — the delete dialog renders on its way out",
+);
+
 assert(platformCountLabel([]) === "No platforms", "arity 0 is a real state: 'No platforms'");
 assert(platformCountLabel(undefined) === "No platforms", "a missing platforms array reads like an empty one");
 assert(platformCountLabel(["web"]) === "Web only", "arity 1 names the platform: 'Web only'");
@@ -362,6 +386,48 @@ assert(
 assert(
   eq(productLabelsOfNode(ghostView, allScope, libraryGraph), ["ghost"]),
   "a membership pointing at a product the project no longer declares renders the id — never silently dropped",
+);
+
+// --- productLabels — the ordering and the fallback, on their own -------------
+//
+// `productLabelsOfNode` is `productsOfNode` + this, and the acceptance editor
+// calls this half directly: it derives membership from `covers` anchors and has
+// no `usageIndex` to build. Pinned here so the one copy of the rule cannot drift
+// under either caller.
+
+assert(
+  eq(productLabels(new Set(["admin", "enduser"]), allScope), ["End-user app", "Admin dashboard"]),
+  "productLabels reads in DECLARATION order, not the argument's iteration order",
+);
+assert(
+  eq(productLabels(["admin", "enduser"], allScope), ["End-user app", "Admin dashboard"]),
+  "…and takes a plain array as readily as a Set — the caller need not build one",
+);
+assert(
+  eq(productLabels(new Set(["ghost", "enduser"]), allScope), ["End-user app", "ghost"]),
+  "an id the project no longer declares sorts LAST and renders as itself — never silently dropped",
+);
+assert(
+  eq(productLabels([], allScope), []),
+  "no ids, no labels — the emptiness the caller resolves, not a sentinel string",
+);
+
+const blankTitleScope = resolveProductScope(
+  {
+    project: {
+      metadata: {
+        products: [
+          { id: "no-title", platforms: [] },
+          { id: "blank-title", title: "   ", platforms: [] },
+        ],
+      },
+    },
+  },
+  null,
+);
+assert(
+  eq(productLabels(["blank-title", "no-title"], blankTitleScope), ["no-title", "blank-title"]),
+  "a missing title AND a whitespace-only one both fall back to the id — a row of spaces is still a blank row",
 );
 
 // --- The clamp: rollup widening, then the scope's menu -----------------------
