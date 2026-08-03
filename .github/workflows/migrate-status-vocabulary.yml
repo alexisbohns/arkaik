@@ -45,6 +45,8 @@ jobs:
         run: npm ci
 
       - name: Run status vocabulary migration
-        run: node scripts/migrate/status-vocabulary.js ${{ inputs.apply == true && '' || '--dry-run' }}
+        # NOT `apply && '' || '--dry-run'`: in Actions expressions the empty
+        # string is falsy, so that form dry-runs even when apply=true.
+        run: node scripts/migrate/status-vocabulary.js ${{ !inputs.apply && '--dry-run' || '' }}
         env:
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
