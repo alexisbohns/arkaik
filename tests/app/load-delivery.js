@@ -24,6 +24,7 @@ const BUILD_DIR = path.join(__dirname, ".test-build-delivery");
 const MODULES = [
   ["lib/config/platforms.ts", "config-platforms"],
   ["lib/config/statuses.ts", "config-statuses"],
+  ["lib/utils/blocked.ts", "blocked"],
   ["lib/utils/platform-status.ts", "platform-status"],
   ["lib/utils/product-scope.ts", "product-scope"],
   // The Acceptances surface's projection, built here so the suite can assert
@@ -40,6 +41,7 @@ const SPECIFIER_MAP = {
   "@/lib/config/species": "./config-species", // type-only in this graph; kept for safety
   "@/lib/config/statuses": "./config-statuses",
   "@/lib/data/types": "./types", // type-only in this graph
+  "@/lib/utils/blocked": "./blocked",
   "@/lib/utils/platform-status": "./platform-status",
   "@/lib/utils/product-scope": "./product-scope",
   "@/lib/utils/search": "./search",
