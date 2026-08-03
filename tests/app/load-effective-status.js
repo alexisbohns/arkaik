@@ -15,12 +15,14 @@ const BUILD_DIR = path.join(__dirname, ".test-build-effective-status");
 const MODULES = [
   ["lib/config/platforms.ts", "config-platforms"],
   ["lib/config/statuses.ts", "config-statuses"],
+  ["lib/utils/blocked.ts", "blocked"],
   ["lib/utils/platform-status.ts", "platform-status"],
 ];
 
 const SPECIFIER_MAP = {
   "@/lib/config/platforms": "./config-platforms",
   "@/lib/config/statuses": "./config-statuses",
+  "@/lib/utils/blocked": "./blocked",
   "@/lib/data/types": "./types", // type-only in this graph
 };
 

@@ -8,6 +8,7 @@ import {
   type StatusId,
 } from "@/lib/config/statuses";
 import type { Edge, Node, PlaylistEntry, PlatformStatusMap } from "@/lib/data/types";
+import { isBlocked } from "@/lib/utils/blocked";
 
 export type PlatformStatusCounts = Partial<Record<PlatformId, Partial<Record<StatusId, number>>>>;
 export type PlatformTotals = Partial<Record<PlatformId, number>>;
@@ -21,6 +22,8 @@ export type PlatformTotals = Partial<Record<PlatformId, number>>;
 export interface PlatformStatusRollup {
   counts: PlatformStatusCounts;
   totals: PlatformTotals;
+  /** Nodes in this rollup carrying a non-empty `metadata.blocked_by`. Absent reads as 0. */
+  blocked?: number;
 }
 
 /**
@@ -163,12 +166,14 @@ export function addEffectiveNodeToRollup(
 ): PlatformStatusRollup {
   const statuses = getEffectivePlatformStatuses(node, nodes, edges);
 
-  return Object.entries(statuses).reduce((currentRollup, [platformId, status]) => {
+  const next = Object.entries(statuses).reduce((currentRollup, [platformId, status]) => {
     if (!status) {
       return currentRollup;
     }
     return addPlatformStatusToRollup(currentRollup, platformId as PlatformId, status, presetId);
   }, rollup);
+
+  return isBlocked(node) ? { ...next, blocked: (next.blocked ?? 0) + 1 } : next;
 }
 
 export function createEmptyRollup(): PlatformStatusRollup {
@@ -197,7 +202,11 @@ export function addPlatformStatusToRollup(
     [platformId]: (rollup.totals[platformId] ?? 0) + 1,
   };
 
-  return { counts: nextCounts, totals: nextTotals };
+  // Spread `rollup` first so fields this function doesn't know about (e.g.
+  // `blocked`) survive — every caller that rebuilds a rollup by repeatedly
+  // calling this (addNodeToRollup, mergeRollups) would otherwise silently
+  // drop them on the first status added after such a field was set.
+  return { ...rollup, counts: nextCounts, totals: nextTotals };
 }
 
 export function addNodeToRollup(
@@ -207,13 +216,15 @@ export function addNodeToRollup(
 ) {
   const platformStatuses = getEditablePlatformStatuses(node);
 
-  return Object.entries(platformStatuses).reduce((currentRollup, [platformId, status]) => {
+  const next = Object.entries(platformStatuses).reduce((currentRollup, [platformId, status]) => {
     if (!status) {
       return currentRollup;
     }
 
     return addPlatformStatusToRollup(currentRollup, platformId as PlatformId, status, presetId);
   }, rollup);
+
+  return isBlocked(node) ? { ...next, blocked: (next.blocked ?? 0) + 1 } : next;
 }
 
 export function mergeRollups(...rollups: PlatformStatusRollup[]): PlatformStatusRollup {
@@ -232,7 +243,8 @@ export function mergeRollups(...rollups: PlatformStatusRollup[]): PlatformStatus
       }
     }
 
-    return nextRollup;
+    const blocked = (nextRollup.blocked ?? 0) + (rollup.blocked ?? 0);
+    return blocked > 0 ? { ...nextRollup, blocked } : nextRollup;
   }, createEmptyRollup());
 }
 

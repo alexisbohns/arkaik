@@ -26,6 +26,8 @@ interface StatusRingProps {
   label: string;
   /** Center content: an acceptance count or a platform icon. */
   children?: ReactNode;
+  /** Nodes behind this ring carrying `metadata.blocked_by`; > 0 draws the notch. */
+  blockedCount?: number;
 }
 
 /**
@@ -34,10 +36,11 @@ interface StatusRingProps {
  * all-zero list renders the muted track alone, which is how an unserved value
  * element reads.
  *
- * blocked is a node-level flag (`metadata.blocked_by`) and does not appear in
- * aggregate segments; see the status-lifecycle spec for the deferral.
+ * blocked is a node-level flag (`metadata.blocked_by`), not a segment: when
+ * `blockedCount` > 0 a small amber notch marks the ring (cycle 3 closed the
+ * cycle-1 deferral).
  */
-export function StatusRing({ segments, size = "lg", label, children }: StatusRingProps) {
+export function StatusRing({ segments, size = "lg", label, children, blockedCount = 0 }: StatusRingProps) {
   const { box, stroke, gap } = SIZE_STYLES[size];
   const drawn = segments.filter((segment) => segment.count > 0);
   // One status means no neighbour to separate from — the ring closes completely.
@@ -83,6 +86,14 @@ export function StatusRing({ segments, size = "lg", label, children }: StatusRin
         ))}
       </svg>
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">{children}</div>
+      {blockedCount > 0 && (
+        <span
+          className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-amber-500 ring-2 ring-background"
+          title={`${blockedCount} blocked`}
+          role="img"
+          aria-label={`${blockedCount} blocked`}
+        />
+      )}
     </div>
   );
 }

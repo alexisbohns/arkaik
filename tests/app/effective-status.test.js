@@ -17,6 +17,9 @@ const {
   computePlaylistRollup,
   computeFlowPlatformRollup,
   withRollupPlatforms,
+  createEmptyRollup,
+  addNodeToRollup,
+  mergeRollups,
 } = loadEffectiveStatus();
 
 let failures = 0;
@@ -79,6 +82,17 @@ assert(
   (flowRollup.counts.android?.development ?? 0) === 1,
   "flow rollup counts the effective (weakest) status of a covered descendant view",
 );
+
+// --- blocked counting (cycle 3) --------------------------------------------
+const blockedNode = { species: "view", status: "development", platforms: ["web"], metadata: { blocked_by: "V-auth" } };
+const freeNode = { species: "view", status: "live", platforms: ["web"], metadata: {} };
+let blockedRollup = createEmptyRollup();
+blockedRollup = addNodeToRollup(blockedRollup, blockedNode);
+blockedRollup = addNodeToRollup(blockedRollup, freeNode);
+assert(blockedRollup.blocked === 1, "addNodeToRollup counts blocked nodes");
+const mergedBlockedRollup = mergeRollups(blockedRollup, blockedRollup);
+assert(mergedBlockedRollup.blocked === 2, "mergeRollups sums blocked counts");
+assert((addNodeToRollup(createEmptyRollup(), freeNode).blocked ?? 0) === 0, "an all-free rollup reports zero blocked");
 
 // ====================== withRollupPlatforms (the widening) ===================
 //
