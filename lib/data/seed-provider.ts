@@ -43,10 +43,22 @@ export function createSeedProvider(loadBundle: () => ProjectBundle): DataProvide
     return current;
   };
 
-  /** The one write path — same shape as the local provider's `runOps`. */
+  /**
+   * The one write path — same shape as the local provider's `runOps`.
+   *
+   * `ops` is cloned before it reaches `applyOps`: `applyOps` stores op
+   * payloads by reference (a `create_node`'s `node`, an `update_node`'s
+   * `patch` spread into the updated node, a `create_edge`'s `edge`), and the
+   * in-memory `bundle.nodes`/`bundle.edges` array IS the store of record
+   * here — unlike the local provider, where the same reference ends up
+   * behind IndexedDB and aliasing is harmless. Without this clone, a caller
+   * mutating the object it passed IN after the call would corrupt sandbox
+   * state without going through applyOps or the journal. One clone here
+   * closes the write side for every mutator that funnels through `runOps`.
+   */
   const runOps = (projectId: string, ops: MutationOp[]) => {
     const current = requireProject(projectId);
-    const outcome = applyOps({ projectId, nodes: current.nodes, edges: current.edges }, ops);
+    const outcome = applyOps({ projectId, nodes: current.nodes, edges: current.edges }, structuredClone(ops));
     current.nodes = outcome.nodes;
     current.edges = outcome.edges;
     if (outcome.eventInputs.length > 0) {

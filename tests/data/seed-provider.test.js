@@ -118,7 +118,7 @@ async function main() {
     );
   }
 
-  // --- createNode does not alias sandbox-internal state -----------------------
+  // --- createNode does not alias sandbox-internal state (OUTPUT side) ---------
   // applyOps stores the exact `node` object the caller passed in; createNode
   // must hand back a CLONE of the stored node, not that same reference, or a
   // caller mutating the returned object would silently corrupt the in-memory
@@ -143,6 +143,31 @@ async function main() {
     await provider.deleteNode(PROJECT_ID, "V-alias-check");
   }
 
+  // --- createNode does not alias sandbox-internal state (INPUT side) ----------
+  // `runOps` must clone `ops` before handing them to `applyOps`, or a caller
+  // mutating the object it passed IN (after the call returns) would reach
+  // into the same object `applyOps` stored by reference.
+  {
+    const input = {
+      id: "V-alias-input-check",
+      project_id: PROJECT_ID,
+      species: "view",
+      title: "Original Input Title",
+      status: "idea",
+      platforms: ["web"],
+    };
+    await provider.createNode(input);
+    input.title = "MUTATED INPUT AFTER CALL";
+    const nodes = await provider.getNodes(PROJECT_ID);
+    const stored = nodes.find((n) => n.id === "V-alias-input-check");
+    check(
+      "mutating createNode's INPUT object after the call does not affect getNodes",
+      stored?.title === "Original Input Title",
+      JSON.stringify(stored),
+    );
+    await provider.deleteNode(PROJECT_ID, "V-alias-input-check");
+  }
+
   // --- updateNode ------------------------------------------------------------
   {
     const updated = await provider.updateNode(PROJECT_ID, "V-sandbox", { title: "Sandbox View (edited)" });
@@ -152,22 +177,51 @@ async function main() {
     check("the update is reflected in getNodes", stored?.title === "Sandbox View (edited)");
   }
 
+  // --- updateNode's patch does not alias sandbox-internal state ---------------
+  // `update_node` spreads `patch` onto the current node — if `patch.metadata`
+  // (a nested object) survives that spread by reference, mutating it after
+  // the call corrupts the stored node without going through applyOps.
+  {
+    const patch = { metadata: { note: "original note" } };
+    await provider.updateNode(PROJECT_ID, "V-sandbox", patch);
+    patch.metadata.note = "MUTATED AFTER CALL";
+    const nodes = await provider.getNodes(PROJECT_ID);
+    const stored = nodes.find((n) => n.id === "V-sandbox");
+    check(
+      "mutating patch.metadata after updateNode does not affect the stored node",
+      stored?.metadata?.note === "original note",
+      JSON.stringify(stored?.metadata),
+    );
+  }
+
   // --- createEdge / deleteEdge -------------------------------------------------
   let sandboxEdgeId;
   {
     const existingSourceId = SEED.nodes[0].id;
-    const edge = await provider.createEdge({
+    const edgeInput = {
       id: "ignored-on-create",
       project_id: PROJECT_ID,
       source_id: existingSourceId,
       target_id: "V-sandbox",
       edge_type: "calls",
-    });
+    };
+    const edge = await provider.createEdge(edgeInput);
     sandboxEdgeId = edge.id;
     check(
       "createEdge's returned id follows applyOps' e-{source}-{target} normalization",
       edge.id === `e-${existingSourceId}-V-sandbox`,
       edge.id,
+    );
+
+    // Mutate the caller's edge input object after the call — the stored edge
+    // must not alias it.
+    edgeInput.edge_type = "displays";
+    const edgesAfterInputMutation = await provider.getEdges(PROJECT_ID);
+    const storedEdge = edgesAfterInputMutation.find((e) => e.id === sandboxEdgeId);
+    check(
+      "mutating createEdge's INPUT object after the call does not affect getEdges",
+      storedEdge?.edge_type === "calls",
+      JSON.stringify(storedEdge),
     );
     const edges = await provider.getEdges(PROJECT_ID);
     check("the new edge is readable back via getEdges", edges.some((e) => e.id === sandboxEdgeId));
@@ -182,6 +236,45 @@ async function main() {
     await provider.deleteNode(PROJECT_ID, "V-sandbox");
     const nodes = await provider.getNodes(PROJECT_ID);
     check("deleteNode removes V-sandbox", nodes.every((n) => n.id !== "V-sandbox"));
+  }
+
+  // --- deleteNodes (plural) ----------------------------------------------------
+  {
+    const batchIds = ["V-batch-del-1", "V-batch-del-2"];
+    for (const id of batchIds) {
+      await provider.createNode({
+        id,
+        project_id: PROJECT_ID,
+        species: "view",
+        title: id,
+        status: "idea",
+        platforms: ["web"],
+      });
+    }
+    await provider.deleteNodes(PROJECT_ID, batchIds);
+    const nodesAfter = await provider.getNodes(PROJECT_ID);
+    check(
+      "deleteNodes removes every id it was given",
+      batchIds.every((id) => nodesAfter.every((n) => n.id !== id)),
+      JSON.stringify(nodesAfter.map((n) => n.id)),
+    );
+
+    // The `ids.length === 0` early return: must not throw and must not touch
+    // the stored graph.
+    const beforeEmptyCall = await provider.getNodes(PROJECT_ID);
+    let emptyCallThrew = false;
+    try {
+      await provider.deleteNodes(PROJECT_ID, []);
+    } catch {
+      emptyCallThrew = true;
+    }
+    const afterEmptyCall = await provider.getNodes(PROJECT_ID);
+    check("deleteNodes([]) does not throw", !emptyCallThrew);
+    check(
+      "deleteNodes([]) leaves the graph unchanged",
+      afterEmptyCall.length === beforeEmptyCall.length,
+      `before ${beforeEmptyCall.length}, after ${afterEmptyCall.length}`,
+    );
   }
 
   // --- applyMutations ------------------------------------------------------
@@ -214,6 +307,14 @@ async function main() {
       reread.project.description === "Edited via saveProject in the sandbox.",
       reread.project.description,
     );
+
+    let mismatchedIdThrew = false;
+    try {
+      await provider.saveProject({ ...bundle, project: { ...bundle.project, id: "some-other-project" } });
+    } catch {
+      mismatchedIdThrew = true;
+    }
+    check("saveProject with a mismatched project.id rejects", mismatchedIdThrew);
   }
 
   // --- exportProject reflects current (edited) state --------------------------
