@@ -367,8 +367,17 @@ interface ConnectionsSectionProps {
 }
 
 function ConnectionsSection({ node, allNodes, allEdges, onNavigate }: ConnectionsSectionProps) {
+  // DecisionEditor owns decision-typed edges (supersedes/generates/impacts) for
+  // a decision node itself — its "Decision links" section already lists both
+  // directions (supersedes/supersededBy/generates/impacts). This section shows
+  // them only from the OTHER endpoint's side, so a non-decision node can see
+  // which decisions impact/generate it ("decided by") without a decision node
+  // double-listing its own edges.
+  const isDecisionEdge = (e: Edge) =>
+    e.edge_type === "supersedes" || e.edge_type === "generates" || e.edge_type === "impacts";
   const crossLayerNodes = allEdges
     .filter((e) => e.edge_type !== "composes" && (e.source_id === node.id || e.target_id === node.id))
+    .filter((e) => !(node.species === "decision" && isDecisionEdge(e)))
     .map((e) => {
       const otherId = e.source_id === node.id ? e.target_id : e.source_id;
       return allNodes.find((n) => n.id === otherId);
