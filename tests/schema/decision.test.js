@@ -60,4 +60,47 @@ assert(
   "an unknown stored value falls back to proposed — render, never crash",
 );
 
+// --- Metadata fields parse and round-trip ------------------------------------
+const { parseBundle, DecisionStatusSchema } = loadSchema();
+
+const decisionNode = {
+  id: "DEC-two-axes-stay",
+  project_id: "p1",
+  species: "decision",
+  title: "Two axes stay",
+  status: "live",
+  platforms: [],
+  metadata: {
+    decision_status: "enacted",
+    context: "Exposure and delivery lifecycle kept getting conflated.",
+    consequences: "The stage axis keeps expressing exposure; statuses stay a pure delivery lifecycle.",
+    decided_at: "2026-08-03",
+  },
+};
+
+const bundle = {
+  schema_version: 3,
+  project: {
+    id: "p1",
+    title: "P",
+    created_at: "2026-08-01T00:00:00.000Z",
+    updated_at: "2026-08-03T00:00:00.000Z",
+  },
+  nodes: [decisionNode],
+  edges: [],
+};
+
+const parsed = parseBundle(bundle);
+assert(parsed.success, `bundle parses (${JSON.stringify(parsed.error?.issues)})`);
+assert(parsed.data.nodes[0].metadata.decision_status === "enacted", "decision_status survives parse");
+assert(parsed.data.nodes[0].metadata.decided_at === "2026-08-03", "decided_at survives parse");
+
+assert(DecisionStatusSchema.safeParse("enacted").success, "DecisionStatusSchema accepts enacted");
+assert(!DecisionStatusSchema.safeParse("actual").success, "DecisionStatusSchema rejects actual (renamed enacted)");
+
+const badStatus = JSON.parse(JSON.stringify(bundle));
+badStatus.nodes[0].metadata.decision_status = "actual";
+const badParsed = parseBundle(badStatus);
+assert(!badParsed.success, "an unknown decision_status is a parse error (spec §7 — same posture as unknown lifecycle status)");
+
 process.exit(failures > 0 ? 1 : 0);

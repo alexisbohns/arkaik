@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   AnyStatusSchema,
+  DecisionStatusSchema,
   EdgeTypeSchema,
   PlatformSchema,
   SpeciesSchema,
@@ -12,6 +13,7 @@ import {
   type StatusId,
   type ValueId,
 } from "./enums";
+import type { DecisionStatusId } from "./decision";
 import { FlowPlaylistSchema, type FlowPlaylist } from "./playlist";
 import { JournalEventSchema } from "./journal-events";
 import type { JournalEvent } from "./journal";
@@ -118,6 +120,14 @@ export interface NodeMetadata extends Record<string, unknown> {
   values?: ValueId[];
   /** Product membership; meaningful on flow, view, and acceptance only. */
   product?: string;
+  /** Decision nodes: the decision's own status (spec §2). Not a lifecycle status. */
+  decision_status?: DecisionStatusId;
+  /** Decision nodes: Context — the Why (markdown). */
+  context?: string;
+  /** Decision nodes: Consequences — the How (markdown). */
+  consequences?: string;
+  /** Decision nodes: ISO 8601 date the decision was actually made (backfill-friendly; node.created events carry the write date, not this). */
+  decided_at?: string;
 }
 
 export const NodeMetadataSchema: z.ZodType<NodeMetadata> = z
@@ -139,6 +149,19 @@ export const NodeMetadataSchema: z.ZodType<NodeMetadata> = z
     }),
     product: z.string().optional().meta({
       description: "Product membership (docs/spec/bundle-format.md § Products); flow, view, and acceptance only.",
+    }),
+    decision_status: DecisionStatusSchema.optional().meta({
+      description:
+        "Decision nodes only: proposed | approved | enacted | rejected | deprecated | superseded. The node's lifecycle status is kept in sync (spec §2).",
+    }),
+    context: z.string().optional().meta({
+      description: "Decision nodes only: Context — the Why (markdown).",
+    }),
+    consequences: z.string().optional().meta({
+      description: "Decision nodes only: Consequences — the How (markdown).",
+    }),
+    decided_at: z.string().optional().meta({
+      description: "Decision nodes only: ISO 8601 date the decision was made.",
     }),
   })
   .catchall(z.unknown())
