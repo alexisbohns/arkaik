@@ -452,6 +452,8 @@ export default function ProjectLibraryPage() {
                 displayMode={displayMode}
                 onSearchChange={setSearch}
                 onDisplayModeChange={setDisplayMode}
+                projectId={id}
+                project={projectBundle}
               />
               {/* Inside the sticky band, not in the scrolling column: the bar
                   acts on rows the user ticked a screenful down, and a control

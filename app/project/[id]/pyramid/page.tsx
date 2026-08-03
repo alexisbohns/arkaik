@@ -105,6 +105,8 @@ export default function PyramidPage() {
               filterStep={filterStep}
               onViewModeChange={setViewMode}
               onFilterStepChange={setFilterStep}
+              projectId={id}
+              project={projectBundle}
             />
           </StickyToolbar>
 
