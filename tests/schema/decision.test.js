@@ -180,4 +180,39 @@ assert(
   "agreeing journal produces no decision finding",
 );
 
+// --- Validator rules (spec §7) — warnings, never bricks ----------------------
+const { validateBundle } = loadSchema();
+
+const wrongSpecies = JSON.parse(JSON.stringify(bundle));
+wrongSpecies.nodes.push({
+  id: "V-settings",
+  project_id: "p1",
+  species: "view",
+  title: "Settings",
+  status: "live",
+  platforms: ["web"],
+  metadata: { decision_status: "approved" },
+});
+const wsResult = validateBundle(wrongSpecies);
+assert(wsResult.valid, "decision_status on a view is not an error");
+assert(
+  wsResult.warnings.some((f) => f.rule === "decision-status-wrong-species"),
+  "…but it is a decision-status-wrong-species warning",
+);
+
+const mismatch = JSON.parse(JSON.stringify(bundle));
+mismatch.nodes[0].status = "idea"; // enacted should sync to live
+const mmResult = validateBundle(mismatch);
+assert(mmResult.valid, "a lifecycle/decision-status mismatch is not an error");
+assert(
+  mmResult.warnings.some((f) => f.rule === "decision-lifecycle-mismatch"),
+  "…but it is a decision-lifecycle-mismatch warning",
+);
+
+const clean = validateBundle(bundle);
+assert(
+  !clean.warnings.some((f) => f.rule.startsWith("decision-")),
+  "a well-formed decision produces no decision warnings",
+);
+
 process.exit(failures > 0 ? 1 : 0);
