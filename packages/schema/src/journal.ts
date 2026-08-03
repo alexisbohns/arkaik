@@ -503,6 +503,21 @@ export function crossCheckJournal(bundle: Record<string, unknown>): JournalFindi
         }
       }
     }
+    // deliverable.shipped carries an ARRAY of node refs — NODE_REF_FIELDS
+    // handles scalar fields only, so the array is walked here.
+    if (ev.type === "deliverable.shipped" && Array.isArray(ev.node_ids)) {
+      (ev.node_ids as unknown[]).forEach((raw, i) => {
+        const ref = str(raw);
+        if (ref !== undefined && !everNodes.has(ref)) {
+          findings.push({
+            path: `journal[${index}].node_ids[${i}]`,
+            rule: "journal-dangling-node-ref",
+            message: `journal[${index}] (deliverable.shipped): references node "${ref}" that never existed in the snapshot or journal.`,
+            severity: "error",
+          });
+        }
+      });
+    }
     if (ev.type === "edge.removed") {
       const ref = str(ev.edge_id);
       if (ref !== undefined && !everEdges.has(ref)) {

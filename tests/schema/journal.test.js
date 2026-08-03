@@ -207,6 +207,36 @@ function main() {
   }
   check("makeEvent rejects a deliverable without a title", deliverableThrew);
 
+  // --- deliverable.shipped node_ids cross-check ----------------------------
+  const deliverableBundle = {
+    schema_version: 3,
+    project: { id: "p", title: "P", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z" },
+    nodes: [{ id: "V-a", species: "view", title: "A", status: "live", platforms: ["web"] }],
+    edges: [],
+    journal: [
+      { id: "01A", ts: "2026-01-01T00:00:00.000Z", type: "node.created", node_id: "V-a", species: "view", title: "A" },
+      { id: "01B", ts: "2026-01-02T00:00:00.000Z", type: "deliverable.shipped", deliverable_id: "pr-1", title: "Ship A", node_ids: ["V-a"] },
+    ],
+  };
+  check(
+    "deliverable node_ids referencing an existing node pass the cross-check",
+    crossCheckJournal(deliverableBundle).length === 0,
+    JSON.stringify(crossCheckJournal(deliverableBundle)),
+  );
+  const danglingBundle = {
+    ...deliverableBundle,
+    journal: [
+      deliverableBundle.journal[0],
+      { id: "01C", ts: "2026-01-02T00:00:00.000Z", type: "deliverable.shipped", deliverable_id: "pr-2", title: "Ship ghost", node_ids: ["V-ghost"] },
+    ],
+  };
+  const danglingFindings = crossCheckJournal(danglingBundle);
+  check(
+    "deliverable node_ids referencing a never-existing node are an error",
+    danglingFindings.some((f) => f.rule === "journal-dangling-node-ref" && f.message.includes("V-ghost")),
+    JSON.stringify(danglingFindings),
+  );
+
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 
   if (failures > 0) {
