@@ -19,6 +19,7 @@
     "test:id-gen": "node tests/schema/id-gen.test.js",
     "test:serialize": "node tests/schema/serialize.test.js",
     "test:refs": "node tests/schema/refs.test.js",
+    "test:legacy-status": "node tests/schema/legacy-status.test.js",
     "test:journal": "node tests/schema/journal.test.js",
     "test:maps": "node tests/schema/maps.test.js",
     "test:products": "node tests/schema/products.test.js",
