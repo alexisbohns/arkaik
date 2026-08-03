@@ -15,6 +15,7 @@ import {
 import { VALUES, VALUE_TIERS_CONFIG } from "@/lib/config/values";
 import type { PyramidElement } from "@/lib/utils/pyramid";
 import { computeScopedPyramidTiers } from "@/lib/utils/pyramid";
+import { productScopeMetaLabel } from "@/lib/utils/product-scope";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
@@ -96,7 +97,7 @@ export default function PyramidPage() {
   }
 
   return (
-    <PageShell title="Value pyramid">
+    <PageShell title="Value pyramid" meta={productScopeMetaLabel(scope)}>
       <div className="h-full overflow-auto">
         <div className="mx-auto w-full max-w-6xl">
           <StickyToolbar>

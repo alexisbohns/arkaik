@@ -6,11 +6,13 @@ import { LightbulbIcon, MessageSquareTextIcon, TagIcon } from "lucide-react";
 import { orderEvents } from "@arkaik/schema";
 import { PageShell } from "@/components/layout/PageShell";
 import { useNodes } from "@/lib/hooks/useNodes";
+import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { computeBacklog, computeChangelog, type Backlog, type Changelog } from "@/lib/utils/journal";
 import { describeJournalEvent, formatEventDate } from "@/components/journal/describe-event";
 import { PLATFORM_LABELS } from "@/components/graph/nodes/node-styles";
+import { productScopeMetaLabel } from "@/lib/utils/product-scope";
 import type { Node, ReleaseTaggedEvent } from "@/lib/data/types";
 
 interface ReleaseEntry {
@@ -93,6 +95,9 @@ export default function ChangelogPage() {
   const { project: projectBundle, loading: projectLoading } = useProject(id);
   const { nodes: dataNodes, loading: nodesLoading } = useNodes(id);
   const { journal, loading: journalLoading } = useJournal(id);
+  // Display only — the changelog itself stays unscoped; this just fills the
+  // header's meta line with the same scope name every other surface shows.
+  const scope = useEffectiveProduct(id, projectBundle);
 
   const nodesById = useMemo(() => new Map(dataNodes.map((node) => [node.id, node])), [dataNodes]);
 
@@ -129,6 +134,7 @@ export default function ChangelogPage() {
   return (
     <PageShell
       title="Changelog"
+      meta={productScopeMetaLabel(scope)}
       headerExtra={
         projectBundle?.project.version ? (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
