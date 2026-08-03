@@ -22,7 +22,7 @@ export type StatusId = (typeof STATUS_IDS)[number];
 export const PLATFORM_IDS = ["web", "ios", "android"] as const;
 export type PlatformId = (typeof PLATFORM_IDS)[number];
 
-export const EDGE_TYPE_IDS = ["composes", "calls", "displays", "queries", "covers"] as const;
+export const EDGE_TYPE_IDS = ["composes", "calls", "displays", "queries", "covers", "supersedes", "generates", "impacts"] as const;
 export type EdgeTypeId = (typeof EDGE_TYPE_IDS)[number];
 
 /**
@@ -57,6 +57,18 @@ export const VALID_EDGE_SEMANTICS: Record<EdgeTypeId, ReadonlyArray<[SpeciesId, 
   covers: [
     ["acceptance", "view"],
     ["acceptance", "flow"],
+  ],
+  // Decision edges (cycle 2). `generates` and `impacts` are deliberately
+  // disjoint: an acceptance is *generated* by a decision, never merely
+  // impacted, so `impacts` does not admit an acceptance target
+  // (docs/superpowers/specs/2026-08-03-decisions-species-design.md §3).
+  supersedes: [["decision", "decision"]],
+  generates: [["decision", "acceptance"]],
+  impacts: [
+    ["decision", "flow"],
+    ["decision", "view"],
+    ["decision", "data-model"],
+    ["decision", "api-endpoint"],
   ],
 };
 

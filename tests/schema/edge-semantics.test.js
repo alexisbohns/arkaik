@@ -87,6 +87,32 @@ for (const source of ["flow", "view", "data-model", "api-endpoint", "acceptance"
 }
 assert(true, "every species pair's offer agrees with the table, in EDGE_TYPE_IDS order");
 
+// --- Decision edges (cycle 2): supersedes / generates / impacts -------------
+assert(isValidEdgeSemantic("supersedes", "decision", "decision"), "supersedes decision → decision is admitted");
+assert(!isValidEdgeSemantic("supersedes", "decision", "view"), "supersedes only connects decisions");
+
+assert(isValidEdgeSemantic("generates", "decision", "acceptance"), "generates decision → acceptance is admitted");
+assert(!isValidEdgeSemantic("generates", "acceptance", "decision"), "generates is one-directional");
+assert(!isValidEdgeSemantic("generates", "decision", "view"), "generates only targets acceptances");
+
+for (const target of ["flow", "view", "data-model", "api-endpoint"]) {
+  assert(isValidEdgeSemantic("impacts", "decision", target), `impacts decision → ${target} is admitted`);
+}
+// generates and impacts are deliberately disjoint: an acceptance is generated,
+// never merely impacted (spec §3).
+assert(!isValidEdgeSemantic("impacts", "decision", "acceptance"), "impacts decision → acceptance stays rejected");
+assert(!isValidEdgeSemantic("impacts", "decision", "decision"), "impacts decision → decision stays rejected (that's supersedes)");
+assert(!isValidEdgeSemantic("impacts", "view", "decision"), "impacts is one-directional out of the decision");
+
+assert(
+  JSON.stringify(edgeTypesForSpeciesPair("decision", "decision")) === JSON.stringify(["supersedes"]),
+  "connect dialog offers exactly supersedes for decision → decision",
+);
+assert(
+  JSON.stringify(edgeTypesForSpeciesPair("decision", "acceptance")) === JSON.stringify(["generates"]),
+  "connect dialog offers exactly generates for decision → acceptance",
+);
+
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 
 if (failures > 0) {
