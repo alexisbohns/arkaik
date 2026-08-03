@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "project": {
     "id": "pebbles",
     "title": "Pebbles",
@@ -2373,7 +2373,7 @@
       "species": "acceptance",
       "title": "Pebble draw-in animation",
       "description": "The pebble render draws itself in progressively when the detail opens — the signature reveal moment.",
-      "status": "backlog",
+      "status": "idea",
       "platforms": ["web", "ios", "android"],
       "metadata": {
         "gherkin": "When I'm on the Pebble Detail, Then I see the Pebble appearing in a drawing animation.",
@@ -2387,7 +2387,7 @@
       "species": "acceptance",
       "title": "Emotion palette on read view",
       "description": "Reading a pebble shows its emotion tinted with the emotion category's palette colors.",
-      "status": "backlog",
+      "status": "idea",
       "platforms": ["web", "ios", "android"],
       "metadata": {
         "gherkin": "When I read a pebble, Then its emotion is shown with the emotion category's palette.",
@@ -2406,7 +2406,7 @@
       "metadata": {
         "gherkin": "Given I have 30 Karma, When I'm on the Community glyphs, Then I can buy a Glyph.",
         "values": ["rewards-me", "affiliation-belonging"],
-        "platformStatuses": { "web": "live", "ios": "backlog" }
+        "platformStatuses": { "web": "live", "ios": "idea" }
       }
     }
   ],

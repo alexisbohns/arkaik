@@ -10,8 +10,10 @@
  *    prevents the non-idempotent backlog→idea remap from re-running);
  *  - structurally-conformant seeds pass through content-unchanged apart from
  *    the vocabulary remap: node ids, edges, and journal are untouched;
- *  - the pebbles seed (a genuine pre-v3, schema_version: 2 bundle) has its old
- *    `backlog` (someday pile) statuses remapped to `idea`.
+ *  - both shipped seeds declare schema_version 3 natively (they were upgraded
+ *    in place when the v3 vocabulary landed: old `backlog` someday-pile
+ *    statuses — including inside platformStatuses — became `idea`), carry no
+ *    dead legacy ids, and migrate as an exact no-op.
  */
 
 const fs = require("fs");
@@ -87,29 +89,33 @@ for (const rel of BUNDLES) {
   }
 }
 
-// The pebbles seed is a genuine pre-v3 bundle (schema_version: 2) that uses the
-// OLD `backlog` (someday pile): the v2→3 step must remap those to `idea`.
-{
-  const rel = "seed/pebbles.json";
+// Both shipped seeds were upgraded in place to the v3 vocabulary (the pebbles
+// seed's old `backlog` someday-pile statuses — node-level AND inside
+// platformStatuses — became `idea`). They now declare schema_version 3
+// natively, so the migration chain must treat them as already current: the
+// non-idempotent v2→3 backlog→idea remap must NOT re-run, and nothing in them
+// may carry a dead legacy id (`prioritized`, `blocked`).
+for (const rel of ["seed/pebbles.json", "seed/arkaik-self-map.json"]) {
   const bundle = JSON.parse(fs.readFileSync(path.join(ROOT, rel), "utf8"));
   assert(
-    bundle.schema_version === 2,
-    `${rel}: TEST PRECONDITION — seed still declares schema_version 2. Pebbles seed regenerated at v3? This block's premise (old-vocabulary backlog remaps to idea) is gone — rewrite it alongside the seed change`,
+    bundle.schema_version === CURRENT_SCHEMA_VERSION,
+    `${rel}: seed natively declares schema_version ${CURRENT_SCHEMA_VERSION}`,
   );
-  const oldBacklogIds = bundle.nodes.filter((n) => n.status === "backlog").map((n) => n.id);
-  assert(oldBacklogIds.length > 0, `${rel}: fixture still carries old-vocabulary backlog nodes (test precondition)`);
-
+  assert(
+    bundle.nodes.every((n) => STATUS_IDS.includes(n.status)),
+    `${rel}: every node status is already in the current 7-id vocabulary (no dead ids)`,
+  );
+  assert(
+    bundle.nodes.every((n) => {
+      const platformStatuses = n.metadata && n.metadata.platformStatuses;
+      return !platformStatuses || Object.values(platformStatuses).every((s) => STATUS_IDS.includes(s));
+    }),
+    `${rel}: every platformStatus is already in the current 7-id vocabulary (no dead ids)`,
+  );
   const migrated = migrateBundle(bundle);
   assert(
-    oldBacklogIds.every((id) => migrated.nodes.find((n) => n.id === id).status === "idea"),
-    `${rel}: old \`backlog\` statuses are remapped to \`idea\` by the v2→3 step`,
-  );
-  assert(
-    migrated.nodes.every((n) => {
-      const platformStatuses = n.metadata && n.metadata.platformStatuses;
-      return !platformStatuses || Object.values(platformStatuses).every((s) => s !== "backlog");
-    }),
-    `${rel}: old \`backlog\` platformStatuses are remapped too`,
+    eq(migrated, bundle),
+    `${rel}: migrateBundle is a byte-for-byte no-op on the v3 seed (statuses unchanged, version stays ${CURRENT_SCHEMA_VERSION})`,
   );
 }
 

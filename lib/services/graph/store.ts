@@ -4,7 +4,9 @@ import { randomBytes } from "node:crypto";
 
 import {
   MutationError,
+  STATUS_VOCABULARY_VERSION,
   applyOps,
+  migrateStatusVocabulary,
   parseBundle,
   toJournalEvents,
   validateBundle,
@@ -122,17 +124,30 @@ function zodIssueToFinding(issue: { path: PropertyKey[]; code: string; message: 
 }
 
 /**
- * Full inbound gate for a client-supplied bundle: shape (zod) then semantic
- * graph rules, with the journal included. Used on create/import, where the
- * bundle and its history both arrive from outside and neither can be trusted.
+ * Full inbound gate for a client-supplied bundle: shape (zod), then the v3
+ * status-vocabulary migration, then semantic graph rules with the journal
+ * included. Used on create/import, where the bundle and its history both
+ * arrive from outside and neither can be trusted.
+ *
+ * The order is the same one every load path uses (parse → migrate → validate)
+ * and is load-bearing: the shape parse is legacy-tolerant (`AnyStatusSchema`)
+ * precisely so `migrateStatusVocabulary` can erase legacy ids before
+ * `validateBundle`, which enforces the strict current vocabulary. On success
+ * the MIGRATED bundle is returned — that is what must be stored, so post-v3
+ * data is never persisted under a pre-v3 stamp.
  */
-export function validateInboundBundle(input: unknown): { ok: boolean; findings: ValidationFinding[] } {
+export function validateInboundBundle(
+  input: unknown,
+): { ok: true; bundle: ProjectBundle } | { ok: false; findings: ValidationFinding[] } {
   const parsed = parseBundle(input);
   if (!parsed.success) {
     return { ok: false, findings: parsed.error.issues.map(zodIssueToFinding) };
   }
-  const semantic = validateBundle(input);
-  return semantic.valid ? { ok: true, findings: [] } : { ok: false, findings: semantic.errors };
+  // Migrate the raw input rather than `parsed.data` so fields the zod schema
+  // does not model are stored verbatim, as before.
+  const bundle = migrateStatusVocabulary(input as ProjectBundle);
+  const semantic = validateBundle(bundle);
+  return semantic.valid ? { ok: true, bundle } : { ok: false, findings: semantic.errors };
 }
 
 // ---------------------------------------------------------------------------
@@ -259,7 +274,9 @@ export async function createProject(
   const validation = validateInboundBundle(input.bundle);
   if (!validation.ok) return { ok: false, reason: "validation", errors: validation.findings };
 
-  const bundle = input.bundle as ProjectBundle & { journal?: JournalEvent[] };
+  // The gate returned the vocabulary-migrated bundle: store THAT, so a fresh
+  // hosted project can never hold unmigrated statuses.
+  const bundle = validation.bundle;
   const limits = getHostedLimitsForTier(input.tier);
   const count = entityCount(bundle.nodes, bundle.edges);
   if (count > limits.entities) {
@@ -288,7 +305,11 @@ export async function createProject(
         bundle.project.id,
         bundle.project.title ?? "Untitled",
         JSON.stringify(snapshot),
-        bundle.schema_version ?? 2,
+        // Post-migration this is always >= 3 (the migration stamps pre-v3 and
+        // unversioned bundles). The fallback is defensive and MUST match the
+        // current vocabulary version: stamping older than the data's vocabulary
+        // would re-run the non-idempotent backlog→idea remap on a later load.
+        bundle.schema_version ?? STATUS_VOCABULARY_VERSION,
         count,
       ],
     );
