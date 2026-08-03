@@ -10,6 +10,7 @@ import { STATUSES } from "@/lib/config/statuses";
 import { VALUES } from "@/lib/config/values";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { Input } from "@/components/ui/input";
+import { ProductOverrideSelector } from "@/components/layout/ProductOverrideSelector";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PLATFORM_ICONS, STATUS_ICONS, STATUS_STYLES } from "@/components/graph/nodes/node-styles";
@@ -94,6 +95,7 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectI
 
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-3 md:p-4">
+      <ProductOverrideSelector projectId={projectId} project={project} />
       <div className="relative min-w-[12rem] flex-1">
         <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
