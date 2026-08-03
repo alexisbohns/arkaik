@@ -1,6 +1,6 @@
 # The Self-Map Program — vision & cycle plan
 
-**Date:** 2026-08-03 · **Status:** cycle 1 shipped; cycle 2 next
+**Date:** 2026-08-03 · **Status:** cycles 1–2 shipped; cycle 3 next
 **Resume:** in a fresh session, say "continue the self-map program — start
 cycle N" and point the agent here. Each cycle gets its own
 brainstorm → spec → plan → subagent execution → PR, and updates this file's
@@ -36,27 +36,25 @@ remains dispatchable). Spec:
 Deferred from it: blocked indicator on StatusRing/aggregate rollups (noted in
 `StatusRing.tsx`; revisit in cycle 3).
 
-### 2. Decisions species + journal vocabulary — NEXT
+### 2. Decisions species + journal vocabulary — ✅ SHIPPED 2026-08-03 (PR #335)
 
-A 6th species recording ADR-style decisions: Context/Why, Decision/What,
-Consequences/How. Decision statuses (proposed, approved, rejected, actual,
-deprecated, superseded) are **not** node lifecycle statuses — likely their own
-enum. Decisions supersede earlier Decisions; generate Acceptances; impact
-existing nodes (views, flows, APIs) or spawn new ones — the graph analog of
-"a PR answers an Issue". Open questions for its brainstorm:
-
-- Edge grammar: which `[source, target]` pairs (`decision→decision`
-  supersedes, `decision→acceptance` generates, `decision→*` impacts?) and
-  whether existing edge types stretch or new ones are needed.
-- **Idea-as-entity, revisited** (parked in cycle 1): Alexis writes fewer
-  GitHub issues and starts in the terminal — the flow is Terminal →
-  Brainstorm → Spec → Decisions → Milestone → Issues → PRs → Releases.
-  Should Idea become a standalone, prioritizable entity (impact/Value links)
-  that gets "pulled" into brainstorming and yields Decisions?
-- Journal vocabulary for decisions (`decision.recorded`,
-  `decision.superseded`?), and whether Milestones (a bundle of issues where
-  Acceptances/Views/Flows are pre-created at `backlog` and tagged so PRs know
-  which nodes to move) enter the model here or in cycle 3.
+A 6th species `decision` (`DEC-` prefix): Context/Why (`metadata.context`),
+Decision/What (title + description), Consequences/How
+(`metadata.consequences`), `metadata.decided_at`. Decision statuses are their
+own enum in `metadata.decision_status` (`proposed, approved, enacted,
+rejected, deprecated, superseded` — `actual` renamed `enacted`), synced to
+the lifecycle by `lifecycleStatusForDecision` (proposed→discovery,
+approved→backlog, enacted→live, terminals→archived). Three new edge types:
+`supersedes` (decision→decision), `generates` (decision→acceptance),
+`impacts` (decision→flow|view|data-model|api-endpoint) — generates/impacts
+deliberately disjoint. One journal event `decision.status_changed`, derived
+in `diffNodeUpdate` so every dual-writer emits it. Surfaces: Decision Log
+page, detail-panel editor, library; maps/Delivery exclude decisions. All
+additive — **no `schema_version` bump, no prod migration**. Brainstorm
+resolutions: **Idea stays a status** (revisited and re-parked); Milestones
+deferred to cycle 3. Known debt in the PR body (notably: `supersedes` moving
+its target to `superseded` is writer discipline, no validator warning yet).
+Spec: [2026-08-03-decisions-species-design.md](2026-08-03-decisions-species-design.md).
 
 ### 3. Changelog split: Design | Delivery + Deliverables/Releases + History
 
