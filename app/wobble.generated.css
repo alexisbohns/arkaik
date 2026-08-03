@@ -99,6 +99,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-moon { filter: url(#wob-moon); }
 .lucide-mountain { filter: url(#wob-mountain); }
 .lucide-network { filter: url(#wob-network); }
+.lucide-package { filter: url(#wob-package); }
 .lucide-palette { filter: url(#wob-palette); }
 .lucide-panel-left { filter: url(#wob-panel-left); }
 .lucide-party-popper { filter: url(#wob-party-popper); }
@@ -112,6 +113,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-route { filter: url(#wob-route); }
 .lucide-rows2 { filter: url(#wob-rows2); }
 .lucide-scale { filter: url(#wob-scale); }
+.lucide-scroll-text { filter: url(#wob-scroll-text); }
 .lucide-search { filter: url(#wob-search); }
 .lucide-server { filter: url(#wob-server); }
 .lucide-settings2 { filter: url(#wob-settings2); }

@@ -302,6 +302,7 @@ type KnownJournalEvent =
   | EdgeAddedEvent
   | EdgeRemovedEvent
   | ReleaseTaggedEvent
+  | DeliverableShippedEvent
   | IdeaProposedEvent
   | RequestFiledEvent
   | RefAddedEvent

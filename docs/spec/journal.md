@@ -73,6 +73,7 @@ interface JournalEvent {
 | `edge.added` | `edge_id`, `source_id`, `target_id`, `edge_type` | Relationship created |
 | `edge.removed` | `edge_id` | Relationship removed (non-cascade) |
 | `release.tagged` | `version`, `notes?`, `platform?` | A version shipped. `platform` optional: absent = project-wide; present = that platform's release rhythm |
+| `deliverable.shipped` | `deliverable_id`, `title`, `summary?`, `url?`, `node_ids?`, `platform?` | A unit of shipped work (typically one merged PR): entity changes + a summary note. Re-appending with the same `deliverable_id` **edits** — consumers resolve content latest-wins, anchored at the first occurrence |
 | `idea.proposed` | `title`, `description?`, `node_id?` | An idea, before (or linked to) any node |
 | `request.filed` | `title`, `description?`, `source?`, `node_id?` | An external ask (user feedback, stakeholder request) |
 | `ref.added` | `node_id`, `ref_id`, `ref_type`, `url` | External reference attached |
@@ -91,6 +92,15 @@ The journal is **not** event sourcing, and v1 makes no replay promises. The rule
 ## Releases, Compaction & Growth
 
 - `release.tagged` events are the version markers. The changelog between two versions is the ordered slice of events between their markers; a release note is that slice summarized (by template or by an agent), filtered to the platforms of the affected nodes when `platform` is used.
+- **Deliverables** sit between events and releases: a `deliverable.shipped`
+  records a unit of shipped work (typically one merged PR) with a summary
+  note, a `url`, and the touched `node_ids`. A deliverable belongs to release
+  `V` when its **first** occurrence falls inside `V`'s changelog slice; the
+  first occurrence anchors *when it shipped*, and later re-appends with the
+  same `deliverable_id` edit content (latest occurrence wins) without moving
+  it between releases. A first occurrence after the last marker is
+  *unreleased*. There is no `deliverables[]` list on `release.tagged` — the
+  slice is the grouping.
 - `arkaik release` tags the version, generates the release-note draft, and MAY **compact**: move the released slice from `journal.jsonl` to `journal/archive-{version}.jsonl`. Archives are part of history (projections may read them); the working journal stays small. Compaction differs from the changesets tool's model deliberately — changeset files are *consumed* at release, journal history is *kept*.
 - The hosted app stores journals under a separate storage key from the snapshot store, so history growth never inflates every snapshot write. App-side event *emission* is gated on the IndexedDB migration for the same reason (see the roadmap in [vision.md](../vision.md)).
 
@@ -102,6 +112,8 @@ Projections are pure functions over (snapshot, journal) — the same pattern as 
 |---|---|---|
 | Node timeline | "How did this view get to `live` on iOS?" | History section in the node detail panel |
 | Changelog | "What changed between 1.2 and 1.3?" | Project-level journal/changelog view |
+| Deliverables | "What units of work shipped, and in which release?" | Delivery panel of the changelog page; `arkaik release` draft grouping |
+| Commitments | "What moved from idea to committed work?" | Design panel of the changelog page |
 | Release notes | "What do we tell users shipped?" | Generated draft at `arkaik release` |
 | Backlog | "Which ideas and requests are open?" | Ideas/requests list (an `idea.proposed` is *open* until a linked node exists or a resolving event closes it) |
 
