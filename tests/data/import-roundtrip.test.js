@@ -133,8 +133,51 @@ async function main() {
     JSON.stringify(captured.journal) === JSON.stringify(bundle.journal),
     "id-collision: embedded `journal` survived the rewrite (no silent stripping)",
   );
-  assert(captured.schema_version === 1, "id-collision: schema_version survived the rewrite");
+  // The import gate migrates before validating (parse → migrate → validate,
+  // mirroring lib/services/graph/store.ts), so a pre-v3 bundle is stored under
+  // the v3 stamp — never re-persisted as pre-v3 data.
+  assert(captured.schema_version === 3, "id-collision: schema_version was stamped to v3 by the migration");
   assert(captured.project.version === "2.1.0", "id-collision: project.version survived the rewrite");
+
+  // --- Client import gate accepts a legacy-vocabulary (pre-v3) bundle ---
+  // Regression for the gate validating the RAW input: a v2 bundle carrying
+  // `prioritized`/`blocked` (and a journal whose last status_changed.to is a
+  // legacy id) must migrate BEFORE strict validation, and the journal must
+  // come through byte-identical — history is never rewritten.
+  const legacyBundle = {
+    schema_version: 2,
+    project: {
+      id: "legacy-project",
+      title: "Legacy Project",
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    },
+    nodes: [
+      { id: "V-a", project_id: "legacy-project", species: "view", title: "A", status: "blocked", platforms: ["web"] },
+      { id: "V-b", project_id: "legacy-project", species: "view", title: "B", status: "prioritized", platforms: ["web"] },
+    ],
+    edges: [],
+    journal: [
+      { id: "01LEGACYA", ts: "2026-01-01T00:00:00.000Z", type: "node.created", node_id: "V-a", species: "view", title: "A" },
+      { id: "01LEGACYB", ts: "2026-01-01T00:01:00.000Z", type: "node.created", node_id: "V-b", species: "view", title: "B" },
+      { id: "01LEGACYC", ts: "2026-01-01T00:02:00.000Z", type: "node.status_changed", node_id: "V-a", from: "prioritized", to: "blocked" },
+    ],
+  };
+  let migrated = null;
+  let gateError = null;
+  try {
+    migrated = exportModule.parseAndValidateBundle(legacyBundle);
+  } catch (err) {
+    gateError = err;
+  }
+  assert(gateError === null, `legacy gate: v2 bundle with legacy statuses is accepted (${gateError ? gateError.message : "ok"})`);
+  assert(migrated && migrated.nodes[0].status === "development", "legacy gate: blocked -> development on the returned bundle");
+  assert(migrated && migrated.nodes[1].status === "backlog", "legacy gate: prioritized -> backlog on the returned bundle");
+  assert(migrated && migrated.schema_version === 3, "legacy gate: returned bundle carries the v3 stamp");
+  assert(
+    migrated && JSON.stringify(migrated.journal) === JSON.stringify(legacyBundle.journal),
+    "legacy gate: journal history untouched by migration",
+  );
 
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
   fs.rmSync(SCHEMA_BUILD_DIR, { recursive: true, force: true });

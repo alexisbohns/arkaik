@@ -1,5 +1,11 @@
 import type { Project, ProjectBundle } from "@/lib/data/types";
-import { parseBundle, serializeBundle, validateBundle, type ValidationFinding } from "@arkaik/schema";
+import {
+  migrateStatusVocabulary,
+  parseBundle,
+  serializeBundle,
+  validateBundle,
+  type ValidationFinding,
+} from "@arkaik/schema";
 import { getProvider } from "@/lib/data/provider-registry";
 import { HOSTED_ID_PREFIX } from "@/lib/data/remote-provider";
 
@@ -52,6 +58,15 @@ function joinReported(parts: string[]): string {
  * etc.). Returns the typed {@link ProjectBundle} on success; throws an Error
  * with a readable, path-specific message on the first batch of failures.
  * Warnings (e.g. the stale edge-ID convention) never block.
+ *
+ * The gate order is the same one every server load path uses
+ * (lib/services/graph/store.ts `validateInboundBundle`): parse → migrate →
+ * validate — and it is load-bearing. The shape parse is legacy-tolerant
+ * (`AnyStatusSchema`) precisely so `migrateStatusVocabulary` can erase legacy
+ * status ids before `validateBundle`, which enforces the strict current
+ * vocabulary; validating the raw input would refuse every pre-v3 bundle. On
+ * success the MIGRATED bundle is returned — that is what callers must keep, so
+ * post-v3 data is never stored under a pre-v3 stamp.
  */
 export function parseAndValidateBundle(value: unknown): ProjectBundle {
   const parsed = parseBundle(value);
@@ -62,7 +77,11 @@ export function parseAndValidateBundle(value: unknown): ProjectBundle {
     throw new Error(`Invalid bundle: ${joinReported(parts)}`);
   }
 
-  const { valid, errors } = validateBundle(value);
+  // Migrate the raw input rather than `parsed.data` so fields the zod schema
+  // does not model survive verbatim (same reasoning as the server gate).
+  const bundle = migrateStatusVocabulary(value as ProjectBundle);
+
+  const { valid, errors } = validateBundle(bundle);
   if (!valid) {
     const parts = errors.map(
       (finding: ValidationFinding) =>
@@ -71,7 +90,7 @@ export function parseAndValidateBundle(value: unknown): ProjectBundle {
     throw new Error(`Invalid bundle: ${joinReported(parts)}`);
   }
 
-  return parsed.data;
+  return bundle;
 }
 
 /**

@@ -6,14 +6,16 @@
  * the ordering helper, the JSONL sidecar parser, and the snapshot↔journal
  * cross-check. It does **not** emit events — app-side emission is M3.
  *
- * Deliberately **zod-free** (only type-only imports from ./ids). validate.ts —
- * which is bundled into the zero-dependency standalone validator — imports
- * {@link crossCheckJournal} from here, so pulling zod in would bloat that
- * artifact for no benefit. The zod schemas for these types live in
+ * Deliberately **zod-free** (type-only imports from ./ids, plus the zod-free
+ * `normalizeStatus` from ./legacy-status, itself built on the plain ID lists).
+ * validate.ts — which is bundled into the zero-dependency standalone validator
+ * — imports {@link crossCheckJournal} from here, so pulling zod in would bloat
+ * that artifact for no benefit. The zod schemas for these types live in
  * journal-events.ts.
  */
 
 import type { SpeciesId, StatusId, PlatformId, EdgeTypeId } from "./ids";
+import { normalizeStatus } from "./legacy-status";
 
 /**
  * The v1 event vocabulary (docs/spec/journal.md § Event Vocabulary). The list
@@ -298,6 +300,31 @@ const NODE_REF_FIELDS: Record<string, readonly string[]> = {
 };
 
 /**
+ * Whether a journal's last `node.status_changed.to` agrees with the snapshot
+ * `status`, across vocabulary vintages. The journal is never rewritten
+ * (docs/spec/journal.md), while `migrateStatusVocabulary` remaps snapshots —
+ * so a migrated bundle lawfully carries legacy ids in history against current
+ * ids in the snapshot, and comparing raw strings would flag every such pair.
+ *
+ * Two allowances, nothing more:
+ * - Both sides are normalized through the permanent dead-id aliases
+ *   (`prioritized`→`backlog`, `blocked`→`development`) before comparing —
+ *   those remaps are unambiguous whatever the vintage.
+ * - Exactly one residual pair is tolerated, directionally: journal-last
+ *   `"backlog"` vs snapshot `"idea"`. A pre-v3 journal's final "backlog" (old
+ *   someday pile) may describe a node the v3 migration re-filed as `idea`;
+ *   the bundle's vintage at event time is undecidable at validation time, so
+ *   this single pair is accepted rather than rewriting history. The reverse
+ *   pair — and every other mismatch — keeps full error strength.
+ */
+function statusesAgree(last: string, snapshot: unknown): boolean {
+  if (last === snapshot) return true;
+  if (typeof snapshot !== "string") return false;
+  if (last === "backlog" && snapshot === "idea") return true;
+  return (normalizeStatus(last) ?? last) === (normalizeStatus(snapshot) ?? snapshot);
+}
+
+/**
  * Cross-check the embedded snapshot against the embedded journal **by value**
  * (docs/spec/journal.md § Authority & Consistency Model) — never by timestamp,
  * because per-node timestamps don't exist and clocks lie. Runs only when a
@@ -306,7 +333,10 @@ const NODE_REF_FIELDS: Record<string, readonly string[]> = {
  *
  * The rules, each producing an `error` finding naming both sides:
  * - **Status agreement:** the last project-level `node.status_changed.to` for a
- *   node must equal its current snapshot `status`. Platform-scoped transitions
+ *   node must agree with its current snapshot `status` per
+ *   {@link statusesAgree} — equality after the permanent legacy aliases, plus
+ *   the one tolerated pre-v3 `"backlog"`→`idea` pair, because history keeps
+ *   its legacy ids while snapshots migrate. Platform-scoped transitions
  *   (those carrying `platform`) move a per-platform view status, not
  *   `node.status`, and are excluded.
  * - **Provenance:** every node in the snapshot must have a `node.created` event.
@@ -452,7 +482,7 @@ export function crossCheckJournal(bundle: Record<string, unknown>): JournalFindi
       });
     }
     const last = lastProjectStatus.get(nodeId);
-    if (last !== undefined && last !== status) {
+    if (last !== undefined && !statusesAgree(last, status)) {
       findings.push({
         path: "journal",
         rule: "journal-status-mismatch",
