@@ -25,6 +25,7 @@ import { PlatformGaugeList } from "@/components/graph/nodes/PlatformGaugeList";
 import { PlaylistEditor } from "@/components/panels/PlaylistEditor";
 import { AcceptanceEditor } from "@/components/panels/AcceptanceEditor";
 import { AcceptancesSection } from "@/components/panels/AcceptancesSection";
+import { DecisionEditor } from "@/components/panels/DecisionEditor";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import {
   computeFlowPlatformRollup,
@@ -372,7 +373,7 @@ function ConnectionsSection({ node, allNodes, allEdges, onNavigate }: Connection
       const otherId = e.source_id === node.id ? e.target_id : e.source_id;
       return allNodes.find((n) => n.id === otherId);
     })
-    .filter((n): n is Node => !!n && (n.species === "data-model" || n.species === "api-endpoint"));
+    .filter((n): n is Node => !!n && (n.species === "data-model" || n.species === "api-endpoint" || n.species === "decision"));
 
   const uniqueCrossLayerNodes = [...new Map(crossLayerNodes.map((n) => [n.id, n])).values()];
 
@@ -637,6 +638,16 @@ export function NodeDetailPanel({
           onUpdate={onUpdate}
           onNavigate={onNavigate}
           intake={intake}
+        />
+      )}
+      {node.species === "decision" && allNodes && allEdges && onUpdate && (
+        <DecisionEditor
+          key={`decision-${node.id}`}
+          node={node}
+          allNodes={allNodes}
+          allEdges={allEdges}
+          onUpdate={onUpdate}
+          onNavigate={onNavigate}
         />
       )}
       {node.species === "view" && (
