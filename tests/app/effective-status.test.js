@@ -19,6 +19,7 @@ const {
   withRollupPlatforms,
   createEmptyRollup,
   addNodeToRollup,
+  addEffectiveNodeToRollup,
   mergeRollups,
 } = loadEffectiveStatus();
 
@@ -93,6 +94,14 @@ assert(blockedRollup.blocked === 1, "addNodeToRollup counts blocked nodes");
 const mergedBlockedRollup = mergeRollups(blockedRollup, blockedRollup);
 assert(mergedBlockedRollup.blocked === 2, "mergeRollups sums blocked counts");
 assert((addNodeToRollup(createEmptyRollup(), freeNode).blocked ?? 0) === 0, "an all-free rollup reports zero blocked");
+
+// addEffectiveNodeToRollup is the builder the real UI paths (playlist/flow
+// rollups) actually call — reuse the covered-view fixtures above rather than
+// hand-rolling new ones, cloned with a blocked_by so the rest of the effective
+// resolution (weakest-link over covering acceptances) stays exercised too.
+const blockedView = { ...view, metadata: { ...view.metadata, blocked_by: "V-auth" } };
+const effectiveBlockedRollup = addEffectiveNodeToRollup(createEmptyRollup(), blockedView, [blockedView, accA, accB], [coverA, coverB]);
+assert(effectiveBlockedRollup.blocked === 1, "addEffectiveNodeToRollup counts a blocked view once");
 
 // ====================== withRollupPlatforms (the widening) ===================
 //

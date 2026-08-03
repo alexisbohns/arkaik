@@ -38,7 +38,9 @@ interface StatusRingProps {
  *
  * blocked is a node-level flag (`metadata.blocked_by`), not a segment: when
  * `blockedCount` > 0 a small amber notch marks the ring (cycle 3 closed the
- * cycle-1 deferral).
+ * cycle-1 deferral). The count flows from node-built rollups (addNodeToRollup
+ * / addEffectiveNodeToRollup); status-only aggregations (pyramid,
+ * directly-covering acceptances) deliberately don't carry it yet.
  */
 export function StatusRing({ segments, size = "lg", label, children, blockedCount = 0 }: StatusRingProps) {
   const { box, stroke, gap } = SIZE_STYLES[size];
