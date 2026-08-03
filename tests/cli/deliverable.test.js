@@ -74,10 +74,19 @@ try {
   check("unknown --nodes id fails", res3.status !== 0, res3.stdout);
   check("nothing appended on failure", readFileSync(journalPath, "utf8") === before);
 
+  // --- re-append with the same --id edits (latest-wins content) ---
+  const res4 = runCli(["deliverable", "Ship the home page", "--id", "pr-1", "--summary", "Home ships properly.", bundlePath], dir);
+  check("re-append with same --id exits 0", res4.status === 0, res4.stderr);
+
   // --- release draft groups by deliverables ---
   const rel = runCli(["release", "1.0", bundlePath], dir);
   check("release exits 0", rel.status === 0, rel.stderr);
-  check("draft lists the deliverable", rel.stdout.includes("Deliverables:") && rel.stdout.includes("Ship the home page"), rel.stdout);
+  check(
+    "draft lists both deliverables with latest-wins content",
+    rel.stdout.includes("Deliverables:") && rel.stdout.includes("Ship the home page — Home ships properly.") && rel.stdout.includes("Another thing"),
+    rel.stdout,
+  );
+  check("draft does not double-list deliverables as events", !rel.stdout.includes("Shipped: "), rel.stdout);
 
   // --- validate stays green ---
   const val = runCli(["validate", bundlePath], dir);

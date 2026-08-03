@@ -75,6 +75,8 @@ export function runDeliverable(args: string[]): void {
       const value = args[++i];
       if (value === undefined) fail(`Missing value for --nodes\n\n${USAGE}`);
       nodes = value.split(",").map((n) => n.trim()).filter((n) => n !== "");
+      // An all-empty/blank --nodes value (e.g. "") means "no nodes", not [].
+      if (nodes.length === 0) nodes = undefined;
     } else if (arg === "--platform") {
       const value = args[++i];
       if (value === undefined) fail(`Missing value for --platform\n\n${USAGE}`);
@@ -106,12 +108,14 @@ export function runDeliverable(args: string[]): void {
     }
   }
 
+  const deliverableId = id ?? ulid();
+
   let event: JournalEvent;
   try {
     event = makeEvent(
       "deliverable.shipped",
       {
-        deliverable_id: id ?? ulid(),
+        deliverable_id: deliverableId,
         title,
         ...(summary !== undefined ? { summary } : {}),
         ...(url !== undefined ? { url } : {}),
@@ -127,7 +131,7 @@ export function runDeliverable(args: string[]): void {
   const journalPath = journalPathFor(filePath);
   appendJournalEvent(journalPath, event);
   console.log(
-    `\n  Recorded deliverable ${event.deliverable_id as string} — ${title} -> ${journalPath}\n`,
+    `\n  Recorded deliverable ${deliverableId} — ${title} -> ${journalPath}\n`,
   );
   process.exit(0);
 }
