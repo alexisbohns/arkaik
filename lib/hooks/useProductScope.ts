@@ -107,10 +107,10 @@ export function useEffectiveProduct(
  * a navigation and must not eat the back button.
  *
  * `overrideId` is what the control should display. It is `null` — All products —
- * whenever the param is absent, blank, unrecognised, or overruled by a named
- * global scope, because a trigger that echoed a value the surface is not
- * actually using would be the one thing on screen lying about the content
- * beneath it.
+ * whenever the surface may not override at all, or the param is absent, blank,
+ * unrecognised, or overruled by a named global scope, because a trigger that
+ * echoed a value the surface is not actually using would be the one thing on
+ * screen lying about the content beneath it.
  */
 export function useProductOverride(
   projectId: string,
@@ -121,8 +121,15 @@ export function useProductOverride(
   const searchParams = useSearchParams();
   const { productId: globalId } = useProductScope(projectId);
 
-  const overrideId = resolveEffectiveProductId(project, globalId, searchParams.get(PRODUCT_OVERRIDE_PARAM));
   const canOverride = canOverrideProduct(project, globalId);
+  // Gated on `canOverride`, so the name is honest: this is the override in
+  // effect, not "whatever `resolveEffectiveProductId` returned". Ungated it
+  // would carry the *global* id under a named scope — correct for the scope,
+  // wrong for a field called `overrideId`, and a trap for any caller that reads
+  // it without checking `canOverride` first.
+  const overrideId = canOverride
+    ? resolveEffectiveProductId(project, globalId, searchParams.get(PRODUCT_OVERRIDE_PARAM))
+    : null;
 
   const setOverride = useCallback(
     (next: string | null) => {
