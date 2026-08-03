@@ -56,10 +56,12 @@ no `schema_version` bump — the vocabulary grows without version bumps
   existed" rule); `platform` scopes it to a platform's release rhythm,
   mirroring `release.tagged`.
 - **Association rule:** a deliverable belongs to release `V` when its
-  *latest* occurrence falls inside `V`'s changelog slice (strictly between
+  **first** occurrence falls inside `V`'s changelog slice (strictly between
   `V`'s marker and the previous marker — `computeChangelog`'s boundaries).
-  Occurrences after the last marker are **unreleased**. No `deliverables[]`
-  field on `release.tagged`.
+  The first occurrence anchors *when it shipped*; later re-appends edit
+  content without moving it — otherwise editing a released deliverable
+  would silently un-release it. A first occurrence after the last marker is
+  **unreleased**. No `deliverables[]` field on `release.tagged`.
 - Schema work in `packages/schema/src/journal-events.ts`: a
   `DeliverableShippedEventSchema` (envelope + payload, `.catchall` like its
   siblings), registered in `JOURNAL_EVENT_SCHEMAS` and
@@ -72,16 +74,17 @@ no `schema_version` bump — the vocabulary grows without version bumps
 Pure functions in `packages/schema/src/projections.ts`, same contract as the
 existing ones (zod-free, immutable, empty journal → empty projection):
 
-- `computeDeliverables(events, options?)` → `Deliverable[]`: latest
-  occurrence per `deliverable_id`, each resolved to
+- `computeDeliverables(events)` → `Deliverable[]`: one record per
+  `deliverable_id` — **content from the latest occurrence, anchored at the
+  first** — shaped
   `{ deliverable_id, title, summary?, url?, node_ids, platform?, ts, releaseVersion: string | null }`
-  (`null` = unreleased), in journal order. Release resolution walks the
-  ordered events once, tracking the marker window each latest occurrence
-  falls in; a re-tagged release resolves markers latest-wins exactly as
+  where `ts` is the first occurrence's timestamp and `releaseVersion` the
+  release whose slice contains it (`null` = unreleased), in shipped order.
+  A re-tagged release resolves its marker latest-wins exactly as
   `computeChangelog` does.
-- `Changelog` gains `deliverables: Deliverable[]` — the deliverables whose
-  latest occurrence sits in the slice — so release consumers (app card, CLI
-  draft) get grouping for free.
+- `Changelog` gains `deliverables: Deliverable[]` — the deliverables
+  anchored in the slice — so release consumers (app card, CLI draft) get
+  grouping for free.
 - `computeCommitments(events)` → the ordered `node.status_changed` events
   whose transition is a **commitment**: `idea → discovery` or
   `discovery → backlog`. (Legacy pre-v3 `from`/`to` ids do not qualify;
