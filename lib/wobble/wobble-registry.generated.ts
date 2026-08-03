@@ -80,6 +80,7 @@ export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "image-plus", seed: 17 },
   { name: "info", seed: 17 },
   { name: "key-round", seed: 9 },
+  { name: "keyboard", seed: 0 },
   { name: "landmark", seed: 9 },
   { name: "layers", seed: 11 },
   { name: "layout-dashboard", seed: 18 },
