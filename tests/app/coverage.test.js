@@ -192,8 +192,8 @@ const nodesById = new Map(bundle.nodes.map((node) => [node.id, node]));
 
 const inventory = computeInventory(bundle.nodes, bundle.edges, bundle.journal);
 assert(
-  inventory.nodeCount === 152 && inventory.edgeCount === 283 && inventory.journalEventCount === 179,
-  `seed census 152/283/179 (got ${inventory.nodeCount}/${inventory.edgeCount}/${inventory.journalEventCount})`,
+  inventory.nodeCount === 152 && inventory.edgeCount === 283 && inventory.journalEventCount === 182,
+  `seed census 152/283/182 (got ${inventory.nodeCount}/${inventory.edgeCount}/${inventory.journalEventCount})`,
 );
 assert(
   eq(
