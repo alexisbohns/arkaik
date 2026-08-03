@@ -18,6 +18,7 @@ import { useNodes } from "@/lib/hooks/useNodes";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
 import { useJournal } from "@/lib/hooks/useJournal";
+import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import {
   computeBacklog,
   computeCommitments,
@@ -45,7 +46,7 @@ function DeliverableRow({ deliverable, nodesById }: { deliverable: Deliverable; 
               target="_blank"
               rel="noreferrer"
               className="shrink-0 text-muted-foreground hover:text-foreground"
-              aria-label="Open pull request"
+              aria-label={`Open pull request: ${deliverable.title}`}
             >
               <ExternalLinkIcon className="size-3.5" />
             </a>
@@ -85,7 +86,7 @@ function ReleaseCard({
           <span className="text-sm font-semibold">{tag.version}</span>
           {tag.platform && (
             <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
-              {PLATFORM_LABELS[tag.platform]}
+              {PLATFORM_LABELS[tag.platform] ?? tag.platform}
             </span>
           )}
         </div>
@@ -132,20 +133,22 @@ function BacklogList({ backlog }: { backlog: Backlog }) {
   );
 }
 
-/** A commitment or decision feed row. */
+/** A commitment or decision feed row. Clickable when `onOpen` is given (decisions deep-link to their node). */
 function FeedRow({
   event,
   nodesById,
   trailing,
+  onOpen,
 }: {
   event: JournalEvent;
   nodesById: Map<string, Node>;
   trailing?: ReactNode;
+  onOpen?: () => void;
 }) {
   const { icon: Icon, text, meta } = describeJournalEvent(event, nodesById);
 
-  return (
-    <div className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm">
+  const content = (
+    <>
       <Icon className="size-3.5 shrink-0 text-muted-foreground mt-0.5" aria-hidden="true" />
       <div className="flex-1 min-w-0">
         <p className="truncate">{text}</p>
@@ -153,8 +156,22 @@ function FeedRow({
       </div>
       {trailing}
       <span className="text-xs text-muted-foreground shrink-0">{formatEventDate(event.ts)}</span>
-    </div>
+    </>
   );
+
+  if (onOpen) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm text-left w-full cursor-pointer hover:bg-muted/50 transition-colors"
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return <div className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm">{content}</div>;
 }
 
 function SectionHeading({ children }: { children: ReactNode }) {
@@ -168,6 +185,7 @@ export default function ChangelogPage() {
   const { project: projectBundle, loading: projectLoading } = useProject(id);
   const { nodes: dataNodes, loading: nodesLoading } = useNodes(id);
   const { journal, loading: journalLoading } = useJournal(id);
+  const { openNode } = useProjectPanels();
   // Display only — the changelog itself stays unscoped; this just fills the
   // header's meta line with the same scope name every other surface shows.
   const scope = useEffectiveProduct(id, projectBundle);
@@ -184,8 +202,10 @@ export default function ChangelogPage() {
     const tags = orderEvents(
       journal.filter((event): event is ReleaseTaggedEvent => event.type === "release.tagged"),
     );
-    // A re-tagged version resolves to its latest occurrence; keep the last one
-    // per version, most-recent release first.
+    // A re-tagged version resolves to its latest occurrence (latest content);
+    // keep the last occurrence per version, most-recent first by each
+    // version's first appearance — a re-tag updates a card in place rather
+    // than reshuffling.
     const byVersion = new Map<string, ReleaseTaggedEvent>();
     for (const tag of tags) byVersion.set(tag.version, tag);
 
@@ -288,6 +308,7 @@ export default function ChangelogPage() {
                             <DecisionStatusBadge status={event.to as DecisionStatusId} className="shrink-0" />
                           ) : undefined
                         }
+                        onOpen={typeof event.node_id === "string" ? () => openNode({ nodeId: event.node_id as string }) : undefined}
                       />
                     ))}
                   </div>
