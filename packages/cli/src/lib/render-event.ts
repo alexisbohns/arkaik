@@ -65,6 +65,10 @@ export function renderEventLine(
       const platform = str(event.platform);
       return `Released ${version}${platform ? ` [${platform}]` : ""}`;
     }
+    case "deliverable.shipped": {
+      const url = str(event.url);
+      return `Shipped: ${str(event.title) ?? str(event.deliverable_id) ?? "?"}${url ? ` (${url})` : ""}`;
+    }
     case "idea.proposed":
       return `Idea: ${str(event.title) ?? "Untitled"}`;
     case "request.filed": {

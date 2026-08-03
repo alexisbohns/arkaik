@@ -144,6 +144,13 @@ export function runRelease(args: string[]): void {
   console.log(
     changelog.fromVersion ? `  Changes since ${changelog.fromVersion}:\n` : `  Initial changes:\n`,
   );
+  if (changelog.deliverables.length > 0) {
+    console.log("  Deliverables:");
+    changelog.deliverables.forEach((d) => {
+      console.log(`  - ${d.title}${d.summary ? ` — ${d.summary}` : ""}${d.url ? ` (${d.url})` : ""}`);
+    });
+    console.log("");
+  }
   if (changelog.events.length === 0) {
     console.log("  (no changes in this release)");
   } else {
