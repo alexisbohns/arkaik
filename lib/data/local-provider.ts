@@ -177,6 +177,13 @@ export const localProvider: DataProvider = {
   async saveProject(bundle: ProjectBundle) {
     const db = await getDb();
     if (!db) return;
+    // `migrateBundle` is what stamps `schema_version` on a fresh bundle: a
+    // just-created project arrives here unversioned, rides the chain, and its
+    // v2→3 step stamps the current version. That stamp MUST reach storage —
+    // an unstamped snapshot would read as v0 on a later load and re-run the
+    // non-idempotent backlog→idea status remap. `splitBundle` strips only
+    // `journal`, so the stamp survives into the stored snapshot (and back out
+    // through `assembleBundle` on export).
     const { snapshot, journal } = splitBundle(migrateBundle(bundle));
     const projectId = snapshot.project.id;
     await db.transaction("rw", db.projects, db.journals, async () => {

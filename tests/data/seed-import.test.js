@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 
 /**
- * Verifies (issue #201 Verification) that every seed and the example bundle
- * still import unchanged after the v2 foundation lands — both as-is and with an
- * explicit `schema_version: 1`:
+ * Verifies (issue #201 Verification, updated for the status lifecycle
+ * overhaul's v2→3 step) that every seed and the example bundle still import
+ * cleanly:
  *  - parseBundle() accepts them (shape parse preserves schema_version);
- *  - migrateBundle() is a no-op on them (already v1-clean) — export → import
- *    round-trip is byte-for-byte unchanged.
+ *  - migrateBundle() lands every bundle at schema_version 3 and is STABLE
+ *    (re-migrating the result is a byte-for-byte no-op — the stamp is what
+ *    prevents the non-idempotent backlog→idea remap from re-running);
+ *  - structurally-conformant seeds pass through content-unchanged apart from
+ *    the vocabulary remap: node ids, edges, and journal are untouched;
+ *  - the pebbles seed (a genuine pre-v3, schema_version: 2 bundle) has its old
+ *    `backlog` (someday pile) statuses remapped to `idea`.
  */
 
 const fs = require("fs");
@@ -28,20 +33,44 @@ function assert(cond, message) {
 }
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-const { migrateBundle } = loadMigrate();
-const { parseBundle } = loadSchema();
+const { migrateBundle, CURRENT_SCHEMA_VERSION } = loadMigrate();
+const { parseBundle, STATUS_IDS } = loadSchema();
 
 for (const rel of BUNDLES) {
   const bundle = JSON.parse(fs.readFileSync(path.join(ROOT, rel), "utf8"));
 
   // As-is.
   assert(parseBundle(bundle).success, `${rel}: parseBundle accepts it as-is`);
-  assert(eq(migrateBundle(bundle), bundle), `${rel}: migrateBundle is a no-op (round-trip unchanged)`);
 
-  // With an explicit schema_version: 1 (Conformance Level 1). Only meaningful
-  // for bundles that don't already declare a version of their own — the
-  // pebbles seed is a genuine Level 2 bundle (schema_version: 2 + journal).
+  const migrated = migrateBundle(bundle);
+  assert(
+    migrated.schema_version === CURRENT_SCHEMA_VERSION,
+    `${rel}: migrateBundle lands at schema_version ${CURRENT_SCHEMA_VERSION}`,
+  );
+  assert(eq(migrateBundle(migrated), migrated), `${rel}: re-migrating the result is a byte-for-byte no-op (stable)`);
+  assert(
+    eq(migrated.nodes.map((n) => n.id), bundle.nodes.map((n) => n.id)),
+    `${rel}: node ids are unchanged by migration`,
+  );
+  assert(eq(migrated.edges, bundle.edges), `${rel}: edges are unchanged by migration`);
+  assert(eq(migrated.journal, bundle.journal), `${rel}: the journal is never rewritten`);
+  assert(
+    migrated.nodes.every((n) => STATUS_IDS.includes(n.status)),
+    `${rel}: every migrated status is in the current 7-id vocabulary`,
+  );
+  assert(parseBundle(migrated).success, `${rel}: parseBundle accepts the migrated bundle`);
+
   if (bundle.schema_version === undefined) {
+    // The unversioned bundles already use the shared subset of the vocabulary
+    // (no old `backlog`/`prioritized`/`blocked`), so migration is exactly the
+    // stamp — nothing else may change.
+    assert(
+      eq(migrated, { ...bundle, schema_version: CURRENT_SCHEMA_VERSION }),
+      `${rel}: migration of an unversioned seed is exactly the schema_version stamp`,
+    );
+
+    // With an explicit schema_version: 1 (Conformance Level 1) the parse must
+    // preserve the declared version rather than stripping it.
     const versioned = { schema_version: 1, ...bundle };
     const parsed = parseBundle(versioned);
     assert(parsed.success, `${rel}: parseBundle accepts it with explicit schema_version: 1`);
@@ -49,7 +78,6 @@ for (const rel of BUNDLES) {
       parsed.success && parsed.data.schema_version === 1,
       `${rel}: parseBundle preserves schema_version: 1 (not stripped)`,
     );
-    assert(eq(migrateBundle(versioned), versioned), `${rel}: migrateBundle is a no-op on a declared-v1 bundle`);
   } else {
     const parsed = parseBundle(bundle);
     assert(
@@ -57,6 +85,28 @@ for (const rel of BUNDLES) {
       `${rel}: parseBundle preserves declared schema_version: ${bundle.schema_version} (not stripped)`,
     );
   }
+}
+
+// The pebbles seed is a genuine pre-v3 bundle (schema_version: 2) that uses the
+// OLD `backlog` (someday pile): the v2→3 step must remap those to `idea`.
+{
+  const rel = "seed/pebbles.json";
+  const bundle = JSON.parse(fs.readFileSync(path.join(ROOT, rel), "utf8"));
+  const oldBacklogIds = bundle.nodes.filter((n) => n.status === "backlog").map((n) => n.id);
+  assert(oldBacklogIds.length > 0, `${rel}: fixture still carries old-vocabulary backlog nodes (test precondition)`);
+
+  const migrated = migrateBundle(bundle);
+  assert(
+    oldBacklogIds.every((id) => migrated.nodes.find((n) => n.id === id).status === "idea"),
+    `${rel}: old \`backlog\` statuses are remapped to \`idea\` by the v2→3 step`,
+  );
+  assert(
+    migrated.nodes.every((n) => {
+      const platformStatuses = n.metadata && n.metadata.platformStatuses;
+      return !platformStatuses || Object.values(platformStatuses).every((s) => s !== "backlog");
+    }),
+    `${rel}: old \`backlog\` platformStatuses are remapped too`,
+  );
 }
 
 fs.rmSync(MIGRATE_BUILD_DIR, { recursive: true, force: true });

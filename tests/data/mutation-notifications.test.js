@@ -39,7 +39,7 @@ const ISO = "2026-01-01T00:00:00.000Z";
 
 function makeBundle(projectId, nodes = [], edges = []) {
   return {
-    schema_version: 2, // current — migrateBundle returns it untouched
+    schema_version: 3, // current — migrateBundle returns it untouched
     project: {
       id: projectId,
       title: `Project ${projectId}`,

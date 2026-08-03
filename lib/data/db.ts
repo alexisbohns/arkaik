@@ -1,6 +1,6 @@
 import Dexie, { type Table } from "dexie";
 import type { JournalEvent, ProjectBundle } from "./types";
-import { migrateBundle } from "./migrate";
+import { CURRENT_SCHEMA_VERSION, migrateBundle } from "./migrate";
 
 /**
  * IndexedDB storage layer (Dexie) for the local `DataProvider`.
@@ -127,6 +127,10 @@ async function openDb(): Promise<ArkaikDB | null> {
   // A migration failure must never lock the DB out, so it swallows its own
   // errors and leaves the legacy payload intact for a later retry.
   await migrateLegacyLocalStorage(db);
+  // Then bring already-stored snapshots up to the current schema version. Runs
+  // on every open, but the per-record version gate makes it a cheap no-op once
+  // every row is stamped.
+  await migrateStoredProjects(db);
   return db;
 }
 
@@ -193,5 +197,43 @@ async function migrateLegacyLocalStorage(db: ArkaikDB): Promise<void> {
   } catch (err) {
     // Leave the flag unset and localStorage untouched: retry on the next load.
     console.error("[LocalProvider] Legacy localStorage migration failed (will retry):", err);
+  }
+}
+
+/**
+ * Sweep the stored `projects` rows up to {@link CURRENT_SCHEMA_VERSION}.
+ *
+ * Snapshots persisted before the v2→3 status-vocabulary step exist without a
+ * `schema_version` stamp — and the v2→3 remap (old `backlog` → `idea`) is NOT
+ * idempotent against new-vocabulary data, so it must run exactly once per
+ * stored project. This sweep runs at DB open, *before* any provider read or
+ * write, migrates each outdated snapshot through {@link migrateBundle} (whose
+ * v2→3 step stamps `schema_version: 3`), and rewrites only the `projects` row.
+ *
+ * Invariants:
+ * - Version-gated per record: a row already at or above the current version is
+ *   skipped, so every later open is a cheap read-only pass.
+ * - The `journals` table is never read or written — the migration chain never
+ *   rewrites history (docs/spec/journal.md), and the snapshot row never
+ *   carries a `journal` key, so there is nothing to touch.
+ * - Errors are swallowed (logged): a failed sweep leaves the affected rows
+ *   unstamped and simply retries on the next open, exactly like the legacy
+ *   localStorage import above — a migration failure must never lock the DB out.
+ */
+async function migrateStoredProjects(db: ArkaikDB): Promise<void> {
+  try {
+    const records = await db.projects.toArray();
+    for (const record of records) {
+      const declared = (record.snapshot as { schema_version?: unknown }).schema_version;
+      if (typeof declared === "number" && declared >= CURRENT_SCHEMA_VERSION) continue;
+      // A snapshot is a bundle without its journal; the chain accepts that
+      // as-is (`journal` is optional) and never adds one back — splitBundle
+      // here only re-asserts the no-journal-in-snapshot invariant. The record
+      // spread keeps any future fields beyond {id, snapshot}.
+      const { snapshot } = splitBundle(migrateBundle(record.snapshot));
+      await db.projects.put({ ...record, snapshot });
+    }
+  } catch (err) {
+    console.error("[LocalProvider] Stored-project schema sweep failed (will retry):", err);
   }
 }
