@@ -22,6 +22,7 @@ import { useNodes } from "@/lib/hooks/useNodes";
 import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
 import { useJournal } from "@/lib/hooks/useJournal";
+import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { findWhereUsed } from "@/lib/utils/where-used";
 import { generateNodeId } from "@/lib/utils/id";
 import {
@@ -167,7 +168,14 @@ export default function ProjectLibraryPage() {
   const speciesFilter = parseSpeciesFilter(searchParams.get("species"));
 
   const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, applyMutations } = useNodes(id);
-  const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
+  const { edges: dataEdges, loading: edgesLoading, syncEdges } = useEdges(id);
+  const intake = useAcceptanceIntake({
+    projectId: id,
+    nodes: dataNodes,
+    edges: dataEdges,
+    applyMutations,
+    syncEdges,
+  });
   const { project: projectBundle, updateProject } = useProject(id);
   const { journal } = useJournal(id);
   // The shell's scope, narrowed by this surface's own `?product=` when it has
@@ -444,6 +452,7 @@ export default function ProjectLibraryPage() {
         journal={journal}
         onUpdate={handleNodeUpdate}
         onCreateNode={handleCreateNodeFromPanel}
+        intake={intake}
       >
         <div className="h-full overflow-auto">
           <div className="w-full">

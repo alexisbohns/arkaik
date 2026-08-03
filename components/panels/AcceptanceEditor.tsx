@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { SplitIcon, XIcon } from "lucide-react";
+import { toast } from "sonner";
 import type { Node, Edge, PlatformStatusMap } from "@/lib/data/types";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { StatusId } from "@/lib/config/statuses";
@@ -10,8 +12,13 @@ import { getEditablePlatformStatuses } from "@/lib/utils/platform-status";
 import type { ProductScope } from "@/lib/utils/product-scope";
 import { productLabels, productsOfAcceptance } from "@/lib/utils/product-scope";
 import { withProductMembership } from "@/lib/utils/product-editing";
+import { attachEmptiesMembership } from "@/lib/utils/acceptance-intake";
+import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { productOf } from "@arkaik/schema";
 import { ProductPicker } from "@/components/panels/ProductPicker";
+import { NodeSearchCombobox } from "@/components/panels/NodeSearchCombobox";
+import { SplitAcceptanceDialog } from "@/components/panels/SplitAcceptanceDialog";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { STATUS_ICONS, STATUS_STYLES, SPECIES_ICONS } from "@/components/graph/nodes/node-styles";
 import { PlatformVariants } from "@/components/panels/PlatformVariants";
@@ -25,10 +32,19 @@ interface AcceptanceEditorProps {
   scope: ProductScope;
   onUpdate: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
   onNavigate?: (node: Node) => void;
+  /**
+   * The decompose gestures — attach, detach, create-and-attach, split.
+   *
+   * Absent on a surface whose panels are read-only, and then the Covers list is
+   * exactly the list it has always been. Present, and this editor becomes the
+   * place an idea filed with no anchor gets turned into one that has them.
+   */
+  intake?: AcceptanceIntake;
 }
 
-export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, onNavigate }: AcceptanceEditorProps) {
+export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, onNavigate, intake }: AcceptanceEditorProps) {
   const [gherkin, setGherkin] = useState(node.metadata?.gherkin ?? "");
+  const [splitOpen, setSplitOpen] = useState(false);
   const nodeRef = useRef(node);
   useEffect(() => { nodeRef.current = node; }, [node]);
   // Debounce-save gherkin. The effect reschedules on every keystroke and clears
@@ -52,6 +68,22 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, on
 
   function patchMetadata(next: Record<string, unknown>) {
     onUpdate(node.id, { metadata: { ...node.metadata, ...next } });
+  }
+
+  /**
+   * Run one intake gesture, reporting a failure instead of swallowing it.
+   *
+   * Every one of them is a write to a store the panel does not own, and a
+   * rejected batch otherwise leaves the list looking unchanged with nothing
+   * saying why — the same treatment `AcceptancesSection` gives its create.
+   */
+  async function run(action: () => Promise<void>, failure: string) {
+    try {
+      await action();
+    } catch (err) {
+      toast.error(failure);
+      console.error(err);
+    }
   }
 
   /* --- Product (§ D5) ------------------------------------------------------
@@ -197,22 +229,166 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, on
       <section className="flex flex-col gap-1.5">
         <span className="text-xs text-muted-foreground">Covers</span>
         {coveredAnchors.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Unanchored (covers nothing).</p>
+          <p className="text-xs text-muted-foreground">
+            {intake
+              ? "Unanchored — an idea in intake. Attach it to a view or a flow below."
+              : "Unanchored (covers nothing)."}
+          </p>
         ) : (
           <ul className="flex flex-col gap-1">
             {coveredAnchors.map((anchor) => {
               const Icon = SPECIES_ICONS[anchor.species];
               return (
-                <li key={anchor.id}>
-                  <button type="button" className="inline-flex items-center gap-2 text-sm hover:underline" onClick={() => onNavigate?.(anchor)}>
+                <li key={anchor.id} className="flex items-center gap-1">
+                  <button type="button" className="inline-flex flex-1 items-center gap-2 text-left text-sm hover:underline" onClick={() => onNavigate?.(anchor)}>
                     <Icon className="size-3.5 text-muted-foreground" /> {anchor.title}
                   </button>
+                  {intake && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 shrink-0"
+                      aria-label={`Stop covering ${anchor.title}`}
+                      onClick={() => void run(() => intake.detach(node, anchor.id), "Couldn't detach that node.")}
+                    >
+                      <XIcon className="size-3.5" />
+                    </Button>
+                  )}
                 </li>
               );
             })}
           </ul>
         )}
+        {intake && (
+          <AttachAnchorRow
+            node={node}
+            allNodes={allNodes}
+            allEdges={allEdges}
+            nodesById={nodesById}
+            hasProducts={scope.productsById.size > 0}
+            intake={intake}
+            run={run}
+          />
+        )}
       </section>
+
+      {intake && (
+        <section className="flex flex-col gap-1.5">
+          <span className="text-xs text-muted-foreground">Decompose</span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="self-start"
+            onClick={() => setSplitOpen(true)}
+          >
+            <SplitIcon className="size-4" /> Split into several…
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            One acceptance states one thing. Split when the idea has grown into several.
+          </p>
+          <SplitAcceptanceDialog
+            open={splitOpen}
+            onOpenChange={setSplitOpen}
+            title={node.title}
+            anchorCount={anchorCount}
+            // Not `run`: the dialog has to know whether the write landed, so
+            // that a failure leaves the rows on screen instead of discarding
+            // them. Reported here all the same, then rethrown.
+            onSubmit={async (titles) => {
+              try {
+                await intake.split(node, titles);
+              } catch (err) {
+                toast.error("Couldn't split the acceptance.");
+                console.error(err);
+                throw err;
+              }
+            }}
+          />
+        </section>
+      )}
+    </div>
+  );
+}
+
+interface AttachAnchorRowProps {
+  node: Node;
+  allNodes: Node[];
+  allEdges: Edge[];
+  nodesById: Map<string, Node>;
+  /**
+   * Whether the project declares any product at all. The triage warning below
+   * is gated on it rather than on the membership computation alone: a project
+   * that has never heard of products can still carry a stray `metadata.product`
+   * from an import, and a toast naming "All products" there would introduce a
+   * word the whole feature promises such a project never sees.
+   */
+  hasProducts: boolean;
+  intake: AcceptanceIntake;
+  run: (action: () => Promise<void>, failure: string) => Promise<void>;
+}
+
+/**
+ * Attach this acceptance to a view or a flow — one that exists, or one created
+ * in the same gesture.
+ *
+ * The species select plus `NodeSearchCombobox` is the shape the playlist editor
+ * and the insert dialog already use for "an existing node, or a new one by that
+ * name", and reusing it means the create affordance appears under exactly the
+ * same rule everywhere: only once something is typed that no node of that
+ * species already answers to.
+ *
+ * **Attaching an unassigned anchor is allowed and announced.** An acceptance
+ * anchored only to unassigned views derives an empty membership, so this gesture
+ * can move an idea filed under one app back into the "All products" inbox
+ * (§ Decision 5, the interaction the spec left open). Blocking it would be
+ * wrong — the anchor is the truth and triage is the honest place for an
+ * acceptance whose anchors are themselves in triage — but letting it happen in
+ * silence means watching the acceptance vanish from the scope you were standing
+ * in. So it is written, and then said. A node created here inherits the
+ * acceptance's product precisely so the common path never trips this.
+ */
+function AttachAnchorRow({ node, allNodes, allEdges, nodesById, hasProducts, intake, run }: AttachAnchorRowProps) {
+  const [species, setSpecies] = useState<"view" | "flow">("view");
+
+  function announceTriage(anchor: Pick<Node, "id" | "species" | "title" | "metadata">) {
+    if (!hasProducts) return;
+    // Evaluated against the edges as they were BEFORE the write — the predicate
+    // asks what this attach did, and the answer needs the graph it acted on.
+    if (!attachEmptiesMembership(node, anchor, allEdges, nodesById)) return;
+    toast.warning(`"${anchor.title}" has no product, so this acceptance now appears under All products only.`);
+  }
+
+  return (
+    <div className="mt-1 grid gap-2 sm:grid-cols-[7rem_1fr] sm:items-center">
+      <Select value={species} onValueChange={(value) => setSpecies(value as "view" | "flow")}>
+        <SelectTrigger aria-label="Anchor species">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="view">View</SelectItem>
+          <SelectItem value="flow">Flow</SelectItem>
+        </SelectContent>
+      </Select>
+      <NodeSearchCombobox
+        species={species}
+        allNodes={allNodes}
+        onSelect={(anchorId) => {
+          const anchor = nodesById.get(anchorId);
+          if (!anchor) return;
+          void run(async () => {
+            await intake.attach(node, anchor);
+            announceTriage(anchor);
+          }, "Couldn't attach that node.");
+        }}
+        onCreate={(title) =>
+          run(async () => {
+            const created = await intake.createAnchor(node, species, title);
+            if (created) toast.success(`Created "${created.title}" and attached it.`);
+          }, `Couldn't create the ${species}.`)
+        }
+      />
     </div>
   );
 }

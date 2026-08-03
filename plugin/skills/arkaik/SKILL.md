@@ -274,8 +274,10 @@ Creating a new acceptance + covers edge is itself a dual-write: append
 - `Given` encodes render variants ("Given the pebble has a picture attached…").
 - `platforms` lists only the platforms where the behavior is *expected* — a
   mobile-only behavior is `["ios", "android"]`, not backlog-on-web.
-- `covers` edges: acceptance → view or acceptance → flow. Zero edges = a
-  product-level acceptance (legal). Several = the behavior spans surfaces.
+- `covers` edges: acceptance → view or acceptance → flow. Zero edges = an
+  anchorless acceptance in **intake** (legal): an idea filed before its flows and
+  views exist, carrying `metadata.product` until it has anchors to derive
+  membership from. Several = the behavior spans surfaces.
 - Statuses reuse the standard lifecycle; "shipped" = `live`.
 
 **Example** — iOS ships the draw-in animation:

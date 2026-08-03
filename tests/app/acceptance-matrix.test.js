@@ -13,6 +13,7 @@ const {
   productsOfAcceptance,
   EMPTY_FILTERS,
   UNANCHORED_GROUP_LABEL,
+  UNANCHORED_FILTER,
 } = loadAcceptanceMatrix();
 
 const view = { id: "V-detail", project_id: "p", species: "view", title: "Detail", status: "live", platforms: ["web", "ios", "android"] };
@@ -44,6 +45,16 @@ check("platform+status filter matches that platform's resolved status",
 check("value filter", filterAcceptances(acceptances, edges, nodesById, { ...EMPTY_FILTERS, value: "reduces-anxiety" }).map((a) => a.id).join() === "AC-palette");
 check("anchor filter keeps acceptances covering that anchor", filterAcceptances(acceptances, edges, nodesById, { ...EMPTY_FILTERS, anchor: "F-swap" }).map((a) => a.id).join() === "AC-anim");
 check("parity_gap filter keeps only gapped acceptances", filterAcceptances(acceptances, edges, nodesById, { ...EMPTY_FILTERS, parityGap: true }).map((a) => a.id).join() === "AC-anim");
+check("the unanchored filter is the intake inbox — acceptances covering nothing",
+  filterAcceptances(acceptances, edges, nodesById, { ...EMPTY_FILTERS, anchor: UNANCHORED_FILTER }).map((a) => a.id).join() === "AC-offline");
+// The filter and the group it exists to reach must agree about a dangling edge,
+// or "Unanchored (intake)" would hide an acceptance the matrix files under
+// "Unanchored" a screen further down.
+check("the unanchored filter counts a dangling covers edge as unanchored, like the group does",
+  filterAcceptances(acceptances, [...edges, { id: "e-AC-offline-V-missing", project_id: "p", source_id: "AC-offline", target_id: "V-missing", edge_type: "covers" }],
+    nodesById, { ...EMPTY_FILTERS, anchor: UNANCHORED_FILTER }).map((a) => a.id).join() === "AC-offline");
+check("the sentinel did not swallow the named-anchor branch",
+  filterAcceptances(acceptances, edges, nodesById, { ...EMPTY_FILTERS, anchor: "V-detail" }).map((a) => a.id).sort().join() === "AC-anim,AC-palette");
 
 const accWithDesc = { ...acc2, id: "AC-desc", description: "supports quiet reflection", metadata: { values: ["reduces-anxiety"] } };
 check("search matches description text",
