@@ -48,6 +48,78 @@ async function main() {
   setProvider(original);
   check("setProvider() can restore the default", getProvider() === original);
 
+  // --- The seed branch (self-map cycle 4) ------------------------------------
+  check("the seed id predicate matches only the reserved id",
+    reg.seedProject.isSeedProjectId("arkaik-self-map") === true &&
+    reg.seedProject.isSeedProjectId("prj_abc") === false &&
+    reg.seedProject.isSeedProjectId("arkaik-self-map-2") === false);
+
+  {
+    const router = routing.createRoutingProvider({
+      local: reg.localFake,
+      remote: remote.createRemoteProvider({
+        fetchImpl: async () => { throw new Error("seed calls must not reach the network"); },
+      }),
+      seed: reg.seedFake,
+      isRemoteAvailable: () => true,
+    });
+    resetCalls();
+    reg.resetSeedCalls();
+    await router.getNodes("arkaik-self-map");
+    await router.updateNode("arkaik-self-map", "V-projects", { title: "x" });
+    check("seed-id calls reach the seed provider", reg.seedCalls.length === 2, reg.seedCalls.join(","));
+    check("…and never the local provider", calls.length === 0, calls.join(","));
+  }
+  {
+    // listProjects always leads with the seed — even when hosted fails.
+    const router = routing.createRoutingProvider({
+      local: reg.localFake,
+      remote: remote.createRemoteProvider({ fetchImpl: async () => new Response("nope", { status: 500 }) }),
+      seed: reg.seedFake,
+      isRemoteAvailable: () => true,
+    });
+    const listed = await router.listProjects();
+    check("the seed project is listed first", listed[0]?.seed === true, JSON.stringify(listed.map((p) => p.project.id)));
+    check("…and a hosted failure still lists seed + local", listed.length === 2);
+  }
+  {
+    // Signed out: seed + local, no network.
+    let fetchCalls = 0;
+    const router = routing.createRoutingProvider({
+      local: reg.localFake,
+      remote: remote.createRemoteProvider({ fetchImpl: async () => { fetchCalls++; throw new Error("no"); } }),
+      seed: reg.seedFake,
+      isRemoteAvailable: () => false,
+    });
+    const listed = await router.listProjects();
+    check("signed out, the seed is still listed first and nothing hits the network",
+      listed[0]?.seed === true && listed.length === 2 && fetchCalls === 0);
+  }
+  {
+    // A router WITHOUT a seed option behaves exactly as before.
+    const router = routing.createRoutingProvider({
+      local: reg.localFake,
+      remote: remote.createRemoteProvider({ fetchImpl: async () => { throw new Error("no"); } }),
+      isRemoteAvailable: () => false,
+    });
+    resetCalls();
+    await router.getNodes("arkaik-self-map");
+    check("without a seed provider, the reserved id falls through to local", calls.length === 1, calls.join(","));
+  }
+  // --- Default wiring: getProvider()'s router includes the seed --------------
+  // Runs here, after `setProvider(original)` above has already restored the
+  // default router — so getProvider() still returns the real registry wiring,
+  // not the `marker` used to test the setProvider() seam.
+  {
+    reg.resetSeedCalls();
+    await getProvider().getNodes("arkaik-self-map");
+    check("the default registry routes the seed id to the seed provider",
+      reg.seedCalls.some((c) => c === "getNodes:arkaik-self-map"), reg.seedCalls.join(","));
+    const listed = await getProvider().listProjects();
+    check("the default listing leads with the seed project", listed[0]?.seed === true,
+      JSON.stringify(listed.map((p) => p.project.id)));
+  }
+
   // --- The routing rule ----------------------------------------------------
   check("a prj_ id is hosted", remote.isHostedProjectId(HOSTED) === true);
   check("a uuid id is not hosted", remote.isHostedProjectId("8f14e45f-ceea-467a-9f2a-1f0e6b8c4d21") === false);

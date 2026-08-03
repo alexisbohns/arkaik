@@ -17,6 +17,8 @@ export interface ProjectSummary {
   edgeCount: number;
   /** True when the project lives in the account rather than in this browser. */
   hosted: boolean;
+  /** True for the built-in public seed project (the Arkaik self-map, cycle 4). */
+  seed?: boolean;
 }
 
 export interface DataProvider {
