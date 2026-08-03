@@ -150,7 +150,7 @@ function main() {
   check("bundle with an unknown-type event still validates", validateBundle(fwdBundle).valid);
 
   // --- per-type schema modeling ---
-  check("JOURNAL_EVENT_TYPES has the 12 v1 types", JOURNAL_EVENT_TYPES.length === 12, `got ${JOURNAL_EVENT_TYPES.length}`);
+  check("JOURNAL_EVENT_TYPES has the 13 v1 types", JOURNAL_EVENT_TYPES.length === 13, `got ${JOURNAL_EVENT_TYPES.length}`);
   const goodStatus = NodeStatusChangedEventSchema.safeParse({
     id: "01S", ts: "2026-01-01T00:00:00.000Z", type: "node.status_changed", node_id: "V-a", from: "idea", to: "live",
   });

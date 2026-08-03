@@ -103,4 +103,81 @@ badStatus.nodes[0].metadata.decision_status = "actual";
 const badParsed = parseBundle(badStatus);
 assert(!badParsed.success, "an unknown decision_status is a parse error (spec §7 — same posture as unknown lifecycle status)");
 
+// --- decision.status_changed: event schema + derivation ----------------------
+const { KnownJournalEventSchema, diffNodeUpdate, toJournalEvents, crossCheckJournal } = loadSchema();
+
+const evt = {
+  id: "01J0000000000000000000TEST",
+  ts: "2026-08-03T12:00:00.000Z",
+  type: "decision.status_changed",
+  node_id: "DEC-two-axes-stay",
+  from: "approved",
+  to: "enacted",
+};
+assert(KnownJournalEventSchema.safeParse(evt).success, "decision.status_changed validates strictly");
+assert(
+  !KnownJournalEventSchema.safeParse({ ...evt, to: "live" }).success,
+  "from/to must be decision statuses, not lifecycle statuses",
+);
+
+// diffNodeUpdate derives it from a metadata.decision_status delta — one
+// derivation shared by app, MCP and CLI dual-writers.
+const current = {
+  id: "DEC-two-axes-stay",
+  project_id: "p1",
+  species: "decision",
+  title: "Two axes stay",
+  status: "backlog",
+  platforms: [],
+  metadata: { decision_status: "approved", context: "ctx" },
+};
+const events = diffNodeUpdate(current, {
+  status: "live",
+  metadata: { decision_status: "enacted", context: "ctx" },
+});
+const decisionEvents = events.filter((e) => e.type === "decision.status_changed");
+const statusEvents = events.filter((e) => e.type === "node.status_changed");
+const updatedEvents = events.filter((e) => e.type === "node.updated");
+assert(decisionEvents.length === 1, "one decision.status_changed derived");
+assert(
+  decisionEvents[0].payload.from === "approved" && decisionEvents[0].payload.to === "enacted",
+  "decision.status_changed carries from/to",
+);
+assert(statusEvents.length === 1, "the synced lifecycle move still emits node.status_changed");
+assert(updatedEvents.length === 0, "decision_status does NOT also appear as a node.updated field path");
+
+// First-ever assignment: prev side defaults to proposed (a decision without
+// the field reads as proposed), keeping both endpoints valid enum members.
+const fresh = { ...current, metadata: { context: "ctx" } };
+const firstAssign = diffNodeUpdate(fresh, { metadata: { context: "ctx", decision_status: "proposed" } });
+assert(
+  firstAssign.filter((e) => e.type === "decision.status_changed").length === 0,
+  "writing proposed onto an implicit proposed derives nothing",
+);
+const firstReal = diffNodeUpdate(fresh, { metadata: { context: "ctx", decision_status: "approved" } });
+const firstEvt = firstReal.find((e) => e.type === "decision.status_changed");
+assert(firstEvt && firstEvt.payload.from === "proposed", "first assignment's from defaults to proposed");
+
+// makeEvent path: the stamped event validates against the strict schema.
+const stamped = toJournalEvents([{ type: "decision.status_changed", payload: { node_id: "DEC-x", from: "proposed", to: "approved" } }], "test");
+assert(stamped.length === 1 && stamped[0].actor === "test", "toJournalEvents stamps the envelope");
+
+// crossCheckJournal: last decision.status_changed.to must agree with the
+// snapshot's decision_status (by value, the journal's rule 3).
+const ccBundle = JSON.parse(JSON.stringify(bundle));
+ccBundle.journal = [
+  { id: "01J0000000000000000000AAAA", ts: "2026-08-01T00:00:00.000Z", type: "node.created", node_id: "DEC-two-axes-stay", species: "decision", title: "Two axes stay" },
+  { id: "01J0000000000000000000BBBB", ts: "2026-08-02T00:00:00.000Z", type: "decision.status_changed", node_id: "DEC-two-axes-stay", from: "proposed", to: "approved" },
+];
+const findings = crossCheckJournal(ccBundle);
+assert(
+  findings.some((f) => String(f.message).includes("decision")),
+  "journal saying approved vs snapshot enacted is a cross-check finding",
+);
+ccBundle.journal.push({ id: "01J0000000000000000000CCCC", ts: "2026-08-03T00:00:00.000Z", type: "decision.status_changed", node_id: "DEC-two-axes-stay", from: "approved", to: "enacted" });
+assert(
+  !crossCheckJournal(ccBundle).some((f) => String(f.message).includes("decision")),
+  "agreeing journal produces no decision finding",
+);
+
 process.exit(failures > 0 ? 1 : 0);
