@@ -1,5 +1,6 @@
 import { Ban } from "lucide-react";
 import type { StatusId } from "@/lib/config/statuses";
+import { blockedByOf } from "@/lib/utils/blocked";
 import { cn } from "@/lib/utils";
 import { STATUS_STYLES, STATUS_ICONS, STATUS_LABELS } from "@/components/graph/nodes/node-styles";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -15,7 +16,9 @@ export function StatusBadge({ status, blockedBy, className }: StatusBadgeProps) 
   const { badge } = STATUS_STYLES[status] ?? STATUS_STYLES.idea;
   const Icon = STATUS_ICONS[status] ?? STATUS_ICONS.idea;
   const label = STATUS_LABELS[status] ?? status;
-  const blocked = Boolean(blockedBy?.trim());
+  // One home for "what counts as blocked" — lib/utils/blocked.ts.
+  const blockedReason = blockedByOf({ blocked_by: blockedBy });
+  const blocked = blockedReason !== undefined;
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -33,7 +36,7 @@ export function StatusBadge({ status, blockedBy, className }: StatusBadgeProps) 
           </span>
         </TooltipTrigger>
         <TooltipContent side="top">
-          {blocked ? `${label} — blocked by: ${blockedBy}` : label}
+          {blocked ? `${label} — blocked by: ${blockedReason}` : label}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

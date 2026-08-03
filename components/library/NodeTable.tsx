@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { ArrowUpDownIcon } from "lucide-react";
+import { ArrowUpDownIcon, BanIcon } from "lucide-react";
 import { PRODUCT_MEMBERSHIP_SPECIES } from "@arkaik/schema";
 import type { Node } from "@/lib/data/types";
+import { blockedByOf, isBlocked } from "@/lib/utils/blocked";
 import { scopedPlatforms, type ProductScope } from "@/lib/utils/product-scope";
 import {
   Table,
@@ -183,7 +184,17 @@ export function NodeTable({
               <TableCell className="font-mono text-xs">{node.id}</TableCell>
               <TableCell className="max-w-[280px] truncate">{node.title}</TableCell>
               <TableCell>{speciesLabelById[node.species] ?? node.species}</TableCell>
-              <TableCell>{statusLabelById[node.status] ?? node.status}</TableCell>
+              <TableCell>
+                <span className="inline-flex items-center gap-1.5">
+                  {statusLabelById[node.status] ?? node.status}
+                  {isBlocked(node) && (
+                    <span title={`Blocked by: ${blockedByOf(node.metadata)}`} className="inline-flex">
+                      <BanIcon className="size-3.5 shrink-0 text-red-500" aria-hidden="true" />
+                      <span className="sr-only">(blocked)</span>
+                    </span>
+                  )}
+                </span>
+              </TableCell>
               <TableCell>{usedInCount > 0 ? `${usedInCount} flow${usedInCount === 1 ? "" : "s"}` : "-"}</TableCell>
               {productLabelsByNodeId !== undefined && (
                 <TableCell>{productCellText(node, productLabelsByNodeId[node.id] ?? [])}</TableCell>
