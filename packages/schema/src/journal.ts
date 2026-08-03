@@ -33,6 +33,7 @@ export const JOURNAL_EVENT_TYPES = [
   "edge.added",
   "edge.removed",
   "release.tagged",
+  "deliverable.shipped",
   "idea.proposed",
   "request.filed",
   "ref.added",
@@ -128,6 +129,21 @@ export interface ReleaseTaggedEvent extends JournalEvent {
   platform?: PlatformId;
 }
 
+/**
+ * A unit of shipped work (typically one merged PR): entity changes + a summary
+ * note. Re-appending with the same `deliverable_id` edits — consumers resolve
+ * content latest-wins, anchored at the first occurrence (when it shipped).
+ */
+export interface DeliverableShippedEvent extends JournalEvent {
+  type: "deliverable.shipped";
+  deliverable_id: string;
+  title: string;
+  summary?: string;
+  url?: string;
+  node_ids?: string[];
+  platform?: PlatformId;
+}
+
 /** An idea, before (or linked to) any node. */
 export interface IdeaProposedEvent extends JournalEvent {
   type: "idea.proposed";
@@ -181,6 +197,7 @@ export type KnownJournalEvent =
   | EdgeAddedEvent
   | EdgeRemovedEvent
   | ReleaseTaggedEvent
+  | DeliverableShippedEvent
   | IdeaProposedEvent
   | RequestFiledEvent
   | RefAddedEvent

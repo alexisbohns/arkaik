@@ -34,6 +34,8 @@ function main() {
     KnownJournalEventSchema,
     NodeStatusChangedEventSchema,
     JOURNAL_EVENT_TYPES,
+    DeliverableShippedEventSchema,
+    makeEvent,
   } = schema;
 
   // --- orderEvents: by ts, tiebreak by id, tolerant of out-of-order input ---
@@ -150,7 +152,7 @@ function main() {
   check("bundle with an unknown-type event still validates", validateBundle(fwdBundle).valid);
 
   // --- per-type schema modeling ---
-  check("JOURNAL_EVENT_TYPES has the 13 v1 types", JOURNAL_EVENT_TYPES.length === 13, `got ${JOURNAL_EVENT_TYPES.length}`);
+  check("JOURNAL_EVENT_TYPES has the 14 v1 types", JOURNAL_EVENT_TYPES.length === 14, `got ${JOURNAL_EVENT_TYPES.length}`);
   const goodStatus = NodeStatusChangedEventSchema.safeParse({
     id: "01S", ts: "2026-01-01T00:00:00.000Z", type: "node.status_changed", node_id: "V-a", from: "idea", to: "live",
   });
@@ -161,6 +163,49 @@ function main() {
   check("NodeStatusChangedEventSchema rejects an invalid status", !badStatus.success);
   const knownRejectsUnknown = KnownJournalEventSchema.safeParse({ id: "01U", ts: "2026-01-01T00:00:00.000Z", type: "some.future.event" });
   check("KnownJournalEventSchema (strict) rejects an unknown type", !knownRejectsUnknown.success);
+
+  // --- deliverable.shipped (cycle 3) ---------------------------------------
+  check(
+    "JOURNAL_EVENT_TYPES includes deliverable.shipped",
+    JOURNAL_EVENT_TYPES.includes("deliverable.shipped"),
+  );
+  const goodDeliverable = {
+    id: "01HZZZZZZZZZZZZZZZZZZZZZZZ",
+    ts: "2026-08-03T00:00:00.000Z",
+    type: "deliverable.shipped",
+    deliverable_id: "pr-123",
+    title: "Ship the widget",
+    summary: "Widget now ships.",
+    url: "https://github.com/example/repo/pull/123",
+    node_ids: ["V-home"],
+    future_field: "kept",
+  };
+  const parsedDeliverable = DeliverableShippedEventSchema.safeParse(goodDeliverable);
+  check("DeliverableShippedEventSchema accepts a full event", parsedDeliverable.success);
+  check(
+    "DeliverableShippedEventSchema preserves unknown fields",
+    parsedDeliverable.success && parsedDeliverable.data.future_field === "kept",
+  );
+  check(
+    "KnownJournalEventSchema accepts deliverable.shipped",
+    KnownJournalEventSchema.safeParse(goodDeliverable).success,
+  );
+  check(
+    "DeliverableShippedEventSchema rejects a missing title",
+    !DeliverableShippedEventSchema.safeParse({
+      id: "01HZZZZZZZZZZZZZZZZZZZZZZZ",
+      ts: "2026-08-03T00:00:00.000Z",
+      type: "deliverable.shipped",
+      deliverable_id: "pr-123",
+    }).success,
+  );
+  let deliverableThrew = false;
+  try {
+    makeEvent("deliverable.shipped", { deliverable_id: "pr-9" }); // no title
+  } catch {
+    deliverableThrew = true;
+  }
+  check("makeEvent rejects a deliverable without a title", deliverableThrew);
 
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 

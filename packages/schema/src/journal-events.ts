@@ -107,6 +107,19 @@ export const ReleaseTaggedEventSchema = z
   })
   .catchall(z.unknown());
 
+export const DeliverableShippedEventSchema = z
+  .object({
+    ...envelope,
+    type: z.literal("deliverable.shipped"),
+    deliverable_id: z.string(),
+    title: z.string(),
+    summary: z.string().optional(),
+    url: z.string().optional(),
+    node_ids: z.array(z.string()).optional(),
+    platform: PlatformSchema.optional(),
+  })
+  .catchall(z.unknown());
+
 export const IdeaProposedEventSchema = z
   .object({
     ...envelope,
@@ -165,6 +178,7 @@ export const JOURNAL_EVENT_SCHEMAS = {
   "edge.added": EdgeAddedEventSchema,
   "edge.removed": EdgeRemovedEventSchema,
   "release.tagged": ReleaseTaggedEventSchema,
+  "deliverable.shipped": DeliverableShippedEventSchema,
   "idea.proposed": IdeaProposedEventSchema,
   "request.filed": RequestFiledEventSchema,
   "ref.added": RefAddedEventSchema,
@@ -186,6 +200,7 @@ export const KnownJournalEventSchema = z.union([
   EdgeAddedEventSchema,
   EdgeRemovedEventSchema,
   ReleaseTaggedEventSchema,
+  DeliverableShippedEventSchema,
   IdeaProposedEventSchema,
   RequestFiledEventSchema,
   RefAddedEventSchema,
