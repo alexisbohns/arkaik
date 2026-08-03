@@ -21,16 +21,21 @@ import {
   Lightbulb,
   MessageSquareText,
   RefreshCw,
+  Scale,
 } from "lucide-react";
 import type { JournalEvent, Node } from "@/lib/data/types";
 import { SPECIES } from "@/lib/config/species";
 import { STATUSES } from "@/lib/config/statuses";
 import { EDGE_TYPES } from "@/lib/config/edge-types";
+import { DECISION_STATUSES } from "@/lib/config/decision-statuses";
 import { PLATFORM_LABELS } from "@/components/graph/nodes/node-styles";
 
 const SPECIES_LABEL: Record<string, string> = Object.fromEntries(SPECIES.map((s) => [s.id, s.label]));
 const STATUS_LABEL: Record<string, string> = Object.fromEntries(STATUSES.map((s) => [s.id, s.label]));
 const EDGE_TYPE_LABEL: Record<string, string> = Object.fromEntries(EDGE_TYPES.map((e) => [e.id, e.label]));
+const DECISION_STATUS_LABEL: Record<string, string> = Object.fromEntries(
+  DECISION_STATUSES.map((s) => [s.id, s.label]),
+);
 const PLATFORM_LABEL = PLATFORM_LABELS as Record<string, string>;
 
 const EVENT_ICONS: Record<string, LucideIcon> = {
@@ -46,6 +51,7 @@ const EVENT_ICONS: Record<string, LucideIcon> = {
   "ref.added": Link2,
   "ref.removed": Unlink,
   "ref.status_changed": RefreshCw,
+  "decision.status_changed": Scale,
 };
 
 export interface DescribedEvent {
@@ -103,6 +109,15 @@ export function describeJournalEvent(
         icon,
         text: `${resolveTitle(event.node_id, nodesById)}: ${from ? STATUS_LABEL[from] ?? from : "?"} → ${to ? STATUS_LABEL[to] ?? to : "?"}`,
         meta: platform ? PLATFORM_LABEL[platform] ?? platform : undefined,
+      };
+    }
+    case "decision.status_changed": {
+      const from = str(event.from);
+      const to = str(event.to);
+      return {
+        icon,
+        text: `${resolveTitle(event.node_id, nodesById)}: ${from ? DECISION_STATUS_LABEL[from] ?? from : "?"} → ${to ? DECISION_STATUS_LABEL[to] ?? to : "?"}`,
+        meta: "Decision",
       };
     }
     case "node.deleted":
