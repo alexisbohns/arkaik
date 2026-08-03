@@ -4,12 +4,14 @@ import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { Database } from "lucide-react";
 import type { StatusId } from "@/lib/config/statuses";
+import type { NodeMetadata } from "@/lib/data/types";
 import { StatusBadge } from "@/components/layout/StatusBadge";
 import { STATUS_GHOST_STYLES } from "./node-styles";
 
 function DataModelNodeComponent({ data }: NodeProps) {
   const status = (data.status as StatusId) ?? "idea";
   const label = String(data.label ?? "Data Model");
+  const blockedBy = (data.metadata as NodeMetadata | undefined)?.blocked_by;
   const ghostClass = STATUS_GHOST_STYLES[status];
 
   return (
@@ -25,7 +27,7 @@ function DataModelNodeComponent({ data }: NodeProps) {
             {label}
           </span>
         </div>
-        <StatusBadge status={status} className="self-start" />
+        <StatusBadge status={status} blockedBy={blockedBy} className="self-start" />
       </div>
       <Handle type="source" position={Position.Bottom} className="opacity-0" />
     </>

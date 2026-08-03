@@ -1,6 +1,7 @@
 "use client";
 
-import { SearchIcon, Grid3X3Icon, Table2Icon } from "lucide-react";
+import { BanIcon, SearchIcon, Grid3X3Icon, Table2Icon } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { type SpeciesId } from "@/lib/config/species";
@@ -18,15 +19,20 @@ const DISPLAY_MODES: readonly SegmentedControlOption<LibraryDisplayMode>[] = [
 interface LibraryFilterBarProps {
   search: string;
   displayMode: LibraryDisplayMode;
+  /** Only nodes with a non-empty `metadata.blocked_by` — see `isBlocked`. */
+  blockedOnly: boolean;
   onSearchChange: (query: string) => void;
   onDisplayModeChange: (mode: LibraryDisplayMode) => void;
+  onBlockedOnlyChange: (blockedOnly: boolean) => void;
 }
 
 export function LibraryFilterBar({
   search,
   displayMode,
+  blockedOnly,
   onSearchChange,
   onDisplayModeChange,
+  onBlockedOnlyChange,
 }: LibraryFilterBarProps) {
   return (
     <div className="rounded-xl border bg-card p-3 md:p-4">
@@ -42,12 +48,24 @@ export function LibraryFilterBar({
           />
         </div>
 
-        <SegmentedControl
-          options={DISPLAY_MODES}
-          value={displayMode}
-          onChange={onDisplayModeChange}
-          ariaLabel="Display mode"
-        />
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant={blockedOnly ? "default" : "outline"}
+            aria-pressed={blockedOnly}
+            onClick={() => onBlockedOnlyChange(!blockedOnly)}
+            className={blockedOnly ? "bg-red-500 text-white hover:bg-red-500/90" : "text-red-500 hover:text-red-600"}
+          >
+            <BanIcon className="size-4" /> Blocked
+          </Button>
+
+          <SegmentedControl
+            options={DISPLAY_MODES}
+            value={displayMode}
+            onChange={onDisplayModeChange}
+            ariaLabel="Display mode"
+          />
+        </div>
       </div>
     </div>
   );
