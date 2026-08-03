@@ -10,6 +10,7 @@ import { ProductManagerPanel } from "@/components/settings/ProductManagerPanel";
 import { RepoLinksPanel } from "@/components/settings/RepoLinksPanel";
 import { Button } from "@/components/ui/button";
 import { isHostedProjectId } from "@/lib/data/remote-provider";
+import { isSeedProjectId } from "@/lib/data/seed-project-id";
 import { useProject } from "@/lib/hooks/useProject";
 import { archiveProject } from "@/lib/utils/export";
 
@@ -100,43 +101,51 @@ export default function ProjectSettingsPage() {
               <ProductManagerPanel projectId={id} project={project} updateProject={updateProject} />
             </section>
 
-            <section className="flex flex-col gap-3">
-              <div className="flex flex-col gap-1">
-                <h2 className="text-lg font-semibold text-destructive">Danger zone</h2>
-                <p className="text-sm text-muted-foreground">
-                  Actions here change the project itself, not what you are looking at.
-                </p>
-              </div>
-              <div className="flex flex-col gap-3 rounded-lg border border-destructive/40 p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">Delete this project</p>
+            {/* The seed's own archiveProject rejects with an error (the provider
+                is the backstop), but a control that always fails isn't a
+                control — the UI just doesn't offer deletion for the public map. */}
+            {!isSeedProjectId(id) && (
+              <section className="flex flex-col gap-3">
+                <div className="flex flex-col gap-1">
+                  <h2 className="text-lg font-semibold text-destructive">Danger zone</h2>
                   <p className="text-sm text-muted-foreground">
-                    {title} disappears from your projects, along with its nodes, edges and history.
+                    Actions here change the project itself, not what you are looking at.
                   </p>
                 </div>
-                <Button
-                  variant="destructive"
-                  className="shrink-0 cursor-pointer"
-                  disabled={loading || deleting}
-                  onClick={() => setDeleteOpen(true)}
-                >
-                  {deleting ? "Deleting…" : "Delete project"}
-                </Button>
-              </div>
-            </section>
+                <div className="flex flex-col gap-3 rounded-lg border border-destructive/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">Delete this project</p>
+                    <p className="text-sm text-muted-foreground">
+                      {title} disappears from your projects, along with its nodes, edges and
+                      history.
+                    </p>
+                  </div>
+                  <Button
+                    variant="destructive"
+                    className="shrink-0 cursor-pointer"
+                    disabled={loading || deleting}
+                    onClick={() => setDeleteOpen(true)}
+                  >
+                    {deleting ? "Deleting…" : "Delete project"}
+                  </Button>
+                </div>
+              </section>
+            )}
           </div>
         </div>
       </PageShell>
 
-      <DeleteConfirmDialog
-        open={deleteOpen}
-        onOpenChange={(open) => {
-          if (!open && !deleting) setDeleteOpen(false);
-        }}
-        title="Delete project"
-        description={`Archive "${title}" and remove it from your list?`}
-        onConfirm={() => void handleDelete()}
-      />
+      {!isSeedProjectId(id) && (
+        <DeleteConfirmDialog
+          open={deleteOpen}
+          onOpenChange={(open) => {
+            if (!open && !deleting) setDeleteOpen(false);
+          }}
+          title="Delete project"
+          description={`Archive "${title}" and remove it from your list?`}
+          onConfirm={() => void handleDelete()}
+        />
+      )}
     </>
   );
 }

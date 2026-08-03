@@ -7,7 +7,9 @@ import { CommandPalette } from "@/components/layout/CommandPalette";
 import { KeyboardShortcutsDialog } from "@/components/layout/KeyboardShortcutsDialog";
 import { ProjectSidebar } from "@/components/layout/ProjectSidebar";
 import { PublishDialog } from "@/components/publik/PublishDialog";
+import { SeedSandboxBanner } from "@/components/projects/SeedSandboxBanner";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { isSeedProjectId } from "@/lib/data/seed-project-id";
 import {
   NODE_PANEL_PARAM,
   ProjectPanelsProvider,
@@ -179,8 +181,16 @@ function ProjectChrome({ children }: { children: React.ReactNode }) {
         onOpenPublish={() => setPublishOpen(true)}
         onOpenRaw={openRaw}
       />
-      <SidebarInset className="h-svh overflow-hidden">
-        {children}
+      {/* `flex-col` here (SidebarInset's own base classes are row-direction,
+          fine for a single child) is what lets the banner sit above the page
+          rather than beside it. That costs the page its free stretch: a
+          column flex item doesn't grow to fill leftover space by default, so
+          `{children}` gets its own `flex-1 min-h-0` wrapper to keep claiming
+          the rest of the viewport and to let its own internal overflow/scroll
+          keep working under the banner. */}
+      <SidebarInset className="flex h-svh flex-col overflow-hidden">
+        {isSeedProjectId(id) && <SeedSandboxBanner projectId={id} />}
+        <div className="min-h-0 flex-1">{children}</div>
       </SidebarInset>
 
       <CommandPalette
