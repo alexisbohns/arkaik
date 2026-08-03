@@ -1,0 +1,50 @@
+# One-shot operator step for the status lifecycle overhaul (PR #331): upgrade
+# every graph_projects.snapshot to the v3 status vocabulary via
+# scripts/migrate/status-vocabulary.js.
+#
+# Manual-only (workflow_dispatch): this is not a schema migration — db/migrate.mjs
+# and migrate-prod.yml don't know about it, and it only ever needs to run once
+# (re-runs are no-ops by construction: clean v3 snapshots return the same
+# reference and are skipped). Dispatch with apply=false first to review the
+# dry-run report, then apply=true.
+#
+# Uses the same PROD_DATABASE_URL repository secret as migrate-prod.yml, and the
+# same concurrency group, so it can never interleave with a schema migration.
+
+name: Migrate status vocabulary (production)
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "false = dry-run (report only), true = apply"
+        type: boolean
+        default: false
+
+concurrency:
+  group: migrate-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run status vocabulary migration
+        run: node scripts/migrate/status-vocabulary.js ${{ inputs.apply == true && '' || '--dry-run' }}
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
