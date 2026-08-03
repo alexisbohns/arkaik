@@ -19,6 +19,8 @@ import {
 } from "@/components/graph/nodes/node-styles";
 import { SpeciesBadge, EntityId } from "@/components/graph/nodes/EntityBadges";
 import { ValueBadge } from "@/components/values/ValueBadge";
+import { DecisionStatusBadge } from "@/components/layout/DecisionStatusBadge";
+import { decisionStatusOf } from "@/lib/utils/decision";
 
 export interface PlaylistPreviewItem {
   type: "view" | "flow" | "condition" | "junction";
@@ -235,26 +237,33 @@ export function NodeCard({
             </div>
           )}
 
-          {node.species !== "view" && node.species !== "flow" && node.species !== "acceptance" && (
-            <div className="space-y-1.5">
-              <span className="text-muted-foreground">Platforms</span>
-              {platforms.length > 0 ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  {platforms.map((platformId) => {
-                    const PlatformIcon = PLATFORM_ICONS[platformId];
-                    return (
-                      <span key={platformId} className="inline-flex items-center gap-1.5 text-muted-foreground">
-                        <PlatformIcon className="size-3.5" />
-                        {PLATFORM_LABELS[platformId]}
-                      </span>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-[11px] text-muted-foreground">No platforms selected.</p>
-              )}
-            </div>
+          {node.species === "decision" && (
+            <DecisionStatusBadge status={decisionStatusOf(node)} showLabel />
           )}
+
+          {node.species !== "view" &&
+            node.species !== "flow" &&
+            node.species !== "acceptance" &&
+            node.species !== "decision" && (
+              <div className="space-y-1.5">
+                <span className="text-muted-foreground">Platforms</span>
+                {platforms.length > 0 ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {platforms.map((platformId) => {
+                      const PlatformIcon = PLATFORM_ICONS[platformId];
+                      return (
+                        <span key={platformId} className="inline-flex items-center gap-1.5 text-muted-foreground">
+                          <PlatformIcon className="size-3.5" />
+                          {PLATFORM_LABELS[platformId]}
+                        </span>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">No platforms selected.</p>
+                )}
+              </div>
+            )}
 
           <div className="flex items-center justify-between gap-2">
             <span className="text-muted-foreground">Used in</span>
