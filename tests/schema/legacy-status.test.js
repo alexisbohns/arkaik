@@ -44,6 +44,8 @@ assert.equal(migrated.nodes[2].status, "development");
 assert.equal(migrated.nodes[2].metadata.blocked_by, "migrated from legacy blocked status");
 assert.equal(migrated.nodes[3].metadata.platformStatuses.web, "backlog");
 assert.equal(migrated.nodes[3].metadata.platformStatuses.ios, "development");
+// a platform-only `blocked` (base status untouched) still stamps blocked_by
+assert.equal(migrated.nodes[3].metadata.blocked_by, "migrated from legacy blocked status");
 assert.equal(migrated.nodes[3].metadata.refs[0].status_mapped, "backlog");
 assert.equal(migrated.schema_version, 3);
 assert.deepEqual(migrated.journal, oldBundle.journal);
@@ -51,6 +53,26 @@ assert.equal(oldBundle.nodes[0].status, "backlog"); // input not mutated
 
 const newBundle = { ...oldBundle, schema_version: 3, nodes: [{ id: "V-x", project_id: "p", species: "view", title: "X", status: "backlog", platforms: ["web"] }] };
 assert.equal(migrateStatusVocabulary(newBundle), newBundle);
+
+// The dead-id aliases apply even at v3 (a hand-edited file), WITHOUT the
+// backlog->idea remap and WITHOUT touching schema_version.
+const handEdited = {
+  ...oldBundle,
+  schema_version: 3,
+  nodes: [
+    { id: "V-h", project_id: "p", species: "view", title: "H", status: "prioritized", platforms: ["web"] },
+    { id: "V-k", project_id: "p", species: "view", title: "K", status: "backlog", platforms: ["web"] },
+    { id: "V-l", project_id: "p", species: "view", title: "L", status: "blocked", platforms: ["web"] },
+  ],
+};
+const repaired = migrateStatusVocabulary(handEdited);
+assert.equal(repaired.nodes[0].status, "backlog"); // prioritized alias applies at v3
+assert.equal(repaired.nodes[1].status, "backlog"); // v3 backlog means "ready to start" — must not move
+assert.equal(repaired.nodes[1], handEdited.nodes[1]); // untouched node keeps its identity
+assert.equal(repaired.nodes[2].status, "development");
+assert.equal(repaired.nodes[2].metadata.blocked_by, "migrated from legacy blocked status");
+assert.equal(repaired.schema_version, 3);
+assert.equal(handEdited.nodes[0].status, "prioritized"); // input not mutated
 const { schema_version: _drop, ...unversioned } = oldBundle;
 assert.equal(migrateStatusVocabulary(unversioned).schema_version, 3);
 const preset = { schema_version: 2, project: oldBundle.project, nodes: [{ id: "V-p", project_id: "p", species: "view", title: "P", status: "blocked", platforms: ["web"], metadata: { blocked_by: "V-a" } }], edges: [] };

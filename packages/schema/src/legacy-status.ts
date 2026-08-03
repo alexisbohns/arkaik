@@ -2,12 +2,13 @@
  * The legacy status vocabulary (pre schema_version 3) and its migration.
  *
  * Two ids died in v3: `prioritized` (renamed `backlog`) and `blocked` (now the
- * orthogonal `metadata.blocked_by` flag). Those aliases are unambiguous forever.
- * `backlog` exists in BOTH vocabularies with different meanings (old: someday
- * pile; new: ready to start), so its remap to `idea` is only decidable by the
- * bundle's vintage — that is why {@link migrateStatusVocabulary} is gated on
- * `schema_version` and why the remap order below is load-bearing: old `backlog`
- * moves to `idea` BEFORE `prioritized` becomes the new `backlog`.
+ * orthogonal `metadata.blocked_by` flag). Those aliases are unambiguous forever,
+ * so {@link migrateStatusVocabulary} applies them UNCONDITIONALLY — even a
+ * hand-edited v3 file that says `prioritized` means the new `backlog`. `backlog`
+ * itself exists in BOTH vocabularies with different meanings (old: someday pile;
+ * new: ready to start), so its remap to `idea` is only decidable by the bundle's
+ * vintage — that remap alone (and the `schema_version: 3` stamp) is gated on
+ * `schema_version` < 3.
  *
  * The journal is deliberately untouched: history is never rewritten
  * (docs/spec/journal.md); validators accept legacy ids in historical events.
@@ -34,28 +35,31 @@ export function normalizeStatus(value: string): StatusId | undefined {
   return LEGACY_STATUS_ALIASES[value as LegacyStatusId];
 }
 
+type StatusRemap = Readonly<Record<string, StatusId | undefined>>;
+
 /**
- * The pre-v3 -> v3 remap, applied as ONE lookup per value (never chained, or
- * `prioritized` would ride `backlog`'s rule all the way to `idea`). Listed in
- * the load-bearing order the doc comment above explains: old `backlog` is the
- * someday pile and becomes `idea`; only then does `prioritized` take over the
- * `backlog` id.
+ * The permanent dead-id aliases, applied whatever the bundle's vintage. Key
+ * order is irrelevant — the real invariant is ONE lookup per value, never
+ * chained (a chained remap would ride `prioritized` through `backlog`'s pre-v3
+ * rule all the way to `idea`).
  */
-const LEGACY_VOCABULARY_REMAP: Readonly<Record<string, StatusId>> = {
+const LEGACY_ALIAS_REMAP: StatusRemap = { ...LEGACY_STATUS_ALIASES };
+
+/**
+ * The full pre-v3 remap: the aliases plus old `backlog` (someday pile) ->
+ * `idea` — the one entry only a pre-v3 vintage can justify. Derived from
+ * {@link LEGACY_STATUS_ALIASES} so the two tables cannot drift apart.
+ */
+const LEGACY_VOCABULARY_REMAP: StatusRemap = {
   backlog: "idea",
-  prioritized: "backlog",
-  blocked: "development",
+  ...LEGACY_STATUS_ALIASES,
 };
 
-function remap(value: string): StatusId | undefined {
-  return LEGACY_VOCABULARY_REMAP[value];
-}
-
-function migrateNode(node: Node): Node {
+function migrateNode(node: Node, remap: StatusRemap): Node {
   let changed = false;
   let wasBlocked = (node.status as string) === "blocked";
 
-  const mappedStatus = remap(node.status);
+  const mappedStatus = remap[node.status];
   const status = mappedStatus ?? node.status;
   if (mappedStatus !== undefined) changed = true;
 
@@ -67,7 +71,7 @@ function migrateNode(node: Node): Node {
     const next: PlatformStatusMap = {};
     for (const [platform, value] of Object.entries(platformStatuses) as [PlatformId, StatusId][]) {
       if ((value as string) === "blocked") wasBlocked = true;
-      const mapped = remap(value);
+      const mapped = remap[value];
       next[platform] = mapped ?? value;
       if (mapped !== undefined) anyMapped = true;
     }
@@ -82,7 +86,7 @@ function migrateNode(node: Node): Node {
     let anyMapped = false;
     const nextRefs = refs.map((ref: Ref): Ref => {
       if (ref.status_mapped === undefined) return ref;
-      const mapped = remap(ref.status_mapped);
+      const mapped = remap[ref.status_mapped];
       if (mapped === undefined) return ref;
       anyMapped = true;
       return { ...ref, status_mapped: mapped };
@@ -103,25 +107,28 @@ function migrateNode(node: Node): Node {
 }
 
 /**
- * Pure v3 vocabulary migration, gated on the bundle's vintage.
+ * Pure v3 vocabulary migration.
  *
- * A bundle already at `schema_version` >= 3 is returned untouched (same
- * reference) — its `backlog` nodes mean "ready to start" and must not move.
- * Anything older (including an absent `schema_version`, which the format says
- * means 1) gets every node's `status`, `metadata.platformStatuses`, and
- * `metadata.refs[].status_mapped` remapped through the ordered table above,
- * `metadata.blocked_by` stamped where a `blocked` scope was erased (unless the
- * node already carries one), and comes back stamped `schema_version: 3`. The
- * input is never mutated; nodes with nothing to change keep their identity.
- * `journal` is never touched — history keeps its legacy ids.
+ * The dead-id aliases (`prioritized`, `blocked`) apply UNCONDITIONALLY — they
+ * are unambiguous whatever the vintage, so a hand-edited v3 file carrying them
+ * is repaired too (with `metadata.blocked_by` stamped where a `blocked` scope
+ * was erased, unless the node already carries one). Only the ambiguous half is
+ * gated on `schema_version` < 3: old `backlog` (someday pile) -> `idea`, plus
+ * the `schema_version: 3` stamp — a v3 bundle's `backlog` means "ready to
+ * start" and must not move, and its version is left alone. A v3 bundle with no
+ * legacy ids in status positions comes back as the SAME reference. The input
+ * is never mutated; nodes with nothing to change keep their identity.
+ * `journal` is never touched — history keeps its legacy ids. Every remap is
+ * one table lookup, never chained.
  */
 export function migrateStatusVocabulary(bundle: ProjectBundle): ProjectBundle {
-  if (typeof bundle.schema_version === "number" && bundle.schema_version >= STATUS_VOCABULARY_VERSION) {
-    return bundle;
+  const current =
+    typeof bundle.schema_version === "number" && bundle.schema_version >= STATUS_VOCABULARY_VERSION;
+  const remap = current ? LEGACY_ALIAS_REMAP : LEGACY_VOCABULARY_REMAP;
+  const nodes = bundle.nodes.map((node) => migrateNode(node, remap));
+  if (current) {
+    const untouched = nodes.every((node, i) => node === bundle.nodes[i]);
+    return untouched ? bundle : { ...bundle, nodes };
   }
-  return {
-    ...bundle,
-    schema_version: STATUS_VOCABULARY_VERSION,
-    nodes: bundle.nodes.map(migrateNode),
-  };
+  return { ...bundle, schema_version: STATUS_VOCABULARY_VERSION, nodes };
 }
