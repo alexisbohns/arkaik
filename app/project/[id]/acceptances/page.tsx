@@ -48,10 +48,12 @@ export default function ProjectAcceptancesPage() {
         .sort((a, b) => a.title.localeCompare(b.title)),
     [dataNodes],
   );
-  // The product scope is not a filter-bar control, so it is layered on here
-  // rather than read from the URL: the bar owns what the reader typed, the
-  // shell owns which app they are looking at. Membership lives on nodes, so
-  // this narrows correctly even before `useProject` has resolved the bundle.
+  // The product scope *is* read from the URL now (#315), but not by the filter
+  // bar's own hook: `useEffectiveProduct` owns `?product=` and
+  // `useAcceptanceFilters` deliberately does not list it in `KEYS`, so Clear
+  // cannot widen the surface back out. The bar owns what the reader typed; the
+  // scope owns which app they are looking at. Membership lives on nodes, so this
+  // narrows correctly even before `useProject` has resolved the bundle.
   const scope = useEffectiveProduct(id, projectBundle);
   const productList = useProductList(scope);
   const scopedFilters = useMemo(

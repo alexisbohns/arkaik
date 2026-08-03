@@ -5,9 +5,9 @@
  * surface renders per-platform or single-status.
  *
  * Every function here takes the product (or a scope carrying it) as an
- * *argument* and never reads scope state. That is what keeps the deferred
- * per-surface-override milestone cheap: an override becomes a different
- * argument, not a different code path.
+ * *argument* and never reads scope state. That is what kept the per-surface
+ * override (#315) cheap — it landed as a different argument to the same
+ * functions, not a second code path — and it is why it must stay true.
  */
 
 import { PLATFORMS, type PlatformId } from "@/lib/config/platforms";
