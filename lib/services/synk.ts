@@ -3,6 +3,7 @@ import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 
 import {
+  migrateStatusVocabulary,
   parseBundle,
   serializeBundle,
   validateBundle,
@@ -90,10 +91,14 @@ export function countEntities(bundle: Record<string, unknown>): number {
 // Validation (mirrors lib/services/publik.ts's inbound gate)
 // ---------------------------------------------------------------------------
 
-export interface BundleValidation {
-  ok: boolean;
-  findings: ValidationFinding[];
-}
+export type BundleValidation =
+  | {
+      ok: true;
+      findings: ValidationFinding[];
+      /** The vocabulary-migrated bundle — what must be hashed/stored, not the raw input. */
+      bundle: Record<string, unknown>;
+    }
+  | { ok: false; findings: ValidationFinding[] };
 
 function zodIssueToFinding(issue: { path: PropertyKey[]; code: string; message: string }): ValidationFinding {
   return {
@@ -105,21 +110,33 @@ function zodIssueToFinding(issue: { path: PropertyKey[]; code: string; message: 
 }
 
 /**
- * Full inbound gate: `parseBundle` (shape, zod) then `validateBundle` (semantic
- * graph rules). Errors from either become structured findings for a 422; zod
- * shape errors short-circuit the semantic pass. Warnings never fail — the server
- * accepts conformance Levels 0–2 like every consumer.
+ * Full inbound gate: `parseBundle` (shape, zod), then the v3 status-vocabulary
+ * migration, then `validateBundle` (semantic graph rules). Errors from either
+ * gate become structured findings for a 422; zod shape errors short-circuit the
+ * semantic pass. Warnings never fail — the server accepts conformance Levels
+ * 0–2 like every consumer.
+ *
+ * The order mirrors lib/services/graph/store.ts and every load path (parse →
+ * migrate → validate): the shape parse is legacy-tolerant (`AnyStatusSchema`)
+ * precisely so `migrateStatusVocabulary` can erase legacy ids before
+ * `validateBundle`, which enforces the strict current vocabulary — otherwise a
+ * pre-v3 bundle would be refused with a 422. On success the MIGRATED bundle is
+ * returned, and it is the one deliberate exception to "stores what the client
+ * sends, verbatim": the migration is applied to the raw input (not
+ * `parsed.data`), so beyond the status remap + `schema_version` stamp every
+ * field — modeled by zod or not — round-trips untouched.
  */
 export function validateInboundBundle(input: unknown): BundleValidation {
   const parsed = parseBundle(input);
   if (!parsed.success) {
     return { ok: false, findings: parsed.error.issues.map(zodIssueToFinding) };
   }
-  const semantic = validateBundle(input);
+  const bundle = migrateStatusVocabulary(input as ProjectBundle);
+  const semantic = validateBundle(bundle);
   if (!semantic.valid) {
     return { ok: false, findings: semantic.errors };
   }
-  return { ok: true, findings: [] };
+  return { ok: true, findings: [], bundle: bundle as unknown as Record<string, unknown> };
 }
 
 // ---------------------------------------------------------------------------
@@ -330,12 +347,14 @@ export async function putBackup(args: {
     return { status: "deduped" };
   }
 
-  // 2. Validate.
+  // 2. Validate. The gate returns the vocabulary-migrated bundle: hash and
+  //    store THAT, so a legacy-vocabulary backup is never persisted (and the
+  //    server-truth hash always describes the bytes actually on disk).
   const validation = validateInboundBundle(input);
   if (!validation.ok) {
     return { status: "invalid", findings: validation.findings };
   }
-  const bundle = input as Record<string, unknown>;
+  const bundle = validation.bundle;
 
   // 3. Server-truth hash + dedupe.
   const canonical = serializeBundle(bundle as unknown as ProjectBundle);

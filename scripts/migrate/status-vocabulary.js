@@ -41,34 +41,64 @@ if (!connectionString) {
 }
 
 async function main() {
-  const { migrateStatusVocabulary } = loadSchemaPackage();
+  const { migrateStatusVocabulary, STATUS_VOCABULARY_VERSION } = loadSchemaPackage();
   const client = new Client({ connectionString });
   await client.connect();
   try {
-    const { rows } = await client.query("select id, snapshot from graph_projects");
+    // One transaction around the whole run, with SELECT … FOR UPDATE: every
+    // project row stays locked until commit, so a concurrent hosted write
+    // cannot slip a snapshot change between our read and our write (the
+    // classic lost update). The table is small — hosted tier limits cap the
+    // project count — so holding the locks for the run is fine.
+    await client.query("begin");
+    const { rows } = await client.query(
+      "select id, snapshot, schema_version from graph_projects for update",
+    );
     let changed = 0;
     for (const row of rows) {
-      const migrated = migrateStatusVocabulary(row.snapshot);
-      // Same reference back = a clean v3 snapshot; nothing to write. Anything
-      // pre-v3 always comes back as a new object (the stamp alone changes it).
-      if (migrated === row.snapshot) continue;
-      changed++;
-      if (dryRun) {
-        console.log(`[dry-run] would migrate ${row.id}`);
-        continue;
+      try {
+        const migrated = migrateStatusVocabulary(row.snapshot);
+        // Same reference back = a clean v3 snapshot; nothing to write. Anything
+        // pre-v3 always comes back as a new object (the stamp alone changes it).
+        if (migrated === row.snapshot) continue;
+        changed++;
+        // What kind of change, decidable from the snapshot's DECLARED version
+        // (the vintage the migration itself gates on — the bookkeeping column
+        // defaults to 2 and may disagree): pre-v3 rows take the full remap and
+        // the stamp; v3-or-later rows only had dead-id aliases repaired.
+        const declared = row.snapshot ? row.snapshot.schema_version : undefined;
+        const reason =
+          typeof declared === "number" && declared >= STATUS_VOCABULARY_VERSION
+            ? "(alias repair)"
+            : `(v${declared ?? "?"} -> v${STATUS_VOCABULARY_VERSION})`;
+        if (dryRun) {
+          console.log(`[dry-run] would migrate ${row.id} ${reason}`);
+          continue;
+        }
+        console.log(`migrating ${row.id} ${reason}`);
+        // Stamp the bookkeeping column too, so it agrees with the snapshot.
+        await client.query(
+          "update graph_projects set snapshot = $1, schema_version = $2 where id = $3",
+          [JSON.stringify(migrated), migrated.schema_version, row.id],
+        );
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        throw new Error(`while migrating row ${row.id}: ${detail}`);
       }
-      console.log(`migrating ${row.id}`);
-      // Stamp the bookkeeping column too, so it agrees with the snapshot.
-      await client.query(
-        "update graph_projects set snapshot = $1, schema_version = $2 where id = $3",
-        [JSON.stringify(migrated), migrated.schema_version, row.id],
-      );
     }
+    // A dry run writes nothing; rolling back also releases the locks either way
+    // on the error path below.
+    await client.query(dryRun ? "rollback" : "commit");
     console.log(
       dryRun
         ? `[dry-run] ${changed} of ${rows.length} snapshot(s) would be migrated.`
         : `${changed} of ${rows.length} snapshot(s) migrated to the v3 status vocabulary.`,
     );
+  } catch (err) {
+    // Nothing partial may survive: roll the whole transaction back, then let
+    // the outer handler report and exit 1.
+    await client.query("rollback").catch(() => {});
+    throw err;
   } finally {
     await client.end();
     cleanup();

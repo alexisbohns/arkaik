@@ -71,8 +71,10 @@ export async function POST(req: Request): Promise<Response> {
     }
 
     // 5. Journal strip, enforced server-side (§ "Journal stripped by default").
+    //    Operates on the vocabulary-migrated bundle the gate returned — that is
+    //    what gets stored, so a legacy-vocabulary snapshot is never persisted.
     const includeJournal = new URL(req.url).searchParams.get("include_journal") === "true";
-    const bundle = parsed as Record<string, unknown>;
+    const bundle = validation.bundle;
     const toStore = includeJournal ? bundle : stripJournal(bundle);
 
     // 6. Store (immutable) and return id + one-time owner key.
