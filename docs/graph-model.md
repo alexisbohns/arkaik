@@ -409,9 +409,10 @@ registration lands (same pattern as `acceptance`/`covers`). Step 1 is done
 node detail panel branches on `node.species === "decision"` for the
 Context/Consequences/decision-status/`decided_at` editor and the
 supersedes/generates/impacts connections, and the library gallery card swaps
-in the decision-status badge. **Step 5 is not yet done as of this note** — no
-seed carries a `decision` node — and is intentionally out of this change's
-scope; it lands in the follow-up task that adds the worked examples to
-`seed/pebbles.json` and `seed/arkaik-self-map.json` (§7 of
+in the decision-status badge. **Step 5 is done**: `seed/pebbles.json` carries
+a worked example exercising the full edge grammar (`DEC-adopt-glyph-wobble`
+supersedes `DEC-linear-glyph-fade`, generates an acceptance, impacts a view),
+and `seed/arkaik-self-map.json` carries cycle 1's own standing decisions
+(§7 of
 [2026-08-03-decisions-species-design.md](superpowers/specs/2026-08-03-decisions-species-design.md)).
 Step 6 is this note.
