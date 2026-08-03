@@ -22,6 +22,7 @@ import {
   MessageSquareText,
   RefreshCw,
   Scale,
+  Package,
 } from "lucide-react";
 import type { JournalEvent, Node } from "@/lib/data/types";
 import { SPECIES } from "@/lib/config/species";
@@ -52,6 +53,7 @@ const EVENT_ICONS: Record<string, LucideIcon> = {
   "ref.removed": Unlink,
   "ref.status_changed": RefreshCw,
   "decision.status_changed": Scale,
+  "deliverable.shipped": Package,
 };
 
 export interface DescribedEvent {
@@ -141,6 +143,12 @@ export function describeJournalEvent(
         meta: platform ? PLATFORM_LABEL[platform] ?? platform : undefined,
       };
     }
+    case "deliverable.shipped":
+      return {
+        icon,
+        text: `Shipped: ${str(event.title) ?? str(event.deliverable_id) ?? "?"}`,
+        meta: str(event.summary),
+      };
     case "idea.proposed":
       return { icon, text: `Idea: ${str(event.title) ?? "Untitled"}` };
     case "request.filed":
