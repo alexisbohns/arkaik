@@ -47,9 +47,7 @@ function loadDecisionUtils() {
     delete require.cache[path.join(BUILD_DIR, `${outName}.js`)];
   }
 
-  return {
-    ...require(path.join(BUILD_DIR, "decision.js")),
-  };
+  return require(path.join(BUILD_DIR, "decision.js"));
 }
 
 module.exports = { loadDecisionUtils, BUILD_DIR };

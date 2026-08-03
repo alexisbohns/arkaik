@@ -16,7 +16,7 @@ import {
   Scale,
   Lightbulb, Compass, CircleDashed, CirclePlay, CircleFadingArrowUp,
   CircleCheckBig, CircleSlash,
-  ThumbsUp, CircleX, Replace,
+  ThumbsUp, CircleX, Replace, CircleDotDashed,
   Figma, Github, Gitlab, Ticket, GitPullRequest, GitMerge, ExternalLink, Link2,
 } from "lucide-react";
 
@@ -170,7 +170,7 @@ export const DECISION_STATUS_STYLES: Record<DecisionStatusId, { badge: string; d
 };
 
 export const DECISION_STATUS_ICONS: Record<DecisionStatusId, LucideIcon> = {
-  proposed:   CircleDashed,
+  proposed:   CircleDotDashed,
   approved:   ThumbsUp,
   enacted:    CircleCheckBig,
   rejected:   CircleX,

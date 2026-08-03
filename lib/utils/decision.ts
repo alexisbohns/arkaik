@@ -17,7 +17,7 @@ export function withDecisionStatus(
   metadata: NodeMetadata | undefined,
   decisionStatus: DecisionStatusId,
 ): NodeMetadata {
-  return { ...(metadata ?? {}), decision_status: decisionStatus } as NodeMetadata;
+  return { ...(metadata ?? {}), decision_status: decisionStatus };
 }
 
 /**
