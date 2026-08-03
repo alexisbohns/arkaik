@@ -134,9 +134,12 @@ for (const { file, expectValid } of VALIDATE_CASES) {
     `got ${parsed.nodes.map((n) => n.id).join(",")}`,
   );
 
-  // Lossless round-trip: embedded journal, schema_version, unknown top-level
-  // key, and unknown node field all survive.
-  check("fix-format keeps schema_version", parsed.schema_version === 2);
+  // Lossless round-trip: embedded journal, unknown top-level key, and unknown
+  // node field all survive. schema_version is the ONE deliberate exception:
+  // every CLI read migrates the status vocabulary in memory (readBundle ->
+  // migrateStatusVocabulary), so a pre-v3 bundle is stamped v3 on the rewrite —
+  // a v2 stamp beside the new vocabulary would lie about the file's vintage.
+  check("fix-format stamps the migrated schema_version", parsed.schema_version === 3);
   check("fix-format keeps embedded journal", Array.isArray(parsed.journal) && parsed.journal.length === 1);
   check(
     "fix-format keeps unknown top-level key",

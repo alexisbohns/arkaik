@@ -33,6 +33,9 @@ interface StatusRingProps {
  * (`compareStatusesForDisplay`) and are drawn clockwise from 12 o'clock; an
  * all-zero list renders the muted track alone, which is how an unserved value
  * element reads.
+ *
+ * blocked is a node-level flag (`metadata.blocked_by`) and does not appear in
+ * aggregate segments; see the status-lifecycle spec for the deferral.
  */
 export function StatusRing({ segments, size = "lg", label, children }: StatusRingProps) {
   const { box, stroke, gap } = SIZE_STYLES[size];

@@ -48,8 +48,8 @@ const designAesthetics = elementsById.get("design-aesthetics");
 assert(designAesthetics.tier === "emotional", "design-aesthetics is emotional");
 assert(designAesthetics.acceptanceCount === 2, `design-aesthetics counts its two acceptances (got ${designAesthetics.acceptanceCount})`);
 assert(
-  eq(designAesthetics.rollup.counts, { ios: { live: 2 }, android: { development: 1, live: 1 } }),
-  "design-aesthetics distribution: ios live×2, android dev+live (web backlog uncounted)",
+  eq(designAesthetics.rollup.counts, { web: { backlog: 2 }, ios: { live: 2 }, android: { development: 1, live: 1 } }),
+  "design-aesthetics distribution: web backlog×2 (backlog is counted now), ios live×2, android dev+live",
 );
 
 const funEntertainment = elementsById.get("fun-entertainment");
@@ -71,9 +71,9 @@ assert(
 
 // --- The platform menu (product scope, § Decision 3) -------------------------
 //
-// A fixture of its own rather than the seed, because the seed's web statuses
-// are all uncounted: a web-only assertion over it would pass against an empty
-// rollup and so could not tell a working menu from a broken one.
+// A fixture of its own rather than the seed, so every platform carries counted
+// work, and web carries two distinct statuses — enough to tell a dropped
+// status from a dropped platform where it matters.
 
 const menuAcceptances = [
   {
@@ -85,7 +85,7 @@ const menuAcceptances = [
     platforms: ["web", "ios", "android"],
     metadata: {
       values: ["design-aesthetics"],
-      platformStatuses: { web: "development", ios: "live", android: "blocked" },
+      platformStatuses: { web: "development", ios: "live", android: "development" },
     },
   },
 ];
@@ -96,7 +96,7 @@ assert(
   eq(designOf(everyPlatform).rollup.counts, {
     web: { live: 1, development: 1 },
     ios: { live: 2 },
-    android: { blocked: 1 },
+    android: { development: 1 },
   }),
   "no menu counts every platform the acceptances carry",
 );
@@ -258,37 +258,47 @@ const {
   getPlatformRollupSegments,
   getRollupTotalSegments,
 } = require(path.join(BUILD_DIR, "platform-status.js"));
-const { getCountedStatuses, STATUS_ORDER } = require(path.join(BUILD_DIR, "config-statuses.js"));
+const { COUNTED_STATUS_PRESETS, getCountedStatuses, STATUS_ORDER } = require(
+  path.join(BUILD_DIR, "config-statuses.js"),
+);
 
+// The historical blocked-last pin is gone with the `blocked` status itself
+// (now `metadata.blocked_by`): display order is pure lifecycle-descending.
 assert(
   eq(
     [...getCountedStatuses()].sort(compareStatusesForDisplay),
-    ["live", "releasing", "development", "prioritized", "blocked"],
+    ["live", "releasing", "development", "backlog"],
   ),
-  "display order is lifecycle-descending with blocked pinned last",
+  "display order is pure lifecycle-descending: Live → Releasing → Development → Backlog",
 );
+
+// The trap documented at STATUS_ORDER, as a tripwire: `archived` (6) outranks
+// `live` (5), so a preset counting a terminal status would both sort it first
+// in severity and report it as the rollup's display status.
 assert(
-  STATUS_ORDER.blocked > STATUS_ORDER.live,
-  "blocked outranks live in STATUS_ORDER, so pinning it last is real work, not a no-op",
+  Object.values(COUNTED_STATUS_PRESETS).every((preset) =>
+    preset.every((status) => STATUS_ORDER[status] <= STATUS_ORDER.live),
+  ),
+  "no counted preset includes a status ordered above live (a terminal status would hijack severity and display status)",
 );
 
 let ringRollup = createEmptyRollup();
 ringRollup = addPlatformStatusToRollup(ringRollup, "web", "live");
 ringRollup = addPlatformStatusToRollup(ringRollup, "web", "live");
-ringRollup = addPlatformStatusToRollup(ringRollup, "web", "blocked");
+ringRollup = addPlatformStatusToRollup(ringRollup, "web", "backlog");
 ringRollup = addPlatformStatusToRollup(ringRollup, "ios", "live");
 ringRollup = addPlatformStatusToRollup(ringRollup, "android", "development");
 
 const totalSegments = getRollupTotalSegments(ringRollup);
 assert(
-  eq(totalSegments.map((s) => s.status), ["live", "releasing", "development", "prioritized", "blocked"]),
+  eq(totalSegments.map((s) => s.status), ["live", "releasing", "development", "backlog"]),
   "global segments come back in display order, one entry per counted status",
 );
 
 const totalByStatus = Object.fromEntries(totalSegments.map((s) => [s.status, s]));
 assert(totalByStatus.live?.count === 3, `global ring sums live across platforms (got ${totalByStatus.live?.count})`);
 assert(
-  totalByStatus.development?.count === 1 && totalByStatus.blocked?.count === 1,
+  totalByStatus.development?.count === 1 && totalByStatus.backlog?.count === 1,
   "global ring sums the single-platform statuses too",
 );
 assert(
@@ -310,7 +320,7 @@ assert(
 
 const webSegments = getPlatformRollupSegments(ringRollup, "web");
 assert(
-  eq(webSegments.map((s) => s.status), ["live", "releasing", "development", "prioritized", "blocked"]),
+  eq(webSegments.map((s) => s.status), ["live", "releasing", "development", "backlog"]),
   "per-platform segments use the same display order as the global ring",
 );
 assert(
@@ -320,7 +330,7 @@ assert(
 
 const emptySegments = getRollupTotalSegments(createEmptyRollup());
 assert(
-  emptySegments.length === 5 && emptySegments.every((s) => s.count === 0 && s.ratio === 0 && s.percentage === 0),
+  emptySegments.length === 4 && emptySegments.every((s) => s.count === 0 && s.ratio === 0 && s.percentage === 0),
   "an empty rollup yields all-zero segments and never divides by zero",
 );
 

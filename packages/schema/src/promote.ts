@@ -25,6 +25,7 @@
 
 import type { Node, ProjectBundle, Ref } from "./bundle";
 import type { PlatformId, StatusId } from "./ids";
+import { normalizeStatus } from "./legacy-status";
 
 /**
  * Which node status each mirrored external status implies, per ref type.
@@ -117,6 +118,21 @@ export function computeRefPromotions(bundle: ProjectBundle): PromotionPlan {
       // An explicit null means "recognised, moves nothing" — not a gap.
       if (target === null) continue;
 
+      // Hand-written policies may still speak the pre-v3 vocabulary
+      // ("prioritized", "blocked") — honour them at their current-status
+      // meaning. Anything neither current nor legacy is a policy typo:
+      // reported, never guessed at.
+      const to = normalizeStatus(target);
+      if (to === undefined) {
+        skipped.push({
+          node_id: node.id,
+          ref_id: ref.id,
+          reason: "no-mapping",
+          detail: `unknown status: ${target}`,
+        });
+        continue;
+      }
+
       // Archived is a deliberate end state; a stale PR must not resurrect it.
       if (node.status === "archived") {
         skipped.push({ node_id: node.id, ref_id: ref.id, reason: "archived" });
@@ -136,8 +152,8 @@ export function computeRefPromotions(bundle: ProjectBundle): PromotionPlan {
       }
 
       const from = currentStatus(node, ref.platform);
-      if (from === target) {
-        skipped.push({ node_id: node.id, ref_id: ref.id, reason: "already-there", detail: target });
+      if (from === to) {
+        skipped.push({ node_id: node.id, ref_id: ref.id, reason: "already-there", detail: to });
         continue;
       }
 
@@ -146,7 +162,7 @@ export function computeRefPromotions(bundle: ProjectBundle): PromotionPlan {
         ref_id: ref.id,
         ...(ref.platform ? { platform: ref.platform } : {}),
         from,
-        to: target,
+        to,
         external_status: ref.external_status,
       });
     }

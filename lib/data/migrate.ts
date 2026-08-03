@@ -1,5 +1,5 @@
 import type { Node, Edge, ProjectBundle, PlaylistEntry } from "./types";
-import { deriveNodeId, edgeId, SPECIES_PREFIXES, type SpeciesId } from "@arkaik/schema";
+import { deriveNodeId, edgeId, migrateStatusVocabulary, SPECIES_PREFIXES, type SpeciesId } from "@arkaik/schema";
 
 /**
  * Explicit, ordered Bundle Format migration chain (docs/spec/bundle-format.md
@@ -22,7 +22,7 @@ import { deriveNodeId, edgeId, SPECIES_PREFIXES, type SpeciesId } from "@arkaik/
  */
 
 /** Highest `schema_version` this build knows how to read natively. */
-export const CURRENT_SCHEMA_VERSION = 2;
+export const CURRENT_SCHEMA_VERSION = 3;
 
 /** A node as it appeared before playlists — the pre-v1 legacy shape. */
 type LegacyNode = Node & {
@@ -284,6 +284,10 @@ function migrateV1ToV2(bundle: ProjectBundle): ProjectBundle {
 const MIGRATIONS: readonly Migration[] = [
   { from: 0, to: 1, migrate: migrateLegacyToV1 },
   { from: 1, to: 2, migrate: migrateV1ToV2 },
+  // v2 -> 3: the status vocabulary overhaul. Unlike the earlier steps this one
+  // STAMPS schema_version — the backlog->idea remap is not idempotent against
+  // new-vocabulary data, so the stamp is what prevents a re-run on next load.
+  { from: 2, to: 3, migrate: migrateStatusVocabulary },
 ];
 
 /**

@@ -8,6 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import type { Node, Edge, JournalEvent } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
@@ -33,6 +34,7 @@ import {
 import type { ProductScope } from "@/lib/utils/product-scope";
 import { ProductPicker } from "@/components/panels/ProductPicker";
 import { withProductMembership } from "@/lib/utils/product-editing";
+import { normalizeBlockedBy, withBlockedBy } from "@/lib/utils/blocked";
 import { productOf } from "@arkaik/schema";
 import { findWhereUsed } from "@/lib/utils/where-used";
 import { computeNodeTimeline } from "@/lib/utils/journal";
@@ -65,15 +67,20 @@ interface NodeDetailPanelProps {
 interface NodeFieldsProps {
   node: Node;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
+  /** For resolving `blocked_by` to a node title/link; the panel's own node-link affordance. */
+  allNodes?: Node[];
+  onNavigate?: (node: Node) => void;
 }
 
-function NodeFields({ node, onUpdate }: NodeFieldsProps) {
+function NodeFields({ node, onUpdate, allNodes, onNavigate }: NodeFieldsProps) {
   const AUTOSAVE_DELAY_MS = 350;
   const [title, setTitle] = useState(node.title);
   const [description, setDescription] = useState(node.description ?? "");
   const [status, setStatus] = useState<StatusId>(node.status);
+  const [blockedBy, setBlockedBy] = useState(node.metadata?.blocked_by ?? "");
   const lastSavedTitleRef = useRef(node.title);
   const lastSavedDescriptionRef = useRef(node.description ?? "");
+  const lastSavedBlockedByRef = useRef(normalizeBlockedBy(node.metadata?.blocked_by) ?? "");
   const titleEditRef = useRef<HTMLDivElement>(null);
   const descriptionEditRef = useRef<HTMLDivElement>(null);
 
@@ -111,6 +118,29 @@ function NodeFields({ node, onUpdate }: NodeFieldsProps) {
 
     return () => clearTimeout(timeout);
   }, [description, node.id, onUpdate]);
+
+  // Same debounced autosave as the description above, compared on the
+  // NORMALIZED value so whitespace-only edits never fire a no-op wholesale
+  // metadata write. `withBlockedBy` owns the "empty means *absent*, never
+  // `blocked_by: \"\"`" rule and carries the rest of the metadata through
+  // untouched — a patch replaces `metadata` wholesale.
+  useEffect(() => {
+    const normalized = normalizeBlockedBy(blockedBy) ?? "";
+    if (normalized === lastSavedBlockedByRef.current) {
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      lastSavedBlockedByRef.current = normalized;
+      void onUpdate?.(node.id, { metadata: withBlockedBy(node.metadata, normalized || null) });
+    }, AUTOSAVE_DELAY_MS);
+
+    return () => clearTimeout(timeout);
+  }, [blockedBy, node.id, node.metadata, onUpdate]);
+
+  // When the value names a node this panel can see, surface its title — and
+  // navigate through the same affordance every other node link here uses.
+  const blockedNode = allNodes?.find((n) => n.id === normalizeBlockedBy(blockedBy));
 
   function handleStatusChange(value: StatusId) {
     setStatus(value);
@@ -179,6 +209,28 @@ function NodeFields({ node, onUpdate }: NodeFieldsProps) {
           </Select>
         </div>
       )}
+      <div className="flex flex-col gap-1.5">
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Blocked by</span>
+        <Input
+          value={blockedBy}
+          onChange={(event) => setBlockedBy(event.target.value)}
+          placeholder="Node id or free text — empty means not blocked"
+          aria-label="Blocked by"
+        />
+        {blockedNode && (
+          onNavigate ? (
+            <button
+              type="button"
+              onClick={() => onNavigate(blockedNode)}
+              className="self-start text-xs text-muted-foreground hover:text-foreground hover:underline text-left"
+            >
+              {blockedNode.title}
+            </button>
+          ) : (
+            <span className="text-xs text-muted-foreground">{blockedNode.title}</span>
+          )
+        )}
+      </div>
     </div>
   );
 }
@@ -561,7 +613,7 @@ export function NodeDetailPanel({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-4 pb-6">
-      <NodeFields key={node.id} node={node} onUpdate={onUpdate} />
+      <NodeFields key={node.id} node={node} onUpdate={onUpdate} allNodes={allNodes} onNavigate={onNavigate} />
       <ProductSection key={`product-${node.id}`} node={node} scope={scope} onUpdate={onUpdate} />
       <RefsSection key={`refs-${node.id}`} node={node} />
       {(node.species === "view" || node.species === "flow") && allNodes && allEdges && (

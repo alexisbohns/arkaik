@@ -32,6 +32,7 @@ import {
   type ProductGraph,
 } from "@/lib/utils/product-scope";
 import { matchesSearch } from "@/lib/utils/search";
+import { isBlocked } from "@/lib/utils/blocked";
 import { applyProductPlan } from "@/lib/utils/apply-product-plan";
 import { planProductMove } from "@/lib/utils/product-editing";
 import {
@@ -159,6 +160,7 @@ export default function ProjectLibraryPage() {
   const { openNode } = useProjectPanels();
   const [newNodeOpen, setNewNodeOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [blockedOnly, setBlockedOnly] = useState(false);
   const [displayMode, setDisplayMode] = useState<LibraryDisplayMode>("directory");
   const [sort, setSort] = useState<NodeSortState>({
     key: "title",
@@ -213,11 +215,12 @@ export default function ProjectLibraryPage() {
       // anchors, the system layer by reachability — and an unreached data model
       // stays visible in every scope rather than being buried (§ Decision 8).
       if (!nodeInScope(node, scope, productGraph)) return false;
+      if (blockedOnly && !isBlocked(node)) return false;
       return matchesSearch(node, search);
     });
 
     return sortNodes(filtered, sort, usedInByNodeId);
-  }, [dataNodes, productGraph, scope, search, sort, speciesFilter, usedInByNodeId]);
+  }, [blockedOnly, dataNodes, productGraph, scope, search, sort, speciesFilter, usedInByNodeId]);
 
   // `undefined` when the project declares no products, which is what makes the
   // badge and the table column disappear entirely rather than render blank.
@@ -460,8 +463,10 @@ export default function ProjectLibraryPage() {
               <LibraryFilterBar
                 search={search}
                 displayMode={displayMode}
+                blockedOnly={blockedOnly}
                 onSearchChange={setSearch}
                 onDisplayModeChange={setDisplayMode}
+                onBlockedOnlyChange={setBlockedOnly}
                 projectId={id}
                 project={projectBundle}
               />

@@ -54,7 +54,7 @@ function node(id, species, extra = {}) {
 
 function bundle(nodes = [], edges = []) {
   return {
-    schema_version: 2,
+    schema_version: 3,
     project: {
       id: "gp",
       title: "Graph test",

@@ -2,13 +2,14 @@
 
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { CloudDownload, CloudUpload, Info } from "lucide-react";
+import { Ban, CloudDownload, CloudUpload, Info } from "lucide-react";
 import { DEFAULT_MAP_DISPLAY, type ResolvedMapDisplay } from "@arkaik/schema";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { NodeMetadata, PlatformStatusMap, PlatformScreenshotsMap } from "@/lib/data/types";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { blockedByOf } from "@/lib/utils/blocked";
 import { scopedPlatforms } from "@/lib/utils/product-scope";
 import { useCanvasProductScope } from "../canvas-scope";
 import { STATUS_GHOST_STYLES, STATUS_ICONS, STATUS_LABELS, STATUS_STYLES, PLATFORM_ICONS, PLATFORM_LABELS } from "./node-styles";
@@ -71,7 +72,7 @@ function ApiPopoverButton({
   );
 }
 
-function PlatformStatusIcon({ platform, status }: { platform: PlatformId; status: StatusId }) {
+function PlatformStatusIcon({ platform, status, blockedBy }: { platform: PlatformId; status: StatusId; blockedBy?: string }) {
   const PlatformIcon = PLATFORM_ICONS[platform];
   const statusStyles = STATUS_STYLES[status] ?? STATUS_STYLES.idea;
 
@@ -82,9 +83,14 @@ function PlatformStatusIcon({ platform, status }: { platform: PlatformId; status
           type="button"
           className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-muted/30 transition-colors hover:bg-muted cursor-context-menu"
           onClick={(event) => event.stopPropagation()}
-          aria-label={`${PLATFORM_LABELS[platform]} status`}
+          aria-label={`${PLATFORM_LABELS[platform]} status${blockedBy ? " (blocked)" : ""}`}
         >
-          <PlatformIcon className={`size-4 ${statusStyles.badge}`} />
+          <span className="relative inline-flex items-center">
+            <PlatformIcon className={`size-4 ${statusStyles.badge}`} />
+            {blockedBy && (
+              <Ban className="absolute -right-1 -bottom-1 w-2.5 h-2.5 text-red-500" aria-hidden="true" />
+            )}
+          </span>
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-60" align="end" onClick={(event) => event.stopPropagation()}>
@@ -97,11 +103,19 @@ function PlatformStatusIcon({ platform, status }: { platform: PlatformId; status
   );
 }
 
-function InlineStatusIcon({ status }: { status: StatusId }) {
+function InlineStatusIcon({ status, blockedBy }: { status: StatusId; blockedBy?: string }) {
   const StatusIcon = STATUS_ICONS[status] ?? STATUS_ICONS.idea;
   const statusStyles = STATUS_STYLES[status] ?? STATUS_STYLES.idea;
+  const label = blockedBy ? `${STATUS_LABELS[status]} (blocked)` : STATUS_LABELS[status];
 
-  return <StatusIcon className={`size-5 ${statusStyles.badge}`} aria-label={STATUS_LABELS[status]} />;
+  return (
+    <span role="img" className="relative inline-flex items-center" aria-label={label}>
+      <StatusIcon className={`size-5 ${statusStyles.badge}`} aria-hidden="true" />
+      {blockedBy && (
+        <Ban className="absolute -right-1 -bottom-1 w-2.5 h-2.5 text-red-500" aria-hidden="true" />
+      )}
+    </span>
+  );
 }
 
 function ViewNodeComponent({ data }: NodeProps) {
@@ -127,6 +141,8 @@ function ViewNodeComponent({ data }: NodeProps) {
       )
     : declaredPlatforms;
   const platformStatuses = (data.platformStatuses as PlatformStatusMap | undefined) ?? {};
+  // Node-level flag, so every status icon this card renders carries the overlay.
+  const blockedBy = blockedByOf(data.metadata as NodeMetadata | undefined);
   const display = (data.display as ResolvedMapDisplay | undefined) ?? DEFAULT_MAP_DISPLAY;
   const apiInbound = (data.apiInbound as ViewApiRelation[] | undefined) ?? [];
   const apiOutbound = (data.apiOutbound as ViewApiRelation[] | undefined) ?? [];
@@ -202,7 +218,7 @@ function ViewNodeComponent({ data }: NodeProps) {
                       <PlatformIcon className="size-4 text-muted-foreground" />
                       {PLATFORM_LABELS[platform]}
                     </span>
-                    <InlineStatusIcon status={platformStatus} />
+                    <InlineStatusIcon status={platformStatus} blockedBy={blockedBy} />
                   </div>
                 );
               })}
@@ -221,7 +237,7 @@ function ViewNodeComponent({ data }: NodeProps) {
                 <div className="flex items-center gap-2">
                   {platforms.map((platform) => {
                     const platformStatus = platformStatuses[platform] ?? status;
-                    return <PlatformStatusIcon key={platform} platform={platform} status={platformStatus} />;
+                    return <PlatformStatusIcon key={platform} platform={platform} status={platformStatus} blockedBy={blockedBy} />;
                   })}
                 </div>
               )}

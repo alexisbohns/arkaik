@@ -24,30 +24,26 @@ export interface PlatformStatusRollup {
 }
 
 /**
- * Severity precedence for `getRollupDisplayStatus` — highest `STATUS_ORDER`
- * first, which deliberately puts `blocked` (7) ahead of `live` (5) so a rollup
- * containing anything blocked reports blocked. That value colors graph nodes
- * (`system-graph.ts`, `journey-graph.ts`). This is **not** a display order —
- * rings and bars use `compareStatusesForDisplay`.
+ * Severity precedence for `getRollupDisplayStatus` — the highest `STATUS_ORDER`
+ * among a rollup's counted statuses wins, so among the `delivery` preset
+ * (backlog, development, releasing, live) a rollup with anything already
+ * `live` reports `live` ahead of `development` or `backlog`, most-advanced
+ * status first. That value colors graph nodes (`system-graph.ts`,
+ * `journey-graph.ts`). This is **not** a display order — rings and bars use
+ * `compareStatusesForDisplay`.
  */
 function compareStatusesBySeverity(left: StatusId, right: StatusId) {
   return STATUS_ORDER[right] - STATUS_ORDER[left];
 }
 
 /**
- * Display order for status segments — lifecycle-descending with `blocked`
- * pinned last, so a ring reads Live → Releasing → Development → Prioritized →
- * Blocked and never opens on a red arc at 12 o'clock. This guarantee is scoped
- * to the `delivery` preset's counted statuses (prioritized, development,
- * releasing, live, blocked) — `archived` sits at `STATUS_ORDER` 6, above
- * `live`, so a future preset that counted a terminal status like `archived`
- * would need the pin widened to cover it too. Shared by the rings and the
- * `PlatformGaugeList` bars so the two can never disagree.
+ * Display order for status segments — lifecycle-descending, so a ring reads
+ * Live → Releasing → Development → Backlog. The historical pin that held
+ * `blocked` last is gone along with the `blocked` status itself (now
+ * `metadata.blocked_by`, which does not participate in this ordering). Shared
+ * by the rings and the `PlatformGaugeList` bars so the two can never disagree.
  */
 export function compareStatusesForDisplay(left: StatusId, right: StatusId) {
-  const leftIsLast = left === "blocked";
-  const rightIsLast = right === "blocked";
-  if (leftIsLast !== rightIsLast) return leftIsLast ? 1 : -1;
   return STATUS_ORDER[right] - STATUS_ORDER[left];
 }
 

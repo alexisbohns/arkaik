@@ -8,7 +8,7 @@ import { nodeInScope, scopedPlatforms, type ProductGraph, type ProductScope } fr
 /**
  * One board item: a node on one platform, at that platform's status
  * (vision.md § Core Product, Delivery). Duplication across platforms is the
- * point — a view `live` on iOS and `prioritized` on Android is two items in
+ * point — a view `live` on iOS and `backlog` on Android is two items in
  * two columns.
  */
 export interface DeliveryItem {

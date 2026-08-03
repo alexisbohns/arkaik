@@ -278,7 +278,7 @@ Implements AC-guest-checkout@ios
   mention moves the acceptance's *base* status, which every platform without its
   own entry falls back to. On a three-platform acceptance with nothing pinned
   that marks all three delivered and leaves no parity gap. On a *partly* shipped
-  one it is worse, not better: `{web: "live"}` with a base of `prioritized` is a
+  one it is worse, not better: `{web: "live"}` with a base of `backlog` is a
   real parity gap, and moving the base to `live` makes iOS and Android inherit
   it, so the gap **disappears**. Either way the delivery response names the
   platforms it is about to mark, one line per acceptance.

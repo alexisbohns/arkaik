@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  AnyStatusSchema,
   EdgeTypeSchema,
   PlatformSchema,
   SpeciesSchema,
@@ -20,7 +21,8 @@ import type { ProductDefinition } from "./products";
 export type PlatformStatusMap = Partial<Record<PlatformId, StatusId>>;
 export const PlatformStatusMapSchema: z.ZodType<PlatformStatusMap> = z.partialRecord(
   PlatformSchema,
-  StatusSchema,
+  // legacy-tolerant: migrateStatusVocabulary normalizes on load
+  AnyStatusSchema as unknown as typeof StatusSchema,
 ).meta({ id: "PlatformStatusMap", description: "Per-platform status overrides for view nodes." });
 
 export type PlatformNotesMap = Partial<Record<PlatformId, string>>;
@@ -91,7 +93,8 @@ export const RefSchema: z.ZodType<Ref> = z
     external_status: z.string().optional().meta({
       description: "Mirrored external state, verbatim (e.g. \"open\", \"merged\", \"In Progress\").",
     }),
-    status_mapped: StatusSchema.optional().meta({
+    // legacy-tolerant: migrateStatusVocabulary normalizes on load
+    status_mapped: (AnyStatusSchema as unknown as typeof StatusSchema).optional().meta({
       description:
         "Optional mapping of external_status into the arkaik lifecycle. Advisory display data — never mutates node.status.",
     }),
@@ -102,6 +105,8 @@ export const RefSchema: z.ZodType<Ref> = z
 
 export interface NodeMetadata extends Record<string, unknown> {
   stage?: string;
+  /** Non-empty = the node is blocked at its current status. A node id (rendered as a link) or free text. */
+  blocked_by?: string;
   playlist?: FlowPlaylist;
   platformNotes?: PlatformNotesMap;
   platformStatuses?: PlatformStatusMap;
@@ -118,6 +123,9 @@ export interface NodeMetadata extends Record<string, unknown> {
 export const NodeMetadataSchema: z.ZodType<NodeMetadata> = z
   .object({
     stage: z.string().optional(),
+    blocked_by: z.string().optional().meta({
+      description: "Non-empty = blocked at the current status. A node id (rendered as a link) or free text naming the dependency.",
+    }),
     playlist: FlowPlaylistSchema.optional(),
     platformNotes: PlatformNotesMapSchema.optional(),
     platformStatuses: PlatformStatusMapSchema.optional(),
@@ -153,7 +161,8 @@ export const NodeSchema: z.ZodType<Node> = z.object({
   species: SpeciesSchema,
   title: z.string().meta({ description: "Human-readable node title." }),
   description: z.string().optional().meta({ description: "Optional description of the node's purpose." }),
-  status: StatusSchema,
+  // legacy-tolerant: migrateStatusVocabulary normalizes on load
+  status: AnyStatusSchema as unknown as typeof StatusSchema,
   platforms: z.array(PlatformSchema).meta({ description: "One or more target platforms." }),
   metadata: NodeMetadataSchema.optional(),
 }).meta({ id: "Node" });

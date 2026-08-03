@@ -32,7 +32,7 @@ function acceptance(id, extra = {}) {
     project_id: "p",
     species: "acceptance",
     title: id,
-    status: "prioritized",
+    status: "backlog",
     platforms: ["web", "ios"],
     ...extra,
   };
@@ -87,7 +87,7 @@ function main() {
     const plan = computeRefPromotions(bundle([withRef], true));
     check("opting in with the shorthand promotes", plan.promotions.length === 1);
     check("a merged PR means live", plan.promotions[0]?.to === "live", JSON.stringify(plan.promotions[0]));
-    check("the promotion records where it came from", plan.promotions[0]?.from === "prioritized");
+    check("the promotion records where it came from", plan.promotions[0]?.from === "backlog");
   }
 
   // --- The default mapping -------------------------------------------------
@@ -187,6 +187,27 @@ function main() {
     check("a policy that does not mention this ref type promotes nothing", plan.promotions.length === 0);
   }
 
+  // --- Hand-written policies may speak the pre-v3 vocabulary ---------------
+  {
+    const node = acceptance("AC-leg", { status: "idea", metadata: { refs: [ref({ external_status: "open" })] } });
+    const plan = computeRefPromotions(bundle([node], { "github-pr": { open: "prioritized" } }));
+    check(
+      "a legacy policy target is honoured at its current-status meaning",
+      plan.promotions[0]?.to === "backlog",
+      JSON.stringify(plan),
+    );
+  }
+  {
+    const node = acceptance("AC-typo", { metadata: { refs: [ref()] } });
+    const plan = computeRefPromotions(bundle([node], { "github-pr": { merged: "shipped" } }));
+    check("a policy target outside both vocabularies promotes nothing", plan.promotions.length === 0);
+    check(
+      "and the skip names the unknown status",
+      plan.skipped[0]?.reason === "no-mapping" && plan.skipped[0]?.detail === "unknown status: shipped",
+      JSON.stringify(plan.skipped),
+    );
+  }
+
   // --- Refs without a mirrored status --------------------------------------
   {
     const unsynced = acceptance("AC-un", { metadata: { refs: [ref({ external_status: undefined })] } });
@@ -201,7 +222,7 @@ function main() {
       project_id: "p",
       species: "view",
       title: "A",
-      status: "prioritized",
+      status: "backlog",
       platforms: ["web"],
       metadata: { refs: [ref()] },
     };

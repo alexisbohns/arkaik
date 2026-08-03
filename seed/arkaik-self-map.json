@@ -1,4 +1,5 @@
 {
+  "schema_version": 3,
   "project": {
     "id": "arkaik-self-map",
     "title": "Arkaik (Self Map)",

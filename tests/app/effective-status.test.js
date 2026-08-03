@@ -90,7 +90,7 @@ assert(
 
 const emptyRollup = { counts: {}, totals: {} };
 const threeRollup = {
-  counts: { web: { live: 3 }, ios: { development: 2 }, android: { prioritized: 1 } },
+  counts: { web: { live: 3 }, ios: { development: 2 }, android: { backlog: 1 } },
   totals: { web: 3, ios: 2, android: 1 },
 };
 const androidOnlyRollup = { counts: { android: { live: 1 } }, totals: { android: 1 } };

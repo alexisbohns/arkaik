@@ -2,7 +2,13 @@ import "server-only";
 
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 
-import { parseBundle, validateBundle, type ValidationFinding } from "@arkaik/schema";
+import {
+  migrateStatusVocabulary,
+  parseBundle,
+  validateBundle,
+  type ProjectBundle,
+  type ValidationFinding,
+} from "@arkaik/schema";
 
 import { query, servicesUnavailable as baseServicesUnavailable } from "@/lib/services/db";
 
@@ -139,11 +145,18 @@ export function stripJournal(bundle: Record<string, unknown>): Record<string, un
 // Validation
 // ---------------------------------------------------------------------------
 
-export interface BundleValidation {
-  ok: boolean;
-  /** Error-severity findings (shape + semantic), structured for a 422 body. */
-  findings: ValidationFinding[];
-}
+export type BundleValidation =
+  | {
+      ok: true;
+      findings: ValidationFinding[];
+      /** The vocabulary-migrated bundle — what must be stripped/stored, not the raw input. */
+      bundle: Record<string, unknown>;
+    }
+  | {
+      ok: false;
+      /** Error-severity findings (shape + semantic), structured for a 422 body. */
+      findings: ValidationFinding[];
+    };
 
 /** Map a zod issue to the same finding shape `validateBundle` emits. */
 function zodIssueToFinding(issue: { path: PropertyKey[]; code: string; message: string }): ValidationFinding {
@@ -156,21 +169,32 @@ function zodIssueToFinding(issue: { path: PropertyKey[]; code: string; message: 
 }
 
 /**
- * Full inbound gate: `parseBundle` (shape, zod) then `validateBundle` (semantic
- * graph rules). Errors from either become structured findings for a 422; zod
- * shape errors short-circuit the semantic pass since it assumes a rough shape.
- * Warnings never fail (§ Publik → "warnings pass").
+ * Full inbound gate: `parseBundle` (shape, zod), then the v3 status-vocabulary
+ * migration, then `validateBundle` (semantic graph rules). Errors from either
+ * gate become structured findings for a 422; zod shape errors short-circuit the
+ * semantic pass since it assumes a rough shape. Warnings never fail (§ Publik →
+ * "warnings pass").
+ *
+ * The order mirrors lib/services/graph/store.ts and every load path (parse →
+ * migrate → validate) and is load-bearing: the shape parse is legacy-tolerant
+ * (`AnyStatusSchema`) precisely so `migrateStatusVocabulary` can erase legacy
+ * ids before `validateBundle`, which enforces the strict current vocabulary —
+ * otherwise a pre-v3 bundle would be the only import path that 422s. On
+ * success the MIGRATED bundle is returned; the migration is applied to the raw
+ * input (not `parsed.data`) so fields the zod schema does not model are still
+ * stored verbatim.
  */
 export function validateInboundBundle(input: unknown): BundleValidation {
   const parsed = parseBundle(input);
   if (!parsed.success) {
     return { ok: false, findings: parsed.error.issues.map(zodIssueToFinding) };
   }
-  const semantic = validateBundle(input);
+  const bundle = migrateStatusVocabulary(input as ProjectBundle);
+  const semantic = validateBundle(bundle);
   if (!semantic.valid) {
     return { ok: false, findings: semantic.errors };
   }
-  return { ok: true, findings: [] };
+  return { ok: true, findings: [], bundle: bundle as unknown as Record<string, unknown> };
 }
 
 // ---------------------------------------------------------------------------
