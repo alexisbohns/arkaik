@@ -22,11 +22,12 @@ function check(name, cond, detail) {
   }
 }
 
-const summary = (id, hosted) => ({
+const summary = (id, hosted, seed) => ({
   project: { id, title: id },
   nodeCount: 0,
   edgeCount: 0,
   hosted,
+  ...(seed ? { seed: true } : {}),
 });
 
 function main() {
@@ -63,6 +64,16 @@ function main() {
     "groupBySection preserves input order within a bucket",
     ordered.lokal.map((s) => s.project.id).join(",") === "local-a,local-b,local-c"
   );
+
+  // --- The Explore section (self-map cycle 4) --------------------------------
+  const seedSummary = summary("arkaik-self-map", false, true);
+  const groupedWithSeed = groupBySection([seedSummary, hosted, backedUp, plain], backups);
+  check("a seed summary lands in explore", groupedWithSeed.explore.length === 1 && groupedWithSeed.explore[0] === seedSummary);
+  check("…and never in lokal, even with an empty backup set",
+    groupBySection([seedSummary], new Set()).lokal.length === 0);
+  check("the other sections are unchanged by the seed",
+    groupedWithSeed.hosted.length === 1 && groupedWithSeed.synked.length === 1 && groupedWithSeed.lokal.length === 1);
+  check("no seed means an empty explore section", grouped.explore.length === 0);
 
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
   console.log(failures === 0 ? "\nAll project-section tests passed." : `\n${failures} failure(s).`);
