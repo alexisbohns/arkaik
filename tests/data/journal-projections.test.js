@@ -24,7 +24,8 @@ function check(name, cond, detail) {
 }
 const ids = (events) => events.map((e) => e.id).join(",");
 
-const { computeNodeTimeline, computeChangelog, computeBacklog } = loadJournalProjections();
+const { computeNodeTimeline, computeChangelog, computeBacklog, computeDeliverables, computeCommitments } =
+  loadJournalProjections();
 
 // --- Fixture journal (stored shuffled; consumers must order it) ------------
 // Timeline (by ts): V-home created → idea "Dark mode" → V-settings created →
@@ -144,6 +145,53 @@ function main() {
   );
 
   check("backlog(empty journal) is empty", computeBacklog([]).items.length === 0);
+
+  // --- computeDeliverables (cycle 3) -----------------------------------------
+  const DELIVERABLES = {
+    // First occurrence between 1.0 and 1.1 → belongs to 1.1.
+    d1: { id: "02A", ts: "2026-01-03T00:30:00.000Z", type: "deliverable.shipped", deliverable_id: "pr-1", title: "Ship home", summary: "v1", node_ids: ["V-home"] },
+    // Re-append AFTER 1.2 — edits content, must NOT move the anchor.
+    d1_edit: { id: "02B", ts: "2026-01-07T00:00:00.000Z", type: "deliverable.shipped", deliverable_id: "pr-1", title: "Ship home", summary: "v2 (edited)", node_ids: ["V-home"] },
+    // First occurrence after the last marker → unreleased.
+    d2: { id: "02C", ts: "2026-01-08T00:00:00.000Z", type: "deliverable.shipped", deliverable_id: "pr-2", title: "Ship settings", url: "https://example.com/pull/2" },
+  };
+  const WITH_DELIVERABLES = [...JOURNAL, DELIVERABLES.d1_edit, DELIVERABLES.d1, DELIVERABLES.d2]; // shuffled
+
+  const deliverables = computeDeliverables(WITH_DELIVERABLES);
+  check("computeDeliverables: one record per deliverable_id", deliverables.length === 2);
+  const d1 = deliverables.find((d) => d.deliverable_id === "pr-1");
+  const d2 = deliverables.find((d) => d.deliverable_id === "pr-2");
+  check("content is latest-wins", d1 && d1.summary === "v2 (edited)");
+  check("anchor is the FIRST occurrence ts", d1 && d1.ts === "2026-01-03T00:30:00.000Z");
+  check("released deliverable resolves to its slice's release", d1 && d1.releaseVersion === "1.1");
+  check("post-release edit does not un-release", d1 && d1.releaseVersion === "1.1");
+  check("first occurrence after the last marker is unreleased", d2 && d2.releaseVersion === null);
+  check("url passes through", d2 && d2.url === "https://example.com/pull/2");
+  check("node_ids default to empty array", d2 && Array.isArray(d2.node_ids) && d2.node_ids.length === 0);
+  check("shipped order (first-occurrence order)", deliverables[0].deliverable_id === "pr-1");
+  check("empty journal yields no deliverables", computeDeliverables([]).length === 0);
+
+  const changelog11 = computeChangelog(WITH_DELIVERABLES, "1.1");
+  check(
+    "Changelog.deliverables carries the slice's deliverables",
+    changelog11.deliverables.length === 1 && changelog11.deliverables[0].deliverable_id === "pr-1",
+  );
+  check("Changelog.deliverables is empty for an unknown version", computeChangelog([], "9.9").deliverables.length === 0);
+
+  // --- computeCommitments (cycle 3) ------------------------------------------
+  const COMMITS = [
+    { id: "03A", ts: "2026-02-01T00:00:00.000Z", type: "node.status_changed", node_id: "V-home", from: "idea", to: "discovery" },
+    { id: "03B", ts: "2026-02-02T00:00:00.000Z", type: "node.status_changed", node_id: "V-home", from: "discovery", to: "backlog" },
+    { id: "03C", ts: "2026-02-03T00:00:00.000Z", type: "node.status_changed", node_id: "V-home", from: "backlog", to: "development" },
+    { id: "03D", ts: "2026-02-04T00:00:00.000Z", type: "node.status_changed", node_id: "V-x", from: "prioritized", to: "development" },
+  ];
+  const commitments = computeCommitments([COMMITS[2], COMMITS[0], COMMITS[3], COMMITS[1]]); // shuffled
+  check(
+    "computeCommitments keeps only idea→discovery and discovery→backlog, ordered",
+    commitments.length === 2 && commitments[0].id === "03A" && commitments[1].id === "03B",
+    JSON.stringify(commitments.map((e) => e.id)),
+  );
+  check("computeCommitments on an empty journal is empty", computeCommitments([]).length === 0);
 
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
   fs.rmSync(SCHEMA_BUILD_DIR, { recursive: true, force: true });

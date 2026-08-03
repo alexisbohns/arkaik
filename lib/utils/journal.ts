@@ -14,7 +14,13 @@
  * and the `Changelog` / `Backlog` result types) is still exported from here.
  */
 
-export { computeNodeTimeline, computeChangelog, computeBacklog } from "@arkaik/schema";
+export {
+  computeNodeTimeline,
+  computeChangelog,
+  computeBacklog,
+  computeDeliverables,
+  computeCommitments,
+} from "@arkaik/schema";
 
 export type {
   NodeTimeline,
@@ -22,4 +28,5 @@ export type {
   ChangelogOptions,
   Backlog,
   BacklogOptions,
+  Deliverable,
 } from "@arkaik/schema";

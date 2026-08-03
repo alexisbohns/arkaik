@@ -227,13 +227,18 @@ function main() {
     ...deliverableBundle,
     journal: [
       deliverableBundle.journal[0],
-      { id: "01C", ts: "2026-01-02T00:00:00.000Z", type: "deliverable.shipped", deliverable_id: "pr-2", title: "Ship ghost", node_ids: ["V-ghost"] },
+      { id: "01C", ts: "2026-01-02T00:00:00.000Z", type: "deliverable.shipped", deliverable_id: "pr-2", title: "Ship ghost", node_ids: ["V-a", "V-ghost"] },
     ],
   };
   const danglingFindings = crossCheckJournal(danglingBundle);
   check(
     "deliverable node_ids referencing a never-existing node are an error",
     danglingFindings.some((f) => f.rule === "journal-dangling-node-ref" && f.message.includes("V-ghost")),
+    JSON.stringify(danglingFindings),
+  );
+  check(
+    "dangling node_ids finding's path is per-index (node_ids[1])",
+    danglingFindings.some((f) => f.rule === "journal-dangling-node-ref" && f.path.endsWith("node_ids[1]")),
     JSON.stringify(danglingFindings),
   );
 

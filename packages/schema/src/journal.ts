@@ -512,7 +512,7 @@ export function crossCheckJournal(bundle: Record<string, unknown>): JournalFindi
           findings.push({
             path: `journal[${index}].node_ids[${i}]`,
             rule: "journal-dangling-node-ref",
-            message: `journal[${index}] (deliverable.shipped): references node "${ref}" that never existed in the snapshot or journal.`,
+            message: `journal[${index}] (${ev.type}): references node "${ref}" that never existed in the snapshot or journal.`,
             severity: "error",
           });
         }
