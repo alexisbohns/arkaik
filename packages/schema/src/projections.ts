@@ -97,7 +97,12 @@ export interface Changelog {
   platform?: PlatformId;
   /** The events strictly between the two markers, in journal order. */
   events: JournalEvent[];
-  /** The deliverables anchored in this slice, in shipped order (§ Releases). */
+  /**
+   * The deliverables whose release resolves to `toVersion`, in shipped order
+   * (§ Releases). Deliberately independent of a `fromVersion` override and of
+   * platform scoping: release association is the grouping, and a
+   * platform-scoped consumer filters on `Deliverable.platform` itself.
+   */
   deliverables: Deliverable[];
 }
 
@@ -294,7 +299,9 @@ export interface Deliverable {
  * release's slice boundaries follow {@link computeChangelog}: the version's
  * LAST marker is the `to` boundary, the nearest preceding `release.tagged` of
  * any version the `from`. Events without a string `deliverable_id` are skipped
- * (render-never-crash). An empty journal yields `[]`.
+ * (render-never-crash). Latest-wins is strict: a re-append that omits a field
+ * drops it (a missing `title` falls back to the id, not to an earlier
+ * occurrence's title). An empty journal yields `[]`.
  */
 export function computeDeliverables(events: readonly JournalEvent[]): Deliverable[] {
   const ordered = orderEvents(events);

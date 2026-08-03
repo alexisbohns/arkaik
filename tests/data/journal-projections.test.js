@@ -171,6 +171,15 @@ function main() {
   check("shipped order (first-occurrence order)", deliverables[0].deliverable_id === "pr-1");
   check("empty journal yields no deliverables", computeDeliverables([]).length === 0);
 
+  // Re-tagged release: the version's LAST marker is the `to` boundary, so a
+  // deliverable between the superseded marker and the re-tag belongs to the
+  // re-tagged version's window.
+  const RETAG = { id: "02D", ts: "2026-01-09T00:00:00.000Z", type: "release.tagged", version: "1.1" };
+  const BETWEEN = { id: "02E", ts: "2026-01-08T12:00:00.000Z", type: "deliverable.shipped", deliverable_id: "pr-3", title: "Between old and new 1.1" };
+  const retagged = computeDeliverables([...WITH_DELIVERABLES, RETAG, BETWEEN]);
+  const d3 = retagged.find((d) => d.deliverable_id === "pr-3");
+  check("re-tagged version window uses the LAST marker", d3 && d3.releaseVersion === "1.1", JSON.stringify(d3));
+
   const changelog11 = computeChangelog(WITH_DELIVERABLES, "1.1");
   check(
     "Changelog.deliverables carries the slice's deliverables",
