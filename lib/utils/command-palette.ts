@@ -35,6 +35,7 @@ export type CommandIconId =
   | "docs"
   | "publish"
   | "theme"
+  | "shortcuts"
   | "projects"
   | "tokens";
 
@@ -52,7 +53,7 @@ export const COMMAND_GROUPS = [
 ] as const satisfies readonly { id: CommandGroupId; label: string }[];
 
 /** Commands that do something in place instead of navigating. */
-export type CommandActionId = "publish" | "toggle-theme";
+export type CommandActionId = "publish" | "toggle-theme" | "show-shortcuts";
 
 export type CommandTarget =
   | { kind: "href"; href: string; external?: boolean }
@@ -259,6 +260,18 @@ const TOGGLE_THEME_COMMAND: PaletteCommand = {
   target: { kind: "action", action: "toggle-theme" },
 };
 
+/** Also shared: ⌘? works everywhere, so the palette offers it everywhere —
+ * and a cheat sheet you can only reach by already knowing a chord is a joke. */
+const SHOW_SHORTCUTS_COMMAND: PaletteCommand = {
+  id: "show-shortcuts",
+  label: "Keyboard shortcuts",
+  group: "actions",
+  icon: "shortcuts",
+  keywords: ["kbd", "hotkeys", "keys", "cheat sheet", "help"],
+  hint: "See every shortcut",
+  target: { kind: "action", action: "show-shortcuts" },
+};
+
 interface ProjectCommandInput {
   projectId: string;
   /** Custom maps from `project.metadata.maps`, same list the sidebar renders. */
@@ -420,6 +433,7 @@ export function buildProjectCommands({ projectId, customMaps }: ProjectCommandIn
       target: { kind: "action", action: "publish" },
     },
     TOGGLE_THEME_COMMAND,
+    SHOW_SHORTCUTS_COMMAND,
     {
       id: "projects",
       label: "All projects",
@@ -511,5 +525,6 @@ export function buildDocsCommands({ pages }: DocsCommandInput): PaletteCommand[]
       target: { kind: "href", href: "/projects" },
     },
     TOGGLE_THEME_COMMAND,
+    SHOW_SHORTCUTS_COMMAND,
   ];
 }

@@ -41,6 +41,24 @@ export function isCommandPaletteShortcut(event: KeyboardEvent): boolean {
   return event.key.toLowerCase() === "k";
 }
 
+/** ⌘? / Ctrl+? — the shortcuts cheat sheet. `?` is Shift+/ on most layouts, so
+ * both readings are accepted: browsers report `key` as "?" there, but a layout
+ * where `?` is unshifted (or one where Shift is reported without folding) would
+ * otherwise silently lose the chord. Live inside inputs, like ⌘K: a chord never
+ * competes with typing, and help you must click away to reach is help nobody
+ * finds. */
+export function isShortcutsDialogShortcut(event: KeyboardEvent): boolean {
+  if (event.altKey) {
+    return false;
+  }
+
+  if (!event.metaKey && !event.ctrlKey) {
+    return false;
+  }
+
+  return event.key === "?" || (event.shiftKey && event.key === "/");
+}
+
 export function isExportShortcut(event: KeyboardEvent): boolean {
   if (event.altKey || event.shiftKey) {
     return false;
