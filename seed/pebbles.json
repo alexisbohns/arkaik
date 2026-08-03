@@ -6048,6 +6048,39 @@
       "source_id": "DEC-adopt-glyph-wobble",
       "target_id": "V-record-celebration",
       "edge_type": "impacts"
+    },
+    {
+      "id": "01K0DELIVSEED0000000000001",
+      "ts": "2026-06-15T10:00:00.000Z",
+      "actor": "arkaik-cli",
+      "type": "deliverable.shipped",
+      "deliverable_id": "pr-84",
+      "title": "Timeline groups pebbles by day",
+      "summary": "The timeline now reads as days, not one endless list.",
+      "url": "https://github.com/example/pebbles/pull/84",
+      "node_ids": ["V-timeline"]
+    },
+    {
+      "id": "01K0DELIVSEED0000000000002",
+      "ts": "2026-07-10T09:00:00.000Z",
+      "actor": "arkaik-cli",
+      "type": "deliverable.shipped",
+      "deliverable_id": "pr-91",
+      "title": "Home shows a weekly streak",
+      "summary": "First cut of the streak counter.",
+      "url": "https://github.com/example/pebbles/pull/91",
+      "node_ids": ["V-home"]
+    },
+    {
+      "id": "01K0DELIVSEED0000000000003",
+      "ts": "2026-07-12T09:00:00.000Z",
+      "actor": "arkaik-cli",
+      "type": "deliverable.shipped",
+      "deliverable_id": "pr-91",
+      "title": "Home shows a weekly streak",
+      "summary": "Streak counter — edited note: counts calendar weeks, not rolling 7 days.",
+      "url": "https://github.com/example/pebbles/pull/91",
+      "node_ids": ["V-home"]
     }
   ]
 }

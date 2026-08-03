@@ -347,5 +347,190 @@
       "target_id": "API-local-import-project",
       "edge_type": "impacts"
     }
+  ],
+  "journal": [
+    {
+      "id": "01K0SELFMAPSEED00000000001",
+      "ts": "2026-03-21T00:00:00.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-projects",
+      "species": "view",
+      "title": "/projects"
+    },
+    {
+      "id": "01K0SELFMAPSEED00000000002",
+      "ts": "2026-03-21T00:00:00.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "F-projects-routing",
+      "species": "flow",
+      "title": "Projects Actions Routing"
+    },
+    {
+      "id": "01K0SELFMAPSEED00000000003",
+      "ts": "2026-03-21T00:00:00.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "F-import-json",
+      "species": "flow",
+      "title": "Import JSON"
+    },
+    {
+      "id": "01K0SELFMAPSEED00000000004",
+      "ts": "2026-03-21T00:00:00.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "F-create-project",
+      "species": "flow",
+      "title": "Create Project"
+    },
+    {
+      "id": "01K0SELFMAPSEED00000000005",
+      "ts": "2026-03-21T00:00:00.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "F-delete-project",
+      "species": "flow",
+      "title": "Delete Project"
+    },
+    {
+      "id": "01K0SELFMAPSEED00000000006",
+      "ts": "2026-03-21T00:00:00.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "F-import-example-projects",
+      "species": "flow",
+      "title": "Import Example Projects"
+    },
+    {
+      "id": "01K0SELFMAPSEED00000000007",
+      "ts": "2026-03-21T00:00:00.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-local-list-projects",
+      "species": "api-endpoint",
+      "title": "localProvider.listProjects()"
+    },
+    {
+      "id": "01K0SELFMAPSEED00000000008",
+      "ts": "2026-03-21T00:00:00.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-local-save-project",
+      "species": "api-endpoint",
+      "title": "localProvider.saveProject()"
+    },
+    {
+      "id": "01K0SELFMAPSEED00000000009",
+      "ts": "2026-03-21T00:00:00.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-local-archive-project",
+      "species": "api-endpoint",
+      "title": "localProvider.archiveProject()"
+    },
+    {
+      "id": "01K0SELFMAPSEED00000000010",
+      "ts": "2026-03-21T00:00:00.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-local-import-project",
+      "species": "api-endpoint",
+      "title": "localProvider.importProject()"
+    },
+    {
+      "id": "01K0SELFMAPSEED00000000011",
+      "ts": "2026-03-21T00:00:00.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-local-storage-store",
+      "species": "data-model",
+      "title": "LocalStorage Store"
+    },
+    {
+      "id": "01K0SELFMAPSEED00000000012",
+      "ts": "2026-03-21T00:00:00.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DM-project-bundle",
+      "species": "data-model",
+      "title": "ProjectBundle"
+    },
+    {
+      "id": "01K0SELFMAPSEED00000000013",
+      "ts": "2026-03-21T00:00:00.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DEC-two-axes-stay",
+      "species": "decision",
+      "title": "Two axes: status is delivery, stage is exposure"
+    },
+    {
+      "id": "01K0SELFMAPSEED00000000014",
+      "ts": "2026-03-21T00:00:00.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DEC-blocked-is-a-flag",
+      "species": "decision",
+      "title": "Blocked is a flag, not a status"
+    },
+    {
+      "id": "01K0SELFMAPSEED00000000015",
+      "ts": "2026-03-21T00:00:00.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DEC-migration-hard-cutover",
+      "species": "decision",
+      "title": "Status migrations: hard cutover + permanent aliases"
+    },
+    {
+      "id": "01K0SELFMAPSEED00000000900",
+      "ts": "2026-08-03T12:00:00.000Z",
+      "actor": "claude-code",
+      "type": "deliverable.shipped",
+      "deliverable_id": "pr-331",
+      "title": "Status lifecycle overhaul",
+      "summary": "Seven statuses, blocked as a flag, permanent legacy aliases.",
+      "url": "https://github.com/alexisbohns/arkaik/pull/331"
+    },
+    {
+      "id": "01K0SELFMAPSEED00000000901",
+      "ts": "2026-08-03T16:00:00.000Z",
+      "actor": "claude-code",
+      "type": "deliverable.shipped",
+      "deliverable_id": "pr-335",
+      "title": "Decisions species",
+      "summary": "ADR records as first-class graph nodes, with supersedes/generates/impacts edges.",
+      "url": "https://github.com/alexisbohns/arkaik/pull/335",
+      "node_ids": ["DEC-two-axes-stay", "DEC-blocked-is-a-flag", "DEC-migration-hard-cutover"]
+    },
+    {
+      "id": "01K0SELFMAPSEED00000000910",
+      "ts": "2026-08-03T16:30:00.000Z",
+      "actor": "claude-code",
+      "type": "decision.status_changed",
+      "node_id": "DEC-two-axes-stay",
+      "from": "proposed",
+      "to": "enacted"
+    },
+    {
+      "id": "01K0SELFMAPSEED00000000911",
+      "ts": "2026-08-03T16:30:00.000Z",
+      "actor": "claude-code",
+      "type": "decision.status_changed",
+      "node_id": "DEC-blocked-is-a-flag",
+      "from": "proposed",
+      "to": "enacted"
+    },
+    {
+      "id": "01K0SELFMAPSEED00000000912",
+      "ts": "2026-08-03T16:30:00.000Z",
+      "actor": "claude-code",
+      "type": "decision.status_changed",
+      "node_id": "DEC-migration-hard-cutover",
+      "from": "proposed",
+      "to": "enacted"
+    }
   ]
 }
