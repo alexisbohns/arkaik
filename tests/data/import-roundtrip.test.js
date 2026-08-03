@@ -84,6 +84,7 @@ function loadExportModule() {
     // prefix constant from remote-provider. Only the constant is needed here —
     // that module has no runtime deps of its own.
     if (request.includes("remote-provider")) return { HOSTED_ID_PREFIX: "prj_" };
+    if (request.includes("seed-project-id")) return { SEED_PROJECT_ID: "arkaik-self-map" };
     return originalLoad.call(this, request, parent, isMain);
   };
   try {
@@ -177,6 +178,26 @@ async function main() {
   assert(
     migrated && JSON.stringify(migrated.journal) === JSON.stringify(legacyBundle.journal),
     "legacy gate: journal history untouched by migration",
+  );
+
+  // --- The reserved seed id can never be squatted by an import ---------------
+  captured = null;
+  const seedSquatter = {
+    schema_version: 3,
+    project: {
+      id: "arkaik-self-map",
+      title: "Impostor",
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    },
+    nodes: [],
+    edges: [],
+  };
+  await exportModule.importProjectFromFile({ text: async () => JSON.stringify(seedSquatter) });
+  assert(captured !== null, "seed-id import still lands");
+  assert(
+    captured.project.id !== "arkaik-self-map",
+    "an imported bundle never keeps the reserved seed id",
   );
 
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });

@@ -8,6 +8,7 @@ import {
 } from "@arkaik/schema";
 import { getProvider } from "@/lib/data/provider-registry";
 import { HOSTED_ID_PREFIX } from "@/lib/data/remote-provider";
+import { SEED_PROJECT_ID } from "@/lib/data/seed-project-id";
 
 const MAX_RECOMMENDED_EXPORT_BYTES = 4 * 1024 * 1024;
 
@@ -94,17 +95,23 @@ export function parseAndValidateBundle(value: unknown): ProjectBundle {
 }
 
 /**
- * A free project id for an import: unique, and never in the hosted namespace.
+ * A free project id for an import: unique, never in the hosted namespace, and
+ * never the reserved seed id.
  *
  * The `prj_` prefix is how the routing provider tells a hosted project from a
- * local one (lib/data/routing-provider.ts). That rule is only sound if a local
- * project can never hold such an id — otherwise an imported bundle whose author
- * happened to name it `prj_…` would be routed to the server, where it does not
- * exist. Reserving the namespace here is what makes routing a total function of
- * the id rather than a guess.
+ * local one (lib/data/routing-provider.ts), and `arkaik-self-map` is how it
+ * tells the built-in public seed project from either (lib/data/seed-project-id.ts).
+ * Both rules are only sound if a local or imported project can never hold such
+ * an id — otherwise an imported bundle whose author happened to name it
+ * `prj_…` or `arkaik-self-map` would be routed to the server or the seed
+ * provider, where it does not exist. Reserving both namespaces here is what
+ * makes routing a total function of the id rather than a guess.
  */
 async function ensureUniqueProjectId(initialId: string): Promise<string> {
-  let candidate = initialId.startsWith(HOSTED_ID_PREFIX) ? crypto.randomUUID() : initialId;
+  let candidate =
+    initialId.startsWith(HOSTED_ID_PREFIX) || initialId === SEED_PROJECT_ID
+      ? crypto.randomUUID()
+      : initialId;
   while (await getProvider().getProject(candidate)) {
     candidate = crypto.randomUUID();
   }
