@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useSyncExternalStore } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import type { ProductDefinition } from "@arkaik/schema";
 import type { ProjectBundle } from "@/lib/data/types";
 import {
@@ -16,6 +16,7 @@ import {
   resolveProductScope,
   type ProductScope,
 } from "@/lib/utils/product-scope";
+import { useQueryWriter } from "@/lib/hooks/useQueryWriter";
 
 /**
  * The global product scope, persisted per project in localStorage.
@@ -99,12 +100,15 @@ export function useEffectiveProduct(
  * `useEffectiveProduct` (which is why it cannot diverge), and only the four
  * controls in `ProductOverrideSelector` may move it.
  *
- * `setOverride` rebuilds the query from the live params rather than replacing
- * it, so `species`, `panel` and the acceptance filters survive a scope change;
- * and All products **deletes** the key rather than writing a sentinel, so the
- * absence of an override is the absence of a param. `replace` (not `push`) with
- * `scroll: false`, matching `useAcceptanceFilters` — narrowing a surface is not
- * a navigation and must not eat the back button.
+ * `setOverride` touches only its own key, so `species`, `panel` and the
+ * acceptance filters survive a scope change; and All products **deletes** the
+ * key rather than writing a sentinel, so the absence of an override is the
+ * absence of a param. It writes through `useQueryWriter`, which reads the live
+ * query at call time — the acceptance bar's debounced search is a second,
+ * independent writer on the same surface, and a base captured at render time
+ * would drop whichever of the two wrote last. `replace` (not `push`) with
+ * `scroll: false` is that hook's too — narrowing a surface is not a navigation
+ * and must not eat the back button.
  *
  * `overrideId` is what the control should display. It is `null` — All products —
  * whenever the surface may not override at all, or the param is absent, blank,
@@ -116,8 +120,7 @@ export function useProductOverride(
   projectId: string,
   project: ProjectBundle | undefined,
 ): { canOverride: boolean; overrideId: string | null; setOverride: (next: string | null) => void } {
-  const router = useRouter();
-  const pathname = usePathname();
+  const writeQuery = useQueryWriter();
   const searchParams = useSearchParams();
   const { productId: globalId } = useProductScope(projectId);
 
@@ -133,13 +136,12 @@ export function useProductOverride(
 
   const setOverride = useCallback(
     (next: string | null) => {
-      const params = new URLSearchParams(searchParams.toString());
-      if (next === null) params.delete(PRODUCT_OVERRIDE_PARAM);
-      else params.set(PRODUCT_OVERRIDE_PARAM, next);
-      const qs = params.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      writeQuery((params) => {
+        if (next === null) params.delete(PRODUCT_OVERRIDE_PARAM);
+        else params.set(PRODUCT_OVERRIDE_PARAM, next);
+      });
     },
-    [router, pathname, searchParams],
+    [writeQuery],
   );
 
   return { canOverride, overrideId, setOverride };
