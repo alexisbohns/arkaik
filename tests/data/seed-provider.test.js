@@ -118,6 +118,31 @@ async function main() {
     );
   }
 
+  // --- createNode does not alias sandbox-internal state -----------------------
+  // applyOps stores the exact `node` object the caller passed in; createNode
+  // must hand back a CLONE of the stored node, not that same reference, or a
+  // caller mutating the returned object would silently corrupt the in-memory
+  // store without going through applyOps or the journal.
+  {
+    const created = await provider.createNode({
+      id: "V-alias-check",
+      project_id: PROJECT_ID,
+      species: "view",
+      title: "Original Title",
+      status: "idea",
+      platforms: ["web"],
+    });
+    created.title = "MUTATED BY TEST";
+    const nodes = await provider.getNodes(PROJECT_ID);
+    const stored = nodes.find((n) => n.id === "V-alias-check");
+    check(
+      "mutating createNode's returned object does not affect a later getNodes read",
+      stored?.title === "Original Title",
+      JSON.stringify(stored),
+    );
+    await provider.deleteNode(PROJECT_ID, "V-alias-check");
+  }
+
   // --- updateNode ------------------------------------------------------------
   {
     const updated = await provider.updateNode(PROJECT_ID, "V-sandbox", { title: "Sandbox View (edited)" });

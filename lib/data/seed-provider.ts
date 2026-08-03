@@ -97,8 +97,14 @@ export function createSeedProvider(loadBundle: () => ProjectBundle): DataProvide
     },
 
     async createNode(node) {
-      runOps(node.project_id, [{ op: "create_node", node }]);
-      return node;
+      // Return the STORED node, cloned — never the caller's `node` object.
+      // `applyOps` keeps that exact reference in `bundle.nodes` (the in-memory
+      // array IS the store of record here, unlike the local provider's
+      // IndexedDB-backed version of this same pattern), so handing it back
+      // unclonned would let a caller mutate sandbox-internal state directly,
+      // bypassing applyOps and the journal entirely.
+      const { nodes } = runOps(node.project_id, [{ op: "create_node", node }]);
+      return structuredClone(nodes.find((candidate: Node) => candidate.id === node.id)!);
     },
 
     async updateNode(projectId, id, patch) {
