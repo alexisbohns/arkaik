@@ -45,7 +45,11 @@ export function ProductOverrideSelector({ projectId, project }: ProductOverrideS
       value={overrideId}
       onChange={setOverride}
       options={options}
-      ariaLabel="Product"
+      // Not just "Product": the sidebar's global selector owns that name and is
+      // on screen at the same time by construction — this control only renders
+      // while the global scope is All products. Two comboboxes with one
+      // accessible name is two controls a screen reader cannot tell apart.
+      ariaLabel="Product for this page"
       allProductsHint="Everything in the project"
       triggerIcon={<BoxesIcon className="size-4 shrink-0 text-muted-foreground" />}
       triggerClassName="h-9 w-[11rem] gap-2"
