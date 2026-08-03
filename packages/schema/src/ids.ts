@@ -5,7 +5,7 @@
  * pull the zod runtime in along with it.
  */
 
-export const SPECIES_IDS = ["flow", "view", "data-model", "api-endpoint", "acceptance"] as const;
+export const SPECIES_IDS = ["flow", "view", "data-model", "api-endpoint", "acceptance", "decision"] as const;
 export type SpeciesId = (typeof SPECIES_IDS)[number];
 
 export const STATUS_IDS = [

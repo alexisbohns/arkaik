@@ -6,6 +6,7 @@ export * from "./journal-events";
 export * from "./bundle";
 export * from "./validate";
 export * from "./acceptance";
+export * from "./decision";
 export * from "./parse";
 export * from "./serialize";
 export * from "./projections";

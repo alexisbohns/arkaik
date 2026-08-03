@@ -24,6 +24,7 @@
     "test:maps": "node tests/schema/maps.test.js",
     "test:products": "node tests/schema/products.test.js",
     "test:edge-semantics": "node tests/schema/edge-semantics.test.js",
+    "test:decision": "node tests/schema/decision.test.js",
     "test:delivery": "node tests/app/delivery.test.js",
     "test:journey-graph": "node tests/app/journey-graph.test.js",
     "test:spotlight": "node tests/app/graph-spotlight.test.js",
