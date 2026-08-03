@@ -71,9 +71,9 @@ assert(
 
 // --- The platform menu (product scope, § Decision 3) -------------------------
 //
-// A fixture of its own rather than the seed, so every platform carries more
-// than one counted status: a menu that dropped a platform or a status could
-// not hide behind a seed distribution that happens to be sparse there.
+// A fixture of its own rather than the seed, so every platform carries counted
+// work, and web carries two distinct statuses — enough to tell a dropped
+// status from a dropped platform where it matters.
 
 const menuAcceptances = [
   {
@@ -258,7 +258,9 @@ const {
   getPlatformRollupSegments,
   getRollupTotalSegments,
 } = require(path.join(BUILD_DIR, "platform-status.js"));
-const { getCountedStatuses } = require(path.join(BUILD_DIR, "config-statuses.js"));
+const { COUNTED_STATUS_PRESETS, getCountedStatuses, STATUS_ORDER } = require(
+  path.join(BUILD_DIR, "config-statuses.js"),
+);
 
 // The historical blocked-last pin is gone with the `blocked` status itself
 // (now `metadata.blocked_by`): display order is pure lifecycle-descending.
@@ -268,6 +270,16 @@ assert(
     ["live", "releasing", "development", "backlog"],
   ),
   "display order is pure lifecycle-descending: Live → Releasing → Development → Backlog",
+);
+
+// The trap documented at STATUS_ORDER, as a tripwire: `archived` (6) outranks
+// `live` (5), so a preset counting a terminal status would both sort it first
+// in severity and report it as the rollup's display status.
+assert(
+  Object.values(COUNTED_STATUS_PRESETS).every((preset) =>
+    preset.every((status) => STATUS_ORDER[status] <= STATUS_ORDER.live),
+  ),
+  "no counted preset includes a status ordered above live (a terminal status would hijack severity and display status)",
 );
 
 let ringRollup = createEmptyRollup();

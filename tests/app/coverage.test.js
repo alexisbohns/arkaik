@@ -211,7 +211,7 @@ assert(
     ios: { development: 25, live: 6 },
     android: { development: 13, live: 5 },
   }),
-  "seed rollup counts: with backlog counted, AC-pebble-draw-in-animation's stored web status now lands one web:backlog item",
+  "seed rollup counts: V-pebble-detail's effective web status is backlog — the weakest of its two covering acceptances (AC-pebble-draw-in-animation, AC-emotion-palette-on-read), both stored backlog on web",
 );
 
 const seedPulse = computeReleasePulse(bundle.journal, { nodesById });
