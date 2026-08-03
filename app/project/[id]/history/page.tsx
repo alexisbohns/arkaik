@@ -64,6 +64,7 @@ export default function HistoryPage() {
                 <button
                   type="button"
                   onClick={() => setFamily(null)}
+                  aria-pressed={family === null}
                   className={`rounded-full border px-3 py-1 text-xs transition-colors ${
                     family === null ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
                   }`}
@@ -75,6 +76,7 @@ export default function HistoryPage() {
                     key={entry.id}
                     type="button"
                     onClick={() => setFamily(family === entry.id ? null : entry.id)}
+                    aria-pressed={family === entry.id}
                     className={`rounded-full border px-3 py-1 text-xs transition-colors ${
                       family === entry.id ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
                     }`}
