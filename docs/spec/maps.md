@@ -55,6 +55,7 @@ interface MapDisplayOptions extends Record<string, unknown> {
   images?: boolean;                       // screenshot (or cover) art on view cards
   flow_platforms?: "rings" | "bars";      // a flow card's platform delivery
   view_platforms?: "chips" | "rows";      // a view card's platform availability
+  minimap_color?: "status" | "species";   // what a minimap node's fill encodes
 }
 ```
 
@@ -63,10 +64,11 @@ interface MapDisplayOptions extends Record<string, unknown> {
 | `images` | `true` — the view's screenshot, falling back to `metadata.cover_url` | `false` — view cards carry no art |
 | `flow_platforms` | `rings` — the Pyramid's ring set, the global ring centering the flow's view count | `bars` — one stacked status gauge per platform |
 | `view_platforms` | `chips` — circular platform chips in the card footer | `rows` — a labelled line per platform with its status icon |
+| `minimap_color` | `status` — a minimap node's fill matches its card badge, the delivery reading | `species` — the fill names the node's kind instead |
 
 `resolveMapDisplay(definition, project)` resolves them least- to most-specific:
 
-1. the defaults — `{ images: true, flow_platforms: "rings", view_platforms: "chips" }`;
+1. the defaults — `{ images: true, flow_platforms: "rings", view_platforms: "chips", minimap_color: "status" }`;
 2. the definition's own `display` — the agent-authored half;
 3. `project.metadata.map_display[definition.id]` — the human half, and the only
    path open to the built-in maps, which have no stored definition of their own.
@@ -79,8 +81,8 @@ The field still parses, validates, and round-trips; no renderer reads it.
 Resolution is key by key, and an unrecognized value at any layer falls through to
 the layer beneath rather than blanking the card — the same posture as
 `layout.algorithm`. Renderers honour only the options they can draw: the System
-map has no flow cards and carries no screenshot payload, so `view_platforms` is
-the only one that reads across.
+map has no flow cards and carries no screenshot payload, so `view_platforms` and
+`minimap_color` are the ones that read across.
 
 ### Display versus product scope
 

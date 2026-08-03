@@ -218,6 +218,10 @@
         "view_platforms": {
           "description": "A view card's platform availability: chips (default) | rows.",
           "type": "string"
+        },
+        "minimap_color": {
+          "description": "What a minimap node's fill encodes: status (default) | species.",
+          "type": "string"
         }
       },
       "additionalProperties": {},

@@ -51,31 +51,41 @@ export interface MapDisplayOptions extends Record<string, unknown> {
   flow_platforms?: MapFlowPlatformsMode | (string & {});
   /** A view card's platform availability: circular chips, or labelled rows. */
   view_platforms?: MapViewPlatformsMode | (string & {});
+  /** What a minimap node's fill encodes: its status, or its species. */
+  minimap_color?: MapMinimapColorMode | (string & {});
 }
 
 // Default first in each union and list — the order the pickers read in.
 export type MapFlowPlatformsMode = "rings" | "bars";
 export type MapViewPlatformsMode = "chips" | "rows";
+export type MapMinimapColorMode = "status" | "species";
 
 /** {@link MapDisplayOptions} with every key present and every value known. */
 export interface ResolvedMapDisplay {
   images: boolean;
   flow_platforms: MapFlowPlatformsMode;
   view_platforms: MapViewPlatformsMode;
+  minimap_color: MapMinimapColorMode;
 }
 
 export const MAP_FLOW_PLATFORMS_MODES: readonly MapFlowPlatformsMode[] = ["rings", "bars"];
 export const MAP_VIEW_PLATFORMS_MODES: readonly MapViewPlatformsMode[] = ["chips", "rows"];
+export const MAP_MINIMAP_COLOR_MODES: readonly MapMinimapColorMode[] = ["status", "species"];
 
 /**
  * What a map draws when nothing says otherwise: the compact reading, with the
  * Pyramid's rings summing a flow's delivery. Lines stay one click away for the
  * readings that want the per-platform detail spelled out.
+ *
+ * The minimap colors by status: a bird's-eye view is most often asked "where
+ * does this product stand", and the fills match the badges the cards already
+ * wear. Species — what kind of thing is over there — is one click away.
  */
 export const DEFAULT_MAP_DISPLAY: ResolvedMapDisplay = {
   images: true,
   flow_platforms: "rings",
   view_platforms: "chips",
+  minimap_color: "status",
 };
 
 /**
@@ -174,6 +184,9 @@ function applyDisplayOptions(base: ResolvedMapDisplay, options: unknown): Resolv
     view_platforms: candidate.view_platforms === undefined
       ? base.view_platforms
       : pickMode(candidate.view_platforms, MAP_VIEW_PLATFORMS_MODES, base.view_platforms),
+    minimap_color: candidate.minimap_color === undefined
+      ? base.minimap_color
+      : pickMode(candidate.minimap_color, MAP_MINIMAP_COLOR_MODES, base.minimap_color),
   };
 }
 

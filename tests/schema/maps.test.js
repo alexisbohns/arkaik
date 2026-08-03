@@ -100,8 +100,35 @@ const ids = (elements) => elements.map((el) => el.id).sort();
   assert(
     DEFAULT_MAP_DISPLAY.flow_platforms === "rings" &&
       DEFAULT_MAP_DISPLAY.view_platforms === "chips" &&
-      DEFAULT_MAP_DISPLAY.images === true,
-    "the default display is rings + chips, images on",
+      DEFAULT_MAP_DISPLAY.images === true &&
+      DEFAULT_MAP_DISPLAY.minimap_color === "status",
+    "the default display is rings + chips + status minimap, images on",
+  );
+
+  const minimap = resolveMapDisplay(
+    { id: "custom", display: { minimap_color: "species" } },
+    { metadata: {} },
+  );
+  assert(
+    minimap.minimap_color === "species" && minimap.view_platforms === "chips",
+    "minimap_color resolves on its own without disturbing the other keys",
+  );
+
+  const minimapOverride = resolveMapDisplay(
+    { id: "custom", display: { minimap_color: "species" } },
+    { metadata: { map_display: { custom: { minimap_color: "status" } } } },
+  );
+  assert(
+    minimapOverride.minimap_color === "status",
+    "a per-map minimap_color override wins over the definition",
+  );
+
+  assert(
+    resolveMapDisplay(
+      { id: "custom", display: { minimap_color: "rainbow" } },
+      { metadata: {} },
+    ).minimap_color === "status",
+    "an unknown minimap_color falls back to the default",
   );
 
   const legacy = resolveMapDisplay(journey, { metadata: { view_card_variant: "large" } });
@@ -294,7 +321,7 @@ const ids = (elements) => elements.map((el) => el.id).sort();
     { id: "odd", title: "Odd", kind: "system", species: ["view", "gremlin"], edge_types: ["calls", "wires"] },
     { id: "gaudy", title: "Gaudy", kind: "journey", display: { flow_platforms: "sparklines" } },
   ];
-  withMaps.project.metadata.map_display = { journey: { view_platforms: "columns", images: "yes" } };
+  withMaps.project.metadata.map_display = { journey: { view_platforms: "columns", images: "yes", minimap_color: "rainbow" } };
   const result = validateBundle(withMaps);
   const rules = result.findings.map((f) => f.rule);
 
@@ -304,11 +331,12 @@ const ids = (elements) => elements.map((el) => el.id).sort();
   assert(rules.includes("map-unknown-species"), "map-unknown-species fires");
   assert(rules.includes("map-unknown-edge-type"), "map-unknown-edge-type fires");
   assert(
-    result.findings.filter((f) => f.rule === "map-unknown-display").length === 3,
-    "map-unknown-display fires on the stored definition and on both bad override keys",
+    result.findings.filter((f) => f.rule === "map-unknown-display").length === 4,
+    "map-unknown-display fires on the stored definition and on every bad override key",
   );
   assert(
     result.findings.some((f) => f.path === "project.metadata.map_display.journey.view_platforms") &&
+      result.findings.some((f) => f.path === "project.metadata.map_display.journey.minimap_color") &&
       result.findings.some((f) => f.path === "project.metadata.maps[5].display.flow_platforms"),
     "map-unknown-display paths point at the offending value",
   );
