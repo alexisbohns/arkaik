@@ -19,6 +19,8 @@ const { loadProductScope, BUILD_DIR } = require("./load-product-scope");
 
 const {
   platformAvailabilityShape,
+  resolveEffectiveProductId,
+  canOverrideProduct,
   resolveProductScope,
   productScopeOptions,
   productDisplayTitle,
@@ -899,6 +901,60 @@ assert(
 
 unsubscribeSurface();
 resetProductScopeStore();
+
+// --- Per-surface override (issue #315) ---------------------------------------
+//
+// One rule, three branches. The load-bearing one is the first: a named global
+// scope wins outright, which is what "narrow only" means and what makes a stale
+// `?product=` inert rather than merely hidden.
+
+assert(
+  resolveEffectiveProductId(bundle, "admin", "enduser") === "admin",
+  "a named global scope wins over an override — narrow only, never sidestep",
+);
+
+assert(
+  resolveEffectiveProductId(bundle, "admin", "nonsense") === "admin",
+  "a named global scope wins over a junk override too",
+);
+
+assert(
+  resolveEffectiveProductId(bundle, null, "admin") === "admin",
+  "under All products, a declared override applies",
+);
+
+assert(
+  resolveEffectiveProductId(bundle, null, "nonsense") === null,
+  "an override naming a product this project does not declare is ignored, not applied",
+);
+
+assert(
+  resolveEffectiveProductId(bundle, null, null) === null &&
+    resolveEffectiveProductId(bundle, null, undefined) === null &&
+    resolveEffectiveProductId(bundle, null, "") === null &&
+    resolveEffectiveProductId(bundle, null, "   ") === null,
+  "absent, empty and blank overrides are all just All products",
+);
+
+assert(
+  resolveEffectiveProductId(undefined, null, "admin") === null,
+  "before the bundle loads nothing is declared, so no override can apply",
+);
+
+assert(
+  canOverrideProduct(bundle, null) === true,
+  "All products over a project with products: the control renders",
+);
+
+assert(
+  canOverrideProduct(bundle, "admin") === false,
+  "a named global scope hides the control — there is nothing it could narrow to",
+);
+
+assert(
+  canOverrideProduct(noProducts, null) === false && canOverrideProduct(noProducts, "admin") === false,
+  "a project declaring no products shows no new control, whatever the scope",
+);
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 
