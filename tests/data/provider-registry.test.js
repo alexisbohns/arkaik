@@ -250,7 +250,7 @@ async function main() {
     check("signed out, the local list is still returned", listed.length === 1);
   }
 
-  // --- Import always lands locally -----------------------------------------
+  // --- Import always lands locally, EXCEPT a seed-id bundle -------------------
   {
     const router = routing.createRoutingProvider({
       local: reg.localFake,
@@ -259,11 +259,24 @@ async function main() {
           throw new Error("import must not go to the account implicitly");
         },
       }),
+      seed: reg.seedFake,
       isRemoteAvailable: () => true,
     });
     resetCalls();
+    reg.resetSeedCalls();
     await router.importProject({ project: { id: "imported", title: "T" }, nodes: [], edges: [] });
     check("importProject goes to the local provider", calls.includes("importProject:imported"), calls.join(","));
+    check("...and not to the seed provider", reg.seedCalls.length === 0, reg.seedCalls.join(","));
+
+    resetCalls();
+    reg.resetSeedCalls();
+    await router.importProject({ project: { id: "arkaik-self-map", title: "T" }, nodes: [], edges: [] });
+    check(
+      "a seed-id import goes to the seed provider instead",
+      reg.seedCalls.includes("importProject:arkaik-self-map"),
+      reg.seedCalls.join(","),
+    );
+    check("...and never the local provider", calls.length === 0, calls.join(","));
   }
 
   // --- Availability is awaited, not sampled --------------------------------

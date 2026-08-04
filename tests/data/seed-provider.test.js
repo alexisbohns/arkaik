@@ -11,9 +11,12 @@
  * uses) EXCEPT nothing persists — all state lives in a closure over the
  * bundle `loadBundle()` returns, so a fresh `createSeedProvider` call (what a
  * page refresh amounts to, since it re-imports/re-evaluates the module state)
- * is pristine again. Two deliberate refusals: `archiveProject` (the public
- * project can't be "deleted") and `importProject` (unreachable — the routing
- * provider always sends imports to the local provider).
+ * is pristine again. One deliberate refusal (`archiveProject` — the public
+ * project can't be "deleted") and one write path that looks like a refusal
+ * but isn't (`importProject` — the raw-editor's save path for the sandbox,
+ * routed here by the routing provider whenever a bundle carries the reserved
+ * seed id; it replaces the in-memory bundle exactly like `saveProject`, and
+ * both preserve an existing journal when a bundle omits one).
  *
  * Uses the real shipped seed (seed/arkaik-self-map.json) as its fixture, so
  * these tests also pin its shape: 15 nodes / 19 edges / 20 journal events.
@@ -315,6 +318,19 @@ async function main() {
       mismatchedIdThrew = true;
     }
     check("saveProject with a mismatched project.id rejects", mismatchedIdThrew);
+
+    // A save that omits the journal must not erase the sandbox's history
+    // mid-session — mirrors the local provider's preserve-on-save intent.
+    const journalBeforeSave = await provider.getJournal(PROJECT_ID);
+    const bundleNoJournal = await provider.getProject(PROJECT_ID);
+    delete bundleNoJournal.journal;
+    await provider.saveProject(bundleNoJournal);
+    const journalAfterSave = await provider.getJournal(PROJECT_ID);
+    check(
+      "saveProject with a journal-less bundle preserves the existing journal",
+      journalAfterSave.length === journalBeforeSave.length,
+      `before ${journalBeforeSave.length}, after ${journalAfterSave.length}`,
+    );
   }
 
   // --- exportProject reflects current (edited) state --------------------------
@@ -326,7 +342,7 @@ async function main() {
     );
   }
 
-  // --- archiveProject / importProject reject -----------------------------------
+  // --- archiveProject rejects; importProject replaces in memory ---------------
   {
     let archiveThrew = false;
     try {
@@ -336,13 +352,46 @@ async function main() {
     }
     check("archiveProject rejects", archiveThrew);
 
-    let importThrew = false;
+    // importProject with a seed-id bundle is the raw-editor's save path,
+    // routed here by id — it replaces the in-memory sandbox, same as
+    // saveProject, and hands back the (cloned) stored project.
+    const exported = await provider.exportProject(PROJECT_ID);
+    const importBundle = {
+      ...exported,
+      project: { ...exported.project, description: "Edited via importProject in the sandbox." },
+    };
+    const returnedProject = await provider.importProject(importBundle);
+    check("importProject returns the imported project", returnedProject.id === PROJECT_ID);
+    const rereadAfterImport = await provider.getProject(PROJECT_ID);
+    check(
+      "importProject with a seed-id bundle replaces the in-memory sandbox",
+      rereadAfterImport.project.description === "Edited via importProject in the sandbox.",
+      rereadAfterImport.project.description,
+    );
+
+    // A raw edit that omits the journal must not erase the sandbox's history
+    // mid-session.
+    const journalBeforeImport = await provider.getJournal(PROJECT_ID);
+    const importBundleNoJournal = await provider.exportProject(PROJECT_ID);
+    delete importBundleNoJournal.journal;
+    await provider.importProject(importBundleNoJournal);
+    const journalAfterImport = await provider.getJournal(PROJECT_ID);
+    check(
+      "importProject with a journal-less bundle preserves the existing journal",
+      journalAfterImport.length === journalBeforeImport.length,
+      `before ${journalBeforeImport.length}, after ${journalAfterImport.length}`,
+    );
+
+    // importProject with a NON-seed id rejects — it is the sandbox's save
+    // path, not a general import mechanism.
+    let nonSeedImportThrew = false;
     try {
-      await provider.importProject(await provider.exportProject(PROJECT_ID));
+      const foreignBundle = await provider.exportProject(PROJECT_ID);
+      await provider.importProject({ ...foreignBundle, project: { ...foreignBundle.project, id: "some-other-project" } });
     } catch {
-      importThrew = true;
+      nonSeedImportThrew = true;
     }
-    check("importProject rejects", importThrew);
+    check("importProject with a non-seed id rejects", nonSeedImportThrew);
   }
 
   // --- unknown project id: reads empty, mutation rejects -----------------------

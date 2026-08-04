@@ -108,7 +108,7 @@ exports.arkaikSeedProvider = {
   deleteEdge: (p) => record("deleteEdge", p),
   applyMutations: (p) => record("applyMutations", p, { nodes: [], edges: [] }),
   exportProject: (id) => record("exportProject", id, {}),
-  importProject: () => Promise.reject(new Error("unsupported")),
+  importProject: (b) => record("importProject", b.project.id, { id: b.project.id, title: b.project.title }),
 };
 `;
 

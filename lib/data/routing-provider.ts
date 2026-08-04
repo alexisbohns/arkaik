@@ -98,12 +98,18 @@ export function createRoutingProvider(options: RoutingProviderOptions): DataProv
     exportProject: (id) => forProject(id).exportProject(id),
 
     /**
-     * Import always lands LOCALLY. "Where should this bundle live?" is a product
+     * Imports still land LOCALLY. "Where should this bundle live?" is a product
      * decision the user makes explicitly (via "Move to account"), not something
      * to infer from a dropped file — and importing locally is the behaviour that
-     * still works signed out.
+     * still works signed out. The one exception is a bundle carrying the
+     * reserved seed id: that is not a user picking a destination, it is the raw
+     * editor's save path for the public sandbox (`RawBundlePanel` pins the
+     * bundle's id to the current project before calling `importProject`), and it
+     * must replace the in-memory sandbox in place rather than squat the reserved
+     * id in this browser's IndexedDB.
      */
-    importProject: (bundle: ProjectBundle): Promise<Project> => local.importProject(bundle),
+    importProject: (bundle: ProjectBundle): Promise<Project> =>
+      seed && isSeedProjectId(bundle.project.id) ? seed.importProject(bundle) : local.importProject(bundle),
   } satisfies DataProvider as DataProvider;
 }
 

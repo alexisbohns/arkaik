@@ -14,14 +14,19 @@ import type { Node, ProjectBundle } from "./types";
  * journal derivation the local provider uses — that is the entire sandbox
  * mechanism: editors, hooks, and toasts behave exactly as on a real project,
  * nothing touches IndexedDB or the network, and a page refresh (fresh module
- * state) restores the pristine seed. Two deliberate refusals:
+ * state) restores the pristine seed. One deliberate refusal and one write path
+ * that looks like a refusal but isn't:
  *
  * - `archiveProject` — "delete" on the Settings page archives; an in-memory
  *   archive of the always-listed public project would just relist it on the
  *   next refresh while looking like a successful delete. The UI hides the
  *   affordance; this is the backstop.
- * - `importProject` — the routing provider always sends imports to the local
- *   provider, so this path is unreachable; rejecting keeps it honest.
+ * - `importProject` — NOT a refusal. The routing provider sends a bundle
+ *   carrying the reserved seed id here (the raw editor's save path for the
+ *   sandbox: `RawBundlePanel` pins the bundle to the current project id
+ *   before calling `importProject`), and any other id would never route here
+ *   at all. So this is just another way to replace the sandbox's in-memory
+ *   state — same shape as `saveProject`, guarded by the same id check.
  *
  * The pristine source is protected by cloning on init, and every read hands
  * out a clone so no caller can alias sandbox-internal state.
@@ -89,7 +94,11 @@ export function createSeedProvider(loadBundle: () => ProjectBundle): DataProvide
 
     async saveProject(next) {
       requireProject(next.project.id);
-      bundle = migrateBundle(structuredClone(next));
+      const incoming = migrateBundle(structuredClone(next));
+      // A save that omits the journal must not erase the sandbox's history
+      // mid-session — mirror the local provider's preserve-on-save intent.
+      if (incoming.journal === undefined) incoming.journal = ensure().journal;
+      bundle = incoming;
     },
 
     async archiveProject() {
@@ -155,8 +164,14 @@ export function createSeedProvider(loadBundle: () => ProjectBundle): DataProvide
       return structuredClone(ensure());
     },
 
-    async importProject() {
-      throw new Error("importProject is not supported on the seed provider");
+    async importProject(next) {
+      requireProject(next.project.id);
+      const incoming = migrateBundle(structuredClone(next));
+      // A raw edit that omits the journal must not erase the sandbox's history
+      // mid-session — mirror the local provider's preserve-on-save intent.
+      if (incoming.journal === undefined) incoming.journal = ensure().journal;
+      bundle = incoming;
+      return structuredClone(incoming.project);
     },
   };
 }
