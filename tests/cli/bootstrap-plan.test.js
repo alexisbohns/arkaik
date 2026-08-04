@@ -42,8 +42,13 @@ try {
   check("help lists corpus", help.stdout.includes("corpus"), help.stdout);
   check("help lists merge", help.stdout.includes("merge"), help.stdout);
 
+  const noArgs = runCli(["bootstrap"], dir);
+  check("bootstrap with no arguments exits 0", noArgs.status === 0, noArgs.stderr);
+  check("bootstrap with no arguments prints usage", noArgs.stdout.includes("Subcommands:"), noArgs.stdout);
+
   const unknown = runCli(["bootstrap", "nope"], dir);
   check("unknown subcommand exits 1", unknown.status === 1, String(unknown.status));
+  check("unknown subcommand error lands on stderr", unknown.stderr.includes("Unknown bootstrap subcommand"), unknown.stderr);
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

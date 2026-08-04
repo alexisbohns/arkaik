@@ -783,7 +783,7 @@ export function writeManifest(cwd: string, manifest: Manifest): void {
 }
 
 function unit(id: string, wave: WorkUnit["wave"], title: string, scope: string, slice: WorkUnit["slice"]): WorkUnit {
-  return { id, wave, title, scope, slice, fragment: `${FRAGMENTS_DIR}/${id}.json`.split("\\").join("/"), status: "pending" };
+  return { id, wave, title, scope, slice, fragment: `${FRAGMENTS_DIR}/${id}.json`, status: "pending" };
 }
 
 const RECON_SCOPE =
@@ -1973,7 +1973,7 @@ export function renderIssues(manifest: Manifest): RenderedIssue[] {
         "",
         "The `arkaik-bootstrap` skill defines the fragment contract and the",
         "judgment rules for this wave. When the fragment is written, set this",
-        `unit's status to \`done\` in \`${MANIFEST_FILE.split("\\").join("/")}\`.`,
+        `unit's status to \`done\` in \`${MANIFEST_FILE}\`.`,
       ].join("\n"),
     }));
 }
