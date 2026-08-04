@@ -1861,9 +1861,21 @@ git commit -m "fix(cli): bootstrap slice — half-open era windows, Lab Note tru
 
 `makeEvent` mints a random ULID, which would make merge output differ run to run. Bootstrap constructs history, so its event ids must be a pure function of what the event *is*.
 
+**Implementation note (post-review, six probes, all with real measurements — not accepted on the strength of reading):** the reference code below was written from memory and never run; per this plan's own running tally, that has meant roughly two real defects per task so far. All six were checked empirically, not just read:
+
+1. **Entropy really was only 32 bits, not 80 — measured, not assumed.** The reference derived its whole 16-char tail from one 32-bit FNV-1a hash of `key`, then repeatedly perturbed that single value. Perturbing a value never adds information to it: the entire tail is a deterministic function of 32 bits, so the real collision space is 2^32, not 32^16. Measured directly: among 1,000,000 sequential synthetic keys sharing one `ts`, the reference design produced 8 real id collisions. Against the self-map seed's own real journal (791 events, max 15 sharing one `ts`), the risk at that scale is negligible either way — but the fix costs nothing, so it shipped rather than being left as "probably fine today." **Fixed:** each of the 16 output symbols is now its own independent hash of `key` (salted by position) instead of one value perturbed 16 times.
+2. **The `|| 0x811c9dc5` zero-state guard was a real, reachable bug, not a theoretical one.** A 32-bit mixing step can legitimately land on exactly 0; when it did, the reference substituted the FNV offset basis, and two different keys hitting the zero state at the same loop iteration would converge to an identical tail from then on — the substitution erases whatever made them different. **Fixed by construction, not by a better guard:** the new design has no rolling accumulator at all, so there is no absorbing state to protect against. (A hash landing on a multiple of 32 now just selects symbol `'0'` — an ordinary output, not a special case.)
+3. **A first "16 independent hashes" attempt was tried and measured, and it was also wrong.** `fnv1a(`${i}:${key}`) % 32` per symbol — independent per symbol, but still broken: it produced real collisions between near-identical keys (e.g. differing only in a trailing sequence number) at every scale tested, because FNV-1a's low bits are known to mix poorly for short, similar inputs. **Fixed:** each per-symbol hash is run through Murmur3's `fmix32` finalizer before extracting bits. Zero collisions among 1,000,000 sequential keys in testing, versus several thousand for the un-finalized version at the same scale.
+4. **Coexistence with real ULIDs was verified by direct comparison, not by reading.** `tests/cli/bootstrap-event-id.test.js` loads the actual `ulid()` from `@arkaik/schema` (via `tests/schema/load-schema.js`, the same loader `tests/schema/emit.test.js` uses) and compares its time prefix against this module's `encodeTime` byte-for-byte across several timestamps. They match — same alphabet, same length, same mod/divide loop — so a brownfield journal's real ULIDs and this module's synthetic ids sort correctly together.
+5. **Unparseable/missing `ts` now throws instead of silently encoding epoch 0.** The reference did `Number.isNaN(ms) ? 0 : ms` — an id that sorts before every real event, with no signal anything was wrong. Given how many of this run's real defects have been exactly this shape, `deterministicEventId` now throws, naming the offending `ts`, when `Date.parse` can't read it. **This changes a downstream assumption Task 6 needs to know about — see Task 6's own notes below.**
+6. **The id does not need to be a valid ULID — `journal-events.ts`'s envelope is `id: z.string()`, no format check, and nothing checks id uniqueness either.** The properties that actually matter are determinism, sortability against real ULIDs, and collision resistance (points 1-4). The 26-char ULID shape ships anyway — it's free, it matches what a brownfield journal's real ids already look like, and `bootstrap merge`'s own determinism test asserts it — but it's a courtesy, not the contract.
+
+A seventh finding is about the *caller*, not this file, and is carried to Task 6 rather than fixed here: **key uniqueness is out of scope for `deterministicEventId` and cannot be fixed by better hashing.** `deterministicEventId(ts, key)` guarantees identical output for identical input — including when a caller hands it two semantically different events that happen to share a key. Task 6's reference `merge.ts` below has real gaps of exactly this kind; see Task 6's updated notes.
+
 **Files:**
 - Create: `packages/cli/src/lib/bootstrap/event-id.ts`
-- Test: `tests/cli/bootstrap-merge.test.js`
+- Test (this task, not Task 6 — see step 4 below): `tests/cli/bootstrap-event-id.test.js`
+- Test: `tests/cli/bootstrap-merge.test.js` (unaffected by this task; written by Task 6)
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1980,77 +1992,112 @@ process.exit(failures === 0 ? 0 : 1);
 Run: `node tests/cli/bootstrap-merge.test.js`
 Expected: FAIL — "Unknown bootstrap subcommand: merge".
 
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/cli/bootstrap-event-id.test.js` — a direct-require unit test following the pattern `tests/cli/bootstrap-era-window.test.js` and `tests/cli/bootstrap-body-budget.test.js` established (Node's native TypeScript support strips types at load time, so the `.ts` source loads with no CLI build). Cover: determinism (same `(ts, key)` always yields the same id); different keys at the same `ts` yield different ids while sharing the same time prefix; the same key at different timestamps yields a different id with an unchanged suffix; ULID shape; an unparseable/missing/undefined `ts` throws, naming the offending value; a direct byte-for-byte comparison of `encodeTime` against the REAL `ulid()` from `@arkaik/schema` (load it via `tests/schema/load-schema.js`, the loader `tests/schema/emit.test.js` already uses); lexicographic sortability across digit-rollover boundaries; a 20,000-key collision-resistance stress test at one shared `ts` (two orders of magnitude past the self-map seed's own real max fan-out of 15); and a real-data check against `seed/arkaik-self-map.json`'s own journal (791 events) — re-derive each event's key using the two shapes Task 6's `merge` actually uses (`node.created:<id>` and the wave-3 `${type}:${node_id|deliverable_id|version}:${ts}` form) and assert zero id collisions across the whole file.
+
+- [ ] **Step 2: Run it to verify it fails**
+
+Run: `node tests/cli/bootstrap-event-id.test.js`
+Expected: FAIL — `Cannot find module '.../event-id.ts'`.
+
 - [ ] **Step 3: Write `event-id.ts`**
 
-Create `packages/cli/src/lib/bootstrap/event-id.ts`:
+Create `packages/cli/src/lib/bootstrap/event-id.ts`. The shape, informed by the six probes above:
 
 ```ts
-/**
- * Deterministic, ULID-shaped event ids.
- *
- * `@arkaik/schema`'s `ulid()` mints a random component, which is right for live
- * writes and wrong here: bootstrap CONSTRUCTS history, and re-running a merge
- * over unchanged fragments must produce a byte-identical journal. So the id is
- * a pure function of (timestamp, key): the standard 10-character Crockford
- * base32 time prefix, then 16 characters derived from a hash of the key.
- *
- * The envelope only requires a string (`id: z.string()`), but keeping the ULID
- * shape preserves the property everything downstream assumes — ids sort in
- * time order.
- */
-const ENCODING = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-const TIME_LEN = 10;
-const RANDOM_LEN = 16;
+const ENCODING = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"; // same alphabet as @arkaik/schema's ulid()
+export const TIME_LEN = 10; // 48 bits of ms timestamp, same width as ulid()
+export const RANDOM_LEN = 16; // same width as ulid()'s random component; here every bit comes from `key`
 
-function encodeTime(ms: number): string {
-  let remaining = Math.max(0, Math.floor(ms));
-  let out = "";
-  for (let i = 0; i < TIME_LEN; i += 1) {
-    out = ENCODING[remaining % 32] + out;
-    remaining = Math.floor(remaining / 32);
-  }
-  return out;
-}
+const FNV_OFFSET = 0x811c9dc5;
+const FNV_PRIME = 0x01000193;
 
 function fnv1a(input: string): number {
-  let h = 0x811c9dc5;
+  let h = FNV_OFFSET;
   for (let i = 0; i < input.length; i += 1) {
     h ^= input.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
+    h = Math.imul(h, FNV_PRIME);
   }
   return h >>> 0;
 }
 
+// Murmur3's fmix32 finalizer — fixes FNV-1a's weak low-bit avalanche (probe 3).
+function fmix32(hIn: number): number {
+  let h = hIn >>> 0;
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b) >>> 0;
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35) >>> 0;
+  h ^= h >>> 16;
+  return h >>> 0;
+}
+
+export function encodeTime(ms: number): string {
+  let remaining = Math.max(0, Math.floor(ms));
+  let out = "";
+  for (let i = 0; i < TIME_LEN; i += 1) {
+    const digit = remaining % 32;
+    out = ENCODING[digit] + out;
+    remaining = (remaining - digit) / 32;
+  }
+  return out;
+}
+
+// Each symbol is its OWN independent hash of `key` (salted by position) —
+// not one accumulator perturbed 16 times (probe 1) — with no rolling state
+// left to get stuck in a zero absorbing state (probe 2).
+function keySuffix(key: string): string {
+  let out = "";
+  for (let i = 0; i < RANDOM_LEN; i += 1) {
+    const h = fmix32(fnv1a(`${i}:${key}`));
+    out += ENCODING[h % 32];
+  }
+  return out;
+}
+
 /**
- * A stable id for the event identified by `key` at `ts`. Two different keys at
- * the same timestamp get different ids; the same pair always gets the same id.
+ * A stable id for the event identified by `key` at `ts`. `ts` must be a
+ * parseable timestamp — an unparseable or missing one throws rather than
+ * silently encoding epoch 0 (probe 4). `key` must uniquely identify the event
+ * being minted; that is the CALLER's responsibility, not this function's
+ * (probe 6 — see Task 6's notes).
  */
 export function deterministicEventId(ts: string, key: string): string {
   const ms = Date.parse(ts);
-  let h = fnv1a(key);
-  let random = "";
-  for (let i = 0; i < RANDOM_LEN; i += 1) {
-    random += ENCODING[h % 32];
-    h = (Math.imul(h ^ (h >>> 13), 0x01000193) >>> 0) || 0x811c9dc5;
+  if (Number.isNaN(ms)) {
+    throw new Error(`deterministicEventId: ts is not a parseable timestamp: ${JSON.stringify(ts)}`);
   }
-  return encodeTime(Number.isNaN(ms) ? 0 : ms) + random;
+  return encodeTime(ms) + keySuffix(key);
 }
 ```
 
-- [ ] **Step 4: Run the id test in isolation**
+(The shipped file's own comments carry the full probe-by-probe rationale — read it directly rather than duplicating it here a third time.)
 
-There is no separate unit test for this file; it is proven by the determinism checks in Task 6. Move on — the next task makes these checks pass.
+- [ ] **Step 4: Run the test to verify it passes**
+
+Run: `node tests/cli/bootstrap-event-id.test.js`
+Expected: PASS on all checks, including the real-data check against the self-map seed.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/cli/src/lib/bootstrap/event-id.ts tests/cli/bootstrap-merge.test.js
-git commit -m "feat(cli): deterministic ULID-shaped event ids for bootstrap merge"
+git add packages/cli/src/lib/bootstrap/event-id.ts tests/cli/bootstrap-event-id.test.js
+git commit -m "feat(cli): deterministic event ids for bootstrap merge"
 ```
 
 ---
 
 ### Task 6: `bootstrap merge` — fragments, nodes, edges, journal
+
+**Carried forward from Task 5's review — two things to fix or explicitly accept before shipping this, don't silently inherit them:**
+
+1. **`deterministicEventId` now throws on an unparseable/missing `ts`** instead of silently encoding epoch 0 (Task 5, probe 4). The reference `mergeFragments` below calls it unguarded in three places (the `node.created` synthesis in pass 1, and the wave-3 `events` loop in pass 3) — a single malformed fragment (an agent-authored `created_ts`, or a story event's `ts`, that doesn't parse) will now throw an uncaught exception and crash the whole merge instead of surfacing as a `MergeProblem` naming the offending unit, which is how every other per-fragment defect in this file is reported. Wrap both call sites in a `try`/`catch` and push a `MergeProblem` (`{ unit: unit.id, message: ... }`) naming the unit and the bad `ts`, matching the existing error-collection style, rather than letting the exception escape.
+2. **The wave-3 event key (`${type}:${node_id ?? deliverable_id ?? version ?? ""}:${ts}`) is not actually unique per event — confirmed, not just suspected.** `deterministicEventId` guarantees the same id for the same key; it cannot make a non-unique key produce distinct ids, and this one has real gaps:
+   - `idea.proposed` and `request.filed` (`journal-events.ts`) carry `node_id` as fully **optional**, with no `deliverable_id`/`version` field at all — an idea or request with no `node_id` collapses the key to `` `${type}::${ts}` ``, so **every** such event on the same day collides, not as a rare hash accident but by construction.
+   - `release.tagged` carries an optional `platform`, which the key omits — two platform-scoped releases of the same `version` tagged the same day (a simultaneous ios/android ship, which is exactly the kind of release this repo's own platform model exists to support) collide.
+   - `node.status_changed` and `decision.status_changed` key on `node_id` + `ts` alone — the wave-3 "status arcs" unit (Task 13's skill spec) explicitly plans **1-3 status events per node**, and if two of a node's transitions land on the same calendar day (very plausible when transitions are reconstructed from PR merge dates, which have at most day granularity), they collide.
+   None of this is fixable by better hashing — it needs a key that actually distinguishes the events. Before shipping this task, strengthen the wave-3 key to include enough of each event's own distinguishing payload (at minimum: `platform` when present, and `from`/`to` for status-change events) that two genuinely different events can no longer produce the same key. Add a regression test with two same-day, same-node `node.status_changed` events (different `from`/`to`) and confirm they land in the journal with two distinct ids — this exact shape is not covered by any existing fixture.
 
 **Files:**
 - Create: `packages/cli/src/lib/bootstrap/fragments.ts`
@@ -2917,12 +2964,12 @@ Expected: PASS on all eight checks. If `validate` fails, read its findings — t
 In `package.json`, add after the `test:cli` entry:
 
 ```json
-    "test:bootstrap": "node tests/cli/bootstrap-era-window.test.js && node tests/cli/bootstrap-body-budget.test.js && npm run build -w arkaik && node tests/cli/bootstrap-corpus.test.js && node tests/cli/bootstrap-plan.test.js && node tests/cli/bootstrap-slice.test.js && node tests/cli/bootstrap-merge.test.js && node tests/cli/bootstrap-e2e.test.js",
+    "test:bootstrap": "node tests/cli/bootstrap-era-window.test.js && node tests/cli/bootstrap-body-budget.test.js && node tests/cli/bootstrap-event-id.test.js && npm run build -w arkaik && node tests/cli/bootstrap-corpus.test.js && node tests/cli/bootstrap-plan.test.js && node tests/cli/bootstrap-slice.test.js && node tests/cli/bootstrap-merge.test.js && node tests/cli/bootstrap-e2e.test.js",
 ```
 
-(`bootstrap-era-window.test.js` and `bootstrap-body-budget.test.js` require their `.ts` source directly — Node's native TypeScript support strips types at load time — so they don't need the CLI built first; listed before the `npm run build` step for that reason, though order doesn't otherwise matter.)
+(`bootstrap-era-window.test.js`, `bootstrap-body-budget.test.js`, and `bootstrap-event-id.test.js` all require their `.ts` source directly — Node's native TypeScript support strips types at load time — so none of the three need the CLI built first; listed before the `npm run build` step for that reason, though order doesn't otherwise matter.)
 
-(Task 4 added `tests/cli/bootstrap-slice.test.js` as its own file rather than extending `bootstrap-plan.test.js` — see Task 4's own notes for why. Make sure it's in this list.)
+(Task 4 added `tests/cli/bootstrap-slice.test.js` as its own file rather than extending `bootstrap-plan.test.js` — see Task 4's own notes for why. Task 5 added `tests/cli/bootstrap-event-id.test.js` the same way, for the same reason: a direct-require test needs no fixture round trip at all. Make sure both are in this list.)
 
 - [ ] **Step 4: Wire CI**
 
@@ -3704,7 +3751,7 @@ Expected: PASS on all ten checks.
 In `package.json`, extend the bootstrap script:
 
 ```json
-    "test:bootstrap": "node tests/cli/bootstrap-era-window.test.js && node tests/cli/bootstrap-body-budget.test.js && npm run build -w arkaik && node tests/cli/bootstrap-corpus.test.js && node tests/cli/bootstrap-plan.test.js && node tests/cli/bootstrap-slice.test.js && node tests/cli/bootstrap-merge.test.js && node tests/cli/bootstrap-e2e.test.js && node tests/cli/bootstrap-restore.test.js",
+    "test:bootstrap": "node tests/cli/bootstrap-era-window.test.js && node tests/cli/bootstrap-body-budget.test.js && node tests/cli/bootstrap-event-id.test.js && npm run build -w arkaik && node tests/cli/bootstrap-corpus.test.js && node tests/cli/bootstrap-plan.test.js && node tests/cli/bootstrap-slice.test.js && node tests/cli/bootstrap-merge.test.js && node tests/cli/bootstrap-e2e.test.js && node tests/cli/bootstrap-restore.test.js",
 ```
 
 ```bash
