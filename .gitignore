@@ -69,3 +69,6 @@ next-env.d.ts
 
 # superpowers brainstorm sessions
 /.superpowers/
+
+# git worktrees for isolated feature work
+/.worktrees/
