@@ -57,7 +57,10 @@ const SURFACE_RULES: ReadonlyArray<{ test: RegExp; kind: CorpusSurface["kind"] }
   { test: /(^|\/)components\/[^/]+\.[tj]sx?$/, kind: "component" },
 ];
 
-/** Raw `gh` rows → normalized `CorpusPr`s, oldest first. */
+/**
+ * Raw `gh` rows → normalized `CorpusPr`s, sorted oldest merged first by merge
+ * date (`number` only breaks ties) — see the sort below for why.
+ */
 export function normalizePrs(raw: unknown): CorpusPr[] {
   if (!Array.isArray(raw)) return [];
   const prs: CorpusPr[] = [];
@@ -83,7 +86,18 @@ export function normalizePrs(raw: unknown): CorpusPr[] {
       has_lab_note: /^##\s+Lab Note/m.test(body),
     });
   }
-  return prs.sort((a, b) => a.number - b.number);
+  return prs.sort((a, b) => {
+    // Merge date, not number: PR #50 can merge after #60, and the corpus
+    // exists to reconstruct a chronological narrative. `number` only breaks
+    // ties (same-second merges, or the --from-git fallback where a repo with
+    // no GitHub remote yields positional numbers).
+    const at = Date.parse(a.merged_at);
+    const bt = Date.parse(b.merged_at);
+    const av = Number.isNaN(at) ? Infinity : at;
+    const bv = Number.isNaN(bt) ? Infinity : bt;
+    if (av !== bv) return av - bv;
+    return a.number - b.number;
+  });
 }
 
 /** Run `gh pr list` for every merged PR. Throws with gh's own stderr on failure. */

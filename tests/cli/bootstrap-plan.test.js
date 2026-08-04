@@ -91,6 +91,32 @@ try {
   check("lab note detected", pr1.has_lab_note === true, JSON.stringify(pr1.has_lab_note));
   check("chore PR has no lab note", JSON.parse(prLines[1]).has_lab_note === false, prLines[1]);
 
+  // --- regression: merge date orders the corpus, not PR number ---
+  // PR #60 merged before #50 — review latency and long-lived branches make
+  // this routine, not exotic. Sorting by number alone (the original bug,
+  // caught on the --from-git path but present on the gh path too) would put
+  // #50 first; merge date must win.
+  const orderDir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-order-"));
+  try {
+    mkdirSync(path.join(orderDir, ".git"), { recursive: true });
+    const disagreeingPayload = [
+      { number: 60, title: "PR 60, merged first", body: "", mergedAt: "2026-01-01T00:00:00Z", labels: [], files: [] },
+      { number: 50, title: "PR 50, merged second", body: "", mergedAt: "2026-01-05T00:00:00Z", labels: [], files: [] },
+    ];
+    const disagreeingPath = path.join(orderDir, "gh.json");
+    writeFileSync(disagreeingPath, JSON.stringify(disagreeingPayload));
+    const orderRun = runCli(["bootstrap", "corpus", "--from-json", disagreeingPath], orderDir);
+    check("merge-date-vs-number corpus exits 0", orderRun.status === 0, orderRun.stderr);
+    const orderedLines = readFileSync(path.join(orderDir, ".arkaik", "corpus", "prs.jsonl"), "utf8").trim().split("\n");
+    check(
+      "merge date wins over number when they disagree",
+      JSON.parse(orderedLines[0]).number === 60 && JSON.parse(orderedLines[1]).number === 50,
+      orderedLines.join("\n"),
+    );
+  } finally {
+    rmSync(orderDir, { recursive: true, force: true });
+  }
+
   const docs = JSON.parse(readFileSync(path.join(dir, ".arkaik", "corpus", "docs.json"), "utf8"));
   check("docs manifest found vision.md", docs.some((d) => d.path === "docs/vision.md"), JSON.stringify(docs));
   check("docs manifest carries the heading", docs.some((d) => d.title === "Vision"), JSON.stringify(docs));
