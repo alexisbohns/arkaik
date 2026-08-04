@@ -84,6 +84,57 @@
  *    `arkaik validate` but fail `parseBundle`'s stricter shape check. `[]` is
  *    exactly the right value for a platform-agnostic species, so defaulting
  *    it closes that parity gap for free.
+ * 7. **Same-`ts` order-sensitive events for one node are now refused, not
+ *    written with an arbitrary order.** Found by a coordinator review of this
+ *    file after (4)/(3) above shipped, and worse than theoretical: `update`/
+ *    `retire` share ONE `fallbackTs` across a whole run when a fragment omits
+ *    `changed_ts`, so two status changes to one node in a single run get
+ *    IDENTICAL `ts`; separately, item 3's own regression fixture (two
+ *    `node.status_changed` events for one node, same `ts`, different
+ *    `from`/`to`) produces distinct ids — correct per item 3 — but
+ *    `sortEvents` below ties-breaks same-`ts` events by that hash-derived
+ *    `id`, which bears NO relationship to which transition actually happened
+ *    first. It doesn't matter what order this file writes to disk: on every
+ *    READ, `crossCheckJournal` re-derives order independently via
+ *    `@arkaik/schema`'s `orderEvents`, using the identical (ts, id) rule —
+ *    so whether the snapshot ends up agreeing with the journal's "last"
+ *    status came down to whether a hash happened to agree with causality.
+ *    Reproduced: a node `idea -> backlog -> development` via two `update`
+ *    patches with no `changed_ts` merges cleanly, then `arkaik validate`
+ *    fails `journal-status-mismatch` depending on hash luck. **Fixed, by
+ *    refusing rather than guessing:** {@link isOrderSensitive} identifies the
+ *    two event types `crossCheckJournal` actually orders by "last one wins"
+ *    per node (`node.status_changed` when not platform-scoped, and
+ *    `decision.status_changed`); {@link pushEvent} tracks the one already
+ *    seen for each `(type, node_id, ts)` and, on a SECOND, genuinely
+ *    different one (a different id — i.e. a different from/to) at the exact
+ *    same instant, raises a `MergeProblem` naming the node, both
+ *    transitions, and both units, instead of writing an order nobody chose.
+ *    A resort inside this file could not fix this even if it wanted to,
+ *    since `orderEvents` re-derives order on every read regardless of what
+ *    order the file was written in — the real fix is distinct timestamps,
+ *    and the corpus already carries full-instant merge timestamps for a
+ *    story agent to use. The identical event twice (same id — an idempotent
+ *    re-run) is not a conflict; it just doesn't advance what's "seen".
+ * 8. **`mergeJournal`'s "base wins" precedence is correct but was silently
+ *    wrong-ergonomic on genuine divergence.** Base winning on an id collision
+ *    is the right call — the append-only-journal invariant, and because
+ *    "fresh wins" would let a re-run silently clobber a deliberate,
+ *    out-of-band correction to a committed journal, which is worse. But it
+ *    was entirely silent even when the fresh event's PAYLOAD actually
+ *    differs from what's committed (e.g. a fragment corrects a
+ *    `deliverable.shipped`'s `summary`, unrelated to `eventKey`, and
+ *    re-runs): `+0 events`, journal unchanged, the correction discarded with
+ *    output indistinguishable from "nothing changed." **Fixed:** when a
+ *    fresh event shares an `id` with a base event but the two payloads
+ *    differ (compared key-order-independently via {@link canonicalJson}),
+ *    `mergeJournal` reports the collision and `mergeFragments` raises a
+ *    `MergeProblem` for it — the same treatment already given to a node-id
+ *    collision with differing titles. Base still wins (nothing is
+ *    overwritten silently), but the run refuses instead of hiding the
+ *    divergence; correcting committed history is a deliberate, out-of-band
+ *    act (e.g. `arkaik log`), not something `merge` does implicitly.
+ *    Identical payloads (the ordinary idempotent re-run) stay a silent no-op.
  *
  * Loading the base bundle and its journal (including the fix for a base
  * bundle that happens to carry an EMBEDDED `journal[]` rather than only a
@@ -131,6 +182,36 @@ function stringify(value: unknown): string {
 }
 
 /**
+ * Key-order-independent JSON serialization, for comparing two event objects
+ * by VALUE rather than by their accidental property insertion order (a base
+ * event read back from disk and a freshly-constructed one can differ only in
+ * key order and still be "the same event"). Used by {@link mergeJournal} to
+ * tell a genuine payload divergence apart from a harmless re-run.
+ */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    const keys = Object.keys(value as AnyRecord).sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJson((value as AnyRecord)[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+/**
+ * Whether `ev` participates in `crossCheckJournal`'s "last transition wins"
+ * comparison against the snapshot — the only place where the READ-BACK ORDER
+ * of two same-node events (not just their presence) actually matters. A
+ * platform-scoped `node.status_changed` (`platform` present) moves a
+ * per-platform view status, which nothing in `crossCheckJournal` cross-checks
+ * against the snapshot today, so it's excluded — see item 7 in the file doc.
+ */
+function isOrderSensitive(ev: AnyRecord): boolean {
+  if (ev.type === "decision.status_changed") return true;
+  if (ev.type === "node.status_changed") return ev.platform === undefined;
+  return false;
+}
+
+/**
  * A key that actually distinguishes two events sharing a `type` and `ts` —
  * see item 3 in the file doc above. Every field below is folded in WHEN
  * PRESENT on `raw`; two events differing in any of them get different keys,
@@ -160,6 +241,12 @@ function eventKey(raw: AnyRecord, ts: string): string {
   return parts.join("|");
 }
 
+export interface JournalConflict {
+  id: string;
+  base: AnyRecord;
+  fresh: AnyRecord;
+}
+
 /**
  * Merge `base` (the journal already on disk / embedded in the base bundle)
  * with `fresh` (this run's newly-derived events), de-duplicating by `id`.
@@ -167,25 +254,45 @@ function eventKey(raw: AnyRecord, ts: string): string {
  * The whole point of `deterministicEventId` is that the SAME logical event
  * gets the SAME id on every run — which means a naive concat-then-sort (the
  * reference's approach) doubles the journal every time `merge` re-runs over
- * unchanged story fragments. `base`'s copy wins on a collision (it's the one
- * already committed); `added` counts only ids that were not already present,
- * so `counts.eventsAdded` reports what genuinely changed, not what got
- * re-derived and thrown away.
+ * unchanged story fragments. `base`'s copy always wins on an id collision
+ * (it's the one already committed — the append-only-journal invariant, and
+ * "fresh wins" would let a re-run silently clobber a deliberate, out-of-band
+ * edit to committed history, which is worse); `added` counts only ids that
+ * were not already present, so `counts.eventsAdded` reports what genuinely
+ * changed, not what got re-derived and thrown away.
+ *
+ * `conflicts` names every id where the fresh payload actually DIFFERS from
+ * what's committed (item 8 in the file doc) — base still wins, nothing is
+ * silently overwritten, but the caller turns each one into a `MergeProblem`
+ * rather than letting a real divergence disappear as an indistinguishable
+ * "+0 events". Compared via {@link canonicalJson} so two representations of
+ * the same value (different key order) don't false-positive.
  */
-function mergeJournal(base: readonly AnyRecord[], fresh: readonly AnyRecord[]): { journal: AnyRecord[]; added: number } {
+function mergeJournal(
+  base: readonly AnyRecord[],
+  fresh: readonly AnyRecord[],
+): { journal: AnyRecord[]; added: number; conflicts: JournalConflict[] } {
   const byId = new Map<string, AnyRecord>();
   for (const ev of base) {
     const id = typeof ev.id === "string" ? ev.id : undefined;
     if (id) byId.set(id, ev);
   }
   let added = 0;
+  const conflicts: JournalConflict[] = [];
   for (const ev of fresh) {
     const id = typeof ev.id === "string" ? ev.id : undefined;
-    if (!id || byId.has(id)) continue;
+    if (!id) continue;
+    const existing = byId.get(id);
+    if (existing) {
+      if (canonicalJson(existing) !== canonicalJson(ev)) {
+        conflicts.push({ id, base: existing, fresh: ev });
+      }
+      continue;
+    }
     byId.set(id, ev);
     added += 1;
   }
-  return { journal: sortEvents([...byId.values()]), added };
+  return { journal: sortEvents([...byId.values()]), added, conflicts };
 }
 
 export interface MergeInput {
@@ -221,6 +328,57 @@ export function mergeFragments(input: MergeInput): MergeResult {
   const newEvents: AnyRecord[] = [];
   const counts = { nodesAdded: 0, nodesUpdated: 0, nodesRetired: 0, edgesAdded: 0, eventsAdded: 0 };
 
+  // Item 7: tracks, per (type, node_id, ts), the one order-sensitive event
+  // already seen — seeded from the base journal too, so a fresh event
+  // colliding with committed history is caught, not just fresh-vs-fresh
+  // within this run. Item 8: which unit produced each fresh event's id, so a
+  // payload-divergence conflict (surfaced after mergeJournal runs, below) can
+  // be attributed to the unit that produced it.
+  const orderSensitiveSeen = new Map<string, { id: string; unit: string; from: unknown; to: unknown }>();
+  for (const ev of input.baseJournal) {
+    if (!isOrderSensitive(ev)) continue;
+    const key = `${String(ev.type)}:${String(ev.node_id ?? "")}:${String(ev.ts ?? "")}`;
+    if (!orderSensitiveSeen.has(key)) {
+      orderSensitiveSeen.set(key, { id: String(ev.id ?? ""), unit: "(already in the journal)", from: ev.from, to: ev.to });
+    }
+  }
+  const eventUnit = new Map<string, string>();
+
+  /**
+   * The single path every new event reaches `newEvents` through. Order-
+   * sensitive events (item 7) are checked against everything already seen —
+   * base history and earlier pushes in this same run alike — before being
+   * accepted; a genuine same-(type, node_id, ts) conflict is refused with a
+   * `MergeProblem` instead of being written with an arbitrary tie-break
+   * order, because `orderEvents` re-derives that order on every future read
+   * regardless of what this file chose to write.
+   */
+  const pushEvent = (unitId: string, ev: AnyRecord): void => {
+    if (isOrderSensitive(ev)) {
+      const nodeId = String(ev.node_id ?? "");
+      const key = `${String(ev.type)}:${nodeId}:${String(ev.ts ?? "")}`;
+      const existing = orderSensitiveSeen.get(key);
+      if (existing && existing.id !== String(ev.id)) {
+        errors.push({
+          unit: unitId,
+          message:
+            `two \`${String(ev.type)}\` events for node \`${nodeId}\` land at the identical ts ${String(ev.ts)} — ` +
+            `${JSON.stringify(existing.from)} -> ${JSON.stringify(existing.to)} (from ${existing.unit}) and ` +
+            `${JSON.stringify(ev.from)} -> ${JSON.stringify(ev.to)} (from ${unitId}). Read-back order between ` +
+            "events sharing one ts is not guaranteed to match write order (orderEvents ties-break on a hash-" +
+            "derived id, not causality), so one of these could silently become the \"last\" status. Give one of " +
+            "them a distinct timestamp (`update`/`retire`: `changed_ts`; wave-3 `events`: `ts`) and re-run.",
+        });
+        return;
+      }
+      if (!existing) {
+        orderSensitiveSeen.set(key, { id: String(ev.id), unit: unitId, from: ev.from, to: ev.to });
+      }
+    }
+    eventUnit.set(String(ev.id), unitId);
+    newEvents.push(ev);
+  };
+
   const mintEvent = (
     unitId: string,
     ts: string,
@@ -229,7 +387,7 @@ export function mergeFragments(input: MergeInput): MergeResult {
   ): void => {
     try {
       const id = deterministicEventId(ts, eventKey(payload, ts));
-      newEvents.push({ id, ts, actor: "bootstrap", ...payload });
+      pushEvent(unitId, { id, ts, actor: "bootstrap", ...payload });
     } catch (err) {
       errors.push({ unit: unitId, message: `${onFail}: ${err instanceof Error ? err.message : String(err)}` });
     }
@@ -384,12 +542,12 @@ export function mergeFragments(input: MergeInput): MergeResult {
         continue;
       }
       if (typeof raw.id === "string" && raw.id) {
-        newEvents.push({ ...raw, id: raw.id, ts, type });
+        pushEvent(unit.id, { ...raw, id: raw.id, ts, type });
         continue;
       }
       try {
         const id = deterministicEventId(ts, eventKey(raw, ts));
-        newEvents.push({ ...raw, id, ts, type });
+        pushEvent(unit.id, { ...raw, id, ts, type });
       } catch (err) {
         errors.push({ unit: unit.id, message: `cannot mint an id for a \`${type}\` event: ${err instanceof Error ? err.message : String(err)}` });
       }
@@ -399,8 +557,23 @@ export function mergeFragments(input: MergeInput): MergeResult {
   // Existing history is preserved verbatim (base's copy wins on an id
   // collision, e.g. a re-run); new events are merged in and the whole file
   // is written in ts order. Nothing is ever rewritten or dropped.
-  const { journal, added } = mergeJournal(input.baseJournal, newEvents);
+  const { journal, added, conflicts } = mergeJournal(input.baseJournal, newEvents);
   counts.eventsAdded = added;
+
+  // Item 8: a fresh event sharing an id with a committed one, but carrying
+  // different content, is a real divergence — base still wins (nothing is
+  // silently overwritten), but the run refuses rather than making that
+  // divergence indistinguishable from "nothing changed".
+  for (const conflict of conflicts) {
+    errors.push({
+      unit: eventUnit.get(conflict.id) ?? "(unknown unit)",
+      message:
+        `event \`${conflict.id}\` already exists in the journal with different content — the committed copy ` +
+        `always wins, but this looks like a real correction, not a harmless re-run. Committed: ` +
+        `${JSON.stringify(conflict.base)}. Freshly derived: ${JSON.stringify(conflict.fresh)}. merge never ` +
+        "rewrites committed history — correct the committed event by hand (or via `arkaik log`) if it's wrong.",
+    });
+  }
 
   const bundle: AnyRecord = {
     ...input.base,

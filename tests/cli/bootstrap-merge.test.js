@@ -11,6 +11,18 @@
  * forward fixes and the seven review probes the task brief called out, plus
  * the minimal collision/reconcile checks needed to trust this file's own
  * design decisions. It does not try to be Task 7's test suite.
+ *
+ * **Every block that produces a bundle runs `arkaik validate` on it and
+ * asserts clean.** This is not incidental: a coordinator review found that
+ * this file's own carry-forward-3 fixture (two `node.status_changed` events
+ * for one node at the identical `ts`) merged "cleanly" by this suite's own
+ * checks while producing a bundle that failed `arkaik validate` — because
+ * that fixture asserted distinct ids and exit 0, but never actually ran
+ * validate. Same-`ts` order-sensitive events for one node are a real defect
+ * class (merge.ts's file doc, item 7), not a hypothetical; every block below
+ * that writes a bundle now proves it all the way through, and the ones that
+ * don't (an expected merge failure, or `--dry-run`, which writes nothing) are
+ * the only exceptions, each noted at its own call site.
  */
 
 const { spawnSync } = require("child_process");
@@ -103,6 +115,13 @@ const BASE = {
     check("node.created uses the fragment's created_ts", events[0].ts === "2026-01-02T10:00:00.000Z", events[0].ts);
     check("event id is ULID-shaped", /^[0-9A-HJKMNP-TV-Z]{26}$/.test(events[0].id), events[0].id);
     check("created_ts is not persisted onto the node", !("created_ts" in JSON.parse(bundleA).nodes[0]), bundleA);
+
+    // Systemic fix (coordinator review): every test that produces a bundle
+    // runs `arkaik validate` on it and asserts clean — the carry-forward-3
+    // bug slipped past this exact suite because one fixture stopped one line
+    // short of validating. Audited and added throughout this file.
+    const validated = runCli(["validate", path.join("docs", "arkaik", "bundle.json")], dir);
+    check("arkaik validate passes on the merged bundle", validated.status === 0, validated.stdout + validated.stderr);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -124,18 +143,25 @@ const BASE = {
       ],
     },
   }, { ...BASE, nodes: [{ id: "V-home", project_id: "demo", species: "view", title: "Home", status: "live", platforms: ["web"] }] });
+  // V-home is pre-existing (brownfield) — it needs its own node.created on
+  // record, or `arkaik validate` would flag `journal-missing-node-created`
+  // regardless of anything this test is actually about.
+  writeFileSync(
+    path.join(dir, "docs", "arkaik", "journal.jsonl"),
+    `${JSON.stringify({ id: "01ZZZZZZZZZZZZZZZZZZZZZZZZ", ts: "2026-01-01T00:00:00.000Z", type: "node.created", node_id: "V-home", species: "view", title: "Home" })}\n`,
+  );
   try {
     const first = runCli(["bootstrap", "merge"], dir);
     check("events-fragment merge exits 0", first.status === 0, first.stderr);
     const journalPath = path.join(dir, "docs", "arkaik", "journal.jsonl");
     const linesA = readFileSync(journalPath, "utf8").trim().split("\n");
-    check("first run wrote exactly 2 events", linesA.length === 2, linesA.join("\n"));
+    check("first run wrote exactly 3 events (1 seeded + 2 fresh)", linesA.length === 3, linesA.join("\n"));
 
     const second = runCli(["bootstrap", "merge"], dir);
     check("second merge over the same fragment exits 0", second.status === 0, second.stderr);
     const contentA = readFileSync(journalPath, "utf8");
     const linesB = contentA.trim().split("\n");
-    check("journal does not grow on a second, unchanged run", linesB.length === 2, linesB.join("\n"));
+    check("journal does not grow on a second, unchanged run", linesB.length === 3, linesB.join("\n"));
 
     const third = runCli(["bootstrap", "merge"], dir);
     check("third merge exits 0", third.status === 0, third.stderr);
@@ -146,6 +172,12 @@ const BASE = {
       second.stdout.includes("+0 events"),
       second.stdout,
     );
+    // Also proves point 3's "identical payload stays a silent no-op": three
+    // runs over the SAME fragment re-derive the SAME events every time, and
+    // none of them raised a payload-divergence MergeProblem (all three
+    // exited 0 above) — only a genuine content change should do that.
+    const validated = runCli(["validate", path.join("docs", "arkaik", "bundle.json")], dir);
+    check("arkaik validate passes on the merged bundle", validated.status === 0, validated.stdout + validated.stderr);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -194,7 +226,18 @@ const BASE = {
   }
 }
 
-// --- carry-forward 3: the wave-3 event key now distinguishes same-day, same-node status transitions ---
+// --- carry-forward 3, CORRECTED (coordinator review): the wave-3 event key
+// distinguishes same-node status transitions that carry DISTINCT timestamps
+// — which every real one does (corpus.prs.jsonl carries full-instant ISO
+// merge timestamps, not just dates). The original version of this fixture
+// gave both transitions the IDENTICAL ts and asserted only `ids.size === 2`
+// and exit 0 — which passed even though the resulting bundle failed
+// `arkaik validate` (see the order-sensitivity block right after this one):
+// distinct ids alone don't make same-ts events for one node safe to write,
+// because read-back order between them is still undefined. This fixture now
+// reflects a REAL, safe wave-3 output (distinct instants) and proves it all
+// the way through validate, which is what should have caught the gap the
+// first time.
 {
   const dir = scaffold({
     "w3-status-arcs": {
@@ -202,17 +245,183 @@ const BASE = {
       wave: 3,
       events: [
         { type: "node.status_changed", node_id: "V-home", from: "idea", to: "backlog", ts: "2026-01-05T00:00:00.000Z" },
-        { type: "node.status_changed", node_id: "V-home", from: "backlog", to: "live", ts: "2026-01-05T00:00:00.000Z" },
+        { type: "node.status_changed", node_id: "V-home", from: "backlog", to: "live", ts: "2026-01-05T12:00:00.000Z" },
       ],
     },
   }, { ...BASE, nodes: [{ id: "V-home", project_id: "demo", species: "view", title: "Home", status: "live", platforms: ["web"] }] });
+  writeFileSync(
+    path.join(dir, "docs", "arkaik", "journal.jsonl"),
+    `${JSON.stringify({ id: "01FFFFFFFFFFFFFFFFFFFFFFFF", ts: "2026-01-01T00:00:00.000Z", type: "node.created", node_id: "V-home", species: "view", title: "Home" })}\n`,
+  );
   try {
     const res = runCli(["bootstrap", "merge"], dir);
-    check("two same-day, same-node status transitions merge cleanly", res.status === 0, res.stderr);
+    check("two same-day (distinct-instant), same-node status transitions merge cleanly", res.status === 0, res.stderr);
     const events = readFileSync(path.join(dir, "docs", "arkaik", "journal.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
-    check("both status_changed events landed (not collapsed into one)", events.length === 2, JSON.stringify(events));
-    const ids = new Set(events.map((e) => e.id));
-    check("the two same-day, same-node transitions got DISTINCT ids", ids.size === 2, JSON.stringify(events.map((e) => e.id)));
+    const changes = events.filter((e) => e.type === "node.status_changed");
+    check("both status_changed events landed (not collapsed into one)", changes.length === 2, JSON.stringify(changes));
+    const ids = new Set(changes.map((e) => e.id));
+    check("the two transitions got DISTINCT ids", ids.size === 2, JSON.stringify(changes.map((e) => e.id)));
+    const validated = runCli(["validate", path.join("docs", "arkaik", "bundle.json")], dir);
+    check("CARRY-FORWARD 3 (corrected): arkaik validate passes on the merged bundle", validated.status === 0, validated.stdout + validated.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// --- CRITICAL, coordinator review: same-ts order-sensitive events for one
+// node are refused, not written with an arbitrary tie-break order. Two
+// `update` patches to the same node in one fragment, neither supplying
+// `changed_ts`, share the run's ONE `fallbackTs` — exactly reproduced from
+// the coordinator's own report. Before this fix, this merged cleanly and
+// then failed `arkaik validate`'s journal-status-mismatch depending on
+// which way a hash-derived id happened to sort. ---
+{
+  const existing = {
+    ...BASE,
+    nodes: [{ id: "V-home", project_id: "demo", species: "view", title: "Home", status: "idea", platforms: ["web"] }],
+  };
+  const dir = scaffold({
+    "w1-a": {
+      unit: "w1-a",
+      wave: 1,
+      update: [
+        { id: "V-home", patch: { status: "backlog" } },
+        { id: "V-home", patch: { status: "development" } },
+      ],
+    },
+  }, existing);
+  writeFileSync(
+    path.join(dir, "docs", "arkaik", "journal.jsonl"),
+    `${JSON.stringify({ id: "01IIIIIIIIIIIIIIIIIIIIIIII", ts: "2026-01-01T00:00:00.000Z", type: "node.created", node_id: "V-home", species: "view", title: "Home" })}\n`,
+  );
+  try {
+    const res = runCli(["bootstrap", "merge"], dir);
+    check(
+      "CRITICAL: two same-ts status changes to one node in one run are refused, not silently written",
+      res.status === 1,
+      `status=${res.status}`,
+    );
+    check(
+      "the refusal names the node and both transitions",
+      res.stderr.includes("V-home") && res.stderr.includes("backlog") && res.stderr.includes("development"),
+      res.stderr,
+    );
+    check("the refusal points at `changed_ts` as the fix", res.stderr.includes("changed_ts"), res.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+{
+  // The same refusal, but the two order-sensitive events come from TWO
+  // SEPARATE fragments/units rather than one fragment's own array — proving
+  // the guard tracks across the whole run, not just within one fragment.
+  const existing = {
+    ...BASE,
+    nodes: [{ id: "V-home", project_id: "demo", species: "view", title: "Home", status: "idea", platforms: ["web"] }],
+  };
+  const dir = scaffold({
+    "w1-a": { unit: "w1-a", wave: 1, update: [{ id: "V-home", patch: { status: "backlog" } }] },
+    "w1-b": { unit: "w1-b", wave: 1, update: [{ id: "V-home", patch: { status: "development" } }] },
+  }, existing);
+  writeFileSync(
+    path.join(dir, "docs", "arkaik", "journal.jsonl"),
+    `${JSON.stringify({ id: "01JJJJJJJJJJJJJJJJJJJJJJJJ", ts: "2026-01-01T00:00:00.000Z", type: "node.created", node_id: "V-home", species: "view", title: "Home" })}\n`,
+  );
+  try {
+    const res = runCli(["bootstrap", "merge"], dir);
+    check(
+      "CRITICAL: the same-ts refusal applies ACROSS fragments too, not just within one",
+      res.status === 1,
+      `status=${res.status}`,
+    );
+    check("the refusal names both units", res.stderr.includes("w1-a") && res.stderr.includes("w1-b"), res.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+{
+  // Doesn't over-reject: different nodes sharing a ts, and platform-scoped
+  // transitions for the SAME node at the SAME ts (excluded from
+  // crossCheckJournal's project-level "last status" check — they move a
+  // per-platform view status, not node.status) are both fine.
+  const dir = scaffold({
+    "w3-status-arcs": {
+      unit: "w3-status-arcs",
+      wave: 3,
+      events: [
+        { type: "node.status_changed", node_id: "V-a", from: "idea", to: "live", ts: "2026-01-05T00:00:00.000Z" },
+        { type: "node.status_changed", node_id: "V-b", from: "idea", to: "live", ts: "2026-01-05T00:00:00.000Z" },
+        { type: "node.status_changed", node_id: "V-a", from: "backlog", to: "live", ts: "2026-01-05T00:00:00.000Z", platform: "ios" },
+        { type: "node.status_changed", node_id: "V-a", from: "backlog", to: "live", ts: "2026-01-05T00:00:00.000Z", platform: "android" },
+      ],
+    },
+  }, {
+    ...BASE,
+    nodes: [
+      { id: "V-a", project_id: "demo", species: "view", title: "A", status: "live", platforms: ["web", "ios", "android"] },
+      { id: "V-b", project_id: "demo", species: "view", title: "B", status: "live", platforms: ["web"] },
+    ],
+  });
+  writeFileSync(
+    path.join(dir, "docs", "arkaik", "journal.jsonl"),
+    [
+      { id: "01KKKKKKKKKKKKKKKKKKKKKKKK", ts: "2026-01-01T00:00:00.000Z", type: "node.created", node_id: "V-a", species: "view", title: "A" },
+      { id: "01LLLLLLLLLLLLLLLLLLLLLLLL", ts: "2026-01-01T00:00:00.000Z", type: "node.created", node_id: "V-b", species: "view", title: "B" },
+    ].map((e) => JSON.stringify(e)).join("\n") + "\n",
+  );
+  try {
+    const res = runCli(["bootstrap", "merge"], dir);
+    check("different nodes sharing a ts are not falsely flagged as an order conflict", res.status === 0, res.stderr);
+    const validated = runCli(["validate", path.join("docs", "arkaik", "bundle.json")], dir);
+    check("arkaik validate passes (platform-scoped same-ts transitions are not order-sensitive)", validated.status === 0, validated.stdout + validated.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// --- coordinator review: a fresh event sharing an id with a committed one,
+// but carrying DIFFERENT content, is refused rather than silently discarded
+// as if nothing changed. Base still wins (nothing is overwritten), but the
+// divergence is now loud. ---
+{
+  const dir = scaffold({
+    "w3-decisions": {
+      unit: "w3-decisions",
+      wave: 3,
+      events: [{ type: "deliverable.shipped", deliverable_id: "pr-42", title: "Ship it", summary: "Original summary.", ts: "2026-01-05T00:00:00.000Z" }],
+    },
+  }, BASE);
+  try {
+    const first = runCli(["bootstrap", "merge"], dir);
+    check("first merge (establishing the committed event) exits 0", first.status === 0, first.stderr);
+
+    // Correct the summary (eventKey doesn't include it, so the id is
+    // unchanged) and re-run — the payload genuinely differs from committed.
+    writeFileSync(
+      path.join(dir, ".arkaik", "bootstrap", "fragments", "w3-decisions.json"),
+      JSON.stringify({
+        unit: "w3-decisions",
+        wave: 3,
+        events: [{ type: "deliverable.shipped", deliverable_id: "pr-42", title: "Ship it", summary: "Corrected summary.", ts: "2026-01-05T00:00:00.000Z" }],
+      }),
+    );
+    const second = runCli(["bootstrap", "merge"], dir);
+    check(
+      "COORDINATOR FINDING: a divergent re-derivation of a committed event is refused, not silently discarded",
+      second.status === 1,
+      `status=${second.status}`,
+    );
+    check(
+      "the refusal names the event id and shows both payloads",
+      second.stderr.includes("Original summary.") && second.stderr.includes("Corrected summary."),
+      second.stderr,
+    );
+    const events = readFileSync(path.join(dir, "docs", "arkaik", "journal.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    check(
+      "the committed copy is untouched — base still wins",
+      events.find((e) => e.deliverable_id === "pr-42")?.summary === "Original summary.",
+      JSON.stringify(events),
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -237,6 +446,8 @@ const BASE = {
     check("both release.tagged events landed", events.length === 2, JSON.stringify(events));
     const ids = new Set(events.map((e) => e.id));
     check("ios and android releases got distinct ids", ids.size === 2, JSON.stringify(events.map((e) => e.id)));
+    const validated = runCli(["validate", path.join("docs", "arkaik", "bundle.json")], dir);
+    check("arkaik validate passes on the merged bundle", validated.status === 0, validated.stdout + validated.stderr);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -261,6 +472,8 @@ const BASE = {
     check("both idea.proposed events landed", events.length === 2, JSON.stringify(events));
     const ids = new Set(events.map((e) => e.id));
     check("two different same-day, node_id-less ideas got distinct ids", ids.size === 2, JSON.stringify(events.map((e) => e.id)));
+    const validated = runCli(["validate", path.join("docs", "arkaik", "bundle.json")], dir);
+    check("arkaik validate passes on the merged bundle", validated.status === 0, validated.stdout + validated.stderr);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -419,6 +632,8 @@ const BASE = {
     const res = runCli(["bootstrap", "merge"], dir);
     check("PROBE 5: an all-empty-arrays fragment merges cleanly (no-op)", res.status === 0, res.stderr);
     check("reports zero of everything", res.stdout.includes("+0 nodes") && res.stdout.includes("+0 edges") && res.stdout.includes("+0 events"), res.stdout);
+    const validated = runCli(["validate", path.join("docs", "arkaik", "bundle.json")], dir);
+    check("arkaik validate passes on the merged bundle", validated.status === 0, validated.stdout + validated.stderr);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -449,6 +664,8 @@ const BASE = {
     const bundle = JSON.parse(readFileSync(path.join(dir, "docs", "arkaik", "bundle.json"), "utf8"));
     check("the REAL fragment's node landed (id-derived path, not the tampered one)", bundle.nodes.some((n) => n.id === "V-real"), JSON.stringify(bundle.nodes));
     check("the decoy's node did NOT land", !bundle.nodes.some((n) => n.id === "V-decoy"), JSON.stringify(bundle.nodes));
+    const validated = runCli(["validate", path.join("docs", "arkaik", "bundle.json")], dir);
+    check("arkaik validate passes on the merged bundle", validated.status === 0, validated.stdout + validated.stderr);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -483,6 +700,8 @@ const BASE = {
   try {
     const first = runCli(["bootstrap", "merge"], dir);
     check("first run (introducing V-shared) exits 0", first.status === 0, first.stderr);
+    const validatedFirst = runCli(["validate", path.join("docs", "arkaik", "bundle.json")], dir);
+    check("arkaik validate passes after the first run", validatedFirst.status === 0, validatedFirst.stdout + validatedFirst.stderr);
 
     // A later, unrelated fragment (as if from a different area's agent,
     // re-run after the first merge already persisted) reuses the same id for
@@ -541,12 +760,24 @@ const BASE = {
     const parsed = parseBundle(bundleObj);
     check("PROBE 4: the merged bundle round-trips through zod's parseBundle", parsed.success, parsed.success ? "" : JSON.stringify(parsed.error?.issues ?? parsed.error));
 
+    // NOTE: this direct validateBundle(bundleObj) call does NOT fold in the
+    // journal.jsonl sidecar (bundleObj has no embedded `journal`, and nothing
+    // here folds the sidecar in manually) — so crossCheckJournal's checks
+    // (journal-missing-node-created, journal-status-mismatch) are silently
+    // SKIPPED by this call alone. Kept for its own narrow purpose (comparing
+    // the schema's raw validateBundle against parseBundle), but the REAL
+    // `arkaik validate` CLI call right below is what actually exercises the
+    // journal fold — the systemic fix this whole file went through after the
+    // coordinator found a fixture that stopped one line short of it.
     const validated = validateBundle(bundleObj);
     check(
       "PROBE 4: validateBundle itself finds no errors on the merged bundle (only, at most, warnings)",
       validated.errors.length === 0,
       JSON.stringify(validated.errors),
     );
+
+    const cliValidated = runCli(["validate", path.join("docs", "arkaik", "bundle.json")], dir);
+    check("PROBE 4: the real `arkaik validate` (journal folded in) also passes", cliValidated.status === 0, cliValidated.stdout + cliValidated.stderr);
 
     // Re-serialize what parseBundle handed back and confirm it's still the
     // same canonical text — serializeBundle should be a fixed point here.
@@ -572,6 +803,8 @@ const BASE = {
       bundle.project.updated_at === BASE.project.updated_at,
       bundle.project.updated_at,
     );
+    const validated = runCli(["validate", path.join("docs", "arkaik", "bundle.json")], dir);
+    check("arkaik validate passes on the merged bundle", validated.status === 0, validated.stdout + validated.stderr);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

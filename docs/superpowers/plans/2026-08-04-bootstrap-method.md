@@ -1985,7 +1985,7 @@ git commit -m "feat(cli): deterministic event ids for bootstrap merge"
 
 ### Task 6: `bootstrap merge` — shipped, findings below (this task is where everything lands)
 
-**This is the biggest and most consequential task in the plan, and it shipped with more changes than the carry-forward block alone asked for.** The carry-forward block below (Task 5's review) is kept verbatim as the historical record — all three items are resolved, marked inline. Past it, this task's own probing (the seven the task brief specified, plus self-review) found **four more real defects**, one of them severe enough that it would have broken Task 7's and Task 9's own reference test fixtures the moment either task ran, without either task's own tests being wrong. Read the whole thing before touching `merge.ts`, `fragments.ts`, or `bootstrap.ts`'s `runMerge` again.
+**This is the biggest and most consequential task in the plan, and it shipped with more changes than the carry-forward block alone asked for — across TWO review passes.** The carry-forward block below (Task 5's review) is kept verbatim as the historical record — all three items are resolved, marked inline. This task's own probing (the seven the task brief specified, plus self-review) found **four more real defects**, one of them severe enough that it would have broken Task 7's and Task 9's own reference test fixtures the moment either task ran, without either task's own tests being wrong. A SECOND review pass, by the coordinator, after this task's own probing was believed complete, found **one more critical defect that this task's own probing had missed** — its own carry-forward-3 regression fixture merged "cleanly" while producing a bundle that failed `arkaik validate`, because that fixture never actually called validate — plus a real ergonomic gap in the journal-merge precedence. Both rounds are recorded below, in order; read the whole thing before touching `merge.ts`, `fragments.ts`, or `bootstrap.ts`'s `runMerge` again.
 
 **Carried forward from Task 5's review — three things to fix or explicitly accept before shipping this, don't silently inherit them (all three fixed, see below):**
 
@@ -2004,6 +2004,12 @@ git commit -m "feat(cli): deterministic event ids for bootstrap merge"
 
 8. **`FragmentEdge.kind` never translated to the bundle's `edge_type` field — every edge fixture in this entire plan (Task 7's AND Task 9's) would have produced an invalid bundle.** Every edge fixture anywhere in this plan — Task 6's own Step 1 test didn't have edges, but Task 7's collision/reconcile tests and Task 9's golden e2e test all write `edges: [{ source_id, target_id, kind: "composes" }]` (`kind` is `FragmentEdge`'s own declared field name in the reference). The bundle schema's field is `edge_type` (`EdgeSchema`, `validate.ts`'s `valid-edge-type` check). The reference `mergeFragments` spread the raw fragment edge straight onto the merged edge with no translation at all — every merged edge would have silently carried `kind` and no `edge_type`, which `validateBundle` rejects outright (`invalid edge_type "undefined"`) and `parseBundle` rejects too (`edge_type` is a required enum). **This was invisible to every test written so far**, including this task's own Step 1 (no edges in that fixture) — it would have surfaced the moment Task 9's e2e test (which DOES call `arkaik validate` on a bundle with edges) actually ran. Caught here via probe 4's round trip against a fixture with a real `kind: "composes"` edge. **Fixed:** pass 2 now resolves `edge_type` from either `edge_type` (if a fragment supplies it directly) or `kind` (the documented field), and drops the bare `kind` key from what lands on the bundle; an edge with neither fails the merge loudly, naming both endpoints. **Task 7 and Task 9: your existing planned fixtures (`kind: "composes"`, `kind: "calls"`) now work correctly — no fixture change needed on your end, but if either task's own review re-derives `merge.ts` from an older read of this plan, make sure this translation is still there.**
 
+**Coordinator review, round 2 (after this task believed it was done) — one critical defect this task's own probing missed, one real ergonomic gap, and a systemic lesson about how the critical one slipped through:**
+
+9. **CRITICAL: this task's own fixes for items 3 and 4 combine to reintroduce `journal-status-mismatch` — verified, not theoretical.** `sortEvents` (`merge.ts`) ties-breaks two events sharing a `ts` by their `id` — a hash-derived string with no relationship to which transition actually happened first. That would be harmless if write order were all that mattered, but it isn't: `crossCheckJournal` re-derives read-back order independently, via `@arkaik/schema`'s `orderEvents`, using the IDENTICAL `(ts, id)` rule — so whether the snapshot ends up agreeing with the journal's "last" status for a node came down to whether a hash happened to agree with causality, a coin flip per colliding pair. And item 4's `update`/`retire` emission shares ONE `fallbackTs` across a whole run when a fragment omits `changed_ts` — so two status changes to one node in a single run get IDENTICAL `ts` by construction. Reproduced: a fragment with `update: [{status: backlog}, {status: development}]` on a node starting at `idea`, no `changed_ts` — merge succeeds, then `arkaik validate` reports `journal-status-mismatch`. **Worse: this task's own carry-forward-3 regression fixture (item 3 above) reproduced this exactly** — two `node.status_changed` events for one node, same `ts`, different `from`/`to` — and that fixture asserted `ids.size === 2` and exit 0, then stopped; it never called `arkaik validate`, so it passed while proving nothing about safety. This is the shape the task brief specifically flagged as expected input, not an edge case: wave-3 status arcs reconstruct 1-3 transitions per node at day granularity, so same-`ts` multi-transition is what real story fragments will look like. **Fixed by refusing, not guessing:** `isOrderSensitive` identifies the two event types `crossCheckJournal` actually orders by "last one wins" per node — `node.status_changed` when not platform-scoped (a platform-scoped one moves a per-platform view status, which nothing cross-checks against the snapshot), and `decision.status_changed` always. `pushEvent`, the single path every new event now reaches `newEvents` through, tracks the one already seen for each `(type, node_id, ts)` — seeded from `baseJournal` too, so a fresh event colliding with committed history is caught, not just fresh-vs-fresh within one run — and on a SECOND, genuinely different one (a different id, meaning a different transition) at the exact same instant, raises a `MergeProblem` naming the node, both transitions, and both units, instead of writing an order nobody chose. A resort inside `merge.ts` could not fix this even if it wanted to, since `orderEvents` re-derives order on every future read regardless of what order this file wrote — the real fix is distinct timestamps, which the corpus already carries (full ISO instants, not just dates) for a story agent to supply via `changed_ts`/`ts`. **The carry-forward-3 fixture was corrected**, not just left broken-but-passing: the two transitions now carry distinct instants (`00:00:00` and `12:00:00` on the same day — the realistic shape a story agent produces), and the test asserts `arkaik validate` passes on the result, not just that ids differ. Three more regression tests were added: the identical scenario spread across TWO fragments/units instead of one (proving the guard tracks the whole run, not one fragment's array); confirmation that DIFFERENT nodes sharing a `ts`, and platform-scoped transitions for the SAME node at the SAME `ts`, are NOT falsely rejected.
+10. **Important: `mergeJournal`'s "base wins" precedence (item 1) is the right call, but was silently wrong-ergonomic on genuine divergence.** Base winning on an id collision is correct — the append-only-journal invariant, and "fresh wins" would let a re-run silently clobber a deliberate, out-of-band edit to committed history, which is worse — and that precedence is unchanged. But it was entirely silent even when the fresh event's PAYLOAD actually differs from what's committed. Reproduced: merge a story event, edit only its `summary` (not part of `eventKey`, so the id is unchanged) in the same fragment, re-run — `+0 events`, journal unchanged, the correction discarded with output indistinguishable from "nothing changed." **Fixed:** `mergeJournal` now compares a colliding fresh event against its committed counterpart via `canonicalJson` (key-order-independent, so a re-read-from-disk event and a freshly-constructed one with the same content in different key order don't false-positive) and returns any genuine divergence as a `conflict`; `mergeFragments` turns each one into a `MergeProblem`, attributed to whichever unit produced the fresh event (tracked via an `eventUnit` map populated alongside `pushEvent`) — the same treatment already given to a node-id collision with differing titles. Base still wins (nothing is silently overwritten); the run refuses instead of hiding the divergence. Identical payloads (the ordinary idempotent re-run — already exercised three times over by the carry-forward-1 dedup test) stay a silent no-op, unaffected.
+11. **The systemic lesson, applied across the whole file, not just the one fixture that revealed it:** the critical defect (finding 9) slipped through this task's own extensive probing because ONE test — the one built specifically to prove the fix for finding 3 — stopped one line short of running `arkaik validate`, the exact check that would have caught it. This is the same class of gap as nearly every other defect in this entire plan: the check that would have caught the bug wasn't run against the real thing. **Every block in `tests/cli/bootstrap-merge.test.js` that produces a bundle now runs `arkaik validate` on it and asserts clean** — audited block by block, not just the ones already believed interesting (those are precisely the ones already reasoned about correctly; the blind spots are always the "obviously fine" ones). The file's own header comment now states this as a standing rule for anyone adding to it. Checks that expect an outright merge FAILURE (a malformed `ts`, an orphan edge, an unsafe id, `--dry-run` which writes nothing) are the only exemptions, each one noted at its own call site so the exemption is a deliberate call, not an oversight.
+
 **Probes 3, 5, and 6 — verified clean, no code changes required beyond what's already described above:**
 
 - **Probe 3 (determinism end to end).** Running `merge` twice over identical fragments (including an `events`-array fragment) produces byte-identical `bundle.json` and `journal.jsonl` both times — verified via the built CLI, both on synthetic fixtures and on the full real self-map dataset (below). `updated_at` falls back to the base project's own `updated_at` when the resulting journal is empty (no crash, no `undefined`). The one non-determinism that DOES exist — a freshly-scaffolded bundle's `project.created_at`/`updated_at` are stamped with `new Date().toISOString()` on the very first merge ever run against an empty repo — is inherent (there is no historical timestamp to derive a project's own creation moment from) and does not affect re-run determinism, because every subsequent run reads that timestamp back from the now-persisted bundle rather than re-minting it.
@@ -2020,7 +2026,7 @@ git commit -m "feat(cli): deterministic event ids for bootstrap merge"
 - Created: `packages/cli/src/lib/bootstrap/fragments.ts`
 - Created: `packages/cli/src/lib/bootstrap/merge.ts`
 - Modified: `packages/cli/src/commands/bootstrap.ts` (`runMerge`, wired into the dispatch switch)
-- Test: `tests/cli/bootstrap-merge.test.js` (determinism, all three carry-forward regressions, probes 1/2/4/5/7, the `kind`→`edge_type` fix, the cross-run collision fix)
+- Test: `tests/cli/bootstrap-merge.test.js` (determinism, all three carry-forward regressions, probes 1/2/4/5/7, the `kind`→`edge_type` fix, the cross-run collision fix, the order-sensitivity refusal and journal-divergence refusal from the coordinator's round-2 review, and `arkaik validate` on every bundle-producing block — 98 checks)
 - Test (new — real-data proof, probe 6, kept separate for the same "meaningfully different fixture shape" reason `bootstrap-slice.test.js`/`bootstrap-e2e.test.js` were split out): `tests/cli/bootstrap-merge-selfmap.test.js`
 
 - [ ] **Step 1: Write the failing test**
@@ -2084,24 +2090,52 @@ export function loadFragments(cwd: string, manifest: Manifest): FragmentLoad {
 The shape, informed by every finding above — see the shipped file's own header comment for the complete, numbered rationale (it's long on purpose: this is the highest-consequence file in the whole method):
 
 ```ts
+function isOrderSensitive(ev: AnyRecord): boolean {
+  // node.status_changed (non-platform-scoped) and decision.status_changed —
+  // the two types crossCheckJournal orders by "last one wins" per node.
+  // See finding 9 (round 2) below.
+}
+
 function eventKey(raw: AnyRecord, ts: string): string {
   // folds in node/deliverable/version/edge/ref/source/target/platform/from/to/title/url
   // whenever present on raw — see finding 3 above.
 }
 
-function mergeJournal(base: readonly AnyRecord[], fresh: readonly AnyRecord[]): { journal: AnyRecord[]; added: number } {
-  // merges by id; base's copy wins on a collision — see finding 1 above.
+function canonicalJson(value: unknown): string {
+  // key-order-independent JSON, so mergeJournal's divergence check compares
+  // by VALUE, not by accidental property order — see finding 10 (round 2).
+}
+
+function mergeJournal(
+  base: readonly AnyRecord[],
+  fresh: readonly AnyRecord[],
+): { journal: AnyRecord[]; added: number; conflicts: JournalConflict[] } {
+  // merges by id; base's copy wins on a collision — finding 1. `conflicts`
+  // names every id where the fresh payload actually differs from what's
+  // committed (compared via canonicalJson) — finding 10 (round 2); the
+  // caller turns each one into a MergeProblem rather than a silent no-op.
 }
 
 export function mergeFragments(input: MergeInput): MergeResult {
+  // orderSensitiveSeen: Map<"type:node_id:ts", {id, unit, from, to}>,
+  //   seeded from input.baseJournal too — finding 9 (round 2).
+  // pushEvent(unitId, ev): the ONE path every new event reaches newEvents
+  //   through. For an order-sensitive ev, checks orderSensitiveSeen first —
+  //   a genuine same-(type, node_id, ts) conflict (a DIFFERENT id) raises a
+  //   MergeProblem naming both transitions and both units instead of being
+  //   written with an arbitrary tie-break order. Also records eventUnit, so
+  //   a later journal-divergence conflict (finding 10) can be attributed.
   // pass 1: nodes (nodeOrigin seeded from BASE nodes too — finding 7 — then
-  //   every fragment's nodes/add, each mintEvent-wrapped node.created;
-  //   platforms defaulted to [] — finding 6; update/retire now emit
-  //   node.status_changed when status actually changes — finding 4)
+  //   every fragment's nodes/add, each mintEvent-wrapped node.created, now
+  //   routed through pushEvent; platforms defaulted to [] — finding 6;
+  //   update/retire now emit node.status_changed when status actually
+  //   changes — finding 4 — also routed through pushEvent, and thus subject
+  //   to the same-ts refusal above)
   // pass 2: edges (kind -> edge_type translation — finding 8; orphan-edge
   //   and missing-type errors named by unit)
-  // pass 3: story events (eventKey + mintEvent, same try/catch discipline)
-  // journal = mergeJournal(input.baseJournal, newEvents) — finding 1
+  // pass 3: story events (eventKey + pushEvent, same try/catch discipline)
+  // { journal, added, conflicts } = mergeJournal(input.baseJournal, newEvents)
+  // conflicts.forEach(c => errors.push({ unit: eventUnit.get(c.id), ... }))
   // delete bundle.journal — the repo's own bundle is sidecar-only
 }
 ```
@@ -2117,7 +2151,7 @@ Add `case "merge": runMerge(rest); return;` to the switch.
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `npm run build -w arkaik && node tests/cli/bootstrap-merge.test.js && node tests/cli/bootstrap-merge-selfmap.test.js`
-Expected: PASS on all 77 checks in `bootstrap-merge.test.js` and all 8 in `bootstrap-merge-selfmap.test.js`, including the real self-map round trip through `arkaik validate` with 0 errors and 0 warnings.
+Expected: PASS on all 98 checks in `bootstrap-merge.test.js` and all 8 in `bootstrap-merge-selfmap.test.js`, including the real self-map round trip through `arkaik validate` with 0 errors and 0 warnings.
 
 - [ ] **Step 7: Commit**
 
@@ -2130,11 +2164,12 @@ git commit -m "feat(cli): bootstrap merge — deterministic fragment assembly"
 
 ### Task 7: Merge semantics — collisions, orphan edges, reconcile
 
-**Read Task 6's section before starting — three things carry forward directly:**
+**Read Task 6's section before starting — it went through TWO review rounds, and several things carry forward directly:**
 
-1. **The reconcile fixture below (`update`/`retire`) should assert `arkaik validate` passes, not just check snapshot fields.** Task 6 found and fixed a real bug where `update`/`retire` mutated `status` with no `node.status_changed` event — silent for a node's first-ever status change, but a `journal-status-mismatch` error for every subsequent one (the common case for any node with real prior history). The reconcile test below only checks `home.status`/`legacy.status`/`legacy.metadata.retired_reason` on the snapshot — it never calls `arkaik validate`, so it would not have caught this bug even in its unfixed state, and won't catch a regression of it either. Consider adding an `arkaik validate` call to this fixture (seed the existing `journal.jsonl` with real prior status history for both nodes first — a node with NO prior status-changed history won't exercise the check at all, see Task 6's own probe-1 writeup for why). `tests/cli/bootstrap-merge.test.js` already has two fixtures doing exactly this (search "PROBE 1") if a reference is useful.
+1. **RESOLVED, but read why: the reconcile fixture below (`update`/`retire`) must assert `arkaik validate` passes, not just check snapshot fields — this is no longer a suggestion, it's the file's own standing rule.** Task 6's own first pass found and fixed a real bug where `update`/`retire` mutated `status` with no `node.status_changed` event. A SECOND review round then found that Task 6's OWN fix for a different item (the wave-3 event key) combined with this one to reintroduce the exact same class of bug: two order-sensitive events (e.g. two `update` patches, or two wave-3 `node.status_changed` events) landing at the identical `ts` get an ARBITRARY read-back order, because `crossCheckJournal` ties-breaks on a hash-derived id with no relationship to causality — and this slipped past Task 6's own extensive probing because ONE fixture (proving the event-key fix) asserted `ids.size === 2` and exit 0, then stopped one line short of calling `arkaik validate`. It is now fixed at the source (`merge.ts` refuses two order-sensitive events for one node sharing a `ts`, naming both transitions, rather than writing an undefined order) AND enforced structurally: `tests/cli/bootstrap-merge.test.js`'s header comment now states that every block producing a bundle must validate it, and every block was audited to comply. **The reconcile test below (and any new fixture this task adds) should follow the same rule** — seed the existing `journal.jsonl` with real prior status history first (a node with NO prior status-changed history won't exercise the mismatch check at all), give any multiple status changes to the SAME node DISTINCT timestamps (same-`ts` multi-transition is now a hard refusal, not silently accepted — see item 4 below), and always call `arkaik validate` on the result. `tests/cli/bootstrap-merge.test.js` has several fixtures doing exactly this (search "PROBE 1" and "CRITICAL") if a reference is useful.
 2. **The id-collision test below is already covered, but only for the within-one-run case.** Task 6 found the reference's collision detection was silently inert across separate merge invocations (a node persisted by run 1, then collided with by a different fragment in run 2, produced zero error) and fixed it by seeding `nodeOrigin` from base nodes too. `tests/cli/bootstrap-merge.test.js` already has a minimal cross-run regression (search "SELF-REVIEW: a later fragment"); this task can still add a more exhaustive matrix (three-way collisions, collision on a `retire`d node's id, etc.) if useful, but the basic cross-run case doesn't need re-discovering.
 3. **New, unresolved, flagged for this task specifically: two fragments declaring an edge between the SAME `(source, target)` pair with two DIFFERENT `kind` values silently keep whichever was processed first — no error, no warning.** The edge id (`e-{source}-{target}`) doesn't encode type, so a second fragment's conflicting `kind` for the same pair is dropped with zero signal. This is squarely a "collision" in the sense this task's own title already claims — worth a fixture and a decision (error loudly on a `kind` mismatch for the same pair, most likely, mirroring how a node id collision on a title mismatch already errors).
+4. **New from round 2, load-bearing for any fixture this task writes: `merge` now refuses two order-sensitive events (`node.status_changed` when non-platform-scoped, or `decision.status_changed`) for the SAME node at the IDENTICAL `ts`.** If a fixture needs a node to cross two statuses within one merge run (a very natural thing to want for a reconcile/status-arc test), give each transition its own `changed_ts` (for `update`/`retire`) or its own `ts` (for wave-3 `events`) — even a few hours apart on the same calendar day is enough. Also new: a fresh event sharing an id with an already-committed one but carrying DIFFERENT content (e.g. a corrected `summary`) is now refused too, not silently discarded — if a fixture wants to test "correcting a mistake," expect and assert on that refusal rather than a silent `+0 events`.
 
 Also note: the `kind: "composes"` / `kind: "calls"` field name in every edge fixture below is correct and unchanged — Task 6 found and fixed the translation from `kind` to the bundle's `edge_type` field, which the reference `merge.ts` never did. No fixture changes needed here.
 
