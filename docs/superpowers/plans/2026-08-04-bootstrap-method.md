@@ -2117,7 +2117,7 @@ Add `case "merge": runMerge(rest); return;` to the switch.
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `npm run build -w arkaik && node tests/cli/bootstrap-merge.test.js && node tests/cli/bootstrap-merge-selfmap.test.js`
-Expected: PASS on all 67 checks in `bootstrap-merge.test.js` and all 8 in `bootstrap-merge-selfmap.test.js`, including the real self-map round trip through `arkaik validate` with 0 errors and 0 warnings.
+Expected: PASS on all 77 checks in `bootstrap-merge.test.js` and all 8 in `bootstrap-merge-selfmap.test.js`, including the real self-map round trip through `arkaik validate` with 0 errors and 0 warnings.
 
 - [ ] **Step 7: Commit**
 

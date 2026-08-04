@@ -632,4 +632,43 @@ const BASE = {
   }
 }
 
+// --- --dry-run reports what would change but writes nothing ---
+{
+  const dir = scaffold({
+    "w1-a": { unit: "w1-a", wave: 1, nodes: [{ id: "V-x", species: "view", title: "X", status: "live", platforms: ["web"] }], edges: [] },
+  }, undefined);
+  try {
+    const res = runCli(["bootstrap", "merge", "--dry-run"], dir);
+    check("--dry-run exits 0", res.status === 0, res.stderr);
+    check("--dry-run output is prefixed", res.stdout.startsWith("[dry-run]"), res.stdout);
+    check("--dry-run does not write the bundle", !existsSync(path.join(dir, "docs", "arkaik", "bundle.json")), "bundle.json was written");
+    check("--dry-run does not write the journal", !existsSync(path.join(dir, "docs", "arkaik", "journal.jsonl")), "journal.jsonl was written");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+{
+  const dir = scaffold({}, BASE);
+  try {
+    const help = runCli(["bootstrap", "merge", "--help"], dir);
+    check("merge --help exits 0", help.status === 0, help.stderr);
+    check("merge --help documents --dry-run", help.stdout.includes("--dry-run"), help.stdout);
+    const unknown = runCli(["bootstrap", "merge", "--nope"], dir);
+    check("merge rejects an unknown option", unknown.status === 1, String(unknown.status));
+    check("merge names the unknown option", unknown.stderr.includes("--nope"), unknown.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+{
+  const dir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-merge-nomanifest-"));
+  try {
+    const res = runCli(["bootstrap", "merge"], dir);
+    check("merge with no manifest fails loudly", res.status === 1, String(res.status));
+    check("merge with no manifest names the missing manifest", res.stderr.includes("plan"), res.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 process.exit(failures === 0 ? 0 : 1);
