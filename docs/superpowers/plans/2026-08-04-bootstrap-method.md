@@ -156,29 +156,39 @@ Create `packages/cli/src/lib/bootstrap/paths.ts`:
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
+// Forward-slash literals, not path.join: these constants are serialized into
+// manifest.json and into user-facing text (not just used as filesystem
+// paths), and path.join would emit backslashes on Windows.
 export const BOOTSTRAP_ROOT = ".arkaik";
-export const CORPUS_DIR = path.join(BOOTSTRAP_ROOT, "corpus");
-export const PLAN_DIR = path.join(BOOTSTRAP_ROOT, "bootstrap");
-export const FRAGMENTS_DIR = path.join(PLAN_DIR, "fragments");
-export const MANIFEST_FILE = path.join(PLAN_DIR, "manifest.json");
-export const PROFILE_FILE = path.join(PLAN_DIR, "profile.json");
-export const PRS_FILE = path.join(CORPUS_DIR, "prs.jsonl");
-export const DOCS_FILE = path.join(CORPUS_DIR, "docs.json");
-export const SURFACES_FILE = path.join(CORPUS_DIR, "surfaces.json");
+export const CORPUS_DIR = ".arkaik/corpus";
+export const PLAN_DIR = ".arkaik/bootstrap";
+export const FRAGMENTS_DIR = ".arkaik/bootstrap/fragments";
+export const MANIFEST_FILE = ".arkaik/bootstrap/manifest.json";
+export const PROFILE_FILE = ".arkaik/bootstrap/profile.json";
+export const PRS_FILE = ".arkaik/corpus/prs.jsonl";
+export const DOCS_FILE = ".arkaik/corpus/docs.json";
+export const SURFACES_FILE = ".arkaik/corpus/surfaces.json";
 
-/** Absolute path for one of the constants above, under `cwd`. */
+/**
+ * Absolute path for one of the constants above, under `cwd`. Node accepts
+ * forward slashes in path.join on every platform, so the literals above pass
+ * through unchanged.
+ */
 export function at(cwd: string, relative: string): string {
   return path.join(cwd, relative);
 }
 
 /** Create a directory (and parents) if it is missing. */
 export function ensureDir(dirPath: string): void {
-  if (!existsSync(dirPath)) mkdirSync(dirPath, { recursive: true });
+  mkdirSync(dirPath, { recursive: true });
 }
 
 /**
- * Add `.arkaik/` to the repo's .gitignore unless it is already ignored.
- * Returns true when the file was written. Idempotent: a second run is a no-op.
+ * Add `.arkaik/` to the repo's .gitignore unless a `.arkaik` or `.arkaik/`
+ * line is already present. Returns true when the file was written. Idempotent:
+ * a second run is a no-op. Expects `cwd` to be the repo root — it writes to
+ * `<cwd>/.gitignore`, not the git root, so calling this from a subdirectory
+ * would drop a stray .gitignore there.
  */
 export function ensureGitignored(cwd: string): boolean {
   const file = path.join(cwd, ".gitignore");
@@ -886,7 +896,11 @@ Options:
 
 function runPlan(argv: string[]): void {
   const cwd = process.cwd();
-  let bundle = path.join("docs", "arkaik", "bundle.json");
+  // A literal, not path.join: this value is written into manifest.json by
+  // writeManifest, so it must not become `docs\arkaik\bundle.json` on Windows.
+  // Every other command in this CLI spells it the same way (init.ts:36,
+  // pack.ts:38, push.ts:54, sync.ts:59, open.ts:35, release.ts:30).
+  let bundle = "docs/arkaik/bundle.json";
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
