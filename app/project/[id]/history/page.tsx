@@ -49,7 +49,12 @@ export default function HistoryPage() {
   }
 
   return (
-    <PageShell title="History" meta={`${journal.length} event${journal.length === 1 ? "" : "s"}`}>
+    <PageShell
+      title="History"
+      meta={`${journal.length} event${journal.length === 1 ? "" : "s"}`}
+      allNodes={dataNodes}
+      journal={journal}
+    >
       <div className="h-full overflow-auto p-4 md:p-6">
         <div className="flex w-full flex-col gap-4">
           {journal.length === 0 ? (

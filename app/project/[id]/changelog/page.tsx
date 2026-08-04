@@ -14,6 +14,7 @@ import {
 import { orderEvents } from "@arkaik/schema";
 import { PageShell } from "@/components/layout/PageShell";
 import { DecisionStatusBadge } from "@/components/layout/DecisionStatusBadge";
+import { useEdges } from "@/lib/hooks/useEdges";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
@@ -184,6 +185,7 @@ export default function ChangelogPage() {
 
   const { project: projectBundle, loading: projectLoading } = useProject(id);
   const { nodes: dataNodes, loading: nodesLoading } = useNodes(id);
+  const { edges: dataEdges } = useEdges(id);
   const { journal, loading: journalLoading } = useJournal(id);
   const { openNode } = useProjectPanels();
   // Display only — the changelog itself stays unscoped; this just fills the
@@ -241,6 +243,10 @@ export default function ChangelogPage() {
     <PageShell
       title="Changelog"
       meta={productScopeMetaLabel(scope)}
+      allNodes={dataNodes}
+      allEdges={dataEdges}
+      scope={scope}
+      journal={journal}
       headerExtra={
         projectBundle?.project.version ? (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
