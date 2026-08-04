@@ -2754,7 +2754,7 @@ Expected: PASS on all eight checks. If `validate` fails, read its findings — t
 In `package.json`, add after the `test:cli` entry:
 
 ```json
-    "test:bootstrap": "npm run build -w arkaik && node tests/cli/bootstrap-plan.test.js && node tests/cli/bootstrap-merge.test.js && node tests/cli/bootstrap-e2e.test.js",
+    "test:bootstrap": "npm run build -w arkaik && node tests/cli/bootstrap-corpus.test.js && node tests/cli/bootstrap-plan.test.js && node tests/cli/bootstrap-merge.test.js && node tests/cli/bootstrap-e2e.test.js",
 ```
 
 - [ ] **Step 4: Wire CI**
@@ -3537,7 +3537,7 @@ Expected: PASS on all ten checks.
 In `package.json`, extend the bootstrap script:
 
 ```json
-    "test:bootstrap": "npm run build -w arkaik && node tests/cli/bootstrap-plan.test.js && node tests/cli/bootstrap-merge.test.js && node tests/cli/bootstrap-e2e.test.js && node tests/cli/bootstrap-restore.test.js",
+    "test:bootstrap": "npm run build -w arkaik && node tests/cli/bootstrap-corpus.test.js && node tests/cli/bootstrap-plan.test.js && node tests/cli/bootstrap-merge.test.js && node tests/cli/bootstrap-e2e.test.js && node tests/cli/bootstrap-restore.test.js",
 ```
 
 ```bash
