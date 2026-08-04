@@ -1,6 +1,6 @@
 # The Self-Map Program — vision & cycle plan
 
-**Date:** 2026-08-03 · **Status:** cycles 1–3 shipped; cycle 4 in progress
+**Date:** 2026-08-03 · **Status:** all 5 cycles shipped (cycle 5 PRs in review)
 **Resume:** in a fresh session, say "continue the self-map program — start
 cycle N" and point the agent here. Each cycle gets its own
 brainstorm → spec → plan → subagent execution → PR, and updates this file's
@@ -67,23 +67,26 @@ Decisions from cycle 2. The granular event feed (`node.status_changed`,
 `edge.added`, …) moves to a **History page** (project switcher section, near
 settings). Depends on cycles 1–2.
 
-### 4. Public Arkaik project in /projects — in progress (spec: [2026-08-04-public-self-map-design.md](2026-08-04-public-self-map-design.md))
+### 4. Public Arkaik project in /projects — ✅ SHIPPED 2026-08-04 (PR #338)
 
-The self-map as a default, public, uneditable project for anonymous and
-logged-in users. Open questions: how it's referenced in `/projects`
-(`seed/arkaik-self-map.json` already ships as the beachhead; Publik
-infrastructure exists but renders previews, not graphs); play-without-persist
-(local display tweaks that don't write back); stretch goal — full local
-sandbox edits (create/rewire/remove, reset on hard refresh), possibly via
-import-a-copy semantics which already exist.
+The self-map as a default public **full sandbox** (reset on refresh, not
+read-only): an in-memory seed provider behind the provider seam, a fourth
+"Explore" section on `/projects` rendered for everyone, the stable
+client-rendered URL `/project/arkaik-self-map`, a persistent banner with
+Reset and Import-a-copy. Spec:
+[2026-08-04-public-self-map-design.md](2026-08-04-public-self-map-design.md).
 
-### 5. Content population (subagent horde) — interleaved with 4
+### 5. Content population (subagent horde) — ✅ SHIPPED 2026-08-04 (PR A #339, PR B #340)
 
-Fan out subagents over the repo's PRs and docs to build: a comprehensive
-product mapping; an intelligent acceptance mapping; acceptances wired to
-Value elements; a full changelog history and narrative (deliverables,
-releases, decisions). Runs against the cycle 1–3 model so nothing is
-retrofitted. The back-and-forth with cycle 4 is deliberate (see Vision).
+The corpus-first fan-out populated the seed with the whole product and its
+history: **220 nodes** (34 views, 36 flows, 26 data models, 22 API
+endpoints, 84 valued acceptances, 18 decisions), 411 edges, three products
+(`studio`/`platform`/`toolchain`), four curated maps, and a 791-event
+journal — 111 deliverables (Lab-Note-sourced, real merge timestamps)
+grouped into 10 thematic-era releases, decision trails, honest per-node
+status arcs, and 3 open ideas. PR A = the map; PR B (stacked) = the story.
+Spec:
+[2026-08-04-content-population-design.md](2026-08-04-content-population-design.md).
 
 ## Standing decisions (do not re-litigate)
 
