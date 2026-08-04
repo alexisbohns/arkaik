@@ -11,7 +11,7 @@
  * offline and re-runnable without paying the API cost twice.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { at, CORPUS_DIR, DOCS_FILE, ensureDir, PRS_FILE, SURFACES_FILE } from "./paths";
@@ -66,7 +66,9 @@ export function normalizePrs(raw: unknown): CorpusPr[] {
     const r = row as Record<string, unknown>;
     const body = typeof r.body === "string" ? r.body : "";
     prs.push({
-      number: Number(r.number ?? 0),
+      // The primary key: readCorpusPrs blind-casts this back to `number`, and
+      // JSON.stringify would silently write NaN as `null` otherwise.
+      number: typeof r.number === "number" && Number.isFinite(r.number) ? r.number : 0,
       title: typeof r.title === "string" ? r.title : "",
       body,
       merged_at: typeof r.mergedAt === "string" ? r.mergedAt : "",
@@ -96,35 +98,54 @@ export function fetchPrsViaGh(cwd: string, limit: number): unknown {
   return JSON.parse(res.stdout);
 }
 
-/** Merge-commit fallback for repos with no GitHub remote. Loses Lab Notes. */
+/**
+ * Merge-commit fallback for repos with no GitHub remote. Loses Lab Notes.
+ *
+ * `--reverse` makes the walk oldest-first, matching the `gh` path's contract.
+ * The real PR number is parsed out of the merge subject when GitHub wrote it
+ * ("Merge pull request #103 from …") — the story wave keys deliverables as
+ * `pr-<number>`, so a synthetic index would mint wrong ids. Subjects without a
+ * number fall back to position, which stays monotonic because of `--reverse`.
+ */
 export function fetchPrsViaGit(cwd: string): unknown {
-  const res = spawnSync("git", ["log", "--merges", "--date=iso-strict", "--pretty=%H%x1f%ad%x1f%s"], {
+  const res = spawnSync("git", ["log", "--merges", "--reverse", "--date=iso-strict", "--pretty=%ad%x1f%s"], {
     cwd,
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
   });
-  if (res.status !== 0) throw new Error(`git log failed: ${res.stderr.trim()}`);
+  if (res.error) throw new Error(`git not runnable: ${res.error.message}`);
+  if (res.status !== 0) throw new Error(`git log failed: ${(res.stderr ?? "").trim()}`);
   return res.stdout
     .split("\n")
     .filter(Boolean)
     .map((line, i) => {
-      const [, date, subject] = line.split("\x1f");
-      return { number: i + 1, title: subject ?? "", body: "", mergedAt: date ?? "", labels: [], files: [] };
+      const [date, subject] = line.split("\x1f");
+      const matched = /#(\d+)/.exec(subject ?? "");
+      return {
+        number: matched ? Number(matched[1]) : i + 1,
+        title: subject ?? "",
+        body: "",
+        mergedAt: date ?? "",
+        labels: [],
+        files: [],
+      };
     });
 }
 
 function walk(root: string, cwd: string, out: string[]): void {
-  for (const entry of readdirSync(root)) {
-    if (SKIP_DIRS.has(entry) || entry.startsWith(".")) continue;
-    const full = path.join(root, entry);
-    let stats;
-    try {
-      stats = statSync(full);
-    } catch {
-      continue;
-    }
-    if (stats.isDirectory()) walk(full, cwd, out);
-    else out.push(path.relative(cwd, full).split(path.sep).join("/"));
+  let entries;
+  try {
+    entries = readdirSync(root, { withFileTypes: true });
+  } catch {
+    return; // an unreadable directory skips its subtree, it does not abort the run
+  }
+  for (const entry of entries) {
+    if (SKIP_DIRS.has(entry.name) || entry.name.startsWith(".")) continue;
+    const full = path.join(root, entry.name);
+    // Dirent types are lstat-like: a symlinked directory is neither traversed
+    // nor followed, so a symlink cycle cannot inflate the inventory.
+    if (entry.isDirectory()) walk(full, cwd, out);
+    else if (entry.isFile()) out.push(path.relative(cwd, full).split(path.sep).join("/"));
   }
 }
 
@@ -182,7 +203,12 @@ export function buildCorpus(options: CorpusOptions): CorpusResult {
   let prs = normalizePrs(raw);
   if (options.since) {
     const floor = Date.parse(options.since);
-    prs = prs.filter((pr) => !Number.isNaN(floor) && Date.parse(pr.merged_at) >= floor);
+    if (Number.isNaN(floor)) {
+      throw new Error(`--since is not a parseable date: ${options.since} (try an ISO date like 2026-01-31)`);
+    }
+    // A PR whose own merged_at doesn't parse can't be shown to fall after the
+    // cutoff either, so it is dropped here too (NaN >= floor is false).
+    prs = prs.filter((pr) => Date.parse(pr.merged_at) >= floor);
   }
 
   const files = listFiles(cwd);

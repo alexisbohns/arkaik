@@ -7,8 +7,11 @@
  * and this command group owns everything else — ID uniqueness, edge
  * resolution, journal construction, validation gating.
  */
+import { existsSync } from "node:fs";
+import path from "node:path";
+
 import { buildCorpus } from "../lib/bootstrap/corpus";
-import { ensureGitignored } from "../lib/bootstrap/paths";
+import { BOOTSTRAP_ROOT, CORPUS_DIR, ensureGitignored } from "../lib/bootstrap/paths";
 
 const USAGE = `arkaik bootstrap <subcommand> [options]
 
@@ -35,6 +38,18 @@ Options:
   --since <iso-date>  Keep only PRs merged at or after this date.
   -h, --help          Show this help.`;
 
+function fail(message: string): never {
+  console.error(message);
+  process.exit(1);
+}
+
+/** `argv[i]`, failing loudly instead of silently falling through as `undefined`. */
+function nextValue(argv: string[], i: number, flag: string, usage: string): string {
+  const value = argv[i];
+  if (value === undefined) fail(`Missing value for ${flag}\n\n${usage}`);
+  return value;
+}
+
 function runCorpus(argv: string[]): void {
   const cwd = process.cwd();
   let fromJson: string | undefined;
@@ -48,25 +63,37 @@ function runCorpus(argv: string[]): void {
       console.log(CORPUS_USAGE);
       process.exit(0);
     } else if (arg === "--from-json") {
-      fromJson = argv[++i];
+      fromJson = nextValue(argv, ++i, "--from-json", CORPUS_USAGE);
     } else if (arg === "--from-git") {
       fromGit = true;
     } else if (arg === "--limit") {
-      limit = Number(argv[++i]);
+      const raw = nextValue(argv, ++i, "--limit", CORPUS_USAGE);
+      const parsed = Number(raw);
+      if (!Number.isInteger(parsed) || parsed <= 0) {
+        fail(`--limit must be a positive integer, got: ${raw}\n\n${CORPUS_USAGE}`);
+      }
+      limit = parsed;
     } else if (arg === "--since") {
-      since = argv[++i];
+      since = nextValue(argv, ++i, "--since", CORPUS_USAGE);
     } else {
-      console.error(`Unknown option: ${arg}\n\n${CORPUS_USAGE}`);
-      process.exit(1);
+      fail(`Unknown option: ${arg}\n\n${CORPUS_USAGE}`);
     }
+  }
+
+  // Task 1's ensureGitignored expects cwd to be the repo root; from a
+  // subdirectory --from-git still walks full history while listFiles only
+  // sees the subtree, so a silently inconsistent corpus is worse than
+  // refusing to run.
+  if (!existsSync(path.join(cwd, ".git"))) {
+    fail("`arkaik bootstrap corpus` must run from the repository root (no .git here).");
   }
 
   try {
     const result = buildCorpus({ cwd, fromJson, fromGit, limit, since });
     const ignored = ensureGitignored(cwd);
-    console.log(`Corpus written to .arkaik/corpus/`);
+    console.log(`Corpus written to ${CORPUS_DIR}/`);
     console.log(`  ${result.prs} merged PRs, ${result.docs} docs, ${result.surfaces} surfaces`);
-    if (ignored) console.log(`  added .arkaik/ to .gitignore`);
+    if (ignored) console.log(`  added ${BOOTSTRAP_ROOT}/ to .gitignore`);
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);

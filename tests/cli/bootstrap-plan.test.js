@@ -36,6 +36,10 @@ function check(name, cond, detail) {
 
 const dir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-plan-"));
 try {
+  // A real .git dir is not needed — `corpus` only checks for its presence,
+  // as the repo-root guard against running from a subdirectory.
+  mkdirSync(path.join(dir, ".git"), { recursive: true });
+
   // --- dispatch ---
   const help = runCli(["bootstrap", "--help"], dir);
   check("bootstrap --help exits 0", help.status === 0, help.stderr);
@@ -91,14 +95,22 @@ try {
   check("docs manifest found vision.md", docs.some((d) => d.path === "docs/vision.md"), JSON.stringify(docs));
   check("docs manifest carries the heading", docs.some((d) => d.title === "Vision"), JSON.stringify(docs));
 
-  const surfaces = JSON.parse(readFileSync(path.join(dir, ".arkaik", "corpus", "surfaces.json"), "utf8"));
+  const surfacesRaw = readFileSync(path.join(dir, ".arkaik", "corpus", "surfaces.json"), "utf8");
+  const surfaces = JSON.parse(surfacesRaw);
   check("surfaces found the page", surfaces.some((s) => s.path === "app/home/page.tsx"), JSON.stringify(surfaces));
+  check(
+    "surface classified as page (SURFACE_RULES ordering)",
+    surfaces.find((s) => s.path === "app/home/page.tsx")?.kind === "page",
+    JSON.stringify(surfaces),
+  );
 
   check(
     "corpus gitignores .arkaik",
     readFileSync(path.join(dir, ".gitignore"), "utf8").includes(".arkaik/"),
     "no .gitignore entry",
   );
+
+  const prsRaw = readFileSync(path.join(dir, ".arkaik", "corpus", "prs.jsonl"), "utf8");
 
   const again = runCli(["bootstrap", "corpus", "--from-json", payloadPath], dir);
   check("corpus is idempotent", again.status === 0, again.stderr);
@@ -107,6 +119,50 @@ try {
     readFileSync(path.join(dir, ".gitignore"), "utf8").match(/\.arkaik\//g).length === 1,
     readFileSync(path.join(dir, ".gitignore"), "utf8"),
   );
+  check(
+    "prs.jsonl is byte-identical on re-run",
+    readFileSync(path.join(dir, ".arkaik", "corpus", "prs.jsonl"), "utf8") === prsRaw,
+    "content differs between runs",
+  );
+  check(
+    "surfaces.json is byte-identical on re-run",
+    readFileSync(path.join(dir, ".arkaik", "corpus", "surfaces.json"), "utf8") === surfacesRaw,
+    "content differs between runs",
+  );
+
+  // --- corpus option validation ---
+  const missingValue = runCli(["bootstrap", "corpus", "--from-json"], dir);
+  check("--from-json with no value exits 1", missingValue.status === 1, String(missingValue.status));
+  check(
+    "--from-json with no value fails fast instead of falling through to gh",
+    missingValue.stderr.includes("Missing value for --from-json"),
+    missingValue.stderr,
+  );
+
+  const unknownOpt = runCli(["bootstrap", "corpus", "--nope"], dir);
+  check("corpus unknown option exits 1", unknownOpt.status === 1, String(unknownOpt.status));
+  check("corpus unknown option reports the flag", unknownOpt.stderr.includes("Unknown option: --nope"), unknownOpt.stderr);
+
+  const badLimit = runCli(["bootstrap", "corpus", "--from-json", payloadPath, "--limit", "abc"], dir);
+  check("--limit with a non-integer exits 1", badLimit.status === 1, String(badLimit.status));
+  check("--limit error names the bad value", badLimit.stderr.includes("abc"), badLimit.stderr);
+
+  const badSince = runCli(["bootstrap", "corpus", "--from-json", payloadPath, "--since", "not-a-date"], dir);
+  check("--since with an unparseable date exits 1", badSince.status === 1, String(badSince.status));
+  check("--since error names the bad value", badSince.stderr.includes("not-a-date"), badSince.stderr);
+
+  const noGitRoot = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-nogit-"));
+  try {
+    const outsideRepo = runCli(["bootstrap", "corpus", "--from-json", payloadPath], noGitRoot);
+    check("corpus outside a repo root exits 1", outsideRepo.status === 1, String(outsideRepo.status));
+    check(
+      "corpus outside a repo root names the reason",
+      outsideRepo.stderr.includes("repository root"),
+      outsideRepo.stderr,
+    );
+  } finally {
+    rmSync(noGitRoot, { recursive: true, force: true });
+  }
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

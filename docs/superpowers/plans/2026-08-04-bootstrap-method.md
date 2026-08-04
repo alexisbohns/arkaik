@@ -340,14 +340,22 @@ Append inside the `try` block of `tests/cli/bootstrap-plan.test.js`, before the 
   check("docs manifest found vision.md", docs.some((d) => d.path === "docs/vision.md"), JSON.stringify(docs));
   check("docs manifest carries the heading", docs.some((d) => d.title === "Vision"), JSON.stringify(docs));
 
-  const surfaces = JSON.parse(readFileSync(path.join(dir, ".arkaik", "corpus", "surfaces.json"), "utf8"));
+  const surfacesRaw = readFileSync(path.join(dir, ".arkaik", "corpus", "surfaces.json"), "utf8");
+  const surfaces = JSON.parse(surfacesRaw);
   check("surfaces found the page", surfaces.some((s) => s.path === "app/home/page.tsx"), JSON.stringify(surfaces));
+  check(
+    "surface classified as page (SURFACE_RULES ordering)",
+    surfaces.find((s) => s.path === "app/home/page.tsx")?.kind === "page",
+    JSON.stringify(surfaces),
+  );
 
   check(
     "corpus gitignores .arkaik",
     readFileSync(path.join(dir, ".gitignore"), "utf8").includes(".arkaik/"),
     "no .gitignore entry",
   );
+
+  const prsRaw = readFileSync(path.join(dir, ".arkaik", "corpus", "prs.jsonl"), "utf8");
 
   const again = runCli(["bootstrap", "corpus", "--from-json", payloadPath], dir);
   check("corpus is idempotent", again.status === 0, again.stderr);
@@ -356,7 +364,53 @@ Append inside the `try` block of `tests/cli/bootstrap-plan.test.js`, before the 
     readFileSync(path.join(dir, ".gitignore"), "utf8").match(/\.arkaik\//g).length === 1,
     readFileSync(path.join(dir, ".gitignore"), "utf8"),
   );
+  check(
+    "prs.jsonl is byte-identical on re-run",
+    readFileSync(path.join(dir, ".arkaik", "corpus", "prs.jsonl"), "utf8") === prsRaw,
+    "content differs between runs",
+  );
+  check(
+    "surfaces.json is byte-identical on re-run",
+    readFileSync(path.join(dir, ".arkaik", "corpus", "surfaces.json"), "utf8") === surfacesRaw,
+    "content differs between runs",
+  );
+
+  // --- corpus option validation ---
+  const missingValue = runCli(["bootstrap", "corpus", "--from-json"], dir);
+  check("--from-json with no value exits 1", missingValue.status === 1, String(missingValue.status));
+  check(
+    "--from-json with no value fails fast instead of falling through to gh",
+    missingValue.stderr.includes("Missing value for --from-json"),
+    missingValue.stderr,
+  );
+
+  const unknownOpt = runCli(["bootstrap", "corpus", "--nope"], dir);
+  check("corpus unknown option exits 1", unknownOpt.status === 1, String(unknownOpt.status));
+  check("corpus unknown option reports the flag", unknownOpt.stderr.includes("Unknown option: --nope"), unknownOpt.stderr);
+
+  const badLimit = runCli(["bootstrap", "corpus", "--from-json", payloadPath, "--limit", "abc"], dir);
+  check("--limit with a non-integer exits 1", badLimit.status === 1, String(badLimit.status));
+  check("--limit error names the bad value", badLimit.stderr.includes("abc"), badLimit.stderr);
+
+  const badSince = runCli(["bootstrap", "corpus", "--from-json", payloadPath, "--since", "not-a-date"], dir);
+  check("--since with an unparseable date exits 1", badSince.status === 1, String(badSince.status));
+  check("--since error names the bad value", badSince.stderr.includes("not-a-date"), badSince.stderr);
+
+  const noGitRoot = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-nogit-"));
+  try {
+    const outsideRepo = runCli(["bootstrap", "corpus", "--from-json", payloadPath], noGitRoot);
+    check("corpus outside a repo root exits 1", outsideRepo.status === 1, String(outsideRepo.status));
+    check(
+      "corpus outside a repo root names the reason",
+      outsideRepo.stderr.includes("repository root"),
+      outsideRepo.stderr,
+    );
+  } finally {
+    rmSync(noGitRoot, { recursive: true, force: true });
+  }
 ```
+
+Also add, right after `try {` (before the `--- dispatch ---` block): `mkdirSync(path.join(dir, ".git"), { recursive: true });` — `corpus` refuses to run outside a repo root (Task 2 review), and the mkdtemp scratch dir has no `.git` of its own.
 
 - [ ] **Step 2: Run it to verify it fails**
 
@@ -381,7 +435,7 @@ Create `packages/cli/src/lib/bootstrap/corpus.ts`:
  * offline and re-runnable without paying the API cost twice.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { at, CORPUS_DIR, DOCS_FILE, ensureDir, PRS_FILE, SURFACES_FILE } from "./paths";
@@ -436,7 +490,9 @@ export function normalizePrs(raw: unknown): CorpusPr[] {
     const r = row as Record<string, unknown>;
     const body = typeof r.body === "string" ? r.body : "";
     prs.push({
-      number: Number(r.number ?? 0),
+      // The primary key: readCorpusPrs blind-casts this back to `number`, and
+      // JSON.stringify would silently write NaN as `null` otherwise.
+      number: typeof r.number === "number" && Number.isFinite(r.number) ? r.number : 0,
       title: typeof r.title === "string" ? r.title : "",
       body,
       merged_at: typeof r.mergedAt === "string" ? r.mergedAt : "",
@@ -466,35 +522,54 @@ export function fetchPrsViaGh(cwd: string, limit: number): unknown {
   return JSON.parse(res.stdout);
 }
 
-/** Merge-commit fallback for repos with no GitHub remote. Loses Lab Notes. */
+/**
+ * Merge-commit fallback for repos with no GitHub remote. Loses Lab Notes.
+ *
+ * `--reverse` makes the walk oldest-first, matching the `gh` path's contract.
+ * The real PR number is parsed out of the merge subject when GitHub wrote it
+ * ("Merge pull request #103 from …") — the story wave keys deliverables as
+ * `pr-<number>`, so a synthetic index would mint wrong ids. Subjects without a
+ * number fall back to position, which stays monotonic because of `--reverse`.
+ */
 export function fetchPrsViaGit(cwd: string): unknown {
-  const res = spawnSync("git", ["log", "--merges", "--date=iso-strict", "--pretty=%H%x1f%ad%x1f%s"], {
+  const res = spawnSync("git", ["log", "--merges", "--reverse", "--date=iso-strict", "--pretty=%ad%x1f%s"], {
     cwd,
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
   });
-  if (res.status !== 0) throw new Error(`git log failed: ${res.stderr.trim()}`);
+  if (res.error) throw new Error(`git not runnable: ${res.error.message}`);
+  if (res.status !== 0) throw new Error(`git log failed: ${(res.stderr ?? "").trim()}`);
   return res.stdout
     .split("\n")
     .filter(Boolean)
     .map((line, i) => {
-      const [, date, subject] = line.split("\x1f");
-      return { number: i + 1, title: subject ?? "", body: "", mergedAt: date ?? "", labels: [], files: [] };
+      const [date, subject] = line.split("\x1f");
+      const matched = /#(\d+)/.exec(subject ?? "");
+      return {
+        number: matched ? Number(matched[1]) : i + 1,
+        title: subject ?? "",
+        body: "",
+        mergedAt: date ?? "",
+        labels: [],
+        files: [],
+      };
     });
 }
 
 function walk(root: string, cwd: string, out: string[]): void {
-  for (const entry of readdirSync(root)) {
-    if (SKIP_DIRS.has(entry) || entry.startsWith(".")) continue;
-    const full = path.join(root, entry);
-    let stats;
-    try {
-      stats = statSync(full);
-    } catch {
-      continue;
-    }
-    if (stats.isDirectory()) walk(full, cwd, out);
-    else out.push(path.relative(cwd, full).split(path.sep).join("/"));
+  let entries;
+  try {
+    entries = readdirSync(root, { withFileTypes: true });
+  } catch {
+    return; // an unreadable directory skips its subtree, it does not abort the run
+  }
+  for (const entry of entries) {
+    if (SKIP_DIRS.has(entry.name) || entry.name.startsWith(".")) continue;
+    const full = path.join(root, entry.name);
+    // Dirent types are lstat-like: a symlinked directory is neither traversed
+    // nor followed, so a symlink cycle cannot inflate the inventory.
+    if (entry.isDirectory()) walk(full, cwd, out);
+    else if (entry.isFile()) out.push(path.relative(cwd, full).split(path.sep).join("/"));
   }
 }
 
@@ -552,7 +627,12 @@ export function buildCorpus(options: CorpusOptions): CorpusResult {
   let prs = normalizePrs(raw);
   if (options.since) {
     const floor = Date.parse(options.since);
-    prs = prs.filter((pr) => !Number.isNaN(floor) && Date.parse(pr.merged_at) >= floor);
+    if (Number.isNaN(floor)) {
+      throw new Error(`--since is not a parseable date: ${options.since} (try an ISO date like 2026-01-31)`);
+    }
+    // A PR whose own merged_at doesn't parse can't be shown to fall after the
+    // cutoff either, so it is dropped here too (NaN >= floor is false).
+    prs = prs.filter((pr) => Date.parse(pr.merged_at) >= floor);
   }
 
   const files = listFiles(cwd);
@@ -583,8 +663,11 @@ export function readCorpusPrs(cwd: string): CorpusPr[] {
 In `packages/cli/src/commands/bootstrap.ts`, add the imports and the case:
 
 ```ts
+import { existsSync } from "node:fs";
+import path from "node:path";
+
 import { buildCorpus } from "../lib/bootstrap/corpus";
-import { ensureGitignored } from "../lib/bootstrap/paths";
+import { BOOTSTRAP_ROOT, CORPUS_DIR, ensureGitignored } from "../lib/bootstrap/paths";
 
 const CORPUS_USAGE = `arkaik bootstrap corpus [options]
 
@@ -596,6 +679,18 @@ Options:
   --limit <n>         Max PRs to fetch from gh (default: 1000).
   --since <iso-date>  Keep only PRs merged at or after this date.
   -h, --help          Show this help.`;
+
+function fail(message: string): never {
+  console.error(message);
+  process.exit(1);
+}
+
+/** `argv[i]`, failing loudly instead of silently falling through as `undefined`. */
+function nextValue(argv: string[], i: number, flag: string, usage: string): string {
+  const value = argv[i];
+  if (value === undefined) fail(`Missing value for ${flag}\n\n${usage}`);
+  return value;
+}
 
 function runCorpus(argv: string[]): void {
   const cwd = process.cwd();
@@ -610,25 +705,37 @@ function runCorpus(argv: string[]): void {
       console.log(CORPUS_USAGE);
       process.exit(0);
     } else if (arg === "--from-json") {
-      fromJson = argv[++i];
+      fromJson = nextValue(argv, ++i, "--from-json", CORPUS_USAGE);
     } else if (arg === "--from-git") {
       fromGit = true;
     } else if (arg === "--limit") {
-      limit = Number(argv[++i]);
+      const raw = nextValue(argv, ++i, "--limit", CORPUS_USAGE);
+      const parsed = Number(raw);
+      if (!Number.isInteger(parsed) || parsed <= 0) {
+        fail(`--limit must be a positive integer, got: ${raw}\n\n${CORPUS_USAGE}`);
+      }
+      limit = parsed;
     } else if (arg === "--since") {
-      since = argv[++i];
+      since = nextValue(argv, ++i, "--since", CORPUS_USAGE);
     } else {
-      console.error(`Unknown option: ${arg}\n\n${CORPUS_USAGE}`);
-      process.exit(1);
+      fail(`Unknown option: ${arg}\n\n${CORPUS_USAGE}`);
     }
+  }
+
+  // Task 1's ensureGitignored expects cwd to be the repo root; from a
+  // subdirectory --from-git still walks full history while listFiles only
+  // sees the subtree, so a silently inconsistent corpus is worse than
+  // refusing to run.
+  if (!existsSync(path.join(cwd, ".git"))) {
+    fail("`arkaik bootstrap corpus` must run from the repository root (no .git here).");
   }
 
   try {
     const result = buildCorpus({ cwd, fromJson, fromGit, limit, since });
     const ignored = ensureGitignored(cwd);
-    console.log(`Corpus written to .arkaik/corpus/`);
+    console.log(`Corpus written to ${CORPUS_DIR}/`);
     console.log(`  ${result.prs} merged PRs, ${result.docs} docs, ${result.surfaces} surfaces`);
-    if (ignored) console.log(`  added .arkaik/ to .gitignore`);
+    if (ignored) console.log(`  added ${BOOTSTRAP_ROOT}/ to .gitignore`);
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
@@ -877,11 +984,9 @@ export function planUnits(options: {
 
 - [ ] **Step 4: Wire the subcommand**
 
-In `packages/cli/src/commands/bootstrap.ts` add:
+In `packages/cli/src/commands/bootstrap.ts` add. `existsSync` (node:fs) and `path` (node:path) are already imported by Task 2's corpus wiring — don't add a second copy:
 
 ```ts
-import { existsSync } from "node:fs";
-import path from "node:path";
 import { planUnits, readManifest, readProfile, writeManifest } from "../lib/bootstrap/manifest";
 
 const PLAN_USAGE = `arkaik bootstrap plan [options]
