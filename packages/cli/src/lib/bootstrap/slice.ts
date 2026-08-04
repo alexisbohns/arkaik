@@ -42,6 +42,11 @@ function readJsonArray<T>(file: string): T[] {
  * and the unit would silently get an EMPTY slice instead of the one it asked
  * for — wrong in the opposite direction from this file's usual concern, but
  * just as silent.
+ *
+ * Trade-off, accepted: a repo-relative path that legitimately contains a
+ * literal backslash in a filename (valid on POSIX, just unusual) would be
+ * mangled by this too. Judged vanishingly unlikely next to a Windows-style
+ * or copy-pasted path arriving in profile.json.
  */
 function toPosix(value: string): string {
   return value.includes("\\") ? value.split("\\").join("/") : value;
@@ -96,32 +101,40 @@ function eraWindows(cwd: string, slugs: readonly string[]): EraWindow[] {
 }
 
 /**
- * True when `mergedAt` falls inside at least one of `windows`. A window with
- * neither `from` nor `to` matches nothing, deliberately: the whole reason
- * this function exists is to stop a wave-3 era unit from silently reading
- * the entire PR corpus (era filtering was declared on `WorkUnit.slice` but
- * never consumed — see the plan's Task 4 notes), so an era nobody gave a
- * boundary to should read as "not resolvable yet," not as "unbounded" —
- * treating it as unbounded would just move the same silent-everything bug
- * one level down. A PR whose own `merged_at` doesn't parse can't be shown to
- * fall inside any window either, so it is excluded the same way
- * `corpus.ts`'s `--since` excludes an undated PR — consistent with, not
- * contradicting, that file's existing convention.
+ * True when `mergedAt` falls inside at least one of `windows`. `planUnits`
+ * (manifest.ts) now rejects an era with neither bound, and rejects any
+ * present bound that doesn't parse, at plan time — but this function must
+ * not rely on that: `eraWindows` above can still hand it a window built from
+ * a stale `profile.json` (edited after `plan` ran, without a re-plan), so a
+ * window here can still legitimately have a missing or garbage bound on
+ * either or both sides.
+ *
+ * A bound that's missing OR doesn't parse is discarded (treated as "not
+ * usable"), not treated as "unbounded" — the two are different: if only ONE
+ * side is discarded, the other still constrains the match (a real, useful
+ * leniency for one bad/absent bound next to one good one). But if BOTH
+ * sides end up discarded, there is nothing left to constrain on, and
+ * returning `true` there would be exactly the fail-open this function
+ * exists to prevent — a window matching everything is indistinguishable
+ * from no window at all. (Reproduced before this fix: an era with
+ * `from`/`to` both unparseable matched the entire corpus.)
+ *
+ * A PR whose own `merged_at` doesn't parse can't be shown to fall inside any
+ * window either, so it is excluded the same way `corpus.ts`'s `--since`
+ * excludes an undated PR — consistent with, not contradicting, that file's
+ * existing convention.
  */
 export function matchesEras(mergedAt: string, windows: readonly EraWindow[]): boolean {
   const merged = Date.parse(mergedAt);
   if (Number.isNaN(merged)) return false;
   return windows.some((w) => {
-    if (w.from === undefined && w.to === undefined) return false;
     const from = w.from !== undefined ? Date.parse(w.from) : undefined;
     const to = w.to !== undefined ? Date.parse(w.to) : undefined;
-    // An unparseable bound (an agent typo in profile.json) is treated as "no
-    // bound on that side" rather than silently excluding every PR from an
-    // era someone clearly meant to declare — a softer trust boundary than
-    // assertSafeId's, appropriate here because the worst case is a slightly
-    // too-generous story slice, not a filesystem escape.
-    if (from !== undefined && !Number.isNaN(from) && merged < from) return false;
-    if (to !== undefined && !Number.isNaN(to) && merged > to) return false;
+    const usableFrom = from !== undefined && !Number.isNaN(from) ? from : undefined;
+    const usableTo = to !== undefined && !Number.isNaN(to) ? to : undefined;
+    if (usableFrom === undefined && usableTo === undefined) return false;
+    if (usableFrom !== undefined && merged < usableFrom) return false;
+    if (usableTo !== undefined && merged > usableTo) return false;
     return true;
   });
 }
@@ -137,10 +150,58 @@ export function matchesEras(mergedAt: string, windows: readonly EraWindow[]): bo
  */
 const MAX_BODY_CHARS = 4000;
 
+/** Matches `corpus.ts`'s `has_lab_note` detection exactly — same heading, same anchoring. */
+const LAB_NOTE_HEADING_RE = /^##\s+Lab Note.*$/m;
+/** Any other H2 heading — marks where the Lab Note's own section ends. */
+const NEXT_HEADING_RE = /^##\s+/m;
+
+/**
+ * Split `body` into the prose before a `## Lab Note` section, the section
+ * itself (heading through the next `## ` heading, or end of body), and
+ * whatever follows it. Returns `null` when there is no Lab Note heading.
+ */
+function splitLabNoteSection(body: string): { before: string; note: string; after: string } | null {
+  const heading = LAB_NOTE_HEADING_RE.exec(body);
+  if (!heading) return null;
+  const noteStart = heading.index;
+  const restStart = noteStart + heading[0].length;
+  const next = NEXT_HEADING_RE.exec(body.slice(restStart));
+  const noteEnd = next ? restStart + next.index : body.length;
+  return { before: body.slice(0, noteStart), note: body.slice(noteStart, noteEnd), after: body.slice(noteEnd) };
+}
+
+/**
+ * Truncate an oversized PR body WITHOUT ever cutting into a `## Lab Note`
+ * section. A naive head-truncate at `MAX_BODY_CHARS` silently ate the Lab
+ * Note on the majority of this repo's own real PRs sampled during review (5
+ * of 8, all with the note past the 4000-char mark) — the worst possible
+ * loss, since `has_lab_note` is computed from the FULL body at mining time
+ * (corpus.ts) and stays `true` even after the section itself is gone: the
+ * agent is told a note exists and then can't find it.
+ *
+ * When a Lab Note is present, it — and anything after it — is always kept
+ * in full; only the prose BEFORE it is head-truncated, to whatever budget is
+ * left once the note and any trailing content are accounted for. The
+ * truncation is always marked, so an agent can tell it's reading a
+ * shortened body rather than a genuinely short one. In the pathological
+ * case of a Lab Note itself larger than the whole cap, the note still wins
+ * — the cap is a target, not a hard ceiling, when the alternative is losing
+ * the note.
+ */
 function boundBody(pr: CorpusPr): CorpusPr {
   if (pr.body.length <= MAX_BODY_CHARS) return pr;
-  const cut = pr.body.length - MAX_BODY_CHARS;
-  return { ...pr, body: `${pr.body.slice(0, MAX_BODY_CHARS)}\n\n…[truncated ${cut} more characters]` };
+
+  const section = splitLabNoteSection(pr.body);
+  if (!section) {
+    const cut = pr.body.length - MAX_BODY_CHARS;
+    return { ...pr, body: `${pr.body.slice(0, MAX_BODY_CHARS)}\n\n…[truncated ${cut} more characters]` };
+  }
+
+  const marker = "\n\n[… truncated …]\n\n";
+  const budgetForProse = Math.max(0, MAX_BODY_CHARS - section.note.length - section.after.length - marker.length);
+  const truncatedProse =
+    section.before.length > budgetForProse ? `${section.before.slice(0, budgetForProse)}${marker}` : section.before;
+  return { ...pr, body: `${truncatedProse}${section.note}${section.after}` };
 }
 
 export function resolveSlice(cwd: string, unit: WorkUnit): Slice {

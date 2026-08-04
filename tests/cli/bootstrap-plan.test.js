@@ -174,7 +174,10 @@ try {
     mkdirSync(path.join(eraRenameDir, ".arkaik", "bootstrap"), { recursive: true });
     writeFileSync(
       path.join(eraRenameDir, ".arkaik", "bootstrap", "profile.json"),
-      JSON.stringify({ areas: [], eras: [{ slug: "chapter-one", title: "Chapter One" }] }),
+      JSON.stringify({
+        areas: [],
+        eras: [{ slug: "chapter-one", title: "Chapter One", from: "2026-01-01", to: "2026-02-01" }],
+      }),
     );
     const eraPlanA = runCli(["bootstrap", "plan"], eraRenameDir);
     check("era-rename setup plan exits 0", eraPlanA.status === 0, eraPlanA.stderr);
@@ -182,10 +185,13 @@ try {
     eraManifestA.units.find((u) => u.id === "w3-chapter-one").status = "done";
     writeFileSync(path.join(eraRenameDir, ".arkaik", "bootstrap", "manifest.json"), JSON.stringify(eraManifestA));
 
-    // Same slug, same slice — only the display title changes.
+    // Same slug, same window, same slice — only the display title changes.
     writeFileSync(
       path.join(eraRenameDir, ".arkaik", "bootstrap", "profile.json"),
-      JSON.stringify({ areas: [], eras: [{ slug: "chapter-one", title: "Chapter One: Redux" }] }),
+      JSON.stringify({
+        areas: [],
+        eras: [{ slug: "chapter-one", title: "Chapter One: Redux", from: "2026-01-01", to: "2026-02-01" }],
+      }),
     );
     const eraPlanB = runCli(["bootstrap", "plan"], eraRenameDir);
     check("re-plan after a cosmetic era rename exits 0", eraPlanB.status === 0, eraPlanB.stderr);
@@ -217,7 +223,7 @@ try {
       path.join(modeFlipDir, ".arkaik", "bootstrap", "profile.json"),
       JSON.stringify({
         areas: [{ id: "home", title: "Home", paths: ["app/home"] }],
-        eras: [{ slug: "first-light", title: "First light" }],
+        eras: [{ slug: "first-light", title: "First light", from: "2026-01-01", to: "2026-02-01" }],
       }),
     );
     const flipPlanA = runCli(["bootstrap", "plan"], modeFlipDir);
@@ -451,7 +457,9 @@ try {
     mkdirSync(path.join(dupIdDir, ".arkaik", "bootstrap"), { recursive: true });
     writeFileSync(
       path.join(dupIdDir, ".arkaik", "bootstrap", "profile.json"),
-      JSON.stringify({ areas: [], eras: [{ slug: "decisions", title: "Decisions era" }] }),
+      // Dated, so this era passes assertEraWindow and reaches the duplicate-id
+      // check below — the thing this test actually exercises.
+      JSON.stringify({ areas: [], eras: [{ slug: "decisions", title: "Decisions era", from: "2026-01-01", to: "2026-02-01" }] }),
     );
     const dupPlan = runCli(["bootstrap", "plan"], dupIdDir);
     check("plan rejects an era slug that collides with the reserved decisions unit", dupPlan.status === 1, String(dupPlan.status));
@@ -462,6 +470,129 @@ try {
     );
   } finally {
     rmSync(dupIdDir, { recursive: true, force: true });
+  }
+
+  // --- regression: an era with neither `from` nor `to` fails open otherwise (Task 4's other primary token lever) ---
+  // Overturns Task 4's original "fails closed" choice: an unbounded era used
+  // to resolve to zero PRs at slice time (safer than the alternative, but
+  // still silent — no error anywhere, just an empty fragment). Same
+  // authoring mistake as an area with empty `paths` above, same treatment:
+  // reject it here, before any agent is dispatched.
+  const datelessEraDir = freshRepoDir("arkaik-bootstrap-datelessera-");
+  try {
+    mkdirSync(path.join(datelessEraDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(
+      path.join(datelessEraDir, ".arkaik", "bootstrap", "profile.json"),
+      JSON.stringify({ areas: [], eras: [{ slug: "no-dates", title: "No dates" }] }),
+    );
+    const datelessPlan = runCli(["bootstrap", "plan"], datelessEraDir);
+    check("plan rejects an era with neither from nor to", datelessPlan.status === 1, String(datelessPlan.status));
+    check("the rejection names the offending era", datelessPlan.stderr.includes("no-dates"), datelessPlan.stderr);
+  } finally {
+    rmSync(datelessEraDir, { recursive: true, force: true });
+  }
+
+  // --- regression: an era with an unparseable from/to is rejected, not silently discarded ---
+  const badEraDateDir = freshRepoDir("arkaik-bootstrap-baderadate-");
+  try {
+    mkdirSync(path.join(badEraDateDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(
+      path.join(badEraDateDir, ".arkaik", "bootstrap", "profile.json"),
+      JSON.stringify({ areas: [], eras: [{ slug: "bad-date", title: "Bad date", from: "not-a-date" }] }),
+    );
+    const badEraDatePlan = runCli(["bootstrap", "plan"], badEraDateDir);
+    check("plan rejects an era with an unparseable from", badEraDatePlan.status === 1, String(badEraDatePlan.status));
+    check("the rejection names the bad value", badEraDatePlan.stderr.includes("not-a-date"), badEraDatePlan.stderr);
+  } finally {
+    rmSync(badEraDateDir, { recursive: true, force: true });
+  }
+
+  // --- an era with only one bound stays legal — that's a meaningful open-ended window, not a mistake ---
+  const openEndedEraDir = freshRepoDir("arkaik-bootstrap-openendedera-");
+  try {
+    mkdirSync(path.join(openEndedEraDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(
+      path.join(openEndedEraDir, ".arkaik", "bootstrap", "profile.json"),
+      JSON.stringify({ areas: [], eras: [{ slug: "ongoing", title: "Ongoing", from: "2026-01-01" }] }),
+    );
+    const openEndedPlan = runCli(["bootstrap", "plan"], openEndedEraDir);
+    check("plan accepts an era with only `from` set", openEndedPlan.status === 0, openEndedPlan.stderr);
+  } finally {
+    rmSync(openEndedEraDir, { recursive: true, force: true });
+  }
+
+  // --- regression: overlapping era windows are rejected, not left to double-match PRs ---
+  // Windows are inclusive at both ends (a PR merged exactly at one era's `to`
+  // and another's `from` would otherwise land in both slices, with nothing
+  // downstream deduping it) — so eras are required to partition the corpus
+  // without overlap, checked here at plan time.
+  const overlapEraDir = freshRepoDir("arkaik-bootstrap-overlapera-");
+  try {
+    mkdirSync(path.join(overlapEraDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(
+      path.join(overlapEraDir, ".arkaik", "bootstrap", "profile.json"),
+      JSON.stringify({
+        areas: [],
+        eras: [
+          { slug: "era-a", title: "Era A", from: "2026-01-01", to: "2026-02-15" },
+          { slug: "era-b", title: "Era B", from: "2026-02-01", to: "2026-03-01" },
+        ],
+      }),
+    );
+    const overlapPlan = runCli(["bootstrap", "plan"], overlapEraDir);
+    check("plan rejects two eras with overlapping windows", overlapPlan.status === 1, String(overlapPlan.status));
+    check("the rejection names both offending eras", overlapPlan.stderr.includes("era-a") && overlapPlan.stderr.includes("era-b"), overlapPlan.stderr);
+  } finally {
+    rmSync(overlapEraDir, { recursive: true, force: true });
+  }
+
+  // --- windows that touch at exactly one shared instant ARE an overlap under inclusive bounds ---
+  // era-c's `to` and era-d's `from` parse to the identical instant (both
+  // midnight on the same day) — under inclusive-inclusive semantics that
+  // single instant belongs to both windows, so this is rejected too, not
+  // waved through as "merely touching." Recon should leave a real gap
+  // between eras (see the next test) rather than share a boundary value.
+  const touchingEraDir = freshRepoDir("arkaik-bootstrap-touchingera-");
+  try {
+    mkdirSync(path.join(touchingEraDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(
+      path.join(touchingEraDir, ".arkaik", "bootstrap", "profile.json"),
+      JSON.stringify({
+        areas: [],
+        eras: [
+          { slug: "era-c", title: "Era C", from: "2026-01-01", to: "2026-02-01" },
+          { slug: "era-d", title: "Era D", from: "2026-02-01", to: "2026-03-01" },
+        ],
+      }),
+    );
+    const touchingPlan = runCli(["bootstrap", "plan"], touchingEraDir);
+    check(
+      "plan rejects two eras whose windows touch at exactly one shared instant",
+      touchingPlan.status === 1,
+      touchingPlan.stderr,
+    );
+  } finally {
+    rmSync(touchingEraDir, { recursive: true, force: true });
+  }
+
+  // --- a real gap between eras (even one day) is accepted — recon CAN still partition cleanly ---
+  const gappedEraDir = freshRepoDir("arkaik-bootstrap-gappedera-");
+  try {
+    mkdirSync(path.join(gappedEraDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(
+      path.join(gappedEraDir, ".arkaik", "bootstrap", "profile.json"),
+      JSON.stringify({
+        areas: [],
+        eras: [
+          { slug: "era-e", title: "Era E", from: "2026-01-01", to: "2026-01-31" },
+          { slug: "era-f", title: "Era F", from: "2026-02-01", to: "2026-03-01" },
+        ],
+      }),
+    );
+    const gappedPlan = runCli(["bootstrap", "plan"], gappedEraDir);
+    check("plan accepts two eras separated by even a one-day gap", gappedPlan.status === 0, gappedPlan.stderr);
+  } finally {
+    rmSync(gappedEraDir, { recursive: true, force: true });
   }
 
   // --- regression: case-differing ids collide on a case-insensitive filesystem ---

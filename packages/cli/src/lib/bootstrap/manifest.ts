@@ -175,6 +175,78 @@ function assertArrayField(field: "areas" | "eras", value: unknown): void {
 }
 
 /**
+ * An era's `from`/`to` are the only signal `bootstrap slice` (Task 4) has to
+ * scope a wave-3 story unit to its date window. An era with neither bound is
+ * the same authoring mistake as an area with empty `paths` above, with the
+ * same consequence class, just resolved the other way: instead of silently
+ * handing that unit's agent the WHOLE corpus, an unbounded era resolves to
+ * ZERO PRs (`bootstrap slice`'s date filter has nothing to constrain on) — a
+ * story unit that writes an empty fragment and contributes nothing to the
+ * changelog, with nothing in the manifest that looks wrong. Reject it here,
+ * the same way an empty `paths` is rejected above, rather than deferring to
+ * "hope the wave-3 agent notices its slice is empty."
+ *
+ * A bound that IS present but doesn't parse is rejected the same way
+ * `corpus.ts`'s `--since` validation already rejects an unparseable date —
+ * same trust boundary (agent-written profile.json), same treatment. An era
+ * with only one bound stays legal: that's a meaningful open-ended window,
+ * not a mistake.
+ */
+function assertEraWindow(era: { slug?: unknown; from?: unknown; to?: unknown }): void {
+  if (era.from === undefined && era.to === undefined) {
+    throw new Error(
+      `profile.json era "${String(era.slug)}" has neither "from" nor "to". An unbounded era would hand that ` +
+        "era's wave-3 agent zero PRs (bootstrap slice's date-window filter can't constrain anything), silently " +
+        "contributing nothing to the story. Add at least one date and re-run `arkaik bootstrap plan`.",
+    );
+  }
+  for (const [key, value] of [
+    ["from", era.from],
+    ["to", era.to],
+  ] as const) {
+    if (value === undefined) continue;
+    if (typeof value !== "string" || Number.isNaN(Date.parse(value))) {
+      throw new Error(
+        `profile.json era "${String(era.slug)}" has an unparseable "${key}": ${JSON.stringify(value)} (try an ISO ` +
+          "date like 2026-01-31). Fix profile.json and re-run `arkaik bootstrap plan`.",
+      );
+    }
+  }
+}
+
+/**
+ * `bootstrap slice`'s era windows are inclusive at both ends (deliberately —
+ * see slice.ts's `matchesEras`: recon dates an era's end at its last
+ * deliverable's merge, so a half-open window would silently drop that PR
+ * from its own era). Inclusive bounds mean two overlapping windows would
+ * double-match every PR merged in the overlap, with nothing downstream
+ * deduping it. Rather than accept that, eras are required to partition the
+ * corpus without overlap — checked here, after each individual era's window
+ * has already been validated as present and parseable, so an open bound
+ * (`from`/`to` missing on one side) is treated as unbounded in that
+ * direction for the overlap check too.
+ */
+function assertNoOverlappingEras(eras: ReadonlyArray<{ slug: string; from?: string; to?: string }>): void {
+  const windows = eras.map((e) => ({
+    slug: e.slug,
+    from: e.from !== undefined ? Date.parse(e.from) : -Infinity,
+    to: e.to !== undefined ? Date.parse(e.to) : Infinity,
+  }));
+  for (let i = 0; i < windows.length; i += 1) {
+    for (let j = i + 1; j < windows.length; j += 1) {
+      const a = windows[i];
+      const b = windows[j];
+      if (a.from <= b.to && b.from <= a.to) {
+        throw new Error(
+          `profile.json eras "${a.slug}" and "${b.slug}" have overlapping date windows. Eras must partition the ` +
+            "corpus without overlap — narrow one or both windows and re-run `arkaik bootstrap plan`.",
+        );
+      }
+    }
+  }
+}
+
+/**
  * Build the manifest for this repo. `previous` (when given) carries unit
  * statuses forward so re-planning after recon never loses completed work —
  * but only for a unit whose `slice` is unchanged from the last plan (see
@@ -224,9 +296,11 @@ export function planUnits(options: {
         `profile.json has a malformed era entry: ${JSON.stringify(rawEra)} (expected an object with slug, title).`,
       );
     }
-    const era = rawEra as unknown as { slug?: unknown };
+    const era = rawEra as unknown as { slug?: unknown; from?: unknown; to?: unknown };
     assertSafeId("era", era.slug);
+    assertEraWindow(era);
   }
+  assertNoOverlappingEras(profile?.eras ?? []);
 
   const units: WorkUnit[] = [unit("w0-recon", 0, "Recon", RECON_SCOPE, { docs: true })];
 

@@ -99,10 +99,7 @@ try {
         { id: "home", title: "Home", paths: ["app/home"] },
         { id: "winpath", title: "Winpath", paths: ["win\\dir"] },
       ],
-      eras: [
-        { slug: "first-era", title: "First era", from: "2026-01-01T00:00:00Z", to: "2026-02-01T00:00:00Z" },
-        { slug: "no-dates-era", title: "No dates era" },
-      ],
+      eras: [{ slug: "first-era", title: "First era", from: "2026-01-01T00:00:00Z", to: "2026-02-01T00:00:00Z" }],
     }),
   );
   const plan = runCli(["bootstrap", "plan"], dir);
@@ -156,13 +153,81 @@ try {
     JSON.stringify(eraNumbers),
   );
 
-  // --- probe 1: an era with neither `from` nor `to` fails closed, not open ---
-  const noDatesSlice = JSON.parse(runCli(["bootstrap", "slice", "w3-no-dates-era"], dir).stdout);
-  check(
-    "an era with no dates at all matches ZERO PRs (fails closed) rather than the entire corpus (fails open)",
-    noDatesSlice.prs.length === 0,
-    JSON.stringify(noDatesSlice.prs.map((p) => p.number)),
-  );
+  // --- probe 1, overturned: an era with neither `from` nor `to` is now REJECTED at plan time ---
+  // Task 4 originally chose "fails closed" here (matches zero PRs at slice
+  // time) — overturned on review: that's still a silent failure, just the
+  // safe-looking kind (an empty fragment, no error anywhere, nothing in the
+  // manifest that looks wrong). planUnits now rejects this outright, the
+  // same way it already rejects an area with empty `paths` (manifest.ts).
+  const datelessDir = freshRepoDir("arkaik-bootstrap-slice-dateless-");
+  try {
+    mkdirSync(path.join(datelessDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(
+      path.join(datelessDir, ".arkaik", "bootstrap", "profile.json"),
+      JSON.stringify({ areas: [], eras: [{ slug: "no-dates-era", title: "No dates era" }] }),
+    );
+    const datelessPlan = runCli(["bootstrap", "plan"], datelessDir);
+    check("plan rejects an era with neither from nor to (probe 1, overturned)", datelessPlan.status === 1, String(datelessPlan.status));
+    check("the rejection names the offending era", datelessPlan.stderr.includes("no-dates-era"), datelessPlan.stderr);
+  } finally {
+    rmSync(datelessDir, { recursive: true, force: true });
+  }
+
+  // --- matchesEras itself must not fail open when BOTH bounds are unparseable ---
+  // planUnits now rejects an unparseable era bound at plan time (see above),
+  // so the only way to reach this state through the CLI is a hand-edited or
+  // stale profile.json/manifest.json — exactly the gap eraWindows's own
+  // docstring already accepts (dates edited without a re-plan). Defense in
+  // depth: matchesEras must refuse to match everything even when handed
+  // genuinely garbage input directly, not rely on plan having caught it.
+  const garbageEraDir = freshRepoDir("arkaik-bootstrap-slice-garbageera-");
+  try {
+    const garbagePayload = [
+      { number: 1, title: "PR one", body: "", mergedAt: "2026-01-05T00:00:00Z", labels: [], files: [] },
+      { number: 2, title: "PR two", body: "", mergedAt: "2026-06-05T00:00:00Z", labels: [], files: [] },
+      { number: 3, title: "PR three", body: "", mergedAt: "2020-01-01T00:00:00Z", labels: [], files: [] },
+    ];
+    writeFileSync(path.join(garbageEraDir, "gh.json"), JSON.stringify(garbagePayload));
+    const garbageCorpus = runCli(["bootstrap", "corpus", "--from-json", path.join(garbageEraDir, "gh.json")], garbageEraDir);
+    check("setup: garbage-era corpus exits 0", garbageCorpus.status === 0, garbageCorpus.stderr);
+
+    mkdirSync(path.join(garbageEraDir, ".arkaik", "bootstrap", "fragments"), { recursive: true });
+    // A profile.json with a garbage-dated era: bypasses `plan`'s validation
+    // entirely, simulating a hand-edited or stale profile.json.
+    writeFileSync(
+      path.join(garbageEraDir, ".arkaik", "bootstrap", "profile.json"),
+      JSON.stringify({ eras: [{ slug: "garbage-era", title: "Garbage era", from: "not-a-date", to: "also-not-a-date" }] }),
+    );
+    // manifest.json is hand-written directly rather than produced by `plan`,
+    // because `plan` itself now refuses to create this unit at all.
+    writeFileSync(
+      path.join(garbageEraDir, ".arkaik", "bootstrap", "manifest.json"),
+      JSON.stringify({
+        version: 1,
+        mode: "greenfield",
+        bundle: "docs/arkaik/bundle.json",
+        units: [
+          {
+            id: "w3-garbage-era",
+            wave: 3,
+            title: "Story — Garbage era",
+            scope: "test",
+            slice: { eras: ["garbage-era"] },
+            fragment: ".arkaik/bootstrap/fragments/w3-garbage-era.json",
+            status: "pending",
+          },
+        ],
+      }),
+    );
+    const garbageSlice = JSON.parse(runCli(["bootstrap", "slice", "w3-garbage-era"], garbageEraDir).stdout);
+    check(
+      "an era with two unparseable bounds matches ZERO PRs, not the entire corpus (repro: used to return all 3)",
+      garbageSlice.prs.length === 0,
+      JSON.stringify(garbageSlice.prs.map((p) => p.number)),
+    );
+  } finally {
+    rmSync(garbageEraDir, { recursive: true, force: true });
+  }
 
   // --- probe 2: which unit kinds legitimately get the whole corpus ---
   const statusArcsSlice = JSON.parse(runCli(["bootstrap", "slice", "w3-status-arcs"], dir).stdout);
@@ -184,6 +249,67 @@ try {
     String(hugePr.body.length),
   );
   check("the truncated body says so", hugePr.body.includes("truncated"), hugePr.body.slice(-80));
+
+  // --- severe fix: a Lab Note past the truncation cap must survive intact ---
+  // A naive head-truncate silently ate the Lab Note on 5 of 8 real PR bodies
+  // sampled from this repo during review — the note sits near the END of a
+  // long body, exactly where a head-cut lands, and has_lab_note stays true
+  // (computed from the full body at mining time) even after the section
+  // itself is gone. This mirrors that real shape: >4000 chars of prose with
+  // the Lab Note as the last section.
+  const labNoteDir = freshRepoDir("arkaik-bootstrap-slice-labnote-");
+  try {
+    const PROSE = "This PR touches several files and reworks a chunk of the onboarding flow. ".repeat(90);
+    check("setup: synthetic prose alone exceeds the truncation cap", PROSE.length > 4000, String(PROSE.length));
+    const LAB_NOTE_BODY =
+      `${PROSE}\n\n## Lab Note\n\n` +
+      '```yaml\nen:\n  title: "A small delight, shipped"\n  summary: "Something users will notice, explained simply."\n```\n';
+
+    writeFileSync(
+      path.join(labNoteDir, "gh.json"),
+      JSON.stringify([
+        { number: 1, title: "Ship the delight", body: LAB_NOTE_BODY, mergedAt: "2026-01-01T00:00:00Z", labels: [], files: [{ path: "app/x.tsx" }] },
+      ]),
+    );
+    const labNoteCorpus = runCli(["bootstrap", "corpus", "--from-json", path.join(labNoteDir, "gh.json")], labNoteDir);
+    check("setup: Lab Note corpus exits 0", labNoteCorpus.status === 0, labNoteCorpus.stderr);
+
+    mkdirSync(path.join(labNoteDir, ".arkaik", "bootstrap"), { recursive: true });
+    // {} still triggers w3-status-arcs (any non-null profile does, per
+    // planUnits) without needing any areas/eras — status-arcs is a
+    // whole-corpus unit, exactly what this test needs.
+    writeFileSync(path.join(labNoteDir, ".arkaik", "bootstrap", "profile.json"), JSON.stringify({}));
+    const labNotePlan = runCli(["bootstrap", "plan"], labNoteDir);
+    check("setup: Lab Note plan exits 0", labNotePlan.status === 0, labNotePlan.stderr);
+
+    const labNoteSlice = JSON.parse(runCli(["bootstrap", "slice", "w3-status-arcs"], labNoteDir).stdout);
+    const labNotePr = labNoteSlice.prs.find((p) => p.number === 1);
+    check("has_lab_note stays true after truncation (computed from the full body at mining time)", labNotePr.has_lab_note === true, "");
+    check(
+      "the body was actually truncated (shorter than the original)",
+      labNotePr.body.length < LAB_NOTE_BODY.length,
+      String(labNotePr.body.length),
+    );
+    check(
+      "the Lab Note heading survived truncation",
+      labNotePr.body.includes("## Lab Note"),
+      labNotePr.body.slice(-400),
+    );
+    check(
+      "the Lab Note's YAML content survives fully intact, not cut off mid-note",
+      labNotePr.body.includes('title: "A small delight, shipped"') &&
+        labNotePr.body.includes('summary: "Something users will notice, explained simply."') &&
+        labNotePr.body.trimEnd().endsWith("```"),
+      labNotePr.body.slice(-400),
+    );
+    check(
+      "the truncation is visibly marked, so an agent knows this body was shortened, not naturally short",
+      labNotePr.body.includes("truncated"),
+      labNotePr.body.slice(0, 200),
+    );
+  } finally {
+    rmSync(labNoteDir, { recursive: true, force: true });
+  }
 
   // --- probe 6 (mechanical): slice JSON is compact, not pretty-printed ---
   const rawSliceOut = runCli(["bootstrap", "slice", "w1-home"], dir).stdout;
