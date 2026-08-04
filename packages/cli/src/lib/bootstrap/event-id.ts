@@ -45,14 +45,14 @@
  *    that's an ordinary output, not a degenerate one.)
  * 3. **FNV-1a's weak low-bit avalanche.** A first attempt at "16 independent
  *    hashes" (`fnv1a(`${i}:${key}`) % 32` per symbol) was tried and measured,
- *    not assumed: it produced real collisions between near-identical keys
- *    (e.g. keys differing only in a trailing sequence number) at every scale
- *    tested, because FNV-1a's low bits mix poorly for short, similar inputs —
- *    a documented property of the algorithm, not a coding mistake. Running
- *    each per-symbol hash through Murmur3's `fmix32` finalizer before
- *    extracting bits fixed this: zero collisions among 1,000,000 sequential
- *    keys in testing, versus the un-finalized version's several thousand at
- *    the same scale.
+ *    not assumed: at 1,000,000 sequential synthetic keys it produced 616,688
+ *    collisions (only 383,312 distinct suffixes survived) — between
+ *    near-identical keys (e.g. keys differing only in a trailing sequence
+ *    number), because FNV-1a's low bits mix poorly for short, similar
+ *    inputs — a documented property of the algorithm, not a coding mistake.
+ *    Running each per-symbol hash through Murmur3's `fmix32` finalizer
+ *    before extracting bits fixed this: zero collisions among the
+ *    same 1,000,000 keys afterward.
  * 4. **Unparseable/missing `ts`.** The reference did
  *    `Number.isNaN(ms) ? 0 : ms`, silently encoding epoch 0 — an id that
  *    sorts before every real event, with nothing anywhere recording that
@@ -167,8 +167,9 @@ function keySuffix(key: string): string {
 /**
  * A stable id for the event identified by `key` at `ts`: the same `(ts, key)`
  * pair always produces the same id, and different keys at the same `ts`
- * produce different ids (empirically verified at 1,000,000x the self-map
- * seed's real same-`ts` fan-out — see the test file). `ts` must be a
+ * produce different ids (empirically verified at 1,000,000 keys sharing one
+ * `ts` — roughly 66,700x the self-map seed's real same-`ts` fan-out of 15 —
+ * see the test file). `ts` must be a
  * parseable timestamp (anything `Date.parse` accepts, which covers every ISO
  * 8601 form this codebase writes); an unparseable or missing `ts` throws
  * rather than silently encoding epoch 0 (point 4 above).

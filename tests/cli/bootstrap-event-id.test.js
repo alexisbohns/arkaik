@@ -61,6 +61,15 @@
  *     (empirically, at scale)" — it cannot and does not prove every key Task 6
  *     constructs is actually unique per event, because that key construction
  *     doesn't live here.
+ *
+ * A seventh thing, found at review after the six above: everything so far
+ * proves determinism WITHIN one process on one version of this module. These
+ * ids get persisted to docs/arkaik/journal.jsonl and committed, which makes
+ * "same input -> same output" a CROSS-VERSION contract too — nothing above
+ * would catch `fmix32` being swapped out, or the salt order flipping, since
+ * both would still pass every same-process check here while silently
+ * producing different ids than an already-committed journal expects. The
+ * golden/pinned-value block below exists specifically to catch that.
  */
 const path = require("path");
 
@@ -92,6 +101,40 @@ const ULID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/;
   const c = deterministicEventId(ts, "node.created:V-home");
   const d = deterministicEventId(ts, "node.created:V-home");
   check("determinism holds across a third and fourth call too", a === c && a === d, `${a}, ${c}, ${d}`);
+}
+
+// --- golden: id stability pinned across CODE VERSIONS, not just across calls ---
+// Every other check in this file proves determinism WITHIN one process on one
+// version of this module — that's necessary but not sufficient. These ids get
+// persisted to docs/arkaik/journal.jsonl and committed, which makes
+// "same input -> same output" a CROSS-VERSION contract: swapping `fmix32` for
+// a different finalizer, or reordering the salt to `${key}:${i}` instead of
+// `${i}:${key}`, would pass every OTHER check in this file while silently
+// producing different ids for the same (ts, key) than a previously-merged
+// journal already committed to disk. Hardcoded expected values are the
+// correct tool here, specifically because "it didn't change" IS the contract,
+// not a tautology.
+//
+// If one of these three checks ever fails after an intentional change to
+// `encodeTime`, `fnv1a`, `fmix32`, or `keySuffix`'s salting scheme: that
+// change breaks reproducibility for every bundle bootstrap has already
+// merged. Regenerate these constants deliberately, and say so in the commit
+// message — a brownfield repo that already ran `bootstrap merge` will not
+// reproduce its existing journal against the new code otherwise.
+{
+  check(
+    "id is stable across versions (golden)",
+    deterministicEventId("2026-01-02T10:00:00.000Z", "node.created:V-home") === "01KDZ2CN80B512T2QHM1SMF6NS",
+  );
+  check(
+    "golden: status-change key",
+    deterministicEventId("2026-01-02T10:00:00.000Z", "node.status_changed:V-home:2026-01-02T10:00:00.000Z") ===
+      "01KDZ2CN80RQ77GHAE436V1HZP",
+  );
+  check(
+    "golden: epoch + empty key",
+    deterministicEventId("1970-01-01T00:00:00.000Z", "") === "000000000003TCK1MW1ZCAHJ72",
+  );
 }
 
 // --- shape: ULID-shaped, TIME_LEN + RANDOM_LEN = 26 ---
@@ -199,11 +242,12 @@ const ULID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 
 // --- stress test: collision resistance among many keys sharing a single ts ---
 // The self-map seed's own real journal (checked below) tops out at 15 events
-// sharing one `ts`. This goes two orders of magnitude past that to give the
-// entropy claim real margin, while staying fast enough for CI (a few hundred
-// ms): 16 independent fmix32-finalized hashes per id, not one reused 32-bit
-// value, is what makes this pass at this scale — the naive "one hash,
-// perturbed 16 times" design this replaced could not (see the file doc above).
+// sharing one `ts`. This goes roughly 1,300x past that (more than three
+// orders of magnitude) to give the entropy claim real margin, while staying
+// fast enough for CI (a few hundred ms): 16 independent fmix32-finalized
+// hashes per id, not one reused 32-bit value, is what makes this pass at this
+// scale — the naive "one hash, perturbed 16 times" design this replaced could
+// not (see the file doc above).
 {
   const ts = "2026-03-01T00:00:00.000Z";
   const n = 20000;
