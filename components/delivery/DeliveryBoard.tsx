@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { PlatformItemCard } from "@/components/delivery/PlatformItemCard";
 import { STATUS_ICONS, STATUS_STYLES } from "@/components/graph/nodes/node-styles";
 import type { StatusId } from "@/lib/config/statuses";
@@ -12,10 +13,50 @@ interface DeliveryBoardProps {
   onSelectItem: (item: DeliveryItem) => void;
 }
 
+/**
+ * A plain mouse wheel only ever sends vertical delta, but the board's columns
+ * sit side by side — so without this, a mouse-only user has no way to reach a
+ * column past the edge of the window (a trackpad's horizontal swipe, or
+ * shift+wheel, are the only native escape hatches). Column scroll still wins
+ * whenever the column under the cursor has room left to move: this only takes
+ * over once that column is exhausted, or was never scrollable to begin with.
+ *
+ * A native listener, not React's `onWheel` — React attaches wheel listeners
+ * as passive, which silently drops `preventDefault` and logs a console
+ * warning on every tick.
+ */
+function useBoardWheelPan(boardRef: React.RefObject<HTMLDivElement | null>) {
+  useEffect(() => {
+    const board = boardRef.current;
+    if (!board) return;
+
+    function handleWheel(event: WheelEvent) {
+      if (event.deltaY === 0 || event.deltaX !== 0 || board!.scrollWidth <= board!.clientWidth) return;
+
+      const columnList = (event.target as HTMLElement).closest<HTMLElement>("[data-delivery-column-list]");
+      if (columnList) {
+        const canColumnScroll =
+          (event.deltaY > 0 && columnList.scrollTop + columnList.clientHeight < columnList.scrollHeight - 1) ||
+          (event.deltaY < 0 && columnList.scrollTop > 0);
+        if (canColumnScroll) return;
+      }
+
+      board!.scrollLeft += event.deltaY;
+      event.preventDefault();
+    }
+
+    board.addEventListener("wheel", handleWheel, { passive: false });
+    return () => board.removeEventListener("wheel", handleWheel);
+  }, [boardRef]);
+}
+
 /** Status columns of (node × platform) items — the product-centered board. */
 export function DeliveryBoard({ columns, speciesLabelById, speciesDescriptionById, onSelectItem }: DeliveryBoardProps) {
+  const boardRef = useRef<HTMLDivElement>(null);
+  useBoardWheelPan(boardRef);
+
   return (
-    <div className="flex min-h-0 flex-1 overflow-x-auto border bg-card rounded-xl">
+    <div ref={boardRef} className="flex min-h-0 flex-1 overflow-x-auto border bg-card rounded-xl">
       {columns.map(({ status, label, items }) => {
         const StatusIcon = STATUS_ICONS[status];
 
@@ -28,7 +69,7 @@ export function DeliveryBoard({ columns, speciesLabelById, speciesDescriptionByI
                 {items.length}
               </span>
             </header>
-            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
+            <div data-delivery-column-list className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
               {items.length === 0 ? (
                 <div className="rounded-lg border border-dashed p-4 text-center">
                   <p className="text-xs text-muted-foreground">Nothing here</p>
