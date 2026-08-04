@@ -33,10 +33,22 @@ export interface FragmentUpdate extends Record<string, unknown> {
   patch: Record<string, unknown>;
   /**
    * When a status-changing patch took effect. Only consulted when `patch`
-   * touches `status` — merge then emits a `node.status_changed` event so the
+   * touches `status` (or `metadata.decision_status`) — merge then emits a
+   * `node.status_changed` (or `decision.status_changed`) event so the
    * snapshot and the journal stay in agreement (`crossCheckJournal`'s
-   * `journal-status-mismatch`, docs/spec/journal.md). Falls back to the
-   * merge's own fallback ts when absent.
+   * `journal-status-mismatch`/`journal-decision-status-mismatch`,
+   * docs/spec/journal.md). Falls back to the merge's own fallback ts when
+   * absent.
+   *
+   * That fallback is a ONE-SHOT budget per node, not a free pass: it's the
+   * SAME constant value for every event minted anywhere in one merge
+   * invocation (it never advances mid-run). A single status-changing
+   * `update`/`retire` for a node can omit `changed_ts` safely — but a SECOND
+   * one for the SAME node in the SAME run (two `update` entries, or an
+   * `update` and a `retire`) that also omits it will collide at the
+   * identical ts, and `merge` refuses rather than guess an order (see
+   * `merge.ts`'s `orderSensitiveSeen`). Give every status-changing op past
+   * the first, for the same node, its own explicit `changed_ts`.
    */
   changed_ts?: string;
 }
@@ -45,7 +57,11 @@ export interface FragmentUpdate extends Record<string, unknown> {
 export interface FragmentRetire extends Record<string, unknown> {
   id: string;
   reason: string;
-  /** When the retirement took effect — becomes the node.status_changed ts. */
+  /**
+   * When the retirement took effect — becomes the node.status_changed ts.
+   * Same one-shot-per-node fallback-ts caveat as `FragmentUpdate.changed_ts`
+   * above.
+   */
   changed_ts?: string;
 }
 

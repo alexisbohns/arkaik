@@ -10,7 +10,7 @@
 import { existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { serializeBundle } from "@arkaik/schema";
+import { serializeBundle, validateBundle } from "@arkaik/schema";
 
 import { buildCorpus } from "../lib/bootstrap/corpus";
 import { loadFragments } from "../lib/bootstrap/fragments";
@@ -21,6 +21,7 @@ import { BOOTSTRAP_ROOT, CORPUS_DIR, ensureGitignored } from "../lib/bootstrap/p
 import { resolveSlice } from "../lib/bootstrap/slice";
 import { readBundle } from "../lib/bundle-io";
 import { journalPathFor, loadJournalEvents } from "../lib/journal-io";
+import { formatFinding } from "./validate";
 
 const USAGE = `arkaik bootstrap <subcommand> [options]
 
@@ -247,11 +248,12 @@ const MERGE_USAGE = `arkaik bootstrap merge [options]
 
 Assemble every fragment named by the manifest onto the bundle: verify ID
 uniqueness, resolve edge endpoints, apply reconcile ops, synthesize the
-required node.created / node.status_changed events, and write the bundle
-plus its journal.jsonl sidecar.
+required node.created / node.status_changed / decision.status_changed
+events, validate the result (errors block the write; warnings are reported
+but never block it), and write the bundle plus its journal.jsonl sidecar.
 
 Options:
-  --dry-run    Report what would change; write nothing.
+  --dry-run    Report what would change (including validation); write nothing.
   -h, --help   Show this help.`;
 
 /**
@@ -320,6 +322,30 @@ function runMerge(argv: string[]): void {
     const lastTs = result.journal.length > 0 ? String(result.journal[result.journal.length - 1].ts) : undefined;
     result.bundle.project = { ...project, updated_at: lastTs ?? project.updated_at };
 
+    // This command's own usage text says "then validate" — until this point
+    // that was aspirational: merge wrote unconditionally and left
+    // `arkaik validate` as a suggestion for afterward. Warnings never fail a
+    // run (a partial, in-progress bootstrap — wave 1 of 3 — legitimately has
+    // warnings; warning-CLEAN is the operator's own gate at the end, not
+    // merge's gate on every invocation), but an ERROR must block the write: a
+    // merged bundle that fails its own journal cross-check is exactly the
+    // defect class this file exists to catch before it reaches disk, not
+    // after. `validateBundle` already runs `crossCheckJournal` internally
+    // when a `journal` is present, so folding the merged journal onto a
+    // throwaway copy of the bundle here is enough — no separate
+    // `crossCheckJournal` call needed, and `result.bundle` itself (what
+    // actually gets serialized) stays journal-free either way.
+    const validation = validateBundle({ ...result.bundle, journal: result.journal });
+    if (validation.warnings.length > 0) {
+      console.log(`  ${validation.warnings.length} validation warning(s):`);
+      for (const warning of validation.warnings) console.log(`    ${formatFinding(warning)}`);
+    }
+    if (validation.errors.length > 0) {
+      for (const error of validation.errors) console.error(formatFinding(error));
+      console.error("Merged bundle fails validation — nothing was written. Fix the fragment(s) above and re-run.");
+      process.exit(1);
+    }
+
     const serialized = serializeBundle(result.bundle as never);
     const journalPath = journalPathFor(bundlePath);
     const journalText = result.journal.map((e) => JSON.stringify(e)).join("\n") + (result.journal.length ? "\n" : "");
@@ -336,7 +362,12 @@ function runMerge(argv: string[]): void {
     );
     console.log(`  bundle ${(Buffer.byteLength(serialized) / 1024).toFixed(0)}KB, journal ${result.journal.length} events`);
     if (missing.length > 0) console.log(`  ${missing.length} units have no fragment yet: ${missing.join(", ")}`);
-    console.log(`Next: arkaik validate ${manifest.bundle}`);
+    const wroteOrWould = dryRun ? "would be written" : "written";
+    console.log(
+      validation.warnings.length > 0
+        ? `Validated (0 errors, ${validation.warnings.length} warnings above) — ${wroteOrWould}.`
+        : `Validated clean — ${wroteOrWould}.`,
+    );
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
