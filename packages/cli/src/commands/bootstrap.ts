@@ -11,6 +11,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 
 import { buildCorpus } from "../lib/bootstrap/corpus";
+import { detectMode, planUnits, readManifest, readProfile, writeManifest } from "../lib/bootstrap/manifest";
 import { BOOTSTRAP_ROOT, CORPUS_DIR, ensureGitignored } from "../lib/bootstrap/paths";
 
 const USAGE = `arkaik bootstrap <subcommand> [options]
@@ -103,6 +104,51 @@ function runCorpus(argv: string[]): void {
   }
 }
 
+const PLAN_USAGE = `arkaik bootstrap plan [options]
+
+Emit the work-unit manifest at .arkaik/bootstrap/manifest.json. With no recon
+profile only the wave-0 recon unit is planned; re-run after recon writes
+profile.json to expand waves 1-3. Existing unit statuses are preserved for
+units whose scope/slice is unchanged since the last plan.
+
+Options:
+  --bundle <path>  Bundle to bootstrap (default: docs/arkaik/bundle.json).
+  -h, --help       Show this help.`;
+
+function runPlan(argv: string[]): void {
+  const cwd = process.cwd();
+  // A literal, not path.join: this value is written into manifest.json by
+  // writeManifest, so it must not become `docs\arkaik\bundle.json` on Windows.
+  // Every other command in this CLI spells it the same way (init.ts:36,
+  // pack.ts:38, push.ts:54, sync.ts:59, open.ts:35, release.ts:30).
+  let bundle = "docs/arkaik/bundle.json";
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "-h" || arg === "--help") {
+      console.log(PLAN_USAGE);
+      process.exit(0);
+    } else if (arg === "--bundle") {
+      bundle = nextValue(argv, ++i, "--bundle", PLAN_USAGE);
+    } else {
+      fail(`Unknown option: ${arg}\n\n${PLAN_USAGE}`);
+    }
+  }
+
+  try {
+    const mode = detectMode(cwd, bundle);
+    const manifest = planUnits({ mode, bundle, profile: readProfile(cwd), previous: readManifest(cwd) });
+    writeManifest(cwd, manifest);
+
+    const pending = manifest.units.filter((u) => u.status === "pending").length;
+    console.log(`Planned ${manifest.units.length} units (${pending} pending) in ${mode} mode.`);
+    for (const u of manifest.units) console.log(`  [${u.status}] w${u.wave} ${u.id} — ${u.title}`);
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+}
+
 export function runBootstrap(argv: string[]): void {
   const [sub, ...rest] = argv;
 
@@ -114,6 +160,9 @@ export function runBootstrap(argv: string[]): void {
   switch (sub) {
     case "corpus":
       runCorpus(rest);
+      return;
+    case "plan":
+      runPlan(rest);
       return;
     default:
       console.error(`Unknown bootstrap subcommand: ${sub}\n\n${USAGE}`);

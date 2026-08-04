@@ -906,6 +906,14 @@ git commit -m "feat(cli): bootstrap corpus — mine PRs, docs and surfaces"
 
 The manifest is what makes this a method rather than a story about one session: unit status lives on disk, so a killed run resumes. `plan` is repo-agnostic because it expands from the recon profile — with no profile it emits only the wave-0 recon unit.
 
+**Implementation note (post-review):** the reference code below was written in one pass and never executed. Quality review on Tasks 1–2 found real defects inherited from an un-executed reference implementation elsewhere in this plan, so Task 3 was implemented with five specific probes applied against the snippet before it shipped. Four turned up genuine bugs, fixed below; the fifth (fragments orphaned when an area drops out of the profile) was traced and found to be harmless by construction, not fixed. All five are recorded here so later tasks don't have to re-discover them:
+
+1. **Wave-3 gating was wrong.** The original gated `w3-decisions` / `w3-status-arcs` on `profile.eras?.length` — a profile with real `areas` but zero `eras` (a young repo, or one recon judged has no story worth splitting into eras yet) silently lost decision-mining and status arcs, even though neither unit reads era boundaries (decisions mines docs, status-arcs arcs anatomy nodes). **Fixed:** gated on `profile !== null` (recon has run) instead.
+2. **Status carry-forward didn't check the definition.** The original carried `done` forward by unit id alone. If the profile later changed an area's `paths`, the old fragment on disk was written against the old slice, but the unit still read `done` — `merge` would silently consume stale output. **Fixed:** a unit's status only carries forward when its `title`, `scope`, and `slice` are unchanged from the previous plan; otherwise it resets to `pending` (an honest signal that this unit needs redoing).
+3. **Fragments for a dropped area are orphaned, not dangerous.** If recon later drops an area from `profile.json`, its unit vanishes from the next plan's `units` array, but `.arkaik/bootstrap/fragments/<old-id>.json` remains on disk. Traced against Task 6's `loadFragments`: it iterates `manifest.units` and looks up each unit's own fragment path — it never scans the fragments directory — so a fragment with no matching unit is simply never read. No silent data risk; just an inert file. Left unfixed (nothing to fix), noted here so Task 6 doesn't have to re-trace it.
+4. **Mode detection used `existsSync`, contradicting the spec's own rule.** § 1 of the design spec says greenfield is "no bundle, **or a stub**" — but the reference code was `existsSync(bundle) ? "brownfield" : "greenfield"`, which reads a freshly-scaffolded `arkaik init` bundle (`{nodes: [], edges: []}`) as brownfield. **Fixed:** `detectMode` reads the bundle when present and checks `nodes.length === 0` (a stub) vs. `> 0` (real content); a bundle that exists but fails to parse throws rather than silently guessing a mode.
+5. **Unit ids reach a filesystem path with no validation.** Area ids and era slugs come from `profile.json`, written by an agent, and become fragment filenames verbatim (`${FRAGMENTS_DIR}/${id}.json`). An id containing `/` or `..` would make that path escape the fragments directory; two ids landing on the same string (including an era slug colliding with the reserved `w3-decisions` / `w3-status-arcs` names) would mint two units pointing at the same fragment file, one silently clobbering the other's output. **Fixed:** `assertSafeId` rejects any area id / era slug that isn't `[A-Za-z0-9][A-Za-z0-9-]*`, and a post-build pass rejects any duplicate unit id — both throw with the offending id/value named, caught by `runPlan` and reported via `process.exit(1)` before anything is written.
+
 **Files:**
 - Create: `packages/cli/src/lib/bootstrap/manifest.ts`
 - Modify: `packages/cli/src/commands/bootstrap.ts`
@@ -913,7 +921,7 @@ The manifest is what makes this a method rather than a story about one session: 
 
 - [ ] **Step 1: Write the failing test**
 
-Append inside the `try` block:
+Append inside the `try` block — the base plan/resume checks plus one regression test per probe above (stub-bundle mode, gating without eras, status invalidation on a changed slice, unsafe/duplicate ids):
 
 ```js
   // --- plan with no profile: recon only ---
@@ -954,17 +962,61 @@ Append inside the `try` block:
   );
 
   // --- resume preserves completed status ---
-  m1.units[0].status = "done";
+  const reconUnit1 = m1.units.find((u) => u.id === "w0-recon");
+  reconUnit1.status = "done";
   writeFileSync(path.join(dir, ".arkaik", "bootstrap", "manifest.json"), JSON.stringify(m1));
   const plan2 = runCli(["bootstrap", "plan"], dir);
   check("re-plan exits 0", plan2.status === 0, plan2.stderr);
   const m2 = JSON.parse(readFileSync(path.join(dir, ".arkaik", "bootstrap", "manifest.json"), "utf8"));
   check(
-    "re-plan preserves done status",
-    m2.units.find((u) => u.id === m1.units[0].id).status === "done",
-    JSON.stringify(m2.units[0]),
+    "re-plan preserves done status for an unchanged unit",
+    m2.units.find((u) => u.id === "w0-recon").status === "done",
+    JSON.stringify(m2.units.find((u) => u.id === "w0-recon")),
+  );
+
+  // --- probe 2 regression: a unit whose slice changed must NOT keep a stale "done" ---
+  m2.units.find((u) => u.id === "w1-home").status = "done";
+  m2.units.find((u) => u.id === "w2-home").status = "done";
+  m2.units.find((u) => u.id === "w1-settings").status = "done";
+  writeFileSync(path.join(dir, ".arkaik", "bootstrap", "manifest.json"), JSON.stringify(m2));
+  writeFileSync(
+    path.join(dir, ".arkaik", "bootstrap", "profile.json"),
+    JSON.stringify({
+      products: [{ id: "app", title: "App" }],
+      platforms: ["web", "ios"],
+      areas: [
+        { id: "home", title: "Home", paths: ["app/home", "app/dashboard"] }, // paths changed
+        { id: "settings", title: "Settings", paths: ["app/settings"] }, // unchanged
+      ],
+      eras: [{ slug: "first-light", title: "First light", from: "2026-01-01", to: "2026-02-01" }],
+    }),
+  );
+  const plan3 = runCli(["bootstrap", "plan"], dir);
+  check("re-plan after a profile edit exits 0", plan3.status === 0, plan3.stderr);
+  const m3 = JSON.parse(readFileSync(path.join(dir, ".arkaik", "bootstrap", "manifest.json"), "utf8"));
+  check(
+    "a unit whose slice changed resets to pending, not done",
+    m3.units.find((u) => u.id === "w1-home").status === "pending",
+    JSON.stringify(m3.units.find((u) => u.id === "w1-home")),
+  );
+  check(
+    "every unit sharing the changed area's slice resets, including the acceptance unit",
+    m3.units.find((u) => u.id === "w2-home").status === "pending",
+    JSON.stringify(m3.units.find((u) => u.id === "w2-home")),
+  );
+  check(
+    "a unit whose slice did NOT change keeps its done status",
+    m3.units.find((u) => u.id === "w1-settings").status === "done",
+    JSON.stringify(m3.units.find((u) => u.id === "w1-settings")),
+  );
+  check(
+    "recon status is untouched by an area's paths changing",
+    m3.units.find((u) => u.id === "w0-recon").status === "done",
+    JSON.stringify(m3.units.find((u) => u.id === "w0-recon")),
   );
 ```
+
+Isolated mkdtemp blocks (following the `orderDir` / `gitDir` pattern from Task 2) additionally cover: probe 1 (`areas` with `eras: []` still plans `w3-decisions` / `w3-status-arcs`), probe 4 (a `{nodes: [], edges: []}` bundle reads `greenfield`; the same bundle with one node reads `brownfield`), and probe 5 (an area id of `"../evil"` and an era slug with a space both exit 1 and write no manifest; an era slug of `"decisions"` exits 1 naming the duplicate `w3-decisions` id). See `tests/cli/bootstrap-plan.test.js` for the full text — the CLI's baseline stood at 39 checks before Task 3; the additions above brought it to 71.
 
 - [ ] **Step 2: Run it to verify it fails**
 
@@ -1036,6 +1088,31 @@ export function writeManifest(cwd: string, manifest: Manifest): void {
   writeFileSync(at(cwd, MANIFEST_FILE), `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
+/**
+ * Greenfield vs brownfield: the spec's rule is "no bundle, OR A STUB" — an
+ * `arkaik init` scaffold is a real file with zero nodes, so `existsSync`
+ * alone would misclassify it as brownfield and send agents into reconcile
+ * mode against nothing. Only a bundle that already carries nodes is
+ * brownfield. A bundle file that exists but can't be parsed as JSON is a
+ * real problem, not a mode to silently guess at, so it throws instead of
+ * defaulting either way.
+ */
+export function detectMode(cwd: string, bundlePath: string): Manifest["mode"] {
+  const file = at(cwd, bundlePath);
+  if (!existsSync(file)) return "greenfield";
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(file, "utf8"));
+  } catch (err) {
+    throw new Error(`cannot read bundle at ${bundlePath}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  const nodes =
+    parsed !== null && typeof parsed === "object" && Array.isArray((parsed as { nodes?: unknown }).nodes)
+      ? (parsed as { nodes: unknown[] }).nodes
+      : [];
+  return nodes.length === 0 ? "greenfield" : "brownfield";
+}
+
 function unit(id: string, wave: WorkUnit["wave"], title: string, scope: string, slice: WorkUnit["slice"]): WorkUnit {
   return { id, wave, title, scope, slice, fragment: `${FRAGMENTS_DIR}/${id}.json`, status: "pending" };
 }
@@ -1045,9 +1122,36 @@ const RECON_SCOPE =
   "the areas to fan out over (id, title, code paths), and the thematic eras the merged PRs fall into. " +
   "Then re-run `arkaik bootstrap plan` to expand waves 1-3.";
 
+/** Letters, digits and hyphens only — no `/`, no `..`, no whitespace. */
+const SAFE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
+
+/**
+ * Area ids and era slugs come from profile.json — written by an agent, not
+ * by this code — and become fragment filenames verbatim
+ * (`${FRAGMENTS_DIR}/${id}.json`). An id containing `/` or `..` would make
+ * that path escape the fragments directory; whitespace or other punctuation
+ * just means "not what a human meant to type." Reject rather than sanitize:
+ * silently mangling the id would let two different-looking ids collide
+ * without anyone noticing.
+ */
+function assertSafeId(kind: "area" | "era", id: unknown): void {
+  if (typeof id !== "string" || !SAFE_ID_RE.test(id)) {
+    throw new Error(
+      `profile.json has an unsafe ${kind} id: ${JSON.stringify(id)}. Work-unit ids become fragment filenames ` +
+        `under ${FRAGMENTS_DIR}/, so they must contain only letters, digits and hyphens (no "/", "..", or ` +
+        "whitespace). Fix profile.json and re-run `arkaik bootstrap plan`.",
+    );
+  }
+}
+
 /**
  * Build the manifest for this repo. `previous` (when given) carries unit
- * statuses forward so re-planning after recon never loses completed work.
+ * statuses forward so re-planning after recon never loses completed work —
+ * but only for a unit whose title/scope/slice is unchanged from the last
+ * plan. If the profile edited an area's paths (or an era's slug) since then,
+ * the old fragment on disk was written against the old definition; carrying
+ * `done` forward would let `merge` consume that stale output with no signal
+ * anything is wrong, so the unit resets to `pending` instead.
  */
 export function planUnits(options: {
   mode: Manifest["mode"];
@@ -1056,6 +1160,10 @@ export function planUnits(options: {
   previous: Manifest | null;
 }): Manifest {
   const { mode, bundle, profile, previous } = options;
+
+  for (const area of profile?.areas ?? []) assertSafeId("area", area.id);
+  for (const era of profile?.eras ?? []) assertSafeId("era", era.slug);
+
   const units: WorkUnit[] = [unit("w0-recon", 0, "Recon", RECON_SCOPE, { docs: true })];
 
   for (const area of profile?.areas ?? []) {
@@ -1098,7 +1206,13 @@ export function planUnits(options: {
     );
   }
 
-  if (profile?.eras?.length) {
+  // Gated on recon having run at all, not on eras existing: the decisions
+  // unit mines design docs and the status-arc unit arcs anatomy nodes,
+  // neither of which reads era boundaries. A profile with real areas but
+  // zero eras (a young repo, or one recon judged has no story worth
+  // splitting yet) should still get both — gating on `eras.length` silently
+  // dropped decision-mining and status arcs for exactly that repo shape.
+  if (profile) {
     units.push(
       unit("w3-decisions", 3, "Story — decisions", "Mine decisions from the design docs; emit DEC- nodes, their edges, and their events.", {
         docs: true,
@@ -1109,10 +1223,31 @@ export function planUnits(options: {
     );
   }
 
-  const carried = new Map((previous?.units ?? []).map((u) => [u.id, u.status]));
+  // Ids come from profile.json (area ids, era slugs) alongside two hardcoded
+  // wave-3 ids ("decisions", "status-arcs"). Any collision — two areas
+  // sharing an id, two eras sharing a slug, or an era slug landing on one of
+  // the reserved wave-3 names — would mint two units pointing at the same
+  // fragment file, silently losing whichever agent's output the other one's
+  // write clobbers. Catch it here, not when `merge` finds a fragment that
+  // doesn't match the unit that supposedly produced it.
+  const seen = new Set<string>();
   for (const u of units) {
-    const before = carried.get(u.id);
-    if (before) u.status = before;
+    if (seen.has(u.id)) {
+      throw new Error(
+        `duplicate work-unit id "${u.id}" — check profile.json for a repeated area id or era slug (or one that ` +
+          'collides with the reserved "decisions" / "status-arcs" era names).',
+      );
+    }
+    seen.add(u.id);
+  }
+
+  const previousById = new Map((previous?.units ?? []).map((u) => [u.id, u]));
+  for (const u of units) {
+    const before = previousById.get(u.id);
+    if (!before) continue;
+    const sameDefinition =
+      before.title === u.title && before.scope === u.scope && JSON.stringify(before.slice) === JSON.stringify(u.slice);
+    if (sameDefinition) u.status = before.status;
   }
 
   return { version: 1, mode, bundle, units };
@@ -1121,16 +1256,17 @@ export function planUnits(options: {
 
 - [ ] **Step 4: Wire the subcommand**
 
-In `packages/cli/src/commands/bootstrap.ts` add. `existsSync` (node:fs) and `path` (node:path) are already imported by Task 2's corpus wiring — don't add a second copy:
+In `packages/cli/src/commands/bootstrap.ts` add. `existsSync` (node:fs) and `path` (node:path) are already imported by Task 2's corpus wiring, and `fail`/`nextValue` by the same task — don't add second copies:
 
 ```ts
-import { planUnits, readManifest, readProfile, writeManifest } from "../lib/bootstrap/manifest";
+import { detectMode, planUnits, readManifest, readProfile, writeManifest } from "../lib/bootstrap/manifest";
 
 const PLAN_USAGE = `arkaik bootstrap plan [options]
 
 Emit the work-unit manifest at .arkaik/bootstrap/manifest.json. With no recon
 profile only the wave-0 recon unit is planned; re-run after recon writes
-profile.json to expand waves 1-3. Existing unit statuses are preserved.
+profile.json to expand waves 1-3. Existing unit statuses are preserved for
+units whose scope/slice is unchanged since the last plan.
 
 Options:
   --bundle <path>  Bundle to bootstrap (default: docs/arkaik/bundle.json).
@@ -1150,29 +1286,33 @@ function runPlan(argv: string[]): void {
       console.log(PLAN_USAGE);
       process.exit(0);
     } else if (arg === "--bundle") {
-      bundle = argv[++i];
+      bundle = nextValue(argv, ++i, "--bundle", PLAN_USAGE);
     } else {
-      console.error(`Unknown option: ${arg}\n\n${PLAN_USAGE}`);
-      process.exit(1);
+      fail(`Unknown option: ${arg}\n\n${PLAN_USAGE}`);
     }
   }
 
-  const mode = existsSync(path.join(cwd, bundle)) ? "brownfield" : "greenfield";
-  const manifest = planUnits({ mode, bundle, profile: readProfile(cwd), previous: readManifest(cwd) });
-  writeManifest(cwd, manifest);
+  try {
+    const mode = detectMode(cwd, bundle);
+    const manifest = planUnits({ mode, bundle, profile: readProfile(cwd), previous: readManifest(cwd) });
+    writeManifest(cwd, manifest);
 
-  const pending = manifest.units.filter((u) => u.status === "pending").length;
-  console.log(`Planned ${manifest.units.length} units (${pending} pending) in ${mode} mode.`);
-  for (const u of manifest.units) console.log(`  [${u.status}] w${u.wave} ${u.id} — ${u.title}`);
+    const pending = manifest.units.filter((u) => u.status === "pending").length;
+    console.log(`Planned ${manifest.units.length} units (${pending} pending) in ${mode} mode.`);
+    for (const u of manifest.units) console.log(`  [${u.status}] w${u.wave} ${u.id} — ${u.title}`);
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
 }
 ```
 
-Add `case "plan": runPlan(rest); return;` to the switch.
+Add `case "plan": runPlan(rest); return;` to the switch. Note `mode` detection and `planUnits` both now throw on bad input (an unparseable bundle, an unsafe or duplicate unit id) — both are caught by the `try`/`catch` above rather than left to crash the process uncaught.
 
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `npm run build -w arkaik && node tests/cli/bootstrap-plan.test.js`
-Expected: PASS on all plan checks.
+Expected: PASS on all 71 checks (39 from Tasks 1–2 + 32 from Task 3).
 
 - [ ] **Step 6: Commit**
 

@@ -249,6 +249,253 @@ try {
   } finally {
     rmSync(noGitRoot, { recursive: true, force: true });
   }
+
+  // --- plan with no profile: recon only ---
+  const plan0 = runCli(["bootstrap", "plan"], dir);
+  check("plan exits 0 without a profile", plan0.status === 0, plan0.stderr);
+  const m0 = JSON.parse(readFileSync(path.join(dir, ".arkaik", "bootstrap", "manifest.json"), "utf8"));
+  check("only the recon unit is planned", m0.units.length === 1, JSON.stringify(m0.units.map((u) => u.id)));
+  check("recon unit is wave 0", m0.units[0].wave === 0, String(m0.units[0].wave));
+  check("mode is greenfield with no bundle", m0.mode === "greenfield", m0.mode);
+
+  // --- plan with a profile: full expansion ---
+  writeFileSync(
+    path.join(dir, ".arkaik", "bootstrap", "profile.json"),
+    JSON.stringify({
+      products: [{ id: "app", title: "App" }],
+      platforms: ["web", "ios"],
+      areas: [
+        { id: "home", title: "Home", paths: ["app/home"] },
+        { id: "settings", title: "Settings", paths: ["app/settings"] },
+      ],
+      eras: [{ slug: "first-light", title: "First light", from: "2026-01-01", to: "2026-02-01" }],
+    }),
+  );
+  const plan1 = runCli(["bootstrap", "plan"], dir);
+  check("plan exits 0 with a profile", plan1.status === 0, plan1.stderr);
+  const m1 = JSON.parse(readFileSync(path.join(dir, ".arkaik", "bootstrap", "manifest.json"), "utf8"));
+  const ids = m1.units.map((u) => u.id);
+  check("one anatomy unit per area", ids.includes("w1-home") && ids.includes("w1-settings"), JSON.stringify(ids));
+  check("one acceptance unit per area", ids.includes("w2-home") && ids.includes("w2-settings"), JSON.stringify(ids));
+  check("one story unit per era", ids.includes("w3-first-light"), JSON.stringify(ids));
+  check("decisions unit planned", ids.includes("w3-decisions"), JSON.stringify(ids));
+  check("status arcs unit planned", ids.includes("w3-status-arcs"), JSON.stringify(ids));
+  check("every unit starts pending", m1.units.every((u) => u.status === "pending"), JSON.stringify(m1.units));
+  check(
+    "fragment paths are namespaced by unit",
+    m1.units.every((u) => u.fragment === `.arkaik/bootstrap/fragments/${u.id}.json`),
+    JSON.stringify(m1.units.map((u) => u.fragment)),
+  );
+
+  // --- resume preserves completed status ---
+  const reconUnit1 = m1.units.find((u) => u.id === "w0-recon");
+  reconUnit1.status = "done";
+  writeFileSync(path.join(dir, ".arkaik", "bootstrap", "manifest.json"), JSON.stringify(m1));
+  const plan2 = runCli(["bootstrap", "plan"], dir);
+  check("re-plan exits 0", plan2.status === 0, plan2.stderr);
+  const m2 = JSON.parse(readFileSync(path.join(dir, ".arkaik", "bootstrap", "manifest.json"), "utf8"));
+  check(
+    "re-plan preserves done status for an unchanged unit",
+    m2.units.find((u) => u.id === "w0-recon").status === "done",
+    JSON.stringify(m2.units.find((u) => u.id === "w0-recon")),
+  );
+
+  // --- regression: a unit whose slice changed must NOT keep a stale "done" ---
+  // A killed-and-resumed run trusts `status: done` to mean "the fragment on
+  // disk is current." If the profile later changes an area's paths, the old
+  // fragment was written against the old slice — carrying "done" forward
+  // would let `merge` (Task 6) consume stale output with no signal that
+  // anything is wrong. Mark two units done, change only one area's paths,
+  // and confirm only the affected units reset to pending.
+  m2.units.find((u) => u.id === "w1-home").status = "done";
+  m2.units.find((u) => u.id === "w2-home").status = "done";
+  m2.units.find((u) => u.id === "w1-settings").status = "done";
+  writeFileSync(path.join(dir, ".arkaik", "bootstrap", "manifest.json"), JSON.stringify(m2));
+  writeFileSync(
+    path.join(dir, ".arkaik", "bootstrap", "profile.json"),
+    JSON.stringify({
+      products: [{ id: "app", title: "App" }],
+      platforms: ["web", "ios"],
+      areas: [
+        { id: "home", title: "Home", paths: ["app/home", "app/dashboard"] }, // paths changed
+        { id: "settings", title: "Settings", paths: ["app/settings"] }, // unchanged
+      ],
+      eras: [{ slug: "first-light", title: "First light", from: "2026-01-01", to: "2026-02-01" }],
+    }),
+  );
+  const plan3 = runCli(["bootstrap", "plan"], dir);
+  check("re-plan after a profile edit exits 0", plan3.status === 0, plan3.stderr);
+  const m3 = JSON.parse(readFileSync(path.join(dir, ".arkaik", "bootstrap", "manifest.json"), "utf8"));
+  check(
+    "a unit whose slice changed resets to pending, not done",
+    m3.units.find((u) => u.id === "w1-home").status === "pending",
+    JSON.stringify(m3.units.find((u) => u.id === "w1-home")),
+  );
+  check(
+    "every unit sharing the changed area's slice resets, including the acceptance unit",
+    m3.units.find((u) => u.id === "w2-home").status === "pending",
+    JSON.stringify(m3.units.find((u) => u.id === "w2-home")),
+  );
+  check(
+    "a unit whose slice did NOT change keeps its done status",
+    m3.units.find((u) => u.id === "w1-settings").status === "done",
+    JSON.stringify(m3.units.find((u) => u.id === "w1-settings")),
+  );
+  check(
+    "recon status is untouched by an area's paths changing",
+    m3.units.find((u) => u.id === "w0-recon").status === "done",
+    JSON.stringify(m3.units.find((u) => u.id === "w0-recon")),
+  );
+
+  // --- regression: decisions/status-arcs must not depend on eras existing ---
+  // The decisions unit mines design docs; the status-arc unit arcs anatomy
+  // nodes. Neither reads eras. Gating both on `profile.eras.length` means a
+  // profile with real areas but zero eras (a young repo, or one where recon
+  // judged there's no story worth splitting into eras yet) silently loses
+  // decision-mining and status arcs even though areas — and therefore docs
+  // and anatomy nodes — exist.
+  const noErasDir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-noeras-"));
+  try {
+    mkdirSync(path.join(noErasDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(
+      path.join(noErasDir, ".arkaik", "bootstrap", "profile.json"),
+      JSON.stringify({
+        products: [{ id: "app", title: "App" }],
+        platforms: ["web"],
+        areas: [{ id: "home", title: "Home", paths: ["app/home"] }],
+        eras: [],
+      }),
+    );
+    const noErasPlan = runCli(["bootstrap", "plan"], noErasDir);
+    check("plan exits 0 with areas but no eras", noErasPlan.status === 0, noErasPlan.stderr);
+    const noErasManifest = JSON.parse(
+      readFileSync(path.join(noErasDir, ".arkaik", "bootstrap", "manifest.json"), "utf8"),
+    );
+    const noErasIds = noErasManifest.units.map((u) => u.id);
+    check(
+      "decisions unit is planned even with zero eras",
+      noErasIds.includes("w3-decisions"),
+      JSON.stringify(noErasIds),
+    );
+    check(
+      "status-arcs unit is planned even with zero eras",
+      noErasIds.includes("w3-status-arcs"),
+      JSON.stringify(noErasIds),
+    );
+  } finally {
+    rmSync(noErasDir, { recursive: true, force: true });
+  }
+
+  // --- regression: a stub bundle (zero nodes) is still greenfield ---
+  // The spec's mode rule is "no bundle, OR A STUB" — existsSync alone can't
+  // tell a freshly-scaffolded `arkaik init` bundle ({nodes: [], edges: []})
+  // from a real one. A 15-node beachhead should read brownfield; an empty
+  // scaffold should not.
+  const stubDir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-stub-"));
+  try {
+    mkdirSync(path.join(stubDir, "docs", "arkaik"), { recursive: true });
+    writeFileSync(
+      path.join(stubDir, "docs", "arkaik", "bundle.json"),
+      JSON.stringify({
+        schema_version: 3,
+        project: { id: "demo", title: "Demo", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z" },
+        nodes: [],
+        edges: [],
+      }),
+    );
+    const stubPlan = runCli(["bootstrap", "plan"], stubDir);
+    check("plan exits 0 against a stub bundle", stubPlan.status === 0, stubPlan.stderr);
+    const stubManifest = JSON.parse(readFileSync(path.join(stubDir, ".arkaik", "bootstrap", "manifest.json"), "utf8"));
+    check("a zero-node bundle still reads greenfield", stubManifest.mode === "greenfield", stubManifest.mode);
+
+    // Now give the same bundle a real node and re-plan: brownfield.
+    writeFileSync(
+      path.join(stubDir, "docs", "arkaik", "bundle.json"),
+      JSON.stringify({
+        schema_version: 3,
+        project: { id: "demo", title: "Demo", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z" },
+        nodes: [{ id: "V-home", project_id: "demo", species: "view", title: "Home", status: "live", platforms: ["web"] }],
+        edges: [],
+      }),
+    );
+    const populatedPlan = runCli(["bootstrap", "plan"], stubDir);
+    check("plan exits 0 against a populated bundle", populatedPlan.status === 0, populatedPlan.stderr);
+    const populatedManifest = JSON.parse(
+      readFileSync(path.join(stubDir, ".arkaik", "bootstrap", "manifest.json"), "utf8"),
+    );
+    check("a bundle with real nodes reads brownfield", populatedManifest.mode === "brownfield", populatedManifest.mode);
+  } finally {
+    rmSync(stubDir, { recursive: true, force: true });
+  }
+
+  // --- regression: agent-supplied unit ids reaching a filesystem path ---
+  // Area ids and era slugs come from profile.json, written by an agent, and
+  // become fragment filenames verbatim. An id containing "/" or ".." would
+  // make the fragment path escape .arkaik/bootstrap/fragments/ entirely;
+  // plan must refuse rather than mint a unit that writes outside its own
+  // working directory.
+  const unsafeIdDir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-unsafeid-"));
+  try {
+    mkdirSync(path.join(unsafeIdDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(
+      path.join(unsafeIdDir, ".arkaik", "bootstrap", "profile.json"),
+      JSON.stringify({
+        areas: [{ id: "../evil", title: "Evil", paths: ["app"] }],
+        eras: [],
+      }),
+    );
+    const unsafePlan = runCli(["bootstrap", "plan"], unsafeIdDir);
+    check("plan rejects a path-traversal area id", unsafePlan.status === 1, String(unsafePlan.status));
+    check(
+      "the rejection names the offending id",
+      unsafePlan.stderr.includes("../evil"),
+      unsafePlan.stderr,
+    );
+    check(
+      "no manifest is written when an id is unsafe",
+      !existsSync(path.join(unsafeIdDir, ".arkaik", "bootstrap", "manifest.json")),
+      "manifest.json was written despite the unsafe id",
+    );
+  } finally {
+    rmSync(unsafeIdDir, { recursive: true, force: true });
+  }
+
+  const spaceIdDir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-spaceid-"));
+  try {
+    mkdirSync(path.join(spaceIdDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(
+      path.join(spaceIdDir, ".arkaik", "bootstrap", "profile.json"),
+      JSON.stringify({ areas: [], eras: [{ slug: "first light", title: "First light" }] }),
+    );
+    const spacePlan = runCli(["bootstrap", "plan"], spaceIdDir);
+    check("plan rejects an era slug containing a space", spacePlan.status === 1, String(spacePlan.status));
+  } finally {
+    rmSync(spaceIdDir, { recursive: true, force: true });
+  }
+
+  // --- regression: an era slug can't silently collide with a reserved wave-3 id ---
+  // "decisions" and "status-arcs" are hardcoded wave-3 unit ids. An era
+  // literally named either one would otherwise mint two units with the same
+  // id (and thus the same fragment path) — the second one silently
+  // overwriting the first agent's output. plan must catch this at plan time,
+  // not leave it for merge to discover.
+  const dupIdDir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-dupid-"));
+  try {
+    mkdirSync(path.join(dupIdDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(
+      path.join(dupIdDir, ".arkaik", "bootstrap", "profile.json"),
+      JSON.stringify({ areas: [], eras: [{ slug: "decisions", title: "Decisions era" }] }),
+    );
+    const dupPlan = runCli(["bootstrap", "plan"], dupIdDir);
+    check("plan rejects an era slug that collides with the reserved decisions unit", dupPlan.status === 1, String(dupPlan.status));
+    check(
+      "the collision error names the duplicate id",
+      dupPlan.stderr.includes("w3-decisions"),
+      dupPlan.stderr,
+    );
+  } finally {
+    rmSync(dupIdDir, { recursive: true, force: true });
+  }
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }
