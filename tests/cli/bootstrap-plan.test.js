@@ -347,6 +347,46 @@ try {
     JSON.stringify(m3.units.find((u) => u.id === "w0-recon")),
   );
 
+  // --- regression: a cosmetic era title rename must NOT reset a finished unit ---
+  // Area units embed area.title in their scope text (w1/w2), so a title
+  // change there already shows up as a scope change — comparing `title` on
+  // top is redundant but harmless. Era units are different: the story unit's
+  // scope text never mentions era.title, only the unit's own display
+  // `title` does. Comparing `title` would force a full redo of a story unit
+  // whose fragment is still perfectly valid, just because someone renamed
+  // the era for display purposes.
+  const eraRenameDir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-erarename-"));
+  try {
+    mkdirSync(path.join(eraRenameDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(
+      path.join(eraRenameDir, ".arkaik", "bootstrap", "profile.json"),
+      JSON.stringify({ areas: [], eras: [{ slug: "chapter-one", title: "Chapter One" }] }),
+    );
+    const eraPlanA = runCli(["bootstrap", "plan"], eraRenameDir);
+    check("era-rename setup plan exits 0", eraPlanA.status === 0, eraPlanA.stderr);
+    const eraManifestA = JSON.parse(readFileSync(path.join(eraRenameDir, ".arkaik", "bootstrap", "manifest.json"), "utf8"));
+    eraManifestA.units.find((u) => u.id === "w3-chapter-one").status = "done";
+    writeFileSync(path.join(eraRenameDir, ".arkaik", "bootstrap", "manifest.json"), JSON.stringify(eraManifestA));
+
+    // Same slug, same scope — only the display title changes.
+    writeFileSync(
+      path.join(eraRenameDir, ".arkaik", "bootstrap", "profile.json"),
+      JSON.stringify({ areas: [], eras: [{ slug: "chapter-one", title: "Chapter One: Redux" }] }),
+    );
+    const eraPlanB = runCli(["bootstrap", "plan"], eraRenameDir);
+    check("re-plan after a cosmetic era rename exits 0", eraPlanB.status === 0, eraPlanB.stderr);
+    const eraManifestB = JSON.parse(readFileSync(path.join(eraRenameDir, ".arkaik", "bootstrap", "manifest.json"), "utf8"));
+    const renamedUnit = eraManifestB.units.find((u) => u.id === "w3-chapter-one");
+    check("a cosmetic era title rename keeps the unit done", renamedUnit.status === "done", JSON.stringify(renamedUnit));
+    check(
+      "the unit's title still reflects the rename (only its status is preserved)",
+      renamedUnit.title === "Story — Chapter One: Redux",
+      renamedUnit.title,
+    );
+  } finally {
+    rmSync(eraRenameDir, { recursive: true, force: true });
+  }
+
   // --- regression: decisions/status-arcs must not depend on eras existing ---
   // The decisions unit mines design docs; the status-arc unit arcs anatomy
   // nodes. Neither reads eras. Gating both on `profile.eras.length` means a
@@ -426,6 +466,69 @@ try {
     check("a bundle with real nodes reads brownfield", populatedManifest.mode === "brownfield", populatedManifest.mode);
   } finally {
     rmSync(stubDir, { recursive: true, force: true });
+  }
+
+  // --- regression: a bundle that exists but isn't valid JSON must not crash or guess ---
+  // detectMode's throw path (added for the stub-bundle fix above) had zero
+  // coverage — the branch most likely to rot silently. plan must fail
+  // loudly, naming the bundle path, rather than defaulting to either mode.
+  const badJsonDir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-badjson-"));
+  try {
+    mkdirSync(path.join(badJsonDir, "docs", "arkaik"), { recursive: true });
+    writeFileSync(path.join(badJsonDir, "docs", "arkaik", "bundle.json"), "{ not valid json");
+    const badJsonPlan = runCli(["bootstrap", "plan"], badJsonDir);
+    check("plan exits 1 against an unparseable bundle", badJsonPlan.status === 1, String(badJsonPlan.status));
+    check("the failure names the bundle path", badJsonPlan.stderr.includes("docs/arkaik/bundle.json"), badJsonPlan.stderr);
+  } finally {
+    rmSync(badJsonDir, { recursive: true, force: true });
+  }
+
+  // --- regression: valid JSON that isn't bundle-shaped falls back to greenfield, not a crash ---
+  // Currently true only by accident of the Array.isArray guard in detectMode
+  // — pin it so it stays true on purpose.
+  const notBundleDir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-notbundle-"));
+  try {
+    mkdirSync(path.join(notBundleDir, "docs", "arkaik"), { recursive: true });
+    writeFileSync(path.join(notBundleDir, "docs", "arkaik", "bundle.json"), JSON.stringify({ hello: "world" }));
+    const notBundlePlan = runCli(["bootstrap", "plan"], notBundleDir);
+    check("plan exits 0 against valid JSON with no nodes array", notBundlePlan.status === 0, notBundlePlan.stderr);
+    const notBundleManifest = JSON.parse(readFileSync(path.join(notBundleDir, ".arkaik", "bootstrap", "manifest.json"), "utf8"));
+    check(
+      "a non-bundle-shaped file falls back to greenfield rather than crashing",
+      notBundleManifest.mode === "greenfield",
+      notBundleManifest.mode,
+    );
+  } finally {
+    rmSync(notBundleDir, { recursive: true, force: true });
+  }
+
+  // --- regression: an absolute --bundle path must resolve as itself, not cwd-joined ---
+  // detectMode used to resolve the bundle via path.join(cwd, bundlePath),
+  // which mangles an absolute path (path.join("/repo", "/abs/bundle.json")
+  // -> "/repo/abs/bundle.json") and silently fell back to greenfield even
+  // when the real bundle at that absolute path had real content.
+  const absBundleDir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-absbundle-"));
+  const absBundleFile = path.join(absBundleDir, "elsewhere-bundle.json");
+  try {
+    writeFileSync(
+      absBundleFile,
+      JSON.stringify({
+        schema_version: 3,
+        project: { id: "demo", title: "Demo", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z" },
+        nodes: [{ id: "V-home", project_id: "demo", species: "view", title: "Home", status: "live", platforms: ["web"] }],
+        edges: [],
+      }),
+    );
+    const absPlan = runCli(["bootstrap", "plan", "--bundle", absBundleFile], absBundleDir);
+    check("plan exits 0 with an absolute --bundle path", absPlan.status === 0, absPlan.stderr);
+    const absManifest = JSON.parse(readFileSync(path.join(absBundleDir, ".arkaik", "bootstrap", "manifest.json"), "utf8"));
+    check(
+      "an absolute --bundle path resolves to itself and reads brownfield",
+      absManifest.mode === "brownfield",
+      absManifest.mode,
+    );
+  } finally {
+    rmSync(absBundleDir, { recursive: true, force: true });
   }
 
   // --- regression: agent-supplied unit ids reaching a filesystem path ---

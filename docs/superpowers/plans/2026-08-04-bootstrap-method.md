@@ -906,13 +906,14 @@ git commit -m "feat(cli): bootstrap corpus — mine PRs, docs and surfaces"
 
 The manifest is what makes this a method rather than a story about one session: unit status lives on disk, so a killed run resumes. `plan` is repo-agnostic because it expands from the recon profile — with no profile it emits only the wave-0 recon unit.
 
-**Implementation note (post-review):** the reference code below was written in one pass and never executed. Quality review on Tasks 1–2 found real defects inherited from an un-executed reference implementation elsewhere in this plan, so Task 3 was implemented with five specific probes applied against the snippet before it shipped. Four turned up genuine bugs, fixed below; the fifth (fragments orphaned when an area drops out of the profile) was traced and found to be harmless by construction, not fixed. All five are recorded here so later tasks don't have to re-discover them:
+**Implementation note (post-review):** the reference code below was written in one pass and never executed. Quality review on Tasks 1–2 found real defects inherited from an un-executed reference implementation elsewhere in this plan, so Task 3 was implemented with five specific probes applied against the snippet before it shipped. Four turned up genuine bugs, fixed below; the fifth (fragments orphaned when an area drops out of the profile) was traced and found to be harmless by construction, not fixed. Spec review then confirmed all four fixes as sound but caught one refinement the first pass missed (item 2 — `title` didn't belong in the status-carry-forward comparison) and asked that a sixth finding from self-review, previously noted only in a report and at risk of being lost, be folded into this record too (item 6). All six are recorded here so later tasks don't have to re-discover them:
 
 1. **Wave-3 gating was wrong.** The original gated `w3-decisions` / `w3-status-arcs` on `profile.eras?.length` — a profile with real `areas` but zero `eras` (a young repo, or one recon judged has no story worth splitting into eras yet) silently lost decision-mining and status arcs, even though neither unit reads era boundaries (decisions mines docs, status-arcs arcs anatomy nodes). **Fixed:** gated on `profile !== null` (recon has run) instead.
-2. **Status carry-forward didn't check the definition.** The original carried `done` forward by unit id alone. If the profile later changed an area's `paths`, the old fragment on disk was written against the old slice, but the unit still read `done` — `merge` would silently consume stale output. **Fixed:** a unit's status only carries forward when its `title`, `scope`, and `slice` are unchanged from the previous plan; otherwise it resets to `pending` (an honest signal that this unit needs redoing).
+2. **Status carry-forward didn't check the definition — and `title` doesn't belong in that check either.** The original carried `done` forward by unit id alone. If the profile later changed an area's `paths`, the old fragment on disk was written against the old slice, but the unit still read `done` — `merge` would silently consume stale output. **Fixed:** a unit's status only carries forward when its `scope` and `slice` are unchanged from the previous plan; otherwise it resets to `pending` (an honest signal that this unit needs redoing). `title` was in the first cut of this comparison and came back out at spec review: for area units it's redundant (w1/w2 scope text already embeds `area.title`, so a title edit already shows up as a scope change) but for era units it's actively wrong — the story unit's scope text never mentions `era.title`, only the unit's own display `title` does, so comparing it forced a full, needless redo whenever an era was cosmetically renamed.
 3. **Fragments for a dropped area are orphaned, not dangerous.** If recon later drops an area from `profile.json`, its unit vanishes from the next plan's `units` array, but `.arkaik/bootstrap/fragments/<old-id>.json` remains on disk. Traced against Task 6's `loadFragments`: it iterates `manifest.units` and looks up each unit's own fragment path — it never scans the fragments directory — so a fragment with no matching unit is simply never read. No silent data risk; just an inert file. Left unfixed (nothing to fix), noted here so Task 6 doesn't have to re-trace it.
 4. **Mode detection used `existsSync`, contradicting the spec's own rule.** § 1 of the design spec says greenfield is "no bundle, **or a stub**" — but the reference code was `existsSync(bundle) ? "brownfield" : "greenfield"`, which reads a freshly-scaffolded `arkaik init` bundle (`{nodes: [], edges: []}`) as brownfield. **Fixed:** `detectMode` reads the bundle when present and checks `nodes.length === 0` (a stub) vs. `> 0` (real content); a bundle that exists but fails to parse throws rather than silently guessing a mode.
 5. **Unit ids reach a filesystem path with no validation.** Area ids and era slugs come from `profile.json`, written by an agent, and become fragment filenames verbatim (`${FRAGMENTS_DIR}/${id}.json`). An id containing `/` or `..` would make that path escape the fragments directory; two ids landing on the same string (including an era slug colliding with the reserved `w3-decisions` / `w3-status-arcs` names) would mint two units pointing at the same fragment file, one silently clobbering the other's output. **Fixed:** `assertSafeId` rejects any area id / era slug that isn't `[A-Za-z0-9][A-Za-z0-9-]*`, and a post-build pass rejects any duplicate unit id — both throw with the offending id/value named, caught by `runPlan` and reported via `process.exit(1)` before anything is written.
+6. **`detectMode` mis-resolved an absolute `--bundle` path.** Found during self-review, confirmed real at spec review: the bundle file was located via `at(cwd, bundlePath)` (i.e. `path.join`), and `path.join("/repo", "/abs/bundle.json")` produces `/repo/abs/bundle.json` — a path that doesn't exist, so an absolute `--bundle` pointing at a real, populated bundle silently read as greenfield. **Fixed:** `detectMode` resolves via `path.resolve(cwd, bundlePath)` instead, which returns an already-absolute second argument unchanged and behaves identically to the old `path.join` for the ordinary relative case. **This matters for Task 6:** `runMerge`'s reference code resolves the same `manifest.bundle` field via `path.resolve(cwd, manifest.bundle)` — the two now agree; if Task 6 changes its resolution strategy, `detectMode` needs to change with it, or `plan` and `merge` will disagree about what `--bundle` points at.
 
 **Files:**
 - Create: `packages/cli/src/lib/bootstrap/manifest.ts`
@@ -921,7 +922,7 @@ The manifest is what makes this a method rather than a story about one session: 
 
 - [ ] **Step 1: Write the failing test**
 
-Append inside the `try` block — the base plan/resume checks plus one regression test per probe above (stub-bundle mode, gating without eras, status invalidation on a changed slice, unsafe/duplicate ids):
+Append inside the `try` block — the base plan/resume checks plus one regression test per finding above (stub-bundle mode, gating without eras, status invalidation on a changed slice, the title-rename refinement, unsafe/duplicate ids, the unparseable/non-bundle-shaped bundle branches, and the absolute-`--bundle` fix):
 
 ```js
   // --- plan with no profile: recon only ---
@@ -1016,7 +1017,9 @@ Append inside the `try` block — the base plan/resume checks plus one regressio
   );
 ```
 
-Isolated mkdtemp blocks (following the `orderDir` / `gitDir` pattern from Task 2) additionally cover: probe 1 (`areas` with `eras: []` still plans `w3-decisions` / `w3-status-arcs`), probe 4 (a `{nodes: [], edges: []}` bundle reads `greenfield`; the same bundle with one node reads `brownfield`), and probe 5 (an area id of `"../evil"` and an era slug with a space both exit 1 and write no manifest; an era slug of `"decisions"` exits 1 naming the duplicate `w3-decisions` id). See `tests/cli/bootstrap-plan.test.js` for the full text — the CLI's baseline stood at 39 checks before Task 3; the additions above brought it to 71.
+A further inline block, right after the slice-change regression above, covers item 2's title refinement: plan an era, mark its `w3-<slug>` unit `done`, rename only the era's `title` in profile.json (slug/scope untouched), re-plan, and assert the unit stays `done` while its own `title` field updates to the new name — pinning that a cosmetic rename doesn't force a redo, while confirming the rename still lands.
+
+Isolated mkdtemp blocks (following the `orderDir` / `gitDir` pattern from Task 2) additionally cover: probe 1 (`areas` with `eras: []` still plans `w3-decisions` / `w3-status-arcs`), probe 4 (a `{nodes: [], edges: []}` bundle reads `greenfield`; the same bundle with one node reads `brownfield`; a bundle file containing invalid JSON exits 1 naming the bundle path; valid JSON with no `nodes` array falls back to `greenfield` instead of crashing), item 6 (an absolute `--bundle` path pointing at a populated bundle reads `brownfield`, proving `path.resolve` — not `path.join` — is doing the resolving), and probe 5 (an area id of `"../evil"` and an era slug with a space both exit 1 and write no manifest; an era slug of `"decisions"` exits 1 naming the duplicate `w3-decisions` id). See `tests/cli/bootstrap-plan.test.js` for the full text — the CLI's baseline stood at 39 checks before Task 3; the first pass brought it to 71, and the spec-review follow-up (items 2's refinement, plus coverage for items 4 and 6) brought it to 81.
 
 - [ ] **Step 2: Run it to verify it fails**
 
@@ -1037,6 +1040,7 @@ Create `packages/cli/src/lib/bootstrap/manifest.ts`:
  * recon expands waves 1–3 from whatever areas and eras that profile declares.
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
 
 import { at, ensureDir, FRAGMENTS_DIR, MANIFEST_FILE, PLAN_DIR, PROFILE_FILE } from "./paths";
 
@@ -1096,9 +1100,17 @@ export function writeManifest(cwd: string, manifest: Manifest): void {
  * brownfield. A bundle file that exists but can't be parsed as JSON is a
  * real problem, not a mode to silently guess at, so it throws instead of
  * defaulting either way.
+ *
+ * `bundlePath` is resolved with `path.resolve`, not `at`/`path.join`: unlike
+ * the fixed `.arkaik/...` constants in ./paths, this value comes straight
+ * from `--bundle` and may already be absolute. `path.join(cwd, "/abs/x")`
+ * mangles an absolute path into `<cwd>/abs/x`; `path.resolve` returns an
+ * absolute second argument unchanged, so it's the correct join for both
+ * relative and absolute input. `bootstrap merge` (Task 6) resolves the same
+ * `manifest.bundle` field the same way — keep the two in agreement.
  */
 export function detectMode(cwd: string, bundlePath: string): Manifest["mode"] {
-  const file = at(cwd, bundlePath);
+  const file = path.resolve(cwd, bundlePath);
   if (!existsSync(file)) return "greenfield";
   let parsed: unknown;
   try {
@@ -1147,11 +1159,20 @@ function assertSafeId(kind: "area" | "era", id: unknown): void {
 /**
  * Build the manifest for this repo. `previous` (when given) carries unit
  * statuses forward so re-planning after recon never loses completed work —
- * but only for a unit whose title/scope/slice is unchanged from the last
- * plan. If the profile edited an area's paths (or an era's slug) since then,
- * the old fragment on disk was written against the old definition; carrying
- * `done` forward would let `merge` consume that stale output with no signal
- * anything is wrong, so the unit resets to `pending` instead.
+ * but only for a unit whose `scope`/`slice` are unchanged from the last plan.
+ * If the profile edited an area's paths since then, the old fragment on disk
+ * was written against the old slice; carrying `done` forward would let
+ * `merge` consume that stale output with no signal anything is wrong, so the
+ * unit resets to `pending` instead.
+ *
+ * `title` is deliberately excluded from that comparison. For area units it
+ * would be redundant (the w1/w2 scope text already embeds `area.title`, so a
+ * title edit already shows up as a scope change) but for era units it would
+ * be actively wrong: the story unit's scope text never mentions `era.title`,
+ * only the unit's own display `title` does. Comparing `title` would force a
+ * full redo of a story unit whenever someone renames the era for display
+ * purposes, even though its fragment — driven entirely by `scope` and
+ * `slice` — is still perfectly valid.
  */
 export function planUnits(options: {
   mode: Manifest["mode"];
@@ -1245,8 +1266,8 @@ export function planUnits(options: {
   for (const u of units) {
     const before = previousById.get(u.id);
     if (!before) continue;
-    const sameDefinition =
-      before.title === u.title && before.scope === u.scope && JSON.stringify(before.slice) === JSON.stringify(u.slice);
+    // title excluded on purpose — see the doc comment above.
+    const sameDefinition = before.scope === u.scope && JSON.stringify(before.slice) === JSON.stringify(u.slice);
     if (sameDefinition) u.status = before.status;
   }
 
@@ -1312,7 +1333,7 @@ Add `case "plan": runPlan(rest); return;` to the switch. Note `mode` detection a
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `npm run build -w arkaik && node tests/cli/bootstrap-plan.test.js`
-Expected: PASS on all 71 checks (39 from Tasks 1–2 + 32 from Task 3).
+Expected: PASS on all 81 checks (39 from Tasks 1–2 + 42 from Task 3, the latter across the first implementation pass and the spec-review follow-up).
 
 - [ ] **Step 6: Commit**
 

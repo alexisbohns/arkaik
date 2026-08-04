@@ -7,6 +7,7 @@
  * recon expands waves 1–3 from whatever areas and eras that profile declares.
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
 
 import { at, ensureDir, FRAGMENTS_DIR, MANIFEST_FILE, PLAN_DIR, PROFILE_FILE } from "./paths";
 
@@ -66,9 +67,17 @@ export function writeManifest(cwd: string, manifest: Manifest): void {
  * brownfield. A bundle file that exists but can't be parsed as JSON is a
  * real problem, not a mode to silently guess at, so it throws instead of
  * defaulting either way.
+ *
+ * `bundlePath` is resolved with `path.resolve`, not `at`/`path.join`: unlike
+ * the fixed `.arkaik/...` constants in ./paths, this value comes straight
+ * from `--bundle` and may already be absolute. `path.join(cwd, "/abs/x")`
+ * mangles an absolute path into `<cwd>/abs/x`; `path.resolve` returns an
+ * absolute second argument unchanged, so it's the correct join for both
+ * relative and absolute input. `bootstrap merge` (Task 6) resolves the same
+ * `manifest.bundle` field the same way — keep the two in agreement.
  */
 export function detectMode(cwd: string, bundlePath: string): Manifest["mode"] {
-  const file = at(cwd, bundlePath);
+  const file = path.resolve(cwd, bundlePath);
   if (!existsSync(file)) return "greenfield";
   let parsed: unknown;
   try {
@@ -117,11 +126,20 @@ function assertSafeId(kind: "area" | "era", id: unknown): void {
 /**
  * Build the manifest for this repo. `previous` (when given) carries unit
  * statuses forward so re-planning after recon never loses completed work —
- * but only for a unit whose title/scope/slice is unchanged from the last
- * plan. If the profile edited an area's paths (or an era's slug) since then,
- * the old fragment on disk was written against the old definition; carrying
- * `done` forward would let `merge` consume that stale output with no signal
- * anything is wrong, so the unit resets to `pending` instead.
+ * but only for a unit whose `scope`/`slice` are unchanged from the last plan.
+ * If the profile edited an area's paths since then, the old fragment on disk
+ * was written against the old slice; carrying `done` forward would let
+ * `merge` consume that stale output with no signal anything is wrong, so the
+ * unit resets to `pending` instead.
+ *
+ * `title` is deliberately excluded from that comparison. For area units it
+ * would be redundant (the w1/w2 scope text already embeds `area.title`, so a
+ * title edit already shows up as a scope change) but for era units it would
+ * be actively wrong: the story unit's scope text never mentions `era.title`,
+ * only the unit's own display `title` does. Comparing `title` would force a
+ * full redo of a story unit whenever someone renames the era for display
+ * purposes, even though its fragment — driven entirely by `scope` and
+ * `slice` — is still perfectly valid.
  */
 export function planUnits(options: {
   mode: Manifest["mode"];
@@ -215,8 +233,8 @@ export function planUnits(options: {
   for (const u of units) {
     const before = previousById.get(u.id);
     if (!before) continue;
-    const sameDefinition =
-      before.title === u.title && before.scope === u.scope && JSON.stringify(before.slice) === JSON.stringify(u.slice);
+    // title excluded on purpose — see the doc comment above.
+    const sameDefinition = before.scope === u.scope && JSON.stringify(before.slice) === JSON.stringify(u.slice);
     if (sameDefinition) u.status = before.status;
   }
 
