@@ -33,8 +33,8 @@ interface ProjectPanelsProps {
    * reason every surface takes one: a panel shows what the surface behind it
    * was showing, so when the deferred per-surface override lands the panel must
    * follow that surface and not the global. Optional because the shell is now
-   * mounted by pages that carry no nodes at all — Settings, Changelog, Maps —
-   * where the only panel is the raw bundle and there is nothing to scope.
+   * mounted by pages that carry no nodes at all — Settings, Maps — where the
+   * only panel is the raw bundle and there is nothing to scope.
    */
   scope?: ProductScope;
   journal?: JournalEvent[];
