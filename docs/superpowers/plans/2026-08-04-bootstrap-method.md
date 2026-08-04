@@ -1983,563 +1983,160 @@ git commit -m "feat(cli): deterministic event ids for bootstrap merge"
 
 ---
 
-### Task 6: `bootstrap merge` — fragments, nodes, edges, journal
+### Task 6: `bootstrap merge` — shipped, findings below (this task is where everything lands)
 
-**Carried forward from Task 5's review — three things to fix or explicitly accept before shipping this, don't silently inherit them:**
+**This is the biggest and most consequential task in the plan, and it shipped with more changes than the carry-forward block alone asked for.** The carry-forward block below (Task 5's review) is kept verbatim as the historical record — all three items are resolved, marked inline. Past it, this task's own probing (the seven the task brief specified, plus self-review) found **four more real defects**, one of them severe enough that it would have broken Task 7's and Task 9's own reference test fixtures the moment either task ran, without either task's own tests being wrong. Read the whole thing before touching `merge.ts`, `fragments.ts`, or `bootstrap.ts`'s `runMerge` again.
 
-1. **`merge` never dedups the journal by event id — which makes the deterministic id's whole purpose unreachable as this file is written.** The reference `mergeFragments` below ends with `sortEvents([...input.baseJournal, ...newEvents])` — a sort, with no dedup. `loadFragments` iterates every `manifest.units` entry with no `done`/`rejected` filter, and `baseJournal` is read straight back from the existing `journal.jsonl` on disk. So on a **second** `merge` over the same, unchanged fragments: every wave-3 story event is re-pushed alongside its own run-1 copy, and **the journal doubles in size** — silently, since both copies have the same `id` (that's the point of a deterministic id) but nothing collapses them. Pass 1's `node.created` synthesis is idempotent only *incidentally*: on run 2 the node already exists in `nodes` (the map built from the base bundle), so the `nodes.has(id)` guard `continue`s before that event is ever pushed — the events-array path has no equivalent guard. Task 6's own determinism test (Step 6 below) cannot catch this, because its fixture fragment has `nodes` only and no `events` array. **Fix:** `mergeFragments` must dedup the merged journal by `id` (keep one copy per id — the base journal's copy should win over a freshly re-derived one, since it's the one already committed) before or as part of `sortEvents`. This is *why* the id is deterministic in the first place — a random `ulid()` could never be dedup'd this way, since a re-run would mint a different id for "the same" event every time. **Add a regression test:** scaffold a fragment carrying an `events` array (a `node.status_changed` or `deliverable.shipped` event is enough), run `merge` twice, and assert the journal's event count — and its byte length — do not grow between runs.
-2. **`deterministicEventId` now throws on an unparseable/missing `ts`** instead of silently encoding epoch 0 (Task 5, probe 4). The reference `mergeFragments` below calls it unguarded in two places (the `node.created` synthesis in pass 1, and the wave-3 `events` loop in pass 3) — a single malformed fragment (an agent-authored `created_ts`, or a story event's `ts`, that doesn't parse) will now throw an uncaught exception and crash the whole merge instead of surfacing as a `MergeProblem` naming the offending unit, which is how every other per-fragment defect in this file is reported. Wrap both call sites in a `try`/`catch` and push a `MergeProblem` (`{ unit: unit.id, message: ... }`) naming the unit and the bad `ts`, matching the existing error-collection style, rather than letting the exception escape.
-3. **The wave-3 event key (`${type}:${node_id ?? deliverable_id ?? version ?? ""}:${ts}`) is not actually unique per event — confirmed, not just suspected.** `deterministicEventId` guarantees the same id for the same key; it cannot make a non-unique key produce distinct ids, and this one has real gaps:
-   - `idea.proposed` and `request.filed` (`journal-events.ts`) carry `node_id` as fully **optional**, with no `deliverable_id`/`version` field at all — an idea or request with no `node_id` collapses the key to `` `${type}::${ts}` ``, so **every** such event on the same day collides, not as a rare hash accident but by construction.
-   - `release.tagged` carries an optional `platform`, which the key omits — two platform-scoped releases of the same `version` tagged the same day (a simultaneous ios/android ship, which is exactly the kind of release this repo's own platform model exists to support) collide.
-   - `node.status_changed` and `decision.status_changed` key on `node_id` + `ts` alone — the wave-3 "status arcs" unit (Task 13's skill spec) explicitly plans **1-3 status events per node**, and if two of a node's transitions land on the same calendar day (very plausible when transitions are reconstructed from PR merge dates, which have at most day granularity), they collide.
-   None of this is fixable by better hashing — it needs a key that actually distinguishes the events. Before shipping this task, strengthen the wave-3 key to include enough of each event's own distinguishing payload (at minimum: `platform` when present, and `from`/`to` for status-change events) that two genuinely different events can no longer produce the same key. Add a regression test with two same-day, same-node `node.status_changed` events (different `from`/`to`) and confirm they land in the journal with two distinct ids — this exact shape is not covered by any existing fixture.
+**Carried forward from Task 5's review — three things to fix or explicitly accept before shipping this, don't silently inherit them (all three fixed, see below):**
 
-**Files:**
-- Create: `packages/cli/src/lib/bootstrap/fragments.ts`
-- Create: `packages/cli/src/lib/bootstrap/merge.ts`
-- Modify: `packages/cli/src/commands/bootstrap.ts`
-- Test: `tests/cli/bootstrap-merge.test.js`
+1. **`merge` never dedups the journal by event id — which makes the deterministic id's whole purpose unreachable as this file is written.** The reference `mergeFragments` below ends with `sortEvents([...input.baseJournal, ...newEvents])` — a sort, with no dedup. `loadFragments` iterates every `manifest.units` entry with no `done`/`rejected` filter, and `baseJournal` is read straight back from the existing `journal.jsonl` on disk. So on a **second** `merge` over the same, unchanged fragments: every wave-3 story event is re-pushed alongside its own run-1 copy, and **the journal doubles in size** — silently, since both copies have the same `id` (that's the point of a deterministic id) but nothing collapses them. Pass 1's `node.created` synthesis is idempotent only *incidentally* (the `nodes.has(id)` guard); the `events` path has no equivalent guard. **Fixed:** a `mergeJournal(base, fresh)` helper merges by `id` — base's copy wins on a collision — and `counts.eventsAdded` reports only genuinely-new ids. Regression test: `tests/cli/bootstrap-merge.test.js`'s "carry-forward 1" block scaffolds an `events`-carrying fragment, merges three times, and asserts the journal's line count AND byte length never grow past the first run.
+2. **`deterministicEventId` now throws on an unparseable/missing `ts`** instead of silently encoding epoch 0 (Task 5, probe 4). The reference `mergeFragments` calls it unguarded in multiple places — a single malformed fragment (a bad `created_ts`, or a story event's `ts`) would crash the whole merge with an uncaught exception instead of surfacing as a `MergeProblem` naming the offending unit. **Fixed:** every call site is wrapped via a shared `mintEvent` helper that catches the throw and pushes `{ unit: unit.id, message: ... }` naming the unit and the bad `ts`, matching the existing error-collection style. Regression tests: "carry-forward 2" block covers both the `node.created` path (bad `created_ts`) and the wave-3 `events` path (bad event `ts`), asserting a clean exit-1 with the unit name and the bad value in stderr — explicitly NOT a raw stack trace.
+3. **The wave-3 event key (`${type}:${node_id ?? deliverable_id ?? version ?? ""}:${ts}`) is not actually unique per event — confirmed, not just suspected.** Real gaps: `idea.proposed`/`request.filed` with no `node_id` collapse to `type::ts` (every such event on a day collides, by construction); `release.tagged` omits `platform` (two same-day per-platform releases collide); `node.status_changed`/`decision.status_changed` key on `node_id` + `ts` alone (a node crossing two statuses on one day collides — exactly what the wave-3 "status arcs" unit plans to emit, 1-3 events per node). **Fixed:** a new `eventKey(raw, ts)` folds in every identifying field a known event carries when present — `node`, `deliverable`, `version`, `edge`, `ref`, `source`/`target`, `platform`, `from`/`to`, `title`, `url` — so two events differing in any of them get different keys and thus different ids. Regression tests: "carry-forward 3" block covers same-day/same-node status transitions with different `from`/`to`, same-day/same-version different-platform releases, and same-day node-id-less ideas — all three now get distinct ids, verified against the built CLI, not by reading the key-building code.
+
+**This task's own probing found four more defects, beyond the carry-forward block:**
+
+4. **Probe 1 (status changes without journal events) was real, and severe: retire/update mutated `status` with zero journal event.** Verified against the real validator, not by reading: `crossCheckJournal`'s `journal-status-mismatch` only compares the journal's LAST recorded `node.status_changed.to` against the snapshot — a node with **no** status-changed history has nothing to disagree with, so this bug was silent for a node's first-ever status change but **loud for every subsequent one**. That's exactly the brownfield reconcile shape: an existing map's nodes typically already carry real status history from before bootstrap ever ran. Reproduced directly (not just reasoned about): a node created `"development"`, given one prior `node.status_changed` event to `"development"`, then reconciled to `"live"` via `update` with no fix — `arkaik validate` fails with `ERROR [journal-status-mismatch] journal: Node "V-home": journal's last node.status_changed.to "development" disagrees with snapshot status "live".` **Fixed:** both `update` (when the patch touches `status`) and `retire` now record the node's status before mutating it and, when it actually changed, emit a `node.status_changed` (`actor: "bootstrap"`, real `from`/`to`) at the fragment's own optional `changed_ts` (new field on `FragmentUpdate`/`FragmentRetire`) or the merge's fallback ts. Verified fixed the same way it was verified broken: the reproduction above now passes `arkaik validate` cleanly; a parallel retire-with-prior-history fixture confirms the same for `retire`.
+5. **Probe 2 (node.created for brownfield nodes) — confirmed correct, no fix needed.** A brownfield node re-declared with the same id AND title is silently skipped (idempotent, no duplicate `node.created`); a node with the same id but a DIFFERENT title collides loudly (see finding 7 below — this got STRICTER, not looser); a genuinely new node alongside an existing one gets exactly one `node.created`, the existing one gets none. All three verified against a built CLI with a real `journal.jsonl` and `arkaik validate`, not by reading `nodes.has(id)`.
+6. **Probe 4 (`serializeBundle` → `parseBundle` → `validateBundle` round trip) surfaced a real zod/validateBundle parity gap: `platforms` is required by the zod schema even on `decision` nodes, which `validateBundle` itself exempts from the non-empty check.** A decision fragment that omits `platforms` (a very plausible thing for an agent to do — decisions are platform-agnostic by spec, so `platforms` feels irrelevant) would pass `arkaik validate` cleanly but fail `parseBundle`'s stricter shape check. **Fixed:** every added node with a missing/non-array `platforms` gets it defaulted to `[]` — safe for every species, since `[]` triggers the exact same `validateBundle` error path `undefined` did for every non-decision species (this changes nothing there), while being the semantically-correct value for a platform-agnostic decision. `delete bundle.journal` (the repo's own bundle is sidecar-only per docs/spec/journal.md — "never inside it") was also confirmed to do the right thing: a merged bundle now round-trips through `parseBundle` and comes back byte-identical through `serializeBundle` again (a genuine fixed point), verified directly against the real zod schema via `tests/schema/load-schema.js`'s transpile-to-CommonJS loader, not assumed.
+7. **Self-review, not from a numbered probe: node id collisions were only ever caught WITHIN one merge invocation, never across separate invocations — the reference's own collision-detection mechanism was silently inert for anything already persisted.** `nodeOrigin` was only populated for nodes added THIS run; a base node (from a prior merge, or pre-existing brownfield content) had no recorded origin, so the reference's `if (owner && existingTitle !== incomingTitle)` guard was unreachable for it (`owner` always `undefined`). Reproduced: run 1 adds `V-shared` titled "First Meaning" and persists it; a LATER, unrelated fragment (as if from a different area's agent, re-run weeks later) declares the same id with a totally different title, "Different Meaning" — the reference discarded it with **zero error**, silently keeping "First Meaning" and dropping the second agent's entire node. **Fixed:** base nodes are now seeded into `nodeOrigin` too (with a sentinel label), so the same "same id, different title" check runs whether the pre-existing node came from this run's earlier fragments or from before this run started. The ordinary idempotent-rerun case (same id, same title) is unaffected — still silently accepted, not an error.
+
+**A fourth, unrelated defect, found the same way (probe 4's round trip, not by reading):**
+
+8. **`FragmentEdge.kind` never translated to the bundle's `edge_type` field — every edge fixture in this entire plan (Task 7's AND Task 9's) would have produced an invalid bundle.** Every edge fixture anywhere in this plan — Task 6's own Step 1 test didn't have edges, but Task 7's collision/reconcile tests and Task 9's golden e2e test all write `edges: [{ source_id, target_id, kind: "composes" }]` (`kind` is `FragmentEdge`'s own declared field name in the reference). The bundle schema's field is `edge_type` (`EdgeSchema`, `validate.ts`'s `valid-edge-type` check). The reference `mergeFragments` spread the raw fragment edge straight onto the merged edge with no translation at all — every merged edge would have silently carried `kind` and no `edge_type`, which `validateBundle` rejects outright (`invalid edge_type "undefined"`) and `parseBundle` rejects too (`edge_type` is a required enum). **This was invisible to every test written so far**, including this task's own Step 1 (no edges in that fixture) — it would have surfaced the moment Task 9's e2e test (which DOES call `arkaik validate` on a bundle with edges) actually ran. Caught here via probe 4's round trip against a fixture with a real `kind: "composes"` edge. **Fixed:** pass 2 now resolves `edge_type` from either `edge_type` (if a fragment supplies it directly) or `kind` (the documented field), and drops the bare `kind` key from what lands on the bundle; an edge with neither fails the merge loudly, naming both endpoints. **Task 7 and Task 9: your existing planned fixtures (`kind: "composes"`, `kind: "calls"`) now work correctly — no fixture change needed on your end, but if either task's own review re-derives `merge.ts` from an older read of this plan, make sure this translation is still there.**
+
+**Probes 3, 5, and 6 — verified clean, no code changes required beyond what's already described above:**
+
+- **Probe 3 (determinism end to end).** Running `merge` twice over identical fragments (including an `events`-array fragment) produces byte-identical `bundle.json` and `journal.jsonl` both times — verified via the built CLI, both on synthetic fixtures and on the full real self-map dataset (below). `updated_at` falls back to the base project's own `updated_at` when the resulting journal is empty (no crash, no `undefined`). The one non-determinism that DOES exist — a freshly-scaffolded bundle's `project.created_at`/`updated_at` are stamped with `new Date().toISOString()` on the very first merge ever run against an empty repo — is inherent (there is no historical timestamp to derive a project's own creation moment from) and does not affect re-run determinism, because every subsequent run reads that timestamp back from the now-persisted bundle rather than re-minting it.
+- **Probe 5 (empty and degenerate inputs).** No fragments at all (a freshly-planned manifest, nothing written yet): merge succeeds, reports the missing units by name, and writes the scaffold bundle plus an empty `journal.jsonl` — verified this validates cleanly too. A fragment with every array present but empty: a clean no-op, `+0` everywhere. A manifest whose units all lack fragments: same as "no fragments," not fatal — this is a legitimate mid-run state (an agent hasn't produced its wave yet), not a degenerate one.
+- **Probe 6 (real-data proof) — the strongest evidence in this task.** `tests/cli/bootstrap-merge-selfmap.test.js` splits the real self-map seed's 220 nodes and 411 edges round-robin across 5 fragment files (node split and edge split offset from each other, so most edges reference a node created by a DIFFERENT fragment — the real shape a multi-agent bootstrap run produces), merges them into an empty base (carrying over the seed's own `project.metadata.products`/`maps` so this isn't penalized with warnings that have nothing to do with merge's own correctness), and runs `arkaik validate` on the result: **220/220 nodes, 411/411 edges, 220/220 `node.created` events, 0 errors, 0 warnings.** Re-running merge a second time over the same fragments produces byte-identical bundle and journal files. This is what actually proves the `kind`→`edge_type` fix (finding 8) and the cross-run collision fix (finding 7) hold at real scale, not just on a hand-built fixture.
+
+**Probe 7 (`loadFragments` path trust) — closed as flagged.** `unit.fragment` is no longer read at all; `loadFragments` re-derives the path as `${FRAGMENTS_DIR}/${unit.id}.json`, re-validating `unit.id` against the same lowercase-kebab-case shape `plan` enforces (manifest.json is edited between `plan` and `merge` — units get marked `done`/`rejected` between waves — and nothing stops that edit from also rewriting `fragment` to point elsewhere). Verified two ways: a manifest with `fragment` pointed at a decoy file (with different, detectable content) still resolves and reads the REAL id-derived fragment, ignoring the tampered field entirely; a manifest with an unsafe `id` (a `../` traversal attempt) fails the merge loudly, naming the unsafe id, rather than silently resolving somewhere unexpected.
+
+**One more finding, made while implementing the fix above, not from reading:** `runMerge`'s reference code read `baseJournal` via a direct sidecar-only read (`readJournalEvents(journalPath)`), which would silently DISCARD an entire embedded `journal[]` array if the base bundle happened to carry one (the interchange projection shape, docs/spec/journal.md — e.g. a bundle dropped in from `arkaik pack` or a hosted export). The repo's own canonical bundle is sidecar-only by convention, so this is a narrow edge case in the ordinary path, but it's exactly the kind of silent, unrecoverable data loss this whole review process exists to catch, and the fix is one line: `runMerge` now calls `loadJournalEvents(base, bundlePath)` (embedded-or-sidecar, already existing in `journal-io.ts`) instead of the sidecar-only read.
+
+**Explicitly NOT fixed here, flagged for Task 7:** two fragments declaring an edge between the SAME `(source, target)` pair with two DIFFERENT `kind`/`edge_type` values silently keep whichever fragment's edge was processed first — no error, no warning. The edge id (`e-{source}-{target}`) doesn't encode type, so this is a real modeling conflict, not a false alarm, but it is squarely a "collision" in the sense Task 7's own brief already names as its job — see Task 7's section below for the note.
+
+**Files (as shipped):**
+- Created: `packages/cli/src/lib/bootstrap/fragments.ts`
+- Created: `packages/cli/src/lib/bootstrap/merge.ts`
+- Modified: `packages/cli/src/commands/bootstrap.ts` (`runMerge`, wired into the dispatch switch)
+- Test: `tests/cli/bootstrap-merge.test.js` (determinism, all three carry-forward regressions, probes 1/2/4/5/7, the `kind`→`edge_type` fix, the cross-run collision fix)
+- Test (new — real-data proof, probe 6, kept separate for the same "meaningfully different fixture shape" reason `bootstrap-slice.test.js`/`bootstrap-e2e.test.js` were split out): `tests/cli/bootstrap-merge-selfmap.test.js`
 
 - [ ] **Step 1: Write the failing test**
 
-Create `tests/cli/bootstrap-merge.test.js`:
+Create `tests/cli/bootstrap-merge.test.js` with the determinism block below (unchanged from the original plan — this is what fails first, before `merge` is wired up at all):
 
 ```js
-#!/usr/bin/env node
-
-/**
- * Exercises `arkaik bootstrap merge` — fragment assembly onto a bundle:
- * ID uniqueness, cross-fragment edge resolution, reconcile ops, journal
- * construction, and byte-identical determinism across runs.
- */
-
-const { spawnSync } = require("child_process");
-const { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } = require("fs");
-const { tmpdir } = require("os");
-const path = require("path");
-
-const ROOT = path.join(__dirname, "..", "..");
-const CLI = path.join(ROOT, "packages", "cli", "dist", "index.js");
-
-if (!existsSync(CLI)) {
-  console.error(`CLI not built at ${CLI}. Run \`npm run build -w arkaik\` first.`);
-  process.exit(1);
-}
-
-function runCli(args, cwd) {
-  return spawnSync(process.execPath, [CLI, ...args], { encoding: "utf8", cwd });
-}
-
-let failures = 0;
-function check(name, cond, detail) {
-  if (cond) {
-    console.log(`PASS: ${name}`);
-  } else {
-    failures++;
-    console.log(`FAIL: ${name}${detail ? `\n${detail}` : ""}`);
-  }
-}
-
-/** A repo with a manifest, an empty-ish bundle, and the given fragments. */
-function scaffold(fragments, bundle) {
-  const dir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-merge-"));
-  mkdirSync(path.join(dir, "docs", "arkaik"), { recursive: true });
-  mkdirSync(path.join(dir, ".arkaik", "bootstrap", "fragments"), { recursive: true });
-  if (bundle) writeFileSync(path.join(dir, "docs", "arkaik", "bundle.json"), JSON.stringify(bundle));
-  const units = Object.keys(fragments).map((id) => ({
-    id,
-    wave: Number(id[1]) || 1,
-    title: id,
-    scope: "",
-    slice: {},
-    fragment: `.arkaik/bootstrap/fragments/${id}.json`,
-    status: "pending",
-  }));
-  writeFileSync(
-    path.join(dir, ".arkaik", "bootstrap", "manifest.json"),
-    JSON.stringify({ version: 1, mode: bundle ? "brownfield" : "greenfield", bundle: "docs/arkaik/bundle.json", units }),
-  );
-  for (const [id, fragment] of Object.entries(fragments)) {
-    writeFileSync(path.join(dir, ".arkaik", "bootstrap", "fragments", `${id}.json`), JSON.stringify(fragment));
-  }
-  return dir;
-}
-
-const BASE = {
-  schema_version: 3,
-  project: { id: "demo", title: "Demo", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z" },
-  nodes: [],
-  edges: [],
-};
-
-// --- deterministic event ids ---
-{
-  const dir = scaffold({
-    "w1-a": {
-      unit: "w1-a",
-      wave: 1,
-      nodes: [
-        { id: "V-home", species: "view", title: "Home", status: "live", platforms: ["web"], created_ts: "2026-01-02T10:00:00.000Z" },
-      ],
-      edges: [],
-    },
-  }, BASE);
-  try {
-    const first = runCli(["bootstrap", "merge"], dir);
-    check("merge exits 0", first.status === 0, first.stderr);
-    const bundleA = readFileSync(path.join(dir, "docs", "arkaik", "bundle.json"), "utf8");
-    const journalA = readFileSync(path.join(dir, "docs", "arkaik", "journal.jsonl"), "utf8");
-
-    runCli(["bootstrap", "merge"], dir);
-    const bundleB = readFileSync(path.join(dir, "docs", "arkaik", "bundle.json"), "utf8");
-    const journalB = readFileSync(path.join(dir, "docs", "arkaik", "journal.jsonl"), "utf8");
-
-    check("bundle output is byte-identical across runs", bundleA === bundleB, "bundle differed");
-    check("journal output is byte-identical across runs", journalA === journalB, "journal differed");
-
-    const events = journalA.trim().split("\n").map((l) => JSON.parse(l));
-    check("node.created synthesized", events.length === 1 && events[0].type === "node.created", journalA);
-    check("node.created uses the fragment's created_ts", events[0].ts === "2026-01-02T10:00:00.000Z", events[0].ts);
-    check("event id is ULID-shaped", /^[0-9A-HJKMNP-TV-Z]{26}$/.test(events[0].id), events[0].id);
-    check("created_ts is not persisted onto the node", !("created_ts" in JSON.parse(bundleA).nodes[0]), bundleA);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
-
-process.exit(failures === 0 ? 0 : 1);
+// (see the shipped file for the full test — reproduced here only to anchor
+// the TDD step; the file itself carries ~15 more blocks added past this one)
+const first = runCli(["bootstrap", "merge"], dir);
+check("merge exits 0", first.status === 0, first.stderr);
+// ...byte-identical bundle/journal across two runs, node.created synthesis,
+// ULID shape, created_ts not persisted onto the node.
 ```
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `node tests/cli/bootstrap-merge.test.js`
-Expected: FAIL — "Unknown bootstrap subcommand: merge".
+Run: `npm run build -w arkaik && node tests/cli/bootstrap-merge.test.js`
+Expected: FAIL — `Unknown bootstrap subcommand: merge`.
 
 - [ ] **Step 3: Write `fragments.ts`**
 
-Create `packages/cli/src/lib/bootstrap/fragments.ts`:
+The fragment contract, as shipped — `FragmentNode`/`FragmentEdge`/`Fragment` (now also `FragmentUpdate`/`FragmentRetire` with an optional `changed_ts`, finding 4), and `loadFragments`, which re-derives each unit's fragment path from its `id` rather than trusting the manifest's stored `fragment` string (probe 7):
 
 ```ts
-/**
- * The fragment contract — the file boundary where agents meet the CLI.
- *
- * An agent never reads the bundle and never writes it. It writes one of these,
- * and `merge` owns everything else: ID uniqueness, edge endpoint resolution,
- * journal construction, ordering. Shapes are checked here so a malformed
- * fragment fails with the unit's name attached rather than corrupting a merge.
- */
-import { existsSync, readFileSync } from "node:fs";
-import path from "node:path";
+const SAFE_UNIT_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
 
-import type { Manifest, WorkUnit } from "./manifest";
-
-/** A node as an agent writes it: no project_id, plus an optional `created_ts`. */
-export interface FragmentNode extends Record<string, unknown> {
-  id: string;
-  species: string;
-  title: string;
-  /** When this surface first shipped — becomes the `node.created` ts. */
-  created_ts?: string;
+function fragmentPathFor(cwd: string, unitId: string): string {
+  if (typeof unitId !== "string" || !SAFE_UNIT_ID_RE.test(unitId)) {
+    throw new Error(`manifest.json has an unsafe work-unit id: ${JSON.stringify(unitId)}. ...`);
+  }
+  return path.join(cwd, FRAGMENTS_DIR, `${unitId}.json`);
 }
 
-export interface FragmentEdge extends Record<string, unknown> {
-  source_id: string;
-  target_id: string;
-  kind: string;
-}
-
-export interface Fragment {
-  unit: string;
-  wave: number;
-  /** Greenfield anatomy / acceptance output. */
-  nodes?: FragmentNode[];
-  edges?: FragmentEdge[];
-  /** Brownfield reconcile output. */
-  add?: FragmentNode[];
-  update?: Array<{ id: string; patch: Record<string, unknown> }>;
-  retire?: Array<{ id: string; reason: string }>;
-  /** Story output. */
-  events?: Array<Record<string, unknown>>;
-}
-
-export interface LoadedFragment {
-  unit: WorkUnit;
-  fragment: Fragment;
-}
-
-export interface FragmentProblem {
-  unit: string;
-  message: string;
-}
-
-export interface FragmentLoad {
-  loaded: LoadedFragment[];
-  problems: FragmentProblem[];
-  missing: string[];
-}
-
-function isArrayOfObjects(value: unknown): boolean {
-  return value === undefined || (Array.isArray(value) && value.every((v) => typeof v === "object" && v !== null));
-}
-
-/**
- * Load every fragment named by the manifest. Absent files are reported, not
- * fatal.
- *
- * **Carried forward from Task 3's review — fix or explicitly accept before
- * shipping this, don't silently inherit it:** `unit.fragment` is read
- * straight out of `manifest.json`, not re-derived from `unit.id`. Task 3
- * validates `id` at `plan` time (lowercase kebab-case, `FRAGMENTS_DIR`-only),
- * but `manifest.json` is edited after that — by whatever drives the
- * resumable run, marking units `done`/`rejected` between waves (see Task 3's
- * "resume preserves completed status" tests) — and nothing stops that same
- * edit from also rewriting `fragment` to a path outside `FRAGMENTS_DIR`.
- * Either re-derive the path here as `` `${FRAGMENTS_DIR}/${unit.id}.json` ``
- * and ignore the stored field entirely, or assert the resolved `file` stays
- * under `FRAGMENTS_DIR` before reading it below.
- */
 export function loadFragments(cwd: string, manifest: Manifest): FragmentLoad {
   const loaded: LoadedFragment[] = [];
   const problems: FragmentProblem[] = [];
   const missing: string[] = [];
-
   for (const unit of manifest.units) {
-    const file = path.join(cwd, unit.fragment);
-    if (!existsSync(file)) {
-      missing.push(unit.id);
-      continue;
-    }
-    let parsed: unknown;
+    let file: string;
     try {
-      parsed = JSON.parse(readFileSync(file, "utf8"));
+      file = fragmentPathFor(cwd, unit.id);
     } catch (err) {
-      problems.push({ unit: unit.id, message: `not valid JSON: ${err instanceof Error ? err.message : "parse error"}` });
+      problems.push({ unit: unit.id, message: err instanceof Error ? err.message : String(err) });
       continue;
     }
-    if (typeof parsed !== "object" || parsed === null) {
-      problems.push({ unit: unit.id, message: "fragment must be a JSON object" });
-      continue;
-    }
-    const fragment = parsed as Fragment;
-    for (const key of ["nodes", "edges", "add", "update", "retire", "events"] as const) {
-      if (!isArrayOfObjects(fragment[key])) {
-        problems.push({ unit: unit.id, message: `\`${key}\` must be an array of objects` });
-      }
-    }
-    loaded.push({ unit, fragment });
+    if (!existsSync(file)) { missing.push(unit.id); continue; }
+    // ...parse, shape-check nodes/edges/add/update/retire/events are each an
+    // array of objects (arrays are `typeof === "object"` in JS too — a
+    // top-level JSON array fragment is now explicitly rejected, not silently
+    // treated as an all-empty valid one), push to loaded.
   }
-
   return { loaded, problems, missing };
 }
 ```
 
+(Full file: `packages/cli/src/lib/bootstrap/fragments.ts` — every design decision above has its rationale inline as a comment at its own call site; read it directly rather than a fourth retelling here.)
+
 - [ ] **Step 4: Write `merge.ts`**
 
-Create `packages/cli/src/lib/bootstrap/merge.ts`:
+The shape, informed by every finding above — see the shipped file's own header comment for the complete, numbered rationale (it's long on purpose: this is the highest-consequence file in the whole method):
 
 ```ts
-/**
- * Deterministic fragment assembly.
- *
- * Everything an agent must not have to think about lives here: ID uniqueness
- * across independently-written fragments, edge endpoint resolution, the
- * `node.created` events the validator requires, reconcile ops, journal order.
- *
- * Two rules shape the whole file:
- *  - **Bootstrap never deletes.** `retire` sets `status: archived` and records
- *    a reason; removal stays a human act, which is what makes re-runs safe.
- *  - **Merging is pure.** Same fragments in, byte-identical bundle out —
- *    hence `deterministicEventId` rather than a random ULID.
- */
-import { edgeId } from "@arkaik/schema";
-
-import { deterministicEventId } from "./event-id";
-import type { Fragment, LoadedFragment } from "./fragments";
-
-export interface MergeProblem {
-  unit: string;
-  message: string;
+function eventKey(raw: AnyRecord, ts: string): string {
+  // folds in node/deliverable/version/edge/ref/source/target/platform/from/to/title/url
+  // whenever present on raw — see finding 3 above.
 }
 
-export interface MergeResult {
-  bundle: Record<string, unknown>;
-  journal: Array<Record<string, unknown>>;
-  errors: MergeProblem[];
-  counts: { nodesAdded: number; nodesUpdated: number; nodesRetired: number; edgesAdded: number; eventsAdded: number };
-}
-
-type AnyRecord = Record<string, unknown>;
-
-function asArray(value: unknown): AnyRecord[] {
-  return Array.isArray(value) ? (value as AnyRecord[]) : [];
-}
-
-/** Sort events by ts, then id — the same total order `orderEvents` gives. */
-function sortEvents(events: AnyRecord[]): AnyRecord[] {
-  return [...events].sort((a, b) => {
-    const at = String(a.ts ?? "");
-    const bt = String(b.ts ?? "");
-    if (at !== bt) return at < bt ? -1 : 1;
-    const ai = String(a.id ?? "");
-    const bi = String(b.id ?? "");
-    return ai < bi ? -1 : ai > bi ? 1 : 0;
-  });
-}
-
-export interface MergeInput {
-  base: AnyRecord;
-  baseJournal: AnyRecord[];
-  fragments: readonly LoadedFragment[];
-  /** Fallback `node.created` timestamp when a fragment supplies no `created_ts`. */
-  fallbackTs: string;
+function mergeJournal(base: readonly AnyRecord[], fresh: readonly AnyRecord[]): { journal: AnyRecord[]; added: number } {
+  // merges by id; base's copy wins on a collision — see finding 1 above.
 }
 
 export function mergeFragments(input: MergeInput): MergeResult {
-  const errors: MergeProblem[] = [];
-  const projectId = String((input.base.project as AnyRecord | undefined)?.id ?? "");
-
-  const nodes = new Map<string, AnyRecord>();
-  const nodeOrigin = new Map<string, string>();
-  for (const node of asArray(input.base.nodes)) nodes.set(String(node.id), { ...node });
-
-  const edges = new Map<string, AnyRecord>();
-  for (const edge of asArray(input.base.edges)) {
-    edges.set(String(edge.id ?? edgeId(String(edge.source_id), String(edge.target_id))), { ...edge });
-  }
-
-  const newEvents: AnyRecord[] = [];
-  const counts = { nodesAdded: 0, nodesUpdated: 0, nodesRetired: 0, edgesAdded: 0, eventsAdded: 0 };
-
-  // --- pass 1: nodes (every fragment, so edges in pass 2 can see all of them)
-  for (const { unit, fragment } of input.fragments) {
-    for (const raw of [...(fragment.nodes ?? []), ...(fragment.add ?? [])]) {
-      const id = String(raw.id ?? "");
-      if (!id) {
-        errors.push({ unit: unit.id, message: "a node has no id" });
-        continue;
-      }
-      const { created_ts: createdTs, ...node } = raw;
-      if (nodes.has(id)) {
-        const existingTitle = String(nodes.get(id)?.title ?? "");
-        const incomingTitle = String(node.title ?? "");
-        const owner = nodeOrigin.get(id);
-        if (owner && existingTitle !== incomingTitle) {
-          // Two agents minted the same id for different things. Never union
-          // them silently — print both titles and fail the merge.
-          errors.push({
-            unit: unit.id,
-            message: `id collision on \`${id}\`: "${existingTitle}" (from ${owner}) vs "${incomingTitle}"`,
-          });
-        }
-        continue;
-      }
-      nodes.set(id, { ...node, id, project_id: projectId });
-      nodeOrigin.set(id, unit.id);
-      counts.nodesAdded += 1;
-
-      const ts = typeof createdTs === "string" && createdTs ? createdTs : input.fallbackTs;
-      newEvents.push({
-        id: deterministicEventId(ts, `node.created:${id}`),
-        ts,
-        actor: "bootstrap",
-        type: "node.created",
-        node_id: id,
-        species: node.species,
-        title: node.title,
-      });
-    }
-
-    for (const patch of fragment.update ?? []) {
-      const id = String(patch.id ?? "");
-      const target = nodes.get(id);
-      if (!target) {
-        errors.push({ unit: unit.id, message: `update targets unknown node \`${id}\`` });
-        continue;
-      }
-      Object.assign(target, patch.patch ?? {}, { id, project_id: projectId });
-      counts.nodesUpdated += 1;
-    }
-
-    for (const retire of fragment.retire ?? []) {
-      const id = String(retire.id ?? "");
-      const target = nodes.get(id);
-      if (!target) {
-        errors.push({ unit: unit.id, message: `retire targets unknown node \`${id}\`` });
-        continue;
-      }
-      // Never a delete: archived, with the reason kept on the node.
-      target.status = "archived";
-      const metadata = (target.metadata as AnyRecord | undefined) ?? {};
-      target.metadata = { ...metadata, retired_reason: retire.reason };
-      counts.nodesRetired += 1;
-    }
-  }
-
-  // --- pass 2: edges, now that every node id is known
-  for (const { unit, fragment } of input.fragments) {
-    for (const raw of fragment.edges ?? []) {
-      const source = String(raw.source_id ?? "");
-      const target = String(raw.target_id ?? "");
-      if (!nodes.has(source) || !nodes.has(target)) {
-        errors.push({
-          unit: unit.id,
-          message: `edge ${source} -> ${target} references ${!nodes.has(source) ? source : target}, which no fragment created`,
-        });
-        continue;
-      }
-      const id = edgeId(source, target);
-      if (edges.has(id)) continue;
-      edges.set(id, { ...raw, id, project_id: projectId, source_id: source, target_id: target });
-      counts.edgesAdded += 1;
-    }
-  }
-
-  // --- pass 3: story events
-  for (const { unit, fragment } of input.fragments) {
-    for (const raw of fragment.events ?? []) {
-      const type = String(raw.type ?? "");
-      const ts = String(raw.ts ?? "");
-      if (!type || !ts) {
-        errors.push({ unit: unit.id, message: "an event is missing `type` or `ts`" });
-        continue;
-      }
-      const key = `${type}:${String(raw.node_id ?? raw.deliverable_id ?? raw.version ?? "")}:${ts}`;
-      newEvents.push({ ...raw, id: raw.id ?? deterministicEventId(ts, key), ts, type });
-    }
-  }
-
-  counts.eventsAdded = newEvents.length;
-
-  // Existing history is preserved verbatim; new events are merged in and the
-  // whole file is written in ts order. Nothing is ever rewritten or dropped.
-  const journal = sortEvents([...input.baseJournal, ...newEvents]);
-
-  const bundle: AnyRecord = {
-    ...input.base,
-    nodes: [...nodes.values()],
-    edges: [...edges.values()],
-  };
-  delete bundle.journal;
-
-  return { bundle, journal, errors, counts };
+  // pass 1: nodes (nodeOrigin seeded from BASE nodes too — finding 7 — then
+  //   every fragment's nodes/add, each mintEvent-wrapped node.created;
+  //   platforms defaulted to [] — finding 6; update/retire now emit
+  //   node.status_changed when status actually changes — finding 4)
+  // pass 2: edges (kind -> edge_type translation — finding 8; orphan-edge
+  //   and missing-type errors named by unit)
+  // pass 3: story events (eventKey + mintEvent, same try/catch discipline)
+  // journal = mergeJournal(input.baseJournal, newEvents) — finding 1
+  // delete bundle.journal — the repo's own bundle is sidecar-only
 }
 ```
+
+(Full file: `packages/cli/src/lib/bootstrap/merge.ts`.)
 
 - [ ] **Step 5: Wire the subcommand**
 
-In `packages/cli/src/commands/bootstrap.ts` add:
-
-```ts
-import { readFileSync, writeFileSync } from "node:fs";
-import { serializeBundle } from "@arkaik/schema";
-import { loadFragments } from "../lib/bootstrap/fragments";
-import { mergeFragments } from "../lib/bootstrap/merge";
-import { journalPathFor, readJournalEvents } from "../lib/journal-io";
-
-const MERGE_USAGE = `arkaik bootstrap merge [options]
-
-Assemble every fragment named by the manifest onto the bundle: verify ID
-uniqueness, resolve edge endpoints, apply reconcile ops, synthesize the
-required node.created events, and write the bundle plus its journal sidecar.
-
-Options:
-  --dry-run    Report what would change; write nothing.
-  -h, --help   Show this help.`;
-
-function runMerge(argv: string[]): void {
-  const cwd = process.cwd();
-  let dryRun = false;
-
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (arg === "-h" || arg === "--help") {
-      console.log(MERGE_USAGE);
-      process.exit(0);
-    } else if (arg === "--dry-run") {
-      dryRun = true;
-    } else {
-      console.error(`Unknown option: ${arg}\n\n${MERGE_USAGE}`);
-      process.exit(1);
-    }
-  }
-
-  const manifest = readManifest(cwd);
-  if (!manifest) {
-    console.error("No manifest. Run `arkaik bootstrap plan` first.");
-    process.exit(1);
-  }
-
-  const bundlePath = path.resolve(cwd, manifest.bundle);
-  const base = existsSync(bundlePath)
-    ? (JSON.parse(readFileSync(bundlePath, "utf8")) as Record<string, unknown>)
-    : {
-        schema_version: 3,
-        project: {
-          id: path.basename(cwd),
-          title: path.basename(cwd),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-        nodes: [],
-        edges: [],
-      };
-
-  const journalPath = journalPathFor(bundlePath);
-  const baseJournal = existsSync(journalPath)
-    ? (readJournalEvents(journalPath) as unknown as Array<Record<string, unknown>>)
-    : [];
-
-  const { loaded, problems, missing } = loadFragments(cwd, manifest);
-  for (const problem of problems) console.error(`fragment ${problem.unit}: ${problem.message}`);
-  if (problems.length > 0) process.exit(1);
-
-  const fallbackTs = String((base.project as Record<string, unknown>).created_at ?? new Date().toISOString());
-  const result = mergeFragments({ base, baseJournal, fragments: loaded, fallbackTs });
-
-  for (const error of result.errors) console.error(`merge ${error.unit}: ${error.message}`);
-  if (result.errors.length > 0) process.exit(1);
-
-  const project = result.bundle.project as Record<string, unknown>;
-  const lastTs = result.journal.length > 0 ? String(result.journal[result.journal.length - 1].ts) : undefined;
-  result.bundle.project = { ...project, updated_at: lastTs ?? project.updated_at };
-
-  const serialized = serializeBundle(result.bundle as never);
-  const journalText = result.journal.map((e) => JSON.stringify(e)).join("\n") + (result.journal.length ? "\n" : "");
-
-  if (!dryRun) {
-    writeFileSync(bundlePath, serialized);
-    writeFileSync(journalPath, journalText);
-  }
-
-  console.log(`${dryRun ? "[dry-run] " : ""}Merged ${loaded.length} fragments:`);
-  console.log(
-    `  +${result.counts.nodesAdded} nodes, ~${result.counts.nodesUpdated} updated, ` +
-      `${result.counts.nodesRetired} retired, +${result.counts.edgesAdded} edges, +${result.counts.eventsAdded} events`,
-  );
-  console.log(`  bundle ${(Buffer.byteLength(serialized) / 1024).toFixed(0)}KB, journal ${result.journal.length} events`);
-  if (missing.length > 0) console.log(`  ${missing.length} units have no fragment yet: ${missing.join(", ")}`);
-  console.log(`Next: arkaik validate ${manifest.bundle}`);
-}
-```
+In `packages/cli/src/commands/bootstrap.ts`: import `loadFragments` (`../lib/bootstrap/fragments`), `mergeFragments` (`../lib/bootstrap/merge`), `serializeBundle` (`@arkaik/schema`), and `journalPathFor`/`loadJournalEvents` (`../lib/journal-io`) — **`loadJournalEvents`, not a direct sidecar-only read**, so a base bundle carrying an embedded `journal[]` (the interchange shape) isn't silently discarded (see the standalone finding above). `runMerge` resolves `bundlePath` via `path.resolve(cwd, manifest.bundle)` (matching `detectMode`'s own resolution, per Task 3's item 6), reads the base bundle via `readBundle` (applies the same legacy-status migration every other CLI read path gets), loads fragments, fails loudly on any `FragmentProblem` or `MergeProblem` before writing anything, and otherwise writes the canonical `serializeBundle` output plus the merged `journal.jsonl` — the whole body wrapped in one `try`/`catch` so a thrown error (a malformed base bundle, an unreadable file) becomes a clean one-line message instead of a raw stack trace, matching every other subcommand in this file.
 
 Add `case "merge": runMerge(rest); return;` to the switch.
 
-- [ ] **Step 6: Run the test to verify it passes**
+- [ ] **Step 6: Run the tests to verify they pass**
 
-Run: `npm run build -w arkaik && node tests/cli/bootstrap-merge.test.js`
-Expected: PASS on all seven checks in the determinism block.
+Run: `npm run build -w arkaik && node tests/cli/bootstrap-merge.test.js && node tests/cli/bootstrap-merge-selfmap.test.js`
+Expected: PASS on all 67 checks in `bootstrap-merge.test.js` and all 8 in `bootstrap-merge-selfmap.test.js`, including the real self-map round trip through `arkaik validate` with 0 errors and 0 warnings.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add packages/cli/src/lib/bootstrap/fragments.ts packages/cli/src/lib/bootstrap/merge.ts packages/cli/src/commands/bootstrap.ts tests/cli/bootstrap-merge.test.js
+git add packages/cli/src/lib/bootstrap/fragments.ts packages/cli/src/lib/bootstrap/merge.ts packages/cli/src/commands/bootstrap.ts tests/cli/bootstrap-merge.test.js tests/cli/bootstrap-merge-selfmap.test.js
 git commit -m "feat(cli): bootstrap merge — deterministic fragment assembly"
 ```
 
 ---
 
 ### Task 7: Merge semantics — collisions, orphan edges, reconcile
+
+**Read Task 6's section before starting — three things carry forward directly:**
+
+1. **The reconcile fixture below (`update`/`retire`) should assert `arkaik validate` passes, not just check snapshot fields.** Task 6 found and fixed a real bug where `update`/`retire` mutated `status` with no `node.status_changed` event — silent for a node's first-ever status change, but a `journal-status-mismatch` error for every subsequent one (the common case for any node with real prior history). The reconcile test below only checks `home.status`/`legacy.status`/`legacy.metadata.retired_reason` on the snapshot — it never calls `arkaik validate`, so it would not have caught this bug even in its unfixed state, and won't catch a regression of it either. Consider adding an `arkaik validate` call to this fixture (seed the existing `journal.jsonl` with real prior status history for both nodes first — a node with NO prior status-changed history won't exercise the check at all, see Task 6's own probe-1 writeup for why). `tests/cli/bootstrap-merge.test.js` already has two fixtures doing exactly this (search "PROBE 1") if a reference is useful.
+2. **The id-collision test below is already covered, but only for the within-one-run case.** Task 6 found the reference's collision detection was silently inert across separate merge invocations (a node persisted by run 1, then collided with by a different fragment in run 2, produced zero error) and fixed it by seeding `nodeOrigin` from base nodes too. `tests/cli/bootstrap-merge.test.js` already has a minimal cross-run regression (search "SELF-REVIEW: a later fragment"); this task can still add a more exhaustive matrix (three-way collisions, collision on a `retire`d node's id, etc.) if useful, but the basic cross-run case doesn't need re-discovering.
+3. **New, unresolved, flagged for this task specifically: two fragments declaring an edge between the SAME `(source, target)` pair with two DIFFERENT `kind` values silently keep whichever was processed first — no error, no warning.** The edge id (`e-{source}-{target}`) doesn't encode type, so a second fragment's conflicting `kind` for the same pair is dropped with zero signal. This is squarely a "collision" in the sense this task's own title already claims — worth a fixture and a decision (error loudly on a `kind` mismatch for the same pair, most likely, mirroring how a node id collision on a title mismatch already errors).
+
+Also note: the `kind: "composes"` / `kind: "calls"` field name in every edge fixture below is correct and unchanged — Task 6 found and fixed the translation from `kind` to the bundle's `edge_type` field, which the reference `merge.ts` never did. No fixture changes needed here.
 
 **Files:**
 - Test: `tests/cli/bootstrap-merge.test.js`
@@ -2834,6 +2431,8 @@ git commit -m "feat(cli): bootstrap plan --issues, the alternate driver"
 
 ### Task 9: Golden end-to-end + CI wiring + PR 1
 
+**Note from Task 6:** `tests/cli/bootstrap-merge-selfmap.test.js` (Task 6's real-data proof, splitting the actual self-map seed into fragments and merging into an empty base) is a new file, already listed in the `test:bootstrap` line below — confirm it's still there if this task is re-planned. It exists for the same "meaningfully different fixture shape" reason `bootstrap-slice.test.js` and this task's own `bootstrap-e2e.test.js` are separate files (Task 4's precedent, referenced above). Also worth knowing before writing the e2e fixture below: every edge in it should use `kind` (e.g. `kind: "composes"`) — Task 6 confirmed `merge.ts` translates that to the bundle's own `edge_type` field; it found and fixed a bug where this translation was missing entirely, which would have broken this exact fixture's `arkaik validate` call.
+
 **Files:**
 - Create: `tests/cli/bootstrap-e2e.test.js`
 - Modify: `package.json`
@@ -2975,7 +2574,7 @@ Expected: PASS on all eight checks. If `validate` fails, read its findings — t
 In `package.json`, add after the `test:cli` entry:
 
 ```json
-    "test:bootstrap": "node tests/cli/bootstrap-era-window.test.js && node tests/cli/bootstrap-body-budget.test.js && node tests/cli/bootstrap-event-id.test.js && npm run build -w arkaik && node tests/cli/bootstrap-corpus.test.js && node tests/cli/bootstrap-plan.test.js && node tests/cli/bootstrap-slice.test.js && node tests/cli/bootstrap-merge.test.js && node tests/cli/bootstrap-e2e.test.js",
+    "test:bootstrap": "node tests/cli/bootstrap-era-window.test.js && node tests/cli/bootstrap-body-budget.test.js && node tests/cli/bootstrap-event-id.test.js && npm run build -w arkaik && node tests/cli/bootstrap-corpus.test.js && node tests/cli/bootstrap-plan.test.js && node tests/cli/bootstrap-slice.test.js && node tests/cli/bootstrap-merge.test.js && node tests/cli/bootstrap-merge-selfmap.test.js && node tests/cli/bootstrap-e2e.test.js",
 ```
 
 (`bootstrap-era-window.test.js`, `bootstrap-body-budget.test.js`, and `bootstrap-event-id.test.js` all require their `.ts` source directly — Node's native TypeScript support strips types at load time — so none of the three need the CLI built first; listed before the `npm run build` step for that reason, though order doesn't otherwise matter.)
@@ -3762,7 +3361,7 @@ Expected: PASS on all ten checks.
 In `package.json`, extend the bootstrap script:
 
 ```json
-    "test:bootstrap": "node tests/cli/bootstrap-era-window.test.js && node tests/cli/bootstrap-body-budget.test.js && node tests/cli/bootstrap-event-id.test.js && npm run build -w arkaik && node tests/cli/bootstrap-corpus.test.js && node tests/cli/bootstrap-plan.test.js && node tests/cli/bootstrap-slice.test.js && node tests/cli/bootstrap-merge.test.js && node tests/cli/bootstrap-e2e.test.js && node tests/cli/bootstrap-restore.test.js",
+    "test:bootstrap": "node tests/cli/bootstrap-era-window.test.js && node tests/cli/bootstrap-body-budget.test.js && node tests/cli/bootstrap-event-id.test.js && npm run build -w arkaik && node tests/cli/bootstrap-corpus.test.js && node tests/cli/bootstrap-plan.test.js && node tests/cli/bootstrap-slice.test.js && node tests/cli/bootstrap-merge.test.js && node tests/cli/bootstrap-merge-selfmap.test.js && node tests/cli/bootstrap-e2e.test.js && node tests/cli/bootstrap-restore.test.js",
 ```
 
 ```bash

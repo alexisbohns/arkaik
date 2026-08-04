@@ -7,15 +7,20 @@
  * and this command group owns everything else — ID uniqueness, edge
  * resolution, journal construction, validation gating.
  */
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
+import { serializeBundle } from "@arkaik/schema";
+
 import { buildCorpus } from "../lib/bootstrap/corpus";
+import { loadFragments } from "../lib/bootstrap/fragments";
 import { renderIndex } from "../lib/bootstrap/index-view";
 import { detectMode, planUnits, readManifest, readProfile, writeManifest } from "../lib/bootstrap/manifest";
+import { mergeFragments } from "../lib/bootstrap/merge";
 import { BOOTSTRAP_ROOT, CORPUS_DIR, ensureGitignored } from "../lib/bootstrap/paths";
 import { resolveSlice } from "../lib/bootstrap/slice";
 import { readBundle } from "../lib/bundle-io";
+import { journalPathFor, loadJournalEvents } from "../lib/journal-io";
 
 const USAGE = `arkaik bootstrap <subcommand> [options]
 
@@ -238,6 +243,106 @@ function runIndex(argv: string[]): void {
   }
 }
 
+const MERGE_USAGE = `arkaik bootstrap merge [options]
+
+Assemble every fragment named by the manifest onto the bundle: verify ID
+uniqueness, resolve edge endpoints, apply reconcile ops, synthesize the
+required node.created / node.status_changed events, and write the bundle
+plus its journal.jsonl sidecar.
+
+Options:
+  --dry-run    Report what would change; write nothing.
+  -h, --help   Show this help.`;
+
+/**
+ * `bundlePath` is resolved with `path.resolve`, matching `detectMode`
+ * (manifest.ts) — `manifest.bundle` may already be absolute (from `plan
+ * --bundle <abs path>`), and `path.join` would mangle that into
+ * `<cwd>/<abs path>`. The two commands must agree on what `--bundle` means;
+ * see manifest.ts's `detectMode` doc for the story on why this matters.
+ */
+function runMerge(argv: string[]): void {
+  const cwd = process.cwd();
+  let dryRun = false;
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "-h" || arg === "--help") {
+      console.log(MERGE_USAGE);
+      process.exit(0);
+    } else if (arg === "--dry-run") {
+      dryRun = true;
+    } else {
+      fail(`Unknown option: ${arg}\n\n${MERGE_USAGE}`);
+    }
+  }
+
+  const manifest = readManifest(cwd);
+  if (!manifest) {
+    fail("No manifest. Run `arkaik bootstrap plan` first.");
+  }
+
+  try {
+    const bundlePath = path.resolve(cwd, manifest.bundle);
+    const base = existsSync(bundlePath)
+      ? (readBundle(bundlePath) as Record<string, unknown>)
+      : {
+          schema_version: 3,
+          project: {
+            id: path.basename(cwd),
+            title: path.basename(cwd),
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          nodes: [],
+          edges: [],
+        };
+
+    // `loadJournalEvents`, not a direct sidecar-only read: the base bundle
+    // may carry an EMBEDDED `journal[]` (the interchange projection,
+    // docs/spec/journal.md — e.g. a bundle produced by `arkaik pack`, or a
+    // hosted export, dropped in as the bootstrap target). Reading only the
+    // sidecar would silently discard that entire embedded history the
+    // moment this merge writes its own sidecar-only output.
+    const baseJournal = loadJournalEvents(base, bundlePath) as unknown as Array<Record<string, unknown>>;
+
+    const { loaded, problems, missing } = loadFragments(cwd, manifest);
+    for (const problem of problems) console.error(`fragment ${problem.unit}: ${problem.message}`);
+    if (problems.length > 0) process.exit(1);
+
+    const fallbackTs = String((base.project as Record<string, unknown> | undefined)?.created_at ?? new Date().toISOString());
+    const result = mergeFragments({ base, baseJournal, fragments: loaded, fallbackTs });
+
+    for (const error of result.errors) console.error(`merge ${error.unit}: ${error.message}`);
+    if (result.errors.length > 0) process.exit(1);
+
+    const project = result.bundle.project as Record<string, unknown>;
+    const lastTs = result.journal.length > 0 ? String(result.journal[result.journal.length - 1].ts) : undefined;
+    result.bundle.project = { ...project, updated_at: lastTs ?? project.updated_at };
+
+    const serialized = serializeBundle(result.bundle as never);
+    const journalPath = journalPathFor(bundlePath);
+    const journalText = result.journal.map((e) => JSON.stringify(e)).join("\n") + (result.journal.length ? "\n" : "");
+
+    if (!dryRun) {
+      writeFileSync(bundlePath, serialized);
+      writeFileSync(journalPath, journalText);
+    }
+
+    console.log(`${dryRun ? "[dry-run] " : ""}Merged ${loaded.length} fragments:`);
+    console.log(
+      `  +${result.counts.nodesAdded} nodes, ~${result.counts.nodesUpdated} updated, ` +
+        `${result.counts.nodesRetired} retired, +${result.counts.edgesAdded} edges, +${result.counts.eventsAdded} events`,
+    );
+    console.log(`  bundle ${(Buffer.byteLength(serialized) / 1024).toFixed(0)}KB, journal ${result.journal.length} events`);
+    if (missing.length > 0) console.log(`  ${missing.length} units have no fragment yet: ${missing.join(", ")}`);
+    console.log(`Next: arkaik validate ${manifest.bundle}`);
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+}
+
 export function runBootstrap(argv: string[]): void {
   const [sub, ...rest] = argv;
 
@@ -258,6 +363,9 @@ export function runBootstrap(argv: string[]): void {
       return;
     case "index":
       runIndex(rest);
+      return;
+    case "merge":
+      runMerge(rest);
       return;
     default:
       console.error(`Unknown bootstrap subcommand: ${sub}\n\n${USAGE}`);
