@@ -21,6 +21,14 @@ interface DeliveryBoardProps {
  * whenever the column under the cursor has room left to move: this only takes
  * over once that column is exhausted, or was never scrollable to begin with.
  *
+ * A genuine horizontal gesture (shift+wheel, a trackpad's horizontal swipe)
+ * is driven directly rather than left to the browser's own scroll chaining:
+ * a column's `overflow-y: auto` implicitly claims its x-axis too (per the
+ * CSS rule that a non-`visible` overflow on one axis forces `visible` to
+ * `auto` on the other), so once the cursor is over a column the browser
+ * treats *it* as the horizontal scroll target and never chains the delta up
+ * to the board — even though the column itself has nothing to move.
+ *
  * A native listener, not React's `onWheel` — React attaches wheel listeners
  * as passive, which silently drops `preventDefault` and logs a console
  * warning on every tick.
@@ -31,7 +39,13 @@ function useBoardWheelPan(boardRef: React.RefObject<HTMLDivElement | null>) {
     if (!board) return;
 
     function handleWheel(event: WheelEvent) {
-      if (event.deltaY === 0 || event.deltaX !== 0 || board!.scrollWidth <= board!.clientWidth) return;
+      if ((event.deltaX === 0 && event.deltaY === 0) || board!.scrollWidth <= board!.clientWidth) return;
+
+      if (event.deltaX !== 0) {
+        board!.scrollLeft += event.deltaX;
+        event.preventDefault();
+        return;
+      }
 
       const columnList = (event.target as HTMLElement).closest<HTMLElement>("[data-delivery-column-list]");
       if (columnList) {
