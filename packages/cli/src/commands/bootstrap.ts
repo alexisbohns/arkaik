@@ -93,6 +93,9 @@ function runCorpus(argv: string[]): void {
     const ignored = ensureGitignored(cwd);
     console.log(`Corpus written to ${CORPUS_DIR}/`);
     console.log(`  ${result.prs} merged PRs, ${result.docs} docs, ${result.surfaces} surfaces`);
+    if (result.sinceDroppedUndated > 0) {
+      console.log(`  --since also dropped ${result.sinceDroppedUndated} PR(s) with a missing/unparseable merge date`);
+    }
     if (ignored) console.log(`  added ${BOOTSTRAP_ROOT}/ to .gitignore`);
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));

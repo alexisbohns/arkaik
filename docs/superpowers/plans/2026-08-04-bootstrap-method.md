@@ -362,6 +362,66 @@ Append inside the `try` block of `tests/cli/bootstrap-plan.test.js`, before the 
     rmSync(orderDir, { recursive: true, force: true });
   }
 
+  // --- regression: --from-git doesn't mint duplicate PR numbers ---
+  // Real history duplicated numbers two ways: a `#N` mention mid-subject
+  // matched the same regex as a real "Merge pull request #N" line, and the
+  // positional fallback (starting at 1) could land on a real number. Three
+  // merges: one GitHub-authored (#5), one plain merge with no number at all
+  // (must fall back), and one that only *mentions* #5 (must NOT match it —
+  // an unanchored regex would collide with the real #5 here).
+  const gitDir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-fromgit-"));
+  try {
+    const git = (args) => spawnSync("git", args, { cwd: gitDir, encoding: "utf8" });
+    git(["init", "-q"]);
+    git(["config", "user.email", "test@example.com"]);
+    git(["config", "user.name", "Test"]);
+    git(["commit", "-q", "--allow-empty", "-m", "chore: init"]);
+    const branch = git(["symbolic-ref", "--short", "HEAD"]).stdout.trim();
+
+    git(["checkout", "-q", "-b", "feature-a"]);
+    git(["commit", "-q", "--allow-empty", "-m", "Add feature A"]);
+    git(["checkout", "-q", branch]);
+    git(["merge", "-q", "--no-ff", "feature-a", "-m", "Merge pull request #5 from acme/feature-a"]);
+
+    git(["checkout", "-q", "-b", "feature-b"]);
+    git(["commit", "-q", "--allow-empty", "-m", "Add feature B"]);
+    git(["checkout", "-q", branch]);
+    git(["merge", "-q", "--no-ff", "feature-b", "-m", "Merge branch 'feature-b'"]);
+
+    git(["checkout", "-q", "-b", "feature-c"]);
+    git(["commit", "-q", "--allow-empty", "-m", "Add feature C"]);
+    git(["checkout", "-q", branch]);
+    git(["merge", "-q", "--no-ff", "feature-c", "-m", "See #5 for context, unrelated change"]);
+
+    const fromGitRun = runCli(["bootstrap", "corpus", "--from-git"], gitDir);
+    check("--from-git corpus exits 0", fromGitRun.status === 0, fromGitRun.stderr);
+    const fromGitPrs = readFileSync(path.join(gitDir, ".arkaik", "corpus", "prs.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    check("--from-git produced 3 PRs", fromGitPrs.length === 3, String(fromGitPrs.length));
+    const fromGitNumbers = fromGitPrs.map((p) => p.number);
+    check(
+      "--from-git numbers are all distinct (no collision)",
+      new Set(fromGitNumbers).size === fromGitNumbers.length,
+      JSON.stringify(fromGitNumbers),
+    );
+    const realFive = fromGitPrs.find((p) => p.title.startsWith("Merge pull request #5 "));
+    check(
+      "the anchored match won: only the GitHub-authored subject claims #5",
+      realFive !== undefined && realFive.number === 5,
+      JSON.stringify(fromGitPrs),
+    );
+    const mention = fromGitPrs.find((p) => p.title === "See #5 for context, unrelated change");
+    check(
+      "a mid-subject #5 mention did not steal the real PR's number",
+      mention !== undefined && mention.number !== 5,
+      JSON.stringify(fromGitPrs),
+    );
+  } finally {
+    rmSync(gitDir, { recursive: true, force: true });
+  }
+
   const docs = JSON.parse(readFileSync(path.join(dir, ".arkaik", "corpus", "docs.json"), "utf8"));
   check("docs manifest found vision.md", docs.some((d) => d.path === "docs/vision.md"), JSON.stringify(docs));
   check("docs manifest carries the heading", docs.some((d) => d.title === "Vision"), JSON.stringify(docs));
@@ -541,10 +601,10 @@ export function normalizePrs(raw: unknown): CorpusPr[] {
     // exists to reconstruct a chronological narrative. `number` only breaks
     // ties (same-second merges, or the --from-git fallback where a repo with
     // no GitHub remote yields positional numbers).
-    const at = Date.parse(a.merged_at);
-    const bt = Date.parse(b.merged_at);
-    const av = Number.isNaN(at) ? Infinity : at;
-    const bv = Number.isNaN(bt) ? Infinity : bt;
+    const aTime = Date.parse(a.merged_at);
+    const bTime = Date.parse(b.merged_at);
+    const av = Number.isNaN(aTime) ? Infinity : aTime;
+    const bv = Number.isNaN(bTime) ? Infinity : bTime;
     if (av !== bv) return av - bv;
     return a.number - b.number;
   });
@@ -579,21 +639,30 @@ export function fetchPrsViaGit(cwd: string): unknown {
   });
   if (res.error) throw new Error(`git not runnable: ${res.error.message}`);
   if (res.status !== 0) throw new Error(`git log failed: ${(res.stderr ?? "").trim()}`);
-  return res.stdout
-    .split("\n")
-    .filter(Boolean)
-    .map((line, i) => {
-      const [date, subject] = line.split("\x1f");
-      const matched = /#(\d+)/.exec(subject ?? "");
-      return {
-        number: matched ? Number(matched[1]) : i + 1,
-        title: subject ?? "",
-        body: "",
-        mergedAt: date ?? "",
-        labels: [],
-        files: [],
-      };
-    });
+
+  const lines = res.stdout.split("\n").filter(Boolean);
+  const parsed = lines.map((line) => {
+    const [date, subject] = line.split("\x1f");
+    // Anchored: only a subject GitHub itself wrote carries the PR number. A
+    // `#N` mention mid-message, a branch named `feature/#123-x`, or a revert
+    // of a merge would otherwise mint someone else's number.
+    const matched = /^Merge pull request #(\d+) /.exec(subject ?? "");
+    return { date: date ?? "", subject: subject ?? "", number: matched ? Number(matched[1]) : undefined };
+  });
+
+  // Fallback numbers must not collide with real ones: the story wave keys
+  // deliverables as `pr-<number>`, so a collision mints one id for two merges.
+  const taken = new Set(parsed.map((p) => p.number).filter((n): n is number => n !== undefined));
+  let next = 1;
+  return parsed.map((p) => {
+    let number = p.number;
+    if (number === undefined) {
+      while (taken.has(next)) next += 1;
+      number = next;
+      taken.add(number);
+    }
+    return { number, title: p.subject, body: "", mergedAt: p.date, labels: [], files: [] };
+  });
 }
 
 function walk(root: string, cwd: string, out: string[]): void {
@@ -607,7 +676,12 @@ function walk(root: string, cwd: string, out: string[]): void {
     if (SKIP_DIRS.has(entry.name) || entry.name.startsWith(".")) continue;
     const full = path.join(root, entry.name);
     // Dirent types are lstat-like: a symlinked directory is neither traversed
-    // nor followed, so a symlink cycle cannot inflate the inventory.
+    // nor followed, so a symlink cycle cannot inflate the inventory. The same
+    // check silently drops symlinked *files* too (isFile() is false for a
+    // symlink) — a deliberate trade for the same reason, not a gap: git
+    // itself stores a symlink as a link, not as tracked content at that path,
+    // so a monorepo that symlinks shared docs in should point corpus mining
+    // at the real path instead of relying on the link to be walked.
     if (entry.isDirectory()) walk(full, cwd, out);
     else if (entry.isFile()) out.push(path.relative(cwd, full).split(path.sep).join("/"));
   }
@@ -653,6 +727,15 @@ export interface CorpusResult {
   prs: number;
   docs: number;
   surfaces: number;
+  /**
+   * PRs `--since` dropped for a missing/unparseable `merged_at`, as opposed
+   * to genuinely merging before the cutoff. The sort treats these PRs as
+   * newest (they land last, via `Infinity`); `--since` treats them as
+   * un-showably old and excludes them. Both are defensible in isolation, but
+   * the same record can't silently be both — this count is how the caller
+   * finds out instead of the corpus just getting quietly smaller.
+   */
+  sinceDroppedUndated: number;
 }
 
 /** Mine the repo and write the three corpus files. */
@@ -665,14 +748,25 @@ export function buildCorpus(options: CorpusOptions): CorpusResult {
       : fetchPrsViaGh(cwd, options.limit);
 
   let prs = normalizePrs(raw);
+  let sinceDroppedUndated = 0;
   if (options.since) {
     const floor = Date.parse(options.since);
     if (Number.isNaN(floor)) {
       throw new Error(`--since is not a parseable date: ${options.since} (try an ISO date like 2026-01-31)`);
     }
-    // A PR whose own merged_at doesn't parse can't be shown to fall after the
-    // cutoff either, so it is dropped here too (NaN >= floor is false).
-    prs = prs.filter((pr) => Date.parse(pr.merged_at) >= floor);
+    prs = prs.filter((pr) => {
+      const merged = Date.parse(pr.merged_at);
+      // A PR whose own merged_at doesn't parse can't be shown to fall after
+      // the cutoff either, so it is dropped here too. Without --since the
+      // same PR would sort as the newest thing in the corpus (see the
+      // `Infinity` fallback above) — dropping it here is the opposite call,
+      // so it is counted rather than done silently (CorpusResult.sinceDroppedUndated).
+      if (Number.isNaN(merged)) {
+        sinceDroppedUndated += 1;
+        return false;
+      }
+      return merged >= floor;
+    });
   }
 
   const files = listFiles(cwd);
@@ -684,7 +778,7 @@ export function buildCorpus(options: CorpusOptions): CorpusResult {
   writeFileSync(at(cwd, DOCS_FILE), `${JSON.stringify(docs, null, 2)}\n`);
   writeFileSync(at(cwd, SURFACES_FILE), `${JSON.stringify(surfaces, null, 2)}\n`);
 
-  return { prs: prs.length, docs: docs.length, surfaces: surfaces.length };
+  return { prs: prs.length, docs: docs.length, surfaces: surfaces.length, sinceDroppedUndated };
 }
 
 /** Read the mined PRs back. Returns [] when the corpus has not been built. */
@@ -775,6 +869,9 @@ function runCorpus(argv: string[]): void {
     const ignored = ensureGitignored(cwd);
     console.log(`Corpus written to ${CORPUS_DIR}/`);
     console.log(`  ${result.prs} merged PRs, ${result.docs} docs, ${result.surfaces} surfaces`);
+    if (result.sinceDroppedUndated > 0) {
+      console.log(`  --since also dropped ${result.sinceDroppedUndated} PR(s) with a missing/unparseable merge date`);
+    }
     if (ignored) console.log(`  added ${BOOTSTRAP_ROOT}/ to .gitignore`);
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));

@@ -117,6 +117,66 @@ try {
     rmSync(orderDir, { recursive: true, force: true });
   }
 
+  // --- regression: --from-git doesn't mint duplicate PR numbers ---
+  // Real history duplicated numbers two ways: a `#N` mention mid-subject
+  // matched the same regex as a real "Merge pull request #N" line, and the
+  // positional fallback (starting at 1) could land on a real number. Three
+  // merges: one GitHub-authored (#5), one plain merge with no number at all
+  // (must fall back), and one that only *mentions* #5 (must NOT match it —
+  // an unanchored regex would collide with the real #5 here).
+  const gitDir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-fromgit-"));
+  try {
+    const git = (args) => spawnSync("git", args, { cwd: gitDir, encoding: "utf8" });
+    git(["init", "-q"]);
+    git(["config", "user.email", "test@example.com"]);
+    git(["config", "user.name", "Test"]);
+    git(["commit", "-q", "--allow-empty", "-m", "chore: init"]);
+    const branch = git(["symbolic-ref", "--short", "HEAD"]).stdout.trim();
+
+    git(["checkout", "-q", "-b", "feature-a"]);
+    git(["commit", "-q", "--allow-empty", "-m", "Add feature A"]);
+    git(["checkout", "-q", branch]);
+    git(["merge", "-q", "--no-ff", "feature-a", "-m", "Merge pull request #5 from acme/feature-a"]);
+
+    git(["checkout", "-q", "-b", "feature-b"]);
+    git(["commit", "-q", "--allow-empty", "-m", "Add feature B"]);
+    git(["checkout", "-q", branch]);
+    git(["merge", "-q", "--no-ff", "feature-b", "-m", "Merge branch 'feature-b'"]);
+
+    git(["checkout", "-q", "-b", "feature-c"]);
+    git(["commit", "-q", "--allow-empty", "-m", "Add feature C"]);
+    git(["checkout", "-q", branch]);
+    git(["merge", "-q", "--no-ff", "feature-c", "-m", "See #5 for context, unrelated change"]);
+
+    const fromGitRun = runCli(["bootstrap", "corpus", "--from-git"], gitDir);
+    check("--from-git corpus exits 0", fromGitRun.status === 0, fromGitRun.stderr);
+    const fromGitPrs = readFileSync(path.join(gitDir, ".arkaik", "corpus", "prs.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    check("--from-git produced 3 PRs", fromGitPrs.length === 3, String(fromGitPrs.length));
+    const fromGitNumbers = fromGitPrs.map((p) => p.number);
+    check(
+      "--from-git numbers are all distinct (no collision)",
+      new Set(fromGitNumbers).size === fromGitNumbers.length,
+      JSON.stringify(fromGitNumbers),
+    );
+    const realFive = fromGitPrs.find((p) => p.title.startsWith("Merge pull request #5 "));
+    check(
+      "the anchored match won: only the GitHub-authored subject claims #5",
+      realFive !== undefined && realFive.number === 5,
+      JSON.stringify(fromGitPrs),
+    );
+    const mention = fromGitPrs.find((p) => p.title === "See #5 for context, unrelated change");
+    check(
+      "a mid-subject #5 mention did not steal the real PR's number",
+      mention !== undefined && mention.number !== 5,
+      JSON.stringify(fromGitPrs),
+    );
+  } finally {
+    rmSync(gitDir, { recursive: true, force: true });
+  }
+
   const docs = JSON.parse(readFileSync(path.join(dir, ".arkaik", "corpus", "docs.json"), "utf8"));
   check("docs manifest found vision.md", docs.some((d) => d.path === "docs/vision.md"), JSON.stringify(docs));
   check("docs manifest carries the heading", docs.some((d) => d.title === "Vision"), JSON.stringify(docs));
