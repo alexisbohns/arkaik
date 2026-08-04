@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { CloudUploadIcon } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -43,20 +44,25 @@ interface ProjectCardProps {
  * "Move to account" stays, because with sections it is the ONLY way a Lokal or
  * Synked project becomes Hosted. No "In your account" badge: the section
  * heading above already says so.
+ *
+ * The seed card — the public self-map — suppresses its footer for the same
+ * reason a hosted one does: nothing to sync, move, or delete.
  */
 export function ProjectCard({ summary, canHost, moving, onMoveToAccount }: ProjectCardProps) {
-  const showMove = !summary.hosted && canHost;
+  const isSeed = Boolean(summary.seed);
+  const showMove = !summary.hosted && !isSeed && canHost;
 
   return (
     <Card className="relative gap-4 transition-colors hover:border-foreground/20 hover:bg-accent/40 focus-within:border-foreground/20">
       <CardHeader>
-        <CardTitle className="truncate">
+        <CardTitle className="flex items-center gap-2 truncate">
           <Link
             href={`/project/${summary.project.id}`}
-            className="outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-2 focus-visible:after:ring-ring"
+            className="min-w-0 truncate outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-2 focus-visible:after:ring-ring"
           >
             {summary.project.title}
           </Link>
+          {isSeed && <Badge variant="secondary">Public</Badge>}
         </CardTitle>
         {summary.project.description && (
           <CardDescription>{summary.project.description}</CardDescription>
@@ -69,11 +75,12 @@ export function ProjectCard({ summary, canHost, moving, onMoveToAccount }: Proje
         </p>
       </CardContent>
       {/* Synk backs up browser-held projects; a hosted project is already on the
-          server and has nothing to back up — so a hosted card has no footer at
-          all, and the card is nothing but its link. `empty:hidden` covers the
+          server and has nothing to back up, and the seed card is a public
+          fixture rather than anything a user owns — so neither gets a footer,
+          and the card is nothing but its link. `empty:hidden` covers the
           signed-out case, where both children render nothing and the bare
           footer would otherwise show as padding under the counts. */}
-      {summary.hosted ? null : (
+      {summary.hosted || isSeed ? null : (
         <CardFooter className="relative z-10 flex flex-wrap items-center gap-2 empty:hidden">
           <ProjectSyncControl projectId={summary.project.id} />
           {showMove ? (

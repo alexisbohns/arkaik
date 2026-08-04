@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { ProductScopeSelector } from "@/components/layout/ProductScopeSelector";
 import { ProjectSwitcher, type ProjectView } from "@/components/layout/ProjectSwitcher";
+import { SeedSandboxNotice } from "@/components/projects/SeedSandboxNotice";
 import {
   Sidebar,
   SidebarContent,
@@ -32,6 +33,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import { isSeedProjectId } from "@/lib/data/seed-project-id";
 import type { ProjectBundle } from "@/lib/data/types";
 import { useModKeyLabel } from "@/lib/hooks/useModKeyLabel";
 
@@ -100,6 +102,7 @@ export function ProjectSidebar({
           onOpenRaw={onOpenRaw}
         />
         <ProductScopeSelector projectId={projectId} project={project} />
+        {isSeedProjectId(projectId) && <SeedSandboxNotice />}
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton

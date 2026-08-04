@@ -67,6 +67,7 @@ export function SynkOnboardingBanner({ projects, backedUpIds }: SynkOnboardingBa
   const candidates = projects.filter((bundle) => {
     const id = bundle.project.id;
     if (bundle.hosted) return false; // already on the server; nothing to back up
+    if (bundle.seed) return false; // the public sandbox is not the user's data
     if (backedUpIds.has(id)) return false;
     if (dismissed.has(id)) return false;
     if (syncManager.getStatus(id).state === "backed-up") return false; // just backed up this session

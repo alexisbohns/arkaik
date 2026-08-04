@@ -7,6 +7,10 @@ import type { CreateTarget } from "./create-target";
  * The three sections are named by `CreateTarget` rather than a type of their
  * own: "where a project is" and "where a new one is going" are the same three
  * names, and a second identical union would only invite the two to drift.
+ * Explore — the built-in public seed project(s) — is deliberately not among
+ * them: nothing can be created there, so it has no `CreateTarget` name and
+ * `sectionFor` never returns it. The seed check lives in `groupBySection`
+ * alone, ahead of `sectionFor`.
  *
  * Note there are only TWO storage backends behind those three names: hosted
  * (the account) and local (this browser). "Synked" is a *state* of a local
@@ -27,20 +31,27 @@ export function sectionFor(summary: ProjectSummary, backedUpIds: Set<string>): C
   return backedUpIds.has(summary.project.id) ? "synked" : "lokal";
 }
 
-/** A project list split into the three sections, input order preserved within each. */
+/** A project list split into its sections, input order preserved within each.
+ * `explore` holds the built-in public project(s); it is not a `CreateTarget`
+ * because nothing can be created there. */
 export interface GroupedProjects {
+  explore: ProjectSummary[];
   hosted: ProjectSummary[];
   synked: ProjectSummary[];
   lokal: ProjectSummary[];
 }
 
-/** Split a project list into its three sections in one pass. */
+/** Split a project list into its sections in one pass. */
 export function groupBySection(
   summaries: ProjectSummary[],
   backedUpIds: Set<string>
 ): GroupedProjects {
-  const grouped: GroupedProjects = { hosted: [], synked: [], lokal: [] };
+  const grouped: GroupedProjects = { explore: [], hosted: [], synked: [], lokal: [] };
   for (const summary of summaries) {
+    if (summary.seed) {
+      grouped.explore.push(summary);
+      continue;
+    }
     grouped[sectionFor(summary, backedUpIds)].push(summary);
   }
   return grouped;

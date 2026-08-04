@@ -1,6 +1,6 @@
 # The Self-Map Program — vision & cycle plan
 
-**Date:** 2026-08-03 · **Status:** cycles 1–2 shipped; cycle 3 next
+**Date:** 2026-08-03 · **Status:** cycles 1–3 shipped; cycle 4 in progress
 **Resume:** in a fresh session, say "continue the self-map program — start
 cycle N" and point the agent here. Each cycle gets its own
 brainstorm → spec → plan → subagent execution → PR, and updates this file's
@@ -56,7 +56,7 @@ deferred to cycle 3. Known debt in the PR body (notably: `supersedes` moving
 its target to `superseded` is writer discipline, no validator warning yet).
 Spec: [2026-08-03-decisions-species-design.md](2026-08-03-decisions-species-design.md).
 
-### 3. Changelog split: Design | Delivery + Deliverables/Releases + History
+### 3. Changelog split: Design | Delivery + Deliverables/Releases + History — ✅ SHIPPED 2026-08-03 (PR #337)
 
 Split the changelog page into two boxed panels. **Delivery**: distinguishes
 **Deliverables** (PR-based — entity changes + a summary note) from
@@ -67,7 +67,7 @@ Decisions from cycle 2. The granular event feed (`node.status_changed`,
 `edge.added`, …) moves to a **History page** (project switcher section, near
 settings). Depends on cycles 1–2.
 
-### 4. Public Arkaik project in /projects
+### 4. Public Arkaik project in /projects — in progress (spec: [2026-08-04-public-self-map-design.md](2026-08-04-public-self-map-design.md))
 
 The self-map as a default, public, uneditable project for anonymous and
 logged-in users. Open questions: how it's referenced in `/projects`

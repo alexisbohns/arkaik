@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   CheckIcon,
   ChevronsUpDownIcon,
   Code2Icon,
+  CopyIcon,
   DownloadIcon,
   FileTextIcon,
   FolderOpenIcon,
@@ -14,10 +15,12 @@ import {
   HistoryIcon,
   KeyRoundIcon,
   LogOutIcon,
+  RotateCcwIcon,
   Settings2Icon,
   Share2Icon,
 } from "lucide-react";
 import { signIn, signOut } from "next-auth/react";
+import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,9 +36,11 @@ import {
   SidebarMenuSkeleton,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { isSeedProjectId } from "@/lib/data/seed-project-id";
 import { useAuthStatus } from "@/lib/hooks/useAuthStatus";
 import { useProjectExport } from "@/lib/hooks/useProjectExport";
 import { useProjects } from "@/lib/hooks/useProjects";
+import { exportProject, importProjectFromFile } from "@/lib/utils/export";
 
 /**
  * The project-scoped pages, which are also the path segment each one lives at —
@@ -78,6 +83,8 @@ export function ProjectSwitcher({
   const authStatus = useAuthStatus();
   const { exportBundle, exporting } = useProjectExport(currentProjectId);
   const settingsHref = `/project/${currentProjectId}/settings`;
+  const isSeed = isSeedProjectId(currentProjectId);
+  const [importingCopy, setImportingCopy] = useState(false);
 
   const sortedProjects = useMemo(
     () => [...projects].sort((left, right) => left.project.title.localeCompare(right.project.title)),
@@ -106,6 +113,28 @@ export function ProjectSwitcher({
     onOpenRaw();
     if (isMobile) {
       setOpenMobile(false);
+    }
+  }
+
+  /**
+   * Snapshot the tab's current sandbox state into a real local project — the
+   * one guarded import funnel regenerates the reserved id. What you built is
+   * what you keep.
+   */
+  async function importSeedCopy() {
+    setImportingCopy(true);
+    try {
+      const bundle = await exportProject(currentProjectId);
+      const file = new File([JSON.stringify(bundle)], "arkaik-self-map.json", { type: "application/json" });
+      const project = await importProjectFromFile(file);
+      toast.success(`"${project.title}" was copied to your projects.`);
+      router.push(`/project/${project.id}`);
+      if (isMobile) setOpenMobile(false);
+    } catch (err) {
+      console.error("[ProjectSwitcher] Failed to import a copy:", err);
+      toast.error(err instanceof Error ? err.message : "Could not import a copy.");
+    } finally {
+      setImportingCopy(false);
     }
   }
 
@@ -169,6 +198,25 @@ export function ProjectSwitcher({
               })
             )}
             <DropdownMenuSeparator />
+            {isSeed && (
+              <>
+                {/* Reset is a plain reload: the seed provider's state is per
+                    page load, so a refresh IS the pristine reset. */}
+                <DropdownMenuItem className="cursor-pointer gap-2" onClick={() => window.location.reload()}>
+                  <RotateCcwIcon className="size-4" />
+                  <span>Reset sandbox</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="cursor-pointer gap-2"
+                  disabled={importingCopy}
+                  onClick={() => void importSeedCopy()}
+                >
+                  <CopyIcon className="size-4" />
+                  <span>{importingCopy ? "Importing…" : "Import a copy"}</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
             <DropdownMenuItem className="cursor-pointer gap-2" onClick={onOpenPublish}>
               <Share2Icon className="size-4" />
               <span>Publish</span>

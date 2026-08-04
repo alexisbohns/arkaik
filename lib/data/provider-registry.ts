@@ -1,3 +1,4 @@
+import { arkaikSeedProvider } from "./arkaik-seed";
 import type { DataProvider } from "./data-provider";
 import { whenHostedAvailabilityKnown } from "./hosted-availability";
 import { localProvider } from "./local-provider";
@@ -38,10 +39,16 @@ import { createRoutingProvider } from "./routing-provider";
  *
  * So the local-first app is unaffected: signed out, or with services
  * unconfigured, the answer is false and nothing reaches the network.
+ *
+ * The router also always carries `seed: arkaikSeedProvider` — the built-in
+ * public self-map (self-map cycle 4). Unlike the hosted half, it needs no
+ * availability check: `listProjects()` leads with it unconditionally, so the
+ * public project is listed signed-out, offline, and before auth resolves.
  */
 let currentProvider: DataProvider = createRoutingProvider({
   local: localProvider,
   remote: createRemoteProvider(),
+  seed: arkaikSeedProvider,
   isRemoteAvailable: whenHostedAvailabilityKnown,
 });
 

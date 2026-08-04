@@ -107,6 +107,27 @@ function ProjectsHeader() {
   );
 }
 
+/** The Explore section: the built-in public project(s), for everyone —
+ *  signed-in or out. No create controls: nothing can be created here. */
+function ExploreSection({
+  items,
+  renderCard,
+}: {
+  items: ProjectSummary[];
+  renderCard: (summary: ProjectSummary) => React.ReactNode;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="flex items-baseline gap-2 text-lg font-semibold">
+        Explore
+        <span className="text-sm font-normal text-muted-foreground">{items.length}</span>
+      </h2>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{items.map(renderCard)}</div>
+    </section>
+  );
+}
+
 function ProjectsPageBody() {
   const router = useRouter();
   const auth = useAuthStatus();
@@ -535,23 +556,28 @@ function ProjectsPageBody() {
             <span className="text-sm text-muted-foreground">Loading…</span>
           </div>
         ) : !signedIn ? (
-          /* Signed out: no sections. Hosted and Synked are impossible without an
-             account, and the local-first promise is that signing in ADDS things
-             rather than rearranging what was already there. */
-          grouped.lokal.length === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-4 py-24 text-center">
-              <p className="max-w-xs text-sm text-muted-foreground">
-                No projects yet. Create one, import your JSON, or load an example project.
-              </p>
-              {/* A signed-out visitor with nothing is exactly who the example is
-                  for — without this the empty state is a dead end. */}
-              {examplePicker}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {grouped.lokal.map(renderCard)}
-            </div>
-          )
+          /* Signed out: no sections for the user's OWN projects. Hosted and
+             Synked are impossible without an account, and the local-first
+             promise is that signing in ADDS things rather than rearranging
+             what was already there. Explore is not theirs — it is the standing
+             public fixture — so it renders above regardless of sign-in. */
+          <>
+            <ExploreSection items={grouped.explore} renderCard={renderCard} />
+            {grouped.lokal.length === 0 ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-4 py-24 text-center">
+                <p className="max-w-xs text-sm text-muted-foreground">
+                  No projects yet. Create one, import your JSON, or load an example project.
+                </p>
+                {/* A signed-out visitor with nothing is exactly who the example is
+                    for — without this the empty state is a dead end. */}
+                {examplePicker}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {grouped.lokal.map(renderCard)}
+              </div>
+            )}
+          </>
         ) : (
           <>
             <ProjectSection
@@ -582,6 +608,8 @@ function ProjectsPageBody() {
               onImport={() => openImportPicker("lokal")}
               emptyExtra={examplePicker}
             />
+
+            <ExploreSection items={grouped.explore} renderCard={renderCard} />
           </>
         )}
       </main>

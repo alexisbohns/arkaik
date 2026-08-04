@@ -113,6 +113,7 @@ export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "pyramid", seed: 7 },
   { name: "refresh-cw", seed: 17 },
   { name: "replace", seed: 19 },
+  { name: "rotate-ccw", seed: 0 },
   { name: "route", seed: 2 },
   { name: "rows2", seed: 6 },
   { name: "scale", seed: 17 },
