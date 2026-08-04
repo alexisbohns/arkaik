@@ -906,23 +906,29 @@ git commit -m "feat(cli): bootstrap corpus — mine PRs, docs and surfaces"
 
 The manifest is what makes this a method rather than a story about one session: unit status lives on disk, so a killed run resumes. `plan` is repo-agnostic because it expands from the recon profile — with no profile it emits only the wave-0 recon unit.
 
-**Implementation note (post-review):** the reference code below was written in one pass and never executed. Quality review on Tasks 1–2 found real defects inherited from an un-executed reference implementation elsewhere in this plan, so Task 3 was implemented with five specific probes applied against the snippet before it shipped. Four turned up genuine bugs, fixed below; the fifth (fragments orphaned when an area drops out of the profile) was traced and found to be harmless by construction, not fixed. Spec review then confirmed all four fixes as sound but caught one refinement the first pass missed (item 2 — `title` didn't belong in the status-carry-forward comparison) and asked that a sixth finding from self-review, previously noted only in a report and at risk of being lost, be folded into this record too (item 6). All six are recorded here so later tasks don't have to re-discover them:
+**Implementation note (post-review, two rounds):** the reference code below was written in one pass and never executed. Quality review on Tasks 1–2 found real defects inherited from an un-executed reference implementation elsewhere in this plan, so Task 3 went through two review passes before it shipped. **Round 1** (five self-applied probes): four turned up genuine bugs, fixed below (items 1, 2, 4, 5); the fifth (fragments orphaned when an area drops out of the profile) was traced and found harmless, not fixed (item 3). Spec review confirmed round 1's fixes, caught one refinement (title's role in item 2), and asked that an absolute-path finding from self-review be folded in (item 6). **Round 2** (quality review, closer scrutiny of the `profile.json` trust boundary specifically) found four more real issues, all in the same place: *the id field reaching a filesystem path had been hardened; everything else profile.json declares had not.* Items 7–10 below, plus a run of minors. All ten (plus minors) are recorded here so later tasks don't have to re-discover them:
 
 1. **Wave-3 gating was wrong.** The original gated `w3-decisions` / `w3-status-arcs` on `profile.eras?.length` — a profile with real `areas` but zero `eras` (a young repo, or one recon judged has no story worth splitting into eras yet) silently lost decision-mining and status arcs, even though neither unit reads era boundaries (decisions mines docs, status-arcs arcs anatomy nodes). **Fixed:** gated on `profile !== null` (recon has run) instead.
-2. **Status carry-forward didn't check the definition — and `title` doesn't belong in that check either.** The original carried `done` forward by unit id alone. If the profile later changed an area's `paths`, the old fragment on disk was written against the old slice, but the unit still read `done` — `merge` would silently consume stale output. **Fixed:** a unit's status only carries forward when its `scope` and `slice` are unchanged from the previous plan; otherwise it resets to `pending` (an honest signal that this unit needs redoing). `title` was in the first cut of this comparison and came back out at spec review: for area units it's redundant (w1/w2 scope text already embeds `area.title`, so a title edit already shows up as a scope change) but for era units it's actively wrong — the story unit's scope text never mentions `era.title`, only the unit's own display `title` does, so comparing it forced a full, needless redo whenever an era was cosmetically renamed.
-3. **Fragments for a dropped area are orphaned, not dangerous.** If recon later drops an area from `profile.json`, its unit vanishes from the next plan's `units` array, but `.arkaik/bootstrap/fragments/<old-id>.json` remains on disk. Traced against Task 6's `loadFragments`: it iterates `manifest.units` and looks up each unit's own fragment path — it never scans the fragments directory — so a fragment with no matching unit is simply never read. No silent data risk; just an inert file. Left unfixed (nothing to fix), noted here so Task 6 doesn't have to re-trace it.
+2. **Status carry-forward didn't check the definition — and neither `title` nor `scope` belongs in that check.** The original carried `done` forward by unit id alone. **Fixed, in two steps:** round 1 made carry-forward conditional on `scope` and `slice` matching the previous plan (excluding `title`, since era units' scope text never mentions `era.title` — comparing it forced a needless redo on a cosmetic rename). Round 2 went further and dropped `scope` too: only w1's scope text is mode-dependent ("map the anatomy" vs. "reconcile the existing map"), and a plain greenfield→brownfield mode flip — which happens on every ordinary run, the moment `merge` lands wave-1 nodes and `plan` runs again — was resetting every finished wave-1 unit to `pending` even though nothing the agent read had changed. Under `plan --issues` (Task 8) that means re-filing a GitHub issue for work already merged. **The rule now:** `sameSlice` (extracted as its own named function) compares `slice` alone. `slice` is the invalidation key — it's the exact corpus subset the agent read. `scope` and `title` are presentation, generated from templates, never hand-edited; neither can tell you whether the fragment on disk is still correct.
+3. **Fragments for a dropped area are orphaned, not dangerous.** If recon later drops an area from `profile.json`, its unit vanishes from the next plan's `units` array, but `.arkaik/bootstrap/fragments/<old-id>.json` remains on disk. Traced against Task 6's `loadFragments`: it iterates `manifest.units` and looks up each unit's own fragment path — it never scans the fragments directory — so a fragment with no matching unit is simply never read. No silent data risk; just an inert file. Left unfixed (nothing to fix), noted here so Task 6 doesn't have to re-trace it. **A related, weaker link for Task 6 to close, not this task:** `loadFragments` does `path.join(cwd, unit.fragment)` — it trusts the `fragment` string *stored in the manifest* rather than re-deriving `${FRAGMENTS_DIR}/${id}.json` from the already-validated `id`. `manifest.json` is edited between `plan` and `merge` (units get marked `done`/`rejected` externally — see the "resume" tests), so nothing stops that same edit from also rewriting `fragment` to point somewhere else. Task 6 should either re-derive the path from `id` and ignore the stored `fragment` field, or assert the resolved path stays under `FRAGMENTS_DIR` before reading/writing it.
 4. **Mode detection used `existsSync`, contradicting the spec's own rule.** § 1 of the design spec says greenfield is "no bundle, **or a stub**" — but the reference code was `existsSync(bundle) ? "brownfield" : "greenfield"`, which reads a freshly-scaffolded `arkaik init` bundle (`{nodes: [], edges: []}`) as brownfield. **Fixed:** `detectMode` reads the bundle when present and checks `nodes.length === 0` (a stub) vs. `> 0` (real content); a bundle that exists but fails to parse throws rather than silently guessing a mode.
-5. **Unit ids reach a filesystem path with no validation.** Area ids and era slugs come from `profile.json`, written by an agent, and become fragment filenames verbatim (`${FRAGMENTS_DIR}/${id}.json`). An id containing `/` or `..` would make that path escape the fragments directory; two ids landing on the same string (including an era slug colliding with the reserved `w3-decisions` / `w3-status-arcs` names) would mint two units pointing at the same fragment file, one silently clobbering the other's output. **Fixed:** `assertSafeId` rejects any area id / era slug that isn't `[A-Za-z0-9][A-Za-z0-9-]*`, and a post-build pass rejects any duplicate unit id — both throw with the offending id/value named, caught by `runPlan` and reported via `process.exit(1)` before anything is written.
+5. **Unit ids reach a filesystem path with no validation — and case-differing ids collide on this very platform.** Area ids and era slugs come from `profile.json`, written by an agent, and become fragment filenames verbatim (`${FRAGMENTS_DIR}/${id}.json`). Round 1 fixed the traversal risk (`/`, `..`) with a case-permissive regex (`[A-Za-z0-9][A-Za-z0-9-]*`) and a case-sensitive duplicate check — round 2 found that combination still lets `Home` and `home` both pass validation *and* pass the duplicate check as "different" ids, while macOS and Windows both resolve them to the **same fragment file** by default. Reproduced: the second agent's fragment silently clobbered the first's. **Fixed:** `SAFE_ID_RE` is now lowercase-only (`^[a-z0-9][a-z0-9-]*$`), stricter than lowercasing the comparison and matching this codebase's own id convention (`kebabCase()` in `packages/schema/src/id-gen.ts` lowercases everything; the bundle schema documents ids as kebab-case). The error message says ids must be lowercase kebab-case. A length cap (`MAX_ID_LENGTH = 64`) was added alongside it — an oversized id previously deferred a raw `ENAMETOOLONG` to whenever an agent tried to write the fragment; now it fails at `plan` with a clear message. The post-build duplicate-id pass (unaffected by this fix, still needed for the reserved-name-collision case) is unchanged.
 6. **`detectMode` mis-resolved an absolute `--bundle` path.** Found during self-review, confirmed real at spec review: the bundle file was located via `at(cwd, bundlePath)` (i.e. `path.join`), and `path.join("/repo", "/abs/bundle.json")` produces `/repo/abs/bundle.json` — a path that doesn't exist, so an absolute `--bundle` pointing at a real, populated bundle silently read as greenfield. **Fixed:** `detectMode` resolves via `path.resolve(cwd, bundlePath)` instead, which returns an already-absolute second argument unchanged and behaves identically to the old `path.join` for the ordinary relative case. **This matters for Task 6:** `runMerge`'s reference code resolves the same `manifest.bundle` field via `path.resolve(cwd, manifest.bundle)` — the two now agree; if Task 6 changes its resolution strategy, `detectMode` needs to change with it, or `plan` and `merge` will disagree about what `--bundle` points at.
+7. **`runPlan` skipped both of `runCorpus`'s guards.** `corpus` refuses to run outside a repo root and calls `ensureGitignored`; `plan` did neither. Running `plan` before `corpus` (a legitimate order — recon can run against a repo with no corpus yet) left an untracked, un-ignored `.arkaik/`, breaking `paths.ts`'s own stated contract that the directory is always ignored; from a subdirectory, `plan` would scatter `.arkaik/bootstrap/` somewhere `corpus` — and a human — would never look for it. **Fixed:** `runPlan` now has the same `.git`-presence guard and calls `ensureGitignored` after a successful plan, reusing both from what `runCorpus` already imports.
+8. **`area.paths` was unvalidated and failed *open*.** `readProfile` is a bare `JSON.parse(...) as Profile` — no runtime shape checking. An area with no `paths` (or `paths: []`) produces `slice: {}`, which Task 4's `resolveSlice` reads as `?? []` → no filter → that unit's agent receives the **entire corpus**, silently, with nothing in the manifest that looks wrong — the method's primary token lever failing open. Only `id` had been hardened, because it reaches a filesystem path; `paths` decides what the agent actually reads and got no scrutiny at all. **Fixed:** each area asserts `Array.isArray(area.paths) && area.paths.length > 0`, naming the offending area on failure.
+9. **`areas`/`eras` shape was unguarded, and individual malformed entries could crash raw.** `areas: "home"` silently iterated the string's characters instead of erroring (each "area" a single character, `.id` reliably `undefined`, caught downstream only by luck); `areas: 5` reached a `for...of` and threw a raw `"5 is not iterable"` with no mention of profile.json. Separately, a malformed *entry* inside an otherwise-valid array (`areas: [null]`, `eras: [null]`) crashed on `.id`/`.slug` access off `null` before any validation ran. **Fixed:** `assertArrayField` checks `areas`/`eras` are arrays when present, and each entry is checked for `null`/non-object before its fields are read — both throw a clear, profile.json-naming error instead of a raw TypeError.
+10. **Minors, taken as part of round 2:** `readProfile`/`readManifest` now wrap their `JSON.parse` and name the file in the thrown error (matching `detectMode`'s existing style) — with three JSON files in play (`profile.json`, `manifest.json`, the bundle), a bare `Unexpected end of JSON input` didn't say which one; `profile.json` is agent-written and the likeliest to be malformed. The status-carry-forward comparison was extracted into a named `sameSlice` function so the "JSON.stringify is key-order sensitive, fine today because every slice literal has exactly one key" caveat sits where someone adding a two-key slice shape will actually be standing. `tests/cli/bootstrap-plan.test.js` was split: everything through Task 2 (dispatch + `corpus`) moved to `tests/cli/bootstrap-corpus.test.js` unchanged, so Task 9's CI wiring touches each file once instead of touching one 600-line file that mixes two tasks. A test now pins that `units` is non-decreasing in `wave` — the "resume at the first pending unit" contract depends on it and nothing had pinned it before.
+
+**Explicitly out of scope, by the reviewer's own call:** `Manifest.version` stays a bare `1` — it costs nothing unused and will matter when the shape changes. No test was added for `status: "rejected"` — nothing sets it yet.
 
 **Files:**
 - Create: `packages/cli/src/lib/bootstrap/manifest.ts`
 - Modify: `packages/cli/src/commands/bootstrap.ts`
-- Test: `tests/cli/bootstrap-plan.test.js`
+- Test: `tests/cli/bootstrap-plan.test.js` (planning-only, after the round-2 split) and `tests/cli/bootstrap-corpus.test.js` (dispatch + `corpus`, extracted from it unchanged)
 
 - [ ] **Step 1: Write the failing test**
 
-Append inside the `try` block — the base plan/resume checks plus one regression test per finding above (stub-bundle mode, gating without eras, status invalidation on a changed slice, the title-rename refinement, unsafe/duplicate ids, the unparseable/non-bundle-shaped bundle branches, and the absolute-`--bundle` fix):
+Append inside the `try` block of `tests/cli/bootstrap-plan.test.js` — after the round-2 split, this file's `try` block no longer contains any `corpus` setup, so it opens its own fresh mkdtemp repo dir directly. The base plan/resume checks plus one regression test per finding above: stub-bundle mode, gating without eras, status invalidation on a changed slice, the title-rename and mode-flip refinements, unsafe/duplicate/uppercase/oversized ids, the unparseable/non-bundle-shaped bundle branches, the absolute-`--bundle` fix, the repo-root+gitignore guard, `area.paths` validation, `areas`/`eras` shape validation, and the wave-ordering pin:
 
 ```js
   // --- plan with no profile: recon only ---
@@ -1074,16 +1080,30 @@ export interface Profile {
   eras?: Array<{ slug: string; title: string; from?: string; to?: string }>;
 }
 
+/**
+ * profile.json is agent-written, so a raw `JSON.parse` failure is the likely
+ * failure mode — naming the file (not just "Unexpected end of JSON input")
+ * matters when manifest.json and the bundle are also in play. Matches
+ * `detectMode`'s error style below.
+ */
 export function readProfile(cwd: string): Profile | null {
   const file = at(cwd, PROFILE_FILE);
   if (!existsSync(file)) return null;
-  return JSON.parse(readFileSync(file, "utf8")) as Profile;
+  try {
+    return JSON.parse(readFileSync(file, "utf8")) as Profile;
+  } catch (err) {
+    throw new Error(`cannot read ${PROFILE_FILE}: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 export function readManifest(cwd: string): Manifest | null {
   const file = at(cwd, MANIFEST_FILE);
   if (!existsSync(file)) return null;
-  return JSON.parse(readFileSync(file, "utf8")) as Manifest;
+  try {
+    return JSON.parse(readFileSync(file, "utf8")) as Manifest;
+  } catch (err) {
+    throw new Error(`cannot read ${MANIFEST_FILE}: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 export function writeManifest(cwd: string, manifest: Manifest): void {
@@ -1134,24 +1154,61 @@ const RECON_SCOPE =
   "the areas to fan out over (id, title, code paths), and the thematic eras the merged PRs fall into. " +
   "Then re-run `arkaik bootstrap plan` to expand waves 1-3.";
 
-/** Letters, digits and hyphens only — no `/`, no `..`, no whitespace. */
-const SAFE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
+/** Lowercase kebab-case only — no uppercase, no `/`, no `..`, no whitespace. */
+const SAFE_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
+const MAX_ID_LENGTH = 64;
 
 /**
  * Area ids and era slugs come from profile.json — written by an agent, not
  * by this code — and become fragment filenames verbatim
- * (`${FRAGMENTS_DIR}/${id}.json`). An id containing `/` or `..` would make
- * that path escape the fragments directory; whitespace or other punctuation
- * just means "not what a human meant to type." Reject rather than sanitize:
- * silently mangling the id would let two different-looking ids collide
- * without anyone noticing.
+ * (`${FRAGMENTS_DIR}/${id}.json`). Two things are enforced here, both about
+ * that filename:
+ *
+ *  - No `/` or `..`, which would let the path escape the fragments
+ *    directory.
+ *  - Lowercase only, not merely "the duplicate check below lowercases
+ *    before comparing." macOS and Windows both default to case-insensitive
+ *    filesystems, so ids `Home` and `home` are the SAME fragment file there
+ *    even though they're different strings — a case-sensitive `seen` set
+ *    would wave both through, and the second agent's write would silently
+ *    clobber the first's fragment with no error from either `plan` or
+ *    `merge`. Rejecting uppercase at validation time closes that off
+ *    entirely, rather than trying to catch it at comparison time. This also
+ *    matches this codebase's own id convention: `kebabCase()`
+ *    (packages/schema/src/id-gen.ts) lowercases everything, and the bundle
+ *    schema documents node ids as kebab-case.
+ *
+ * A length cap (`MAX_ID_LENGTH`) is enforced for the same "fail at the one
+ * place that can give a clear message" reason: an oversized id would
+ * otherwise defer a raw `ENAMETOOLONG` to whenever an agent tries to write
+ * the fragment.
+ *
+ * Reject rather than sanitize either way: silently mangling the id would let
+ * two different-looking ids collide without anyone noticing.
  */
 function assertSafeId(kind: "area" | "era", id: unknown): void {
-  if (typeof id !== "string" || !SAFE_ID_RE.test(id)) {
+  if (typeof id !== "string" || !SAFE_ID_RE.test(id) || id.length > MAX_ID_LENGTH) {
     throw new Error(
-      `profile.json has an unsafe ${kind} id: ${JSON.stringify(id)}. Work-unit ids become fragment filenames ` +
-        `under ${FRAGMENTS_DIR}/, so they must contain only letters, digits and hyphens (no "/", "..", or ` +
-        "whitespace). Fix profile.json and re-run `arkaik bootstrap plan`.",
+      `profile.json has an invalid ${kind} id: ${JSON.stringify(id)}. Work-unit ids become fragment filenames ` +
+        `under ${FRAGMENTS_DIR}/, so they must be lowercase kebab-case (letters, digits and hyphens only, no ` +
+        `uppercase, no "/", "..", or whitespace) and at most ${MAX_ID_LENGTH} characters. Fix profile.json and ` +
+        "re-run `arkaik bootstrap plan`.",
+    );
+  }
+}
+
+/**
+ * `profile.json`'s `areas`/`eras` keys, when present, must actually be
+ * arrays — a string or number there (`areas: "home"`, `areas: 5`) would
+ * otherwise reach a `for...of` below: a string iterates its characters
+ * (silently wrong, not an error) and a number throws a raw
+ * "is not iterable" with no mention of profile.json.
+ */
+function assertArrayField(field: "areas" | "eras", value: unknown): void {
+  if (value !== undefined && !Array.isArray(value)) {
+    throw new Error(
+      `profile.json "${field}" must be an array, got ${typeof value} (${JSON.stringify(value)}). Fix profile.json ` +
+        "and re-run `arkaik bootstrap plan`.",
     );
   }
 }
@@ -1159,20 +1216,8 @@ function assertSafeId(kind: "area" | "era", id: unknown): void {
 /**
  * Build the manifest for this repo. `previous` (when given) carries unit
  * statuses forward so re-planning after recon never loses completed work —
- * but only for a unit whose `scope`/`slice` are unchanged from the last plan.
- * If the profile edited an area's paths since then, the old fragment on disk
- * was written against the old slice; carrying `done` forward would let
- * `merge` consume that stale output with no signal anything is wrong, so the
- * unit resets to `pending` instead.
- *
- * `title` is deliberately excluded from that comparison. For area units it
- * would be redundant (the w1/w2 scope text already embeds `area.title`, so a
- * title edit already shows up as a scope change) but for era units it would
- * be actively wrong: the story unit's scope text never mentions `era.title`,
- * only the unit's own display `title` does. Comparing `title` would force a
- * full redo of a story unit whenever someone renames the era for display
- * purposes, even though its fragment — driven entirely by `scope` and
- * `slice` — is still perfectly valid.
+ * but only for a unit whose `slice` is unchanged from the last plan (see
+ * `sameSlice` below for why `slice` alone is the right key).
  */
 export function planUnits(options: {
   mode: Manifest["mode"];
@@ -1182,8 +1227,45 @@ export function planUnits(options: {
 }): Manifest {
   const { mode, bundle, profile, previous } = options;
 
-  for (const area of profile?.areas ?? []) assertSafeId("area", area.id);
-  for (const era of profile?.eras ?? []) assertSafeId("era", era.slug);
+  // --- validate profile.json before building anything from it ---
+  // Everything below reaches either a filesystem path (id -> fragment file)
+  // or a token-budget decision (paths -> what an agent reads), and all of it
+  // is agent-written, not code-written. Fail loudly and specifically rather
+  // than crash on a raw JS error or silently do the wrong thing.
+  if (profile) {
+    assertArrayField("areas", (profile as unknown as Record<string, unknown>).areas);
+    assertArrayField("eras", (profile as unknown as Record<string, unknown>).eras);
+  }
+
+  for (const rawArea of profile?.areas ?? []) {
+    if (rawArea === null || typeof rawArea !== "object") {
+      throw new Error(
+        `profile.json has a malformed area entry: ${JSON.stringify(rawArea)} (expected an object with id, title, paths).`,
+      );
+    }
+    const area = rawArea as unknown as { id?: unknown; paths?: unknown };
+    assertSafeId("area", area.id);
+    if (!Array.isArray(area.paths) || area.paths.length === 0) {
+      // An empty/missing `paths` produces `slice: {}`, which `bootstrap
+      // slice` (Task 4) reads as "no filter" and hands the agent the WHOLE
+      // corpus — the method's primary token lever failing open, silently,
+      // with nothing in the manifest that looks wrong.
+      throw new Error(
+        `profile.json area "${String(area.id)}" has no paths. An empty slice would hand that unit's agent the ` +
+          "entire corpus with no filtering. Add at least one path and re-run `arkaik bootstrap plan`.",
+      );
+    }
+  }
+
+  for (const rawEra of profile?.eras ?? []) {
+    if (rawEra === null || typeof rawEra !== "object") {
+      throw new Error(
+        `profile.json has a malformed era entry: ${JSON.stringify(rawEra)} (expected an object with slug, title).`,
+      );
+    }
+    const era = rawEra as unknown as { slug?: unknown };
+    assertSafeId("era", era.slug);
+  }
 
   const units: WorkUnit[] = [unit("w0-recon", 0, "Recon", RECON_SCOPE, { docs: true })];
 
@@ -1250,7 +1332,8 @@ export function planUnits(options: {
   // the reserved wave-3 names — would mint two units pointing at the same
   // fragment file, silently losing whichever agent's output the other one's
   // write clobbers. Catch it here, not when `merge` finds a fragment that
-  // doesn't match the unit that supposedly produced it.
+  // doesn't match the unit that supposedly produced it. Ids are already
+  // lowercase-only (assertSafeId), so this comparison needs no normalizing.
   const seen = new Set<string>();
   for (const u of units) {
     if (seen.has(u.id)) {
@@ -1265,13 +1348,45 @@ export function planUnits(options: {
   const previousById = new Map((previous?.units ?? []).map((u) => [u.id, u]));
   for (const u of units) {
     const before = previousById.get(u.id);
-    if (!before) continue;
-    // title excluded on purpose — see the doc comment above.
-    const sameDefinition = before.scope === u.scope && JSON.stringify(before.slice) === JSON.stringify(u.slice);
-    if (sameDefinition) u.status = before.status;
+    if (before && sameSlice(before, u)) u.status = before.status;
   }
 
   return { version: 1, mode, bundle, units };
+}
+
+/**
+ * Whether `next`'s slice is unchanged from `before`'s — the ONLY test for
+ * carrying a unit's status forward on re-plan. `slice` is what determines
+ * whether the fragment already on disk is still correct: it's the exact
+ * corpus subset (`bootstrap slice`) the agent read to produce it. If a
+ * profile edit changes an area's `paths` (or an era's slug), the old
+ * fragment was written against different input, so this returns `false` and
+ * the unit resets to `pending`.
+ *
+ * `scope` and `title` are deliberately NOT compared, even though an earlier
+ * version of this function compared both. Both are presentation, generated
+ * from templates, never hand-edited — they can change for reasons that have
+ * nothing to do with the fragment's validity:
+ *  - `scope`'s wave-1 text is mode-dependent ("map the anatomy" vs.
+ *    "reconcile the existing map"). Comparing it meant a plain
+ *    greenfield -> brownfield mode flip — which happens every time `merge`
+ *    lands wave-1 nodes and `plan` runs again — resurrected every finished
+ *    wave-1 unit back to `pending`, even though nothing the agent read
+ *    changed and the fragment is still exactly right. Under `plan --issues`
+ *    (Task 8) that means re-filing a GitHub issue for work already merged.
+ *  - `title`'s wave-3 era text is a pure display string; renaming an era for
+ *    cosmetic reasons forced a full redo of an otherwise-valid fragment.
+ *
+ * Compares via `JSON.stringify`, which is key-order sensitive: today every
+ * slice literal in this file has exactly one key (`paths`, `eras`, or
+ * `docs`), so order can never differ between two calls to `unit()`. If a
+ * future slice ever grows a second key, an equivalent slice built with keys
+ * in a different order would compare as "changed" even though nothing an
+ * agent reads actually did — worth a real deep-equality check at that point,
+ * not before.
+ */
+function sameSlice(before: WorkUnit, next: WorkUnit): boolean {
+  return JSON.stringify(before.slice) === JSON.stringify(next.slice);
 }
 ```
 
@@ -1313,14 +1428,28 @@ function runPlan(argv: string[]): void {
     }
   }
 
+  // Same guard as `corpus`: manifest.json/profile.json/fragments all live
+  // under .arkaik/, which is only meaningful relative to the repo root — run
+  // from a subdirectory and `plan` would scatter .arkaik/bootstrap/
+  // somewhere `corpus` (and a human) would never look for it.
+  if (!existsSync(path.join(cwd, ".git"))) {
+    fail("`arkaik bootstrap plan` must run from the repository root (no .git here).");
+  }
+
   try {
     const mode = detectMode(cwd, bundle);
     const manifest = planUnits({ mode, bundle, profile: readProfile(cwd), previous: readManifest(cwd) });
     writeManifest(cwd, manifest);
+    // paths.ts's own contract: .arkaik/ never lands in git. `corpus` usually
+    // runs first and already does this, but `plan` can run first too (or
+    // stand alone against an existing profile.json), so it can't assume
+    // corpus already ignored the directory.
+    const ignored = ensureGitignored(cwd);
 
     const pending = manifest.units.filter((u) => u.status === "pending").length;
     console.log(`Planned ${manifest.units.length} units (${pending} pending) in ${mode} mode.`);
     for (const u of manifest.units) console.log(`  [${u.status}] w${u.wave} ${u.id} — ${u.title}`);
+    if (ignored) console.log(`  added ${BOOTSTRAP_ROOT}/ to .gitignore`);
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
@@ -1328,19 +1457,21 @@ function runPlan(argv: string[]): void {
 }
 ```
 
-Add `case "plan": runPlan(rest); return;` to the switch. Note `mode` detection and `planUnits` both now throw on bad input (an unparseable bundle, an unsafe or duplicate unit id) — both are caught by the `try`/`catch` above rather than left to crash the process uncaught.
+Add `case "plan": runPlan(rest); return;` to the switch. `BOOTSTRAP_ROOT` and `ensureGitignored` are already imported (Task 1's `paths` import, reused by `corpus`) — no new import needed. Note `mode` detection and `planUnits` both now throw on bad input (an unparseable bundle, an invalid or duplicate unit id, a malformed `areas`/`eras` shape) — all caught by the `try`/`catch` above rather than left to crash the process uncaught.
 
 - [ ] **Step 5: Run the test to verify it passes**
 
-Run: `npm run build -w arkaik && node tests/cli/bootstrap-plan.test.js`
-Expected: PASS on all 81 checks (39 from Tasks 1–2 + 42 from Task 3, the latter across the first implementation pass and the spec-review follow-up).
+Run: `npm run build -w arkaik && node tests/cli/bootstrap-plan.test.js && node tests/cli/bootstrap-corpus.test.js`
+Expected: PASS on all 73 checks in `bootstrap-plan.test.js` and all 39 in `bootstrap-corpus.test.js` (112 total). The two files started as one at 81 checks (39 from Tasks 1–2 + 42 from Task 3's first pass and its spec-review follow-up); round 2's quality review added 32 more checks to the planning half and the file was split along the Task-2/Task-3 boundary, landing at 39 + 73.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add packages/cli/src/lib/bootstrap/manifest.ts packages/cli/src/commands/bootstrap.ts tests/cli/bootstrap-plan.test.js
+git add packages/cli/src/lib/bootstrap/manifest.ts packages/cli/src/commands/bootstrap.ts tests/cli/bootstrap-plan.test.js tests/cli/bootstrap-corpus.test.js
 git commit -m "feat(cli): bootstrap plan — resumable work-unit manifest"
 ```
+
+(In practice this shipped as three commits — the initial implementation, the spec-review follow-up, and the quality-review follow-up above — each with its own message. A fresh implementer following this doc from scratch can do it in one.)
 
 ---
 
@@ -1831,7 +1962,22 @@ function isArrayOfObjects(value: unknown): boolean {
   return value === undefined || (Array.isArray(value) && value.every((v) => typeof v === "object" && v !== null));
 }
 
-/** Load every fragment named by the manifest. Absent files are reported, not fatal. */
+/**
+ * Load every fragment named by the manifest. Absent files are reported, not
+ * fatal.
+ *
+ * **Carried forward from Task 3's review — fix or explicitly accept before
+ * shipping this, don't silently inherit it:** `unit.fragment` is read
+ * straight out of `manifest.json`, not re-derived from `unit.id`. Task 3
+ * validates `id` at `plan` time (lowercase kebab-case, `FRAGMENTS_DIR`-only),
+ * but `manifest.json` is edited after that — by whatever drives the
+ * resumable run, marking units `done`/`rejected` between waves (see Task 3's
+ * "resume preserves completed status" tests) — and nothing stops that same
+ * edit from also rewriting `fragment` to a path outside `FRAGMENTS_DIR`.
+ * Either re-derive the path here as `` `${FRAGMENTS_DIR}/${unit.id}.json` ``
+ * and ignore the stored field entirely, or assert the resolved `file` stays
+ * under `FRAGMENTS_DIR` before reading it below.
+ */
 export function loadFragments(cwd: string, manifest: Manifest): FragmentLoad {
   const loaded: LoadedFragment[] = [];
   const problems: FragmentProblem[] = [];

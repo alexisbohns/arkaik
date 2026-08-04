@@ -41,16 +41,30 @@ export interface Profile {
   eras?: Array<{ slug: string; title: string; from?: string; to?: string }>;
 }
 
+/**
+ * profile.json is agent-written, so a raw `JSON.parse` failure is the likely
+ * failure mode — naming the file (not just "Unexpected end of JSON input")
+ * matters when manifest.json and the bundle are also in play. Matches
+ * `detectMode`'s error style below.
+ */
 export function readProfile(cwd: string): Profile | null {
   const file = at(cwd, PROFILE_FILE);
   if (!existsSync(file)) return null;
-  return JSON.parse(readFileSync(file, "utf8")) as Profile;
+  try {
+    return JSON.parse(readFileSync(file, "utf8")) as Profile;
+  } catch (err) {
+    throw new Error(`cannot read ${PROFILE_FILE}: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 export function readManifest(cwd: string): Manifest | null {
   const file = at(cwd, MANIFEST_FILE);
   if (!existsSync(file)) return null;
-  return JSON.parse(readFileSync(file, "utf8")) as Manifest;
+  try {
+    return JSON.parse(readFileSync(file, "utf8")) as Manifest;
+  } catch (err) {
+    throw new Error(`cannot read ${MANIFEST_FILE}: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 export function writeManifest(cwd: string, manifest: Manifest): void {
@@ -101,24 +115,61 @@ const RECON_SCOPE =
   "the areas to fan out over (id, title, code paths), and the thematic eras the merged PRs fall into. " +
   "Then re-run `arkaik bootstrap plan` to expand waves 1-3.";
 
-/** Letters, digits and hyphens only — no `/`, no `..`, no whitespace. */
-const SAFE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
+/** Lowercase kebab-case only — no uppercase, no `/`, no `..`, no whitespace. */
+const SAFE_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
+const MAX_ID_LENGTH = 64;
 
 /**
  * Area ids and era slugs come from profile.json — written by an agent, not
  * by this code — and become fragment filenames verbatim
- * (`${FRAGMENTS_DIR}/${id}.json`). An id containing `/` or `..` would make
- * that path escape the fragments directory; whitespace or other punctuation
- * just means "not what a human meant to type." Reject rather than sanitize:
- * silently mangling the id would let two different-looking ids collide
- * without anyone noticing.
+ * (`${FRAGMENTS_DIR}/${id}.json`). Two things are enforced here, both about
+ * that filename:
+ *
+ *  - No `/` or `..`, which would let the path escape the fragments
+ *    directory.
+ *  - Lowercase only, not merely "the duplicate check below lowercases
+ *    before comparing." macOS and Windows both default to case-insensitive
+ *    filesystems, so ids `Home` and `home` are the SAME fragment file there
+ *    even though they're different strings — a case-sensitive `seen` set
+ *    would wave both through, and the second agent's write would silently
+ *    clobber the first's fragment with no error from either `plan` or
+ *    `merge`. Rejecting uppercase at validation time closes that off
+ *    entirely, rather than trying to catch it at comparison time. This also
+ *    matches this codebase's own id convention: `kebabCase()`
+ *    (packages/schema/src/id-gen.ts) lowercases everything, and the bundle
+ *    schema documents node ids as kebab-case.
+ *
+ * A length cap (`MAX_ID_LENGTH`) is enforced for the same "fail at the one
+ * place that can give a clear message" reason: an oversized id would
+ * otherwise defer a raw `ENAMETOOLONG` to whenever an agent tries to write
+ * the fragment.
+ *
+ * Reject rather than sanitize either way: silently mangling the id would let
+ * two different-looking ids collide without anyone noticing.
  */
 function assertSafeId(kind: "area" | "era", id: unknown): void {
-  if (typeof id !== "string" || !SAFE_ID_RE.test(id)) {
+  if (typeof id !== "string" || !SAFE_ID_RE.test(id) || id.length > MAX_ID_LENGTH) {
     throw new Error(
-      `profile.json has an unsafe ${kind} id: ${JSON.stringify(id)}. Work-unit ids become fragment filenames ` +
-        `under ${FRAGMENTS_DIR}/, so they must contain only letters, digits and hyphens (no "/", "..", or ` +
-        "whitespace). Fix profile.json and re-run `arkaik bootstrap plan`.",
+      `profile.json has an invalid ${kind} id: ${JSON.stringify(id)}. Work-unit ids become fragment filenames ` +
+        `under ${FRAGMENTS_DIR}/, so they must be lowercase kebab-case (letters, digits and hyphens only, no ` +
+        `uppercase, no "/", "..", or whitespace) and at most ${MAX_ID_LENGTH} characters. Fix profile.json and ` +
+        "re-run `arkaik bootstrap plan`.",
+    );
+  }
+}
+
+/**
+ * `profile.json`'s `areas`/`eras` keys, when present, must actually be
+ * arrays — a string or number there (`areas: "home"`, `areas: 5`) would
+ * otherwise reach a `for...of` below: a string iterates its characters
+ * (silently wrong, not an error) and a number throws a raw
+ * "is not iterable" with no mention of profile.json.
+ */
+function assertArrayField(field: "areas" | "eras", value: unknown): void {
+  if (value !== undefined && !Array.isArray(value)) {
+    throw new Error(
+      `profile.json "${field}" must be an array, got ${typeof value} (${JSON.stringify(value)}). Fix profile.json ` +
+        "and re-run `arkaik bootstrap plan`.",
     );
   }
 }
@@ -126,20 +177,8 @@ function assertSafeId(kind: "area" | "era", id: unknown): void {
 /**
  * Build the manifest for this repo. `previous` (when given) carries unit
  * statuses forward so re-planning after recon never loses completed work —
- * but only for a unit whose `scope`/`slice` are unchanged from the last plan.
- * If the profile edited an area's paths since then, the old fragment on disk
- * was written against the old slice; carrying `done` forward would let
- * `merge` consume that stale output with no signal anything is wrong, so the
- * unit resets to `pending` instead.
- *
- * `title` is deliberately excluded from that comparison. For area units it
- * would be redundant (the w1/w2 scope text already embeds `area.title`, so a
- * title edit already shows up as a scope change) but for era units it would
- * be actively wrong: the story unit's scope text never mentions `era.title`,
- * only the unit's own display `title` does. Comparing `title` would force a
- * full redo of a story unit whenever someone renames the era for display
- * purposes, even though its fragment — driven entirely by `scope` and
- * `slice` — is still perfectly valid.
+ * but only for a unit whose `slice` is unchanged from the last plan (see
+ * `sameSlice` below for why `slice` alone is the right key).
  */
 export function planUnits(options: {
   mode: Manifest["mode"];
@@ -149,8 +188,45 @@ export function planUnits(options: {
 }): Manifest {
   const { mode, bundle, profile, previous } = options;
 
-  for (const area of profile?.areas ?? []) assertSafeId("area", area.id);
-  for (const era of profile?.eras ?? []) assertSafeId("era", era.slug);
+  // --- validate profile.json before building anything from it ---
+  // Everything below reaches either a filesystem path (id -> fragment file)
+  // or a token-budget decision (paths -> what an agent reads), and all of it
+  // is agent-written, not code-written. Fail loudly and specifically rather
+  // than crash on a raw JS error or silently do the wrong thing.
+  if (profile) {
+    assertArrayField("areas", (profile as unknown as Record<string, unknown>).areas);
+    assertArrayField("eras", (profile as unknown as Record<string, unknown>).eras);
+  }
+
+  for (const rawArea of profile?.areas ?? []) {
+    if (rawArea === null || typeof rawArea !== "object") {
+      throw new Error(
+        `profile.json has a malformed area entry: ${JSON.stringify(rawArea)} (expected an object with id, title, paths).`,
+      );
+    }
+    const area = rawArea as unknown as { id?: unknown; paths?: unknown };
+    assertSafeId("area", area.id);
+    if (!Array.isArray(area.paths) || area.paths.length === 0) {
+      // An empty/missing `paths` produces `slice: {}`, which `bootstrap
+      // slice` (Task 4) reads as "no filter" and hands the agent the WHOLE
+      // corpus — the method's primary token lever failing open, silently,
+      // with nothing in the manifest that looks wrong.
+      throw new Error(
+        `profile.json area "${String(area.id)}" has no paths. An empty slice would hand that unit's agent the ` +
+          "entire corpus with no filtering. Add at least one path and re-run `arkaik bootstrap plan`.",
+      );
+    }
+  }
+
+  for (const rawEra of profile?.eras ?? []) {
+    if (rawEra === null || typeof rawEra !== "object") {
+      throw new Error(
+        `profile.json has a malformed era entry: ${JSON.stringify(rawEra)} (expected an object with slug, title).`,
+      );
+    }
+    const era = rawEra as unknown as { slug?: unknown };
+    assertSafeId("era", era.slug);
+  }
 
   const units: WorkUnit[] = [unit("w0-recon", 0, "Recon", RECON_SCOPE, { docs: true })];
 
@@ -217,7 +293,8 @@ export function planUnits(options: {
   // the reserved wave-3 names — would mint two units pointing at the same
   // fragment file, silently losing whichever agent's output the other one's
   // write clobbers. Catch it here, not when `merge` finds a fragment that
-  // doesn't match the unit that supposedly produced it.
+  // doesn't match the unit that supposedly produced it. Ids are already
+  // lowercase-only (assertSafeId), so this comparison needs no normalizing.
   const seen = new Set<string>();
   for (const u of units) {
     if (seen.has(u.id)) {
@@ -232,11 +309,43 @@ export function planUnits(options: {
   const previousById = new Map((previous?.units ?? []).map((u) => [u.id, u]));
   for (const u of units) {
     const before = previousById.get(u.id);
-    if (!before) continue;
-    // title excluded on purpose — see the doc comment above.
-    const sameDefinition = before.scope === u.scope && JSON.stringify(before.slice) === JSON.stringify(u.slice);
-    if (sameDefinition) u.status = before.status;
+    if (before && sameSlice(before, u)) u.status = before.status;
   }
 
   return { version: 1, mode, bundle, units };
+}
+
+/**
+ * Whether `next`'s slice is unchanged from `before`'s — the ONLY test for
+ * carrying a unit's status forward on re-plan. `slice` is what determines
+ * whether the fragment already on disk is still correct: it's the exact
+ * corpus subset (`bootstrap slice`) the agent read to produce it. If a
+ * profile edit changes an area's `paths` (or an era's slug), the old
+ * fragment was written against different input, so this returns `false` and
+ * the unit resets to `pending`.
+ *
+ * `scope` and `title` are deliberately NOT compared, even though an earlier
+ * version of this function compared both. Both are presentation, generated
+ * from templates, never hand-edited — they can change for reasons that have
+ * nothing to do with the fragment's validity:
+ *  - `scope`'s wave-1 text is mode-dependent ("map the anatomy" vs.
+ *    "reconcile the existing map"). Comparing it meant a plain
+ *    greenfield -> brownfield mode flip — which happens every time `merge`
+ *    lands wave-1 nodes and `plan` runs again — resurrected every finished
+ *    wave-1 unit back to `pending`, even though nothing the agent read
+ *    changed and the fragment is still exactly right. Under `plan --issues`
+ *    (Task 8) that means re-filing a GitHub issue for work already merged.
+ *  - `title`'s wave-3 era text is a pure display string; renaming an era for
+ *    cosmetic reasons forced a full redo of an otherwise-valid fragment.
+ *
+ * Compares via `JSON.stringify`, which is key-order sensitive: today every
+ * slice literal in this file has exactly one key (`paths`, `eras`, or
+ * `docs`), so order can never differ between two calls to `unit()`. If a
+ * future slice ever grows a second key, an equivalent slice built with keys
+ * in a different order would compare as "changed" even though nothing an
+ * agent reads actually did — worth a real deep-equality check at that point,
+ * not before.
+ */
+function sameSlice(before: WorkUnit, next: WorkUnit): boolean {
+  return JSON.stringify(before.slice) === JSON.stringify(next.slice);
 }

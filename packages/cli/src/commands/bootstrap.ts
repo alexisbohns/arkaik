@@ -135,14 +135,28 @@ function runPlan(argv: string[]): void {
     }
   }
 
+  // Same guard as `corpus`: manifest.json/profile.json/fragments all live
+  // under .arkaik/, which is only meaningful relative to the repo root — run
+  // from a subdirectory and `plan` would scatter .arkaik/bootstrap/
+  // somewhere `corpus` (and a human) would never look for it.
+  if (!existsSync(path.join(cwd, ".git"))) {
+    fail("`arkaik bootstrap plan` must run from the repository root (no .git here).");
+  }
+
   try {
     const mode = detectMode(cwd, bundle);
     const manifest = planUnits({ mode, bundle, profile: readProfile(cwd), previous: readManifest(cwd) });
     writeManifest(cwd, manifest);
+    // paths.ts's own contract: .arkaik/ never lands in git. `corpus` usually
+    // runs first and already does this, but `plan` can run first too (or
+    // stand alone against an existing profile.json), so it can't assume
+    // corpus already ignored the directory.
+    const ignored = ensureGitignored(cwd);
 
     const pending = manifest.units.filter((u) => u.status === "pending").length;
     console.log(`Planned ${manifest.units.length} units (${pending} pending) in ${mode} mode.`);
     for (const u of manifest.units) console.log(`  [${u.status}] w${u.wave} ${u.id} — ${u.title}`);
+    if (ignored) console.log(`  added ${BOOTSTRAP_ROOT}/ to .gitignore`);
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);

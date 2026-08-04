@@ -1,14 +1,18 @@
 #!/usr/bin/env node
 
 /**
- * Exercises `arkaik bootstrap` — the deterministic half of the bootstrap
- * method: corpus mining from a captured gh payload, work-unit planning from a
- * recon profile, corpus slicing, and the compact map index.
- * Runs in fresh mkdtemp dirs, never the repo itself.
+ * Exercises `arkaik bootstrap plan` — work-unit planning from a recon
+ * profile: the manifest's resumability contract, mode detection, and the
+ * profile.json trust boundary (agent-written input reaching filesystem
+ * paths, token-budget decisions, and status carry-forward).
+ *
+ * `bootstrap corpus` and the dispatcher scaffold live in
+ * tests/cli/bootstrap-corpus.test.js. Runs in fresh mkdtemp dirs, never the
+ * repo itself.
  */
 
-const { spawnSync } = require("child_process");
 const { existsSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync } = require("fs");
+const { spawnSync } = require("child_process");
 const { tmpdir } = require("os");
 const path = require("path");
 
@@ -34,222 +38,15 @@ function check(name, cond, detail) {
   }
 }
 
-const dir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-plan-"));
+/** Every `plan` test needs a repo root now (item 3: same guard as `corpus`). */
+function freshRepoDir(prefix) {
+  const d = mkdtempSync(path.join(tmpdir(), prefix));
+  mkdirSync(path.join(d, ".git"), { recursive: true });
+  return d;
+}
+
+const dir = freshRepoDir("arkaik-bootstrap-plan-");
 try {
-  // A real .git dir is not needed — `corpus` only checks for its presence,
-  // as the repo-root guard against running from a subdirectory.
-  mkdirSync(path.join(dir, ".git"), { recursive: true });
-
-  // --- dispatch ---
-  const help = runCli(["bootstrap", "--help"], dir);
-  check("bootstrap --help exits 0", help.status === 0, help.stderr);
-  check("help lists corpus", help.stdout.includes("corpus"), help.stdout);
-  check("help lists merge", help.stdout.includes("merge"), help.stdout);
-
-  const noArgs = runCli(["bootstrap"], dir);
-  check("bootstrap with no arguments exits 0", noArgs.status === 0, noArgs.stderr);
-  check("bootstrap with no arguments prints usage", noArgs.stdout.includes("Subcommands:"), noArgs.stdout);
-
-  const unknown = runCli(["bootstrap", "nope"], dir);
-  check("unknown subcommand exits 1", unknown.status === 1, String(unknown.status));
-  check("unknown subcommand error lands on stderr", unknown.stderr.includes("Unknown bootstrap subcommand"), unknown.stderr);
-
-  // --- corpus from a captured gh payload ---
-  const ghPayload = [
-    {
-      number: 1,
-      title: "Add the home screen",
-      body: "## Lab Note\n\n```yaml\nen:\n  title: \"Home, at last\"\n```",
-      mergedAt: "2026-01-02T10:00:00Z",
-      labels: [{ name: "feature" }],
-      files: [{ path: "app/home/page.tsx" }],
-    },
-    {
-      number: 2,
-      title: "chore: bump deps",
-      body: "",
-      mergedAt: "2026-01-03T10:00:00Z",
-      labels: [],
-      files: [{ path: "package.json" }],
-    },
-  ];
-  const payloadPath = path.join(dir, "gh.json");
-  writeFileSync(payloadPath, JSON.stringify(ghPayload));
-  mkdirSync(path.join(dir, "docs"), { recursive: true });
-  writeFileSync(path.join(dir, "docs", "vision.md"), "# Vision\n\nWhy we build.\n");
-  mkdirSync(path.join(dir, "app", "home"), { recursive: true });
-  writeFileSync(path.join(dir, "app", "home", "page.tsx"), "export default function Home() {}\n");
-
-  const corpus = runCli(["bootstrap", "corpus", "--from-json", payloadPath], dir);
-  check("corpus exits 0", corpus.status === 0, corpus.stderr);
-
-  const prLines = readFileSync(path.join(dir, ".arkaik", "corpus", "prs.jsonl"), "utf8").trim().split("\n");
-  check("both PRs captured", prLines.length === 2, String(prLines.length));
-  const pr1 = JSON.parse(prLines[0]);
-  check("PRs sorted oldest first", pr1.number === 1, String(pr1.number));
-  check("changed paths flattened to strings", pr1.files[0] === "app/home/page.tsx", JSON.stringify(pr1.files));
-  check("lab note detected", pr1.has_lab_note === true, JSON.stringify(pr1.has_lab_note));
-  check("chore PR has no lab note", JSON.parse(prLines[1]).has_lab_note === false, prLines[1]);
-
-  // --- regression: merge date orders the corpus, not PR number ---
-  // PR #60 merged before #50 — review latency and long-lived branches make
-  // this routine, not exotic. Sorting by number alone (the original bug,
-  // caught on the --from-git path but present on the gh path too) would put
-  // #50 first; merge date must win.
-  const orderDir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-order-"));
-  try {
-    mkdirSync(path.join(orderDir, ".git"), { recursive: true });
-    const disagreeingPayload = [
-      { number: 60, title: "PR 60, merged first", body: "", mergedAt: "2026-01-01T00:00:00Z", labels: [], files: [] },
-      { number: 50, title: "PR 50, merged second", body: "", mergedAt: "2026-01-05T00:00:00Z", labels: [], files: [] },
-    ];
-    const disagreeingPath = path.join(orderDir, "gh.json");
-    writeFileSync(disagreeingPath, JSON.stringify(disagreeingPayload));
-    const orderRun = runCli(["bootstrap", "corpus", "--from-json", disagreeingPath], orderDir);
-    check("merge-date-vs-number corpus exits 0", orderRun.status === 0, orderRun.stderr);
-    const orderedLines = readFileSync(path.join(orderDir, ".arkaik", "corpus", "prs.jsonl"), "utf8").trim().split("\n");
-    check(
-      "merge date wins over number when they disagree",
-      JSON.parse(orderedLines[0]).number === 60 && JSON.parse(orderedLines[1]).number === 50,
-      orderedLines.join("\n"),
-    );
-  } finally {
-    rmSync(orderDir, { recursive: true, force: true });
-  }
-
-  // --- regression: --from-git doesn't mint duplicate PR numbers ---
-  // Real history duplicated numbers two ways: a `#N` mention mid-subject
-  // matched the same regex as a real "Merge pull request #N" line, and the
-  // positional fallback (starting at 1) could land on a real number. Three
-  // merges: one GitHub-authored (#5), one plain merge with no number at all
-  // (must fall back), and one that only *mentions* #5 (must NOT match it —
-  // an unanchored regex would collide with the real #5 here).
-  const gitDir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-fromgit-"));
-  try {
-    const git = (args) => spawnSync("git", args, { cwd: gitDir, encoding: "utf8" });
-    git(["init", "-q"]);
-    git(["config", "user.email", "test@example.com"]);
-    git(["config", "user.name", "Test"]);
-    git(["commit", "-q", "--allow-empty", "-m", "chore: init"]);
-    const branch = git(["symbolic-ref", "--short", "HEAD"]).stdout.trim();
-
-    git(["checkout", "-q", "-b", "feature-a"]);
-    git(["commit", "-q", "--allow-empty", "-m", "Add feature A"]);
-    git(["checkout", "-q", branch]);
-    git(["merge", "-q", "--no-ff", "feature-a", "-m", "Merge pull request #5 from acme/feature-a"]);
-
-    git(["checkout", "-q", "-b", "feature-b"]);
-    git(["commit", "-q", "--allow-empty", "-m", "Add feature B"]);
-    git(["checkout", "-q", branch]);
-    git(["merge", "-q", "--no-ff", "feature-b", "-m", "Merge branch 'feature-b'"]);
-
-    git(["checkout", "-q", "-b", "feature-c"]);
-    git(["commit", "-q", "--allow-empty", "-m", "Add feature C"]);
-    git(["checkout", "-q", branch]);
-    git(["merge", "-q", "--no-ff", "feature-c", "-m", "See #5 for context, unrelated change"]);
-
-    const fromGitRun = runCli(["bootstrap", "corpus", "--from-git"], gitDir);
-    check("--from-git corpus exits 0", fromGitRun.status === 0, fromGitRun.stderr);
-    const fromGitPrs = readFileSync(path.join(gitDir, ".arkaik", "corpus", "prs.jsonl"), "utf8")
-      .trim()
-      .split("\n")
-      .map((l) => JSON.parse(l));
-    check("--from-git produced 3 PRs", fromGitPrs.length === 3, String(fromGitPrs.length));
-    const fromGitNumbers = fromGitPrs.map((p) => p.number);
-    check(
-      "--from-git numbers are all distinct (no collision)",
-      new Set(fromGitNumbers).size === fromGitNumbers.length,
-      JSON.stringify(fromGitNumbers),
-    );
-    const realFive = fromGitPrs.find((p) => p.title.startsWith("Merge pull request #5 "));
-    check(
-      "the anchored match won: only the GitHub-authored subject claims #5",
-      realFive !== undefined && realFive.number === 5,
-      JSON.stringify(fromGitPrs),
-    );
-    const mention = fromGitPrs.find((p) => p.title === "See #5 for context, unrelated change");
-    check(
-      "a mid-subject #5 mention did not steal the real PR's number",
-      mention !== undefined && mention.number !== 5,
-      JSON.stringify(fromGitPrs),
-    );
-  } finally {
-    rmSync(gitDir, { recursive: true, force: true });
-  }
-
-  const docs = JSON.parse(readFileSync(path.join(dir, ".arkaik", "corpus", "docs.json"), "utf8"));
-  check("docs manifest found vision.md", docs.some((d) => d.path === "docs/vision.md"), JSON.stringify(docs));
-  check("docs manifest carries the heading", docs.some((d) => d.title === "Vision"), JSON.stringify(docs));
-
-  const surfacesRaw = readFileSync(path.join(dir, ".arkaik", "corpus", "surfaces.json"), "utf8");
-  const surfaces = JSON.parse(surfacesRaw);
-  check("surfaces found the page", surfaces.some((s) => s.path === "app/home/page.tsx"), JSON.stringify(surfaces));
-  check(
-    "surface classified as page (SURFACE_RULES ordering)",
-    surfaces.find((s) => s.path === "app/home/page.tsx")?.kind === "page",
-    JSON.stringify(surfaces),
-  );
-
-  check(
-    "corpus gitignores .arkaik",
-    readFileSync(path.join(dir, ".gitignore"), "utf8").includes(".arkaik/"),
-    "no .gitignore entry",
-  );
-
-  const prsRaw = readFileSync(path.join(dir, ".arkaik", "corpus", "prs.jsonl"), "utf8");
-
-  const again = runCli(["bootstrap", "corpus", "--from-json", payloadPath], dir);
-  check("corpus is idempotent", again.status === 0, again.stderr);
-  check(
-    "gitignore not duplicated",
-    readFileSync(path.join(dir, ".gitignore"), "utf8").match(/\.arkaik\//g).length === 1,
-    readFileSync(path.join(dir, ".gitignore"), "utf8"),
-  );
-  check(
-    "prs.jsonl is byte-identical on re-run",
-    readFileSync(path.join(dir, ".arkaik", "corpus", "prs.jsonl"), "utf8") === prsRaw,
-    "content differs between runs",
-  );
-  check(
-    "surfaces.json is byte-identical on re-run",
-    readFileSync(path.join(dir, ".arkaik", "corpus", "surfaces.json"), "utf8") === surfacesRaw,
-    "content differs between runs",
-  );
-
-  // --- corpus option validation ---
-  const missingValue = runCli(["bootstrap", "corpus", "--from-json"], dir);
-  check("--from-json with no value exits 1", missingValue.status === 1, String(missingValue.status));
-  check(
-    "--from-json with no value fails fast instead of falling through to gh",
-    missingValue.stderr.includes("Missing value for --from-json"),
-    missingValue.stderr,
-  );
-
-  const unknownOpt = runCli(["bootstrap", "corpus", "--nope"], dir);
-  check("corpus unknown option exits 1", unknownOpt.status === 1, String(unknownOpt.status));
-  check("corpus unknown option reports the flag", unknownOpt.stderr.includes("Unknown option: --nope"), unknownOpt.stderr);
-
-  const badLimit = runCli(["bootstrap", "corpus", "--from-json", payloadPath, "--limit", "abc"], dir);
-  check("--limit with a non-integer exits 1", badLimit.status === 1, String(badLimit.status));
-  check("--limit error names the bad value", badLimit.stderr.includes("abc"), badLimit.stderr);
-
-  const badSince = runCli(["bootstrap", "corpus", "--from-json", payloadPath, "--since", "not-a-date"], dir);
-  check("--since with an unparseable date exits 1", badSince.status === 1, String(badSince.status));
-  check("--since error names the bad value", badSince.stderr.includes("not-a-date"), badSince.stderr);
-
-  const noGitRoot = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-nogit-"));
-  try {
-    const outsideRepo = runCli(["bootstrap", "corpus", "--from-json", payloadPath], noGitRoot);
-    check("corpus outside a repo root exits 1", outsideRepo.status === 1, String(outsideRepo.status));
-    check(
-      "corpus outside a repo root names the reason",
-      outsideRepo.stderr.includes("repository root"),
-      outsideRepo.stderr,
-    );
-  } finally {
-    rmSync(noGitRoot, { recursive: true, force: true });
-  }
-
   // --- plan with no profile: recon only ---
   const plan0 = runCli(["bootstrap", "plan"], dir);
   check("plan exits 0 without a profile", plan0.status === 0, plan0.stderr);
@@ -257,6 +54,19 @@ try {
   check("only the recon unit is planned", m0.units.length === 1, JSON.stringify(m0.units.map((u) => u.id)));
   check("recon unit is wave 0", m0.units[0].wave === 0, String(m0.units[0].wave));
   check("mode is greenfield with no bundle", m0.mode === "greenfield", m0.mode);
+  check(
+    "plan gitignores .arkaik even when corpus never ran",
+    readFileSync(path.join(dir, ".gitignore"), "utf8").includes(".arkaik/"),
+    "no .gitignore entry",
+  );
+
+  const planAgain = runCli(["bootstrap", "plan"], dir);
+  check("re-plan exits 0 (gitignore step)", planAgain.status === 0, planAgain.stderr);
+  check(
+    "gitignore not duplicated by a second plan run",
+    readFileSync(path.join(dir, ".gitignore"), "utf8").match(/\.arkaik\//g).length === 1,
+    readFileSync(path.join(dir, ".gitignore"), "utf8"),
+  );
 
   // --- plan with a profile: full expansion ---
   writeFileSync(
@@ -285,6 +95,11 @@ try {
     "fragment paths are namespaced by unit",
     m1.units.every((u) => u.fragment === `.arkaik/bootstrap/fragments/${u.id}.json`),
     JSON.stringify(m1.units.map((u) => u.fragment)),
+  );
+  check(
+    "units are non-decreasing in wave (the resume-at-first-pending contract depends on it)",
+    m1.units.every((u, i, arr) => i === 0 || u.wave >= arr[i - 1].wave),
+    JSON.stringify(m1.units.map((u) => [u.id, u.wave])),
   );
 
   // --- resume preserves completed status ---
@@ -349,13 +164,12 @@ try {
 
   // --- regression: a cosmetic era title rename must NOT reset a finished unit ---
   // Area units embed area.title in their scope text (w1/w2), so a title
-  // change there already shows up as a scope change — comparing `title` on
-  // top is redundant but harmless. Era units are different: the story unit's
-  // scope text never mentions era.title, only the unit's own display
-  // `title` does. Comparing `title` would force a full redo of a story unit
-  // whose fragment is still perfectly valid, just because someone renamed
-  // the era for display purposes.
-  const eraRenameDir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-erarename-"));
+  // change there already shows up as a scope change — but scope isn't even
+  // compared any more (see the mode-flip regression below), so this is
+  // really just "title never invalidates anything." Era units make the
+  // point clearest: the story unit's scope text never mentions era.title,
+  // only the unit's own display `title` does.
+  const eraRenameDir = freshRepoDir("arkaik-bootstrap-erarename-");
   try {
     mkdirSync(path.join(eraRenameDir, ".arkaik", "bootstrap"), { recursive: true });
     writeFileSync(
@@ -368,7 +182,7 @@ try {
     eraManifestA.units.find((u) => u.id === "w3-chapter-one").status = "done";
     writeFileSync(path.join(eraRenameDir, ".arkaik", "bootstrap", "manifest.json"), JSON.stringify(eraManifestA));
 
-    // Same slug, same scope — only the display title changes.
+    // Same slug, same slice — only the display title changes.
     writeFileSync(
       path.join(eraRenameDir, ".arkaik", "bootstrap", "profile.json"),
       JSON.stringify({ areas: [], eras: [{ slug: "chapter-one", title: "Chapter One: Redux" }] }),
@@ -387,6 +201,56 @@ try {
     rmSync(eraRenameDir, { recursive: true, force: true });
   }
 
+  // --- regression: a greenfield -> brownfield mode flip must NOT reset finished units ---
+  // Only w1's scope text is mode-dependent ("map the anatomy" vs "reconcile
+  // the existing map"). A real run flips mode exactly this way: `merge`
+  // lands wave-1 nodes, the bundle now has content, and the next `plan`
+  // reads brownfield — but nothing about the ALREADY-MERGED wave-1 fragment
+  // became wrong. Comparing `scope` (as an earlier version of this fix did)
+  // would revert every finished wave-1 unit to pending on that flip alone,
+  // which under `plan --issues` (Task 8) means re-filing a GitHub issue for
+  // work that already shipped.
+  const modeFlipDir = freshRepoDir("arkaik-bootstrap-modeflip-");
+  try {
+    mkdirSync(path.join(modeFlipDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(
+      path.join(modeFlipDir, ".arkaik", "bootstrap", "profile.json"),
+      JSON.stringify({
+        areas: [{ id: "home", title: "Home", paths: ["app/home"] }],
+        eras: [{ slug: "first-light", title: "First light" }],
+      }),
+    );
+    const flipPlanA = runCli(["bootstrap", "plan"], modeFlipDir);
+    check("mode-flip setup plan exits 0", flipPlanA.status === 0, flipPlanA.stderr);
+    const flipManifestA = JSON.parse(readFileSync(path.join(modeFlipDir, ".arkaik", "bootstrap", "manifest.json"), "utf8"));
+    check("mode-flip setup starts greenfield", flipManifestA.mode === "greenfield", flipManifestA.mode);
+    for (const u of flipManifestA.units) u.status = "done";
+    writeFileSync(path.join(modeFlipDir, ".arkaik", "bootstrap", "manifest.json"), JSON.stringify(flipManifestA));
+
+    // Populate the default bundle path so the next plan reads brownfield.
+    mkdirSync(path.join(modeFlipDir, "docs", "arkaik"), { recursive: true });
+    writeFileSync(
+      path.join(modeFlipDir, "docs", "arkaik", "bundle.json"),
+      JSON.stringify({
+        schema_version: 3,
+        project: { id: "demo", title: "Demo", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z" },
+        nodes: [{ id: "V-home", project_id: "demo", species: "view", title: "Home", status: "live", platforms: ["web"] }],
+        edges: [],
+      }),
+    );
+    const flipPlanB = runCli(["bootstrap", "plan"], modeFlipDir);
+    check("mode-flip re-plan exits 0", flipPlanB.status === 0, flipPlanB.stderr);
+    const flipManifestB = JSON.parse(readFileSync(path.join(modeFlipDir, ".arkaik", "bootstrap", "manifest.json"), "utf8"));
+    check("the mode actually flipped to brownfield", flipManifestB.mode === "brownfield", flipManifestB.mode);
+    check(
+      "every unit stays done across the mode flip, including w1 (whose scope text changed)",
+      flipManifestB.units.every((u) => u.status === "done"),
+      JSON.stringify(flipManifestB.units.map((u) => [u.id, u.status])),
+    );
+  } finally {
+    rmSync(modeFlipDir, { recursive: true, force: true });
+  }
+
   // --- regression: decisions/status-arcs must not depend on eras existing ---
   // The decisions unit mines design docs; the status-arc unit arcs anatomy
   // nodes. Neither reads eras. Gating both on `profile.eras.length` means a
@@ -394,7 +258,7 @@ try {
   // judged there's no story worth splitting into eras yet) silently loses
   // decision-mining and status arcs even though areas — and therefore docs
   // and anatomy nodes — exist.
-  const noErasDir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-noeras-"));
+  const noErasDir = freshRepoDir("arkaik-bootstrap-noeras-");
   try {
     mkdirSync(path.join(noErasDir, ".arkaik", "bootstrap"), { recursive: true });
     writeFileSync(
@@ -431,7 +295,7 @@ try {
   // tell a freshly-scaffolded `arkaik init` bundle ({nodes: [], edges: []})
   // from a real one. A 15-node beachhead should read brownfield; an empty
   // scaffold should not.
-  const stubDir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-stub-"));
+  const stubDir = freshRepoDir("arkaik-bootstrap-stub-");
   try {
     mkdirSync(path.join(stubDir, "docs", "arkaik"), { recursive: true });
     writeFileSync(
@@ -469,10 +333,10 @@ try {
   }
 
   // --- regression: a bundle that exists but isn't valid JSON must not crash or guess ---
-  // detectMode's throw path (added for the stub-bundle fix above) had zero
-  // coverage — the branch most likely to rot silently. plan must fail
-  // loudly, naming the bundle path, rather than defaulting to either mode.
-  const badJsonDir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-badjson-"));
+  // detectMode's throw path had zero coverage — the branch most likely to
+  // rot silently. plan must fail loudly, naming the bundle path, rather
+  // than defaulting to either mode.
+  const badJsonDir = freshRepoDir("arkaik-bootstrap-badjson-");
   try {
     mkdirSync(path.join(badJsonDir, "docs", "arkaik"), { recursive: true });
     writeFileSync(path.join(badJsonDir, "docs", "arkaik", "bundle.json"), "{ not valid json");
@@ -486,7 +350,7 @@ try {
   // --- regression: valid JSON that isn't bundle-shaped falls back to greenfield, not a crash ---
   // Currently true only by accident of the Array.isArray guard in detectMode
   // — pin it so it stays true on purpose.
-  const notBundleDir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-notbundle-"));
+  const notBundleDir = freshRepoDir("arkaik-bootstrap-notbundle-");
   try {
     mkdirSync(path.join(notBundleDir, "docs", "arkaik"), { recursive: true });
     writeFileSync(path.join(notBundleDir, "docs", "arkaik", "bundle.json"), JSON.stringify({ hello: "world" }));
@@ -507,7 +371,7 @@ try {
   // which mangles an absolute path (path.join("/repo", "/abs/bundle.json")
   // -> "/repo/abs/bundle.json") and silently fell back to greenfield even
   // when the real bundle at that absolute path had real content.
-  const absBundleDir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-absbundle-"));
+  const absBundleDir = freshRepoDir("arkaik-bootstrap-absbundle-");
   const absBundleFile = path.join(absBundleDir, "elsewhere-bundle.json");
   try {
     writeFileSync(
@@ -537,7 +401,7 @@ try {
   // make the fragment path escape .arkaik/bootstrap/fragments/ entirely;
   // plan must refuse rather than mint a unit that writes outside its own
   // working directory.
-  const unsafeIdDir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-unsafeid-"));
+  const unsafeIdDir = freshRepoDir("arkaik-bootstrap-unsafeid-");
   try {
     mkdirSync(path.join(unsafeIdDir, ".arkaik", "bootstrap"), { recursive: true });
     writeFileSync(
@@ -563,7 +427,7 @@ try {
     rmSync(unsafeIdDir, { recursive: true, force: true });
   }
 
-  const spaceIdDir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-spaceid-"));
+  const spaceIdDir = freshRepoDir("arkaik-bootstrap-spaceid-");
   try {
     mkdirSync(path.join(spaceIdDir, ".arkaik", "bootstrap"), { recursive: true });
     writeFileSync(
@@ -582,7 +446,7 @@ try {
   // id (and thus the same fragment path) — the second one silently
   // overwriting the first agent's output. plan must catch this at plan time,
   // not leave it for merge to discover.
-  const dupIdDir = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-dupid-"));
+  const dupIdDir = freshRepoDir("arkaik-bootstrap-dupid-");
   try {
     mkdirSync(path.join(dupIdDir, ".arkaik", "bootstrap"), { recursive: true });
     writeFileSync(
@@ -598,6 +462,196 @@ try {
     );
   } finally {
     rmSync(dupIdDir, { recursive: true, force: true });
+  }
+
+  // --- regression: case-differing ids collide on a case-insensitive filesystem ---
+  // macOS and Windows both default to case-insensitive filesystems, so ids
+  // "Home" and "home" would resolve to the SAME fragment file even though
+  // they're different strings — a case-sensitive duplicate check alone
+  // cannot catch that. Ids must be rejected for carrying uppercase at all,
+  // not merely compared case-insensitively.
+  const caseIdDir = freshRepoDir("arkaik-bootstrap-caseid-");
+  try {
+    mkdirSync(path.join(caseIdDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(
+      path.join(caseIdDir, ".arkaik", "bootstrap", "profile.json"),
+      JSON.stringify({ areas: [{ id: "Home", title: "Home", paths: ["app/home"] }], eras: [] }),
+    );
+    const caseIdPlan = runCli(["bootstrap", "plan"], caseIdDir);
+    check("plan rejects an uppercase area id", caseIdPlan.status === 1, String(caseIdPlan.status));
+    check(
+      "the rejection says ids must be lowercase kebab-case",
+      caseIdPlan.stderr.toLowerCase().includes("lowercase"),
+      caseIdPlan.stderr,
+    );
+  } finally {
+    rmSync(caseIdDir, { recursive: true, force: true });
+  }
+
+  // --- regression: an oversized id fails at plan time, not at fragment-write time ---
+  const longIdDir = freshRepoDir("arkaik-bootstrap-longid-");
+  try {
+    mkdirSync(path.join(longIdDir, ".arkaik", "bootstrap"), { recursive: true });
+    const longId = "a".repeat(300);
+    writeFileSync(
+      path.join(longIdDir, ".arkaik", "bootstrap", "profile.json"),
+      JSON.stringify({ areas: [{ id: longId, title: "Too Long", paths: ["app"] }], eras: [] }),
+    );
+    const longIdPlan = runCli(["bootstrap", "plan"], longIdDir);
+    check("plan rejects an id longer than the length cap", longIdPlan.status === 1, String(longIdPlan.status));
+  } finally {
+    rmSync(longIdDir, { recursive: true, force: true });
+  }
+
+  // --- regression: an area with no paths fails open otherwise (Task 4's primary token lever) ---
+  // An empty/missing `paths` produces `slice: {}`, which Task 4's
+  // resolveSlice reads as `?? []` -> no filter -> the WHOLE corpus, silently,
+  // with nothing in the manifest that looks wrong.
+  const noPathsDir = freshRepoDir("arkaik-bootstrap-nopaths-");
+  try {
+    mkdirSync(path.join(noPathsDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(
+      path.join(noPathsDir, ".arkaik", "bootstrap", "profile.json"),
+      JSON.stringify({ areas: [{ id: "home", title: "Home", paths: [] }], eras: [] }),
+    );
+    const noPathsPlan = runCli(["bootstrap", "plan"], noPathsDir);
+    check("plan rejects an area with an empty paths array", noPathsPlan.status === 1, String(noPathsPlan.status));
+    check("the rejection names the offending area", noPathsPlan.stderr.includes("home"), noPathsPlan.stderr);
+  } finally {
+    rmSync(noPathsDir, { recursive: true, force: true });
+  }
+
+  const missingPathsDir = freshRepoDir("arkaik-bootstrap-missingpaths-");
+  try {
+    mkdirSync(path.join(missingPathsDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(
+      path.join(missingPathsDir, ".arkaik", "bootstrap", "profile.json"),
+      JSON.stringify({ areas: [{ id: "home", title: "Home" }], eras: [] }),
+    );
+    const missingPathsPlan = runCli(["bootstrap", "plan"], missingPathsDir);
+    check("plan rejects an area with no paths field at all", missingPathsPlan.status === 1, String(missingPathsPlan.status));
+  } finally {
+    rmSync(missingPathsDir, { recursive: true, force: true });
+  }
+
+  // --- regression: areas/eras must actually be arrays ---
+  // `areas: "home"` would otherwise reach a `for...of`: a string iterates
+  // its characters (silently wrong, not an error). `areas: 5` throws a raw
+  // "is not iterable" with no mention of profile.json.
+  const areasStringDir = freshRepoDir("arkaik-bootstrap-areasstring-");
+  try {
+    mkdirSync(path.join(areasStringDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(path.join(areasStringDir, ".arkaik", "bootstrap", "profile.json"), JSON.stringify({ areas: "home" }));
+    const areasStringPlan = runCli(["bootstrap", "plan"], areasStringDir);
+    check("plan rejects areas: <string> instead of iterating its characters", areasStringPlan.status === 1, String(areasStringPlan.status));
+    check("the rejection mentions profile.json", areasStringPlan.stderr.includes("profile.json"), areasStringPlan.stderr);
+  } finally {
+    rmSync(areasStringDir, { recursive: true, force: true });
+  }
+
+  const areasNumberDir = freshRepoDir("arkaik-bootstrap-areasnumber-");
+  try {
+    mkdirSync(path.join(areasNumberDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(path.join(areasNumberDir, ".arkaik", "bootstrap", "profile.json"), JSON.stringify({ areas: 5 }));
+    const areasNumberPlan = runCli(["bootstrap", "plan"], areasNumberDir);
+    check("plan rejects areas: <number> with a clear message, not a raw crash", areasNumberPlan.status === 1, String(areasNumberPlan.status));
+    check(
+      "the rejection does not leak a raw 'is not iterable' TypeError",
+      !areasNumberPlan.stderr.includes("is not iterable"),
+      areasNumberPlan.stderr,
+    );
+  } finally {
+    rmSync(areasNumberDir, { recursive: true, force: true });
+  }
+
+  const erasStringDir = freshRepoDir("arkaik-bootstrap-erasstring-");
+  try {
+    mkdirSync(path.join(erasStringDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(path.join(erasStringDir, ".arkaik", "bootstrap", "profile.json"), JSON.stringify({ eras: "oops" }));
+    const erasStringPlan = runCli(["bootstrap", "plan"], erasStringDir);
+    check("plan rejects eras: <string> instead of iterating its characters", erasStringPlan.status === 1, String(erasStringPlan.status));
+  } finally {
+    rmSync(erasStringDir, { recursive: true, force: true });
+  }
+
+  // --- regression: a malformed individual area/era entry must not crash ---
+  const malformedAreaDir = freshRepoDir("arkaik-bootstrap-malformedarea-");
+  try {
+    mkdirSync(path.join(malformedAreaDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(path.join(malformedAreaDir, ".arkaik", "bootstrap", "profile.json"), JSON.stringify({ areas: [null] }));
+    const malformedAreaPlan = runCli(["bootstrap", "plan"], malformedAreaDir);
+    check("plan rejects a null area entry instead of crashing on .id", malformedAreaPlan.status === 1, String(malformedAreaPlan.status));
+    check(
+      "the rejection is a clean message, not a raw TypeError from reading .id off null",
+      !malformedAreaPlan.stderr.includes("Cannot read propert"),
+      malformedAreaPlan.stderr,
+    );
+  } finally {
+    rmSync(malformedAreaDir, { recursive: true, force: true });
+  }
+
+  const malformedEraDir = freshRepoDir("arkaik-bootstrap-malformedera-");
+  try {
+    mkdirSync(path.join(malformedEraDir, ".arkaik", "bootstrap"), { recursive: true });
+    // null, not a primitive like 42: `(42).slug` auto-boxes to `undefined`
+    // (no crash risk), but `null.slug` throws a raw TypeError — the actual
+    // risk this guard exists for.
+    writeFileSync(path.join(malformedEraDir, ".arkaik", "bootstrap", "profile.json"), JSON.stringify({ eras: [null] }));
+    const malformedEraPlan = runCli(["bootstrap", "plan"], malformedEraDir);
+    check("plan rejects a null era entry instead of crashing on .slug", malformedEraPlan.status === 1, String(malformedEraPlan.status));
+    check(
+      "the rejection is a clean message, not a raw TypeError from reading .slug off null",
+      !malformedEraPlan.stderr.includes("Cannot read propert"),
+      malformedEraPlan.stderr,
+    );
+  } finally {
+    rmSync(malformedEraDir, { recursive: true, force: true });
+  }
+
+  // --- regression: plan requires a repo root, same guard as corpus ---
+  const noGitRoot = mkdtempSync(path.join(tmpdir(), "arkaik-bootstrap-plan-nogit-"));
+  try {
+    const outsideRepo = runCli(["bootstrap", "plan"], noGitRoot);
+    check("plan outside a repo root exits 1", outsideRepo.status === 1, String(outsideRepo.status));
+    check("plan outside a repo root names the reason", outsideRepo.stderr.includes("repository root"), outsideRepo.stderr);
+    check(
+      "no manifest is written outside a repo root",
+      !existsSync(path.join(noGitRoot, ".arkaik", "bootstrap", "manifest.json")),
+      "manifest.json was written outside a repo root",
+    );
+  } finally {
+    rmSync(noGitRoot, { recursive: true, force: true });
+  }
+
+  // --- regression: parse errors name the file, not just "Unexpected end of JSON input" ---
+  const badProfileDir = freshRepoDir("arkaik-bootstrap-badprofile-");
+  try {
+    mkdirSync(path.join(badProfileDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(path.join(badProfileDir, ".arkaik", "bootstrap", "profile.json"), "{ not valid json");
+    const badProfilePlan = runCli(["bootstrap", "plan"], badProfileDir);
+    check("plan exits 1 against an unparseable profile.json", badProfilePlan.status === 1, String(badProfilePlan.status));
+    check(
+      "the failure names profile.json specifically",
+      badProfilePlan.stderr.includes("profile.json"),
+      badProfilePlan.stderr,
+    );
+  } finally {
+    rmSync(badProfileDir, { recursive: true, force: true });
+  }
+
+  const badManifestDir = freshRepoDir("arkaik-bootstrap-badmanifest-");
+  try {
+    mkdirSync(path.join(badManifestDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(path.join(badManifestDir, ".arkaik", "bootstrap", "manifest.json"), "{ not valid json");
+    const badManifestPlan = runCli(["bootstrap", "plan"], badManifestDir);
+    check("plan exits 1 against an unparseable manifest.json", badManifestPlan.status === 1, String(badManifestPlan.status));
+    check(
+      "the failure names manifest.json specifically",
+      badManifestPlan.stderr.includes("manifest.json"),
+      badManifestPlan.stderr,
+    );
+  } finally {
+    rmSync(badManifestDir, { recursive: true, force: true });
   }
 } finally {
   rmSync(dir, { recursive: true, force: true });
