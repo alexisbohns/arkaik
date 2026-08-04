@@ -1475,67 +1475,39 @@ git commit -m "feat(cli): bootstrap plan — resumable work-unit manifest"
 
 ---
 
-### Task 4: `bootstrap slice` and `bootstrap index`
+### Task 4: `bootstrap slice` and `bootstrap index` — shipped, findings below
 
-These two are the token levers: a slice is what one agent reads instead of the whole corpus; an index is what it reads instead of the whole bundle.
+These two are the token levers: a slice is what one agent reads instead of the whole corpus; an index is what it reads instead of the whole bundle. **The reference code below is what actually shipped, not the original draft** — quality review (self-review, this task's required last step) found the draft failed open on its primary reason for existing (era filtering was declared but never wired up), plus five smaller findings. All six are listed below with what was done about each; read this before touching either file again.
 
 **Files:**
 - Create: `packages/cli/src/lib/bootstrap/slice.ts`
 - Create: `packages/cli/src/lib/bootstrap/index-view.ts`
 - Modify: `packages/cli/src/commands/bootstrap.ts`
-- Test: `tests/cli/bootstrap-plan.test.js`
+- Test: `tests/cli/bootstrap-slice.test.js` (new file, not an extension of `bootstrap-plan.test.js` — see "Why a new test file" below)
 
-- [ ] **Step 1: Write the failing test**
+**Six findings, six decisions:**
 
-Append inside the `try` block:
+1. **`slice.eras` was declared on `WorkUnit` but never consumed.** Confirmed: `resolveSlice`'s only guard was `paths.length > 0`; a wave-3 era unit (`slice: { eras: [slug] }`) has no `paths`, so it fell straight through to "return every PR in the corpus" — on a 324-PR repo, the exact failure the task brief warned about. Fixed by adding a second branch: when `paths` is empty but `eras` is non-empty, look each slug up in `profile.json`'s `eras` list (via the already-exported `readProfile`) and filter PRs by `merged_at` falling inside that era's `[from, to]` window (`matchesEras` in `slice.ts`).
+   - **Design call, not in the original draft:** the manifest itself only ever stores the era **slug**, never its `from`/`to` — `planUnits` (manifest.ts) doesn't read those fields today, and embedding them into `WorkUnit.slice` would mean changing the manifest schema and `sameSlice`'s re-plan invalidation logic too, a much bigger change than this bug needed. `resolveSlice` already takes `cwd`, so it looks the window up in `profile.json` directly at slice time instead. Trade-off, noted in code: if `profile.json`'s dates are edited without re-running `plan`, a `done` unit won't notice its window changed — narrower than the bug being fixed, and the same shape of gap `sameSlice` already accepts for `era.title` (a cosmetic rename).
+   - **An era with no `from` and no `to` at all** (a real, currently-passing case: `tests/cli/bootstrap-plan.test.js`'s mode-flip regression uses exactly `{ slug: "first-light", title: "First light" }`, no dates, and expects `plan` to succeed) — deliberately made to **match zero PRs**, not "everything." Matching everything would just move the same fail-open bug one level down; matching nothing is visible (an agent looking at an empty `slice.prs` for a story unit notices and can escalate) instead of silently expensive. This was a considered judgment call, not dictated by any pre-existing test of `resolveSlice` itself.
+   - **A PR that falls in no era** is simply excluded from every era-unit's slice — no special handling needed, and not a defect: `w3-decisions` and `w3-status-arcs` (see finding 2) still see it via their whole-corpus access.
 
-```js
-  // --- slice ---
-  const slice = runCli(["bootstrap", "slice", "w1-home"], dir);
-  check("slice exits 0", slice.status === 0, slice.stderr);
-  const sliced = JSON.parse(slice.stdout);
-  check("slice carries the unit scope", typeof sliced.scope === "string" && sliced.scope.length > 0, slice.stdout);
-  check("slice matched the home PR", sliced.prs.length === 1 && sliced.prs[0].number === 1, JSON.stringify(sliced.prs));
-  check("slice excluded the chore PR", !sliced.prs.some((p) => p.number === 2), JSON.stringify(sliced.prs));
-  check("slice lists matching surfaces", sliced.surfaces.some((s) => s.path === "app/home/page.tsx"), JSON.stringify(sliced.surfaces));
-  check("slice omits docs unless asked", sliced.docs === undefined, JSON.stringify(sliced.docs));
+2. **"No paths → no filtering" fallback.** Task 3 closed this for areas (`area.paths` must be non-empty, or `plan` rejects `profile.json`). After the era fix above, the units that still reach `resolveSlice`'s final "no filter" branch are exactly `w0-recon`, `w3-decisions`, and `w3-status-arcs` — all three hardcoded in `manifest.ts`'s `planUnits`, never agent-influenced, and all three genuinely need whole-corpus access (recon needs the shape of everything to write `profile.json`; decisions and status-arcs both need visibility across the whole timeline, not one area or era). Verified this is provably closed by construction, not merely by convention: an area always has `paths`, an era unit always has a slug in `eras` (even one that now resolves to zero PRs rather than "everything"), so the only way to reach "no filter" is to be one of the three hardcoded kinds. Decision: leave "empty means everything" as-is, but only because it's now unreachable except by design — documented the invariant directly in `resolveSlice`'s comment so a future new wave-N kind that forgets to set `paths`/`eras` doesn't silently inherit whole-corpus access with nothing flagging it.
 
-  const reconSlice = JSON.parse(runCli(["bootstrap", "slice", "w0-recon"], dir).stdout);
-  check("docs unit gets the docs manifest", Array.isArray(reconSlice.docs), JSON.stringify(reconSlice.docs));
+3. **`matchesPaths` prefix semantics.** Tested directly: `app/home` vs. `app/homepage/thing.ts` does **not** false-match — the existing `p.endsWith("/") ? p : \`${p}/\`` trick already turns the comparison into "starts with `app/home/`", which `app/homepage/...` does not. No bug here; verified with a dedicated test case (`tests/cli/bootstrap-slice.test.js`, PR 3) rather than taking the draft's word for it. What **was** missing: `profile.json`'s `paths` are agent-written free text, and nothing stopped one from being spelled `app\\home` (Windows-style). Corpus files are always POSIX (`corpus.ts` normalizes at mining time), so an unnormalized backslash path would silently match **nothing** — the opposite failure from the usual concern, equally silent. Added a `toPosix()` normalization in `matchesPaths` for both the corpus path and every path in `paths`, and a test proving a `paths: ["win\\dir"]` area still matches a POSIX-stored `win/dir/file.ts`.
 
-  const badSlice = runCli(["bootstrap", "slice", "no-such-unit"], dir);
-  check("unknown unit exits 1", badSlice.status === 1, String(badSlice.status));
+4. **`renderIndex`'s tab-separated format.** Confirmed the bug: an embedded tab in a node title shifts every column after it; an embedded newline splits one node into two lines, the second with no id at all. Either way, an agent parsing `line.split("\t")` silently mis-associates an id with the wrong title, with no error anywhere. Fixed with a `tsvField()` helper that collapses any run of `\t`/`\r`/`\n` into a single space, applied to all four columns (id, species, title, product) defensively — title is the realistic risk, but sanitizing the rest costs nothing. Tested with a title containing a tab, a CR, and a newline together, asserting the node still produces exactly one line with exactly four tab-separated columns.
 
-  // --- index ---
-  const bundleDir = path.join(dir, "docs", "arkaik");
-  mkdirSync(bundleDir, { recursive: true });
-  writeFileSync(
-    path.join(bundleDir, "bundle.json"),
-    JSON.stringify({
-      schema_version: 3,
-      project: { id: "demo", title: "Demo", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z" },
-      nodes: [
-        { id: "V-home", project_id: "demo", species: "view", title: "Home", status: "live", platforms: ["web"], metadata: { product: "app" } },
-        { id: "F-onboarding", project_id: "demo", species: "flow", title: "Onboarding", status: "live", platforms: ["web"] },
-      ],
-      edges: [],
-    }),
-  );
-  const idx = runCli(["bootstrap", "index"], dir);
-  check("index exits 0", idx.status === 0, idx.stderr);
-  check("index lists the view with its product", idx.stdout.includes("V-home\tview\tHome\tapp"), idx.stdout);
-  check("index lists the flow with no product", idx.stdout.includes("F-onboarding\tflow\tOnboarding\t-"), idx.stdout);
-  check("index is one line per node plus header", idx.stdout.trim().split("\n").length === 3, idx.stdout);
-```
+5. **`index` reading the bundle.** Checked for Task 3's `path.join`-vs-`path.resolve` bug (an absolute path getting mangled into `<cwd>/abs/path`): **not present** — the draft's `runIndex` already used `path.resolve(process.cwd(), target)`, not `path.join`, so an absolute positional argument resolves to itself correctly. Verified with a dedicated test (an absolute `--bundle`-style path argument). `readBundle` (existing, in `bundle-io.ts`) already throws a clean, specific message on a missing file (`File not found: ...`) or unparseable JSON (`Cannot parse JSON — ...`), and `runIndex`'s existing `try`/`catch` turns either into a clean one-line stderr message and exit 1, not a raw stack trace — verified both with tests. No code change needed for this one; shipped as drafted.
 
-- [ ] **Step 2: Run it to verify it fails**
+6. **`slice` output size.** Two changes, both aimed squarely at the "primary token lever" framing:
+   - **Per-PR body cap.** A slice includes every matched PR's full body. This repo's own merge-commit bodies alone range from ~130B to ~5.8KB (sampled from `git log`), and nothing bounds an outlier (a pasted CI log, a giant checklist) from dominating a slice on its own. Added a 4000-character cap (`MAX_BODY_CHARS` in `slice.ts`): a body past that length is truncated with a `…[truncated N more characters]` marker. This only affects what a *slice* hands out — the corpus file on disk (`prs.jsonl`) is untouched. Deliberately not lower: 4000 chars is generous relative to this repo's own median PR body, so it only clips genuine outliers, not ordinary PRs.
+   - **Compact JSON, not pretty-printed.** The original draft's `runSlice` used `JSON.stringify(slice, null, 2)`. 2-space indentation meaningfully inflates an array of PR/surface objects for no reader who needs it — the consumer is an agent parsing JSON, not a human skimming a terminal. Changed to `JSON.stringify(slice)` (no indent). Verified with a test asserting the CLI's stdout is single-line.
+   - Considered and declined: filtering `surfaces` by era for wave-3 units (era units currently get every surface, not just ones near their date window). `surfaces.json` entries are `{path, kind}` only — no dates — so there's nothing to filter by, and the entries themselves are small (a few KB even on a large repo). Left as-is; flagged here rather than silently doing nothing.
 
-Run: `node tests/cli/bootstrap-plan.test.js`
-Expected: FAIL — "Unknown bootstrap subcommand: slice".
+**Why a new test file:** `tests/cli/bootstrap-plan.test.js` was already 660 lines / 73 checks by the time this task started, and a realistic `slice` test needs a full corpus (`bootstrap corpus --from-json`) *and* a full manifest (`bootstrap plan` against a real `profile.json`) — a meaningfully different fixture shape than `bootstrap-plan.test.js`'s profile/manifest-only setup. Matches the precedent Task 3 already set (splitting `bootstrap-corpus.test.js` out for the same size reason). **Task 9 must list `tests/cli/bootstrap-slice.test.js` in the `test:bootstrap` script** (already updated in Task 9's section below — check it's still there if Task 9 is re-planned).
 
-- [ ] **Step 3: Write `slice.ts`**
-
-Create `packages/cli/src/lib/bootstrap/slice.ts`:
+The shipped `slice.ts`:
 
 ```ts
 /**
@@ -1544,13 +1516,17 @@ Create `packages/cli/src/lib/bootstrap/slice.ts`:
  * This is the method's primary token lever: an agent reads ~30-60KB of its own
  * slice instead of the whole mined corpus. Path matching is prefix-based on
  * repo-relative POSIX paths — a unit that owns `app/home` gets every PR that
- * touched anything beneath it.
+ * touched anything beneath it. Era matching is date-range based: a wave-3
+ * story unit's `slice.eras` names a slug, and this file looks that slug's
+ * `from`/`to` window up in profile.json — see `eraWindows` below for why the
+ * window lives there and not in the manifest itself.
  */
 import { existsSync, readFileSync } from "node:fs";
 
 import type { CorpusDoc, CorpusPr, CorpusSurface } from "./corpus";
 import { readCorpusPrs } from "./corpus";
 import type { WorkUnit } from "./manifest";
+import { readProfile } from "./manifest";
 import { at, DOCS_FILE, SURFACES_FILE } from "./paths";
 
 export interface Slice {
@@ -1569,20 +1545,70 @@ function readJsonArray<T>(file: string): T[] {
   return Array.isArray(parsed) ? (parsed as T[]) : [];
 }
 
-/** True when `filePath` sits at or beneath any of `paths`. */
+function toPosix(value: string): string {
+  return value.includes("\\") ? value.split("\\").join("/") : value;
+}
+
 export function matchesPaths(filePath: string, paths: readonly string[]): boolean {
-  return paths.some((p) => filePath === p || filePath.startsWith(p.endsWith("/") ? p : `${p}/`));
+  const file = toPosix(filePath);
+  return paths.some((raw) => {
+    const p = toPosix(raw);
+    return file === p || file.startsWith(p.endsWith("/") ? p : `${p}/`);
+  });
+}
+
+interface EraWindow {
+  from?: string;
+  to?: string;
+}
+
+function eraWindows(cwd: string, slugs: readonly string[]): EraWindow[] {
+  if (slugs.length === 0) return [];
+  const profile = readProfile(cwd);
+  const bySlug = new Map((profile?.eras ?? []).map((e) => [e.slug, e]));
+  return slugs.map((slug) => {
+    const era = bySlug.get(slug);
+    return era ? { from: era.from, to: era.to } : {};
+  });
+}
+
+export function matchesEras(mergedAt: string, windows: readonly EraWindow[]): boolean {
+  const merged = Date.parse(mergedAt);
+  if (Number.isNaN(merged)) return false;
+  return windows.some((w) => {
+    if (w.from === undefined && w.to === undefined) return false;
+    const from = w.from !== undefined ? Date.parse(w.from) : undefined;
+    const to = w.to !== undefined ? Date.parse(w.to) : undefined;
+    if (from !== undefined && !Number.isNaN(from) && merged < from) return false;
+    if (to !== undefined && !Number.isNaN(to) && merged > to) return false;
+    return true;
+  });
+}
+
+const MAX_BODY_CHARS = 4000;
+
+function boundBody(pr: CorpusPr): CorpusPr {
+  if (pr.body.length <= MAX_BODY_CHARS) return pr;
+  const cut = pr.body.length - MAX_BODY_CHARS;
+  return { ...pr, body: `${pr.body.slice(0, MAX_BODY_CHARS)}\n\n…[truncated ${cut} more characters]` };
 }
 
 export function resolveSlice(cwd: string, unit: WorkUnit): Slice {
   const paths = unit.slice.paths ?? [];
+  const eraSlugs = unit.slice.eras ?? [];
   const allPrs = readCorpusPrs(cwd);
   const surfaces = readJsonArray<CorpusSurface>(at(cwd, SURFACES_FILE));
 
-  // A unit with no paths (recon, decisions, eras) is not path-filtered: the
-  // era units want their whole date window, and recon wants the shape of
-  // everything. Path filtering exists for the per-area waves.
-  const prs = paths.length > 0 ? allPrs.filter((pr) => pr.files.some((f) => matchesPaths(f, paths))) : allPrs;
+  let prs: CorpusPr[];
+  if (paths.length > 0) {
+    prs = allPrs.filter((pr) => pr.files.some((f) => matchesPaths(f, paths)));
+  } else if (eraSlugs.length > 0) {
+    const windows = eraWindows(cwd, eraSlugs);
+    prs = allPrs.filter((pr) => matchesEras(pr.merged_at, windows));
+  } else {
+    prs = allPrs;
+  }
+  prs = prs.map(boundBody);
 
   const slice: Slice = {
     unit: unit.id,
@@ -1599,24 +1625,19 @@ export function resolveSlice(cwd: string, unit: WorkUnit): Slice {
 }
 ```
 
-- [ ] **Step 4: Write `index-view.ts`**
-
-Create `packages/cli/src/lib/bootstrap/index-view.ts`:
+The shipped `index-view.ts`:
 
 ```ts
-/**
- * A compact listing of the current map: id, species, title, product — one
- * tab-separated line per node.
- *
- * An agent that must reference existing nodes (every brownfield reconcile unit,
- * every acceptance unit writing `covers` edges) needs their ids, not their
- * bodies. For a 173-node map this is a few KB against a 164KB bundle.
- */
 interface IndexNode {
   id?: unknown;
   species?: unknown;
   title?: unknown;
   metadata?: { product?: unknown } | null;
+}
+
+function tsvField(value: unknown, fallback: string): string {
+  const str = value === undefined || value === null ? fallback : String(value);
+  return str.replace(/[\t\r\n]+/g, " ");
 }
 
 export function renderIndex(bundle: { nodes?: unknown }): string {
@@ -1625,70 +1646,23 @@ export function renderIndex(bundle: { nodes?: unknown }): string {
   for (const node of nodes) {
     const product = node.metadata && typeof node.metadata === "object" ? node.metadata.product : undefined;
     lines.push(
-      [String(node.id ?? ""), String(node.species ?? ""), String(node.title ?? ""), product ? String(product) : "-"].join("\t"),
+      [tsvField(node.id, ""), tsvField(node.species, ""), tsvField(node.title, ""), product ? tsvField(product, "-") : "-"].join(
+        "\t",
+      ),
     );
   }
   return `${lines.join("\n")}\n`;
 }
 ```
 
-- [ ] **Step 5: Wire both subcommands**
+`bootstrap.ts`'s `runSlice` calls `console.log(JSON.stringify(resolveSlice(cwd, unit)))` — no `null, 2` — and wraps the call in a `try`/`catch` (needed now that `resolveSlice` can throw via `readProfile` on an unparseable `profile.json`). `runIndex` is unchanged from the draft. Both cases are wired into the `switch` in `runBootstrap`.
 
-In `packages/cli/src/commands/bootstrap.ts` add:
+Verification: `npm run build -w arkaik && node tests/cli/bootstrap-slice.test.js` (35 checks, all passing), plus a full re-run of `bootstrap-corpus.test.js` (39) and `bootstrap-plan.test.js` (73) to confirm no regressions, plus `npm run test:cli` for the rest of the CLI suite.
 
-```ts
-import { readBundle } from "../lib/bundle-io";
-import { renderIndex } from "../lib/bootstrap/index-view";
-import { resolveSlice } from "../lib/bootstrap/slice";
-
-function runSlice(argv: string[]): void {
-  const cwd = process.cwd();
-  const unitId = argv[0];
-  if (unitId === undefined || unitId === "-h" || unitId === "--help") {
-    console.log("arkaik bootstrap slice <unit>\n\nPrint the corpus subset one work unit needs, as JSON.");
-    process.exit(unitId === undefined ? 1 : 0);
-  }
-
-  const manifest = readManifest(cwd);
-  if (!manifest) {
-    console.error("No manifest. Run `arkaik bootstrap plan` first.");
-    process.exit(1);
-  }
-  const unit = manifest.units.find((u) => u.id === unitId);
-  if (!unit) {
-    console.error(`Unknown unit: ${unitId}\nKnown units: ${manifest.units.map((u) => u.id).join(", ")}`);
-    process.exit(1);
-  }
-
-  console.log(JSON.stringify(resolveSlice(cwd, unit), null, 2));
-}
-
-function runIndex(argv: string[]): void {
-  if (argv[0] === "-h" || argv[0] === "--help") {
-    console.log("arkaik bootstrap index [path]\n\nPrint a compact id/species/title/product listing of the map.");
-    process.exit(0);
-  }
-  const target = argv[0] ?? path.join("docs", "arkaik", "bundle.json");
-  try {
-    process.stdout.write(renderIndex(readBundle(path.resolve(process.cwd(), target)) as { nodes?: unknown }));
-  } catch (err) {
-    console.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
-  }
-}
-```
-
-Add both cases to the switch: `case "slice": runSlice(rest); return;` and `case "index": runIndex(rest); return;`.
-
-- [ ] **Step 6: Run the test to verify it passes**
-
-Run: `npm run build -w arkaik && node tests/cli/bootstrap-plan.test.js`
-Expected: PASS on every check in the file.
-
-- [ ] **Step 7: Commit**
+- [ ] **Commit**
 
 ```bash
-git add packages/cli/src/lib/bootstrap/slice.ts packages/cli/src/lib/bootstrap/index-view.ts packages/cli/src/commands/bootstrap.ts tests/cli/bootstrap-plan.test.js
+git add packages/cli/src/lib/bootstrap/slice.ts packages/cli/src/lib/bootstrap/index-view.ts packages/cli/src/commands/bootstrap.ts tests/cli/bootstrap-slice.test.js docs/superpowers/plans/2026-08-04-bootstrap-method.md
 git commit -m "feat(cli): bootstrap slice + index — the two token levers"
 ```
 
@@ -2754,8 +2728,10 @@ Expected: PASS on all eight checks. If `validate` fails, read its findings — t
 In `package.json`, add after the `test:cli` entry:
 
 ```json
-    "test:bootstrap": "npm run build -w arkaik && node tests/cli/bootstrap-corpus.test.js && node tests/cli/bootstrap-plan.test.js && node tests/cli/bootstrap-merge.test.js && node tests/cli/bootstrap-e2e.test.js",
+    "test:bootstrap": "npm run build -w arkaik && node tests/cli/bootstrap-corpus.test.js && node tests/cli/bootstrap-plan.test.js && node tests/cli/bootstrap-slice.test.js && node tests/cli/bootstrap-merge.test.js && node tests/cli/bootstrap-e2e.test.js",
 ```
+
+(Task 4 added `tests/cli/bootstrap-slice.test.js` as its own file rather than extending `bootstrap-plan.test.js` — see Task 4's own notes for why. Make sure it's in this list.)
 
 - [ ] **Step 4: Wire CI**
 

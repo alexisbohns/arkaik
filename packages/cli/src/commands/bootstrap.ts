@@ -11,8 +11,11 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 
 import { buildCorpus } from "../lib/bootstrap/corpus";
+import { renderIndex } from "../lib/bootstrap/index-view";
 import { detectMode, planUnits, readManifest, readProfile, writeManifest } from "../lib/bootstrap/manifest";
 import { BOOTSTRAP_ROOT, CORPUS_DIR, ensureGitignored } from "../lib/bootstrap/paths";
+import { resolveSlice } from "../lib/bootstrap/slice";
+import { readBundle } from "../lib/bundle-io";
 
 const USAGE = `arkaik bootstrap <subcommand> [options]
 
@@ -163,6 +166,65 @@ function runPlan(argv: string[]): void {
   }
 }
 
+const SLICE_USAGE = `arkaik bootstrap slice <unit>
+
+Print exactly the corpus subset one work unit needs, as compact JSON (id,
+scope, matching PRs, matching surfaces, and — only when the unit asks for it
+— the docs manifest). Reads .arkaik/bootstrap/manifest.json; run
+\`arkaik bootstrap plan\` first.`;
+
+function runSlice(argv: string[]): void {
+  const cwd = process.cwd();
+  const unitId = argv[0];
+  if (unitId === undefined || unitId === "-h" || unitId === "--help") {
+    console.log(SLICE_USAGE);
+    process.exit(unitId === undefined ? 1 : 0);
+  }
+
+  const manifest = readManifest(cwd);
+  if (!manifest) fail("No manifest. Run `arkaik bootstrap plan` first.");
+  const unit = manifest.units.find((u) => u.id === unitId);
+  if (!unit) fail(`Unknown unit: ${unitId}\nKnown units: ${manifest.units.map((u) => u.id).join(", ")}`);
+
+  try {
+    // Compact, not pretty-printed: this command exists to bound what one
+    // agent reads (~30-60KB instead of the whole corpus), and 2-space
+    // indentation on an array of PR/surface objects meaningfully inflates
+    // that for no one — the consumer is an agent parsing JSON, not a human
+    // skimming a terminal.
+    console.log(JSON.stringify(resolveSlice(cwd, unit)));
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+}
+
+const INDEX_USAGE = `arkaik bootstrap index [path]
+
+Print a compact id/species/title/product listing of the map, one
+tab-separated line per node (default: docs/arkaik/bundle.json).`;
+
+function runIndex(argv: string[]): void {
+  if (argv[0] === "-h" || argv[0] === "--help") {
+    console.log(INDEX_USAGE);
+    process.exit(0);
+  }
+  // A literal default, joined the same way runPlan's --bundle default is —
+  // it is immediately resolved against cwd below, never serialized, so
+  // path.join's platform separator is harmless here.
+  const target = argv[0] ?? path.join("docs", "arkaik", "bundle.json");
+  try {
+    // path.resolve, not path.join: an absolute `target` (a positional arg,
+    // just like manifest.ts's --bundle) must resolve to itself, not get
+    // mangled into <cwd>/<abs path> — the same fix Task 3 made for
+    // detectMode's bundle path, kept in agreement here.
+    process.stdout.write(renderIndex(readBundle(path.resolve(process.cwd(), target)) as { nodes?: unknown }));
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+}
+
 export function runBootstrap(argv: string[]): void {
   const [sub, ...rest] = argv;
 
@@ -177,6 +239,12 @@ export function runBootstrap(argv: string[]): void {
       return;
     case "plan":
       runPlan(rest);
+      return;
+    case "slice":
+      runSlice(rest);
+      return;
+    case "index":
+      runIndex(rest);
       return;
     default:
       console.error(`Unknown bootstrap subcommand: ${sub}\n\n${USAGE}`);
