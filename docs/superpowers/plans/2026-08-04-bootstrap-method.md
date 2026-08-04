@@ -1874,8 +1874,123 @@ A seventh finding is about the *caller*, not this file, and is carried to Task 6
 
 **Files:**
 - Create: `packages/cli/src/lib/bootstrap/event-id.ts`
-- Test (this task, not Task 6 — see step 4 below): `tests/cli/bootstrap-event-id.test.js`
+- Test (this task, not Task 6 — see Task 6's own Step 1): `tests/cli/bootstrap-event-id.test.js`
 - Test: `tests/cli/bootstrap-merge.test.js` (unaffected by this task; written by Task 6)
+
+**Note:** unlike every other task so far, this task's failing test is NOT `arkaik bootstrap merge` against a built CLI — the `merge` subcommand doesn't exist until Task 6 wires it up, and `tests/cli/bootstrap-merge.test.js` (with its own determinism checks) is created there, not here. This task's test is a direct-require unit test against the pure function alone, which is exactly why it can run before `merge` exists at all.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/cli/bootstrap-event-id.test.js` — a direct-require unit test following the pattern `tests/cli/bootstrap-era-window.test.js` and `tests/cli/bootstrap-body-budget.test.js` established (Node's native TypeScript support strips types at load time, so the `.ts` source loads with no CLI build). Cover: determinism (same `(ts, key)` always yields the same id); different keys at the same `ts` yield different ids while sharing the same time prefix; the same key at different timestamps yields a different id with an unchanged suffix; ULID shape; an unparseable/missing/undefined `ts` throws, naming the offending value; a direct byte-for-byte comparison of `encodeTime` against the REAL `ulid()` from `@arkaik/schema` (load it via `tests/schema/load-schema.js`, the loader `tests/schema/emit.test.js` already uses); lexicographic sortability across digit-rollover boundaries; a 20,000-key collision-resistance stress test at one shared `ts` (two orders of magnitude past the self-map seed's own real max fan-out of 15); and a real-data check against `seed/arkaik-self-map.json`'s own journal (791 events) — re-derive each event's key using the two shapes Task 6's `merge` actually uses (`node.created:<id>` and the wave-3 `${type}:${node_id|deliverable_id|version}:${ts}` form) and assert zero id collisions across the whole file.
+
+- [ ] **Step 2: Run it to verify it fails**
+
+Run: `node tests/cli/bootstrap-event-id.test.js`
+Expected: FAIL — `Cannot find module '.../event-id.ts'`.
+
+- [ ] **Step 3: Write `event-id.ts`**
+
+Create `packages/cli/src/lib/bootstrap/event-id.ts`. The shape, informed by the six probes above:
+
+```ts
+const ENCODING = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"; // same alphabet as @arkaik/schema's ulid()
+export const TIME_LEN = 10; // 48 bits of ms timestamp, same width as ulid()
+export const RANDOM_LEN = 16; // same width as ulid()'s random component; here every bit comes from `key`
+
+const FNV_OFFSET = 0x811c9dc5;
+const FNV_PRIME = 0x01000193;
+
+function fnv1a(input: string): number {
+  let h = FNV_OFFSET;
+  for (let i = 0; i < input.length; i += 1) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, FNV_PRIME);
+  }
+  return h >>> 0;
+}
+
+// Murmur3's fmix32 finalizer — fixes FNV-1a's weak low-bit avalanche (probe 3).
+function fmix32(hIn: number): number {
+  let h = hIn >>> 0;
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b) >>> 0;
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35) >>> 0;
+  h ^= h >>> 16;
+  return h >>> 0;
+}
+
+export function encodeTime(ms: number): string {
+  let remaining = Math.max(0, Math.floor(ms));
+  let out = "";
+  for (let i = 0; i < TIME_LEN; i += 1) {
+    const digit = remaining % 32;
+    out = ENCODING[digit] + out;
+    remaining = (remaining - digit) / 32;
+  }
+  return out;
+}
+
+// Each symbol is its OWN independent hash of `key` (salted by position) —
+// not one accumulator perturbed 16 times (probe 1) — with no rolling state
+// left to get stuck in a zero absorbing state (probe 2).
+function keySuffix(key: string): string {
+  let out = "";
+  for (let i = 0; i < RANDOM_LEN; i += 1) {
+    const h = fmix32(fnv1a(`${i}:${key}`));
+    out += ENCODING[h % 32];
+  }
+  return out;
+}
+
+/**
+ * A stable id for the event identified by `key` at `ts`. `ts` must be a
+ * parseable timestamp — an unparseable or missing one throws rather than
+ * silently encoding epoch 0 (probe 4). `key` must uniquely identify the event
+ * being minted; that is the CALLER's responsibility, not this function's
+ * (probe 6 — see Task 6's notes).
+ */
+export function deterministicEventId(ts: string, key: string): string {
+  const ms = Date.parse(ts);
+  if (Number.isNaN(ms)) {
+    throw new Error(`deterministicEventId: ts is not a parseable timestamp: ${JSON.stringify(ts)}`);
+  }
+  return encodeTime(ms) + keySuffix(key);
+}
+```
+
+(The shipped file's own comments carry the full probe-by-probe rationale — read it directly rather than duplicating it here a third time.)
+
+- [ ] **Step 4: Run the test to verify it passes**
+
+Run: `node tests/cli/bootstrap-event-id.test.js`
+Expected: PASS on all checks, including the real-data check against the self-map seed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add packages/cli/src/lib/bootstrap/event-id.ts tests/cli/bootstrap-event-id.test.js
+git commit -m "feat(cli): deterministic event ids for bootstrap merge"
+```
+
+---
+
+### Task 6: `bootstrap merge` — fragments, nodes, edges, journal
+
+**Carried forward from Task 5's review — two things to fix or explicitly accept before shipping this, don't silently inherit them:**
+
+1. **`deterministicEventId` now throws on an unparseable/missing `ts`** instead of silently encoding epoch 0 (Task 5, probe 4). The reference `mergeFragments` below calls it unguarded in three places (the `node.created` synthesis in pass 1, and the wave-3 `events` loop in pass 3) — a single malformed fragment (an agent-authored `created_ts`, or a story event's `ts`, that doesn't parse) will now throw an uncaught exception and crash the whole merge instead of surfacing as a `MergeProblem` naming the offending unit, which is how every other per-fragment defect in this file is reported. Wrap both call sites in a `try`/`catch` and push a `MergeProblem` (`{ unit: unit.id, message: ... }`) naming the unit and the bad `ts`, matching the existing error-collection style, rather than letting the exception escape.
+2. **The wave-3 event key (`${type}:${node_id ?? deliverable_id ?? version ?? ""}:${ts}`) is not actually unique per event — confirmed, not just suspected.** `deterministicEventId` guarantees the same id for the same key; it cannot make a non-unique key produce distinct ids, and this one has real gaps:
+   - `idea.proposed` and `request.filed` (`journal-events.ts`) carry `node_id` as fully **optional**, with no `deliverable_id`/`version` field at all — an idea or request with no `node_id` collapses the key to `` `${type}::${ts}` ``, so **every** such event on the same day collides, not as a rare hash accident but by construction.
+   - `release.tagged` carries an optional `platform`, which the key omits — two platform-scoped releases of the same `version` tagged the same day (a simultaneous ios/android ship, which is exactly the kind of release this repo's own platform model exists to support) collide.
+   - `node.status_changed` and `decision.status_changed` key on `node_id` + `ts` alone — the wave-3 "status arcs" unit (Task 13's skill spec) explicitly plans **1-3 status events per node**, and if two of a node's transitions land on the same calendar day (very plausible when transitions are reconstructed from PR merge dates, which have at most day granularity), they collide.
+   None of this is fixable by better hashing — it needs a key that actually distinguishes the events. Before shipping this task, strengthen the wave-3 key to include enough of each event's own distinguishing payload (at minimum: `platform` when present, and `from`/`to` for status-change events) that two genuinely different events can no longer produce the same key. Add a regression test with two same-day, same-node `node.status_changed` events (different `from`/`to`) and confirm they land in the journal with two distinct ids — this exact shape is not covered by any existing fixture.
+
+**Files:**
+- Create: `packages/cli/src/lib/bootstrap/fragments.ts`
+- Create: `packages/cli/src/lib/bootstrap/merge.ts`
+- Modify: `packages/cli/src/commands/bootstrap.ts`
+- Test: `tests/cli/bootstrap-merge.test.js`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1992,120 +2107,7 @@ process.exit(failures === 0 ? 0 : 1);
 Run: `node tests/cli/bootstrap-merge.test.js`
 Expected: FAIL — "Unknown bootstrap subcommand: merge".
 
-- [ ] **Step 1: Write the failing test**
-
-Create `tests/cli/bootstrap-event-id.test.js` — a direct-require unit test following the pattern `tests/cli/bootstrap-era-window.test.js` and `tests/cli/bootstrap-body-budget.test.js` established (Node's native TypeScript support strips types at load time, so the `.ts` source loads with no CLI build). Cover: determinism (same `(ts, key)` always yields the same id); different keys at the same `ts` yield different ids while sharing the same time prefix; the same key at different timestamps yields a different id with an unchanged suffix; ULID shape; an unparseable/missing/undefined `ts` throws, naming the offending value; a direct byte-for-byte comparison of `encodeTime` against the REAL `ulid()` from `@arkaik/schema` (load it via `tests/schema/load-schema.js`, the loader `tests/schema/emit.test.js` already uses); lexicographic sortability across digit-rollover boundaries; a 20,000-key collision-resistance stress test at one shared `ts` (two orders of magnitude past the self-map seed's own real max fan-out of 15); and a real-data check against `seed/arkaik-self-map.json`'s own journal (791 events) — re-derive each event's key using the two shapes Task 6's `merge` actually uses (`node.created:<id>` and the wave-3 `${type}:${node_id|deliverable_id|version}:${ts}` form) and assert zero id collisions across the whole file.
-
-- [ ] **Step 2: Run it to verify it fails**
-
-Run: `node tests/cli/bootstrap-event-id.test.js`
-Expected: FAIL — `Cannot find module '.../event-id.ts'`.
-
-- [ ] **Step 3: Write `event-id.ts`**
-
-Create `packages/cli/src/lib/bootstrap/event-id.ts`. The shape, informed by the six probes above:
-
-```ts
-const ENCODING = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"; // same alphabet as @arkaik/schema's ulid()
-export const TIME_LEN = 10; // 48 bits of ms timestamp, same width as ulid()
-export const RANDOM_LEN = 16; // same width as ulid()'s random component; here every bit comes from `key`
-
-const FNV_OFFSET = 0x811c9dc5;
-const FNV_PRIME = 0x01000193;
-
-function fnv1a(input: string): number {
-  let h = FNV_OFFSET;
-  for (let i = 0; i < input.length; i += 1) {
-    h ^= input.charCodeAt(i);
-    h = Math.imul(h, FNV_PRIME);
-  }
-  return h >>> 0;
-}
-
-// Murmur3's fmix32 finalizer — fixes FNV-1a's weak low-bit avalanche (probe 3).
-function fmix32(hIn: number): number {
-  let h = hIn >>> 0;
-  h ^= h >>> 16;
-  h = Math.imul(h, 0x85ebca6b) >>> 0;
-  h ^= h >>> 13;
-  h = Math.imul(h, 0xc2b2ae35) >>> 0;
-  h ^= h >>> 16;
-  return h >>> 0;
-}
-
-export function encodeTime(ms: number): string {
-  let remaining = Math.max(0, Math.floor(ms));
-  let out = "";
-  for (let i = 0; i < TIME_LEN; i += 1) {
-    const digit = remaining % 32;
-    out = ENCODING[digit] + out;
-    remaining = (remaining - digit) / 32;
-  }
-  return out;
-}
-
-// Each symbol is its OWN independent hash of `key` (salted by position) —
-// not one accumulator perturbed 16 times (probe 1) — with no rolling state
-// left to get stuck in a zero absorbing state (probe 2).
-function keySuffix(key: string): string {
-  let out = "";
-  for (let i = 0; i < RANDOM_LEN; i += 1) {
-    const h = fmix32(fnv1a(`${i}:${key}`));
-    out += ENCODING[h % 32];
-  }
-  return out;
-}
-
-/**
- * A stable id for the event identified by `key` at `ts`. `ts` must be a
- * parseable timestamp — an unparseable or missing one throws rather than
- * silently encoding epoch 0 (probe 4). `key` must uniquely identify the event
- * being minted; that is the CALLER's responsibility, not this function's
- * (probe 6 — see Task 6's notes).
- */
-export function deterministicEventId(ts: string, key: string): string {
-  const ms = Date.parse(ts);
-  if (Number.isNaN(ms)) {
-    throw new Error(`deterministicEventId: ts is not a parseable timestamp: ${JSON.stringify(ts)}`);
-  }
-  return encodeTime(ms) + keySuffix(key);
-}
-```
-
-(The shipped file's own comments carry the full probe-by-probe rationale — read it directly rather than duplicating it here a third time.)
-
-- [ ] **Step 4: Run the test to verify it passes**
-
-Run: `node tests/cli/bootstrap-event-id.test.js`
-Expected: PASS on all checks, including the real-data check against the self-map seed.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add packages/cli/src/lib/bootstrap/event-id.ts tests/cli/bootstrap-event-id.test.js
-git commit -m "feat(cli): deterministic event ids for bootstrap merge"
-```
-
----
-
-### Task 6: `bootstrap merge` — fragments, nodes, edges, journal
-
-**Carried forward from Task 5's review — two things to fix or explicitly accept before shipping this, don't silently inherit them:**
-
-1. **`deterministicEventId` now throws on an unparseable/missing `ts`** instead of silently encoding epoch 0 (Task 5, probe 4). The reference `mergeFragments` below calls it unguarded in three places (the `node.created` synthesis in pass 1, and the wave-3 `events` loop in pass 3) — a single malformed fragment (an agent-authored `created_ts`, or a story event's `ts`, that doesn't parse) will now throw an uncaught exception and crash the whole merge instead of surfacing as a `MergeProblem` naming the offending unit, which is how every other per-fragment defect in this file is reported. Wrap both call sites in a `try`/`catch` and push a `MergeProblem` (`{ unit: unit.id, message: ... }`) naming the unit and the bad `ts`, matching the existing error-collection style, rather than letting the exception escape.
-2. **The wave-3 event key (`${type}:${node_id ?? deliverable_id ?? version ?? ""}:${ts}`) is not actually unique per event — confirmed, not just suspected.** `deterministicEventId` guarantees the same id for the same key; it cannot make a non-unique key produce distinct ids, and this one has real gaps:
-   - `idea.proposed` and `request.filed` (`journal-events.ts`) carry `node_id` as fully **optional**, with no `deliverable_id`/`version` field at all — an idea or request with no `node_id` collapses the key to `` `${type}::${ts}` ``, so **every** such event on the same day collides, not as a rare hash accident but by construction.
-   - `release.tagged` carries an optional `platform`, which the key omits — two platform-scoped releases of the same `version` tagged the same day (a simultaneous ios/android ship, which is exactly the kind of release this repo's own platform model exists to support) collide.
-   - `node.status_changed` and `decision.status_changed` key on `node_id` + `ts` alone — the wave-3 "status arcs" unit (Task 13's skill spec) explicitly plans **1-3 status events per node**, and if two of a node's transitions land on the same calendar day (very plausible when transitions are reconstructed from PR merge dates, which have at most day granularity), they collide.
-   None of this is fixable by better hashing — it needs a key that actually distinguishes the events. Before shipping this task, strengthen the wave-3 key to include enough of each event's own distinguishing payload (at minimum: `platform` when present, and `from`/`to` for status-change events) that two genuinely different events can no longer produce the same key. Add a regression test with two same-day, same-node `node.status_changed` events (different `from`/`to`) and confirm they land in the journal with two distinct ids — this exact shape is not covered by any existing fixture.
-
-**Files:**
-- Create: `packages/cli/src/lib/bootstrap/fragments.ts`
-- Create: `packages/cli/src/lib/bootstrap/merge.ts`
-- Modify: `packages/cli/src/commands/bootstrap.ts`
-- Test: `tests/cli/bootstrap-merge.test.js`
-
-- [ ] **Step 1: Write `fragments.ts`**
+- [ ] **Step 3: Write `fragments.ts`**
 
 Create `packages/cli/src/lib/bootstrap/fragments.ts`:
 
@@ -2223,7 +2225,7 @@ export function loadFragments(cwd: string, manifest: Manifest): FragmentLoad {
 }
 ```
 
-- [ ] **Step 2: Write `merge.ts`**
+- [ ] **Step 4: Write `merge.ts`**
 
 Create `packages/cli/src/lib/bootstrap/merge.ts`:
 
@@ -2415,7 +2417,7 @@ export function mergeFragments(input: MergeInput): MergeResult {
 }
 ```
 
-- [ ] **Step 3: Wire the subcommand**
+- [ ] **Step 5: Wire the subcommand**
 
 In `packages/cli/src/commands/bootstrap.ts` add:
 
@@ -2514,12 +2516,12 @@ function runMerge(argv: string[]): void {
 
 Add `case "merge": runMerge(rest); return;` to the switch.
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [ ] **Step 6: Run the test to verify it passes**
 
 Run: `npm run build -w arkaik && node tests/cli/bootstrap-merge.test.js`
 Expected: PASS on all seven checks in the determinism block.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add packages/cli/src/lib/bootstrap/fragments.ts packages/cli/src/lib/bootstrap/merge.ts packages/cli/src/commands/bootstrap.ts tests/cli/bootstrap-merge.test.js
