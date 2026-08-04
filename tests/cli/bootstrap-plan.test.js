@@ -49,6 +49,64 @@ try {
   const unknown = runCli(["bootstrap", "nope"], dir);
   check("unknown subcommand exits 1", unknown.status === 1, String(unknown.status));
   check("unknown subcommand error lands on stderr", unknown.stderr.includes("Unknown bootstrap subcommand"), unknown.stderr);
+
+  // --- corpus from a captured gh payload ---
+  const ghPayload = [
+    {
+      number: 1,
+      title: "Add the home screen",
+      body: "## Lab Note\n\n```yaml\nen:\n  title: \"Home, at last\"\n```",
+      mergedAt: "2026-01-02T10:00:00Z",
+      labels: [{ name: "feature" }],
+      files: [{ path: "app/home/page.tsx" }],
+    },
+    {
+      number: 2,
+      title: "chore: bump deps",
+      body: "",
+      mergedAt: "2026-01-03T10:00:00Z",
+      labels: [],
+      files: [{ path: "package.json" }],
+    },
+  ];
+  const payloadPath = path.join(dir, "gh.json");
+  writeFileSync(payloadPath, JSON.stringify(ghPayload));
+  mkdirSync(path.join(dir, "docs"), { recursive: true });
+  writeFileSync(path.join(dir, "docs", "vision.md"), "# Vision\n\nWhy we build.\n");
+  mkdirSync(path.join(dir, "app", "home"), { recursive: true });
+  writeFileSync(path.join(dir, "app", "home", "page.tsx"), "export default function Home() {}\n");
+
+  const corpus = runCli(["bootstrap", "corpus", "--from-json", payloadPath], dir);
+  check("corpus exits 0", corpus.status === 0, corpus.stderr);
+
+  const prLines = readFileSync(path.join(dir, ".arkaik", "corpus", "prs.jsonl"), "utf8").trim().split("\n");
+  check("both PRs captured", prLines.length === 2, String(prLines.length));
+  const pr1 = JSON.parse(prLines[0]);
+  check("PRs sorted oldest first", pr1.number === 1, String(pr1.number));
+  check("changed paths flattened to strings", pr1.files[0] === "app/home/page.tsx", JSON.stringify(pr1.files));
+  check("lab note detected", pr1.has_lab_note === true, JSON.stringify(pr1.has_lab_note));
+  check("chore PR has no lab note", JSON.parse(prLines[1]).has_lab_note === false, prLines[1]);
+
+  const docs = JSON.parse(readFileSync(path.join(dir, ".arkaik", "corpus", "docs.json"), "utf8"));
+  check("docs manifest found vision.md", docs.some((d) => d.path === "docs/vision.md"), JSON.stringify(docs));
+  check("docs manifest carries the heading", docs.some((d) => d.title === "Vision"), JSON.stringify(docs));
+
+  const surfaces = JSON.parse(readFileSync(path.join(dir, ".arkaik", "corpus", "surfaces.json"), "utf8"));
+  check("surfaces found the page", surfaces.some((s) => s.path === "app/home/page.tsx"), JSON.stringify(surfaces));
+
+  check(
+    "corpus gitignores .arkaik",
+    readFileSync(path.join(dir, ".gitignore"), "utf8").includes(".arkaik/"),
+    "no .gitignore entry",
+  );
+
+  const again = runCli(["bootstrap", "corpus", "--from-json", payloadPath], dir);
+  check("corpus is idempotent", again.status === 0, again.stderr);
+  check(
+    "gitignore not duplicated",
+    readFileSync(path.join(dir, ".gitignore"), "utf8").match(/\.arkaik\//g).length === 1,
+    readFileSync(path.join(dir, ".gitignore"), "utf8"),
+  );
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }
