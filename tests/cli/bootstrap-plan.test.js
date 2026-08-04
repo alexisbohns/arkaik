@@ -522,10 +522,13 @@ try {
   }
 
   // --- regression: overlapping era windows are rejected, not left to double-match PRs ---
-  // Windows are inclusive at both ends (a PR merged exactly at one era's `to`
-  // and another's `from` would otherwise land in both slices, with nothing
-  // downstream deduping it) — so eras are required to partition the corpus
-  // without overlap, checked here at plan time.
+  // Windows are half-open — `[start, end)` — deliberately (see era-window.ts:
+  // a date-only `to` includes the whole named day, which is what actually
+  // fixes the boundary-day bug; see bootstrap-slice.test.js's boundary-day
+  // test for the PR-membership proof). A GENUINE overlap — one window's span
+  // reaching into another's, not just sharing a boundary instant — still
+  // double-matches every PR merged in it, with nothing downstream deduping
+  // it, so eras are still required to partition the corpus, checked here.
   const overlapEraDir = freshRepoDir("arkaik-bootstrap-overlapera-");
   try {
     mkdirSync(path.join(overlapEraDir, ".arkaik", "bootstrap"), { recursive: true });
@@ -546,17 +549,20 @@ try {
     rmSync(overlapEraDir, { recursive: true, force: true });
   }
 
-  // --- windows that touch at exactly one shared instant ARE an overlap under inclusive bounds ---
-  // era-c's `to` and era-d's `from` parse to the identical instant (both
-  // midnight on the same day) — under inclusive-inclusive semantics that
-  // single instant belongs to both windows, so this is rejected too, not
-  // waved through as "merely touching." Recon should leave a real gap
-  // between eras (see the next test) rather than share a boundary value.
-  const touchingEraDir = freshRepoDir("arkaik-bootstrap-touchingera-");
+  // --- two eras sharing the SAME calendar date for `to` and `from` still overlap by a full day, and are rejected ---
+  // era-c's `to: "2026-02-01"` expands to include the WHOLE of Feb 1st (end
+  // = Feb 2 00:00, exclusive) — that's the half-open fix's whole point (a
+  // date-only `to` must include its named day, see era-window.ts). era-d's
+  // `from: "2026-02-01"` starts at the very beginning of Feb 1. The two
+  // windows therefore share the entire day of Feb 1st, not just an instant —
+  // a real overlap, correctly rejected. (Using the SAME calendar date for
+  // one era's `to` and the next era's `from` is NOT the pattern that
+  // partitions cleanly — see the next test for the pattern that does.)
+  const sameDateEraDir = freshRepoDir("arkaik-bootstrap-samedateera-");
   try {
-    mkdirSync(path.join(touchingEraDir, ".arkaik", "bootstrap"), { recursive: true });
+    mkdirSync(path.join(sameDateEraDir, ".arkaik", "bootstrap"), { recursive: true });
     writeFileSync(
-      path.join(touchingEraDir, ".arkaik", "bootstrap", "profile.json"),
+      path.join(sameDateEraDir, ".arkaik", "bootstrap", "profile.json"),
       JSON.stringify({
         areas: [],
         eras: [
@@ -565,22 +571,28 @@ try {
         ],
       }),
     );
-    const touchingPlan = runCli(["bootstrap", "plan"], touchingEraDir);
+    const sameDatePlan = runCli(["bootstrap", "plan"], sameDateEraDir);
     check(
-      "plan rejects two eras whose windows touch at exactly one shared instant",
-      touchingPlan.status === 1,
-      touchingPlan.stderr,
+      "plan rejects two eras whose to/from share the same calendar date (a full day's overlap, not a clean touch)",
+      sameDatePlan.status === 1,
+      sameDatePlan.stderr,
     );
   } finally {
-    rmSync(touchingEraDir, { recursive: true, force: true });
+    rmSync(sameDateEraDir, { recursive: true, force: true });
   }
 
-  // --- a real gap between eras (even one day) is accepted — recon CAN still partition cleanly ---
-  const gappedEraDir = freshRepoDir("arkaik-bootstrap-gappedera-");
+  // --- the pattern that DOES partition cleanly: one era's `to` is the day BEFORE the next era's `from` ---
+  // era-e ends "2026-01-31" (expands to include all of Jan 31, ending
+  // exactly at Feb 1 00:00) and era-f starts "2026-02-01" (Feb 1 00:00) —
+  // the two windows touch at exactly that instant with zero overlap and
+  // zero gap. `plan` accepts this; bootstrap-slice.test.js's boundary-day
+  // test proves a PR merged mid-day on Jan 31 actually lands in era-e alone,
+  // which is the whole reason this shape was fixed.
+  const touchingEraDir = freshRepoDir("arkaik-bootstrap-touchingera-");
   try {
-    mkdirSync(path.join(gappedEraDir, ".arkaik", "bootstrap"), { recursive: true });
+    mkdirSync(path.join(touchingEraDir, ".arkaik", "bootstrap"), { recursive: true });
     writeFileSync(
-      path.join(gappedEraDir, ".arkaik", "bootstrap", "profile.json"),
+      path.join(touchingEraDir, ".arkaik", "bootstrap", "profile.json"),
       JSON.stringify({
         areas: [],
         eras: [
@@ -589,10 +601,47 @@ try {
         ],
       }),
     );
-    const gappedPlan = runCli(["bootstrap", "plan"], gappedEraDir);
-    check("plan accepts two eras separated by even a one-day gap", gappedPlan.status === 0, gappedPlan.stderr);
+    const touchingPlan = runCli(["bootstrap", "plan"], touchingEraDir);
+    check(
+      "plan accepts two eras that partition cleanly (one `to` the day before the next `from`)",
+      touchingPlan.status === 0,
+      touchingPlan.stderr,
+    );
   } finally {
-    rmSync(gappedEraDir, { recursive: true, force: true });
+    rmSync(touchingEraDir, { recursive: true, force: true });
+  }
+
+  // --- two eras that both carry only a `from` date always overlap under half-open semantics — the message should say so ---
+  // Each open-ended era extends to +Infinity, so any two of them always
+  // overlap, no matter how far apart their `from` dates are. The generic
+  // overlap message ("narrow one or both windows") doesn't hint that the fix
+  // here is specifically to add a `to` bound — this pins the clearer message.
+  const bothOpenEndedDir = freshRepoDir("arkaik-bootstrap-bothopenended-");
+  try {
+    mkdirSync(path.join(bothOpenEndedDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(
+      path.join(bothOpenEndedDir, ".arkaik", "bootstrap", "profile.json"),
+      JSON.stringify({
+        areas: [],
+        eras: [
+          { slug: "era-g", title: "Era G", from: "2026-01-01" },
+          { slug: "era-h", title: "Era H", from: "2026-06-01" },
+        ],
+      }),
+    );
+    const bothOpenEndedPlan = runCli(["bootstrap", "plan"], bothOpenEndedDir);
+    check(
+      "plan rejects two from-only eras (both extend indefinitely, so they always overlap)",
+      bothOpenEndedPlan.status === 1,
+      bothOpenEndedPlan.stderr,
+    );
+    check(
+      "the message names the fix (add a `to` date) rather than the generic 'narrow one or both windows'",
+      bothOpenEndedPlan.stderr.includes('"to"') || bothOpenEndedPlan.stderr.toLowerCase().includes("to date"),
+      bothOpenEndedPlan.stderr,
+    );
+  } finally {
+    rmSync(bothOpenEndedDir, { recursive: true, force: true });
   }
 
   // --- regression: case-differing ids collide on a case-insensitive filesystem ---

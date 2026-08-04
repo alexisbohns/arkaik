@@ -8,14 +8,22 @@
  * story unit's `slice.eras` names a slug, and this file looks that slug's
  * `from`/`to` window up in profile.json — see `eraWindows` below for why the
  * window lives there and not in the manifest itself.
+ *
+ * The PR-body cap (`boundBody`) lives in its own module, `body-budget.ts` —
+ * see that file for why. The half-open date math (`eraStart`/`eraEnd`) lives
+ * in `era-window.ts`, shared with `profile-validate.ts`'s overlap check, so
+ * the two can't independently drift the way they once did (see `eraWindows`).
  */
 import { existsSync, readFileSync } from "node:fs";
 
+import { boundBody } from "./body-budget";
 import type { CorpusDoc, CorpusPr, CorpusSurface } from "./corpus";
 import { readCorpusPrs } from "./corpus";
+import { eraEnd, eraStart } from "./era-window";
 import type { WorkUnit } from "./manifest";
 import { readProfile } from "./manifest";
-import { at, DOCS_FILE, SURFACES_FILE } from "./paths";
+import { at, DOCS_FILE, PROFILE_FILE, SURFACES_FILE } from "./paths";
+import { assertEraWindow } from "./profile-validate";
 
 export interface Slice {
   unit: string;
@@ -80,15 +88,33 @@ interface EraWindow {
  * (manifest.ts) never reads `era.from`/`era.to` today, so embedding the
  * dates into `WorkUnit.slice` would mean changing the manifest schema and
  * its `sameSlice` re-plan invalidation logic too — a much bigger change than
- * this bug (era filtering not running at all) needs. The trade-off: if
+ * this bug (era filtering not running at all) needed. The trade-off: if
  * profile.json's dates are edited without re-running `plan`, a unit already
  * marked `done` won't notice its window changed — a real but narrower gap
  * than the one this file exists to close, and the same shape of gap
  * `sameSlice` already accepts for purely cosmetic fields like `era.title`.
  *
- * A slug with no matching profile entry (profile.json edited or deleted
- * after `plan` ran) resolves to an empty window, which `matchesEras` treats
- * as "matches nothing" — fail closed, not fail open.
+ * Two things are enforced eagerly here, both because profile.json can drift
+ * out from under an already-planned manifest (edited, or an era removed,
+ * without a re-plan) and this must not be a silent-empty-slice the way it
+ * used to be:
+ *
+ *  - A slug with NO matching profile entry throws, naming the slug and
+ *    `PROFILE_FILE` — it used to resolve to `{}` (an unbounded window,
+ *    which `matchesEras` then matches nothing), so `bootstrap slice
+ *    w3-<slug>` exited 0 with an empty `prs: []` and no signal anything was
+ *    wrong. That is exactly the silent-empty-story-fragment failure
+ *    `assertEraWindow` exists to make loud at `plan` time — happening one
+ *    stage later, quietly, at `slice` time instead.
+ *  - A slug that IS found is re-validated with the same `assertEraWindow`
+ *    `plan` already ran on it — not just trusted. `plan` only validated the
+ *    window at THAT moment; if profile.json is edited afterward (a bound
+ *    changed to something unparseable) without a re-plan, `matchesEras`
+ *    would otherwise silently discard the bad bound and widen the window —
+ *    reproduced before this fix: `from: "whenever", to: "2026-03-01"`
+ *    widened to "everything before 2026-03-01" and one era's slice returned
+ *    another era's PRs. Same check, same message, same loudness as `plan`,
+ *    wherever it runs.
  */
 function eraWindows(cwd: string, slugs: readonly string[]): EraWindow[] {
   if (slugs.length === 0) return [];
@@ -96,28 +122,34 @@ function eraWindows(cwd: string, slugs: readonly string[]): EraWindow[] {
   const bySlug = new Map((profile?.eras ?? []).map((e) => [e.slug, e]));
   return slugs.map((slug) => {
     const era = bySlug.get(slug);
-    return era ? { from: era.from, to: era.to } : {};
+    if (!era) {
+      throw new Error(
+        `era "${slug}" is not declared in ${PROFILE_FILE}'s "eras" list, but a work unit's slice references it. ` +
+          "profile.json may have been edited (or the era removed) since `arkaik bootstrap plan` last ran. " +
+          "Restore the era in profile.json and re-run `arkaik bootstrap plan`, or reconcile the manifest by hand.",
+      );
+    }
+    assertEraWindow(era);
+    return { from: era.from, to: era.to };
   });
 }
 
 /**
- * True when `mergedAt` falls inside at least one of `windows`. `planUnits`
- * (manifest.ts) now rejects an era with neither bound, and rejects any
- * present bound that doesn't parse, at plan time — but this function must
- * not rely on that: `eraWindows` above can still hand it a window built from
- * a stale `profile.json` (edited after `plan` ran, without a re-plan), so a
- * window here can still legitimately have a missing or garbage bound on
- * either or both sides.
+ * True when `mergedAt` falls inside at least one of `windows`, using the
+ * half-open `[start, end)` semantics `era-window.ts` documents (a date-only
+ * `to` includes the whole of that day; an exact-instant `to` does not).
  *
- * A bound that's missing OR doesn't parse is discarded (treated as "not
- * usable"), not treated as "unbounded" — the two are different: if only ONE
- * side is discarded, the other still constrains the match (a real, useful
- * leniency for one bad/absent bound next to one good one). But if BOTH
- * sides end up discarded, there is nothing left to constrain on, and
- * returning `true` there would be exactly the fail-open this function
- * exists to prevent — a window matching everything is indistinguishable
- * from no window at all. (Reproduced before this fix: an era with
- * `from`/`to` both unparseable matched the entire corpus.)
+ * `eraWindows` above now re-validates every window it returns with the same
+ * check `plan` uses, so in practice this function is never handed a window
+ * with a missing-or-garbage bound through the normal `resolveSlice` path.
+ * It stays defensive anyway — a function whose failure mode is "match the
+ * entire corpus" shouldn't rely on an upstream validator being correct, and
+ * this was reproduced for real: with both bounds unparseable, every guard
+ * used to fall through and this matched everything. A bound that's missing
+ * OR doesn't parse is discarded as "not usable" (not "unbounded") — one bad
+ * side next to one good one still leaves the good side constraining the
+ * match, but if BOTH sides end up unusable there is nothing left to
+ * constrain on, and the window matches nothing, not everything.
  *
  * A PR whose own `merged_at` doesn't parse can't be shown to fall inside any
  * window either, so it is excluded the same way `corpus.ts`'s `--since`
@@ -128,80 +160,15 @@ export function matchesEras(mergedAt: string, windows: readonly EraWindow[]): bo
   const merged = Date.parse(mergedAt);
   if (Number.isNaN(merged)) return false;
   return windows.some((w) => {
-    const from = w.from !== undefined ? Date.parse(w.from) : undefined;
-    const to = w.to !== undefined ? Date.parse(w.to) : undefined;
-    const usableFrom = from !== undefined && !Number.isNaN(from) ? from : undefined;
-    const usableTo = to !== undefined && !Number.isNaN(to) ? to : undefined;
-    if (usableFrom === undefined && usableTo === undefined) return false;
-    if (usableFrom !== undefined && merged < usableFrom) return false;
-    if (usableTo !== undefined && merged > usableTo) return false;
+    const start = w.from !== undefined ? eraStart(w.from) : undefined;
+    const end = w.to !== undefined ? eraEnd(w.to) : undefined;
+    const usableStart = start !== undefined && !Number.isNaN(start) ? start : undefined;
+    const usableEnd = end !== undefined && !Number.isNaN(end) ? end : undefined;
+    if (usableStart === undefined && usableEnd === undefined) return false;
+    if (usableStart !== undefined && merged < usableStart) return false;
+    if (usableEnd !== undefined && merged >= usableEnd) return false;
     return true;
   });
-}
-
-/**
- * Longest PR body handed out inside one slice. A slice exists to bound what
- * one agent reads (~30-60KB, this method's primary token lever) — an
- * ordinary merged-PR body is a few hundred bytes to a few KB (this repo's
- * own merge-commit bodies run from ~130B to ~5.8KB), but nothing stops one
- * outlier — a pasted CI log, a giant checklist — from dominating a slice on
- * its own. This only trims outliers past this length; it never touches the
- * corpus file on disk, only what one slice hands out.
- */
-const MAX_BODY_CHARS = 4000;
-
-/** Matches `corpus.ts`'s `has_lab_note` detection exactly — same heading, same anchoring. */
-const LAB_NOTE_HEADING_RE = /^##\s+Lab Note.*$/m;
-/** Any other H2 heading — marks where the Lab Note's own section ends. */
-const NEXT_HEADING_RE = /^##\s+/m;
-
-/**
- * Split `body` into the prose before a `## Lab Note` section, the section
- * itself (heading through the next `## ` heading, or end of body), and
- * whatever follows it. Returns `null` when there is no Lab Note heading.
- */
-function splitLabNoteSection(body: string): { before: string; note: string; after: string } | null {
-  const heading = LAB_NOTE_HEADING_RE.exec(body);
-  if (!heading) return null;
-  const noteStart = heading.index;
-  const restStart = noteStart + heading[0].length;
-  const next = NEXT_HEADING_RE.exec(body.slice(restStart));
-  const noteEnd = next ? restStart + next.index : body.length;
-  return { before: body.slice(0, noteStart), note: body.slice(noteStart, noteEnd), after: body.slice(noteEnd) };
-}
-
-/**
- * Truncate an oversized PR body WITHOUT ever cutting into a `## Lab Note`
- * section. A naive head-truncate at `MAX_BODY_CHARS` silently ate the Lab
- * Note on the majority of this repo's own real PRs sampled during review (5
- * of 8, all with the note past the 4000-char mark) — the worst possible
- * loss, since `has_lab_note` is computed from the FULL body at mining time
- * (corpus.ts) and stays `true` even after the section itself is gone: the
- * agent is told a note exists and then can't find it.
- *
- * When a Lab Note is present, it — and anything after it — is always kept
- * in full; only the prose BEFORE it is head-truncated, to whatever budget is
- * left once the note and any trailing content are accounted for. The
- * truncation is always marked, so an agent can tell it's reading a
- * shortened body rather than a genuinely short one. In the pathological
- * case of a Lab Note itself larger than the whole cap, the note still wins
- * — the cap is a target, not a hard ceiling, when the alternative is losing
- * the note.
- */
-function boundBody(pr: CorpusPr): CorpusPr {
-  if (pr.body.length <= MAX_BODY_CHARS) return pr;
-
-  const section = splitLabNoteSection(pr.body);
-  if (!section) {
-    const cut = pr.body.length - MAX_BODY_CHARS;
-    return { ...pr, body: `${pr.body.slice(0, MAX_BODY_CHARS)}\n\n…[truncated ${cut} more characters]` };
-  }
-
-  const marker = "\n\n[… truncated …]\n\n";
-  const budgetForProse = Math.max(0, MAX_BODY_CHARS - section.note.length - section.after.length - marker.length);
-  const truncatedProse =
-    section.before.length > budgetForProse ? `${section.before.slice(0, budgetForProse)}${marker}` : section.before;
-  return { ...pr, body: `${truncatedProse}${section.note}${section.after}` };
 }
 
 export function resolveSlice(cwd: string, unit: WorkUnit): Slice {
@@ -217,20 +184,30 @@ export function resolveSlice(cwd: string, unit: WorkUnit): Slice {
   // decisions and status-arcs both need visibility across the whole
   // timeline, not one area or era. Every area-scoped unit always has a
   // non-empty `paths` (planUnits rejects an empty one); every era-scoped
-  // unit always has a slug in `eras`, even one that resolves to zero PRs
-  // above rather than "everything" — so this fallback can only be reached by
-  // one of those three unit kinds, never by an authoring mistake in
-  // profile.json.
+  // unit always has a slug in `eras` that resolves to a validated window
+  // (planUnits rejects a dateless or unparseable one; eraWindows re-checks
+  // at slice time) — so this fallback can only be reached by one of those
+  // three unit kinds, never by an authoring mistake in profile.json.
   let prs: CorpusPr[];
+  let surfacesOut: CorpusSurface[];
   if (paths.length > 0) {
     prs = allPrs.filter((pr) => pr.files.some((f) => matchesPaths(f, paths)));
+    surfacesOut = surfaces.filter((s) => matchesPaths(s.path, paths));
   } else if (eraSlugs.length > 0) {
     const windows = eraWindows(cwd, eraSlugs);
     prs = allPrs.filter((pr) => matchesEras(pr.merged_at, windows));
+    // A story unit works from PRs and, when it asks, the docs manifest —
+    // never the code-surface inventory (that's an anatomy-wave hint, keyed
+    // by path, and an era has no path scope to key it by). Matching every
+    // path-scoped unit's "exactly the subset this unit needs," not the
+    // whole-corpus fallback the three hardcoded kinds below intentionally
+    // get.
+    surfacesOut = [];
   } else {
     prs = allPrs;
+    surfacesOut = surfaces;
   }
-  prs = prs.map(boundBody);
+  prs = prs.map((pr) => ({ ...pr, body: boundBody(pr.body) }));
 
   const slice: Slice = {
     unit: unit.id,
@@ -238,7 +215,7 @@ export function resolveSlice(cwd: string, unit: WorkUnit): Slice {
     scope: unit.scope,
     fragment: unit.fragment,
     prs,
-    surfaces: paths.length > 0 ? surfaces.filter((s) => matchesPaths(s.path, paths)) : surfaces,
+    surfaces: surfacesOut,
   };
 
   if (unit.slice.docs) slice.docs = readJsonArray<CorpusDoc>(at(cwd, DOCS_FILE));

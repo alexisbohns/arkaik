@@ -23,7 +23,7 @@ interface IndexNode {
  * title. Collapsing any run of tab/CR/LF into a single space keeps every
  * line exactly one node, exactly four columns, no exceptions.
  */
-function tsvField(value: unknown, fallback: string): string {
+function tsvField(value: unknown, fallback = ""): string {
   const str = value === undefined || value === null ? fallback : String(value);
   return str.replace(/[\t\r\n]+/g, " ");
 }
@@ -33,11 +33,10 @@ export function renderIndex(bundle: { nodes?: unknown }): string {
   const lines = ["id\tspecies\ttitle\tproduct"];
   for (const node of nodes) {
     const product = node.metadata && typeof node.metadata === "object" ? node.metadata.product : undefined;
-    lines.push(
-      [tsvField(node.id, ""), tsvField(node.species, ""), tsvField(node.title, ""), product ? tsvField(product, "-") : "-"].join(
-        "\t",
-      ),
-    );
+    // `product` is already truthy here, so tsvField's fallback never runs for
+    // it — the fallback only matters for id/species/title, which can be
+    // missing. The falsy case ("-") is handled outside tsvField entirely.
+    lines.push([tsvField(node.id), tsvField(node.species), tsvField(node.title), product ? tsvField(product) : "-"].join("\t"));
   }
   return `${lines.join("\n")}\n`;
 }

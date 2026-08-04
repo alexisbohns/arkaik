@@ -10,6 +10,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { at, ensureDir, FRAGMENTS_DIR, MANIFEST_FILE, PLAN_DIR, PROFILE_FILE } from "./paths";
+import { assertValidProfile } from "./profile-validate";
 
 export type UnitStatus = "pending" | "done" | "rejected";
 
@@ -115,137 +116,6 @@ const RECON_SCOPE =
   "the areas to fan out over (id, title, code paths), and the thematic eras the merged PRs fall into. " +
   "Then re-run `arkaik bootstrap plan` to expand waves 1-3.";
 
-/** Lowercase kebab-case only — no uppercase, no `/`, no `..`, no whitespace. */
-const SAFE_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
-const MAX_ID_LENGTH = 64;
-
-/**
- * Area ids and era slugs come from profile.json — written by an agent, not
- * by this code — and become fragment filenames verbatim
- * (`${FRAGMENTS_DIR}/${id}.json`). Two things are enforced here, both about
- * that filename:
- *
- *  - No `/` or `..`, which would let the path escape the fragments
- *    directory.
- *  - Lowercase only, not merely "the duplicate check below lowercases
- *    before comparing." macOS and Windows both default to case-insensitive
- *    filesystems, so ids `Home` and `home` are the SAME fragment file there
- *    even though they're different strings — a case-sensitive `seen` set
- *    would wave both through, and the second agent's write would silently
- *    clobber the first's fragment with no error from either `plan` or
- *    `merge`. Rejecting uppercase at validation time closes that off
- *    entirely, rather than trying to catch it at comparison time. This also
- *    matches this codebase's own id convention: `kebabCase()`
- *    (packages/schema/src/id-gen.ts) lowercases everything, and the bundle
- *    schema documents node ids as kebab-case.
- *
- * A length cap (`MAX_ID_LENGTH`) is enforced for the same "fail at the one
- * place that can give a clear message" reason: an oversized id would
- * otherwise defer a raw `ENAMETOOLONG` to whenever an agent tries to write
- * the fragment.
- *
- * Reject rather than sanitize either way: silently mangling the id would let
- * two different-looking ids collide without anyone noticing.
- */
-function assertSafeId(kind: "area" | "era", id: unknown): void {
-  if (typeof id !== "string" || !SAFE_ID_RE.test(id) || id.length > MAX_ID_LENGTH) {
-    throw new Error(
-      `profile.json has an invalid ${kind} id: ${JSON.stringify(id)}. Work-unit ids become fragment filenames ` +
-        `under ${FRAGMENTS_DIR}/, so they must be lowercase kebab-case (letters, digits and hyphens only, no ` +
-        `uppercase, no "/", "..", or whitespace) and at most ${MAX_ID_LENGTH} characters. Fix profile.json and ` +
-        "re-run `arkaik bootstrap plan`.",
-    );
-  }
-}
-
-/**
- * `profile.json`'s `areas`/`eras` keys, when present, must actually be
- * arrays — a string or number there (`areas: "home"`, `areas: 5`) would
- * otherwise reach a `for...of` below: a string iterates its characters
- * (silently wrong, not an error) and a number throws a raw
- * "is not iterable" with no mention of profile.json.
- */
-function assertArrayField(field: "areas" | "eras", value: unknown): void {
-  if (value !== undefined && !Array.isArray(value)) {
-    throw new Error(
-      `profile.json "${field}" must be an array, got ${typeof value} (${JSON.stringify(value)}). Fix profile.json ` +
-        "and re-run `arkaik bootstrap plan`.",
-    );
-  }
-}
-
-/**
- * An era's `from`/`to` are the only signal `bootstrap slice` (Task 4) has to
- * scope a wave-3 story unit to its date window. An era with neither bound is
- * the same authoring mistake as an area with empty `paths` above, with the
- * same consequence class, just resolved the other way: instead of silently
- * handing that unit's agent the WHOLE corpus, an unbounded era resolves to
- * ZERO PRs (`bootstrap slice`'s date filter has nothing to constrain on) — a
- * story unit that writes an empty fragment and contributes nothing to the
- * changelog, with nothing in the manifest that looks wrong. Reject it here,
- * the same way an empty `paths` is rejected above, rather than deferring to
- * "hope the wave-3 agent notices its slice is empty."
- *
- * A bound that IS present but doesn't parse is rejected the same way
- * `corpus.ts`'s `--since` validation already rejects an unparseable date —
- * same trust boundary (agent-written profile.json), same treatment. An era
- * with only one bound stays legal: that's a meaningful open-ended window,
- * not a mistake.
- */
-function assertEraWindow(era: { slug?: unknown; from?: unknown; to?: unknown }): void {
-  if (era.from === undefined && era.to === undefined) {
-    throw new Error(
-      `profile.json era "${String(era.slug)}" has neither "from" nor "to". An unbounded era would hand that ` +
-        "era's wave-3 agent zero PRs (bootstrap slice's date-window filter can't constrain anything), silently " +
-        "contributing nothing to the story. Add at least one date and re-run `arkaik bootstrap plan`.",
-    );
-  }
-  for (const [key, value] of [
-    ["from", era.from],
-    ["to", era.to],
-  ] as const) {
-    if (value === undefined) continue;
-    if (typeof value !== "string" || Number.isNaN(Date.parse(value))) {
-      throw new Error(
-        `profile.json era "${String(era.slug)}" has an unparseable "${key}": ${JSON.stringify(value)} (try an ISO ` +
-          "date like 2026-01-31). Fix profile.json and re-run `arkaik bootstrap plan`.",
-      );
-    }
-  }
-}
-
-/**
- * `bootstrap slice`'s era windows are inclusive at both ends (deliberately —
- * see slice.ts's `matchesEras`: recon dates an era's end at its last
- * deliverable's merge, so a half-open window would silently drop that PR
- * from its own era). Inclusive bounds mean two overlapping windows would
- * double-match every PR merged in the overlap, with nothing downstream
- * deduping it. Rather than accept that, eras are required to partition the
- * corpus without overlap — checked here, after each individual era's window
- * has already been validated as present and parseable, so an open bound
- * (`from`/`to` missing on one side) is treated as unbounded in that
- * direction for the overlap check too.
- */
-function assertNoOverlappingEras(eras: ReadonlyArray<{ slug: string; from?: string; to?: string }>): void {
-  const windows = eras.map((e) => ({
-    slug: e.slug,
-    from: e.from !== undefined ? Date.parse(e.from) : -Infinity,
-    to: e.to !== undefined ? Date.parse(e.to) : Infinity,
-  }));
-  for (let i = 0; i < windows.length; i += 1) {
-    for (let j = i + 1; j < windows.length; j += 1) {
-      const a = windows[i];
-      const b = windows[j];
-      if (a.from <= b.to && b.from <= a.to) {
-        throw new Error(
-          `profile.json eras "${a.slug}" and "${b.slug}" have overlapping date windows. Eras must partition the ` +
-            "corpus without overlap — narrow one or both windows and re-run `arkaik bootstrap plan`.",
-        );
-      }
-    }
-  }
-}
-
 /**
  * Build the manifest for this repo. `previous` (when given) carries unit
  * statuses forward so re-planning after recon never loses completed work —
@@ -260,47 +130,12 @@ export function planUnits(options: {
 }): Manifest {
   const { mode, bundle, profile, previous } = options;
 
-  // --- validate profile.json before building anything from it ---
   // Everything below reaches either a filesystem path (id -> fragment file)
-  // or a token-budget decision (paths -> what an agent reads), and all of it
-  // is agent-written, not code-written. Fail loudly and specifically rather
-  // than crash on a raw JS error or silently do the wrong thing.
-  if (profile) {
-    assertArrayField("areas", (profile as unknown as Record<string, unknown>).areas);
-    assertArrayField("eras", (profile as unknown as Record<string, unknown>).eras);
-  }
-
-  for (const rawArea of profile?.areas ?? []) {
-    if (rawArea === null || typeof rawArea !== "object") {
-      throw new Error(
-        `profile.json has a malformed area entry: ${JSON.stringify(rawArea)} (expected an object with id, title, paths).`,
-      );
-    }
-    const area = rawArea as unknown as { id?: unknown; paths?: unknown };
-    assertSafeId("area", area.id);
-    if (!Array.isArray(area.paths) || area.paths.length === 0) {
-      // An empty/missing `paths` produces `slice: {}`, which `bootstrap
-      // slice` (Task 4) reads as "no filter" and hands the agent the WHOLE
-      // corpus — the method's primary token lever failing open, silently,
-      // with nothing in the manifest that looks wrong.
-      throw new Error(
-        `profile.json area "${String(area.id)}" has no paths. An empty slice would hand that unit's agent the ` +
-          "entire corpus with no filtering. Add at least one path and re-run `arkaik bootstrap plan`.",
-      );
-    }
-  }
-
-  for (const rawEra of profile?.eras ?? []) {
-    if (rawEra === null || typeof rawEra !== "object") {
-      throw new Error(
-        `profile.json has a malformed era entry: ${JSON.stringify(rawEra)} (expected an object with slug, title).`,
-      );
-    }
-    const era = rawEra as unknown as { slug?: unknown; from?: unknown; to?: unknown };
-    assertSafeId("era", era.slug);
-    assertEraWindow(era);
-  }
-  assertNoOverlappingEras(profile?.eras ?? []);
+  // or a token-budget decision (paths/eras -> what an agent reads), and all
+  // of it is agent-written, not code-written — fail loudly and specifically
+  // rather than crash on a raw JS error or silently do the wrong thing. See
+  // profile-validate.ts for the full checklist.
+  assertValidProfile(profile);
 
   const units: WorkUnit[] = [unit("w0-recon", 0, "Recon", RECON_SCOPE, { docs: true })];
 

@@ -906,7 +906,9 @@ git commit -m "feat(cli): bootstrap corpus — mine PRs, docs and surfaces"
 
 The manifest is what makes this a method rather than a story about one session: unit status lives on disk, so a killed run resumes. `plan` is repo-agnostic because it expands from the recon profile — with no profile it emits only the wave-0 recon unit.
 
-**Implementation note (post-review, three rounds):** the reference code below was written in one pass and never executed. Quality review on Tasks 1–2 found real defects inherited from an un-executed reference implementation elsewhere in this plan, so Task 3 went through three review passes before it settled. **Round 1** (five self-applied probes): four turned up genuine bugs, fixed below (items 1, 2, 4, 5); the fifth (fragments orphaned when an area drops out of the profile) was traced and found harmless, not fixed (item 3). Spec review confirmed round 1's fixes, caught one refinement (title's role in item 2), and asked that an absolute-path finding from self-review be folded in (item 6). **Round 2** (quality review, closer scrutiny of the `profile.json` trust boundary specifically) found four more real issues, all in the same place: *the id field reaching a filesystem path had been hardened; everything else profile.json declares had not.* Items 7–10 below, plus a run of minors. **Round 3** (coordinator review of Task 4's `bootstrap slice`) pointed straight back at this file: a finding about era date filtering turned out to be an unvalidated `planUnits` input, the same shape as item 8 but for `eras` instead of `areas` — item 11. All eleven (plus minors) are recorded here so later tasks don't have to re-discover them:
+**Implementation note (post-review, four rounds):** the reference code below was written in one pass and never executed. Quality review on Tasks 1–2 found real defects inherited from an un-executed reference implementation elsewhere in this plan, so Task 3 went through four review passes before it settled. **Round 1** (five self-applied probes): four turned up genuine bugs, fixed below (items 1, 2, 4, 5); the fifth (fragments orphaned when an area drops out of the profile) was traced and found harmless, not fixed (item 3). Spec review confirmed round 1's fixes, caught one refinement (title's role in item 2), and asked that an absolute-path finding from self-review be folded in (item 6). **Round 2** (quality review, closer scrutiny of the `profile.json` trust boundary specifically) found four more real issues, all in the same place: *the id field reaching a filesystem path had been hardened; everything else profile.json declares had not.* Items 7–10 below, plus a run of minors. **Round 3** (coordinator review of Task 4's `bootstrap slice`) pointed straight back at this file: a finding about era date filtering turned out to be an unvalidated `planUnits` input, the same shape as item 8 but for `eras` instead of `areas` — item 11. **Round 4** (coordinator review of round 3's own fix) found the round-3 era-window design itself was structurally broken — inclusive bounds and a no-touching rule are incompatible with date-only bounds, and dropped 51 of 195 real PRs into neither era on this repo — and asked for the validation logic to be pulled out of this file entirely. Item 12, plus the extraction described just below. All twelve (plus minors) are recorded here so later tasks don't have to re-discover them:
+
+**Round 4's extraction:** by round 3, profile.json's validation — `assertSafeId`, `assertArrayField`, the malformed-entry checks, `assertEraWindow`, `assertNoOverlappingEras` — was roughly 30% of this file's line count (351 → 425 lines) and had nothing to do with the manifest's own job (building `units`, carrying status forward). It moved to **`packages/cli/src/lib/bootstrap/profile-validate.ts`**, exposing one call, `assertValidProfile(profile)`, that `planUnits` now makes instead of running the checks inline. `assertEraWindow` is also exported individually — `slice.ts` needs the identical check at slice time too (item 4 below, and Task 4's own notes). The overlap check's date math (`eraStart`/`eraEnd`) moved further still, into **`packages/cli/src/lib/bootstrap/era-window.ts`**, shared with `slice.ts`'s PR-membership check — the two independently reimplementing the same date math is exactly how they drifted apart in round 3 (see item 12 and Task 4's item 4).
 
 1. **Wave-3 gating was wrong.** The original gated `w3-decisions` / `w3-status-arcs` on `profile.eras?.length` — a profile with real `areas` but zero `eras` (a young repo, or one recon judged has no story worth splitting into eras yet) silently lost decision-mining and status arcs, even though neither unit reads era boundaries (decisions mines docs, status-arcs arcs anatomy nodes). **Fixed:** gated on `profile !== null` (recon has run) instead.
 2. **Status carry-forward didn't check the definition — and neither `title` nor `scope` belongs in that check.** The original carried `done` forward by unit id alone. **Fixed, in two steps:** round 1 made carry-forward conditional on `scope` and `slice` matching the previous plan (excluding `title`, since era units' scope text never mentions `era.title` — comparing it forced a needless redo on a cosmetic rename). Round 2 went further and dropped `scope` too: only w1's scope text is mode-dependent ("map the anatomy" vs. "reconcile the existing map"), and a plain greenfield→brownfield mode flip — which happens on every ordinary run, the moment `merge` lands wave-1 nodes and `plan` runs again — was resetting every finished wave-1 unit to `pending` even though nothing the agent read had changed. Under `plan --issues` (Task 8) that means re-filing a GitHub issue for work already merged. **The rule now:** `sameSlice` (extracted as its own named function) compares `slice` alone. `slice` is the invalidation key — it's the exact corpus subset the agent read. `scope` and `title` are presentation, generated from templates, never hand-edited; neither can tell you whether the fragment on disk is still correct.
@@ -918,14 +920,18 @@ The manifest is what makes this a method rather than a story about one session: 
 8. **`area.paths` was unvalidated and failed *open*.** `readProfile` is a bare `JSON.parse(...) as Profile` — no runtime shape checking. An area with no `paths` (or `paths: []`) produces `slice: {}`, which Task 4's `resolveSlice` reads as `?? []` → no filter → that unit's agent receives the **entire corpus**, silently, with nothing in the manifest that looks wrong — the method's primary token lever failing open. Only `id` had been hardened, because it reaches a filesystem path; `paths` decides what the agent actually reads and got no scrutiny at all. **Fixed:** each area asserts `Array.isArray(area.paths) && area.paths.length > 0`, naming the offending area on failure.
 9. **`areas`/`eras` shape was unguarded, and individual malformed entries could crash raw.** `areas: "home"` silently iterated the string's characters instead of erroring (each "area" a single character, `.id` reliably `undefined`, caught downstream only by luck); `areas: 5` reached a `for...of` and threw a raw `"5 is not iterable"` with no mention of profile.json. Separately, a malformed *entry* inside an otherwise-valid array (`areas: [null]`, `eras: [null]`) crashed on `.id`/`.slug` access off `null` before any validation ran. **Fixed:** `assertArrayField` checks `areas`/`eras` are arrays when present, and each entry is checked for `null`/non-object before its fields are read — both throw a clear, profile.json-naming error instead of a raw TypeError.
 10. **Minors, taken as part of round 2:** `readProfile`/`readManifest` now wrap their `JSON.parse` and name the file in the thrown error (matching `detectMode`'s existing style) — with three JSON files in play (`profile.json`, `manifest.json`, the bundle), a bare `Unexpected end of JSON input` didn't say which one; `profile.json` is agent-written and the likeliest to be malformed. The status-carry-forward comparison was extracted into a named `sameSlice` function so the "JSON.stringify is key-order sensitive, fine today because every slice literal has exactly one key" caveat sits where someone adding a two-key slice shape will actually be standing. `tests/cli/bootstrap-plan.test.js` was split: everything through Task 2 (dispatch + `corpus`) moved to `tests/cli/bootstrap-corpus.test.js` unchanged, so Task 9's CI wiring touches each file once instead of touching one 600-line file that mixes two tasks. A test now pins that `units` is non-decreasing in `wave` — the "resume at the first pending unit" contract depends on it and nothing had pinned it before.
-11. **(Round 3, added during Task 4 review) `era.from`/`era.to` were unvalidated and failed *open* — the same shape as item 8, just landing on the opposite silent failure.** Task 4's `resolveSlice` originally treated an era with neither bound as matching zero PRs ("fails closed" — safer-looking than item 8's original "everything," but still silent: a story unit writes an empty fragment and contributes nothing to the changelog, with nothing in the manifest that looks wrong). **Fixed:** `assertEraWindow` rejects an era with neither `from` nor `to`, and rejects any present bound that doesn't parse (mirroring `corpus.ts`'s `--since` validation — same trust boundary, same treatment). An era with only one bound stays legal: a meaningful open-ended window, not a mistake. Separately: `bootstrap slice`'s era windows are inclusive at both ends, deliberately (recon dates an era's end at its last deliverable's merge, so a half-open window would silently drop that PR from its own era) — but inclusive bounds mean two overlapping windows would double-match every PR merged in the overlap, with nothing downstream deduping it. **Fixed:** `assertNoOverlappingEras` rejects overlapping era windows at plan time, including the edge case where two windows merely touch at one shared instant (both bounds parse to the identical timestamp) — that single point is shared under inclusive-inclusive semantics, so it's rejected too, not waved through as "just adjacent." Recon needs a real gap between eras, even one day, to partition cleanly.
+11. **(Round 3, added during Task 4 review) `era.from`/`era.to` were unvalidated and failed *open* — the same shape as item 8, just landing on the opposite silent failure.** Task 4's `resolveSlice` originally treated an era with neither bound as matching zero PRs ("fails closed" — safer-looking than item 8's original "everything," but still silent: a story unit writes an empty fragment and contributes nothing to the changelog, with nothing in the manifest that looks wrong). **Fixed:** `assertEraWindow` rejects an era with neither `from` nor `to`, and rejects any present bound that doesn't parse (mirroring `corpus.ts`'s `--since` validation — same trust boundary, same treatment). An era with only one bound stays legal: a meaningful open-ended window, not a mistake. Round 3 also added `assertNoOverlappingEras`, reasoning from **inclusive-at-both-ends** bounds — **that reasoning was wrong; see item 12.**
+12. **(Round 4) Round 3's era-window design was structurally broken: inclusive bounds plus "reject touching windows" are incompatible with date-only dates, and the combination is what round 3 itself chose.** `Date.parse("2026-01-31")` is that day's `T00:00:00Z`. With inclusive bounds, an era ending `to: "2026-01-31"` excluded every PR merged LATER that same day — on a real 4-era partition of this repo, **51 of 195 PRs** landed in NEITHER era. Zero of those 195 merged at exactly `T00:00:00Z`, so the double-count inclusive bounds were defending against never actually happens in practice. **Fixed — the whole scheme replaced with half-open intervals plus end-of-day expansion** (now in `era-window.ts`): a `from` date-only value is that day's `T00:00:00Z`; a `to` date-only value is the **next** day's `T00:00:00Z` (so the whole named day is included); membership is `start <= merged && merged < end`; the overlap check becomes `a.start < b.end && b.start < a.end`, which **permits** two eras whose windows touch exactly (one's `to` the day before the next's `from`) — under half-open semantics, touching is a clean partition, not a collision. Two eras that share the SAME calendar date for one's `to` and the next's `from` still genuinely overlap by a full day under this scheme (a date-only `to` includes its whole named day) and are still correctly rejected — see Task 4's boundary-day test for the PR-membership proof this was fixed correctly, not just re-broken differently. **Also fixed, a follow-on the reviewer caught:** two eras that both carry only a `from` (a natural way to write successive open-ended chapters) always overlap under half-open semantics (each extends to `+Infinity`), and used to be rejected with a message ("narrow one or both windows") that didn't hint the actual fix is to add a `to` bound — `assertNoOverlappingEras` now special-cases this and names the fix directly.
 
 **Explicitly out of scope, by the reviewer's own call:** `Manifest.version` stays a bare `1` — it costs nothing unused and will matter when the shape changes. No test was added for `status: "rejected"` — nothing sets it yet.
 
 **Files:**
 - Create: `packages/cli/src/lib/bootstrap/manifest.ts`
+- Create (round 4): `packages/cli/src/lib/bootstrap/profile-validate.ts` — profile.json's validation, extracted out of this file
+- Create (round 4): `packages/cli/src/lib/bootstrap/era-window.ts` — half-open era date math, shared with `slice.ts`
 - Modify: `packages/cli/src/commands/bootstrap.ts`
 - Test: `tests/cli/bootstrap-plan.test.js` (planning-only, after the round-2 split) and `tests/cli/bootstrap-corpus.test.js` (dispatch + `corpus`, extracted from it unchanged)
+- Test (round 4, direct unit tests, no CLI build needed): `tests/cli/bootstrap-era-window.test.js`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1050,6 +1056,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { at, ensureDir, FRAGMENTS_DIR, MANIFEST_FILE, PLAN_DIR, PROFILE_FILE } from "./paths";
+import { assertValidProfile } from "./profile-validate";
 
 export type UnitStatus = "pending" | "done" | "rejected";
 
@@ -1155,124 +1162,6 @@ const RECON_SCOPE =
   "the areas to fan out over (id, title, code paths), and the thematic eras the merged PRs fall into. " +
   "Then re-run `arkaik bootstrap plan` to expand waves 1-3.";
 
-/** Lowercase kebab-case only — no uppercase, no `/`, no `..`, no whitespace. */
-const SAFE_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
-const MAX_ID_LENGTH = 64;
-
-/**
- * Area ids and era slugs come from profile.json — written by an agent, not
- * by this code — and become fragment filenames verbatim
- * (`${FRAGMENTS_DIR}/${id}.json`). Two things are enforced here, both about
- * that filename:
- *
- *  - No `/` or `..`, which would let the path escape the fragments
- *    directory.
- *  - Lowercase only, not merely "the duplicate check below lowercases
- *    before comparing." macOS and Windows both default to case-insensitive
- *    filesystems, so ids `Home` and `home` are the SAME fragment file there
- *    even though they're different strings — a case-sensitive `seen` set
- *    would wave both through, and the second agent's write would silently
- *    clobber the first's fragment with no error from either `plan` or
- *    `merge`. Rejecting uppercase at validation time closes that off
- *    entirely, rather than trying to catch it at comparison time. This also
- *    matches this codebase's own id convention: `kebabCase()`
- *    (packages/schema/src/id-gen.ts) lowercases everything, and the bundle
- *    schema documents node ids as kebab-case.
- *
- * A length cap (`MAX_ID_LENGTH`) is enforced for the same "fail at the one
- * place that can give a clear message" reason: an oversized id would
- * otherwise defer a raw `ENAMETOOLONG` to whenever an agent tries to write
- * the fragment.
- *
- * Reject rather than sanitize either way: silently mangling the id would let
- * two different-looking ids collide without anyone noticing.
- */
-function assertSafeId(kind: "area" | "era", id: unknown): void {
-  if (typeof id !== "string" || !SAFE_ID_RE.test(id) || id.length > MAX_ID_LENGTH) {
-    throw new Error(
-      `profile.json has an invalid ${kind} id: ${JSON.stringify(id)}. Work-unit ids become fragment filenames ` +
-        `under ${FRAGMENTS_DIR}/, so they must be lowercase kebab-case (letters, digits and hyphens only, no ` +
-        `uppercase, no "/", "..", or whitespace) and at most ${MAX_ID_LENGTH} characters. Fix profile.json and ` +
-        "re-run `arkaik bootstrap plan`.",
-    );
-  }
-}
-
-/**
- * `profile.json`'s `areas`/`eras` keys, when present, must actually be
- * arrays — a string or number there (`areas: "home"`, `areas: 5`) would
- * otherwise reach a `for...of` below: a string iterates its characters
- * (silently wrong, not an error) and a number throws a raw
- * "is not iterable" with no mention of profile.json.
- */
-function assertArrayField(field: "areas" | "eras", value: unknown): void {
-  if (value !== undefined && !Array.isArray(value)) {
-    throw new Error(
-      `profile.json "${field}" must be an array, got ${typeof value} (${JSON.stringify(value)}). Fix profile.json ` +
-        "and re-run `arkaik bootstrap plan`.",
-    );
-  }
-}
-
-/**
- * (Round 3, item 11.) An era with neither `from` nor `to` fails open the
- * same way an empty `area.paths` did (item 8) — just resolved the opposite
- * way, at slice time: zero PRs instead of everything, still silent. A bound
- * that IS present but doesn't parse is rejected the same way `corpus.ts`'s
- * `--since` validation rejects an unparseable date. An era with only one
- * bound stays legal — a meaningful open-ended window.
- */
-function assertEraWindow(era: { slug?: unknown; from?: unknown; to?: unknown }): void {
-  if (era.from === undefined && era.to === undefined) {
-    throw new Error(
-      `profile.json era "${String(era.slug)}" has neither "from" nor "to". An unbounded era would hand that ` +
-        "era's wave-3 agent zero PRs (bootstrap slice's date-window filter can't constrain anything), silently " +
-        "contributing nothing to the story. Add at least one date and re-run `arkaik bootstrap plan`.",
-    );
-  }
-  for (const [key, value] of [
-    ["from", era.from],
-    ["to", era.to],
-  ] as const) {
-    if (value === undefined) continue;
-    if (typeof value !== "string" || Number.isNaN(Date.parse(value))) {
-      throw new Error(
-        `profile.json era "${String(era.slug)}" has an unparseable "${key}": ${JSON.stringify(value)} (try an ISO ` +
-          "date like 2026-01-31). Fix profile.json and re-run `arkaik bootstrap plan`.",
-      );
-    }
-  }
-}
-
-/**
- * (Round 3, item 11.) `bootstrap slice`'s era windows are inclusive at both
- * ends, deliberately — a half-open window would silently drop the PR merged
- * exactly at an era's `to`. Inclusive bounds mean two overlapping windows
- * would double-match every PR merged in the overlap, with nothing
- * downstream deduping it, so eras are required to partition the corpus
- * without overlap. An open bound (missing on one side) is unbounded in that
- * direction for this check too.
- */
-function assertNoOverlappingEras(eras: ReadonlyArray<{ slug: string; from?: string; to?: string }>): void {
-  const windows = eras.map((e) => ({
-    slug: e.slug,
-    from: e.from !== undefined ? Date.parse(e.from) : -Infinity,
-    to: e.to !== undefined ? Date.parse(e.to) : Infinity,
-  }));
-  for (let i = 0; i < windows.length; i += 1) {
-    for (let j = i + 1; j < windows.length; j += 1) {
-      const a = windows[i];
-      const b = windows[j];
-      if (a.from <= b.to && b.from <= a.to) {
-        throw new Error(
-          `profile.json eras "${a.slug}" and "${b.slug}" have overlapping date windows. Eras must partition the ` +
-            "corpus without overlap — narrow one or both windows and re-run `arkaik bootstrap plan`.",
-        );
-      }
-    }
-  }
-}
-
 /**
  * Build the manifest for this repo. `previous` (when given) carries unit
  * statuses forward so re-planning after recon never loses completed work —
@@ -1287,47 +1176,12 @@ export function planUnits(options: {
 }): Manifest {
   const { mode, bundle, profile, previous } = options;
 
-  // --- validate profile.json before building anything from it ---
   // Everything below reaches either a filesystem path (id -> fragment file)
-  // or a token-budget decision (paths -> what an agent reads), and all of it
-  // is agent-written, not code-written. Fail loudly and specifically rather
-  // than crash on a raw JS error or silently do the wrong thing.
-  if (profile) {
-    assertArrayField("areas", (profile as unknown as Record<string, unknown>).areas);
-    assertArrayField("eras", (profile as unknown as Record<string, unknown>).eras);
-  }
-
-  for (const rawArea of profile?.areas ?? []) {
-    if (rawArea === null || typeof rawArea !== "object") {
-      throw new Error(
-        `profile.json has a malformed area entry: ${JSON.stringify(rawArea)} (expected an object with id, title, paths).`,
-      );
-    }
-    const area = rawArea as unknown as { id?: unknown; paths?: unknown };
-    assertSafeId("area", area.id);
-    if (!Array.isArray(area.paths) || area.paths.length === 0) {
-      // An empty/missing `paths` produces `slice: {}`, which `bootstrap
-      // slice` (Task 4) reads as "no filter" and hands the agent the WHOLE
-      // corpus — the method's primary token lever failing open, silently,
-      // with nothing in the manifest that looks wrong.
-      throw new Error(
-        `profile.json area "${String(area.id)}" has no paths. An empty slice would hand that unit's agent the ` +
-          "entire corpus with no filtering. Add at least one path and re-run `arkaik bootstrap plan`.",
-      );
-    }
-  }
-
-  for (const rawEra of profile?.eras ?? []) {
-    if (rawEra === null || typeof rawEra !== "object") {
-      throw new Error(
-        `profile.json has a malformed era entry: ${JSON.stringify(rawEra)} (expected an object with slug, title).`,
-      );
-    }
-    const era = rawEra as unknown as { slug?: unknown; from?: unknown; to?: unknown };
-    assertSafeId("era", era.slug);
-    assertEraWindow(era);
-  }
-  assertNoOverlappingEras(profile?.eras ?? []);
+  // or a token-budget decision (paths/eras -> what an agent reads), and all
+  // of it is agent-written, not code-written — fail loudly and specifically
+  // rather than crash on a raw JS error or silently do the wrong thing. See
+  // profile-validate.ts for the full checklist.
+  assertValidProfile(profile);
 
   const units: WorkUnit[] = [unit("w0-recon", 0, "Recon", RECON_SCOPE, { docs: true })];
 
@@ -1452,6 +1306,150 @@ function sameSlice(before: WorkUnit, next: WorkUnit): boolean {
 }
 ```
 
+**(Round 4) The shipped `profile-validate.ts`** — everything `assertSafeId`, `assertArrayField`, the malformed-entry checks, `assertEraWindow`, and `assertNoOverlappingEras` used to do inline in `planUnits` above, now in one file with one public entry point:
+
+```ts
+import { eraEnd, eraStart } from "./era-window";
+import type { Profile } from "./manifest";
+import { FRAGMENTS_DIR } from "./paths";
+
+const SAFE_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
+const MAX_ID_LENGTH = 64;
+
+function assertSafeId(kind: "area" | "era", id: unknown): void {
+  if (typeof id !== "string" || !SAFE_ID_RE.test(id) || id.length > MAX_ID_LENGTH) {
+    throw new Error(
+      `profile.json has an invalid ${kind} id: ${JSON.stringify(id)}. Work-unit ids become fragment filenames ` +
+        `under ${FRAGMENTS_DIR}/, so they must be lowercase kebab-case (letters, digits and hyphens only, no ` +
+        `uppercase, no "/", "..", or whitespace) and at most ${MAX_ID_LENGTH} characters. Fix profile.json and ` +
+        "re-run `arkaik bootstrap plan`.",
+    );
+  }
+}
+
+function assertArrayField(field: "areas" | "eras", value: unknown): void {
+  if (value !== undefined && !Array.isArray(value)) {
+    throw new Error(
+      `profile.json "${field}" must be an array, got ${typeof value} (${JSON.stringify(value)}). Fix profile.json ` +
+        "and re-run `arkaik bootstrap plan`.",
+    );
+  }
+}
+
+export function assertEraWindow(era: { slug?: unknown; from?: unknown; to?: unknown }): void {
+  if (era.from === undefined && era.to === undefined) {
+    throw new Error(
+      `profile.json era "${String(era.slug)}" has neither "from" nor "to". An unbounded era would hand that ` +
+        "era's wave-3 agent zero PRs (bootstrap slice's date-window filter can't constrain anything), silently " +
+        "contributing nothing to the story. Add at least one date and re-run `arkaik bootstrap plan`.",
+    );
+  }
+  for (const [key, value] of [
+    ["from", era.from],
+    ["to", era.to],
+  ] as const) {
+    if (value === undefined) continue;
+    if (typeof value !== "string" || Number.isNaN(Date.parse(value))) {
+      throw new Error(
+        `profile.json era "${String(era.slug)}" has an unparseable "${key}": ${JSON.stringify(value)} (try an ISO ` +
+          "date like 2026-01-31). Fix profile.json and re-run `arkaik bootstrap plan`.",
+      );
+    }
+  }
+}
+
+// (Round 4) Half-open — see era-window.ts. Two eras sharing the same
+// calendar date for one's `to` and the next's `from` genuinely overlap by a
+// full day under this scheme (a date-only `to` expands to include its whole
+// named day) and are correctly rejected; two eras where one's `to` is the
+// day BEFORE the next's `from` touch with zero overlap and are accepted.
+function assertNoOverlappingEras(eras: ReadonlyArray<{ slug: string; from?: string; to?: string }>): void {
+  const windows = eras.map((e) => ({
+    slug: e.slug,
+    start: e.from !== undefined ? eraStart(e.from) : -Infinity,
+    end: e.to !== undefined ? eraEnd(e.to) : Infinity,
+  }));
+  for (let i = 0; i < windows.length; i += 1) {
+    for (let j = i + 1; j < windows.length; j += 1) {
+      const a = windows[i];
+      const b = windows[j];
+      if (a.start < b.end && b.start < a.end) {
+        // Two from-only eras always overlap (each extends to +Infinity) —
+        // name the actual fix instead of the generic "narrow the windows".
+        const bothOpenEnded = a.end === Infinity && b.end === Infinity;
+        throw new Error(
+          bothOpenEnded
+            ? `profile.json eras "${a.slug}" and "${b.slug}" both have only a "from" date, so both extend ` +
+              'indefinitely and always overlap. Give the earlier era a "to" date (e.g. the later era\'s "from") ' +
+              "and re-run `arkaik bootstrap plan`."
+            : `profile.json eras "${a.slug}" and "${b.slug}" have overlapping date windows. Eras must partition ` +
+              "the corpus without overlap — narrow one or both windows and re-run `arkaik bootstrap plan`.",
+        );
+      }
+    }
+  }
+}
+
+function assertAreas(profile: Profile): void {
+  for (const rawArea of profile.areas ?? []) {
+    if (rawArea === null || typeof rawArea !== "object") {
+      throw new Error(
+        `profile.json has a malformed area entry: ${JSON.stringify(rawArea)} (expected an object with id, title, paths).`,
+      );
+    }
+    const area = rawArea as unknown as { id?: unknown; paths?: unknown };
+    assertSafeId("area", area.id);
+    if (!Array.isArray(area.paths) || area.paths.length === 0) {
+      throw new Error(
+        `profile.json area "${String(area.id)}" has no paths. An empty slice would hand that unit's agent the ` +
+          "entire corpus with no filtering. Add at least one path and re-run `arkaik bootstrap plan`.",
+      );
+    }
+  }
+}
+
+function assertEras(profile: Profile): void {
+  for (const rawEra of profile.eras ?? []) {
+    if (rawEra === null || typeof rawEra !== "object") {
+      throw new Error(
+        `profile.json has a malformed era entry: ${JSON.stringify(rawEra)} (expected an object with slug, title).`,
+      );
+    }
+    const era = rawEra as unknown as { slug?: unknown; from?: unknown; to?: unknown };
+    assertSafeId("era", era.slug);
+    assertEraWindow(era);
+  }
+  assertNoOverlappingEras(profile.eras ?? []);
+}
+
+export function assertValidProfile(profile: Profile | null): void {
+  if (!profile) return;
+  assertArrayField("areas", (profile as unknown as Record<string, unknown>).areas);
+  assertArrayField("eras", (profile as unknown as Record<string, unknown>).eras);
+  assertAreas(profile);
+  assertEras(profile);
+}
+```
+
+**(Round 4) The shipped `era-window.ts`** — the half-open date math itself, the actual fix for the 51-of-195-PRs bug:
+
+```ts
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+export function eraStart(value: string): number {
+  return Date.parse(value);
+}
+
+export function eraEnd(value: string): number {
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) return parsed;
+  return DATE_ONLY_RE.test(value) ? parsed + ONE_DAY_MS : parsed;
+}
+```
+
+Membership (in `slice.ts`) is `start <= merged && merged < end` — half-open, not inclusive-inclusive. That's the whole fix: a date-only `to` used to parse to that day's `T00:00:00Z` and, under the old inclusive `merged <= to` check, excluded every PR merged LATER that same day. `eraEnd` expands a date-only value to the START of the NEXT day instead, so the half-open interval includes every moment of the named day. A value with an explicit time component (`"2026-01-31T15:30:00Z"`) is NOT expanded — that's an exact, deliberate cutoff, not a whole-day marker.
+
 - [ ] **Step 4: Wire the subcommand**
 
 In `packages/cli/src/commands/bootstrap.ts` add. `existsSync` (node:fs) and `path` (node:path) are already imported by Task 2's corpus wiring, and `fail`/`nextValue` by the same task — don't add second copies:
@@ -1524,7 +1522,7 @@ Add `case "plan": runPlan(rest); return;` to the switch. `BOOTSTRAP_ROOT` and `e
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `npm run build -w arkaik && node tests/cli/bootstrap-plan.test.js && node tests/cli/bootstrap-corpus.test.js`
-Expected (as of round 2): PASS on all 73 checks in `bootstrap-plan.test.js` and all 39 in `bootstrap-corpus.test.js` (112 total). The two files started as one at 81 checks (39 from Tasks 1–2 + 42 from Task 3's first pass and its spec-review follow-up); round 2's quality review added 32 more checks to the planning half and the file was split along the Task-2/Task-3 boundary, landing at 39 + 73. **Round 3** (item 11, era window validation, added during Task 4's review) added 9 more regression checks — dateless-era rejection, unparseable-bound rejection, an open-ended single-bound era staying legal, and two overlap cases (exact-instant touch rejected, a real one-day gap accepted) — plus updated three existing fixtures that incidentally used a dateless era (the era-rename, mode-flip, and reserved-slug-collision regressions) to carry real dates so the thing each one actually tests still gets exercised. Current total: 82 + 39 (121).
+Expected (as of round 4): PASS on all 84 checks in `bootstrap-plan.test.js`, all 39 in `bootstrap-corpus.test.js`, and all 12 in the new, direct-require `bootstrap-era-window.test.js` (135 total across the three). The two CLI-spawning files started as one at 81 checks (39 from Tasks 1–2 + 42 from Task 3's first pass and its spec-review follow-up); round 2's quality review added 32 more checks to the planning half and the file was split along the Task-2/Task-3 boundary, landing at 39 + 73. **Round 3** (item 11, era window validation, added during Task 4's review) added 9 more regression checks — dateless-era rejection, unparseable-bound rejection, an open-ended single-bound era staying legal, and two overlap cases. **Round 4** (the half-open rewrite) replaced two of round 3's overlap tests with corrected ones (a same-calendar-date overlap and a clean-touch acceptance, replacing round 3's "exact-instant touch rejected" / "one-day gap accepted" pair, which were reasoning from the wrong — inclusive-bounds — model) and added a from-only-eras-always-overlap test with the improved error message, landing `bootstrap-plan.test.js` at 84. `bootstrap-era-window.test.js` is new: 12 checks pinning `eraStart`/`eraEnd` directly, including the exact boundary-day math the critical bug was about — see Task 4's own notes for the full story and the PR-membership proof (which lives in `bootstrap-slice.test.js`, since it needs a real corpus).
 
 - [ ] **Step 6: Commit**
 
@@ -1537,25 +1535,38 @@ git commit -m "feat(cli): bootstrap plan — resumable work-unit manifest"
 
 ---
 
-### Task 4: `bootstrap slice` and `bootstrap index` — shipped, findings below (two review rounds)
+### Task 4: `bootstrap slice` and `bootstrap index` — shipped, findings below (three review rounds)
 
-These two are the token levers: a slice is what one agent reads instead of the whole corpus; an index is what it reads instead of the whole bundle. **The reference code below is what actually shipped, not the original draft.** It went through two review rounds. **Round 1** (self-review, this task's required last step) found the draft failed open on its primary reason for existing (era filtering was declared but never wired up), plus five smaller findings — the six below. **Round 2** (coordinator review of round 1's own output) pulled real PR bodies from this repo rather than reasoning about the truncation cap in the abstract, found it silently destroyed Lab Notes on the majority of them; found the era-filter fix still failed open when BOTH bounds were garbage; and overturned round 1's "fails closed" call on a dateless era in favor of rejecting it at plan time. Read this before touching either file again.
+These two are the token levers: a slice is what one agent reads instead of the whole corpus; an index is what it reads instead of the whole bundle. **The reference code below is what actually shipped, not the original draft.** It went through three review rounds. **Round 1** (self-review, this task's required last step) found the draft failed open on its primary reason for existing (era filtering was declared but never wired up), plus five smaller findings — the six below. **Round 2** (coordinator review of round 1's own output) pulled real PR bodies from this repo rather than reasoning about the truncation cap in the abstract, found it silently destroyed Lab Notes on the majority of them; found the era-filter fix still failed open when BOTH bounds were garbage; and overturned round 1's "fails closed" call on a dateless era in favor of rejecting it at plan time. **Round 3** (coordinator review of round 2's own fixes — the reviewer left reproduction scripts, not just descriptions, in the scratchpad this time) found the round-2 era-window design was itself structurally broken (the coordinator's own instruction had asked for an incompatible combination — inclusive bounds plus a no-touching rule — and owned that mistake directly), found the round-2 Lab-Note truncation fix could still grow a body or silently no-op whenever content followed the note, found two more silent-failure paths (`plan` and `matchesEras` could disagree about a bad era bound; an unresolved era slug failed closed quietly instead of loudly), and asked for two pure-logic modules to be pulled out for direct testing — the exact way round 2's defects went untested in the first place. Read this before touching any of these files again.
 
 **Files:**
 - Create: `packages/cli/src/lib/bootstrap/slice.ts`
 - Create: `packages/cli/src/lib/bootstrap/index-view.ts`
+- Create (round 3): `packages/cli/src/lib/bootstrap/body-budget.ts` — the Lab-Note-aware truncation, extracted out of `slice.ts` for direct testing
+- Create (round 3, shared with Task 3): `packages/cli/src/lib/bootstrap/era-window.ts` — half-open era date math
 - Modify: `packages/cli/src/commands/bootstrap.ts`
-- Modify: `packages/cli/src/lib/bootstrap/manifest.ts` (round 2 only — era window validation; see Task 3's item 11, the same change)
+- Modify: `packages/cli/src/lib/bootstrap/manifest.ts` (round 2 — era window validation; see Task 3's item 11) / `profile-validate.ts` (round 3 extraction target — see Task 3's round-4 note)
 - Test: `tests/cli/bootstrap-slice.test.js` (new file, not an extension of `bootstrap-plan.test.js` — see "Why a new test file" below)
+- Test (round 3, direct unit tests, no CLI build needed): `tests/cli/bootstrap-body-budget.test.js`
 
-**Six round-1 findings, plus round 2's three fixes and one overturned decision:**
+**Six round-1 findings, round 2's three fixes and one overturned decision, and round 3's four fixes plus one critical correction:**
 
 1. **`slice.eras` was declared on `WorkUnit` but never consumed.** Confirmed: `resolveSlice`'s only guard was `paths.length > 0`; a wave-3 era unit (`slice: { eras: [slug] }`) has no `paths`, so it fell straight through to "return every PR in the corpus" — on a 324-PR repo, the exact failure the task brief warned about. Fixed by adding a second branch: when `paths` is empty but `eras` is non-empty, look each slug up in `profile.json`'s `eras` list (via the already-exported `readProfile`) and filter PRs by `merged_at` falling inside that era's `[from, to]` window (`matchesEras` in `slice.ts`).
    - **Design call, not in the original draft:** the manifest itself only ever stores the era **slug**, never its `from`/`to` — `planUnits` (manifest.ts) doesn't read those fields today, and embedding them into `WorkUnit.slice` would mean changing the manifest schema and `sameSlice`'s re-plan invalidation logic too, a much bigger change than this bug needed. `resolveSlice` already takes `cwd`, so it looks the window up in `profile.json` directly at slice time instead. Trade-off, noted in code: if `profile.json`'s dates are edited without re-running `plan`, a `done` unit won't notice its window changed — narrower than the bug being fixed, and the same shape of gap `sameSlice` already accepts for `era.title` (a cosmetic rename).
    - **Round 1 chose "an era with no `from` and no `to` matches zero PRs"** (fails closed, not open) — matching everything would just move the fail-open bug one level down. **Round 2 overturned this call:** a dateless era is the same authoring mistake as an area with empty `paths` (which `planUnits` already rejects, item 8 in Task 3), just resolving to the opposite silent failure — an empty fragment and a story wave that quietly contributes nothing, with no error anywhere. There's no legitimate use for a fully unbounded era; "everything" is what the three whole-corpus units already serve. **Fixed at the source, in `manifest.ts`:** `assertEraWindow` now rejects an era with neither bound, and rejects any present bound that doesn't parse (mirroring `corpus.ts`'s `--since` validation) — before any agent is ever dispatched. An era with only one bound stays legal: a meaningful open-ended window, not a mistake. See Task 3's item 11 for the full writeup; this file's own `matchesEras` still defends against the case defensively (next point) rather than trusting that validation caught everything.
    - **Round 2, severe: `matchesEras` still failed open when BOTH bounds were garbage.** The per-side leniency (an unparseable bound treated as "no bound on that side") is fine with one bad bound and one good one, but when both `from` and `to` fail to parse, every guard fell through and the function returned `true` for every PR — matching the entire corpus, the exact fail-open this file exists to prevent. Reproduced before the fix: `eras: [{ slug: "garbage-era", from: "not-a-date", to: "also-not-a-date" }]` → `bootstrap slice` returned all 3 PRs in a 3-PR test corpus instead of 0. `assertEraWindow` (previous point) closes the path to this through `plan`, but `matchesEras` doesn't get to assume that: `eraWindows` can still hand it a window built from a stale `profile.json` edited after `plan` ran without a re-plan (the same gap already documented for the era-window lookup itself). **Fixed:** a bound that's missing OR doesn't parse is now discarded as "not usable" rather than "unbounded" — if only one side is discarded the other still constrains the match (the useful leniency is kept), but if *both* end up discarded there is nothing left to constrain on, and the window matches nothing. Tested directly by hand-writing a `manifest.json`/`profile.json` pair with a garbage-dated era (bypassing `plan`'s now-stricter validation on purpose, to simulate the stale-file gap) and confirming `bootstrap slice` returns zero PRs.
    - **A PR that falls in no era** is simply excluded from every era-unit's slice — no special handling needed, and not a defect: `w3-decisions` and `w3-status-arcs` (see finding 2) still see it via their whole-corpus access.
-   - **Round 2: era windows are inclusive at both ends, and that means overlapping windows double-match.** Bounds are inclusive on purpose — a half-open window would silently drop the PR merged exactly at an era's `to`, and recon dates an era's end at its last deliverable's merge, so losing that PR is worse than double-counting one at a shared boundary. But inclusive bounds also mean two overlapping era windows would double-match every PR merged in the overlap, with nothing downstream deduping it. **Fixed in `manifest.ts`:** `assertNoOverlappingEras` rejects overlapping windows at plan time — including the edge case where two windows merely *touch* at one shared instant (both bounds parse to the identical timestamp): that single point is shared under inclusive-inclusive semantics, so it's rejected too, not waved through as "just adjacent." Recon needs a real gap (even one day) between eras to partition cleanly. See Task 3's item 11.
+   - **Round 2: era windows are inclusive at both ends, and that means overlapping windows double-match.** Bounds are inclusive on purpose — a half-open window would silently drop the PR merged exactly at an era's `to`, and recon dates an era's end at its last deliverable's merge, so losing that PR is worse than double-counting one at a shared boundary. But inclusive bounds also mean two overlapping era windows would double-match every PR merged in the overlap, with nothing downstream deduping it. **Fixed in `manifest.ts`:** `assertNoOverlappingEras` rejects overlapping windows at plan time — including the edge case where two windows merely *touch* at one shared instant (both bounds parse to the identical timestamp): that single point is shared under inclusive-inclusive semantics, so it's rejected too, not waved through as "just adjacent." Recon needs a real gap (even one day) between eras to partition cleanly. **Round 3 found this whole design broken — see below, it wasn't just refined, it was replaced.**
+   - **Round 3, critical: round 2's inclusive-bounds-plus-no-touching design was structurally incompatible with date-only dates, and the coordinator owned the mistake directly** (their own instruction had specified both rules together). `Date.parse("2026-01-31")` is that day's `T00:00:00Z`. With inclusive bounds, an era ending `to: "2026-01-31"` excluded every PR merged LATER that same day — reproduced on a real 4-era partition of this repo: **51 of 195 PRs** landed in NEITHER era. Zero of those 195 merged at exactly `T00:00:00Z`, so the double-count inclusive bounds were meant to prevent never actually happens in practice. **Fixed — the whole scheme replaced with half-open intervals plus end-of-day expansion**, now in its own shared module, `era-window.ts` (see Task 3's round-4 note: `profile-validate.ts`'s overlap check and this file's `matchesEras` both import the same `eraStart`/`eraEnd`, so the two can't independently drift the way inclusive-bounds reasoning once lived separately in each file):
+     - A date-only `from` is that day's `T00:00:00Z` — no change from before.
+     - A date-only `to` is the **NEXT** day's `T00:00:00Z` — the whole named day is included. A `to` (or `from`) with an explicit time component is that exact instant, unmodified either way.
+     - Membership is half-open: `start <= merged && merged < end`.
+     - The overlap check becomes `a.start < b.end && b.start < a.end`, which **permits** two eras whose windows touch exactly (one's `to` the day before the next's `from`) — under half-open semantics, touching is a clean partition, not a collision. Two eras that share the SAME calendar date for one's `to` and the next's `from` still genuinely overlap by a full day (a date-only `to` includes its whole named day) and are still correctly rejected.
+     - **Verified directly against the critical bug:** `tests/cli/bootstrap-era-window.test.js` pins the boundary-day math itself (a PR merged mid-day on the `to` date is inside the window; the start of the next day is not); `tests/cli/bootstrap-slice.test.js`'s boundary-day test proves it end-to-end through a real corpus + `plan` + `slice` — two PRs merged on `2026-01-31` (one at noon, one at 18:30) both land in the era ending `to: "2026-01-31"`, and neither leaks into the era starting `from: "2026-02-01"`.
+     - **Discrepancy found and flagged, not silently resolved:** the coordinator's own message gave two "natural ways to write successive eras, both correct and gapless" — `to: 2026-01-31` / `from: 2026-02-01`, or `to: 2026-02-01` / `from: 2026-02-01`. Under the coordinator's own stated formulas (date-only `to` expands to the NEXT day), the second pair is **not** gapless — it's a full calendar day of overlap (the first era's `to: "2026-02-01"` extends through all of Feb 1st; the second era's `from: "2026-02-01"` starts at the very beginning of Feb 1st). The implementation follows the precise, stated formulas (verified consistent with the first example and with `assertNoOverlappingEras`'s own logic) rather than the second illustrative pair, and correctly rejects that second pair as an overlap — see `tests/cli/bootstrap-plan.test.js`'s `arkaik-bootstrap-samedateera-` test. Flagging this rather than quietly picking a side: if the intent was actually for `to`/`from` sharing one calendar date to be accepted, that would require a different (and worse — see the critical bug above) semantics for `to`.
+   - **Round 3, follow-on the reviewer caught:** two eras that both carry only a `from` (a natural way to write successive open-ended chapters) always overlap under half-open semantics, since each extends to `+Infinity` — and used to be rejected with a message ("narrow one or both windows") that didn't hint the fix is to add a `to` bound. `assertNoOverlappingEras` now special-cases this and names the fix directly.
+   - **Round 3: an era slug the manifest references but profile.json no longer declares failed closed *quietly*.** `eraWindows` used to resolve a missing slug to `{}` (an unbounded window, which `matchesEras` matches to nothing) — so `bootstrap slice w3-<slug>` exited 0 with `"prs":[]` and no signal anything was wrong. That is exactly the silent-empty-story-fragment failure `assertEraWindow` (Task 3, item 11) exists to make loud — just happening one stage later, at slice time instead of plan time. **Fixed:** a slug with no matching profile entry now throws, naming the slug and `PROFILE_FILE`.
+   - **Round 3, important: `plan` and `matchesEras` could disagree, and the divergence silently widened a window.** `plan` rejects an era with an unparseable bound; `matchesEras` discarded it and carried on (the per-side leniency described above). Reproduced: `from: "whenever", to: "2026-03-01"` on a manifest built before that bound went bad — the window widened to "everything before 2026-03-01," and the slice returned PRs belonging to a different era entirely. Not graceful degradation: one era's slice silently containing another's PRs. **Fixed:** `eraWindows` now re-validates the era it looks up with the exact same `assertEraWindow` check `plan` uses (imported from `profile-validate.ts`), throwing just as loudly — `resolveSlice` already reads `profile.json` fresh every time, so calling the same validator costs nothing extra. `matchesEras`'s own "both bounds unusable -> match nothing" defense (previous point) stays in place regardless, on principle: a function whose failure mode is "match everything" shouldn't rely on an upstream validator being correct, even after this fix makes that path unreachable through the ordinary CLI.
 
 2. **"No paths → no filtering" fallback.** Task 3 closed this for areas (`area.paths` must be non-empty, or `plan` rejects `profile.json`). After the era fix above, the units that still reach `resolveSlice`'s final "no filter" branch are exactly `w0-recon`, `w3-decisions`, and `w3-status-arcs` — all three hardcoded in `manifest.ts`'s `planUnits`, never agent-influenced, and all three genuinely need whole-corpus access (recon needs the shape of everything to write `profile.json`; decisions and status-arcs both need visibility across the whole timeline, not one area or era). Verified this is provably closed by construction, not merely by convention: an area always has `paths`, an era unit always has a slug in `eras` and (after round 2) that era is guaranteed to have a validated, parseable window, so the only way to reach "no filter" is to be one of the three hardcoded kinds. Decision: leave "empty means everything" as-is, but only because it's now unreachable except by design — documented the invariant directly in `resolveSlice`'s comment so a future new wave-N kind that forgets to set `paths`/`eras` doesn't silently inherit whole-corpus access with nothing flagging it.
 
@@ -1565,12 +1576,82 @@ These two are the token levers: a slice is what one agent reads instead of the w
 
 5. **`index` reading the bundle.** Checked for Task 3's `path.join`-vs-`path.resolve` bug (an absolute path getting mangled into `<cwd>/abs/path`): **not present** — the draft's `runIndex` already used `path.resolve(process.cwd(), target)`, not `path.join`, so an absolute positional argument resolves to itself correctly. Verified with a dedicated test (an absolute `--bundle`-style path argument). `readBundle` (existing, in `bundle-io.ts`) already throws a clean, specific message on a missing file (`File not found: ...`) or unparseable JSON (`Cannot parse JSON — ...`), and `runIndex`'s existing `try`/`catch` turns either into a clean one-line stderr message and exit 1, not a raw stack trace — verified both with tests. No code change needed for this one; shipped as drafted.
 
-6. **`slice` output size.** Three changes, all aimed squarely at the "primary token lever" framing:
-   - **Round 2, severe: the naive per-PR body cap silently destroyed Lab Notes on real PRs.** Round 1's fix capped any body over 4000 chars with a plain head-truncate. The coordinator pulled real bodies from this repo rather than reasoning about it in the abstract: **5 of 8 sampled merged PRs have their `## Lab Note` positioned past the 4000-char mark** (offsets 4460–5464 in bodies 5205–6267 chars long) — the note lives near the *end* of a long body, exactly where a head-cut lands. This is the worst possible loss: `has_lab_note` is computed from the full body at mining time (`corpus.ts`) and stays `true` after truncation, so the agent is told a note exists and then can't find it. **Fixed:** `boundBody` now locates a `## Lab Note` section (the heading through the next `## ` heading, or end of body) via `splitLabNoteSection` and **always keeps it — and anything after it — in full**; only the prose *before* the note is head-truncated, to whatever budget is left once the note is accounted for. The truncation is always marked (`[… truncated …]`) so an agent can tell it's reading a shortened body, not a genuinely short one. In the pathological case of a Lab Note itself bigger than the whole cap, the note still wins — the cap is a target, not a hard ceiling, when the alternative is losing the note. Tested with a synthetic body mirroring the real shape: >4000 chars of prose with a Lab Note as the last section, asserting the note's YAML survives byte-for-byte and the truncation marker is present.
+6. **`slice` output size.** Several changes, all aimed squarely at the "primary token lever" framing:
+   - **Round 2, severe: the naive per-PR body cap silently destroyed Lab Notes on real PRs.** Round 1's fix capped any body over 4000 chars with a plain head-truncate. The coordinator pulled real bodies from this repo rather than reasoning about it in the abstract: **5 of 8 sampled merged PRs have their `## Lab Note` positioned past the 4000-char mark** (offsets 4460–5464 in bodies 5205–6267 chars long) — the note lives near the *end* of a long body, exactly where a head-cut lands. This is the worst possible loss: `has_lab_note` is computed from the full body at mining time (`corpus.ts`) and stays `true` after truncation, so the agent is told a note exists and then can't find it. **Fixed (round 2):** `boundBody` locates a `## Lab Note` section (the heading through the next `## ` heading, or end of body) via `splitLabNoteSection` and keeps it — and, in round 2's version, anything after it — in full; only the prose *before* the note is head-truncated. **This round-2 fix itself had two more bugs, found in round 3** (see next point) — the reviewer's own verification against 12 real PR bodies from this repo confirmed the note now survives in every one, none grew, none silently no-opped, after round 3's fix below.
+   - **Round 3, important: round 2's fix retained `after` in full, which meant the cap could GROW a body or silently do nothing whenever content followed the note.** Every fixture available in round 2 put the Lab Note LAST in the body — the exact "fixtures cover the shape I imagined" trap this whole task was written to avoid falling into a second time. Reproduced: a note early in the body with ~20KB of trailing content grew 20076 -> 20088 bytes (a "truncation" that adds bytes, marked "truncated 7 characters" for what was actually a net *increase*); a note at the very start of the body with the same large trailing content produced 20057 -> 20057 — no shrink, no marker, the function silently doing nothing while still being on the truncation path. **Fixed:** `after` is now truncated from its own tail too (kept from its own start, right after the note; cut at its own end), sharing whatever budget remains once the note is accounted for, symmetrically with `before`. A hard floor was added: if the result isn't strictly smaller than the input, the untouched original is returned instead of a same-size-or-bigger body wearing a "truncated" marker that would be a lie. **Round 3, minor (item 7 in review): the two truncation code paths used two different marker strings, only one of which reported how much was cut** — unified into one `truncationMarker(cutChars)` used everywhere text is actually cut, always reporting the count.
+   - **Round 3: extracted into its own module, `body-budget.ts`, specifically because the round-2 defects above shipped with zero coverage.** `boundBody` was only reachable through a full corpus → plan → CLI round trip; as a standalone, dependency-free module (no imports at all — Node's native TypeScript support strips types at load time, so it can be `require()`d directly with no local module to resolve and no CLI build needed) it gets direct unit tests instead, in `tests/cli/bootstrap-body-budget.test.js`: no-note, note-early-with-large-trailing-content (the exact growth repro), note-only (the note alone exceeds the cap with nothing around it — the hard floor's own test), and note-larger-than-the-cap-with-real-content-around-it (confirms a real shrink still happens even then). 28 checks, all passing.
    - **Compact JSON, not pretty-printed.** The original draft's `runSlice` used `JSON.stringify(slice, null, 2)`. 2-space indentation meaningfully inflates an array of PR/surface objects for no reader who needs it — the consumer is an agent parsing JSON, not a human skimming a terminal. Changed to `JSON.stringify(slice)` (no indent). Verified with a test asserting the CLI's stdout is single-line.
-   - Considered and declined: filtering `surfaces` by era for wave-3 units (era units currently get every surface, not just ones near their date window). `surfaces.json` entries are `{path, kind}` only — no dates — so there's nothing to filter by, and the entries themselves are small (a few KB even on a large repo). Left as-is; flagged here rather than silently doing nothing.
+   - **Round 3, minor (item 11 in review): era units were getting the full, unfiltered surfaces inventory.** Round 1 considered and declined filtering `surfaces` by era, reasoning the entries were small either way — the coordinator pushed back: a story unit has no path scope to filter surfaces BY, and no use for the code inventory at all (that's an anatomy-wave hint), so handing it the whole thing contradicts "exactly the subset one unit needs" regardless of size. **Fixed:** an era-scoped unit's slice now carries `surfaces: []`. `w0-recon`/`w3-decisions`/`w3-status-arcs` are unaffected — none of them have an era slug, so this doesn't touch their whole-corpus access.
+
+**Round 3's remaining minors (index-view.ts and bootstrap.ts):**
+- **`index-view.ts`:** `tsvField`'s `fallback` argument was being passed `"-"` in the one call site (`product`) where it can never be used — `product` is already truthy at that point, so the fallback never runs. Simplified: `fallback` now defaults to `""` and the dead argument was dropped from every call site.
+- **`bootstrap index --bundle foo.json`** (or any option-looking argument) was silently treated as the bundle *path itself* — `runIndex` never checked for an unrecognized option the way `runCorpus`/`runPlan` do, so a `--bundle` typo (modeled on `plan`'s real flag) produced a confusing `File not found: <cwd>/--bundle` instead of a clear error. **Fixed:** `runIndex` now rejects anything starting with `-` that isn't `-h`/`--help` via the shared `fail()` helper, matching every other subcommand.
+- **`bootstrap slice` with no unit id** printed its usage text to **stdout** and exited 1 — inconsistent with every other error path in `bootstrap.ts`, which uses `fail()` (stderr). **Fixed:** the missing-argument case now calls `fail()`; `-h`/`--help` still print to stdout with exit 0, unchanged.
+
+**Explicitly not changed, by the reviewer's own call:** `matchesPaths`/`matchesEras`'s case-sensitivity and `splitLabNoteSection`'s fenced-heading matching intentionally mirror `corpus.ts`'s `has_lab_note` detection exactly (same regex, same anchoring) — they can't produce a mismatch with each other by construction, so this wasn't touched.
 
 **Why a new test file:** `tests/cli/bootstrap-plan.test.js` was already 660 lines / 73 checks by the time this task started, and a realistic `slice` test needs a full corpus (`bootstrap corpus --from-json`) *and* a full manifest (`bootstrap plan` against a real `profile.json`) — a meaningfully different fixture shape than `bootstrap-plan.test.js`'s profile/manifest-only setup. Matches the precedent Task 3 already set (splitting `bootstrap-corpus.test.js` out for the same size reason). **Task 9 must list `tests/cli/bootstrap-slice.test.js` in the `test:bootstrap` script** (already updated in Task 9's section below — check it's still there if Task 9 is re-planned).
+
+The shipped `body-budget.ts` (round 3, new — see Task 4's finding 6 for the full story of what was wrong before this extraction):
+
+```ts
+const LAB_NOTE_HEADING_RE = /^##\s+Lab Note.*$/m;
+const NEXT_HEADING_RE = /^##\s+/m;
+
+export const MAX_BODY_CHARS = 4000;
+
+export interface LabNoteSection {
+  before: string;
+  note: string;
+  after: string;
+}
+
+export function splitLabNoteSection(body: string): LabNoteSection | null {
+  const heading = LAB_NOTE_HEADING_RE.exec(body);
+  if (!heading) return null;
+  const noteStart = heading.index;
+  const restStart = noteStart + heading[0].length;
+  const next = NEXT_HEADING_RE.exec(body.slice(restStart));
+  const noteEnd = next ? restStart + next.index : body.length;
+  return { before: body.slice(0, noteStart), note: body.slice(noteStart, noteEnd), after: body.slice(noteEnd) };
+}
+
+function truncationMarker(cutChars: number): string {
+  return `\n\n[… truncated ${cutChars} characters …]\n\n`;
+}
+
+function headTruncate(text: string, budget: number): string {
+  if (text.length <= budget) return text;
+  const cut = text.length - budget;
+  return `${text.slice(0, budget)}${truncationMarker(cut)}`;
+}
+
+function boundAroundNote(section: LabNoteSection): string {
+  const remaining = Math.max(0, MAX_BODY_CHARS - section.note.length);
+  const beforeBudget = Math.floor(remaining / 2);
+  const afterBudget = remaining - beforeBudget;
+  return `${headTruncate(section.before, beforeBudget)}${section.note}${headTruncate(section.after, afterBudget)}`;
+}
+
+export function boundBody(body: string): string {
+  if (body.length <= MAX_BODY_CHARS) return body;
+
+  const section = splitLabNoteSection(body);
+  const bounded = section ? boundAroundNote(section) : headTruncate(body, MAX_BODY_CHARS);
+
+  // Hard floor: never return something the same size as, or bigger than,
+  // what was received. Closes both round-2 defects at once — a body that
+  // used to GROW (when `after` was retained in full and large) and a body
+  // that used to no-op silently (when `before` was empty and `after` was
+  // retained in full) both now fall through to this and get the untouched
+  // original back instead of a "truncated" body that's a lie either way.
+  return bounded.length < body.length ? bounded : body;
+}
+```
+
+`before` and `after` are truncated symmetrically — each keeps its own head and has its own tail cut, sharing whatever budget is left once the Lab Note itself is accounted for. The Lab Note is the only thing ever guaranteed to survive whole; everything around it, on either side, is subject to the same budget.
+
+The shipped `era-window.ts` (round 3, new, shared with `profile-validate.ts` — full listing and the half-open reasoning are in Task 3's section, since the module lives there in the file tree but is used by both).
 
 The shipped `slice.ts`:
 
@@ -1588,11 +1669,14 @@ The shipped `slice.ts`:
  */
 import { existsSync, readFileSync } from "node:fs";
 
+import { boundBody } from "./body-budget";
 import type { CorpusDoc, CorpusPr, CorpusSurface } from "./corpus";
 import { readCorpusPrs } from "./corpus";
+import { eraEnd, eraStart } from "./era-window";
 import type { WorkUnit } from "./manifest";
 import { readProfile } from "./manifest";
-import { at, DOCS_FILE, SURFACES_FILE } from "./paths";
+import { at, DOCS_FILE, PROFILE_FILE, SURFACES_FILE } from "./paths";
+import { assertEraWindow } from "./profile-validate";
 
 export interface Slice {
   unit: string;
@@ -1631,71 +1715,58 @@ interface EraWindow {
   to?: string;
 }
 
+// Round 3: two things enforced eagerly, both because profile.json can drift
+// out from under an already-planned manifest without a re-plan. A slug with
+// NO matching profile entry now throws (naming the slug and PROFILE_FILE) —
+// it used to resolve to `{}`, an unbounded window that `matchesEras` then
+// matched to nothing, so `bootstrap slice w3-<slug>` exited 0 with an empty
+// `prs: []` and no signal anything was wrong. A slug that IS found is
+// re-validated with the SAME assertEraWindow check `plan` already ran on it
+// — not just trusted — because plan only validated it at plan time; a bound
+// gone bad afterward would otherwise silently widen the window (reproduced:
+// `from: "whenever", to: "2026-03-01"` widened to "everything before
+// 2026-03-01" and one era's slice returned another era's PRs).
 function eraWindows(cwd: string, slugs: readonly string[]): EraWindow[] {
   if (slugs.length === 0) return [];
   const profile = readProfile(cwd);
   const bySlug = new Map((profile?.eras ?? []).map((e) => [e.slug, e]));
   return slugs.map((slug) => {
     const era = bySlug.get(slug);
-    return era ? { from: era.from, to: era.to } : {};
+    if (!era) {
+      throw new Error(
+        `era "${slug}" is not declared in ${PROFILE_FILE}'s "eras" list, but a work unit's slice references it. ` +
+          "profile.json may have been edited (or the era removed) since `arkaik bootstrap plan` last ran. " +
+          "Restore the era in profile.json and re-run `arkaik bootstrap plan`, or reconcile the manifest by hand.",
+      );
+    }
+    assertEraWindow(era);
+    return { from: era.from, to: era.to };
   });
 }
 
-// A bound that's missing OR doesn't parse is discarded ("not usable"), not
-// treated as "unbounded" — if only one side is discarded the other still
-// constrains the match, but if BOTH end up discarded there is nothing left
-// to constrain on, and returning true would be exactly the fail-open this
-// function exists to prevent (round 2: reproduced with both bounds garbage,
-// which used to match the entire corpus).
+// Half-open, via era-window.ts (round 3 — see that file and Task 3's item
+// 12 for why: inclusive bounds silently dropped every PR merged on a
+// boundary day). A bound that's missing OR doesn't parse is discarded ("not
+// usable"), not treated as "unbounded" — if only one side is discarded the
+// other still constrains the match, but if BOTH end up discarded there is
+// nothing left to constrain on, and returning true would be exactly the
+// fail-open this function exists to prevent (round 2: reproduced with both
+// bounds garbage, which used to match the entire corpus). `eraWindows`
+// above now validates eagerly, so this is defense in depth, not the primary
+// gate — kept anyway, on principle.
 export function matchesEras(mergedAt: string, windows: readonly EraWindow[]): boolean {
   const merged = Date.parse(mergedAt);
   if (Number.isNaN(merged)) return false;
   return windows.some((w) => {
-    const from = w.from !== undefined ? Date.parse(w.from) : undefined;
-    const to = w.to !== undefined ? Date.parse(w.to) : undefined;
-    const usableFrom = from !== undefined && !Number.isNaN(from) ? from : undefined;
-    const usableTo = to !== undefined && !Number.isNaN(to) ? to : undefined;
-    if (usableFrom === undefined && usableTo === undefined) return false;
-    if (usableFrom !== undefined && merged < usableFrom) return false;
-    if (usableTo !== undefined && merged > usableTo) return false;
+    const start = w.from !== undefined ? eraStart(w.from) : undefined;
+    const end = w.to !== undefined ? eraEnd(w.to) : undefined;
+    const usableStart = start !== undefined && !Number.isNaN(start) ? start : undefined;
+    const usableEnd = end !== undefined && !Number.isNaN(end) ? end : undefined;
+    if (usableStart === undefined && usableEnd === undefined) return false;
+    if (usableStart !== undefined && merged < usableStart) return false;
+    if (usableEnd !== undefined && merged >= usableEnd) return false;
     return true;
   });
-}
-
-const MAX_BODY_CHARS = 4000;
-const LAB_NOTE_HEADING_RE = /^##\s+Lab Note.*$/m;
-const NEXT_HEADING_RE = /^##\s+/m;
-
-// Round 2, severe: a naive head-truncate silently ate the Lab Note on 5 of 8
-// real PRs sampled from this repo (the note sits near the END of a long
-// body, exactly where a head-cut lands), while has_lab_note stayed true.
-// This splits out the Lab Note section (heading through the next H2, or end
-// of body) and always keeps it — and anything after it — in full; only the
-// prose BEFORE it is head-truncated, to whatever budget survives.
-function splitLabNoteSection(body: string): { before: string; note: string; after: string } | null {
-  const heading = LAB_NOTE_HEADING_RE.exec(body);
-  if (!heading) return null;
-  const noteStart = heading.index;
-  const restStart = noteStart + heading[0].length;
-  const next = NEXT_HEADING_RE.exec(body.slice(restStart));
-  const noteEnd = next ? restStart + next.index : body.length;
-  return { before: body.slice(0, noteStart), note: body.slice(noteStart, noteEnd), after: body.slice(noteEnd) };
-}
-
-function boundBody(pr: CorpusPr): CorpusPr {
-  if (pr.body.length <= MAX_BODY_CHARS) return pr;
-
-  const section = splitLabNoteSection(pr.body);
-  if (!section) {
-    const cut = pr.body.length - MAX_BODY_CHARS;
-    return { ...pr, body: `${pr.body.slice(0, MAX_BODY_CHARS)}\n\n…[truncated ${cut} more characters]` };
-  }
-
-  const marker = "\n\n[… truncated …]\n\n";
-  const budgetForProse = Math.max(0, MAX_BODY_CHARS - section.note.length - section.after.length - marker.length);
-  const truncatedProse =
-    section.before.length > budgetForProse ? `${section.before.slice(0, budgetForProse)}${marker}` : section.before;
-  return { ...pr, body: `${truncatedProse}${section.note}${section.after}` };
 }
 
 export function resolveSlice(cwd: string, unit: WorkUnit): Slice {
@@ -1705,15 +1776,22 @@ export function resolveSlice(cwd: string, unit: WorkUnit): Slice {
   const surfaces = readJsonArray<CorpusSurface>(at(cwd, SURFACES_FILE));
 
   let prs: CorpusPr[];
+  let surfacesOut: CorpusSurface[];
   if (paths.length > 0) {
     prs = allPrs.filter((pr) => pr.files.some((f) => matchesPaths(f, paths)));
+    surfacesOut = surfaces.filter((s) => matchesPaths(s.path, paths));
   } else if (eraSlugs.length > 0) {
     const windows = eraWindows(cwd, eraSlugs);
     prs = allPrs.filter((pr) => matchesEras(pr.merged_at, windows));
+    // Round 3: a story unit works from PRs and, when it asks, the docs
+    // manifest — never the code-surface inventory (an anatomy-wave hint,
+    // keyed by path, and an era has no path scope to key it by).
+    surfacesOut = [];
   } else {
     prs = allPrs;
+    surfacesOut = surfaces;
   }
-  prs = prs.map(boundBody);
+  prs = prs.map((pr) => ({ ...pr, body: boundBody(pr.body) }));
 
   const slice: Slice = {
     unit: unit.id,
@@ -1721,7 +1799,7 @@ export function resolveSlice(cwd: string, unit: WorkUnit): Slice {
     scope: unit.scope,
     fragment: unit.fragment,
     prs,
-    surfaces: paths.length > 0 ? surfaces.filter((s) => matchesPaths(s.path, paths)) : surfaces,
+    surfaces: surfacesOut,
   };
 
   if (unit.slice.docs) slice.docs = readJsonArray<CorpusDoc>(at(cwd, DOCS_FILE));
@@ -1740,7 +1818,7 @@ interface IndexNode {
   metadata?: { product?: unknown } | null;
 }
 
-function tsvField(value: unknown, fallback: string): string {
+function tsvField(value: unknown, fallback = ""): string {
   const str = value === undefined || value === null ? fallback : String(value);
   return str.replace(/[\t\r\n]+/g, " ");
 }
@@ -1750,25 +1828,31 @@ export function renderIndex(bundle: { nodes?: unknown }): string {
   const lines = ["id\tspecies\ttitle\tproduct"];
   for (const node of nodes) {
     const product = node.metadata && typeof node.metadata === "object" ? node.metadata.product : undefined;
-    lines.push(
-      [tsvField(node.id, ""), tsvField(node.species, ""), tsvField(node.title, ""), product ? tsvField(product, "-") : "-"].join(
-        "\t",
-      ),
-    );
+    lines.push([tsvField(node.id), tsvField(node.species), tsvField(node.title), product ? tsvField(product) : "-"].join("\t"));
   }
   return `${lines.join("\n")}\n`;
 }
 ```
 
-`bootstrap.ts`'s `runSlice` calls `console.log(JSON.stringify(resolveSlice(cwd, unit)))` — no `null, 2` — and wraps the call in a `try`/`catch` (needed now that `resolveSlice` can throw via `readProfile` on an unparseable `profile.json`). `runIndex` is unchanged from the draft. Both cases are wired into the `switch` in `runBootstrap`.
+`bootstrap.ts`'s `runSlice` calls `console.log(JSON.stringify(resolveSlice(cwd, unit)))` — no `null, 2` — and wraps the call in a `try`/`catch` (needed since `resolveSlice` can throw via `readProfile`, `eraWindows`, or `assertEraWindow` re-validation). `runIndex` (round 3) now rejects an unrecognized option (anything starting with `-` that isn't `-h`/`--help`) via `fail()` before treating `argv[0]` as a path. Both cases are wired into the `switch` in `runBootstrap`.
 
-Verification (as of round 2): `npm run build -w arkaik && node tests/cli/bootstrap-slice.test.js` — 46 checks, all passing (up from round 1's 35: the Lab Note test, the both-garbage-bounds `matchesEras` test, and the dateless-era test converted from "matches zero" to "plan rejects"). Full re-run of `bootstrap-corpus.test.js` (39, unchanged) and `bootstrap-plan.test.js` (82, up from 73 — see Task 3's item 11) to confirm no regressions across the whole suite, plus `npm run test:cli`, `npx eslint` on every touched file, and `npx tsc --noEmit` — all clean.
+Verification (as of round 3): full suite re-run —
+
+| File | Checks | Notes |
+|---|---|---|
+| `bootstrap-corpus.test.js` | 39 | unchanged |
+| `bootstrap-plan.test.js` | 84 | up from 82 (round 3's overlap-test corrections + the from-only-eras message test) |
+| `bootstrap-slice.test.js` | 55 | up from 46 (boundary-day membership, missing-era-slug throws, stale-profile garbage-bound throws, era-units-get-no-surfaces) |
+| `bootstrap-body-budget.test.js` | 28 | new, direct-require, no CLI build needed |
+| `bootstrap-era-window.test.js` | 12 | new, direct-require, no CLI build needed |
+
+All passing, plus `npm run test:cli` (63 + 4 version checks, unaffected), `npx eslint` on every touched `.ts` file (clean), and `npx tsc --noEmit` (0 errors). Verified directly against the reviewer's own reproduction data: all 12 real PR bodies sampled from this repo's scratchpad retain their Lab Note after `boundBody`, none grew, none silently no-opped.
 
 - [ ] **Commit**
 
 ```bash
-git add packages/cli/src/lib/bootstrap/slice.ts packages/cli/src/lib/bootstrap/index-view.ts packages/cli/src/lib/bootstrap/manifest.ts packages/cli/src/commands/bootstrap.ts tests/cli/bootstrap-slice.test.js tests/cli/bootstrap-plan.test.js docs/superpowers/plans/2026-08-04-bootstrap-method.md
-git commit -m "fix(cli): bootstrap slice — Lab Note-safe truncation, era validation at plan time"
+git add packages/cli/src/lib/bootstrap/slice.ts packages/cli/src/lib/bootstrap/index-view.ts packages/cli/src/lib/bootstrap/manifest.ts packages/cli/src/lib/bootstrap/profile-validate.ts packages/cli/src/lib/bootstrap/era-window.ts packages/cli/src/lib/bootstrap/body-budget.ts packages/cli/src/commands/bootstrap.ts tests/cli/bootstrap-slice.test.js tests/cli/bootstrap-plan.test.js tests/cli/bootstrap-body-budget.test.js tests/cli/bootstrap-era-window.test.js docs/superpowers/plans/2026-08-04-bootstrap-method.md
+git commit -m "fix(cli): bootstrap slice — half-open era windows, Lab Note truncation fixes, extract profile-validate/era-window/body-budget"
 ```
 
 ---
@@ -2833,8 +2917,10 @@ Expected: PASS on all eight checks. If `validate` fails, read its findings — t
 In `package.json`, add after the `test:cli` entry:
 
 ```json
-    "test:bootstrap": "npm run build -w arkaik && node tests/cli/bootstrap-corpus.test.js && node tests/cli/bootstrap-plan.test.js && node tests/cli/bootstrap-slice.test.js && node tests/cli/bootstrap-merge.test.js && node tests/cli/bootstrap-e2e.test.js",
+    "test:bootstrap": "node tests/cli/bootstrap-era-window.test.js && node tests/cli/bootstrap-body-budget.test.js && npm run build -w arkaik && node tests/cli/bootstrap-corpus.test.js && node tests/cli/bootstrap-plan.test.js && node tests/cli/bootstrap-slice.test.js && node tests/cli/bootstrap-merge.test.js && node tests/cli/bootstrap-e2e.test.js",
 ```
+
+(`bootstrap-era-window.test.js` and `bootstrap-body-budget.test.js` require their `.ts` source directly — Node's native TypeScript support strips types at load time — so they don't need the CLI built first; listed before the `npm run build` step for that reason, though order doesn't otherwise matter.)
 
 (Task 4 added `tests/cli/bootstrap-slice.test.js` as its own file rather than extending `bootstrap-plan.test.js` — see Task 4's own notes for why. Make sure it's in this list.)
 
@@ -3618,7 +3704,7 @@ Expected: PASS on all ten checks.
 In `package.json`, extend the bootstrap script:
 
 ```json
-    "test:bootstrap": "npm run build -w arkaik && node tests/cli/bootstrap-corpus.test.js && node tests/cli/bootstrap-plan.test.js && node tests/cli/bootstrap-merge.test.js && node tests/cli/bootstrap-e2e.test.js && node tests/cli/bootstrap-restore.test.js",
+    "test:bootstrap": "node tests/cli/bootstrap-era-window.test.js && node tests/cli/bootstrap-body-budget.test.js && npm run build -w arkaik && node tests/cli/bootstrap-corpus.test.js && node tests/cli/bootstrap-plan.test.js && node tests/cli/bootstrap-slice.test.js && node tests/cli/bootstrap-merge.test.js && node tests/cli/bootstrap-e2e.test.js && node tests/cli/bootstrap-restore.test.js",
 ```
 
 ```bash

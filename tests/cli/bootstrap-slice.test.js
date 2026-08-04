@@ -173,13 +173,16 @@ try {
     rmSync(datelessDir, { recursive: true, force: true });
   }
 
-  // --- matchesEras itself must not fail open when BOTH bounds are unparseable ---
-  // planUnits now rejects an unparseable era bound at plan time (see above),
-  // so the only way to reach this state through the CLI is a hand-edited or
-  // stale profile.json/manifest.json — exactly the gap eraWindows's own
-  // docstring already accepts (dates edited without a re-plan). Defense in
-  // depth: matchesEras must refuse to match everything even when handed
-  // genuinely garbage input directly, not rely on plan having caught it.
+  // --- item 3 & 4: a stale profile.json (edited without a re-plan) is caught loudly, not silently absorbed ---
+  // `plan` now rejects an unparseable era bound outright, so the only way to
+  // reach this state through the CLI is a hand-edited/stale profile.json or
+  // manifest.json AFTER `plan` already ran — exactly the gap eraWindows's own
+  // docstring accepts. `resolveSlice` re-validates the era it looks up with
+  // the SAME check `plan` uses (assertEraWindow) and throws just as loudly,
+  // rather than letting `matchesEras` silently discard the garbage bound and
+  // widen the window (reproduced before this fix: with one bound garbage and
+  // one good, the window widened to match a PR belonging to a different era
+  // entirely — a leaked-slice bug, not just a fail-open one).
   const garbageEraDir = freshRepoDir("arkaik-bootstrap-slice-garbageera-");
   try {
     const garbagePayload = [
@@ -219,15 +222,122 @@ try {
         ],
       }),
     );
-    const garbageSlice = JSON.parse(runCli(["bootstrap", "slice", "w3-garbage-era"], garbageEraDir).stdout);
+    const garbageSliceRun = runCli(["bootstrap", "slice", "w3-garbage-era"], garbageEraDir);
     check(
-      "an era with two unparseable bounds matches ZERO PRs, not the entire corpus (repro: used to return all 3)",
-      garbageSlice.prs.length === 0,
-      JSON.stringify(garbageSlice.prs.map((p) => p.number)),
+      "a stale profile.json with an unparseable era bound is rejected loudly, not silently matched (empty or wide)",
+      garbageSliceRun.status === 1,
+      `status=${garbageSliceRun.status} stdout=${garbageSliceRun.stdout}`,
+    );
+    check(
+      "the rejection names the bad bound, same message plan would give",
+      garbageSliceRun.stderr.includes("not-a-date"),
+      garbageSliceRun.stderr,
     );
   } finally {
     rmSync(garbageEraDir, { recursive: true, force: true });
   }
+
+  // --- item 3: an era slug the manifest references but profile.json no longer declares fails loudly, not as an empty slice ---
+  const missingEraDir = freshRepoDir("arkaik-bootstrap-slice-missingera-");
+  try {
+    writeFileSync(path.join(missingEraDir, "gh.json"), JSON.stringify([]));
+    const missingEraCorpus = runCli(["bootstrap", "corpus", "--from-json", path.join(missingEraDir, "gh.json")], missingEraDir);
+    check("setup: missing-era corpus exits 0", missingEraCorpus.status === 0, missingEraCorpus.stderr);
+
+    mkdirSync(path.join(missingEraDir, ".arkaik", "bootstrap", "fragments"), { recursive: true });
+    // profile.json declares no eras at all — the manifest below references
+    // one anyway, simulating profile.json being edited (the era renamed or
+    // removed) after `plan` already built this unit.
+    writeFileSync(path.join(missingEraDir, ".arkaik", "bootstrap", "profile.json"), JSON.stringify({ eras: [] }));
+    writeFileSync(
+      path.join(missingEraDir, ".arkaik", "bootstrap", "manifest.json"),
+      JSON.stringify({
+        version: 1,
+        mode: "greenfield",
+        bundle: "docs/arkaik/bundle.json",
+        units: [
+          {
+            id: "w3-only",
+            wave: 3,
+            title: "Story — Only",
+            scope: "test",
+            slice: { eras: ["only"] },
+            fragment: ".arkaik/bootstrap/fragments/w3-only.json",
+            status: "pending",
+          },
+        ],
+      }),
+    );
+    const missingEraRun = runCli(["bootstrap", "slice", "w3-only"], missingEraDir);
+    check(
+      "an era slug missing from profile.json fails loudly, not with a silent empty slice (exit 0, prs: [])",
+      missingEraRun.status === 1,
+      `status=${missingEraRun.status} stdout=${missingEraRun.stdout}`,
+    );
+    check("the rejection names the missing slug", missingEraRun.stderr.includes("only"), missingEraRun.stderr);
+  } finally {
+    rmSync(missingEraDir, { recursive: true, force: true });
+  }
+
+  // --- item 1, critical: a PR merged on a shared boundary day lands in exactly one era ---
+  // The exact fixture used to reproduce the critical bug: era-e ends
+  // "2026-01-31", era-f starts "2026-02-01" — under the OLD inclusive-bounds
+  // scheme, Date.parse("2026-01-31") is that day's T00:00:00Z, so a PR merged
+  // LATER on Jan 31 fell into NEITHER era (51 of 195 PRs did, on a real
+  // 4-era partition of this repo). Half-open bounds with end-of-day
+  // expansion for a date-only `to` fix this: the whole of Jan 31 belongs to
+  // era-e, and era-f starts clean at the beginning of Feb 1.
+  const boundaryDayDir = freshRepoDir("arkaik-bootstrap-slice-boundaryday-");
+  try {
+    const boundaryPayload = [
+      { number: 1, title: "Early in era E", body: "b", mergedAt: "2026-01-05T10:00:00Z", labels: [], files: [] },
+      { number: 2, title: "On the boundary day", body: "b", mergedAt: "2026-01-31T12:00:00Z", labels: [], files: [] },
+      { number: 3, title: "Another on the boundary day", body: "b", mergedAt: "2026-01-31T18:30:00Z", labels: [], files: [] },
+      { number: 4, title: "Into era F", body: "b", mergedAt: "2026-02-10T09:00:00Z", labels: [], files: [] },
+    ];
+    writeFileSync(path.join(boundaryDayDir, "gh.json"), JSON.stringify(boundaryPayload));
+    const boundaryCorpus = runCli(["bootstrap", "corpus", "--from-json", path.join(boundaryDayDir, "gh.json")], boundaryDayDir);
+    check("setup: boundary-day corpus exits 0", boundaryCorpus.status === 0, boundaryCorpus.stderr);
+
+    mkdirSync(path.join(boundaryDayDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(
+      path.join(boundaryDayDir, ".arkaik", "bootstrap", "profile.json"),
+      JSON.stringify({
+        eras: [
+          { slug: "era-e", title: "Era E", from: "2026-01-01", to: "2026-01-31" },
+          { slug: "era-f", title: "Era F", from: "2026-02-01", to: "2026-03-01" },
+        ],
+      }),
+    );
+    const boundaryPlan = runCli(["bootstrap", "plan"], boundaryDayDir);
+    check("setup: boundary-day plan exits 0", boundaryPlan.status === 0, boundaryPlan.stderr);
+
+    const eraESlice = JSON.parse(runCli(["bootstrap", "slice", "w3-era-e"], boundaryDayDir).stdout);
+    const eraFSlice = JSON.parse(runCli(["bootstrap", "slice", "w3-era-f"], boundaryDayDir).stdout);
+    const eraENumbers = eraESlice.prs.map((p) => p.number).sort();
+    const eraFNumbers = eraFSlice.prs.map((p) => p.number).sort();
+
+    check(
+      "both PRs merged on the shared boundary day (Jan 31) land in era-e, the day's own era",
+      JSON.stringify(eraENumbers) === JSON.stringify([1, 2, 3]),
+      JSON.stringify(eraENumbers),
+    );
+    check(
+      "neither boundary-day PR leaks into era-f — every PR lands in exactly one era, never both, never neither",
+      JSON.stringify(eraFNumbers) === JSON.stringify([4]),
+      JSON.stringify(eraFNumbers),
+    );
+  } finally {
+    rmSync(boundaryDayDir, { recursive: true, force: true });
+  }
+
+  // --- item 11: era units get no surfaces — a story unit has no path scope to filter the code inventory by ---
+  const eraSurfacesSlice = JSON.parse(runCli(["bootstrap", "slice", "w3-first-era"], dir).stdout);
+  check(
+    "an era unit's slice carries no surfaces (surfaces are an anatomy-wave hint, keyed by path an era doesn't have)",
+    Array.isArray(eraSurfacesSlice.surfaces) && eraSurfacesSlice.surfaces.length === 0,
+    JSON.stringify(eraSurfacesSlice.surfaces),
+  );
 
   // --- probe 2: which unit kinds legitimately get the whole corpus ---
   const statusArcsSlice = JSON.parse(runCli(["bootstrap", "slice", "w3-status-arcs"], dir).stdout);

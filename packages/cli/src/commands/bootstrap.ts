@@ -176,10 +176,14 @@ scope, matching PRs, matching surfaces, and — only when the unit asks for it
 function runSlice(argv: string[]): void {
   const cwd = process.cwd();
   const unitId = argv[0];
-  if (unitId === undefined || unitId === "-h" || unitId === "--help") {
+  if (unitId === "-h" || unitId === "--help") {
     console.log(SLICE_USAGE);
-    process.exit(unitId === undefined ? 1 : 0);
+    process.exit(0);
   }
+  // A missing required argument is a usage error, not a help request — it
+  // belongs on stderr via fail() like every other error path in this file,
+  // not printed to stdout the way -h/--help's actual usage dump is.
+  if (unitId === undefined) fail(`Missing required argument: <unit>\n\n${SLICE_USAGE}`);
 
   const manifest = readManifest(cwd);
   if (!manifest) fail("No manifest. Run `arkaik bootstrap plan` first.");
@@ -208,6 +212,15 @@ function runIndex(argv: string[]): void {
   if (argv[0] === "-h" || argv[0] === "--help") {
     console.log(INDEX_USAGE);
     process.exit(0);
+  }
+  // `index` takes one positional path, no flags — but nothing previously
+  // stopped an unrecognized option (e.g. a `--bundle` typo modeled on
+  // `plan`'s flag) from being silently treated AS that path, producing a
+  // confusing "File not found: <cwd>/--bundle" instead of a clear error.
+  // Every other subcommand in this file rejects an unknown option via
+  // fail(); match that instead of accepting anything that isn't -h/--help.
+  if (argv[0] !== undefined && argv[0].startsWith("-")) {
+    fail(`Unknown option: ${argv[0]}\n\n${INDEX_USAGE}`);
   }
   // A literal default, joined the same way runPlan's --bundle default is —
   // it is immediately resolved against cwd below, never serialized, so
