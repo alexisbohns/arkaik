@@ -5,17 +5,19 @@
  * half-open date-window math shared by `profile-validate.ts` (era overlap
  * detection at plan time) and `slice.ts` (PR membership at slice time).
  *
- * Requires the `.ts` source directly (Node's native TypeScript support
- * strips the types at load time), same as bootstrap-body-budget.test.js —
- * no CLI build needed. This module is the one piece of date math a real
- * critical bug came from (inclusive-inclusive bounds silently dropped every
- * PR merged on a boundary day — 51 of 195 on a real 4-era partition), so it
- * gets its own direct coverage rather than being pinned only through the
- * full corpus -> plan -> slice CLI round trip.
+ * Loaded via ./load-bootstrap-lib.js rather than a direct `require(".ts")` —
+ * that works on a dev machine (recent Node strips TS types natively) but not
+ * in CI, which pins Node 20 (see that file's comment for the full story).
+ * Same as bootstrap-body-budget.test.js — no CLI build needed. This module
+ * is the one piece of date math a real critical bug came from (inclusive-
+ * inclusive bounds silently dropped every PR merged on a boundary day — 51
+ * of 195 on a real 4-era partition), so it gets its own direct coverage
+ * rather than being pinned only through the full corpus -> plan -> slice CLI
+ * round trip.
  */
-const path = require("path");
+const { loadBootstrapModule } = require("./load-bootstrap-lib");
 
-const { eraStart, eraEnd } = require(path.join(__dirname, "..", "..", "packages", "cli", "src", "lib", "bootstrap", "era-window.ts"));
+const { eraStart, eraEnd } = loadBootstrapModule("era-window");
 
 let failures = 0;
 function check(name, cond, detail) {

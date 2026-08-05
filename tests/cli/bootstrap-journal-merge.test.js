@@ -6,9 +6,10 @@
  * sensitivity, and the de-duplicating merge of a base journal with freshly-
  * derived events.
  *
- * Requires the `.ts` source directly (Node's native TypeScript support
- * strips types at load time), same as bootstrap-era-window.test.js and
- * bootstrap-body-budget.test.js — no CLI build needed. Extracted specifically
+ * Loaded via ./load-bootstrap-lib.js (transpiled to CommonJS so this also
+ * works under CI's Node 20 — see that file's comment), same as
+ * bootstrap-era-window.test.js and bootstrap-body-budget.test.js — no CLI
+ * build needed. Extracted specifically
  * because it had zero direct coverage before this: every behavior here was
  * previously reachable only through a full CLI-spawn-plus-fixture round trip
  * in tests/cli/bootstrap-merge.test.js, which is exactly how a coordinator
@@ -16,11 +17,9 @@
  * property differently from an absent one — a two-line direct test here,
  * versus a four-step fixture with a hand-edited bundle through the CLI.
  */
-const path = require("path");
+const { loadBootstrapModule } = require("./load-bootstrap-lib");
 
-const { sortEvents, canonicalJson, isOrderSensitive, eventKey, mergeJournal } = require(
-  path.join(__dirname, "..", "..", "packages", "cli", "src", "lib", "bootstrap", "journal-merge.ts"),
-);
+const { sortEvents, canonicalJson, isOrderSensitive, eventKey, mergeJournal } = loadBootstrapModule("journal-merge");
 
 let failures = 0;
 function check(name, cond, detail) {

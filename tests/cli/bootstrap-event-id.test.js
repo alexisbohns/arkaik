@@ -6,10 +6,11 @@
  * random `ulid()` that `bootstrap merge` (Task 6) needs for byte-identical,
  * re-runnable output.
  *
- * Requires the `.ts` source directly (Node's native TypeScript support strips
- * the types at load time), same as bootstrap-era-window.test.js and
- * bootstrap-body-budget.test.js — no CLI build needed. This function is
- * explicitly the load-bearing piece for merge's reproducibility guarantee, so
+ * Loaded via ./load-bootstrap-lib.js (transpiled to CommonJS so this also
+ * works under CI's Node 20 — see that file's comment), same as
+ * bootstrap-era-window.test.js and bootstrap-body-budget.test.js — no CLI
+ * build needed. This function is explicitly the load-bearing piece for
+ * merge's reproducibility guarantee, so
  * it gets its own direct coverage rather than being proven only through the
  * full corpus -> plan -> merge CLI round trip (Task 9's plan text originally
  * said there would be no separate test for this file — that was written
@@ -73,9 +74,9 @@
  */
 const path = require("path");
 
-const { deterministicEventId, encodeTime, TIME_LEN, RANDOM_LEN } = require(
-  path.join(__dirname, "..", "..", "packages", "cli", "src", "lib", "bootstrap", "event-id.ts"),
-);
+const { loadBootstrapModule } = require("./load-bootstrap-lib");
+
+const { deterministicEventId, encodeTime, TIME_LEN, RANDOM_LEN } = loadBootstrapModule("event-id");
 const { loadSchema } = require(path.join(__dirname, "..", "schema", "load-schema.js"));
 const { existsSync, readFileSync } = require("fs");
 

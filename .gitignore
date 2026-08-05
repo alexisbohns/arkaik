@@ -34,6 +34,10 @@
 /tests/app/.test-build-panels-*/
 /tests/app/.test-build-product-*/
 /packages/cli/.test-build/
+# transient CJS build emitted by the bootstrap-lib direct-require tests
+# (tests/cli/load-bootstrap-lib.js) — a separate dir from the one above,
+# which holds unrelated esbuild-bundled ESM mocks for a different suite
+/packages/cli/.test-build-bootstrap/
 
 # next.js
 /.next/

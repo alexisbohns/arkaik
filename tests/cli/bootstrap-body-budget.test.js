@@ -5,21 +5,21 @@
  * the PR-body truncation cap `bootstrap slice` applies (docs/superpowers/
  * plans/2026-08-04-bootstrap-method.md, Task 4).
  *
- * This file requires the `.ts` SOURCE directly (Node's native TypeScript
- * support strips the types at load time) rather than spawning the built CLI
- * binary — no `npm run build -w arkaik` needed first, and no corpus/plan/CLI
- * round trip to reach the function under test. That round trip is exactly
- * why two real defects in this module shipped with zero coverage: every
- * fixture available at the time put the Lab Note LAST in the body, so
- * nothing ever exercised trailing content after it, or a note bigger than
- * the whole cap. `body-budget.ts` has no imports of its own for this exact
- * reason — it can be loaded standalone, with nothing to resolve.
+ * This file loads the `.ts` SOURCE via ./load-bootstrap-lib.js — transpiled
+ * to CommonJS for CI's Node 20, which (unlike a dev machine's recent Node)
+ * cannot strip TypeScript types at `require()` time; see that file's comment
+ * for the full story — rather than spawning the built CLI binary: no
+ * `npm run build -w arkaik` needed first, and no corpus/plan/CLI round trip
+ * to reach the function under test. That round trip is exactly why two real
+ * defects in this module shipped with zero coverage: every fixture available
+ * at the time put the Lab Note LAST in the body, so nothing ever exercised
+ * trailing content after it, or a note bigger than the whole cap.
+ * `body-budget.ts` has no imports of its own for this exact reason — it can
+ * be loaded standalone, with nothing to resolve.
  */
-const path = require("path");
+const { loadBootstrapModule } = require("./load-bootstrap-lib");
 
-const { boundBody, splitLabNoteSection, MAX_BODY_CHARS } = require(
-  path.join(__dirname, "..", "..", "packages", "cli", "src", "lib", "bootstrap", "body-budget.ts"),
-);
+const { boundBody, splitLabNoteSection, MAX_BODY_CHARS } = loadBootstrapModule("body-budget");
 
 let failures = 0;
 function check(name, cond, detail) {
