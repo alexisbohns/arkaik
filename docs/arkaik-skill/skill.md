@@ -1,6 +1,6 @@
 ---
 name: arkaik
-version: 3.1.0
+version: 3.2.0
 description: >
   Maintain the Arkaik product graph map for {{PRODUCT_NAME}} — add, update, or
   remove nodes and edges in the ProjectBundle JSON that describes its screens,
@@ -412,6 +412,12 @@ known type whenever one fits.
 
 ## Bootstrap: Generating a Map from Scratch
 
+**Check for the bootstrap skill first.** If the `arkaik-bootstrap` skill is
+installed beside this one — or can be installed with `arkaik init --bootstrap` —
+the bootstrap method supersedes this section for from-scratch and
+retro-population runs. The steps below remain the fallback when the bootstrap
+tooling is unavailable.
+
 If the project doesn't have a map yet and the user asks you to create one:
 
 1. Scan the codebase for routes/pages, models, and API endpoints
@@ -431,5 +437,6 @@ If the project doesn't have a map yet and the user asks you to create one:
 6. Save the snapshot to `{{BUNDLE_PATH}}` and the journal to `{{JOURNAL_PATH}}`
    (or ask the user where they want them)
 
-Full generation is the **only** sanctioned non-surgical case. For every
-subsequent change, use a surgical patch paired with an appended event.
+Full generation — via this section or the bootstrap method — is the **only**
+sanctioned non-surgical case. For every subsequent change, use a surgical patch
+paired with an appended event.
