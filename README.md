@@ -86,6 +86,7 @@ See [`docs/`](docs/README.md) for detailed documentation:
 - [Graph Model](docs/graph-model.md) — 5-species taxonomy, composition, statuses, edge types
 - [Data Layer](docs/data-layer.md) — DataProvider interface, local storage, import/export
 - [Hosted Projects](docs/hosted-projects.md) — put a project in your account, point a coding agent at it, and let pull requests move acceptances
+- [Bootstrap](docs/bootstrap.md) — onboarding an existing repo onto Arkaik in one run
 - [Conventions](docs/conventions.md) — coding patterns, file organization, state management
 - [Vision](docs/vision.md) — product strategy: the four layers (format, toolchain, app, services), the core product ("one graph, many maps"), modes & tiers, roadmap
 - [Specs](docs/spec/bundle-format.md) — normative specifications: bundle format v2, event journal, toolchain, services, maps, MCP server
