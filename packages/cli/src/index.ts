@@ -17,6 +17,7 @@ import { runPackCli } from "./commands/pack";
 import { runOpenCli } from "./commands/open";
 import { runPushCli } from "./commands/push";
 import { runLinkCli } from "./commands/link";
+import { runBootstrap } from "./commands/bootstrap";
 
 const USAGE = `arkaik — CLI for Arkaik project bundles
 
@@ -36,6 +37,7 @@ Commands:
                                --delete <id> --key <owner_key> removes a snapshot.
   link [options] [path]       Point this repo at a hosted project so an agent can edit it.
                                --list shows the projects your token can reach.
+  bootstrap <sub> [options]   One-time onboarding: mine, plan, slice, merge a map from a repo.
 
 Options:
   -h, --help        Show this help.
@@ -97,6 +99,9 @@ function main(argv: string[]): void {
       return;
     case "link":
       runLinkCli(rest);
+      return;
+    case "bootstrap":
+      runBootstrap(rest);
       return;
     default:
       console.error(`Unknown command: ${command}\n`);
