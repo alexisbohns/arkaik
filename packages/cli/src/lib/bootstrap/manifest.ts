@@ -26,6 +26,19 @@ export interface WorkUnit {
   /** Where the agent writes its fragment, repo-relative. */
   fragment: string;
   status: UnitStatus;
+  /**
+   * The GitHub issue filed for this unit by `plan --issues`, once one
+   * exists. Absent until then. This is the guard against re-filing: a
+   * pending unit that already carries an `issueUrl` is not rendered again by
+   * `renderIssues` — otherwise every re-run of `plan --issues` (routine,
+   * since replanning after recon or after a profile edit is expected) would
+   * file a duplicate issue for every unit still in flight. It is local
+   * bookkeeping only, not a live check against GitHub — this file never
+   * queries whether the issue is still open, was closed, or was deleted;
+   * that reconciliation is out of scope here (see the CLI's bootstrap-plan
+   * task notes).
+   */
+  issueUrl?: string;
 }
 
 export interface Manifest {
@@ -218,7 +231,18 @@ export function planUnits(options: {
   const previousById = new Map((previous?.units ?? []).map((u) => [u.id, u]));
   for (const u of units) {
     const before = previousById.get(u.id);
-    if (before && sameSlice(before, u)) u.status = before.status;
+    if (before && sameSlice(before, u)) {
+      u.status = before.status;
+      // Carried forward under the exact same condition as `status`: an
+      // issue already filed against the old slice describes the same
+      // fragment contract only while the slice hasn't changed. When the
+      // slice DOES change (the `else` implied here), the unit already resets
+      // to `pending` above; leaving a stale `issueUrl` on it would make
+      // `renderIssues` silently skip filing a fresh issue for genuinely new
+      // scope, which is worse than the duplicate this field exists to
+      // prevent.
+      if (before.issueUrl) u.issueUrl = before.issueUrl;
+    }
   }
 
   return { version: 1, mode, bundle, units };
@@ -257,4 +281,53 @@ export function planUnits(options: {
  */
 function sameSlice(before: WorkUnit, next: WorkUnit): boolean {
   return JSON.stringify(before.slice) === JSON.stringify(next.slice);
+}
+
+/** One GitHub issue, rendered for a single pending work unit. */
+export interface RenderedIssue {
+  unit: string;
+  title: string;
+  body: string;
+}
+
+/**
+ * One GitHub issue per pending, not-yet-filed unit — the alternate output
+ * mode for `plan`.
+ *
+ * Same manifest, different driver: durable and parallel across machines, at
+ * the cost of a cold-start context tax per unit that in-session fan-out does
+ * not pay. Nothing about the fragment contract changes — the body only tells
+ * the agent how to reach it (`bootstrap slice`, the fragment path, the skill
+ * that owns judgment).
+ *
+ * Filters on `status === "pending"` (a `done` or `rejected` unit has nothing
+ * left to file) AND `!u.issueUrl` (a unit that already has one is skipped —
+ * see `WorkUnit.issueUrl` for why re-filing on every re-plan would otherwise
+ * be the default outcome, not an edge case). Pure and side-effect-free: it
+ * neither calls `gh` nor mutates the manifest, which is what makes `--print`
+ * a real testability seam rather than a documentation claim.
+ */
+export function renderIssues(manifest: Manifest): RenderedIssue[] {
+  return manifest.units
+    .filter((u) => u.status === "pending" && !u.issueUrl)
+    .map((u) => ({
+      unit: u.id,
+      title: `[bootstrap] ${u.id} — ${u.title}`,
+      body: [
+        `**Wave ${u.wave}.** ${u.scope}`,
+        "",
+        "### How to work this unit",
+        "",
+        "```bash",
+        `arkaik bootstrap slice ${u.id} > slice.json`,
+        "```",
+        "",
+        `Read \`slice.json\`, then write your fragment to \`${u.fragment}\`.`,
+        "Do not edit the bundle. Do not edit another unit's fragment.",
+        "",
+        "The `arkaik-bootstrap` skill defines the fragment contract and the",
+        "judgment rules for this wave. When the fragment is written, set this",
+        `unit's status to \`done\` in \`${MANIFEST_FILE}\`.`,
+      ].join("\n"),
+    }));
 }

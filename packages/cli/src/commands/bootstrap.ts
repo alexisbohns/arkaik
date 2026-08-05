@@ -7,6 +7,7 @@
  * and this command group owns everything else — ID uniqueness, edge
  * resolution, journal construction, validation gating.
  */
+import { spawnSync } from "node:child_process";
 import { existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
@@ -15,7 +16,8 @@ import { serializeBundle, validateBundle } from "@arkaik/schema";
 import { buildCorpus } from "../lib/bootstrap/corpus";
 import { loadFragments } from "../lib/bootstrap/fragments";
 import { renderIndex } from "../lib/bootstrap/index-view";
-import { detectMode, planUnits, readManifest, readProfile, writeManifest } from "../lib/bootstrap/manifest";
+import type { Manifest } from "../lib/bootstrap/manifest";
+import { detectMode, planUnits, readManifest, readProfile, renderIssues, writeManifest } from "../lib/bootstrap/manifest";
 import { mergeFragments } from "../lib/bootstrap/merge";
 import { BOOTSTRAP_ROOT, CORPUS_DIR, ensureGitignored } from "../lib/bootstrap/paths";
 import { resolveSlice } from "../lib/bootstrap/slice";
@@ -122,6 +124,14 @@ units whose scope/slice is unchanged since the last plan.
 
 Options:
   --bundle <path>  Bundle to bootstrap (default: docs/arkaik/bundle.json).
+  --issues         File one GitHub issue per pending unit instead of driving
+                   in-session. Same manifest, alternate driver: durable and
+                   parallel across machines, at the cost of a cold-start
+                   context tax per unit. A unit that already has a filed
+                   issue (tracked locally in manifest.json, not checked
+                   against GitHub) is skipped, not re-filed.
+  --print          With --issues, print the rendered issues as JSON instead
+                   of filing them — never calls \`gh\`. Requires --issues.
   -h, --help       Show this help.`;
 
 function runPlan(argv: string[]): void {
@@ -131,6 +141,8 @@ function runPlan(argv: string[]): void {
   // Every other command in this CLI spells it the same way (init.ts:36,
   // pack.ts:38, push.ts:54, sync.ts:59, open.ts:35, release.ts:30).
   let bundle = "docs/arkaik/bundle.json";
+  let issues = false;
+  let print = false;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -139,9 +151,21 @@ function runPlan(argv: string[]): void {
       process.exit(0);
     } else if (arg === "--bundle") {
       bundle = nextValue(argv, ++i, "--bundle", PLAN_USAGE);
+    } else if (arg === "--issues") {
+      issues = true;
+    } else if (arg === "--print") {
+      print = true;
     } else {
       fail(`Unknown option: ${arg}\n\n${PLAN_USAGE}`);
     }
+  }
+
+  // `--print` only means something as a rendering choice for `--issues` — on
+  // its own it would silently do nothing (the normal summary is printed
+  // either way), which is worse than telling the caller their flags don't
+  // combine the way they probably expect.
+  if (print && !issues) {
+    fail(`--print requires --issues\n\n${PLAN_USAGE}`);
   }
 
   // Same guard as `corpus`: manifest.json/profile.json/fragments all live
@@ -161,14 +185,84 @@ function runPlan(argv: string[]): void {
     // stand alone against an existing profile.json), so it can't assume
     // corpus already ignored the directory.
     const ignored = ensureGitignored(cwd);
+    if (ignored) console.log(`  added ${BOOTSTRAP_ROOT}/ to .gitignore`);
+
+    if (issues) {
+      runPlanIssues(cwd, manifest, print);
+      return;
+    }
 
     const pending = manifest.units.filter((u) => u.status === "pending").length;
     console.log(`Planned ${manifest.units.length} units (${pending} pending) in ${mode} mode.`);
     for (const u of manifest.units) console.log(`  [${u.status}] w${u.wave} ${u.id} — ${u.title}`);
-    if (ignored) console.log(`  added ${BOOTSTRAP_ROOT}/ to .gitignore`);
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
+  }
+}
+
+/**
+ * The `--issues` alternate output mode: same manifest, filed as one GitHub
+ * issue per pending unit instead of summarized for in-session fan-out.
+ *
+ * `renderIssues` (manifest.ts) already excludes units carrying an
+ * `issueUrl` — this function is what makes that guard actually stick: each
+ * successful `gh issue create` is written back to manifest.json (via
+ * `writeManifest`) BEFORE moving to the next unit, not batched until the end.
+ * `gh` shells out per unit and can fail partway through (rate limit, auth,
+ * network); persisting incrementally means a re-run after such a failure
+ * resumes at the first not-yet-filed unit instead of re-filing everything
+ * already filed. This is local bookkeeping only, not reconciliation against
+ * GitHub's real issue state (open/closed/deleted) — out of scope here.
+ */
+function runPlanIssues(cwd: string, manifest: Manifest, print: boolean): void {
+  const rendered = renderIssues(manifest);
+
+  if (print) {
+    // The testability seam: returns before anything below touches `gh`.
+    console.log(JSON.stringify(rendered, null, 2));
+    return;
+  }
+
+  if (rendered.length === 0) {
+    console.log("Every pending unit already has a filed issue — nothing to do.");
+    return;
+  }
+
+  let filedThisRun = 0;
+  for (const issue of rendered) {
+    const res = spawnSync("gh", ["issue", "create", "--title", issue.title, "--body", issue.body], {
+      cwd,
+      encoding: "utf8",
+    });
+    // Matches corpus.ts's fetchPrsViaGh: `res.error` (gh isn't installed or
+    // isn't runnable at all) is a DIFFERENT failure from a non-zero exit
+    // (gh ran and refused) — `res.stderr` is `undefined`, not `""`, in the
+    // former case, so checking `res.status` alone and blindly calling
+    // `.trim()` on stderr would crash with its own TypeError instead of
+    // reporting the real problem.
+    if (res.error) {
+      console.error(`gh not runnable: ${res.error.message}`);
+      process.exit(1);
+    }
+    if (res.status !== 0) {
+      console.error(`gh issue create failed for ${issue.unit}: ${(res.stderr ?? "").trim()}`);
+      console.error(
+        `${filedThisRun} of ${rendered.length} issue(s) filed before this failure — re-run ` +
+          "`arkaik bootstrap plan --issues` after fixing the problem above; already-filed units are not re-filed.",
+      );
+      process.exit(1);
+    }
+
+    const url = res.stdout.trim();
+    const target = manifest.units.find((u) => u.id === issue.unit);
+    if (target) target.issueUrl = url;
+    filedThisRun += 1;
+    // Written after EVERY unit, not once at the end: if `gh` fails on the
+    // next unit, this write is what a re-run relies on to know what's
+    // already filed.
+    writeManifest(cwd, manifest);
+    console.log(`Filed ${issue.unit}: ${url}`);
   }
 }
 

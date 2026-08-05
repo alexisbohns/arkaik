@@ -2355,139 +2355,47 @@ git commit -m "test(cli): merge collisions, orphan edges, reconcile, journal pre
 
 ---
 
-### Task 8: `plan --issues`
+### Task 8: `plan --issues` — shipped, findings below
+
+**The reference code above this line was never executed and had two real defects, both closed before merge:**
+
+1. **No de-duplication guard, and re-running `plan --issues` is the routine case, not the exception.** `renderIssues` filtering on `status === "pending"` alone means every re-plan — after recon, after any profile edit, or just because someone reran the command — re-files a fresh issue for every unit still in flight, since nothing tracks "already filed." **Fixed:** `WorkUnit` gained an optional `issueUrl?: string`, set the moment `gh issue create` succeeds for that unit. `renderIssues` now filters on `status === "pending" && !u.issueUrl`. `planUnits` carries `issueUrl` forward under the exact same `sameSlice` condition that already carries `status` forward — a slice change resets `status` to `pending` AND clears the stale `issueUrl`, so a genuinely-changed unit gets a fresh issue rather than being silently skipped forever. This is local bookkeeping only — nothing here queries `gh` to check whether the filed issue is still open, was closed, or was deleted; that reconciliation is out of scope (see "Explicitly not built" below).
+2. **`gh issue create` failure handling exits 1 mid-loop, and without fix 1 above, a re-run would only make things worse (refiling everything, including what already succeeded).** With the `issueUrl` guard in place, the remaining question was just: does a re-run resume correctly? **Fixed alongside fix 1:** `manifest.json` is written back (via `writeManifest`) after **every** successful `gh issue create`, not batched until the end — so a failure on unit N leaves units `1..N-1`'s `issueUrl`s durably recorded, and a re-run (after fixing whatever `gh` problem caused the failure) skips them and resumes at N. Verified end-to-end with a fake `gh` script that fails deterministically for one named unit and succeeds for the rest: first run stops with exit 1, the units filed before the failure are already in `manifest.json`; a second run (with `gh` "fixed") re-files only what's left, and the originally-filed unit keeps its original `issueUrl`, untouched by the retry. A third finding surfaced while building this test: the reference's failure branch called `res.stderr.trim()` unconditionally, but `spawnSync` leaves `stderr` `undefined` (not `""`) when the command itself can't be found (`res.error` set, e.g. `gh` not installed) rather than merely exiting non-zero — that path would have crashed with the CLI's own `TypeError` instead of reporting the real problem. Fixed the same way `corpus.ts`'s `fetchPrsViaGh` already does: check `res.error` before `res.status`.
+
+**One judgment call, not a defect: `--print` without `--issues` is now a usage error.** The reference silently ignored a bare `--print` (it only means something inside the `if (issues)` branch). Given this repo's convention of failing loudly on a confusing flag combination rather than silently doing nothing (see `profile-validate.ts`'s whole approach), `runPlan` now rejects `--print` without `--issues` before the repo-root check, alongside the other usage errors.
+
+**Explicitly not built, flagged as a recommendation instead:** live reconciliation against GitHub's actual issue state (checking whether a tracked `issueUrl` is still open, auto-closing an issue once its unit reaches `done`, or label management). The `issueUrl` field is enough to stop the routine case (re-filing on every re-plan) from being the default outcome; anything beyond that is real scope, not a one-line addition, and wasn't needed to make `--issues` safe to use.
 
 **Files:**
-- Modify: `packages/cli/src/lib/bootstrap/manifest.ts`
-- Modify: `packages/cli/src/commands/bootstrap.ts`
+- Modify: `packages/cli/src/lib/bootstrap/manifest.ts` — `WorkUnit.issueUrl`, its carry-forward in `planUnits`, `RenderedIssue`/`renderIssues`
+- Modify: `packages/cli/src/commands/bootstrap.ts` — `--issues`/`--print` flags, `runPlanIssues`
 - Test: `tests/cli/bootstrap-plan.test.js`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
-Append inside the `try` block of `tests/cli/bootstrap-plan.test.js`:
+The base acceptance test (one issue per pending unit, `--print` renders JSON, the body names the slice command and fragment path) is exactly what the reference proposed — see the `arkaik-bootstrap-issues-` fixture in `tests/cli/bootstrap-plan.test.js`. It runs in its own repo, isolated from the shared `dir` used by the rest of the file, because this task's tests hand-edit `manifest.json`'s `issueUrl` bookkeeping and run under deliberately broken/fake `gh` environments.
 
-```js
-  // --- issues mode renders one issue body per pending unit ---
-  const issues = runCli(["bootstrap", "plan", "--issues", "--print"], dir);
-  check("plan --issues --print exits 0", issues.status === 0, issues.stderr);
-  const rendered = JSON.parse(issues.stdout);
-  check("one issue per unit", rendered.length >= 5, String(rendered.length));
-  const homeIssue = rendered.find((i) => i.title.includes("w1-home"));
-  check("issue title names the unit", Boolean(homeIssue), issues.stdout);
-  check("issue body tells the agent how to slice", homeIssue.body.includes("arkaik bootstrap slice w1-home"), homeIssue.body);
-  check("issue body names the fragment path", homeIssue.body.includes(".arkaik/bootstrap/fragments/w1-home.json"), homeIssue.body);
-```
+Additional tests, one per finding above:
+- `--print` genuinely never shells out to `gh`, proven (not assumed) by overriding `PATH` to a directory with no `gh` in it and confirming a clean exit 0.
+- `--print` without `--issues` exits 1 and names both flags.
+- A unit hand-given an `issueUrl` is excluded from the next `renderIssues` output, while every other pending unit still appears; re-planning preserves that `issueUrl`.
+- Changing that unit's slice (an area's `paths`) resets it to `pending` **and** clears the stale `issueUrl`.
+- A fake `gh` binary (a tiny `#!/bin/sh` script, keyed off the `--title` argument, no shared state needed) that fails for one specific unit and succeeds for the rest: the first run exits 1, names the failing unit and gh's own stderr, and the manifest shows exactly the units filed before the failure carrying an `issueUrl` (the rest do not). A second run with a fixed `gh` script exits 0, does not re-file the already-issued unit, and files everything else; the original unit's `issueUrl` is unchanged. A third run (everything issued) exits 0 and files nothing.
+- `PATH` pointing at a directory with no `gh` binary at all, during an actual (non-`--print`) `--issues` run: exits 1 cleanly, no raw `TypeError` from the `res.stderr.trim()` bug.
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
-Run: `node tests/cli/bootstrap-plan.test.js`
-Expected: FAIL — "Unknown option: --issues".
+Confirmed by temporarily reverting the implementation (`git stash` on the two source files) and re-running: the base test fails at "plan --issues --print exits 0" with "Unknown option: --issues" (the reference's expected failure mode), and the script then throws on `JSON.parse(issues.stdout)` since the CLI never printed JSON — a clean failure, not a false pass.
 
-- [ ] **Step 3: Add the renderer**
+- [x] **Step 3/4: Implement**
 
-Append to `packages/cli/src/lib/bootstrap/manifest.ts`:
+`renderIssues` (manifest.ts) is what the reference proposed, plus the `!u.issueUrl` filter from finding 1. `planUnits` carries `issueUrl` forward next to `status`, under the same `sameSlice` gate. `runPlan` (bootstrap.ts) gained the `--issues`/`--print` flags and the `--print`-requires-`--issues` check; the filing loop lives in its own `runPlanIssues`, which checks `res.error` before `res.status`, writes the manifest after every successful filing (not once at the end), and reports how many of the run's own issues were filed before a failure.
 
-```ts
-export interface RenderedIssue {
-  unit: string;
-  title: string;
-  body: string;
-}
+- [x] **Step 5: Run the test to verify it passes**
 
-/**
- * One GitHub issue per pending unit — the alternate output mode.
- *
- * Same manifest, different driver: durable and parallel across machines, at
- * the cost of a cold-start context tax per unit that in-session fan-out does
- * not pay. Nothing about the fragment contract changes.
- */
-export function renderIssues(manifest: Manifest): RenderedIssue[] {
-  return manifest.units
-    .filter((u) => u.status === "pending")
-    .map((u) => ({
-      unit: u.id,
-      title: `[bootstrap] ${u.id} — ${u.title}`,
-      body: [
-        `**Wave ${u.wave}.** ${u.scope}`,
-        "",
-        "### How to work this unit",
-        "",
-        "```bash",
-        `arkaik bootstrap slice ${u.id} > slice.json`,
-        "```",
-        "",
-        `Read \`slice.json\`, then write your fragment to \`${u.fragment}\`.`,
-        "Do not edit the bundle. Do not edit another unit's fragment.",
-        "",
-        "The `arkaik-bootstrap` skill defines the fragment contract and the",
-        "judgment rules for this wave. When the fragment is written, set this",
-        `unit's status to \`done\` in \`${MANIFEST_FILE}\`.`,
-      ].join("\n"),
-    }));
-}
-```
+`node tests/cli/bootstrap-plan.test.js` — 117 checks, all passing (up from 84; the file's total check count in the header above reflects this).
 
-- [ ] **Step 4: Wire the flags**
-
-In `runPlan` in `packages/cli/src/commands/bootstrap.ts`, add `renderIssues` to the manifest import, declare the flags alongside `bundle`:
-
-```ts
-  let issues = false;
-  let print = false;
-```
-
-Add the two branches to the flag loop, before the `else` that errors:
-
-```ts
-    } else if (arg === "--issues") {
-      issues = true;
-    } else if (arg === "--print") {
-      print = true;
-```
-
-And replace the trailing summary block with:
-
-```ts
-  if (issues) {
-    const rendered = renderIssues(manifest);
-    if (print) {
-      console.log(JSON.stringify(rendered, null, 2));
-      return;
-    }
-    for (const issue of rendered) {
-      const res = spawnSync("gh", ["issue", "create", "--title", issue.title, "--body", issue.body], {
-        cwd,
-        encoding: "utf8",
-      });
-      if (res.status !== 0) {
-        console.error(`gh issue create failed for ${issue.unit}: ${res.stderr.trim()}`);
-        process.exit(1);
-      }
-      console.log(`Filed ${issue.unit}: ${res.stdout.trim()}`);
-    }
-    return;
-  }
-
-  const pending = manifest.units.filter((u) => u.status === "pending").length;
-  console.log(`Planned ${manifest.units.length} units (${pending} pending) in ${mode} mode.`);
-  for (const u of manifest.units) console.log(`  [${u.status}] w${u.wave} ${u.id} — ${u.title}`);
-```
-
-Add `import { spawnSync } from "node:child_process";` at the top of the file.
-
-Extend `PLAN_USAGE` with:
-
-```
-  --issues         File one GitHub issue per pending unit instead of driving in-session.
-  --print          With --issues, print the rendered issues as JSON instead of filing them.
-```
-
-- [ ] **Step 5: Run the test to verify it passes**
-
-Run: `npm run build -w arkaik && node tests/cli/bootstrap-plan.test.js`
-Expected: PASS on every check.
-
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add packages/cli/src/lib/bootstrap/manifest.ts packages/cli/src/commands/bootstrap.ts tests/cli/bootstrap-plan.test.js

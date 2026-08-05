@@ -11,7 +11,7 @@
  * repo itself.
  */
 
-const { existsSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync } = require("fs");
+const { existsSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync, chmodSync } = require("fs");
 const { spawnSync } = require("child_process");
 const { tmpdir } = require("os");
 const path = require("path");
@@ -26,6 +26,25 @@ if (!existsSync(CLI)) {
 
 function runCli(args, cwd) {
   return spawnSync(process.execPath, [CLI, ...args], { encoding: "utf8", cwd });
+}
+
+/** Like `runCli`, but with extra/overriding environment variables — used to
+ * prove `--print` never shells out (a broken PATH) and to exercise `gh`
+ * failure/recovery paths (a fake `gh` prepended onto PATH). */
+function runCliWithEnv(args, cwd, envOverrides) {
+  return spawnSync(process.execPath, [CLI, ...args], {
+    encoding: "utf8",
+    cwd,
+    env: { ...process.env, ...envOverrides },
+  });
+}
+
+/** Drop an executable fake `gh` script at `<binDir>/gh`. */
+function writeFakeGh(binDir, scriptBody) {
+  mkdirSync(binDir, { recursive: true });
+  const ghPath = path.join(binDir, "gh");
+  writeFileSync(ghPath, scriptBody);
+  chmodSync(ghPath, 0o755);
 }
 
 let failures = 0;
@@ -832,6 +851,282 @@ try {
     );
   } finally {
     rmSync(badManifestDir, { recursive: true, force: true });
+  }
+
+  // --- plan --issues: the alternate output mode ---
+  // A dedicated repo, isolated from the shared `dir` above: this section
+  // hand-edits manifest.json's issueUrl bookkeeping and runs under
+  // deliberately broken/fake `gh` environments, easier to reason about
+  // against a small, fresh profile than atop `dir`'s already-mutated state.
+  const issuesDir = freshRepoDir("arkaik-bootstrap-issues-");
+  try {
+    mkdirSync(path.join(issuesDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(
+      path.join(issuesDir, ".arkaik", "bootstrap", "profile.json"),
+      JSON.stringify({
+        areas: [
+          { id: "home", title: "Home", paths: ["app/home"] },
+          { id: "other", title: "Other", paths: ["app/other"] },
+        ],
+        eras: [{ slug: "launch", title: "Launch", from: "2026-01-01", to: "2026-02-01" }],
+      }),
+    );
+    runCli(["bootstrap", "plan"], issuesDir); // seed the manifest, all units pending
+
+    // --- --print renders one issue per pending unit ---
+    const issues = runCli(["bootstrap", "plan", "--issues", "--print"], issuesDir);
+    check("plan --issues --print exits 0", issues.status === 0, issues.stderr);
+    const rendered = JSON.parse(issues.stdout);
+    check("one issue per pending unit", rendered.length >= 5, String(rendered.length));
+    const homeIssue = rendered.find((i) => i.title.includes("w1-home"));
+    check("issue title names the unit", Boolean(homeIssue), issues.stdout);
+    check(
+      "issue body tells the agent how to slice",
+      homeIssue.body.includes("arkaik bootstrap slice w1-home"),
+      homeIssue.body,
+    );
+    check(
+      "issue body names the fragment path",
+      homeIssue.body.includes(".arkaik/bootstrap/fragments/w1-home.json"),
+      homeIssue.body,
+    );
+    check(
+      "issue body points at the manifest for marking a unit done",
+      homeIssue.body.includes(".arkaik/bootstrap/manifest.json"),
+      homeIssue.body,
+    );
+
+    // --- --print is a real testability seam: it never shells out to `gh` ---
+    // Proven, not assumed: PATH is overridden to a directory with no `gh` in
+    // it. If code under --print ever reached a `spawnSync("gh", ...)` call,
+    // that call would fail (ENOENT) and the CLI would report it and exit 1
+    // (see the "missing gh binary" regression below) — so a clean exit 0
+    // here is only possible because --print returns before any such call.
+    const printNoGh = runCliWithEnv(["bootstrap", "plan", "--issues", "--print"], issuesDir, {
+      PATH: "/arkaik-test-no-such-bin-dir",
+    });
+    check(
+      "plan --issues --print exits 0 even with no `gh` on PATH (never shells out)",
+      printNoGh.status === 0,
+      printNoGh.stderr,
+    );
+    check(
+      "the no-gh --print run renders the same issues",
+      JSON.parse(printNoGh.stdout).length === rendered.length,
+      printNoGh.stdout,
+    );
+
+    // --- --print without --issues is a usage error, not a silently-ignored flag ---
+    const printAlone = runCli(["bootstrap", "plan", "--print"], issuesDir);
+    check("plan --print without --issues exits 1", printAlone.status === 1, String(printAlone.status));
+    check(
+      "the rejection names the flag dependency",
+      printAlone.stderr.includes("--print") && printAlone.stderr.includes("--issues"),
+      printAlone.stderr,
+    );
+
+    // --- regression: a unit that already has a filed issue is not re-rendered on the next plan ---
+    // There is no de-duplication against GitHub's actual issue state (this
+    // never queries `gh` to check whether the issue is still open) — but
+    // re-filing an issue for a unit that already has one, every time
+    // `plan --issues` re-runs, would spam the tracker. Re-running `plan` is
+    // routine (after recon, after any profile edit), so this is the common
+    // case, not an edge case. The guard is purely local: a unit that already
+    // carries `issueUrl` is skipped.
+    const preIssued = JSON.parse(readFileSync(path.join(issuesDir, ".arkaik", "bootstrap", "manifest.json"), "utf8"));
+    preIssued.units.find((u) => u.id === "w1-home").issueUrl = "https://github.com/acme/demo/issues/42";
+    writeFileSync(path.join(issuesDir, ".arkaik", "bootstrap", "manifest.json"), JSON.stringify(preIssued));
+
+    const afterIssued = runCli(["bootstrap", "plan", "--issues", "--print"], issuesDir);
+    check("re-plan after marking one unit issued exits 0", afterIssued.status === 0, afterIssued.stderr);
+    const renderedAfter = JSON.parse(afterIssued.stdout);
+    check(
+      "the already-issued unit is not re-rendered",
+      !renderedAfter.some((i) => i.unit === "w1-home"),
+      JSON.stringify(renderedAfter.map((i) => i.unit)),
+    );
+    check(
+      "every other pending unit is still rendered",
+      renderedAfter.length === rendered.length - 1,
+      `before ${rendered.length}, after ${renderedAfter.length}`,
+    );
+    const manifestAfterIssued = JSON.parse(
+      readFileSync(path.join(issuesDir, ".arkaik", "bootstrap", "manifest.json"), "utf8"),
+    );
+    check(
+      "re-planning preserves the recorded issueUrl for an unchanged slice",
+      manifestAfterIssued.units.find((u) => u.id === "w1-home").issueUrl === "https://github.com/acme/demo/issues/42",
+      JSON.stringify(manifestAfterIssued.units.find((u) => u.id === "w1-home")),
+    );
+
+    // --- regression: a slice change clears the stale issueUrl too, not just the status ---
+    // The old issue described the old scope; carrying the URL forward would
+    // make renderIssues silently skip filing a fresh issue for genuinely new
+    // scope — the opposite mistake from the one this field exists to
+    // prevent.
+    writeFileSync(
+      path.join(issuesDir, ".arkaik", "bootstrap", "profile.json"),
+      JSON.stringify({
+        areas: [
+          { id: "home", title: "Home", paths: ["app/home", "app/dashboard"] }, // paths changed
+          { id: "other", title: "Other", paths: ["app/other"] },
+        ],
+        eras: [{ slug: "launch", title: "Launch", from: "2026-01-01", to: "2026-02-01" }],
+      }),
+    );
+    runCli(["bootstrap", "plan"], issuesDir);
+    const manifestAfterSliceChange = JSON.parse(
+      readFileSync(path.join(issuesDir, ".arkaik", "bootstrap", "manifest.json"), "utf8"),
+    );
+    const homeAfterSliceChange = manifestAfterSliceChange.units.find((u) => u.id === "w1-home");
+    check(
+      "a slice change resets the unit to pending",
+      homeAfterSliceChange.status === "pending",
+      JSON.stringify(homeAfterSliceChange),
+    );
+    check(
+      "a slice change also clears the stale issueUrl",
+      homeAfterSliceChange.issueUrl === undefined,
+      JSON.stringify(homeAfterSliceChange),
+    );
+  } finally {
+    rmSync(issuesDir, { recursive: true, force: true });
+  }
+
+  // --- plan --issues: gh failure handling leaves a resumable partial state, and a re-run recovers ---
+  const ghFailDir = freshRepoDir("arkaik-bootstrap-issues-ghfail-");
+  try {
+    mkdirSync(path.join(ghFailDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(
+      path.join(ghFailDir, ".arkaik", "bootstrap", "profile.json"),
+      JSON.stringify({
+        areas: [
+          { id: "a1", title: "A1", paths: ["app/a1"] },
+          { id: "a2", title: "A2", paths: ["app/a2"] },
+        ],
+        eras: [],
+      }),
+    );
+    runCli(["bootstrap", "plan"], ghFailDir);
+
+    // Fails for the unit named w1-a1, succeeds for everything else —
+    // deterministic on the issue's own title, not on call order or shared
+    // state, so this fake doesn't need a counter file.
+    const flakyBin = path.join(ghFailDir, "fake-bin-flaky");
+    writeFakeGh(
+      flakyBin,
+      [
+        "#!/bin/sh",
+        'case "$4" in',
+        '  *w1-a1*) echo "rate limited, try again later" 1>&2; exit 1 ;;',
+        '  *) echo "https://github.com/acme/demo/issues/1"; exit 0 ;;',
+        "esac",
+        "",
+      ].join("\n"),
+    );
+
+    const ghRun = runCliWithEnv(["bootstrap", "plan", "--issues"], ghFailDir, {
+      PATH: `${flakyBin}${path.delimiter}${process.env.PATH}`,
+    });
+    check("plan --issues exits 1 when gh fails partway through", ghRun.status === 1, String(ghRun.status));
+    check("the failure names the unit that failed", ghRun.stderr.includes("w1-a1"), ghRun.stderr);
+    check("the failure surfaces gh's own stderr", ghRun.stderr.includes("rate limited"), ghRun.stderr);
+    check(
+      "units filed before the failure are reported on stdout",
+      ghRun.stdout.includes("Filed w0-recon"),
+      ghRun.stdout,
+    );
+
+    const manifestAfterFail = JSON.parse(
+      readFileSync(path.join(ghFailDir, ".arkaik", "bootstrap", "manifest.json"), "utf8"),
+    );
+    check(
+      "the unit filed before the failure has its issueUrl recorded",
+      manifestAfterFail.units.find((u) => u.id === "w0-recon").issueUrl === "https://github.com/acme/demo/issues/1",
+      JSON.stringify(manifestAfterFail.units.find((u) => u.id === "w0-recon")),
+    );
+    check(
+      "the unit that failed has no issueUrl",
+      manifestAfterFail.units.find((u) => u.id === "w1-a1").issueUrl === undefined,
+      JSON.stringify(manifestAfterFail.units.find((u) => u.id === "w1-a1")),
+    );
+    check(
+      "units never reached by the loop have no issueUrl either",
+      manifestAfterFail.units.find((u) => u.id === "w1-a2").issueUrl === undefined,
+      JSON.stringify(manifestAfterFail.units.find((u) => u.id === "w1-a2")),
+    );
+
+    // --- recovery: fix `gh` and re-run — only the remaining units get filed ---
+    const fixedBin = path.join(ghFailDir, "fake-bin-fixed");
+    writeFakeGh(fixedBin, ["#!/bin/sh", 'echo "https://github.com/acme/demo/issues/999"', "exit 0", ""].join("\n"));
+    const ghRetry = runCliWithEnv(["bootstrap", "plan", "--issues"], ghFailDir, {
+      PATH: `${fixedBin}${path.delimiter}${process.env.PATH}`,
+    });
+    check("the retry after fixing gh exits 0", ghRetry.status === 0, ghRetry.stderr);
+    check(
+      "the retry does not re-file the already-issued unit",
+      !ghRetry.stdout.includes("Filed w0-recon"),
+      ghRetry.stdout,
+    );
+    check("the retry files the previously-failed unit", ghRetry.stdout.includes("Filed w1-a1"), ghRetry.stdout);
+    check("the retry files every other remaining unit", ghRetry.stdout.includes("Filed w2-a2"), ghRetry.stdout);
+
+    const manifestAfterRetry = JSON.parse(
+      readFileSync(path.join(ghFailDir, ".arkaik", "bootstrap", "manifest.json"), "utf8"),
+    );
+    check(
+      "every unit now has an issueUrl",
+      manifestAfterRetry.units.every((u) => typeof u.issueUrl === "string"),
+      JSON.stringify(manifestAfterRetry.units.map((u) => [u.id, u.issueUrl])),
+    );
+    check(
+      "the unit filed in the first run keeps its ORIGINAL issueUrl, unchanged by the retry",
+      manifestAfterRetry.units.find((u) => u.id === "w0-recon").issueUrl === "https://github.com/acme/demo/issues/1",
+      JSON.stringify(manifestAfterRetry.units.find((u) => u.id === "w0-recon")),
+    );
+
+    // --- a third run, with everything already issued, files nothing ---
+    const ghThirdRun = runCliWithEnv(["bootstrap", "plan", "--issues"], ghFailDir, {
+      PATH: `${fixedBin}${path.delimiter}${process.env.PATH}`,
+    });
+    check("a third run with everything already issued exits 0", ghThirdRun.status === 0, ghThirdRun.stderr);
+    check(
+      "a third run with everything already issued files nothing",
+      !ghThirdRun.stdout.includes("Filed "),
+      ghThirdRun.stdout,
+    );
+  } finally {
+    rmSync(ghFailDir, { recursive: true, force: true });
+  }
+
+  // --- regression: a missing `gh` binary must fail cleanly, not crash on res.stderr.trim() ---
+  // spawnSync sets `res.error` (not just a non-zero `res.status`) when the
+  // command itself can't be found; `res.stderr` is `undefined` in that case,
+  // so code that assumes it's always a string throws its OWN TypeError
+  // instead of reporting the real problem.
+  const noGhBinDir = freshRepoDir("arkaik-bootstrap-issues-nogh-");
+  try {
+    mkdirSync(path.join(noGhBinDir, ".arkaik", "bootstrap"), { recursive: true });
+    writeFileSync(
+      path.join(noGhBinDir, ".arkaik", "bootstrap", "profile.json"),
+      JSON.stringify({ areas: [{ id: "home", title: "Home", paths: ["app/home"] }], eras: [] }),
+    );
+    runCli(["bootstrap", "plan"], noGhBinDir);
+    const noGhRun = runCliWithEnv(["bootstrap", "plan", "--issues"], noGhBinDir, {
+      PATH: "/arkaik-test-no-such-bin-dir",
+    });
+    check(
+      "plan --issues exits 1 (not a crash) when gh itself can't be found",
+      noGhRun.status === 1,
+      `status ${noGhRun.status}, stderr: ${noGhRun.stderr}`,
+    );
+    check(
+      "the failure is a clean message, not a raw TypeError from res.stderr.trim()",
+      !noGhRun.stderr.includes("Cannot read propert") && !noGhRun.stderr.includes("TypeError"),
+      noGhRun.stderr,
+    );
+  } finally {
+    rmSync(noGhBinDir, { recursive: true, force: true });
   }
 } finally {
   rmSync(dir, { recursive: true, force: true });
