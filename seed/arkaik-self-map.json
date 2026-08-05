@@ -6,7 +6,7 @@
     "description": "Arkaik mapped in Arkaik — the whole product as a living graph: every surface, the promises it makes, and the history of how it got here.",
     "root_node_id": "V-projects",
     "created_at": "2026-03-21T00:00:00.000Z",
-    "updated_at": "2026-08-04T12:00:00.000Z",
+    "updated_at": "2026-08-05T19:30:00.000Z",
     "metadata": {
       "maps": [
         {
@@ -777,6 +777,17 @@
       "species": "api-endpoint",
       "title": "POST /api/graph/projects/{id}/mutations",
       "description": "The single write path for hosted graphs: applies validated mutation ops to the snapshot, bumps the concurrency version, and appends the emitted journal events atomically.",
+      "status": "live",
+      "platforms": [
+        "web"
+      ],
+      "project_id": "arkaik-self-map"
+    },
+    {
+      "id": "API-put-graph-project-bundle",
+      "species": "api-endpoint",
+      "title": "PUT /api/graph/projects/{id}/bundle",
+      "description": "Replaces a hosted project's snapshot and journal in one transaction under the project's row lock — owner-only, If-Match required and stale writes refused, tier-checked, with ?dryRun=1 returning the exact delta without writing. The landing path for mined history the mutation API cannot express.",
       "status": "live",
       "platforms": [
         "web"
@@ -2080,7 +2091,7 @@
       "id": "F-init-repo",
       "species": "flow",
       "title": "Initialize Repo Map",
-      "description": "arkaik init scaffolds docs/arkaik/ (bundle, journal, assets), writes the union-merge rule, and installs the templated agent skill into the repo (--update upgrades).",
+      "description": "arkaik init scaffolds docs/arkaik/ (bundle, journal, assets), writes the union-merge rule, and installs the templated agent skill into the repo (--update upgrades; --bootstrap adds the one-time bootstrap skill).",
       "status": "live",
       "platforms": [
         "web"
@@ -2244,6 +2255,68 @@
                   "view_id": "V-mcp-tool-catalog"
                 }
               ]
+            }
+          ]
+        }
+      },
+      "project_id": "arkaik-self-map"
+    },
+    {
+      "id": "V-arkaik-bootstrap-skill",
+      "species": "view",
+      "title": "Arkaik Bootstrap Skill",
+      "description": "The on-demand judgment doctrine an agent reads during a bootstrap run — species discrimination, playlists, acceptances and values, honest status arcs — installed by arkaik init --bootstrap beside the maintenance skill and removed once the run lands.",
+      "status": "live",
+      "platforms": [
+        "web"
+      ],
+      "metadata": {
+        "product": "toolchain"
+      },
+      "project_id": "arkaik-self-map"
+    },
+    {
+      "id": "F-bootstrap-from-history",
+      "species": "flow",
+      "title": "Bootstrap From History",
+      "description": "arkaik bootstrap mines a repo's merged PRs, design docs, and code surfaces into a corpus, plans resumable work units per wave, slices exactly what each agent unit reads, prints a compact index of the existing map so fragments attach to real ids, and merges validated fragments onto the bundle.",
+      "status": "live",
+      "platforms": [
+        "web"
+      ],
+      "metadata": {
+        "product": "toolchain",
+        "playlist": {
+          "entries": [
+            {
+              "type": "view",
+              "view_id": "V-cli-terminal"
+            },
+            {
+              "type": "view",
+              "view_id": "V-arkaik-bootstrap-skill"
+            }
+          ]
+        }
+      },
+      "project_id": "arkaik-self-map"
+    },
+    {
+      "id": "F-restore-hosted-bundle",
+      "species": "flow",
+      "title": "Restore Hosted Bundle",
+      "description": "arkaik restore lands a mined history on a hosted project: a local backup written and read back verified first, a history-shrink guard behind --allow-history-loss, an exact server-side dry-run on demand, then the whole-bundle PUT gated by If-Match.",
+      "status": "live",
+      "platforms": [
+        "web"
+      ],
+      "metadata": {
+        "product": "toolchain",
+        "playlist": {
+          "entries": [
+            {
+              "type": "view",
+              "view_id": "V-cli-terminal"
             }
           ]
         }
@@ -3864,6 +3937,98 @@
       "project_id": "arkaik-self-map"
     },
     {
+      "id": "AC-whole-history-one-run",
+      "species": "acceptance",
+      "title": "Whole History, One Run",
+      "description": "One bootstrap run takes a repository from no map (or a stale one) to a validated bundle carrying its anatomy and its whole mined story.",
+      "status": "live",
+      "platforms": [
+        "web"
+      ],
+      "metadata": {
+        "product": "toolchain",
+        "gherkin": "Given a repository with merged PRs, design docs, and code surfaces but no complete map\nWhen one `arkaik bootstrap` run mines the corpus, plans the waves, and merges the agent-written fragments\nThen a validated bundle with the anatomy and the product's mined story lands at docs/arkaik/",
+        "values": [
+          "saves-time",
+          "organizes"
+        ]
+      },
+      "project_id": "arkaik-self-map"
+    },
+    {
+      "id": "AC-restore-backs-up-first",
+      "species": "acceptance",
+      "title": "Restore Backs Up First",
+      "description": "arkaik restore takes a verified local backup of the current hosted state before sending anything, and refuses to proceed without it.",
+      "status": "live",
+      "platforms": [
+        "web"
+      ],
+      "metadata": {
+        "product": "toolchain",
+        "gherkin": "Given a hosted project about to be replaced by `arkaik restore`\nWhen the pre-restore backup cannot be written and read back verified\nThen the restore aborts with zero requests sent and the hosted project untouched",
+        "values": [
+          "reduces-anxiety",
+          "reduces-risk"
+        ]
+      },
+      "project_id": "arkaik-self-map"
+    },
+    {
+      "id": "AC-stale-restore-blocked",
+      "species": "acceptance",
+      "title": "Stale Restore Blocked",
+      "description": "A restore carrying an out-of-date If-Match version is refused with 412 — a concurrent edit is never silently overwritten.",
+      "status": "live",
+      "platforms": [
+        "web"
+      ],
+      "metadata": {
+        "product": "toolchain",
+        "gherkin": "Given the hosted project changed after the restore read its version\nWhen the whole-bundle PUT arrives with the now-stale If-Match\nThen the server answers 412 and writes nothing",
+        "values": [
+          "reduces-risk"
+        ]
+      },
+      "project_id": "arkaik-self-map"
+    },
+    {
+      "id": "AC-dry-run-previews-exactly",
+      "species": "acceptance",
+      "title": "Dry Run Previews Exactly",
+      "description": "--dry-run sends the identical request through the server's real validation, version, and tier gates and prints the exact deltas — never a local approximation.",
+      "status": "live",
+      "platforms": [
+        "web"
+      ],
+      "metadata": {
+        "product": "toolchain",
+        "gherkin": "Given a prepared restore\nWhen it runs with `--dry-run`\nThen the server runs the same validation, version, and tier gates as a real write and returns the exact node, edge, and event deltas without writing",
+        "values": [
+          "informs"
+        ]
+      },
+      "project_id": "arkaik-self-map"
+    },
+    {
+      "id": "AC-skill-leaves-when-done",
+      "species": "acceptance",
+      "title": "Skill Leaves When Done",
+      "description": "The bootstrap doctrine is one-time tooling: once the run has landed, a single command removes it and ongoing sessions carry only the maintenance skill.",
+      "status": "live",
+      "platforms": [
+        "web"
+      ],
+      "metadata": {
+        "product": "toolchain",
+        "gherkin": "Given a bootstrap run whose map has landed\nWhen the user runs `arkaik init --remove-bootstrap`\nThen the bootstrap skill is removed and ongoing sessions carry only the maintenance doctrine",
+        "values": [
+          "simplifies"
+        ]
+      },
+      "project_id": "arkaik-self-map"
+    },
+    {
       "id": "DEC-journal-jsonl-sidecar",
       "species": "decision",
       "title": "The journal is an append-only JSONL sidecar, merged by git union",
@@ -4086,6 +4251,36 @@
         "decided_at": "2026-08-04"
       },
       "platforms": [],
+      "project_id": "arkaik-self-map"
+    },
+    {
+      "id": "DEC-restore-whole-bundle-rails",
+      "species": "decision",
+      "title": "Restore is a whole-bundle replace — destructive by design, railed to be safe",
+      "description": "Mined history lands on a hosted project by replacing snapshot and journal wholesale — one deliberate destructive verb wrapped in rails — rather than through a new append_event mutation op or a server-side pre-image table.",
+      "status": "live",
+      "platforms": [],
+      "metadata": {
+        "decision_status": "enacted",
+        "context": "The hosted journal is read-only — mutations derive their events server-side — so a bootstrapped map's backdated story had no landing path. An append_event mutation op and a server-side pre-image table were both considered; the pre-image needs a new table, hence a migration, hence a manual production step — a known foot-gun in this repo.",
+        "consequences": "The graph API gains exactly one destructive verb: owner-only, If-Match required (428 missing, 400 malformed, 412 stale), tier-checked, with a fail-closed dry-run that runs the server's real gates. The CLI writes and read-back-verifies a local backup before sending and guards against history shrink — that client-side backup is the only recovery path, by decision rather than omission, at zero migration cost.",
+        "decided_at": "2026-08-04"
+      },
+      "project_id": "arkaik-self-map"
+    },
+    {
+      "id": "DEC-determinism-cli-judgment-skill",
+      "species": "decision",
+      "title": "Determinism ships as CLI commands, judgment as an on-demand skill",
+      "description": "The bootstrap method splits absolutely: the arkaik bootstrap CLI owns everything deterministic, agents own everything judgmental, and the two meet at a file boundary — a slice in, a fragment out.",
+      "status": "live",
+      "platforms": [],
+      "metadata": {
+        "decision_status": "enacted",
+        "context": "Mapping Arkaik itself by hand — the run that produced this very map — was expensive exactly where agents re-derived plumbing: gh pagination, id uniqueness, cross-fragment edge resolution, journal sorting. A docs-only method was rejected as what made that run costly and non-repeatable.",
+        "consequences": "corpus, plan, slice, index, and merge are deterministic, tested commands; agents never read or write the bundle; and the judgment doctrine installs on demand via arkaik init --bootstrap and leaves via --remove-bootstrap, so ongoing maintenance sessions never carry a one-time skill as a permanent token tax.",
+        "decided_at": "2026-08-04"
+      },
       "project_id": "arkaik-self-map"
     }
   ],
@@ -6965,6 +7160,181 @@
       "project_id": "arkaik-self-map",
       "source_id": "DEC-self-map-sandbox-seed",
       "target_id": "AC-sandbox-edits-are-real",
+      "edge_type": "generates"
+    },
+    {
+      "id": "e-F-bootstrap-from-history-V-cli-terminal",
+      "project_id": "arkaik-self-map",
+      "source_id": "F-bootstrap-from-history",
+      "target_id": "V-cli-terminal",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-bootstrap-from-history-V-arkaik-bootstrap-skill",
+      "project_id": "arkaik-self-map",
+      "source_id": "F-bootstrap-from-history",
+      "target_id": "V-arkaik-bootstrap-skill",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-bootstrap-from-history-API-github",
+      "project_id": "arkaik-self-map",
+      "source_id": "F-bootstrap-from-history",
+      "target_id": "API-github",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-F-restore-hosted-bundle-V-cli-terminal",
+      "project_id": "arkaik-self-map",
+      "source_id": "F-restore-hosted-bundle",
+      "target_id": "V-cli-terminal",
+      "edge_type": "composes"
+    },
+    {
+      "id": "e-F-restore-hosted-bundle-API-graph-project",
+      "project_id": "arkaik-self-map",
+      "source_id": "F-restore-hosted-bundle",
+      "target_id": "API-graph-project",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-F-restore-hosted-bundle-API-get-graph-project-export",
+      "project_id": "arkaik-self-map",
+      "source_id": "F-restore-hosted-bundle",
+      "target_id": "API-get-graph-project-export",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-F-restore-hosted-bundle-API-put-graph-project-bundle",
+      "project_id": "arkaik-self-map",
+      "source_id": "F-restore-hosted-bundle",
+      "target_id": "API-put-graph-project-bundle",
+      "edge_type": "calls"
+    },
+    {
+      "id": "e-API-put-graph-project-bundle-DM-graph-projects",
+      "project_id": "arkaik-self-map",
+      "source_id": "API-put-graph-project-bundle",
+      "target_id": "DM-graph-projects",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-put-graph-project-bundle-DM-graph-events",
+      "project_id": "arkaik-self-map",
+      "source_id": "API-put-graph-project-bundle",
+      "target_id": "DM-graph-events",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-API-put-graph-project-bundle-DM-users",
+      "project_id": "arkaik-self-map",
+      "source_id": "API-put-graph-project-bundle",
+      "target_id": "DM-users",
+      "edge_type": "queries"
+    },
+    {
+      "id": "e-AC-whole-history-one-run-F-bootstrap-from-history",
+      "project_id": "arkaik-self-map",
+      "source_id": "AC-whole-history-one-run",
+      "target_id": "F-bootstrap-from-history",
+      "edge_type": "covers"
+    },
+    {
+      "id": "e-AC-restore-backs-up-first-F-restore-hosted-bundle",
+      "project_id": "arkaik-self-map",
+      "source_id": "AC-restore-backs-up-first",
+      "target_id": "F-restore-hosted-bundle",
+      "edge_type": "covers"
+    },
+    {
+      "id": "e-AC-stale-restore-blocked-F-restore-hosted-bundle",
+      "project_id": "arkaik-self-map",
+      "source_id": "AC-stale-restore-blocked",
+      "target_id": "F-restore-hosted-bundle",
+      "edge_type": "covers"
+    },
+    {
+      "id": "e-AC-dry-run-previews-exactly-F-restore-hosted-bundle",
+      "project_id": "arkaik-self-map",
+      "source_id": "AC-dry-run-previews-exactly",
+      "target_id": "F-restore-hosted-bundle",
+      "edge_type": "covers"
+    },
+    {
+      "id": "e-AC-skill-leaves-when-done-V-arkaik-bootstrap-skill",
+      "project_id": "arkaik-self-map",
+      "source_id": "AC-skill-leaves-when-done",
+      "target_id": "V-arkaik-bootstrap-skill",
+      "edge_type": "covers"
+    },
+    {
+      "id": "e-AC-skill-leaves-when-done-F-init-repo",
+      "project_id": "arkaik-self-map",
+      "source_id": "AC-skill-leaves-when-done",
+      "target_id": "F-init-repo",
+      "edge_type": "covers"
+    },
+    {
+      "id": "e-DEC-restore-whole-bundle-rails-F-restore-hosted-bundle",
+      "project_id": "arkaik-self-map",
+      "source_id": "DEC-restore-whole-bundle-rails",
+      "target_id": "F-restore-hosted-bundle",
+      "edge_type": "impacts"
+    },
+    {
+      "id": "e-DEC-restore-whole-bundle-rails-API-put-graph-project-bundle",
+      "project_id": "arkaik-self-map",
+      "source_id": "DEC-restore-whole-bundle-rails",
+      "target_id": "API-put-graph-project-bundle",
+      "edge_type": "impacts"
+    },
+    {
+      "id": "e-DEC-restore-whole-bundle-rails-AC-restore-backs-up-first",
+      "project_id": "arkaik-self-map",
+      "source_id": "DEC-restore-whole-bundle-rails",
+      "target_id": "AC-restore-backs-up-first",
+      "edge_type": "generates"
+    },
+    {
+      "id": "e-DEC-restore-whole-bundle-rails-AC-stale-restore-blocked",
+      "project_id": "arkaik-self-map",
+      "source_id": "DEC-restore-whole-bundle-rails",
+      "target_id": "AC-stale-restore-blocked",
+      "edge_type": "generates"
+    },
+    {
+      "id": "e-DEC-restore-whole-bundle-rails-AC-dry-run-previews-exactly",
+      "project_id": "arkaik-self-map",
+      "source_id": "DEC-restore-whole-bundle-rails",
+      "target_id": "AC-dry-run-previews-exactly",
+      "edge_type": "generates"
+    },
+    {
+      "id": "e-DEC-determinism-cli-judgment-skill-F-bootstrap-from-history",
+      "project_id": "arkaik-self-map",
+      "source_id": "DEC-determinism-cli-judgment-skill",
+      "target_id": "F-bootstrap-from-history",
+      "edge_type": "impacts"
+    },
+    {
+      "id": "e-DEC-determinism-cli-judgment-skill-V-arkaik-bootstrap-skill",
+      "project_id": "arkaik-self-map",
+      "source_id": "DEC-determinism-cli-judgment-skill",
+      "target_id": "V-arkaik-bootstrap-skill",
+      "edge_type": "impacts"
+    },
+    {
+      "id": "e-DEC-determinism-cli-judgment-skill-AC-skill-leaves-when-done",
+      "project_id": "arkaik-self-map",
+      "source_id": "DEC-determinism-cli-judgment-skill",
+      "target_id": "AC-skill-leaves-when-done",
+      "edge_type": "generates"
+    },
+    {
+      "id": "e-DEC-determinism-cli-judgment-skill-AC-whole-history-one-run",
+      "project_id": "arkaik-self-map",
+      "source_id": "DEC-determinism-cli-judgment-skill",
+      "target_id": "AC-whole-history-one-run",
       "edge_type": "generates"
     }
   ],
@@ -14722,6 +15092,188 @@
       "actor": "claude-code",
       "type": "node.deleted",
       "node_id": "DM-local-storage-store"
+    },
+    {
+      "id": "012608041800000000000001",
+      "ts": "2026-08-04T18:00:00Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DEC-restore-whole-bundle-rails",
+      "species": "decision",
+      "title": "Restore is a whole-bundle replace — destructive by design, railed to be safe"
+    },
+    {
+      "id": "012608041800000000000002",
+      "ts": "2026-08-04T18:00:00Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DEC-determinism-cli-judgment-skill",
+      "species": "decision",
+      "title": "Determinism ships as CLI commands, judgment as an on-demand skill"
+    },
+    {
+      "id": "012608041800000000000003",
+      "actor": "alexis",
+      "ts": "2026-08-04T18:00:00Z",
+      "type": "decision.status_changed",
+      "node_id": "DEC-restore-whole-bundle-rails",
+      "from": "proposed",
+      "to": "approved"
+    },
+    {
+      "id": "012608041800000000000004",
+      "actor": "alexis",
+      "ts": "2026-08-04T18:00:00Z",
+      "type": "decision.status_changed",
+      "node_id": "DEC-determinism-cli-judgment-skill",
+      "from": "proposed",
+      "to": "approved"
+    },
+    {
+      "id": "012608050554080000000001",
+      "ts": "2026-08-05T05:54:08Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "F-bootstrap-from-history",
+      "species": "flow",
+      "title": "Bootstrap From History"
+    },
+    {
+      "id": "012608050554080000000002",
+      "ts": "2026-08-05T05:54:08Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "AC-whole-history-one-run",
+      "species": "acceptance",
+      "title": "Whole History, One Run"
+    },
+    {
+      "id": "012608050554080000000003",
+      "actor": "claude-code",
+      "ts": "2026-08-05T05:54:08Z",
+      "type": "deliverable.shipped",
+      "deliverable_id": "pr-342",
+      "title": "Map an existing codebase in one pass",
+      "summary": "Arkaik can now read a whole repository — its screens, its APIs, its merged pull requests — and turn it into a map, instead of you drawing every piece by hand.",
+      "url": "https://github.com/alexisbohns/arkaik/pull/342",
+      "node_ids": [
+        "F-bootstrap-from-history",
+        "AC-whole-history-one-run"
+      ]
+    },
+    {
+      "id": "012608051304490000000001",
+      "ts": "2026-08-05T13:04:49Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "API-put-graph-project-bundle",
+      "species": "api-endpoint",
+      "title": "PUT /api/graph/projects/{id}/bundle"
+    },
+    {
+      "id": "012608051304490000000002",
+      "ts": "2026-08-05T13:04:49Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "F-restore-hosted-bundle",
+      "species": "flow",
+      "title": "Restore Hosted Bundle"
+    },
+    {
+      "id": "012608051304490000000003",
+      "ts": "2026-08-05T13:04:49Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "AC-restore-backs-up-first",
+      "species": "acceptance",
+      "title": "Restore Backs Up First"
+    },
+    {
+      "id": "012608051304490000000004",
+      "ts": "2026-08-05T13:04:49Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "AC-stale-restore-blocked",
+      "species": "acceptance",
+      "title": "Stale Restore Blocked"
+    },
+    {
+      "id": "012608051304490000000005",
+      "ts": "2026-08-05T13:04:49Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "AC-dry-run-previews-exactly",
+      "species": "acceptance",
+      "title": "Dry Run Previews Exactly"
+    },
+    {
+      "id": "012608051304490000000006",
+      "actor": "alexis",
+      "ts": "2026-08-05T13:04:49Z",
+      "type": "decision.status_changed",
+      "node_id": "DEC-restore-whole-bundle-rails",
+      "from": "approved",
+      "to": "enacted"
+    },
+    {
+      "id": "012608051304490000000007",
+      "actor": "claude-code",
+      "ts": "2026-08-05T13:04:49Z",
+      "type": "deliverable.shipped",
+      "deliverable_id": "pr-343",
+      "title": "Bring a whole history to a hosted map",
+      "summary": "A map you built offline — every screen and every past release — can now land on your hosted project in one step. Arkaik saves a copy of what was there first, and refuses to go ahead if it can't.",
+      "url": "https://github.com/alexisbohns/arkaik/pull/343",
+      "node_ids": [
+        "API-put-graph-project-bundle",
+        "F-restore-hosted-bundle",
+        "DEC-restore-whole-bundle-rails",
+        "AC-restore-backs-up-first",
+        "AC-stale-restore-blocked",
+        "AC-dry-run-previews-exactly"
+      ]
+    },
+    {
+      "id": "012608051904310000000001",
+      "ts": "2026-08-05T19:04:31Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "V-arkaik-bootstrap-skill",
+      "species": "view",
+      "title": "Arkaik Bootstrap Skill"
+    },
+    {
+      "id": "012608051904310000000002",
+      "ts": "2026-08-05T19:04:31Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "AC-skill-leaves-when-done",
+      "species": "acceptance",
+      "title": "Skill Leaves When Done"
+    },
+    {
+      "id": "012608051904310000000003",
+      "actor": "alexis",
+      "ts": "2026-08-05T19:04:31Z",
+      "type": "decision.status_changed",
+      "node_id": "DEC-determinism-cli-judgment-skill",
+      "from": "approved",
+      "to": "enacted"
+    },
+    {
+      "id": "012608051904310000000004",
+      "actor": "claude-code",
+      "ts": "2026-08-05T19:04:31Z",
+      "type": "deliverable.shipped",
+      "deliverable_id": "pr-344",
+      "title": "A guided way to map a codebase you already have",
+      "summary": "Point Arkaik at an existing project and it walks you through mapping it — what to look at first, what to write down, and when you are done. Once the map exists, the guide steps out of the way.",
+      "url": "https://github.com/alexisbohns/arkaik/pull/344",
+      "node_ids": [
+        "V-arkaik-bootstrap-skill",
+        "DEC-determinism-cli-judgment-skill",
+        "AC-skill-leaves-when-done"
+      ]
     }
   ]
 }
