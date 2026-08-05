@@ -27,6 +27,7 @@
 /tests/services/.test-build-github/
 /tests/services/.test-build-pr-plan/
 /tests/services/.test-build-github-app/
+/tests/services/.test-build-graph-restore/
 /tests/app/.test-build-delivery/
 /tests/app/.test-build-journey-graph/
 /tests/app/.test-build-graph-spotlight/

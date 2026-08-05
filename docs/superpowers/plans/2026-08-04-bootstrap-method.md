@@ -2607,204 +2607,122 @@ After opening, read the PR's comments — the Lab Note reminder posts there and 
 
 # Part B — PR 2: hosted restore
 
-### Task 10: The pure decision rules
+### Task 10: The pure decision rules — shipped, findings below
 
-Every rule that decides *whether* a restore may proceed lives in pure functions, because this machine has no Postgres and untested SQL-adjacent logic is where the risk actually sits.
+Every rule that decides *whether* a restore may proceed lives in pure functions, because this machine has no Postgres and untested SQL-adjacent logic is where the risk actually sits. **The draft reference code below (kept verbatim as the historical record) shipped with real changes on all five probes the task brief specified, plus two defects found in the plan's own draft — not in a first implementation attempt, in the plan text itself.**
 
-**Files:**
+**Probe 1 — `versionMatches` fails closed: the draft was correct on the cases it covered, incomplete on the ones it didn't.** The shipped function keeps the draft's missing/empty/whitespace/wildcard/quoted-value handling, unchanged, and adds three cases the draft never considered: a **weak ETag** (`W/"v7"`) is refused outright — RFC 7232 requires *strong* comparison for `If-Match`, and a weak validator is excluded from that by definition even when the underlying value matches; a **multi-value list** (`"a", "b"`, valid HTTP grammar for `If-Match` in general) is refused rather than parsed — this endpoint's only client always states the ONE version it read, so a caller offering several candidates is hedging across guesses, the opposite of that, and a stored version (lowercase hex, no comma) can never collide with this refusal; **case differences** are refused via byte-exact comparison, never case-folded. All three, plus the draft's original six, are asserted directly in `tests/services/graph-restore.test.js`.
+
+**Probe 2 — `computeBundleDelta` counts by id: the draft silently dropped anything it couldn't identify, which is worse than counting it wrong.** A node/edge/event with no `id`, a non-string `id`, or an `id` reused within the same array was, in the draft's `byId`, simply invisible — contributing to neither "added" nor "removed" nor any other count. Verified concretely: a bundle padded with id-less garbage nodes would have shown `nodesAdded: 0` for all of them, reading as an empty, harmless restore on a `--dry-run` screen. **Fixed** by giving every one of `BundleDelta`'s three entity categories a `Malformed` counter (`nodesMalformed`, `edgesMalformed`, `eventsMalformed`) — a node/edge/event that cannot be matched by id now shows up as a nonzero number instead of nothing. `nodes`/`edges`/`journal` absent, `null`, or non-array still degrade to "treat as empty" (a legitimate default, not a hostile shape) with no exception thrown, on either side, in any combination — verified directly, including `computeBundleDelta(null, undefined)`.
+
+**Probe 3 — `nodesChanged`'s `JSON.stringify` equality: confirmed exactly the failure the probe predicted, and it would have made the number meaningless in production.** Postgres jsonb does **not** preserve object key order — it reorders pairs by key length, then lexicographically (Postgres docs, "JSON Types": jsonb "does not preserve … the order of object keys"; confirmed by web search, not assumed). A node round-tripped through storage and the "same" node freshly assembled by the CLI can hold byte-identical field values in different key orders, and the draft's `JSON.stringify(before) !== JSON.stringify(node)` would call that "changed" — meaning `nodesChanged` would read as "all of them" on every single restore that touches a previously-stored node, which is every restore after the first. **Fixed** by replacing the stringify comparison with `deepEqualIgnoringKeyOrder`: object keys are compared as sets (order-independent, recursive), array elements are compared by **index** (order-sensitive, unchanged) — a flow's `metadata.playlist` reorder is real signal and must still count as changed, only object key order is noise. Verified with three fixtures: flat key-order difference (no change reported), nested key-order difference inside `metadata.playlist.entries[i]` (no change reported), and an actual array-element reorder of the same playlist (changed, correctly, `nodesChanged === 1`).
+
+**Probe 4 — `eventsDropped`'s id-based counting: sufficient for "dropped," but the draft exposed nothing for the adjacent case that matters just as much.** Counting by id presence IS sufficient to answer "is this event gone" — an id missing is missing, full stop, regardless of what else in the bundle changed. But the draft's `BundleDelta` had no field at all for "this id is present on both sides but its payload differs" — and `merge` can legitimately rewrite an event's payload while keeping its id (e.g. reconcile canonicalizing a timestamp). With only `eventsAdded`/`eventsDropped` exposed, that rewrite contributes **zero** to both — it vanishes completely from the one number a human is supposed to read before authorizing a destructive write. **Fixed** by adding `eventsChanged` (and, for the same reason and at no extra cost, `edgesChanged`, paralleling the `nodesChanged` the draft already had) using the same key-order-insensitive comparison from probe 3. Verified: an event with the same `id` and a changed `to` field now reports `eventsAdded: 0, eventsDropped: 0, eventsChanged: 1` — visible, not silent.
+
+**Probe 5 — owner-only and tier-limited: one is genuinely SQL-coupled, one splits in two, and the split half is now built and tested here.** Owner-only stays entirely out of this module — "does this caller own this stored project row" cannot be answered without reading the row, so it belongs in `replaceProjectBundle` (Task 11), scoped by `owner_id = any($1)` exactly like every other store function. Tier-limited splits: the limits-table lookup (`getHostedLimitsForTier`) was already pure before this task, in `lib/services/limits.ts`. The remaining half — does this bundle's entity count fit the tier's cap — needs only array lengths and that already-pure lookup, no database row, so it is drawn on this side of the line: **`checkHostedEntityLimit(bundle, tier)`** ships here, tested directly (a 6000-entity bundle against the synk tier's 5000 cap, `klub`'s uncapped tier, an unrecognized tier falling back to the safest floor), and Task 11's note below asks that task to call it instead of re-deriving the same `count > limits.entities` comparison a third time.
+
+**A defect in the plan itself, not in a first implementation attempt: the draft test's `require("../../lib/services/graph/restore.ts")` is the exact anti-pattern Task 9's own postscript warns against.** A bare `require()` of a `.ts` path only works because Node's native TypeScript stripping (>= 22.6) is present on this dev machine (Node 26) — CI pins Node 20, which has none, and would have failed with `SyntaxError: Unexpected token ':'` on the first type annotation, exactly as it did for the four suites Task 9 had to fix after the fact. Task 9's own note anticipated this exact task by name: *"Direct-require tests against a different directory, e.g. Task 10's `lib/services/graph/restore.ts`, are a separate tree with their own loader convention — check `tests/services/*.test.js` for that one."* **Fixed** before it ever shipped broken: `tests/services/load-graph-restore.js`, mirroring `tests/services/load-pr-plan.js`'s approach exactly — transpiles `restore.ts` (and the real `limits.ts`, needed for `checkHostedEntityLimit`) to CommonJS via the `typescript` compiler into `tests/services/.test-build-graph-restore/`, stubs `server-only`, and — matching `load-pr-plan.js`'s "forbidden stub" pattern — makes `@/lib/services/db` and `@/lib/services/graph/store` throw loudly if reached at all, so a future change that makes `restore.ts` less pure fails here immediately instead of silently requiring a live Postgres to notice. **Verified against a real Node 20.20.2 binary** (downloaded directly, same as Task 9's fix, no version manager on this machine): `node tests/services/graph-restore.test.js` — 47/47 checks, exit 0, identical output to Node 26.
+
+**A second defect in the plan itself: Step 5's own CI wiring instruction contradicts the design principle stated three sections earlier.** The draft said to add the `test:graph-restore` step "after the `test:graph` step" in `.github/workflows/ci.yml` — but `test:graph` lives in the Postgres-backed `services` job, and spec §10 states plainly: *"this machine has no local Postgres, so the `If-Match` comparison, delta computation and validation wiring are extracted as pure functions with real tests in CI's fast build job."* Placing a DB-free suite in the slow, Postgres-gated job doesn't break anything, but it defeats the entire point of extracting these rules as pure functions — the fast job is what makes them catch a laptop-detectable regression before a push, and `test:pr-plan`/`test:github-app` (this repo's own prior examples of the same pattern) are both deliberately in `build`, each with a comment saying so explicitly. **Fixed** by adding the step to the `build` job instead, immediately after `test:github-app`, with the same kind of explanatory comment.
+
+**Files (as shipped):**
 - Create: `lib/services/graph/restore.ts`
-- Test: `tests/services/graph-restore.test.js`
+- Create: `tests/services/graph-restore.test.js` (47 checks)
+- Create: `tests/services/load-graph-restore.js` (the loader — not in the plan's original file list; see the finding above for why it exists)
+- Modify: `package.json` (`test:graph-restore`)
+- Modify: `.github/workflows/ci.yml` (`build` job, not `services` — see the finding above)
+- Modify: `.gitignore` (`/tests/services/.test-build-graph-restore/`, matching the sibling `.test-build-*` entries already there)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
-Create `tests/services/graph-restore.test.js`:
+The draft test above (kept verbatim as the historical record — its baseline assertions all survive unchanged in the shipped file) `require("../../lib/services/graph/restore.ts")`ed the `.ts` source directly. **As shipped, this is `tests/services/graph-restore.test.js` requiring `./load-graph-restore` instead** — see the loader finding above. The shipped file keeps every one of the draft's original assertions and adds the probe 1/2/3/4/5 coverage described above: weak-ETag/multi-value/case-sensitivity cases for `versionMatches`; malformed-input cases (no id, non-string id, duplicate id, absent/null/non-array lists, fully hostile shapes) and key-order-insensitivity cases (flat, nested, and the array-order-still-matters counter-case) for `computeBundleDelta`; the `eventsChanged` same-id-different-payload case; and `checkHostedEntityLimit` (small bundle fits, over-cap bundle refused, `klub` uncapped, unknown tier falls back to the floor). 47 checks total. Full file: `tests/services/graph-restore.test.js`.
 
-```js
-#!/usr/bin/env node
-
-/**
- * The pure half of hosted restore: optimistic-concurrency matching and the
- * delta a caller sees before a destructive replace. No database involved —
- * these are the rules, not the SQL.
- */
-
-const { versionMatches, computeBundleDelta } = require("../../lib/services/graph/restore.ts");
-
-let failures = 0;
-function check(name, cond, detail) {
-  if (cond) {
-    console.log(`PASS: ${name}`);
-  } else {
-    failures++;
-    console.log(`FAIL: ${name}${detail ? `\n${detail}` : ""}`);
-  }
-}
-
-// --- versionMatches ---
-check("exact match passes", versionMatches("v7", "v7") === true);
-check("quoted header matches", versionMatches('"v7"', "v7") === true);
-check("mismatch fails", versionMatches("v6", "v7") === false);
-check("missing If-Match fails closed", versionMatches(undefined, "v7") === false);
-check("empty If-Match fails closed", versionMatches("", "v7") === false);
-check("wildcard is not accepted", versionMatches("*", "v7") === false);
-
-// --- computeBundleDelta ---
-const prev = {
-  nodes: [{ id: "V-a", title: "A" }, { id: "V-b", title: "B" }],
-  edges: [{ id: "e-1" }],
-  journal: [{ id: "01A" }],
-};
-const next = {
-  nodes: [{ id: "V-a", title: "A renamed" }, { id: "V-c", title: "C" }],
-  edges: [{ id: "e-1" }, { id: "e-2" }],
-  journal: [{ id: "01A" }, { id: "01B" }],
-};
-const delta = computeBundleDelta(prev, next);
-check("added nodes counted", delta.nodesAdded === 1, JSON.stringify(delta));
-check("removed nodes counted", delta.nodesRemoved === 1, JSON.stringify(delta));
-check("changed nodes counted", delta.nodesChanged === 1, JSON.stringify(delta));
-check("added edges counted", delta.edgesAdded === 1, JSON.stringify(delta));
-check("removed edges counted", delta.edgesRemoved === 0, JSON.stringify(delta));
-check("added events counted", delta.eventsAdded === 1, JSON.stringify(delta));
-check("dropped events counted", delta.eventsDropped === 0, JSON.stringify(delta));
-
-const shrinking = computeBundleDelta(next, prev);
-check("a restore that drops history is visible", shrinking.eventsDropped === 1, JSON.stringify(shrinking));
-
-process.exit(failures === 0 ? 0 : 1);
-```
-
-Note: this repo's service tests are plain CommonJS against TypeScript sources; follow whatever loader `tests/services/*.test.js` already uses (check `tests/services/auth-guard.test.js` and mirror its import style exactly — if it imports a compiled path or uses a register hook, do the same here).
-
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `node tests/services/graph-restore.test.js`
-Expected: FAIL — module not found.
+Actual: FAIL — `Error: ENOENT: no such file or directory, open '.../lib/services/graph/restore.ts'` (the loader's `transpile()` step reads the source file directly and there was none yet — a clean, legible failure, not a `require` resolution error).
 
-- [ ] **Step 3: Write `restore.ts`**
+- [x] **Step 3: Write `restore.ts`**
 
-Create `lib/services/graph/restore.ts`:
+The draft above is the starting shape; every one of the five probe findings changed it. As shipped: `versionMatches` gains the weak-ETag/multi-value/wildcard-after-unquoting checks (probe 1); `BundleDelta` gains `nodesMalformed`/`edgesMalformed`/`eventsMalformed` and `edgesChanged`/`eventsChanged` (probes 2 and 4); the node-comparison helper is `deepEqualIgnoringKeyOrder`, not `JSON.stringify` (probe 3); and a new `checkHostedEntityLimit` export, backed by a real `import { getHostedLimitsForTier } from "@/lib/services/limits"` (probe 5). The full, commented file (every decision has its rationale inline, at its own call site) is `lib/services/graph/restore.ts`. Shape, abbreviated:
 
 ```ts
-/**
- * The rules a hosted restore obeys, as pure functions.
- *
- * A restore replaces a project's snapshot AND its journal wholesale — the only
- * way mined history can reach a hosted project, because the mutation path
- * derives its events server-side and cannot express a backdated one. That makes
- * it the one destructive verb in the graph API, so its guards live here where
- * they can be tested without a database.
- */
+import "server-only";
+import { getHostedLimitsForTier } from "@/lib/services/limits";
 
-/**
- * Optimistic concurrency: the caller must state which version it read.
- *
- * Fails CLOSED. A missing, empty, or wildcard `If-Match` is a mismatch, never a
- * pass — "replace whatever is there" is exactly the operation this endpoint
- * must not offer.
- */
 export function versionMatches(ifMatch: string | undefined | null, current: string): boolean {
-  if (!ifMatch) return false;
-  const normalized = ifMatch.trim().replace(/^"|"$/g, "");
-  if (normalized === "" || normalized === "*") return false;
+  if (typeof ifMatch !== "string") return false;
+  const trimmed = ifMatch.trim();
+  if (trimmed.length === 0 || trimmed === "*" || trimmed.includes(",") || /^w\//i.test(trimmed)) return false;
+  const normalized = trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"') ? trimmed.slice(1, -1) : trimmed;
+  if (normalized.length === 0 || normalized === "*") return false;
   return normalized === current;
 }
 
 export interface BundleDelta {
-  nodesAdded: number;
-  nodesRemoved: number;
-  nodesChanged: number;
-  edgesAdded: number;
-  edgesRemoved: number;
-  eventsAdded: number;
-  eventsDropped: number;
+  nodesAdded: number; nodesRemoved: number; nodesChanged: number; nodesMalformed: number;
+  edgesAdded: number; edgesRemoved: number; edgesChanged: number; edgesMalformed: number;
+  eventsAdded: number; eventsDropped: number; eventsChanged: number; eventsMalformed: number;
 }
 
-interface Identified {
-  id?: unknown;
-}
+// indexById: byId map + malformed count (no/non-string/duplicate id) per list.
+// deepEqualIgnoringKeyOrder: object keys compared as sets, array elements by index.
+// countMissing / countChanged: the id-diff and id-matched-but-unequal counts.
 
-function byId(list: unknown): Map<string, unknown> {
-  const map = new Map<string, unknown>();
-  if (!Array.isArray(list)) return map;
-  for (const item of list) {
-    const id = (item as Identified)?.id;
-    if (typeof id === "string") map.set(id, item);
-  }
-  return map;
-}
+export function computeBundleDelta(prev: {...}, next: {...}): BundleDelta { /* six indexById calls, twelve fields */ }
 
-/**
- * What a restore would do, in counts — what `--dry-run` prints and what a
- * human reads before authorising a replace. `eventsDropped` is the one to
- * watch: history is append-only by contract, so a non-zero value means the
- * inbound bundle is missing events the server already holds.
- */
-export function computeBundleDelta(
-  prev: { nodes?: unknown; edges?: unknown; journal?: unknown },
-  next: { nodes?: unknown; edges?: unknown; journal?: unknown },
-): BundleDelta {
-  const prevNodes = byId(prev.nodes);
-  const nextNodes = byId(next.nodes);
-  const prevEdges = byId(prev.edges);
-  const nextEdges = byId(next.edges);
-  const prevEvents = byId(prev.journal);
-  const nextEvents = byId(next.journal);
-
-  let nodesChanged = 0;
-  for (const [id, node] of nextNodes) {
-    const before = prevNodes.get(id);
-    if (before && JSON.stringify(before) !== JSON.stringify(node)) nodesChanged += 1;
-  }
-
-  const countMissing = (from: Map<string, unknown>, into: Map<string, unknown>): number => {
-    let n = 0;
-    for (const id of from.keys()) if (!into.has(id)) n += 1;
-    return n;
-  };
-
-  return {
-    nodesAdded: countMissing(nextNodes, prevNodes),
-    nodesRemoved: countMissing(prevNodes, nextNodes),
-    nodesChanged,
-    edgesAdded: countMissing(nextEdges, prevEdges),
-    edgesRemoved: countMissing(prevEdges, nextEdges),
-    eventsAdded: countMissing(nextEvents, prevEvents),
-    eventsDropped: countMissing(prevEvents, nextEvents),
-  };
+export interface EntityLimitCheck { ok: boolean; limit: number; actual: number; }
+export function checkHostedEntityLimit(bundle: { nodes?: unknown; edges?: unknown }, tier: string): EntityLimitCheck {
+  const actual = (Array.isArray(bundle?.nodes) ? bundle.nodes.length : 0) + (Array.isArray(bundle?.edges) ? bundle.edges.length : 0);
+  const limit = getHostedLimitsForTier(tier).entities;
+  return { ok: actual <= limit, limit, actual };
 }
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `node tests/services/graph-restore.test.js`
-Expected: PASS on all fifteen checks.
+Actual: PASS on all **47** checks (not fifteen — the draft's 15 plus the probe coverage above). Also verified against a real Node 20.20.2 binary (CI's pinned version): identical 47/47 pass, exit 0 — see the loader finding above for why this check matters here specifically.
 
-- [ ] **Step 5: Wire the script and CI**
+- [x] **Step 5: Wire the script and CI**
 
-In `package.json`:
+In `package.json`, as drafted:
 
 ```json
     "test:graph-restore": "node tests/services/graph-restore.test.js",
 ```
 
-In `.github/workflows/ci.yml`, after the `test:graph` step:
+**In `.github/workflows/ci.yml`, NOT after `test:graph`** (that step is in the Postgres-backed `services` job) — as shipped, added to the `build` job immediately after `test:github-app`, matching that step's own "deliberately in build, not services" comment:
 
 ```yaml
-      - name: Graph restore rules
+      # Hosted restore's decision rules (If-Match matching, bundle delta,
+      # tier-limit check) are pure by design — this machine has no local
+      # Postgres, so they are extracted from the SQL-coupled store code and
+      # tested here, in the fast job, rather than only in `services` below.
+      - name: Graph restore rules (If-Match matching, bundle delta, tier limit)
         run: npm run test:graph-restore
 ```
 
-- [ ] **Step 6: Commit**
+Also added to `.gitignore`: `/tests/services/.test-build-graph-restore/`, alongside its sibling `.test-build-*` entries.
+
+- [x] **Step 6: Commit**
 
 ```bash
-git add lib/services/graph/restore.ts tests/services/graph-restore.test.js package.json .github/workflows/ci.yml
+git add lib/services/graph/restore.ts tests/services/graph-restore.test.js tests/services/load-graph-restore.js package.json .github/workflows/ci.yml .gitignore
 git commit -m "feat(graph): pure rules for hosted bundle restore"
 ```
+
+(`tests/services/load-graph-restore.js` added to the commit — not in the plan's original file list; see the loader finding above.)
 
 ---
 
 ### Task 11: `replaceProjectBundle` + the PUT route
+
+**Three notes carried forward from Task 10, read before touching `store.ts`:**
+
+1. **`BundleDelta` has more fields than this section's reference code implies.** Task 10 shipped `nodesMalformed`/`edgesMalformed`/`eventsMalformed` and `edgesChanged`/`eventsChanged` alongside the original `nodesAdded`/`nodesRemoved`/`nodesChanged`/`edgesAdded`/`edgesRemoved`/`eventsAdded`/`eventsDropped` (see Task 10's probe 2 and probe 4 findings). Nothing here needs to change to accommodate that — `result.delta` is forwarded to the client as a whole object below, not destructured field-by-field — but the PUT response body now carries twelve numbers, not seven, and the `--dry-run`/`restore` output Task 12 designs should account for that.
+2. **Use `checkHostedEntityLimit` from `@/lib/services/graph/restore` instead of re-deriving the `count > limits.entities` comparison inline.** This section's own reference code calls `entityCount(bundle.nodes, bundle.edges)` (a private helper in `store.ts`) and compares it against `getHostedLimitsForTier(input.tier).entities` directly — that is now a third copy of a comparison that already exists twice (`createProject`, `applyMutation`) and a fourth pure, tested function for exactly this (`checkHostedEntityLimit`, Task 10 probe 5). Prefer `const check = checkHostedEntityLimit(bundle, input.tier); if (!check.ok) return { ok: false, reason: "limit", limit: check.limit, actual: check.actual, tier: input.tier };` over hand-rolling the comparison a third time in this file.
+3. **`tests/services/load-graph-api.js` (the loader `graph-api.test.js` uses, in the Postgres-backed `services` job) will need a new entry once `store.ts` imports from `restore.ts`.** That loader's `COMMON` rewrite table currently has no mapping for `@/lib/services/graph/restore`, so a transpiled `store.js` containing `require("@/lib/services/graph/restore")` (unrewritten) will fail at `require()` time with `Cannot find module`. Add `write("restore.js", transpile(src("lib", "services", "graph", "restore.ts"), "restore.ts", COMMON));` alongside the existing `write("store.js", ...)` line, and add `["@/lib/services/graph/restore", "./restore.js"]` to `COMMON` — the real module, transpiled, not a stub, mirroring how `limits.ts`/`owners.ts` are already treated there (both are pure and cheap enough that stubbing them would only hide bugs, not save anything real).
 
 **Files:**
 - Modify: `lib/services/graph/store.ts`
@@ -3004,6 +2922,8 @@ git commit -m "feat(graph): PUT /bundle — owner-only, If-Match-gated whole-bun
 ---
 
 ### Task 12: `arkaik restore`
+
+**Note carried forward from Task 10:** this section's reference `--dry-run` implementation prints raw `nodes.length`/`edges.length`/`journal.length` counts computed inline, rather than calling `computeBundleDelta` (Task 10, `lib/services/graph/restore.ts`) — that function lives under `lib/services`, behind the `@/` alias the Next.js app resolves and the CLI package does not, so the CLI cannot import it without duplicating the module or restructuring where it lives. That's a legitimate constraint, not an oversight, but it means the CLI's own dry-run is strictly coarser than what the server would compute: no `nodesChanged`/`nodesMalformed`/`eventsChanged` equivalent, and no key-order-insensitive comparison (Task 10 probe 3) — a node whose fields are identical but reordered would misreport locally in exactly the way `computeBundleDelta` was fixed to avoid. If this task wants dry-run parity with what the server actually decides, either duplicate `computeBundleDelta`'s logic into a CLI-local module or accept the coarser local count as "good enough for a heads-up, the server's own response after a real (non-dry-run) call is the authoritative delta" — and say which, explicitly, rather than leaving the mismatch implicit.
 
 **Files:**
 - Create: `packages/cli/src/commands/restore.ts`
