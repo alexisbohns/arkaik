@@ -437,6 +437,257 @@ async function main() {
     // this small graph — the assertion is that the fallback resolves at all.
     check("an unknown tier resolves to the safe floor rather than throwing", typeof overLimit.ok === "boolean");
 
+    // --- PUT .../bundle: whole-bundle restore (Task 11) ----------------------
+    // The one destructive verb in the graph API. lib/services/graph/restore.ts's
+    // own suite (tests/services/graph-restore.test.js) covers the PURE decision
+    // rules with no database in reach; this is the one place the SQL-coupled
+    // half — row locking, REPLACING the journal rather than appending to it,
+    // the version bump, owner scoping, dry-run writing nothing — gets
+    // exercised at all. This machine has no local Postgres to run this file,
+    // so these checks are verified in CI's Postgres-backed `services` job.
+    // NOTE — project-count boundary: userA already owns 2 active projects at
+    // this point (`created` and `firstImport`, both created earlier in this
+    // file and neither archived yet — the Archive section below runs AFTER
+    // this whole block). The synk tier caps at 3 projects, so the CREATE_PROJECT
+    // call immediately below (`existing=2, +1=3, 3>3` is false) lands EXACTLY
+    // on that cap, with zero headroom left for userA. This is deliberate and
+    // currently harmless, but fragile: adding one more userA project anywhere
+    // earlier in this file would flip this from "succeeds at the boundary" to
+    // "fails the project-count limit" and break this section for a reason
+    // that has nothing to do with what it's testing. If that happens, either
+    // archive one of the earlier projects first or create this fixture under
+    // a session with headroom.
+    setSession(sessionFor(userA));
+    const restoreSeed = bundle([node("V-restore-old", "view")]);
+    restoreSeed.journal = [
+      {
+        id: "01RESTOREOLD00000000000000",
+        ts: "2026-01-01T00:00:00.000Z",
+        actor: "seed",
+        type: "node.created",
+        node_id: "V-restore-old",
+        species: "view",
+        title: "Old",
+      },
+    ];
+    const restoreCreated = await api.CREATE_PROJECT(jsonReq(`${ORIGIN}/api/graph/projects`, "POST", restoreSeed));
+    const restoreCreatedBody = await restoreCreated.json();
+    check(
+      "restore fixture project imports",
+      restoreCreated.status === 201,
+      `${restoreCreated.status} ${JSON.stringify(restoreCreatedBody)}`,
+    );
+    const restoreId = restoreCreatedBody.id;
+
+    const restoreBundle = bundle([node("V-restore-new", "view")]);
+    restoreBundle.journal = [
+      {
+        id: "01RESTORENEW00000000000000",
+        ts: "2026-01-02T00:00:00.000Z",
+        actor: "seed",
+        type: "node.created",
+        node_id: "V-restore-new",
+        species: "view",
+        title: "New",
+      },
+    ];
+    const putReq = (body, headers = {}) =>
+      new Request(`${ORIGIN}/api/graph/projects/${restoreId}/bundle`, {
+        method: "PUT",
+        headers: { "content-type": "application/json", ...headers },
+        body: JSON.stringify({ bundle: body }),
+      });
+
+    // Missing If-Match -> 428 Precondition Required
+    const noIfMatch = await api.PUT_BUNDLE(putReq(restoreBundle), ctx(restoreId));
+    check("PUT bundle with no If-Match is refused with 428", noIfMatch.status === 428, String(noIfMatch.status));
+
+    // Unsupported shape (wildcard) -> 400, not treated as stale
+    const wildcard = await api.PUT_BUNDLE(putReq(restoreBundle, { "if-match": "*" }), ctx(restoreId));
+    check("PUT bundle with a wildcard If-Match is refused with 400", wildcard.status === 400, String(wildcard.status));
+
+    // Well-formed but wrong version -> 412, carrying the CURRENT version
+    const stalePut = await api.PUT_BUNDLE(putReq(restoreBundle, { "if-match": '"999999"' }), ctx(restoreId));
+    const stalePutBody = await stalePut.json();
+    check("PUT bundle with a stale If-Match is refused with 412", stalePut.status === 412, String(stalePut.status));
+    check("the 412 reports the current version", stalePutBody.current === "1", JSON.stringify(stalePutBody));
+
+    // Owner scoping: another owner gets 404 (not 403, not 412) even with a
+    // syntactically correct version — indistinguishable from not existing.
+    setSession(sessionFor(userB));
+    const otherPut = await api.PUT_BUNDLE(putReq(restoreBundle, { "if-match": '"1"' }), ctx(restoreId));
+    check("another owner cannot restore (404)", otherPut.status === 404, String(otherPut.status));
+    setSession(sessionFor(userA));
+
+    // Scope enforcement: a graph:read token cannot destroy. This is the guard
+    // standing between a read-only agent credential and wholesale replacement
+    // — the one test I'd least want missing on the destructive verb.
+    const readOnlyPut = await api.PUT_BUNDLE(
+      putReq(restoreBundle, { "if-match": '"1"', ...bearer(readOnly.plaintext) }),
+      ctx(restoreId),
+    );
+    check(
+      "a graph:read token cannot PUT_BUNDLE (403 insufficient_scope)",
+      readOnlyPut.status === 403,
+      String(readOnlyPut.status),
+    );
+
+    // dryRun fails CLOSED: an unrecognized token is refused (400), never
+    // silently treated as a real write. classifyDryRun's own suite
+    // (tests/services/graph-restore.test.js) covers every token; this proves
+    // the ROUTE actually wires it in rather than reimplementing the check.
+    const badDryRun = await api.PUT_BUNDLE(
+      new Request(`${ORIGIN}/api/graph/projects/${restoreId}/bundle?dryRun=yes`, {
+        method: "PUT",
+        headers: { "content-type": "application/json", "if-match": '"1"' },
+        body: JSON.stringify({ bundle: restoreBundle }),
+      }),
+      ctx(restoreId),
+    );
+    check(
+      "an unrecognized ?dryRun value is refused with 400, not treated as a write",
+      badDryRun.status === 400,
+      String(badDryRun.status),
+    );
+
+    // Payload cap: mirrors POST /api/graph/projects — an oversized body is
+    // refused before it is ever JSON.parsed, and journal-carrying restore
+    // bodies are the largest this API accepts, so this is the route that
+    // needed the cap most, not least.
+    const oversized = await api.PUT_BUNDLE(
+      new Request(`${ORIGIN}/api/graph/projects/${restoreId}/bundle`, {
+        method: "PUT",
+        headers: { "content-type": "application/json", "if-match": '"1"' },
+        body: JSON.stringify({ bundle: restoreBundle, padding: "x".repeat(6 * 1024 * 1024) }),
+      }),
+      ctx(restoreId),
+    );
+    check("an oversized body is refused with 413 before JSON.parse", oversized.status === 413, String(oversized.status));
+
+    // A BARE ?dryRun (no `=value` at all) also means preview, not a real
+    // write — the empty-string case classifyDryRun's own suite covers in
+    // isolation; this is the route's wiring of it.
+    const bareDryRun = await api.PUT_BUNDLE(
+      new Request(`${ORIGIN}/api/graph/projects/${restoreId}/bundle?dryRun`, {
+        method: "PUT",
+        headers: { "content-type": "application/json", "if-match": '"1"' },
+        body: JSON.stringify({ bundle: restoreBundle }),
+      }),
+      ctx(restoreId),
+    );
+    const bareDryRunBody = await bareDryRun.json();
+    check(
+      "a bare ?dryRun (no value) is a preview, not a write",
+      bareDryRun.status === 200 && bareDryRunBody.dryRun === true,
+      `${bareDryRun.status} ${JSON.stringify(bareDryRunBody)}`,
+    );
+    const afterBareDryRun = await (await api.GET_PROJECT(new Request(ORIGIN), ctx(restoreId))).json();
+    check(
+      "the bare-?dryRun call wrote nothing either — version still 1",
+      afterBareDryRun.version === "1",
+      afterBareDryRun.version,
+    );
+
+    // Dry run: matching If-Match, ?dryRun=1 -> the real delta, no write
+    const dryReq = new Request(`${ORIGIN}/api/graph/projects/${restoreId}/bundle?dryRun=1`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", "if-match": '"1"' },
+      body: JSON.stringify({ bundle: restoreBundle }),
+    });
+    const dry = await api.PUT_BUNDLE(dryReq, ctx(restoreId));
+    const dryBody = await dry.json();
+    check("dry-run PUT bundle returns 200", dry.status === 200, `${dry.status} ${JSON.stringify(dryBody)}`);
+    check("dry-run's response is marked dryRun: true", dryBody.dryRun === true, JSON.stringify(dryBody));
+    check(
+      "dry-run reports the real delta (1 node added, 1 removed, journal replaced)",
+      dryBody.delta?.nodesAdded === 1 &&
+        dryBody.delta?.nodesRemoved === 1 &&
+        dryBody.delta?.eventsAdded === 1 &&
+        dryBody.delta?.eventsDropped === 1,
+      JSON.stringify(dryBody.delta),
+    );
+    check("dry-run's version is the CURRENT version, not a freshly minted one", dryBody.version === "1", dryBody.version);
+
+    const afterDryRun = await (await api.GET_PROJECT(new Request(ORIGIN), ctx(restoreId))).json();
+    check(
+      "dry-run wrote NOTHING — the snapshot is exactly as it was",
+      afterDryRun.version === "1" &&
+        afterDryRun.bundle.nodes.some((n) => n.id === "V-restore-old") &&
+        !afterDryRun.bundle.nodes.some((n) => n.id === "V-restore-new"),
+      JSON.stringify(afterDryRun.bundle.nodes.map((n) => n.id)),
+    );
+    const afterDryRunJournal = await (await api.GET_JOURNAL(new Request(ORIGIN), ctx(restoreId))).json();
+    check(
+      "dry-run left the journal untouched too",
+      afterDryRunJournal.journal.length === 1 && afterDryRunJournal.journal[0].id === "01RESTOREOLD00000000000000",
+      JSON.stringify(afterDryRunJournal.journal),
+    );
+
+    // The real thing: matching If-Match, no dryRun -> writes, bumps the version
+    const realPut = await api.PUT_BUNDLE(putReq(restoreBundle, { "if-match": '"1"' }), ctx(restoreId));
+    const realPutBody = await realPut.json();
+    check(
+      "PUT bundle with a matching If-Match succeeds (200)",
+      realPut.status === 200,
+      `${realPut.status} ${JSON.stringify(realPutBody)}`,
+    );
+    check("the version bumped to 2 (a bigint increment, not a random hex string)", realPutBody.version === "2", realPutBody.version);
+    check("the response ETag matches the new version", realPut.headers.get("etag") === '"2"');
+    check("the real response is marked dryRun: false", realPutBody.dryRun === false, JSON.stringify(realPutBody));
+    check(
+      "the response delta shows the replace (1 added, 1 removed)",
+      realPutBody.delta?.nodesAdded === 1 && realPutBody.delta?.nodesRemoved === 1,
+      JSON.stringify(realPutBody.delta),
+    );
+
+    const afterRestore = await (await api.GET_PROJECT(new Request(ORIGIN), ctx(restoreId))).json();
+    check(
+      "the snapshot was REPLACED wholesale — old node gone, new node present",
+      !afterRestore.bundle.nodes.some((n) => n.id === "V-restore-old") &&
+        afterRestore.bundle.nodes.some((n) => n.id === "V-restore-new"),
+      JSON.stringify(afterRestore.bundle.nodes.map((n) => n.id)),
+    );
+    const afterRestoreJournal = await (await api.GET_JOURNAL(new Request(ORIGIN), ctx(restoreId))).json();
+    check(
+      "the journal was REPLACED, not appended to — old event gone, new event present, count stays 1",
+      afterRestoreJournal.journal.length === 1 && afterRestoreJournal.journal[0].id === "01RESTORENEW00000000000000",
+      JSON.stringify(afterRestoreJournal.journal),
+    );
+
+    const restoreRow = await client.query(`select entity_count from graph_projects where id = $1`, [restoreId]);
+    check(
+      "entity_count reflects the new snapshot (1 node, 0 edges), matching checkHostedEntityLimit's count",
+      Number(restoreRow.rows[0]?.entity_count) === 1,
+      JSON.stringify(restoreRow.rows[0]),
+    );
+
+    // A second restore re-using the now-superseded version fails with 412.
+    // This test is SEQUENTIAL, not concurrent, so it proves the version bump
+    // from the real restore above actually PERSISTED and is visible to a
+    // later, separate request — not that two transactions racing each other
+    // were serialized by the row lock, which no sequential test can show.
+    const secondStale = await api.PUT_BUNDLE(putReq(restoreBundle, { "if-match": '"1"' }), ctx(restoreId));
+    check("re-using a since-superseded version now gets 412", secondStale.status === 412, String(secondStale.status));
+
+    // Entity limit: a bundle over the HOSTED tier cap is refused (403 — the
+    // same code POST /api/graph/projects and POST .../mutations use for a
+    // tier-limit refusal; 413 on this route is reserved for the payload-size
+    // cap tested above) and writes nothing — checkHostedEntityLimit gates
+    // before the transaction even opens, so there is no partial write to
+    // check for.
+    await client.query(`update users set tier = 'synk' where id = $1`, [userA]);
+    const overCapBundle = bundle(Array.from({ length: 5001 }, (_, i) => node(`V-restore-bulk${i}`, "view")));
+    const overCap = await api.PUT_BUNDLE(putReq(overCapBundle, { "if-match": '"2"' }), ctx(restoreId));
+    const overCapBody = await overCap.json();
+    check(
+      "a bundle over the hosted entity cap is refused with 403, not 413",
+      overCap.status === 403,
+      `${overCap.status} ${JSON.stringify(overCapBody)}`,
+    );
+    check("the 403 reports the HOSTED limit (5000), not the Synk backup limit (250)", overCapBody.limit === 5000, JSON.stringify(overCapBody));
+    const afterOverCap = await (await api.GET_PROJECT(new Request(ORIGIN), ctx(restoreId))).json();
+    check("the over-cap attempt wrote nothing — version is still 2", afterOverCap.version === "2", afterOverCap.version);
+
     // --- Archive ------------------------------------------------------------
     const archived = await api.DELETE_PROJECT(new Request(ORIGIN), ctx(projectId));
     check("DELETE archives the project", archived.status === 204, String(archived.status));

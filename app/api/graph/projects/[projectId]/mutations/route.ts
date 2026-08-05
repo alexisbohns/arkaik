@@ -111,6 +111,16 @@ export async function POST(
       case "not_found":
         return Response.json({ error: "not_found" }, { status: 404 });
       case "conflict":
+        // 409, not 412 — a known, deliberate inconsistency with
+        // `PUT .../bundle` (lib/services/graph/restore.ts's `classifyIfMatch`
+        // maps its equivalent case to 412 Precondition Failed, the RFC 9110
+        // §13.1.1-correct code for a failed If-Match). NOT changed here: this
+        // route's `If-Match` is optional/best-effort ("Correctness does not
+        // depend on it," above) — a materially different contract from
+        // restore's mandatory, fail-closed one — so reconciling the two codes
+        // is a separate decision with its own blast radius, flagged but out
+        // of scope for Task 11 (docs/superpowers/plans/2026-08-04-bootstrap-
+        // method.md, Task 11, note 5).
         return Response.json(
           { error: "version_conflict", version: result.version },
           { status: 409, headers: { ETag: `"${result.version}"` } },

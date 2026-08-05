@@ -64,6 +64,13 @@ jobs:
       - name: GitHub App seam tests (path matching, App JWT, changed-files API)
         run: npm run test:github-app
 
+      # Hosted restore's decision rules (If-Match matching, bundle delta,
+      # tier-limit check) are pure by design — this machine has no local
+      # Postgres, so they are extracted from the SQL-coupled store code and
+      # tested here, in the fast job, rather than only in `services` below.
+      - name: Graph restore rules (If-Match matching, bundle delta, tier limit)
+        run: npm run test:graph-restore
+
       - name: Deterministic id generator tests
         run: npm run test:id-gen
 

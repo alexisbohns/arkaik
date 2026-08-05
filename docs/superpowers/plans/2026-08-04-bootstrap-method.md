@@ -2607,210 +2607,211 @@ After opening, read the PR's comments — the Lab Note reminder posts there and 
 
 # Part B — PR 2: hosted restore
 
-### Task 10: The pure decision rules
+### Task 10: The pure decision rules — shipped, findings below
 
-Every rule that decides *whether* a restore may proceed lives in pure functions, because this machine has no Postgres and untested SQL-adjacent logic is where the risk actually sits.
+Every rule that decides *whether* a restore may proceed lives in pure functions, because this machine has no Postgres and untested SQL-adjacent logic is where the risk actually sits. **The draft reference code below (kept verbatim as the historical record) shipped with real changes on all five probes the task brief specified, plus two defects found in the plan's own draft — not in a first implementation attempt, in the plan text itself.**
 
-**Files:**
+**Probe 1 — `versionMatches` fails closed: the draft was correct on the cases it covered, incomplete on the ones it didn't.** The shipped function keeps the draft's missing/empty/whitespace/wildcard/quoted-value handling, unchanged, and adds three cases the draft never considered: a **weak ETag** (`W/"v7"`) is refused outright — RFC 7232 requires *strong* comparison for `If-Match`, and a weak validator is excluded from that by definition even when the underlying value matches; a **multi-value list** (`"a", "b"`, valid HTTP grammar for `If-Match` in general) is refused rather than parsed — this endpoint's only client always states the ONE version it read, so a caller offering several candidates is hedging across guesses, the opposite of that, and a stored version (lowercase hex, no comma) can never collide with this refusal; **case differences** are refused via byte-exact comparison, never case-folded. All three, plus the draft's original six, are asserted directly in `tests/services/graph-restore.test.js`.
+
+**Probe 2 — `computeBundleDelta` counts by id: the draft silently dropped anything it couldn't identify, which is worse than counting it wrong.** A node/edge/event with no `id`, a non-string `id`, or an `id` reused within the same array was, in the draft's `byId`, simply invisible — contributing to neither "added" nor "removed" nor any other count. Verified concretely: a bundle padded with id-less garbage nodes would have shown `nodesAdded: 0` for all of them, reading as an empty, harmless restore on a `--dry-run` screen. **Fixed** by giving every one of `BundleDelta`'s three entity categories a `Malformed` counter (`nodesMalformed`, `edgesMalformed`, `eventsMalformed`) — a node/edge/event that cannot be matched by id now shows up as a nonzero number instead of nothing. `nodes`/`edges`/`journal` absent, `null`, or non-array still degrade to "treat as empty" (a legitimate default, not a hostile shape) with no exception thrown, on either side, in any combination — verified directly, including `computeBundleDelta(null, undefined)`.
+
+**Probe 3 — `nodesChanged`'s `JSON.stringify` equality: confirmed exactly the failure the probe predicted, and it would have made the number meaningless in production.** Postgres jsonb does **not** preserve object key order — it reorders pairs by key length, then lexicographically (Postgres docs, "JSON Types": jsonb "does not preserve … the order of object keys"; confirmed by web search, not assumed). A node round-tripped through storage and the "same" node freshly assembled by the CLI can hold byte-identical field values in different key orders, and the draft's `JSON.stringify(before) !== JSON.stringify(node)` would call that "changed" — meaning `nodesChanged` would read as "all of them" on every single restore that touches a previously-stored node, which is every restore after the first. **Fixed** by replacing the stringify comparison with `deepEqualIgnoringKeyOrder`: object keys are compared as sets (order-independent, recursive), array elements are compared by **index** (order-sensitive, unchanged) — a flow's `metadata.playlist` reorder is real signal and must still count as changed, only object key order is noise. Verified with three fixtures: flat key-order difference (no change reported), nested key-order difference inside `metadata.playlist.entries[i]` (no change reported), and an actual array-element reorder of the same playlist (changed, correctly, `nodesChanged === 1`).
+
+**Probe 4 — `eventsDropped`'s id-based counting: sufficient for "dropped," but the draft exposed nothing for the adjacent case that matters just as much.** Counting by id presence IS sufficient to answer "is this event gone" — an id missing is missing, full stop, regardless of what else in the bundle changed. But the draft's `BundleDelta` had no field at all for "this id is present on both sides but its payload differs" — and `merge` can legitimately rewrite an event's payload while keeping its id (e.g. reconcile canonicalizing a timestamp). With only `eventsAdded`/`eventsDropped` exposed, that rewrite contributes **zero** to both — it vanishes completely from the one number a human is supposed to read before authorizing a destructive write. **Fixed** by adding `eventsChanged` (and, for the same reason and at no extra cost, `edgesChanged`, paralleling the `nodesChanged` the draft already had) using the same key-order-insensitive comparison from probe 3. Verified: an event with the same `id` and a changed `to` field now reports `eventsAdded: 0, eventsDropped: 0, eventsChanged: 1` — visible, not silent.
+
+**Probe 5 — owner-only and tier-limited: one is genuinely SQL-coupled, one splits in two, and the split half is now built and tested here.** Owner-only stays entirely out of this module — "does this caller own this stored project row" cannot be answered without reading the row, so it belongs in `replaceProjectBundle` (Task 11), scoped by `owner_id = any($1)` exactly like every other store function. Tier-limited splits: the limits-table lookup (`getHostedLimitsForTier`) was already pure before this task, in `lib/services/limits.ts`. The remaining half — does this bundle's entity count fit the tier's cap — needs only array lengths and that already-pure lookup, no database row, so it is drawn on this side of the line: **`checkHostedEntityLimit(bundle, tier)`** ships here, tested directly (a 6000-entity bundle against the synk tier's 5000 cap, `klub`'s uncapped tier, an unrecognized tier falling back to the safest floor), and Task 11's note below asks that task to call it instead of re-deriving the same `count > limits.entities` comparison a third time.
+
+**A defect in the plan itself, not in a first implementation attempt: the draft test's `require("../../lib/services/graph/restore.ts")` is the exact anti-pattern Task 9's own postscript warns against.** A bare `require()` of a `.ts` path only works because Node's native TypeScript stripping (>= 22.6) is present on this dev machine (Node 26) — CI pins Node 20, which has none, and would have failed with `SyntaxError: Unexpected token ':'` on the first type annotation, exactly as it did for the four suites Task 9 had to fix after the fact. Task 9's own note anticipated this exact task by name: *"Direct-require tests against a different directory, e.g. Task 10's `lib/services/graph/restore.ts`, are a separate tree with their own loader convention — check `tests/services/*.test.js` for that one."* **Fixed** before it ever shipped broken: `tests/services/load-graph-restore.js`, mirroring `tests/services/load-pr-plan.js`'s approach exactly — transpiles `restore.ts` (and the real `limits.ts`, needed for `checkHostedEntityLimit`) to CommonJS via the `typescript` compiler into `tests/services/.test-build-graph-restore/`, stubs `server-only`, and — matching `load-pr-plan.js`'s "forbidden stub" pattern — makes `@/lib/services/db` and `@/lib/services/graph/store` throw loudly if reached at all, so a future change that makes `restore.ts` less pure fails here immediately instead of silently requiring a live Postgres to notice. **Verified against a real Node 20.20.2 binary** (downloaded directly, same as Task 9's fix, no version manager on this machine): `node tests/services/graph-restore.test.js` — 47/47 checks, exit 0, identical output to Node 26.
+
+**A second defect in the plan itself: Step 5's own CI wiring instruction contradicts the design principle stated three sections earlier.** The draft said to add the `test:graph-restore` step "after the `test:graph` step" in `.github/workflows/ci.yml` — but `test:graph` lives in the Postgres-backed `services` job, and spec §10 states plainly: *"this machine has no local Postgres, so the `If-Match` comparison, delta computation and validation wiring are extracted as pure functions with real tests in CI's fast build job."* Placing a DB-free suite in the slow, Postgres-gated job doesn't break anything, but it defeats the entire point of extracting these rules as pure functions — the fast job is what makes them catch a laptop-detectable regression before a push, and `test:pr-plan`/`test:github-app` (this repo's own prior examples of the same pattern) are both deliberately in `build`, each with a comment saying so explicitly. **Fixed** by adding the step to the `build` job instead, immediately after `test:github-app`, with the same kind of explanatory comment.
+
+**Coordinator review, round 1 — independently confirmed probe 3 against Postgres' own docs and source, confirmed all three `If-Match` refusals against RFC 9110, and found five more real defects, all of the same shape: a comment claiming more than the code delivered.** Verdict was "strong work, merge after fixes." All five fixed below, plus the minors.
+
+1. **Important — unbounded recursion, contradicting the module's own stated contract.** `deepEqualIgnoringKeyOrder` had no depth cap and threw a `RangeError` at roughly 5,000 nested objects — reachable, not hypothetical: `metadata` is `z.record(z.string(), z.unknown())` in `@arkaik/schema`, which zod does not recurse into at all, so arbitrarily deep nesting survives `validateInboundBundle` and reaches the comparator, turning the one destructive-verb endpoint's request into an unhandled 500. `indexById`'s comment claimed tolerance of "every shape a hostile or merely buggy bundle can offer," and the suite asserted "a fully hostile shape on both sides never throws" — depth broke both claims, since every existing malformed-shape fixture was shallow. **Fixed:** a `MAX_COMPARE_DEPTH` of 64 (bundle metadata nests ~4 levels deep in practice; 64 is a wide margin, not a realistic ceiling) — past the cap, two values are reported UNEQUAL rather than compared further, the conservative default. Cycle detection was deliberately NOT added: both sides always arrive via `JSON.parse`, which cannot produce a cyclic structure, so there is nothing for a cycle guard to catch — documented inline rather than guarded against. Verified with two SEPARATE (not reference-identical — see the test's own comment on why that distinction matters, a first attempt at this test passed for the wrong reason via the `a === b` fast path) 10,000-level-deep structures: no throw, and `nodesChanged === 1` past the cap.
+2. **Important — the "lowercase hex" version justification was factually wrong, twice.** The comment asserted stored versions are `randomBytes(...).toString("hex")`. They are not: the column is `version bigint not null default 1` (`db/migrations/008_graph_projects.sql:44`), surfaced as `String(row.version)` and bumped via `(BigInt(version) + BigInt(1)).toString()` — versions are plain decimal integer strings (`"1"`, `"2"`, `"103"`). `randomBytes` mints PROJECT IDS (`generateProjectId`), not versions, and uses `base64url` (mixed-case), not hex. Every conclusion drawn from the false premise happened to survive (decimal digits have no case and no comma either), but the comment would have misled anyone generalizing from it — and `base64url` IS mixed-case, so the false premise was actively dangerous to reason from, not just imprecise. **Fixed:** the comment now cites the migration line and `store.ts`'s own read/write path; every test fixture changed from `"v7"`/`"V7"` (a shape this server never produces) to realistic decimal versions (`"7"`, `"103"`) — including a new "no numeric coercion" case (`"07"` vs `"7"` → `stale`, not `match`) that a hex-shaped fixture would never have surfaced and that is exactly the kind of case that would have caught the wrong premise while writing it.
+3. **Important — `checkHostedEntityLimit` returned `Infinity` on the SUCCESS path.** `limits.ts` states its own invariant explicitly: "Infinity never reaches a JSON response body — the only place a limit is serialized is the 403 rejection, which klub can never trigger." That held for `createProject`/`applyMutation` because they only put `limit` in FAILURE payloads; `checkHostedEntityLimit` returns it unconditionally, including on `ok: true` — exactly what `--dry-run` prints. **Fixed:** `EntityLimitCheck.limit` is `number | null`; the comparison (`actual <= rawLimit`) still runs against the real, possibly-infinite limit so `ok` stays correct, and only the RETURNED value is normalized (`Infinity → null`). Verified: `checkHostedEntityLimit({...50000 entities}, "klub").limit === null`, checked directly against the raw return value, not after an incidental `JSON.stringify` round-trip (which would mask the bug either way, since `JSON.stringify(Infinity)` already silently produces `null` — the point is the TYPE should say so, not rely on a serialization step to sanitize it after the fact).
+4. **Coordinator's decision — a classifier, not just a stricter boolean, plus 412 for the genuine conflict.** `versionMatches`'s boolean returned bare `false` for three different client errors: no precondition sent, an unsupported shape (wildcard/weak-ETag/multi-value), and a genuinely stale version — and only the third is actually a conflict where "re-pull and retry" is the right advice. A caller tripping the weak-ETag or multi-value refusal would have been told its version was stale when it wasn't. **Added `classifyIfMatch(ifMatch, current): "match" | "absent" | "unsupported" | "stale"`**, alongside `versionMatches` (kept as a thin wrapper, `classifyIfMatch(...) === "match"` — still a fine predicate for a caller that only needs the boolean). Task 11's note below maps `absent` → 428, `unsupported` → 400, `stale` → 412. **All three refusals were kept** — independently confirmed against RFC 9110 §13.1.1 (If-Match requires strong comparison) and §8.8.3.2 (a weak validator is excluded from strong comparison by definition) for the weak-ETag case; `*` refusal is a defensible deliberate deviation from RFC 9110 §13.1.2's default ("any representation is fine") for a destructive verb specifically; multi-value refusal is safe because a real version can never contain a comma. **On the status code:** the spec says 412, RFC 9110 says 412 for a failed precondition, and restore uses 412 — the existing `mutations` route's `409 version_conflict` is a pre-existing inconsistency, NOT changed here (out of scope for this task), but flagged in Task 11's note below as a deliberate decision rather than an accident, for a possible follow-up.
+5. **Make `nodesMalformed`/`edgesMalformed`/`eventsMalformed` incoming-only.** The shipped-then-reviewed version summed both sides (`prevNodes.malformed + nextNodes.malformed`), so 3 malformed already-stored entries plus 2 malformed incoming ones read as `5` — and every other counter in `BundleDelta` is directional, so the summed version was the odd one out AND hid the one question that actually matters before a destructive write: is the garbage in what's about to be destroyed, or in what's about to be written? Only the second one should ever change a caller's decision. **Fixed:** dropped stored-side counting entirely — the server wrote that data and it already passed `validateBundle` — so the field now unambiguously means "in the bundle you are about to apply." Verified with a dedicated pair of fixtures: malformed-only-in-`prev` now reports `nodesMalformed: 0` (previously would have reported `1`); malformed-only-in-`next` still correctly reports `1`.
+6. **Added totals — the line that actually reassures.** Two identical bundles previously returned all-zero deltas, indistinguishable from empty-to-empty — no way to answer "how big is this restore, really" from the delta alone. **Added `nodesBefore`/`nodesAfter` (and the edge/event equivalents)** — raw array lengths, not id-filtered, since "how many nodes are in this array" is the plainest reading of "you are replacing N nodes with M," the single most reassuring line to print before a wholesale replace. Verified on an identical-bundle fixture (`nodesBefore === nodesAfter === 3`, all deltas zero) and a shrinking one (`nodesBefore: 2, nodesAfter: 1, nodesRemoved: 1`).
+7. **Coordinator's decision on the CLI-import problem this task flagged in Task 12's section — resolved server-side, written into Tasks 11/12 below as a decision, not an option.** Reimplementing `computeBundleDelta` CLI-side (the only way around the `server-only`/`@/` alias problem this task originally just flagged) would risk two implementations of the exact number that gates a destructive write drifting apart — the worst possible place for that. Resolved: Task 11's `PUT .../bundle` gains a dry-run mode that computes and returns the delta WITHOUT writing, using the same code path that performs the real write; `arkaik restore --dry-run` calls that and prints the server's own number. One implementation, no drift. See both tasks' sections below.
+
+**Minors also taken:** `indexById`'s `seen` Set (identical membership to `byId`) removed as dead weight — `byId.has(id)` doubles as the "already seen" check. `countChanged` now uses `prev.has(id)` rather than `before !== undefined`, so it no longer quietly depends on an invariant enforced 150 lines away (that `indexById` never stores `undefined`). The comparator's doc comment now says "correct only for JSON-shaped values, not a general deep-equal" rather than implying generality — two key-less non-plain objects (`new Date(0)` vs `new Date(999)`) would compare equal, unreachable via `JSON.parse` but worth stating so nobody lifts this into a shared utility without noticing. The jsonb-ordering parenthetical was corrected to what Postgres actually documents (shorter keys sort before longer ones, with a non-lexicographic byte-comparison tie-break) rather than overstating precision. Added untested cases: an empty-string `id` (malformed, not a valid empty key), `klub.limit === null`, and realistic multi-digit decimal versions.
+
+**Files (as shipped):**
 - Create: `lib/services/graph/restore.ts`
-- Test: `tests/services/graph-restore.test.js`
+- Create: `tests/services/graph-restore.test.js` (74 checks)
+- Create: `tests/services/load-graph-restore.js` (the loader — not in the plan's original file list; see the finding above for why it exists)
+- Modify: `package.json` (`test:graph-restore`)
+- Modify: `.github/workflows/ci.yml` (`build` job, not `services` — see the finding above)
+- Modify: `.gitignore` (`/tests/services/.test-build-graph-restore/`, matching the sibling `.test-build-*` entries already there)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
-Create `tests/services/graph-restore.test.js`:
+The draft test above (kept verbatim as the historical record — its baseline assertions all survive unchanged in the shipped file) `require("../../lib/services/graph/restore.ts")`ed the `.ts` source directly. **As shipped, this is `tests/services/graph-restore.test.js` requiring `./load-graph-restore` instead** — see the loader finding above. The shipped file keeps every one of the draft's original assertions and adds the probe 1/2/3/4/5 coverage described above, PLUS the coordinator's round-1 findings: `classifyIfMatch`'s four outcomes tested directly; every version fixture using realistic decimals (`"7"`, not `"v7"`) including a "no numeric coercion" case; a 10,000-level-deep-metadata case for the recursion-depth cap (built from two DISTINCT object references, not a shared one — see the test's own comment on why that distinction is what makes the test real); a dedicated malformed-in-`prev`-only-vs-malformed-in-`next`-only pair proving the directional fix; before/after totals on an identical-bundle and a shrinking-bundle fixture; and `klub.limit === null` checked directly against the raw return value. 74 checks total. Full file: `tests/services/graph-restore.test.js`.
 
-```js
-#!/usr/bin/env node
-
-/**
- * The pure half of hosted restore: optimistic-concurrency matching and the
- * delta a caller sees before a destructive replace. No database involved —
- * these are the rules, not the SQL.
- */
-
-const { versionMatches, computeBundleDelta } = require("../../lib/services/graph/restore.ts");
-
-let failures = 0;
-function check(name, cond, detail) {
-  if (cond) {
-    console.log(`PASS: ${name}`);
-  } else {
-    failures++;
-    console.log(`FAIL: ${name}${detail ? `\n${detail}` : ""}`);
-  }
-}
-
-// --- versionMatches ---
-check("exact match passes", versionMatches("v7", "v7") === true);
-check("quoted header matches", versionMatches('"v7"', "v7") === true);
-check("mismatch fails", versionMatches("v6", "v7") === false);
-check("missing If-Match fails closed", versionMatches(undefined, "v7") === false);
-check("empty If-Match fails closed", versionMatches("", "v7") === false);
-check("wildcard is not accepted", versionMatches("*", "v7") === false);
-
-// --- computeBundleDelta ---
-const prev = {
-  nodes: [{ id: "V-a", title: "A" }, { id: "V-b", title: "B" }],
-  edges: [{ id: "e-1" }],
-  journal: [{ id: "01A" }],
-};
-const next = {
-  nodes: [{ id: "V-a", title: "A renamed" }, { id: "V-c", title: "C" }],
-  edges: [{ id: "e-1" }, { id: "e-2" }],
-  journal: [{ id: "01A" }, { id: "01B" }],
-};
-const delta = computeBundleDelta(prev, next);
-check("added nodes counted", delta.nodesAdded === 1, JSON.stringify(delta));
-check("removed nodes counted", delta.nodesRemoved === 1, JSON.stringify(delta));
-check("changed nodes counted", delta.nodesChanged === 1, JSON.stringify(delta));
-check("added edges counted", delta.edgesAdded === 1, JSON.stringify(delta));
-check("removed edges counted", delta.edgesRemoved === 0, JSON.stringify(delta));
-check("added events counted", delta.eventsAdded === 1, JSON.stringify(delta));
-check("dropped events counted", delta.eventsDropped === 0, JSON.stringify(delta));
-
-const shrinking = computeBundleDelta(next, prev);
-check("a restore that drops history is visible", shrinking.eventsDropped === 1, JSON.stringify(shrinking));
-
-process.exit(failures === 0 ? 0 : 1);
-```
-
-Note: this repo's service tests are plain CommonJS against TypeScript sources; follow whatever loader `tests/services/*.test.js` already uses (check `tests/services/auth-guard.test.js` and mirror its import style exactly — if it imports a compiled path or uses a register hook, do the same here).
-
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `node tests/services/graph-restore.test.js`
-Expected: FAIL — module not found.
+Actual: FAIL — `Error: ENOENT: no such file or directory, open '.../lib/services/graph/restore.ts'` (the loader's `transpile()` step reads the source file directly and there was none yet — a clean, legible failure, not a `require` resolution error).
 
-- [ ] **Step 3: Write `restore.ts`**
+- [x] **Step 3: Write `restore.ts`**
 
-Create `lib/services/graph/restore.ts`:
+The draft above is the starting shape; every one of the five probe findings changed it, and the coordinator's round-1 review changed it again. As shipped: `versionMatches` gains the weak-ETag/multi-value/wildcard-after-unquoting checks (probe 1) and is now a thin wrapper over `classifyIfMatch` (coordinator finding 4); `BundleDelta` gains `nodesMalformed`/`edgesMalformed`/`eventsMalformed` (INCOMING-bundle-only, coordinator finding 5) and `edgesChanged`/`eventsChanged` (probes 2 and 4), plus `nodesBefore`/`nodesAfter`/`edgesBefore`/`edgesAfter`/`eventsBefore`/`eventsAfter` (coordinator finding 6); the node-comparison helper is `deepEqualIgnoringKeyOrder`, not `JSON.stringify` (probe 3), now with a `MAX_COMPARE_DEPTH` cap (coordinator finding 1); and a new `checkHostedEntityLimit` export, backed by a real `import { getHostedLimitsForTier } from "@/lib/services/limits"` (probe 5), returning `limit: number | null` rather than a raw `Infinity` (coordinator finding 3). The full, commented file (every decision has its rationale inline, at its own call site) is `lib/services/graph/restore.ts`. Shape, abbreviated:
 
 ```ts
-/**
- * The rules a hosted restore obeys, as pure functions.
- *
- * A restore replaces a project's snapshot AND its journal wholesale — the only
- * way mined history can reach a hosted project, because the mutation path
- * derives its events server-side and cannot express a backdated one. That makes
- * it the one destructive verb in the graph API, so its guards live here where
- * they can be tested without a database.
- */
+import "server-only";
+import { getHostedLimitsForTier } from "@/lib/services/limits";
 
-/**
- * Optimistic concurrency: the caller must state which version it read.
- *
- * Fails CLOSED. A missing, empty, or wildcard `If-Match` is a mismatch, never a
- * pass — "replace whatever is there" is exactly the operation this endpoint
- * must not offer.
- */
+export type IfMatchClassification = "match" | "absent" | "unsupported" | "stale";
+
+export function classifyIfMatch(ifMatch: string | undefined | null, current: string): IfMatchClassification {
+  if (typeof ifMatch !== "string") return "absent";
+  const trimmed = ifMatch.trim();
+  if (trimmed.length === 0) return "absent";
+  if (trimmed === "*" || trimmed.includes(",") || /^w\//i.test(trimmed)) return "unsupported";
+  const normalized = trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"') ? trimmed.slice(1, -1) : trimmed;
+  if (normalized.length === 0 || normalized === "*") return "unsupported";
+  return normalized === current ? "match" : "stale";
+}
+
 export function versionMatches(ifMatch: string | undefined | null, current: string): boolean {
-  if (!ifMatch) return false;
-  const normalized = ifMatch.trim().replace(/^"|"$/g, "");
-  if (normalized === "" || normalized === "*") return false;
-  return normalized === current;
+  return classifyIfMatch(ifMatch, current) === "match";
 }
 
 export interface BundleDelta {
-  nodesAdded: number;
-  nodesRemoved: number;
-  nodesChanged: number;
-  edgesAdded: number;
-  edgesRemoved: number;
-  eventsAdded: number;
-  eventsDropped: number;
+  nodesBefore: number; nodesAfter: number;
+  nodesAdded: number; nodesRemoved: number; nodesChanged: number; nodesMalformed: number; // malformed: INCOMING (next) only
+  edgesBefore: number; edgesAfter: number;
+  edgesAdded: number; edgesRemoved: number; edgesChanged: number; edgesMalformed: number;
+  eventsBefore: number; eventsAfter: number;
+  eventsAdded: number; eventsDropped: number; eventsChanged: number; eventsMalformed: number;
 }
 
-interface Identified {
-  id?: unknown;
-}
+// indexById: byId map + malformed count (no/non-string/duplicate id) per list.
+// arrayLength: raw element count, 0 for non-arrays — feeds the *Before/*After totals.
+// deepEqualIgnoringKeyOrder(a, b, depth = 0): object keys compared as sets, array
+//   elements by index, capped at MAX_COMPARE_DEPTH (64) — past it, reports UNEQUAL
+//   rather than recursing further (a caller-supplied `metadata` can nest arbitrarily
+//   deep and zod will not have rejected it). No cycle detection: unreachable, both
+//   sides always arrive via JSON.parse.
+// countMissing / countChanged: the id-diff and id-matched-but-unequal counts
+//   (countChanged uses `prev.has(id)`, not an `!== undefined` invariant).
 
-function byId(list: unknown): Map<string, unknown> {
-  const map = new Map<string, unknown>();
-  if (!Array.isArray(list)) return map;
-  for (const item of list) {
-    const id = (item as Identified)?.id;
-    if (typeof id === "string") map.set(id, item);
-  }
-  return map;
-}
+export function computeBundleDelta(prev: {...}, next: {...}): BundleDelta { /* six indexById calls, six arrayLength calls, eighteen fields */ }
 
-/**
- * What a restore would do, in counts — what `--dry-run` prints and what a
- * human reads before authorising a replace. `eventsDropped` is the one to
- * watch: history is append-only by contract, so a non-zero value means the
- * inbound bundle is missing events the server already holds.
- */
-export function computeBundleDelta(
-  prev: { nodes?: unknown; edges?: unknown; journal?: unknown },
-  next: { nodes?: unknown; edges?: unknown; journal?: unknown },
-): BundleDelta {
-  const prevNodes = byId(prev.nodes);
-  const nextNodes = byId(next.nodes);
-  const prevEdges = byId(prev.edges);
-  const nextEdges = byId(next.edges);
-  const prevEvents = byId(prev.journal);
-  const nextEvents = byId(next.journal);
-
-  let nodesChanged = 0;
-  for (const [id, node] of nextNodes) {
-    const before = prevNodes.get(id);
-    if (before && JSON.stringify(before) !== JSON.stringify(node)) nodesChanged += 1;
-  }
-
-  const countMissing = (from: Map<string, unknown>, into: Map<string, unknown>): number => {
-    let n = 0;
-    for (const id of from.keys()) if (!into.has(id)) n += 1;
-    return n;
-  };
-
-  return {
-    nodesAdded: countMissing(nextNodes, prevNodes),
-    nodesRemoved: countMissing(prevNodes, nextNodes),
-    nodesChanged,
-    edgesAdded: countMissing(nextEdges, prevEdges),
-    edgesRemoved: countMissing(prevEdges, nextEdges),
-    eventsAdded: countMissing(nextEvents, prevEvents),
-    eventsDropped: countMissing(prevEvents, nextEvents),
-  };
+export interface EntityLimitCheck { ok: boolean; limit: number | null; actual: number; }
+export function checkHostedEntityLimit(bundle: { nodes?: unknown; edges?: unknown }, tier: string): EntityLimitCheck {
+  const actual = (Array.isArray(bundle?.nodes) ? bundle.nodes.length : 0) + (Array.isArray(bundle?.edges) ? bundle.edges.length : 0);
+  const rawLimit = getHostedLimitsForTier(tier).entities; // compare against the RAW (possibly Infinite) limit...
+  const limit = Number.isFinite(rawLimit) ? rawLimit : null; // ...but only normalize the RETURNED value
+  return { ok: actual <= rawLimit, limit, actual };
 }
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `node tests/services/graph-restore.test.js`
-Expected: PASS on all fifteen checks.
+Actual: PASS on all **74** checks (47 from the first pass, plus 27 more from the coordinator's round-1 review — `classifyIfMatch`'s four outcomes, decimal-version fixtures, the depth-cap regression, the malformed-directionality pair, before/after totals, and `klub.limit === null`). Also verified against a real Node 20.20.2 binary (CI's pinned version): identical 74/74 pass, exit 0, byte-identical output to Node 26 — see the loader finding above for why this check matters here specifically.
 
-- [ ] **Step 5: Wire the script and CI**
+- [x] **Step 5: Wire the script and CI**
 
-In `package.json`:
+In `package.json`, as drafted:
 
 ```json
     "test:graph-restore": "node tests/services/graph-restore.test.js",
 ```
 
-In `.github/workflows/ci.yml`, after the `test:graph` step:
+**In `.github/workflows/ci.yml`, NOT after `test:graph`** (that step is in the Postgres-backed `services` job) — as shipped, added to the `build` job immediately after `test:github-app`, matching that step's own "deliberately in build, not services" comment:
 
 ```yaml
-      - name: Graph restore rules
+      # Hosted restore's decision rules (If-Match matching, bundle delta,
+      # tier-limit check) are pure by design — this machine has no local
+      # Postgres, so they are extracted from the SQL-coupled store code and
+      # tested here, in the fast job, rather than only in `services` below.
+      - name: Graph restore rules (If-Match matching, bundle delta, tier limit)
         run: npm run test:graph-restore
 ```
 
-- [ ] **Step 6: Commit**
+Also added to `.gitignore`: `/tests/services/.test-build-graph-restore/`, alongside its sibling `.test-build-*` entries.
+
+- [x] **Step 6: Commit**
 
 ```bash
-git add lib/services/graph/restore.ts tests/services/graph-restore.test.js package.json .github/workflows/ci.yml
+git add lib/services/graph/restore.ts tests/services/graph-restore.test.js tests/services/load-graph-restore.js package.json .github/workflows/ci.yml .gitignore
 git commit -m "feat(graph): pure rules for hosted bundle restore"
 ```
 
+(`tests/services/load-graph-restore.js` added to the commit — not in the plan's original file list; see the loader finding above.)
+
 ---
 
-### Task 11: `replaceProjectBundle` + the PUT route
+### Task 11: `replaceProjectBundle` + the PUT route — shipped, findings below
 
-**Files:**
-- Modify: `lib/services/graph/store.ts`
-- Create: `app/api/graph/projects/[projectId]/bundle/route.ts`
+**Notes carried forward from Task 10 (first pass, three notes) and its coordinator review (round 1, four more) — read all seven before touching `store.ts`:**
 
-- [ ] **Step 1: Add the store function**
+1. **`BundleDelta` has more fields than this section's reference code implies — eighteen, not seven.** Task 10 shipped `nodesMalformed`/`edgesMalformed`/`eventsMalformed` (INCOMING-bundle-only — see note 4 below) and `edgesChanged`/`eventsChanged` alongside the original `nodesAdded`/`nodesRemoved`/`nodesChanged`/`edgesAdded`/`edgesRemoved`/`eventsAdded`/`eventsDropped`, and its coordinator review added `nodesBefore`/`nodesAfter`/`edgesBefore`/`edgesAfter`/`eventsBefore`/`eventsAfter` (raw before/after totals — "you are replacing N nodes with M"). Nothing here needs to change to accommodate that — `result.delta` is forwarded to the client as a whole object below, not destructured field-by-field — but the PUT response body carries eighteen numbers, and the CLI's dry-run output (Task 12, and see note 6 below) should print at least the totals, not just the deltas.
+2. **Use `checkHostedEntityLimit` from `@/lib/services/graph/restore` instead of re-deriving the `count > limits.entities` comparison inline.** This section's own reference code calls `entityCount(bundle.nodes, bundle.edges)` (a private helper in `store.ts`) and compares it against `getHostedLimitsForTier(input.tier).entities` directly — that is now a third copy of a comparison that already exists twice (`createProject`, `applyMutation`) and a fourth pure, tested function for exactly this (`checkHostedEntityLimit`, Task 10 probe 5). Prefer `const check = checkHostedEntityLimit(bundle, input.tier); if (!check.ok) return { ok: false, reason: "limit", limit: check.limit, actual: check.actual, tier: input.tier };` over hand-rolling the comparison a third time in this file. **Note the return type: `check.limit` is `number | null`** (coordinator review, round 1, finding 3 — `Infinity` must never reach a response body, and `checkHostedEntityLimit` now normalizes it itself), so `ReplaceResult`'s `{ reason: "limit"; limit: number; ... }` branch needs widening to `limit: number | null` to match, and the route's 413 body can serialize `null` directly (a `klub` caller can never hit this branch in the first place, since `ok` is always `true` for an uncapped tier — the type just needs to not lie about it).
+3. **`tests/services/load-graph-api.js` (the loader `graph-api.test.js` uses, in the Postgres-backed `services` job) will need a new entry once `store.ts` imports from `restore.ts`.** That loader's `COMMON` rewrite table currently has no mapping for `@/lib/services/graph/restore`, so a transpiled `store.js` containing `require("@/lib/services/graph/restore")` (unrewritten) will fail at `require()` time with `Cannot find module`. Add `write("restore.js", transpile(src("lib", "services", "graph", "restore.ts"), "restore.ts", COMMON));` alongside the existing `write("store.js", ...)` line, and add `["@/lib/services/graph/restore", "./restore.js"]` to `COMMON` — the real module, transpiled, not a stub, mirroring how `limits.ts`/`owners.ts` are already treated there (both are pure and cheap enough that stubbing them would only hide bugs, not save anything real).
+4. **Use `classifyIfMatch`, not `versionMatches`, to pick the status code — this is a coordinator DECISION, not a suggestion.** `versionMatches` collapses three different client errors into one boolean; the route needs to tell them apart to answer correctly. Map `classifyIfMatch(ifMatch, current.version)`: `"absent"` → **428** Precondition Required (no version stated at all — this is also what the route's OWN pre-check for a missing header should fall through to, since a present-but-blank header reaches `classifyIfMatch` too and must get the same treatment, not slip past a naive `if (!ifMatch)` guard into a `"stale"`/412 branch it doesn't deserve); `"unsupported"` → **400** Bad Request (a wildcard, weak ETag, or multi-value list — malformed FOR THIS ENDPOINT, not stale); `"stale"` → **412** Precondition Failed (the one genuine conflict — someone else changed the project since this caller read it). Do this INSIDE `replaceProjectBundle`'s transaction (after the `for update` read, comparing against the freshly-read `current.version`), not in the route, since only the store function has the current version at the right moment — the route just maps whichever of the three failure reasons comes back to its status code.
+5. **Known, deliberate inconsistency — flagged, not fixed, out of scope for this task.** The existing `POST .../mutations` route replies `409 version_conflict` on a version mismatch; this route replies **412** for the equivalent case (`"stale"` from `classifyIfMatch`) — matching both the spec's own text and RFC 9110's `412 Precondition Failed` for a failed `If-Match`. Independently confirmed against RFC 9110 during coordinator review: 412 is the RFC-correct code for this exact case, and the mutations route's 409 is the pre-existing outlier, not this one. **Do not change the mutations route to "fix" this as part of Task 11** — that route's `If-Match` is optional/best-effort (see `store.ts`'s own comment: "Correctness does not depend on it"), a materially different contract from restore's mandatory, fail-closed one, and changing it is a separate decision with its own blast radius. Leave a similar note in `app/api/graph/projects/[projectId]/mutations/route.ts` (or wherever this task's own PR description lives) so the 409-vs-412 split reads as a recorded decision if anyone notices it later, not as an accident.
+6. **Coordinator DECISION: `PUT .../bundle` gains a dry-run mode — Task 12's CLI calls it rather than reimplementing the delta.** Task 10 originally just flagged that the CLI cannot import `computeBundleDelta` (it lives behind the `server-only`/`@/` alias the Next.js app resolves and the CLI package does not) and left the resolution open. The coordinator's decision: reimplementing the delta CLI-side would risk two implementations of the exact number that gates a destructive write drifting apart, the worst possible place for that to happen. **This task's own scope grows by one flag:** accept a dry-run indicator (a query param, e.g. `?dryRun=1`, or a body field — this task's call on which) on the PUT route; when set, `replaceProjectBundle` runs the SAME validation/version-check/delta-computation path but returns before the `update`/journal-replace queries execute — no write, same transaction-scoped read, same `computeBundleDelta` call, same `ReplaceResult`-shaped success response (just never committed to a mutation). Task 12's `arkaik restore --dry-run` calls this instead of computing its own (coarser) local counts. One implementation, no drift — see Task 12's own note.
+7. **`versionMatches` is still exported and still useful as a plain boolean** for anywhere this route (or a future one) only needs "does it match, yes or no" without caring why not. Prefer `classifyIfMatch` specifically where the response needs to differ by failure reason, as in note 4.
+
+**An eighth defect, found while implementing this task, not carried forward from Task 10: this section's own reference `replaceProjectBundle` snippet minted the new version with `randomBytes(8).toString("hex")`.** That is exactly the premise Task 10's coordinator review (finding 2, above) proved false for THIS column — `version` is a `bigint`, bumped via `(BigInt(version) + BigInt(1)).toString()`, and a hex string is not valid input for a bigint column at all; had this shipped as drafted, every real (non-dry-run) restore would have thrown a Postgres type error on the `update`. The review caught its own premise being wrong for the comment; the reference code three sections later hadn't been updated to match. **Fixed as shipped:** `nextVersion = (BigInt(current.version) + BigInt(1)).toString()`, identical to `applyMutation`'s own bump, with a comment at the call site pointing at exactly this history so nobody reintroduces `randomBytes` here a third time.
+
+**Decision on note 6 (dry-run: query param vs. body field) — query param, `?dryRun=1`.** The body is the bundle to write, byte-identical whether the call is a preview or the real thing; a query param toggles the MODE of an otherwise-identical request without the CLI needing two different body-construction paths for `arkaik restore` vs. `arkaik restore --dry-run` (Task 12). It also mirrors this codebase's existing precedent for a boolean request toggle (`GET /api/publik`'s `?include_journal=`), extended here from GET to PUT for the same reason: a mode switch, not new data.
+
+**Decision on note 4 (three-way status split) — a three-member failure-reason split on `ReplaceResult`, not a bolted-on classification in the route.** `ReplaceResult`'s failure variants are `"not_found" | "precondition_required" | "precondition_unsupported" | "conflict" (carries `current`) | "validation" | "limit"` — `replaceProjectBundle` calls `classifyIfMatch` once, inside the transaction, against the version it just read under the lock (see the function's own doc comment for why that ordering is load-bearing), and returns the already-classified reason; the route is a pure status-code lookup (428 / 400 / 412 / 404 / 422 / 413) with no classification logic of its own. `current` is populated only on the `"conflict"` branch — a 428/400 caller has nothing to compare against, so those two response bodies omit it, exactly as note 4 specifies.
+
+**Journal replacement (probe 1) — no existing helper; extracted `replaceJournalRows` from `createProject`'s inline insert loop, added a sibling `loadJournalRows`.** Both are thin, private (`store.ts`-internal) functions taking a `PoolClient` rather than the module-level `query()`, because both run inside an already-open transaction on the connection that holds the row lock. `replaceJournalRows(client, projectId, events)`: `delete from graph_events where project_id = $1`, then insert each event in array order with the same `on conflict (project_id, id) do nothing` `createProject` already had. `createProject` now calls it too (one writer, not two) — its leading `delete` is a no-op there since a fresh project has no existing rows. Table/columns/ordering are unchanged from what `getJournal`/`createProject` already established: `graph_events(id, project_id, seq bigserial, event jsonb, actor, created_at)`, read back `order by seq asc`. `seq` is a single global sequence with no per-project reset, so insertion ORDER is what fixes read order — the caller (bundle validation on create; the CLI's `merge`, which sorts by `ts`, on restore) is responsible for the array already being correctly ordered before it reaches here.
+
+**Row locking (probe 2) — same `select … for update` as `applyMutation`, same reason.** Two restores racing: the second's `for update` blocks until the first commits, then reads the POST-commit version — its own `If-Match` (mandatory here) will essentially always be stale against that fresh version, so it gets a clean 412 rather than corrupting anything. A restore racing a mutation: whichever transaction's `for update` runs first holds the row; the other waits and then acts against the winner's committed state. If the second transaction is a mutation sent WITHOUT `expectedVersion` (that field is optional on `POST .../mutations`), it applies on top of whatever the winner just wrote — the same last-writer-wins risk that already exists between two unconditioned mutations today, not a new hazard restore introduces. If the second transaction is another restore, its mandatory `If-Match` makes that outcome a loud 412, not a silent overwrite.
+
+**`If-Match` read-then-write ordering (probe 3) — confirmed correct: `current.version` comes from the same `select … for update` that acquires the lock, and `classifyIfMatch` runs against that value, never a version read earlier or outside the transaction.** There is no separate "read the version" step to get out of order with the lock acquisition — it is the same query.
+
+**Dry-run non-writing (probe 4) — structural, not "returns before the write" by inspection: the two mutating statements (`update graph_projects`, `replaceJournalRows`) are the ONLY mutating statements in the function, and they sit textually after the `if (input.dryRun) return …` in a straight-line function body with no loop or callback that could reach them out of order.** There is no boolean threaded into a shared write helper that a future edit could forget to check. **What this could NOT verify:** an actual assertion that no row changed in a live database — this machine has no Postgres. `tests/services/graph-api.test.js` (Postgres-backed `services` job only) now asserts this the closest a black-box HTTP test can: after a dry-run call, `GET` the project again and confirm `version`, the node set, AND the journal are byte-for-byte unchanged from before the dry-run — see the new "PUT .../bundle" section added to that file.
+
+**Entity limits (probe 5) — `checkHostedEntityLimit(bundle, input.tier)` used exactly as Task 10 shipped it, not re-derived.** `check.actual` (nodes.length + edges.length) is reused directly as the `entity_count` column value on write — it is the identical computation `entityCount()` performs elsewhere in this file, confirmed by reading both implementations side by side, so there is no risk of the written column drifting from the number the limit check itself just verified.
+
+**Response shape (probe 6) — `{ version, delta, dryRun }` in the body, `ETag: "<version>"` on every 200 (dry-run or real) and on the 412.** On a real write, `version` is the freshly bumped one and `delta` describes what changed. On a dry-run, `version` is deliberately the CURRENT (unbumped) version — nothing new was minted — so a CLI printing it is showing "what you currently hold," not a hypothetical next value. The 412 response also carries `current` in both the body AND as the `ETag` header (the sibling `mutations` route's 409 does the same), so a client can grab the fresh version either way before retrying. Task 12 depends on this shape directly: `--dry-run` reads `body.delta`'s eighteen fields (leading with the `*Before`/`*After` totals) and never sends the real request; the real call reads `body.version` back as its own confirmation.
+
+**`load-graph-api.js` (note 3) — fixed before it could break anything: added the `@/lib/services/graph/restore` → `./restore.js` rewrite entry and a `write("restore.js", …)` line, transpiling the real module (not a stub), immediately before `store.js`.** Verified two ways: (1) `node -e '...loadGraphApi()...'` on this machine (Node 26) loads cleanly and exposes both `store.replaceProjectBundle` and the new `PUT_BUNDLE` route export; (2) the same script re-run against a real, separately downloaded Node 20.20.2 binary (CI's pinned version) — identical clean load. Without this fix, `store.js`'s transpiled output would contain an unrewritten `require("@/lib/services/graph/restore")`, and `graph-api.test.js` would fail at `require()` time with `Cannot find module`, in CI only (this machine's Node 26 also has no native resolution for a bare `@/` alias, so the failure mode is identical here, just never previously triggered because nothing under test imported that path before this task).
+
+**Wired the new route into `load-graph-api.js`'s route table (`PUT_BUNDLE`) and added a full integration-test section to `tests/services/graph-api.test.js` — not required by the task brief, but the only way the SQL-coupled half of this task (row lock, journal REPLACE-not-append, version bump, owner scoping, dry-run-writes-nothing) gets exercised by anything at all.** `graph-restore.test.js` covers only the pure decision rules; without this addition, `replaceProjectBundle`'s actual database behavior would ship with zero test coverage anywhere, pure or otherwise. The new section creates its own fixture project (so it cannot collide with the file's other tests or with the later Archive section) and asserts, in order: 428 on a missing `If-Match`; 400 on a wildcard; 412 on a stale version, carrying `current`; 404 for another owner even with a correct version (ownership wins before version checking); a dry-run that reports the real delta AND leaves the snapshot, version, and journal byte-identical to before it; a real restore that bumps the version, replaces the node set, and — the sharpest check — leaves the journal with exactly the NEW event and none of the OLD one (proving replace, not append); the raw `entity_count` column via a direct SQL query; a second stale-version replay now correctly rejected now that the version has moved; and a bundle over the hosted tier's entity cap refused with 413 while leaving the project completely untouched. **This machine has no Postgres, so none of these new assertions have been run — they are written to be verified in CI's Postgres-backed `services` job, which is the only place they can run at all.** One correctness issue was caught and fixed by careful re-reading before that job ever sees them: the first draft of these fixtures used node ids like `R-old`/`R-new`, which `validate.ts`'s `species-prefix` rule rejects as a hard error for `view`-species nodes (must start with `V-`) — every fixture id was corrected to the `V-restore-*` form before being left in place, using the SAME pattern the file's own pre-existing `V-a`/`V-bulk*` fixtures already use successfully.
+
+**Left a cross-reference comment in `mutations/route.ts`'s `"conflict"` branch (note 5), pointing at this task by name, explaining why its 409 and this route's 412 for the equivalent case are not reconciled here** — a recorded decision, not something a future reader has to rediscover by noticing the asymmetry.
+
+**Coordinator review, round 2 — approved the store half (the SQL, the `replaceJournalRows` extraction, the bigint bump) as clean after driving the real transpiled `store.js` against a recording fake `pg` client, confirming `createProject`'s SQL is byte-identical after the extraction and that dry-run and every refusal path emit zero mutating statements. The pattern in what remained: restore inherited `createProject`'s SHAPE but not all of its GUARDRAILS, concentrated in the route half — the store/route comparison to siblings had been done less thoroughly than the store/store one. Five real findings plus minors, all fixed below.**
+
+1. **CRITICAL — `dryRun` failed open.** `dryRunParam === "1" || dryRunParam === "true"` treated a bare `?dryRun`, `?dryRun=yes`, `?dryRun=on`, and any typo as `false` — i.e. as authorization for the DESTRUCTIVE branch. This was the only input on this endpoint that failed open, next to `classifyIfMatch` refusing a wildcard/weak-ETag/multi-value list on principle — stark on the one destructive verb in the graph API, where a caller who believed they were previewing would instead get snapshot AND journal replaced with no server-side pre-image. **Fixed:** extracted `classifyDryRun(raw: string | null): { ok: true; dryRun: boolean } | { ok: false }` into `lib/services/graph/restore.ts`, alongside `classifyIfMatch` — same fail-closed shape, opposite direction (`null`/absent → real write is the CORRECT default; any unrecognized token → refused, `{ ok: false }`, which the route turns into `400`, never a guess). Tested directly and purely, no database needed: `null` (absent → real write), `""`/`"1"`/`"true"` (preview), `"0"`/`"false"` (real write, an explicit opt-out distinct in intent from absence), and `"yes"`/`"on"`/`"TRUE"`/`" 1 "` (all refused, not case-folded or trimmed) — 10 new checks in `graph-restore.test.js` (74 → 84 total, verified on both Node 26 and a real Node 20.20.2 binary, byte-identical output). The route calls `classifyDryRun` instead of the two-string equality check; `graph-api.test.js` adds three wiring checks (bare `?dryRun`, `?dryRun=1`, `?dryRun=yes`) proving the route actually calls it rather than reimplementing the rule.
+2. **Important — no payload cap, and the size gate would have ignored the journal anyway.** This route accepts a strictly LARGER payload than `POST /api/graph/projects` (the same snapshot plus a full mined journal) and had no cap at all, while every other bundle-accepting route in this codebase (`POST /api/graph/projects`, `PUT /api/publik`, the GitHub webhook) caps first. Compounding it: `checkHostedEntityLimit` counts only `nodes.length + edges.length` — a bundle with 1 node and 500,000 events would pass with `actual = 1`, and `replaceJournalRows` would then issue 500,001 sequential round-trips while holding the row lock, blocking every mutation on that project for however long that takes. **Fixed:** mirrored `POST /api/graph/projects` exactly — `req.text()` → `Buffer.byteLength` check against the same `MAX_BUNDLE_BYTES` (5 MB) → `413 payload_too_large` → `JSON.parse`. Verified with a 6 MB body refused with 413 before ever reaching `JSON.parse` (`tests/services/graph-api.test.js`). A batched multi-row insert for `replaceJournalRows` is noted as a FOLLOW-UP, not built now — the cap is what removes the urgency of a rewrite, not a substitute for one if a legitimately huge journal ever needs restoring.
+3. **Important — `bundle_id`/`schema_version` went stale, and restore was the only verb that could desync them.** The `update` set `snapshot, version, entity_count, title, updated_at` and never touched `bundle_id`/`schema_version`, both of which `createProject` writes on create. A restore whose `project.id` differs from what created the row would commit a snapshot saying one thing while the column said another — `applyMutation` can't reach this (it never changes `project.id`) and `updateProjectFields` explicitly pins the id, so restore was the SOLE path to this drift. `bundle_id` is what `arkaik link` uses to recognise a repo's working copy (008_graph_projects.sql's own comment) — directly relevant to this CLI-driven flow. **Fixed:** added `bundle_id = $6, schema_version = $7` to the same `update` statement, using the identical migrated-bundle fallback (`schema_version ?? STATUS_VOCABULARY_VERSION`) `createProject` already uses.
+4. **Coordinator decision — `limit_exceeded` is 403, not 413.** Both `POST /api/graph/projects` and `POST .../mutations` reply 403 for a tier-limit refusal; this route's 413 made the same status code mean two different things across the graph API, and finding 2 gives 413 a real, distinct meaning here (payload-too-large) that needed reserving. **Fixed:** `"limit"` now maps to 403, matching both siblings; 413 is reserved for the new payload-size cap. Task 12's status-code contract note (below) updated to match.
+5. **Important — the missing scope-check test, added.** `graph-api.test.js` asserted a `graph:read` token can't `MUTATE` but had no equivalent for `PUT_BUNDLE` — the guard standing between a read-only agent credential and wholesale destruction, on the one destructive verb, was untested. **Fixed:** one new check — a `graph:read`-scoped token attempting `PUT_BUNDLE` gets `403 insufficient_scope`. (The route's scope check already covered this correctly; this closed a test-coverage gap, not a code defect.)
+
+**Minors, also taken:**
+6. **"One writer for this table" was imprecise — `applyMutation` is a THIRD insert site, with a DIFFERENT conflict policy.** Reworded throughout `store.ts` to "one writer for CLIENT-SUPPLIED journals (import and restore)" — `applyMutation` derives its own events via `applyOps` and has no `on conflict` clause at all (a duplicate id there is a genuine bug and throws), a deliberately different contract from the tolerant `on conflict do nothing` shared between `createProject` and `replaceProjectBundle`.
+7. **The append-only journal's one exception is now pointed at from both places that describe the table.** Added one sentence each to `db/migrations/008_graph_projects.sql`'s `graph_events` comment and `store.ts`'s module-level doc comment (a new "── The one exception to 'append-only' ──" subsection), naming `replaceProjectBundle` as the one verb that deletes from the journal, and why.
+8. **An unsorted inbound journal no longer persists unsorted.** Every consumer already calls `@arkaik/schema`'s `orderEvents`, so this was never load-bearing, but it rested on an unenforced caller promise across an HTTP boundary. **Fixed:** `replaceJournalRows` now sorts via `orderEvents(events)` before the insert loop — free to call, and it benefits `createProject` too, not just restore.
+9. **Dry-run no longer takes an exclusive lock for a read-only preview.** `select … for update` blocked every other reader (including another dry-run) across an O(n) `computeBundleDelta` walk, for a call that provably never writes. **Fixed:** the lock clause is now `input.dryRun ? "for share" : "for update"` — a dry-run still blocks a concurrent WRITER from changing the row mid-comparison (the property that matters), but no longer serializes against other readers/dry-runs for no reason.
+11. **The over-cap test fixture sat exactly on the project-count tier boundary with zero headroom (`2 existing + 1 > 3` is false) — now named in a comment.** userA owns exactly 2 active projects by the time the restore fixture project is created, landing the 3rd exactly at synk's 3-project cap. Not a bug, but fragile: a comment now flags it so a future edit adding one more userA project earlier in the file doesn't silently break this section for an unrelated reason.
+12. **Softened a misleading test comment.** "proves the lock+version dance actually moved" overclaimed — the test is SEQUENTIAL, not concurrent, so it proves the version bump persisted and is visible to a LATER, separate request, not that two racing transactions were serialized by the row lock (no sequential test can show that). Reworded to say exactly that.
+
+**Noted, not fixed (coordinator: skip) — recorded here per that instruction:**
+- **Duplicate journal ids are dropped silently by `on conflict do nothing` but still counted toward `eventsAfter`** (a raw array length, not id-deduplicated) — not invisible, since `eventsMalformed` already flags a duplicate id in the INCOMING bundle, but the two fields don't agree with each other on what "the journal" contains. Pre-existing in `computeBundleDelta`'s counting scheme (Task 10); out of scope for this route-level task.
+- **`store.ts`'s doc-to-code ratio** — consistent with `applyMutation`'s own house style already in this file; revisit at the next addition, not as part of this task.
+
+**Files (as shipped, including the round-2 fixes):**
+- Modify: `lib/services/graph/store.ts` (`replaceProjectBundle`, `replaceJournalRows`, `loadJournalRows`; `createProject`'s inline insert loop now calls `replaceJournalRows`; round 2: `bundle_id`/`schema_version` in the update, `for share` on dry-run, `orderEvents` before insert, reworded "one writer" comments, append-only-exception note)
+- Modify: `lib/services/graph/restore.ts` (round 2 only: new `classifyDryRun` export, alongside `classifyIfMatch`)
+- Create: `app/api/graph/projects/[projectId]/bundle/route.ts` (round 2: `classifyDryRun` wiring, the `MAX_BUNDLE_BYTES` payload cap, `limit_exceeded` → 403)
+- Modify: `app/api/graph/projects/[projectId]/mutations/route.ts` (cross-reference comment only, note 5 — no behavior change)
+- Modify: `tests/services/load-graph-api.js` (the `@/lib/services/graph/restore` rewrite entry, note 3; the new route wired in as `PUT_BUNDLE`)
+- Modify: `tests/services/graph-api.test.js` (new "PUT .../bundle" integration section, Postgres-backed `services` job only; round 2: scope-check, payload-cap, and dryRun-classification wiring checks, the 403-not-413 update, the boundary and softened comments)
+- Modify: `tests/services/graph-restore.test.js` (round 2 only: 10 new `classifyDryRun` checks, 74 → 84)
+- Modify: `db/migrations/008_graph_projects.sql` (round 2 only: one-sentence pointer to the append-only exception, finding 7)
+
+- [x] **Step 1: Add the store function**
 
 Append to `lib/services/graph/store.ts`, after `applyMutation`:
 
@@ -2899,7 +2900,7 @@ import { computeBundleDelta, versionMatches, type BundleDelta } from "@/lib/serv
 
 **Two helpers this depends on:** `loadJournalRows(client, projectId)` and `replaceJournalRows(client, projectId, events)`. Read how `createProject` and `getJournal` already read and write the journal table in this file, and write these two as thin siblings using the same table name, column names, and ordering. Do not invent a new shape — mirror what is there. If `createProject` inserts journal rows inline, extract that insert into `replaceJournalRows` and call it from both, so there is one writer.
 
-- [ ] **Step 2: Write the route**
+- [x] **Step 2: Write the route**
 
 Create `app/api/graph/projects/[projectId]/bundle/route.ts`:
 
@@ -2987,32 +2988,107 @@ export async function PUT(
 }
 ```
 
+**Update the route's single `"conflict"` branch above to the three-way split from note 4:** `StoreFailure`/`ReplaceResult` should carry `classifyIfMatch`'s outcome (or the store function itself resolves it and returns one of three distinct reasons, e.g. `"precondition_required"` / `"precondition_unsupported"` / `"conflict"`), and the route maps each to 428 / 400 / 412 respectively rather than treating every non-match as the same `"conflict"` → 412. The 412 branch's body (`current: result.current`) still only applies to the genuine "stale" case — a 428/400 caller has nothing to compare against, so `current` doesn't belong in those two responses.
+
 Check `getCaller`'s return shape before using `caller.userId` — mirror exactly how the mutations route obtains the tier (`getUserTier(...)` there is called with whatever field that route uses).
 
-- [ ] **Step 3: Verify it compiles and lints**
+- [x] **Step 3: Verify it compiles and lints**
 
 Run: `npx tsc --noEmit && npm run lint`
-Expected: no new errors in `lib/services/graph/*` or `app/api/graph/**`.
+Actual (round 1): both clean. `tsc --noEmit` — zero errors, whole project. `npm run lint` — `0 errors, 4 warnings`, all four pre-existing and in files this task never touched (`app/project/[id]/library/page.tsx`, `components/panels/PlatformVariants.tsx`, `components/panels/ShotPreviewDialog.tsx` — unused-import and `<img>` warnings unrelated to graph/restore). Also ran `npm run build` (Next's own build, a stricter check than `tsc --noEmit` alone for route-handler shape): compiled clean and registered `ƒ /api/graph/projects/[projectId]/bundle` as a dynamic route alongside its siblings. Also ran `npm run generate` to confirm no generated-artifact drift (none — this task touched no schema): `git status` before/after identical.
 
-- [ ] **Step 4: Commit**
+Actual (round 2, after the coordinator findings above): re-ran everything. `tsc --noEmit` — zero errors. `npm run lint` — same `0 errors, 4 warnings`, unchanged, none in a touched file. `npm run build` — clean, same route registered. `npm run generate` — no drift. `node tests/services/graph-restore.test.js` — **84/84** (74 + the 10 new `classifyDryRun` checks), re-verified on both this machine's Node 26 and the same real Node 20.20.2 binary used for round 1, byte-identical output, exit 0 both times. Re-ran `load-graph-api.js` and `load-graph-restore.js` standalone on both Node versions too, since both `store.ts` and `restore.ts` changed again in round 2 (`orderEvents` import, `classifyDryRun` export) — both loaders resolved cleanly, `store.replaceProjectBundle`, `PUT_BUNDLE`, and `classifyDryRun` all present as functions.
+
+- [x] **Step 4: Commit**
+
+Committed in two passes — the initial implementation, then a second commit for the round-2 coordinator findings, both on `feature/hosted-restore`, neither pushed (PR 2 opens at Task 12):
 
 ```bash
-git add lib/services/graph/store.ts app/api/graph/projects/\[projectId\]/bundle/route.ts
+git add lib/services/graph/store.ts \
+  "app/api/graph/projects/[projectId]/bundle/route.ts" \
+  "app/api/graph/projects/[projectId]/mutations/route.ts" \
+  tests/services/load-graph-api.js \
+  tests/services/graph-api.test.js
 git commit -m "feat(graph): PUT /bundle — owner-only, If-Match-gated whole-bundle restore"
+
+# round 2 — coordinator review findings (dryRun fail-open, payload cap,
+# bundle_id/schema_version staleness, 403-not-413, missing scope test, minors)
+git add lib/services/graph/restore.ts lib/services/graph/store.ts \
+  "app/api/graph/projects/[projectId]/bundle/route.ts" \
+  tests/services/graph-restore.test.js tests/services/graph-api.test.js \
+  db/migrations/008_graph_projects.sql \
+  docs/superpowers/plans/2026-08-04-bootstrap-method.md
+git commit -m "fix(graph): dryRun fail-open, payload cap, stale bundle_id/schema_version on restore"
 ```
+
+**What could NOT be verified, and why:** this machine has no local Postgres. Everything SQL-coupled in `replaceProjectBundle` — the row lock actually serializing two writers (and, new in round 2, `for share` actually behaving as a non-exclusive read lock on a dry run), the journal DELETE-then-INSERT actually replacing rather than appending (now sorted via `orderEvents` first), the version bump actually persisting, `bundle_id`/`schema_version` actually landing in the row (round 2, finding 3), owner scoping actually filtering rows, the dry-run branch actually never reaching the `update`/`insert` statements — is asserted in the `tests/services/graph-api.test.js` section, but that file's own top-of-`main()` guard exits immediately (`process.exit(1)`, not a silent no-op) whenever `DATABASE_URL` is unset, exactly as it does for every other suite in the Postgres-backed `services` job. These assertions have therefore never actually run against a real database; they are written to run in CI, which does carry a Postgres service container for that job. What WAS verified locally, and does cover real risk: full type-checking (`tsc --noEmit`, `next build`), lint, and — because `store.ts` now has a real (non-stub) dependency on `restore.ts`, and that dependency grew in round 2 — that both `load-graph-api.js` and `load-graph-restore.js`'s transpile-and-require pipelines still resolve cleanly under both this machine's Node 26 and a separately downloaded, real Node 20.20.2 binary matching CI's pin. One genuine improvement from round 2: `classifyDryRun` moved what was previously an entirely route-level, DB-adjacent decision (finding 1) into a pure, directly-tested function — so the fail-open defect's FIX is now verified with the same confidence as `classifyIfMatch`, with no Postgres involved at all; only the route's WIRING of it (does the route actually call it, does 400 actually come back) still rests on the untested-here integration section.
 
 ---
 
-### Task 12: `arkaik restore`
+### Task 12: `arkaik restore` — shipped, findings below
 
-**Files:**
+**Coordinator DECISION carried forward from Task 10's review, superseding this section's original `--dry-run` reference code: `--dry-run` calls the SERVER's dry-run mode, not a local count.** Task 10 originally just flagged the constraint (`computeBundleDelta` lives under `lib/services`, behind the `server-only`/`@/` alias the Next.js app resolves and the CLI package does not, so the CLI cannot import it without duplicating the module) and left the resolution open. The coordinator's decision: reimplementing the delta CLI-side risks two implementations of the exact number that gates a destructive write drifting apart — the worst possible place for that to happen — so it is resolved SERVER-SIDE instead. Task 11 adds a dry-run mode to `PUT .../bundle` (see that task's note 6): the same request, with a dry-run indicator, runs the identical validation/version-check/delta-computation path and returns the `ReplaceResult`-shaped response WITHOUT writing.
+
+**What this means for this task's implementation, concretely:** `runRestore`'s `dryRun` branch should no longer compute its own `nodes.length`/`edges.length`/`journal.length` diff inline (this section's original reference code did, before this decision). Instead, send the same `PUT .../bundle` request `arkaik restore` would send for real — including `If-Match` with the version read in step 2 — but with the dry-run indicator set; print the returned `delta` (all eighteen `BundleDelta` fields are available: lead with the `*Before`/`*After` totals — "replacing N nodes with M" — before the added/removed/changed/malformed breakdown); and stop, exactly as the original reference code did, without calling the real (non-dry-run) endpoint. This also means `--dry-run` now requires a version read (step 2) and a network round-trip it didn't strictly need before — acceptable, since dry-run's whole purpose is showing what the REAL call would do, and the real call's own gate (validation, tier limit, version match) is exactly what a dry-run should preview, not approximate locally.
+
+**The exact contract Task 11 shipped (read this instead of re-deriving it from `store.ts`) — UPDATED after the coordinator's round-2 review found the original `dryRun` parsing failed open:**
+- **Dry-run indicator:** query param, not a body field — append `?dryRun=1` to the PUT URL. The body is byte-identical between a dry-run and a real call. **`arkaik restore --dry-run` MUST send exactly one of the recognized tokens — do not omit the value or invent a spelling.** Recognized: bare `?dryRun` (no `=value`), `?dryRun=1`, `?dryRun=true` all mean preview; `?dryRun=0`/`?dryRun=false` (or omitting the param entirely) mean a real write. **Anything else — `yes`, `on`, wrong case, stray whitespace — is refused with `400 invalid_dry_run`, not silently treated as a real write** (`classifyDryRun` in `lib/services/graph/restore.ts` is the source of truth; it fails closed in this direction on purpose, the opposite failure mode from a bug the coordinator caught in the first draft). The safest choice for the CLI is the explicit `?dryRun=1` / no param at all — never rely on the bare-`?dryRun` shorthand from a code path that might also accidentally send a stray value.
+- **Success (200), both dry-run and real:** `{ version, delta, dryRun }`, plus an `ETag: "<version>"` header carrying the same version. On a REAL write, `version` is the freshly bumped one. On a DRY RUN, `version` is deliberately the CURRENT (unbumped) version — nothing was minted — so `arkaik restore --dry-run` should not treat it as "the version to send next"; the real call still needs its OWN read (or reuse the same one, since nothing changed) to get its `If-Match`.
+- **Failure status codes — six-way now, not the four-way this note originally listed:** `404` (`{ error: "not_found" }`, owner mismatch reads identically to nonexistence), `428` (`{ error: "if_match_required" }`, no `If-Match` sent at all), `400` (`{ error: "if_match_unsupported" }` for a malformed `If-Match` — wildcard/weak-ETag/multi-value — **or** `{ error: "invalid_dry_run" }` for an unrecognized `?dryRun` token — check `body.error` to tell the two apart, both share the status code), `412` (`{ error: "conflict", current: "<version>" }`, ALSO carried as the response's `ETag` header — the one genuine version conflict; `current` is the field to read for "what version should I re-read and retry with"), **`413` (`{ error: "payload_too_large", limit }` — the request body itself exceeded 5 MB, checked before the body is even parsed; this is NOT the tier-entity-limit case, see 403 below)**, **`403` (`{ error: "limit_exceeded", limit, actual, tier }`, `limit` may be `null` for an uncapped tier — irrelevant for `arkaik restore`'s own callers today, but don't assume it's always a number — coordinator round 2 moved this OFF 413, which is now reserved for payload size alone)**, `422` (`{ error: "invalid_bundle", errors: [...] }`, shape/semantic validation failed — this is the CLI's own `merge`/`validate` output failing to hold up server-side, which should read as a bug in the merge step, not a transient failure).
+- **`arkaik restore`'s own `If-Match`-missing case should never happen in practice** (the CLI always just read a version in step 2 before sending), but if it does reach 428 anyway, that is a CLI bug, not a server hiccup — treat it as a hard failure, not something to retry.
+
+**The draft reference code below (kept for the historical record) predates Tasks 10 and 11 and is stale in every way this task's coordinator brief flagged, plus more found while implementing. Six probes, six real findings, all reflected in what shipped:**
+
+**Probe 1 — backup-before-destructive, fail-closed on every path, not just the happy one.** The draft's `try`/`catch` only guarded the `writeFileSync` call — the `GET .../export` above it was awaited with only a bare `if (!exportRes.ok) fail(...)`, no defense against a thrown network error or a 200 whose body isn't actually a bundle. As shipped, every way that step can go wrong aborts identically, before any PUT is attempted: a thrown network error (`ECONNRESET` etc.), a non-200 response, a response whose `bundle` field isn't an object, and — the case the draft didn't consider at all — a `bundle` whose `journal`/`nodes`/`edges` fields aren't arrays (a shape a broken `/export` deployment could return without ever failing the HTTP status check). An unwritable `.backups/` directory (verified with `chmod 0o500` on a real temp dir) aborts the same way. All five are asserted directly in `tests/cli/bootstrap-restore.test.js`: the run reports `ok: false`, no backup file exists afterward, and — via a mock `httpClient` that throws on any PUT call — the destructive request was never even attempted.
+
+**Probe 2 — the backup must come from `/export` (snapshot + journal), never from `GET .../{id}` (snapshot only) — verified against the actual route code, not assumed.** `lib/services/graph/store.ts`'s `getProject` (what `GET .../{id}` calls) is commented, in the source, "Snapshot + version, without the (potentially large) journal" — it is the version source, not the backup source. Only `exportProject` (`GET .../export`) embeds the journal. The shipped `runRestore` reads the version from the first and the backup content from the second, and separately asserts `Array.isArray(bundle.journal)` before writing anything (see probe 1) — a defense the draft had no equivalent of. Verified directly: the happy-path test's backup file is asserted to hold the EXPORT response's node count and journal (not the local bundle being sent, and not empty).
+
+**Probe 3 — `If-Match` sourcing and the 412 message.** The version read in step 2 is carried unchanged into `If-Match` for both the dry-run and real PUT. On 412, the message names BOTH the version this run read and the server's current version (from the response body's `current` field, surfaced on the result as `conflictCurrent`), explicitly states "Do not retry with the same version," and tells the caller to re-run `arkaik restore` to read the current state and decide again — never "retry" on its own. Asserted directly (checked for a "do not retry" phrase, and checked AGAINST a blind "try again"/"just retry" pattern that must never appear) rather than eyeballed.
+
+**Probe 4 — `--dry-run` takes no backup, by decision, not by omission.** The server writes nothing in dry-run mode, so there is nothing destructive to protect against; taking one anyway would clutter `.backups/` with files that never protected anything and cost an extra `/export` round-trip for no reason. The counter-argument — a dry-run preview could still be useful evidence later — was considered and rejected: the backup's entire justification (this task's own framing) is being "the only recovery path" for a destructive write, and a dry-run is not one. Implemented as a hard branch: the `dryRun` path in `runRestore` never calls `/export` and never touches `.backups/` at all — verified by a mock `httpClient` that throws if the export URL is called during a dry run, and by asserting `.backups/` doesn't exist on disk afterward. Dry-run DOES still read a version (Task 10/11's decision, carried forward — see the contract note above), since it needs its own `If-Match` for the preview PUT to gate identically to a real one.
+
+**Probe 5 — body assembly: `bundle.json` + `journal.jsonl` sidecar, using the existing `loadJournalEvents` helper rather than re-deriving the merge inline.** The draft read `journal.jsonl` inline with its own `.split("\n").filter(Boolean).map(JSON.parse)`, which — unlike `loadJournalEvents` — has no precedence rule for a bundle that already embeds its own `journal` array (the packed interchange form): it would silently prefer the sidecar even when the on-disk bundle already carries a possibly-different embedded journal, exactly the kind of split-brain this task warned about. As shipped, `runRestore` calls `packages/cli/src/lib/journal-io.ts`'s `loadJournalEvents(local, bundlePath)` directly: embedded wins over the sidecar when present, otherwise the sidecar is read — the same precedence `arkaik validate` uses. Verified with two fixtures: sidecar-only (the sent bundle's `journal` is the sidecar's one event) and embedded-plus-sidecar (the sent bundle's `journal` is the embedded event, not the sidecar's).
+
+**Probe 6 — seven-status (eight-message) failure matrix, each message distinct, and every real-restore one naming the backup path.** `interpretPutResponse` handles 404, 428, 400 (`if_match_unsupported` and `invalid_dry_run` read differently despite sharing the status code), 412, 403, 413, and 422 as separate branches, not a generic `!res.ok` fallthrough. Every branch on the real-restore path (all except a hypothetical dry-run failure, which never has a backup to reference) appends the backup path to its message. Asserted with a table-driven test: nine failure fixtures (403 run twice — once with a numeric `limit`, once with `limit: null` for an uncapped tier) each produce a message never seen before in the same run (a `Set`-based distinctness check across all nine), each backup-referencing message contains `.backups`, and 422 additionally surfaces `serverFindings` from the response body's `errors` array.
+
+**Architecture deviation from the draft, deliberate.** The draft's `runRestore(argv, options)` parsed argv AND called `process.exit` inline, inseparable from its own logic — untestable without spawning a subprocess for every case. This task's own instructions named `push.ts` as "your closest template … how its test drives it," so the shipped `restore.ts` follows that file's shape instead: `runRestore(options): Promise<RunRestoreResult>` is pure business logic returning a structured result (never calls `process.exit`, never writes to `console`), and a separate `runRestoreCli(argv)` handles argv parsing plus `reportRestore(result)` for console output and exit codes. This is what makes all six probes above testable in-process against a mocked `httpClient` (mirroring `tests/cli/push.test.js`) instead of requiring a real HTTP server and a subprocess per case — this suite never opens a real socket at all; only a handful of `runCli`-spawned argv-level smoke tests exercise the built binary, and only for cases that fail before any network call would be attempted, the same discipline `push.test.js` documents for itself.
+
+**Coordinator review, round 2 — a Critical on the exact path the Pebbles run takes, plus four Important findings. All fixed below, all independently re-verified by re-reading the shipped source before writing tests against it, and the Critical was proven by mutation (guard temporarily disabled, confirmed five tests fail, guard restored, confirmed a byte-identical diff against the pre-mutation file).**
+
+1. **Critical — an empty or short outbound journal silently wipes the hosted journal and reports success.** A repo with `bundle.json` but no `journal.jsonl` sidecar (uncommitted, gitignored, or a fresh clone before `merge`) and no embedded journal sends `journal: []`. Nothing in the round-1 implementation objected: `loadJournalEvents` returns `[]` by design when there's no sidecar and no embedded journal, the server's own validation has nothing to reject about an empty array, and the collapse showed up only as `events 253 -> 0` in `printDelta` — formatted identically to the two unremarkable lines above it. Round 1's design fenced the *server's* destructiveness (no pre-image, so back up first); it did not fence the *bundle's own* destructiveness, and this was the one failure the backup couldn't warn about, because it looked exactly like an ordinary successful restore. **Fixed:** a history-loss guard compares the outbound journal's length against the hosted export's journal length (both already in hand — the hosted count from the same `exportedBundle.journal` array probe 1/2's shape check already validated, no extra round-trip) and refuses — zero PUT calls, no backup even written — unless `--allow-history-loss` is passed. The message names both counts and points at the flag and at `journal.jsonl`'s expected path (`journalPathFor(bundlePath)`). This also closes the stale-embedded-journal case the original probe 5 asked about: `bootstrap.ts` explicitly supports "a hosted export, dropped in as the bootstrap target" as input, and that shape carries an embedded journal that could otherwise silently beat a fresher, longer sidecar. Verified with five direct cases: the exact empty-journal trigger (0 outbound vs 1 hosted — refuses, zero PUTs, no backup written); fewer-but-nonzero (1 outbound vs 2 hosted — refuses, not a special case only reachable at zero); `--allow-history-loss` on the empty-journal case (proceeds, backup still taken, the empty journal is genuinely sent); equal counts (proceeds without the flag); more outbound than hosted (proceeds without the flag). **Proven by mutation**, not just by reading the diff: the guard's condition was replaced with `if (false && ...)`, rebuilt, and exactly the five history-loss-guard tests failed (the flag-bypass and equal/more tests correctly kept passing, since they were never gated by it) — then the file was restored from a pre-mutation copy and `diff` confirmed byte-identical.
+
+2. **Important — the backup landed wherever the input bundle lived, not where the spec promises.** Round 1 computed `backupDir = join(dirname(bundlePath), ".backups")` — so `arkaik restore ~/Downloads/bundle.json` would have written the only recovery file to `~/Downloads/.backups/`, while spec § 7 and the command's own `USAGE` text both promise `docs/arkaik/.backups/`. The backup is a pre-image of the **hosted project**, identified by the link file, not by whichever local file happened to be fed in as `--path`; two restores of two different local bundles into the SAME hosted project would otherwise scatter their recovery trail across two directories. **Fixed:** `backupDir = join(cwd, "docs", "arkaik", ".backups")`, anchored to the link file's directory. Verified with a dedicated fixture: a bundle + sidecar living entirely outside `docs/arkaik/` (in `elsewhere/`), restored via `--path`, still lands its backup at `cwd/docs/arkaik/.backups/` — and asserts no stray `.backups/` directory appears next to the external bundle.
+
+3. **Important — the only recovery path was never named as a command.** Every failure message named the backup path; none said what to do with it — a user in a panic had a filename, not a verb. `arkaik restore <backupPath>` genuinely undoes a restore (the backup's embedded journal wins on the way back in, per probe 5's precedence), so this is one centralized line (`backupNoteFor`): `Undo this restore with: arkaik restore <backupPath>`, appended everywhere a backup path is named — every real-restore failure branch, the network-error-after-PUT case, AND (new) the SUCCESS path, since success is the case where an unnoticed wrong restore actually happens and a caller only realizes it later. Printing on success required exporting `reportRestore` (previously CLI-entry-only) so it could be called in-process; that export only became safe because of finding 9's `process.exitCode` change — a function that still called `process.exit()` unconditionally could never be called from a test without killing the test process. Verified directly: the happy-path test captures `reportRestore`'s `console.log` output and asserts both "Restored. New version 8." and the undo line naming the exact backup path.
+
+4. **Important — the backup was never verified after writing, and a colliding timestamp could silently overwrite an earlier one.** `bootstrap.ts` already has `writeFileAtomic` (temp file + rename) for `bundle.json`/`journal.jsonl`, with a comment about a process killed mid-write; the one file this module's own header calls "THE ONLY RECOVERY PATH THAT EXISTS" had a bare `writeFileSync`. **Fixed, three parts:** (a) the backup is read back and `JSON.parse`d inside the same `try`, immediately after the write and before the PUT — turning "the write call returned" into "the bytes are on disk and parseable"; (b) `writeBackupFile` writes to a same-directory temp file, then `linkSync`s it into place — a hard link fails with `EEXIST` if the target already exists, giving atomicity (no truncated file ever appears at the real path) and exclusivity (a colliding stamp can never silently replace an earlier backup) together, rather than the `{ flag: "wx" }` alone the round-2 review first suggested, which would have gotten exclusivity without atomicity. Verified two independent ways: a frozen-clock test forces two restores to compute the IDENTICAL stamp deterministically (not a 1ms race) — the second refuses, the first backup's content is provably untouched, and the second's fatal message names the colliding path; and the pre-existing unwritable-directory test proves the same write+verify region fails closed under a completely different failure (permission denial). **One thing investigated and NOT achievable:** a literal "the write succeeded but the bytes read back are corrupt" simulation. Verified empirically (a small throwaway script, not assumed) that mutating `require("fs").readFileSync` does NOT affect an ESM `import { readFileSync } from "node:fs"` binding inside a separately esbuild-bundled module — Node's builtin ESM facade doesn't read through the mutated CJS export — and no dependency-free technique reliably corrupts a synchronous write-then-read within one function call without a mocking library (out of scope: this repo is dependency-free by convention). The two tests above prove the operationally meaningful claim instead: the protected region fails closed under real failures, whatever their source.
+
+5. **Important — the 404 branch said "Nothing was sent" when the request manifestly WAS sent.** `base` carries `requestSent: true` for every branch in `interpretPutResponse` — it's built from the PUT's own response. Every sibling branch correctly says "Nothing was **written**"; only 404 said "sent," a contradiction in the one file where precision about what happened is the product (a user who just watched a backup get taken should never be told the run never reached the server). **Fixed:** 404 now reads "Nothing was written," matching every other branch. Verified directly and by construction: the failure-matrix table's `mustInclude`/`mustNotInclude` fields (see minor finding below) assert 404's message contains "Nothing was written" and not "Nothing was sent."
+
+**Minor findings, also taken:**
+- The failure-matrix test table declared `mustInclude`/`mustNotInclude` (and a now-removed `assertNoBlindRetry`, and an unused `key`/`void key` pair) but the loop never read them — inert assertions that looked like coverage that didn't exist (the 404 case's original `mustNotInclude: ["conflict", "version"]` was flagged specifically). **Wired up**: every fixture's `mustInclude`/`mustNotInclude` fragments are now asserted in the loop; the dead fields were removed. (Two entries needed correcting once wired up, not just wiring: `mustNotInclude: ["conflict"]` on 428 and `mustNotInclude: ["retry with the same"]` on 412 both failed against the CORRECT message text — "not a version conflict" and "Do not retry with the same version" are exactly the right, precise, negated phrasing; the fixtures were adjusted, not the source.)
+- A mutation that drops the backup write would have crashed the suite on an unguarded `backups[0]` (`undefined`) instead of reporting a clean failure. **Guarded**: the happy-path test now checks `backups.length > 0` before indexing, reporting two clean FAILs instead of a raw `TypeError` when the array is empty.
+- `projectId` was interpolated into every URL unescaped; `link.ts` — which *writes* that value — uses `encodeURIComponent`. Not a hole (confirmed it can't flip the destructive branch), but this is the destructive verb and the sibling escapes. **Fixed**: `encodedProjectId = encodeURIComponent(projectId)` computed once, used in all four URLs (version read, export, both PUT variants); user-facing messages still use the raw `projectId` for readability. Verified with a synthetic id containing a space and a slash (`"prj demo/x"`): every URL carries the percent-encoded form, never the raw string.
+- `ARKAIK_URL` was not honored, unlike `link.ts` (coordinator's call to make, not a hard requirement) — a user who sets it for `arkaik link --list` would silently get a different remote from `arkaik restore` in the same shell. **Fixed**: precedence is `--api` flag > `$ARKAIK_URL` > the link file's persisted `remote` > the public default, matching `packages/mcp/src/config.ts`'s `resolveRemoteConfig` (env beats the persisted link file) for the same two-source combination. Verified both directions: `ARKAIK_URL` overriding a different link-file `remote`, and `--api` still winning over both.
+- `process.exit(0)` risked truncating buffered stdout before it flushed — on exactly the lines (`Backed up ...`, the undo command) that are the only recovery instruction that exists. **Fixed**: both zero-exit-code paths (`reportRestore`'s success branch, `runRestoreCli`'s `--help`) now use `process.exitCode = 0` and return, letting the event loop drain naturally; only `process.exit(1)` (failure paths, unchanged, matching the rest of the codebase's convention) still exits directly.
+- Spec drift: § 7 said `--dry-run` prints deltas "without sending" — true of the round-1 draft, no longer true of the shipped design (dry-run sends `PUT ?dryRun=1`, deliberately, so the preview reflects the real call's own gates). **Fixed** in the spec doc itself (docs/superpowers/specs/2026-08-04-bootstrap-method-design.md § 7).
+- Dry-run wording: `Re-run without --dry-run to apply.` → `Re-run without --dry-run to apply — that run takes the backup.`, so the asymmetry (dry-run doesn't back up, a real run does) is stated at the exact moment a caller decides whether to re-run for real.
+- The embedded-wins-over-sidecar comment (probe 5) gained the load-bearing reason beyond mere consistency with `arkaik validate`: a backup file always carries its journal embedded and lives in `.backups/`, so if the sidecar ever won instead, `arkaik restore <backup-path>` (the undo command from finding 3) would silently pair that backup's OLD snapshot with whatever `journal.jsonl` happens to sit in the LIVE repo at that moment — exactly the split-brain the precedence rule exists to prevent.
+
+**Confirmed right, no change (round 2 reviewed and agreed):** dry-run still takes no backup — two files where only one is the true pre-image is worse than one, since a recovery panic could restore the stale one. Rejecting extra CLI positionals stays, for consistency with `push.ts`'s own `--delete`-branch rule (the real principle is "no ambiguity on the destructive path," which `restore` is unconditionally, not just the `--delete` sub-mode `push` uses it for).
+
+**Files (as shipped):**
 - Create: `packages/cli/src/commands/restore.ts`
-- Modify: `packages/cli/src/index.ts`
-- Test: `tests/cli/bootstrap-restore.test.js`
+- Modify: `packages/cli/src/index.ts` (`runRestoreCli` wired into the dispatcher + `USAGE`)
+- Create: `tests/cli/bootstrap-restore.test.js` (185 checks)
+- Modify: `package.json` (`test:bootstrap` gains the new test; `test:cli` untouched — `restore` is exercised by the bootstrap suite, matching how the other bootstrap-only commands are covered)
+- Modify: `.gitignore` (`/packages/cli/.test-build-restore/`, matching the sibling `.test-build-*` entries already there)
+- Modify: `docs/superpowers/specs/2026-08-04-bootstrap-method-design.md` (§ 7 — backup anchoring, history-loss guard, and the corrected `--dry-run` sentence, round 2 finding 6)
+- No `.github/workflows/ci.yml` change needed: `npm run test:bootstrap` was already a CI step (wired by Task 9), so the new test runs automatically.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test (draft, kept for the historical record)**
 
-Create `tests/cli/bootstrap-restore.test.js`:
+Draft of `tests/cli/bootstrap-restore.test.js`:
 
 ```js
 #!/usr/bin/env node
@@ -3144,14 +3220,19 @@ server.listen(0, "127.0.0.1", () => {
 });
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+As shipped, this draft is superseded entirely by `tests/cli/bootstrap-restore.test.js` — see the architecture note above for why it's shaped differently (in-process `runRestore()` calls against a mocked `httpClient`, esbuild-bundling `restore.ts` the same way `push.test.js` does, rather than a real local HTTP server + `spawnSync` for every case). It keeps the draft's original scenarios (dry-run sends nothing, real restore backs up first and sends `If-Match`, an unwritable backup directory refuses) and adds full coverage of all six probes above, plus preflight failures (no link file, no token, no local bundle), a version-read failure, and the coordinator round-2 findings (history-loss guard, backup anchoring, undo hints, backup collision, URL encoding, ARKAIK_URL). 185 checks total.
+
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `node tests/cli/bootstrap-restore.test.js`
-Expected: FAIL — the CLI does not know the `restore` command.
+Actual: FAIL — `esbuild` could not resolve `packages/cli/src/commands/restore.ts` (the command did not exist yet):
+```
+✘ [ERROR] Could not resolve ".../packages/cli/src/commands/restore.ts"
+```
 
-- [ ] **Step 3: Write `restore.ts`**
+- [x] **Step 3: Write `restore.ts` (draft, kept for the historical record)**
 
-Create `packages/cli/src/commands/restore.ts`:
+Draft of `packages/cli/src/commands/restore.ts`:
 
 ```ts
 /**
@@ -3310,44 +3391,44 @@ export async function runRestore(argv: string[], options: RestoreOptions = {}): 
 }
 ```
 
-- [ ] **Step 4: Wire the dispatcher**
+As shipped, not as drafted — see the architecture note and all six probe findings above. Full, heavily-commented file (every decision has its rationale inline, at its own call site): `packages/cli/src/commands/restore.ts`.
 
-In `packages/cli/src/index.ts`, import and add the case. Because `runRestore` is async, mirror however the dispatcher already handles async commands (`runPushCli`, `runLinkCli`) — match that exact pattern, including its error handling:
+- [x] **Step 4: Wire the dispatcher**
 
-```ts
-import { runRestore } from "./commands/restore";
-```
-
-```ts
-    case "restore":
-      void runRestore(rest);
-      return;
-```
-
-And in `USAGE`, after the `link` line:
+As drafted, but wiring `runRestoreCli` (not a bare async `runRestore`, matching the architecture change in Step 3) — `packages/cli/src/index.ts` imports it and dispatches `case "restore": runRestoreCli(rest); return;` (synchronous, exactly like `runLinkCli`/`runPushCli` — the async work and its own error handling live entirely inside `runRestoreCli`). The `restore` line was added to `USAGE` after `link`:
 
 ```
   restore [options] [path]   Replace the linked hosted project's bundle + journal (backs up first).
 ```
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [x] **Step 5: Run the test to verify it passes**
 
 Run: `npm run build -w arkaik && node tests/cli/bootstrap-restore.test.js`
-Expected: PASS on all ten checks.
+Actual: PASS on all **185** checks (round 1's 115 plus 70 more from round 2's Critical and four Important findings).
 
-- [ ] **Step 6: Wire the script and open PR 2**
+- [x] **Step 6: Wire the script — commit locally, no push, no PR**
 
-In `package.json`, extend the bootstrap script:
+In `package.json`, `test:bootstrap` gained `&& node tests/cli/bootstrap-restore.test.js` at the end (the build step it needs already runs earlier in that same chain, before `bootstrap-corpus.test.js`, so no extra build step was needed):
 
 ```json
     "test:bootstrap": "node tests/cli/bootstrap-era-window.test.js && node tests/cli/bootstrap-body-budget.test.js && node tests/cli/bootstrap-event-id.test.js && node tests/cli/bootstrap-journal-merge.test.js && npm run build -w arkaik && node tests/cli/bootstrap-corpus.test.js && node tests/cli/bootstrap-plan.test.js && node tests/cli/bootstrap-slice.test.js && node tests/cli/bootstrap-merge.test.js && node tests/cli/bootstrap-merge-selfmap.test.js && node tests/cli/bootstrap-e2e.test.js && node tests/cli/bootstrap-restore.test.js",
 ```
 
+Full verification run:
+
+```
+npm run test:bootstrap       # 667 checks across 11 files, 0 failures
+npm run test:cli             # 63 push.test.js checks + the rest, 0 failures (restore isn't in test:cli; unaffected)
+npm run test:graph-restore   # unaffected, still 74/74
+npm run lint                 # 0 errors (4 pre-existing warnings in untouched files)
+npx tsc --noEmit             # clean
+```
+
+Per this task's explicit instructions, this task does **not** push and does **not** open PR 2 — committed locally on `feature/hosted-restore` for the coordinator to open the PR. Round 1 and round 2 landed as two separate commits on the same branch: round 1 (`feat(cli): arkaik restore — backup, dry-run, If-Match`) shipped the command against the original six probes; round 2 (`fix(cli): restore — history-loss guard, backup anchoring, undo hints, collision safety`) added the Critical history-loss guard and the four Important fixes, touching the same files plus the spec doc:
+
 ```bash
-npm run test:bootstrap && npm run test:graph-restore && npm run lint
-git add packages/cli/src/commands/restore.ts packages/cli/src/index.ts tests/cli/bootstrap-restore.test.js package.json
-git commit -m "feat(cli): arkaik restore — backup, dry-run, If-Match"
-git push
+git add packages/cli/src/commands/restore.ts packages/cli/src/index.ts tests/cli/bootstrap-restore.test.js package.json .gitignore docs/superpowers/plans/2026-08-04-bootstrap-method.md docs/superpowers/specs/2026-08-04-bootstrap-method-design.md
+git commit -m "fix(cli): restore — history-loss guard, backup anchoring, undo hints, collision safety"
 ```
 
 PR 2 body:

@@ -62,6 +62,11 @@ function loadGithubApi() {
     ["@/lib/services/tokens", "./tokens.js"],
     ["@/lib/services/auth", "./auth.js"],
     ["@/lib/services/graph/store", "./graph-store.js"],
+    // store.ts grew this import when hosted restore landed. It is the exact
+    // case the note below describes: a module this loader already transpiles
+    // acquiring a new `@/…` import, which fails at resolution time rather than
+    // as a test failure.
+    ["@/lib/services/graph/restore", "./graph-restore.js"],
     ["@/lib/services/graph/repos", "./graph-repos.js"],
     ["@/lib/services/github/verify", "./verify.js"],
     // Both new in slice 2, and both reached from modules this loader ALREADY
@@ -86,6 +91,7 @@ function loadGithubApi() {
   write("tokens.js", transpile(src("lib", "services", "tokens.ts"), "tokens.ts", COMMON));
   write("auth.js", transpile(src("lib", "services", "auth.ts"), "auth.ts", COMMON));
   write("graph-store.js", transpile(src("lib", "services", "graph", "store.ts"), "store.ts", COMMON));
+  write("graph-restore.js", transpile(src("lib", "services", "graph", "restore.ts"), "restore.ts", COMMON));
   write("graph-repos.js", transpile(src("lib", "services", "graph", "repos.ts"), "repos.ts", COMMON));
   write("repos-route.js", transpile(src("app", "api", "graph", "projects", "[projectId]", "repos", "route.ts"), "route.ts", COMMON));
   write("verify.js", transpile(src("lib", "services", "github", "verify.ts"), "verify.ts", COMMON));
