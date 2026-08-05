@@ -1,6 +1,7 @@
 /**
  * `arkaik init [--product <name>] [--bundle <path>] [--journal <path>]
- *              [--skills-dir <path>] [--update]`
+ *              [--skills-dir <path>] [--update] [--bootstrap]
+ *              [--remove-bootstrap]`
  *
  * Scaffolds `docs/arkaik/` in the current working directory (the target
  * repo), configures `.gitattributes` for the journal's union merge
@@ -20,6 +21,16 @@
  * re-run never clobbers local edits. `--update` is the one sanctioned way to
  * upgrade an already-installed skill (+ its generated assets), gated on the
  * `version` frontmatter stamp; it never touches the bundle or journal.
+ *
+ * `--bootstrap` additionally installs the one-time `arkaik-bootstrap` skill
+ * (rendered from `dist/assets/bootstrap-skill/`, sourced from
+ * `docs/arkaik-bootstrap-skill/`) as a *sibling* of the arkaik skill dir. It
+ * is opt-in because it is a large skill for a one-time job — bootstrapping
+ * the map from repo history. Per-flag it mirrors the maintenance skill:
+ * install-if-absent under a plain init, version-gated under `--update`.
+ * `--remove-bootstrap` is the remove-only counterpart: it deletes exactly
+ * that directory (or prints a notice when nothing is installed) and
+ * scaffolds nothing.
  */
 import {
   copyFileSync,
@@ -41,7 +52,11 @@ const DEFAULT_SKILLS_DIR = ".claude/skills/arkaik";
 // own output location by build.js (dist/index.js -> dist/assets/skill/).
 const ASSET_DIR = join(dirname(fileURLToPath(import.meta.url)), "assets", "skill");
 
-const USAGE = `arkaik init [--product <name>] [--bundle <path>] [--journal <path>] [--skills-dir <path>] [--update]
+// The one-time bootstrap skill's template + references, same pipeline
+// (docs/arkaik-bootstrap-skill/ -> dist/assets/bootstrap-skill/, see build.js).
+const BOOTSTRAP_ASSET_DIR = join(dirname(fileURLToPath(import.meta.url)), "assets", "bootstrap-skill");
+
+const USAGE = `arkaik init [--product <name>] [--bundle <path>] [--journal <path>] [--skills-dir <path>] [--update] [--bootstrap] [--remove-bootstrap]
 
 Scaffold docs/arkaik/ (bundle.json, journal.jsonl, assets/) in the current
 directory, configure .gitattributes for the journal's union merge, and
@@ -67,6 +82,14 @@ Options:
                         (and skip references/values.md). Applies when the
                         skill is installed or upgraded; a same-version
                         \`--update\` run is a no-op.
+  --bootstrap           Also install the one-time \`arkaik-bootstrap\` skill
+                        beside the arkaik skill. Not installed by default: it
+                        is a large skill for a one-time job (bootstrapping
+                        the map from repo history). Install-if-absent with a
+                        plain init; version-gated upgrade with --update.
+  --remove-bootstrap    Remove the installed \`arkaik-bootstrap\` skill and do
+                        nothing else — no scaffolding. Prints a notice and
+                        exits 0 when it isn't installed.
   -h, --help             Show this help.`;
 
 function fail(message: string): never {
@@ -81,10 +104,12 @@ interface InitOptions {
   skillsDir?: string;
   update: boolean;
   noValues: boolean;
+  bootstrap: boolean;
+  removeBootstrap: boolean;
 }
 
 function parseArgs(args: string[]): InitOptions {
-  const opts: InitOptions = { update: false, noValues: false };
+  const opts: InitOptions = { update: false, noValues: false, bootstrap: false, removeBootstrap: false };
 
   const nextValue = (i: number, flag: string): string => {
     const value = args[i];
@@ -101,6 +126,10 @@ function parseArgs(args: string[]): InitOptions {
       opts.update = true;
     } else if (arg === "--no-values") {
       opts.noValues = true;
+    } else if (arg === "--bootstrap") {
+      opts.bootstrap = true;
+    } else if (arg === "--remove-bootstrap") {
+      opts.removeBootstrap = true;
     } else if (arg === "--product") {
       opts.product = nextValue(++i, arg);
     } else if (arg === "--bundle") {
@@ -112,6 +141,9 @@ function parseArgs(args: string[]): InitOptions {
     } else {
       fail(`Unknown option: ${arg}\n\n${USAGE}`);
     }
+  }
+  if (opts.bootstrap && opts.removeBootstrap) {
+    fail(`--bootstrap and --remove-bootstrap are contradictory; pass one or the other.\n\n${USAGE}`);
   }
   return opts;
 }
@@ -291,6 +323,71 @@ function updateSkill(skillsDirPath: string, vars: Record<string, string>, noValu
   console.log(`Upgraded skill v${installedVersion ?? "unknown"} -> v${version}.`);
 }
 
+/**
+ * Render the packaged bootstrap skill template + copy its references into
+ * `bootstrapDirPath`. The references carry no template parameters (the
+ * authoring contract for docs/arkaik-bootstrap-skill/), so they are copied
+ * verbatim.
+ */
+function renderAndWriteBootstrapSkill(bootstrapDirPath: string, vars: Record<string, string>): string {
+  const rawSkill = readFileSync(join(BOOTSTRAP_ASSET_DIR, "skill.md"), "utf8");
+
+  mkdirSync(join(bootstrapDirPath, "references"), { recursive: true });
+  writeFileSync(join(bootstrapDirPath, "SKILL.md"), renderTemplate(rawSkill, vars));
+  copyFileSync(join(BOOTSTRAP_ASSET_DIR, "references", "fragments.md"), join(bootstrapDirPath, "references", "fragments.md"));
+  copyFileSync(join(BOOTSTRAP_ASSET_DIR, "references", "waves.md"), join(bootstrapDirPath, "references", "waves.md"));
+
+  return extractVersion(rawSkill) ?? "unknown";
+}
+
+/** `--bootstrap` with a plain init: install the bootstrap skill only if it isn't there yet. */
+function installBootstrapSkill(bootstrapDirPath: string, vars: Record<string, string>): void {
+  const skillPath = join(bootstrapDirPath, "SKILL.md");
+  if (existsSync(skillPath)) {
+    console.log(
+      `Skipping bootstrap skill install (already exists): ${skillPath}. Use \`arkaik init --update --bootstrap\` to upgrade.`,
+    );
+    return;
+  }
+  const version = renderAndWriteBootstrapSkill(bootstrapDirPath, vars);
+  console.log(`Installed bootstrap skill v${version} -> ${skillPath}`);
+}
+
+/** `--update --bootstrap`: upgrade the bootstrap skill only if the packaged version is newer. */
+function updateBootstrapSkill(bootstrapDirPath: string, vars: Record<string, string>): void {
+  const packagedVersion = extractVersion(readFileSync(join(BOOTSTRAP_ASSET_DIR, "skill.md"), "utf8"));
+  const skillPath = join(bootstrapDirPath, "SKILL.md");
+
+  if (!existsSync(skillPath)) {
+    const version = renderAndWriteBootstrapSkill(bootstrapDirPath, vars);
+    console.log(`No existing bootstrap skill found at ${skillPath}; installed v${version}.`);
+    return;
+  }
+
+  const installedVersion = extractVersion(readFileSync(skillPath, "utf8"));
+  if (
+    installedVersion !== undefined &&
+    packagedVersion !== undefined &&
+    compareVersions(packagedVersion, installedVersion) <= 0
+  ) {
+    console.log(`Bootstrap skill already up to date (v${installedVersion}).`);
+    return;
+  }
+
+  const version = renderAndWriteBootstrapSkill(bootstrapDirPath, vars);
+  console.log(`Upgraded bootstrap skill v${installedVersion ?? "unknown"} -> v${version}.`);
+}
+
+/** `--remove-bootstrap`: delete the bootstrap skill directory — and nothing else. */
+function removeBootstrapSkill(bootstrapDirPath: string): void {
+  if (!existsSync(bootstrapDirPath)) {
+    console.log(`No bootstrap skill installed at ${bootstrapDirPath}; nothing to remove.`);
+    return;
+  }
+  rmSync(bootstrapDirPath, { recursive: true, force: true });
+  console.log(`Removed bootstrap skill: ${bootstrapDirPath}`);
+}
+
 export function runInit(args: string[]): void {
   const opts = parseArgs(args);
   const productName = opts.product ?? defaultProductName();
@@ -302,6 +399,15 @@ export function runInit(args: string[]): void {
   const bundlePath = resolve(cwd, bundleRelPath);
   const journalPath = resolve(cwd, journalRelPath);
   const skillsDirPath = resolve(cwd, skillsDirRelPath);
+  // The bootstrap skill installs beside the arkaik skill: skillsDirPath is
+  // the arkaik skill's OWN directory, so its sibling — not a child — is the
+  // bootstrap skill's home (.claude/skills/arkaik-bootstrap by default).
+  const bootstrapSkillDirPath = join(dirname(skillsDirPath), "arkaik-bootstrap");
+
+  if (opts.removeBootstrap) {
+    removeBootstrapSkill(bootstrapSkillDirPath);
+    return;
+  }
 
   const vars = {
     PRODUCT_NAME: productName,
@@ -312,6 +418,7 @@ export function runInit(args: string[]): void {
 
   if (opts.update) {
     updateSkill(skillsDirPath, vars, opts.noValues);
+    if (opts.bootstrap) updateBootstrapSkill(bootstrapSkillDirPath, vars);
     return;
   }
 
@@ -320,4 +427,5 @@ export function runInit(args: string[]): void {
   writeIfAbsent(join(dirname(bundlePath), "assets", ".gitkeep"), "", "assets dir");
   ensureGitAttributes(journalRelPath);
   installSkill(skillsDirPath, vars, opts.noValues);
+  if (opts.bootstrap) installBootstrapSkill(bootstrapSkillDirPath, vars);
 }
