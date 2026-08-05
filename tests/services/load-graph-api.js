@@ -65,6 +65,7 @@ function loadGraphApi() {
     ["@/lib/services/owners", "./owners.js"],
     ["@/lib/services/tokens", "./tokens.js"],
     ["@/lib/services/auth", "./auth.js"],
+    ["@/lib/services/graph/restore", "./restore.js"],
     ["@/lib/services/graph/store", "./store.js"],
     ["@/lib/services/graph/read-route", "./read-route.js"],
     ["@/auth", "./auth-module-stub.js"],
@@ -77,6 +78,13 @@ function loadGraphApi() {
   write("owners.js", transpile(src("lib", "services", "owners.ts"), "owners.ts", COMMON));
   write("tokens.js", transpile(src("lib", "services", "tokens.ts"), "tokens.ts", COMMON));
   write("auth.js", transpile(src("lib", "services", "auth.ts"), "auth.ts", COMMON));
+  // store.ts now imports from restore.ts (checkHostedEntityLimit,
+  // classifyIfMatch, computeBundleDelta for replaceProjectBundle — Task 11).
+  // The REAL module, transpiled, not a stub: restore.ts is pure and cheap
+  // (import "server-only" and a table lookup in limits.ts, both already
+  // loaded for real here), so stubbing it would only hide bugs, mirroring
+  // how limits.ts/owners.ts are already treated in this same COMMON table.
+  write("restore.js", transpile(src("lib", "services", "graph", "restore.ts"), "restore.ts", COMMON));
   write("store.js", transpile(src("lib", "services", "graph", "store.ts"), "store.ts", COMMON));
   write("read-route.js", transpile(src("lib", "services", "graph", "read-route.ts"), "read-route.ts", COMMON));
 
@@ -84,6 +92,7 @@ function loadGraphApi() {
     "projects-route.js": src("app", "api", "graph", "projects", "route.ts"),
     "project-route.js": src("app", "api", "graph", "projects", "[projectId]", "route.ts"),
     "mutations-route.js": src("app", "api", "graph", "projects", "[projectId]", "mutations", "route.ts"),
+    "bundle-route.js": src("app", "api", "graph", "projects", "[projectId]", "bundle", "route.ts"),
     "nodes-route.js": src("app", "api", "graph", "projects", "[projectId]", "nodes", "route.ts"),
     "edges-route.js": src("app", "api", "graph", "projects", "[projectId]", "edges", "route.ts"),
     "journal-route.js": src("app", "api", "graph", "projects", "[projectId]", "journal", "route.ts"),
@@ -110,6 +119,7 @@ function loadGraphApi() {
     GET_PROJECT: req("project-route.js").GET,
     DELETE_PROJECT: req("project-route.js").DELETE,
     MUTATE: req("mutations-route.js").POST,
+    PUT_BUNDLE: req("bundle-route.js").PUT,
     GET_NODES: req("nodes-route.js").GET,
     GET_EDGES: req("edges-route.js").GET,
     GET_JOURNAL: req("journal-route.js").GET,
