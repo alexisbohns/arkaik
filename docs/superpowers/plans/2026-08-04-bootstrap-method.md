@@ -67,11 +67,13 @@
 
 | File | Responsibility |
 |---|---|
-| `plugin/skills/arkaik-bootstrap/skill.md` | The judgment skill. |
-| `plugin/skills/arkaik-bootstrap/references/fragments.md` | Fragment contract for agents. |
-| `plugin/skills/arkaik-bootstrap/references/waves.md` | Wave catalog + reviewer checklists. |
+| `docs/arkaik-bootstrap-skill/skill.md` | The judgment skill (source — rendered into repos by `init --bootstrap`; **not** under `plugin/`, see Task 13). |
+| `docs/arkaik-bootstrap-skill/references/fragments.md` | Fragment contract for agents. |
+| `docs/arkaik-bootstrap-skill/references/waves.md` | Wave catalog + reviewer checklists. |
+| `packages/cli/build.js` | Copies the skill sources into `dist/assets/bootstrap-skill/` (the plan originally omitted this). |
 | `packages/cli/src/commands/init.ts` | `--bootstrap` / `--remove-bootstrap`. |
-| `docs/bootstrap.md` | The method, for humans. |
+| `tests/cli/init.test.js` | The install/remove contract (31 new checks). |
+| `docs/bootstrap.md` | The method, for humans (also linked from `README.md` + `docs/README.md`, and in the `/docs` app nav). |
 
 ---
 
@@ -3454,20 +3456,28 @@ suggested:
 
 # Part C — PR 3: the skill and its wiring
 
-### Task 13: The `arkaik-bootstrap` skill
+### Task 13: The `arkaik-bootstrap` skill — shipped, findings below
 
-**Files:**
-- Create: `plugin/skills/arkaik-bootstrap/skill.md`
-- Create: `plugin/skills/arkaik-bootstrap/references/fragments.md`
-- Create: `plugin/skills/arkaik-bootstrap/references/waves.md`
+**The decisive finding is architectural, caught before a line was written — the plan's file location was wrong:**
 
-- [ ] **Step 1: Read the sibling skill first**
+1. **`plugin/skills/arkaik-bootstrap/` contradicts both the repo's architecture and the spec's own decision.** Everything under `plugin/skills/` is generated output of `npm run generate` (CI diffs it for drift; plugin/README.md: nothing there is hand-edited), and a marketplace plugin ships its skills to every user *permanently* — exactly the "permanent token tax for a one-time job" that spec §4's on-demand decision exists to prevent. Shipped instead at **`docs/arkaik-bootstrap-skill/`**, mirroring `docs/arkaik-skill/`'s source layout and flowing through the maintenance skill's exact pipeline: `build.js` copies it to `dist/assets/bootstrap-skill/`, `init --bootstrap` renders it (Task 14). The plugin and `npm run generate` are untouched; the plan's own self-review rule — "inventing a second convention beside an existing one is worse than reading the existing one" — is what settled it.
+2. **The spec's sketched wave-3 fragment shape never shipped, and the reference doc now says so.** Spec §3 sketches `deliverables`/`releases`/`decisions` keys; `fragments.ts` reads exactly six arrays (`nodes`/`edges`/`add`/`update`/`retire`/`events`), merge ignores unknown keys — content under spec-era keys would be **silently lost** — and never branches on `wave`. `references/fragments.md` documents the shipped contract and calls the trap out artifact-neutrally (deliverables/releases are `events` entries; `DEC-` nodes ride `nodes`/`add`).
+3. **Fixture provenance beats invented examples, but the e2e file alone couldn't supply them.** The e2e fixtures are greenfield-wave-1 only; the brownfield (`add`, `update`+`retire`) and wave-3 examples come from `tests/cli/bootstrap-merge.test.js` — equally CI-run, each block attributed to its source line in the doc, and a scripted check verified all four examples value-**and key-order**-identical to their fixtures.
+4. **Two review rounds.** Spec review: compliant; independently confirmed fixture parity, `manifest.ts` vocabulary, both mandated wave gates, and the wave-3 claim at both ends. Quality review found two Important doc-precision defects — both the program's signature silently-wrong class: (a) "deep-merges" overstated `metadata` patching (`merge.ts` is a **one-level spread**: unnamed top-level keys survive, a named key is replaced whole — the doc now says to write the key's full value, all of `platformStatuses`, the whole `playlist`); (b) the born-live status-arc rule read two ways (write nothing vs invent a `to: live` transition) — now operational: a born-live node's arc is its synthesized `node.created` alone, agents write 0–2 transitions that actually happened, the final one landing on the snapshot status. Plus four minors: the same-`ts` `node.status_changed` refusal qualified to **unscoped** events (platform-scoped are exempt per `journal-merge.ts`'s `isOrderSensitive`); the wave-2 values-balance reviewer marked as a role, not a manifest unit; a playlist entry-shapes pointer to `../arkaik/references/schema.md`; the spec-keys warning phrased for foreign repos.
+5. **Noted, not built:** a mechanical fixture↔doc parity guard (the reviewer's recommendation). The inline provenance notes make drift findable; a structural check would make it impossible — worth considering if the examples ever churn.
 
-Read `plugin/skills/arkaik/skill.md` (and `docs/arkaik-skill/skill.md`) end to end before writing a line. The new skill must match its frontmatter shape, its template-parameter convention (`{{PRODUCT_NAME}}`, `{{BUNDLE_PATH}}`), its `version` stamp, and its voice. Do not restate what the maintenance skill already teaches — link to it.
+**Files (as shipped, one commit — `feat(skill): arkaik-bootstrap — the judgment half of the method`):**
+- Create: `docs/arkaik-bootstrap-skill/skill.md` (190 lines)
+- Create: `docs/arkaik-bootstrap-skill/references/fragments.md` (203 lines)
+- Create: `docs/arkaik-bootstrap-skill/references/waves.md` (120 lines)
 
-- [ ] **Step 2: Write `skill.md`**
+- [x] **Step 1: Read the sibling skill first**
 
-Create `plugin/skills/arkaik-bootstrap/skill.md` with frontmatter mirroring the sibling's shape (`name: arkaik-bootstrap`, `version: 1.0.0`, a `description` that fires on "map this repo", "bootstrap the map", "retro-populate", "backfill the map"), and a body covering exactly these sections:
+Read `docs/arkaik-skill/skill.md` end to end before writing a line. The new skill matches its frontmatter shape, its template-parameter convention (`{{PRODUCT_NAME}}`, `{{BUNDLE_PATH}}` — used only in `skill.md`; the references are copied verbatim by the installer, so they carry **no** `{{...}}` placeholders), its `version: 1.0.0` stamp (satisfying the installer's `^version:\s*(\S+)\s*$` regex), and its voice. Doctrine is linked, not restated — the installed sibling lives at `../arkaik/SKILL.md`, its values table at `../arkaik/references/values.md`, and the Values section says in one sentence that a `--no-values` install (no values.md) puts value mapping out of scope.
+
+- [x] **Step 2: Write `skill.md`**
+
+`docs/arkaik-bootstrap-skill/skill.md` with frontmatter as above (a `description` that fires on "map this repo", "bootstrap the map", "retro-populate", "backfill the map"), and a body covering exactly these sections:
 
 1. **When this skill applies** — a one-time onboarding run, greenfield or brownfield. Ongoing edits belong to the `arkaik` skill. Say so explicitly, and say that this skill can be removed after the run (`arkaik init --remove-bootstrap`).
 2. **The contract you work under** — you never read the bundle, you never write the bundle, you never write merge logic. You read a slice, you write a fragment. Include the two commands verbatim:
@@ -3484,164 +3494,95 @@ Create `plugin/skills/arkaik-bootstrap/skill.md` with frontmatter mirroring the 
 9. **Status arcs** — 1–3 events per node, ending at the node's snapshot status. Never invent a transition that did not happen.
 10. **Never delete** — `retire` with a reason; a human decides removal.
 
-- [ ] **Step 3: Write `references/fragments.md`**
+- [x] **Step 3: Write `references/fragments.md`**
 
-Document the fragment contract exactly as `packages/cli/src/lib/bootstrap/fragments.ts` defines it — the wave-1/2 shape (`nodes`/`edges`, or `add`/`update`/`retire`), the wave-3 shape (`events`), and `created_ts`. Include one complete, valid example of each, copied from the fixtures in `tests/cli/bootstrap-e2e.test.js` so the two cannot drift.
+Documents the fragment contract exactly as `packages/cli/src/lib/bootstrap/fragments.ts` defines it — the six keys, node/edge/update/retire field tables, `created_ts` (consumed at merge, never persisted; falls back to `project.created_at`), the `changed_ts` one-shot fallback, error behavior by unit, and the story-event payload table (field-for-field against `packages/schema/src/journal-events.ts`). One complete, valid example per shape, copied verbatim from CI-run fixtures (see finding 3) with inline provenance so drift is findable. Also documents `notes` as the one deliberately-ignored key — it exists for reviewers, per skill section 8.
 
-- [ ] **Step 4: Write `references/waves.md`**
+- [x] **Step 4: Write `references/waves.md`**
 
-The wave catalog (0 recon → 1 anatomy/reconcile → 2 acceptances+values → 3 story) and one reviewer checklist per wave. The wave-2 checklist must include the values-balance check: **if more than half the acceptances land on one value element, the wave is rejected and re-run** — an unchecked acceptance wave collapses into ~90% `simplifies`. The wave-1 brownfield checklist must include the churn guard: **a unit proposing retire/update on more than 20% of existing nodes stops for human review.**
+The wave catalog (0 recon → 1 anatomy/reconcile → 2 acceptances+values → 3 story) in `manifest.ts`'s real vocabulary (`w0-recon`, `w1-<area>`, `w2-<area>`, `w3-<era>`, `w3-decisions`, `w3-status-arcs`; statuses `pending`/`done`/`rejected`; `profile.json` constraints from `profile-validate.ts`, half-open era windows included) and one reviewer checklist per wave. The wave-2 checklist includes the values-balance check: **if more than half the acceptances land on one value element, the wave is rejected and re-run** — an unchecked acceptance wave collapses into ~90% `simplifies`. The wave-1 brownfield checklist includes the churn guard: **a unit proposing retire/update on more than 20% of existing nodes stops for human review.** Wave gates are phrased truthfully against shipped behavior: `merge` blocks only on errors, so *warning-clean* is the reviewer's gate, not the CLI's.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
-git add plugin/skills/arkaik-bootstrap
+git add docs/arkaik-bootstrap-skill
 git commit -m "feat(skill): arkaik-bootstrap — the judgment half of the method"
 ```
 
 ---
 
-### Task 14: `init --bootstrap` / `--remove-bootstrap`
+### Task 14: `init --bootstrap` / `--remove-bootstrap` — shipped, findings below
 
-**Files:**
-- Modify: `packages/cli/src/commands/init.ts`
-- Test: `tests/cli/init.test.js`
+**The reference test block this section used to carry was never executed; it hid a CI-only failure, and the Files list was missing a mandatory file:**
 
-- [ ] **Step 1: Write the failing test**
+1. **The draft test asserted `skill.md` lowercase on installed paths.** Installed skills are `SKILL.md` — on this Mac's case-insensitive filesystem the lowercase check would PASS and on CI's Linux it would FAIL, the exact works-locally-breaks-in-CI class this repo has already been burned by (see the Node-20 loader story in Part B). Every installed-path assertion now routes through a single uppercase constant, with a test comment documenting the trap.
+2. **`packages/cli/build.js` was missing from the Files list.** Without an asset-copy step, `dist/assets/bootstrap-skill/` never exists and `--bootstrap` dies at `readFileSync`. Shipped: `copyBootstrapSkillAssets()` mirroring `copySkillAssets()` — explicit per-file copies, same dist substructure, called beside it.
+3. **`DEFAULT_SKILLS_DIR` is `.claude/skills/arkaik` — the arkaik skill's *own* directory, not a skills root.** The draft's "adjust the path to the constant" note, taken literally, nests one skill inside another. Shipped: the bootstrap skill is the **sibling** — `join(dirname(skillsDirPath), "arkaik-bootstrap")` — so `--skills-dir custom/skills/arkaik` puts it at `custom/skills/arkaik-bootstrap` (test-covered, install and remove).
+4. **`--remove-bootstrap` is an early return** ahead of both the `--update` branch and the scaffold path — otherwise `init --remove-bootstrap` in a fresh repo would scaffold a bundle as a side effect of a *removal* (tested that it doesn't). Removal is idempotent (second run: notice + exit 0 — the plan asserted this but its draft test never covered it). `--bootstrap --remove-bootstrap` together fails loudly; `--update --remove-bootstrap` removes without updating, per the flag's "and do nothing else" help text.
+5. **Semantics mirror the maintenance skill per-flag, machinery reused not duplicated:** plain init installs-if-absent with a skip notice; `--update --bootstrap` is version-gated through the same `extractVersion`/`compareVersions`; rendering uses the same `vars` object and `renderTemplate` (SKILL.md rendered; references copied verbatim — placeholder-free by Task 13's contract).
+6. **Quality review (approved) recorded three parity observations, deliberately not "fixed":** the version-gate conditional is duplicated between the two skill pairs (rule of three — extract a helper when a third skill appears); a partial install (SKILL.md present, references deleted) isn't self-healed — exact parity with the maintenance skill, and bootstrap uniquely has a clean remedy (`--remove-bootstrap` then `--bootstrap`); a skills-dir path colliding with a *file* dies with a raw ENOTDIR like every pre-existing init path (a friendly-error wrapper would be a CLI-wide change, not this task's).
 
-Append to `tests/cli/init.test.js`, following the file's existing helper names and dir setup:
+**Files (as shipped, one commit — `feat(cli): init --bootstrap / --remove-bootstrap`):**
+- Modify: `packages/cli/src/commands/init.ts` (USAGE + header comment + both flags + `installBootstrapSkill`/`updateBootstrapSkill`/`removeBootstrapSkill`)
+- Modify: `packages/cli/build.js` (`copyBootstrapSkillAssets()`)
+- Test: `tests/cli/init.test.js` (31 new checks across four blocks, try/finally cleanup throughout)
 
-```js
-// --- bootstrap skill installs on demand and removes cleanly ---
-{
-  const dir = mkdtempSync(path.join(tmpdir(), "arkaik-init-bootstrap-"));
-  try {
-    const plain = runCli(["init", "--product", "Demo"], dir);
-    check("plain init exits 0", plain.status === 0, plain.stderr);
-    check(
-      "plain init does NOT install the bootstrap skill",
-      !existsSync(path.join(dir, ".claude", "skills", "arkaik-bootstrap")),
-      "bootstrap skill was installed without being asked for",
-    );
+- [x] **Step 1: Write the failing test**
 
-    const withBootstrap = runCli(["init", "--product", "Demo", "--bootstrap"], dir);
-    check("init --bootstrap exits 0", withBootstrap.status === 0, withBootstrap.stderr);
-    check(
-      "bootstrap skill installed",
-      existsSync(path.join(dir, ".claude", "skills", "arkaik-bootstrap", "skill.md")),
-      "skill.md missing",
-    );
-    check(
-      "bootstrap references installed",
-      existsSync(path.join(dir, ".claude", "skills", "arkaik-bootstrap", "references", "fragments.md")),
-      "references missing",
-    );
+The draft block's coverage shipped (plain init installs nothing; `--bootstrap` installs `SKILL.md` + both references; `--remove-bootstrap` removes the dir and the maintenance skill survives) with the case fix from finding 1, plus what the draft missed: rendered-`SKILL.md` checks (no leftover `{{...}}`, product name substituted, version stamp present and matching the authored skill), `references/waves.md` too, idempotent second removal with its notice, remove-only in a fresh dir (no `docs/arkaik/bundle.json` scaffolded, no maintenance skill), contradictory flags → non-zero + message, `--bootstrap` re-run byte-identity, `--update --bootstrap` downgrade→re-render, and the custom `--skills-dir` sibling install/remove pair.
 
-    const removed = runCli(["init", "--remove-bootstrap"], dir);
-    check("init --remove-bootstrap exits 0", removed.status === 0, removed.stderr);
-    check(
-      "bootstrap skill removed",
-      !existsSync(path.join(dir, ".claude", "skills", "arkaik-bootstrap")),
-      "skill dir still present",
-    );
-    check(
-      "the maintenance skill survives removal",
-      existsSync(path.join(dir, ".claude", "skills", "arkaik", "skill.md")),
-      "maintenance skill was collateral damage",
-    );
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
-```
+- [x] **Step 2: Run it to verify it fails**
 
-Adjust the skills path (`.claude/skills/...`) to whatever `init.ts`'s `DEFAULT_SKILLS_DIR` actually is — read it first and use that constant's value.
+RED confirmed: 67 passed / 18 failed, the `--bootstrap` failures carrying exactly `Unknown option: --bootstrap`, every pre-existing check still green. The spec reviewer later *reproduced* RED independently (checked out the parent's `init.ts`/`build.js` against the new tests, rebuilt, re-ran) rather than trusting the report.
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 3: Implement**
 
-Run: `npm run build -w arkaik && node tests/cli/init.test.js`
-Expected: FAIL — "Unknown option: --bootstrap".
+As the plan specified (USAGE wording, flag parsing beside `--update`/`--no-values`, `rmSync(recursive, force)` removal printing what it removed, idempotent notice + exit 0), with the corrections in findings 2–5 above: assets from `dist/assets/bootstrap-skill/` (via build.js) instead of `plugin/skills/**`, sibling install dir, early-return removal, per-flag mirrored semantics through the existing renderer/version machinery.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 4: Run the test to verify it passes**
 
-In `packages/cli/src/commands/init.ts`:
+GREEN: **90 passed, 0 failed** (85 on first pass; a review round added a missing failure-detail argument and the custom-`--skills-dir` removal coverage). Full `npm run test:cli` green across all suites; repo-wide `tsc --noEmit` clean; `npx eslint` 0 problems on `init.ts` (build.js and tests are eslint-ignored by config).
 
-1. Add `--bootstrap` and `--remove-bootstrap` to `USAGE`, described as *"install (or remove) the one-time bootstrap skill; it is not installed by default because it is a large skill for a one-time job."*
-2. Parse both flags in the existing flag loop, beside `--update` and `--no-values`.
-3. When `--bootstrap` is set, render `plugin/skills/arkaik-bootstrap/**` into the skills dir using the **same** renderer the maintenance skill already goes through — template substitution and version stamping included. Do not hand-roll a second copy path.
-4. When `--remove-bootstrap` is set, remove only the `arkaik-bootstrap` directory (`rmSync(..., { recursive: true, force: true })`) and print what was removed. Never touch the `arkaik` skill.
-5. `--remove-bootstrap` on a repo that has no bootstrap skill prints a notice and exits 0 — removal is idempotent.
-
-- [ ] **Step 4: Run the test to verify it passes**
-
-Run: `npm run build -w arkaik && node tests/cli/init.test.js`
-Expected: PASS, including the pre-existing checks in that file.
-
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
-git add packages/cli/src/commands/init.ts tests/cli/init.test.js
+git add packages/cli/src/commands/init.ts packages/cli/build.js tests/cli/init.test.js
 git commit -m "feat(cli): init --bootstrap / --remove-bootstrap"
 ```
 
 ---
 
-### Task 15: The human-facing method doc + PR 3
+### Task 15: The human-facing method doc + PR 3 — shipped, findings below
 
-**Files:**
-- Create: `docs/bootstrap.md`
-- Modify: `README.md`
+**The draft walkthrough survived contact with the shipped CLI with one honest correction and a handful of accuracy upgrades:**
 
-- [ ] **Step 1: Write `docs/bootstrap.md`**
+1. **`w1-home` became `w1-<area>`.** `planUnits` mints unit ids from whatever areas recon's `profile.json` declares — `home` is a plausible id, not a guaranteed one. The doc shows the pattern and says `plan` prints the real unit list (one `[status] wN id — title` line per unit).
+2. **The doc joined the in-app `/docs` nav, not just the README lists.** `lib/utils/docs.ts` auto-discovers markdown by directory walk and sorts by frontmatter `order`; `docs/bootstrap.md` carries `title`/`navTitle`/`order: 8`, seating it right after Hosted Projects (`order: 7`) — the same neighbor it follows in `README.md` and `docs/README.md` (that second index line is a small authorized addition beyond the plan).
+3. **Two mechanical corrections against shipped code:** `.arkaik/` gets gitignored by `corpus` *or* `plan`, whichever runs first (the spec credited corpus alone; both call `ensureGitignored`); and warning-clean is the **operator's** gate — `validate` exits 0 with warnings and `merge` blocks only on errors — stated the same way `waves.md` states it.
+4. **Review round (quality reviewer: approved after fixes):** the copy-pasteable run block's one destructive line gained its marker (`# hosted only — destructive; see below` — it was the only unmarked line in the block); the step-11 cross-reference became a real anchor link (resolves on GitHub; the in-app renderer mints no heading ids, matching `hosted-projects.md`'s five `#monorepos` links — if in-app anchors ever matter, one `rehype-slug` in `MarkdownContent.tsx` fixes every doc at once); the intro now gestures at cost alongside fit and risk; the `bootstrap index` bullet says agents run it themselves mid-unit.
+5. **Restore rails documented from `restore.ts`, not from memory:** backup to `docs/arkaik/.backups/<ts>-bundle.json` with read-back verification before anything is sent, `If-Match`/412 re-run-don't-retry, the history-shrink guard and `--allow-history-loss`, `--dry-run` running the server's real gates with no backup taken, and the undo path — `arkaik restore <backup-path>` is a genuine invocation (the positional bundle argument is real).
 
-A human's walkthrough of one run, in this order, with the exact commands:
+**Files (as shipped, one commit — `docs: the bootstrap method, for humans`):**
+- Create: `docs/bootstrap.md` (204 lines, `/docs`-app frontmatter included)
+- Modify: `README.md` (+1 line, after Hosted Projects, neighbor style: no trailing period)
+- Modify: `docs/README.md` (+1 line, after Hosted Projects, capitalized after the dash per that file's convention)
 
-```bash
-arkaik init --update                       # brownfield: get the current skill first
-arkaik init --bootstrap                    # install the one-time skill
-arkaik bootstrap corpus                    # mine PRs, docs, surfaces
-arkaik bootstrap plan                      # wave 0 only
-# ... recon agent writes .arkaik/bootstrap/profile.json ...
-arkaik bootstrap plan                      # expands waves 1-3
-arkaik bootstrap slice w1-home             # what one agent reads
-# ... agents write fragments ...
-arkaik bootstrap merge
-arkaik validate docs/arkaik/bundle.json    # the gate — warning-clean
-arkaik restore --dry-run                   # hosted only
-arkaik restore
-arkaik init --remove-bootstrap             # the skill has done its job
-```
+- [x] **Step 1: Write `docs/bootstrap.md`**
 
-Cover: the two modes; why the CLI owns determinism; the token model (slices, index, warm subagents, the `--issues` trade-off); the wave gates; that `.arkaik/` is scratch and gitignored; and that restore is destructive, `If-Match`-gated, and always backs up first.
+Shipped as drafted — same run order, same coverage list (two modes; why the CLI owns determinism; the token model with spec-§6 numbers only: ~30–60KB slices vs the ~1.5MB whole, ~6KB index vs the 164KB bundle, 15–30k tokens/unit for `--issues`, quarter-cost early gates; wave gates; `.arkaik/` scratch; destructive-restore rails) — with the corrections in findings 1–5. The brownfield `arkaik init --update`-first warning is doubly placed: a bolded paragraph directly under the intro (with the why: a stale skill predates the `acceptance`/`decision` species, so everything the run produces gets rejected at the gate) AND line 1 of the run block. The close says removal isn't precious — the skill is version-stamped and `--bootstrap` reinstalls it any time.
 
-**One thing this doc must say plainly:** the first run in a brownfield repo needs `arkaik init --update` *before* anything else, because repo-local validators reject the `acceptance` and `decision` species until the skill is current.
+- [x] **Step 2: Link it from the README**
 
-- [ ] **Step 2: Link it from the README**
+Both index lines added (see Files above), each matching its file's surrounding format exactly.
 
-Add one line to `README.md`'s docs list, matching the surrounding format:
+- [x] **Step 3: Full verification**
 
-```markdown
-- [Bootstrap](docs/bootstrap.md) — onboarding an existing repo onto Arkaik in one run.
-```
+All five gates green, exit 0 each: `test:bootstrap` (667 assertions), `test:graph-restore` (pure suite, no Postgres needed), `test:cli` (313 assertions, including the 90 init checks), `validate:seeds` (all three bundles VALID), `lint` (**0 errors**; 4 pre-existing warnings, all in app files this branch never touched).
 
-- [ ] **Step 3: Full verification**
-
-Run each and confirm each exits 0:
+- [x] **Step 4: Commit and open PR 3**
 
 ```bash
-npm run test:bootstrap
-npm run test:graph-restore
-npm run test:cli
-npm run validate:seeds
-npm run lint
-```
-
-`lint` may report pre-existing errors on `main`; the bar is no new error in a file this branch touched. If any command fails, fix it before opening the PR — do not open with a red gate.
-
-- [ ] **Step 4: Commit and open PR 3**
-
-```bash
-git add docs/bootstrap.md README.md
+git add docs/bootstrap.md README.md docs/README.md
 git commit -m "docs: the bootstrap method, for humans"
 git push
 ```
@@ -3669,7 +3610,11 @@ suggested:
 
 ## After this plan
 
+**All three parts have shipped** — Part A (#342), Part B (#343), Part C (this branch: Tasks 13–15, three commits). The plan is complete; what remains is the run itself.
+
 **The Pebbles run is not in this plan** — it is an execution of what this plan ships, and it gets its own run doc once PR 3 lands. Its sequence is fixed in the spec (§ 8): `arkaik init --update` first, then corpus over 324 merged PRs, recon confirming the ios/web platform axis, wave 1 reconciling the 173 existing nodes, waves 2 and 3, then `restore --dry-run` and `restore` to `prj_5dDiZc-G6lseF3cb`.
+
+**Found by PR 3's final review, deferred on scope:** the maintenance skill's "Bootstrap: Generating a Map from Scratch" section still calls full generation "the **only** sanctioned non-surgical case" and doesn't know the bootstrap skill exists — the one place the two installed skills can point an agent in opposite directions. The fix is one cross-pointer sentence in `docs/arkaik-skill/skill.md`, but that means a version bump to 3.2.0 plus `npm run generate` (plugin churn), so it belongs to the self-map dogfood follow-up below — landing before the Pebbles run, which is exactly the both-skills-installed scenario.
 
 **Two follow-ups deliberately left out:** the self-map gaining nodes for the bootstrap surface (dogfood, its own small PR), and a server-side pre-image table for restore (would need a manual prod migration; the client-side backup covers the realistic failure and costs nothing).
 
