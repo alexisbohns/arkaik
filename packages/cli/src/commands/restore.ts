@@ -1,5 +1,5 @@
 /**
- * `arkaik restore [--dry-run] [--api <base-url>] [path]`
+ * `arkaik restore [--dry-run] [--allow-history-loss] [--api <base-url>] [path]`
  *
  * Land a locally-built bundle — history included — on the hosted project
  * this repo is linked to (docs/superpowers/specs/2026-08-04-bootstrap-method-
@@ -22,11 +22,28 @@
  *    embedded), never from `GET .../{id}` (snapshot only, no journal) — a
  *    backup missing the journal is not a backup, since the journal is
  *    exactly what a restore overwrites;
+ *  - it lands at `docs/arkaik/.backups/`, anchored to the LINK FILE's
+ *    directory (the hosted project's identity), never to wherever `--path`
+ *    happened to point — two restores of two different local bundle files
+ *    into the SAME hosted project must not scatter their recovery trail
+ *    across two directories;
  *  - every way that export can fail — thrown network error, non-200, a body
  *    that isn't bundle-shaped, a bundle with no journal array — aborts the
  *    run with no PUT ever sent, not a warning;
  *  - an unwritable backup directory (permissions, a full disk, whatever)
  *    aborts the same way, for the same reason;
+ *  - once written, the backup is read back and re-parsed before the PUT is
+ *    ever sent — "the write call returned" is not the same claim as "the
+ *    bytes are on disk and parseable," and this is the one file that claim
+ *    has to be true for;
+ *  - a colliding timestamp can never silently replace an earlier backup
+ *    (`writeBackupFile` below) — an explicit, loud failure instead;
+ *  - the local bundle's OWN journal is checked against the hosted count
+ *    before anything is sent: an outbound journal shorter than the hosted
+ *    one looks exactly like an ordinary successful restore otherwise (empty
+ *    history is a valid, silent input on every other layer — see the guard
+ *    below) — `--allow-history-loss` is the deliberate escape hatch when a
+ *    shrink really is intended;
  *  - `--dry-run` skips the backup entirely and on purpose (see the `dryRun`
  *    branch below) — nothing destructive happens in that mode, so there is
  *    nothing to back up, and writing one anyway would clutter
@@ -39,15 +56,21 @@
  *     preview runs the identical validation/version-check/delta path a real
  *     write does (`classifyDryRun`, Task 11), so a stale version must
  *     produce the same 412 in preview as it would for real;
- *  3. real restore only: GET the export, write it to
- *     `docs/arkaik/.backups/<ts>-bundle.json`, and abort on ANY failure —
- *     see above;
+ *  3. real restore only: GET the export, check its journal isn't shorter
+ *     than the outbound one (unless `--allow-history-loss`), then write the
+ *     export to `docs/arkaik/.backups/<ts>-bundle.json` and abort on ANY
+ *     failure — see above;
  *  4. assemble the outbound bundle: the local `bundle.json` plus its journal,
  *     via `loadJournalEvents` (embedded journal wins over the `journal.jsonl`
- *     sidecar, the same precedence `arkaik validate` uses) — `bundle.json` on
- *     disk does NOT itself contain the journal in the common case, so
- *     skipping this step would silently send an empty history and destroy
- *     the hosted one;
+ *     sidecar, the same precedence `arkaik validate` uses — load-bearing here
+ *     for a reason beyond mere consistency: a BACKUP file always carries its
+ *     journal embedded, so if the sidecar ever won instead, running `arkaik
+ *     restore <backup-path>` to undo a bad restore would silently pair that
+ *     backup's old snapshot with whatever journal happens to sit in the
+ *     LIVE repo's `journal.jsonl` — the exact split-brain this precedence
+ *     exists to prevent) — `bundle.json` on disk does NOT itself contain the
+ *     journal in the common case, so skipping this step would silently send
+ *     an empty history and destroy the hosted one;
  *  5. PUT it. Real restore sends no `dryRun` query param at all (the
  *     server's `classifyDryRun` treats an absent param as "real write" —
  *     the correct default here, since this branch really is one); dry-run
@@ -62,15 +85,20 @@
  * message here deliberately does not say "retry"; it says re-run the command
  * to read the current state and decide again.
  *
+ * Every message that names a backup path also names the verb: `arkaik
+ * restore <backupPath>` genuinely undoes a restore (the backup's embedded
+ * journal wins on the way back in, per the precedence note above), so a
+ * caller in a panic gets a command, not just a filename to stare at.
+ *
  * The only network calls in this module go through the injected `httpClient`
  * seam (`../lib/providers`, the same seam `arkaik push`/`arkaik sync` use) —
  * never a bare `fetch` — so tests substitute a mock and never touch the real
  * network. `runRestore` is exported standalone (not just the CLI entry) so
  * tests can call it directly with a mock client, mirroring `runPush`.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { loadJournalEvents } from "../lib/journal-io";
+import { existsSync, linkSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { journalPathFor, loadJournalEvents } from "../lib/journal-io";
 import { DEFAULT_HTTP_CLIENT, type HttpClient } from "../lib/providers";
 
 const LINK_FILE = "docs/arkaik/arkaik.json";
@@ -84,7 +112,8 @@ const USAGE = `arkaik restore [options] [path]
 Replace the linked hosted project's bundle AND journal with a local bundle —
 the landing step for a bootstrapped map. Before sending anything, this
 exports the CURRENT hosted state (snapshot + journal) to
-docs/arkaik/.backups/<timestamp>-bundle.json and refuses to proceed if that
+docs/arkaik/.backups/<timestamp>-bundle.json (next to the link file — not
+wherever the local bundle happens to live) and refuses to proceed if that
 backup cannot be written — the server keeps no pre-image, so this file is the
 only way back if the restore turns out to be wrong.
 
@@ -95,14 +124,24 @@ Arguments:
                        in automatically.
 
 Options:
-  --dry-run          Ask the server what this restore WOULD do and print the
-                      delta. Sends nothing destructive and takes no backup
-                      (there is nothing to protect against in this mode).
-  --api <base-url>   Override the remote from docs/arkaik/arkaik.json.
-  -h, --help         Show this help.
+  --dry-run             Ask the server what this restore WOULD do and print
+                        the delta. Sends nothing destructive and takes no
+                        backup (there is nothing to protect against in this
+                        mode).
+  --allow-history-loss  Proceed even though the outbound journal has fewer
+                        events than the hosted one currently holds. Without
+                        this flag, that shrink refuses outright — it usually
+                        means a missing/gitignored journal.jsonl or a bundle
+                        from the wrong directory, not an intended history
+                        rewrite.
+  --api <base-url>      Override the remote from docs/arkaik/arkaik.json
+                        (also overridable with $ARKAIK_URL).
+  -h, --help            Show this help.
 
 Environment:
-  ARKAIK_TOKEN       Required. Create one at <origin>/settings/tokens.`;
+  ARKAIK_TOKEN       Required. Create one at <origin>/settings/tokens.
+  ARKAIK_URL         Optional. Overrides the link file's remote (same as
+                     \`arkaik link\`); --api still wins over this.`;
 
 function fail(message: string): never {
   console.error(message);
@@ -114,11 +153,13 @@ export interface RunRestoreOptions {
   path?: string;
   /** Preview via the server's dry-run mode instead of writing for real. Default: false. */
   dryRun?: boolean;
-  /** Hosted API base URL, overriding the link file's `remote`. */
+  /** Proceed even when the outbound journal is shorter than the hosted one. Default: false. */
+  allowHistoryLoss?: boolean;
+  /** Hosted API base URL, overriding $ARKAIK_URL and the link file's `remote`. */
   apiBase?: string;
   /** Base directory the link file / bundle path resolve against (default: process.cwd()). */
   cwd?: string;
-  /** Environment ARKAIK_TOKEN is read from (default: process.env). */
+  /** Environment ARKAIK_TOKEN / ARKAIK_URL are read from (default: process.env). */
   env?: Record<string, string | undefined>;
   /** The HTTP seam every request goes through (default: real fetch). Tests inject a mock. */
   httpClient?: HttpClient;
@@ -128,7 +169,7 @@ export interface RunRestoreOptions {
 export type DeltaSummary = Record<string, number | undefined>;
 
 export interface RunRestoreResult {
-  /** False only for a fatal PRE-FLIGHT error (bad link file, missing token, unreadable bundle, or the mandatory backup step failing) — no PUT was ever attempted. */
+  /** False only for a fatal PRE-FLIGHT error (bad link file, missing token, unreadable bundle, a would-be history loss, or the mandatory backup step failing) — no PUT was ever attempted. */
   ok: boolean;
   /** Set when `ok` is false. */
   fatal?: string;
@@ -172,13 +213,25 @@ function describeVersionReadFailure(status: number, baseUrl: string, projectId: 
 }
 
 /**
+ * The recovery instruction every message naming a backup path should carry —
+ * not just the filename, but the verb: `arkaik restore <backupPath>`
+ * genuinely restores that snapshot (its embedded journal wins on the way
+ * back in — see the module doc comment's precedence note). Centralized so
+ * every call site says the same thing, in the same words.
+ */
+function backupNoteFor(backupPath: string | undefined): string {
+  if (!backupPath) return "";
+  return ` Your pre-restore backup is at ${backupPath}. Undo this restore with: arkaik restore ${backupPath}`;
+}
+
+/**
  * Interpret the PUT response — success or one of the seven documented
  * failure statuses — into a `RunRestoreResult`. Every failure gets its own
  * actionable message; the real-restore ones (backupPath set) always name the
- * backup, since that is the recovery instruction. 428/400 should never
- * actually happen from this CLI (it always sends a valid `If-Match` and
- * `?dryRun` token), but are still handled distinctly rather than falling
- * into a generic branch, in case a bug ever does produce one.
+ * backup AND the undo command, since that is the recovery instruction. 428/
+ * 400 should never actually happen from this CLI (it always sends a valid
+ * `If-Match` and `?dryRun` token), but are still handled distinctly rather
+ * than falling into a generic branch, in case a bug ever does produce one.
  */
 async function interpretPutResponse(
   res: Response,
@@ -192,7 +245,7 @@ async function interpretPutResponse(
     requestSent: true,
     status: res.status,
   };
-  const backupNote = ctx.backupPath ? ` Your pre-restore backup is at ${ctx.backupPath}.` : "";
+  const backupNote = backupNoteFor(ctx.backupPath);
 
   if (res.status === 200) {
     const body = await safeJson(res);
@@ -207,7 +260,7 @@ async function interpretPutResponse(
 
   switch (res.status) {
     case 404:
-      return { ...base, errorMessage: `Project not found (or not owned by this token). Nothing was sent.${backupNote}` };
+      return { ...base, errorMessage: `Project not found (or not owned by this token). Nothing was written.${backupNote}` };
     case 428:
       return {
         ...base,
@@ -263,10 +316,43 @@ async function interpretPutResponse(
   }
 }
 
+/**
+ * Write the pre-restore backup with two guarantees `bootstrap.ts`'s sibling
+ * `writeFileAtomic` (temp file + rename) gives `bundle.json`/`journal.jsonl`,
+ * PLUS one more this file needs that one doesn't: a colliding timestamp must
+ * never silently replace an earlier backup. Two restores landing on the
+ * identical millisecond stamp inside one process is remote (a dedicated test
+ * forces it by freezing the clock); two SEPARATE real restores colliding
+ * needs two independent round-trips inside the same millisecond, rarer
+ * still — but the failure mode if it ever happened, a backup silently
+ * overwritten by a different one, is exactly what this file exists to make
+ * impossible, not merely unlikely.
+ *
+ * Technique: write to a same-directory temp file (so nothing at `filePath`
+ * itself is ever a truncated partial write, even if this process is killed
+ * mid-write), then `linkSync` the temp file into place — a hard link FAILS
+ * with EEXIST if `filePath` already exists, giving atomicity and exclusivity
+ * together rather than trading one for the other (a bare `writeFileSync(...,
+ * { flag: "wx" })` gets exclusivity alone, with no protection against a
+ * truncated file at the real path if the process dies mid-write). The temp
+ * file is removed either way in `finally` — once linked, it was only ever a
+ * staging area; on a collision, nothing should linger behind either.
+ */
+function writeBackupFile(filePath: string, content: string): void {
+  const tmpPath = `${filePath}.tmp-${process.pid}`;
+  writeFileSync(tmpPath, content);
+  try {
+    linkSync(tmpPath, filePath);
+  } finally {
+    unlinkSync(tmpPath);
+  }
+}
+
 export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRestoreResult> {
   const cwd = options.cwd ?? process.cwd();
   const env = options.env ?? process.env;
   const dryRun = options.dryRun ?? false;
+  const allowHistoryLoss = options.allowHistoryLoss ?? false;
   const httpClient = options.httpClient ?? DEFAULT_HTTP_CLIENT;
 
   const linkPath = join(cwd, LINK_FILE);
@@ -281,7 +367,16 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
   }
   const projectId = link.project_id;
   if (!projectId) return fatalResult(dryRun, `${LINK_FILE} has no project_id. Run \`arkaik link --project <id>\`.`);
-  const baseUrl = (options.apiBase ?? link.remote ?? DEFAULT_API_BASE).replace(/\/+$/, "");
+  // Precedence: --api flag > $ARKAIK_URL > the link file's own `remote` >
+  // the public default — same order packages/mcp/src/config.ts's
+  // resolveRemoteConfig uses for the same two-source combination, and the
+  // same env var `arkaik link` itself honors. Env beats the persisted link
+  // file deliberately: a user who exports ARKAIK_URL for `arkaik link
+  // --list` and then runs `arkaik restore` in the same shell must land on
+  // the SAME remote, not silently fall back to whatever an earlier `arkaik
+  // link` run happened to persist.
+  const baseUrl = (options.apiBase ?? env.ARKAIK_URL ?? link.remote ?? DEFAULT_API_BASE).replace(/\/+$/, "");
+  const encodedProjectId = encodeURIComponent(projectId);
 
   const token = env.ARKAIK_TOKEN;
   if (!token) return fatalResult(dryRun, `ARKAIK_TOKEN is not set. Create a token at ${baseUrl}/settings/tokens and export it.`);
@@ -307,7 +402,7 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
   // see the module doc comment for why dry-run doesn't get to skip this.
   let version: string;
   try {
-    const projectRes = await httpClient(`${baseUrl}/api/graph/projects/${projectId}`, { headers });
+    const projectRes = await httpClient(`${baseUrl}/api/graph/projects/${encodedProjectId}`, { headers });
     if (!projectRes.ok) {
       return fatalResult(dryRun, describeVersionReadFailure(projectRes.status, baseUrl, projectId));
     }
@@ -332,7 +427,7 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
     // accidentally take the destructive branch.
     let res: Response;
     try {
-      res = await httpClient(`${baseUrl}/api/graph/projects/${projectId}/bundle?dryRun=1`, {
+      res = await httpClient(`${baseUrl}/api/graph/projects/${encodedProjectId}/bundle?dryRun=1`, {
         method: "PUT",
         headers: putHeaders,
         body: putBody,
@@ -350,7 +445,7 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
   // the run rather than warn and continue.
   let exported: unknown;
   try {
-    const exportRes = await httpClient(`${baseUrl}/api/graph/projects/${projectId}/export`, { headers });
+    const exportRes = await httpClient(`${baseUrl}/api/graph/projects/${encodedProjectId}/export`, { headers });
     if (!exportRes.ok) {
       return fatalResult(dryRun, `Could not export the current hosted state (${exportRes.status}). Refusing to restore without a backup. Nothing was sent.`);
     }
@@ -371,12 +466,45 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
     );
   }
 
-  const backupDir = join(dirname(bundlePath), ".backups");
+  // ── History-loss guard ───────────────────────────────────────────────────
+  // An outbound journal SHORTER than the hosted one silently wipes history
+  // and reads as an ordinary successful restore everywhere else:
+  // `loadJournalEvents` returns `[]` by design when there is no sidecar and
+  // no embedded journal, nothing downstream objects to an empty journal, and
+  // the collapse shows up only as `events N -> 0` in the printed delta —
+  // formatted identically to the two unremarkable lines above it. Ordinary
+  // triggers: `journal.jsonl` uncommitted or gitignored, `arkaik restore
+  // <path>` pointing at a bundle in a different directory than its sidecar,
+  // or a fresh clone run before `merge`. `exportedBundle.journal` is already
+  // a validated array from the check just above, so no extra round-trip is
+  // needed to compare against it.
+  const hostedEventCount = exportedBundle.journal.length;
+  if (journalEvents.length < hostedEventCount && !allowHistoryLoss) {
+    return fatalResult(
+      dryRun,
+      `This restore would replace ${hostedEventCount} hosted journal events with ${journalEvents.length}. ` +
+        `Nothing was sent. If that is intended, re-run with --allow-history-loss; ` +
+        `otherwise check that ${journalPathFor(bundlePath)} exists and is current.`,
+    );
+  }
+
+  // Anchored to the LINK FILE's directory, not `bundlePath`'s — the backup
+  // is a pre-image of the HOSTED project (identified by the link file), not
+  // of wherever the local input file happens to live. See the module doc
+  // comment.
+  const backupDir = join(cwd, "docs", "arkaik", ".backups");
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const backupPath = join(backupDir, `${stamp}-bundle.json`);
+  const backupContent = `${JSON.stringify(exported, null, 2)}\n`;
   try {
     mkdirSync(backupDir, { recursive: true });
-    writeFileSync(backupPath, `${JSON.stringify(exported, null, 2)}\n`);
+    writeBackupFile(backupPath, backupContent);
+    // Verify: a write call returning successfully only means the OS
+    // accepted it, not that the bytes are actually readable back — this is
+    // "the only recovery path that exists" (module doc comment), so prove
+    // it before trusting it, rather than assuming a successful
+    // `writeFileSync` always leaves usable JSON on disk.
+    JSON.parse(readFileSync(backupPath, "utf8"));
   } catch (e) {
     return fatalResult(
       dryRun,
@@ -388,7 +516,7 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
   // ── The one destructive request this command ever sends ────────────────
   let res: Response;
   try {
-    res = await httpClient(`${baseUrl}/api/graph/projects/${projectId}/bundle`, {
+    res = await httpClient(`${baseUrl}/api/graph/projects/${encodedProjectId}/bundle`, {
       method: "PUT",
       headers: putHeaders,
       body: putBody,
@@ -400,7 +528,7 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
       bundlePath,
       backupPath,
       requestSent: false,
-      errorMessage: `Network error: ${(e as Error).message}. Your pre-restore backup is at ${backupPath} — nothing was sent.`,
+      errorMessage: `Network error: ${(e as Error).message}. Nothing was sent.${backupNoteFor(backupPath)}`,
     };
   }
 
@@ -431,7 +559,15 @@ function printDelta(delta: DeltaSummary | undefined): void {
   );
 }
 
-function reportRestore(result: RunRestoreResult): never {
+/**
+ * Print the result and set the process exit code. Exported (not just used by
+ * `runRestoreCli`) so tests can drive it directly with a mock console — safe
+ * to call in-process on a SUCCESS result specifically, since that path uses
+ * `process.exitCode` rather than `process.exit()` (see the success branch
+ * below); the failure branches still call `process.exit(1)`, unchanged, and
+ * would terminate a test process the same way they always have.
+ */
+export function reportRestore(result: RunRestoreResult): void {
   if (!result.ok) fail(`FATAL: ${result.fatal}`);
 
   if (result.backupPath) {
@@ -447,12 +583,21 @@ function reportRestore(result: RunRestoreResult): never {
     if (result.dryRun) {
       console.log("[dry-run] server preview — nothing was written:");
       printDelta(result.delta);
-      console.log("Re-run without --dry-run to apply.");
+      console.log("Re-run without --dry-run to apply — that run takes the backup.");
     } else {
       console.log(`Restored. New version ${result.version}.`);
       printDelta(result.delta);
+      if (result.backupPath) {
+        console.log(`  Undo this restore with: arkaik restore ${result.backupPath}`);
+      }
     }
-    process.exit(0);
+    // process.exitCode (not process.exit(0)): the lines just printed are the
+    // only recovery instruction that exists for this run, and process.exit()
+    // can truncate buffered stdout before it flushes — letting the event
+    // loop drain naturally and exiting via the code instead removes that
+    // risk for the one line that must never be lost.
+    process.exitCode = 0;
+    return;
   }
 
   console.error(result.errorMessage ?? `Restore failed (${result.status}).`);
@@ -464,6 +609,7 @@ function reportRestore(result: RunRestoreResult): never {
 
 export function runRestoreCli(argv: string[]): void {
   let dryRun = false;
+  let allowHistoryLoss = false;
   let apiBase: string | undefined;
   const positionals: string[] = [];
 
@@ -471,9 +617,12 @@ export function runRestoreCli(argv: string[]): void {
     const arg = argv[i];
     if (arg === "-h" || arg === "--help") {
       console.log(USAGE);
-      process.exit(0);
+      process.exitCode = 0;
+      return;
     } else if (arg === "--dry-run") {
       dryRun = true;
+    } else if (arg === "--allow-history-loss") {
+      allowHistoryLoss = true;
     } else if (arg === "--api") {
       const value = argv[++i];
       if (value === undefined) fail(`Missing value for --api\n\n${USAGE}`);
@@ -487,7 +636,7 @@ export function runRestoreCli(argv: string[]): void {
 
   if (positionals.length > 1) fail(`Unexpected argument(s): ${positionals.slice(1).join(" ")}\n\n${USAGE}`);
 
-  runRestore({ path: positionals[0], dryRun, apiBase })
+  runRestore({ path: positionals[0], dryRun, allowHistoryLoss, apiBase })
     .then((result) => reportRestore(result))
     .catch((e: unknown) => fail(`FATAL: ${(e as Error).message}`));
 }

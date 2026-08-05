@@ -213,9 +213,18 @@ Levers, in descending order of savings:
 - One transaction: replace snapshot + journal, bump `version`
 
 `arkaik restore` exports the current hosted state to
-`docs/arkaik/.backups/<ts>-bundle.json` **before** sending, and refuses to
-proceed if it cannot write that file. `--dry-run` prints node / edge / event
-deltas without sending.
+`docs/arkaik/.backups/<ts>-bundle.json` — anchored to the link file's
+directory, not wherever the local bundle argument happens to live — **before**
+sending, and refuses to proceed if it cannot write that file (including a
+read-back-and-parse check after the write, and exclusivity against a
+colliding timestamp). It also refuses if the outbound journal is shorter than
+the hosted one (`--allow-history-loss` overrides), since an empty or
+truncated journal would otherwise pass every other check and read as an
+ordinary successful restore. `--dry-run` sends the identical request with
+`?dryRun=1` — the server runs the same validation/version/tier gates a real
+write would, so the preview is exact, not a local approximation — and prints
+the returned node / edge / event deltas; nothing is written in this mode, and
+no backup is taken (there is nothing to protect against).
 
 **Stated trade-off.** A server-side pre-image would need a new table, hence a
 migration, hence a *manual* production step — a known foot-gun in this repo.
