@@ -1333,4 +1333,40 @@ const BASE = {
   }
 }
 
+// --- sixth gap found while reviewing this task's own five: a dangling
+// reconcile op — `update`/`retire` targeting a node id no fragment ever
+// created — is the reconcile-side mirror of the orphan-edge case above, and
+// nothing in this file (Task 6's or Task 7's own additions) exercised either
+// path before this block. Not one of the plan's five named cases, but
+// squarely inside this task's own brief ("collisions, orphan edges,
+// reconcile").
+{
+  const dir = scaffold({
+    "w1-a": { unit: "w1-a", wave: 1, update: [{ id: "V-nonexistent", patch: { status: "live" } }] },
+  }, BASE);
+  try {
+    const res = runCli(["bootstrap", "merge"], dir);
+    check("update targeting an unknown node id exits 1", res.status === 1, String(res.status));
+    check("the failure names the missing node", res.stderr.includes("V-nonexistent"), res.stderr);
+    const bundleAfter = readFileSync(path.join(dir, "docs", "arkaik", "bundle.json"), "utf8");
+    check("a refused merge writes nothing — the bundle is untouched", bundleAfter === JSON.stringify(BASE), bundleAfter);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+{
+  const dir = scaffold({
+    "w1-a": { unit: "w1-a", wave: 1, retire: [{ id: "V-nonexistent", reason: "cleanup" }] },
+  }, BASE);
+  try {
+    const res = runCli(["bootstrap", "merge"], dir);
+    check("retire targeting an unknown node id exits 1", res.status === 1, String(res.status));
+    check("the failure names the missing node", res.stderr.includes("V-nonexistent"), res.stderr);
+    const bundleAfter = readFileSync(path.join(dir, "docs", "arkaik", "bundle.json"), "utf8");
+    check("a refused merge writes nothing — the bundle is untouched", bundleAfter === JSON.stringify(BASE), bundleAfter);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 process.exit(failures === 0 ? 0 : 1);
