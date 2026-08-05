@@ -445,6 +445,18 @@ async function main() {
     // the version bump, owner scoping, dry-run writing nothing — gets
     // exercised at all. This machine has no local Postgres to run this file,
     // so these checks are verified in CI's Postgres-backed `services` job.
+    // NOTE — project-count boundary: userA already owns 2 active projects at
+    // this point (`created` and `firstImport`, both created earlier in this
+    // file and neither archived yet — the Archive section below runs AFTER
+    // this whole block). The synk tier caps at 3 projects, so the CREATE_PROJECT
+    // call immediately below (`existing=2, +1=3, 3>3` is false) lands EXACTLY
+    // on that cap, with zero headroom left for userA. This is deliberate and
+    // currently harmless, but fragile: adding one more userA project anywhere
+    // earlier in this file would flip this from "succeeds at the boundary" to
+    // "fails the project-count limit" and break this section for a reason
+    // that has nothing to do with what it's testing. If that happens, either
+    // archive one of the earlier projects first or create this fixture under
+    // a session with headroom.
     setSession(sessionFor(userA));
     const restoreSeed = bundle([node("V-restore-old", "view")]);
     restoreSeed.journal = [
@@ -506,6 +518,75 @@ async function main() {
     const otherPut = await api.PUT_BUNDLE(putReq(restoreBundle, { "if-match": '"1"' }), ctx(restoreId));
     check("another owner cannot restore (404)", otherPut.status === 404, String(otherPut.status));
     setSession(sessionFor(userA));
+
+    // Scope enforcement: a graph:read token cannot destroy. This is the guard
+    // standing between a read-only agent credential and wholesale replacement
+    // — the one test I'd least want missing on the destructive verb.
+    const readOnlyPut = await api.PUT_BUNDLE(
+      putReq(restoreBundle, { "if-match": '"1"', ...bearer(readOnly.plaintext) }),
+      ctx(restoreId),
+    );
+    check(
+      "a graph:read token cannot PUT_BUNDLE (403 insufficient_scope)",
+      readOnlyPut.status === 403,
+      String(readOnlyPut.status),
+    );
+
+    // dryRun fails CLOSED: an unrecognized token is refused (400), never
+    // silently treated as a real write. classifyDryRun's own suite
+    // (tests/services/graph-restore.test.js) covers every token; this proves
+    // the ROUTE actually wires it in rather than reimplementing the check.
+    const badDryRun = await api.PUT_BUNDLE(
+      new Request(`${ORIGIN}/api/graph/projects/${restoreId}/bundle?dryRun=yes`, {
+        method: "PUT",
+        headers: { "content-type": "application/json", "if-match": '"1"' },
+        body: JSON.stringify({ bundle: restoreBundle }),
+      }),
+      ctx(restoreId),
+    );
+    check(
+      "an unrecognized ?dryRun value is refused with 400, not treated as a write",
+      badDryRun.status === 400,
+      String(badDryRun.status),
+    );
+
+    // Payload cap: mirrors POST /api/graph/projects — an oversized body is
+    // refused before it is ever JSON.parsed, and journal-carrying restore
+    // bodies are the largest this API accepts, so this is the route that
+    // needed the cap most, not least.
+    const oversized = await api.PUT_BUNDLE(
+      new Request(`${ORIGIN}/api/graph/projects/${restoreId}/bundle`, {
+        method: "PUT",
+        headers: { "content-type": "application/json", "if-match": '"1"' },
+        body: JSON.stringify({ bundle: restoreBundle, padding: "x".repeat(6 * 1024 * 1024) }),
+      }),
+      ctx(restoreId),
+    );
+    check("an oversized body is refused with 413 before JSON.parse", oversized.status === 413, String(oversized.status));
+
+    // A BARE ?dryRun (no `=value` at all) also means preview, not a real
+    // write — the empty-string case classifyDryRun's own suite covers in
+    // isolation; this is the route's wiring of it.
+    const bareDryRun = await api.PUT_BUNDLE(
+      new Request(`${ORIGIN}/api/graph/projects/${restoreId}/bundle?dryRun`, {
+        method: "PUT",
+        headers: { "content-type": "application/json", "if-match": '"1"' },
+        body: JSON.stringify({ bundle: restoreBundle }),
+      }),
+      ctx(restoreId),
+    );
+    const bareDryRunBody = await bareDryRun.json();
+    check(
+      "a bare ?dryRun (no value) is a preview, not a write",
+      bareDryRun.status === 200 && bareDryRunBody.dryRun === true,
+      `${bareDryRun.status} ${JSON.stringify(bareDryRunBody)}`,
+    );
+    const afterBareDryRun = await (await api.GET_PROJECT(new Request(ORIGIN), ctx(restoreId))).json();
+    check(
+      "the bare-?dryRun call wrote nothing either — version still 1",
+      afterBareDryRun.version === "1",
+      afterBareDryRun.version,
+    );
 
     // Dry run: matching If-Match, ?dryRun=1 -> the real delta, no write
     const dryReq = new Request(`${ORIGIN}/api/graph/projects/${restoreId}/bundle?dryRun=1`, {
@@ -580,24 +661,30 @@ async function main() {
       JSON.stringify(restoreRow.rows[0]),
     );
 
-    // A second restore re-using the now-superseded version fails with 412 —
-    // proves the lock+version dance actually moved, not just the first call.
+    // A second restore re-using the now-superseded version fails with 412.
+    // This test is SEQUENTIAL, not concurrent, so it proves the version bump
+    // from the real restore above actually PERSISTED and is visible to a
+    // later, separate request — not that two transactions racing each other
+    // were serialized by the row lock, which no sequential test can show.
     const secondStale = await api.PUT_BUNDLE(putReq(restoreBundle, { "if-match": '"1"' }), ctx(restoreId));
     check("re-using a since-superseded version now gets 412", secondStale.status === 412, String(secondStale.status));
 
-    // Entity limit: a bundle over the HOSTED tier cap is refused (413) and
-    // writes nothing — checkHostedEntityLimit gates before the transaction
-    // even opens, so there is no partial write to check for.
+    // Entity limit: a bundle over the HOSTED tier cap is refused (403 — the
+    // same code POST /api/graph/projects and POST .../mutations use for a
+    // tier-limit refusal; 413 on this route is reserved for the payload-size
+    // cap tested above) and writes nothing — checkHostedEntityLimit gates
+    // before the transaction even opens, so there is no partial write to
+    // check for.
     await client.query(`update users set tier = 'synk' where id = $1`, [userA]);
     const overCapBundle = bundle(Array.from({ length: 5001 }, (_, i) => node(`V-restore-bulk${i}`, "view")));
     const overCap = await api.PUT_BUNDLE(putReq(overCapBundle, { "if-match": '"2"' }), ctx(restoreId));
     const overCapBody = await overCap.json();
     check(
-      "a bundle over the hosted entity cap is refused with 413",
-      overCap.status === 413,
+      "a bundle over the hosted entity cap is refused with 403, not 413",
+      overCap.status === 403,
       `${overCap.status} ${JSON.stringify(overCapBody)}`,
     );
-    check("the 413 reports the HOSTED limit (5000), not the Synk backup limit (250)", overCapBody.limit === 5000, JSON.stringify(overCapBody));
+    check("the 403 reports the HOSTED limit (5000), not the Synk backup limit (250)", overCapBody.limit === 5000, JSON.stringify(overCapBody));
     const afterOverCap = await (await api.GET_PROJECT(new Request(ORIGIN), ctx(restoreId))).json();
     check("the over-cap attempt wrote nothing — version is still 2", afterOverCap.version === "2", afterOverCap.version);
 

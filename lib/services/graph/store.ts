@@ -9,6 +9,7 @@ import {
   STATUS_VOCABULARY_VERSION,
   applyOps,
   migrateStatusVocabulary,
+  orderEvents,
   parseBundle,
   toJournalEvents,
   validateBundle,
@@ -50,6 +51,16 @@ import { getHostedLimitsForTier } from "@/lib/services/limits";
  * correctness (the lock covers that) but lets a client detect that the project
  * changed under it. `expectedVersion` is optional — omit it for "apply
  * regardless", pass it for "only if nothing moved".
+ *
+ * ── The one exception to "append-only" ──────────────────────────────────────
+ * Steps 1–4 above never delete a `graph_events` row — the mutation path only
+ * ever adds. `replaceProjectBundle`, below, is the one verb in this file (and
+ * the one destructive verb in the graph API) that deletes from the journal at
+ * all: bootstrap's whole-bundle restore replaces a project's entire event log
+ * wholesale, because mined history has no other landing path onto a hosted
+ * project (docs/superpowers/specs/2026-08-04-bootstrap-method-design.md § 7).
+ * See that function's own doc comment, and `replaceJournalRows`'s, for why
+ * that is safe here and nowhere else in this file.
  *
  * ── Authorization ───────────────────────────────────────────────────────────
  * Every statement filters on `owner_id = any(ownerIds)`. A project belonging to
@@ -262,13 +273,20 @@ export async function exportProject(
 
 // ---------------------------------------------------------------------------
 // Journal (graph_events) — read/write helpers shared by createProject (fresh
-// import) and replaceProjectBundle (wholesale replace), so there is exactly
-// one writer for this table rather than two that could quietly drift apart.
+// import) and replaceProjectBundle (wholesale replace): one writer for
+// CLIENT-SUPPLIED journals (import and restore), so those two paths cannot
+// become two subtly different insert loops over time. `applyMutation` also
+// inserts into this table, but it is a THIRD, separate writer, not a second
+// copy of this one: it derives its own events from `applyOps` rather than
+// accepting a caller-supplied array, and — deliberately — has no `on
+// conflict` clause at all, so a duplicate id there is a genuine bug and
+// throws, where a client-supplied journal (which arrives already-written,
+// possibly re-imported, and cannot be trusted the same way) tolerates it.
 // ---------------------------------------------------------------------------
 
 /**
  * Replace a project's ENTIRE journal: delete every existing row, then insert
- * the given events in array order.
+ * the given events, sorted, as one writer for both callers below.
  *
  * Used by two callers with different starting states, on purpose: a fresh
  * project from {@link createProject} has no existing rows, so the `delete`
@@ -281,10 +299,13 @@ export async function exportProject(
  * Insertion ORDER is what fixes the read order: `seq` is a `bigserial` with
  * no per-project reset (db/migrations/008_graph_projects.sql — it is a
  * single global sequence shared by every project's rows), so `order by seq
- * asc` reads back events in whatever order they were INSERTED, not some
- * property of their content. The caller (bundle validation for create; the
- * CLI's `merge`, which sorts by `ts`, for restore) is responsible for the
- * array already being in the right order before it reaches here.
+ * asc` reads back events in whatever order they were INSERTED. Rather than
+ * resting entirely on an unenforced caller promise across an HTTP boundary
+ * (bundle validation for create; the CLI's `merge`, which sorts by `ts`, for
+ * restore), `events` is run through `@arkaik/schema`'s own {@link orderEvents}
+ * (sorts by `ts`, tiebreak `id`) here, server-side, before the insert loop —
+ * free to call, and it means an unsorted inbound journal cannot persist
+ * unsorted just because one caller forgot to sort it first.
  *
  * `on conflict (project_id, id) do nothing`, matching the behavior this loop
  * already had inline in `createProject`: two events sharing an id within the
@@ -299,7 +320,7 @@ async function replaceJournalRows(
   events: readonly JournalEvent[],
 ): Promise<void> {
   await client.query(`delete from graph_events where project_id = $1`, [projectId]);
-  for (const event of events) {
+  for (const event of orderEvents(events)) {
     await client.query(
       `insert into graph_events (id, project_id, event, actor) values ($1, $2, $3, $4)
        on conflict (project_id, id) do nothing`,
@@ -385,9 +406,11 @@ export async function createProject(
     // importing the same bundle hold the same event ids — so the conflict target
     // is the composite key. Targeting `(id)` alone would make the second import
     // of a journal-carrying bundle silently drop every event. `replaceJournalRows`
-    // is the one writer for this table (see its own doc comment) — a fresh
-    // project has nothing for its leading `delete` to remove, so this call is
-    // equivalent to the insert loop this replaced, just shared with restore.
+    // is the one writer for CLIENT-SUPPLIED journals (see its own doc comment
+    // for why `applyMutation`'s inserts are a separate, third writer, not a
+    // second copy of this one) — a fresh project has nothing for its leading
+    // `delete` to remove, so this call is equivalent to the insert loop this
+    // replaced, just shared with restore.
     await replaceJournalRows(client, id, journal);
   });
 
@@ -624,14 +647,19 @@ export type ReplaceResult =
  * everywhere else — indistinguishable from one that does not exist.
  *
  * ── Locking ──────────────────────────────────────────────────────────────
- * `select … for update`, same as {@link applyMutation} and for the same
- * reason: this is the one destructive verb in the API, so two restores (or a
- * restore and a mutation) racing the same project MUST serialize rather than
- * one silently computing its delta or its write against a row the other is
- * simultaneously replacing. Whichever transaction's `for update` runs first
- * holds the row until it commits or rolls back; the other blocks and then
- * reads the POST-write state — which is exactly what makes its own
- * `If-Match` check (if it has one) meaningful rather than decorative.
+ * `select … for update` on a REAL write, same as {@link applyMutation} and
+ * for the same reason: this is the one destructive verb in the API, so two
+ * restores (or a restore and a mutation) racing the same project MUST
+ * serialize rather than one silently computing its delta or its write
+ * against a row the other is simultaneously replacing. Whichever
+ * transaction's lock is acquired first holds the row until it commits or
+ * rolls back; the other blocks and then reads the POST-write state — which
+ * is exactly what makes its own `If-Match` check (if it has one) meaningful
+ * rather than decorative. A DRY RUN takes `for share` instead — it still
+ * blocks a concurrent writer from changing the row mid-comparison (the
+ * property that matters), but doesn't need the exclusive lock a call that
+ * provably never writes has no use for, and taking it anyway would
+ * needlessly serialize dry-runs against each other and against real writes.
  *
  * ── `If-Match`, read-then-compare, in the right order ──────────────────────
  * `classifyIfMatch` runs against `current.version` — the version read a
@@ -677,14 +705,38 @@ export async function replaceProjectBundle(input: ReplaceProjectBundleInput): Pr
   const { journal = [], ...snapshot } = bundle;
 
   return withTransaction(async (client) => {
-    // FOR UPDATE: hold the row until commit — see the doc comment above for
-    // why restore needs the same lock applyMutation does.
-    const { rows } = await client.query<{ snapshot: SnapshotShape; version: string }>(
-      `select snapshot, version from graph_projects
-        where id = $1 and owner_id = any($2::text[]) and archived_at is null
-        for update`,
-      [input.projectId, input.ownerIds],
-    );
+    // FOR UPDATE on a real write — hold the row until commit, same lock
+    // applyMutation takes and for the same reason. FOR SHARE on a dry run:
+    // a preview only needs to block a CONCURRENT WRITER from changing the
+    // row mid-comparison, not exclude every other reader (including another
+    // dry run), and a dry run never reaches the `update`/`replaceJournalRows`
+    // calls below regardless of which lock mode this is — see this
+    // function's own doc comment for why that is structural. Taking the
+    // exclusive lock anyway for a call that provably never writes would
+    // serialize dry-runs (and real writes) against each other for no reason.
+    //
+    // Two full, literal query strings rather than splicing the lock keyword
+    // into one shared template: `db.ts`'s own rule is "values go through
+    // $-params, never interpolation" (docs/spec/services.md § Security &
+    // Privacy), and a lock mode can't be a $-param at all (Postgres doesn't
+    // parameterize keywords) — branching on the whole query text keeps this
+    // function honestly at zero string-built SQL, rather than technically
+    // safe (only two fixed literals feed it, never request input) but
+    // shaped like the exact pattern that rule exists to rule out.
+    const selectResult = input.dryRun
+      ? await client.query<{ snapshot: SnapshotShape; version: string }>(
+          `select snapshot, version from graph_projects
+            where id = $1 and owner_id = any($2::text[]) and archived_at is null
+            for share`,
+          [input.projectId, input.ownerIds],
+        )
+      : await client.query<{ snapshot: SnapshotShape; version: string }>(
+          `select snapshot, version from graph_projects
+            where id = $1 and owner_id = any($2::text[]) and archived_at is null
+            for update`,
+          [input.projectId, input.ownerIds],
+        );
+    const { rows } = selectResult;
     const current = rows[0];
     if (!current) return { ok: false, reason: "not_found" } as const;
 
@@ -716,11 +768,29 @@ export async function replaceProjectBundle(input: ReplaceProjectBundleInput): Pr
     // different (mixed-case, base64url) encoding, for a different column.
     const nextVersion = (BigInt(current.version) + BigInt(1)).toString();
 
+    // `bundle_id` and `schema_version` are real columns `createProject` sets
+    // on write (see its own insert above) but this statement previously left
+    // untouched on restore — reachable drift, not hypothetical: a restored
+    // bundle whose `project.id` differs from what created the row would
+    // commit a snapshot saying one thing while the column said another, and
+    // `bundle_id` is what `arkaik link` uses to recognise a repo's working
+    // copy (db/migrations/008_graph_projects.sql) — exactly the CLI-driven
+    // flow this endpoint serves. Both are set from the SAME migrated bundle
+    // being written, the same fallback `createProject` uses for each.
     await client.query(
       `update graph_projects
-          set snapshot = $2, version = $3, entity_count = $4, title = $5, updated_at = now()
+          set snapshot = $2, version = $3, entity_count = $4, title = $5,
+              bundle_id = $6, schema_version = $7, updated_at = now()
         where id = $1`,
-      [input.projectId, JSON.stringify(snapshot), nextVersion, check.actual, snapshot.project.title ?? "Untitled"],
+      [
+        input.projectId,
+        JSON.stringify(snapshot),
+        nextVersion,
+        check.actual,
+        snapshot.project.title ?? "Untitled",
+        snapshot.project.id,
+        snapshot.schema_version ?? STATUS_VOCABULARY_VERSION,
+      ],
     );
     await replaceJournalRows(client, input.projectId, journal);
 

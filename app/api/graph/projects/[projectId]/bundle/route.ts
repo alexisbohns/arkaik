@@ -1,5 +1,6 @@
 import { getCaller, hasScope } from "@/lib/services/auth";
 import { servicesConfigured, servicesUnavailable } from "@/lib/services/db";
+import { classifyDryRun } from "@/lib/services/graph/restore";
 import { getUserTier, replaceProjectBundle } from "@/lib/services/graph/store";
 
 /**
@@ -17,6 +18,12 @@ import { getUserTier, replaceProjectBundle } from "@/lib/services/graph/store";
  *  - `If-Match` is REQUIRED, no wildcard, and fails CLOSED on anything this
  *    endpoint does not recognize as a single well-formed version
  *    (`lib/services/graph/restore.ts`'s `classifyIfMatch`).
+ *  - `?dryRun=` fails CLOSED too, in the OPPOSITE direction: an unrecognized
+ *    token is refused (400) rather than silently taking the destructive
+ *    branch (`classifyDryRun`, same file — see its own doc comment for the
+ *    coordinator finding this fixed).
+ *  - The body is capped at `MAX_BUNDLE_BYTES`, same as `POST /api/graph/projects`
+ *    — see that check below for why this route needed it more, not less.
  *  - `arkaik restore` writes a local backup before it ever calls this, and
  *    can preview the exact server-computed delta first via `?dryRun=1`.
  *
@@ -43,9 +50,30 @@ import { getUserTier, replaceProjectBundle } from "@/lib/services/graph/store";
  * fail-closed check, and reconciling the two status codes is a separate
  * decision with its own blast radius (docs/superpowers/plans/2026-08-04-
  * bootstrap-method.md, Task 11, note 5).
+ *
+ * ── `limit_exceeded` is 403, not 413 ─────────────────────────────────────────
+ * Both `POST /api/graph/projects` and `POST .../mutations` reply 403 for a
+ * tier-limit refusal; 413 is reserved on this endpoint for the payload-size
+ * cap below (`payload_too_large`), which is the one distinct-from-siblings
+ * meaning 413 actually has here. Using 413 for both would make the same
+ * status code mean two different things on the same route.
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/**
+ * Import cap, mirroring `POST /api/graph/projects` and Publik
+ * (docs/spec/services.md). This route's body is a full `ProjectBundle`
+ * PLUS a mined journal (potentially every event the project has ever had),
+ * which makes it the LARGEST body any graph route accepts — the opposite of
+ * where a cap could be skipped. The same 5 MB ceiling applies rather than a
+ * larger one: every bundle observed in practice (cycle 5's 173 nodes / 337
+ * edges / 253 events was 164 KB; Pebbles at full parity is projected around
+ * 400 nodes / 700 edges) sits two-plus orders of magnitude under it, so this
+ * is headroom, not a real constraint, and a single shared number is easier
+ * to reason about than a bigger one that only this route gets.
+ */
+const MAX_BUNDLE_BYTES = 5 * 1024 * 1024;
 
 export async function PUT(
   req: Request,
@@ -75,12 +103,28 @@ export async function PUT(
     );
   }
 
-  const dryRunParam = new URL(req.url).searchParams.get("dryRun");
-  const dryRun = dryRunParam === "1" || dryRunParam === "true";
+  const dryRunClassification = classifyDryRun(new URL(req.url).searchParams.get("dryRun"));
+  if (!dryRunClassification.ok) {
+    return Response.json(
+      {
+        error: "invalid_dry_run",
+        message: "dryRun must be 1/true (or bare `?dryRun`) for a preview, or 0/false for a real write.",
+      },
+      { status: 400 },
+    );
+  }
+  const dryRun = dryRunClassification.dryRun;
+
+  // Read as text first so the size check runs BEFORE `JSON.parse` ever
+  // touches the payload — mirrors `POST /api/graph/projects` exactly.
+  const raw = await req.text();
+  if (Buffer.byteLength(raw, "utf8") > MAX_BUNDLE_BYTES) {
+    return Response.json({ error: "payload_too_large", limit: MAX_BUNDLE_BYTES }, { status: 413 });
+  }
 
   let body: unknown;
   try {
-    body = await req.json();
+    body = JSON.parse(raw);
   } catch {
     return Response.json({ error: "invalid_json" }, { status: 400 });
   }
@@ -130,9 +174,12 @@ export async function PUT(
           { status: 412, headers: { ETag: `"${result.current}"` } },
         );
       case "limit":
+        // 403, matching POST /api/graph/projects and POST .../mutations —
+        // see the module doc comment for why 413 is reserved for the
+        // payload-size cap above instead.
         return Response.json(
           { error: "limit_exceeded", limit: result.limit, actual: result.actual, tier: result.tier },
-          { status: 413 },
+          { status: 403 },
         );
       case "validation":
         return Response.json({ error: "invalid_bundle", errors: result.errors }, { status: 422 });

@@ -20,7 +20,8 @@
  */
 
 const { loadGraphRestore } = require("./load-graph-restore");
-const { versionMatches, classifyIfMatch, computeBundleDelta, checkHostedEntityLimit } = loadGraphRestore();
+const { versionMatches, classifyIfMatch, classifyDryRun, computeBundleDelta, checkHostedEntityLimit } =
+  loadGraphRestore();
 
 let failures = 0;
 function check(name, cond, detail) {
@@ -90,6 +91,46 @@ check(
     versionMatches("6", "7") === (classifyIfMatch("6", "7") === "match") &&
     versionMatches("*", "7") === (classifyIfMatch("*", "7") === "match"),
 );
+
+// ---------------------------------------------------------------------------
+// classifyDryRun — fails CLOSED in the OPPOSITE direction from If-Match: an
+// unrecognized token must never silently fall back to the destructive
+// (non-dry-run) branch. Coordinator finding 1 on Task 11's route: the first
+// version accepted only "1"/"true" and treated everything else — a bare
+// `?dryRun`, "yes", "on", a typo — as authorization to write.
+// ---------------------------------------------------------------------------
+
+check("absent (param not sent at all) defaults to a REAL write, not a preview", (() => {
+  const r = classifyDryRun(null);
+  return r.ok === true && r.dryRun === false;
+})());
+check("bare ?dryRun (empty string value) means preview", (() => {
+  const r = classifyDryRun("");
+  return r.ok === true && r.dryRun === true;
+})());
+check("\"1\" means preview", (() => {
+  const r = classifyDryRun("1");
+  return r.ok === true && r.dryRun === true;
+})());
+check("\"true\" means preview", (() => {
+  const r = classifyDryRun("true");
+  return r.ok === true && r.dryRun === true;
+})());
+check("\"0\" means a real write (explicit opt-out, not just absent)", (() => {
+  const r = classifyDryRun("0");
+  return r.ok === true && r.dryRun === false;
+})());
+check("\"false\" means a real write", (() => {
+  const r = classifyDryRun("false");
+  return r.ok === true && r.dryRun === false;
+})());
+check(
+  "an unrecognized token (\"yes\") is REFUSED, not silently treated as a real write",
+  classifyDryRun("yes").ok === false,
+);
+check("\"on\" is also refused", classifyDryRun("on").ok === false);
+check("\"TRUE\" (wrong case) is refused, not case-folded", classifyDryRun("TRUE").ok === false);
+check("a stray \" 1 \" with whitespace is refused, not trimmed and accepted", classifyDryRun(" 1 ").ok === false);
 
 // ---------------------------------------------------------------------------
 // computeBundleDelta — the baseline shape from the plan's own draft test

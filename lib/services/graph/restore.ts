@@ -163,6 +163,58 @@ export function versionMatches(ifMatch: string | undefined | null, current: stri
 }
 
 // ---------------------------------------------------------------------------
+// Dry-run indicator
+// ---------------------------------------------------------------------------
+
+export type DryRunClassification = { ok: true; dryRun: boolean } | { ok: false };
+
+/**
+ * Classify `PUT .../bundle`'s `?dryRun=` query parameter — fails CLOSED the
+ * same way {@link classifyIfMatch} does, in the direction that matters here:
+ * an UNRECOGNIZED token must never silently fall back to the DESTRUCTIVE
+ * (non-dry-run) branch.
+ *
+ * A first version of the route accepted exactly two spellings
+ * (`dryRunParam === "1" || dryRunParam === "true"`) and treated EVERYTHING
+ * else — a bare `?dryRun` (empty string), `?dryRun=yes`, `?dryRun=on`, a typo
+ * — as `false`, i.e. as authorization to write. That makes this the only
+ * input on this endpoint that fails open: `classifyIfMatch` refuses a
+ * wildcard, a weak ETag, and a multi-value list on principle, and this
+ * endpoint is the one destructive verb in the graph API — the one place a
+ * caller who believed they were previewing must never get the write instead.
+ *
+ * Outcomes:
+ *  - **absent** (`raw === null`, the param wasn't sent at all) → `{ ok: true,
+ *    dryRun: false }`. This is the ordinary case for a real `arkaik restore`
+ *    call and must default to the real write, not a preview — the opposite
+ *    failure direction from every other case here.
+ *  - **bare or a recognized "true" spelling** (`""`, `"1"`, `"true"`) →
+ *    `{ ok: true, dryRun: true }`. A bare `?dryRun` (no `=value` at all) is
+ *    treated as "yes, preview" — the same convention `curl -d` and most CLI
+ *    flag parsers use for a boolean flag with no explicit value.
+ *  - **a recognized "false" spelling** (`"0"`, `"false"`) → `{ ok: true,
+ *    dryRun: false }`, an explicit opt-out, distinct from the param being
+ *    absent only in intent, not in outcome.
+ *  - **anything else** (`"yes"`, `"on"`, `"TRUE"`, ...) → `{ ok: false }`.
+ *    The route maps this to `400 Bad Request` rather than guessing which way
+ *    the caller meant it — the only safe default for a token this endpoint
+ *    doesn't recognize, on a destructive verb.
+ *
+ * Deliberately narrow: this only ever sees the VALUE of the `dryRun` key,
+ * never the query string itself, so a caller who typos the key entirely
+ * (`?dry_run=1`) reads as "absent" (real write) — that failure mode belongs
+ * to whatever names the query parameter, not to this classifier, and is
+ * unchanged from how any other unrecognized query key on any other route
+ * behaves.
+ */
+export function classifyDryRun(raw: string | null): DryRunClassification {
+  if (raw === null) return { ok: true, dryRun: false };
+  if (raw === "" || raw === "1" || raw === "true") return { ok: true, dryRun: true };
+  if (raw === "0" || raw === "false") return { ok: true, dryRun: false };
+  return { ok: false };
+}
+
+// ---------------------------------------------------------------------------
 // Bundle delta
 // ---------------------------------------------------------------------------
 
