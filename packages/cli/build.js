@@ -16,7 +16,9 @@
  * second copy of those assets under packages/cli, we copy them into
  * dist/assets/skill/ here at build time — docs/arkaik-skill/ stays the single
  * source of truth, the published CLI carries the assets it needs, and there is
- * no drift check to maintain because nothing new is committed.
+ * no drift check to maintain because nothing new is committed. The one-time
+ * bootstrap skill (`arkaik init --bootstrap`) gets the same treatment:
+ * docs/arkaik-bootstrap-skill/ is copied into dist/assets/bootstrap-skill/.
  *
  * dist/ is gitignored and rebuilt on demand (`npm run build -w arkaik`, run by
  * the root `test:cli` script and CI before the CLI tests spawn the binary).
@@ -49,6 +51,23 @@ function copySkillAssets() {
   console.log(`copied skill assets -> ${relative(dir, SKILL_DIST_DIR)}`);
 }
 
+const BOOTSTRAP_SKILL_SRC_DIR = join(dir, "..", "..", "docs", "arkaik-bootstrap-skill");
+const BOOTSTRAP_SKILL_DIST_DIR = join(dir, "dist", "assets", "bootstrap-skill");
+
+function copyBootstrapSkillAssets() {
+  mkdirSync(join(BOOTSTRAP_SKILL_DIST_DIR, "references"), { recursive: true });
+  cpSync(join(BOOTSTRAP_SKILL_SRC_DIR, "skill.md"), join(BOOTSTRAP_SKILL_DIST_DIR, "skill.md"));
+  cpSync(
+    join(BOOTSTRAP_SKILL_SRC_DIR, "references", "fragments.md"),
+    join(BOOTSTRAP_SKILL_DIST_DIR, "references", "fragments.md"),
+  );
+  cpSync(
+    join(BOOTSTRAP_SKILL_SRC_DIR, "references", "waves.md"),
+    join(BOOTSTRAP_SKILL_DIST_DIR, "references", "waves.md"),
+  );
+  console.log(`copied bootstrap skill assets -> ${relative(dir, BOOTSTRAP_SKILL_DIST_DIR)}`);
+}
+
 const { version: VERSION } = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
 
 async function run() {
@@ -79,6 +98,7 @@ async function run() {
   console.log(`built ${relative(dir, IO_OUT_FILE)}`);
 
   copySkillAssets();
+  copyBootstrapSkillAssets();
 }
 
 run().catch((err) => {
