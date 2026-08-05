@@ -5,12 +5,14 @@
  * ID uniqueness, cross-fragment edge resolution, reconcile ops, journal
  * construction, and byte-identical determinism across runs.
  *
- * This is Task 6's own test file. Task 7 (a separate task) is expected to add
- * exhaustive merge-semantics coverage (collisions, orphan edges, reconcile,
- * journal preservation) on top of what's here — this file proves the carry-
- * forward fixes and the seven review probes the task brief called out, plus
- * the minimal collision/reconcile checks needed to trust this file's own
- * design decisions. It does not try to be Task 7's test suite.
+ * This started as Task 6's own test file (the carry-forward fixes, the seven
+ * review probes, and the minimal collision/reconcile checks needed to trust
+ * this file's own design decisions) and was extended by Task 7 (search
+ * "Task 7:" below) with the exhaustive collision/orphan-edge/reconcile/
+ * journal-preservation coverage the plan specified separately — a same-run
+ * id collision (differing titles), the canonical edge id, a standalone
+ * orphan-edge refusal, a combined update+retire reconcile, and a re-sort
+ * (not just append) proof for pre-existing journal history.
  *
  * **Every block that produces a bundle runs `arkaik validate` on it and
  * asserts clean.** This is not incidental: a coordinator review found that
@@ -1136,6 +1138,196 @@ const BASE = {
     const res = runCli(["bootstrap", "merge"], dir);
     check("merge with no manifest fails loudly", res.status === 1, String(res.status));
     check("merge with no manifest names the missing manifest", res.stderr.includes("plan"), res.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ============================================================================
+// Task 7: merge semantics — collisions, orphan edges, reconcile, journal
+// preservation. Task 6's own section names several things this task must NOT
+// re-litigate: edge-type disagreement between fragments is already a loud
+// error (search "disagreeing on an edge's type"), `update`'s metadata
+// deep-merge and `decision.status_changed` synthesis are already proven
+// (search "IMPORTANT 3 FIX" and "CRITICAL FIX"), and the same-id/same-title
+// no-op case is already proven by probe 2 (search "re-declaring an existing
+// brownfield node"). The five blocks below are the ones a judgment review
+// confirmed genuinely absent from Task 6's file. Same standing rule as the
+// rest of this file: every block that produces a bundle validates it with
+// `arkaik validate`; every block expecting a refusal asserts the pre-existing
+// bundle is byte-for-byte untouched (bootstrap.ts's runMerge exits before any
+// write the moment `loadFragments` or `mergeFragments` reports a problem).
+// ============================================================================
+
+// --- same-run id collision: two fragments in ONE merge invocation mint the
+// same node id with different titles. Distinct from the "self-review
+// finding" block above (search "already-persisted node id"), which proves the
+// CROSS-run case (a node persisted by an earlier merge, collided with by a
+// later one) — this is the within-one-run case, which nothing else in this
+// file exercises with mismatched titles.
+{
+  const dir = scaffold({
+    "w1-a": { unit: "w1-a", wave: 1, nodes: [{ id: "V-settings", species: "view", title: "Settings" }], edges: [] },
+    "w1-b": { unit: "w1-b", wave: 1, nodes: [{ id: "V-settings", species: "view", title: "Account settings" }], edges: [] },
+  }, BASE);
+  try {
+    const res = runCli(["bootstrap", "merge"], dir);
+    check("same-run id collision exits 1", res.status === 1, String(res.status));
+    check("collision names both titles", res.stderr.includes("Settings") && res.stderr.includes("Account settings"), res.stderr);
+    check("collision names both units", res.stderr.includes("w1-a") && res.stderr.includes("w1-b"), res.stderr);
+    const bundleAfter = readFileSync(path.join(dir, "docs", "arkaik", "bundle.json"), "utf8");
+    check("a refused merge writes nothing — the bundle is untouched", bundleAfter === JSON.stringify(BASE), bundleAfter);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// --- cross-fragment edges resolve to the bundle's canonical `e-{source}-
+// {target}` id. Task 6 already proves an edge spanning two fragments
+// resolves at all (search "kind-only edge merges cleanly") but never asserts
+// the literal id shape `edgeId` (@arkaik/schema) produces.
+{
+  const dir = scaffold({
+    "w1-a": {
+      unit: "w1-a",
+      wave: 1,
+      nodes: [
+        {
+          id: "F-onboarding",
+          species: "flow",
+          title: "Onboarding",
+          status: "live",
+          platforms: ["web"],
+          metadata: { playlist: { entries: [{ type: "view", view_id: "V-welcome" }] } },
+        },
+      ],
+      edges: [],
+    },
+    "w1-b": {
+      unit: "w1-b",
+      wave: 1,
+      nodes: [{ id: "V-welcome", species: "view", title: "Welcome", status: "live", platforms: ["web"] }],
+      edges: [{ source_id: "F-onboarding", target_id: "V-welcome", kind: "composes" }],
+    },
+  }, BASE);
+  try {
+    const res = runCli(["bootstrap", "merge"], dir);
+    check("cross-fragment edge resolves", res.status === 0, res.stderr);
+    const bundle = JSON.parse(readFileSync(path.join(dir, "docs", "arkaik", "bundle.json"), "utf8"));
+    check("edge id is canonical", bundle.edges[0].id === "e-F-onboarding-V-welcome", JSON.stringify(bundle.edges));
+    const validated = runCli(["validate", path.join("docs", "arkaik", "bundle.json")], dir);
+    check("arkaik validate passes on the merged bundle", validated.status === 0, validated.stdout + validated.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// --- orphan edge: an edge whose endpoint no fragment created ---
+{
+  const dir = scaffold({
+    "w1-a": {
+      unit: "w1-a",
+      wave: 1,
+      nodes: [{ id: "F-onboarding", species: "flow", title: "Onboarding", status: "live", platforms: ["web"] }],
+      edges: [{ source_id: "F-onboarding", target_id: "V-ghost", kind: "composes" }],
+    },
+  }, BASE);
+  try {
+    const res = runCli(["bootstrap", "merge"], dir);
+    check("orphan edge exits 1", res.status === 1, String(res.status));
+    check("orphan error names the missing endpoint", res.stderr.includes("V-ghost"), res.stderr);
+    const bundleAfter = readFileSync(path.join(dir, "docs", "arkaik", "bundle.json"), "utf8");
+    check("a refused merge writes nothing — the bundle is untouched", bundleAfter === JSON.stringify(BASE), bundleAfter);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// --- brownfield reconcile: update patches, retire archives (never deletes),
+// node count unchanged. Task 6's own probe-1 fixtures (search
+// "reconcile-with-prior-history") already prove `update` and `retire` EACH
+// synthesize their own node.status_changed in isolation; this fixture
+// combines both ops in ONE fragment/run (the shape the plan names) and — per
+// Task 6's own carry-forward note for this task — seeds real prior status
+// history for BOTH nodes first, so journal-status-mismatch actually has
+// something to disagree with. It also asserts two things neither probe-1
+// fixture checks: `metadata.retired_reason` is recorded, and the node COUNT
+// survives a retire unchanged (retire archives, it never deletes).
+{
+  const existing = {
+    ...BASE,
+    nodes: [
+      { id: "V-home", project_id: "demo", species: "view", title: "Home", status: "development", platforms: ["web"] },
+      { id: "V-legacy", project_id: "demo", species: "view", title: "Legacy", status: "live", platforms: ["web"] },
+    ],
+  };
+  const dir = scaffold({
+    "w1-a": {
+      unit: "w1-a",
+      wave: 1,
+      update: [{ id: "V-home", patch: { status: "live" }, changed_ts: "2026-02-01T00:00:00.000Z" }],
+      retire: [{ id: "V-legacy", reason: "replaced by V-home", changed_ts: "2026-02-02T00:00:00.000Z" }],
+    },
+  }, existing);
+  writeFileSync(
+    path.join(dir, "docs", "arkaik", "journal.jsonl"),
+    [
+      { id: "01RRRRRRRRRRRRRRRRRRRRRRRR", ts: "2026-01-01T00:00:00.000Z", type: "node.created", node_id: "V-home", species: "view", title: "Home" },
+      { id: "01SSSSSSSSSSSSSSSSSSSSSSSS", ts: "2026-01-02T00:00:00.000Z", type: "node.status_changed", node_id: "V-home", from: "idea", to: "development" },
+      { id: "01TTTTTTTTTTTTTTTTTTTTTTTT", ts: "2026-01-01T00:00:00.000Z", type: "node.created", node_id: "V-legacy", species: "view", title: "Legacy" },
+      { id: "01UUUUUUUUUUUUUUUUUUUUUUUU", ts: "2026-01-02T00:00:00.000Z", type: "node.status_changed", node_id: "V-legacy", from: "idea", to: "live" },
+    ].map((e) => JSON.stringify(e)).join("\n") + "\n",
+  );
+  try {
+    const res = runCli(["bootstrap", "merge"], dir);
+    check("reconcile exits 0", res.status === 0, res.stderr);
+    const bundle = JSON.parse(readFileSync(path.join(dir, "docs", "arkaik", "bundle.json"), "utf8"));
+    const home = bundle.nodes.find((n) => n.id === "V-home");
+    const legacy = bundle.nodes.find((n) => n.id === "V-legacy");
+    check("update applied the patch", home.status === "live", JSON.stringify(home));
+    check("retire archived rather than deleted", legacy && legacy.status === "archived", JSON.stringify(legacy));
+    check("retire recorded the reason", legacy.metadata.retired_reason === "replaced by V-home", JSON.stringify(legacy.metadata));
+    check("node count unchanged by retire", bundle.nodes.length === 2, String(bundle.nodes.length));
+    const validated = runCli(["validate", path.join("docs", "arkaik", "bundle.json")], dir);
+    check("arkaik validate passes after a combined update+retire reconcile", validated.status === 0, validated.stdout + validated.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// --- existing journal history is preserved and re-sorted, never dropped.
+// Deliberately the REVERSE of the plan's literal timestamps: the pre-existing
+// entry gets the LATER ts and the fresh one the EARLIER ts. With the
+// pre-existing entry chronologically first (as the plan's own fixture had
+// it), appending the fresh entry after it in file order would look "sorted"
+// even if `merge` never actually re-sorted anything — this ordering actually
+// exercises re-sorting, not just append order.
+{
+  const dir = scaffold({
+    "w1-a": {
+      unit: "w1-a",
+      wave: 1,
+      nodes: [{ id: "V-late", species: "view", title: "Late", status: "live", platforms: ["web"], created_ts: "2026-03-01T00:00:00.000Z" }],
+      edges: [],
+    },
+  }, { ...BASE, nodes: [{ id: "V-old", project_id: "demo", species: "view", title: "Old", status: "live", platforms: ["web"] }] });
+  writeFileSync(
+    path.join(dir, "docs", "arkaik", "journal.jsonl"),
+    `${JSON.stringify({ id: "01WWWWWWWWWWWWWWWWWWWWWWWW", ts: "2026-06-01T00:00:00.000Z", type: "node.created", node_id: "V-old", species: "view", title: "Old" })}\n`,
+  );
+  try {
+    const res = runCli(["bootstrap", "merge"], dir);
+    check("merge with existing journal exits 0", res.status === 0, res.stderr);
+    const events = readFileSync(path.join(dir, "docs", "arkaik", "journal.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    check("existing event preserved", events.some((e) => e.node_id === "V-old"), JSON.stringify(events));
+    check("new event appended", events.some((e) => e.node_id === "V-late"), JSON.stringify(events));
+    check(
+      "journal is actually re-sorted by ts, not just appended in file-write order",
+      events[0].node_id === "V-late" && events[1].node_id === "V-old",
+      JSON.stringify(events.map((e) => ({ node_id: e.node_id, ts: e.ts }))),
+    );
+    const validated = runCli(["validate", path.join("docs", "arkaik", "bundle.json")], dir);
+    check("arkaik validate passes on the merged bundle", validated.status === 0, validated.stdout + validated.stderr);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
