@@ -8,7 +8,7 @@
  * resolution, journal construction, validation gating.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { serializeBundle, validateBundle } from "@arkaik/schema";
@@ -60,6 +60,20 @@ function nextValue(argv: string[], i: number, flag: string, usage: string): stri
   const value = argv[i];
   if (value === undefined) fail(`Missing value for ${flag}\n\n${usage}`);
   return value;
+}
+
+/**
+ * Write `content` to `filePath` via a same-directory temp file plus a rename,
+ * so a process killed mid-write can never leave a truncated file at
+ * `filePath` — `renameSync` within one directory is a single filesystem
+ * operation on every platform this CLI targets. The temp name includes the
+ * pid so two merges racing on the same bundle (a misuse this file otherwise
+ * does nothing to prevent) don't clobber each other's in-flight temp file.
+ */
+function writeFileAtomic(filePath: string, content: string): void {
+  const tmpPath = `${filePath}.tmp-${process.pid}`;
+  writeFileSync(tmpPath, content);
+  renameSync(tmpPath, filePath);
 }
 
 function runCorpus(argv: string[]): void {
@@ -445,8 +459,19 @@ function runMerge(argv: string[]): void {
     const journalText = result.journal.map((e) => JSON.stringify(e)).join("\n") + (result.journal.length ? "\n" : "");
 
     if (!dryRun) {
-      writeFileSync(bundlePath, serialized);
-      writeFileSync(journalPath, journalText);
+      // A genuinely fresh repo (the design spec's greenfield case: "no
+      // bundle" — not just an `arkaik init` stub) has no `docs/arkaik/`
+      // directory at all yet; without this, the first-ever merge crashed
+      // with a raw ENOENT instead of creating its own target.
+      mkdirSync(path.dirname(bundlePath), { recursive: true });
+      // Write-then-rename, not a direct writeFileSync, for both files: a
+      // process killed mid-write left a truncated bundle or journal on disk.
+      // This doesn't make the PAIR atomic (a kill between the two renames
+      // still leaves them out of sync — a known, accepted gap; see this
+      // task's notes in docs/superpowers/plans/2026-08-04-bootstrap-method.md,
+      // Task 9), but it does mean neither file is ever half-written.
+      writeFileAtomic(bundlePath, serialized);
+      writeFileAtomic(journalPath, journalText);
     }
 
     console.log(`${dryRun ? "[dry-run] " : ""}Merged ${loaded.length} fragments:`);

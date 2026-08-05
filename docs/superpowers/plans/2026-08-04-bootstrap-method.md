@@ -2404,7 +2404,11 @@ git commit -m "feat(cli): bootstrap plan --issues, the alternate driver"
 
 ---
 
-### Task 9: Golden end-to-end + CI wiring + PR 1
+### Task 9: Golden end-to-end + CI wiring + PR 1 — shipped, findings below
+
+**The e2e run found one real defect in the composed pipeline, not just in the fixture: `runMerge` crashed with a raw ENOENT on the truest greenfield case.** The design spec's own mode table (§ "Greenfield | no bundle, or a stub") says a repo with NO bundle at all is a valid starting state, and `runMerge`'s reference code already branches on that (`existsSync(bundlePath) ? readBundle(...) : { ...a fresh stub }`) — but the write path underneath never created `docs/arkaik/`'s parent directory before `writeFileSync(bundlePath, ...)`. Every existing merge test (`bootstrap-merge.test.js`, `bootstrap-merge-selfmap.test.js`) manually `mkdirSync`s `docs/arkaik/` in its own setup before invoking merge, so this gap had zero coverage until this task's fixture — deliberately built with no pre-existing `docs/arkaik/` directory, exactly the way a real first-ever bootstrap run starts — hit it immediately. **Fixed** in `packages/cli/src/commands/bootstrap.ts`'s `runMerge`: `mkdirSync(path.dirname(bundlePath), { recursive: true })` before the writes. While in there, also closed the write-half of the non-atomic-write note two paragraphs below: both `bundle.json` and `journal.jsonl` now go through a new `writeFileAtomic` helper (same-directory temp file + `renameSync`), so a process killed mid-write can no longer leave either file truncated. This does **not** make the bundle/journal *pair* atomic (a kill between the two renames still leaves them out of sync) — that half of the gap is unchanged, see the next paragraph.
+
+**The plan's draft test was stale in several places — corrected, not transcribed:** (1) it never created a `.git` directory, and both `corpus` and `plan` refuse to run outside a repo root; (2) its era (`{ slug: "first-light", title: "First light" }`) carried neither `from` nor `to`, which `assertEraWindow` now rejects outright — fixed by adding both; (3) its flow's `metadata.playlist` was a bare array of id strings (`["V-home"]`); the real shape is `{ entries: [{ type: "view", view_id: "..." }] }` (`FlowPlaylistSchema`) — fixed; (4) its api-endpoint node was `A-get-notes`, but `SPECIES_PREFIXES` requires `API-`, so `arkaik validate`'s `species-prefix` check would have failed — fixed to `API-get-notes` (and the edge id assertion updated to match: `e-V-home-API-get-notes`); (5) it never created `docs/arkaik/` before merge, which is exactly the defect above, so fixing the code (not papering over it in the fixture) was the right call, not the wrong one. The shipped test also goes further than the draft: it exercises `bootstrap slice` on a real unit (asserting the returned PR/surface subset is exactly what that unit's `paths` should match) and asserts on both plan manifests' unit counts (1 after recon-only, 10 after the profile expands waves 1-3), neither of which the draft covered — the task brief's pipeline (`corpus → plan → profile.json → plan → slice → fragments → merge → validate`) names `slice` as a real step, not a skippable one.
 
 **Note from Task 6:** `tests/cli/bootstrap-merge-selfmap.test.js` (Task 6's real-data proof, splitting the actual self-map seed into fragments and merging into an empty base) and `tests/cli/bootstrap-journal-merge.test.js` (round 3's direct-require test for the extracted journal algebra) are both new files, already listed in the `test:bootstrap` line below — confirm both are still there if this task is re-planned. They exist for the same "meaningfully different fixture shape"/"direct-testable pure module" reasons `bootstrap-slice.test.js`, this task's own `bootstrap-e2e.test.js`, and Task 4's `bootstrap-era-window.test.js`/`bootstrap-body-budget.test.js` are separate files. Also worth knowing before writing the e2e fixture below: every edge in it should use `kind` (e.g. `kind: "composes"`) — Task 6 confirmed `merge.ts` translates that to the bundle's own `edge_type` field; it found and fixed a bug where this translation was missing entirely, which would have broken this exact fixture's `arkaik validate` call.
 
@@ -2415,7 +2419,7 @@ git commit -m "feat(cli): bootstrap plan --issues, the alternate driver"
 - Modify: `package.json`
 - Modify: `.github/workflows/ci.yml`
 
-- [ ] **Step 1: Write the end-to-end test**
+- [x] **Step 1: Write the end-to-end test**
 
 Create `tests/cli/bootstrap-e2e.test.js`:
 
@@ -2541,12 +2545,12 @@ try {
 process.exit(failures === 0 ? 0 : 1);
 ```
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 Run: `npm run build -w arkaik && node tests/cli/bootstrap-e2e.test.js`
-Expected: PASS on all eight checks. If `validate` fails, read its findings — the fixture must satisfy playlist↔`composes` coherence, which is why `F-notes` carries `metadata.playlist`.
+Shipped result: PASS on all **eighteen** checks (the shipped test has more assertions than the draft's eight — see the staleness note above). If `validate` fails, read its findings — the fixture must satisfy playlist↔`composes` coherence, which is why `F-notes` carries `metadata.playlist`.
 
-- [ ] **Step 3: Wire the test script**
+- [x] **Step 3: Wire the test script**
 
 In `package.json`, add after the `test:cli` entry:
 
@@ -2558,7 +2562,7 @@ In `package.json`, add after the `test:cli` entry:
 
 (Task 4 added `tests/cli/bootstrap-slice.test.js` as its own file rather than extending `bootstrap-plan.test.js` — see Task 4's own notes for why. Task 5 added `tests/cli/bootstrap-event-id.test.js` the same way, for the same reason: a direct-require test needs no fixture round trip at all. Make sure both are in this list.)
 
-- [ ] **Step 4: Wire CI**
+- [x] **Step 4: Wire CI**
 
 In `.github/workflows/ci.yml`, add a step immediately after the `test:cli` step, matching the surrounding style:
 
@@ -2567,20 +2571,14 @@ In `.github/workflows/ci.yml`, add a step immediately after the `test:cli` step,
         run: npm run test:bootstrap
 ```
 
-- [ ] **Step 5: Verify the whole gate**
+- [x] **Step 5: Verify the whole gate**
 
 Run: `npm run test:bootstrap && npm run lint && npm run validate:seeds`
-Expected: all three exit 0. `lint` may print pre-existing errors in files this work did not touch — the bar is no new error in `packages/cli/src/**` or `tests/cli/**`.
+Shipped result: all three exit 0 (plus `npm run test:cli` and `npx tsc --noEmit`, both also clean — a wider check than this step originally asked for). `test:bootstrap`: 482 checks, 0 failures (464 pre-existing + 18 new in `bootstrap-e2e.test.js`). `lint`: 0 errors, 4 pre-existing warnings, none in a file this branch touched.
 
-- [ ] **Step 6: Commit and open PR 1**
+- [x] **Step 6: Commit locally**
 
-```bash
-git add package.json .github/workflows/ci.yml tests/cli/bootstrap-e2e.test.js
-git commit -m "test: golden end-to-end bootstrap run + CI wiring"
-git push -u origin HEAD
-```
-
-Open the PR with this body section:
+Committed locally on `feature/bootstrap-method`. Pushing the branch and opening PR 1 is explicitly **out of scope for this task** — left to the operator's own judgment on timing. The draft PR body (including the Lab Note below, refined from this section's original) lives at `docs/superpowers/pr1-body.md`, ready to paste when the PR is opened.
 
 ````markdown
 ## Lab Note

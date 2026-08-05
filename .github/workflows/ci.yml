@@ -154,6 +154,9 @@ jobs:
       - name: CLI tests
         run: npm run test:cli
 
+      - name: Bootstrap method tests
+        run: npm run test:bootstrap
+
       - name: MCP server tests
         run: npm run test:mcp
 
