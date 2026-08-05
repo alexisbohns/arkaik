@@ -3025,7 +3025,7 @@ git commit -m "fix(graph): dryRun fail-open, payload cap, stale bundle_id/schema
 
 ---
 
-### Task 12: `arkaik restore`
+### Task 12: `arkaik restore` — shipped, findings below
 
 **Coordinator DECISION carried forward from Task 10's review, superseding this section's original `--dry-run` reference code: `--dry-run` calls the SERVER's dry-run mode, not a local count.** Task 10 originally just flagged the constraint (`computeBundleDelta` lives under `lib/services`, behind the `server-only`/`@/` alias the Next.js app resolves and the CLI package does not, so the CLI cannot import it without duplicating the module) and left the resolution open. The coordinator's decision: reimplementing the delta CLI-side risks two implementations of the exact number that gates a destructive write drifting apart — the worst possible place for that to happen — so it is resolved SERVER-SIDE instead. Task 11 adds a dry-run mode to `PUT .../bundle` (see that task's note 6): the same request, with a dry-run indicator, runs the identical validation/version-check/delta-computation path and returns the `ReplaceResult`-shaped response WITHOUT writing.
 
@@ -3037,14 +3037,33 @@ git commit -m "fix(graph): dryRun fail-open, payload cap, stale bundle_id/schema
 - **Failure status codes — six-way now, not the four-way this note originally listed:** `404` (`{ error: "not_found" }`, owner mismatch reads identically to nonexistence), `428` (`{ error: "if_match_required" }`, no `If-Match` sent at all), `400` (`{ error: "if_match_unsupported" }` for a malformed `If-Match` — wildcard/weak-ETag/multi-value — **or** `{ error: "invalid_dry_run" }` for an unrecognized `?dryRun` token — check `body.error` to tell the two apart, both share the status code), `412` (`{ error: "conflict", current: "<version>" }`, ALSO carried as the response's `ETag` header — the one genuine version conflict; `current` is the field to read for "what version should I re-read and retry with"), **`413` (`{ error: "payload_too_large", limit }` — the request body itself exceeded 5 MB, checked before the body is even parsed; this is NOT the tier-entity-limit case, see 403 below)**, **`403` (`{ error: "limit_exceeded", limit, actual, tier }`, `limit` may be `null` for an uncapped tier — irrelevant for `arkaik restore`'s own callers today, but don't assume it's always a number — coordinator round 2 moved this OFF 413, which is now reserved for payload size alone)**, `422` (`{ error: "invalid_bundle", errors: [...] }`, shape/semantic validation failed — this is the CLI's own `merge`/`validate` output failing to hold up server-side, which should read as a bug in the merge step, not a transient failure).
 - **`arkaik restore`'s own `If-Match`-missing case should never happen in practice** (the CLI always just read a version in step 2 before sending), but if it does reach 428 anyway, that is a CLI bug, not a server hiccup — treat it as a hard failure, not something to retry.
 
-**Files:**
+**The draft reference code below (kept for the historical record) predates Tasks 10 and 11 and is stale in every way this task's coordinator brief flagged, plus more found while implementing. Six probes, six real findings, all reflected in what shipped:**
+
+**Probe 1 — backup-before-destructive, fail-closed on every path, not just the happy one.** The draft's `try`/`catch` only guarded the `writeFileSync` call — the `GET .../export` above it was awaited with only a bare `if (!exportRes.ok) fail(...)`, no defense against a thrown network error or a 200 whose body isn't actually a bundle. As shipped, every way that step can go wrong aborts identically, before any PUT is attempted: a thrown network error (`ECONNRESET` etc.), a non-200 response, a response whose `bundle` field isn't an object, and — the case the draft didn't consider at all — a `bundle` whose `journal`/`nodes`/`edges` fields aren't arrays (a shape a broken `/export` deployment could return without ever failing the HTTP status check). An unwritable `.backups/` directory (verified with `chmod 0o500` on a real temp dir) aborts the same way. All five are asserted directly in `tests/cli/bootstrap-restore.test.js`: the run reports `ok: false`, no backup file exists afterward, and — via a mock `httpClient` that throws on any PUT call — the destructive request was never even attempted.
+
+**Probe 2 — the backup must come from `/export` (snapshot + journal), never from `GET .../{id}` (snapshot only) — verified against the actual route code, not assumed.** `lib/services/graph/store.ts`'s `getProject` (what `GET .../{id}` calls) is commented, in the source, "Snapshot + version, without the (potentially large) journal" — it is the version source, not the backup source. Only `exportProject` (`GET .../export`) embeds the journal. The shipped `runRestore` reads the version from the first and the backup content from the second, and separately asserts `Array.isArray(bundle.journal)` before writing anything (see probe 1) — a defense the draft had no equivalent of. Verified directly: the happy-path test's backup file is asserted to hold the EXPORT response's node count and journal (not the local bundle being sent, and not empty).
+
+**Probe 3 — `If-Match` sourcing and the 412 message.** The version read in step 2 is carried unchanged into `If-Match` for both the dry-run and real PUT. On 412, the message names BOTH the version this run read and the server's current version (from the response body's `current` field, surfaced on the result as `conflictCurrent`), explicitly states "Do not retry with the same version," and tells the caller to re-run `arkaik restore` to read the current state and decide again — never "retry" on its own. Asserted directly (checked for a "do not retry" phrase, and checked AGAINST a blind "try again"/"just retry" pattern that must never appear) rather than eyeballed.
+
+**Probe 4 — `--dry-run` takes no backup, by decision, not by omission.** The server writes nothing in dry-run mode, so there is nothing destructive to protect against; taking one anyway would clutter `.backups/` with files that never protected anything and cost an extra `/export` round-trip for no reason. The counter-argument — a dry-run preview could still be useful evidence later — was considered and rejected: the backup's entire justification (this task's own framing) is being "the only recovery path" for a destructive write, and a dry-run is not one. Implemented as a hard branch: the `dryRun` path in `runRestore` never calls `/export` and never touches `.backups/` at all — verified by a mock `httpClient` that throws if the export URL is called during a dry run, and by asserting `.backups/` doesn't exist on disk afterward. Dry-run DOES still read a version (Task 10/11's decision, carried forward — see the contract note above), since it needs its own `If-Match` for the preview PUT to gate identically to a real one.
+
+**Probe 5 — body assembly: `bundle.json` + `journal.jsonl` sidecar, using the existing `loadJournalEvents` helper rather than re-deriving the merge inline.** The draft read `journal.jsonl` inline with its own `.split("\n").filter(Boolean).map(JSON.parse)`, which — unlike `loadJournalEvents` — has no precedence rule for a bundle that already embeds its own `journal` array (the packed interchange form): it would silently prefer the sidecar even when the on-disk bundle already carries a possibly-different embedded journal, exactly the kind of split-brain this task warned about. As shipped, `runRestore` calls `packages/cli/src/lib/journal-io.ts`'s `loadJournalEvents(local, bundlePath)` directly: embedded wins over the sidecar when present, otherwise the sidecar is read — the same precedence `arkaik validate` uses. Verified with two fixtures: sidecar-only (the sent bundle's `journal` is the sidecar's one event) and embedded-plus-sidecar (the sent bundle's `journal` is the embedded event, not the sidecar's).
+
+**Probe 6 — seven-status (eight-message) failure matrix, each message distinct, and every real-restore one naming the backup path.** `interpretPutResponse` handles 404, 428, 400 (`if_match_unsupported` and `invalid_dry_run` read differently despite sharing the status code), 412, 403, 413, and 422 as separate branches, not a generic `!res.ok` fallthrough. Every branch on the real-restore path (all except a hypothetical dry-run failure, which never has a backup to reference) appends the backup path to its message. Asserted with a table-driven test: nine failure fixtures (403 run twice — once with a numeric `limit`, once with `limit: null` for an uncapped tier) each produce a message never seen before in the same run (a `Set`-based distinctness check across all nine), each backup-referencing message contains `.backups`, and 422 additionally surfaces `serverFindings` from the response body's `errors` array.
+
+**Architecture deviation from the draft, deliberate.** The draft's `runRestore(argv, options)` parsed argv AND called `process.exit` inline, inseparable from its own logic — untestable without spawning a subprocess for every case. This task's own instructions named `push.ts` as "your closest template … how its test drives it," so the shipped `restore.ts` follows that file's shape instead: `runRestore(options): Promise<RunRestoreResult>` is pure business logic returning a structured result (never calls `process.exit`, never writes to `console`), and a separate `runRestoreCli(argv)` handles argv parsing plus `reportRestore(result)` for console output and exit codes. This is what makes all six probes above testable in-process against a mocked `httpClient` (mirroring `tests/cli/push.test.js`) instead of requiring a real HTTP server and a subprocess per case — this suite never opens a real socket at all; only a handful of `runCli`-spawned argv-level smoke tests exercise the built binary, and only for cases that fail before any network call would be attempted, the same discipline `push.test.js` documents for itself.
+
+**Files (as shipped):**
 - Create: `packages/cli/src/commands/restore.ts`
-- Modify: `packages/cli/src/index.ts`
-- Test: `tests/cli/bootstrap-restore.test.js`
+- Modify: `packages/cli/src/index.ts` (`runRestoreCli` wired into the dispatcher + `USAGE`)
+- Create: `tests/cli/bootstrap-restore.test.js` (115 checks)
+- Modify: `package.json` (`test:bootstrap` gains the new test; `test:cli` untouched — `restore` is exercised by the bootstrap suite, matching how the other bootstrap-only commands are covered)
+- Modify: `.gitignore` (`/packages/cli/.test-build-restore/`, matching the sibling `.test-build-*` entries already there)
+- No `.github/workflows/ci.yml` change needed: `npm run test:bootstrap` was already a CI step (wired by Task 9), so the new test runs automatically.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test (draft, kept for the historical record)**
 
-Create `tests/cli/bootstrap-restore.test.js`:
+Draft of `tests/cli/bootstrap-restore.test.js`:
 
 ```js
 #!/usr/bin/env node
@@ -3176,14 +3195,19 @@ server.listen(0, "127.0.0.1", () => {
 });
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+As shipped, this draft is superseded entirely by `tests/cli/bootstrap-restore.test.js` — see the architecture note above for why it's shaped differently (in-process `runRestore()` calls against a mocked `httpClient`, esbuild-bundling `restore.ts` the same way `push.test.js` does, rather than a real local HTTP server + `spawnSync` for every case). It keeps the draft's original scenarios (dry-run sends nothing, real restore backs up first and sends `If-Match`, an unwritable backup directory refuses) and adds full coverage of all six probes above, plus preflight failures (no link file, no token, no local bundle) and a version-read failure. 115 checks total.
+
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `node tests/cli/bootstrap-restore.test.js`
-Expected: FAIL — the CLI does not know the `restore` command.
+Actual: FAIL — `esbuild` could not resolve `packages/cli/src/commands/restore.ts` (the command did not exist yet):
+```
+✘ [ERROR] Could not resolve ".../packages/cli/src/commands/restore.ts"
+```
 
-- [ ] **Step 3: Write `restore.ts`**
+- [x] **Step 3: Write `restore.ts` (draft, kept for the historical record)**
 
-Create `packages/cli/src/commands/restore.ts`:
+Draft of `packages/cli/src/commands/restore.ts`:
 
 ```ts
 /**
@@ -3342,44 +3366,44 @@ export async function runRestore(argv: string[], options: RestoreOptions = {}): 
 }
 ```
 
-- [ ] **Step 4: Wire the dispatcher**
+As shipped, not as drafted — see the architecture note and all six probe findings above. Full, heavily-commented file (every decision has its rationale inline, at its own call site): `packages/cli/src/commands/restore.ts`.
 
-In `packages/cli/src/index.ts`, import and add the case. Because `runRestore` is async, mirror however the dispatcher already handles async commands (`runPushCli`, `runLinkCli`) — match that exact pattern, including its error handling:
+- [x] **Step 4: Wire the dispatcher**
 
-```ts
-import { runRestore } from "./commands/restore";
-```
-
-```ts
-    case "restore":
-      void runRestore(rest);
-      return;
-```
-
-And in `USAGE`, after the `link` line:
+As drafted, but wiring `runRestoreCli` (not a bare async `runRestore`, matching the architecture change in Step 3) — `packages/cli/src/index.ts` imports it and dispatches `case "restore": runRestoreCli(rest); return;` (synchronous, exactly like `runLinkCli`/`runPushCli` — the async work and its own error handling live entirely inside `runRestoreCli`). The `restore` line was added to `USAGE` after `link`:
 
 ```
   restore [options] [path]   Replace the linked hosted project's bundle + journal (backs up first).
 ```
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [x] **Step 5: Run the test to verify it passes**
 
 Run: `npm run build -w arkaik && node tests/cli/bootstrap-restore.test.js`
-Expected: PASS on all ten checks.
+Actual: PASS on all **115** checks.
 
-- [ ] **Step 6: Wire the script and open PR 2**
+- [x] **Step 6: Wire the script — commit locally, no push, no PR**
 
-In `package.json`, extend the bootstrap script:
+In `package.json`, `test:bootstrap` gained `&& node tests/cli/bootstrap-restore.test.js` at the end (the build step it needs already runs earlier in that same chain, before `bootstrap-corpus.test.js`, so no extra build step was needed):
 
 ```json
     "test:bootstrap": "node tests/cli/bootstrap-era-window.test.js && node tests/cli/bootstrap-body-budget.test.js && node tests/cli/bootstrap-event-id.test.js && node tests/cli/bootstrap-journal-merge.test.js && npm run build -w arkaik && node tests/cli/bootstrap-corpus.test.js && node tests/cli/bootstrap-plan.test.js && node tests/cli/bootstrap-slice.test.js && node tests/cli/bootstrap-merge.test.js && node tests/cli/bootstrap-merge-selfmap.test.js && node tests/cli/bootstrap-e2e.test.js && node tests/cli/bootstrap-restore.test.js",
 ```
 
+Full verification run:
+
+```
+npm run test:bootstrap       # 597 checks across 11 files, 0 failures
+npm run test:cli             # 63 push.test.js checks + the rest, 0 failures (restore isn't in test:cli; unaffected)
+npm run test:graph-restore   # unaffected, still 74/74
+npm run lint                 # 0 errors (4 pre-existing warnings in untouched files)
+npx tsc --noEmit             # clean
+```
+
+Per this task's explicit instructions, this task does **not** push and does **not** open PR 2 — committed locally on `feature/hosted-restore` for the coordinator to open the PR:
+
 ```bash
-npm run test:bootstrap && npm run test:graph-restore && npm run lint
-git add packages/cli/src/commands/restore.ts packages/cli/src/index.ts tests/cli/bootstrap-restore.test.js package.json
+git add packages/cli/src/commands/restore.ts packages/cli/src/index.ts tests/cli/bootstrap-restore.test.js package.json .gitignore docs/superpowers/plans/2026-08-04-bootstrap-method.md
 git commit -m "feat(cli): arkaik restore — backup, dry-run, If-Match"
-git push
 ```
 
 PR 2 body:

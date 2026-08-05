@@ -39,6 +39,11 @@
 # (tests/cli/load-bootstrap-lib.js) — a separate dir from the one above,
 # which holds unrelated esbuild-bundled ESM mocks for a different suite
 /packages/cli/.test-build-bootstrap/
+# transient ESM bundle emitted by tests/cli/bootstrap-restore.test.js
+# (esbuild-bundles restore.ts, same technique as push.test.js above) —
+# cleaned up on a successful run, kept ignored in case a crashed run leaves
+# it behind
+/packages/cli/.test-build-restore/
 
 # next.js
 /.next/
