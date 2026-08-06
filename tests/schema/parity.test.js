@@ -31,6 +31,7 @@ const FIXTURES = [
   "tests/fixtures/invalid-view-card-variant.json",
   "tests/fixtures/duplicate-ref-id.json",
   "tests/fixtures/invalid-kitchen-sink.json",
+  "tests/fixtures/malformed-junction-case.json",
   "tests/fixtures/journal-status-mismatch.json",
   "tests/fixtures/acceptance-valid.json",
   "tests/fixtures/acceptance-invalid.json",

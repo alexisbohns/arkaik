@@ -1,0 +1,50 @@
+{
+  "project": {
+    "id": "test-project",
+    "title": "Test Project",
+    "version": "1.4.0",
+    "created_at": "2026-01-01T00:00:00.000Z",
+    "updated_at": "2026-01-01T00:00:00.000Z"
+  },
+  "nodes": [
+    {
+      "id": "V-invite-accept",
+      "project_id": "test-project",
+      "species": "view",
+      "title": "Accept invite",
+      "status": "live",
+      "platforms": ["web"]
+    },
+    {
+      "id": "F-connect",
+      "project_id": "test-project",
+      "species": "flow",
+      "title": "Connect with a soul",
+      "status": "live",
+      "platforms": ["web"],
+      "metadata": {
+        "playlist": {
+          "entries": [
+            {
+              "type": "junction",
+              "label": "How the invite arrived",
+              "cases": [
+                { "label": "Shared link", "view_id": "V-invite-accept" },
+                { "label": "Scanned QR", "view_id": "V-invite-accept" }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-F-connect-V-invite-accept",
+      "project_id": "test-project",
+      "source_id": "F-connect",
+      "target_id": "V-invite-accept",
+      "edge_type": "composes"
+    }
+  ]
+}
