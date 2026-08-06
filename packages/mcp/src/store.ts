@@ -8,6 +8,8 @@
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+  makeEvent,
+  missingProvenanceNodeIds,
   serializeBundle,
   toJournalEvents,
   validateBundle,
@@ -101,6 +103,13 @@ export interface Store {
   describe(): string;
 }
 
+/** The snapshot's node ids, in order — the input side of the provenance check. */
+function nodeIdsOf(nodes: readonly unknown[]): string[] {
+  return nodes
+    .map((node) => (node as { id?: unknown } | null)?.id)
+    .filter((id): id is string => typeof id === "string");
+}
+
 /**
  * The dual-write path (docs/spec/mcp.md § Write Path), in order: derive the
  * stamped events, fold them into the mutated bundle **in memory**, gate on
@@ -114,7 +123,24 @@ export function persistMutation(
   next: { nodes?: unknown[]; edges?: unknown[] },
   inputs: readonly EventInput[],
 ): WriteResult {
-  const events = toJournalEvents(inputs, MCP_ACTOR);
+  // Adopt the journal before this mutation's own events (#357). Computed over
+  // the PRE-mutation snapshot deliberately: a node this mutation creates brings
+  // its own node.created, while a node it *deletes* still needs vouching for —
+  // the node.deleted references an id that is about to leave the snapshot, and
+  // without the baseline that reference would dangle. Minting it first also
+  // gives it the lowest ULID of the batch, so it reads first in the sidecar.
+  // A mutation that derives no events writes no journal line, so it needs no
+  // adoption marker either — a no-op must stay a no-op.
+  const baselineNodeIds =
+    inputs.length === 0
+      ? []
+      : missingProvenanceNodeIds(nodeIdsOf(loaded.nodes), loaded.journal as JournalEvent[]);
+  const events = [
+    ...(baselineNodeIds.length > 0
+      ? [makeEvent("journal.baseline", { node_ids: baselineNodeIds }, { actor: MCP_ACTOR })]
+      : []),
+    ...toJournalEvents(inputs, MCP_ACTOR),
+  ];
   const nextNodes = next.nodes ?? loaded.nodes;
   const nextEdges = next.edges ?? loaded.edges;
 
@@ -130,9 +156,14 @@ export function persistMutation(
     return { ok: false, errors: result.errors, warnings: result.warnings };
   }
 
-  // validateBundleAt folds a sidecar into `bundle.journal` in place, flagging
-  // it with sidecarLoaded — embedded mode is "the file itself carried one".
-  const embeddedJournal = !loaded.sidecarLoaded && (loaded.bundle as { journal?: unknown }).journal !== undefined;
+  // validateBundleAt folds the sidecar AND its compaction archives into
+  // `bundle.journal` in place, flagging each source — embedded mode is "the
+  // file itself carried one". Both flags matter: a project whose whole history
+  // has been compacted has archives and no working journal.jsonl yet is still
+  // sidecar-shaped, and treating it as embedded would inline its journal into
+  // the snapshot on the next write.
+  const journalOnDisk = loaded.sidecarLoaded || loaded.archivesLoaded.length > 0;
+  const embeddedJournal = !journalOnDisk && (loaded.bundle as { journal?: unknown }).journal !== undefined;
 
   if (embeddedJournal) {
     writeFileSync(bundlePath, serializeBundle(candidate as unknown as Parameters<typeof serializeBundle>[0]));

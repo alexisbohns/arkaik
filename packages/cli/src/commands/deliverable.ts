@@ -15,7 +15,8 @@
  */
 import { makeEvent, ulid, type JournalEvent } from "@arkaik/schema";
 import { readBundle, nodesByIdOf } from "../lib/bundle-io";
-import { appendJournalEvent, journalPathFor } from "../lib/journal-io";
+import { appendJournalEvent, ensureJournalBaseline, journalPathFor } from "../lib/journal-io";
+import { renderEventLine } from "../lib/render-event";
 
 const DEFAULT_BUNDLE_PATH = "docs/arkaik/bundle.json";
 const ACTOR = "arkaik-cli";
@@ -129,7 +130,13 @@ export function runDeliverable(args: string[]): void {
   }
 
   const journalPath = journalPathFor(filePath);
+  // This append is what makes a journal-less bundle's journal non-empty, and
+  // therefore cross-checked — so adopt the pre-existing nodes first (#357).
+  const baseline = ensureJournalBaseline(journalPath, bundle, ACTOR);
   appendJournalEvent(journalPath, event);
+  if (baseline !== undefined) {
+    console.log(`\n  ${renderEventLine(baseline)} -> ${journalPath}`);
+  }
   console.log(
     `\n  Recorded deliverable ${deliverableId} — ${title} -> ${journalPath}\n`,
   );

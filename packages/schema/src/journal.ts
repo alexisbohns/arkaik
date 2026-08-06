@@ -39,6 +39,7 @@ export const JOURNAL_EVENT_TYPES = [
   "ref.added",
   "ref.removed",
   "ref.status_changed",
+  "journal.baseline",
 ] as const;
 
 /** A `type` value in the known v1 vocabulary. */
@@ -187,6 +188,24 @@ export interface RefStatusChangedEvent extends JournalEvent {
   synced_at: string;
 }
 
+/**
+ * Journal coverage marker: the listed nodes already existed when this journal's
+ * coverage began, and their creation is **not** recorded in it.
+ *
+ * A bundle whose nodes predate journaling (exported from the app, hand-authored,
+ * migrated from Level 0/1) has no `node.created` for them, and the very first
+ * append — a release marker, a deliverable, one MCP mutation — makes the journal
+ * non-empty and therefore cross-checked. Writers emit exactly one of these
+ * immediately before that first append, so the provenance rule is satisfied by
+ * an explicit, auditable statement about *coverage* rather than by fabricating a
+ * `node.created` per node — history nobody witnessed. Its position in `ts` order
+ * carries no meaning: provenance is a set membership test, not a replay.
+ */
+export interface JournalBaselineEvent extends JournalEvent {
+  type: "journal.baseline";
+  node_ids: string[];
+}
+
 /** The discriminated union of every known v1 event. */
 export type KnownJournalEvent =
   | NodeCreatedEvent
@@ -202,7 +221,8 @@ export type KnownJournalEvent =
   | RequestFiledEvent
   | RefAddedEvent
   | RefRemovedEvent
-  | RefStatusChangedEvent;
+  | RefStatusChangedEvent
+  | JournalBaselineEvent;
 
 /**
  * Order events by `ts`, tiebreaking by `id` (both ULID and ISO 8601 sort
@@ -368,10 +388,16 @@ function statusesAgree(last: string, snapshot: unknown): boolean {
  *   its legacy ids while snapshots migrate. Platform-scoped transitions
  *   (those carrying `platform`) move a per-platform view status, not
  *   `node.status`, and are excluded.
- * - **Provenance:** every node in the snapshot must have a `node.created` event.
+ * - **Provenance:** every node in the snapshot must have a `node.created` event,
+ *   **or** be named by a `journal.baseline` — the explicit "this journal's
+ *   coverage begins here, these nodes already existed" marker a writer emits
+ *   when it first appends to a journal that predates the graph. Without that
+ *   escape hatch the first append to a journal-less bundle would make every one
+ *   of its nodes read as missing provenance, permanently (#357).
  * - **No dangling references:** no event may reference a node or edge that never
  *   existed — i.e. is neither in the current snapshot nor introduced by a
- *   `node.created` / `edge.added`. The `node.deleted` edge cascade is applied:
+ *   `node.created` / `edge.added` / `journal.baseline`. The `node.deleted` edge
+ *   cascade is applied:
  *   edges attached to a deleted node are removed without an explicit
  *   `edge.removed`, so the "ever existed" edge set (snapshot ∪ `edge.added`)
  *   already covers them and no cascaded `edge.removed` is ever demanded.
@@ -451,8 +477,13 @@ export function crossCheckJournal(bundle: Record<string, unknown>): JournalFindi
   });
 
   // --- "Ever existed" sets: current snapshot ∪ everything the journal created/added ---
+  // A `journal.baseline` counts as evidence on both axes: naming a node is a
+  // statement that it existed (so references to it never dangle — including a
+  // `node.deleted` for one adopted and then removed) and that its creation
+  // predates this journal (so no `node.created` is demanded for it).
   const everNodes = new Set<string>(snapshotNodeStatus.keys());
   const everEdges = new Set<string>(snapshotEdgeIds);
+  const baselined = new Set<string>();
   for (const { ev } of valid) {
     if (ev.type === "node.created") {
       const nid = str(ev.node_id);
@@ -460,6 +491,14 @@ export function crossCheckJournal(bundle: Record<string, unknown>): JournalFindi
     } else if (ev.type === "edge.added") {
       const eid = str(ev.edge_id);
       if (eid) everEdges.add(eid);
+    } else if (ev.type === "journal.baseline" && Array.isArray(ev.node_ids)) {
+      for (const raw of ev.node_ids as unknown[]) {
+        const nid = str(raw);
+        if (nid) {
+          baselined.add(nid);
+          everNodes.add(nid);
+        }
+      }
     }
   }
 
@@ -533,7 +572,7 @@ export function crossCheckJournal(bundle: Record<string, unknown>): JournalFindi
 
   // --- Provenance + status agreement, per current snapshot node ---
   for (const [nodeId, status] of snapshotNodeStatus) {
-    if (!created.has(nodeId)) {
+    if (!created.has(nodeId) && !baselined.has(nodeId)) {
       findings.push({
         path: "journal",
         rule: "journal-missing-node-created",
@@ -573,4 +612,41 @@ export function crossCheckJournal(bundle: Record<string, unknown>): JournalFindi
   }
 
   return findings;
+}
+
+/**
+ * The snapshot node ids whose creation `events` does not account for — neither a
+ * `node.created` nor a {@link JournalBaselineEvent} naming them — in snapshot
+ * order, deduplicated. Exactly the set {@link crossCheckJournal} would flag
+ * `journal-missing-node-created`, exposed as a pure helper so a writer can emit
+ * ONE `journal.baseline` covering them immediately before its first append
+ * (docs/spec/journal.md § Authority & Consistency Model).
+ *
+ * Pass the **full** journal — the working sidecar *plus* any compaction
+ * archives — or a baseline will name nodes whose `node.created` merely moved
+ * out of the working file at `arkaik release --compact` time.
+ */
+export function missingProvenanceNodeIds(
+  snapshotNodeIds: Iterable<string>,
+  events: readonly JournalEvent[],
+): string[] {
+  const covered = new Set<string>();
+  for (const ev of events) {
+    if (ev.type === "node.created") {
+      if (typeof ev.node_id === "string") covered.add(ev.node_id);
+    } else if (ev.type === "journal.baseline" && Array.isArray(ev.node_ids)) {
+      for (const id of ev.node_ids as unknown[]) {
+        if (typeof id === "string") covered.add(id);
+      }
+    }
+  }
+
+  const missing: string[] = [];
+  const seen = new Set<string>();
+  for (const id of snapshotNodeIds) {
+    if (covered.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    missing.push(id);
+  }
+  return missing;
 }

@@ -15,9 +15,17 @@ export {
   JOURNAL_SIDECAR,
   journalPathFor,
   archivePathFor,
+  archivePathsFor,
   readJournalEvents,
+  readFullJournalEvents,
   loadJournalEvents,
   appendJournalEvent,
+  ensureJournalBaseline,
   compactSlice,
 } from "./lib/journal-io";
-export { validateBundleAt, type BundleValidation } from "./lib/bundle-validate";
+export {
+  validateBundleAt,
+  journalLineErrorLines,
+  type BundleValidation,
+  type JournalArchiveFinding,
+} from "./lib/bundle-validate";

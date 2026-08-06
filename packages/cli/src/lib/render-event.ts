@@ -86,6 +86,10 @@ export function renderEventLine(
       const to = str(event.to) ?? "?";
       return `${title(event.node_id, nodesById)}: reference ${from ? `${from} -> ${to}` : to}`;
     }
+    case "journal.baseline": {
+      const count = Array.isArray(event.node_ids) ? event.node_ids.length : 0;
+      return `Journal baseline: ${count} pre-existing node(s) recorded`;
+    }
     default:
       // Unknown type — forward-compatible: render the raw type rather than erroring.
       return event.type;

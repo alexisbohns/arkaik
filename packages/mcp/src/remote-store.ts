@@ -105,9 +105,12 @@ export function createRemoteStore(options: RemoteStoreOptions): Store {
           edges,
           journal,
           sidecarLoaded: false,
-          // Nothing was folded in from a JSONL sidecar, so there are no line
-          // findings — hosted journals arrive already parsed.
+          // Nothing was folded in from a JSONL sidecar or a compaction archive,
+          // so there are no line findings — hosted journals arrive already
+          // parsed, and compaction is a repo-mode concern.
           sidecarFindings: [],
+          archivesLoaded: [],
+          archiveFindings: [],
           get result(): ValidationResult {
             return validate();
           },

@@ -28,7 +28,7 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { validateBundleAt, type BundleValidation } from "../lib/bundle-validate";
+import { validateBundleAt, journalLineErrorLines, type BundleValidation } from "../lib/bundle-validate";
 import { formatFinding } from "./validate";
 import { runPack } from "./pack";
 
@@ -127,10 +127,7 @@ export async function runOpen(options: RunOpenOptions = {}): Promise<RunOpenResu
   }
 
   const warningLines = v.result.warnings.map(formatFinding);
-  const errorLines = [
-    ...v.sidecarFindings.map((f) => `ERROR [${f.rule}] line ${f.line}: ${f.message}`),
-    ...v.result.errors.map(formatFinding),
-  ];
+  const errorLines = [...journalLineErrorLines(v), ...v.result.errors.map(formatFinding)];
 
   if (!v.valid) {
     return { ok: true, bundlePath: filePath, valid: false, errorLines, warningLines, opened: false };

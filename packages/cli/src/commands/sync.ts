@@ -46,7 +46,7 @@ import {
   type Promotion as RefPromotionApplied,
 } from "@arkaik/schema";
 import { readBundle } from "../lib/bundle-io";
-import { appendJournalEvent, journalPathFor } from "../lib/journal-io";
+import { appendJournalEvent, ensureJournalBaseline, journalPathFor } from "../lib/journal-io";
 import { renderEventLine } from "../lib/render-event";
 import {
   DEFAULT_HTTP_CLIENT,
@@ -164,6 +164,8 @@ export interface RunSyncResult {
   nodeTitles: Map<string, string>;
   /** Status promotions applied (or, under --dry-run, that would be). */
   promoted: RefPromotionApplied[];
+  /** The `journal.baseline` this run appended before its first event, if any (#357). */
+  baseline?: JournalEvent;
 }
 
 function fatalResult(bundlePath: string, journalPath: string, dryRun: boolean, message: string): RunSyncResult {
@@ -224,6 +226,18 @@ export async function runSync(options: RunSyncOptions = {}): Promise<RunSyncResu
   const errors: RefSyncError[] = [];
   const nodeTitles = new Map<string, string>();
   let dirty = false;
+
+  // Adoption marker (#357), emitted at most once and only if this run actually
+  // writes: the first appended event is what makes a journal-less bundle's
+  // journal non-empty and therefore cross-checked. `--dry-run` never reaches
+  // these call sites, so a dry run stays byte-for-byte read-only.
+  let baseline: JournalEvent | undefined;
+  let baselineChecked = false;
+  const adoptJournal = (): void => {
+    if (baselineChecked) return;
+    baselineChecked = true;
+    baseline = ensureJournalBaseline(journalPath, bundle, actor);
+  };
 
   for (const node of nodes) {
     const nodeId = typeof node.id === "string" ? node.id : undefined;
@@ -288,6 +302,7 @@ export async function runSync(options: RunSyncOptions = {}): Promise<RunSyncResu
         },
         { actor, ts: syncedAt },
       );
+      adoptJournal();
       appendJournalEvent(journalPath, event);
     }
   }
@@ -313,6 +328,7 @@ export async function runSync(options: RunSyncOptions = {}): Promise<RunSyncResu
       // A normal node.status_changed, carrying `platform` when the promotion is
       // platform-scoped — the same event a human edit produces, so the journal
       // reads the same whoever moved it.
+      adoptJournal();
       appendJournalEvent(
         journalPath,
         makeEvent(
@@ -333,7 +349,7 @@ export async function runSync(options: RunSyncOptions = {}): Promise<RunSyncResu
     writeFileSync(filePath, serializeBundle(bundle as unknown as Parameters<typeof serializeBundle>[0]));
   }
 
-  return { ok: true, bundlePath: filePath, journalPath, dryRun, changed, unchanged, skipped, errors, nodeTitles, promoted };
+  return { ok: true, bundlePath: filePath, journalPath, dryRun, changed, unchanged, skipped, errors, nodeTitles, promoted, baseline };
 }
 
 /** A rendered `ref.status_changed` line for a change, reusing the shared event renderer. */
@@ -375,6 +391,10 @@ function report(result: RunSyncResult): void {
     const byProvider = new Map<string, number>();
     for (const s of stubSkips) byProvider.set(s.provider ?? "?", (byProvider.get(s.provider ?? "?") ?? 0) + 1);
     for (const [provider, count] of byProvider) console.log(`    - ${provider}: ${count} ref(s)`);
+  }
+
+  if (result.baseline !== undefined) {
+    console.log(`  ${renderEventLine(result.baseline)}`);
   }
 
   if (result.errors.length > 0) {

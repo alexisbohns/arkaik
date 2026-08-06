@@ -1,7 +1,7 @@
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { validateBundle } from "../validate";
-import { parseJournalLines, type JournalLineFinding } from "../journal";
+import { parseJournalLines, type JournalEvent } from "../journal";
 
 /**
  * Entry point for the standalone `validate-bundle.js` build artifact
@@ -18,9 +18,27 @@ import { parseJournalLines, type JournalLineFinding } from "../journal";
  * docs/arkaik/bundle.json` gates the *appended* event, not just an embedded
  * projection. An embedded `journal` (the packed interchange form) always wins —
  * the sidecar is only consulted when none is present.
+ *
+ * The compaction archives (`journal/archive-<version>.jsonl`) are folded in
+ * alongside the sidecar. `arkaik release --compact` *relocates* history into
+ * them, it never deletes it (docs/spec/journal.md § Releases, Compaction &
+ * Growth), so a validator that read only the working file would call a
+ * perfectly healthy compacted project invalid the moment a release archived a
+ * node's `node.created` or its last status transition (#358).
  */
 
 const JOURNAL_SIDECAR = "journal.jsonl";
+const JOURNAL_ARCHIVE_DIR = "journal";
+
+/** The compaction archives beside the sidecar, sorted so a report is deterministic. */
+function archivePaths(bundleDir: string): string[] {
+  const dir = join(bundleDir, JOURNAL_ARCHIVE_DIR);
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((name) => name.startsWith("archive-") && name.endsWith(".jsonl"))
+    .sort()
+    .map((name) => join(dir, name));
+}
 
 function countBySpecies(nodes: unknown[], species: string): number {
   return nodes.filter((n) => (n as { species?: unknown } | null)?.species === species).length;
@@ -51,20 +69,33 @@ function main(): void {
     process.exit(1);
   }
 
-  // Fold in the canonical JSONL sidecar when the bundle carries no embedded
-  // journal. Line-level parse findings (bad JSON, missing envelope fields) carry
-  // the 1-based line number and are hard errors — a malformed line invalidates
-  // exactly that one event and never damages the rest (docs/spec/journal.md).
-  let sidecarFindings: JournalLineFinding[] = [];
+  // Fold in the canonical JSONL sidecar AND its compaction archives when the
+  // bundle carries no embedded journal. Line-level parse findings (bad JSON,
+  // missing envelope fields) carry the 1-based line number and are hard errors —
+  // a malformed line invalidates exactly that one event and never damages the
+  // rest (docs/spec/journal.md). Archive findings name their file too, since a
+  // bare line number would be ambiguous across several files.
+  const lineFindings: string[] = [];
   let sidecarLoaded = false;
+  const archivesLoaded: string[] = [];
   if (loose.journal === undefined) {
-    const sidecarPath = join(dirname(filePath), JOURNAL_SIDECAR);
+    const bundleDir = dirname(filePath);
+    const sidecarPath = join(bundleDir, JOURNAL_SIDECAR);
+    const folded: JournalEvent[] = [];
     if (existsSync(sidecarPath)) {
       const { events, findings } = parseJournalLines(readFileSync(sidecarPath, "utf8"));
-      sidecarFindings = findings;
+      for (const finding of findings) lineFindings.push(finding.message);
       sidecarLoaded = true;
-      loose.journal = events;
+      folded.push(...events);
     }
+    for (const archivePath of archivePaths(bundleDir)) {
+      const name = basename(archivePath);
+      const { events, findings } = parseJournalLines(readFileSync(archivePath, "utf8"));
+      for (const finding of findings) lineFindings.push(`${name} — ${finding.message}`);
+      archivesLoaded.push(name);
+      folded.push(...events);
+    }
+    if (sidecarLoaded || archivesLoaded.length > 0) loose.journal = folded;
   }
 
   const nodes = Array.isArray(loose.nodes) ? loose.nodes : [];
@@ -78,8 +109,12 @@ function main(): void {
     `  Nodes: ${nodes.length} (${countBySpecies(nodes, "view")} views, ${countBySpecies(nodes, "flow")} flows, ${countBySpecies(nodes, "data-model")} data-models, ${countBySpecies(nodes, "api-endpoint")} api-endpoints, ${countBySpecies(nodes, "acceptance")} acceptances)`,
   );
   console.log(`  Edges: ${edges.length}`);
-  if (sidecarLoaded) {
-    console.log(`  Journal: ${journal.length} event(s) from ${JOURNAL_SIDECAR} sidecar`);
+  if (sidecarLoaded || archivesLoaded.length > 0) {
+    const from = [
+      ...(sidecarLoaded ? [`${JOURNAL_SIDECAR} sidecar`] : []),
+      ...(archivesLoaded.length > 0 ? [`${archivesLoaded.length} archive(s)`] : []),
+    ].join(" + ");
+    console.log(`  Journal: ${journal.length} event(s) from ${from}`);
   } else if (journal.length > 0) {
     console.log(`  Journal: ${journal.length} embedded event(s)`);
   }
@@ -91,10 +126,7 @@ function main(): void {
     console.log("");
   }
 
-  const errorMessages = [
-    ...sidecarFindings.map((f) => f.message),
-    ...result.errors.map((e) => e.message),
-  ];
+  const errorMessages = [...lineFindings, ...result.errors.map((e) => e.message)];
 
   if (errorMessages.length === 0) {
     console.log("  Result: VALID\n");
