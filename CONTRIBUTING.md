@@ -2,18 +2,14 @@
 
 ## License
 
-The entire repository is currently licensed under the **GNU Affero General Public License v3.0** (`LICENSE`), including the agent skill under `docs/arkaik-skill/` even though it's designed to be copied into other people's repos.
+arkaik is licensed **by layer**, and the split has already executed — this is a description of the current state, not a plan.
 
-### Planned split
+- **MIT — the format, schema, validator, CLI, MCP server, and agent skill.** `packages/schema` (`@arkaik/schema`), `packages/cli` (the published `arkaik` CLI), `packages/mcp` (the published `arkaik-mcp` server), and the skill/plugin assets under `plugin/` and `docs/arkaik-skill/`. Each package carries its own MIT `LICENSE`; the two published ones ship it inside their npm tarball, and `@arkaik/schema` — which is workspace-private and reaches users bundled into those two builds — is covered by the same text at the same terms. These layers are the toolchain's adoption channel: they exist to be pasted into other organizations' repositories, and many corporate policies reject AGPL dependencies outright.
+- **AGPL-3.0 — the app and the services.** Everything else, under the repository-root [`LICENSE`](LICENSE): the Next.js application (`app/`, `components/`, `lib/`, `hooks/`), the route handlers and server code (`app/api/`, `lib/services/`), and the migrations in `db/`. Self-hosting stays possible for everyone; a closed-source clone of the hosted app does not.
 
-Per [`docs/vision.md` § Open Source Strategy](docs/vision.md#open-source-strategy), the license will split by layer:
+Rationale in [`docs/vision.md` § Open Source Strategy](docs/vision.md#open-source-strategy); the normative statement is [`docs/spec/toolchain.md` § Licensing](docs/spec/toolchain.md).
 
-- **MIT (or Apache-2.0):** the format, schema, validator, CLI, and skill — today that's `docs/arkaik-skill/`, `public/schema/`, and their future extraction into `packages/schema` and `packages/cli`. These are the toolchain's adoption channel, and copyleft would throttle exactly the growth they exist for.
-- **AGPL-3.0 (unchanged):** the app (`arkaik.app`) and services. Self-hosting stays possible for everyone; a closed-source clone of the hosted app does not.
-
-The split executes physically when `packages/schema` and `packages/cli` are extracted (Roadmap Phase 1) — until then, everything in this repo remains AGPL-3.0.
-
-**By submitting a contribution, you agree it may be relicensed under the terms above once the split executes**, for whichever path(s) your contribution touches. This is what keeps the eventual split simple: recording it now, while the project has a single copyright holder, avoids having to track down every contributor's consent later.
+**By submitting a contribution, you agree it carries the license of the path(s) it touches** — MIT under `packages/`, `plugin/`, and `docs/arkaik-skill/`; AGPL-3.0 everywhere else. Recording this while the project still has effectively a single copyright holder is what keeps the boundary maintainable: consent gathered per-contribution now is consent nobody has to chase down later.
 
 ## How to contribute
 
@@ -22,14 +18,17 @@ The split executes physically when `packages/schema` and `packages/cli` are extr
    ```bash
    npm run lint
    npm run build
+   npm run generate
    ```
-3. If your change touches the bundle format or any seed/example data (`seed/pebbles.json`, `seed/arkaik-self-map.json`, `public/schema/example-bundle.json`), validate it:
+   `npm run generate` is the one contributors are most likely to skip and most likely to be failed by. CI regenerates every derived artifact and then fails the PR on `git diff` — the JSON Schema, the standalone validator, the skill reference, the prompt fragments, the plugin manifests, and the wobble CSS (`.github/workflows/ci.yml` § *Fail on generated-artifact drift*). Running the generator and committing what it rewrites is the only way to close that gate; hand-editing a generated file just moves the failure.
+3. Run the tests around what you changed. CI runs every `test:*` script in `package.json`, so the local subset is a fast-feedback loop rather than a substitute — pick the ones named after your change (`npm run test:schema` for the model, `npm run test:cli`, `npm run test:mcp`, `npm run test:provider`, …). The Postgres-backed integration tests (`test:graph`, `test:publik`, `test:synk`, `test:tokens`, `test:github`, `test:auth`, `test:sync`) run in a separate CI job with a database attached; locally they need a `DATABASE_URL`.
+4. If your change touches the bundle format or any seed/example data (`seed/pebbles.json`, `seed/arkaik-self-map.json`, `public/schema/example-bundle.json`), validate it:
    ```bash
-   node docs/arkaik-skill/scripts/validate-bundle.js <path-to-bundle.json>
+   npm run validate:seeds        # all three, exactly as CI does
+   npx arkaik validate <path>    # one bundle, folding in a journal.jsonl sidecar
    ```
-   (This isn't wired into CI yet — see Phase 0 in the [roadmap](docs/vision.md#roadmap) — so it's a manual step for now.)
-4. Open a PR with a clear description of what changed and why. Keep the scope focused — smaller PRs are easier to review.
-5. Follow the patterns in [`docs/conventions.md`](docs/conventions.md) for file organization, state management, and styling.
+5. Open a PR with a clear description of what changed and why. Keep the scope focused — smaller PRs are easier to review.
+6. Follow the patterns in [`docs/conventions.md`](docs/conventions.md) for file organization, state management, and styling.
 
 ## Learn more
 

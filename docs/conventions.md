@@ -3,28 +3,47 @@
 ## File Organization
 
 ```
-app/                    # Next.js App Router pages and layouts
+app/                    # Next.js App Router pages, layouts, and route handlers (app/api/)
 components/
-  branding/            # Brand assets and logo components
+  branding/             # Brand assets and logo components
+  background/           # Ambient canvases (the ASCII terrain on the landing page)
   graph/                # React Flow canvas, custom nodes, custom edges
+  maps/                 # Map surfaces: JourneyMap, SystemMap, cards, editor dialog
+  overview/ delivery/   # The dashboard cards, and the delivery board
+  acceptances/ decisions/ pyramid/ values/   # The acceptance + decision + value surfaces
+  library/ journal/     # Node browser; one event's human sentence
+  projects/             # The project-list surfaces (create, import, seed, restore)
   generate/             # Prompt builder form/output components for /generate
-  layout/               # Shell UI: project sidebar, switcher, breadcrumb, minimap, badges
+  publik/ sync/ auth/   # Share, Synk backup, sign-in surfaces
+  settings/             # Product manager, repo links, token manager
+  layout/               # Shell UI: project sidebar, switcher, command palette, minimap, badges
   panels/               # The push-panel stack, its panel content, and forms
     PanelStack.tsx      # Content-agnostic column stack: keyboard, breadcrumb, visibility
     ProjectPanels.tsx   # Binds the stack to panel kind: node detail, or the raw bundle
+  docs/                 # Markdown renderer + docs search for the in-app /docs space
   ui/                   # shadcn/ui primitives (do not edit directly — use CLI)
+  wobble/               # The hand-drawn icon effect (docs/icon-wobble.md)
 lib/
-  config/               # Typed const arrays: species, statuses, platforms, edge types
-  data/                 # DataProvider interface + implementations
+  config/               # Labels + display order for the ids in @arkaik/schema (§ Config / Taxonomies)
+  data/                 # DataProvider interface + local, remote, seed and routing implementations
   hooks/                # React hooks for state management
     useProjectPanels.tsx # Panel-stack provider + the `?node=` contract
+  services/             # Server-only: hosted graph store, publik, synk, auth, GitHub App
+  sync/                 # Client sync engine (Synk SyncManager)
   prompts/              # Prompt assembly blocks/types for the AI prompt builder
-  utils/                # Helpers: layout, export, cn()
+  utils/                # Helpers: layout, export, projections, cn()
+packages/               # The MIT toolchain, an npm workspace
+  schema/               # @arkaik/schema — canonical zod model, ids, validation, projections
+  cli/                  # arkaik — the CLI
+  mcp/                  # arkaik-mcp — the stdio MCP server
+plugin/                 # Claude Code plugin: the agent skill + generated assets
+db/                     # Postgres migrations + the migrate runner
 public/
   schema/               # Public JSON schema + example bundle for import contract
   llms.txt              # Concise LLM manifest
   robots.txt            # Crawl directives + sitemap pointer
-seed/                   # Example project JSON for development
+seed/                   # Example project JSON: pebbles.json, arkaik-self-map.json
+tests/                  # The test:* suites CI runs
 docs/                   # This documentation
 ```
 
@@ -124,24 +143,34 @@ Four things to keep in mind when touching it:
 
 ## Config / Taxonomies
 
-All domain enums live in `lib/config/` as `const` arrays with `as const`:
+A taxonomy lives in **two files**, and the split is the point: an id is part of the portable format, a label is not.
+
+**Ids belong to the schema package.** `packages/schema/src/ids.ts` holds plain `as const` arrays — `SPECIES_IDS`, `STATUS_IDS`, `PLATFORM_IDS`, `EDGE_TYPE_IDS`, `VALUE_IDS` — with each union type derived from its array, and deliberately no zod dependency so the standalone validator can read them without pulling the runtime in. Everything that must agree about the vocabulary reads from there: the validator, the CLI, the MCP server, the generated JSON Schema.
+
+**Labels and display order belong to `lib/config/`**, and each array is *checked against* the ids rather than redefining them:
 
 ```typescript
 // lib/config/species.ts
+import type { SpeciesId } from "@arkaik/schema";
+
 export const SPECIES = [
   { id: "flow", level: 1, label: "Flow", description: "an ordered sequence of views and sub-flows" },
   // ...
-] as const;
+] as const satisfies readonly { id: SpeciesId; level: number | null; label: string; description: string }[];
 
-export type SpeciesId = (typeof SPECIES)[number]["id"];
+export type { SpeciesId };
 ```
 
-This pattern gives you:
-- Runtime array for iteration (dropdowns, mapping)
-- Compile-time union type for type safety
-- Single source of truth — no duplicate enum + array
+`as const satisfies` is what makes that safe. `as const` keeps the literal tuple, so iteration and narrowing still work; `satisfies` makes the compiler reject any `id` that is not a real `SpeciesId` — without widening the array's type the way an annotation would. There is still exactly one source of truth for the vocabulary; it just moved down a layer.
 
-To add a new taxonomy value, add it to the array. The type updates automatically.
+To add a taxonomy value:
+
+1. Add the id to the array in `packages/schema/src/ids.ts` — plus its admissible source/target pairs in `VALID_EDGE_SEMANTICS` if it is an edge type.
+2. Add the matching entry (label, order, icon, whatever the app renders) to the `lib/config/` array. Doing this first will not compile — that failing `satisfies` check is the guard working, not a problem to route around.
+3. Run `npm run generate`. The JSON Schema, the standalone validator, the skill reference and the prompt fragments are all derived, and CI fails the PR on any drift.
+4. Update [graph-model.md](graph-model.md), the documented source of truth for the taxonomy.
+
+`lib/config/stages.ts` is the one exception, and legitimately so: `metadata.stage` is a free `string` in the format, so `STAGES` is a plain app-side `as const` with no schema id to satisfy.
 
 ## Components
 
@@ -155,10 +184,10 @@ To add a new taxonomy value, add it to the array. The type updates automatically
 All writes go through the `DataProvider` interface:
 
 ```
-Component → Hook (useNodes.addNode) → Provider (localProvider.createNode) → Storage
+Component → Hook (useNodes.addNode) → getProvider().createNode(node) → the routed backend
 ```
 
-Never write to `localStorage` directly. Always use the provider.
+Never write to `localStorage`, IndexedDB, or `/api/graph` directly, and never import `localProvider` at a call site. `getProvider()` is the seam — it is what lets the same component work against a local, hosted, or seed project without knowing which it has ([data-layer.md § Providers](data-layer.md)).
 
 ## Routing UI
 

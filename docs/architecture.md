@@ -9,7 +9,9 @@ arkaik is a product graph browser built on Next.js 16 App Router with React Flow
 ```
 app/
   layout.tsx            # Root layout: fonts (Geist), ThemeProvider, global CSS
-  page.tsx              # Home page: component showcase / project list
+  page.tsx              # Landing page — signed-in visitors redirect straight to /projects
+  projects/
+    page.tsx            # Project list: create, import, seed, restore
   generate/
     page.tsx            # Prompt builder UI for LLM-assisted ProjectBundle generation
   llms-full.txt/
@@ -36,12 +38,29 @@ app/
         page.tsx        # Gallery/directory node browser (species via sidebar ?species= links)
       delivery/
         page.tsx        # Delivery board — (node × platform) items grouped by status
+      acceptances/
+        page.tsx        # Acceptance matrix — acceptances against per-platform status
+      decisions/
+        page.tsx        # Decision log — ADR-style records with their own status
+      pyramid/
+        page.tsx        # Value-elements aggregation over acceptances (Bain pyramid)
       changelog/
         page.tsx        # Releases + backlog derived from the journal
+      history/
+        page.tsx        # The journal itself, as a raw event log
+      settings/
+        page.tsx        # Project settings: products, linked repos, danger zone
+  settings/
+    tokens/
+      page.tsx          # Account-level `ark_` API tokens (mint/revoke)
   p/
     [id]/
       page.tsx          # Publik snapshot preview (server-rendered)
-  api/                  # Publik, Synk, and auth route handlers (spec/services.md)
+  api/
+    graph/              # Hosted projects: CRUD + the validated `mutations` write path
+    tokens/             # `ark_` token mint/revoke
+    github/webhook/     # GitHub App events → acceptance ref promotion
+    publik/ synk/ auth/ # Share, backup, Auth.js (spec/services.md)
 ```
 
 The Journey map (`components/maps/JourneyMap.tsx`) is the core of the graph renderer; its graph construction is the pure `buildJourneyGraph` in `lib/utils/journey-graph.ts` (golden-tested against the Pebbles seed). It:
@@ -70,7 +89,7 @@ components/
       node-styles.ts        # Status/platform style maps
     edges/
       ComposeEdge.tsx       # Straight — hierarchy (composes)
-      CrossLayerEdge.tsx    # Dashed straight — cross-layer references (not yet registered in Canvas)
+      CrossLayerEdge.tsx    # Dashed straight — registered in Canvas for calls, displays, queries
   maps/
     JourneyMap.tsx          # The Journey map surface: expansion state, editing, dialogs, toolbar
     SystemMap.tsx           # The System map surface: species tiers, cross-layer edges, connect-to-create
@@ -112,7 +131,17 @@ components/
     PlaylistEntryRow.tsx    # Recursive playlist row renderer for condition/junction branches
     NodeSearchCombobox.tsx  # Search-or-create selector for flow/view references
     PlatformVariants.tsx    # Platform tab switcher with per-platform status and notes
-    RawBundleSheet.tsx      # Raw JSON/YAML bundle viewer/editor sheet (guarded edit + save-back)
+    RawBundlePanel.tsx      # Raw JSON/YAML bundle viewer/editor — a stack column (guarded edit + save-back)
+    AcceptanceEditor.tsx    # An acceptance's body: gherkin, values, per-platform status
+    DecisionEditor.tsx      # A decision's body: context, decision, consequences, decision status
+  acceptances/              # AcceptanceMatrix + its filter bar
+  decisions/                # DecisionLog
+  pyramid/                  # Value-elements pyramid: tier groups, element cards/rows, toolbar
+  journal/                  # describe-event.ts — one event's human sentence, shared by changelog/history
+  values/                   # ValueBadge, ValuePicker (Bain value elements)
+  publik/                   # PublishDialog, ImportSnapshotButton
+  sync/                     # Synk provider, per-project control, restore dialog, onboarding banner
+  settings/                 # Product manager, repo links, token manager
   ui/                       # shadcn/ui primitives (button, card, dialog, input, etc.)
     dropdown-menu.tsx       # Radix dropdown wrapper used by the project switcher
     popover.tsx             # Radix popover wrapper used by View card API/platform details
@@ -122,9 +151,11 @@ components/
 ## Data Flow
 
 ```
-IndexedDB (Dexie)
+IndexedDB (Dexie) | hosted graph API (app/api/graph) | in-memory seed
     ↕ (read/write)
-localProvider (implements DataProvider, via getProvider())
+localProvider / remoteProvider / seedProvider
+    ↕ (routed by project id)
+routingProvider (implements DataProvider, the default behind getProvider())
     ↕ (async calls)
 Hooks: useNodes, useEdges, useProject, useProjects, useJournal
     ↕ (state)
@@ -196,7 +227,7 @@ LLM affordance assets:
 - `public/robots.txt` and `app/sitemap.ts` support discoverability.
 ```
 
-All data mutations flow through the `DataProvider` interface (`lib/data/data-provider.ts`). The current implementation is `localProvider` backed by IndexedDB (Dexie — `lib/data/db.ts`), which writes per project rather than rewriting the whole store on every mutation. The interface plus the `getProvider()`/`setProvider()` seam (`lib/data/provider-registry.ts`) let the backend change without touching hooks or UI — the seam a future read-only repo-bundle provider ([rfcs/arkaik-dev.md](rfcs/arkaik-dev.md)) injects through.
+All data mutations flow through the `DataProvider` interface (`lib/data/data-provider.ts`), reached through the `getProvider()`/`setProvider()` seam (`lib/data/provider-registry.ts`). The default is a **routing** provider that dispatches each call by project id across three implementations: `localProvider` over IndexedDB (Dexie — `lib/data/db.ts`, writing per project rather than rewriting the whole store), `remoteProvider` over the hosted graph API for `prj_`-prefixed projects, and `seedProvider` over per-tab memory for the built-in public self-map. No hook or component knows which one answered. Full routing rules, and the deliberate reversal of "the browser is the source of truth" for hosted projects, are in [data-layer.md](data-layer.md) and [spec/services.md](spec/services.md).
 
 ## Playlist Expansion
 
@@ -211,7 +242,7 @@ Expanded flows reveal ordered children from `metadata.playlist` and `composes` e
 Canvas visibility rule (Journey map):
 
 - Rendered nodes: `flow`, `view`
-- Not rendered here: `data-model`, `api-endpoint` (still persisted; they render on the System map once roadmap CP-C lands — [spec/maps.md](spec/maps.md))
+- Not rendered here: `data-model`, `api-endpoint` (still persisted; they render as standalone cards on the **System map**, `/project/[id]/maps/system` — [spec/maps.md](spec/maps.md))
 
 Card rendering is per map, set from the header's **Display** popover and resolved
 by `resolveMapDisplay` ([spec/maps.md](spec/maps.md) § Display Options). Three
@@ -245,8 +276,10 @@ it, since the raw bundle panel needs no node data to be worth reaching. Those
 five pass `ProjectPanels` their own data and handlers and none keeps a
 selected-node of its own; a page that passes none still gets the grid, and a
 `?node=` it cannot resolve renders a body saying so rather than an empty
-column. `RawBundleSheet` stays a `Sheet`: a project-level raw-JSON view with no
-traversal, and genuinely modal.
+column. `RawBundlePanel` is the other thing a panel can be — a project-level
+raw-JSON/YAML view that is a column like any other, so mounting *is* opening and
+closing is the stack's. It needs no node data, which is the reason every project
+page should mount the grid.
 
 The body carries:
 
@@ -277,7 +310,7 @@ Library interactions reuse the same edit/create surfaces as canvas (`ProjectPane
 
 Project-level navigation is defined in `app/project/[id]/layout.tsx` and rendered by `ProjectSidebar` + `ProjectSwitcher`.
 
-- Sidebar links are route-aware (`canvas`, `library`) and preserve active state from pathname/search params.
+- Sidebar links are route-aware across the whole shell (overview, pyramid, delivery, changelog, the maps group, library and its per-species `?species=` rows, acceptances, decisions) and preserve active state from pathname/search params.
 - The switcher supports cross-project navigation while keeping users in the closest equivalent destination.
 - Keeping navigation in the shared project layout avoids duplicated route chrome in child pages.
 
@@ -307,8 +340,9 @@ shell has no other command state to share. Its catalogue comes from
 `getDocsSearchPages()` (`lib/utils/docs.ts`), the navigation tree flattened back
 into landable pages, and crosses to the client as plain data.
 
-- The page's own address is a synonym, hyphens and spaces both: "graph model"
-  finds `/docs/graph-model` even though its title says *The five species*.
+- The page's own address is a synonym, hyphens and spaces both: "hosted projects"
+  finds `/docs/hosted-projects` even though its title reads *Hosted Projects & the
+  Agent Plane*.
 - The folder trail rides along as the row's hint ("Spec"), so same-named pages in
   different sections stay tellable apart.
 - Publish is a project action and is simply absent from the catalogue; the theme
@@ -334,5 +368,5 @@ into landable pages, and crosses to the client as plain data.
 - Prompt builder: [app/generate/page.tsx](../app/generate/page.tsx), [components/generate/PromptBuilderForm.tsx](../components/generate/PromptBuilderForm.tsx), [components/generate/PromptOutput.tsx](../components/generate/PromptOutput.tsx), [lib/prompts/assemble.ts](../lib/prompts/assemble.ts), [lib/prompts/blocks.ts](../lib/prompts/blocks.ts), [lib/prompts/types.ts](../lib/prompts/types.ts)
 - React Flow registry: [components/graph/Canvas.tsx](../components/graph/Canvas.tsx)
 - Data hooks: [lib/hooks/useNodes.ts](../lib/hooks/useNodes.ts), [lib/hooks/useEdges.ts](../lib/hooks/useEdges.ts), [lib/hooks/useProject.ts](../lib/hooks/useProject.ts), [lib/hooks/useProjects.ts](../lib/hooks/useProjects.ts)
-- Data provider: [lib/data/local-provider.ts](../lib/data/local-provider.ts)
+- Data providers: [lib/data/data-provider.ts](../lib/data/data-provider.ts), [lib/data/provider-registry.ts](../lib/data/provider-registry.ts), [lib/data/routing-provider.ts](../lib/data/routing-provider.ts), [lib/data/local-provider.ts](../lib/data/local-provider.ts), [lib/data/remote-provider.ts](../lib/data/remote-provider.ts), [lib/data/seed-provider.ts](../lib/data/seed-provider.ts)
 - LLM surfaces: [public/llms.txt](../public/llms.txt), [app/llms-full.txt/route.ts](../app/llms-full.txt/route.ts), [public/schema/project-bundle.json](../public/schema/project-bundle.json), [public/schema/example-bundle.json](../public/schema/example-bundle.json), [public/robots.txt](../public/robots.txt), [app/sitemap.ts](../app/sitemap.ts)
