@@ -488,6 +488,128 @@ async function main() {
   }
 
   // -------------------------------------------------------------------------
+  // Critical: a restore that DROPS hosted nodes or edges must refuse — zero
+  // PUTs — unless --allow-deletions. This is the class the count-based history
+  // guard structurally cannot see, and the closest a real bootstrap run came
+  // to destroying data: the hosted project had drifted ahead of the committed
+  // cache (a node deleted in the app, a replacement created, edges rewired),
+  // so the delta was `+276 -1` with a GROWING journal — every count rose while
+  // a real deletion sat inside it.
+  // -------------------------------------------------------------------------
+
+  // Hosted state that has moved ahead of the local bundle: it carries a node
+  // (and an edge onto it) that the local bundle knows nothing about.
+  const HOSTED_AHEAD = {
+    ...HOSTED_EXPORT,
+    nodes: [
+      ...HOSTED_EXPORT.nodes,
+      { id: "DM-bounces", project_id: "demo", species: "data-model", title: "Bounces", status: "live", platforms: ["web"] },
+    ],
+    edges: [{ id: "e-V-old-DM-bounces", project_id: "demo", source_id: "V-old", target_id: "DM-bounces", edge_type: "displays" }],
+  };
+
+  {
+    // (a) The exact shape of the real run: the outbound journal GREW (2 vs 1,
+    // so the history guard is satisfied and waves it through) while a hosted
+    // node and edge are dropped. Proves the two guards catch different things.
+    const { dir, bundlePath } = fixture({ sidecarEvents: [SIDECAR_EVENT, SIDECAR_EVENT_2] });
+    const httpClient = makeMockHttpClient((url) => {
+      if (url.endsWith("/api/graph/projects/prj_demo")) return jsonResponse(200, { version: "1" });
+      if (url.endsWith("/export")) return jsonResponse(200, { bundle: HOSTED_AHEAD });
+      if (url.endsWith("/bundle")) throw new Error("must not PUT: the local bundle drops DM-bounces and its edge");
+      throw new Error(`unexpected URL ${url}`);
+    });
+    const result = await runRestore({ path: bundlePath, apiBase: "http://example.invalid", env: { ARKAIK_TOKEN: "tok" }, cwd: dir, httpClient });
+    check("growing journal + dropped node: refuses (ok:false)", result.ok === false, JSON.stringify(result));
+    check("dropped node: zero PUT calls", httpClient.calls.filter((c) => c.url.endsWith("/bundle")).length === 0, JSON.stringify(httpClient.calls));
+    check("dropped node: no backup written either (aborts before the write)", backupsIn(dir).length === 0, backupsIn(dir));
+    check(
+      "dropped node: message names the node id, not just a count",
+      typeof result.fatal === "string" && result.fatal.includes("DM-bounces"),
+      result.fatal,
+    );
+    check(
+      "dropped node: message names the edge id too",
+      typeof result.fatal === "string" && result.fatal.includes("e-V-old-DM-bounces"),
+      result.fatal,
+    );
+    check(
+      "dropped node: message names the --allow-deletions escape hatch",
+      typeof result.fatal === "string" && result.fatal.includes("--allow-deletions"),
+      result.fatal,
+    );
+  }
+  {
+    // (b) Same scenario with --allow-deletions: proceeds, and still backs up.
+    const { dir, bundlePath } = fixture({ sidecarEvents: [SIDECAR_EVENT, SIDECAR_EVENT_2] });
+    const httpClient = makeMockHttpClient((url) => {
+      if (url.endsWith("/api/graph/projects/prj_demo")) return jsonResponse(200, { version: "1" });
+      if (url.endsWith("/export")) return jsonResponse(200, { bundle: HOSTED_AHEAD });
+      if (url.endsWith("/bundle")) return jsonResponse(200, { version: "2", delta: {} });
+      throw new Error(`unexpected URL ${url}`);
+    });
+    const result = await runRestore({ path: bundlePath, allowDeletions: true, apiBase: "http://example.invalid", env: { ARKAIK_TOKEN: "tok" }, cwd: dir, httpClient });
+    check("--allow-deletions: restore proceeds (ok:true, sent)", result.ok === true && result.requestSent === true, JSON.stringify(result));
+    check("--allow-deletions: a backup was still taken", backupsIn(dir).length === 1, backupsIn(dir));
+  }
+  {
+    // (c) Edge-only deletion refuses too — the real run's `-7 edges` arrived
+    // without any node id changing, so a node-only guard would have missed it.
+    const { dir, bundlePath } = fixture();
+    const hostedEdgeOnly = { ...HOSTED_EXPORT, edges: [{ id: "e-V-old-V-old", project_id: "demo", source_id: "V-old", target_id: "V-old", edge_type: "composes" }] };
+    const httpClient = makeMockHttpClient((url) => {
+      if (url.endsWith("/api/graph/projects/prj_demo")) return jsonResponse(200, { version: "1" });
+      if (url.endsWith("/export")) return jsonResponse(200, { bundle: hostedEdgeOnly });
+      if (url.endsWith("/bundle")) throw new Error("must not PUT: the local bundle drops a hosted edge");
+      throw new Error(`unexpected URL ${url}`);
+    });
+    const result = await runRestore({ path: bundlePath, apiBase: "http://example.invalid", env: { ARKAIK_TOKEN: "tok" }, cwd: dir, httpClient });
+    check("edge-only deletion: refuses", result.ok === false, JSON.stringify(result));
+    check("edge-only deletion: names the edge id", typeof result.fatal === "string" && result.fatal.includes("e-V-old-V-old"), result.fatal);
+  }
+  {
+    // (d) The ordinary additive bootstrap landing — the local bundle is a
+    // superset of the hosted one — must NOT need the flag. This is the case
+    // every real run is supposed to be, so a guard that blocked it would be
+    // worse than no guard.
+    const { dir, bundlePath } = fixture();
+    const httpClient = makeMockHttpClient((url) => {
+      if (url.endsWith("/api/graph/projects/prj_demo")) return jsonResponse(200, { version: "1" });
+      if (url.endsWith("/export")) return jsonResponse(200, { bundle: HOSTED_EXPORT });
+      if (url.endsWith("/bundle")) return jsonResponse(200, { version: "2", delta: {} });
+      throw new Error(`unexpected URL ${url}`);
+    });
+    const result = await runRestore({ path: bundlePath, apiBase: "http://example.invalid", env: { ARKAIK_TOKEN: "tok" }, cwd: dir, httpClient });
+    check("additive-only restore: proceeds without --allow-deletions", result.ok === true && result.requestSent === true, JSON.stringify(result));
+  }
+  {
+    // (e) A dry run never fetches the export, so it has no ids to diff — the
+    // server's counts are all it has. Those counts must still be called out in
+    // words, because `-1` in a row of large rising numbers is exactly what got
+    // missed.
+    const result = {
+      ok: true,
+      dryRun: true,
+      requestSent: true,
+      status: 200,
+      version: "7",
+      delta: { nodesBefore: 173, nodesAfter: 448, nodesAdded: 276, nodesRemoved: 1, nodesChanged: 172, edgesRemoved: 7 },
+    };
+    const lines = captureConsoleLog(() => reportRestore(result));
+    check(
+      "dry-run delta calls out deletions in words",
+      lines.some((l) => l.includes("WARNING") && l.includes("DELETES") && l.includes("1 node") && l.includes("7 edges")),
+      JSON.stringify(lines),
+    );
+  }
+  {
+    // (f) ...and says nothing when there is nothing to warn about.
+    const result = { ok: true, dryRun: true, requestSent: true, status: 200, version: "7", delta: { nodesAdded: 5, nodesRemoved: 0, edgesRemoved: 0 } };
+    const lines = captureConsoleLog(() => reportRestore(result));
+    check("additive delta prints no deletion warning", !lines.some((l) => l.includes("WARNING")), JSON.stringify(lines));
+  }
+
+  // -------------------------------------------------------------------------
   // Important 2 (coordinator round 2): the backup lands at
   // cwd/docs/arkaik/.backups — anchored to the LINK FILE's directory — even
   // when --path points at a bundle entirely outside docs/arkaik/.
@@ -894,6 +1016,7 @@ async function main() {
     check("restore --help exits 0", help.status === 0 && /arkaik restore/.test(help.stdout), help.stdout);
     check("help documents --dry-run", /--dry-run/.test(help.stdout));
     check("help documents --allow-history-loss", /--allow-history-loss/.test(help.stdout));
+    check("help documents --allow-deletions", /--allow-deletions/.test(help.stdout));
     check("help documents --api", /--api/.test(help.stdout));
     check("help documents ARKAIK_URL", /ARKAIK_URL/.test(help.stdout));
 
