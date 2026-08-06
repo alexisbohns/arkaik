@@ -47,8 +47,21 @@ function DialogOverlay({
 function DialogContent({
   className,
   children,
+  showCloseButton = true,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Content>) {
+}: React.ComponentProps<typeof DialogPrimitive.Content> & {
+  /**
+   * The corner X. Defaults to `true` so every existing dialog is unchanged and
+   * so the discoverable affordance is what you get without asking.
+   *
+   * It exists because a dialog that owns its own close control had no way to
+   * suppress this one: the command palette hid it with `[&>button]:hidden`,
+   * which matches *any* direct button child, and the shot preview gave up and
+   * rebuilt the overlay/content pair from raw Radix. A prop says which button
+   * is meant; a selector only says where it sits.
+   */
+  showCloseButton?: boolean;
+}) {
   return (
     <DialogPortal>
       <DialogOverlay />
@@ -61,10 +74,15 @@ function DialogContent({
         {...props}
       >
         {children}
-        <DialogPrimitive.Close className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute right-4 top-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:pointer-events-none">
-          <XIcon className="size-4" />
-          <span className="sr-only">Close</span>
-        </DialogPrimitive.Close>
+        {showCloseButton && (
+          <DialogPrimitive.Close
+            data-slot="dialog-close"
+            className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute right-4 top-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:pointer-events-none"
+          >
+            <XIcon className="size-4" />
+            <span className="sr-only">Close</span>
+          </DialogPrimitive.Close>
+        )}
       </DialogPrimitive.Content>
     </DialogPortal>
   );
