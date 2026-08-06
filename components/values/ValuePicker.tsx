@@ -3,7 +3,7 @@
 import type { ValueId } from "@arkaik/schema";
 import { VALUES, VALUE_TIERS_CONFIG } from "@/lib/config/values";
 import { VALUE_ICON_COMPONENTS } from "@/lib/config/value-icons";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface ValuePickerProps {
   selected: ValueId[];
@@ -19,36 +19,39 @@ export function ValuePicker({ selected, onChange }: ValuePickerProps) {
     onChange(VALUES.filter((v) => next.has(v.id)).map((v) => v.id));
   }
   return (
-    <TooltipProvider delayDuration={300}>
-      <div className="flex flex-col gap-3">
-        {VALUE_TIERS_CONFIG.map((tier) => (
-          <div key={tier.id} className="flex flex-col gap-1.5">
-            <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{tier.label}</span>
-            <div className="flex flex-wrap gap-1.5">
-              {VALUES.filter((v) => v.tier === tier.id).map((v) => {
-                const Icon = VALUE_ICON_COMPONENTS[v.id];
-                const on = selectedSet.has(v.id);
-                return (
-                  <Tooltip key={v.id}>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        aria-pressed={on}
-                        onClick={() => toggle(v.id)}
-                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors ${on ? "border-foreground bg-foreground text-background" : "text-muted-foreground hover:bg-muted/60"}`}
-                      >
-                        <Icon className="size-3" />
-                        {v.label}
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top">{v.description}</TooltipContent>
-                  </Tooltip>
-                );
-              })}
-            </div>
+    <div className="flex flex-col gap-3">
+      {VALUE_TIERS_CONFIG.map((tier) => (
+        <div key={tier.id} className="flex flex-col gap-1.5">
+          <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{tier.label}</span>
+          <div className="flex flex-wrap gap-1.5">
+            {VALUES.filter((v) => v.tier === tier.id).map((v) => {
+              const Icon = VALUE_ICON_COMPONENTS[v.id];
+              const on = selectedSet.has(v.id);
+              // The chip carries Button's own focus-visible recipe, character
+              // for character: it is a keyboard-reachable multi-select sitting
+              // next to real Buttons, and until now a Tab onto one drew the
+              // browser's default outline instead of the app's ring (audit
+              // `shadcn-9`).
+              return (
+                <Tooltip key={v.id}>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => toggle(v.id)}
+                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 ${on ? "border-foreground bg-foreground text-background" : "text-muted-foreground hover:bg-muted/60"}`}
+                    >
+                      <Icon className="size-3" />
+                      {v.label}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">{v.description}</TooltipContent>
+                </Tooltip>
+              );
+            })}
           </div>
-        ))}
-      </div>
-    </TooltipProvider>
+        </div>
+      ))}
+    </div>
   );
 }

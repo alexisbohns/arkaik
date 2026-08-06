@@ -1,6 +1,6 @@
 import { EdgeLabelRenderer, getSmoothStepPath, type EdgeProps } from "@xyflow/react";
 import { PlusIcon } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { useToolbarHover } from "@/lib/hooks/useToolbarHover";
 
@@ -78,23 +78,26 @@ export function ComposeEdge({
                 {...buttonProps}
                 className="flex items-center gap-1"
               >
+                {/* One Tooltip per action, no Provider per action: this map ran
+                    a Provider per insert button, which is the arrangement that
+                    cannot group anything. These now open on the app's 300ms like
+                    every other tooltip — the Provider here never set a delay, so
+                    the insert buttons alone waited Radix's 700ms default. */}
                 {insertActions.map((action) => (
-                  <TooltipProvider key={action.label}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={action.onInsert}
-                          className="size-6 rounded-full cursor-copy"
-                          aria-label={action.label}
-                        >
-                          <PlusIcon className="size-3" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">{action.label}</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  <Tooltip key={action.label}>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={action.onInsert}
+                        className="size-6 rounded-full cursor-copy"
+                        aria-label={action.label}
+                      >
+                        <PlusIcon className="size-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">{action.label}</TooltipContent>
+                  </Tooltip>
                 ))}
               </div>
             )}

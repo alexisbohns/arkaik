@@ -3,20 +3,14 @@
 import Link from "next/link";
 import {
   BookOpenIcon,
-  ClipboardCheckIcon,
-  DatabaseIcon,
-  GitBranchIcon,
   LayoutDashboardIcon,
   MapIcon,
   MapPinnedIcon,
-  MonitorIcon,
   NetworkIcon,
   PyramidIcon,
   RouteIcon,
-  ScaleIcon,
   ScrollTextIcon,
   SearchIcon,
-  ServerIcon,
   SquareKanbanIcon,
 } from "lucide-react";
 import { ProductScopeSelector } from "@/components/layout/ProductScopeSelector";
@@ -33,6 +27,8 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import { SPECIES_NAV_ICONS, SPECIES_PLURALS } from "@/lib/config/species-icons";
+import type { SpeciesId } from "@/lib/config/species";
 import { isSeedProjectId } from "@/lib/data/seed-project-id";
 import type { ProjectBundle } from "@/lib/data/types";
 import { useModKeyLabel } from "@/lib/hooks/useModKeyLabel";
@@ -61,14 +57,16 @@ interface ProjectSidebarProps {
   onOpenRaw: () => void;
 }
 
-// One library page per species, driven from here — the sidebar is the only
-// species selector (vision.md § Core Product, Information Architecture).
-const LIBRARY_ITEMS = [
-  { label: "Views", species: "view", icon: MonitorIcon },
-  { label: "Flows", species: "flow", icon: GitBranchIcon },
-  { label: "Data Models", species: "data-model", icon: DatabaseIcon },
-  { label: "API Endpoints", species: "api-endpoint", icon: ServerIcon },
-] as const;
+// One `?species=` library page per species, driven from here — the sidebar is
+// the only species selector (vision.md § Core Product, Information
+// Architecture). Just the ids: the glyph and the plural come from the shared
+// navigation vocabulary, which the command palette and the Inventory card read
+// too, so the three cannot say "Flows" with three different icons.
+//
+// Acceptances and Decisions are absent on purpose — they have pages of their
+// own rather than a `?species=` filter — but they take their glyphs from the
+// same map below.
+const LIBRARY_SPECIES = ["view", "flow", "data-model", "api-endpoint"] as const satisfies readonly SpeciesId[];
 
 export function ProjectSidebar({
   projectId,
@@ -89,6 +87,8 @@ export function ProjectSidebar({
   const deliveryHref = `/project/${projectId}/delivery`;
   const changelogHref = `/project/${projectId}/changelog`;
   const pyramidHref = `/project/${projectId}/pyramid`;
+  const AcceptanceIcon = SPECIES_NAV_ICONS.acceptance;
+  const DecisionIcon = SPECIES_NAV_ICONS.decision;
 
   return (
     <Sidebar collapsible="icon">
@@ -236,7 +236,7 @@ export function ProjectSidebar({
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={currentView === "acceptances"} tooltip="Acceptances">
                 <Link href={`/project/${projectId}/acceptances`}>
-                  <ClipboardCheckIcon />
+                  <AcceptanceIcon />
                   <span>Acceptances</span>
                 </Link>
               </SidebarMenuButton>
@@ -244,25 +244,30 @@ export function ProjectSidebar({
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={currentView === "decisions"} tooltip="Decisions">
                 <Link href={`/project/${projectId}/decisions`}>
-                  <ScaleIcon />
+                  <DecisionIcon />
                   <span>Decisions</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
-            {LIBRARY_ITEMS.map((item) => (
-              <SidebarMenuItem key={item.species}>
-                <SidebarMenuButton
-                  asChild
-                  isActive={currentView === "library" && currentSpecies === item.species}
-                  tooltip={item.label}
-                >
-                  <Link href={`${libraryHref}?species=${item.species}`}>
-                    <item.icon />
-                    <span>{item.label}</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
+            {LIBRARY_SPECIES.map((species) => {
+              const Icon = SPECIES_NAV_ICONS[species];
+              const label = SPECIES_PLURALS[species];
+
+              return (
+                <SidebarMenuItem key={species}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={currentView === "library" && currentSpecies === species}
+                    tooltip={label}
+                  >
+                    <Link href={`${libraryHref}?species=${species}`}>
+                      <Icon />
+                      <span>{label}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              );
+            })}
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>

@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface DeleteConfirmDialogProps {
   open: boolean;
@@ -43,12 +44,16 @@ export function DeleteConfirmDialog({
         </DialogHeader>
         {cascadeLabel && (
           <div className="flex items-center gap-2 py-1">
-            <input
+            {/* The primitive is a `<button role="checkbox">`, which is a
+                labelable element, so the plain `<label for>` beside it keeps
+                forwarding its clicks — and `onCheckedChange` hands back the
+                next state directly, where the native input needed the event's
+                `target.checked` read back off the DOM. */}
+            <Checkbox
               id="cascade-check"
-              type="checkbox"
               checked={cascadeChecked}
-              onChange={(e) => onCascadeChange?.(e.target.checked)}
-              className="h-4 w-4 rounded border-input accent-foreground"
+              onCheckedChange={(checked) => onCascadeChange?.(checked === true)}
+              className="cursor-pointer"
             />
             <label htmlFor="cascade-check" className="text-sm select-none cursor-pointer">
               {cascadeLabel}

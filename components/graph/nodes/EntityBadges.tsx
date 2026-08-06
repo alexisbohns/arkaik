@@ -1,7 +1,7 @@
 "use client";
 
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
-import { SPECIES_ICONS } from "@/components/graph/nodes/node-styles";
+import { SPECIES_GRAPH_ICONS } from "@/lib/config/species-icons";
 import type { SpeciesId } from "@/lib/config/species";
 
 interface SpeciesBadgeProps {
@@ -13,7 +13,7 @@ interface SpeciesBadgeProps {
 }
 
 export function SpeciesBadge({ species, label, description, showLabel = false, onClick }: SpeciesBadgeProps) {
-  const SpeciesIcon = SPECIES_ICONS[species];
+  const SpeciesIcon = SPECIES_GRAPH_ICONS[species];
 
   return (
     <HoverCard openDelay={250}>

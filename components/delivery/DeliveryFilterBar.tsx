@@ -1,14 +1,13 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
-import { SearchIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import { ProductOverrideSelector } from "@/components/layout/ProductOverrideSelector";
-import { PLATFORMS, type PlatformId } from "@/lib/config/platforms";
+import type { PlatformId } from "@/lib/config/platforms";
 import type { SpeciesId } from "@/lib/config/species";
+import { SPECIES_PLURALS } from "@/lib/config/species-icons";
 import type { ProjectBundle } from "@/lib/data/types";
-import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
+import { usePlatformFilterControl } from "@/lib/hooks/usePlatformFilterControl";
 
 export type DeliveryPlatformFilter = "all" | PlatformId;
 
@@ -27,14 +26,11 @@ interface DeliveryFilterBarProps {
 }
 
 // Flows are not deliverables (their status is a rollup of their views), so the
-// board offers the item-bearing species. Views are the default lens;
-// acceptances are the atomic parity unit (spec §9.3).
-const SPECIES_OPTIONS: { id: SpeciesId; label: string }[] = [
-  { id: "view", label: "Views" },
-  { id: "acceptance", label: "Acceptances" },
-  { id: "api-endpoint", label: "API Endpoints" },
-  { id: "data-model", label: "Data Models" },
-];
+// board offers the item-bearing species, in the order they read on the board.
+// Views are the default lens; acceptances are the atomic parity unit (spec
+// §9.3). Labels come from the shared plural vocabulary — the sidebar, the
+// palette and the Inventory card name these same four the same way.
+const SPECIES_OPTIONS = ["view", "acceptance", "api-endpoint", "data-model"] as const satisfies readonly SpeciesId[];
 
 export function DeliveryFilterBar({
   platform,
@@ -48,25 +44,14 @@ export function DeliveryFilterBar({
   projectId,
   project,
 }: DeliveryFilterBarProps) {
-  const scope = useEffectiveProduct(projectId, project);
-  // The same arity rule the board's columns read: a control that can only ever
-  // say "Web" is not a choice, it is the scope repeated. A project declaring no
-  // products resolves to every platform, so this is today's bar.
-  const showPlatformFilter = scope.isMultiPlatform;
-  const platformOptions = useMemo(
-    () => PLATFORMS.filter((platform) => scope.platforms.includes(platform.id)),
-    [scope],
+  // Same arity rule and same stale-filter reset as the Acceptances bar; only
+  // the rendering below (toggle buttons, not a Select) is this bar's own.
+  const { showPlatformFilter, platformOptions } = usePlatformFilterControl(
+    projectId,
+    project,
+    platform,
+    () => onPlatformChange("all"),
   );
-
-  // A stale platform filter must not outlive the control that could clear it:
-  // scoped to a web-only product, `android` would silently empty the board with
-  // nothing on screen to explain why. Reset through the same `onPlatformChange`
-  // the buttons use. The early return makes this idempotent — the echo back
-  // through `platform` is already `"all"`, so it cannot loop.
-  useEffect(() => {
-    if (showPlatformFilter || platform === "all") return;
-    onPlatformChange("all");
-  }, [showPlatformFilter, platform, onPlatformChange]);
 
   return (
     <div className="rounded-xl border bg-card/70 p-3 md:p-4">
@@ -102,14 +87,14 @@ export function DeliveryFilterBar({
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Species</span>
             {SPECIES_OPTIONS.map((option) => (
               <Button
-                key={option.id}
+                key={option}
                 type="button"
-                variant={species.includes(option.id) ? "default" : "outline"}
+                variant={species.includes(option) ? "default" : "outline"}
                 size="sm"
-                aria-pressed={species.includes(option.id)}
-                onClick={() => onToggleSpecies(option.id)}
+                aria-pressed={species.includes(option)}
+                onClick={() => onToggleSpecies(option)}
               >
-                {option.label}
+                {SPECIES_PLURALS[option]}
               </Button>
             ))}
           </div>
@@ -125,16 +110,13 @@ export function DeliveryFilterBar({
           </Button>
         </div>
 
-        <div className="relative w-full md:max-w-md">
-          <SearchIcon className="pointer-events-none absolute left-2 top-2.5 size-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="Search title or description"
-            className="pl-8"
-            aria-label="Search delivery items"
-          />
-        </div>
+        <SearchInput
+          value={search}
+          onChange={onSearchChange}
+          placeholder="Search title or description"
+          aria-label="Search delivery items"
+          className="w-full md:max-w-md"
+        />
       </div>
     </div>
   );

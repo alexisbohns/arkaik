@@ -1,8 +1,8 @@
 "use client";
 
-import { BanIcon, SearchIcon, Grid3X3Icon, Table2Icon } from "lucide-react";
+import { BanIcon, Grid3X3Icon, Table2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { ProductOverrideSelector } from "@/components/layout/ProductOverrideSelector";
 import { type SpeciesId } from "@/lib/config/species";
@@ -49,16 +49,13 @@ export function LibraryFilterBar({
             before the control existed. */}
         <div className="flex w-full flex-1 items-center gap-2 md:max-w-md">
           <ProductOverrideSelector projectId={projectId} project={project} />
-          <div className="relative min-w-0 flex-1">
-            <SearchIcon className="pointer-events-none absolute left-2 top-2.5 size-4 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(event) => onSearchChange(event.target.value)}
-              placeholder="Search title or description"
-              className="pl-8"
-              aria-label="Search nodes"
-            />
-          </div>
+          <SearchInput
+            value={search}
+            onChange={onSearchChange}
+            placeholder="Search title or description"
+            aria-label="Search nodes"
+            className="min-w-0 flex-1"
+          />
         </div>
 
         <div className="flex items-center gap-2">

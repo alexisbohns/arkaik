@@ -10,13 +10,14 @@ import { scopedPlatforms, type ProductScope } from "@/lib/utils/product-scope";
 import type { SpeciesId } from "@/lib/config/species";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { PlatformGaugeList } from "@/components/graph/nodes/PlatformGaugeList";
 import { PlatformList } from "@/components/graph/nodes/PlatformList";
 import {
   PLATFORM_ICONS,
   PLATFORM_LABELS,
-  SPECIES_ICONS,
 } from "@/components/graph/nodes/node-styles";
+import { SPECIES_GRAPH_ICONS } from "@/lib/config/species-icons";
 import { SpeciesBadge, EntityId } from "@/components/graph/nodes/EntityBadges";
 import { ValueBadge } from "@/components/values/ValueBadge";
 import { DecisionStatusBadge } from "@/components/layout/DecisionStatusBadge";
@@ -108,7 +109,7 @@ function PlaylistItemIcon({ type }: { type: PlaylistPreviewItem["type"] }) {
     return <SplitIcon className="size-3.5 text-muted-foreground" />;
   }
 
-  const SpeciesIcon = SPECIES_ICONS[type as SpeciesId];
+  const SpeciesIcon = SPECIES_GRAPH_ICONS[type as SpeciesId];
   return <SpeciesIcon className="size-3.5 text-muted-foreground" />;
 }
 
@@ -168,12 +169,11 @@ export function NodeCard({
                 className="-m-1 flex shrink-0 items-start p-1"
                 onClick={(event) => event.stopPropagation()}
               >
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={selected}
                   aria-label={`Select ${node.title}`}
-                  className="mt-0.5 size-4 cursor-pointer accent-primary"
-                  onChange={() => onToggleSelected?.(node.id)}
+                  className="mt-0.5 cursor-pointer"
+                  onCheckedChange={() => onToggleSelected?.(node.id)}
                 />
               </span>
               <CardTitle className="line-clamp-2 min-w-0 flex-1 text-base leading-tight">
