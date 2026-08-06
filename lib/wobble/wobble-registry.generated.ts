@@ -97,6 +97,7 @@ export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "map", seed: 1 },
   { name: "map-pinned", seed: 18 },
   { name: "message-square-text", seed: 8 },
+  { name: "minus", seed: 3 },
   { name: "monitor", seed: 17 },
   { name: "monitor-smartphone", seed: 19 },
   { name: "moon", seed: 16 },

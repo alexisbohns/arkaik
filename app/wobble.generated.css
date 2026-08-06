@@ -94,6 +94,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-map { filter: url(#wob-map); }
 .lucide-map-pinned { filter: url(#wob-map-pinned); }
 .lucide-message-square-text { filter: url(#wob-message-square-text); }
+.lucide-minus { filter: url(#wob-minus); }
 .lucide-monitor { filter: url(#wob-monitor); }
 .lucide-monitor-smartphone { filter: url(#wob-monitor-smartphone); }
 .lucide-moon { filter: url(#wob-moon); }
