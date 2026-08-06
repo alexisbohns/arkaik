@@ -416,6 +416,45 @@ async function main() {
       (await api.MUTATE(jsonReq(ORIGIN, "POST", { ops: [{ op: "drop_table" }] }), ctx(projectId))).status === 400,
     );
 
+    // --- Payload caps -------------------------------------------------------
+    // MAX_OPS bounds the op COUNT, never the byte count: a single create_node
+    // carries free-form `metadata`, so one op can be arbitrarily large. Without
+    // the size check these two routes could grow a hosted snapshot past the
+    // ceiling `PUT …/bundle` still enforces — the project would stop
+    // round-tripping through its own export.
+    {
+      const fatNode = node("V-fat", "view", { metadata: { blob: "x".repeat(6 * 1024 * 1024) } });
+      const fatMutation = await api.MUTATE(
+        jsonReq(ORIGIN, "POST", { ops: [{ op: "create_node", node: fatNode }] }),
+        ctx(projectId),
+      );
+      check(
+        "an over-cap mutations body is refused with 413 before JSON.parse",
+        fatMutation.status === 413,
+        String(fatMutation.status),
+      );
+      check("the over-cap body reports the limit it broke", (await fatMutation.json()).limit === 5 * 1024 * 1024);
+
+      const fatPatch = await api.PATCH_PROJECT(
+        jsonReq(ORIGIN, "PATCH", { project: { description: "x".repeat(6 * 1024 * 1024) } }),
+        ctx(projectId),
+      );
+      check("an over-cap PATCH body is refused with 413", fatPatch.status === 413, String(fatPatch.status));
+
+      // Under the cap the same routes behave exactly as before — the check is a
+      // ceiling, not a new refusal.
+      const okPatch = await api.PATCH_PROJECT(
+        jsonReq(ORIGIN, "PATCH", { project: { description: "y".repeat(512 * 1024) } }),
+        ctx(projectId),
+      );
+      check("an under-cap PATCH still applies (200)", okPatch.status === 200, String(okPatch.status));
+      const okMutation = await api.MUTATE(
+        jsonReq(ORIGIN, "POST", { ops: [{ op: "create_node", node: node("V-slim", "view") }] }),
+        ctx(projectId),
+      );
+      check("an under-cap mutation still applies (200)", okMutation.status === 200, String(okMutation.status));
+    }
+
     // --- Limits -------------------------------------------------------------
     await client.query(`update users set tier = 'synk' where id = $1`, [userA]);
     const limitResult = await store.applyMutation({
@@ -436,6 +475,36 @@ async function main() {
     // An unknown tier falls back to the most restrictive row, which still allows
     // this small graph — the assertion is that the fallback resolves at all.
     check("an unknown tier resolves to the safe floor rather than throwing", typeof overLimit.ok === "boolean");
+
+    // The project-count cap holds under concurrency. Sequentially it always
+    // held; the count used to run BEFORE `withTransaction` opened, so six
+    // simultaneous creates from an owner with none all read zero and all
+    // inserted — the cap simply did not exist for a burst. A fresh user, so
+    // this is measured from a known-empty count rather than userA's running
+    // total. `createProject` now counts under a per-owner advisory lock inside
+    // the transaction it writes in.
+    {
+      const userC = await seedUser(client, "burst");
+      await owners.resolveOwnerIds(userC);
+      setSession(sessionFor(userC));
+      const cap = 3; // HOSTED_LIMITS.synk.projects
+      const burst = await Promise.all(
+        Array.from({ length: 6 }, (_, i) =>
+          api.CREATE_PROJECT(
+            jsonReq(`${ORIGIN}/api/graph/projects`, "POST", bundle([node(`V-burst${i}`, "view")])),
+          ),
+        ),
+      );
+      const createdCount = burst.filter((res) => res.status === 201).length;
+      const refused = burst.filter((res) => res.status === 403).length;
+      check(`a 6-create burst stops at the ${cap}-project cap`, createdCount === cap, `created ${createdCount}`);
+      check("the rest of the burst is refused 403", refused === 6 - cap, `refused ${refused}`);
+      const { rows: stored } = await client.query(
+        `select count(*)::int as n from graph_projects where owner_id = $1 and archived_at is null`,
+        [`own-u${userC}`],
+      );
+      check("and the database agrees — no extra project was written", stored[0].n === cap, `rows ${stored[0].n}`);
+    }
 
     // --- PUT .../bundle: whole-bundle restore (Task 11) ----------------------
     // The one destructive verb in the graph API. lib/services/graph/restore.ts's

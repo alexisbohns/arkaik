@@ -1,8 +1,9 @@
 /**
  * Loads the Synk route handlers (app/api/synk/**\/route.ts) plus their
  * server-side deps (lib/services/synk.ts, lib/services/limits.ts,
- * lib/services/db.ts) into a running Node process without a bundler — the same
- * transpile-on-the-fly approach as tests/services/load-publik-api.js.
+ * lib/services/db.ts, and the real `getCaller()` seam) into a running Node
+ * process without a bundler — the same transpile-on-the-fly approach as
+ * tests/services/load-publik-api.js.
  *
  * The transpiled output goes into a build dir *inside the repo* (tests/services/
  * .test-build-synk) so bare requires like `require("pg")` and
@@ -11,17 +12,21 @@
  *   - `@arkaik/schema`         → the CJS schema index (built via load-schema.js)
  *   - `@/lib/services/db`      → ./db.js
  *   - `@/lib/services/limits`  → ./limits.js
+ *   - `@/lib/services/owners`  → ./owners.js
+ *   - `@/lib/services/tokens`  → ./tokens.js
+ *   - `@/lib/services/auth`    → ./auth.js (the REAL module)
  *   - `@/lib/services/synk`    → ./synk.js
- *   - `@/lib/services/auth`    → ./auth-stub.js (a controllable getSession)
+ *   - `@/auth`                 → ./auth-module-stub.js (a controllable session)
  *
- * Stubbing at the getSession boundary (exactly as tests/services/
- * auth-guard.test.js does) is deliberate: the handlers' auth check is pure guard
- * logic and needs no live OAuth round-trip or next-auth (ESM-only, un-requireable
- * under this CommonJS transpile). The test controls the "current session" via
- * `setSession()`; the DATABASE_URL path is the real Postgres.
+ * Only `@/auth` is stubbed, matching load-token-api.js / load-graph-api.js. This
+ * loader used to stub `@/lib/services/auth` wholesale with a fake `getSession`,
+ * which was fine while the Synk handlers only read a session cookie. They now go
+ * through `getCaller`, so a stub at that boundary would skip the entire thing
+ * under test — bearer-token resolution, the scope check, and the rule that a
+ * rejected token does NOT fall through to the session cookie.
  *
  * Returns the handler functions, a `setSession` control, and the transpiled synk
- * service module (so retention pruning can be exercised directly).
+ * and tokens modules (so retention pruning and minting can be driven directly).
  */
 
 const fs = require("fs");
@@ -64,97 +69,68 @@ function loadSynkApi() {
 
   // `server-only` throws outside a React Server Component; stub it to a no-op so
   // the modules load in plain Node (same as load-publik-api.js).
-  const serverOnlyStub = "./server-only-stub.js";
   write("server-only-stub.js", "module.exports = {};\n");
 
-  // Controllable session stub for `@/lib/services/auth`. The test drives it via
-  // the returned setSession(); default is unauthenticated (null).
+  // Stands in for `@/auth` (NextAuth, ESM-only and un-requireable under this
+  // CommonJS transpile). The test picks the signed-in user via setSession();
+  // default is signed out.
   write(
-    "auth-stub.js",
+    "auth-module-stub.js",
     "let current = null;\n" +
       "module.exports = {\n" +
-      "  getSession: async () => current,\n" +
+      "  auth: async () => current,\n" +
       "  __setSession: (s) => { current = s; },\n" +
       "};\n",
   );
 
-  // lib/services/db.ts — stub `server-only`; bare `pg` require resolves as-is.
-  write(
-    "db.js",
-    transpile(path.join(ROOT, "lib", "services", "db.ts"), "db.ts", [["server-only", serverOnlyStub]]),
-  );
-
-  // lib/services/limits.ts — stub `server-only`.
-  write(
-    "limits.js",
-    transpile(path.join(ROOT, "lib", "services", "limits.ts"), "limits.ts", [
-      ["server-only", serverOnlyStub],
-    ]),
-  );
-
-  // lib/services/synk.ts — rewrite schema + db + limits + server-only specifiers.
-  write(
-    "synk.js",
-    transpile(path.join(ROOT, "lib", "services", "synk.ts"), "synk.ts", [
-      ["@arkaik/schema", schemaIndex],
-      ["@/lib/services/db", "./db.js"],
-      ["@/lib/services/limits", "./limits.js"],
-      ["server-only", serverOnlyStub],
-    ]),
-  );
-
-  // Route handlers — rewrite the auth + synk specifiers.
-  const routeRewrites = [
-    ["@/lib/services/auth", "./auth-stub.js"],
+  const COMMON = [
+    ["server-only", "./server-only-stub.js"],
+    ["@arkaik/schema", schemaIndex],
+    ["@/lib/services/db", "./db.js"],
+    ["@/lib/services/limits", "./limits.js"],
+    ["@/lib/services/owners", "./owners.js"],
+    ["@/lib/services/tokens", "./tokens.js"],
+    ["@/lib/services/auth", "./auth.js"],
     ["@/lib/services/synk", "./synk.js"],
+    ["@/auth", "./auth-module-stub.js"],
   ];
-  write(
-    "projects.js",
-    transpile(path.join(ROOT, "app", "api", "synk", "projects", "route.ts"), "route.ts", routeRewrites),
-  );
-  write(
-    "project.js",
-    transpile(
-      path.join(ROOT, "app", "api", "synk", "projects", "[projectId]", "route.ts"),
-      "route.ts",
-      routeRewrites,
-    ),
-  );
-  write(
-    "backups.js",
-    transpile(
-      path.join(ROOT, "app", "api", "synk", "projects", "[projectId]", "backups", "route.ts"),
-      "route.ts",
-      routeRewrites,
-    ),
-  );
-  write(
-    "backup.js",
-    transpile(
-      path.join(ROOT, "app", "api", "synk", "backups", "[backupId]", "route.ts"),
-      "route.ts",
-      routeRewrites,
-    ),
-  );
 
-  const names = ["db.js", "limits.js", "synk.js", "auth-stub.js", "projects.js", "project.js", "backups.js", "backup.js"];
-  for (const name of names) delete require.cache[path.join(BUILD_DIR, name)];
+  const src = (...parts) => path.join(ROOT, ...parts);
 
-  const authStub = require(path.join(BUILD_DIR, "auth-stub.js"));
-  const synk = require(path.join(BUILD_DIR, "synk.js"));
-  const projectsRoute = require(path.join(BUILD_DIR, "projects.js"));
-  const projectRoute = require(path.join(BUILD_DIR, "project.js"));
-  const backupsRoute = require(path.join(BUILD_DIR, "backups.js"));
-  const backupRoute = require(path.join(BUILD_DIR, "backup.js"));
+  write("db.js", transpile(src("lib", "services", "db.ts"), "db.ts", COMMON));
+  write("limits.js", transpile(src("lib", "services", "limits.ts"), "limits.ts", COMMON));
+  write("owners.js", transpile(src("lib", "services", "owners.ts"), "owners.ts", COMMON));
+  write("tokens.js", transpile(src("lib", "services", "tokens.ts"), "tokens.ts", COMMON));
+  write("auth.js", transpile(src("lib", "services", "auth.ts"), "auth.ts", COMMON));
+  write("synk.js", transpile(src("lib", "services", "synk.ts"), "synk.ts", COMMON));
+
+  const routes = {
+    "projects.js": src("app", "api", "synk", "projects", "route.ts"),
+    "project.js": src("app", "api", "synk", "projects", "[projectId]", "route.ts"),
+    "backups.js": src("app", "api", "synk", "projects", "[projectId]", "backups", "route.ts"),
+    "backup.js": src("app", "api", "synk", "backups", "[backupId]", "route.ts"),
+  };
+  for (const [out, from] of Object.entries(routes)) {
+    write(out, transpile(from, "route.ts", COMMON));
+  }
+
+  for (const name of fs.readdirSync(BUILD_DIR)) {
+    if (name.endsWith(".js")) delete require.cache[path.join(BUILD_DIR, name)];
+  }
+
+  const req = (name) => require(path.join(BUILD_DIR, name));
+  const authModuleStub = req("auth-module-stub.js");
 
   return {
-    LIST_PROJECTS: projectsRoute.GET,
-    PUT_BACKUP: projectRoute.PUT,
-    DELETE_PROJECT: projectRoute.DELETE,
-    LIST_BACKUPS: backupsRoute.GET,
-    GET_BACKUP: backupRoute.GET,
-    setSession: authStub.__setSession,
-    synk,
+    LIST_PROJECTS: req("projects.js").GET,
+    PUT_BACKUP: req("project.js").PUT,
+    DELETE_PROJECT: req("project.js").DELETE,
+    LIST_BACKUPS: req("backups.js").GET,
+    GET_BACKUP: req("backup.js").GET,
+    setSession: authModuleStub.__setSession,
+    synk: req("synk.js"),
+    tokens: req("tokens.js"),
+    owners: req("owners.js"),
   };
 }
 

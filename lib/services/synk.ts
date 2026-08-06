@@ -2,6 +2,8 @@ import "server-only";
 
 import { createHash, randomBytes } from "node:crypto";
 
+import type { PoolClient, QueryResult, QueryResultRow } from "pg";
+
 import {
   migrateStatusVocabulary,
   parseBundle,
@@ -11,7 +13,13 @@ import {
   type ValidationFinding,
 } from "@arkaik/schema";
 
-import { query, servicesUnavailable as baseServicesUnavailable } from "@/lib/services/db";
+import {
+  ADVISORY_LOCK,
+  getUserTier,
+  query,
+  servicesUnavailable as baseServicesUnavailable,
+  withTransaction,
+} from "@/lib/services/db";
 import { getLimitsForTier } from "@/lib/services/limits";
 
 /**
@@ -60,6 +68,35 @@ export { servicesConfigured } from "@/lib/services/db";
 
 export function servicesUnavailable(): Response {
   return baseServicesUnavailable("Synk");
+}
+
+// ---------------------------------------------------------------------------
+// Statement executor (pooled vs. inside putBackup's transaction)
+// ---------------------------------------------------------------------------
+
+/**
+ * Anything that can run one parameterized statement: the pooled `query()` or a
+ * transaction client's `client.query`.
+ *
+ * The helpers below take one so a single definition of each statement serves
+ * both the standalone callers and {@link putBackup}'s transaction, where every
+ * statement MUST run on the locked connection — `query()` checks a fresh
+ * connection out of the pool per call, which would land the statement OUTSIDE
+ * the transaction entirely (lib/services/db.ts § withTransaction). The
+ * alternative, a second copy of each query bound to a client, is exactly the
+ * kind of drift this module's one-audited-place rule exists to prevent.
+ */
+type Run = <T extends QueryResultRow = QueryResultRow>(
+  text: string,
+  params: readonly unknown[],
+) => Promise<QueryResult<T>>;
+
+/** The default: one pooled connection per statement, no surrounding transaction. */
+const pooled: Run = query;
+
+/** Bind an executor to a transaction's checked-out client. */
+function on(client: PoolClient): Run {
+  return (text, params) => client.query(text, params as unknown[]);
 }
 
 // ---------------------------------------------------------------------------
@@ -144,15 +181,13 @@ export function validateInboundBundle(input: unknown): BundleValidation {
 // ---------------------------------------------------------------------------
 
 /**
- * The caller's tier from `users.tier`. M4 has no path that sets it to anything
- * but the 'synk' default, but the lookup is real so M5 billing only flips the
- * column. A missing row (should not happen for a valid session) resolves to the
- * safe 'synk' floor via getLimitsForTier.
+ * Re-exported from lib/services/db.ts, which now owns the single definition:
+ * lib/services/graph/store.ts held a byte-identical copy, and the query that
+ * decides which limits apply is the last thing that should exist twice. Synk's
+ * surface is unchanged — see that module for why the lookup does not live in
+ * lib/services/limits.ts with the tier tables it feeds.
  */
-export async function getUserTier(userId: number): Promise<string> {
-  const { rows } = await query<{ tier: string }>(`select tier from users where id = $1`, [userId]);
-  return rows[0]?.tier ?? "synk";
-}
+export { getUserTier };
 
 // ---------------------------------------------------------------------------
 // Reads (every statement user-scoped)
@@ -219,9 +254,17 @@ export async function listBackups(userId: number, projectId: string): Promise<Ba
   return rows;
 }
 
-/** True when the caller owns a project row with this id. */
-export async function projectExists(userId: number, projectId: string): Promise<boolean> {
-  const { rowCount } = await query(`select 1 from synk_projects where user_id = $1 and id = $2`, [
+/**
+ * True when the caller owns a project row with this id. `run` defaults to the
+ * pool; {@link putBackup} passes its transaction client so the check happens
+ * under the same lock as the count and the write that follow it.
+ */
+export async function projectExists(
+  userId: number,
+  projectId: string,
+  run: Run = pooled,
+): Promise<boolean> {
+  const { rowCount } = await run(`select 1 from synk_projects where user_id = $1 and id = $2`, [
     userId,
     projectId,
   ]);
@@ -273,9 +316,10 @@ export async function pruneRetention(
   userId: number,
   projectId: string,
   retentionDays: number,
+  run: Run = pooled,
 ): Promise<number> {
   if (!Number.isFinite(retentionDays)) return 0;
-  const { rowCount } = await query(
+  const { rowCount } = await run(
     `delete from synk_backups
       where user_id = $1
         and project_id = $2
@@ -303,8 +347,12 @@ export type PutBackupResult =
   | { status: "stored"; backupId: string };
 
 /** Latest stored content hash for a project, or null when it has no backups. */
-async function latestHash(userId: number, projectId: string): Promise<string | null> {
-  const { rows } = await query<{ sha256: string }>(
+async function latestHash(
+  userId: number,
+  projectId: string,
+  run: Run = pooled,
+): Promise<string | null> {
+  const { rows } = await run<{ sha256: string }>(
     `select sha256 from synk_backups
       where user_id = $1 and project_id = $2
       order by created_at desc
@@ -330,6 +378,29 @@ async function latestHash(userId: number, projectId: string): Promise<string | n
  *     Violation → `limit` (→ 403 with { limit, actual, tier }).
  *  5. Upsert the project row, insert the backup (with the server-truth hash),
  *     then prune retention. → `stored` (→ 201).
+ *
+ * ── Why steps 4b–5 are one transaction ──────────────────────────────────────
+ * Every statement from the project-count check to the retention prune runs on
+ * ONE connection inside ONE transaction, behind a per-user advisory lock. Both
+ * halves of that matter, and neither is optional:
+ *
+ *  - The lock closes the check-then-act race. As seven separate `query()` calls
+ *    the count and the insert it authorizes could interleave with another
+ *    request's, so two concurrent first-ever PUTs from the same user both read
+ *    count = 0 and both stored — one project over the tier's 1-project cap,
+ *    reached without either request seeing a limit. Steps 1–3 stay outside it:
+ *    they are pure reads and a CPU-bound validate, and holding a lock across
+ *    them would serialize a user's backups for no correctness gain.
+ *  - The transaction closes the torn-write window. The project upsert and the
+ *    backup insert used to be independent statements, so a crash between them
+ *    left a synk_projects row with no backups — a project the listing's LEFT
+ *    JOIN LATERAL renders with `latest_backup_id: null` forever, since only a
+ *    successful later backup would fill it in.
+ *
+ * The dedupe comparison is re-run under the lock for the same reason: without
+ * it, two concurrent PUTs of identical content both passed step 3 against the
+ * same pre-write hash and both stored, which is precisely what the content-hash
+ * contract promises cannot happen.
  */
 export async function putBackup(args: {
   userId: number;
@@ -372,38 +443,59 @@ export async function putBackup(args: {
     return { status: "limit", limit: limits.entities, actual: entities, tier };
   }
 
-  const isNewProject = !(await projectExists(userId, projectId));
-  if (isNewProject) {
-    const { rows } = await query<{ n: number }>(
-      `select count(*)::int as n from synk_projects where user_id = $1`,
-      [userId],
-    );
-    const wouldBe = Number(rows[0]?.n ?? 0) + 1;
-    if (wouldBe > limits.projects) {
-      return { status: "limit", limit: limits.projects, actual: wouldBe, tier };
-    }
-  }
-
   // 5. Store: upsert project (denormalized title), insert backup, prune.
   const project = (bundle.project ?? {}) as Record<string, unknown>;
   const title = typeof project.title === "string" && project.title.trim() ? project.title : "Untitled";
   const sizeBytes = Buffer.byteLength(canonical, "utf8");
   const backupId = generateBackupId();
 
-  await query(
-    `insert into synk_projects (user_id, id, title)
-     values ($1, $2, $3)
-     on conflict (user_id, id) do update set title = excluded.title, updated_at = now()`,
-    [userId, projectId, title],
-  );
+  return withTransaction<PutBackupResult>(async (client) => {
+    const run = on(client);
 
-  await query(
-    `insert into synk_backups (id, user_id, project_id, bundle, sha256, size_bytes, entity_count)
-     values ($1, $2, $3, $4, $5, $6, $7)`,
-    [backupId, userId, projectId, JSON.stringify(bundle), serverHash, sizeBytes, entities],
-  );
+    // Serialize this user's backup writes for the rest of the transaction. See
+    // lib/services/db.ts § ADVISORY_LOCK for why an advisory lock and not
+    // `select … for update`: the row that would need locking is the one that
+    // does not exist yet — a user backing up for the first time has no
+    // synk_projects rows for `for update` to hold.
+    await run(`select pg_advisory_xact_lock($1::int, $2::int)`, [ADVISORY_LOCK.synkUser, userId]);
 
-  await pruneRetention(userId, projectId, limits.retention_days);
+    // Re-check dedupe under the lock: a concurrent PUT of identical content may
+    // have stored between step 3's read and this point. Still BEFORE the limit
+    // checks, so "a no-op re-backup is deduped before limits" stays true.
+    const lockedHash = await latestHash(userId, projectId, run);
+    if (lockedHash !== null && lockedHash === serverHash) {
+      return { status: "deduped" };
+    }
 
-  return { status: "stored", backupId };
+    const isNewProject = !(await projectExists(userId, projectId, run));
+    if (isNewProject) {
+      const { rows } = await run<{ n: number }>(
+        `select count(*)::int as n from synk_projects where user_id = $1`,
+        [userId],
+      );
+      const wouldBe = Number(rows[0]?.n ?? 0) + 1;
+      if (wouldBe > limits.projects) {
+        // Returning (rather than throwing) commits a transaction that wrote
+        // nothing, which is the intent: the refusal is an outcome, not a fault.
+        return { status: "limit", limit: limits.projects, actual: wouldBe, tier };
+      }
+    }
+
+    await run(
+      `insert into synk_projects (user_id, id, title)
+       values ($1, $2, $3)
+       on conflict (user_id, id) do update set title = excluded.title, updated_at = now()`,
+      [userId, projectId, title],
+    );
+
+    await run(
+      `insert into synk_backups (id, user_id, project_id, bundle, sha256, size_bytes, entity_count)
+       values ($1, $2, $3, $4, $5, $6, $7)`,
+      [backupId, userId, projectId, JSON.stringify(bundle), serverHash, sizeBytes, entities],
+    );
+
+    await pruneRetention(userId, projectId, limits.retention_days, run);
+
+    return { status: "stored", backupId };
+  });
 }

@@ -16,6 +16,12 @@
  * `Request` objects against a real DATABASE_URL (the CI "services" job / a local
  * Postgres) — exactly how docs/spec/services.md § CI Additions frames the
  * integration tests ("route handlers invoked against the migrated schema").
+ *
+ * The transpiled `lib/services/publik.ts` comes back too. Nothing in this loader
+ * opens a connection (the pool is lazy and DATABASE_URL is read per query), so a
+ * suite that only exercises the module's pure parts — `deriveClientIp` and the
+ * trusted-proxy switch behind it — can use it with no database at all, and run
+ * in CI's fast `build` job rather than the Postgres-backed one.
  */
 
 const fs = require("fs");
@@ -112,6 +118,7 @@ function loadPublikApi() {
     GET: idRoute.GET,
     DELETE: idRoute.DELETE,
     REPORT: report.POST,
+    publik: require(path.join(BUILD_DIR, "publik.js")),
   };
 }
 

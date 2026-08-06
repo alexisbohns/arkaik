@@ -1,5 +1,5 @@
 import { getCaller, hasScope } from "@/lib/services/auth";
-import { servicesConfigured, servicesUnavailable } from "@/lib/services/db";
+import { MAX_BUNDLE_BYTES, servicesConfigured, servicesUnavailable } from "@/lib/services/db";
 import { archiveProject, getProject, updateProjectFields } from "@/lib/services/graph/store";
 import type { Project } from "@arkaik/schema";
 
@@ -65,9 +65,18 @@ export async function PATCH(
 
   const { projectId } = await params;
 
+  // Read as text first so the size check runs BEFORE `JSON.parse` ever touches
+  // the payload, against the same shared cap as every other bundle-accepting
+  // route. `project.metadata` is free-form, so "project fields only" bounds
+  // what this route can write, never how many bytes it can be handed.
+  const raw = await req.text();
+  if (Buffer.byteLength(raw, "utf8") > MAX_BUNDLE_BYTES) {
+    return Response.json({ error: "payload_too_large", limit: MAX_BUNDLE_BYTES }, { status: 413 });
+  }
+
   let body: { project?: unknown };
   try {
-    body = (await req.json()) as { project?: unknown };
+    body = JSON.parse(raw) as { project?: unknown };
   } catch {
     return Response.json({ error: "invalid_json" }, { status: 400 });
   }

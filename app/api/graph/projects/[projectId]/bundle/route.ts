@@ -1,5 +1,5 @@
 import { getCaller, hasScope } from "@/lib/services/auth";
-import { servicesConfigured, servicesUnavailable } from "@/lib/services/db";
+import { MAX_BUNDLE_BYTES, servicesConfigured, servicesUnavailable } from "@/lib/services/db";
 import { classifyDryRun } from "@/lib/services/graph/restore";
 import { getUserTier, replaceProjectBundle } from "@/lib/services/graph/store";
 
@@ -61,20 +61,6 @@ import { getUserTier, replaceProjectBundle } from "@/lib/services/graph/store";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * Import cap, mirroring `POST /api/graph/projects` and Publik
- * (docs/spec/services.md). This route's body is a full `ProjectBundle`
- * PLUS a mined journal (potentially every event the project has ever had),
- * which makes it the LARGEST body any graph route accepts — the opposite of
- * where a cap could be skipped. The same 5 MB ceiling applies rather than a
- * larger one: every bundle observed in practice (cycle 5's 173 nodes / 337
- * edges / 253 events was 164 KB; Pebbles at full parity is projected around
- * 400 nodes / 700 edges) sits two-plus orders of magnitude under it, so this
- * is headroom, not a real constraint, and a single shared number is easier
- * to reason about than a bigger one that only this route gets.
- */
-const MAX_BUNDLE_BYTES = 5 * 1024 * 1024;
-
 export async function PUT(
   req: Request,
   { params }: { params: Promise<{ projectId: string }> },
@@ -117,6 +103,16 @@ export async function PUT(
 
   // Read as text first so the size check runs BEFORE `JSON.parse` ever
   // touches the payload — mirrors `POST /api/graph/projects` exactly.
+  //
+  // The shared `MAX_BUNDLE_BYTES` (lib/services/db.ts) applies here rather
+  // than a larger, route-specific ceiling, even though this route's body is
+  // the LARGEST any graph route accepts — a full `ProjectBundle` PLUS a mined
+  // journal (potentially every event the project has ever had). Every bundle
+  // observed in practice (cycle 5's 173 nodes / 337 edges / 253 events was
+  // 164 KB; Pebbles at full parity is projected around 400 nodes / 700 edges)
+  // sits two-plus orders of magnitude under it, so this is headroom, not a
+  // real constraint, and a single shared number is easier to reason about
+  // than a bigger one that only this route gets.
   const raw = await req.text();
   if (Buffer.byteLength(raw, "utf8") > MAX_BUNDLE_BYTES) {
     return Response.json({ error: "payload_too_large", limit: MAX_BUNDLE_BYTES }, { status: 413 });

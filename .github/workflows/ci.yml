@@ -71,6 +71,14 @@ jobs:
       - name: Graph restore rules (If-Match matching, bundle delta, tier limit)
         run: npm run test:graph-restore
 
+      # In `build` for the same reason as the two steps above: which client IP
+      # the Publik throttle buckets on is pure header + env logic. It decides
+      # whether a spoofed X-Forwarded-For can reset an unauthenticated caller's
+      # rate limit, so a regression should fail on a laptop with no Postgres
+      # running, not only in the Postgres-backed job below.
+      - name: Publik client-IP derivation (trusted-proxy switch, spoofed XFF)
+        run: npm run test:publik-ip
+
       - name: Deterministic id generator tests
         run: npm run test:id-gen
 

@@ -117,6 +117,7 @@ function loadGraphApi() {
     LIST_PROJECTS: req("projects-route.js").GET,
     CREATE_PROJECT: req("projects-route.js").POST,
     GET_PROJECT: req("project-route.js").GET,
+    PATCH_PROJECT: req("project-route.js").PATCH,
     DELETE_PROJECT: req("project-route.js").DELETE,
     MUTATE: req("mutations-route.js").POST,
     PUT_BUNDLE: req("bundle-route.js").PUT,
