@@ -3,6 +3,7 @@
 import { toast } from "sonner";
 import type { Node, PlaylistEntry } from "@/lib/data/types";
 import { PlaylistEntryList } from "@/components/panels/PlaylistEntryRow";
+import { PanelSection } from "@/components/panels/PanelSection";
 
 interface PlaylistEditorProps {
   node: Node;
@@ -39,8 +40,7 @@ export function PlaylistEditor({ node, allNodes, onUpdate, onCreateNode }: Playl
   }
 
   return (
-    <div className="px-6 flex flex-col gap-3">
-      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Playlist</span>
+    <PanelSection title="Playlist">
       <PlaylistEntryList
         entries={entries}
         onChange={persistEntries}
@@ -49,6 +49,6 @@ export function PlaylistEditor({ node, allNodes, onUpdate, onCreateNode }: Playl
         onCycleBlocked={handleCycleBlocked}
         onCreateNode={onCreateNode}
       />
-    </div>
+    </PanelSection>
   );
 }
