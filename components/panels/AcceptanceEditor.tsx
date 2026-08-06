@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { SplitIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 import type { Node, Edge, PlatformStatusMap } from "@/lib/data/types";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { StatusId } from "@/lib/config/statuses";
 import type { ValueId } from "@arkaik/schema";
-import { STATUSES } from "@/lib/config/statuses";
 import { getEditablePlatformStatuses } from "@/lib/utils/platform-status";
 import type { ProductScope } from "@/lib/utils/product-scope";
 import { productLabels, productsOfAcceptance } from "@/lib/utils/product-scope";
@@ -19,8 +18,11 @@ import { ProductPicker } from "@/components/panels/ProductPicker";
 import { NodeSearchCombobox } from "@/components/panels/NodeSearchCombobox";
 import { SplitAcceptanceDialog } from "@/components/panels/SplitAcceptanceDialog";
 import { Button } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { STATUS_ICONS, STATUS_STYLES, SPECIES_ICONS } from "@/components/graph/nodes/node-styles";
+import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
+import { SPECIES_ICONS } from "@/components/graph/nodes/node-styles";
 import { PlatformVariants } from "@/components/panels/PlatformVariants";
 import { ValuePicker } from "@/components/values/ValuePicker";
 
@@ -43,6 +45,10 @@ interface AcceptanceEditorProps {
 }
 
 export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, onNavigate, intake }: AcceptanceEditorProps) {
+  // Per-mount: the panel stack keeps hidden panels mounted, so two acceptance
+  // editors can share a document and a hand-written id would leave the second
+  // one's label pointing at the first one's control.
+  const fieldId = useId();
   const [gherkin, setGherkin] = useState(node.metadata?.gherkin ?? "");
   const [splitOpen, setSplitOpen] = useState(false);
   const nodeRef = useRef(node);
@@ -135,18 +141,14 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, on
 
   return (
     <div className="px-6 flex flex-col gap-5">
-      <section className="flex flex-col gap-1.5">
-        <span className="text-xs text-muted-foreground">Status</span>
+      <Field label="Status" htmlFor={`${fieldId}-status`}>
         <Select value={node.status} onValueChange={(v) => onUpdate(node.id, { status: v as StatusId })}>
-          <SelectTrigger aria-label="Status"><SelectValue /></SelectTrigger>
+          <SelectTrigger id={`${fieldId}-status`}><SelectValue /></SelectTrigger>
           <SelectContent>
-            {STATUSES.map((s) => {
-              const Icon = STATUS_ICONS[s.id];
-              return <SelectItem key={s.id} value={s.id}><span className="inline-flex items-center gap-2"><Icon className={`size-3.5 ${STATUS_STYLES[s.id].badge}`} />{s.label}</span></SelectItem>;
-            })}
+            <StatusSelectItems />
           </SelectContent>
         </Select>
-      </section>
+      </Field>
 
       {scope.productsById.size > 0 && (
         <section>
@@ -190,24 +192,27 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, on
         </section>
       )}
 
-      <section className="flex flex-col gap-1.5">
-        <span className="text-xs text-muted-foreground">Gherkin — the How (one Given/When/Then)</span>
-        <textarea
+      {/* The `htmlFor` here is audit `shadcn-4`'s headline case: this textarea
+          had no id, no aria-label and an unassociated `<span>` over it, so a
+          screen reader announced the acceptance's central field as an unnamed
+          edit box. */}
+      <Field label="Gherkin — the How (one Given/When/Then)" htmlFor={`${fieldId}-gherkin`}>
+        <Textarea
+          id={`${fieldId}-gherkin`}
           value={gherkin}
           onChange={(e) => setGherkin(e.target.value)}
           rows={3}
           placeholder="When I'm on …, Then …"
-          className="rounded-md border bg-background px-2 py-1.5 text-sm"
         />
-      </section>
+      </Field>
 
-      <section className="flex flex-col gap-1.5">
-        <span className="text-xs text-muted-foreground">Values — the Why</span>
+      {/* No `htmlFor` on these three: a chip grid, a tab strip and a list have
+          no single control to name. */}
+      <Field label="Values — the Why">
         <ValuePicker selected={node.metadata?.values ?? []} onChange={(values: ValueId[]) => patchMetadata({ values })} />
-      </section>
+      </Field>
 
-      <section className="flex flex-col gap-1.5">
-        <span className="text-xs text-muted-foreground">Per-platform status</span>
+      <Field label="Per-platform status">
         {/* The scope's MENU, not `scopedPlatforms(node, scope)` — see
             `NodeDetailPanel`'s `PlatformVariantsSection`. Shape decisions read
             `scope.platforms`; per-node facts read `scopedPlatforms`. */}
@@ -224,10 +229,9 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, on
           onNotesChange={(platform: PlatformId, value) => patchMetadata({ platformNotes: { ...node.metadata?.platformNotes, [platform]: value } })}
           onScreenshotChange={(platform: PlatformId, value) => patchMetadata({ platformScreenshots: { ...node.metadata?.platformScreenshots, [platform]: value } })}
         />
-      </section>
+      </Field>
 
-      <section className="flex flex-col gap-1.5">
-        <span className="text-xs text-muted-foreground">Covers</span>
+      <Field label="Covers">
         {coveredAnchors.length === 0 ? (
           <p className="text-xs text-muted-foreground">
             {intake
@@ -271,11 +275,13 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, on
             run={run}
           />
         )}
-      </section>
+      </Field>
 
       {intake && (
-        <section className="flex flex-col gap-1.5">
-          <span className="text-xs text-muted-foreground">Decompose</span>
+        <Field
+          label="Decompose"
+          hint="One acceptance states one thing. Split when the idea has grown into several."
+        >
           <Button
             type="button"
             variant="outline"
@@ -285,9 +291,6 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, on
           >
             <SplitIcon className="size-4" /> Split into several…
           </Button>
-          <p className="text-xs text-muted-foreground">
-            One acceptance states one thing. Split when the idea has grown into several.
-          </p>
           <SplitAcceptanceDialog
             open={splitOpen}
             onOpenChange={setSplitOpen}
@@ -306,7 +309,7 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, on
               }
             }}
           />
-        </section>
+        </Field>
       )}
     </div>
   );

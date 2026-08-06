@@ -7,6 +7,7 @@ import { EntityId } from "@/components/graph/nodes/EntityBadges";
 import { PanelStack } from "@/components/panels/PanelStack";
 import { NodeDetailPanel, NodeDetailPanelHeader } from "@/components/panels/NodeDetailPanel";
 import { RawBundlePanel } from "@/components/panels/RawBundlePanel";
+import { EmptyState } from "@/components/ui/empty-state";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { Edge, JournalEvent, Node } from "@/lib/data/types";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
@@ -154,20 +155,17 @@ export function ProjectPanels({
         if (!node)
           return (
             <div className="min-h-0 flex-1 overflow-y-auto p-6">
-              <div className="rounded-xl border border-dashed p-10 text-center">
-                <p className="text-sm text-muted-foreground">
-                  This page has no node with that id — it may live on another surface, or it may no
-                  longer exist.
-                </p>
-                <div className="mt-4">
+              <EmptyState
+                message="This page has no node with that id — it may live on another surface, or it may no longer exist."
+                action={
                   <Link
                     href={`/project/${projectId}/library`}
                     className="text-sm underline underline-offset-4"
                   >
                     Look for it in the Library
                   </Link>
-                </div>
-              </div>
+                }
+              />
             </div>
           );
 

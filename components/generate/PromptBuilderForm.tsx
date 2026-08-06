@@ -1,7 +1,12 @@
 "use client";
 
+import { useId } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field } from "@/components/ui/field";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -15,15 +20,14 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { ChevronDown } from "lucide-react";
-import { PLATFORMS } from "@/lib/config/platforms";
-import { STATUSES } from "@/lib/config/statuses";
+import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
+import { PlatformToggleGroup } from "@/components/panels/PlatformToggleGroup";
 import {
   DEPTH_OPTIONS,
   SOURCE_TYPE_OPTIONS,
   TARGET_LLM_OPTIONS,
 } from "@/lib/prompts/types";
 import type { PromptConfig } from "@/lib/prompts/types";
-import type { PlatformId } from "@/lib/config/platforms";
 import type { StatusId } from "@/lib/config/statuses";
 
 interface PromptBuilderFormProps {
@@ -31,83 +35,63 @@ interface PromptBuilderFormProps {
   onChange: React.Dispatch<React.SetStateAction<PromptConfig>>;
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-        {label}
-      </span>
-      {children}
-    </div>
-  );
-}
-
 export function PromptBuilderForm({ config, onChange }: PromptBuilderFormProps) {
+  // One prefix per mounted form, suffixed per control. The generate page mounts
+  // a single builder today, but ids that collide across two mounts point every
+  // label at the first form's controls, which is the failure mode `htmlFor` was
+  // added to avoid in the first place.
+  const fieldId = useId();
+
   function update(patch: Partial<PromptConfig>) {
     onChange((prev) => ({ ...prev, ...patch }));
-  }
-
-  function handlePlatformToggle(platformId: PlatformId) {
-    const current = config.platforms;
-    const next = current.includes(platformId)
-      ? current.filter((p) => p !== platformId)
-      : [...current, platformId];
-    if (next.length > 0) update({ platforms: next });
   }
 
   return (
     <div className="flex flex-col gap-5 rounded-xl border bg-card/70 p-4 md:p-6">
       {/* Common fields */}
-      <Field label="Project title">
+      <Field label="Project title" htmlFor={`${fieldId}-title`}>
         <Input
+          id={`${fieldId}-title`}
           value={config.projectTitle}
           onChange={(e) => update({ projectTitle: e.target.value })}
           placeholder="My Product"
         />
       </Field>
 
-      <Field label="Project description (optional)">
-        <textarea
+      <Field label="Project description (optional)" htmlFor={`${fieldId}-description`}>
+        <Textarea
+          id={`${fieldId}-description`}
           value={config.projectDescription || ""}
           onChange={(e) => update({ projectDescription: e.target.value })}
           placeholder="Brief description of what this product does..."
           rows={2}
-          className="border-input bg-transparent text-sm text-foreground leading-relaxed resize-none rounded-md border px-3 py-2 outline-none placeholder:text-muted-foreground focus:ring-[3px] focus:ring-ring/50"
+          className="leading-relaxed resize-none"
         />
       </Field>
 
+      {/* No `htmlFor`: a toggle group has no single control to point at, so the
+          label stays an honest <span> and the group carries its own name. */}
       <Field label="Target platforms">
-        <div className="flex flex-wrap gap-2">
-          {PLATFORMS.map((p) => {
-            const selected = config.platforms.includes(p.id);
-            return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => handlePlatformToggle(p.id)}
-                aria-pressed={selected}
-                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
-                  selected
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-transparent text-muted-foreground border border-input hover:bg-muted/50"
-                }`}
-              >
-                {p.label}
-              </button>
-            );
-          })}
-        </div>
+        <PlatformToggleGroup
+          value={config.platforms}
+          onChange={(platforms) => update({ platforms })}
+          // The prompt is generated for at least one platform, so the last
+          // selected chip cannot be turned off — the rule the old inline
+          // handler spelled as `if (next.length > 0)`.
+          minLength={1}
+          ariaLabel="Target platforms"
+        />
       </Field>
 
-      <Field label="Default status for new nodes">
+      <Field label="Default status for new nodes" htmlFor={`${fieldId}-default-status`}>
         <Select value={config.defaultStatus} onValueChange={(v) => update({ defaultStatus: v as StatusId })}>
-          <SelectTrigger aria-label="Default status">
+          <SelectTrigger id={`${fieldId}-default-status`}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {STATUSES.map((s) => (
-              <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
-            ))}
+            {/* No icons: this picks a status for nodes that do not exist yet,
+                so there is no state to colour. */}
+            <StatusSelectItems showIcons={false} />
           </SelectContent>
         </Select>
       </Field>
@@ -115,19 +99,20 @@ export function PromptBuilderForm({ config, onChange }: PromptBuilderFormProps) 
       {/* Use-case specific fields */}
       {config.useCase === "from-pitch" && (
         <>
-          <Field label="Product pitch">
-            <textarea
+          <Field label="Product pitch" htmlFor={`${fieldId}-pitch`}>
+            <Textarea
+              id={`${fieldId}-pitch`}
               value={config.pitch || ""}
               onChange={(e) => update({ pitch: e.target.value })}
               placeholder="Describe your product idea... What does it do? Who is it for? What are the main features?"
               rows={6}
-              className="border-input bg-transparent text-sm text-foreground leading-relaxed resize-y rounded-md border px-3 py-2 outline-none placeholder:text-muted-foreground focus:ring-[3px] focus:ring-ring/50"
+              className="leading-relaxed resize-y"
             />
           </Field>
 
-          <Field label="Desired depth">
+          <Field label="Desired depth" htmlFor={`${fieldId}-depth`}>
             <Select value={config.depth || "detailed"} onValueChange={(v) => update({ depth: v as PromptConfig["depth"] })}>
-              <SelectTrigger aria-label="Depth">
+              <SelectTrigger id={`${fieldId}-depth`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -138,8 +123,9 @@ export function PromptBuilderForm({ config, onChange }: PromptBuilderFormProps) 
             </Select>
           </Field>
 
-          <Field label="Focus areas (optional)">
+          <Field label="Focus areas (optional)" htmlFor={`${fieldId}-focus-areas`}>
             <Input
+              id={`${fieldId}-focus-areas`}
               value={config.focusAreas || ""}
               onChange={(e) => update({ focusAreas: e.target.value })}
               placeholder="e.g., onboarding, payment, social features"
@@ -150,9 +136,9 @@ export function PromptBuilderForm({ config, onChange }: PromptBuilderFormProps) 
 
       {config.useCase === "from-plan" && (
         <>
-          <Field label="Source material type">
+          <Field label="Source material type" htmlFor={`${fieldId}-source-type`}>
             <Select value={config.sourceType || "other"} onValueChange={(v) => update({ sourceType: v as PromptConfig["sourceType"] })}>
-              <SelectTrigger aria-label="Source type">
+              <SelectTrigger id={`${fieldId}-source-type`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -163,23 +149,25 @@ export function PromptBuilderForm({ config, onChange }: PromptBuilderFormProps) 
             </Select>
           </Field>
 
-          <Field label="Source material">
-            <textarea
+          <Field label="Source material" htmlFor={`${fieldId}-source-material`}>
+            <Textarea
+              id={`${fieldId}-source-material`}
               value={config.sourceMaterial || ""}
               onChange={(e) => update({ sourceMaterial: e.target.value })}
               placeholder="Paste your Mermaid diagram, screen list, flowchart, or specification here..."
               rows={10}
-              className="border-input bg-transparent text-sm text-foreground font-mono leading-relaxed resize-y rounded-md border px-3 py-2 outline-none placeholder:text-muted-foreground placeholder:font-sans focus:ring-[3px] focus:ring-ring/50"
+              className="font-mono leading-relaxed resize-y placeholder:font-sans"
             />
           </Field>
 
-          <Field label="Additional context (optional)">
-            <textarea
+          <Field label="Additional context (optional)" htmlFor={`${fieldId}-additional-context`}>
+            <Textarea
+              id={`${fieldId}-additional-context`}
               value={config.additionalContext || ""}
               onChange={(e) => update({ additionalContext: e.target.value })}
               placeholder="Any extra context that helps interpret the source material..."
               rows={3}
-              className="border-input bg-transparent text-sm text-foreground leading-relaxed resize-none rounded-md border px-3 py-2 outline-none placeholder:text-muted-foreground focus:ring-[3px] focus:ring-ring/50"
+              className="leading-relaxed resize-none"
             />
           </Field>
         </>
@@ -187,28 +175,31 @@ export function PromptBuilderForm({ config, onChange }: PromptBuilderFormProps) 
 
       {config.useCase === "extend-map" && (
         <>
-          <Field label="Existing project bundle (JSON)">
-            <textarea
+          <Field label="Existing project bundle (JSON)" htmlFor={`${fieldId}-existing-bundle`}>
+            <Textarea
+              id={`${fieldId}-existing-bundle`}
               value={config.existingBundle || ""}
               onChange={(e) => update({ existingBundle: e.target.value })}
               placeholder='Paste the exported JSON of your existing Arkaik project here... (use "Export JSON" in the project menu)'
               rows={8}
-              className="border-input bg-transparent text-sm text-foreground font-mono leading-relaxed resize-y rounded-md border px-3 py-2 outline-none placeholder:text-muted-foreground placeholder:font-sans focus:ring-[3px] focus:ring-ring/50"
+              className="font-mono leading-relaxed resize-y placeholder:font-sans"
             />
           </Field>
 
-          <Field label="What to add">
-            <textarea
+          <Field label="What to add" htmlFor={`${fieldId}-extension`}>
+            <Textarea
+              id={`${fieldId}-extension`}
               value={config.extensionDescription || ""}
               onChange={(e) => update({ extensionDescription: e.target.value })}
               placeholder="Describe what you want to add... e.g., 'Add a settings flow with profile editing, notification preferences, and account deletion'"
               rows={4}
-              className="border-input bg-transparent text-sm text-foreground leading-relaxed resize-y rounded-md border px-3 py-2 outline-none placeholder:text-muted-foreground focus:ring-[3px] focus:ring-ring/50"
+              className="leading-relaxed resize-y"
             />
           </Field>
 
-          <Field label="Connection point (optional)">
+          <Field label="Connection point (optional)" htmlFor={`${fieldId}-connection-point`}>
             <Input
+              id={`${fieldId}-connection-point`}
               value={config.connectionPoint || ""}
               onChange={(e) => update({ connectionPoint: e.target.value })}
               placeholder="e.g., from V-dashboard, add to F-main-flow"
@@ -226,9 +217,9 @@ export function PromptBuilderForm({ config, onChange }: PromptBuilderFormProps) 
           </Button>
         </CollapsibleTrigger>
         <CollapsibleContent className="flex flex-col gap-4 pt-3">
-          <Field label="Target LLM">
+          <Field label="Target LLM" htmlFor={`${fieldId}-target-llm`}>
             <Select value={config.targetLlm || "any"} onValueChange={(v) => update({ targetLlm: v as PromptConfig["targetLlm"] })}>
-              <SelectTrigger aria-label="Target LLM">
+              <SelectTrigger id={`${fieldId}-target-llm`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -239,34 +230,36 @@ export function PromptBuilderForm({ config, onChange }: PromptBuilderFormProps) 
             </Select>
           </Field>
 
+          {/* `Label` rather than a native <label> wrapper: Radix's Checkbox is a
+              <button>, and a native label does not toggle a button it wraps —
+              only the explicit htmlFor/id pairing Radix forwards does. */}
           <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
+            <Label htmlFor={`${fieldId}-include-schema`} className="text-sm font-normal">
+              <Checkbox
+                id={`${fieldId}-include-schema`}
                 checked={config.includeSchema !== false}
-                onChange={(e) => update({ includeSchema: e.target.checked })}
-                className="rounded border-input"
+                onCheckedChange={(checked) => update({ includeSchema: checked === true })}
               />
               Include schema
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
+            </Label>
+            <Label htmlFor={`${fieldId}-include-example`} className="text-sm font-normal">
+              <Checkbox
+                id={`${fieldId}-include-example`}
                 checked={config.includeExample !== false}
-                onChange={(e) => update({ includeExample: e.target.checked })}
-                className="rounded border-input"
+                onCheckedChange={(checked) => update({ includeExample: checked === true })}
               />
               Include example
-            </label>
+            </Label>
           </div>
 
-          <Field label="Custom instructions (optional)">
-            <textarea
+          <Field label="Custom instructions (optional)" htmlFor={`${fieldId}-custom-instructions`}>
+            <Textarea
+              id={`${fieldId}-custom-instructions`}
               value={config.customInstructions || ""}
               onChange={(e) => update({ customInstructions: e.target.value })}
               placeholder="Any additional instructions for the LLM..."
               rows={3}
-              className="border-input bg-transparent text-sm text-foreground leading-relaxed resize-none rounded-md border px-3 py-2 outline-none placeholder:text-muted-foreground focus:ring-[3px] focus:ring-ring/50"
+              className="leading-relaxed resize-none"
             />
           </Field>
         </CollapsibleContent>

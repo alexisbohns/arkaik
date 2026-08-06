@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { ProductDefinition } from "@arkaik/schema";
 
 import { Button } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
+import { PlatformToggleGroup } from "@/components/panels/PlatformToggleGroup";
 import {
   Dialog,
   DialogContent,
@@ -92,6 +94,7 @@ export function ProductFormDialog({
    * ids but does not repair a `title` that is a number or a missing `platforms`
    * array, and this form must render it, not crash on it.
    */
+  const fieldId = useId();
   const [title, setTitle] = useState(() =>
     typeof product?.title === "string" ? product.title : "",
   );
@@ -135,67 +138,48 @@ export function ProductFormDialog({
         </DialogHeader>
 
         <form id="product-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Title
-            </span>
+          <Field
+            label="Title"
+            htmlFor={`${fieldId}-title`}
+            hint={
+              <>
+                Identifier: <code>{id || "—"}</code>
+                {editing
+                  ? " — fixed once created, because every node in this product stores it."
+                  : " — derived from the title, and fixed once created."}
+              </>
+            }
+          >
             <Input
+              id={`${fieldId}-title`}
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               placeholder="Admin dashboard"
               required
               aria-label="Product title"
             />
-            <p className="text-xs text-muted-foreground">
-              Identifier: <code>{id || "—"}</code>
-              {editing
-                ? " — fixed once created, because every node in this product stores it."
-                : " — derived from the title, and fixed once created."}
-            </p>
-          </div>
+          </Field>
 
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Description
-            </span>
+          <Field label="Description" htmlFor={`${fieldId}-description`}>
             <Input
+              id={`${fieldId}-description`}
               value={description}
               onChange={(event) => setDescription(event.target.value)}
               placeholder="What this app is for"
               aria-label="Product description"
             />
-          </div>
+          </Field>
 
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Platforms
-            </span>
-            <div className="flex flex-wrap items-center gap-2">
-              {PLATFORMS.map((platform) => {
-                const selected = platforms.includes(platform.id);
-                return (
-                  <button
-                    key={platform.id}
-                    type="button"
-                    aria-pressed={selected}
-                    onClick={() =>
-                      setPlatforms((previous) =>
-                        previous.includes(platform.id)
-                          ? previous.filter((entry) => entry !== platform.id)
-                          : [...previous, platform.id],
-                      )
-                    }
-                    className={`cursor-pointer rounded-md border px-3 py-1.5 text-sm ${
-                      selected
-                        ? "border-primary bg-primary/10 text-foreground"
-                        : "text-muted-foreground"
-                    }`}
-                  >
-                    {platform.label}
-                  </button>
-                );
-              })}
-            </div>
+          {/* No `htmlFor`: a toggle group has no single control to point at. */}
+          <Field label="Platforms">
+            {/* No `minLength`: an empty selection is meaningful for a product —
+                availability is simply not a tracked dimension — which is the
+                line the hint below draws. */}
+            <PlatformToggleGroup
+              value={platforms}
+              onChange={setPlatforms}
+              ariaLabel="Platforms this product ships on"
+            />
             <p className="text-xs text-muted-foreground">
               {platforms.length === 0
                 ? "No platforms: availability is not tracked for this product, and its nodes carry a single status."
@@ -208,7 +192,7 @@ export function ProductFormDialog({
                 them, but they stop showing.
               </p>
             )}
-          </div>
+          </Field>
         </form>
 
         <DialogFooter>

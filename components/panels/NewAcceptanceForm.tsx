@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Field } from "@/components/ui/field";
 import type { ProductDefinition } from "@arkaik/schema";
 import type { NodeMetadata } from "@/lib/data/types";
 import { ProductPicker } from "@/components/panels/ProductPicker";
@@ -67,6 +68,7 @@ export function NewAcceptanceForm({
   products = [],
   defaultProductId = null,
 }: NewAcceptanceFormProps) {
+  const fieldId = useId();
   const [title, setTitle] = useState("");
   const [product, setProduct] = useState<string | null>(defaultProductId);
 
@@ -115,16 +117,16 @@ export function NewAcceptanceForm({
           </DialogDescription>
         </DialogHeader>
         <form id="new-acceptance-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Title</span>
+          <Field label="Title" htmlFor={`${fieldId}-title`}>
             <Input
+              id={`${fieldId}-title`}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="The What — what must be true"
               required
               aria-label="Acceptance title"
             />
-          </div>
+          </Field>
           {showsProductPicker && (
             <ProductPicker
               products={products}

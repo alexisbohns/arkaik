@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -18,15 +18,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Field } from "@/components/ui/field";
+import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
+import { PlatformToggleGroup } from "@/components/panels/PlatformToggleGroup";
 import { SPECIES } from "@/lib/config/species";
-import { STATUSES } from "@/lib/config/statuses";
-import { PLATFORMS } from "@/lib/config/platforms";
-import {
-  PLATFORM_DOT_STYLES,
-  PLATFORM_LABELS,
-  STATUS_ICONS,
-  STATUS_STYLES,
-} from "@/components/graph/nodes/node-styles";
 import type { SpeciesId } from "@/lib/config/species";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
@@ -78,6 +73,7 @@ export function NewNodeForm({
   products = [],
   defaultProductId = null,
 }: NewNodeFormProps) {
+  const fieldId = useId();
   const [title, setTitle] = useState("");
   const [species, setSpecies] = useState<SpeciesId>(defaultValues?.species ?? "view");
   const [status, setStatus] = useState<StatusId>("idea");
@@ -154,12 +150,6 @@ export function NewNodeForm({
     onOpenChange(nextOpen);
   }
 
-  function handlePlatformToggle(platformId: PlatformId) {
-    setPlatforms((prev) =>
-      prev.includes(platformId) ? prev.filter((p) => p !== platformId) : [...prev, platformId]
-    );
-  }
-
   /**
    * Switching to a narrower product drops the platforms it does not ship on,
    * rather than storing a claim the product forbids and letting
@@ -214,20 +204,18 @@ export function NewNodeForm({
           </DialogDescription>
         </DialogHeader>
         <form id="new-node-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Title</span>
+          <Field label="Title" htmlFor={`${fieldId}-title`}>
             <Input
+              id={`${fieldId}-title`}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Node title"
               required
-              aria-label="Node title"
             />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Species</span>
+          </Field>
+          <Field label="Species" htmlFor={`${fieldId}-species`}>
             <Select value={species} onValueChange={(v) => setSpecies(v as SpeciesId)}>
-              <SelectTrigger aria-label="Species">
+              <SelectTrigger id={`${fieldId}-species`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -236,7 +224,7 @@ export function NewNodeForm({
                 ))}
               </SelectContent>
             </Select>
-          </div>
+          </Field>
           {showsProductPicker && (
             <ProductPicker
               products={products}
@@ -250,56 +238,35 @@ export function NewNodeForm({
             />
           )}
           {(usesSingleStatusField || usesPlatformDefaultStatus) && (
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                {usesPlatformDefaultStatus ? "Default Platform Status" : "Status"}
-              </span>
+            <Field
+              label={usesPlatformDefaultStatus ? "Default Platform Status" : "Status"}
+              htmlFor={`${fieldId}-status`}
+            >
               <Select value={status} onValueChange={(v) => setStatus(v as StatusId)}>
-                <SelectTrigger aria-label={usesPlatformDefaultStatus ? "Default platform status" : "Status"}>
+                <SelectTrigger id={`${fieldId}-status`}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {STATUSES.map((s) => {
-                    const StatusIcon = STATUS_ICONS[s.id];
-
-                    return (
-                      <SelectItem key={s.id} value={s.id}>
-                        <span className="inline-flex items-center gap-2">
-                          <StatusIcon className={`size-3.5 ${STATUS_STYLES[s.id].badge}`} />
-                          {s.label}
-                        </span>
-                      </SelectItem>
-                    );
-                  })}
+                  <StatusSelectItems />
                 </SelectContent>
               </Select>
-            </div>
+            </Field>
           )}
           {allowsPlatformEditing && (
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Platforms</span>
-              <div className="flex items-center gap-2 flex-wrap">
-                {PLATFORMS.map((p) => {
-                  const selected = platforms.includes(p.id);
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => handlePlatformToggle(p.id)}
-                      aria-pressed={selected}
-                      className={`flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${
-                        selected
-                          ? "bg-muted text-foreground"
-                          : "bg-transparent text-muted-foreground border border-input hover:bg-muted/50"
-                      }`}
-                    >
-                      <span className={`w-2 h-2 rounded-full ${selected ? PLATFORM_DOT_STYLES[p.id] : "bg-muted-foreground/40"}`} />
-                      {PLATFORM_LABELS[p.id]}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            // No `htmlFor`: a toggle group has no single control to point at.
+            <Field label="Platforms">
+              {/* `platformMenu`, not every configured platform. The containment
+                  rule (§ D4) was already enforced in state — `handleProductChange`
+                  drops what a narrower product forbids — but the strip went on
+                  offering the forbidden chips, so selecting one under an
+                  Admin-web-only product produced a claim the form then silently
+                  discarded. */}
+              <PlatformToggleGroup
+                value={platforms}
+                onChange={setPlatforms}
+                options={platformMenu}
+              />
+            </Field>
           )}
         </form>
         <DialogFooter>

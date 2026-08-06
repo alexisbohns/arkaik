@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import type { ProductDefinition } from "@arkaik/schema";
 // The blank-title fallback is one rule with one home. This component renders
 // the products the three assignment forms offer, so a private copy here would
@@ -12,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Field } from "@/components/ui/field";
 
 /**
  * The one control that assigns a node to a product.
@@ -76,6 +78,10 @@ export function ProductPicker({
   displayOverride,
   disabled,
 }: ProductPickerProps) {
+  // Per-mount, because three forms render this control and the panel stack can
+  // hold two of them open at once — a fixed id would make the second picker's
+  // label focus the first picker's select.
+  const triggerId = useId();
   // A stored membership naming a product this project no longer declares
   // degrades to Unassigned in the trigger, matching `ProductScopeSelector`. It
   // is displayed, not healed — writing state as a side effect of rendering
@@ -83,14 +89,13 @@ export function ProductPicker({
   const selected = products.find((product) => product.id === value) ?? null;
 
   return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</span>
+    <Field label={label} htmlFor={triggerId} hint={hint}>
       <Select
         value={selected ? selected.id : UNASSIGNED}
         onValueChange={(next) => onChange(next === UNASSIGNED ? null : next)}
         disabled={disabled}
       >
-        <SelectTrigger aria-label={label}>
+        <SelectTrigger id={triggerId}>
           {/* `SelectValue` renders the *selected* option, which is the stored
               value. When a caller has a different live answer it supplies the
               text itself — see `displayOverride`. */}
@@ -105,7 +110,6 @@ export function ProductPicker({
           ))}
         </SelectContent>
       </Select>
-      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
-    </div>
+    </Field>
   );
 }

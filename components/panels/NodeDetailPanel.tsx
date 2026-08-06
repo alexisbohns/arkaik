@@ -1,23 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   Select,
   SelectContent,
-  SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Field } from "@/components/ui/field";
+import { PanelSection } from "@/components/panels/PanelSection";
+import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
 import type { Node, Edge, JournalEvent } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import { SPECIES } from "@/lib/config/species";
-import { STATUSES } from "@/lib/config/statuses";
-import {
-  STATUS_ICONS,
-  STATUS_STYLES,
-} from "@/components/graph/nodes/node-styles";
 import { SpeciesBadge, EntityId } from "@/components/graph/nodes/EntityBadges";
 import { RefList } from "@/components/graph/nodes/RefBadges";
 import { PlatformVariants } from "@/components/panels/PlatformVariants";
@@ -39,7 +36,7 @@ import { normalizeBlockedBy, withBlockedBy } from "@/lib/utils/blocked";
 import { productOf } from "@arkaik/schema";
 import { findWhereUsed } from "@/lib/utils/where-used";
 import { computeNodeTimeline } from "@/lib/utils/journal";
-import { describeJournalEvent, formatEventDate } from "@/components/journal/describe-event";
+import { FeedRow } from "@/components/journal/FeedRow";
 
 interface NodeDetailPanelProps {
   node: Node;
@@ -75,6 +72,10 @@ interface NodeFieldsProps {
 
 function NodeFields({ node, onUpdate, allNodes, onNavigate }: NodeFieldsProps) {
   const AUTOSAVE_DELAY_MS = 350;
+  // Per-mount, because the panel stack keeps hidden panels mounted: two nodes
+  // open at once means two "Status" fields in one document, and a hand-written
+  // id would point both labels at the first one's select.
+  const fieldId = useId();
   const [title, setTitle] = useState(node.title);
   const [description, setDescription] = useState(node.description ?? "");
   const [status, setStatus] = useState<StatusId>(node.status);
@@ -187,36 +188,23 @@ function NodeFields({ node, onUpdate, allNodes, onNavigate }: NodeFieldsProps) {
         />
       </div>
       {usesSingleStatusField && (
-        <div className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</span>
+        <Field label="Status" htmlFor={`${fieldId}-status`}>
           <Select value={status} onValueChange={(v) => handleStatusChange(v as StatusId)}>
-            <SelectTrigger aria-label="Status">
+            <SelectTrigger id={`${fieldId}-status`}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {STATUSES.map((s) => {
-                const StatusIcon = STATUS_ICONS[s.id];
-
-                return (
-                  <SelectItem key={s.id} value={s.id}>
-                    <span className="inline-flex items-center gap-2">
-                      <StatusIcon className={`size-3.5 ${STATUS_STYLES[s.id].badge}`} />
-                      {s.label}
-                    </span>
-                  </SelectItem>
-                );
-              })}
+              <StatusSelectItems />
             </SelectContent>
           </Select>
-        </div>
+        </Field>
       )}
-      <div className="flex flex-col gap-1.5">
-        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Blocked by</span>
+      <Field label="Blocked by" htmlFor={`${fieldId}-blocked-by`}>
         <Input
+          id={`${fieldId}-blocked-by`}
           value={blockedBy}
           onChange={(event) => setBlockedBy(event.target.value)}
           placeholder="Node id or free text — empty means not blocked"
-          aria-label="Blocked by"
         />
         {blockedNode && (
           onNavigate ? (
@@ -231,7 +219,7 @@ function NodeFields({ node, onUpdate, allNodes, onNavigate }: NodeFieldsProps) {
             <span className="text-xs text-muted-foreground">{blockedNode.title}</span>
           )
         )}
-      </div>
+      </Field>
     </div>
   );
 }
@@ -328,8 +316,7 @@ function InvocationSection({ node, allNodes, onNavigate }: InvocationSectionProp
   }
 
   return (
-    <div className="px-6 flex flex-col gap-2">
-      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Invocation</span>
+    <PanelSection title="Invocation">
       <div className="flex flex-col gap-0.5">
         {usages.map((flow) => (
           <ConnectionItem
@@ -340,7 +327,7 @@ function InvocationSection({ node, allNodes, onNavigate }: InvocationSectionProp
           />
         ))}
       </div>
-    </div>
+    </PanelSection>
   );
 }
 
@@ -352,10 +339,9 @@ function RefsSection({ node }: { node: Node }) {
   }
 
   return (
-    <div className="px-6 flex flex-col gap-2">
-      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">References</span>
+    <PanelSection title="References">
       <RefList refs={refs} />
-    </div>
+    </PanelSection>
   );
 }
 
@@ -391,8 +377,7 @@ function ConnectionsSection({ node, allNodes, allEdges, onNavigate }: Connection
   }
 
   return (
-    <div className="px-6 flex flex-col gap-2">
-      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Connections</span>
+    <PanelSection title="Connections">
       <div className="flex flex-col gap-0.5">
         {uniqueCrossLayerNodes.map((n) => (
           <ConnectionItem
@@ -403,7 +388,7 @@ function ConnectionsSection({ node, allNodes, allEdges, onNavigate }: Connection
           />
         ))}
       </div>
-    </div>
+    </PanelSection>
   );
 }
 
@@ -446,25 +431,15 @@ function HistorySection({ node, journal, allNodes }: HistorySectionProps) {
   const nodesById = new Map(allNodes.map((n) => [n.id, n]));
 
   return (
-    <div className="px-6 flex flex-col gap-2">
-      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">History</span>
+    <PanelSection title="History">
       <div className="flex flex-col gap-0.5">
-        {[...timeline].reverse().map((event) => {
-          const { icon: Icon, text, meta } = describeJournalEvent(event, nodesById);
-
-          return (
-            <div key={event.id} className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm">
-              <Icon className="size-3.5 shrink-0 text-muted-foreground mt-0.5" aria-hidden="true" />
-              <div className="flex-1 min-w-0">
-                <p className="truncate">{text}</p>
-                {meta && <p className="text-xs text-muted-foreground truncate">{meta}</p>}
-              </div>
-              <span className="text-xs text-muted-foreground shrink-0">{formatEventDate(event.ts)}</span>
-            </div>
-          );
-        })}
+        {[...timeline].reverse().map((event) => (
+          // No `onOpen`: this list is already inside the node's own panel, so a
+          // row that navigated would navigate to where the reader is standing.
+          <FeedRow key={event.id} event={event} nodesById={nodesById} />
+        ))}
       </div>
-    </div>
+    </PanelSection>
   );
 }
 
@@ -525,8 +500,9 @@ function PlatformVariantsSection({ node, scope, initialPlatform, onUpdate, onZoo
   }
 
   return (
-    <div className="px-6 flex flex-col gap-3">
-      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Platform Variants</span>
+    // `gap-3` rather than the section default: this one wraps a whole embedded
+    // editor, not a field.
+    <PanelSection title="Platform Variants" className="gap-3">
       {/* The scope's MENU, not `scopedPlatforms(node, scope)`. How many platform
           columns a surface shows is a shape decision, and shape decisions are the
           scope's — same input the Acceptances matrix and the Pyramid read. Per-node
@@ -549,7 +525,7 @@ function PlatformVariantsSection({ node, scope, initialPlatform, onUpdate, onZoo
         onScreenshotChange={handleScreenshotChange}
         onZoomShot={onZoomShot}
       />
-    </div>
+    </PanelSection>
   );
 }
 
@@ -563,8 +539,7 @@ function ComputedPlatformStatusSection({
   const rollup = computeFlowPlatformRollup(node, nodesById, allNodes, allEdges);
 
   return (
-    <div className="px-6 flex flex-col gap-3">
-      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Computed Platform Statuses</span>
+    <PanelSection title="Computed Platform Statuses" className="gap-3">
       {/* Clamped, not replaced: a flow's rollup can count a platform the flow
           never declares (the seed's `F-swap-glyph`), and under All products that
           bar must survive. See `scopedRollupPlatforms`. */}
@@ -573,7 +548,7 @@ function ComputedPlatformStatusSection({
         platforms={scopedRollupPlatforms(node.platforms, rollup, scope.platforms)}
         showLabels
       />
-    </div>
+    </PanelSection>
   );
 }
 

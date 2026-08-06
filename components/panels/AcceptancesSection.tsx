@@ -7,6 +7,7 @@ import { scopedPlatforms, type ProductScope } from "@/lib/utils/product-scope";
 import { PlatformList } from "@/components/graph/nodes/PlatformList";
 import { EntityId } from "@/components/graph/nodes/EntityBadges";
 import { Button } from "@/components/ui/button";
+import { PanelSection } from "@/components/panels/PanelSection";
 import { PlusIcon, TriangleAlertIcon } from "lucide-react";
 import { toast } from "sonner";
 
@@ -23,10 +24,10 @@ interface AcceptancesSectionProps {
 export function AcceptancesSection({ node, allNodes, allEdges, scope, onNavigate, onCreate }: AcceptancesSectionProps) {
   const covering = acceptancesCovering(node.id, allNodes, allEdges);
   return (
-    <section className="px-6 flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Acceptances</span>
-        {onCreate && (
+    <PanelSection
+      title="Acceptances"
+      action={
+        onCreate && (
           <Button
             type="button"
             variant="ghost"
@@ -44,8 +45,9 @@ export function AcceptancesSection({ node, allNodes, allEdges, scope, onNavigate
           >
             <PlusIcon className="size-4" /> Add
           </Button>
-        )}
-      </div>
+        )
+      }
+    >
       {covering.length === 0 ? (
         <p className="text-xs text-muted-foreground">No acceptances cover this {node.species} yet.</p>
       ) : (
@@ -68,6 +70,6 @@ export function AcceptancesSection({ node, allNodes, allEdges, scope, onNavigate
           ))}
         </ul>
       )}
-    </section>
+    </PanelSection>
   );
 }

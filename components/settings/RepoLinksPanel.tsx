@@ -104,20 +104,37 @@ export interface RepoLinksPanelProps {
 
 export function RepoLinksPanel({ projectId }: RepoLinksPanelProps) {
   const [links, setLinks] = useState<RepoLink[] | null>(null);
+  /**
+   * A failed read is not an empty list (audit `quality-frontend-5`, with issue
+   * #362). Coercing one into the other rendered "No repositories linked yet" on
+   * a 500, which is worse here than almost anywhere: the sentence invites the
+   * reader to link a repository that is already linked, and the API keys a link
+   * on (repository, path), so the duplicate either fails confusingly or lands as
+   * a second row nobody meant to create.
+   */
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [repo, setRepo] = useState("");
   const [path, setPath] = useState("");
   const [platform, setPlatform] = useState<string>(ALL_PLATFORMS);
   const [saving, setSaving] = useState(false);
 
   const refresh = useCallback(async () => {
-    const res = await fetch(`/api/graph/projects/${encodeURIComponent(projectId)}/repos`, {
-      cache: "no-store",
-    });
-    if (!res.ok) {
-      setLinks([]);
-      return;
+    setLoadError(null);
+    try {
+      const res = await fetch(`/api/graph/projects/${encodeURIComponent(projectId)}/repos`, {
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        setLoadError(`Unable to load the linked repositories (HTTP ${res.status}).`);
+        return;
+      }
+      setLinks(((await res.json()) as { repos: RepoLink[] }).repos);
+    } catch (err) {
+      // The mount effect calls this as `void refresh()`, so an uncaught throw
+      // was an unhandled rejection with nothing on screen to show for it.
+      console.error("[RepoLinksPanel] Failed to load repository links:", err);
+      setLoadError(err instanceof Error ? err.message : "Unable to load the linked repositories.");
     }
-    setLinks(((await res.json()) as { repos: RepoLink[] }).repos);
   }, [projectId]);
 
   // On the page rather than behind an `open` flag: the panel is only rendered
@@ -152,6 +169,11 @@ export function RepoLinksPanel({ projectId }: RepoLinksPanelProps) {
       setPath("");
       setPlatform(ALL_PLATFORMS);
       await refresh();
+    } catch (err) {
+      // Said out loud: a link that never reached the server used to clear
+      // nothing, report nothing, and leave the form looking untouched.
+      console.error("[RepoLinksPanel] Failed to link repository:", err);
+      toast.error("Could not link that repository.");
     } finally {
       setSaving(false);
     }
@@ -164,16 +186,23 @@ export function RepoLinksPanel({ projectId }: RepoLinksPanelProps) {
    * which deletes exactly one row, would answer 404 while the wrong row stayed.
    */
   async function unlink(name: string, pathPrefix: string) {
-    const res = await fetch(
-      `/api/graph/projects/${encodeURIComponent(projectId)}/repos` +
-        `?repo=${encodeURIComponent(name)}&path=${encodeURIComponent(pathPrefix)}`,
-      { method: "DELETE" },
-    );
-    if (!res.ok && res.status !== 404) {
+    try {
+      const res = await fetch(
+        `/api/graph/projects/${encodeURIComponent(projectId)}/repos` +
+          `?repo=${encodeURIComponent(name)}&path=${encodeURIComponent(pathPrefix)}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok && res.status !== 404) {
+        toast.error("Could not remove that link.");
+        return;
+      }
+      await refresh();
+    } catch (err) {
+      // An unlink that quietly failed left the row on screen and the link live,
+      // which reads as "the button does nothing" rather than as an error.
+      console.error("[RepoLinksPanel] Failed to remove repository link:", err);
       toast.error("Could not remove that link.");
-      return;
     }
-    await refresh();
   }
 
   return (
@@ -226,7 +255,20 @@ export function RepoLinksPanel({ projectId }: RepoLinksPanelProps) {
         </div>
       </div>
 
-      {links === null ? (
+      {/* First branch, and it outranks a list left over from an earlier read:
+          after a failed refresh nothing on screen is known to be current, and
+          the whole point of this panel is telling the truth about which
+          repositories are wired up. */}
+      {loadError ? (
+        <div className="flex flex-col items-start gap-2">
+          <p className="text-sm text-destructive" role="status" aria-live="polite">
+            {loadError}
+          </p>
+          <Button variant="outline" size="sm" className="cursor-pointer" onClick={() => void refresh()}>
+            Try again
+          </Button>
+        </div>
+      ) : links === null ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : links.length === 0 ? (
         <p className="text-sm text-muted-foreground">
