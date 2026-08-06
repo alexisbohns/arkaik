@@ -63,6 +63,12 @@ export type ProjectView =
 interface ProjectSwitcherProps {
   currentProjectId: string;
   currentProjectTitle?: string;
+  /**
+   * The project could not be read. Without this the absent title is
+   * indistinguishable from the loading window, and the header sits on
+   * "Loading project..." forever — the #362 lie one level up from the surface.
+   */
+  currentProjectFailed?: boolean;
   currentView: ProjectView;
   currentQueryString?: string;
   onOpenPublish: () => void;
@@ -72,6 +78,7 @@ interface ProjectSwitcherProps {
 export function ProjectSwitcher({
   currentProjectId,
   currentProjectTitle,
+  currentProjectFailed = false,
   currentView,
   currentQueryString,
   onOpenPublish,
@@ -152,7 +159,7 @@ export function ProjectSwitcher({
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
                 <span className="truncate font-semibold">
-                  {currentProjectTitle ?? "Loading project..."}
+                  {currentProjectTitle ?? (currentProjectFailed ? "Unavailable project" : "Loading project...")}
                 </span>
                 <span className="truncate text-xs text-sidebar-foreground/70">Switch project</span>
               </div>

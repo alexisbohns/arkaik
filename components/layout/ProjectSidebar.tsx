@@ -43,6 +43,12 @@ interface ProjectSidebarProps {
    * renders as "Loading project..." and the selector renders as nothing.
    */
   project: ProjectBundle | undefined;
+  /**
+   * The project read failed, so `project` is `undefined` for good rather than
+   * for now. The chrome stays mounted on a failed load — the switcher is the
+   * way out — but it must not keep claiming to be loading (#362).
+   */
+  projectFailed?: boolean;
   currentView: ProjectView;
   currentSpecies: string | null;
   /** Active map id when currentView is "maps" and a specific map is open. */
@@ -71,6 +77,7 @@ const LIBRARY_SPECIES = ["view", "flow", "data-model", "api-endpoint"] as const 
 export function ProjectSidebar({
   projectId,
   project,
+  projectFailed = false,
   currentView,
   currentSpecies,
   currentMapId,
@@ -96,6 +103,7 @@ export function ProjectSidebar({
         <ProjectSwitcher
           currentProjectId={projectId}
           currentProjectTitle={project?.project.title}
+          currentProjectFailed={projectFailed}
           currentView={currentView}
           currentQueryString={currentQueryString}
           onOpenPublish={onOpenPublish}

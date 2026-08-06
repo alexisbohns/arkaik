@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, type ReactNode } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
 import { EntityId } from "@/components/graph/nodes/EntityBadges";
 import { PanelStack } from "@/components/panels/PanelStack";
 import { NodeDetailPanel, NodeDetailPanelHeader } from "@/components/panels/NodeDetailPanel";
@@ -11,6 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { Edge, JournalEvent, Node } from "@/lib/data/types";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
+import { useProjectId } from "@/lib/hooks/useProjectId";
 import type { PanelEntry } from "@/lib/utils/panel-stack";
 import type { PanelDescriptor } from "@/lib/utils/project-panels";
 import { resolveProductScope, type ProductScope } from "@/lib/utils/product-scope";
@@ -91,8 +91,7 @@ export function ProjectPanels({
   const { entries, openNode, closeAt, unwindTo, pruneMissingNodes, panelStates } =
     useProjectPanels();
 
-  const params = useParams();
-  const projectId = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
+  const projectId = useProjectId();
 
   const nodesById = useMemo(() => new Map(allNodes.map((node) => [node.id, node])), [allNodes]);
 

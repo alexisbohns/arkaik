@@ -171,6 +171,7 @@ function ProjectChrome({ children }: { children: React.ReactNode }) {
       <ProjectSidebar
         projectId={id}
         project={project}
+        projectFailed={projectError !== null}
         currentView={currentView}
         currentSpecies={currentSpecies}
         currentMapId={currentMapId}
