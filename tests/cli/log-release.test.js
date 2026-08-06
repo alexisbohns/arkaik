@@ -69,9 +69,13 @@ const BUNDLE = JSON.stringify(
 );
 
 // Journal: both nodes created before 1.0; the 1.0→(next) slice is status
-// changes + an idea — none of which crossCheckJournal needs once compacted
-// (provenance predates 1.0; removing the only status changes leaves no stale
-// "last status" to disagree with the snapshot).
+// changes + an idea. This shape used to be load-bearing — the fixture was built
+// so the compacted slice held nothing crossCheckJournal needed, because the
+// validator could not see the archive (#358). It no longer is: validators fold
+// journal/archive-*.jsonl back in, and tests/cli/journal-baseline.test.js
+// covers the shapes this one deliberately avoided (archived provenance, a
+// stranded last transition). Kept as written so this file keeps exercising the
+// ordinary release path rather than the repaired edge cases.
 const JOURNAL_LINES = [
   { id: "01A", ts: "2026-01-01T00:00:00.000Z", type: "node.created", node_id: "V-home", species: "view", title: "Home" },
   { id: "01B", ts: "2026-01-01T02:00:00.000Z", type: "node.created", node_id: "V-settings", species: "view", title: "Settings" },

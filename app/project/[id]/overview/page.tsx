@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo } from "react";
-import { useParams } from "next/navigation";
 import { buildProductUsageIndex, computeParityGaps, listMaps } from "@arkaik/schema";
 import { BacklogCard } from "@/components/overview/BacklogCard";
 import { DeliverySnapshotCard } from "@/components/overview/DeliverySnapshotCard";
@@ -12,12 +11,16 @@ import { ParityCard } from "@/components/overview/ParityCard";
 import { PlatformGaugesCard } from "@/components/overview/PlatformGaugesCard";
 import { PyramidCard } from "@/components/overview/PyramidCard";
 import { ReleasePulseCard } from "@/components/overview/ReleasePulseCard";
+import { PageError } from "@/components/layout/PageError";
+import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
+import { useProjectId } from "@/lib/hooks/useProjectId";
 import { EMPTY_FILTERS, filterAcceptances } from "@/lib/utils/acceptance-matrix";
 import {
   computeDeliverySnapshot,
@@ -40,13 +43,12 @@ import { computeScopedPyramidTiers } from "@/lib/utils/pyramid";
  * Deliberately read-only.
  */
 export default function OverviewPage() {
-  const params = useParams();
-  const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
+  const id = useProjectId();
 
-  const { nodes: dataNodes, loading: nodesLoading } = useNodes(id);
-  const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
-  const { project: projectBundle, loading: projectLoading } = useProject(id);
-  const { journal, loading: journalLoading } = useJournal(id);
+  const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes } = useNodes(id);
+  const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges } = useEdges(id);
+  const { project: projectBundle, loading: projectLoading, error: projectError, reload: reloadProject } = useProject(id);
+  const { journal, loading: journalLoading, error: journalError, reload: reloadJournal } = useJournal(id);
 
   // The shell's scope, never a URL param (§ Decision 2). `projectBundle` is
   // `undefined` until `useProject`'s effect lands, and a scope resolved from
@@ -144,10 +146,27 @@ export default function OverviewPage() {
   }, [dataEdges, dataNodes, productGraph, projectBundle, scope]);
 
   if (nodesLoading || edgesLoading || projectLoading || journalLoading) {
+    return <PageLoading label="overview" />;
+  }
+
+  // Before `isEmpty`, never after (#362). This page is the one that most looks
+  // like an answer when it is not: a failed read makes every card compute zero
+  // from an empty graph, and "Nothing here yet. Sketch the product on the
+  // Journey map" over a product with two hundred nodes is the worst sentence
+  // this app can show.
+  const loadError = nodesError ?? edgesError ?? projectError ?? journalError;
+  if (loadError) {
     return (
-      <div className="h-full w-full flex items-center justify-center">
-        <span className="text-muted-foreground text-sm">Loading overview...</span>
-      </div>
+      <PageError
+        label="overview"
+        message={loadError}
+        onRetry={() => {
+          void reloadNodes();
+          void reloadEdges();
+          void reloadProject();
+          void reloadJournal();
+        }}
+      />
     );
   }
 
@@ -171,12 +190,10 @@ export default function OverviewPage() {
       <div className="h-full overflow-auto p-4 md:p-6">
         <div className="grid w-full gap-4 md:grid-cols-2">
           {isEmpty ? (
-            <div className="rounded-xl border border-dashed p-10 text-center md:col-span-2">
-              <p className="text-sm text-muted-foreground">
-                Nothing here yet. Sketch the product on the Journey map or add nodes in the Library, and the
-                Overview fills itself in.
-              </p>
-            </div>
+            <EmptyState
+              className="md:col-span-2"
+              message="Nothing here yet. Sketch the product on the Journey map or add nodes in the Library, and the Overview fills itself in."
+            />
           ) : (
             <>
               <PlatformGaugesCard rollup={rollup} platforms={gaugePlatforms} projectId={id} />

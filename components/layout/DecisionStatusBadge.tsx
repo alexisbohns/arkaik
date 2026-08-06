@@ -5,7 +5,7 @@ import {
   DECISION_STATUS_ICONS,
   DECISION_STATUS_LABELS,
 } from "@/components/graph/nodes/node-styles";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface DecisionStatusBadgeProps {
   status: DecisionStatusId;
@@ -20,16 +20,14 @@ export function DecisionStatusBadge({ status, showLabel = false, className }: De
   const label = DECISION_STATUS_LABELS[status] ?? status;
 
   return (
-    <TooltipProvider delayDuration={300}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className={cn("inline-flex items-center gap-1.5", className)}>
-            <Icon className={cn("w-4 h-4", badge)} aria-hidden="true" />
-            {showLabel ? <span className={cn("text-xs font-medium", badge)}>{label}</span> : <span className="sr-only">{label}</span>}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="top">{label}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className={cn("inline-flex items-center gap-1.5", className)}>
+          <Icon className={cn("w-4 h-4", badge)} aria-hidden="true" />
+          {showLabel ? <span className={cn("text-xs font-medium", badge)}>{label}</span> : <span className="sr-only">{label}</span>}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top">{label}</TooltipContent>
+    </Tooltip>
   );
 }

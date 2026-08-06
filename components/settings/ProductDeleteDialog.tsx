@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { ProductDefinition } from "@arkaik/schema";
 
 import { Button } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
 import {
   Dialog,
   DialogContent,
@@ -88,6 +89,7 @@ export function ProductDeleteDialog({
    * `open` — a `setState` in an effect body, which cascades a second render on
    * every open and which `react-hooks/set-state-in-effect` rejects outright.
    */
+  const fieldId = useId();
   const [reassignTo, setReassignTo] = useState<string>(UNASSIGNED);
 
   // The title-or-id fallback is `productDisplayTitle`'s, so a product with no
@@ -110,12 +112,20 @@ export function ProductDeleteDialog({
         </DialogHeader>
 
         {memberCount > 0 && (
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Move them to
-            </span>
+          <Field
+            label="Move them to"
+            htmlFor={`${fieldId}-reassign-to`}
+            hint={
+              reassignTo === UNASSIGNED ? (
+                <>
+                  Unassigned nodes still exist &mdash; they appear under All products until someone
+                  gives them a home.
+                </>
+              ) : undefined
+            }
+          >
             <Select value={reassignTo} onValueChange={setReassignTo} disabled={busy}>
-              <SelectTrigger aria-label="Move nodes to">
+              <SelectTrigger id={`${fieldId}-reassign-to`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -127,13 +137,7 @@ export function ProductDeleteDialog({
                 ))}
               </SelectContent>
             </Select>
-            {reassignTo === UNASSIGNED && (
-              <p className="text-xs text-muted-foreground">
-                Unassigned nodes still exist &mdash; they appear under All products until someone
-                gives them a home.
-              </p>
-            )}
-          </div>
+          </Field>
         )}
 
         <DialogFooter>

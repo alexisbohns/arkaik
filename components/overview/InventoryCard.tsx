@@ -1,31 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { ClipboardCheckIcon, DatabaseIcon, GitBranchIcon, MonitorIcon, ServerIcon, ScaleIcon, type LucideIcon } from "lucide-react";
 import { STATUS_LABELS, STATUS_STYLES } from "@/components/graph/nodes/node-styles";
 import { STATUSES } from "@/lib/config/statuses";
-import type { SpeciesId } from "@/lib/config/species";
+import { SPECIES_NAV_ICONS, SPECIES_PLURALS } from "@/lib/config/species-icons";
 import type { Inventory } from "@/lib/utils/coverage";
 import { OverviewSection } from "./OverviewSection";
-
-// The sidebar's species icon vocabulary (ProjectSidebar LIBRARY_ITEMS).
-const SPECIES_ICONS: Record<SpeciesId, LucideIcon> = {
-  view: MonitorIcon,
-  flow: GitBranchIcon,
-  "data-model": DatabaseIcon,
-  "api-endpoint": ServerIcon,
-  acceptance: ClipboardCheckIcon,
-  decision: ScaleIcon,
-};
-
-const SPECIES_PLURALS: Record<SpeciesId, string> = {
-  view: "Views",
-  flow: "Flows",
-  "data-model": "Data Models",
-  "api-endpoint": "API Endpoints",
-  acceptance: "Acceptances",
-  decision: "Decisions",
-};
 
 interface InventoryCardProps {
   inventory: Inventory;
@@ -41,7 +21,7 @@ export function InventoryCard({ inventory, projectId }: InventoryCardProps) {
       </p>
       <div className="flex flex-col gap-0.5">
         {inventory.species.map((entry) => {
-          const Icon = SPECIES_ICONS[entry.species];
+          const Icon = SPECIES_NAV_ICONS[entry.species];
 
           return (
             <Link

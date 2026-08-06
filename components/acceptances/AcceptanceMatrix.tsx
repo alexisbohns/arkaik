@@ -7,9 +7,18 @@ import { resolvePlatformStatus, hasParityGap } from "@arkaik/schema";
 import { groupAcceptancesByAnchor, UNANCHORED_GROUP_LABEL } from "@/lib/utils/acceptance-matrix";
 import { PLATFORMS, type PlatformId } from "@/lib/config/platforms";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
-import { STATUS_ICONS, STATUS_STYLES, STATUS_LABELS, SPECIES_ICONS } from "@/components/graph/nodes/node-styles";
+import { STATUS_ICONS, STATUS_STYLES, STATUS_LABELS } from "@/components/graph/nodes/node-styles";
+import { SPECIES_GRAPH_ICONS } from "@/lib/config/species-icons";
 import { ValueBadge } from "@/components/values/ValueBadge";
 import { EntityId } from "@/components/graph/nodes/EntityBadges";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 interface AcceptanceMatrixProps {
   acceptances: Node[];
@@ -83,7 +92,7 @@ export function AcceptanceMatrix({ acceptances, edges, nodesById, onSelect, proj
       {groups.map((group) => {
         const key = group.anchorId ?? "__unanchored__";
         const isCollapsed = collapsed.has(key);
-        const AnchorIcon = group.anchorSpecies ? SPECIES_ICONS[group.anchorSpecies] : null;
+        const AnchorIcon = group.anchorSpecies ? SPECIES_GRAPH_ICONS[group.anchorSpecies] : null;
         return (
           <section key={key} className="rounded-xl border bg-card overflow-hidden">
             <button
@@ -102,46 +111,59 @@ export function AcceptanceMatrix({ acceptances, edges, nodesById, onSelect, proj
               </span>
             </button>
 
+            {/* `Table`, not a bare `<table>`: its container scrolls horizontally,
+                and a product with four platforms is four status columns beside
+                the title and the values — enough to run off a narrow viewport,
+                where the hand-rolled version simply overflowed the page. Row
+                hover and the rules between rows come from `TableRow` too; the
+                overrides below are only what this matrix genuinely differs on —
+                a compact header, and the amber left edge on a parity gap. */}
             {!isCollapsed && (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-xs text-muted-foreground">
-                    <th className="px-3 py-1.5 text-left font-normal">Acceptance</th>
-                    <th className="px-3 py-1.5 text-left font-normal">Values</th>
+              <Table>
+                <TableHeader>
+                  {/* Inert: `TableRow` hovers, and a header row that lights up
+                      under the pointer would read as clickable, which it isn't. */}
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="h-auto px-3 py-1.5 text-xs font-normal text-muted-foreground">Acceptance</TableHead>
+                    <TableHead className="h-auto px-3 py-1.5 text-xs font-normal text-muted-foreground">Values</TableHead>
                     {statusColumns.map((column) => (
-                      <th key={column.key} className="px-2 py-1.5 text-center font-normal">{column.label}</th>
+                      <TableHead key={column.key} className="h-auto px-2 py-1.5 text-center text-xs font-normal text-muted-foreground">
+                        {column.label}
+                      </TableHead>
                     ))}
-                  </tr>
-                </thead>
-                <tbody>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {group.acceptances.map((acc) => (
-                    <tr
+                    <TableRow
                       key={`${key}-${acc.id}`}
                       tabIndex={0}
                       onClick={() => onSelect(acc)}
                       onKeyDown={(e) => { if (e.key === "Enter") onSelect(acc); }}
-                      className={`cursor-pointer border-t hover:bg-muted/40 ${hasParityGap(acc) ? "border-l-2 border-l-amber-500" : ""}`}
+                      className={`cursor-pointer ${hasParityGap(acc) ? "border-l-2 border-l-amber-500" : ""}`}
                     >
-                      <td className="px-3 py-2">
+                      {/* The one cell that may wrap — a title is a sentence, and
+                          `TableCell` is `whitespace-nowrap` by default. */}
+                      <TableCell className="px-3 py-2 whitespace-normal">
                         <div className="flex flex-col gap-0.5">
                           <span>{acc.title}</span>
                           <EntityId id={acc.id} />
                         </div>
-                      </td>
-                      <td className="px-3 py-2">
+                      </TableCell>
+                      <TableCell className="px-3 py-2">
                         <div className="flex flex-wrap gap-1">
                           {(acc.metadata?.values ?? []).map((v) => <ValueBadge key={v} valueId={v} />)}
                         </div>
-                      </td>
+                      </TableCell>
                       {statusColumns.map((column) => (
-                        <td key={column.key} className="px-2 py-2 text-center">
+                        <TableCell key={column.key} className="px-2 py-2 text-center">
                           <span className="inline-flex justify-center"><StatusCell acceptance={acc} platform={column.platform} /></span>
-                        </td>
+                        </TableCell>
                       ))}
-                    </tr>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             )}
           </section>
         );

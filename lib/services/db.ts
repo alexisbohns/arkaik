@@ -41,6 +41,25 @@ export function servicesUnavailable(service: string): Response {
   );
 }
 
+/**
+ * Maximum request body, in bytes, for every route that accepts a bundle-shaped
+ * payload (docs/spec/services.md § Publik → "Size cap 5 MB").
+ *
+ * It lives here, beside {@link servicesUnavailable}, for exactly that helper's
+ * reason: the number used to be re-declared per route, and three of the routes
+ * that parse a bundle (`POST …/mutations`, `PATCH …/{projectId}`, `PUT
+ * /api/synk/projects/{id}`) had drifted to no cap at all — which made it
+ * possible to grow a hosted snapshot past a ceiling the capped import/restore
+ * endpoints still enforce, so the project could no longer round-trip through
+ * its own export. One definition is the only shape in which they cannot drift
+ * apart again.
+ *
+ * `/api/github/webhook` keeps its own, smaller cap on purpose: its body is a
+ * delivery payload, not a bundle, so the two numbers describe different things
+ * and sharing one would only couple them.
+ */
+export const MAX_BUNDLE_BYTES = 5 * 1024 * 1024;
+
 let pool: Pool | undefined;
 
 /**
@@ -104,4 +123,54 @@ export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>)
   } finally {
     client.release();
   }
+}
+
+/**
+ * Namespaces for the transaction-scoped advisory locks this codebase takes
+ * (`select pg_advisory_xact_lock($namespace, $key)`).
+ *
+ * Postgres keeps ONE advisory-lock key space per database, so two subsystems
+ * that each key a lock on, say, a user id would serialize against each other
+ * for no reason — a contention bug that looks fine in a single-feature test and
+ * only shows up under mixed production traffic. The two-key form takes a
+ * namespace plus a key; listing every namespace here, once, is what stops a new
+ * one from silently reusing a value. The numbers are arbitrary (ASCII of a
+ * four-letter tag) and only have to be distinct and stable.
+ *
+ * Why these three sites use an advisory lock at all rather than `select … for
+ * update`: each guards a count-then-write where the thing being counted may not
+ * exist yet (a user's first backup, an owner's first project, an IP's first
+ * request in the window). `for update` locks the rows a query RETURNS, which
+ * for an empty result is nothing at all — precisely the case the check-then-act
+ * race lives in. `_xact_` scopes the lock to the surrounding transaction, so
+ * the commit or the rollback releases it and there is no unlock path to forget.
+ */
+export const ADVISORY_LOCK = {
+  /** One user's Synk backup writes (lib/services/synk.ts → putBackup). */
+  synkUser: 0x53594e4b,
+  /** One owner's hosted-project creates (lib/services/graph/store.ts → createProject). */
+  graphOwner: 0x47525048,
+  /** One (action, ip_hash) throttle bucket (lib/services/publik.ts → checkRateLimit). */
+  publikRateLimit: 0x50424c4b,
+} as const;
+
+/**
+ * The caller's tier from `users.tier`, defaulting to the safe floor.
+ *
+ * Lives here rather than in lib/services/limits.ts — which owns the tier →
+ * limits tables and would be the obvious home — because that module is
+ * deliberately database-free, which is what lets the hosted-restore rules be
+ * tested in CI's fast, Postgres-less job (tests/services/load-graph-restore.js
+ * asserts exactly that). The lookup is one statement, and both consumers
+ * (lib/services/synk.ts, lib/services/graph/store.ts) already import this
+ * module; they re-export it, so neither service's surface changes. Before this
+ * they held byte-identical copies.
+ *
+ * The 'synk' fallback is the safe floor: a missing row (which should not happen
+ * for a valid caller) must never resolve to more than the free allowance —
+ * `getLimitsForTier` applies the same rule to an unrecognized value.
+ */
+export async function getUserTier(userId: number): Promise<string> {
+  const { rows } = await query<{ tier: string }>(`select tier from users where id = $1`, [userId]);
+  return rows[0]?.tier ?? "synk";
 }

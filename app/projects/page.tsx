@@ -7,6 +7,7 @@ import { UploadIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { PageError } from "@/components/layout/PageError";
 import { ArkaikLogo } from "@/components/branding/ArkaikLogo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { AuthButton } from "@/components/auth/AuthButton";
@@ -133,7 +134,20 @@ function ProjectsPageBody() {
   const auth = useAuthStatus();
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  /** Action failures — create, import, move. Rendered as a line above the list. */
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Listing failures, kept apart from `error` on purpose (#362).
+   *
+   * The two need different answers: a failed create leaves the list standing and
+   * wants a line of text, while a failed LISTING leaves `projects` at `[]` —
+   * which is the same value "you have no projects" has, and this page then
+   * renders "No projects yet. Create one, import your JSON, or load an example
+   * project." to someone whose projects are sitting safe in a store we could
+   * not reach. Same rule as `loadBackedUpIds` below: not-knowing must not look
+   * like not-having.
+   */
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -220,6 +234,7 @@ function ProjectsPageBody() {
   const loadProjects = useCallback(async () => {
     const mine = ++projectsSeq.current;
     setLoading(true);
+    setLoadError(null);
     try {
       const list = await getProvider().listProjects();
       if (projectsSeq.current !== mine) return;
@@ -227,7 +242,7 @@ function ProjectsPageBody() {
     } catch (err) {
       if (projectsSeq.current !== mine) return;
       console.error("[ProjectsPage] Failed to load projects:", err);
-      setError("Failed to load projects");
+      setLoadError(err instanceof Error ? err.message : "Failed to load projects");
     } finally {
       if (projectsSeq.current === mine) setLoading(false);
     }
@@ -507,6 +522,14 @@ function ProjectsPageBody() {
 
         {error && <p className="text-sm text-destructive">{error}</p>}
 
+        {/* A re-listing that failed over a list we already have: KEEP the list —
+            it is the last thing we actually knew — and say the newest attempt
+            did not land. The listing is only replaced when we know nothing at
+            all (below). */}
+        {loadError && projects.length > 0 && (
+          <p className="text-sm text-destructive">Couldn&rsquo;t refresh the project list: {loadError}</p>
+        )}
+
         {/* The /generate round trip landing. Persistent rather than an auto-opened
             picker, so the click that opens the dialog comes from the user. */}
         {importPrompt && (
@@ -555,6 +578,19 @@ function ProjectsPageBody() {
           <div className="flex flex-1 items-center justify-center">
             <span className="text-sm text-muted-foreground">Loading…</span>
           </div>
+        ) : loadError && projects.length === 0 ? (
+          /* Nothing known and the listing failed — so say exactly that, rather
+             than let either branch below draw its empty state. Both of them are
+             invitations: signed out it is "No projects yet. Create one…", signed
+             in it is three headed sections offering Create and Import over a
+             blank grid. Explore goes too — the public seed comes through the
+             same listing, so its absence here is unread, not unavailable. */
+          <PageError
+            label="project list"
+            message={loadError}
+            onRetry={() => void loadProjects()}
+            className="flex-1"
+          />
         ) : !signedIn ? (
           /* Signed out: no sections for the user's OWN projects. Hosted and
              Synked are impossible without an account, and the local-first

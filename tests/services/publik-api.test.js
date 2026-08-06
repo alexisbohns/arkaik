@@ -17,6 +17,11 @@
  *
  * Each test uses a distinct client IP (via x-forwarded-for) so the per-IP
  * creation throttle never bleeds across cases; the rate-limit test pins one IP.
+ * That only works on a deployment that TRUSTS forwarded headers, which is what
+ * `ARKAIK_TRUSTED_PROXY` below declares — the suite is standing in for a proxied
+ * deployment (Vercel, or a self-host behind nginx). Untrusted deployments ignore
+ * the header entirely; that branch, and the switch itself, are covered without a
+ * database in tests/services/publik-ip.test.js.
  */
 
 const fs = require("fs");
@@ -79,6 +84,10 @@ async function main() {
     );
     process.exit(1);
   }
+
+  // Stand in for a proxied deployment, so the per-case x-forwarded-for values
+  // below are believed and each case gets its own throttle bucket.
+  process.env.ARKAIK_TRUSTED_PROXY = "1";
 
   const { POST, GET, DELETE, REPORT } = loadPublikApi();
   const validBundle = readFixture("tests/fixtures/valid-bundle.json");
@@ -200,6 +209,23 @@ async function main() {
       const retryAfter = limitedRes.headers.get("retry-after");
       check("429 carries a numeric retry-after header", retryAfter !== null && Number(retryAfter) > 0, `retry-after ${retryAfter}`);
     }
+  }
+
+  // --- 10. the throttle holds under a concurrent burst ---------------------
+  // The sequential loop above passes even with a count-then-insert limiter,
+  // because nothing overlaps. Fired all at once against the old code every
+  // request read `hits < limit` before any of them had inserted, and all 15
+  // were created — a limit that only holds when nobody is actually pushing on
+  // it. This is the case the advisory lock in `checkRateLimit` exists for.
+  {
+    const ip = freshIp();
+    const burst = await Promise.all(
+      Array.from({ length: 15 }, () => POST(postRequest(validBundle, { ip }))),
+    );
+    const created = burst.filter((res) => res.status === 201).length;
+    const limited = burst.filter((res) => res.status === 429).length;
+    check("a 15-request burst from one IP creates exactly 10", created === 10, `created ${created}`);
+    check("the other 5 are rate-limited", limited === 5, `limited ${limited}`);
   }
 
   // Cleanup transpiled build dirs (mirrors the other loaders' teardown).

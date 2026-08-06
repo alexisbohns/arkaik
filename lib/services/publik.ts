@@ -10,7 +10,12 @@ import {
   type ValidationFinding,
 } from "@arkaik/schema";
 
-import { query, servicesUnavailable as baseServicesUnavailable } from "@/lib/services/db";
+import {
+  ADVISORY_LOCK,
+  query,
+  servicesUnavailable as baseServicesUnavailable,
+  withTransaction,
+} from "@/lib/services/db";
 
 /**
  * Server-side Publik logic (docs/spec/services.md § Publik). Kept out of the
@@ -26,8 +31,12 @@ import { query, servicesUnavailable as baseServicesUnavailable } from "@/lib/ser
  *  - Every SQL statement is parameterized via the shared `query()` helper.
  */
 
-/** Import cap mirrored from the app (docs/spec/services.md § Publik → "Size cap 5 MB"). */
-export const MAX_BUNDLE_BYTES = 5 * 1024 * 1024;
+/**
+ * Re-exported from lib/services/db.ts, which now owns the single cap every
+ * bundle-accepting route shares. Kept exported from here so `POST /api/publik`
+ * — and anything else importing it from the Publik surface — is unchanged.
+ */
+export { MAX_BUNDLE_BYTES } from "@/lib/services/db";
 
 /** Per-IP creation throttle: ~10 creations per hour (§ Publik → "Rate limiting"). */
 export const CREATE_RATE_LIMIT = 10;
@@ -100,11 +109,47 @@ export function ownerKeyMatches(presentedKey: string, storedHashHex: string): bo
 // ---------------------------------------------------------------------------
 
 /**
- * Client IP from the first `x-forwarded-for` hop (Vercel sets it), falling back
- * to `x-real-ip`, then a shared "unknown" bucket. The first hop is the closest
- * the platform can attest to the real client; later hops are proxy addresses.
+ * Whether `x-forwarded-for` / `x-real-ip` may be believed on this deployment.
+ *
+ * Those headers are written by whoever sent the request. Behind a reverse proxy
+ * that OVERWRITES them — Vercel does — the first hop is platform-attested and is
+ * the closest thing to the real client address the app can see. Reached
+ * directly, which self-hosting explicitly supports ("any self-hosted Postgres
+ * (Inkognito)", lib/services/db.ts), the client owns the header outright and can
+ * send a fresh random value per request to get itself a fresh rate-limit bucket
+ * every time. That reduces the throttle on the UNAUTHENTICATED POST /api/publik
+ * — which stores up to MAX_BUNDLE_BYTES of jsonb per accepted call — to nothing.
+ *
+ * `ARKAIK_TRUSTED_PROXY` is the explicit switch; set it when arkaik sits behind
+ * a proxy that rewrites these headers rather than merely appending to them.
+ * Unset, the default is `process.env.VERCEL`, which the platform sets on its own
+ * deployments and no request can influence: Vercel keeps per-IP throttling with
+ * zero configuration, and every other host fails closed instead of silently
+ * shipping a limiter anyone can step around. An explicit `0`/`false` wins over
+ * the default in both directions.
+ */
+export function trustsForwardedHeaders(): boolean {
+  const configured = process.env.ARKAIK_TRUSTED_PROXY?.trim();
+  if (configured) return /^(1|true|yes|on)$/i.test(configured);
+  return Boolean(process.env.VERCEL);
+}
+
+/**
+ * Client IP from the first `x-forwarded-for` hop, falling back to `x-real-ip`,
+ * then a shared "unknown" bucket. The first hop is the closest a trusted proxy
+ * can attest to the real client; later hops are proxy addresses.
+ *
+ * Where {@link trustsForwardedHeaders} says otherwise the headers are ignored
+ * entirely and EVERY request shares the "unknown" bucket. That is deliberately
+ * the strict direction: one shared bucket throttles an untrusted-network
+ * deployment as a whole, which for the single-tenant self-hosting case is close
+ * to the intended behaviour anyway, whereas believing the header would let a
+ * single client rotate past the limit indefinitely. Setting
+ * ARKAIK_TRUSTED_PROXY restores per-client buckets.
  */
 export function deriveClientIp(req: Request): string {
+  if (!trustsForwardedHeaders()) return "unknown";
+
   const xff = req.headers.get("x-forwarded-for");
   if (xff) {
     const first = xff.split(",")[0]?.trim();
@@ -208,36 +253,58 @@ export type RateLimitResult = { limited: false } | { limited: true; retryAfter: 
  * Prunes this key's expired rows first (opportunistic cleanup, no cron), counts
  * rows in the window, and either records a fresh hit (allowed) or reports how
  * many seconds until the oldest in-window hit expires (rejected).
+ *
+ * All of that runs inside one transaction behind an advisory lock on this
+ * (action, ip_hash) bucket. Counting and then inserting as two pooled
+ * statements let N concurrent requests all read `hits < limit` and all insert,
+ * so a burst walked straight through the limit — the failure mode a throttle
+ * exists to prevent. A row lock cannot help here: the row that would conflict is
+ * the one about to be INSERTED, and it does not exist to be locked. Nor does
+ * folding it into `insert … select where (count) < limit` — under READ
+ * COMMITTED the count subquery still reads a snapshot taken before the
+ * concurrent inserts, so that only narrows the window instead of closing it.
+ * Locking per bucket keeps the serialization scoped: two different clients
+ * never wait on each other.
  */
 export async function checkRateLimit(
   ipHash: string,
   action: string,
   limit: number,
 ): Promise<RateLimitResult> {
-  // The 1-hour window is a fixed SQL literal — never interpolated from input —
-  // so the whole file keeps its "every value goes through $-params" property.
-  await query(
-    `delete from publik_rate_limits
-      where ip_hash = $1 and action = $2 and created_at <= now() - interval '1 hour'`,
-    [ipHash, action],
-  );
+  return withTransaction<RateLimitResult>(async (client) => {
+    await client.query(`select pg_advisory_xact_lock($1::int, hashtext($2))`, [
+      ADVISORY_LOCK.publikRateLimit,
+      `${action}:${ipHash}`,
+    ]);
 
-  const { rows } = await query<{ hits: number; retry_after: number | null }>(
-    `select count(*)::int as hits,
-            ceil(extract(epoch from (min(created_at) + interval '1 hour' - now())))::int as retry_after
-       from publik_rate_limits
-      where ip_hash = $1 and action = $2 and created_at > now() - interval '1 hour'`,
-    [ipHash, action],
-  );
+    // The 1-hour window is a fixed SQL literal — never interpolated from input —
+    // so the whole file keeps its "every value goes through $-params" property.
+    await client.query(
+      `delete from publik_rate_limits
+        where ip_hash = $1 and action = $2 and created_at <= now() - interval '1 hour'`,
+      [ipHash, action],
+    );
 
-  const hits = Number(rows[0]?.hits ?? 0);
-  if (hits >= limit) {
-    const retryAfter = Math.max(1, Number(rows[0]?.retry_after ?? 3600));
-    return { limited: true, retryAfter };
-  }
+    const { rows } = await client.query<{ hits: number; retry_after: number | null }>(
+      `select count(*)::int as hits,
+              ceil(extract(epoch from (min(created_at) + interval '1 hour' - now())))::int as retry_after
+         from publik_rate_limits
+        where ip_hash = $1 and action = $2 and created_at > now() - interval '1 hour'`,
+      [ipHash, action],
+    );
 
-  await query(`insert into publik_rate_limits (ip_hash, action) values ($1, $2)`, [ipHash, action]);
-  return { limited: false };
+    const hits = Number(rows[0]?.hits ?? 0);
+    if (hits >= limit) {
+      const retryAfter = Math.max(1, Number(rows[0]?.retry_after ?? 3600));
+      return { limited: true, retryAfter };
+    }
+
+    await client.query(`insert into publik_rate_limits (ip_hash, action) values ($1, $2)`, [
+      ipHash,
+      action,
+    ]);
+    return { limited: false };
+  });
 }
 
 // ---------------------------------------------------------------------------

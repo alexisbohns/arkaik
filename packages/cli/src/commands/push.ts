@@ -46,7 +46,7 @@
  */
 import { resolve } from "node:path";
 import type { ValidationFinding } from "@arkaik/schema";
-import { validateBundleAt, type BundleValidation } from "../lib/bundle-validate";
+import { validateBundleAt, journalLineErrorLines, type BundleValidation } from "../lib/bundle-validate";
 import { formatFinding } from "./validate";
 import { runPack } from "./pack";
 import { DEFAULT_HTTP_CLIENT, type HttpClient } from "../lib/providers";
@@ -174,10 +174,7 @@ export async function runPush(options: RunPushOptions = {}): Promise<RunPushResu
   }
 
   const warningLines = v.result.warnings.map(formatFinding);
-  const errorLines = [
-    ...v.sidecarFindings.map((f) => `ERROR [${f.rule}] line ${f.line}: ${f.message}`),
-    ...v.result.errors.map(formatFinding),
-  ];
+  const errorLines = [...journalLineErrorLines(v), ...v.result.errors.map(formatFinding)];
 
   if (!v.valid) {
     return { ok: true, bundlePath: filePath, valid: false, errorLines, warningLines, requestSent: false };

@@ -3,8 +3,9 @@
 /**
  * Unit tests for the Format Level 2 journal layer (docs/spec/journal.md):
  * the ordering helper, the JSONL sidecar parser, the snapshot↔journal
- * cross-check in validateBundle, forward compatibility, and the per-type zod
- * schemas. Complements the fixture/parity tests (which gate end-to-end verdicts).
+ * cross-check in validateBundle, journal adoption via `journal.baseline`
+ * (#357), forward compatibility, and the per-type zod schemas. Complements the
+ * fixture/parity tests (which gate end-to-end verdicts).
  */
 
 const fs = require("fs");
@@ -35,6 +36,8 @@ function main() {
     NodeStatusChangedEventSchema,
     JOURNAL_EVENT_TYPES,
     DeliverableShippedEventSchema,
+    JournalBaselineEventSchema,
+    missingProvenanceNodeIds,
     makeEvent,
   } = schema;
 
@@ -152,7 +155,7 @@ function main() {
   check("bundle with an unknown-type event still validates", validateBundle(fwdBundle).valid);
 
   // --- per-type schema modeling ---
-  check("JOURNAL_EVENT_TYPES has the 14 v1 types", JOURNAL_EVENT_TYPES.length === 14, `got ${JOURNAL_EVENT_TYPES.length}`);
+  check("JOURNAL_EVENT_TYPES has the 15 known types", JOURNAL_EVENT_TYPES.length === 15, `got ${JOURNAL_EVENT_TYPES.length}`);
   const goodStatus = NodeStatusChangedEventSchema.safeParse({
     id: "01S", ts: "2026-01-01T00:00:00.000Z", type: "node.status_changed", node_id: "V-a", from: "idea", to: "live",
   });
@@ -240,6 +243,99 @@ function main() {
     "dangling node_ids finding's path is per-index (node_ids[1])",
     danglingFindings.some((f) => f.rule === "journal-dangling-node-ref" && f.path.endsWith("node_ids[1]")),
     JSON.stringify(danglingFindings),
+  );
+
+  // --- journal.baseline: adoption without fabricated history (#357) --------
+  // A journal that starts after the graph does covers its pre-existing nodes
+  // with ONE explicit marker; everything after it is ordinary history.
+  const adopted = {
+    schema_version: 3,
+    project: { id: "p", title: "P", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-02T00:00:00.000Z" },
+    nodes: [
+      { id: "V-old-a", project_id: "p", species: "view", title: "A", status: "live", platforms: ["web"] },
+      { id: "V-old-b", project_id: "p", species: "view", title: "B", status: "development", platforms: ["web"] },
+    ],
+    edges: [],
+    journal: [
+      { id: "01BASE", ts: "2026-01-02T00:00:00.000Z", type: "journal.baseline", node_ids: ["V-old-a", "V-old-b"] },
+      { id: "01REL", ts: "2026-01-02T00:00:01.000Z", type: "release.tagged", version: "1.0" },
+      { id: "01STAT", ts: "2026-01-02T00:00:02.000Z", type: "node.status_changed", node_id: "V-old-b", from: "idea", to: "development" },
+    ],
+  };
+  const adoptedResult = validateBundle(adopted);
+  check(
+    "a baseline covering every snapshot node validates clean",
+    adoptedResult.valid,
+    JSON.stringify(adoptedResult.errors),
+  );
+
+  // The baseline is not a blanket amnesty: a node it does not name still needs
+  // a node.created, and its own name is what makes that check auditable.
+  const partiallyAdopted = JSON.parse(JSON.stringify(adopted));
+  partiallyAdopted.nodes.push({ id: "V-new", project_id: "p", species: "view", title: "New", status: "idea", platforms: ["web"] });
+  const partialFindings = crossCheckJournal(partiallyAdopted);
+  check(
+    "a node outside the baseline with no node.created still errors",
+    partialFindings.some((f) => f.rule === "journal-missing-node-created" && f.message.includes("V-new")),
+    JSON.stringify(partialFindings),
+  );
+  check(
+    "the baselined nodes are not flagged alongside it",
+    !partialFindings.some((f) => f.rule === "journal-missing-node-created" && /V-old-/.test(f.message)),
+    JSON.stringify(partialFindings),
+  );
+
+  // A baselined node counts as "ever existed": deleting one after adoption
+  // must not read as a reference to a node that never was.
+  const adoptedDelete = JSON.parse(JSON.stringify(adopted));
+  adoptedDelete.nodes = adoptedDelete.nodes.filter((n) => n.id !== "V-old-b");
+  adoptedDelete.journal.push({ id: "01DEL", ts: "2026-01-02T00:00:03.000Z", type: "node.deleted", node_id: "V-old-b" });
+  check(
+    "deleting a baselined node leaves no dangling reference",
+    crossCheckJournal(adoptedDelete).length === 0,
+    JSON.stringify(crossCheckJournal(adoptedDelete)),
+  );
+
+  check("JOURNAL_EVENT_TYPES includes journal.baseline", JOURNAL_EVENT_TYPES.includes("journal.baseline"));
+  const baselineEvent = makeEvent("journal.baseline", { node_ids: ["V-old-a"] }, { actor: "arkaik-cli" });
+  check(
+    "makeEvent stamps and round-trips a journal.baseline",
+    baselineEvent.type === "journal.baseline" &&
+      baselineEvent.node_ids[0] === "V-old-a" &&
+      typeof baselineEvent.id === "string" &&
+      baselineEvent.id.length === 26,
+    JSON.stringify(baselineEvent),
+  );
+  check(
+    "JournalBaselineEventSchema rejects non-string node_ids",
+    !JournalBaselineEventSchema.safeParse({
+      id: "01B", ts: "2026-01-01T00:00:00.000Z", type: "journal.baseline", node_ids: [7],
+    }).success,
+  );
+  let baselineThrew = false;
+  try {
+    makeEvent("journal.baseline", {}); // no node_ids
+  } catch {
+    baselineThrew = true;
+  }
+  check("makeEvent rejects a baseline without node_ids", baselineThrew);
+
+  // --- missingProvenanceNodeIds: the writers' side of the same rule ---------
+  check(
+    "missingProvenanceNodeIds returns uncovered ids in snapshot order",
+    JSON.stringify(missingProvenanceNodeIds(["V-a", "V-b", "V-c"], [
+      { id: "1", ts: "t", type: "node.created", node_id: "V-b", species: "view", title: "B" },
+    ])) === JSON.stringify(["V-a", "V-c"]),
+  );
+  check(
+    "missingProvenanceNodeIds treats a baseline as coverage",
+    missingProvenanceNodeIds(["V-a", "V-b"], [
+      { id: "1", ts: "t", type: "journal.baseline", node_ids: ["V-a", "V-b"] },
+    ]).length === 0,
+  );
+  check(
+    "missingProvenanceNodeIds deduplicates",
+    JSON.stringify(missingProvenanceNodeIds(["V-a", "V-a"], [])) === JSON.stringify(["V-a"]),
   );
 
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });

@@ -4,10 +4,10 @@
  * Integration tests for the Synk API (docs/spec/services.md § Synk, § CI
  * Additions). The route handlers are invoked directly with real `Request`
  * objects against a real Postgres (the CI "services" job's Postgres 16 container,
- * or a local instance) whose schema was applied by `npm run db:migrate`. The
- * `getSession()` seam is stubbed at the module boundary (as
- * tests/services/auth-guard.test.js does) so `setSession()` picks the acting
- * user without a live OAuth round-trip.
+ * or a local instance) whose schema was applied by `npm run db:migrate`. Only
+ * NextAuth is stubbed, so `setSession()` picks the signed-in user without a live
+ * OAuth round-trip while `getCaller` itself — bearer-vs-session precedence,
+ * token verification, the `synk` scope check — runs for real.
  *
  * Coverage (the acceptance list from issue #242):
  *   - authz isolation: user B cannot read user A's projects/backups
@@ -15,6 +15,12 @@
  *   - tier-limit rejection: entities and projects → 403 { limit, actual, tier }
  *   - retention prune keeps the newest backup even when it is itself stale
  *   - plus: store round-trip, DELETE cascade, unauthenticated → 401
+ * Plus, from the #364 hardening pass:
+ *   - a `synk`-scoped bearer token authenticates every Synk route (it used to
+ *     authenticate nowhere: no handler read a bearer token at all)
+ *   - a token WITHOUT that scope is refused 403, and a bad token does not fall
+ *     through to a valid session cookie
+ *   - an over-cap PUT body is refused 413 before it is parsed
  *
  * Two users are seeded directly in SQL so the isolation test has genuinely
  * distinct owners. All test rows use the `synktest-%@example.com` email pattern
@@ -65,18 +71,30 @@ function makeBundle(projectId, nodeCount = 1, extra = {}) {
   };
 }
 
-function putReq(bundle, { header } = {}) {
+function putReq(bundle, { header, bearer } = {}) {
   const headers = { "content-type": "application/json" };
   if (header) headers["x-bundle-sha256"] = header;
+  if (bearer) headers["authorization"] = `Bearer ${bearer}`;
   return new Request(`${ORIGIN}/api/synk/projects/x`, {
     method: "PUT",
     headers,
-    body: JSON.stringify(bundle),
+    // A string body is passed through verbatim — that is how the over-cap case
+    // hands the handler more bytes than JSON.stringify of a real bundle would.
+    body: typeof bundle === "string" ? bundle : JSON.stringify(bundle),
   });
 }
 
-function bareReq(method) {
-  return new Request(`${ORIGIN}/api/synk`, { method });
+function bareReq(method, { bearer } = {}) {
+  const headers = {};
+  if (bearer) headers["authorization"] = `Bearer ${bearer}`;
+  return new Request(`${ORIGIN}/api/synk`, { method, headers });
+}
+
+/** GET /api/synk/projects now reads credentials off the request, so it needs one. */
+function listReq({ bearer } = {}) {
+  const headers = {};
+  if (bearer) headers["authorization"] = `Bearer ${bearer}`;
+  return new Request(`${ORIGIN}/api/synk/projects`, { headers });
 }
 
 const projectCtx = (projectId) => ({ params: Promise.resolve({ projectId }) });
@@ -91,6 +109,29 @@ async function seedUser(client, label) {
   return rows[0].id;
 }
 
+/**
+ * Remove only rows this test created. `delete from users` cascades to the synk
+ * tables and to owner_members, but NOT to `owners` — a personal owner row has no
+ * user foreign key by design (db/migrations/006_owners.sql). Now that the Synk
+ * handlers go through `getCaller`, every authenticated request resolves (and
+ * lazily creates) one, so they have to be swept explicitly. Matched by DERIVED
+ * id, exactly as tests/services/graph-api.test.js does and for the same reason:
+ * "any ownerless own-u% row" would happily delete a real user's personal owner
+ * if this were ever run against a developer's database.
+ */
+async function cleanup(client) {
+  const { rows } = await client.query(
+    `select id from users where email like 'synktest-%@example.com'`,
+  );
+  const ids = rows.map((row) => row.id);
+  if (ids.length === 0) return;
+  const ownerIds = ids.map((id) => `own-u${id}`);
+  await client.query(`delete from api_tokens where user_id = any($1::int[])`, [ids]);
+  await client.query(`delete from owner_members where user_id = any($1::int[])`, [ids]);
+  await client.query(`delete from owners where id = any($1::text[])`, [ownerIds]);
+  await client.query(`delete from users where id = any($1::int[])`, [ids]);
+}
+
 async function main() {
   if (!process.env.DATABASE_URL) {
     console.error(
@@ -101,14 +142,30 @@ async function main() {
     process.exit(1);
   }
 
+  // `getCaller` refuses everything unless auth is configured — it reads env at
+  // call time, so setting them here is enough (no OAuth round-trip happens: the
+  // NextAuth import is stubbed).
+  process.env.AUTH_SECRET ||= "synktest-secret";
+  process.env.AUTH_GITHUB_ID ||= "synktest-id";
+  process.env.AUTH_GITHUB_SECRET ||= "synktest-secret";
+
   const client = new Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
 
   // Idempotent local re-runs: purge any prior test users (cascades to synk rows).
-  await client.query(`delete from users where email like 'synktest-%@example.com'`);
+  await cleanup(client);
 
-  const { LIST_PROJECTS, PUT_BACKUP, DELETE_PROJECT, LIST_BACKUPS, GET_BACKUP, setSession, synk } =
-    loadSynkApi();
+  const {
+    LIST_PROJECTS,
+    PUT_BACKUP,
+    DELETE_PROJECT,
+    LIST_BACKUPS,
+    GET_BACKUP,
+    setSession,
+    synk,
+    tokens,
+    owners,
+  } = loadSynkApi();
 
   const asUser = (id) => setSession(id == null ? null : { user: { id: String(id) } });
 
@@ -122,7 +179,7 @@ async function main() {
       check("store returns 201", res.status === 201, `status ${res.status}`);
       check("store body reports deduped:false + backup id", body.deduped === false && typeof body.id === "string", JSON.stringify(body));
 
-      const listRes = await LIST_PROJECTS();
+      const listRes = await LIST_PROJECTS(listReq());
       const listBody = await listRes.json();
       check("list projects returns 200", listRes.status === 200, `status ${listRes.status}`);
       check(
@@ -266,7 +323,7 @@ async function main() {
       check("isolation: user A can fetch their own backup", aGetA.status === 200, `status ${aGetA.status}`);
 
       // User A's project list does not leak user B's rows.
-      const aProjects = await (await LIST_PROJECTS()).json();
+      const aProjects = await (await LIST_PROJECTS(listReq())).json();
       check(
         "isolation: user A's project list is scoped to user A",
         aProjects.projects.length === 1 && aProjects.projects[0].latest_backup_id === aBackupId,
@@ -342,7 +399,7 @@ async function main() {
     // --- 6. unauthenticated → 401 ------------------------------------------
     {
       asUser(null);
-      const listRes = await LIST_PROJECTS();
+      const listRes = await LIST_PROJECTS(listReq());
       check("unauthenticated list projects is 401", listRes.status === 401, `status ${listRes.status}`);
       const putRes = await PUT_BACKUP(putReq(makeBundle("nope", 1)), projectCtx("nope"));
       check("unauthenticated PUT is 401", putRes.status === 401, `status ${putRes.status}`);
@@ -351,9 +408,156 @@ async function main() {
       const delRes = await DELETE_PROJECT(bareReq("DELETE"), projectCtx("nope"));
       check("unauthenticated DELETE is 401", delRes.status === 401, `status ${delRes.status}`);
     }
+
+    // --- 7. `synk`-scoped bearer tokens ------------------------------------
+    // The scope was mintable from the settings UI long before any route read a
+    // bearer token, so a synk-only token authenticated NOWHERE: graph routes
+    // refused it for insufficient scope and Synk 401'd it for having no cookie.
+    {
+      const uid = await seedUser(client, "bearer");
+      const ownerId = (await owners.resolveOwnerIds(uid))[0];
+      const synkToken = await tokens.mintToken({
+        ownerId,
+        userId: uid,
+        name: "synk agent",
+        scopes: ["synk"],
+      });
+      const graphToken = await tokens.mintToken({
+        ownerId,
+        userId: uid,
+        name: "graph agent",
+        scopes: ["graph:read", "graph:write"],
+      });
+
+      // Signed OUT for every assertion below: the token is the only credential.
+      asUser(null);
+
+      const stored = await PUT_BACKUP(
+        putReq(makeBundle("p-bearer", 2), { bearer: synkToken.plaintext }),
+        projectCtx("p-bearer"),
+      );
+      const storedBody = await stored.json();
+      check("bearer: a synk-scoped token can PUT a backup (201)", stored.status === 201, `status ${stored.status}`);
+
+      const listed = await LIST_PROJECTS(listReq({ bearer: synkToken.plaintext }));
+      const listedBody = await listed.json();
+      check(
+        "bearer: the token's listing is scoped to its own user",
+        listed.status === 200 &&
+          listedBody.projects.length === 1 &&
+          listedBody.projects[0].project_id === "p-bearer",
+        JSON.stringify(listedBody),
+      );
+
+      const fetched = await GET_BACKUP(bareReq("GET", { bearer: synkToken.plaintext }), backupCtx(storedBody.id));
+      check("bearer: a synk-scoped token can fetch its own backup", fetched.status === 200, `status ${fetched.status}`);
+
+      const versions = await LIST_BACKUPS(bareReq("GET", { bearer: synkToken.plaintext }), projectCtx("p-bearer"));
+      check("bearer: a synk-scoped token can list backup versions", versions.status === 200, `status ${versions.status}`);
+
+      // Wrong scope → 403 with the scope it needed, matching the graph routes.
+      const wrongScope = await LIST_PROJECTS(listReq({ bearer: graphToken.plaintext }));
+      const wrongScopeBody = await wrongScope.json();
+      check(
+        "bearer: a graph-only token is refused 403 insufficient_scope",
+        wrongScope.status === 403 && wrongScopeBody.required === "synk",
+        `${wrongScope.status} ${JSON.stringify(wrongScopeBody)}`,
+      );
+      const wrongScopePut = await PUT_BACKUP(
+        putReq(makeBundle("p-nope", 1), { bearer: graphToken.plaintext }),
+        projectCtx("p-nope"),
+      );
+      check("bearer: a graph-only token cannot PUT (403)", wrongScopePut.status === 403, `status ${wrongScopePut.status}`);
+
+      // A presented-but-bad token must NOT fall through to a valid session:
+      // otherwise a revoked credential keeps working on ambient browser auth.
+      asUser(uid);
+      const garbage = await LIST_PROJECTS(listReq({ bearer: "ark_deadbeef_nonsense" }));
+      check(
+        "bearer: a bad token does not fall through to the session (401)",
+        garbage.status === 401,
+        `status ${garbage.status}`,
+      );
+
+      // And the session path still works untouched.
+      const sessionList = await LIST_PROJECTS(listReq());
+      check("bearer: the session path still lists the same project", sessionList.status === 200, `status ${sessionList.status}`);
+
+      // Deleting via the token cleans up and proves the write verb too.
+      asUser(null);
+      const del = await DELETE_PROJECT(bareReq("DELETE", { bearer: synkToken.plaintext }), projectCtx("p-bearer"));
+      check("bearer: a synk-scoped token can DELETE its project (204)", del.status === 204, `status ${del.status}`);
+    }
+
+    // --- 8. over-cap body refused before it is parsed (413) ----------------
+    {
+      const uid = await seedUser(client, "toobig");
+      asUser(uid);
+      // Just over the shared 5 MB cap, and deliberately NOT a valid bundle: a
+      // 422 here would mean the body was parsed and validated before the size
+      // check, which is the thing the cap exists to prevent.
+      const oversized = JSON.stringify({ blob: "x".repeat(5 * 1024 * 1024) });
+      const res = await PUT_BACKUP(putReq(oversized), projectCtx("p-big"));
+      check("over-cap PUT returns 413", res.status === 413, `status ${res.status}`);
+      const { rows } = await client.query(`select count(*)::int as n from synk_backups where user_id = $1`, [uid]);
+      check("over-cap PUT stored nothing", rows[0].n === 0, `rows ${rows[0].n}`);
+
+      // A body just UNDER the cap still stores, so the check is a ceiling and
+      // not a blanket refusal. `description` is free-form on a project.
+      const padded = makeBundle("p-big", 1);
+      padded.project.description = "y".repeat(1024 * 1024);
+      const ok = await PUT_BACKUP(putReq(padded), projectCtx("p-big"));
+      check("under-cap PUT still stores (201)", ok.status === 201, `status ${ok.status}`);
+    }
+
+    // --- 9. the limits hold under concurrency ------------------------------
+    // Sequentially they always did. putBackup used to run its project count,
+    // its project upsert and its backup insert as separate pooled statements,
+    // so simultaneous first-ever PUTs from one user all read count = 0 and all
+    // stored — past the tier's 1-project cap, with no request ever seeing a
+    // limit. The count now happens under a per-user advisory lock inside the
+    // transaction that writes.
+    {
+      const uid = await seedUser(client, "concurrent");
+      asUser(uid);
+      const burst = await Promise.all(
+        ["c-a", "c-b", "c-c"].map((pid) => PUT_BACKUP(putReq(makeBundle(pid, 1)), projectCtx(pid))),
+      );
+      const stored = burst.filter((res) => res.status === 201).length;
+      const refused = burst.filter((res) => res.status === 403).length;
+      check("concurrency: three simultaneous new projects stop at the 1-project cap", stored === 1, `stored ${stored}`);
+      check("concurrency: the other two are refused 403", refused === 2, `refused ${refused}`);
+      const { rows } = await client.query(
+        `select count(*)::int as n from synk_projects where user_id = $1`,
+        [uid],
+      );
+      check("concurrency: exactly one project row exists", rows[0].n === 1, `rows ${rows[0].n}`);
+    }
+
+    // Dedupe is the other half of the same lock: identical content sent at the
+    // same time used to pass step 3 in every request (all comparing against the
+    // same pre-write hash) and store a version each, which is exactly what the
+    // content-hash contract says cannot happen.
+    {
+      const uid = await seedUser(client, "dedupe-race");
+      asUser(uid);
+      const bundle = makeBundle("c-dupe", 2);
+      const burst = await Promise.all(
+        Array.from({ length: 4 }, () => PUT_BACKUP(putReq(bundle), projectCtx("c-dupe"))),
+      );
+      const created = burst.filter((res) => res.status === 201).length;
+      const deduped = burst.filter((res) => res.status === 200).length;
+      check("concurrency: four identical simultaneous PUTs store once", created === 1, `created ${created}`);
+      check("concurrency: the other three report deduped", deduped === 3, `deduped ${deduped}`);
+      const { rows } = await client.query(
+        `select count(*)::int as n from synk_backups where user_id = $1 and project_id = $2`,
+        [uid, "c-dupe"],
+      );
+      check("concurrency: exactly one backup row was written", rows[0].n === 1, `rows ${rows[0].n}`);
+    }
   } finally {
     // Clean up all test rows (cascades to synk_projects + synk_backups).
-    await client.query(`delete from users where email like 'synktest-%@example.com'`);
+    await cleanup(client);
     await client.end();
     fs.rmSync(BUILD_DIR, { recursive: true, force: true });
     fs.rmSync(SCHEMA_BUILD_DIR, { recursive: true, force: true });

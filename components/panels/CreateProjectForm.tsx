@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Field } from "@/components/ui/field";
 
 export interface CreateProjectFormData {
   title: string;
@@ -24,6 +25,7 @@ interface CreateProjectFormProps {
 }
 
 export function CreateProjectForm({ open, onOpenChange, onSubmit }: CreateProjectFormProps) {
+  const fieldId = useId();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -63,28 +65,26 @@ export function CreateProjectForm({ open, onOpenChange, onSubmit }: CreateProjec
         </DialogHeader>
 
         <form id="create-project-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Title</span>
+          <Field label="Title" htmlFor={`${fieldId}-title`}>
             <Input
+              id={`${fieldId}-title`}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Project title"
               required
               aria-label="Project title"
             />
-          </div>
+          </Field>
 
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Description
-            </span>
+          <Field label="Description" htmlFor={`${fieldId}-description`}>
             <Input
+              id={`${fieldId}-description`}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Optional description"
               aria-label="Project description"
             />
-          </div>
+          </Field>
         </form>
 
         <DialogFooter>

@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import { ArrowUpDownIcon, BanIcon } from "lucide-react";
 import { PRODUCT_MEMBERSHIP_SPECIES } from "@arkaik/schema";
 import type { Node } from "@/lib/data/types";
 import { blockedByOf, isBlocked } from "@/lib/utils/blocked";
 import { scopedPlatforms, type ProductScope } from "@/lib/utils/product-scope";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -104,23 +104,24 @@ export function NodeTable({
     nodes.every((node) => selectedIds.has(node.id));
 
   /**
-   * SOME-BUT-NOT-ALL is a third state, and a native checkbox has no attribute
-   * for it — `indeterminate` is an IDLE property, settable only from JavaScript,
-   * which is why this needs a ref rather than a prop. Without it a partial
-   * selection renders an empty box indistinguishable from "nothing selected",
-   * and the control would misreport what a click is about to do: the box is
-   * unchecked, so clicking it *adds* the rest, while it looks like clicking will
-   * do nothing at all.
+   * SOME-BUT-NOT-ALL is a third state, and it has to be shown: without it a
+   * partial selection renders an empty box indistinguishable from "nothing
+   * selected", and the control would misreport what a click is about to do —
+   * the box is unchecked, so clicking it *adds* the rest, while it looks like
+   * clicking will do nothing at all.
+   *
+   * Radix takes `checked="indeterminate"` as a plain prop, so this is now the
+   * whole of it. The native `indeterminate` it replaces is an IDL property
+   * settable only from JavaScript, which is why this used to need a ref and an
+   * effect to reach the DOM node after every render.
    */
   const someVisibleSelected =
     selectedIds !== undefined && nodes.some((node) => selectedIds.has(node.id));
-  const selectAllRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (selectAllRef.current) {
-      selectAllRef.current.indeterminate = someVisibleSelected && !allVisibleSelected;
-    }
-  }, [allVisibleSelected, someVisibleSelected]);
+  const selectAllState = allVisibleSelected
+    ? true
+    : someVisibleSelected
+      ? "indeterminate"
+      : false;
 
   return (
     <Table className="text-sm">
@@ -128,13 +129,11 @@ export function NodeTable({
         <TableRow>
           {selectedIds !== undefined && (
             <TableHead className="w-8">
-              <input
-                ref={selectAllRef}
-                type="checkbox"
+              <Checkbox
                 aria-label="Select all visible nodes"
-                className="size-4 cursor-pointer accent-primary"
-                checked={allVisibleSelected}
-                onChange={() => onToggleAll?.()}
+                className="cursor-pointer"
+                checked={selectAllState}
+                onCheckedChange={() => onToggleAll?.()}
               />
             </TableHead>
           )}
@@ -168,16 +167,15 @@ export function NodeTable({
                 // as well as the box: a fat-fingered tap on the padding around
                 // a checkbox must not navigate away mid-selection.
                 <TableCell className="w-8" onClick={(event) => event.stopPropagation()}>
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     // Titles are not unique in this app — two products' "Home"
                     // views are ordinary — and the adjacent column already
                     // renders the id, so the accessible name says both rather
                     // than reading out three identical "Select Home" boxes.
                     aria-label={`Select ${node.title} (${node.id})`}
-                    className="size-4 cursor-pointer accent-primary"
+                    className="cursor-pointer"
                     checked={selectedIds.has(node.id)}
-                    onChange={() => onToggleSelected?.(node.id)}
+                    onCheckedChange={() => onToggleSelected?.(node.id)}
                   />
                 </TableCell>
               )}

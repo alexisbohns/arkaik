@@ -1,5 +1,5 @@
 import { getCaller, hasScope } from "@/lib/services/auth";
-import { servicesConfigured, servicesUnavailable } from "@/lib/services/db";
+import { MAX_BUNDLE_BYTES, servicesConfigured, servicesUnavailable } from "@/lib/services/db";
 import { createProject, getUserTier, listProjects } from "@/lib/services/graph/store";
 
 /**
@@ -16,9 +16,6 @@ import { createProject, getUserTier, listProjects } from "@/lib/services/graph/s
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-/** Import cap, mirroring Publik and the app's own (docs/spec/services.md). */
-const MAX_BUNDLE_BYTES = 5 * 1024 * 1024;
 
 /** GET /api/graph/projects — the caller's hosted projects. */
 export async function GET(req: Request): Promise<Response> {

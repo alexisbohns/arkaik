@@ -1,17 +1,19 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useParams } from "next/navigation";
 import { PlusIcon } from "lucide-react";
 import { buildProductUsageIndex, listMaps, MAP_KINDS, type MapDefinition } from "@arkaik/schema";
 import { MapCard } from "@/components/maps/MapCard";
 import { MapEditorDialog } from "@/components/maps/MapEditorDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
+import { PageError } from "@/components/layout/PageError";
+import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
+import { useProjectId } from "@/lib/hooks/useProjectId";
 import { computeMapCounts } from "@/lib/utils/journey-graph";
 import { type ProductGraph } from "@/lib/utils/product-scope";
 
@@ -20,16 +22,15 @@ import { type ProductGraph } from "@/lib/utils/product-scope";
  * custom maps stored at `project.metadata.maps` (docs/spec/maps.md).
  */
 export default function ProjectMapsPage() {
-  const params = useParams();
-  const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
+  const id = useProjectId();
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorTarget, setEditorTarget] = useState<MapDefinition | undefined>(undefined);
   const [deleteTarget, setDeleteTarget] = useState<MapDefinition | null>(null);
 
-  const { nodes: dataNodes, loading: nodesLoading } = useNodes(id);
-  const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
-  const { project: projectBundle, loading: projectLoading, updateProject } = useProject(id);
+  const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes } = useNodes(id);
+  const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges } = useEdges(id);
+  const { project: projectBundle, loading: projectLoading, error: projectError, reload: reloadProject, updateProject } = useProject(id);
 
   // The shell's scope (§ Decision 2) is a map's *default* product; a stored
   // definition's own `product` overrides it (`mapProductId`). The counts on
@@ -101,10 +102,25 @@ export default function ProjectMapsPage() {
   }
 
   if (nodesLoading || edgesLoading || projectLoading) {
+    return <PageLoading label="maps" />;
+  }
+
+  // Before the grid, never after (#362). This index has no empty sentence at
+  // all, which makes it worse rather than better: a failed project read lists
+  // the two built-ins with 0/0 counts and silently drops every custom map, so
+  // the reader concludes their saved maps were deleted.
+  const loadError = nodesError ?? edgesError ?? projectError;
+  if (loadError) {
     return (
-      <div className="h-full w-full flex items-center justify-center">
-        <span className="text-muted-foreground text-sm">Loading maps...</span>
-      </div>
+      <PageError
+        label="maps"
+        message={loadError}
+        onRetry={() => {
+          void reloadNodes();
+          void reloadEdges();
+          void reloadProject();
+        }}
+      />
     );
   }
 

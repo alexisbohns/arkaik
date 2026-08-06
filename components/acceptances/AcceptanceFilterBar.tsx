@@ -1,19 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { SearchIcon, TriangleAlertIcon, XIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { TriangleAlertIcon, XIcon } from "lucide-react";
 import type { ProjectBundle } from "@/lib/data/types";
 import type { AcceptanceFilters } from "@/lib/utils/acceptance-matrix";
 import { EMPTY_FILTERS, UNANCHORED_FILTER } from "@/lib/utils/acceptance-matrix";
-import { PLATFORMS } from "@/lib/config/platforms";
-import { STATUSES } from "@/lib/config/statuses";
 import { VALUES } from "@/lib/config/values";
-import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
-import { Input } from "@/components/ui/input";
+import { usePlatformFilterControl } from "@/lib/hooks/usePlatformFilterControl";
+import { SearchInput } from "@/components/ui/search-input";
 import { ProductOverrideSelector } from "@/components/layout/ProductOverrideSelector";
+import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PLATFORM_ICONS, STATUS_ICONS, STATUS_STYLES } from "@/components/graph/nodes/node-styles";
+import { PLATFORM_ICONS } from "@/components/graph/nodes/node-styles";
 import { VALUE_ICON_COMPONENTS } from "@/lib/config/value-icons";
 
 interface AnchorOption {
@@ -33,26 +32,16 @@ interface AcceptanceFilterBarProps {
 const ALL = "all";
 
 export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectId, project }: AcceptanceFilterBarProps) {
-  const scope = useEffectiveProduct(projectId, project);
-  // The same arity rule the matrix reads for its columns: a control that can
-  // only ever say "Web" is not a choice, it is the scope repeated. A project
-  // declaring no products resolves to every platform, so this is today's bar.
-  const showPlatformFilter = scope.isMultiPlatform;
-  const platformOptions = useMemo(
-    () => PLATFORMS.filter((platform) => scope.platforms.includes(platform.id)),
-    [scope],
+  // Same arity rule and same stale-filter reset as the Delivery bar; only the
+  // rendering below (a Select, not toggle buttons) is this bar's own. Cleared
+  // through the same `onChange` the control uses, so the URL stays the one
+  // source of truth.
+  const { showPlatformFilter, platformOptions } = usePlatformFilterControl(
+    projectId,
+    project,
+    filters.platform,
+    () => onChange({ ...filters, platform: "all" }),
   );
-
-  // A stale platform filter must not outlive the control that could clear it:
-  // scoped to a web-only product, `platform=android` would silently empty the
-  // list with nothing on screen to explain why. Reset through the same
-  // `onChange` the control uses, so the URL stays the one source of truth. The
-  // early return makes this idempotent — the echo back through `filters` is
-  // already `"all"`, so it cannot loop.
-  useEffect(() => {
-    if (showPlatformFilter || filters.platform === ALL) return;
-    onChange({ ...filters, platform: "all" });
-  }, [showPlatformFilter, filters, onChange]);
 
   const isFiltered =
     filters.search !== "" || filters.platform !== "all" || filters.status !== "all" ||
@@ -96,16 +85,13 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectI
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-3 md:p-4">
       <ProductOverrideSelector projectId={projectId} project={project} />
-      <div className="relative min-w-[12rem] flex-1">
-        <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={searchDraft}
-          onChange={(e) => setSearchDraft(e.target.value)}
-          placeholder="Search acceptances…"
-          className="pl-8"
-          aria-label="Search acceptances"
-        />
-      </div>
+      <SearchInput
+        value={searchDraft}
+        onChange={setSearchDraft}
+        placeholder="Search acceptances…"
+        aria-label="Search acceptances"
+        className="min-w-[12rem] flex-1"
+      />
 
       {showPlatformFilter && (
         <Select value={filters.platform} onValueChange={(v) => onChange({ ...filters, platform: v === ALL ? "all" : (v as AcceptanceFilters["platform"]) })}>
@@ -124,10 +110,7 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectI
         <SelectTrigger className="w-[9rem]" aria-label="Status"><SelectValue placeholder="Status" /></SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL}>All statuses</SelectItem>
-          {STATUSES.map((s) => {
-            const Icon = STATUS_ICONS[s.id];
-            return <SelectItem key={s.id} value={s.id}><span className="inline-flex items-center gap-2"><Icon className={`size-3.5 ${STATUS_STYLES[s.id].badge}`} />{s.label}</span></SelectItem>;
-          })}
+          <StatusSelectItems />
         </SelectContent>
       </Select>
 

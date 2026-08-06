@@ -15,7 +15,8 @@
   },
   "files": [
     "dist",
-    "src/io.ts"
+    "src/io.ts",
+    "LICENSE"
   ],
   "repository": {
     "type": "git",

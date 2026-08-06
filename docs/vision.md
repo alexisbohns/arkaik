@@ -166,7 +166,7 @@ The skill made agents good *writers*; the format made them competent *readers*. 
 
 ### Continuity Guardrails (unchanged)
 
-- **Graph model**: the five species, playlist-driven flows (`metadata.playlist.entries`), optional `project.root_node_id` anchor. Config source: `lib/config/species.ts`
+- **Graph model**: the six species ([graph-model.md](graph-model.md) is the taxonomy's source of truth), playlist-driven flows (`metadata.playlist.entries`), optional `project.root_node_id` anchor. Ids: `packages/schema/src/ids.ts`; labels: `lib/config/species.ts`
 - **Platform and status**: per-platform status editing on `view` nodes; `flow` status stays a computed rollup; the journal extends with history, never replaces. `release.tagged` keeps its optional `platform`. Config: `lib/config/platforms.ts`, `lib/config/statuses.ts`
 - **Reuse-first authoring**: where-used visibility, insert-between operations, the shared node detail panel. References: `components/panels/NodeDetailPanel.tsx`, `components/panels/InsertBetweenDialog.tsx`, `lib/utils/where-used.ts`
 - **Data layer**: the `DataProvider` abstraction, local-first operation, import/export. References: `lib/data/data-provider.ts`, `lib/data/local-provider.ts`, `lib/utils/export.ts`
@@ -300,14 +300,12 @@ Version history is where the format levels pay off for services: snapshot retent
 
 ## Open Source Strategy
 
-Current state: the whole repository, including the agent skill designed to be copied into other people's repos, is AGPL-3.0 (`LICENSE`).
-
 Decision: **split the licensing by layer.**
 
-- **MIT (or Apache-2.0): the format, schema, validator, CLI, and skill.** A format only wins by spreading, and the toolchain's entire adoption channel is *being pasted into other organizations' repositories* — many corporate policies reject AGPL dependencies outright. Copyleft on these layers would throttle exactly the growth they exist for.
+- **MIT: the format, schema, validator, CLI, MCP server, and skill.** A format only wins by spreading, and the toolchain's entire adoption channel is *being pasted into other organizations' repositories* — many corporate policies reject AGPL dependencies outright. Copyleft on these layers would throttle exactly the growth they exist for.
 - **AGPL-3.0: the app and services.** This is the moat: anyone can self-host, nobody can run a closed-source arkaik.app clone.
 
-The split executes when the packages are physically extracted (`packages/schema`, `packages/cli` — Roadmap Phase 1). It should not wait longer than that: the repository currently has effectively a single copyright holder, which makes relicensing trivial today and progressively harder with every external contribution. `CONTRIBUTING.md` and `GOVERNANCE.md` stubs (Phase 0) will record which paths carry which license and how contributions are accepted.
+**Current state: executed.** The split landed with the Phase 1 package extraction. `packages/schema`, `packages/cli` and `packages/mcp` each declare MIT and carry their own `LICENSE` — shipped inside the tarballs of the two published packages (`arkaik`, `arkaik-mcp`), which is where the grant text has to be for it to mean anything to an adopter. `plugin/` declares MIT in its plugin manifest. Everything else — the app, the services, and the migrations — stays AGPL-3.0 under the repository-root `LICENSE`. Which path carries which license, and what submitting a contribution means, is recorded in [`CONTRIBUTING.md`](../CONTRIBUTING.md); the normative statement is [spec/toolchain.md § Licensing](spec/toolchain.md). It was worth doing while the repository still had effectively a single copyright holder — relicensing is trivial then and progressively harder with every external contribution. A `GOVERNANCE.md` covering how contributions are accepted is still unwritten.
 
 ## Roadmap
 

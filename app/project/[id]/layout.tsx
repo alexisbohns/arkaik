@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { usePathname, useParams, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useTheme } from "next-themes";
 import { CommandPalette } from "@/components/layout/CommandPalette";
 import { KeyboardShortcutsDialog } from "@/components/layout/KeyboardShortcutsDialog";
+import { PageError } from "@/components/layout/PageError";
 import { ProjectSidebar } from "@/components/layout/ProjectSidebar";
 import { PublishDialog } from "@/components/publik/PublishDialog";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
@@ -14,6 +15,7 @@ import {
   useProjectPanels,
 } from "@/lib/hooks/useProjectPanels";
 import { useProject } from "@/lib/hooks/useProject";
+import { useProjectId } from "@/lib/hooks/useProjectId";
 import { useProjectExport } from "@/lib/hooks/useProjectExport";
 import { buildProjectCommands, type CommandActionId } from "@/lib/utils/command-palette";
 import {
@@ -45,10 +47,9 @@ export default function ProjectLayout({
  */
 function ProjectChrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const params = useParams();
   const searchParams = useSearchParams();
-  const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
-  const { project } = useProject(id);
+  const id = useProjectId();
+  const { project, error: projectError, reload: reloadProject } = useProject(id);
   const { openRaw } = useProjectPanels();
   const { exportBundle } = useProjectExport(id);
   const { theme, setTheme } = useTheme();
@@ -170,6 +171,7 @@ function ProjectChrome({ children }: { children: React.ReactNode }) {
       <ProjectSidebar
         projectId={id}
         project={project}
+        projectFailed={projectError !== null}
         currentView={currentView}
         currentSpecies={currentSpecies}
         currentMapId={currentMapId}
@@ -180,7 +182,29 @@ function ProjectChrome({ children }: { children: React.ReactNode }) {
         onOpenRaw={openRaw}
       />
       <SidebarInset className="h-svh overflow-hidden">
-        {children}
+        {/*
+          A project that could not be read replaces the SURFACE, not the chrome
+          (#362).
+
+          Keeping the sidebar is the point: the way out of a failed project is
+          the project switcher, and blanking the whole screen takes it away. The
+          page underneath goes, though — every surface in here reads the same
+          project through its own hooks, so it failed too, and letting it render
+          its own error under this one would stack two apologies.
+
+          Unmounting `children` is also what makes one retry enough: the page's
+          hooks die with it, so a successful reload here remounts them and they
+          load from scratch rather than sitting on stale error state.
+        */}
+        {projectError ? (
+          <PageError
+            label="project"
+            message={projectError}
+            onRetry={() => void reloadProject()}
+          />
+        ) : (
+          children
+        )}
       </SidebarInset>
 
       <CommandPalette

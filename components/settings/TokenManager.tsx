@@ -1,13 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { CheckIcon, CopyIcon, KeyRoundIcon, Loader2Icon, Trash2Icon, TriangleAlertIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useAuthStatus } from "@/lib/hooks/useAuthStatus";
 
 /**
@@ -75,21 +77,42 @@ function CopyButton({ value }: { value: string }) {
 export function TokenManager() {
   const status = useAuthStatus();
   const [tokens, setTokens] = useState<TokenRecord[] | null>(null);
+  /**
+   * Why this exists instead of `setTokens([])` on failure (audit
+   * `quality-frontend-5`, with issue #362).
+   *
+   * An empty list is a fact about the account — "you have no tokens" — and a
+   * failed read is the absence of any fact at all. Coercing one into the other
+   * made a 500 render "No tokens yet.", which invites the reader to mint a
+   * duplicate of a token they already have and cannot see. `RestoreDialog` keeps
+   * the same distinction for the same reason; so does the projects listing's
+   * "not-knowing must not look like not-backed-up" rule.
+   */
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [scopes, setScopes] = useState<string[]>(DEFAULT_SCOPES);
   const [minting, setMinting] = useState(false);
   const [freshSecret, setFreshSecret] = useState<string | null>(null);
+  const scopeFieldId = useId();
 
   const signedIn = status.state === "signed-in";
 
   const refresh = useCallback(async () => {
-    const res = await fetch("/api/tokens");
-    if (!res.ok) {
-      setTokens([]);
-      return;
+    setLoadError(null);
+    try {
+      const res = await fetch("/api/tokens");
+      if (!res.ok) {
+        setLoadError(`Unable to load your tokens (HTTP ${res.status}).`);
+        return;
+      }
+      const body = (await res.json()) as { tokens: TokenRecord[] };
+      setTokens(body.tokens);
+    } catch (err) {
+      // The `void refresh()` call sites cannot await this, so an uncaught throw
+      // here was an unhandled rejection and nothing on screen ever said so.
+      console.error("[TokenManager] Failed to load tokens:", err);
+      setLoadError(err instanceof Error ? err.message : "Unable to load your tokens.");
     }
-    const body = (await res.json()) as { tokens: TokenRecord[] };
-    setTokens(body.tokens);
   }, []);
 
   useEffect(() => {
@@ -115,19 +138,31 @@ export function TokenManager() {
       setName("");
       setScopes(DEFAULT_SCOPES);
       await refresh();
+    } catch (err) {
+      // A network throw used to reach nobody: the `finally` reset the button and
+      // the rejection escaped, so the form simply went quiet.
+      console.error("[TokenManager] Failed to create token:", err);
+      toast.error("Could not create the token.");
     } finally {
       setMinting(false);
     }
   }
 
   async function revoke(token: TokenRecord) {
-    const res = await fetch(`/api/tokens/${encodeURIComponent(token.id)}`, { method: "DELETE" });
-    if (!res.ok && res.status !== 404) {
+    try {
+      const res = await fetch(`/api/tokens/${encodeURIComponent(token.id)}`, { method: "DELETE" });
+      if (!res.ok && res.status !== 404) {
+        toast.error("Could not revoke the token.");
+        return;
+      }
+      toast.success(`Revoked “${token.name}”.`);
+      await refresh();
+    } catch (err) {
+      // Said out loud rather than left to the console: a revoke that silently
+      // does nothing reads as a revoke that worked, and the token stays live.
+      console.error("[TokenManager] Failed to revoke token:", err);
       toast.error("Could not revoke the token.");
-      return;
     }
-    toast.success(`Revoked “${token.name}”.`);
-    await refresh();
   }
 
   // Hidden entirely when auth is unconfigured — the local-first default.
@@ -187,15 +222,24 @@ export function TokenManager() {
             onChange={(e) => setName(e.target.value)}
           />
           <div className="flex flex-col gap-2">
+            {/* `Label` + `Checkbox`, not a native <label> wrapping a native
+                <input>: Radix's Checkbox is a <button>, which a wrapping label
+                does not toggle — only the htmlFor/id pairing Radix forwards
+                does. The box itself was previously unstyled, so it ignored the
+                theme entirely (audit `shadcn-5`). */}
             {SCOPE_OPTIONS.map((scope) => (
-              <label key={scope.id} className="flex items-start gap-2 text-sm">
-                <input
-                  type="checkbox"
+              <Label
+                key={scope.id}
+                htmlFor={`${scopeFieldId}-${scope.id}`}
+                className="items-start gap-2 text-sm font-normal"
+              >
+                <Checkbox
+                  id={`${scopeFieldId}-${scope.id}`}
                   className="mt-1"
                   checked={scopes.includes(scope.id)}
-                  onChange={(e) =>
+                  onCheckedChange={(checked) =>
                     setScopes((prev) =>
-                      e.target.checked ? [...prev, scope.id] : prev.filter((s) => s !== scope.id),
+                      checked === true ? [...prev, scope.id] : prev.filter((s) => s !== scope.id),
                     )
                   }
                 />
@@ -203,7 +247,7 @@ export function TokenManager() {
                   <span className="font-medium">{scope.label}</span>
                   <span className="block text-xs text-muted-foreground">{scope.hint}</span>
                 </span>
-              </label>
+              </Label>
             ))}
           </div>
           <div>
@@ -220,7 +264,20 @@ export function TokenManager() {
           <CardTitle>Your tokens</CardTitle>
         </CardHeader>
         <CardContent>
-          {tokens === null ? (
+          {/* The error branch comes FIRST, and deliberately outranks a stale
+              list: whatever is on screen after a failed refresh is no longer
+              known to be current, and a mint or a revoke that did not land is
+              exactly when that matters. */}
+          {loadError ? (
+            <div className="flex flex-col items-start gap-2">
+              <p className="text-sm text-destructive" role="status" aria-live="polite">
+                {loadError}
+              </p>
+              <Button variant="outline" size="sm" onClick={() => void refresh()}>
+                Try again
+              </Button>
+            </div>
+          ) : tokens === null ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : tokens.length === 0 ? (
             <p className="text-sm text-muted-foreground">No tokens yet.</p>

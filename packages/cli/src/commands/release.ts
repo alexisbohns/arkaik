@@ -13,8 +13,12 @@
  *     the working journal stays small (docs/spec/journal.md:93).
  *
  * Release only appends to the journal (a marker has no snapshot effect), so the
- * bundle file is never rewritten and `arkaik validate` — which cross-checks the
- * snapshot against the journal by value — stays green afterward.
+ * bundle file is never rewritten. Keeping `arkaik validate` green afterward
+ * takes two deliberate mechanisms rather than luck, both added in #357/#358:
+ * the marker makes a previously-empty journal non-empty and therefore
+ * cross-checked, so {@link ensureJournalBaseline} records the adoption first;
+ * and `--compact` moves history into an archive, which the validator folds back
+ * in (packages/cli/src/lib/bundle-validate.ts).
  */
 import {
   computeChangelog,
@@ -24,7 +28,13 @@ import {
   type ReleaseTaggedEvent,
 } from "@arkaik/schema";
 import { readBundle, nodesByIdOf } from "../lib/bundle-io";
-import { appendJournalEvent, compactSlice, journalPathFor, readJournalEvents } from "../lib/journal-io";
+import {
+  appendJournalEvent,
+  compactSlice,
+  ensureJournalBaseline,
+  journalPathFor,
+  readJournalEvents,
+} from "../lib/journal-io";
 import { renderEventLine } from "../lib/render-event";
 
 const DEFAULT_BUNDLE_PATH = "docs/arkaik/bundle.json";
@@ -132,11 +142,22 @@ export function runRelease(args: string[]): void {
     fail(`FATAL: could not build release event — ${(e as Error).message}`);
   }
 
+  // The marker is what makes a journal-less bundle's journal non-empty, and
+  // therefore cross-checked — so adopt the pre-existing nodes first (#357).
+  const baseline = ensureJournalBaseline(journalPath, bundle, ACTOR);
   appendJournalEvent(journalPath, event);
+  if (baseline !== undefined) {
+    console.log(`\n  ${renderEventLine(baseline)} -> ${journalPath}`);
+  }
   console.log(`\n  Tagged release ${version}${platform ? ` [${platform}]` : ""} -> ${journalPath}`);
 
   // Draft the notes from the since-last-release slice (platform-scoped when the
   // marker is). computeChangelog resolves platform filtering from the marker.
+  // The baseline is deliberately NOT in `all`: it is a statement about journal
+  // coverage, not a change this release shipped, so it belongs in neither the
+  // notes draft nor the slice THIS run compacts — a fresh adoption stays put in
+  // the working journal, where it is easiest to see. A later release compacts it
+  // like any other event, which is safe now that validators fold the archives.
   const all = [...existing, event];
   const changelog = computeChangelog(all, version, { nodesById });
 

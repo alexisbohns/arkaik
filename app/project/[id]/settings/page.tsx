@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
+import { PageError } from "@/components/layout/PageError";
 import { PageShell } from "@/components/layout/PageShell";
 import { ProductManagerPanel } from "@/components/settings/ProductManagerPanel";
 import { RepoLinksPanel } from "@/components/settings/RepoLinksPanel";
@@ -12,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { isHostedProjectId } from "@/lib/data/remote-provider";
 import { isSeedProjectId } from "@/lib/data/seed-project-id";
 import { useProject } from "@/lib/hooks/useProject";
+import { useProjectId } from "@/lib/hooks/useProjectId";
 import { archiveProject } from "@/lib/utils/export";
 
 /**
@@ -27,11 +29,10 @@ import { archiveProject } from "@/lib/utils/export";
  * because it is the one action here you cannot undo from the UI.
  */
 export default function ProjectSettingsPage() {
-  const params = useParams();
   const router = useRouter();
-  const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
+  const id = useProjectId();
 
-  const { project, loading, updateProject } = useProject(id);
+  const { project, loading, error: projectError, reload: reloadProject, updateProject } = useProject(id);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -59,6 +60,28 @@ export default function ProjectSettingsPage() {
       toast.error(err instanceof Error ? err.message : "Could not delete this project.");
       setDeleting(false);
     }
+  }
+
+  /**
+   * A settings page fed a project that failed to load is a page of wrong
+   * answers (#362): the title falls back to "Untitled project" and the products
+   * panel shows none, which reads as "you have no products" rather than "we
+   * could not read them" — and the reader's fix for that is to declare them
+   * again.
+   *
+   * No loading gate beside it, deliberately: every section here already handles
+   * `project === undefined` while the read is in flight (that is what the
+   * fallbacks are for), and it is only the FAILURE that is indistinguishable
+   * from an answer.
+   */
+  if (projectError) {
+    return (
+      <PageError
+        label="project settings"
+        message={projectError}
+        onRetry={() => void reloadProject()}
+      />
+    );
   }
 
   return (

@@ -168,6 +168,15 @@ export const RefStatusChangedEventSchema = z
   })
   .catchall(z.unknown());
 
+/**
+ * The journal-coverage marker (docs/spec/journal.md § Event Vocabulary). An
+ * empty `node_ids` is allowed by the shape but pointless — writers only emit it
+ * when the list is non-empty.
+ */
+export const JournalBaselineEventSchema = z
+  .object({ ...envelope, type: z.literal("journal.baseline"), node_ids: z.array(z.string()) })
+  .catchall(z.unknown());
+
 /** Per-type schemas keyed by `type`, for validating a single known event. */
 export const JOURNAL_EVENT_SCHEMAS = {
   "node.created": NodeCreatedEventSchema,
@@ -184,6 +193,7 @@ export const JOURNAL_EVENT_SCHEMAS = {
   "ref.added": RefAddedEventSchema,
   "ref.removed": RefRemovedEventSchema,
   "ref.status_changed": RefStatusChangedEventSchema,
+  "journal.baseline": JournalBaselineEventSchema,
 } as const;
 
 /**
@@ -206,4 +216,5 @@ export const KnownJournalEventSchema = z.union([
   RefAddedEventSchema,
   RefRemovedEventSchema,
   RefStatusChangedEventSchema,
+  JournalBaselineEventSchema,
 ]);

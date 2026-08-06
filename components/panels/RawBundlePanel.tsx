@@ -7,6 +7,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { serializeBundle } from "@arkaik/schema";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import type { ProjectBundle } from "@/lib/data/types";
 import { usePanelSelfState } from "@/lib/hooks/useProjectPanels";
 import { exportProject, importProject, normalizeProjectTimestamps, parseAndValidateBundle } from "@/lib/utils/export";
@@ -306,7 +307,7 @@ export function RawBundlePanel({ projectId, instanceId }: RawBundlePanelProps) {
             {copied ? "Copied" : "Copy"}
           </Button>
           {mode === "edit" ? (
-            <textarea
+            <Textarea
               value={draftText}
               onChange={(event) => {
                 const value = event.target.value;
@@ -317,7 +318,13 @@ export function RawBundlePanel({ projectId, instanceId }: RawBundlePanelProps) {
                 }
               }}
               spellCheck={false}
-              className="h-full w-full resize-none overflow-auto rounded-md border bg-muted/30 p-3 pr-24 font-mono text-xs leading-relaxed outline-none"
+              aria-label="Raw project bundle"
+              // `h-full` and `p-3 pr-24` override the primitive: this one fills
+              // its panel column and keeps a gutter clear for the floating Copy
+              // button. The muted fill is stated for both themes because the
+              // primitive's own dark fill is `bg-input/30`, and this box has to
+              // stay the same colour as the `<pre>` it swaps places with.
+              className="h-full resize-none overflow-auto bg-muted/30 dark:bg-muted/30 p-3 pr-24 font-mono text-xs leading-relaxed"
             />
           ) : (
             <pre className="h-full overflow-auto rounded-md border bg-muted/30 p-3 pr-24 text-xs leading-relaxed">

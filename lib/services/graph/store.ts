@@ -22,7 +22,7 @@ import {
   type ValidationFinding,
 } from "@arkaik/schema";
 
-import { query, withTransaction } from "@/lib/services/db";
+import { ADVISORY_LOCK, getUserTier, query, withTransaction } from "@/lib/services/db";
 import { checkHostedEntityLimit, classifyIfMatch, computeBundleDelta, type BundleDelta } from "@/lib/services/graph/restore";
 import { getHostedLimitsForTier } from "@/lib/services/limits";
 
@@ -370,19 +370,35 @@ export async function createProject(
     return { ok: false, reason: "limit", limit: limits.entities, actual: count, tier: input.tier };
   }
 
-  const { rows: existing } = await query<{ n: string }>(
-    `select count(*) as n from graph_projects where owner_id = $1 and archived_at is null`,
-    [input.ownerId],
-  );
-  const projectCount = Number(existing[0]?.n ?? 0);
-  if (projectCount + 1 > limits.projects) {
-    return { ok: false, reason: "limit", limit: limits.projects, actual: projectCount + 1, tier: input.tier };
-  }
-
   const id = generateProjectId();
   const { journal = [], ...snapshot } = bundle;
 
-  await withTransaction(async (client) => {
+  return withTransaction<{ ok: true; id: string; version: string } | StoreFailure>(async (client) => {
+    // Serialize this owner's creates, then count INSIDE the transaction. The
+    // count used to run before `withTransaction` opened, which made it a
+    // check-then-act: two concurrent creates from an owner at the cap minus one
+    // both read the same count and both inserted. See lib/services/db.ts §
+    // ADVISORY_LOCK for why a lock rather than `select … for update` — the race
+    // is an owner whose count is zero, where there are no rows to lock.
+    // `hashtext` maps the text owner id into the int4 key space; a collision
+    // between two owners costs a little contention and nothing else, because
+    // the lock is only ever an ordering device.
+    await client.query(`select pg_advisory_xact_lock($1::int, hashtext($2))`, [
+      ADVISORY_LOCK.graphOwner,
+      input.ownerId,
+    ]);
+
+    const { rows: existing } = await client.query<{ n: string }>(
+      `select count(*) as n from graph_projects where owner_id = $1 and archived_at is null`,
+      [input.ownerId],
+    );
+    const projectCount = Number(existing[0]?.n ?? 0);
+    if (projectCount + 1 > limits.projects) {
+      // Returning (rather than throwing) commits a transaction that wrote
+      // nothing, which is the intent: the refusal is an outcome, not a fault.
+      return { ok: false, reason: "limit", limit: limits.projects, actual: projectCount + 1, tier: input.tier };
+    }
+
     await client.query(
       `insert into graph_projects (id, owner_id, bundle_id, title, snapshot, schema_version, entity_count)
        values ($1, $2, $3, $4, $5, $6, $7)`,
@@ -412,9 +428,9 @@ export async function createProject(
     // `delete` to remove, so this call is equivalent to the insert loop this
     // replaced, just shared with restore.
     await replaceJournalRows(client, id, journal);
-  });
 
-  return { ok: true, id, version: "1" };
+    return { ok: true, id, version: "1" };
+  });
 }
 
 /**
@@ -798,8 +814,11 @@ export async function replaceProjectBundle(input: ReplaceProjectBundleInput): Pr
   });
 }
 
-/** The caller's tier from `users.tier`, defaulting to the safe floor. */
-export async function getUserTier(userId: number): Promise<string> {
-  const { rows } = await query<{ tier: string }>(`select tier from users where id = $1`, [userId]);
-  return rows[0]?.tier ?? "synk";
-}
+/**
+ * The caller's tier from `users.tier`, defaulting to the safe floor.
+ *
+ * Re-exported from lib/services/db.ts, which owns the single definition —
+ * lib/services/synk.ts held a byte-identical copy. Kept exported here so every
+ * graph route keeps importing it from the store it already imports.
+ */
+export { getUserTier };

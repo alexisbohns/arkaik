@@ -79,6 +79,7 @@ interface JournalEvent {
 | `ref.added` | `node_id`, `ref_id`, `ref_type`, `url` | External reference attached |
 | `ref.removed` | `node_id`, `ref_id` | External reference detached |
 | `ref.status_changed` | `node_id`, `ref_id`, `from?`, `to`, `synced_at` | Mirrored external status moved (issue closed, PR merged) |
+| `journal.baseline` | `node_ids[]` | This journal's coverage begins here: the listed nodes already existed and their creation is **not** recorded in it. A writer emits exactly one, immediately before its first append to a journal that does not cover the whole snapshot (a bundle exported from the app, hand-authored, or pre-journal). It is a statement about coverage, never fabricated history — the alternative, backfilling a `node.created` per node, would invent events nobody witnessed |
 
 ## Authority & Consistency Model
 
@@ -86,7 +87,7 @@ The journal is **not** event sourcing, and v1 makes no replay promises. The rule
 
 1. **The snapshot is authoritative for current state. The journal is authoritative for history.**
 2. Writers (the skill, the CLI, later the app) **dual-write**: patch the snapshot *and* append the matching event in the same change.
-3. The validator cross-checks the two **by value, never by timestamp** (per-node timestamps don't exist and clocks lie): the last `node.status_changed.to` for a node must equal its current `status`; every node has a `node.created`; no event references a node or edge that never existed. Any mismatch is a validation error naming both sides. The same rule extends to decisions: the last `decision.status_changed.to` for a node must equal its current `metadata.decision_status` (absent reads as `proposed`). A node with at least one `decision.status_changed` event but no longer present in the snapshot (legitimately deleted after its last transition) is not cross-checked.
+3. The validator cross-checks the two **by value, never by timestamp** (per-node timestamps don't exist and clocks lie): the last `node.status_changed.to` for a node must equal its current `status`; every node has a `node.created` **or is named by a `journal.baseline`**; no event references a node or edge that never existed (a baselined id counts as having existed). The baseline is what makes adoption possible: a journal that starts life after the graph does would otherwise be flagged for every pre-existing node the moment its first event lands, so a writer MUST emit one covering the uncovered nodes before its first append, and MUST NOT backfill `node.created` events instead. Any mismatch is a validation error naming both sides. The same rule extends to decisions: the last `decision.status_changed.to` for a node must equal its current `metadata.decision_status` (absent reads as `proposed`). A node with at least one `decision.status_changed` event but no longer present in the snapshot (legitimately deleted after its last transition) is not cross-checked.
 4. Divergence is repaired **explicitly**: `arkaik doctor` appends corrective events to make history consistent with the snapshot (the snapshot wins). Consumers MUST NOT silently re-project the snapshot from the journal — that would launder drift instead of surfacing it.
 
 ## Releases, Compaction & Growth
@@ -102,6 +103,7 @@ The journal is **not** event sourcing, and v1 makes no replay promises. The rule
   *unreleased*. There is no `deliverables[]` list on `release.tagged` — the
   slice is the grouping.
 - `arkaik release` tags the version, generates the release-note draft, and MAY **compact**: move the released slice from `journal.jsonl` to `journal/archive-{version}.jsonl`. Archives are part of history (projections may read them); the working journal stays small. Compaction differs from the changesets tool's model deliberately — changeset files are *consumed* at release, journal history is *kept*.
+- Because compaction relocates history rather than dropping it, **validators MUST fold `journal/archive-*.jsonl` in alongside `journal.jsonl`** when a bundle carries no embedded journal: the archives are the journal. Reading only the working file makes an ordinary release look like data loss — the first release archives every `node.created`, and any later one can archive a node's newest transition and strand an older one as the apparent "last" — so the cross-check would fail a perfectly healthy project. A malformed archive line is the same hard error as a malformed sidecar line, reported with its file and line number. An embedded `journal` array still wins outright; the packed interchange form carries its own history.
 - The hosted app stores journals under a separate storage key from the snapshot store, so history growth never inflates every snapshot write. App-side event *emission* is gated on the IndexedDB migration for the same reason (see the roadmap in [vision.md](../vision.md)).
 
 ## Projections

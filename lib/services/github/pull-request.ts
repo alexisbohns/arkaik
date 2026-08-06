@@ -1938,8 +1938,13 @@ export async function applyPullRequestEvent(
 
   for (const group of groups) {
     // Owner scoping is by the link itself: a repo can only be linked by someone
-    // who owns the project, so the webhook acts within that authority.
-    const loaded = await getProject(group.projectId, await ownerIdsFor(group.projectId));
+    // who owns the project, so the webhook acts within that authority. Read
+    // once per group and reused by the `applyMutation` call below — the two
+    // used to issue the identical query, and nothing between them can change a
+    // project's owner (there is no re-owning path), so the second read only
+    // ever confirmed the first.
+    const ownerIds = await ownerIdsFor(group.projectId);
+    const loaded = await getProject(group.projectId, ownerIds);
     if (!loaded) {
       outcomes.push(
         assembleOutcome({
@@ -1988,7 +1993,7 @@ export async function applyPullRequestEvent(
 
     const result = await applyMutation({
       projectId: group.projectId,
-      ownerIds: await ownerIdsFor(group.projectId),
+      ownerIds,
       ops,
       actor: "github-app",
       tier: "klub", // A webhook must not fail on a tier cap it cannot act on.

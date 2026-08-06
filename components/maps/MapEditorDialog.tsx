@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { SearchIcon, XIcon } from "lucide-react";
+import { useEffect, useId, useMemo, useState } from "react";
+import { XIcon } from "lucide-react";
 import { isBuiltInMapId, type MapDefinition, type MapKind } from "@arkaik/schema";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
 import {
   Dialog,
   DialogContent,
@@ -12,8 +13,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import type { Node as DataNode } from "@/lib/data/types";
 import { matchesSearch } from "@/lib/utils/search";
 
@@ -48,6 +51,7 @@ export function MapEditorDialog({
   allNodes,
   onSave,
 }: MapEditorDialogProps) {
+  const fieldId = useId();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [kind, setKind] = useState<MapKind>("journey");
@@ -131,24 +135,30 @@ export function MapEditorDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Title</label>
-            <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Admin area" />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Description</label>
+          <Field label="Title" htmlFor={`${fieldId}-title`}>
             <Input
+              id={`${fieldId}-title`}
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="Admin area"
+            />
+          </Field>
+
+          <Field label="Description" htmlFor={`${fieldId}-description`}>
+            <Input
+              id={`${fieldId}-description`}
               value={description}
               onChange={(event) => setDescription(event.target.value)}
               placeholder="What this map is for (optional)"
             />
-          </div>
+          </Field>
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Kind</label>
+          <Field label="Kind" htmlFor={`${fieldId}-kind`}>
+            {/* The `aria-label="Map kind"` this trigger used to carry is gone
+                with the label that now names it: two names for one control, and
+                the invisible one wins. */}
             <Select value={kind} onValueChange={(value) => setKind(value as MapKind)}>
-              <SelectTrigger aria-label="Map kind">
+              <SelectTrigger id={`${fieldId}-kind`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -156,12 +166,12 @@ export function MapEditorDialog({
                 <SelectItem value="system">System — views, APIs, data models</SelectItem>
               </SelectContent>
             </Select>
-          </div>
+          </Field>
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Anchor (optional)
-            </label>
+          {/* No `htmlFor` once an anchor is picked: the search field is replaced
+              by the chosen node and its Clear button, and there is nothing left
+              for a label to point at. */}
+          <Field label="Anchor (optional)" htmlFor={rootNode ? undefined : `${fieldId}-anchor`}>
             {rootNode ? (
               <div className="flex items-center justify-between gap-2 rounded-md border px-3 py-2">
                 <div className="min-w-0">
@@ -179,38 +189,41 @@ export function MapEditorDialog({
                 </Button>
               </div>
             ) : (
-              <div className="flex flex-col gap-1">
-                <div className="relative">
-                  <SearchIcon className="pointer-events-none absolute left-2 top-2.5 size-4 text-muted-foreground" />
-                  <Input
-                    value={rootQuery}
-                    onChange={(event) => setRootQuery(event.target.value)}
-                    placeholder="Search a node to anchor the map"
-                    className="pl-8"
-                    aria-label="Search anchor node"
-                  />
-                </div>
-                {rootCandidates.length > 0 && (
-                  <div className="max-h-40 overflow-y-auto rounded-md border">
-                    {rootCandidates.map((node) => (
-                      <button
-                        key={node.id}
-                        type="button"
-                        className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent/50"
-                        onClick={() => {
-                          setRootNodeId(node.id);
-                          setRootQuery("");
-                        }}
-                      >
-                        <span className="truncate">{node.title}</span>
-                        <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{node.id}</span>
-                      </button>
-                    ))}
-                  </div>
+              // `inline` rather than a floating list: this one sits inside a
+              // dialog that is free to grow, and pushing the footer down reads
+              // better than covering it. No `empty` either — a query matching
+              // nothing shows nothing, which is what it did before.
+              <Combobox<DataNode>
+                id={`${fieldId}-anchor`}
+                value={rootQuery}
+                onValueChange={setRootQuery}
+                items={rootCandidates}
+                itemKey={(node) => node.id}
+                onSelect={(node) => {
+                  setRootNodeId(node.id);
+                  setRootQuery("");
+                }}
+                renderItem={(node) => (
+                  <>
+                    <span className="truncate">{node.title}</span>
+                    <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{node.id}</span>
+                  </>
                 )}
-              </div>
+                itemClassName={(_node, active) =>
+                  cn(
+                    "flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm",
+                    active && "bg-accent/50",
+                  )
+                }
+                placeholder="Search a node to anchor the map"
+                aria-label="Search anchor node"
+                search
+                placement="inline"
+                listClassName="max-h-40 overflow-y-auto rounded-md border"
+                className="gap-1"
+              />
             )}
-          </div>
+          </Field>
 
           {error && (
             <p className="text-xs text-destructive" role="status" aria-live="polite">

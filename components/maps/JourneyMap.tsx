@@ -15,11 +15,14 @@ import { Canvas } from "@/components/graph/Canvas";
 import { MapDisplayPopover } from "@/components/maps/MapDisplayPopover";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
+import { PageError } from "@/components/layout/PageError";
+import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
 import { ShotPreviewDialog } from "@/components/panels/ShotPreviewDialog";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
 import { InsertBetweenDialog, type InsertEntryType } from "@/components/panels/InsertBetweenDialog";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useProject } from "@/lib/hooks/useProject";
@@ -88,8 +91,8 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   } | null>(null);
   const [playlistError, setPlaylistError] = useState<string | null>(null);
 
-  const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, removeNode, removeNodes, applyMutations } = useNodes(id);
-  const { edges: dataEdges, loading: edgesLoading, addEdge, removeEdge, syncEdges } = useEdges(id);
+  const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes, updateNode, addNode, removeNode, removeNodes, applyMutations } = useNodes(id);
+  const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges, addEdge, removeEdge, syncEdges } = useEdges(id);
   const intake = useAcceptanceIntake({
     projectId: id,
     nodes: dataNodes,
@@ -97,14 +100,14 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     applyMutations,
     syncEdges,
   });
-  const { project: projectBundle, loading: projectLoading, updateProject } = useProject(id);
+  const { project: projectBundle, loading: projectLoading, error: projectError, reload: reloadProject, updateProject } = useProject(id);
   // The shell's scope (§ Decision 2), passed down to the canvas cards and to
   // every panel this map opens — never read from a global by the cards
   // themselves. It is also this journey's default product, and so reaches the
   // anchor chain below.
   const scope = useEffectiveProduct(id, projectBundle);
   const productList = useProductList(scope);
-  const { journal } = useJournal(id);
+  const { journal, error: journalError, reload: reloadJournal } = useJournal(id);
 
   // Built-in maps have no stored definition to carry a `display`, so the id is
   // what the override record is keyed by — the anonymous mount is the Journey.
@@ -735,10 +738,28 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   })();
 
   if (nodesLoading || edgesLoading || projectLoading) {
+    return <PageLoading label="graph" />;
+  }
+
+  // A canvas has no empty state to get wrong — which is exactly why it needs
+  // this (#362). An unread graph draws as a blank canvas with a working New
+  // node button, the most convincing "your product is gone" this app can
+  // produce. Worse here than on the System map: with no bundle there is no root
+  // node either, so the journey would blame a missing anchor for a read that
+  // never landed.
+  const loadError = nodesError ?? edgesError ?? projectError ?? journalError;
+  if (loadError) {
     return (
-      <div className="h-full w-full flex items-center justify-center">
-        <span className="text-muted-foreground text-sm">Loading graph...</span>
-      </div>
+      <PageError
+        label="graph"
+        message={loadError}
+        onRetry={() => {
+          void reloadNodes();
+          void reloadEdges();
+          void reloadProject();
+          void reloadJournal();
+        }}
+      />
     );
   }
 
@@ -789,16 +810,18 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
              of why the journey is not the journey (docs/spec/maps.md
              § Subgraph Algorithm, rule 4). */
           <div className="h-full w-full flex items-center justify-center p-6">
-            <div className="rounded-xl border border-dashed p-10 text-center">
-              <p className="text-sm text-muted-foreground">
-                {selection.emptyReason === "no-anchor"
+            <EmptyState
+              message={
+                selection.emptyReason === "no-anchor"
                   ? `${productLabel} has no journey anchor yet — give it a root node in Settings, or read it on the System map.`
-                  : `This map is anchored on ${selection.anchorId}, which is not part of ${productLabel} — switch products, or read ${productLabel} on the System map.`}
-              </p>
-              <Button asChild size="sm" variant="outline" className="mt-4 cursor-pointer">
-                <Link href={`/project/${id}/maps/system`}>Open the System map</Link>
-              </Button>
-            </div>
+                  : `This map is anchored on ${selection.anchorId}, which is not part of ${productLabel} — switch products, or read ${productLabel} on the System map.`
+              }
+              action={
+                <Button asChild size="sm" variant="outline" className="cursor-pointer">
+                  <Link href={`/project/${id}/maps/system`}>Open the System map</Link>
+                </Button>
+              }
+            />
           </div>
         ) : (
           <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} onEdgeClick={handleEdgeClick} fitSignal={fitSignal} scope={scope} minimapColor={display.minimap_color} />

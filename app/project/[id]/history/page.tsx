@@ -1,12 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useMemo, useState, type ReactNode } from "react";
 import { orderEvents } from "@arkaik/schema";
+import { PageError } from "@/components/layout/PageError";
+import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useJournal } from "@/lib/hooks/useJournal";
-import { describeJournalEvent, formatEventDate } from "@/components/journal/describe-event";
+import { useProjectId } from "@/lib/hooks/useProjectId";
+import { FeedRow } from "@/components/journal/FeedRow";
 
 /**
  * Event families for the filter chips. An unknown/forward-compatible type
@@ -23,12 +26,44 @@ const FAMILIES = [
 
 type FamilyId = (typeof FAMILIES)[number]["id"];
 
-export default function HistoryPage() {
-  const params = useParams();
-  const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
+/**
+ * One filter chip.
+ *
+ * Extracted so the "All" pill and the six family pills cannot drift: they are
+ * the same control, and the focus ring these hand-rolled buttons never had
+ * (audit `shadcn-9`) is exactly the kind of fix that otherwise lands on one of
+ * the two copies and not the other. The ring is `Button`'s, verbatim, so a
+ * keyboard user sees the same treatment here as everywhere else — until the
+ * Toggle primitive that audit item asks for exists and absorbs all four sites.
+ */
+function FamilyPill({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`rounded-full border px-3 py-1 text-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] ${
+        active ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
 
-  const { nodes: dataNodes, loading: nodesLoading } = useNodes(id);
-  const { journal, loading: journalLoading } = useJournal(id);
+export default function HistoryPage() {
+  const id = useProjectId();
+
+  const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes } = useNodes(id);
+  const { journal, loading: journalLoading, error: journalError, reload: reloadJournal } = useJournal(id);
   const [family, setFamily] = useState<FamilyId | null>(null);
 
   const nodesById = useMemo(() => new Map(dataNodes.map((node) => [node.id, node])), [dataNodes]);
@@ -41,10 +76,23 @@ export default function HistoryPage() {
   }, [journal, family]);
 
   if (nodesLoading || journalLoading) {
+    return <PageLoading label="history" />;
+  }
+
+  // Before the empty state, never after (#362): an unread journal is `[]`, and
+  // "No journal yet. Every recorded event will appear here." over a project
+  // with years of history is exactly the sentence this gate exists to prevent.
+  const loadError = nodesError ?? journalError;
+  if (loadError) {
     return (
-      <div className="h-full w-full flex items-center justify-center">
-        <span className="text-muted-foreground text-sm">Loading history...</span>
-      </div>
+      <PageError
+        label="history"
+        message={loadError}
+        onRetry={() => {
+          void reloadNodes();
+          void reloadJournal();
+        }}
+      />
     );
   }
 
@@ -58,36 +106,21 @@ export default function HistoryPage() {
       <div className="h-full overflow-auto p-4 md:p-6">
         <div className="flex w-full flex-col gap-4">
           {journal.length === 0 ? (
-            <div className="rounded-xl border border-dashed p-10 text-center">
-              <p className="text-sm text-muted-foreground">
-                No journal yet. Every recorded event will appear here.
-              </p>
-            </div>
+            <EmptyState message="No journal yet. Every recorded event will appear here." />
           ) : (
             <>
               <div className="flex flex-wrap gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setFamily(null)}
-                  aria-pressed={family === null}
-                  className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-                    family === null ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
+                <FamilyPill active={family === null} onClick={() => setFamily(null)}>
                   All
-                </button>
+                </FamilyPill>
                 {FAMILIES.map((entry) => (
-                  <button
+                  <FamilyPill
                     key={entry.id}
-                    type="button"
+                    active={family === entry.id}
                     onClick={() => setFamily(family === entry.id ? null : entry.id)}
-                    aria-pressed={family === entry.id}
-                    className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-                      family === entry.id ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
-                    }`}
                   >
                     {entry.label}
-                  </button>
+                  </FamilyPill>
                 ))}
               </div>
 
@@ -95,20 +128,9 @@ export default function HistoryPage() {
                 <p className="text-sm text-muted-foreground">No events in this family.</p>
               ) : (
                 <div className="flex flex-col gap-0.5">
-                  {events.map((event) => {
-                    const { icon: Icon, text, meta } = describeJournalEvent(event, nodesById);
-
-                    return (
-                      <div key={event.id} className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm">
-                        <Icon className="size-3.5 shrink-0 text-muted-foreground mt-0.5" aria-hidden="true" />
-                        <div className="flex-1 min-w-0">
-                          <p className="truncate">{text}</p>
-                          {meta && <p className="text-xs text-muted-foreground truncate">{meta}</p>}
-                        </div>
-                        <span className="text-xs text-muted-foreground shrink-0">{formatEventDate(event.ts)}</span>
-                      </div>
-                    );
-                  })}
+                  {events.map((event) => (
+                    <FeedRow key={event.id} event={event} nodesById={nodesById} />
+                  ))}
                 </div>
               )}
             </>

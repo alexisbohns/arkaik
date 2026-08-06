@@ -4,24 +4,19 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation";
 import {
   BookOpenIcon,
-  ClipboardCheckIcon,
   CornerDownLeftIcon,
-  DatabaseIcon,
   FileTextIcon,
   FolderOpenIcon,
-  GitBranchIcon,
   KeyRoundIcon,
   KeyboardIcon,
   LayoutDashboardIcon,
   MapIcon,
   MapPinnedIcon,
-  MonitorIcon,
   NetworkIcon,
   PyramidIcon,
   RouteIcon,
   ScrollTextIcon,
   SearchIcon,
-  ServerIcon,
   Settings2Icon,
   Share2Icon,
   SquareKanbanIcon,
@@ -30,6 +25,7 @@ import {
 } from "lucide-react";
 
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { SPECIES_NAV_ICONS } from "@/lib/config/species-icons";
 import { useModKeyLabel } from "@/lib/hooks/useModKeyLabel";
 import {
   COMMAND_GROUPS,
@@ -43,7 +39,10 @@ import {
 } from "@/lib/utils/command-palette";
 import { cn } from "@/lib/utils";
 
-/** Closed record: a new `CommandIconId` cannot ship without its glyph. */
+/** Closed record: a new `CommandIconId` cannot ship without its glyph. The five
+ * species rows read the shared navigation vocabulary rather than naming Lucide
+ * components again, so a palette row and the sidebar row it takes the user to
+ * can never wear different icons. */
 const COMMAND_ICONS: Record<CommandIconId, LucideIcon> = {
   overview: LayoutDashboardIcon,
   "all-maps": MapIcon,
@@ -51,11 +50,11 @@ const COMMAND_ICONS: Record<CommandIconId, LucideIcon> = {
   system: NetworkIcon,
   "custom-map": MapPinnedIcon,
   library: BookOpenIcon,
-  acceptances: ClipboardCheckIcon,
-  views: MonitorIcon,
-  flows: GitBranchIcon,
-  "data-models": DatabaseIcon,
-  "api-endpoints": ServerIcon,
+  acceptances: SPECIES_NAV_ICONS.acceptance,
+  views: SPECIES_NAV_ICONS.view,
+  flows: SPECIES_NAV_ICONS.flow,
+  "data-models": SPECIES_NAV_ICONS["data-model"],
+  "api-endpoints": SPECIES_NAV_ICONS["api-endpoint"],
   pyramid: PyramidIcon,
   delivery: SquareKanbanIcon,
   changelog: ScrollTextIcon,
@@ -128,7 +127,12 @@ export function CommandPalette({
 }: CommandPaletteProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="top-[15%] translate-y-0 gap-0 overflow-hidden p-0 shadow-2xl sm:max-w-[600px] [&>button]:hidden">
+      {/* No close button: the palette's own `esc` hint is the affordance, and a
+          floating X over the input would sit inside the search row. */}
+      <DialogContent
+        showCloseButton={false}
+        className="top-[15%] translate-y-0 gap-0 overflow-hidden p-0 shadow-2xl sm:max-w-[600px]"
+      >
         <DialogTitle className="sr-only">Command palette</DialogTitle>
         <DialogDescription className="sr-only">{description}</DialogDescription>
         {/* Radix unmounts the content on close, so the query and the selection

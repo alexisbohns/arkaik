@@ -8,12 +8,6 @@ import {
   Monitor,
   Apple,
   Bot,
-  MonitorSmartphone,
-  Network,
-  Database,
-  Plug,
-  ClipboardCheck,
-  Scale,
   Lightbulb, Compass, CircleDashed, CirclePlay, CircleFadingArrowUp,
   CircleCheckBig, CircleSlash,
   ThumbsUp, CircleX, Replace, CircleDotDashed,
@@ -58,30 +52,50 @@ export const PLATFORM_ICONS: Record<PlatformId, LucideIcon> = {
   android: Bot,
 };
 
-export const SPECIES_ICONS: Record<SpeciesId, LucideIcon> = {
-  flow: Network,
-  view: MonitorSmartphone,
-  "data-model": Database,
-  "api-endpoint": Plug,
-  acceptance: ClipboardCheck,
-  decision: Scale,
+/**
+ * The canvas species glyphs, kept exported under their historical name.
+ * {@link SPECIES_GRAPH_ICONS} in `lib/config/species-icons.ts` is the
+ * definition — this alias exists because `SPECIES_ICONS` is what importers
+ * already say, and because the *other* map that shared that name (the sidebar's
+ * navigation vocabulary) is now a separate export, so the ambiguity the alias
+ * used to carry is gone.
+ */
+export { SPECIES_GRAPH_ICONS as SPECIES_ICONS } from "@/lib/config/species-icons";
+
+/**
+ * The parallel-layer species' accent — the one color a data model or an API
+ * endpoint *is* — in the two spellings the app needs it: Tailwind classes for
+ * `SystemLayerNode`'s card, and hex for {@link SPECIES_MINIMAP_FILL} below.
+ *
+ * Whole literal class strings, never composed from a shade: Tailwind's scanner
+ * reads source text, so a `border-${shade}` would generate no CSS at all.
+ *
+ * Flow and view have no entry here on purpose — their cards are status-colored,
+ * so their minimap fills are chosen rather than inherited.
+ */
+export type SystemLayerSpecies = Extract<SpeciesId, "data-model" | "api-endpoint">;
+
+export const SYSTEM_LAYER_STYLES: Record<SystemLayerSpecies, { border: string; icon: string; fill: string }> = {
+  "data-model":   { border: "border-amber-500", icon: "text-amber-500", fill: "#f59e0b" },
+  "api-endpoint": { border: "border-teal-500",  icon: "text-teal-500",  fill: "#14b8a6" },
 };
 
 /**
  * Species → minimap fill. Hex, not Tailwind classes: React Flow paints minimap
  * nodes as SVG rects, and an SVG `fill` can't take a class name.
  *
- * Data models and API endpoints reuse the border colors their cards already
- * wear (amber-500, teal-500), so a species keeps one identity across the map
- * and the minimap. Flow and view cards are status-colored and had no species
- * color to inherit, so they take violet-500 and blue-500 — far enough apart to
- * stay legible at minimap scale, where a node is a few pixels wide.
+ * Data models and API endpoints *read* their fill off the border color their
+ * cards already wear, so a species keeps one identity across the map and the
+ * minimap by construction rather than by two hex literals agreeing. Flow and
+ * view cards are status-colored and had no species color to inherit, so they
+ * take violet-500 and blue-500 — far enough apart to stay legible at minimap
+ * scale, where a node is a few pixels wide.
  */
 export const SPECIES_MINIMAP_FILL: Record<SpeciesId, string> = {
   flow:           "#8b5cf6", // violet-500
   view:           "#3b82f6", // blue-500
-  "data-model":   "#f59e0b", // amber-500
-  "api-endpoint": "#14b8a6", // teal-500
+  "data-model":   SYSTEM_LAYER_STYLES["data-model"].fill,
+  "api-endpoint": SYSTEM_LAYER_STYLES["api-endpoint"].fill,
   acceptance:     "#22c55e", // green-500
   decision:       "#f43f5e", // rose-500 — unclaimed by any existing species identity
 };

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { PlusIcon } from "lucide-react";
+import { PlusIcon, RotateCwIcon } from "lucide-react";
 import { toast } from "sonner";
 import { resolveProducts, type ProductDefinition } from "@arkaik/schema";
 
@@ -58,7 +58,13 @@ interface ProductManagerPanelProps {
 }
 
 export function ProductManagerPanel({ projectId, project, updateProject }: ProductManagerPanelProps) {
-  const { nodes, loading: nodesLoading, applyMutations } = useNodes(projectId);
+  const {
+    nodes,
+    loading: nodesLoading,
+    error: nodesError,
+    reload: reloadNodes,
+    applyMutations,
+  } = useNodes(projectId);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ProductDefinition | null>(null);
@@ -78,6 +84,20 @@ export function ProductManagerPanel({ projectId, project, updateProject }: Produ
    * sentence true.
    */
   const alreadyMoved = useRef<Map<string, number>>(new Map());
+
+  /**
+   * "I have not read the nodes" — whether because the read is still in flight or
+   * because it failed (audit `quality-frontend-3`).
+   *
+   * The failed case is the dangerous one and used to be invisible: `useNodes`
+   * clears `loading` on failure and leaves `nodes` at `[]`, so every row said
+   * "0 nodes", the Delete button re-enabled itself, and a deletion planned
+   * against that empty list would strand every real member holding
+   * `metadata.product` for a product nobody declares — verbatim the state
+   * `handleDelete`'s load guard exists to prevent. One flag, so the guard, the
+   * button and the count can never disagree about what is known.
+   */
+  const membersUnknown = nodesLoading || nodesError !== null;
 
   /**
    * The definitions as **resolved**, for everything that reads: rows, counts,
@@ -172,12 +192,13 @@ export function ProductManagerPanel({ projectId, project, updateProject }: Produ
    * apply-product-plan.ts reorders its two writes to avoid, and the one it calls
    * worse precisely because every read surface survives it silently. One fast
    * click reaches it, and nothing undoes it. Confirm-time derivation is no help:
-   * the list is empty at confirm time too. So the guard is the load flag, and it
+   * the list is empty at confirm time too. So the guard is `membersUnknown` —
+   * loading *or* failed, since a failed read leaves the same empty list — and it
    * is mirrored in the button and in the count each row shows, so the UI never
    * asserts a number it has not read.
    */
   async function handleDelete(reassignTo: string | null) {
-    if (!deleting || deleteBusy || nodesLoading) return;
+    if (!deleting || deleteBusy || membersUnknown) return;
     const target = deleting;
     setDeleteBusy(true);
     /**
@@ -263,6 +284,32 @@ export function ProductManagerPanel({ projectId, project, updateProject }: Produ
   return (
     <>
       <div className="flex flex-col gap-3">
+        {/* Said out loud rather than left to read as "every product is empty".
+            Deliberately NOT `PageError`, which replaces a surface: the
+            definitions come from the project bundle and are still true, so the
+            rows stay editable and renameable. Only the member counts — and the
+            deletion that depends on them — are what this failure takes away. */}
+        {nodesError && (
+          <div
+            role="alert"
+            className="flex flex-col items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3"
+          >
+            <p className="text-sm">
+              Couldn&rsquo;t read this project&rsquo;s nodes, so member counts are unavailable and
+              products cannot be deleted until they load. Nothing was lost.
+            </p>
+            <p className="text-xs text-muted-foreground">{nodesError}</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="cursor-pointer"
+              onClick={() => void reloadNodes()}
+            >
+              <RotateCwIcon className="size-4" />
+              Try again
+            </Button>
+          </div>
+        )}
         {products.length === 0 ? (
           <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
             This project describes one product. Add another &mdash; an admin dashboard, a public
@@ -288,12 +335,17 @@ export function ProductManagerPanel({ projectId, project, updateProject }: Produ
                           {platformLabel(platform)}
                         </Badge>
                       ))}
-                      {/* "counting…" rather than 0 while the nodes load: a row
-                          that asserts a number it has not read is the same lie
-                          the delete guard exists to stop, one line earlier. */}
+                      {/* "counting…" rather than 0 while the nodes load, and
+                          "count unavailable" rather than 0 when the read failed:
+                          a row that asserts a number it has not read is the same
+                          lie the delete guard exists to stop, one line earlier. */}
                       <span className="text-xs text-muted-foreground">
                         {platformCountLabel(product.platforms)} &middot;{" "}
-                        {nodesLoading ? "counting…" : `${count} node${count === 1 ? "" : "s"}`}
+                        {nodesLoading
+                          ? "counting…"
+                          : nodesError
+                            ? "count unavailable"
+                            : `${count} node${count === 1 ? "" : "s"}`}
                       </span>
                     </div>
                   </div>
@@ -309,13 +361,14 @@ export function ProductManagerPanel({ projectId, project, updateProject }: Produ
                     >
                       Edit
                     </Button>
-                    {/* Held back until the node list has arrived: a deletion
-                        planned against the empty initial list moves nobody and
-                        strands every member (see `handleDelete`). */}
+                    {/* Held back until the node list has arrived — or for good,
+                        if the read failed: a deletion planned against the empty
+                        initial list moves nobody and strands every member (see
+                        `handleDelete`). */}
                     <Button
                       variant="ghost"
                       className="cursor-pointer text-destructive"
-                      disabled={saving || deleteBusy || nodesLoading}
+                      disabled={saving || deleteBusy || membersUnknown}
                       onClick={() => setDeleting(product)}
                     >
                       Delete

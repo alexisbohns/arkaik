@@ -308,7 +308,8 @@ type KnownJournalEvent =
   | RequestFiledEvent
   | RefAddedEvent
   | RefRemovedEvent
-  | RefStatusChangedEvent;
+  | RefStatusChangedEvent
+  | JournalBaselineEvent;
 
 interface ProjectBundle {
   /** Bundle Format contract version (docs/spec/bundle-format.md § Schema Versioning). Absent MUST be treated as 1. */

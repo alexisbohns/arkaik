@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { useMemo, useState } from "react";
+import { buttonVariants } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
+import { cn } from "@/lib/utils";
 import type { Node as DataNode } from "@/lib/data/types";
 
 interface NodeSearchComboboxProps {
@@ -17,6 +19,18 @@ interface Candidate {
   title: string;
   score: number;
 }
+
+/**
+ * What the list offers: the nodes that match, then — once something is typed
+ * that no node of this species answers to — the row that creates it.
+ *
+ * The create affordance used to sit *under* the list as a footer `<Button>`,
+ * which is precisely where the arrow keys cannot reach it (audit `shadcn-6`).
+ * Now that Tab dismisses the list instead of walking into it, a footer button
+ * would have had no keyboard route at all, so it rides in the same array as the
+ * matches and is reached the same way: arrow to it, press Enter.
+ */
+type Row = { kind: "node"; id: string; title: string } | { kind: "create"; title: string };
 
 function fuzzyScore(query: string, candidate: string): number {
   const q = query.trim().toLowerCase();
@@ -56,21 +70,8 @@ export function NodeSearchCombobox({
   onCreate,
   disabled,
 }: NodeSearchComboboxProps) {
-  const rootRef = useRef<HTMLDivElement | null>(null);
   const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    function handlePointerDown(event: MouseEvent) {
-      if (!rootRef.current) return;
-      if (rootRef.current.contains(event.target as Node)) return;
-      setOpen(false);
-    }
-
-    document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
-  }, []);
 
   const candidates = useMemo(() => {
     const scoped = allNodes
@@ -95,13 +96,21 @@ export function NodeSearchCombobox({
   );
   const canCreate = Boolean(trimmed) && Boolean(onCreate) && !hasExactTitle;
 
+  const rows = useMemo<Row[]>(() => {
+    const matches: Row[] = candidates.map((candidate) => ({
+      kind: "node",
+      id: candidate.id,
+      title: candidate.title,
+    }));
+    return canCreate ? [...matches, { kind: "create", title: trimmed }] : matches;
+  }, [candidates, canCreate, trimmed]);
+
   async function handleCreate() {
     if (!onCreate || !trimmed || busy) return;
     setBusy(true);
     try {
       await onCreate(trimmed);
       setQuery("");
-      setOpen(false);
     } finally {
       setBusy(false);
     }
@@ -110,58 +119,48 @@ export function NodeSearchCombobox({
   function handleSelect(nodeId: string) {
     onSelect(nodeId);
     setQuery("");
-    setOpen(false);
   }
 
   return (
-    <div ref={rootRef} className="relative w-full">
-      <input
-        type="text"
-        value={query}
-        placeholder={`Search ${species}s...`}
-        onChange={(event) => {
-          setQuery(event.target.value);
-          setOpen(true);
-        }}
-        onFocus={() => setOpen(true)}
-        disabled={disabled || busy}
-        className="border-input bg-transparent text-sm text-foreground leading-relaxed rounded-md border px-3 py-2 shadow-xs outline-none placeholder:text-muted-foreground focus:ring-[3px] focus:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 w-full"
-        aria-label={`Search existing ${species} nodes or create a new one`}
-      />
-      {open && (
-        <div className="absolute z-30 mt-1 w-full rounded-md border border-border bg-popover shadow-md">
-          <div className="max-h-60 overflow-y-auto p-1">
-            {candidates.length === 0 && !canCreate && (
-              <p className="px-2 py-2 text-xs text-muted-foreground">No matches.</p>
-            )}
-            {candidates.map((candidate) => (
-              <button
-                key={candidate.id}
-                type="button"
-                className="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted"
-                onClick={() => handleSelect(candidate.id)}
-              >
-                <span className="font-medium">{candidate.title}</span>
-                <span className="ml-2 text-xs text-muted-foreground">{candidate.id}</span>
-              </button>
-            ))}
-            {canCreate && (
-              <div className="border-t border-border mt-1 pt-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="w-full justify-start"
-                  onClick={handleCreate}
-                  disabled={busy}
-                >
-                  Create &quot;{trimmed}&quot;
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+    <Combobox<Row>
+      value={query}
+      onValueChange={setQuery}
+      items={rows}
+      itemKey={(row) => (row.kind === "create" ? "create" : row.id)}
+      onSelect={(row) => {
+        if (row.kind === "create") void handleCreate();
+        else handleSelect(row.id);
+      }}
+      renderItem={(row) =>
+        row.kind === "create" ? (
+          <>Create &quot;{row.title}&quot;</>
+        ) : (
+          <>
+            <span className="font-medium">{row.title}</span>
+            <span className="ml-2 text-xs text-muted-foreground">{row.id}</span>
+          </>
+        )
+      }
+      itemClassName={(row, active) =>
+        row.kind === "create"
+          ? cn(
+              // Still the ghost button it has always looked like, drawn from the
+              // same `cva` rather than from a copy of its classes.
+              buttonVariants({ variant: "ghost", size: "sm" }),
+              // The rule above it used to be a wrapping `<div className="border-t
+              // mt-1 pt-1">`, which cannot survive the row becoming a single
+              // `role="option"` box. A pseudo-element reproduces it exactly —
+              // `mt-2` opens the same 8px, `-top-1` puts the line at its middle —
+              // and leaves the button's own geometry untouched.
+              "relative mt-2 w-full justify-start before:absolute before:inset-x-0 before:-top-1 before:border-t before:border-border",
+              active && "bg-accent text-accent-foreground dark:bg-accent/50",
+            )
+          : cn("w-full rounded-sm px-2 py-1.5 text-left text-sm", active && "bg-muted")
+      }
+      empty={<p className="px-2 py-2 text-xs text-muted-foreground">No matches.</p>}
+      placeholder={`Search ${species}s...`}
+      aria-label={`Search existing ${species} nodes or create a new one`}
+      disabled={disabled || busy}
+    />
   );
 }

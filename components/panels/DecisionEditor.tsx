@@ -1,20 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   Select,
   SelectContent,
-  SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Field } from "@/components/ui/field";
+import { Textarea } from "@/components/ui/textarea";
+import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
 import type { Node, Edge, NodeMetadata } from "@/lib/data/types";
-import { DECISION_STATUSES, type DecisionStatusId } from "@/lib/config/decision-statuses";
-import {
-  DECISION_STATUS_ICONS,
-  DECISION_STATUS_STYLES,
-} from "@/components/graph/nodes/node-styles";
+import { type DecisionStatusId } from "@/lib/config/decision-statuses";
 import { decisionStatusOf, decisionUpdatePatch } from "@/lib/utils/decision";
 
 const AUTOSAVE_DELAY_MS = 350;
@@ -131,6 +129,10 @@ function LinkedNodeList({
  * supersedes/generates/impacts links spec §5 defines.
  */
 export function DecisionEditor({ node, allNodes, allEdges, onUpdate, onNavigate }: DecisionEditorProps) {
+  // Per-mount: the panel stack keeps hidden panels mounted, so two decisions can
+  // be open at once and a hand-written id would give both their labels the same
+  // target.
+  const fieldId = useId();
   // Set-then-save, like NodeFields' status select: onUpdate is not optimistic
   // (it awaits the provider before node.status/node.metadata reflect a write),
   // so a value read straight from `decisionStatusOf(node)` would revert to the
@@ -171,69 +173,54 @@ export function DecisionEditor({ node, allNodes, allEdges, onUpdate, onNavigate 
 
   return (
     <div className="px-6 flex flex-col gap-5">
-      <div className="flex flex-col gap-1.5">
-        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Decision status</span>
+      <Field label="Decision status" htmlFor={`${fieldId}-status`}>
         <Select value={decisionStatus} onValueChange={(v) => handleStatusChange(v as DecisionStatusId)}>
-          <SelectTrigger aria-label="Decision status">
+          <SelectTrigger id={`${fieldId}-status`}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {DECISION_STATUSES.map((s) => {
-              const Icon = DECISION_STATUS_ICONS[s.id];
-              return (
-                <SelectItem key={s.id} value={s.id}>
-                  <span className="inline-flex items-center gap-2">
-                    <Icon className={`size-3.5 ${DECISION_STATUS_STYLES[s.id].badge}`} />
-                    {s.label}
-                  </span>
-                </SelectItem>
-              );
-            })}
+            <StatusSelectItems vocabulary="decision-status" />
           </SelectContent>
         </Select>
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <span className="text-xs text-muted-foreground">Context — why</span>
-        <textarea
+      </Field>
+      <Field label="Context — why" htmlFor={`${fieldId}-context`}>
+        <Textarea
+          id={`${fieldId}-context`}
           value={context}
           onChange={(e) => setContext(e.target.value)}
           placeholder="What made this decision necessary?"
-          aria-label="Context"
           rows={4}
-          className="rounded-md border bg-background px-2 py-1.5 text-sm"
         />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <span className="text-xs text-muted-foreground">Consequences — how</span>
-        <textarea
+      </Field>
+      <Field label="Consequences — how" htmlFor={`${fieldId}-consequences`}>
+        <Textarea
+          id={`${fieldId}-consequences`}
           value={consequences}
           onChange={(e) => setConsequences(e.target.value)}
           placeholder="What follows from it — trade-offs, obligations, follow-ups?"
-          aria-label="Consequences"
           rows={4}
-          className="rounded-md border bg-background px-2 py-1.5 text-sm"
         />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <span className="text-xs text-muted-foreground">Decided on</span>
+      </Field>
+      <Field label="Decided on" htmlFor={`${fieldId}-decided-at`}>
         <Input
+          id={`${fieldId}-decided-at`}
           type="date"
           value={decidedAt}
           onChange={(e) => setDecidedAt(e.target.value)}
-          aria-label="Decided on"
         />
-      </div>
+      </Field>
       {(connections.supersedes.length > 0 ||
         connections.supersededBy.length > 0 ||
         connections.generates.length > 0 ||
         connections.impacts.length > 0) && (
-        <div className="flex flex-col gap-3">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Decision links</span>
+        // A group of lists rather than a control, so no `htmlFor` — and `gap-3`,
+        // which is the spacing the four lists were already given.
+        <Field label="Decision links" className="gap-3">
           <LinkedNodeList label="Supersedes" nodes={connections.supersedes} onNavigate={onNavigate} />
           <LinkedNodeList label="Superseded by" nodes={connections.supersededBy} onNavigate={onNavigate} />
           <LinkedNodeList label="Generated acceptances" nodes={connections.generates} onNavigate={onNavigate} />
           <LinkedNodeList label="Impacts" nodes={connections.impacts} onNavigate={onNavigate} />
-        </div>
+        </Field>
       )}
     </div>
   );

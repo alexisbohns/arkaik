@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { XIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -43,6 +44,13 @@ function SheetOverlay({
   );
 }
 
+/**
+ * The corner X is upstream's and had been dropped here (audit `shadcn-10`),
+ * which left the only consumer — the mobile sidebar — with no visible way out:
+ * Escape or a tap on the overlay, neither of them signposted. It is back, and
+ * styled exactly like `DialogContent`'s so the two overlay primitives close the
+ * same way.
+ */
 function SheetContent({
   className,
   children,
@@ -71,6 +79,10 @@ function SheetContent({
         {...props}
       >
         {children}
+        <SheetClose className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute right-4 top-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:pointer-events-none">
+          <XIcon className="size-4" />
+          <span className="sr-only">Close</span>
+        </SheetClose>
       </DialogPrimitive.Content>
     </SheetPortal>
   );

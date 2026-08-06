@@ -15,7 +15,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { serializeBundle, type ValidationFinding } from "@arkaik/schema";
 import { readBundle } from "../lib/bundle-io";
-import { validateBundleAt, JOURNAL_SIDECAR } from "../lib/bundle-validate";
+import { validateBundleAt, journalLineErrorLines, JOURNAL_SIDECAR } from "../lib/bundle-validate";
 
 const USAGE = `arkaik validate [--fix-format] [path]
 
@@ -86,8 +86,12 @@ function validate(filePath: string): never {
     `  Nodes: ${v.nodes.length} (${countBySpecies(v.nodes, "view")} views, ${countBySpecies(v.nodes, "flow")} flows, ${countBySpecies(v.nodes, "data-model")} data-models, ${countBySpecies(v.nodes, "api-endpoint")} api-endpoints)`,
   );
   console.log(`  Edges: ${v.edges.length}`);
-  if (v.sidecarLoaded) {
-    console.log(`  Journal: ${v.journal.length} event(s) from ${JOURNAL_SIDECAR} sidecar`);
+  if (v.sidecarLoaded || v.archivesLoaded.length > 0) {
+    const from = [
+      ...(v.sidecarLoaded ? [`${JOURNAL_SIDECAR} sidecar`] : []),
+      ...(v.archivesLoaded.length > 0 ? [`${v.archivesLoaded.length} archive(s)`] : []),
+    ].join(" + ");
+    console.log(`  Journal: ${v.journal.length} event(s) from ${from}`);
   } else if (v.journal.length > 0) {
     console.log(`  Journal: ${v.journal.length} embedded event(s)`);
   }
@@ -99,12 +103,9 @@ function validate(filePath: string): never {
     console.log("");
   }
 
-  // Sidecar line-parse findings are hard errors, joined with the semantic
-  // errors from validateBundle.
-  const errorLines = [
-    ...v.sidecarFindings.map((f) => `ERROR [${f.rule}] line ${f.line}: ${f.message}`),
-    ...v.result.errors.map(formatFinding),
-  ];
+  // Sidecar + archive line-parse findings are hard errors, joined with the
+  // semantic errors from validateBundle.
+  const errorLines = [...journalLineErrorLines(v), ...v.result.errors.map(formatFinding)];
 
   if (errorLines.length === 0) {
     console.log("  Result: VALID\n");

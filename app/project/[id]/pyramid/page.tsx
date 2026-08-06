@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { PageError } from "@/components/layout/PageError";
+import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
 import { StickyToolbar } from "@/components/layout/StickyToolbar";
 import { PyramidElementCard } from "@/components/pyramid/PyramidElementCard";
@@ -12,6 +13,7 @@ import {
   type PyramidFilterStep,
   type PyramidViewMode,
 } from "@/components/pyramid/PyramidToolbar";
+import { EmptyState } from "@/components/ui/empty-state";
 import { VALUES, VALUE_TIERS_CONFIG } from "@/lib/config/values";
 import type { PyramidElement } from "@/lib/utils/pyramid";
 import { computeScopedPyramidTiers } from "@/lib/utils/pyramid";
@@ -20,6 +22,7 @@ import { useEdges } from "@/lib/hooks/useEdges";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEffectiveProduct, useProductOverride } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
+import { useProjectId } from "@/lib/hooks/useProjectId";
 
 const VALUE_LABEL = new Map(VALUES.map((v) => [v.id, v.label]));
 const VALUE_DESCRIPTION = new Map(VALUES.map((v) => [v.id, v.description]));
@@ -39,19 +42,18 @@ function matchesStep(element: PyramidElement, step: PyramidFilterStep) {
  * looking at, and the view switcher trades the icon-led cards for one-line rows.
  */
 export default function PyramidPage() {
-  const params = useParams();
-  const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
+  const id = useProjectId();
 
   const [viewMode, setViewMode] = useState<PyramidViewMode>("cards");
   const [filterStep, setFilterStep] = useState<PyramidFilterStep>("all");
 
-  const { nodes: dataNodes, loading: nodesLoading } = useNodes(id);
+  const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes } = useNodes(id);
   // Gated on below alongside the nodes, as /acceptances does: an acceptance's
   // product comes from the anchors it covers, so aggregating before the edges
   // land would scope a scoped pyramid by stored keys alone and then correct
   // itself a frame later.
-  const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
-  const { project: projectBundle } = useProject(id);
+  const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges } = useEdges(id);
+  const { project: projectBundle, error: projectError, reload: reloadProject } = useProject(id);
 
   // `useProject` resolves in an effect, so this is the no-products scope on the
   // first render — every platform, all acceptances — which is also exactly what
@@ -106,10 +108,24 @@ export default function PyramidPage() {
   );
 
   if (nodesLoading || edgesLoading) {
+    return <PageLoading label="pyramid" />;
+  }
+
+  // Before the filter's empty state, never after (#362): every tier aggregates
+  // to zero from an unread graph, so "No value element matches this filter."
+  // would blame a filter for a read that never landed.
+  const loadError = nodesError ?? edgesError ?? projectError;
+  if (loadError) {
     return (
-      <div className="h-full w-full flex items-center justify-center">
-        <span className="text-muted-foreground text-sm">Loading pyramid...</span>
-      </div>
+      <PageError
+        label="pyramid"
+        message={loadError}
+        onRetry={() => {
+          void reloadNodes();
+          void reloadEdges();
+          void reloadProject();
+        }}
+      />
     );
   }
 
@@ -130,9 +146,9 @@ export default function PyramidPage() {
 
           <div className="flex flex-col gap-6 px-4 pb-4 md:px-6 md:pb-6">
           {visibleTiers.length === 0 ? (
-            <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-              No value element matches this filter.
-            </p>
+            /* `p-10` rather than the `p-8` this card used to hand-roll — the
+               audit's converge-on-the-dominant-treatment call (factorization-3). */
+            <EmptyState message="No value element matches this filter." />
           ) : (
             visibleTiers.map((tier) => {
               const config = TIER_CONFIG.get(tier.tier);

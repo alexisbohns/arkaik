@@ -1,5 +1,5 @@
 import { getCaller, hasScope } from "@/lib/services/auth";
-import { servicesConfigured, servicesUnavailable } from "@/lib/services/db";
+import { MAX_BUNDLE_BYTES, servicesConfigured, servicesUnavailable } from "@/lib/services/db";
 import { applyMutation, getUserTier } from "@/lib/services/graph/store";
 import type { MutationOp } from "@arkaik/schema";
 
@@ -36,7 +36,16 @@ const VALID_OPS = new Set([
   "delete_edge",
 ]);
 
-/** Guard against an unbounded batch turning one request into a long lock hold. */
+/**
+ * Guard against an unbounded batch turning one request into a long lock hold.
+ *
+ * Bounds the op COUNT only, which is why the shared `MAX_BUNDLE_BYTES` check
+ * below is a separate rail rather than a redundant one: a single
+ * `create_node`/`update_node` op can carry arbitrarily large `metadata`, so 500
+ * ops is no ceiling at all on bytes. Without both, this route could grow a
+ * hosted snapshot past a size that `PUT …/bundle` still refuses — the project
+ * would stop round-tripping through its own export.
+ */
 const MAX_OPS = 500;
 
 function parseIfMatch(req: Request): string | undefined {
@@ -59,9 +68,17 @@ export async function POST(
 
   const { projectId } = await params;
 
+  // Read as text first so the size check runs BEFORE `JSON.parse` ever touches
+  // the payload — the same order `POST /api/graph/projects` and `PUT
+  // …/bundle` use, against the same shared cap.
+  const raw = await req.text();
+  if (Buffer.byteLength(raw, "utf8") > MAX_BUNDLE_BYTES) {
+    return Response.json({ error: "payload_too_large", limit: MAX_BUNDLE_BYTES }, { status: 413 });
+  }
+
   let body: { ops?: unknown };
   try {
-    body = (await req.json()) as { ops?: unknown };
+    body = JSON.parse(raw) as { ops?: unknown };
   } catch {
     return Response.json({ error: "invalid_json" }, { status: 400 });
   }
