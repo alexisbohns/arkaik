@@ -1,13 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useParams } from "next/navigation";
 import { PlusIcon } from "lucide-react";
 import { DeliveryBoard } from "@/components/delivery/DeliveryBoard";
 import { DeliveryFilterBar, type DeliveryPlatformFilter } from "@/components/delivery/DeliveryFilterBar";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
+import { PageError } from "@/components/layout/PageError";
+import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { SPECIES, type SpeciesId } from "@/lib/config/species";
 import {
   DEFAULT_COUNTED_STATUS_PRESET_ID,
@@ -19,6 +21,7 @@ import type { Node as DataNode } from "@/lib/data/types";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
+import { useProjectId } from "@/lib/hooks/useProjectId";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
@@ -47,8 +50,7 @@ const ALL_STATUS_COLUMNS: StatusId[] = [...STATUSES]
   .map((status) => status.id);
 
 export default function ProjectDeliveryPage() {
-  const params = useParams();
-  const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
+  const id = useProjectId();
 
   const [platformFilter, setPlatformFilter] = useState<DeliveryPlatformFilter>("all");
   const [speciesFilter, setSpeciesFilter] = useState<SpeciesId[]>(["view"]);
@@ -58,8 +60,8 @@ export default function ProjectDeliveryPage() {
 
   const { openNode } = useProjectPanels();
 
-  const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, applyMutations } = useNodes(id);
-  const { edges: dataEdges, loading: edgesLoading, syncEdges } = useEdges(id);
+  const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes, updateNode, addNode, applyMutations } = useNodes(id);
+  const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges, syncEdges } = useEdges(id);
   const intake = useAcceptanceIntake({
     projectId: id,
     nodes: dataNodes,
@@ -67,8 +69,8 @@ export default function ProjectDeliveryPage() {
     applyMutations,
     syncEdges,
   });
-  const { project: projectBundle } = useProject(id);
-  const { journal } = useJournal(id);
+  const { project: projectBundle, error: projectError, reload: reloadProject } = useProject(id);
+  const { journal, error: journalError, reload: reloadJournal } = useJournal(id);
   // The shell's scope, narrowed by this surface's own `?product=` when it has
   // one (#315). `projectBundle` is `undefined` until `useProject`'s effect
   // lands, and a scope resolved from nothing declares no products — which
@@ -152,10 +154,26 @@ export default function ProjectDeliveryPage() {
   }
 
   if (nodesLoading || edgesLoading) {
+    return <PageLoading label="delivery board" />;
+  }
+
+  // Before the empty state, never after (#362): a failed read leaves the board
+  // with zero items, and "No delivery items match. Pick a species, widen the
+  // platform filter, or create a node." then sends the reader to fiddle with
+  // filters that were never the problem.
+  const loadError = nodesError ?? edgesError ?? projectError ?? journalError;
+  if (loadError) {
     return (
-      <div className="h-full w-full flex items-center justify-center">
-        <span className="text-muted-foreground text-sm">Loading delivery board...</span>
-      </div>
+      <PageError
+        label="delivery board"
+        message={loadError}
+        onRetry={() => {
+          void reloadNodes();
+          void reloadEdges();
+          void reloadProject();
+          void reloadJournal();
+        }}
+      />
     );
   }
 
@@ -192,22 +210,22 @@ export default function ProjectDeliveryPage() {
           />
 
           {totalItems === 0 ? (
-            <div className="rounded-xl border border-dashed p-10 text-center">
-              <p className="text-sm text-muted-foreground">
-                {/* Advice the reader can act on: under a scoped product the platform
-                    filter is hidden (arity ≤ 1), so pointing at it is a dead end —
-                    the thing actually narrowing the board is the product. */}
-                {scope.productId === null
+            /* Advice the reader can act on: under a scoped product the platform
+               filter is hidden (arity ≤ 1), so pointing at it is a dead end —
+               the thing actually narrowing the board is the product. */
+            <EmptyState
+              message={
+                scope.productId === null
                   ? "No delivery items match. Pick a species, widen the platform filter, or create a node."
-                  : "No delivery items match. Pick a species, try another product, or create a node."}
-              </p>
-              <div className="mt-4">
+                  : "No delivery items match. Pick a species, try another product, or create a node."
+              }
+              action={
                 <Button size="sm" className="cursor-pointer" onClick={() => setNewNodeOpen(true)}>
                   <PlusIcon className="size-4" />
                   Create node
                 </Button>
-              </div>
-            </div>
+              }
+            />
           ) : (
             <DeliveryBoard
               columns={columns}

@@ -1,17 +1,19 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useParams } from "next/navigation";
 import { PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 import type { Node as DataNode } from "@/lib/data/types";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
+import { useProjectId } from "@/lib/hooks/useProjectId";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useProject } from "@/lib/hooks/useProject";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { DecisionLog } from "@/components/decisions/DecisionLog";
+import { PageError } from "@/components/layout/PageError";
+import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
 import { generateNodeId } from "@/lib/utils/id";
 import { withDecisionStatus } from "@/lib/utils/decision";
@@ -21,14 +23,13 @@ import { Button } from "@/components/ui/button";
 import { lifecycleStatusForDecision } from "@arkaik/schema";
 
 export default function ProjectDecisionsPage() {
-  const params = useParams();
-  const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
+  const id = useProjectId();
 
   const { openNode } = useProjectPanels();
-  const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode } = useNodes(id);
-  const { edges: dataEdges, loading: edgesLoading } = useEdges(id);
-  const { project: projectBundle } = useProject(id);
-  const { journal } = useJournal(id);
+  const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes, updateNode, addNode } = useNodes(id);
+  const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges } = useEdges(id);
+  const { project: projectBundle, error: projectError, reload: reloadProject } = useProject(id);
+  const { journal, error: journalError, reload: reloadJournal } = useJournal(id);
   const scope = useEffectiveProduct(id, projectBundle);
 
   const [newOpen, setNewOpen] = useState(false);
@@ -74,10 +75,25 @@ export default function ProjectDecisionsPage() {
   }
 
   if (nodesLoading || edgesLoading) {
+    return <PageLoading label="decisions" />;
+  }
+
+  // Before `DecisionLog`, never after (#362): fed an empty list it draws its own
+  // "no decisions" body under a header reading "0 total", which is a decision
+  // log that looks erased rather than unread.
+  const loadError = nodesError ?? edgesError ?? projectError ?? journalError;
+  if (loadError) {
     return (
-      <div className="h-full w-full flex items-center justify-center">
-        <span className="text-muted-foreground text-sm">Loading decisions...</span>
-      </div>
+      <PageError
+        label="decisions"
+        message={loadError}
+        onRetry={() => {
+          void reloadNodes();
+          void reloadEdges();
+          void reloadProject();
+          void reloadJournal();
+        }}
+      />
     );
   }
 

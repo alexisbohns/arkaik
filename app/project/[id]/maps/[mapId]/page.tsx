@@ -2,12 +2,15 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
-import { useParams } from "next/navigation";
 import { listMaps } from "@arkaik/schema";
 import { JourneyMap } from "@/components/maps/JourneyMap";
 import { SystemMap } from "@/components/maps/SystemMap";
+import { PageError } from "@/components/layout/PageError";
+import { PageLoading } from "@/components/layout/PageLoading";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useProject } from "@/lib/hooks/useProject";
+import { useProjectId, useRouteParam } from "@/lib/hooks/useProjectId";
 
 /**
  * Renderer shell: resolve the map id against the project's maps
@@ -15,11 +18,10 @@ import { useProject } from "@/lib/hooks/useProject";
  * unrenderable kinds get an inline card, never an error.
  */
 export default function ProjectMapPage() {
-  const params = useParams();
-  const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
-  const mapIdParam = Array.isArray(params.mapId) ? params.mapId[0] : params.mapId ?? "";
+  const id = useProjectId();
+  const mapIdParam = useRouteParam("mapId");
 
-  const { project: projectBundle, loading: projectLoading } = useProject(id);
+  const { project: projectBundle, loading: projectLoading, error: projectError, reload: reloadProject } = useProject(id);
 
   const definition = useMemo(() => {
     if (!projectBundle) return undefined;
@@ -27,22 +29,28 @@ export default function ProjectMapPage() {
   }, [mapIdParam, projectBundle]);
 
   if (projectLoading) {
-    return (
-      <div className="h-full w-full flex items-center justify-center">
-        <span className="text-muted-foreground text-sm">Loading map...</span>
-      </div>
-    );
+    return <PageLoading label="map" />;
+  }
+
+  // Before the "no map named X" card, never after (#362): a failed project read
+  // leaves `definition` undefined for every id, so a custom map the reader just
+  // saved would be reported as not existing — and the card's advice ("Browse
+  // maps") leads to a listing that failed the same read.
+  if (projectError) {
+    return <PageError label="map" message={projectError} onRetry={() => void reloadProject()} />;
   }
 
   if (!definition) {
     return (
       <div className="h-full w-full flex items-center justify-center p-6">
-        <div className="rounded-xl border border-dashed p-10 text-center">
-          <p className="text-sm text-muted-foreground">No map named &quot;{mapIdParam}&quot; in this project.</p>
-          <Button asChild size="sm" className="mt-4 cursor-pointer">
-            <Link href={`/project/${id}/maps`}>Browse maps</Link>
-          </Button>
-        </div>
+        <EmptyState
+          message={<>No map named &quot;{mapIdParam}&quot; in this project.</>}
+          action={
+            <Button asChild size="sm" className="cursor-pointer">
+              <Link href={`/project/${id}/maps`}>Browse maps</Link>
+            </Button>
+          }
+        />
       </div>
     );
   }
@@ -57,14 +65,18 @@ export default function ProjectMapPage() {
 
   return (
     <div className="h-full w-full flex items-center justify-center p-6">
-      <div className="rounded-xl border border-dashed p-10 text-center">
-        <p className="text-sm text-muted-foreground">
-          &quot;{definition.title}&quot; has an unrecognized kind (&quot;{definition.kind}&quot;) — preserved, but this app version cannot render it.
-        </p>
-        <Button asChild size="sm" variant="outline" className="mt-4 cursor-pointer">
-          <Link href={`/project/${id}/maps`}>Back to maps</Link>
-        </Button>
-      </div>
+      <EmptyState
+        message={
+          <>
+            &quot;{definition.title}&quot; has an unrecognized kind (&quot;{definition.kind}&quot;) — preserved, but this app version cannot render it.
+          </>
+        }
+        action={
+          <Button asChild size="sm" variant="outline" className="cursor-pointer">
+            <Link href={`/project/${id}/maps`}>Back to maps</Link>
+          </Button>
+        }
+      />
     </div>
   );
 }

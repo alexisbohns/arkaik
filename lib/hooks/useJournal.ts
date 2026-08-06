@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { JournalEvent } from "@/lib/data/types";
 import { getProvider } from "@/lib/data/provider-registry";
 
@@ -16,19 +16,37 @@ export function useJournal(projectId: string) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    getProvider()
+  /** Which load may write — see {@link useNodes} for why a token, not a flag. */
+  const loadToken = useRef(0);
+
+  /** The read — see {@link useNodes} for why the synchronous writes are not here. */
+  const runLoad = useCallback(() => {
+    const token = ++loadToken.current;
+    return getProvider()
       .getJournal(projectId)
       .then((j) => {
+        if (loadToken.current !== token) return;
         setJournal(j);
         setLoading(false);
       })
       .catch((err) => {
+        if (loadToken.current !== token) return;
         console.error("[useJournal] Failed to load journal:", err);
         setError(err instanceof Error ? err.message : "Failed to load journal");
         setLoading(false);
       });
   }, [projectId]);
 
-  return { journal, loading, error };
+  /** Re-run the read — the retry behind every `PageError` on a project surface. */
+  const reload = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    return runLoad();
+  }, [runLoad]);
+
+  useEffect(() => {
+    void runLoad();
+  }, [runLoad]);
+
+  return { journal, loading, error, reload };
 }

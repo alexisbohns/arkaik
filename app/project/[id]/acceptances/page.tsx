@@ -1,12 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useParams } from "next/navigation";
 import { PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 import type { Node as DataNode, NodeMetadata } from "@/lib/data/types";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
+import { useProjectId } from "@/lib/hooks/useProjectId";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useProject } from "@/lib/hooks/useProject";
 import { useJournal } from "@/lib/hooks/useJournal";
@@ -16,20 +16,21 @@ import { useAcceptanceFilters } from "@/components/acceptances/acceptance-filter
 import { filterAcceptances } from "@/lib/utils/acceptance-matrix";
 import { AcceptanceFilterBar } from "@/components/acceptances/AcceptanceFilterBar";
 import { AcceptanceMatrix } from "@/components/acceptances/AcceptanceMatrix";
+import { PageError } from "@/components/layout/PageError";
+import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
 import { NewAcceptanceForm, type NewAcceptanceFormData } from "@/components/panels/NewAcceptanceForm";
 import { generateNodeId } from "@/lib/utils/id";
 
 export default function ProjectAcceptancesPage() {
-  const params = useParams();
-  const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
+  const id = useProjectId();
 
   const { openNode } = useProjectPanels();
 
-  const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, applyMutations } = useNodes(id);
-  const { edges: dataEdges, loading: edgesLoading, syncEdges } = useEdges(id);
-  const { project: projectBundle } = useProject(id);
-  const { journal } = useJournal(id);
+  const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes, updateNode, addNode, applyMutations } = useNodes(id);
+  const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges, syncEdges } = useEdges(id);
+  const { project: projectBundle, error: projectError, reload: reloadProject } = useProject(id);
+  const { journal, error: journalError, reload: reloadJournal } = useJournal(id);
   const intake = useAcceptanceIntake({
     projectId: id,
     nodes: dataNodes,
@@ -150,10 +151,25 @@ export default function ProjectAcceptancesPage() {
   }
 
   if (nodesLoading || edgesLoading) {
+    return <PageLoading label="acceptances" />;
+  }
+
+  // Before the matrix, never after (#362): with no nodes the header reads
+  // "0 total · 0 shown" and the matrix draws its own empty body — a project
+  // whose entire acceptance coverage looks deleted rather than unread.
+  const loadError = nodesError ?? edgesError ?? projectError ?? journalError;
+  if (loadError) {
     return (
-      <div className="h-full w-full flex items-center justify-center">
-        <span className="text-muted-foreground text-sm">Loading acceptances...</span>
-      </div>
+      <PageError
+        label="acceptances"
+        message={loadError}
+        onRetry={() => {
+          void reloadNodes();
+          void reloadEdges();
+          void reloadProject();
+          void reloadJournal();
+        }}
+      />
     );
   }
 

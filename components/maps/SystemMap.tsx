@@ -14,6 +14,8 @@ import { Canvas } from "@/components/graph/Canvas";
 import { MapDisplayPopover } from "@/components/maps/MapDisplayPopover";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
+import { PageError } from "@/components/layout/PageError";
+import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -78,8 +80,8 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
   const [deleteEdgeTarget, setDeleteEdgeTarget] = useState<DataEdge | null>(null);
   const [deleteEdgeDialogOpen, setDeleteEdgeDialogOpen] = useState(false);
 
-  const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, applyMutations } = useNodes(projectId);
-  const { edges: dataEdges, loading: edgesLoading, addEdge, removeEdge, syncEdges } = useEdges(projectId);
+  const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes, updateNode, addNode, applyMutations } = useNodes(projectId);
+  const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges, addEdge, removeEdge, syncEdges } = useEdges(projectId);
   const intake = useAcceptanceIntake({
     projectId: projectId,
     nodes: dataNodes,
@@ -87,7 +89,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
     applyMutations,
     syncEdges,
   });
-  const { project: projectBundle, updateProject } = useProject(projectId);
+  const { project: projectBundle, error: projectError, reload: reloadProject, updateProject } = useProject(projectId);
   // The shell's scope (§ Decision 2), passed down to the canvas cards and to
   // every panel this map opens — never read from a global by the cards
   // themselves. It is also the map's *default* product: `mapScopedNodes` lets
@@ -98,7 +100,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
   // card draws whatever it was given.
   const scope = useEffectiveProduct(projectId, projectBundle);
   const productList = useProductList(scope);
-  const { journal } = useJournal(projectId);
+  const { journal, error: journalError, reload: reloadJournal } = useJournal(projectId);
 
   const nodesById = useMemo(() => new Map(dataNodes.map((node) => [node.id, node])), [dataNodes]);
 
@@ -283,10 +285,27 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
   );
 
   if (nodesLoading || edgesLoading) {
+    return <PageLoading label="graph" />;
+  }
+
+  // A canvas has no empty state to get wrong — which is exactly why it needs
+  // this (#362). An unread graph draws as a blank canvas with a working New
+  // node button: the most convincing "your product is gone" this app can
+  // produce, and the one place where the reader's instinct is to start
+  // redrawing it.
+  const loadError = nodesError ?? edgesError ?? projectError ?? journalError;
+  if (loadError) {
     return (
-      <div className="h-full w-full flex items-center justify-center">
-        <span className="text-muted-foreground text-sm">Loading graph...</span>
-      </div>
+      <PageError
+        label="graph"
+        message={loadError}
+        onRetry={() => {
+          void reloadNodes();
+          void reloadEdges();
+          void reloadProject();
+          void reloadJournal();
+        }}
+      />
     );
   }
 

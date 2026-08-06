@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 import { LibraryFilterBar, type LibraryDisplayMode, type LibrarySpeciesFilter } from "@/components/library/LibraryFilterBar";
@@ -10,13 +10,17 @@ import type { PlaylistPreviewItem } from "@/components/library/NodeCard";
 import { LibrarySelectionBar } from "@/components/library/LibrarySelectionBar";
 import { NodeTable, type NodeSortKey, type NodeSortState } from "@/components/library/NodeTable";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
+import { PageError } from "@/components/layout/PageError";
+import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
 import { StickyToolbar } from "@/components/layout/StickyToolbar";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { SPECIES, type SpeciesId } from "@/lib/config/species";
 import { STATUSES, STATUS_ORDER } from "@/lib/config/statuses";
 import type { Node as DataNode } from "@/lib/data/types";
 import { useEdges } from "@/lib/hooks/useEdges";
+import { useProjectId } from "@/lib/hooks/useProjectId";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
@@ -155,9 +159,8 @@ function sortNodes(
 }
 
 export default function ProjectLibraryPage() {
-  const params = useParams();
   const searchParams = useSearchParams();
-  const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
+  const id = useProjectId();
 
   const { openNode } = useProjectPanels();
   const [newNodeOpen, setNewNodeOpen] = useState(false);
@@ -171,8 +174,8 @@ export default function ProjectLibraryPage() {
 
   const speciesFilter = parseSpeciesFilter(searchParams.get("species"));
 
-  const { nodes: dataNodes, loading: nodesLoading, updateNode, addNode, applyMutations } = useNodes(id);
-  const { edges: dataEdges, loading: edgesLoading, syncEdges } = useEdges(id);
+  const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes, updateNode, addNode, applyMutations } = useNodes(id);
+  const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges, syncEdges } = useEdges(id);
   const intake = useAcceptanceIntake({
     projectId: id,
     nodes: dataNodes,
@@ -180,8 +183,8 @@ export default function ProjectLibraryPage() {
     applyMutations,
     syncEdges,
   });
-  const { project: projectBundle, updateProject } = useProject(id);
-  const { journal } = useJournal(id);
+  const { project: projectBundle, error: projectError, reload: reloadProject, updateProject } = useProject(id);
+  const { journal, error: journalError, reload: reloadJournal } = useJournal(id);
   // The shell's scope, narrowed by this surface's own `?product=` when it has
   // one (#315). With no products declared it resolves to every platform and
   // every node, so a project that has never heard of products gets exactly
@@ -434,10 +437,37 @@ export default function ProjectLibraryPage() {
   }
 
   if (nodesLoading || edgesLoading) {
+    return <PageLoading label="library" />;
+  }
+
+  /**
+   * The error gate sits BEFORE the empty state, never after (#362).
+   *
+   * A failed read leaves `dataNodes` at `[]` — the exact value an empty project
+   * has — so without this the surface below renders "No views yet. Create one
+   * to get started." over a library that may hold forty of them, and the Create
+   * button invites the reader to type them all back in.
+   *
+   * All four hooks are folded in because any one of them failing makes this
+   * page a half-truth, not just the node list: no journal is a blank History
+   * section in every panel, and no bundle is a product scope resolved from
+   * nothing — i.e. every platform and every node, silently. Retry re-runs all
+   * four rather than only the one that failed: a read is idempotent, and
+   * remembering which of four failed to re-run just that one buys nothing.
+   */
+  const loadError = nodesError ?? edgesError ?? projectError ?? journalError;
+  if (loadError) {
     return (
-      <div className="h-full w-full flex items-center justify-center">
-        <span className="text-muted-foreground text-sm">Loading library...</span>
-      </div>
+      <PageError
+        label="library"
+        message={loadError}
+        onRetry={() => {
+          void reloadNodes();
+          void reloadEdges();
+          void reloadProject();
+          void reloadJournal();
+        }}
+      />
     );
   }
 
@@ -490,22 +520,22 @@ export default function ProjectLibraryPage() {
 
             <div className="flex flex-col gap-4 px-4 pb-4 md:px-6 md:pb-6">
             {visibleNodes.length === 0 ? (
-              <div className="rounded-xl border border-dashed p-10 text-center">
-                {/* An empty list under a named scope is not an empty project.
-                    "No views yet" beside a library that holds forty of them
-                    reads as data loss; say which product is empty instead. */}
-                <p className="text-sm text-muted-foreground">
-                  {scope.productId === null
+              /* An empty list under a named scope is not an empty project.
+                 "No views yet" beside a library that holds forty of them
+                 reads as data loss; say which product is empty instead. */
+              <EmptyState
+                message={
+                  scope.productId === null
                     ? `No ${emptyLabel} yet. Create one to get started.`
-                    : `No ${emptyLabel} in ${scopeLabel}.`}
-                </p>
-                <div className="mt-4">
+                    : `No ${emptyLabel} in ${scopeLabel}.`
+                }
+                action={
                   <Button size="sm" className="cursor-pointer" onClick={() => setNewNodeOpen(true)}>
                     <PlusIcon className="size-4" />
                     Create node
                   </Button>
-                </div>
-              </div>
+                }
+              />
             ) : displayMode === "gallery" ? (
               <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {visibleNodes.map((node) => (

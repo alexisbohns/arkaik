@@ -2,22 +2,18 @@
 
 import { useMemo, type ReactNode } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import {
-  ExternalLinkIcon,
-  LightbulbIcon,
-  MessageSquareTextIcon,
-  PackageIcon,
-  ScaleIcon,
-  TagIcon,
-} from "lucide-react";
+import { ExternalLinkIcon, PackageIcon, ScaleIcon, TagIcon } from "lucide-react";
 import { orderEvents } from "@arkaik/schema";
+import { PageError } from "@/components/layout/PageError";
+import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
 import { DecisionStatusBadge } from "@/components/layout/DecisionStatusBadge";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
+import { useProjectId } from "@/lib/hooks/useProjectId";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import {
@@ -27,11 +23,12 @@ import {
   type Backlog,
   type Deliverable,
 } from "@/lib/utils/journal";
-import { describeJournalEvent, formatEventDate } from "@/components/journal/describe-event";
+import { formatEventDate } from "@/components/journal/describe-event";
+import { BacklogItemRow, FeedRow } from "@/components/journal/FeedRow";
 import type { DecisionStatusId } from "@/lib/config/decision-statuses";
 import { PLATFORM_LABELS } from "@/components/graph/nodes/node-styles";
 import { productScopeMetaLabel } from "@/lib/utils/product-scope";
-import type { Node, JournalEvent, ReleaseTaggedEvent } from "@/lib/data/types";
+import type { Node, ReleaseTaggedEvent } from "@/lib/data/types";
 
 /** One deliverable row: title, note, PR link, touched-node chips. */
 function DeliverableRow({ deliverable, nodesById }: { deliverable: Deliverable; nodesById: Map<string, Node> }) {
@@ -107,6 +104,12 @@ function ReleaseCard({
   );
 }
 
+/**
+ * The backlog column. The row itself now lives in `components/journal/FeedRow`
+ * beside the feed row it was a near-copy of (audit `factorization-4`) — what is
+ * left here is this page's own framing: the "nothing open" sentence, which the
+ * overview's `BacklogCard` words differently.
+ */
 function BacklogList({ backlog }: { backlog: Backlog }) {
   if (backlog.items.length === 0) {
     return <p className="text-sm text-muted-foreground">No open ideas or requests.</p>;
@@ -114,65 +117,11 @@ function BacklogList({ backlog }: { backlog: Backlog }) {
 
   return (
     <div className="flex flex-col gap-0.5">
-      {backlog.items.map((item) => {
-        const Icon = item.type === "idea.proposed" ? LightbulbIcon : MessageSquareTextIcon;
-
-        return (
-          <div key={item.id} className="flex items-start gap-2 rounded-md border px-3 py-2 text-sm">
-            <Icon className="size-3.5 shrink-0 text-muted-foreground mt-0.5" aria-hidden="true" />
-            <div className="flex-1 min-w-0">
-              <p className="truncate font-medium">{item.title}</p>
-              {item.description && <p className="text-xs text-muted-foreground truncate">{item.description}</p>}
-            </div>
-            <span className="text-xs text-muted-foreground shrink-0">
-              {item.type === "idea.proposed" ? "Idea" : "Request"}
-            </span>
-          </div>
-        );
-      })}
+      {backlog.items.map((item) => (
+        <BacklogItemRow key={item.id} item={item} />
+      ))}
     </div>
   );
-}
-
-/** A commitment or decision feed row. Clickable when `onOpen` is given (decisions deep-link to their node). */
-function FeedRow({
-  event,
-  nodesById,
-  trailing,
-  onOpen,
-}: {
-  event: JournalEvent;
-  nodesById: Map<string, Node>;
-  trailing?: ReactNode;
-  onOpen?: () => void;
-}) {
-  const { icon: Icon, text, meta } = describeJournalEvent(event, nodesById);
-
-  const content = (
-    <>
-      <Icon className="size-3.5 shrink-0 text-muted-foreground mt-0.5" aria-hidden="true" />
-      <div className="flex-1 min-w-0">
-        <p className="truncate">{text}</p>
-        {meta && <p className="text-xs text-muted-foreground truncate">{meta}</p>}
-      </div>
-      {trailing}
-      <span className="text-xs text-muted-foreground shrink-0">{formatEventDate(event.ts)}</span>
-    </>
-  );
-
-  if (onOpen) {
-    return (
-      <button
-        type="button"
-        onClick={onOpen}
-        className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm text-left w-full cursor-pointer hover:bg-muted/50 transition-colors"
-      >
-        {content}
-      </button>
-    );
-  }
-
-  return <div className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm">{content}</div>;
 }
 
 function SectionHeading({ children }: { children: ReactNode }) {
@@ -180,13 +129,12 @@ function SectionHeading({ children }: { children: ReactNode }) {
 }
 
 export default function ChangelogPage() {
-  const params = useParams();
-  const id = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
+  const id = useProjectId();
 
-  const { project: projectBundle, loading: projectLoading } = useProject(id);
-  const { nodes: dataNodes, loading: nodesLoading } = useNodes(id);
-  const { edges: dataEdges } = useEdges(id);
-  const { journal, loading: journalLoading } = useJournal(id);
+  const { project: projectBundle, loading: projectLoading, error: projectError, reload: reloadProject } = useProject(id);
+  const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes } = useNodes(id);
+  const { edges: dataEdges, error: edgesError, reload: reloadEdges } = useEdges(id);
+  const { journal, loading: journalLoading, error: journalError, reload: reloadJournal } = useJournal(id);
   const { openNode } = useProjectPanels();
   // Display only — the changelog itself stays unscoped; this just fills the
   // header's meta line with the same scope name every other surface shows.
@@ -230,10 +178,26 @@ export default function ChangelogPage() {
   );
 
   if (projectLoading || nodesLoading || journalLoading) {
+    return <PageLoading label="changelog" />;
+  }
+
+  // Before `isEmpty`, never after (#362): an unread journal is `[]`, which is
+  // the same thing a project that has never shipped has — and this page's empty
+  // sentence ("Releases and updates will appear here once history is recorded")
+  // would then quietly deny every release the project has ever tagged.
+  const loadError = projectError ?? nodesError ?? edgesError ?? journalError;
+  if (loadError) {
     return (
-      <div className="h-full w-full flex items-center justify-center">
-        <span className="text-muted-foreground text-sm">Loading changelog...</span>
-      </div>
+      <PageError
+        label="changelog"
+        message={loadError}
+        onRetry={() => {
+          void reloadProject();
+          void reloadNodes();
+          void reloadEdges();
+          void reloadJournal();
+        }}
+      />
     );
   }
 
@@ -260,11 +224,7 @@ export default function ChangelogPage() {
     >
       <div className="h-full overflow-auto p-4 md:p-6">
         {isEmpty ? (
-          <div className="rounded-xl border border-dashed p-10 text-center">
-            <p className="text-sm text-muted-foreground">
-              No journal yet. Releases and updates will appear here once history is recorded.
-            </p>
-          </div>
+          <EmptyState message="No journal yet. Releases and updates will appear here once history is recorded." />
         ) : (
           <div className="grid w-full gap-6 lg:grid-cols-2 items-start">
             {/* Design: the funnel — open backlog → commitments → decisions. */}

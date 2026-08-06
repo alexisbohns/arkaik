@@ -112,6 +112,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-refresh-cw { filter: url(#wob-refresh-cw); }
 .lucide-replace { filter: url(#wob-replace); }
 .lucide-rotate-ccw { filter: url(#wob-rotate-ccw); }
+.lucide-rotate-cw { filter: url(#wob-rotate-cw); }
 .lucide-route { filter: url(#wob-route); }
 .lucide-rows2 { filter: url(#wob-rows2); }
 .lucide-scale { filter: url(#wob-scale); }

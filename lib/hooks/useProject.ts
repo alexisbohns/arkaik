@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { Project, ProjectBundle } from "@/lib/data/types";
 import { getProvider } from "@/lib/data/provider-registry";
 
@@ -9,16 +9,34 @@ export function useProject(id: string) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    getProvider().getProject(id).then((p) => {
+  /** Which load may write — see {@link useNodes} for why a token, not a flag. */
+  const loadToken = useRef(0);
+
+  /** The read — see {@link useNodes} for why the synchronous writes are not here. */
+  const runLoad = useCallback(() => {
+    const token = ++loadToken.current;
+    return getProvider().getProject(id).then((p) => {
+      if (loadToken.current !== token) return;
       setProject(p);
       setLoading(false);
     }).catch((err) => {
+      if (loadToken.current !== token) return;
       console.error("[useProject] Failed to load project:", err);
       setError(err instanceof Error ? err.message : "Failed to load project");
       setLoading(false);
     });
   }, [id]);
+
+  /** Re-run the read — the retry behind every `PageError` on a project surface. */
+  const reload = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    return runLoad();
+  }, [runLoad]);
+
+  useEffect(() => {
+    void runLoad();
+  }, [runLoad]);
 
   const updateProject = useCallback(
     async (patch: Partial<Omit<Project, "id" | "created_at">>) => {
@@ -51,5 +69,5 @@ export function useProject(id: string) {
     [project],
   );
 
-  return { project, loading, error, updateProject };
+  return { project, loading, error, reload, updateProject };
 }
