@@ -172,7 +172,7 @@ function NodeFields({ node, onUpdate, allNodes, onNavigate }: NodeFieldsProps) {
           onInput={(e) => {
             setTitle(e.currentTarget.textContent || "");
           }}
-          className="text-lg font-semibold text-foreground outline-none empty:before:text-muted-foreground empty:before:content-['Node_title'] whitespace-pre-wrap break-words"
+          className="arkaik-keep-font-size text-lg font-semibold text-foreground outline-none empty:before:text-muted-foreground empty:before:content-['Node_title'] whitespace-pre-wrap break-words"
           aria-label="Node title (editable)"
         />
         <div
