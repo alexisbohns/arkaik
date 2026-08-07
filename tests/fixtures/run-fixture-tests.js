@@ -25,6 +25,7 @@ const CASES = [
   { file: "invalid-view-card-variant.json", expectValid: false },
   { file: "duplicate-ref-id.json", expectValid: false },
   { file: "invalid-kitchen-sink.json", expectValid: false },
+  { file: "malformed-junction-case.json", expectValid: false },
   { file: "journal-status-mismatch.json", expectValid: false },
   { file: "sidecar-valid/bundle.json", expectValid: true },
   { file: "sidecar-mismatch/bundle.json", expectValid: false },

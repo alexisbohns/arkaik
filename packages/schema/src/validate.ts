@@ -731,6 +731,100 @@ export function validateBundle(input: unknown): ValidationResult {
     }
   });
 
+  // --- Playlist entry shape checks ---
+  // The ref walks below only follow the refs they recognise, so a junction case
+  // written as `{label, view_id}` instead of `{label, entries: [...]}` reads as
+  // having no refs and passes silently — while the hosted validator, which
+  // parses against the zod schemas in ./playlist, refuses the whole bundle
+  // ("expected array, received undefined"). A local gate that is weaker than
+  // the landing gate is worse than no gate, because every wave of a bootstrap
+  // run is then measured against the wrong bar. These rules close that parity
+  // gap, and name the field path the server's message omits.
+  const PLAYLIST_ENTRY_TYPES = ["view", "flow", "condition", "junction"];
+  const checkPlaylistShape = (entries: unknown, flowId: string, path: string, depth = 0): void => {
+    if (depth > 50) return; // the ref walk reports `playlist-depth` for this
+    if (!Array.isArray(entries)) {
+      error(path, "playlist-entry-shape", `Flow ${flowId}: ${path} must be an array of playlist entries`);
+      return;
+    }
+    entries.forEach((raw, i) => {
+      const p = `${path}[${i}]`;
+      if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+        error(p, "playlist-entry-shape", `Flow ${flowId}: ${p} must be a playlist entry object`);
+        return;
+      }
+      const entry = raw as Record<string, unknown>;
+      const type = entry.type;
+      if (typeof type !== "string" || !PLAYLIST_ENTRY_TYPES.includes(type)) {
+        error(
+          `${p}.type`,
+          "playlist-entry-shape",
+          `Flow ${flowId}: ${p}.type must be one of ${PLAYLIST_ENTRY_TYPES.join(", ")} (got ${JSON.stringify(type)})`,
+        );
+        return;
+      }
+      if (type === "view") {
+        if (typeof entry.view_id !== "string") {
+          error(`${p}.view_id`, "playlist-entry-shape", `Flow ${flowId}: ${p} is a view entry with no view_id string`);
+        }
+      } else if (type === "flow") {
+        if (typeof entry.flow_id !== "string") {
+          error(`${p}.flow_id`, "playlist-entry-shape", `Flow ${flowId}: ${p} is a flow entry with no flow_id string`);
+        }
+      } else if (type === "condition") {
+        if (typeof entry.label !== "string") {
+          error(`${p}.label`, "playlist-entry-shape", `Flow ${flowId}: ${p} is a condition with no label string`);
+        }
+        for (const branch of ["if_true", "if_false"] as const) {
+          if (!Array.isArray(entry[branch])) {
+            error(
+              `${p}.${branch}`,
+              "playlist-entry-shape",
+              `Flow ${flowId}: ${p}.${branch} must be an array of playlist entries (both branches are required, use [] for an empty one)`,
+            );
+          } else {
+            checkPlaylistShape(entry[branch], flowId, `${p}.${branch}`, depth + 1);
+          }
+        }
+      } else {
+        if (typeof entry.label !== "string") {
+          error(`${p}.label`, "playlist-entry-shape", `Flow ${flowId}: ${p} is a junction with no label string`);
+        }
+        if (!Array.isArray(entry.cases)) {
+          error(`${p}.cases`, "playlist-entry-shape", `Flow ${flowId}: ${p}.cases must be an array of junction cases`);
+          return;
+        }
+        entry.cases.forEach((rawCase, j) => {
+          const cp = `${p}.cases[${j}]`;
+          if (typeof rawCase !== "object" || rawCase === null || Array.isArray(rawCase)) {
+            error(cp, "playlist-entry-shape", `Flow ${flowId}: ${cp} must be a junction case object`);
+            return;
+          }
+          const branch = rawCase as Record<string, unknown>;
+          if (typeof branch.label !== "string") {
+            error(`${cp}.label`, "playlist-entry-shape", `Flow ${flowId}: ${cp} has no label string`);
+          }
+          if (!Array.isArray(branch.entries)) {
+            error(
+              `${cp}.entries`,
+              "playlist-entry-shape",
+              `Flow ${flowId}: ${cp}.entries must be an array of playlist entries — a junction case holds its own entries, not a bare view_id/flow_id`,
+            );
+          } else {
+            checkPlaylistShape(branch.entries, flowId, `${cp}.entries`, depth + 1);
+          }
+        });
+      }
+    });
+  };
+
+  nodes.forEach((node, i) => {
+    const md = node.metadata as { playlist?: { entries?: PlaylistEntry[] } } | undefined;
+    if (node.species === "flow" && md?.playlist?.entries) {
+      checkPlaylistShape(md.playlist.entries, node.id as string, `nodes[${i}].metadata.playlist.entries`);
+    }
+  });
+
   // --- Playlist reference checks ---
   const collectPlaylistRefs = (entries: PlaylistEntry[], flowId: string, path: string, depth = 0): string[] => {
     if (depth > 50) {
@@ -738,7 +832,11 @@ export function validateBundle(input: unknown): ValidationResult {
       return [];
     }
     const refs: string[] = [];
+    if (!Array.isArray(entries)) return refs;
     for (const entry of entries) {
+      // Shape is reported separately above; the ref walk stays tolerant so one
+      // malformed entry never aborts the rest of the rule set.
+      if (typeof entry !== "object" || entry === null) continue;
       if (entry.type === "view") {
         if (!nodeIds.has(entry.view_id)) {
           error(path, "playlist-ref-exists", `Flow ${flowId}: playlist references non-existent view "${entry.view_id}"`);
@@ -793,7 +891,9 @@ export function validateBundle(input: unknown): ValidationResult {
       const nodeId = node.id as string;
       const subFlows: string[] = [];
       const findSubFlows = (entries: PlaylistEntry[]) => {
+        if (!Array.isArray(entries)) return;
         for (const e of entries) {
+          if (typeof e !== "object" || e === null) continue;
           if (e.type === "flow") subFlows.push(e.flow_id);
           if (e.type === "condition") {
             if (e.if_true) findSubFlows(e.if_true);
