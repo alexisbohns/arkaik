@@ -393,3 +393,21 @@
     }
   }
 }
+
+/* Mobile: never let focusing a field zoom the viewport.
+   iOS Safari auto-zooms when a focused control's font-size is under 16px,
+   which yanks the graph canvas out of frame and leaves it there. Bumping
+   touch-device fields to 16px removes the trigger without a
+   `maximum-scale=1` viewport meta, so deliberate pinch-zoom still works.
+   Unlayered on purpose: that beats Tailwind's `utilities` layer, so a
+   `text-sm` field still gets the bump. Fields that are already 16px or
+   larger opt out with `.arkaik-keep-font-size` — they never triggered the
+   zoom, and shrinking them would be a regression. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not(.arkaik-keep-font-size),
+  select:not(.arkaik-keep-font-size),
+  textarea:not(.arkaik-keep-font-size),
+  [contenteditable]:not([contenteditable="false"]):not(.arkaik-keep-font-size) {
+    font-size: 1rem;
+  }
+}
