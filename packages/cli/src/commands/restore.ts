@@ -1,5 +1,5 @@
 /**
- * `arkaik restore [--dry-run] [--allow-history-loss] [--api <base-url>] [path]`
+ * `arkaik restore [--dry-run] [--allow-history-loss] [--allow-deletions] [--api <base-url>] [path]`
  *
  * Land a locally-built bundle — history included — on the hosted project
  * this repo is linked to (docs/superpowers/specs/2026-08-04-bootstrap-method-
@@ -44,6 +44,17 @@
  *    history is a valid, silent input on every other layer — see the guard
  *    below) — `--allow-history-loss` is the deliberate escape hatch when a
  *    shrink really is intended;
+ *  - the same export is diffed BY ID against the outbound snapshot, and any
+ *    hosted node or edge the local bundle does not carry refuses the run
+ *    (`--allow-deletions` is that guard's escape hatch). The count-based
+ *    history guard above structurally cannot see this class: a hosted
+ *    project that has drifted ahead of the committed cache (someone edited
+ *    it in the app) yields a delta like `nodes 173 -> 448 (+276 -1 ~172)`,
+ *    where the journal grew, every count rose, and the single `-1` is a
+ *    node the maintainer deliberately deleted being resurrected — with its
+ *    replacement and that replacement's edges dropped in exchange. In a
+ *    method whose first principle is "bootstrap never deletes", any negative
+ *    in a restore delta is a contradiction, not a number in a row;
  *  - `--dry-run` skips the backup entirely and on purpose (see the `dryRun`
  *    branch below) — nothing destructive happens in that mode, so there is
  *    nothing to back up, and writing one anyway would clutter
@@ -57,9 +68,12 @@
  *     write does (`classifyDryRun`, Task 11), so a stale version must
  *     produce the same 412 in preview as it would for real;
  *  3. real restore only: GET the export, check its journal isn't shorter
- *     than the outbound one (unless `--allow-history-loss`), then write the
- *     export to `docs/arkaik/.backups/<ts>-bundle.json` and abort on ANY
- *     failure — see above;
+ *     than the outbound one (unless `--allow-history-loss`) and that the
+ *     outbound snapshot drops none of its nodes or edges (unless
+ *     `--allow-deletions`), then write the export to
+ *     `docs/arkaik/.backups/<ts>-bundle.json` and abort on ANY failure — see
+ *     above. Both guards run BEFORE the backup is written: a refused run
+ *     should leave no trace in `.backups/`, exactly like a dry run;
  *  4. assemble the outbound bundle: the local `bundle.json` plus its journal,
  *     via `loadJournalEvents` (embedded journal wins over the `journal.jsonl`
  *     sidecar, the same precedence `arkaik validate` uses — load-bearing here
@@ -134,6 +148,13 @@ Options:
                         means a missing/gitignored journal.jsonl or a bundle
                         from the wrong directory, not an intended history
                         rewrite.
+  --allow-deletions     Proceed even though the local bundle drops nodes or
+                        edges the hosted project currently has. Without this
+                        flag, that refuses outright and names the ids — it
+                        usually means the hosted project moved ahead of your
+                        local copy (edited in the app), not an intended
+                        deletion. Undoing a restore from a backup is the
+                        common case where it IS intended.
   --api <base-url>      Override the remote from docs/arkaik/arkaik.json
                         (also overridable with $ARKAIK_URL).
   -h, --help            Show this help.
@@ -155,6 +176,8 @@ export interface RunRestoreOptions {
   dryRun?: boolean;
   /** Proceed even when the outbound journal is shorter than the hosted one. Default: false. */
   allowHistoryLoss?: boolean;
+  /** Proceed even when the outbound snapshot drops hosted nodes or edges. Default: false. */
+  allowDeletions?: boolean;
   /** Hosted API base URL, overriding $ARKAIK_URL and the link file's `remote`. */
   apiBase?: string;
   /** Base directory the link file / bundle path resolve against (default: process.cwd()). */
@@ -348,11 +371,66 @@ function writeBackupFile(filePath: string, content: string): void {
   }
 }
 
+/**
+ * Ids present in `before` but absent from `after`, matched by `id` — the same
+ * key the server's own delta matches on. Entries carrying no string id are
+ * skipped on both sides: they cannot be matched either way, and the server
+ * already accounts for them separately as `nodesMalformed`/`edgesMalformed`.
+ */
+function removedIds(before: unknown[], after: unknown[]): string[] {
+  const kept = new Set<string>();
+  for (const item of after) {
+    const id = (item as { id?: unknown } | null)?.id;
+    if (typeof id === "string") kept.add(id);
+  }
+  const removed: string[] = [];
+  for (const item of before) {
+    const id = (item as { id?: unknown } | null)?.id;
+    if (typeof id === "string" && !kept.has(id)) removed.push(id);
+  }
+  return removed;
+}
+
+/** At most `limit` ids, with an explicit "+N more" rather than a silent truncation. */
+function listIds(ids: string[], limit = 10): string {
+  if (ids.length <= limit) return ids.join(", ");
+  return `${ids.slice(0, limit).join(", ")}, and ${ids.length - limit} more`;
+}
+
+/**
+ * The refusal message for a restore that would drop hosted entities. It names
+ * the ids because a bare count is what made this class of loss cost a
+ * 20-minute investigation instead of being self-evident: `-1 node` says
+ * nothing, `-1 node (DM-bounce)` says everything.
+ */
+function describeDeletions(removedNodes: string[], removedEdges: string[], bundlePath: string): string {
+  const parts: string[] = [];
+  if (removedNodes.length > 0) parts.push(`${removedNodes.length} node${removedNodes.length === 1 ? "" : "s"}`);
+  if (removedEdges.length > 0) parts.push(`${removedEdges.length} edge${removedEdges.length === 1 ? "" : "s"}`);
+  const lines = [
+    `This restore would DELETE ${parts.join(" and ")} the hosted project currently has and ${bundlePath} does not. Nothing was sent.`,
+  ];
+  if (removedNodes.length > 0) lines.push(`  nodes: ${listIds(removedNodes)}`);
+  if (removedEdges.length > 0) lines.push(`  edges: ${listIds(removedEdges)}`);
+  lines.push(
+    `Usually this means the hosted project moved ahead of your local copy (someone edited it in the app) ` +
+      `and the local bundle is the stale side — not that you meant to delete anything. ` +
+      `Adopt the hosted state locally first: \`GET /api/graph/projects/<id>/export\` is what answers ` +
+      `"what am I about to overwrite".`,
+  );
+  lines.push(
+    `If the deletions really are intended — undoing an earlier restore from a backup legitimately removes ` +
+      `what that restore added — re-run with --allow-deletions.`,
+  );
+  return lines.join("\n");
+}
+
 export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRestoreResult> {
   const cwd = options.cwd ?? process.cwd();
   const env = options.env ?? process.env;
   const dryRun = options.dryRun ?? false;
   const allowHistoryLoss = options.allowHistoryLoss ?? false;
+  const allowDeletions = options.allowDeletions ?? false;
   const httpClient = options.httpClient ?? DEFAULT_HTTP_CLIENT;
 
   const linkPath = join(cwd, LINK_FILE);
@@ -488,6 +566,19 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
     );
   }
 
+  // ── Deletion guard ───────────────────────────────────────────────────────
+  // The history guard above compares COUNTS, so it cannot see a deletion that
+  // arrives alongside a much larger addition — the shape a brownfield
+  // bootstrap always has. Diffing the export BY ID is what makes it visible,
+  // and the export is already in hand for the backup, so this costs no extra
+  // round-trip. Runs before the backup write for the same reason the history
+  // guard does: a refused run should leave nothing behind in `.backups/`.
+  const removedNodes = removedIds(exportedBundle.nodes, Array.isArray(local.nodes) ? local.nodes : []);
+  const removedEdges = removedIds(exportedBundle.edges, Array.isArray(local.edges) ? local.edges : []);
+  if ((removedNodes.length > 0 || removedEdges.length > 0) && !allowDeletions) {
+    return fatalResult(dryRun, describeDeletions(removedNodes, removedEdges, bundlePath));
+  }
+
   // Anchored to the LINK FILE's directory, not `bundlePath`'s — the backup
   // is a pre-image of the HOSTED project (identified by the link file), not
   // of wherever the local input file happens to live. See the module doc
@@ -557,6 +648,25 @@ function printDelta(delta: DeltaSummary | undefined): void {
       delta.eventsMalformed ? `, ${delta.eventsMalformed} malformed` : ""
     })`,
   );
+
+  // A deletion is the one number in these rows that contradicts the method's
+  // own first principle, and it is the easiest to miss: it renders as a `-1`
+  // in a line whose every other figure is large and rising. Call it out in
+  // words. This is also the ONLY place a dry run can surface it — that branch
+  // never fetches the export, so it has no ids of its own to diff, only the
+  // server's counts.
+  const count = (k: string): number => (typeof delta[k] === "number" ? (delta[k] as number) : 0);
+  const nodesRemoved = count("nodesRemoved");
+  const edgesRemoved = count("edgesRemoved");
+  if (nodesRemoved > 0 || edgesRemoved > 0) {
+    const parts: string[] = [];
+    if (nodesRemoved > 0) parts.push(`${nodesRemoved} node${nodesRemoved === 1 ? "" : "s"}`);
+    if (edgesRemoved > 0) parts.push(`${edgesRemoved} edge${edgesRemoved === 1 ? "" : "s"}`);
+    console.log(
+      `  WARNING: this DELETES ${parts.join(" and ")} from the hosted project. ` +
+        `Bootstrap never deletes — check the hosted project has not moved ahead of your local bundle.`,
+    );
+  }
 }
 
 /**
@@ -610,6 +720,7 @@ export function reportRestore(result: RunRestoreResult): void {
 export function runRestoreCli(argv: string[]): void {
   let dryRun = false;
   let allowHistoryLoss = false;
+  let allowDeletions = false;
   let apiBase: string | undefined;
   const positionals: string[] = [];
 
@@ -623,6 +734,8 @@ export function runRestoreCli(argv: string[]): void {
       dryRun = true;
     } else if (arg === "--allow-history-loss") {
       allowHistoryLoss = true;
+    } else if (arg === "--allow-deletions") {
+      allowDeletions = true;
     } else if (arg === "--api") {
       const value = argv[++i];
       if (value === undefined) fail(`Missing value for --api\n\n${USAGE}`);
@@ -636,7 +749,7 @@ export function runRestoreCli(argv: string[]): void {
 
   if (positionals.length > 1) fail(`Unexpected argument(s): ${positionals.slice(1).join(" ")}\n\n${USAGE}`);
 
-  runRestore({ path: positionals[0], dryRun, allowHistoryLoss, apiBase })
+  runRestore({ path: positionals[0], dryRun, allowHistoryLoss, allowDeletions, apiBase })
     .then((result) => reportRestore(result))
     .catch((e: unknown) => fail(`FATAL: ${(e as Error).message}`));
 }
