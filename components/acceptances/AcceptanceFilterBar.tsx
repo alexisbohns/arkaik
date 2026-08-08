@@ -9,6 +9,7 @@ import { VALUES } from "@/lib/config/values";
 import { usePlatformFilterControl } from "@/lib/hooks/usePlatformFilterControl";
 import { SearchInput } from "@/components/ui/search-input";
 import { ProductOverrideSelector } from "@/components/layout/ProductOverrideSelector";
+import { Toolbar, ToolbarGroup } from "@/components/layout/Toolbar";
 import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -83,81 +84,88 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectI
   }, [searchDraft, onChange]);
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-3 md:p-4">
-      <ProductOverrideSelector projectId={projectId} project={project} />
-      <SearchInput
-        value={searchDraft}
-        onChange={setSearchDraft}
-        placeholder="Search acceptances…"
-        aria-label="Search acceptances"
-        className="min-w-[12rem] flex-1"
-      />
+    <Toolbar>
+      <ToolbarGroup className="w-full flex-1 md:max-w-sm">
+        <ProductOverrideSelector projectId={projectId} project={project} />
+        <SearchInput
+          value={searchDraft}
+          onChange={setSearchDraft}
+          placeholder="Search acceptances…"
+          aria-label="Search acceptances"
+          className="min-w-0 flex-1"
+        />
+      </ToolbarGroup>
 
-      {showPlatformFilter && (
-        <Select value={filters.platform} onValueChange={(v) => onChange({ ...filters, platform: v === ALL ? "all" : (v as AcceptanceFilters["platform"]) })}>
-          <SelectTrigger className="w-[8rem]" aria-label="Platform"><SelectValue placeholder="Platforms" /></SelectTrigger>
+      {/* Seven controls is a lot for one band, so the four "narrow it" menus and
+          the two toggles stay one group: they wrap together against the right
+          edge instead of each finding its own line. */}
+      <ToolbarGroup>
+        {showPlatformFilter && (
+          <Select value={filters.platform} onValueChange={(v) => onChange({ ...filters, platform: v === ALL ? "all" : (v as AcceptanceFilters["platform"]) })}>
+            <SelectTrigger className="w-[8rem]" aria-label="Platform"><SelectValue placeholder="Platforms" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>Platforms</SelectItem>
+              {platformOptions.map((p) => {
+                const Icon = PLATFORM_ICONS[p.id];
+                return <SelectItem key={p.id} value={p.id}><span className="inline-flex items-center gap-2"><Icon className="size-3.5" />{p.label}</span></SelectItem>;
+              })}
+            </SelectContent>
+          </Select>
+        )}
+
+        <Select value={filters.status} onValueChange={(v) => onChange({ ...filters, status: v === ALL ? "all" : (v as AcceptanceFilters["status"]) })}>
+          <SelectTrigger className="w-[9rem]" aria-label="Status"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL}>Platforms</SelectItem>
-            {platformOptions.map((p) => {
-              const Icon = PLATFORM_ICONS[p.id];
-              return <SelectItem key={p.id} value={p.id}><span className="inline-flex items-center gap-2"><Icon className="size-3.5" />{p.label}</span></SelectItem>;
+            <SelectItem value={ALL}>All statuses</SelectItem>
+            <StatusSelectItems />
+          </SelectContent>
+        </Select>
+
+        <Select value={filters.value} onValueChange={(v) => onChange({ ...filters, value: v === ALL ? "all" : (v as AcceptanceFilters["value"]) })}>
+          <SelectTrigger className="w-[11rem]" aria-label="Value"><SelectValue placeholder="Value" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>All values</SelectItem>
+            {VALUES.map((v) => {
+              const Icon = VALUE_ICON_COMPONENTS[v.id];
+              return <SelectItem key={v.id} value={v.id}><span className="inline-flex items-center gap-2"><Icon className="size-3.5" />{v.label}</span></SelectItem>;
             })}
           </SelectContent>
         </Select>
-      )}
 
-      <Select value={filters.status} onValueChange={(v) => onChange({ ...filters, status: v === ALL ? "all" : (v as AcceptanceFilters["status"]) })}>
-        <SelectTrigger className="w-[9rem]" aria-label="Status"><SelectValue placeholder="Status" /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ALL}>All statuses</SelectItem>
-          <StatusSelectItems />
-        </SelectContent>
-      </Select>
+        <Select value={filters.anchor} onValueChange={(v) => onChange({ ...filters, anchor: v === ALL ? "all" : v })}>
+          <SelectTrigger className="w-[11rem]" aria-label="Anchor"><SelectValue placeholder="Anchor" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>All anchors</SelectItem>
+            {/* The intake inbox: ideas filed before their flows and views exist.
+                First, not sorted in among the anchors, because it is the one entry
+                here that names an absence rather than a node. */}
+            <SelectItem value={UNANCHORED_FILTER}>Unanchored (intake)</SelectItem>
+            {anchorOptions.map((a) => <SelectItem key={a.id} value={a.id}>{a.title}</SelectItem>)}
+          </SelectContent>
+        </Select>
 
-      <Select value={filters.value} onValueChange={(v) => onChange({ ...filters, value: v === ALL ? "all" : (v as AcceptanceFilters["value"]) })}>
-        <SelectTrigger className="w-[11rem]" aria-label="Value"><SelectValue placeholder="Value" /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ALL}>All values</SelectItem>
-          {VALUES.map((v) => {
-            const Icon = VALUE_ICON_COMPONENTS[v.id];
-            return <SelectItem key={v.id} value={v.id}><span className="inline-flex items-center gap-2"><Icon className="size-3.5" />{v.label}</span></SelectItem>;
-          })}
-        </SelectContent>
-      </Select>
-
-      <Select value={filters.anchor} onValueChange={(v) => onChange({ ...filters, anchor: v === ALL ? "all" : v })}>
-        <SelectTrigger className="w-[11rem]" aria-label="Anchor"><SelectValue placeholder="Anchor" /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ALL}>All anchors</SelectItem>
-          {/* The intake inbox: ideas filed before their flows and views exist.
-              First, not sorted in among the anchors, because it is the one entry
-              here that names an absence rather than a node. */}
-          <SelectItem value={UNANCHORED_FILTER}>Unanchored (intake)</SelectItem>
-          {anchorOptions.map((a) => <SelectItem key={a.id} value={a.id}>{a.title}</SelectItem>)}
-        </SelectContent>
-      </Select>
-
-      <Button
-        type="button"
-        variant={filters.parityGap ? "default" : "outline"}
-        aria-pressed={filters.parityGap}
-        onClick={() => onChange({ ...filters, parityGap: !filters.parityGap })}
-        className={filters.parityGap ? "bg-amber-500 text-white hover:bg-amber-500/90" : "text-amber-600 hover:text-amber-700"}
-      >
-        <TriangleAlertIcon className="size-4" /> Parity gaps
-      </Button>
-
-      {isFiltered && (
         <Button
           type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => { setSearchDraft(""); onChange(EMPTY_FILTERS); }}
-          aria-label="Clear filters"
+          variant={filters.parityGap ? "default" : "outline"}
+          aria-pressed={filters.parityGap}
+          onClick={() => onChange({ ...filters, parityGap: !filters.parityGap })}
+          className={filters.parityGap ? "bg-amber-500 text-white hover:bg-amber-500/90" : "text-amber-600 hover:text-amber-700"}
         >
-          <XIcon className="size-4" /> Clear
+          <TriangleAlertIcon className="size-4" /> Parity gaps
         </Button>
-      )}
-    </div>
+
+        {isFiltered && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => { setSearchDraft(""); onChange(EMPTY_FILTERS); }}
+            aria-label="Clear filters"
+          >
+            <XIcon className="size-4" /> Clear
+          </Button>
+        )}
+      </ToolbarGroup>
+    </Toolbar>
   );
 }

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { PlusIcon } from "lucide-react";
 import { DeliveryBoard } from "@/components/delivery/DeliveryBoard";
 import { DeliveryFilterBar, type DeliveryPlatformFilter } from "@/components/delivery/DeliveryFilterBar";
+import { PageSurface } from "@/components/layout/PageSurface";
 import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeForm";
 import { PageError } from "@/components/layout/PageError";
 import { PageLoading } from "@/components/layout/PageLoading";
@@ -195,20 +196,31 @@ export default function ProjectDeliveryPage() {
         onCreateNode={handleCreateNodeFromPanel}
         intake={intake}
       >
-        <div className="flex h-full flex-col gap-4 overflow-auto p-4 md:p-6">
-          <DeliveryFilterBar
-            platform={platformFilter}
-            species={speciesFilter}
-            showAllStatuses={showAllStatuses}
-            search={search}
-            onPlatformChange={setPlatformFilter}
-            onToggleSpecies={handleToggleSpecies}
-            onShowAllStatusesChange={setShowAllStatuses}
-            onSearchChange={setSearch}
-            projectId={id}
-            project={projectBundle}
-          />
-
+        <PageSurface
+          // The board is the same filling-pane case as the Library's table, and
+          // was broken the same way: it asks for `min-h-0 flex-1`, so inside a
+          // scrolling column — whose height is whatever its content needs — it
+          // was handed no height to fit into. Its columns therefore never
+          // overflowed, never scrolled, and the horizontal scrollport it *does*
+          // own swallowed the vertical wheel under `overscroll-behavior:
+          // contain`. Given a bounded pane it fits, and each column scrolls.
+          fill={totalItems > 0}
+          contentClassName={totalItems > 0 ? "flex p-4 md:p-6" : "flex flex-col gap-4"}
+          toolbar={
+            <DeliveryFilterBar
+              platform={platformFilter}
+              species={speciesFilter}
+              showAllStatuses={showAllStatuses}
+              search={search}
+              onPlatformChange={setPlatformFilter}
+              onToggleSpecies={handleToggleSpecies}
+              onShowAllStatusesChange={setShowAllStatuses}
+              onSearchChange={setSearch}
+              projectId={id}
+              project={projectBundle}
+            />
+          }
+        >
           {totalItems === 0 ? (
             /* Advice the reader can act on: under a scoped product the platform
                filter is hidden (arity ≤ 1), so pointing at it is a dead end —
@@ -234,7 +246,7 @@ export default function ProjectDeliveryPage() {
               onSelectItem={handleSelectItem}
             />
           )}
-        </div>
+        </PageSurface>
       </PageShell>
 
       <NewNodeForm

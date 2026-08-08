@@ -13,7 +13,7 @@ import { NewNodeForm, type NewNodeFormData } from "@/components/panels/NewNodeFo
 import { PageError } from "@/components/layout/PageError";
 import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
-import { StickyToolbar } from "@/components/layout/StickyToolbar";
+import { PageSurface } from "@/components/layout/PageSurface";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SPECIES, type SpeciesId } from "@/lib/config/species";
@@ -249,6 +249,14 @@ export default function ProjectLibraryPage() {
    * already treat selection as general: they know nothing about products.
    */
   const selectionEnabled = productList.length > 0;
+
+  /**
+   * The directory view hands the whole pane to the table, which then owns its own
+   * scrolling and keeps its column labels pinned. The gallery stays a scrolling
+   * column of cards — and so does an empty directory, because `EmptyState` is a
+   * message that wants padding around it, not a pane to fill.
+   */
+  const fillsPane = displayMode === "directory" && visibleNodes.length > 0;
 
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
   const [moving, setMoving] = useState(false);
@@ -489,9 +497,11 @@ export default function ProjectLibraryPage() {
         onCreateNode={handleCreateNodeFromPanel}
         intake={intake}
       >
-        <div className="h-full overflow-auto">
-          <div className="w-full">
-            <StickyToolbar>
+        <PageSurface
+          fill={fillsPane}
+          contentClassName={fillsPane ? undefined : "flex flex-col gap-4"}
+          toolbar={
+            <>
               <LibraryFilterBar
                 search={search}
                 displayMode={displayMode}
@@ -516,68 +526,70 @@ export default function ProjectLibraryPage() {
                   busy={moving}
                 />
               )}
-            </StickyToolbar>
-
-            <div className="flex flex-col gap-4 px-4 pb-4 md:px-6 md:pb-6">
-            {visibleNodes.length === 0 ? (
-              /* An empty list under a named scope is not an empty project.
-                 "No views yet" beside a library that holds forty of them
-                 reads as data loss; say which product is empty instead. */
-              <EmptyState
-                message={
-                  scope.productId === null
-                    ? `No ${emptyLabel} yet. Create one to get started.`
-                    : `No ${emptyLabel} in ${scopeLabel}.`
-                }
-                action={
-                  <Button size="sm" className="cursor-pointer" onClick={() => setNewNodeOpen(true)}>
-                    <PlusIcon className="size-4" />
-                    Create node
-                  </Button>
-                }
-              />
-            ) : displayMode === "gallery" ? (
-              <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {visibleNodes.map((node) => (
-                  <li key={node.id}>
-                    <NodeCard
-                      node={node}
-                      speciesLabel={SPECIES_LABEL_BY_ID[node.species] ?? node.species}
-                      speciesDescription={SPECIES_DESCRIPTION_BY_ID[node.species]}
-                      viewPlatformStatuses={node.species === "view" ? getEffectivePlatformStatuses(node, dataNodes, dataEdges) : undefined}
-                      flowRollup={node.species === "flow" ? flowRollupByNodeId[node.id] : undefined}
-                      playlistPreview={playlistPreviewForNode(node, nodesById)}
-                      usedInCount={usedInByNodeId[node.id] ?? 0}
-                      scope={scope}
-                      productLabels={productLabelsByNodeId?.[node.id]}
-                      selected={selectionEnabled ? selectedIds.has(node.id) : undefined}
-                      onToggleSelected={toggleSelected}
-                      onClick={() => handleSelectNode(node)}
-                    />
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="rounded-xl border bg-card p-3">
-                <NodeTable
-                  nodes={visibleNodes}
-                  sort={sort}
-                  speciesLabelById={SPECIES_LABEL_BY_ID}
-                  statusLabelById={STATUS_LABEL_BY_ID}
-                  usedInByNodeId={usedInByNodeId}
-                  scope={scope}
-                  productLabelsByNodeId={productLabelsByNodeId}
-                  selectedIds={selectionEnabled ? selectedIds : undefined}
-                  onToggleSelected={toggleSelected}
-                  onToggleAll={toggleAllVisible}
-                  onSortChange={handleSortChange}
-                  onSelectNode={handleSelectNode}
-                />
-              </div>
-            )}
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          {visibleNodes.length === 0 ? (
+            /* An empty list under a named scope is not an empty project.
+               "No views yet" beside a library that holds forty of them
+               reads as data loss; say which product is empty instead. */
+            <EmptyState
+              message={
+                scope.productId === null
+                  ? `No ${emptyLabel} yet. Create one to get started.`
+                  : `No ${emptyLabel} in ${scopeLabel}.`
+              }
+              action={
+                <Button size="sm" className="cursor-pointer" onClick={() => setNewNodeOpen(true)}>
+                  <PlusIcon className="size-4" />
+                  Create node
+                </Button>
+              }
+            />
+          ) : displayMode === "gallery" ? (
+            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {visibleNodes.map((node) => (
+                <li key={node.id}>
+                  <NodeCard
+                    node={node}
+                    speciesLabel={SPECIES_LABEL_BY_ID[node.species] ?? node.species}
+                    speciesDescription={SPECIES_DESCRIPTION_BY_ID[node.species]}
+                    viewPlatformStatuses={node.species === "view" ? getEffectivePlatformStatuses(node, dataNodes, dataEdges) : undefined}
+                    flowRollup={node.species === "flow" ? flowRollupByNodeId[node.id] : undefined}
+                    playlistPreview={playlistPreviewForNode(node, nodesById)}
+                    usedInCount={usedInByNodeId[node.id] ?? 0}
+                    scope={scope}
+                    productLabels={productLabelsByNodeId?.[node.id]}
+                    selected={selectionEnabled ? selectedIds.has(node.id) : undefined}
+                    onToggleSelected={toggleSelected}
+                    onClick={() => handleSelectNode(node)}
+                  />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            /* No card around it, and no padding: the table *is* the surface
+               here, so it runs to the panel's edges under the toolbar's
+               hairline. The bordered box it used to sit in drew a second edge a
+               few pixels inside the first, and the gap between them was a strip
+               where the wheel scrolled the column instead of the rows. */
+            <NodeTable
+              fill
+              nodes={visibleNodes}
+              sort={sort}
+              speciesLabelById={SPECIES_LABEL_BY_ID}
+              statusLabelById={STATUS_LABEL_BY_ID}
+              usedInByNodeId={usedInByNodeId}
+              scope={scope}
+              productLabelsByNodeId={productLabelsByNodeId}
+              selectedIds={selectionEnabled ? selectedIds : undefined}
+              onToggleSelected={toggleSelected}
+              onToggleAll={toggleAllVisible}
+              onSortChange={handleSortChange}
+              onSelectNode={handleSelectNode}
+            />
+          )}
+        </PageSurface>
       </PageShell>
 
       <NewNodeForm

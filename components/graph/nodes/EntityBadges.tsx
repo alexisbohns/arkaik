@@ -49,7 +49,7 @@ interface EntityIdProps {
 
 export function EntityId({ id }: EntityIdProps) {
   return (
-    <span className="rounded bg-muted px-2 py-1 font-mono text-[11px] text-muted-foreground">
+    <span className="rounded bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
       {id}
     </span>
   );

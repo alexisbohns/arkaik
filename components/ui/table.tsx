@@ -2,9 +2,42 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-function Table({ className, ...props }: React.ComponentProps<"table">) {
+interface TableProps extends React.ComponentProps<"table"> {
+  /**
+   * Classes for the scroll container around the table, not the table itself.
+   *
+   * Pass `"h-full overflow-auto"` to make the table own a scrollport of its own
+   * — the filling-pane case, where the table is the whole surface and its header
+   * is `sticky`. Left alone, the table is a block in a scrolling column and the
+   * column scrolls it.
+   */
+  containerClassName?: string;
+}
+
+function Table({ className, containerClassName, ...props }: TableProps) {
   return (
-    <div data-slot="table-container" className="relative w-full overflow-x-auto">
+    <div
+      data-slot="table-container"
+      // `overflow-y-hidden` is not decoration — it is the fix for a wheel trap,
+      // and it takes two rules to explain.
+      //
+      // First: `overflow-x-auto` alone leaves `overflow-y` at `visible`, and CSS
+      // *computes that to `auto`*, because `visible` cannot pair with a
+      // non-visible value on the other axis. So this div was silently a vertical
+      // scrollport too — one whose height is `auto`, i.e. one with nothing to
+      // scroll. Harmless on its own, because a wheel over an exhausted scroller
+      // chains to its ancestor.
+      //
+      // Second: `globals.css` gives every scroll container — this one by
+      // `data-slot` — `overscroll-behavior: contain`, which exists to stop swipes
+      // becoming browser navigation. Containment also blocks that chaining. The
+      // two together meant a wheel anywhere over a table stopped dead, and the
+      // surface only scrolled from the strip of padding beside it.
+      //
+      // Naming the axis keeps the horizontal scroll wide tables need, and leaves
+      // no vertical scrollport for containment to hold on to.
+      className={cn("relative w-full overflow-x-auto overflow-y-hidden", containerClassName)}
+    >
       <table
         data-slot="table"
         className={cn("w-full caption-bottom text-sm", className)}

@@ -9,6 +9,7 @@ import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
 import { PageError } from "@/components/layout/PageError";
 import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
+import { PageSurface } from "@/components/layout/PageSurface";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
@@ -137,36 +138,34 @@ export default function ProjectMapsPage() {
           },
         }}
       >
-        <div className="h-full overflow-auto p-4 md:p-6">
-          <div className="mx-auto grid w-full gap-4 sm:grid-cols-2">
-            {maps.map((definition) => {
-              const count = counts.get(definition.id) ?? { nodes: 0, edges: 0 };
-              const builtIn = definition.id === "journey" || definition.id === "system";
-              const renderable = (MAP_KINDS as readonly string[]).includes(definition.kind);
+        <PageSurface contentClassName="grid gap-4 sm:grid-cols-2">
+          {maps.map((definition) => {
+            const count = counts.get(definition.id) ?? { nodes: 0, edges: 0 };
+            const builtIn = definition.id === "journey" || definition.id === "system";
+            const renderable = (MAP_KINDS as readonly string[]).includes(definition.kind);
 
-              return (
-                <MapCard
-                  key={definition.id}
-                  definition={definition}
-                  href={`/project/${id}/maps/${definition.id}`}
-                  nodeCount={count.nodes}
-                  edgeCount={count.edges}
-                  builtIn={builtIn}
-                  renderable={renderable}
-                  onEdit={
-                    builtIn
-                      ? undefined
-                      : () => {
-                          setEditorTarget(definition);
-                          setEditorOpen(true);
-                        }
-                  }
-                  onDelete={builtIn ? undefined : () => setDeleteTarget(definition)}
-                />
-              );
-            })}
-          </div>
-        </div>
+            return (
+              <MapCard
+                key={definition.id}
+                definition={definition}
+                href={`/project/${id}/maps/${definition.id}`}
+                nodeCount={count.nodes}
+                edgeCount={count.edges}
+                builtIn={builtIn}
+                renderable={renderable}
+                onEdit={
+                  builtIn
+                    ? undefined
+                    : () => {
+                        setEditorTarget(definition);
+                        setEditorOpen(true);
+                      }
+                }
+                onDelete={builtIn ? undefined : () => setDeleteTarget(definition)}
+              />
+            );
+          })}
+        </PageSurface>
       </PageShell>
 
       <MapEditorDialog

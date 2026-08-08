@@ -1,12 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { Node, Edge, JournalEvent } from "@/lib/data/types";
-import { DECISION_STATUSES, type DecisionStatusId } from "@/lib/config/decision-statuses";
 import { decisionStatusOf } from "@/lib/utils/decision";
+import type { DecisionStatusFilter } from "@/components/decisions/DecisionFilterBar";
 import { DecisionStatusBadge } from "@/components/layout/DecisionStatusBadge";
 import { EntityId } from "@/components/graph/nodes/EntityBadges";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface DecisionLogProps {
@@ -14,6 +13,15 @@ interface DecisionLogProps {
   allEdges: Edge[];
   journal?: JournalEvent[];
   onSelect: (node: Node) => void;
+  /**
+   * Which status to show, owned by the page so the toolbar can carry the control.
+   *
+   * The log used to own this state and render the pills itself, which put the one
+   * filter on the surface inside the scrolling column it filters. `"all"` is
+   * still the value that means "show the supersedes chains nested"; see
+   * `topLevel`.
+   */
+  statusFilter: DecisionStatusFilter;
 }
 
 /**
@@ -73,9 +81,7 @@ function DecisionRow({
   );
 }
 
-export function DecisionLog({ decisions, allEdges, journal, onSelect }: DecisionLogProps) {
-  const [statusFilter, setStatusFilter] = useState<DecisionStatusId | "all">("all");
-
+export function DecisionLog({ decisions, allEdges, journal, onSelect, statusFilter }: DecisionLogProps) {
   const createdTs = useMemo(() => {
     const map = new Map<string, string>();
     for (const event of journal ?? []) {
@@ -165,61 +171,33 @@ export function DecisionLog({ decisions, allEdges, journal, onSelect }: Decision
     return [...heads, ...orphaned].sort(byNewest(createdTs));
   }, [decisions, statusFilter, heads, headIds, visited, createdTs]);
 
-  const counts = useMemo(() => {
-    const map = new Map<DecisionStatusId, number>();
-    for (const d of decisions) {
-      const s = decisionStatusOf(d);
-      map.set(s, (map.get(s) ?? 0) + 1);
-    }
-    return map;
-  }, [decisions]);
+  // No wrapper of its own now that the pills have moved out: the log is a single
+  // block, and the page's content column already supplies the gap it used to add.
+  if (decisions.length === 0) {
+    return (
+      <p className="py-8 text-center text-sm text-muted-foreground">
+        No decisions yet. Decisions record the why, what, and how of the choices that shaped this product.
+      </p>
+    );
+  }
+
+  if (topLevel.length === 0) {
+    return <p className="py-8 text-center text-sm text-muted-foreground">No decisions with this status.</p>;
+  }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap gap-1.5">
-        <Button
-          type="button"
-          variant={statusFilter === "all" ? "default" : "outline"}
-          size="sm"
-          aria-pressed={statusFilter === "all"}
-          onClick={() => setStatusFilter("all")}
-        >
-          All · {decisions.length}
-        </Button>
-        {DECISION_STATUSES.map((s) => (
-          <Button
-            key={s.id}
-            type="button"
-            variant={statusFilter === s.id ? "default" : "outline"}
-            size="sm"
-            aria-pressed={statusFilter === s.id}
-            onClick={() => setStatusFilter(statusFilter === s.id ? "all" : s.id)}
-          >
-            {s.label} · {counts.get(s.id) ?? 0}
-          </Button>
-        ))}
-      </div>
-      {decisions.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-8 text-center">
-          No decisions yet. Decisions record the why, what, and how of the choices that shaped this product.
-        </p>
-      ) : topLevel.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-8 text-center">No decisions with this status.</p>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {topLevel.map((node) => (
-            <div key={node.id} className="flex flex-col gap-1.5">
-              <DecisionRow node={node} createdTs={createdTs} onSelect={onSelect} />
-              {statusFilter === "all" &&
-                (chainsByHead.get(node.id) ?? []).map((old) => (
-                  <div key={old.id} className="pl-8">
-                    <DecisionRow node={old} createdTs={createdTs} dimmed onSelect={onSelect} />
-                  </div>
-                ))}
-            </div>
-          ))}
+    <div className="flex flex-col gap-2">
+      {topLevel.map((node) => (
+        <div key={node.id} className="flex flex-col gap-1.5">
+          <DecisionRow node={node} createdTs={createdTs} onSelect={onSelect} />
+          {statusFilter === "all" &&
+            (chainsByHead.get(node.id) ?? []).map((old) => (
+              <div key={old.id} className="pl-8">
+                <DecisionRow node={old} createdTs={createdTs} dimmed onSelect={onSelect} />
+              </div>
+            ))}
         </div>
-      )}
+      ))}
     </div>
   );
 }

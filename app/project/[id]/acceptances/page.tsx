@@ -15,6 +15,7 @@ import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope
 import { useAcceptanceFilters } from "@/components/acceptances/acceptance-filters";
 import { filterAcceptances } from "@/lib/utils/acceptance-matrix";
 import { AcceptanceFilterBar } from "@/components/acceptances/AcceptanceFilterBar";
+import { PageSurface } from "@/components/layout/PageSurface";
 import { AcceptanceMatrix } from "@/components/acceptances/AcceptanceMatrix";
 import { PageError } from "@/components/layout/PageError";
 import { PageLoading } from "@/components/layout/PageLoading";
@@ -195,8 +196,15 @@ export default function ProjectAcceptancesPage() {
         onCreateAcceptanceForAnchor={handleCreateAcceptanceForAnchor}
         intake={intake}
       >
-        <div className="h-full overflow-auto p-4 md:p-6">
-          <div className="flex w-full flex-col gap-4">
+        <PageSurface
+          /* The matrix is the surface: flush anchor groups running to the
+             panel's edges, each heading pinning as you scroll past it. It needs
+             the scrollport to be the pane rather than a padded column, or the
+             headings would pin against a padding edge instead of the toolbar's
+             hairline. */
+          fill
+          contentClassName="overflow-y-auto"
+          toolbar={
             <AcceptanceFilterBar
               filters={filters}
               onChange={setFilters}
@@ -204,16 +212,17 @@ export default function ProjectAcceptancesPage() {
               projectId={id}
               project={projectBundle}
             />
-            <AcceptanceMatrix
-              acceptances={filtered}
-              edges={dataEdges}
-              nodesById={nodesById}
-              onSelect={handleSelectNode}
-              projectId={id}
-              project={projectBundle}
-            />
-          </div>
-        </div>
+          }
+        >
+          <AcceptanceMatrix
+            acceptances={filtered}
+            edges={dataEdges}
+            nodesById={nodesById}
+            onSelect={handleSelectNode}
+            projectId={id}
+            project={projectBundle}
+          />
+        </PageSurface>
       </PageShell>
       <NewAcceptanceForm
         open={newAcceptanceOpen}

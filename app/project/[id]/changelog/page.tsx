@@ -7,6 +7,7 @@ import { orderEvents } from "@arkaik/schema";
 import { PageError } from "@/components/layout/PageError";
 import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
+import { PageSurface } from "@/components/layout/PageSurface";
 import { DecisionStatusBadge } from "@/components/layout/DecisionStatusBadge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useEdges } from "@/lib/hooks/useEdges";
@@ -222,7 +223,7 @@ export default function ChangelogPage() {
         ) : null
       }
     >
-      <div className="h-full overflow-auto p-4 md:p-6">
+      <PageSurface>
         {isEmpty ? (
           <EmptyState message="No journal yet. Releases and updates will appear here once history is recorded." />
         ) : (
@@ -317,7 +318,7 @@ export default function ChangelogPage() {
             </section>
           </div>
         )}
-      </div>
+      </PageSurface>
     </PageShell>
   );
 }

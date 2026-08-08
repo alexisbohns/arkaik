@@ -2,6 +2,7 @@
 
 import { PRODUCT_MEMBERSHIP_SPECIES, type ProductDefinition } from "@arkaik/schema";
 
+import { Toolbar, ToolbarGroup } from "@/components/layout/Toolbar";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -44,9 +45,9 @@ import { productDisplayTitle } from "@/lib/utils/product-scope";
  * one more branch, and it teaches the word "selected" to a user who has no bulk
  * action available.
  *
- * IT IS OPAQUE AND CARD-SHAPED because it lives inside `StickyToolbar`, which
- * contributes no background of its own — a translucent band there would let the
- * list scroll visibly through it.
+ * IT IS A SECOND `Toolbar` BAND, not a card floating below the filter bar: the
+ * two pin together as one stack in `PageSurface`, and `Toolbar`'s opaque
+ * `bg-card` is what stops the list scrolling visibly through either of them.
  */
 
 /**
@@ -101,7 +102,10 @@ export function LibrarySelectionBar({
         : null;
 
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-3 rounded-xl border bg-card px-4 py-2">
+    /* `justify-start`, not the Toolbar's default: the label and the move menu
+       are one thought and belong side by side, and Clear pushes itself to the
+       far edge with `ml-auto` below. */
+    <Toolbar className="justify-start">
       <span className="text-sm font-medium">
         {selected.length} selected
         {hiddenCount > 0 && (
@@ -112,7 +116,7 @@ export function LibrarySelectionBar({
         )}
       </span>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <ToolbarGroup>
         {/*
           `value=""` keeps this a *command* menu rather than a field: it never
           shows a current product, because a selection of many nodes has no
@@ -140,7 +144,7 @@ export function LibrarySelectionBar({
         </Select>
 
         {subtext !== null && <span className="text-xs text-muted-foreground">{subtext}</span>}
-      </div>
+      </ToolbarGroup>
 
       <Button
         variant="ghost"
@@ -150,6 +154,6 @@ export function LibrarySelectionBar({
       >
         Clear
       </Button>
-    </div>
+    </Toolbar>
   );
 }

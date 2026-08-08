@@ -5,20 +5,13 @@ import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import type { Node, Edge, ProjectBundle } from "@/lib/data/types";
 import { resolvePlatformStatus, hasParityGap } from "@arkaik/schema";
 import { groupAcceptancesByAnchor, UNANCHORED_GROUP_LABEL } from "@/lib/utils/acceptance-matrix";
-import { PLATFORMS, type PlatformId } from "@/lib/config/platforms";
+import { type PlatformId } from "@/lib/config/platforms";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
-import { STATUS_ICONS, STATUS_STYLES, STATUS_LABELS } from "@/components/graph/nodes/node-styles";
 import { SPECIES_GRAPH_ICONS } from "@/lib/config/species-icons";
 import { ValueBadge } from "@/components/values/ValueBadge";
 import { EntityId } from "@/components/graph/nodes/EntityBadges";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { StatusMark } from "@/components/graph/nodes/StatusMark";
+import { cn } from "@/lib/utils";
 
 interface AcceptanceMatrixProps {
   acceptances: Node[];
@@ -30,28 +23,40 @@ interface AcceptanceMatrixProps {
   project: ProjectBundle | undefined;
 }
 
-const PLATFORM_LABELS = new Map<PlatformId, string>(PLATFORMS.map((platform) => [platform.id, platform.label]));
-
-/** One status column: a platform to resolve against, plus the heading it earns. */
-interface StatusColumn {
-  key: string;
-  label: string;
-  /** `null` only at arity 0, where there is no platform to resolve against. */
-  platform: PlatformId | null;
-}
-
 /**
- * A cell's status: the column's platform when there is one, the acceptance's own
- * lifecycle status when there is not. Arity 0 is a product that does not track
- * availability at all (a CLI, a public API), so `status` *is* the whole answer —
- * `resolvePlatformStatus` has nothing to be asked about.
+ * The availability strip for one acceptance: one {@link StatusMark} per tracked
+ * platform, or a single one for the status itself when availability is not a
+ * tracked dimension.
+ *
+ * This replaced a column per platform plus a header row to name them. The
+ * headings were the reason the matrix needed a table at all, and with four
+ * platforms beside a title and a values list they were also what pushed it into
+ * horizontal scrolling on a narrow panel. A platform's identity is in its glyph,
+ * so the heading was spending a whole row to repeat what each cell already said.
+ *
+ * The arity rule is the caller's: see `statusColumns`.
  */
-function StatusCell({ acceptance, platform }: { acceptance: Node; platform: PlatformId | null }) {
-  const status = platform === null ? acceptance.status : resolvePlatformStatus(acceptance, platform);
-  if (!status) return <span className="text-muted-foreground/40" aria-label="Not applicable">—</span>;
-  const Icon = STATUS_ICONS[status];
-  const label = platform === null ? STATUS_LABELS[status] : `${platform}: ${STATUS_LABELS[status]}`;
-  return <Icon className={`size-4 ${STATUS_STYLES[status].badge}`} aria-label={label} />;
+function AvailabilityStrip({
+  acceptance,
+  platforms,
+}: {
+  acceptance: Node;
+  platforms: readonly (PlatformId | null)[];
+}) {
+  return (
+    <span className="flex shrink-0 items-center gap-1.5">
+      {platforms.map((platform) => (
+        <StatusMark
+          key={platform ?? "status"}
+          platform={platform}
+          // Arity 0 has no platform to resolve against, so the acceptance's own
+          // lifecycle status *is* the whole answer — `resolvePlatformStatus` has
+          // nothing to be asked about.
+          status={platform === null ? acceptance.status : resolvePlatformStatus(acceptance, platform)}
+        />
+      ))}
+    </span>
+  );
 }
 
 export function AcceptanceMatrix({ acceptances, edges, nodesById, onSelect, projectId, project }: AcceptanceMatrixProps) {
@@ -60,110 +65,96 @@ export function AcceptanceMatrix({ acceptances, edges, nodesById, onSelect, proj
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   /**
-   * The arity rule, in table form — the same one `PlatformAvailability` renders
-   * as rings or a bar, read off the same `isMultiPlatform` so the two surfaces
-   * cannot disagree. At ≥ 2 the columns are the scope's platforms. At ≤ 1 there
-   * is one column headed `Status` and **no platform name in it**: scoped to a
-   * web-only admin product the reader wants a status with no notion of platform,
-   * and dropping the name is what makes arity 0 and arity 1 render identically
-   * rather than approximately so.
+   * The arity rule, as a list of marks per row — the same one
+   * `PlatformAvailability` renders as rings or a bar, read off the same
+   * `isMultiPlatform` so the two surfaces cannot disagree. At ≥ 2 the marks are
+   * the scope's platforms. At ≤ 1 there is a single mark and **no platform in
+   * it**: scoped to a web-only admin product the reader wants a status with no
+   * notion of platform, and dropping the platform is what makes arity 0 and
+   * arity 1 render identically rather than approximately so.
    *
    * A project that declares no products resolves to every platform, so this is
-   * exactly today's header — including on the first render, before `useProject`
+   * exactly today's strip — including on the first render, before `useProject`
    * has resolved and while `project` is still `undefined`.
    */
-  const statusColumns = useMemo<StatusColumn[]>(() => {
-    if (scope.isMultiPlatform) {
-      return scope.platforms.map((platform) => ({
-        key: platform,
-        label: PLATFORM_LABELS.get(platform) ?? platform,
-        platform,
-      }));
-    }
-    return [{ key: "status", label: "Status", platform: scope.platforms[0] ?? null }];
-  }, [scope]);
+  const statusColumns = useMemo<readonly (PlatformId | null)[]>(
+    () => (scope.isMultiPlatform ? scope.platforms : [scope.platforms[0] ?? null]),
+    [scope],
+  );
 
   if (groups.length === 0) {
-    return <p className="text-sm text-muted-foreground">No acceptances match these filters.</p>;
+    return <p className="p-6 text-sm text-muted-foreground">No acceptances match these filters.</p>;
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col">
       {groups.map((group) => {
         const key = group.anchorId ?? "__unanchored__";
         const isCollapsed = collapsed.has(key);
         const AnchorIcon = group.anchorSpecies ? SPECIES_GRAPH_ICONS[group.anchorSpecies] : null;
         return (
-          <section key={key} className="rounded-xl border bg-card overflow-hidden">
+          <section key={key}>
+            {/*
+              Sticky, and this is a consequence of going flush rather than a
+              flourish: the bordered box used to be what told you which anchor
+              you were reading under, and without it a group heading scrolled off
+              leaves a wall of anonymous rows. `bg-card` is load-bearing for the
+              same reason it is on the Library's table header — rows read
+              straight through a transparent pinned band.
+            */}
             <button
               type="button"
-              className="flex w-full items-center gap-2 border-b px-3 py-2 text-left"
+              className="sticky top-0 z-10 flex w-full items-center gap-2 border-b bg-card px-4 py-2.5 text-left hover:bg-muted/50"
               onClick={() => setCollapsed((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; })}
               aria-expanded={!isCollapsed}
             >
-              {isCollapsed ? <ChevronRightIcon className="size-4" /> : <ChevronDownIcon className="size-4" />}
-              {AnchorIcon && <AnchorIcon className="size-4 text-muted-foreground" />}
-              <span className="font-medium">{group.anchorNode ? group.anchorNode.title : UNANCHORED_GROUP_LABEL}</span>
-              <span className="text-xs text-muted-foreground">
+              {isCollapsed ? <ChevronRightIcon className="size-4 shrink-0" /> : <ChevronDownIcon className="size-4 shrink-0" />}
+              {AnchorIcon && <AnchorIcon className="size-4 shrink-0 text-muted-foreground" />}
+              <span className="truncate font-medium">{group.anchorNode ? group.anchorNode.title : UNANCHORED_GROUP_LABEL}</span>
+              <span className="shrink-0 text-xs text-muted-foreground">
                 {/* "Unanchored · no anchor" said it twice; the heading already says it. */}
                 {group.anchorSpecies ? `· ${group.anchorSpecies} ` : ""}· {group.acceptances.length} acceptance{group.acceptances.length === 1 ? "" : "s"}
                 {group.gapCount > 0 && <span className="text-amber-600"> · {group.gapCount} gap{group.gapCount === 1 ? "" : "s"}</span>}
               </span>
             </button>
 
-            {/* `Table`, not a bare `<table>`: its container scrolls horizontally,
-                and a product with four platforms is four status columns beside
-                the title and the values — enough to run off a narrow viewport,
-                where the hand-rolled version simply overflowed the page. Row
-                hover and the rules between rows come from `TableRow` too; the
-                overrides below are only what this matrix genuinely differs on —
-                a compact header, and the amber left edge on a parity gap. */}
             {!isCollapsed && (
-              <Table>
-                <TableHeader>
-                  {/* Inert: `TableRow` hovers, and a header row that lights up
-                      under the pointer would read as clickable, which it isn't. */}
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="h-auto px-3 py-1.5 text-xs font-normal text-muted-foreground">Acceptance</TableHead>
-                    <TableHead className="h-auto px-3 py-1.5 text-xs font-normal text-muted-foreground">Values</TableHead>
-                    {statusColumns.map((column) => (
-                      <TableHead key={column.key} className="h-auto px-2 py-1.5 text-center text-xs font-normal text-muted-foreground">
-                        {column.label}
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {group.acceptances.map((acc) => (
-                    <TableRow
-                      key={`${key}-${acc.id}`}
-                      tabIndex={0}
+              <ul>
+                {group.acceptances.map((acc) => (
+                  <li key={`${key}-${acc.id}`}>
+                    {/*
+                      A `button`, not a table row with click handlers: the row was
+                      always a link to the acceptance's panel, and a real button
+                      is focusable, Enter-activated and announced as such without
+                      the `tabIndex`/`onKeyDown` pair the old row hand-rolled.
+
+                      The amber left edge is the parity gap, unchanged — it is the
+                      one thing that has to catch the eye down a flush list. It is
+                      also never the only signal: the group heading counts the
+                      gaps, and each mark names its status.
+                    */}
+                    <button
+                      type="button"
                       onClick={() => onSelect(acc)}
-                      onKeyDown={(e) => { if (e.key === "Enter") onSelect(acc); }}
-                      className={`cursor-pointer ${hasParityGap(acc) ? "border-l-2 border-l-amber-500" : ""}`}
+                      className={cn(
+                        "flex w-full justify-between items-center gap-3 border-b ps-10 pe-4 py-2.5 text-left hover:bg-muted/50",
+                        hasParityGap(acc) && "border-l-2 border-l-amber-500",
+                      )}
                     >
-                      {/* The one cell that may wrap — a title is a sentence, and
-                          `TableCell` is `whitespace-nowrap` by default. */}
-                      <TableCell className="px-3 py-2 whitespace-normal">
-                        <div className="flex flex-col gap-0.5">
-                          <span>{acc.title}</span>
-                          <EntityId id={acc.id} />
-                        </div>
-                      </TableCell>
-                      <TableCell className="px-3 py-2">
-                        <div className="flex flex-wrap gap-1">
+                      <span className="flex min-w-0 flex-col items-start gap-0.5">
+                        <span className="truncate text-sm">{acc.title}</span>
+                        <EntityId id={acc.id} />
+                      </span>
+                      <span className="gap-4 flex">
+                        <span className="hidden shrink-0 flex-wrap justify-end gap-1 sm:flex">
                           {(acc.metadata?.values ?? []).map((v) => <ValueBadge key={v} valueId={v} />)}
-                        </div>
-                      </TableCell>
-                      {statusColumns.map((column) => (
-                        <TableCell key={column.key} className="px-2 py-2 text-center">
-                          <span className="inline-flex justify-center"><StatusCell acceptance={acc} platform={column.platform} /></span>
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                        </span>
+                        <AvailabilityStrip acceptance={acc} platforms={statusColumns} />
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
           </section>
         );

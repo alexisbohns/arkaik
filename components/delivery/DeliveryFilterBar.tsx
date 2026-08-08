@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { ProductOverrideSelector } from "@/components/layout/ProductOverrideSelector";
+import { Toolbar, ToolbarGroup } from "@/components/layout/Toolbar";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { SpeciesId } from "@/lib/config/species";
 import { SPECIES_PLURALS } from "@/lib/config/species-icons";
@@ -54,70 +55,72 @@ export function DeliveryFilterBar({
   );
 
   return (
-    <div className="rounded-xl border bg-card/70 p-3 md:p-4">
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <ProductOverrideSelector projectId={projectId} project={project} />
-          {showPlatformFilter && (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Platform</span>
+    <Toolbar>
+      {/* The board's filters are toggle rows rather than menus, so they need
+          more of the band than the other surfaces' do — search takes the right
+          edge and the four narrowing groups share the left, wrapping among
+          themselves rather than each claiming a line of its own. */}
+      <ToolbarGroup className="gap-x-4 gap-y-2">
+        <ProductOverrideSelector projectId={projectId} project={project} />
+        {showPlatformFilter && (
+          <ToolbarGroup>
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Platform</span>
+            <Button
+              type="button"
+              variant={platform === "all" ? "default" : "outline"}
+              size="sm"
+              onClick={() => onPlatformChange("all")}
+            >
+              All
+            </Button>
+            {platformOptions.map((option) => (
               <Button
+                key={option.id}
                 type="button"
-                variant={platform === "all" ? "default" : "outline"}
+                variant={platform === option.id ? "default" : "outline"}
                 size="sm"
-                onClick={() => onPlatformChange("all")}
+                onClick={() => onPlatformChange(option.id)}
               >
-                All
-              </Button>
-              {platformOptions.map((option) => (
-                <Button
-                  key={option.id}
-                  type="button"
-                  variant={platform === option.id ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => onPlatformChange(option.id)}
-                >
-                  {option.label}
-                </Button>
-              ))}
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Species</span>
-            {SPECIES_OPTIONS.map((option) => (
-              <Button
-                key={option}
-                type="button"
-                variant={species.includes(option) ? "default" : "outline"}
-                size="sm"
-                aria-pressed={species.includes(option)}
-                onClick={() => onToggleSpecies(option)}
-              >
-                {SPECIES_PLURALS[option]}
+                {option.label}
               </Button>
             ))}
-          </div>
+          </ToolbarGroup>
+        )}
 
-          <Button
-            type="button"
-            variant={showAllStatuses ? "default" : "outline"}
-            size="sm"
-            aria-pressed={showAllStatuses}
-            onClick={() => onShowAllStatusesChange(!showAllStatuses)}
-          >
-            All statuses
-          </Button>
-        </div>
+        <ToolbarGroup>
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Species</span>
+          {SPECIES_OPTIONS.map((option) => (
+            <Button
+              key={option}
+              type="button"
+              variant={species.includes(option) ? "default" : "outline"}
+              size="sm"
+              aria-pressed={species.includes(option)}
+              onClick={() => onToggleSpecies(option)}
+            >
+              {SPECIES_PLURALS[option]}
+            </Button>
+          ))}
+        </ToolbarGroup>
 
-        <SearchInput
-          value={search}
-          onChange={onSearchChange}
-          placeholder="Search title or description"
-          aria-label="Search delivery items"
-          className="w-full md:max-w-md"
-        />
-      </div>
-    </div>
+        <Button
+          type="button"
+          variant={showAllStatuses ? "default" : "outline"}
+          size="sm"
+          aria-pressed={showAllStatuses}
+          onClick={() => onShowAllStatusesChange(!showAllStatuses)}
+        >
+          All statuses
+        </Button>
+      </ToolbarGroup>
+
+      <SearchInput
+        value={search}
+        onChange={onSearchChange}
+        placeholder="Search title or description"
+        aria-label="Search delivery items"
+        className="w-full md:max-w-xs"
+      />
+    </Toolbar>
   );
 }

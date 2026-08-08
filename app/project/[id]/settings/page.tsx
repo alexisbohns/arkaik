@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
 import { PageError } from "@/components/layout/PageError";
 import { PageShell } from "@/components/layout/PageShell";
+import { PageSurface } from "@/components/layout/PageSurface";
 import { ProductManagerPanel } from "@/components/settings/ProductManagerPanel";
 import { RepoLinksPanel } from "@/components/settings/RepoLinksPanel";
 import { Button } from "@/components/ui/button";
@@ -87,75 +88,73 @@ export default function ProjectSettingsPage() {
   return (
     <>
       <PageShell title="Settings">
-        <div className="h-full overflow-auto p-4 md:p-6">
-          <div className="mx-auto flex w-full max-w-3xl flex-col gap-10">
+        <PageSurface maxWidth="max-w-3xl" contentClassName="flex flex-col gap-10">
+          <section className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-lg font-semibold">Linked repositories</h2>
+              <p className="text-sm text-muted-foreground">
+                Pull requests in these repositories can move {title}&rsquo;s acceptances. Naming
+                the platform a repository — or one folder of it — builds for means a merge there
+                marks only that platform shipped.
+              </p>
+            </div>
+            {hosted ? (
+              <RepoLinksPanel projectId={id} />
+            ) : (
+              <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                This project lives in this browser, so there is no account for a repository link
+                to hang off. Move it to your account from the projects page and the links appear
+                here.
+              </p>
+            )}
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-lg font-semibold">Products</h2>
+              <p className="text-sm text-muted-foreground">
+                A project can describe a family of apps sharing one graph. Naming them lets every
+                page scope to one &mdash; and lets a web-only dashboard stop dragging down your
+                Android numbers.
+              </p>
+            </div>
+            {/* The panel reads the node list itself: member counts and the
+                reassignment a deletion offers both need it, and nothing else
+                on this page does. */}
+            <ProductManagerPanel projectId={id} project={project} updateProject={updateProject} />
+          </section>
+
+          {/* The seed's own archiveProject rejects with an error (the provider
+              is the backstop), but a control that always fails isn't a
+              control — the UI just doesn't offer deletion for the public map. */}
+          {!isSeedProjectId(id) && (
             <section className="flex flex-col gap-3">
               <div className="flex flex-col gap-1">
-                <h2 className="text-lg font-semibold">Linked repositories</h2>
+                <h2 className="text-lg font-semibold text-destructive">Danger zone</h2>
                 <p className="text-sm text-muted-foreground">
-                  Pull requests in these repositories can move {title}&rsquo;s acceptances. Naming
-                  the platform a repository — or one folder of it — builds for means a merge there
-                  marks only that platform shipped.
+                  Actions here change the project itself, not what you are looking at.
                 </p>
               </div>
-              {hosted ? (
-                <RepoLinksPanel projectId={id} />
-              ) : (
-                <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                  This project lives in this browser, so there is no account for a repository link
-                  to hang off. Move it to your account from the projects page and the links appear
-                  here.
-                </p>
-              )}
-            </section>
-
-            <section className="flex flex-col gap-3">
-              <div className="flex flex-col gap-1">
-                <h2 className="text-lg font-semibold">Products</h2>
-                <p className="text-sm text-muted-foreground">
-                  A project can describe a family of apps sharing one graph. Naming them lets every
-                  page scope to one &mdash; and lets a web-only dashboard stop dragging down your
-                  Android numbers.
-                </p>
-              </div>
-              {/* The panel reads the node list itself: member counts and the
-                  reassignment a deletion offers both need it, and nothing else
-                  on this page does. */}
-              <ProductManagerPanel projectId={id} project={project} updateProject={updateProject} />
-            </section>
-
-            {/* The seed's own archiveProject rejects with an error (the provider
-                is the backstop), but a control that always fails isn't a
-                control — the UI just doesn't offer deletion for the public map. */}
-            {!isSeedProjectId(id) && (
-              <section className="flex flex-col gap-3">
-                <div className="flex flex-col gap-1">
-                  <h2 className="text-lg font-semibold text-destructive">Danger zone</h2>
+              <div className="flex flex-col gap-3 rounded-lg border border-destructive/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">Delete this project</p>
                   <p className="text-sm text-muted-foreground">
-                    Actions here change the project itself, not what you are looking at.
+                    {title} disappears from your projects, along with its nodes, edges and
+                    history.
                   </p>
                 </div>
-                <div className="flex flex-col gap-3 rounded-lg border border-destructive/40 p-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium">Delete this project</p>
-                    <p className="text-sm text-muted-foreground">
-                      {title} disappears from your projects, along with its nodes, edges and
-                      history.
-                    </p>
-                  </div>
-                  <Button
-                    variant="destructive"
-                    className="shrink-0 cursor-pointer"
-                    disabled={loading || deleting}
-                    onClick={() => setDeleteOpen(true)}
-                  >
-                    {deleting ? "Deleting…" : "Delete project"}
-                  </Button>
-                </div>
-              </section>
-            )}
-          </div>
-        </div>
+                <Button
+                  variant="destructive"
+                  className="shrink-0 cursor-pointer"
+                  disabled={loading || deleting}
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  {deleting ? "Deleting…" : "Delete project"}
+                </Button>
+              </div>
+            </section>
+          )}
+        </PageSurface>
       </PageShell>
 
       {!isSeedProjectId(id) && (
