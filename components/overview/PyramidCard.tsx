@@ -1,5 +1,6 @@
 "use client";
 
+import { PyramidIcon } from "lucide-react";
 import { PlatformAvailability } from "@/components/graph/nodes/PlatformAvailability";
 import type { PlatformId } from "@/lib/config/platforms";
 import { VALUE_TIERS_CONFIG } from "@/lib/config/values";
@@ -25,8 +26,22 @@ interface PyramidCardProps {
  * two of whose rings can only ever be empty.
  */
 export function PyramidCard({ tiers, platforms, projectId }: PyramidCardProps) {
+  // Same "elements addressed" arithmetic as each row below, summed once for the
+  // header — never acceptances, for the double-counting reason stated there.
+  const elementCount = tiers.reduce((sum, tier) => sum + tier.elements.length, 0);
+  const addressedCount = tiers.reduce(
+    (sum, tier) => sum + tier.elements.filter((element) => element.acceptanceCount > 0).length,
+    0,
+  );
+
   return (
-    <OverviewSection title="Value pyramid" href={`/project/${projectId}/pyramid`} linkLabel="Pyramid">
+    <OverviewSection
+      title="Value pyramid"
+      icon={PyramidIcon}
+      subtitle={`${addressedCount}/${elementCount} elements addressed across ${tiers.length} tier${tiers.length === 1 ? "" : "s"}`}
+      href={`/project/${projectId}/pyramid`}
+      linkLabel="Pyramid"
+    >
       <div className="flex flex-col gap-2.5">
         {tiers.map((tier) => {
           const rollup = mergeRollups(...tier.elements.map((element) => element.rollup));

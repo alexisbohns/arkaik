@@ -1,5 +1,6 @@
 "use client";
 
+import { GaugeIcon } from "lucide-react";
 import { PlatformGaugeList } from "@/components/graph/nodes/PlatformGaugeList";
 import { PLATFORM_LABELS } from "@/components/graph/nodes/node-styles";
 import type { PlatformId } from "@/lib/config/platforms";
@@ -16,10 +17,18 @@ interface PlatformGaugesCardProps {
 /** The flow cards' delivery gauges at product scale — every view, per platform. */
 export function PlatformGaugesCard({ rollup, platforms, projectId }: PlatformGaugesCardProps) {
   return (
-    <OverviewSection title="Platform delivery" href={`/project/${projectId}/delivery`} linkLabel="Delivery">
-      {platforms.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No counted view work yet.</p>
-      ) : (
+    <OverviewSection
+      title="Platform delivery"
+      icon={GaugeIcon}
+      subtitle={
+        platforms.length === 0
+          ? "No counted view work yet."
+          : `Every view's delivery status across ${platforms.length} platform${platforms.length === 1 ? "" : "s"}`
+      }
+      href={`/project/${projectId}/delivery`}
+      linkLabel="Delivery"
+    >
+      {platforms.length > 0 && (
         <>
           <PlatformGaugeList rollup={rollup} platforms={platforms} showLabels />
           <div className="flex flex-wrap items-center gap-2">
