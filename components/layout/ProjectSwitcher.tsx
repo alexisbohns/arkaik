@@ -53,12 +53,31 @@ export type ProjectView =
   | "maps"
   | "library"
   | "delivery"
+  | "design"
   | "changelog"
   | "history"
   | "acceptances"
   | "decisions"
   | "pyramid"
   | "settings";
+
+/**
+ * The same views as path segments, in the order a router should try them —
+ * `maps` is absent on purpose: its routes nest (`/maps/journey`) and it is the
+ * fallback the project root lands on.
+ */
+export const PROJECT_VIEW_SEGMENTS = [
+  "overview",
+  "library",
+  "delivery",
+  "design",
+  "changelog",
+  "history",
+  "acceptances",
+  "decisions",
+  "pyramid",
+  "settings",
+] as const satisfies readonly ProjectView[];
 
 interface ProjectSwitcherProps {
   currentProjectId: string;

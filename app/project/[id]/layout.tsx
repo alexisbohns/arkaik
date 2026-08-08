@@ -7,6 +7,7 @@ import { CommandPalette } from "@/components/layout/CommandPalette";
 import { KeyboardShortcutsDialog } from "@/components/layout/KeyboardShortcutsDialog";
 import { PageError } from "@/components/layout/PageError";
 import { ProjectSidebar } from "@/components/layout/ProjectSidebar";
+import { PROJECT_VIEW_SEGMENTS, type ProjectView } from "@/components/layout/ProjectSwitcher";
 import { PublishDialog } from "@/components/publik/PublishDialog";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import {
@@ -59,25 +60,10 @@ function ProjectChrome({ children }: { children: React.ReactNode }) {
   const [publishOpen, setPublishOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
-  const currentView = pathname.startsWith(`/project/${id}/overview`)
-    ? "overview"
-    : pathname.startsWith(`/project/${id}/library`)
-      ? "library"
-      : pathname.startsWith(`/project/${id}/delivery`)
-        ? "delivery"
-        : pathname.startsWith(`/project/${id}/changelog`)
-          ? "changelog"
-          : pathname.startsWith(`/project/${id}/history`)
-            ? "history"
-            : pathname.startsWith(`/project/${id}/acceptances`)
-              ? "acceptances"
-              : pathname.startsWith(`/project/${id}/decisions`)
-                ? "decisions"
-                : pathname.startsWith(`/project/${id}/pyramid`)
-                  ? "pyramid"
-                  : pathname.startsWith(`/project/${id}/settings`)
-                    ? "settings"
-                    : "maps";
+  // One segment per project page, tried in order; `maps` is the fallback
+  // because its routes nest (`/maps/journey`) and the project root lands there.
+  const currentView: ProjectView =
+    PROJECT_VIEW_SEGMENTS.find((segment) => pathname.startsWith(`/project/${id}/${segment}`)) ?? "maps";
   const currentSpecies = currentView === "library" ? searchParams.get("species") : null;
   // The species filter travels across projects; an open panel does not — its
   // node id means nothing in the project you are switching to.

@@ -7,6 +7,7 @@ import {
   MapIcon,
   MapPinnedIcon,
   NetworkIcon,
+  PencilRulerIcon,
   PyramidIcon,
   RouteIcon,
   ScrollTextIcon,
@@ -92,6 +93,7 @@ export function ProjectSidebar({
   const mapsHref = `/project/${projectId}/maps`;
   const libraryHref = `/project/${projectId}/library`;
   const deliveryHref = `/project/${projectId}/delivery`;
+  const designHref = `/project/${projectId}/design`;
   const changelogHref = `/project/${projectId}/changelog`;
   const pyramidHref = `/project/${projectId}/pyramid`;
   const AcceptanceIcon = SPECIES_NAV_ICONS.acceptance;
@@ -156,6 +158,14 @@ export function ProjectSidebar({
                 <Link href={deliveryHref}>
                   <SquareKanbanIcon />
                   <span>Delivery</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={currentView === "design"} tooltip="Design funnel">
+                <Link href={designHref}>
+                  <PencilRulerIcon />
+                  <span>Design</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

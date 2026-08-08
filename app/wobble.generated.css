@@ -21,6 +21,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-bot { filter: url(#wob-bot); }
 .lucide-boxes { filter: url(#wob-boxes); }
 .lucide-calendar { filter: url(#wob-calendar); }
+.lucide-calendar-range { filter: url(#wob-calendar-range); }
 .lucide-chart-pie { filter: url(#wob-chart-pie); }
 .lucide-check { filter: url(#wob-check); }
 .lucide-chevron-down { filter: url(#wob-chevron-down); }
@@ -74,6 +75,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-gitlab { filter: url(#wob-gitlab); }
 .lucide-globe { filter: url(#wob-globe); }
 .lucide-grid3x3 { filter: url(#wob-grid3x3); }
+.lucide-handshake { filter: url(#wob-handshake); }
 .lucide-heart-pulse { filter: url(#wob-heart-pulse); }
 .lucide-history { filter: url(#wob-history); }
 .lucide-hourglass { filter: url(#wob-hourglass); }
@@ -98,6 +100,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-map { filter: url(#wob-map); }
 .lucide-map-pinned { filter: url(#wob-map-pinned); }
 .lucide-message-square-text { filter: url(#wob-message-square-text); }
+.lucide-milestone { filter: url(#wob-milestone); }
 .lucide-minus { filter: url(#wob-minus); }
 .lucide-monitor { filter: url(#wob-monitor); }
 .lucide-monitor-smartphone { filter: url(#wob-monitor-smartphone); }
@@ -109,6 +112,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-panel-left { filter: url(#wob-panel-left); }
 .lucide-party-popper { filter: url(#wob-party-popper); }
 .lucide-pencil { filter: url(#wob-pencil); }
+.lucide-pencil-ruler { filter: url(#wob-pencil-ruler); }
 .lucide-piggy-bank { filter: url(#wob-piggy-bank); }
 .lucide-plug { filter: url(#wob-plug); }
 .lucide-plus { filter: url(#wob-plus); }
