@@ -2,11 +2,11 @@
 
 import { useCallback, useSyncExternalStore } from "react";
 
-/** The Overview's two displays: today's card grid, or one row per section. */
+/** The Overview's two displays: one row per section, or the card grid. */
 export type OverviewLayout = "grid" | "rows";
 
 const STORAGE_KEY = "arkaik:overview-layout";
-const DEFAULT_LAYOUT: OverviewLayout = "grid";
+const DEFAULT_LAYOUT: OverviewLayout = "rows";
 
 const isLayout = (value: string | null): value is OverviewLayout =>
   value === "grid" || value === "rows";

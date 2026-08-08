@@ -4,11 +4,11 @@ import { useMemo } from "react";
 import { buildProductUsageIndex, computeParityGaps, listMaps } from "@arkaik/schema";
 import { LayoutGridIcon, RowsIcon } from "lucide-react";
 import { BacklogCard } from "@/components/overview/BacklogCard";
-import { OverviewLayoutProvider } from "@/components/overview/OverviewLayoutContext";
 import { DeliverySnapshotCard } from "@/components/overview/DeliverySnapshotCard";
 import { HealthCard } from "@/components/overview/HealthCard";
 import { InventoryCard } from "@/components/overview/InventoryCard";
 import { MapsCard, type MapsCardEntry } from "@/components/overview/MapsCard";
+import { OverviewLayoutProvider } from "@/components/overview/OverviewLayoutContext";
 import { ParityCard } from "@/components/overview/ParityCard";
 import { PlatformGaugesCard } from "@/components/overview/PlatformGaugesCard";
 import { PyramidCard } from "@/components/overview/PyramidCard";
@@ -19,10 +19,10 @@ import { PageShell } from "@/components/layout/PageShell";
 import { PageSurface } from "@/components/layout/PageSurface";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
-import { useOverviewLayout, type OverviewLayout } from "@/lib/hooks/useOverviewLayout";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useNodes } from "@/lib/hooks/useNodes";
+import { useOverviewLayout, type OverviewLayout } from "@/lib/hooks/useOverviewLayout";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
 import { useProjectId } from "@/lib/hooks/useProjectId";
@@ -40,6 +40,11 @@ import { getRollupPlatforms } from "@/lib/utils/platform-status";
 import { productScopeMetaLabel, type ProductGraph } from "@/lib/utils/product-scope";
 import { computeScopedPyramidTiers } from "@/lib/utils/pyramid";
 
+const LAYOUTS: readonly SegmentedControlOption<OverviewLayout>[] = [
+  { id: "rows", label: "Rows", icon: RowsIcon },
+  { id: "grid", label: "Grid", icon: LayoutGridIcon },
+];
+
 /**
  * The Overview: "Where does this product stand?" — the strategist reading
  * (vision.md § Core Product; docs/spec/maps.md § Overview Composition).
@@ -47,11 +52,6 @@ import { computeScopedPyramidTiers } from "@/lib/utils/pyramid";
  * every card jumps off into the working surface that owns the detail.
  * Deliberately read-only.
  */
-const LAYOUTS: readonly SegmentedControlOption<OverviewLayout>[] = [
-  { id: "grid", label: "Grid", icon: LayoutGridIcon },
-  { id: "rows", label: "Rows", icon: RowsIcon },
-];
-
 export default function OverviewPage() {
   const id = useProjectId();
   const [layout, setLayout] = useOverviewLayout();

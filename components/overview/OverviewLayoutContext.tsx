@@ -9,10 +9,10 @@ import type { OverviewLayout } from "@/lib/hooks/useOverviewLayout";
  *
  * A context rather than a prop threaded through nine cards: the seven whose
  * body is identical in both displays would otherwise take a prop they never
- * read, purely to hand it to their shell. `"grid"` is the default so a card
- * rendered outside the provider (a test, a future surface) still draws.
+ * read, purely to hand it to their shell. The default matches the page's, so a card rendered
+ * outside the provider (a test, a future surface) still draws.
  */
-const OverviewLayoutContext = createContext<OverviewLayout>("grid");
+const OverviewLayoutContext = createContext<OverviewLayout>("rows");
 
 export const OverviewLayoutProvider = OverviewLayoutContext.Provider;
 

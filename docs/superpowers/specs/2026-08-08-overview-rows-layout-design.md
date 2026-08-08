@@ -19,7 +19,9 @@ picks.
 ### 1. The switch
 
 `useOverviewLayout()` (lib/hooks) reads and writes `localStorage`
-`arkaik:overview-layout`, values `"grid" | "rows"`, default `"grid"`. It is a
+`arkaik:overview-layout`, values `"grid" | "rows"`, **default `"rows"`** — the
+rows display leads the toggle and is what a reader with no stored preference
+gets. It is a
 global preference, not per project — a reader who prefers rows prefers them
 everywhere. The stored value is read in an effect so the server render and the
 first client render agree; the toggle is a `SegmentedControl` (the repo's
@@ -52,9 +54,13 @@ single ring is extracted out of `PlatformRings` as an exported `PlatformRing`;
 `PlatformRings` maps over it and the tile wraps it in its own chrome. Nothing
 about either rendering changes.
 
-**The arity rule is untouched.** At one or zero platforms the rows layout falls
-back to `PlatformAvailability`, exactly as every other surface does — a lone
-tile beside three-tile scopes reads as *data missing* rather than *absent*.
+**Below two platforms the section is absent**, in both displays, on
+`platformAvailabilityShape`'s threshold — the same one that silences
+`ParityCard`. This section exists to break delivery down *by platform*; with one
+platform the breakdown is the total, which the Delivery snapshot already gives
+in more useful detail. And `ParityCard`'s single-platform branch stops rendering
+a heading over "nothing to compare": a silenced section is absent, not a row
+spent explaining its own absence.
 
 ### 4. The 90° value pyramid
 
@@ -74,6 +80,11 @@ under a small label in the tier's colour. Each wheel is a `StatusRing` over the
 element's aggregate segments (`getRollupTotalSegments`) with the value icon
 centred, dimmed at `acceptanceCount === 0`, linked to the element's acceptances
 and hover-carding its status breakdown.
+
+The row scrolls horizontally, and its container pins `overflow-y: hidden`:
+`overflow-x: auto` computes the cross axis to `auto` as well, which turns the
+pyramid into a vertical scroll container that swallows every wheel event over
+it — the page freezes under the cursor.
 
 ### 5. Copy
 

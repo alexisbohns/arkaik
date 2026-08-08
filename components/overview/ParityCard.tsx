@@ -26,20 +26,14 @@ interface ParityCardProps {
  * cannot have one — would read as a clean bill of health nobody earned. The
  * threshold is `platformAvailabilityShape`'s and not a second `>= 2` written
  * here, so this card can never disagree with the shapes around it.
+ *
+ * Silenced means *absent*, not a section explaining its own absence. A heading
+ * over the sentence "nothing to compare" is a row of the dashboard spent
+ * telling the reader that this dashboard has nothing for them — on a
+ * single-platform product that row appeared every single visit.
  */
 export function ParityCard({ gaps, platforms, projectId }: ParityCardProps) {
-  if (platformAvailabilityShape(platforms) === "bar") {
-    return (
-      <OverviewSection
-        title="Platform parity"
-        icon={ScaleIcon}
-        description="Whether every platform in scope tells the same story."
-        subtitle="Parity compares platforms, and fewer than two are in scope — nothing to compare."
-        href={`/project/${projectId}/acceptances`}
-        linkLabel="Acceptances"
-      />
-    );
-  }
+  if (platformAvailabilityShape(platforms) === "bar") return null;
 
   return (
     <OverviewSection

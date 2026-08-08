@@ -38,7 +38,13 @@ interface ValuePyramidWheelsProps {
  */
 export function ValuePyramidWheels({ tiers, hrefForValue }: ValuePyramidWheelsProps) {
   return (
-    <div className="flex items-stretch gap-4 overflow-x-auto pb-1">
+    // `overflow-y-hidden` is load-bearing, not tidying: `overflow-x: auto`
+    // computes the *other* axis to `auto` too, so a container one pixel taller
+    // than its content becomes a vertical scroll container and swallows every
+    // wheel event over the pyramid — the page stops scrolling under the
+    // cursor. Pinning y to `hidden` gives the wheel back to the page. Nothing
+    // is clipped: the columns are centred and shorter than the track.
+    <div className="flex items-stretch gap-4 overflow-x-auto overflow-y-hidden pb-1">
       {tiers.map((tier) => {
         const config = TIER_CONFIG.get(tier.tier);
         const addressed = tier.elements.filter((element) => element.acceptanceCount > 0).length;
