@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { BookOpenIcon } from "lucide-react";
 import { STATUS_LABELS, STATUS_STYLES } from "@/components/graph/nodes/node-styles";
 import { STATUSES } from "@/lib/config/statuses";
 import { SPECIES_NAV_ICONS, SPECIES_PLURALS } from "@/lib/config/species-icons";
@@ -15,10 +16,13 @@ interface InventoryCardProps {
 /** The census: what the graph holds, by species and status. */
 export function InventoryCard({ inventory, projectId }: InventoryCardProps) {
   return (
-    <OverviewSection title="Inventory" href={`/project/${projectId}/library`} linkLabel="Library">
-      <p className="text-xs text-muted-foreground">
-        {inventory.nodeCount} nodes · {inventory.edgeCount} edges · {inventory.journalEventCount} journal events
-      </p>
+    <OverviewSection
+      title="Inventory"
+      icon={BookOpenIcon}
+      subtitle={`${inventory.nodeCount} nodes · ${inventory.edgeCount} edges · ${inventory.journalEventCount} journal events`}
+      href={`/project/${projectId}/library`}
+      linkLabel="Library"
+    >
       <div className="flex flex-col gap-0.5">
         {inventory.species.map((entry) => {
           const Icon = SPECIES_NAV_ICONS[entry.species];

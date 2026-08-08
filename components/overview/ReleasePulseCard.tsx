@@ -1,6 +1,6 @@
 "use client";
 
-import { TagIcon } from "lucide-react";
+import { TagIcon, TagsIcon } from "lucide-react";
 import { formatEventDate } from "@/components/journal/describe-event";
 import { PLATFORM_LABELS } from "@/components/graph/nodes/node-styles";
 import type { PlatformId } from "@/lib/config/platforms";
@@ -15,10 +15,18 @@ interface ReleasePulseCardProps {
 /** Every tagged release, newest first — the changelog's headline numbers. */
 export function ReleasePulseCard({ releases, projectId }: ReleasePulseCardProps) {
   return (
-    <OverviewSection title="Release pulse" href={`/project/${projectId}/changelog`} linkLabel="Changelog">
-      {releases.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No releases tagged yet.</p>
-      ) : (
+    <OverviewSection
+      title="Release pulse"
+      icon={TagsIcon}
+      subtitle={
+        releases.length === 0
+          ? "No releases tagged yet."
+          : `${releases.length} tagged release${releases.length === 1 ? "" : "s"}, newest first`
+      }
+      href={`/project/${projectId}/changelog`}
+      linkLabel="Changelog"
+    >
+      {releases.length > 0 && (
         <div className="flex flex-col gap-1.5">
           {releases.map((release) => (
             <div key={release.eventId} className="flex items-center gap-2 text-sm">

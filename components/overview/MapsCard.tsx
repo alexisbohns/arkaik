@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { MapPinnedIcon, NetworkIcon, RouteIcon, type LucideIcon } from "lucide-react";
+import { MapIcon, MapPinnedIcon, NetworkIcon, RouteIcon, type LucideIcon } from "lucide-react";
 import type { MapDefinition } from "@arkaik/schema";
 import { OverviewSection } from "./OverviewSection";
 
@@ -28,13 +28,17 @@ export function MapsCard({ maps, projectId }: MapsCardProps) {
   return (
     <OverviewSection
       title="Maps"
+      icon={MapIcon}
+      subtitle={
+        maps.length === 0
+          ? "No maps yet."
+          : `${maps.length} reading${maps.length === 1 ? "" : "s"} of the same graph`
+      }
       href={`/project/${projectId}/maps`}
       linkLabel="All maps"
       className="md:col-span-2"
     >
-      {maps.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No maps yet.</p>
-      ) : (
+      {maps.length > 0 && (
         <div className="grid gap-0.5 sm:grid-cols-2">
           {maps.map(({ definition, nodeCount, edgeCount }) => {
             const Icon = mapIcon(definition);

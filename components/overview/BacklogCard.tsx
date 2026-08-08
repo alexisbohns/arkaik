@@ -1,6 +1,6 @@
 "use client";
 
-import { LightbulbIcon, MessageSquareTextIcon } from "lucide-react";
+import { InboxIcon, LightbulbIcon, MessageSquareTextIcon } from "lucide-react";
 import type { Backlog } from "@/lib/utils/journal";
 import { OverviewSection } from "./OverviewSection";
 
@@ -16,15 +16,19 @@ export function BacklogCard({ backlog, projectId }: BacklogCardProps) {
   const overflow = backlog.items.length - MAX_ROWS;
 
   return (
-    <OverviewSection title="Backlog" href={`/project/${projectId}/changelog`} linkLabel="Changelog">
-      {backlog.items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No open ideas or requests.</p>
-      ) : (
+    <OverviewSection
+      title="Backlog"
+      icon={InboxIcon}
+      subtitle={
+        backlog.items.length === 0
+          ? "No open ideas or requests."
+          : `${backlog.items.length} open — ${backlog.ideas.length} idea${backlog.ideas.length === 1 ? "" : "s"}, ${backlog.requests.length} request${backlog.requests.length === 1 ? "" : "s"}`
+      }
+      href={`/project/${projectId}/changelog`}
+      linkLabel="Changelog"
+    >
+      {backlog.items.length > 0 && (
         <>
-          <p className="text-xs text-muted-foreground">
-            {backlog.items.length} open — {backlog.ideas.length} idea{backlog.ideas.length === 1 ? "" : "s"},{" "}
-            {backlog.requests.length} request{backlog.requests.length === 1 ? "" : "s"}
-          </p>
           <div className="flex flex-col gap-0.5">
             {backlog.items.slice(0, MAX_ROWS).map((item) => {
               const Icon = item.type === "idea.proposed" ? LightbulbIcon : MessageSquareTextIcon;

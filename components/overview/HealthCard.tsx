@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CircleCheckBigIcon, TriangleAlertIcon } from "lucide-react";
+import { CircleCheckBigIcon, HeartPulseIcon, TriangleAlertIcon } from "lucide-react";
 import type { HealthIndicator, HealthIndicatorId } from "@/lib/utils/coverage";
 import { OverviewSection } from "./OverviewSection";
 
@@ -22,8 +22,18 @@ interface HealthCardProps {
 
 /** Doc-health: where the living documentation is thin. Zero is the goal state. */
 export function HealthCard({ indicators, projectId }: HealthCardProps) {
+  const flagged = indicators.filter((indicator) => indicator.count > 0).length;
+
   return (
-    <OverviewSection title="Health">
+    <OverviewSection
+      title="Health"
+      icon={HeartPulseIcon}
+      subtitle={
+        flagged === 0
+          ? "Every indicator is at zero — the documentation is whole."
+          : `${flagged} of ${indicators.length} indicator${indicators.length === 1 ? "" : "s"} needs attention`
+      }
+    >
       <div className="flex flex-col gap-0.5">
         {indicators.map((indicator) => {
           const healthy = indicator.count === 0;

@@ -64,6 +64,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-folder-kanban { filter: url(#wob-folder-kanban); }
 .lucide-folder-open { filter: url(#wob-folder-open); }
 .lucide-folder-tree { filter: url(#wob-folder-tree); }
+.lucide-gauge { filter: url(#wob-gauge); }
 .lucide-gem { filter: url(#wob-gem); }
 .lucide-gift { filter: url(#wob-gift); }
 .lucide-git-branch { filter: url(#wob-git-branch); }
@@ -78,6 +79,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-hourglass { filter: url(#wob-hourglass); }
 .lucide-image-off { filter: url(#wob-image-off); }
 .lucide-image-plus { filter: url(#wob-image-plus); }
+.lucide-inbox { filter: url(#wob-inbox); }
 .lucide-info { filter: url(#wob-info); }
 .lucide-key-round { filter: url(#wob-key-round); }
 .lucide-keyboard { filter: url(#wob-keyboard); }
@@ -136,6 +138,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-sunrise { filter: url(#wob-sunrise); }
 .lucide-table2 { filter: url(#wob-table2); }
 .lucide-tag { filter: url(#wob-tag); }
+.lucide-tags { filter: url(#wob-tags); }
 .lucide-thumbs-up { filter: url(#wob-thumbs-up); }
 .lucide-ticket { filter: url(#wob-ticket); }
 .lucide-timer { filter: url(#wob-timer); }
