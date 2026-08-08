@@ -12,6 +12,7 @@ const fs = require("fs");
 const {
   BUILT_IN_MAPS,
   DEFAULT_MAP_DISPLAY,
+  buildProductGraph,
   computeMapSubgraph,
   isBuiltInMapId,
   listMaps,
@@ -293,6 +294,133 @@ const ids = (elements) => elements.map((el) => el.id).sort();
     "listMaps without metadata yields the built-ins",
   );
   assert(BUILT_IN_MAPS.length === 2, "two built-in maps");
+}
+
+// --- Product scope (docs/spec/maps.md § Product Scope) ----------------------
+//
+// The restriction is inside `computeMapSubgraph`, not applied by the caller
+// before it (issue #319). Every audience therefore gets it: the canvas, the MCP
+// server's `get_map` / `list_maps`, and anything that calls the function next.
+{
+  const p = (product) => ({ product });
+  const productNodes = [
+    { id: "F-admin", project_id: "p", species: "flow", title: "Admin", status: "live", platforms: ["web"], metadata: p("admin") },
+    { id: "V-admin", project_id: "p", species: "view", title: "Admin view", status: "live", platforms: ["web"], metadata: p("admin") },
+    { id: "V-shop", project_id: "p", species: "view", title: "Shop view", status: "live", platforms: ["web"], metadata: p("shop") },
+    { id: "V-loose", project_id: "p", species: "view", title: "Unassigned", status: "idea", platforms: ["web"] },
+    { id: "API-admin", project_id: "p", species: "api-endpoint", title: "Admin API", status: "live", platforms: ["web"] },
+    { id: "DM-shared", project_id: "p", species: "data-model", title: "Shared", status: "live", platforms: ["web"] },
+    { id: "DM-orphan", project_id: "p", species: "data-model", title: "Orphan", status: "idea", platforms: ["web"] },
+    { id: "AC-admin", project_id: "p", species: "acceptance", title: "Admin AC", status: "live", platforms: ["web"] },
+  ];
+  const productEdges = [
+    { id: "pe1", project_id: "p", source_id: "F-admin", target_id: "V-admin", edge_type: "composes" },
+    { id: "pe2", project_id: "p", source_id: "V-admin", target_id: "API-admin", edge_type: "calls" },
+    { id: "pe3", project_id: "p", source_id: "API-admin", target_id: "DM-shared", edge_type: "queries" },
+    { id: "pe4", project_id: "p", source_id: "V-shop", target_id: "DM-shared", edge_type: "displays" },
+    { id: "pe5", project_id: "p", source_id: "AC-admin", target_id: "V-admin", edge_type: "covers" },
+  ];
+
+  const system = { id: "s", title: "S", kind: "system" };
+
+  const unscoped = computeMapSubgraph(system, productNodes, productEdges);
+  assert(
+    JSON.stringify(ids(unscoped.nodes)) ===
+      JSON.stringify(["API-admin", "DM-orphan", "DM-shared", "V-admin", "V-loose", "V-shop"]) &&
+      unscoped.edges.length === 3,
+    "computeMapSubgraph: a definition with no product selects every species match",
+  );
+
+  // The bug: this used to return the unscoped subgraph above.
+  const scoped = computeMapSubgraph({ ...system, product: "admin" }, productNodes, productEdges);
+  assert(
+    JSON.stringify(ids(scoped.nodes)) === JSON.stringify(["API-admin", "DM-orphan", "DM-shared", "V-admin"]),
+    "computeMapSubgraph: definition.product restricts the selection by default",
+  );
+  assert(
+    JSON.stringify(ids(scoped.edges)) === JSON.stringify(["pe2", "pe3"]),
+    "computeMapSubgraph: an edge loses an endpoint to the product filter and drops out",
+  );
+
+  // Per-species membership, all four readings in one assertion set.
+  assert(
+    ids(scoped.nodes).includes("V-admin") && !ids(scoped.nodes).includes("V-shop"),
+    "product scope: a view's stored membership governs",
+  );
+  assert(
+    !ids(scoped.nodes).includes("V-loose"),
+    "product scope: an unassigned view is out of every named product (triage, not everywhere)",
+  );
+  assert(
+    ids(scoped.nodes).includes("API-admin") && ids(scoped.nodes).includes("DM-shared"),
+    "product scope: the system layer derives membership from its consumers",
+  );
+  assert(
+    ids(scoped.nodes).includes("DM-orphan"),
+    "product scope: an orphan model stays visible under every named product",
+  );
+
+  const shop = computeMapSubgraph({ ...system, product: "shop" }, productNodes, productEdges);
+  assert(
+    JSON.stringify(ids(shop.nodes)) === JSON.stringify(["DM-orphan", "DM-shared", "V-shop"]),
+    "product scope: a model two products reach appears in both — a restriction is not a partition",
+  );
+
+  // The acceptance reading, which needs a species-explicit map to be selected
+  // at all: anchors govern, so AC-admin is admin's although it stores no key.
+  const acceptances = { id: "a", title: "A", kind: "system", species: ["acceptance"], edge_types: [] };
+  assert(
+    ids(computeMapSubgraph({ ...acceptances, product: "admin" }, productNodes, productEdges).nodes).join() ===
+      "AC-admin" &&
+      computeMapSubgraph({ ...acceptances, product: "shop" }, productNodes, productEdges).nodes.length === 0,
+    "product scope: an acceptance takes membership from the anchors it covers",
+  );
+
+  // The app's override: the shell's global scope is the default for a map that
+  // declares no product of its own, and never outranks one that does.
+  assert(
+    ids(computeMapSubgraph(system, productNodes, productEdges, { product: "admin" }).nodes).join() ===
+      ids(scoped.nodes).join(),
+    "options.product scopes a definition that declares none",
+  );
+  assert(
+    ids(computeMapSubgraph({ ...system, product: "admin" }, productNodes, productEdges, { product: "admin" }).nodes)
+      .join() === ids(scoped.nodes).join(),
+    "options.product carries the resolved precedence — the caller resolves it, this does not re-resolve",
+  );
+  assert(
+    ids(computeMapSubgraph({ ...system, product: "admin" }, productNodes, productEdges, { product: null }).nodes)
+      .join() === ids(unscoped.nodes).join(),
+    "options.product null is All products — an explicit widening, not an absent option",
+  );
+
+  // A pre-built graph is the same answer, never a different one: the app builds
+  // one per snapshot because the usage index is a traversal.
+  const prebuilt = buildProductGraph(productNodes, productEdges);
+  assert(
+    ids(computeMapSubgraph({ ...system, product: "admin" }, productNodes, productEdges, { graph: prebuilt }).nodes)
+      .join() === ids(scoped.nodes).join(),
+    "options.graph is honoured and agrees with the graph built internally",
+  );
+
+  // Nothing to resolve, nothing to pay: a project with no product anywhere must
+  // render byte-identically to the way it did before products existed.
+  assert(
+    ids(computeMapSubgraph(system, nodes, edges).nodes).join() ===
+      ids(computeMapSubgraph(system, nodes, edges, { product: null }).nodes).join(),
+    "a definition with no product is unchanged by the restriction",
+  );
+
+  // The root BFS composes on top of the restriction rather than around it.
+  const rooted = computeMapSubgraph(
+    { ...system, product: "admin", root_node_id: "DM-shared", depth: 1 },
+    productNodes,
+    productEdges,
+  );
+  assert(
+    JSON.stringify(ids(rooted.nodes)) === JSON.stringify(["API-admin", "DM-shared"]),
+    "product scope: step 3's BFS walks the restricted graph, so V-shop is not a neighbour of DM-shared",
+  );
 }
 
 // --- Validator warnings (docs/spec/maps.md § Validation) --------------------

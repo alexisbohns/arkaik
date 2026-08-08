@@ -3,7 +3,7 @@ import { computeMapSubgraph, DEFAULT_MAP_DISPLAY, type MapDefinition, type Resol
 import type { Node as DataNode, Edge as DataEdge } from "@/lib/data/types";
 import { EDGE_TYPE_TO_FLOW_TYPE, SPECIES_TO_NODE_TYPE } from "@/lib/utils/graph-build";
 import { addEffectiveNodeToRollup, createEmptyRollup, getEffectivePlatformStatuses, getRollupDisplayStatus } from "@/lib/utils/platform-status";
-import { mapScopedNodes, type ProductGraph, type ProductScope } from "@/lib/utils/product-scope";
+import { mapProductId, type ProductGraph, type ProductScope } from "@/lib/utils/product-scope";
 
 export interface SystemGraphHandlers {
   onOpenDetails?: (node: DataNode) => void;
@@ -33,8 +33,15 @@ export interface SystemGraphScope {
  * for the other. `display` is how this reading draws its cards — the reader's
  * per-map choice, saved against the map. `productScope` is which nodes the map
  * may *select* — the definition's own `product`, else the shell's scope
- * (`mapScopedNodes`). A web-only product drawn with `view_platforms: "rows"`
+ * (`mapProductId`). A web-only product drawn with `view_platforms: "rows"`
  * gets rows, with one row; the same product drawn as chips gets one chip.
+ *
+ * The restriction is applied by `computeMapSubgraph` itself (issue #319), not
+ * by a pre-filter here: the map's own `product` then reaches every audience,
+ * and all this passes down is the *ambient* half — the shell scope a map that
+ * declares no product of its own falls back to. Omitted, the definition's own
+ * `product` still applies; there is no reading under which a map titled "Admin
+ * systems" should draw anything else.
  *
  * The scope deliberately does not narrow what the map may *read*: the status
  * helpers below keep the whole snapshot, because an acceptance covering a view
@@ -48,10 +55,10 @@ export function buildSystemGraph(
   display: ResolvedMapDisplay = DEFAULT_MAP_DISPLAY,
   productScope?: SystemGraphScope,
 ): { nodes: Node[]; edges: Edge[] } {
-  const selectableNodes = productScope
-    ? mapScopedNodes(definition, dataNodes, productScope.scope, productScope.graph)
-    : dataNodes;
-  const subgraph = computeMapSubgraph(definition, selectableNodes, dataEdges);
+  const subgraph = computeMapSubgraph(definition, dataNodes, dataEdges, {
+    product: mapProductId(definition, productScope?.scope.productId ?? null),
+    ...(productScope ? { graph: productScope.graph } : {}),
+  });
   const origin = { x: 0, y: 0 };
 
   const nodes: Node[] = subgraph.nodes.map((node) => {

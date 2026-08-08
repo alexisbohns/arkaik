@@ -186,7 +186,7 @@ async function main() {
   const maps = await callTool("list_maps", {});
   check(
     "list_maps returns built-ins + stored definitions with counts",
-    maps.body?.maps.length === 3 && maps.body.maps.some((entry) => entry.definition.id === "onboarding"),
+    maps.body?.maps.length === 4 && maps.body.maps.some((entry) => entry.definition.id === "onboarding"),
     JSON.stringify(maps.body?.maps.map((entry) => [entry.definition.id, entry.nodeCount])),
   );
   const systemMap = await callTool("get_map", { map_id: "system" });
@@ -194,6 +194,25 @@ async function main() {
     "get_map computes the subgraph",
     systemMap.body?.nodes.length === 4 && systemMap.body.edges.length === 2,
     `system map: ${systemMap.body?.nodes.length} nodes / ${systemMap.body?.edges.length} edges (2 views + api + dm; both cross-layer edges)`,
+  );
+
+  // Audience symmetry (issue #319): a product-scoped map answers the same
+  // question here as it does on the canvas. `admin-system` is the built-in
+  // System map plus `product: "admin"`, and only V-profile stores that
+  // membership — V-welcome is unassigned and drops out, while the API and data
+  // model V-profile reaches derive their way in.
+  const adminMap = await callTool("get_map", { map_id: "admin-system" });
+  check(
+    "get_map applies MapDefinition.product",
+    JSON.stringify((adminMap.body?.nodes ?? []).map((node) => node.id).sort()) ===
+      JSON.stringify(["API-get-profile", "DM-profile", "V-profile"]),
+    `admin-system: ${JSON.stringify((adminMap.body?.nodes ?? []).map((node) => node.id))}`,
+  );
+  const adminEntry = (maps.body?.maps ?? []).find((entry) => entry.definition.id === "admin-system");
+  check(
+    "list_maps counts a product-scoped map through its restriction",
+    adminEntry?.nodeCount === 3 && adminEntry?.edgeCount === 2,
+    `admin-system counts: ${adminEntry?.nodeCount} nodes / ${adminEntry?.edgeCount} edges`,
   );
 
   const validation = await callTool("validate_bundle", {});

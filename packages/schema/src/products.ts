@@ -213,3 +213,157 @@ export function buildProductUsageIndex(
 export function productsUsingNode(nodeId: string, index: ProductUsageIndex): string[] {
   return index.get(nodeId) ?? [];
 }
+
+/* --- Membership resolution ---------------------------------------------------
+ *
+ * The functions below answer "which products does this node belong to?" for
+ * every species, and they live **here** rather than in the app (issue #319).
+ *
+ * They began in `lib/utils/product-scope.ts`, which meant `computeMapSubgraph`
+ * could not apply a map's `product` and every non-app audience — the MCP
+ * server's `get_map` and `list_maps` — silently served the unscoped subgraph
+ * under a scoped map's name. That broke audience symmetry
+ * (docs/spec/mcp.md): a map titled "Admin systems" answered one question on the
+ * canvas and a different, larger one over MCP. The fix had to be this move and
+ * not a second implementation in the MCP layer, because two implementations of
+ * one membership rule is exactly how two surfaces come to disagree about the
+ * same node.
+ *
+ * Same doctrine as the rest of this module: pure, zod-free, minimal `Pick<>`
+ * inputs. The app's `lib/utils/product-scope.ts` re-exports them unchanged, so
+ * the surfaces still import from the module that owns their shapes.
+ */
+
+/** The node fields membership is resolved from. */
+type MembershipNode = Pick<Node, "id" | "species" | "metadata">;
+
+/** The edge fields membership traversals read. */
+type MembershipEdge = Pick<Edge, "edge_type" | "source_id" | "target_id">;
+
+/**
+ * The graph a full membership answer needs. Assembled **once per snapshot** —
+ * `usageIndex` is a traversal and must never run per node — by
+ * {@link buildProductGraph}, or by hand where a caller already holds the parts
+ * (every app surface holds `nodesById` for other reasons).
+ */
+export interface ProductGraph {
+  edges: readonly MembershipEdge[];
+  nodesById: ReadonlyMap<string, MembershipNode>;
+  usageIndex: ProductUsageIndex;
+}
+
+/** The whole snapshot as a {@link ProductGraph}. One traversal, one map build. */
+export function buildProductGraph(
+  nodes: readonly MembershipNode[],
+  edges: readonly MembershipEdge[],
+): ProductGraph {
+  return {
+    edges,
+    nodesById: new Map(nodes.map((node) => [node.id, node])),
+    usageIndex: buildProductUsageIndex(nodes, edges),
+  };
+}
+
+/** Anchor ids an acceptance covers (outgoing `covers` edges). */
+export function coveredAnchorIds(acceptanceId: string, edges: readonly MembershipEdge[]): string[] {
+  return edges
+    .filter((edge) => edge.edge_type === "covers" && edge.source_id === acceptanceId)
+    .map((edge) => edge.target_id);
+}
+
+/**
+ * The products an acceptance belongs to — possibly none, possibly several.
+ *
+ * **Anchors govern when there are any** (products RFC decision 3): an acceptance
+ * is a statement about the views and flows it covers, so its membership is
+ * theirs. Stored `metadata.product` is the answer only for an acceptance with
+ * nothing to derive from — the intake case, where a PM files an idea knowing
+ * which app it is for long before they know which screens it needs. Reading the
+ * stored value first would let a stale key on an anchored acceptance out-vote
+ * the graph it is attached to.
+ *
+ * Unresolvable anchors are skipped, exactly as the app's
+ * `groupAcceptancesByAnchor` skips them, so a dangling `covers` edge cannot make
+ * an acceptance both anchored-for-membership and unanchored-for-grouping.
+ *
+ * An **empty** result is meaningful and is not the same as "everywhere": it is
+ * triage. Either the acceptance is anchorless and unassigned, or every anchor it
+ * covers is itself unassigned. Both show under All products only.
+ */
+export function productsOfAcceptance(
+  acceptance: MembershipNode,
+  edges: readonly MembershipEdge[],
+  nodesById: ReadonlyMap<string, MembershipNode>,
+): Set<string> {
+  const anchors = coveredAnchorIds(acceptance.id, edges)
+    .map((anchorId) => nodesById.get(anchorId))
+    .filter((anchor): anchor is MembershipNode => anchor !== undefined);
+
+  if (anchors.length === 0) {
+    const stored = productOf(acceptance);
+    return stored === null ? new Set<string>() : new Set([stored]);
+  }
+
+  const products = new Set<string>();
+  for (const anchor of anchors) {
+    const product = productOf(anchor);
+    if (product !== null) products.add(product);
+  }
+  return products;
+}
+
+/**
+ * **The one answer to "which products does this node belong to?"** — every
+ * species, one function. Three surfaces asked the question three ways before
+ * this existed, and two of them disagreed about the same acceptance.
+ *
+ * - `flow` / `view` — stored `metadata.product`. They are the only species a
+ *   human assigns directly.
+ * - `acceptance` — {@link productsOfAcceptance}: anchors first, stored key only
+ *   when it covers nothing.
+ * - `data-model` / `api-endpoint` — derived from consumers via the usage index.
+ *
+ * An **empty set means different things** for the two halves, which is why
+ * {@link nodeInProduct} and not this function decides what to do with it: for a
+ * species that stores membership, empty means *nobody has said yet* — triage.
+ * For the system layer it means *nothing in the graph reaches this* — an orphan.
+ */
+export function productsOfNode(node: MembershipNode, graph: ProductGraph): Set<string> {
+  if (node.species === "acceptance") {
+    return productsOfAcceptance(node, graph.edges, graph.nodesById);
+  }
+  if (PRODUCT_MEMBERSHIP_SPECIES.includes(node.species)) {
+    const stored = productOf(node);
+    return stored === null ? new Set<string>() : new Set([stored]);
+  }
+  return new Set(productsUsingNode(node.id, graph.usageIndex));
+}
+
+/**
+ * Does this node belong to this product? **The single copy of the membership
+ * rule** every surface and every audience tests against — the app's
+ * `nodeInScope`, `mapScopedNodes`, and `computeMapSubgraph`'s product option
+ * all reduce to this call.
+ *
+ * `null` matches everything: All products, and a project that declares none.
+ *
+ * The two readings of an empty set from {@link productsOfNode} are resolved
+ * here, and the asymmetry is deliberate:
+ *
+ * - a flow, view, or acceptance with no products is **out** of every named
+ *   product. Nobody has assigned it; it belongs to triage, visible under All
+ *   products where it can be found and fixed.
+ * - a data model or endpoint with no products is **in** every named product. It
+ *   is an orphan — reached by nothing — and hiding it would bury exactly the
+ *   node that needs attention (docs/spec/maps.md § Orphans).
+ */
+export function nodeInProduct(
+  node: MembershipNode,
+  productId: string | null,
+  graph: ProductGraph,
+): boolean {
+  if (productId === null) return true;
+  const products = productsOfNode(node, graph);
+  if (products.size === 0) return !PRODUCT_MEMBERSHIP_SPECIES.includes(node.species);
+  return products.has(productId);
+}

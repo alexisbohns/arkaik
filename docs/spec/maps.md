@@ -91,7 +91,7 @@ questions and neither substitutes for the other:
 
 | Question | Answered by |
 |---|---|
-| *Which nodes may this map draw, and which platforms may a card claim?* | the product scope — `mapScopedNodes`, `scopedPlatforms`, `flowGaugePlatforms` |
+| *Which nodes may this map draw, and which platforms may a card claim?* | the product scope — `computeMapSubgraph`'s step 0 (`mapScopedNodes` for the journey renderer), `scopedPlatforms`, `flowGaugePlatforms` |
 | *How does a card draw whatever it was given?* | the display — `resolveMapDisplay` |
 
 So a display flip re-draws the same facts: the platform list a flow card renders
@@ -161,8 +161,8 @@ to be here was the bug:
 
 | Renderer | How `product` scopes it |
 |---|---|
-| `system` | The resolved product restricts the candidate nodes **before** § Subgraph Algorithm runs; species and edge filters then compose on top unchanged |
-| `journey` | The same restriction, **plus** the anchor. `mapScopedNodes` runs first, and the anchor chain is then resolved against what survived: an anchor the product does not contain does not resolve. The compose walk, the parent index and the playlist lookups all read the restricted set, so a journey can no more show another product's view than a System map can |
+| `system` | § Subgraph Algorithm's step 0 restricts the candidate nodes; species and edge filters then compose on top unchanged |
+| `journey` | The same restriction, **plus** the anchor. The journey renderer is not `computeMapSubgraph` — it walks its own compose closure — so it applies the restriction itself through `mapScopedNodes`, and the anchor chain is then resolved against what survived: an anchor the product does not contain does not resolve. The compose walk, the parent index and the playlist lookups all read the restricted set, so a journey can no more show another product's view than a System map can |
 
 The earlier rule — journey scoped by its anchor *only* — rested on the premise that a membership
 filter would cut a shared view out of the middle of a compose chain and truncate the journey below
@@ -192,21 +192,34 @@ derived from consumers for data models and API endpoints — and an *orphan* end
 nothing in the graph reaches, stays visible under every named product. A restriction is not a
 partition: a data model two products both reach appears in both.
 
-> **Known gap.** The restriction is applied by the app (`lib/utils/product-scope.ts`,
-> `mapScopedNodes`) rather than inside `computeMapSubgraph`, because membership resolution lives
-> there and a second copy of it is how two surfaces come to disagree about the same node. The
-> consequence is that the MCP server's `get_map` ([mcp.md](mcp.md)) and any CLI consumer call
-> `computeMapSubgraph` directly and therefore **do not apply `product`** — an agent asking for a
-> product-scoped map gets the unscoped subgraph. Audience symmetry is broken here until membership
-> resolution moves into `@arkaik/schema` and `computeMapSubgraph` can take it; that move is the fix,
-> not a second implementation.
+**The restriction is inside `computeMapSubgraph`, and every audience therefore gets it.** It used to
+be applied by the app before the call — membership resolution lived in `lib/utils/product-scope.ts`,
+so the schema function could not reach it — which left the MCP server's `get_map` and `list_maps`
+([mcp.md](mcp.md)) serving the **unscoped** subgraph, and unscoped counts, under a scoped map's own
+name (issue #319). A map titled "Admin systems" answered one question on the canvas and a different,
+larger one over MCP, with nothing in the result saying so. The fix was to move membership resolution
+into `@arkaik/schema` (`productsOfNode`, `nodeInProduct`, `buildProductGraph`) and let the algorithm
+take the product, **not** to reimplement the restriction in the MCP layer: two implementations of one
+membership rule is exactly how two surfaces come to disagree about the same node.
+
+The default is what makes this hold for the *next* caller too: with no options, `computeMapSubgraph`
+applies the definition's own `product`. A caller wanting the whole graph has to opt out
+(`{ product: null }`), and opting out is then a visible decision in the source rather than an
+omission. The app passes `mapProductId(definition, scope.productId)` — the resolved product, already
+carrying the precedence above — plus the `ProductGraph` it builds once per snapshot, because the
+usage index is a traversal and must never run per node.
 
 ## Subgraph Algorithm
 
-`computeMapSubgraph(definition, nodes, edges)` — the normative selection semantics, in order.
-The `product` restriction (§ Product Scope) is applied to `nodes` by the caller before step 1, so
-these four steps are unchanged by it:
+`computeMapSubgraph(definition, nodes, edges, options?)` — the normative selection semantics, in
+order:
 
+0. **Product restriction.** Keep nodes the resolved product contains (§ Product Scope). The product
+   is `options.product` when given and the definition's own `product` otherwise; `null` is All
+   products. `nodes` and `edges` MUST be the whole snapshot — system-layer membership is derived from
+   consumers, so a pre-filtered slice would resolve a data model against a graph missing the views
+   that reach it. Filtering nodes is enough to filter edges: step 2 drops any edge that lost an
+   endpoint. The four steps below are unchanged by it.
 1. **Species filter.** Keep nodes whose `species` is in the (defaulted) `species` list.
 2. **Edge filter.** Keep edges whose `edge_type` is in the (defaulted) `edge_types` list **and** whose two endpoints both survived step 1.
 3. **Scope.** If `root_node_id` is present and resolves to a surviving node: **undirected BFS** from it through the surviving edges, bounded by `depth` when present; keep the visited nodes and the surviving edges among them. Undirected, because a scoped map means *"the neighborhood of this anchor"* — an admin view's map must include the API that calls into it, not only what it calls. (A directed variant was considered and rejected for v1; a `direction` knob MAY be added later without breaking this contract.)

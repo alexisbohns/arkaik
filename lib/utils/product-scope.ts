@@ -11,17 +11,40 @@
  */
 
 import { PLATFORMS, type PlatformId } from "@/lib/config/platforms";
-import type { Edge, Node, Project } from "@/lib/data/types";
+import type { Node, Project } from "@/lib/data/types";
 import {
   effectiveNodePlatforms,
-  PRODUCT_MEMBERSHIP_SPECIES,
+  mapProductId,
+  nodeInProduct,
   productOf,
   productPlatforms,
-  productsUsingNode,
+  productsOfNode,
   resolveProducts,
   type MapDefinition,
   type ProductDefinition,
-  type ProductUsageIndex,
+  type ProductGraph,
+} from "@arkaik/schema";
+
+/**
+ * **Membership resolution lives in `@arkaik/schema`** and is re-exported here
+ * unchanged (issue #319). It used to live in this file, which meant
+ * `computeMapSubgraph` could not apply a map's `product` and the MCP server
+ * served the unscoped subgraph under a scoped map's name — audience symmetry
+ * broken by nothing more than where a function sat.
+ *
+ * The surfaces still import from this module, because this module owns the
+ * shapes they hold (`ProductScope`, the arity rule). What moved is the
+ * semantics, and it moved so that there stays exactly one copy of it.
+ */
+export {
+  buildProductGraph,
+  coveredAnchorIds,
+  mapProductId,
+  mapScopedNodes,
+  nodeInProduct,
+  productsOfAcceptance,
+  productsOfNode,
+  type ProductGraph,
 } from "@arkaik/schema";
 
 /** Rings-and-aggregate, or one bar. There is no third shape. */
@@ -268,95 +291,6 @@ export function canOverrideProduct(
   return globalId === null && productScopeOptions(bundle).length > 0;
 }
 
-/** Anchor ids an acceptance covers (outgoing `covers` edges). */
-export function coveredAnchorIds(acceptanceId: string, edges: readonly Edge[]): string[] {
-  return edges
-    .filter((e) => e.edge_type === "covers" && e.source_id === acceptanceId)
-    .map((e) => e.target_id);
-}
-
-/**
- * The products an acceptance belongs to — possibly none, possibly several.
- *
- * **Anchors govern when there are any** (RFC decision 3): an acceptance is a
- * statement about the views and flows it covers, so its membership is theirs.
- * Stored `metadata.product` is the answer only for an acceptance with nothing
- * to derive from — the intake case (§ Decision 5), where a PM files an idea
- * knowing which app it is for long before they know which screens it needs.
- * Reading the stored value first would let a stale key on an anchored
- * acceptance out-vote the graph it is attached to.
- *
- * Unresolvable anchors are skipped, exactly as `groupAcceptancesByAnchor`
- * skips them, so a dangling `covers` edge cannot make an acceptance both
- * anchored-for-membership and unanchored-for-grouping.
- *
- * An **empty** result is meaningful and is not the same as "everywhere": it is
- * triage. Either the acceptance is anchorless and unassigned, or every anchor it
- * covers is itself unassigned. Both show under All products only.
- */
-export function productsOfAcceptance(
-  acceptance: Pick<Node, "id" | "species" | "metadata">,
-  edges: readonly Edge[],
-  nodesById: ReadonlyMap<string, Node>,
-): Set<string> {
-  const anchors = coveredAnchorIds(acceptance.id, edges)
-    .map((anchorId) => nodesById.get(anchorId))
-    .filter((anchor): anchor is Node => anchor !== undefined);
-
-  if (anchors.length === 0) {
-    const stored = productOf(acceptance);
-    return stored === null ? new Set<string>() : new Set([stored]);
-  }
-
-  const products = new Set<string>();
-  for (const anchor of anchors) {
-    const product = productOf(anchor);
-    if (product !== null) products.add(product);
-  }
-  return products;
-}
-
-/**
- * The graph a full membership answer needs. Assembled once per snapshot at the
- * page — `usageIndex` is `buildProductUsageIndex(nodes, edges)`, which is a
- * traversal and must never run per node.
- */
-export interface ProductGraph {
-  edges: readonly Edge[];
-  nodesById: ReadonlyMap<string, Node>;
-  usageIndex: ProductUsageIndex;
-}
-
-/**
- * **The one answer to "which products does this node belong to?"** — every
- * species, one function. Three surfaces asked the question three ways before
- * this existed, and two of them disagreed about the same acceptance.
- *
- * - `flow` / `view` — stored `metadata.product`. They are the only species a
- *   human assigns directly.
- * - `acceptance` — {@link productsOfAcceptance}: anchors first, stored key only
- *   when it covers nothing (§ Decision 5).
- * - `data-model` / `api-endpoint` — derived from consumers via the usage index.
- *
- * An **empty set means different things** for the two halves, which is why
- * {@link nodeInScope} and not this function decides what to do with it: for a
- * species that stores membership, empty means *nobody has said yet* — triage.
- * For the system layer it means *nothing in the graph reaches this* — an orphan.
- */
-export function productsOfNode(
-  node: Pick<Node, "id" | "species" | "metadata">,
-  graph: ProductGraph,
-): Set<string> {
-  if (node.species === "acceptance") {
-    return productsOfAcceptance(node, graph.edges, graph.nodesById);
-  }
-  if (PRODUCT_MEMBERSHIP_SPECIES.includes(node.species)) {
-    const stored = productOf(node);
-    return stored === null ? new Set<string>() : new Set([stored]);
-  }
-  return new Set(productsUsingNode(node.id, graph.usageIndex));
-}
-
 /**
  * The products this node belongs to, as **titles ready to render**, in the
  * project's declaration order.
@@ -450,28 +384,6 @@ export function nodeInScope(
 }
 
 /**
- * {@link nodeInScope} against a bare product id rather than a resolved scope,
- * and the one copy of the membership rule the two share.
- *
- * Surfaces still call `nodeInScope` — they hold a scope, and the degraded
- * no-graph form is theirs. This exists for the caller that holds a product id
- * that is *not* the shell's: a stored map's own `product`
- * ({@link mapProductId}), which wins over the global scope and so cannot be
- * asked through a `ProductScope` without inventing one whose `platforms` and
- * `product` would describe a different product than its `productId`.
- */
-export function nodeInProduct(
-  node: Pick<Node, "id" | "species" | "metadata">,
-  productId: string | null,
-  graph: ProductGraph,
-): boolean {
-  if (productId === null) return true;
-  const products = productsOfNode(node, graph);
-  if (products.size === 0) return !PRODUCT_MEMBERSHIP_SPECIES.includes(node.species);
-  return products.has(productId);
-}
-
-/**
  * The platforms this node actually has, given the scope.
  *
  * The **node's own product menu governs**, not the scope's platform list. That
@@ -492,42 +404,17 @@ export function scopedPlatforms(
 
 /* --- Maps ------------------------------------------------------------------
  *
- * A map is a *saved projection* (docs/spec/maps.md). Two product answers can
- * therefore be in play at once — the definition's own `product` and the shell's
- * global scope — and the three functions below are the only place the repo
- * decides between them.
+ * A map is a *saved projection* (docs/spec/maps.md). Two product answers can be
+ * in play at once — the definition's own `product` and the shell's global scope
+ * — and `mapProductId` in `@arkaik/schema` is the one place the repo decides
+ * between them. It takes the shell's `scope.productId` as its ambient default;
+ * what stays here is the anchor chain, which needs the *resolved definitions*
+ * a `ProductScope` carries and no other audience has.
  */
 
 /** A stored value that is only a declaration when it is a non-blank string. */
 function declared(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value : undefined;
-}
-
-/**
- * **The product a map reads through — the map's own `product` wins.**
- *
- * A definition's `product` is an explicit, named, stored property of a saved
- * view; the shell's scope is an ambient default. So the global scope acts as
- * the *default* product for a map that declares none, and never overrides one
- * that does. A map titled "Admin systems" shows admin whatever the sidebar
- * says, which is the only rule under which its title cannot lie.
- *
- * The two rejected alternatives both break something visible: *global wins*
- * makes a saved map render another product's graph under its own name, and
- * *intersection* renders a saved map as a blank canvas — with no explanation —
- * for every scope but one.
- *
- * The built-in Journey and System maps declare no `product`, so they follow the
- * shell exactly as every other surface does; and a project declaring no
- * products resolves `scope.productId` to `null` here, which filters nothing.
- */
-export function mapProductId(
-  definition: Pick<MapDefinition, "product"> | undefined | null,
-  scope: ProductScope,
-): string | null {
-  // Precedence, written once: the definition's own `product`, then the shell's
-  // global scope. Never the other way round.
-  return declared(definition?.product) ?? scope.productId;
 }
 
 /**
@@ -562,7 +449,7 @@ export function resolveJourneyAnchorId(
   project: Pick<Project, "root_node_id"> | undefined | null,
   scope: ProductScope,
 ): string | undefined {
-  const productId = mapProductId(definition, scope);
+  const productId = mapProductId(definition, scope.productId);
   const product = productId === null ? undefined : scope.productsById.get(productId);
 
   // Anchor precedence — the map's own root, then the product's, then (only
@@ -572,34 +459,4 @@ export function resolveJourneyAnchorId(
     declared(product?.root_node_id) ??
     (productId === null ? declared(project?.root_node_id) : undefined)
   );
-}
-
-/**
- * The nodes a map may select from, restricted to {@link mapProductId} — applied
- * **before** `computeMapSubgraph`, so the species and edge-type filters compose
- * on top of it unchanged (docs/spec/maps.md § Subgraph Algorithm).
- *
- * Filtering nodes is enough to filter edges: step 2 of the algorithm already
- * drops any edge an endpoint of which did not survive step 1.
- *
- * Callers pass the **whole** snapshot and use the result only as the selection
- * input; status derivation (`getEffectivePlatformStatuses` and friends) must
- * keep seeing every node, because an acceptance covering a view is still
- * evidence about that view whichever product the reader is scoped to.
- *
- * This lives in the app rather than in `computeMapSubgraph` because membership
- * resolution does — see {@link productsOfNode} and {@link nodeInProduct}. The
- * consequence is a known gap, recorded in docs/spec/maps.md § Product Scope:
- * the MCP server and the CLI call `computeMapSubgraph` directly and so do not
- * apply `product`.
- */
-export function mapScopedNodes<N extends Pick<Node, "id" | "species" | "metadata">>(
-  definition: Pick<MapDefinition, "product"> | undefined | null,
-  nodes: readonly N[],
-  scope: ProductScope,
-  graph: ProductGraph,
-): readonly N[] {
-  const productId = mapProductId(definition, scope);
-  if (productId === null) return nodes;
-  return nodes.filter((node) => nodeInProduct(node, productId, graph));
 }

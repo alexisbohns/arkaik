@@ -90,20 +90,17 @@ All tool results are JSON text content. Read tools are projections; write tools 
 
 Acceptance summaries additionally carry `platform_statuses` (resolved per applicable platform) and `values`. `get_node` on a view or flow includes `covered_by`: summaries of the acceptances covering it.
 
-> **Known gap — `get_map` and `list_maps` ignore `MapDefinition.product`.** A
-> stored map may be scoped to one product ([maps.md](maps.md) § Product Scope), but
-> both tools call `computeMapSubgraph` directly, and the product restriction is
-> applied by the *app* (`lib/utils/product-scope.ts`, `mapScopedNodes`) before that
-> call rather than inside it. So an agent asking for a product-scoped map gets the
-> **unscoped** subgraph, and `list_maps` reports the unscoped node and edge counts
-> alongside it — silently, with nothing in the result saying so.
->
-> This breaks audience symmetry, the principle the rest of this document is built
-> on: every human surface is supposed to have an agent-consumable twin, and here
-> the twin answers a different question than the canvas does. The fix is to move
-> membership resolution into `@arkaik/schema` so `computeMapSubgraph` can take the
-> product itself — **not** a second implementation in the MCP layer, which is
-> precisely how two surfaces come to disagree about the same node.
+**`get_map` and `list_maps` apply `MapDefinition.product`** ([maps.md](maps.md) § Product Scope): a
+map scoped to one product returns that product's subgraph here, and those counts, exactly as the
+canvas draws it. Neither tool resolves membership of its own — the restriction is step 0 of
+`computeMapSubgraph`, and this layer adds only a `ProductGraph` built once so `list_maps` traverses
+the snapshot for the whole catalog rather than per map.
+
+That is a deliberate division and not an implementation detail: this used to be applied by the *app*
+before the call, so both tools served the unscoped subgraph under a scoped map's own name — audience
+symmetry broken by nothing more than where a function sat (issue #319). The fix was to move
+membership resolution into `@arkaik/schema`, **not** to reimplement the restriction here, which is
+precisely how two surfaces come to disagree about the same node.
 
 `arkaik release` (tagging, note drafting, compaction) stays **CLI-only** in v1 — it is a ceremony with side effects beyond the bundle, owned by `packages/cli/src/commands/release.ts`.
 

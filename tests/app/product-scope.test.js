@@ -751,15 +751,16 @@ assert(
 // A map's own `product` beats the shell's scope — and reaches the anchor chain,
 // so a pinned map opens on its own product's front door under any scope.
 assert(
-  mapProductId({ ...journeyMap, product: "admin" }, anchorEndUser) === "admin",
+  mapProductId({ ...journeyMap, product: "admin" }, anchorEndUser.productId) === "admin",
   "the map's own product wins over a disagreeing global scope",
 );
 assert(
-  mapProductId(journeyMap, anchorEndUser) === "enduser",
+  mapProductId(journeyMap, anchorEndUser.productId) === "enduser",
   "a map declaring no product inherits the global scope",
 );
 assert(
-  mapProductId(journeyMap, anchorAll) === null && mapProductId({ ...journeyMap, product: "  " }, anchorAll) === null,
+  mapProductId(journeyMap, anchorAll.productId) === null &&
+    mapProductId({ ...journeyMap, product: "  " }, anchorAll.productId) === null,
   "no map product and no scope is All products; a blank stored product is not a declaration",
 );
 assert(
@@ -771,12 +772,15 @@ assert(
 //
 // Composed with the real `computeMapSubgraph`, on the Library fixture above, so
 // "species and edge filters compose on top, unchanged" is exercised rather than
-// asserted. `mapScopedNodes` restricts the *input*; the algorithm then runs
-// untouched.
+// asserted. The restriction is *inside* the algorithm now (issue #319); what the
+// app passes down is the resolved product, exactly as `buildSystemGraph` does.
 
 const systemMap = { id: "system", title: "System", kind: "system" };
 const subgraphIds = (definition, scope) =>
-  computeMapSubgraph(definition, mapScopedNodes(definition, libraryNodes, scope, libraryGraph), libraryEdges)
+  computeMapSubgraph(definition, libraryNodes, libraryEdges, {
+    product: mapProductId(definition, scope.productId),
+    graph: libraryGraph,
+  })
     .nodes.map((node) => node.id)
     .sort();
 
@@ -824,19 +828,33 @@ assert(
 {
   const scoped = computeMapSubgraph(
     { ...systemMap, product: "enduser", edge_types: ["queries"] },
-    mapScopedNodes({ ...systemMap, product: "enduser" }, libraryNodes, allScope, libraryGraph),
+    libraryNodes,
     libraryEdges,
+    { graph: libraryGraph },
   );
   assert(
     eq(scoped.edges.map((edge) => `${edge.source_id}->${edge.target_id}`), ["V-feed->DM-shared"]),
     "edges survive only when BOTH endpoints did: V-admin->DM-shared is gone with its source",
   );
 }
-// The degenerate-case guarantee, at the one seam this task adds.
+// The degenerate-case guarantee, at the one seam this task adds. `mapScopedNodes`
+// survives the move into @arkaik/schema for the journey renderer, which walks its
+// own compose closure and never calls `computeMapSubgraph`.
 assert(
-  mapScopedNodes(systemMap, libraryNodes, bareScope, libraryGraph) === libraryNodes &&
-    mapScopedNodes(systemMap, libraryNodes, allScope, libraryGraph) === libraryNodes,
+  mapScopedNodes(systemMap, libraryNodes, bareScope.productId, libraryGraph) === libraryNodes &&
+    mapScopedNodes(systemMap, libraryNodes, allScope.productId, libraryGraph) === libraryNodes,
   "no map product under no scope returns the caller's own array — not a filtered copy of it",
+);
+// The opt-out is explicit and visible in the source: a caller that wants the
+// whole graph out of a scoped definition has to say so.
+assert(
+  eq(
+    computeMapSubgraph({ ...systemMap, product: "admin" }, libraryNodes, libraryEdges, { product: null })
+      .nodes.map((node) => node.id)
+      .sort(),
+    subgraphIds(systemMap, allScope),
+  ),
+  "options.product null widens a product-scoped definition back to All products",
 );
 
 // --- The store: one value, shared by every consumer -------------------------

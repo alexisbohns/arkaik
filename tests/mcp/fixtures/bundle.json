@@ -6,8 +6,10 @@
     "version": "0.1.0",
     "root_node_id": "F-onboard",
     "metadata": {
+      "products": [{ "id": "admin", "title": "Admin", "platforms": ["web"] }],
       "maps": [
-        { "id": "onboarding", "title": "Onboarding", "kind": "journey", "root_node_id": "F-onboard" }
+        { "id": "onboarding", "title": "Onboarding", "kind": "journey", "root_node_id": "F-onboard" },
+        { "id": "admin-system", "title": "Admin systems", "kind": "system", "product": "admin" }
       ]
     },
     "created_at": "2026-01-01T00:00:00Z",
@@ -52,7 +54,8 @@
       "title": "Profile page",
       "species": "view",
       "status": "development",
-      "platforms": ["web"]
+      "platforms": ["web"],
+      "metadata": { "product": "admin" }
     },
     {
       "id": "V-welcome",
