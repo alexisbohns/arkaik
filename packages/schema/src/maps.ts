@@ -21,6 +21,7 @@
 
 import type { Edge, Node, Project } from "./bundle";
 import type { EdgeTypeId, SpeciesId } from "./ids";
+import { buildProductGraph, nodeInProduct, type ProductGraph } from "./products";
 
 /** Known renderer kinds (docs/spec/maps.md § MapDefinition). */
 export type MapKind = "journey" | "system";
@@ -222,16 +223,104 @@ export function resolveMapDisplay(
   return resolved;
 }
 
+/* --- Product scope (docs/spec/maps.md § Product Scope) -----------------------
+ *
+ * A map is a *saved projection*, so two product answers can be in play at once:
+ * the definition's own `product`, and whatever ambient scope the caller carries
+ * (the app's shell scope; nothing at all for the MCP server). The two functions
+ * below are the only place the repo decides between them.
+ */
+
+/** A stored value that is only a declaration when it is a non-blank string. */
+function declared(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() !== "" ? value : undefined;
+}
+
+/**
+ * **The product a map reads through — the map's own `product` wins.**
+ *
+ * A definition's `product` is an explicit, named, stored property of a saved
+ * view; `defaultProductId` is an ambient default (the app passes its shell
+ * scope; a caller with no ambient scope passes `null`). So the default applies
+ * to a map that declares none, and never overrides one that does. A map titled
+ * "Admin systems" shows admin whatever the sidebar says, which is the only rule
+ * under which its title cannot lie.
+ *
+ * The two rejected alternatives both break something visible: *default wins*
+ * makes a saved map render another product's graph under its own name, and
+ * *intersection* renders a saved map as a blank canvas — with no explanation —
+ * for every scope but one.
+ *
+ * The built-in Journey and System maps declare no `product`, so they follow the
+ * caller's scope exactly as every other surface does; and a project declaring
+ * no products passes `null` here, which filters nothing.
+ */
+export function mapProductId(
+  definition: Pick<MapDefinition, "product"> | undefined | null,
+  defaultProductId: string | null = null,
+): string | null {
+  // Precedence, written once: the definition's own `product`, then the
+  // caller's ambient default. Never the other way round.
+  return declared(definition?.product) ?? defaultProductId;
+}
+
+/**
+ * The nodes a map may select from, restricted to {@link mapProductId}.
+ *
+ * Callers pass the **whole** snapshot: membership for the system layer is
+ * derived from consumers, so a pre-filtered node list would resolve a data
+ * model against a graph that no longer contains the views reaching it. Status
+ * derivation must keep seeing every node too, because an acceptance covering a
+ * view is still evidence about that view whichever product the reader is
+ * scoped to.
+ *
+ * {@link computeMapSubgraph} applies this itself, so a map renderer needs it
+ * only when it is *not* `computeMapSubgraph` — the app's journey renderer walks
+ * its own compose closure and calls this directly.
+ */
+export function mapScopedNodes<N extends Pick<Node, "id" | "species" | "metadata">>(
+  definition: Pick<MapDefinition, "product"> | undefined | null,
+  nodes: readonly N[],
+  defaultProductId: string | null,
+  graph: ProductGraph,
+): readonly N[] {
+  const productId = mapProductId(definition, defaultProductId);
+  if (productId === null) return nodes;
+  return nodes.filter((node) => nodeInProduct(node, productId, graph));
+}
+
 /** The subgraph a map selects: fresh arrays of the caller's own elements. */
 export interface MapSubgraph<N, E> {
   nodes: N[];
   edges: E[];
 }
 
+/** How {@link computeMapSubgraph} resolves the product restriction. */
+export interface MapSubgraphOptions {
+  /**
+   * The product to restrict to, **already resolved**: `mapProductId(definition,
+   * ambientScope)`. Omit it and the definition's own `product` is used, which is
+   * the right answer for every caller that carries no ambient scope. Pass `null`
+   * to widen to All products explicitly.
+   *
+   * This function does not re-resolve what it is given: the precedence rule is
+   * `mapProductId`'s, and a caller that has already applied it must not have it
+   * applied twice with a different default underneath.
+   */
+  product?: string | null;
+  /**
+   * A {@link ProductGraph} over the whole snapshot. Built from `nodes`/`edges`
+   * when absent — correct, but a traversal per call, so a caller resolving many
+   * maps against one snapshot (`list_maps`) should build one and pass it.
+   */
+  graph?: ProductGraph;
+}
+
 /**
  * The normative selection semantics (docs/spec/maps.md § Subgraph Algorithm),
  * in order:
  *
+ * 0. Restrict the candidate nodes to the resolved product (§ Product Scope).
  * 1. Keep nodes whose `species` is in the (defaulted) `species` list.
  * 2. Keep edges whose `edge_type` is in the (defaulted) `edge_types` list and
  *    whose two endpoints both survived step 1.
@@ -241,18 +330,48 @@ export interface MapSubgraph<N, E> {
  * 4. An unresolvable root yields the empty subgraph, never an error — the same
  *    posture as `computeChangelog` with an unknown version.
  *
+ * **Step 0 is inside this function, and that is the point** (issue #319). The
+ * restriction used to be applied by the app before the call, which left every
+ * other audience — the MCP server's `get_map` and `list_maps` — serving the
+ * unscoped subgraph under a scoped map's name. Defaulting to the definition's
+ * own `product` means a new caller gains nothing to get wrong: it has to opt
+ * *out* (`{ product: null }`) to see the whole graph, and opting out is a
+ * visible decision in the source rather than an omission.
+ *
+ * Filtering nodes is enough to filter edges — step 2 already drops any edge an
+ * endpoint of which did not survive — and the species and edge-type filters
+ * compose on top of the restriction unchanged.
+ *
+ * `nodes` and `edges` are the **whole snapshot**, not a pre-filtered slice:
+ * system-layer membership is derived from consumers, so a slice would resolve a
+ * data model against a graph missing the views that reach it.
+ *
  * Generic over the element types: the app passes full nodes and gets full
- * nodes back; the CLI and MCP server pass raw parsed JSON.
+ * nodes back; the MCP server passes raw parsed JSON.
  */
 export function computeMapSubgraph<
-  N extends Pick<Node, "id" | "species">,
+  N extends Pick<Node, "id" | "species" | "metadata">,
   E extends Pick<Edge, "id" | "source_id" | "target_id" | "edge_type">,
->(definition: MapDefinition, nodes: readonly N[], edges: readonly E[]): MapSubgraph<N, E> {
+>(
+  definition: MapDefinition,
+  nodes: readonly N[],
+  edges: readonly E[],
+  options?: MapSubgraphOptions,
+): MapSubgraph<N, E> {
   const resolved = resolveMapDefaults(definition);
   const speciesSet = new Set<string>(resolved.species);
   const edgeTypeSet = new Set<string>(resolved.edge_types);
 
-  const keptNodes = nodes.filter((node) => speciesSet.has(node.species));
+  // Step 0. An omitted `product` falls back to the definition's own declaration;
+  // an explicit `null` is All products. The graph is built only when a product
+  // is actually in play, so the unscoped path costs nothing it did not before.
+  const productId = options?.product !== undefined ? options.product : mapProductId(definition);
+  const productGraph =
+    productId === null ? undefined : options?.graph ?? buildProductGraph(nodes, edges);
+  const selectable =
+    productGraph === undefined ? nodes : nodes.filter((node) => nodeInProduct(node, productId, productGraph));
+
+  const keptNodes = selectable.filter((node) => speciesSet.has(node.species));
   const keptNodeIds = new Set(keptNodes.map((node) => node.id));
   const keptEdges = edges.filter(
     (edge) =>

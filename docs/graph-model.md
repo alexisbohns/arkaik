@@ -377,7 +377,8 @@ change touches the checklist sideways. Step 1 is done, but not in
 files stayed untouched precisely because a product is authored per project
 rather than compiled in. Step 2 needed no change: membership never joins the
 graph builders, it restricts the node list handed to them
-(`mapScopedNodes`, [lib/utils/product-scope.ts](../lib/utils/product-scope.ts)),
+(`nodeInProduct` / `mapScopedNodes`, [packages/schema/src/products.ts](../packages/schema/src/products.ts)
+and [maps.ts](../packages/schema/src/maps.ts)),
 so [lib/utils/journey-graph.ts](../lib/utils/journey-graph.ts) and
 [lib/utils/system-graph.ts](../lib/utils/system-graph.ts) have no
 product-specific branches. Step 3 needed none either — no new node or edge

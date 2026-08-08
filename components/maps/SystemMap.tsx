@@ -92,7 +92,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
   const { project: projectBundle, error: projectError, reload: reloadProject, updateProject } = useProject(projectId);
   // The shell's scope (§ Decision 2), passed down to the canvas cards and to
   // every panel this map opens — never read from a global by the cards
-  // themselves. It is also the map's *default* product: `mapScopedNodes` lets
+  // themselves. It is also the map's *default* product: `mapProductId` lets
   // the definition's own `product` override it (docs/spec/maps.md § Product Scope).
   //
   // Orthogonal to `display` below: the scope decides which nodes this map may
@@ -367,7 +367,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
         onOpenChange={setNewNodeOpen}
         onSubmit={handleCreateNode}
         products={productList}
-        defaultProductId={mapProductId(definition, scope)}
+        defaultProductId={mapProductId(definition, scope.productId)}
       />
       <EdgeTypeDialog
         open={edgeDialogOpen}

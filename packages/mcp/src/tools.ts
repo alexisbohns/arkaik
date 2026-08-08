@@ -14,6 +14,7 @@ import {
   MutationError,
   acceptancesCovering,
   applyOps,
+  buildProductGraph,
   computeBacklog,
   computeChangelog,
   computeMapSubgraph,
@@ -332,14 +333,20 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
   tool(
     {
       name: "list_maps",
-      description: "Every map the project offers — built-ins plus stored definitions — with live subgraph sizes.",
+      description:
+        "Every map the project offers — built-ins plus stored definitions — with live subgraph sizes. A definition carrying a `product` is counted through that restriction, as the canvas draws it.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
     },
     async () => {
       const { nodes, edges, project } = await load(ctx);
+      // One traversal for the whole catalog: `computeMapSubgraph` would build a
+      // ProductGraph per scoped map otherwise. The restriction itself is the
+      // function's (docs/spec/maps.md § Product Scope) — this layer resolves no
+      // membership of its own, which is the whole point of issue #319's fix.
+      const graph = buildProductGraph(nodes, edges);
       return {
         maps: listMaps(project).map((definition) => {
-          const subgraph = computeMapSubgraph(definition, nodes, edges);
+          const subgraph = computeMapSubgraph(definition, nodes, edges, { graph });
           return { definition, nodeCount: subgraph.nodes.length, edgeCount: subgraph.edges.length };
         }),
       };
@@ -349,7 +356,8 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
   tool(
     {
       name: "get_map",
-      description: "Resolve a map definition (built-in or stored) and return its computed subgraph.",
+      description:
+        "Resolve a map definition (built-in or stored) and return its computed subgraph. A definition carrying a `product` returns only that product's nodes — the same subgraph the canvas draws.",
       inputSchema: {
         type: "object",
         properties: { map_id: { type: "string" } },

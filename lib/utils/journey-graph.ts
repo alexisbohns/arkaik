@@ -594,8 +594,10 @@ export interface JourneySelectionParams {
  * The journey's selection: membership-restricted nodes, the resolved anchor,
  * and the compose closure the renderer walks.
  *
- * **Membership-filtered, like every other map.** `buildSystemGraph` has always
- * run its candidates through `mapScopedNodes`; the journey did not, and the two
+ * **Membership-filtered, like every other map.** The system kind has always had
+ * the restriction (today it is `computeMapSubgraph`'s own step 0); the journey
+ * renderer is not `computeMapSubgraph` — it walks the compose closure below — so
+ * it applies the same `mapScopedNodes` itself. It did not, once, and the two
  * built-in maps therefore disagreed about the same scope — Admin's System map
  * showed Admin, Admin's Journey showed the end-user app. The old justification
  * was that a filter would cut a shared view out of the middle of a compose
@@ -613,8 +615,8 @@ export interface JourneySelectionParams {
 export function resolveJourneySelection(params: JourneySelectionParams): JourneySelection {
   const { definition, dataNodes, dataEdges, project, scope, graph } = params;
 
-  const productId = mapProductId(definition, scope);
-  const nodes = mapScopedNodes(definition, dataNodes, scope, graph);
+  const productId = mapProductId(definition, scope.productId);
+  const nodes = mapScopedNodes(definition, dataNodes, scope.productId, graph);
   const nodesById = new Map(nodes.map((node) => [node.id, node]));
 
   // Built over the *restricted* set: an edge whose other end is out of scope is
@@ -687,11 +689,10 @@ export function computeMapCounts(
   const { dataNodes, dataEdges, project, scope, graph } = params;
 
   if (definition.kind !== "journey") {
-    const subgraph = computeMapSubgraph(
-      definition,
-      mapScopedNodes(definition, dataNodes, scope, graph),
-      dataEdges,
-    );
+    const subgraph = computeMapSubgraph(definition, dataNodes, dataEdges, {
+      product: mapProductId(definition, scope.productId),
+      graph,
+    });
     return { nodes: subgraph.nodes.length, edges: subgraph.edges.length };
   }
 
