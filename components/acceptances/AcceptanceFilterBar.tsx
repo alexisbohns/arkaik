@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { TriangleAlertIcon, XIcon } from "lucide-react";
+import { ListChevronsDownUpIcon, ListChevronsUpDownIcon, StethoscopeIcon, XIcon } from "lucide-react";
 import type { ProjectBundle } from "@/lib/data/types";
 import type { AcceptanceFilters } from "@/lib/utils/acceptance-matrix";
 import { EMPTY_FILTERS, UNANCHORED_FILTER } from "@/lib/utils/acceptance-matrix";
@@ -13,6 +13,7 @@ import { Toolbar, ToolbarGroup } from "@/components/layout/Toolbar";
 import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PLATFORM_ICONS } from "@/components/graph/nodes/node-styles";
 import { VALUE_ICON_COMPONENTS } from "@/lib/config/value-icons";
 
@@ -28,11 +29,14 @@ interface AcceptanceFilterBarProps {
   projectId: string;
   /** The bundle products live on. `undefined` until `useProject` resolves. */
   project: ProjectBundle | undefined;
+  /** Whether the matrix's anchor groups are open. Groups start collapsed. */
+  allExpanded: boolean;
+  onToggleExpandAll: () => void;
 }
 
 const ALL = "all";
 
-export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectId, project }: AcceptanceFilterBarProps) {
+export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectId, project, allExpanded, onToggleExpandAll }: AcceptanceFilterBarProps) {
   // Same arity rule and same stale-filter reset as the Delivery bar; only the
   // rendering below (a Select, not toggle buttons) is this bar's own. Cleared
   // through the same `onChange` the control uses, so the URL stays the one
@@ -58,6 +62,14 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectI
   const filtersRef = useRef(filters);
   // Keep the ref current without mutating it during render (react-hooks/refs).
   useEffect(() => { filtersRef.current = filters; }, [filters]);
+  // Same rule the hook applies to a stale platform filter, for the same reason:
+  // a `parityGap=1` URL opened under a single-platform scope would narrow the
+  // list with the toggle that could widen it back no longer on screen.
+  // Idempotent — once cleared, the guard returns early.
+  useEffect(() => {
+    if (showPlatformFilter || !filters.parityGap) return;
+    onChange({ ...filtersRef.current, parityGap: false });
+  }, [showPlatformFilter, filters.parityGap, onChange]);
   // Reflect external search changes (Clear, back/forward) into the draft. Adjusted
   // during render (React's documented pattern) rather than in an effect, since an
   // effect that just mirrors a prop into state trips react-hooks/set-state-in-effect.
@@ -144,15 +156,52 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectI
           </SelectContent>
         </Select>
 
-        <Button
-          type="button"
-          variant={filters.parityGap ? "default" : "outline"}
-          aria-pressed={filters.parityGap}
-          onClick={() => onChange({ ...filters, parityGap: !filters.parityGap })}
-          className={filters.parityGap ? "bg-amber-500 text-white hover:bg-amber-500/90" : "text-amber-600 hover:text-amber-700"}
-        >
-          <TriangleAlertIcon className="size-4" /> Parity gaps
-        </Button>
+        {/* Two icon toggles, not two labelled buttons: the band already carries
+            four menus, and both of these are states you can read off the button
+            itself — amber-filled means "only gaps", and the chevrons say whether
+            the groups are shut or open. The label lives in the tooltip and, for
+            screen readers, in `aria-label`.
+
+            The parity toggle is there only when parity is a question at all: on
+            a single-platform scope nothing can disagree with anything, so it
+            would be a filter that never narrows. Same arity rule, and the same
+            `showPlatformFilter`, as the platform menu above. */}
+        {showPlatformFilter && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                size="icon"
+                variant={filters.parityGap ? "default" : "outline"}
+                aria-pressed={filters.parityGap}
+                aria-label={filters.parityGap ? "Showing only parity gaps" : "Show only parity gaps"}
+                onClick={() => onChange({ ...filters, parityGap: !filters.parityGap })}
+                className={filters.parityGap ? "bg-amber-500 text-white hover:bg-amber-500/90" : "text-amber-600 hover:text-amber-700"}
+              >
+                <StethoscopeIcon className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{filters.parityGap ? "Showing only parity gaps" : "Show only parity gaps"}</TooltipContent>
+          </Tooltip>
+        )}
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              aria-pressed={allExpanded}
+              aria-label={allExpanded ? "Collapse all groups" : "Expand all groups"}
+              onClick={onToggleExpandAll}
+            >
+              {allExpanded
+                ? <ListChevronsUpDownIcon className="size-4" />
+                : <ListChevronsDownUpIcon className="size-4" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{allExpanded ? "Collapse all groups" : "Expand all groups"}</TooltipContent>
+        </Tooltip>
 
         {isFiltered && (
           <Button

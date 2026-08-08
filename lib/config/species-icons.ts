@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  ClipboardCheck,
-  ClipboardCheckIcon,
+  ClipboardList,
+  ClipboardListIcon,
   Database,
   DatabaseIcon,
   GitBranchIcon,
@@ -48,7 +48,7 @@ export const SPECIES_GRAPH_ICONS: Record<SpeciesId, LucideIcon> = {
   view: MonitorSmartphone,
   "data-model": Database,
   "api-endpoint": Plug,
-  acceptance: ClipboardCheck,
+  acceptance: ClipboardList,
   decision: Scale,
 };
 
@@ -58,7 +58,7 @@ export const SPECIES_NAV_ICONS: Record<SpeciesId, LucideIcon> = {
   view: MonitorIcon,
   "data-model": DatabaseIcon,
   "api-endpoint": ServerIcon,
-  acceptance: ClipboardCheckIcon,
+  acceptance: ClipboardListIcon,
   decision: ScaleIcon,
 };
 

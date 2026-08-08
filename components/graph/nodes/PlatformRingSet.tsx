@@ -34,6 +34,63 @@ function describeRing(title: string, segments: readonly StatusSegment[]): string
   return `${title}: ${parts.join(", ")}`;
 }
 
+interface PlatformRingsProps {
+  rollup: PlatformStatusRollup;
+  /** The platforms to draw a ring for, in any order — re-sorted to RING_ORDER. */
+  platforms: PlatformId[];
+  size?: StatusRingSize;
+  /** Names what a platform ring's footer counts. */
+  platformCountLabel?: string;
+}
+
+/**
+ * One ring per platform, each hover-revealing its status breakdown — the part of
+ * {@link PlatformRingSet} that is *only* the platforms.
+ *
+ * Split out because a surface can want the per-platform reading without the
+ * global ring that leads it: the acceptance matrix's group headings draw these
+ * beside a parity wheel of their own, and rebuilding the ring, the hover card
+ * and the accessible name a second time is how two surfaces start disagreeing
+ * about what a platform ring looks like.
+ */
+export function PlatformRings({ rollup, platforms, size = "lg", platformCountLabel = "acceptances" }: PlatformRingsProps) {
+  const ringPlatforms = platforms.slice().sort((left, right) => rank(left) - rank(right));
+  const centerIcon = size === "lg" ? "size-4" : "size-3";
+
+  return (
+    <>
+      {ringPlatforms.map((platform) => {
+        const segments = getPlatformRollupSegments(rollup, platform);
+        // Summed from the segments, not read from `rollup.totals`, so the footer
+        // count and the rows above it can never disagree.
+        const platformTotal = segments.reduce((sum, segment) => sum + segment.count, 0);
+        const Icon = PLATFORM_ICONS[platform];
+        const label = PLATFORM_LABELS[platform];
+
+        return (
+          <HoverCard key={platform} openDelay={150}>
+            <HoverCardTrigger asChild>
+              <span className={TRIGGER_CLASS}>
+                <StatusRing segments={segments} size={size} label={describeRing(label, segments)}>
+                  <Icon className={`${centerIcon} text-muted-foreground`} />
+                </StatusRing>
+              </span>
+            </HoverCardTrigger>
+            <HoverCardContent className="w-60 p-3">
+              <StatusBreakdownPopover
+                title={label}
+                icon={Icon}
+                segments={segments}
+                footer={`${platformTotal} ${platformCountLabel} on ${label}`}
+              />
+            </HoverCardContent>
+          </HoverCard>
+        );
+      })}
+    </>
+  );
+}
+
 interface PlatformRingSetProps {
   rollup: PlatformStatusRollup;
   /** Center of the global ring — the count the caller already computed. */
@@ -72,13 +129,9 @@ export function PlatformRingSet({
   countLabel = "acceptances",
   platformCountLabel = countLabel,
 }: PlatformRingSetProps) {
-  const ringPlatforms = (platforms ?? PLATFORMS.map((platform) => platform.id))
-    .slice()
-    .sort((left, right) => rank(left) - rank(right));
   const totalSegments = getRollupTotalSegments(rollup);
   const statusTotal = totalSegments.reduce((sum, segment) => sum + segment.count, 0);
   const centerText = size === "lg" ? "text-sm" : "text-[11px]";
-  const centerIcon = size === "lg" ? "size-4" : "size-3";
 
   return (
     <div className={`flex ${size === "lg" ? "gap-2.5" : "gap-2"}`}>
@@ -107,34 +160,12 @@ export function PlatformRingSet({
         </HoverCardContent>
       </HoverCard>
 
-      {ringPlatforms.map((platform) => {
-        const segments = getPlatformRollupSegments(rollup, platform);
-        // Summed from the segments, not read from `rollup.totals`, so the footer
-        // count and the rows above it can never disagree.
-        const platformTotal = segments.reduce((sum, segment) => sum + segment.count, 0);
-        const Icon = PLATFORM_ICONS[platform];
-        const label = PLATFORM_LABELS[platform];
-
-        return (
-          <HoverCard key={platform} openDelay={150}>
-            <HoverCardTrigger asChild>
-              <span className={TRIGGER_CLASS}>
-                <StatusRing segments={segments} size={size} label={describeRing(label, segments)}>
-                  <Icon className={`${centerIcon} text-muted-foreground`} />
-                </StatusRing>
-              </span>
-            </HoverCardTrigger>
-            <HoverCardContent className="w-60 p-3">
-              <StatusBreakdownPopover
-                title={label}
-                icon={Icon}
-                segments={segments}
-                footer={`${platformTotal} ${platformCountLabel} on ${label}`}
-              />
-            </HoverCardContent>
-          </HoverCard>
-        );
-      })}
+      <PlatformRings
+        rollup={rollup}
+        platforms={platforms ?? PLATFORMS.map((platform) => platform.id)}
+        size={size}
+        platformCountLabel={platformCountLabel}
+      />
     </div>
   );
 }
