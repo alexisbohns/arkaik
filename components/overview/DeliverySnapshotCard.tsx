@@ -16,6 +16,7 @@ export function DeliverySnapshotCard({ snapshot, projectId }: DeliverySnapshotCa
     <OverviewSection
       title="Delivery snapshot"
       icon={SquareKanbanIcon}
+      description="How much of the product is shipped, and how much is still on its way."
       subtitle={
         snapshot.totalItems === 0
           ? "Nothing in flight yet."

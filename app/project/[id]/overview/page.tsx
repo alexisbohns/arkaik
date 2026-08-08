@@ -2,7 +2,9 @@
 
 import { useMemo } from "react";
 import { buildProductUsageIndex, computeParityGaps, listMaps } from "@arkaik/schema";
+import { LayoutGridIcon, RowsIcon } from "lucide-react";
 import { BacklogCard } from "@/components/overview/BacklogCard";
+import { OverviewLayoutProvider } from "@/components/overview/OverviewLayoutContext";
 import { DeliverySnapshotCard } from "@/components/overview/DeliverySnapshotCard";
 import { HealthCard } from "@/components/overview/HealthCard";
 import { InventoryCard } from "@/components/overview/InventoryCard";
@@ -16,6 +18,8 @@ import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
 import { PageSurface } from "@/components/layout/PageSurface";
 import { EmptyState } from "@/components/ui/empty-state";
+import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
+import { useOverviewLayout, type OverviewLayout } from "@/lib/hooks/useOverviewLayout";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useNodes } from "@/lib/hooks/useNodes";
@@ -43,8 +47,14 @@ import { computeScopedPyramidTiers } from "@/lib/utils/pyramid";
  * every card jumps off into the working surface that owns the detail.
  * Deliberately read-only.
  */
+const LAYOUTS: readonly SegmentedControlOption<OverviewLayout>[] = [
+  { id: "grid", label: "Grid", icon: LayoutGridIcon },
+  { id: "rows", label: "Rows", icon: RowsIcon },
+];
+
 export default function OverviewPage() {
   const id = useProjectId();
+  const [layout, setLayout] = useOverviewLayout();
 
   const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges } = useEdges(id);
@@ -178,35 +188,53 @@ export default function OverviewPage() {
       title="Overview"
       meta={productScopeMetaLabel(scope)}
       headerExtra={
-        projectBundle?.project.version ? (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span>Current version</span>
-            <span className="rounded-full border px-2 py-0.5 font-medium text-foreground">
-              {projectBundle.project.version}
-            </span>
-          </div>
-        ) : null
+        <div className="flex items-center gap-3">
+          {projectBundle?.project.version && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>Current version</span>
+              <span className="rounded-full border px-2 py-0.5 font-medium text-foreground">
+                {projectBundle.project.version}
+              </span>
+            </div>
+          )}
+          <SegmentedControl
+            options={LAYOUTS}
+            value={layout}
+            onChange={setLayout}
+            ariaLabel="Overview display"
+          />
+        </div>
       }
     >
-      <PageSurface contentClassName="grid gap-4 md:grid-cols-2">
-        {isEmpty ? (
-          <EmptyState
-            className="md:col-span-2"
-            message="Nothing here yet. Sketch the product on the Journey map or add nodes in the Library, and the Overview fills itself in."
-          />
-        ) : (
-          <>
-            <PlatformGaugesCard rollup={rollup} platforms={gaugePlatforms} projectId={id} />
-            <ParityCard gaps={parityGaps} platforms={scope.platforms} projectId={id} />
-            <PyramidCard tiers={pyramidTiers} platforms={scope.platforms} projectId={id} />
-            <DeliverySnapshotCard snapshot={snapshot} projectId={id} />
-            <ReleasePulseCard releases={releases} projectId={id} />
-            <BacklogCard backlog={backlog} projectId={id} />
-            <InventoryCard inventory={inventory} projectId={id} />
-            <HealthCard indicators={health} projectId={id} />
-            <MapsCard maps={maps} projectId={id} />
-          </>
-        )}
+      {/*
+        Two displays of the same nine sections. The grid is a two-column wall of
+        cards; rows give each section a full width, heading left and content
+        right, which is the only shape the platform tiles and the 90° value
+        pyramid have room to draw in. The switch is the reader's, remembered.
+      */}
+      <PageSurface
+        contentClassName={layout === "rows" ? "flex flex-col divide-y" : "grid gap-4 md:grid-cols-2"}
+      >
+        <OverviewLayoutProvider value={layout}>
+          {isEmpty ? (
+            <EmptyState
+              className={layout === "rows" ? "" : "md:col-span-2"}
+              message="Nothing here yet. Sketch the product on the Journey map or add nodes in the Library, and the Overview fills itself in."
+            />
+          ) : (
+            <>
+              <PlatformGaugesCard rollup={rollup} platforms={gaugePlatforms} projectId={id} />
+              <ParityCard gaps={parityGaps} platforms={scope.platforms} projectId={id} />
+              <PyramidCard tiers={pyramidTiers} platforms={scope.platforms} projectId={id} />
+              <DeliverySnapshotCard snapshot={snapshot} projectId={id} />
+              <ReleasePulseCard releases={releases} projectId={id} />
+              <BacklogCard backlog={backlog} projectId={id} />
+              <InventoryCard inventory={inventory} projectId={id} />
+              <HealthCard indicators={health} projectId={id} />
+              <MapsCard maps={maps} projectId={id} />
+            </>
+          )}
+        </OverviewLayoutProvider>
       </PageSurface>
     </PageShell>
   );

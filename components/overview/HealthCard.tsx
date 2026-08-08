@@ -28,6 +28,7 @@ export function HealthCard({ indicators, projectId }: HealthCardProps) {
     <OverviewSection
       title="Health"
       icon={HeartPulseIcon}
+      description="The graph's own soundness — what is orphaned, unanchored, or contradicting itself."
       subtitle={
         flagged === 0
           ? "Every indicator is at zero — the documentation is whole."

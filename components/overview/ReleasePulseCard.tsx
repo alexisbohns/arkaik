@@ -18,6 +18,7 @@ export function ReleasePulseCard({ releases, projectId }: ReleasePulseCardProps)
     <OverviewSection
       title="Release pulse"
       icon={TagsIcon}
+      description="How often this product ships, and what went out last."
       subtitle={
         releases.length === 0
           ? "No releases tagged yet."

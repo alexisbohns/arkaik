@@ -6,7 +6,9 @@ import type { PlatformId } from "@/lib/config/platforms";
 import { VALUE_TIERS_CONFIG } from "@/lib/config/values";
 import { mergeRollups } from "@/lib/utils/platform-status";
 import type { PyramidTier } from "@/lib/utils/pyramid";
+import { useOverviewLayoutContext } from "./OverviewLayoutContext";
 import { OverviewSection } from "./OverviewSection";
+import { ValuePyramidWheels } from "./ValuePyramidWheels";
 
 const TIER_LABEL = new Map(VALUE_TIERS_CONFIG.map((t) => [t.id, t.label]));
 
@@ -33,17 +35,27 @@ export function PyramidCard({ tiers, platforms, projectId }: PyramidCardProps) {
     (sum, tier) => sum + tier.elements.filter((element) => element.acceptanceCount > 0).length,
     0,
   );
+  // The wheel pyramid needs the width of a full row: thirty rings in seven
+  // columns is a shape at 1fr and a smudge inside a half-width card.
+  const asWheels = useOverviewLayoutContext() === "rows";
 
   return (
     <OverviewSection
       title="Value pyramid"
       icon={PyramidIcon}
+      description="What the product is worth to the people using it — and where it says nothing yet."
       subtitle={`${addressedCount}/${elementCount} elements addressed across ${tiers.length} tier${tiers.length === 1 ? "" : "s"}`}
       href={`/project/${projectId}/pyramid`}
       linkLabel="Pyramid"
     >
-      <div className="flex flex-col gap-2.5">
-        {tiers.map((tier) => {
+      {asWheels ? (
+        <ValuePyramidWheels
+          tiers={tiers}
+          hrefForValue={(value) => `/project/${projectId}/acceptances?value=${encodeURIComponent(value)}`}
+        />
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          {tiers.map((tier) => {
           const rollup = mergeRollups(...tier.elements.map((element) => element.rollup));
           // Elements addressed, not acceptances summed: an acceptance carrying two
           // values from the same tier would be counted twice by a naive sum, so the
@@ -69,8 +81,9 @@ export function PyramidCard({ tiers, platforms, projectId }: PyramidCardProps) {
               />
             </div>
           );
-        })}
-      </div>
+          })}
+        </div>
+      )}
     </OverviewSection>
   );
 }

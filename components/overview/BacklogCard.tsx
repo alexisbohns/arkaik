@@ -19,6 +19,7 @@ export function BacklogCard({ backlog, projectId }: BacklogCardProps) {
     <OverviewSection
       title="Backlog"
       icon={InboxIcon}
+      description="What the journal has recorded as wanted but not yet drawn into the graph."
       subtitle={
         backlog.items.length === 0
           ? "No open ideas or requests."

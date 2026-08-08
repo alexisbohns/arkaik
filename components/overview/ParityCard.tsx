@@ -33,6 +33,7 @@ export function ParityCard({ gaps, platforms, projectId }: ParityCardProps) {
       <OverviewSection
         title="Platform parity"
         icon={ScaleIcon}
+        description="Whether every platform in scope tells the same story."
         subtitle="Parity compares platforms, and fewer than two are in scope — nothing to compare."
         href={`/project/${projectId}/acceptances`}
         linkLabel="Acceptances"
@@ -44,6 +45,7 @@ export function ParityCard({ gaps, platforms, projectId }: ParityCardProps) {
     <OverviewSection
       title="Platform parity"
       icon={ScaleIcon}
+      description="Whether every platform in scope tells the same story."
       subtitle={
         gaps.length === 0 ? (
           "No parity gaps — every acceptance ships evenly across its platforms."
