@@ -14,6 +14,7 @@ import { ReleasePulseCard } from "@/components/overview/ReleasePulseCard";
 import { PageError } from "@/components/layout/PageError";
 import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
+import { PageSurface } from "@/components/layout/PageSurface";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useJournal } from "@/lib/hooks/useJournal";
@@ -187,28 +188,26 @@ export default function OverviewPage() {
         ) : null
       }
     >
-      <div className="h-full overflow-auto p-4 md:p-6">
-        <div className="grid w-full gap-4 md:grid-cols-2">
-          {isEmpty ? (
-            <EmptyState
-              className="md:col-span-2"
-              message="Nothing here yet. Sketch the product on the Journey map or add nodes in the Library, and the Overview fills itself in."
-            />
-          ) : (
-            <>
-              <PlatformGaugesCard rollup={rollup} platforms={gaugePlatforms} projectId={id} />
-              <ParityCard gaps={parityGaps} platforms={scope.platforms} projectId={id} />
-              <PyramidCard tiers={pyramidTiers} platforms={scope.platforms} projectId={id} />
-              <DeliverySnapshotCard snapshot={snapshot} projectId={id} />
-              <ReleasePulseCard releases={releases} projectId={id} />
-              <BacklogCard backlog={backlog} projectId={id} />
-              <InventoryCard inventory={inventory} projectId={id} />
-              <HealthCard indicators={health} projectId={id} />
-              <MapsCard maps={maps} projectId={id} />
-            </>
-          )}
-        </div>
-      </div>
+      <PageSurface contentClassName="grid gap-4 md:grid-cols-2">
+        {isEmpty ? (
+          <EmptyState
+            className="md:col-span-2"
+            message="Nothing here yet. Sketch the product on the Journey map or add nodes in the Library, and the Overview fills itself in."
+          />
+        ) : (
+          <>
+            <PlatformGaugesCard rollup={rollup} platforms={gaugePlatforms} projectId={id} />
+            <ParityCard gaps={parityGaps} platforms={scope.platforms} projectId={id} />
+            <PyramidCard tiers={pyramidTiers} platforms={scope.platforms} projectId={id} />
+            <DeliverySnapshotCard snapshot={snapshot} projectId={id} />
+            <ReleasePulseCard releases={releases} projectId={id} />
+            <BacklogCard backlog={backlog} projectId={id} />
+            <InventoryCard inventory={inventory} projectId={id} />
+            <HealthCard indicators={health} projectId={id} />
+            <MapsCard maps={maps} projectId={id} />
+          </>
+        )}
+      </PageSurface>
     </PageShell>
   );
 }

@@ -60,6 +60,15 @@ interface NodeTableProps {
   onToggleAll?: () => void;
   onSortChange: (key: NodeSortKey) => void;
   onSelectNode: (node: Node) => void;
+  /**
+   * Fill the pane instead of being a block in a scrolling column: the table owns
+   * the scrollport, so its header stays put over the rows moving under it.
+   *
+   * The directory view's default. A table is the one surface that reads as the
+   * whole panel — the column labels are the only thing telling you what the
+   * numbers mean, and losing them off the top edge is losing the table.
+   */
+  fill?: boolean;
 }
 
 /**
@@ -95,6 +104,7 @@ export function NodeTable({
   onToggleAll,
   onSortChange,
   onSelectNode,
+  fill,
 }: NodeTableProps) {
   // Checked only when every visible row is in the set — and `nodes.length > 0`
   // so an empty table does not render a ticked "select all" over nothing.
@@ -124,8 +134,13 @@ export function NodeTable({
       : false;
 
   return (
-    <Table className="text-sm">
-      <TableHeader>
+    <Table
+      className="text-sm"
+      containerClassName={fill ? "h-full overflow-auto" : undefined}
+    >
+      {/* `bg-card` on the sticky header is load-bearing: a `<thead>` pinned over
+          a transparent background lets the rows read straight through it. */}
+      <TableHeader className={fill ? "sticky top-0 z-10 bg-card" : undefined}>
         <TableRow>
           {selectedIds !== undefined && (
             <TableHead className="w-8">

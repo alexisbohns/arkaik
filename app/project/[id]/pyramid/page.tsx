@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { PageError } from "@/components/layout/PageError";
 import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
-import { StickyToolbar } from "@/components/layout/StickyToolbar";
+import { PageSurface } from "@/components/layout/PageSurface";
 import { PyramidElementCard } from "@/components/pyramid/PyramidElementCard";
 import { PyramidElementRow } from "@/components/pyramid/PyramidElementRow";
 import { PyramidTierGroup } from "@/components/pyramid/PyramidTierGroup";
@@ -131,58 +131,55 @@ export default function PyramidPage() {
 
   return (
     <PageShell title="Value pyramid" meta={productScopeMetaLabel(scope)}>
-      <div className="h-full overflow-auto">
-        <div className="mx-auto w-full max-w-6xl">
-          <StickyToolbar>
-            <PyramidToolbar
-              viewMode={viewMode}
-              filterStep={filterStep}
-              onViewModeChange={setViewMode}
-              onFilterStepChange={setFilterStep}
-              projectId={id}
-              project={projectBundle}
-            />
-          </StickyToolbar>
-
-          <div className="flex flex-col gap-6 px-4 pb-4 md:px-6 md:pb-6">
-          {visibleTiers.length === 0 ? (
-            /* `p-10` rather than the `p-8` this card used to hand-roll — the
-               audit's converge-on-the-dominant-treatment call (factorization-3). */
-            <EmptyState message="No value element matches this filter." />
-          ) : (
-            visibleTiers.map((tier) => {
-              const config = TIER_CONFIG.get(tier.tier);
-              const View = viewMode === "cards" ? PyramidElementCard : PyramidElementRow;
-              const items = tier.visible.map((element) => (
-                <View
-                  key={element.value}
-                  element={element}
-                  label={VALUE_LABEL.get(element.value) ?? element.value}
-                  description={VALUE_DESCRIPTION.get(element.value) ?? ""}
-                  href={acceptancesHref(element.value)}
-                  platforms={scope.platforms}
-                />
-              ));
-              return (
-                <PyramidTierGroup
-                  key={tier.tier}
-                  label={config?.label ?? tier.tier}
-                  color={config?.color ?? "#94a3b8"}
-                  elementCount={tier.elements.length}
-                  addressedCount={tier.addressedCount}
-                >
-                  {viewMode === "cards" ? (
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{items}</div>
-                  ) : (
-                    <div className="overflow-hidden rounded-xl border bg-card">{items}</div>
-                  )}
-                </PyramidTierGroup>
-              );
-            })
-          )}
-          </div>
-        </div>
-      </div>
+      <PageSurface
+        contentClassName="flex flex-col gap-6"
+        toolbar={
+          <PyramidToolbar
+            viewMode={viewMode}
+            filterStep={filterStep}
+            onViewModeChange={setViewMode}
+            onFilterStepChange={setFilterStep}
+            projectId={id}
+            project={projectBundle}
+          />
+        }
+      >
+        {visibleTiers.length === 0 ? (
+          /* `p-10` rather than the `p-8` this card used to hand-roll — the
+             audit's converge-on-the-dominant-treatment call (factorization-3). */
+          <EmptyState message="No value element matches this filter." />
+        ) : (
+          visibleTiers.map((tier) => {
+            const config = TIER_CONFIG.get(tier.tier);
+            const View = viewMode === "cards" ? PyramidElementCard : PyramidElementRow;
+            const items = tier.visible.map((element) => (
+              <View
+                key={element.value}
+                element={element}
+                label={VALUE_LABEL.get(element.value) ?? element.value}
+                description={VALUE_DESCRIPTION.get(element.value) ?? ""}
+                href={acceptancesHref(element.value)}
+                platforms={scope.platforms}
+              />
+            ));
+            return (
+              <PyramidTierGroup
+                key={tier.tier}
+                label={config?.label ?? tier.tier}
+                color={config?.color ?? "#94a3b8"}
+                elementCount={tier.elements.length}
+                addressedCount={tier.addressedCount}
+              >
+                {viewMode === "cards" ? (
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{items}</div>
+                ) : (
+                  <div className="overflow-hidden rounded-xl border bg-card">{items}</div>
+                )}
+              </PyramidTierGroup>
+            );
+          })
+        )}
+      </PageSurface>
     </PageShell>
   );
 }

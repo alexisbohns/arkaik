@@ -173,14 +173,21 @@ export function PanelStack<T>({
   // shape, and the clip is what keeps a canvas or a long trail inside it. Only
   // the skin is optional.
   const cellClassName =
-    "flex min-w-0 min-h-0 flex-col overflow-hidden rounded-xl [&[hidden]]:hidden";
-  const cardClassName = "border bg-card";
+    "flex min-w-0 min-h-0 flex-col overflow-hidden bg-card rounded-xl [&[hidden]]:hidden";
+  const cardClassName = "bg-card";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div
         className={cn(
-          "relative grid min-h-0 flex-1 gap-3 p-3",
+          // `grid-rows-1` is load-bearing, not decoration. The default
+          // `grid-auto-rows: auto` sizes the single row to its tallest cell, so a
+          // long list grew the row past the container, the cell grew with it, and
+          // every `h-full`/`flex-1` scroller inside measured the *grown* cell —
+          // which is why the Acceptances and Library surfaces could not scroll at
+          // all. `minmax(0, 1fr)` pins the row to the container instead, and the
+          // cells' own `overflow-hidden` then has something real to clip against.
+          "relative grid min-h-0 flex-1 grid-rows-1 gap-3 p-3",
           columnCount === 1 ? "grid-cols-1" : "grid-cols-2",
         )}
       >

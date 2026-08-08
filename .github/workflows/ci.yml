@@ -109,6 +109,9 @@ jobs:
       - name: Neighborhood spotlight tests
         run: npm run test:spotlight
 
+      - name: Docs publication boundary tests
+        run: npm run test:docs-visibility
+
       - name: Push-panel stack tests
         run: npm run test:panel-stack
 

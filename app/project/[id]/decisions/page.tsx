@@ -11,12 +11,14 @@ import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useProject } from "@/lib/hooks/useProject";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
+import { DecisionFilterBar, type DecisionStatusFilter } from "@/components/decisions/DecisionFilterBar";
 import { DecisionLog } from "@/components/decisions/DecisionLog";
 import { PageError } from "@/components/layout/PageError";
 import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
+import { PageSurface } from "@/components/layout/PageSurface";
 import { generateNodeId } from "@/lib/utils/id";
-import { withDecisionStatus } from "@/lib/utils/decision";
+import { decisionStatusCounts, withDecisionStatus } from "@/lib/utils/decision";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -34,11 +36,15 @@ export default function ProjectDecisionsPage() {
 
   const [newOpen, setNewOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
+  // Owned here, not in `DecisionLog`: the toolbar and the log are siblings, so
+  // the filter they share belongs to the page that mounts both.
+  const [statusFilter, setStatusFilter] = useState<DecisionStatusFilter>("all");
 
   const decisions = useMemo(
     () => dataNodes.filter((node) => node.species === "decision"),
     [dataNodes],
   );
+  const statusCounts = useMemo(() => decisionStatusCounts(decisions), [decisions]);
   const nodesById = useMemo(() => new Map(dataNodes.map((n) => [n.id, n])), [dataNodes]);
 
   function handleSelectNode(node: DataNode) {
@@ -109,16 +115,25 @@ export default function ProjectDecisionsPage() {
         journal={journal}
         onUpdate={handleNodeUpdate}
       >
-        <div className="h-full overflow-auto p-4 md:p-6">
-          <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-            <DecisionLog
-              decisions={decisions}
-              allEdges={dataEdges}
-              journal={journal}
-              onSelect={handleSelectNode}
+        <PageSurface
+          contentClassName="flex flex-col gap-4"
+          toolbar={
+            <DecisionFilterBar
+              status={statusFilter}
+              onStatusChange={setStatusFilter}
+              total={decisions.length}
+              counts={statusCounts}
             />
-          </div>
-        </div>
+          }
+        >
+          <DecisionLog
+            decisions={decisions}
+            allEdges={dataEdges}
+            journal={journal}
+            onSelect={handleSelectNode}
+            statusFilter={statusFilter}
+          />
+        </PageSurface>
       </PageShell>
       <Dialog open={newOpen} onOpenChange={setNewOpen}>
         <DialogContent>

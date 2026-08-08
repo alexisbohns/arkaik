@@ -6,11 +6,30 @@
  * decision.status_changed + node.status_changed together (spec §4).
  */
 
-import { lifecycleStatusForDecision, type DecisionStatusId } from "@arkaik/schema";
+import { decisionStatusOf, lifecycleStatusForDecision, type DecisionStatusId } from "@arkaik/schema";
 import type { Node, NodeMetadata } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 
 export { decisionStatusOf, DECISION_STATUS_IDS, type DecisionStatusId } from "@arkaik/schema";
+
+/**
+ * How many of these decisions carry each status.
+ *
+ * Lives here rather than in the bar that renders it because the bar is now one
+ * level up from the list: the toolbar and the log are siblings under the page, so
+ * the count has to be derived once by their common owner instead of twice.
+ * Statuses with no decisions are absent rather than zero — a caller reading with
+ * `?? 0` gets the same answer, and building seven entries to say "none" is work
+ * for nothing.
+ */
+export function decisionStatusCounts(decisions: readonly Node[]): Map<DecisionStatusId, number> {
+  const counts = new Map<DecisionStatusId, number>();
+  for (const decision of decisions) {
+    const status = decisionStatusOf(decision);
+    counts.set(status, (counts.get(status) ?? 0) + 1);
+  }
+  return counts;
+}
 
 /** This node's metadata with `decision_status` set; the rest carried through untouched. */
 export function withDecisionStatus(

@@ -5,6 +5,7 @@ import { orderEvents } from "@arkaik/schema";
 import { PageError } from "@/components/layout/PageError";
 import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
+import { PageSurface } from "@/components/layout/PageSurface";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useJournal } from "@/lib/hooks/useJournal";
@@ -103,40 +104,38 @@ export default function HistoryPage() {
       allNodes={dataNodes}
       journal={journal}
     >
-      <div className="h-full overflow-auto p-4 md:p-6">
-        <div className="flex w-full flex-col gap-4">
-          {journal.length === 0 ? (
-            <EmptyState message="No journal yet. Every recorded event will appear here." />
-          ) : (
-            <>
-              <div className="flex flex-wrap gap-1.5">
-                <FamilyPill active={family === null} onClick={() => setFamily(null)}>
-                  All
+      <PageSurface contentClassName="flex flex-col gap-4">
+        {journal.length === 0 ? (
+          <EmptyState message="No journal yet. Every recorded event will appear here." />
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-1.5">
+              <FamilyPill active={family === null} onClick={() => setFamily(null)}>
+                All
+              </FamilyPill>
+              {FAMILIES.map((entry) => (
+                <FamilyPill
+                  key={entry.id}
+                  active={family === entry.id}
+                  onClick={() => setFamily(family === entry.id ? null : entry.id)}
+                >
+                  {entry.label}
                 </FamilyPill>
-                {FAMILIES.map((entry) => (
-                  <FamilyPill
-                    key={entry.id}
-                    active={family === entry.id}
-                    onClick={() => setFamily(family === entry.id ? null : entry.id)}
-                  >
-                    {entry.label}
-                  </FamilyPill>
+              ))}
+            </div>
+
+            {events.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No events in this family.</p>
+            ) : (
+              <div className="flex flex-col gap-0.5">
+                {events.map((event) => (
+                  <FeedRow key={event.id} event={event} nodesById={nodesById} />
                 ))}
               </div>
-
-              {events.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No events in this family.</p>
-              ) : (
-                <div className="flex flex-col gap-0.5">
-                  {events.map((event) => (
-                    <FeedRow key={event.id} event={event} nodesById={nodesById} />
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
+            )}
+          </>
+        )}
+      </PageSurface>
     </PageShell>
   );
 }

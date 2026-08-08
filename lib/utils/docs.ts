@@ -5,6 +5,7 @@ import path from "node:path";
 import { cache } from "react";
 import matter from "gray-matter";
 import type { DocsPage } from "@/lib/utils/command-palette";
+import { isPublishedDoc } from "@/lib/utils/docs-visibility";
 
 const REPO_ROOT = process.cwd();
 const DOCS_DIR = path.join(REPO_ROOT, "docs");
@@ -182,6 +183,15 @@ const getDocsIndex = cache(async (): Promise<DocsIndex> => {
       markdownFiles.map(async (filePath) => {
         const relativePath = toPosixPath(path.relative(DOCS_DIR, filePath));
         if (relativePath.toLowerCase() === "readme.md") {
+          return null;
+        }
+
+        // The one gate. Every docs consumer — the sidebar, the ⌘K palette,
+        // `generateStaticParams`, and `getDocBySlugParts` via `entriesBySlug` —
+        // reads this index, so a file excluded here is not merely unlisted: it
+        // has no static path, and a hand-typed URL for it resolves to no entry
+        // and redirects to /docs. See `docs-visibility.ts` for the policy.
+        if (!isPublishedDoc(relativePath)) {
           return null;
         }
 
