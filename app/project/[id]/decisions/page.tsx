@@ -116,7 +116,6 @@ export default function ProjectDecisionsPage() {
         onUpdate={handleNodeUpdate}
       >
         <PageSurface
-          maxWidth="max-w-3xl"
           contentClassName="flex flex-col gap-4"
           toolbar={
             <DecisionFilterBar
