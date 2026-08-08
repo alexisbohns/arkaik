@@ -1,18 +1,29 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ListChevronsDownUpIcon, ListChevronsUpDownIcon, StethoscopeIcon, XIcon } from "lucide-react";
+import {
+  CircleFadingArrowUpIcon,
+  ListChevronsDownUpIcon,
+  ListChevronsUpDownIcon,
+  MonitorSmartphoneIcon,
+  PyramidIcon,
+  StethoscopeIcon,
+  WorkflowIcon,
+  XIcon,
+} from "lucide-react";
 import type { ProjectBundle } from "@/lib/data/types";
 import type { AcceptanceFilters } from "@/lib/utils/acceptance-matrix";
 import { EMPTY_FILTERS, UNANCHORED_FILTER } from "@/lib/utils/acceptance-matrix";
 import { VALUES } from "@/lib/config/values";
+import { STATUSES } from "@/lib/config/statuses";
 import { usePlatformFilterControl } from "@/lib/hooks/usePlatformFilterControl";
 import { SearchInput } from "@/components/ui/search-input";
 import { ProductOverrideSelector } from "@/components/layout/ProductOverrideSelector";
 import { Toolbar, ToolbarGroup } from "@/components/layout/Toolbar";
 import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem } from "@/components/ui/select";
+import { FilterSelectTrigger } from "@/components/layout/FilterSelectTrigger";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PLATFORM_ICONS } from "@/components/graph/nodes/node-styles";
 import { VALUE_ICON_COMPONENTS } from "@/lib/config/value-icons";
@@ -35,6 +46,13 @@ interface AcceptanceFilterBarProps {
 }
 
 const ALL = "all";
+
+/** The selected platform's own glyph, or the generic one while unfiltered. */
+function SelectedPlatformIcon({ platform }: { platform: AcceptanceFilters["platform"] }) {
+  if (platform === "all") return <MonitorSmartphoneIcon />;
+  const Icon = PLATFORM_ICONS[platform];
+  return <Icon />;
+}
 
 export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectId, project, allExpanded, onToggleExpandAll }: AcceptanceFilterBarProps) {
   // Same arity rule and same stale-filter reset as the Delivery bar; only the
@@ -114,8 +132,16 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectI
       <ToolbarGroup>
         {showPlatformFilter && (
           <Select value={filters.platform} onValueChange={(v) => onChange({ ...filters, platform: v === ALL ? "all" : (v as AcceptanceFilters["platform"]) })}>
-            <SelectTrigger className="w-[8rem]" aria-label="Platform"><SelectValue placeholder="Platforms" /></SelectTrigger>
-            <SelectContent>
+            {/* The glyph is the *selected* platform when there is one — the one
+                place where a filter's value is itself an icon, so the trigger
+                may as well say which. */}
+            <FilterSelectTrigger
+              icon={<SelectedPlatformIcon platform={filters.platform} />}
+              label="Platform"
+              active={filters.platform !== "all"}
+              valueLabel={platformOptions.find((p) => p.id === filters.platform)?.label}
+            />
+            <SelectContent align="start">
               <SelectItem value={ALL}>Platforms</SelectItem>
               {platformOptions.map((p) => {
                 const Icon = PLATFORM_ICONS[p.id];
@@ -126,16 +152,26 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectI
         )}
 
         <Select value={filters.status} onValueChange={(v) => onChange({ ...filters, status: v === ALL ? "all" : (v as AcceptanceFilters["status"]) })}>
-          <SelectTrigger className="w-[9rem]" aria-label="Status"><SelectValue placeholder="Status" /></SelectTrigger>
-          <SelectContent>
+          <FilterSelectTrigger
+            icon={<CircleFadingArrowUpIcon />}
+            label="Status"
+            active={filters.status !== "all"}
+            valueLabel={STATUSES.find((s) => s.id === filters.status)?.label}
+          />
+          <SelectContent align="start">
             <SelectItem value={ALL}>All statuses</SelectItem>
             <StatusSelectItems />
           </SelectContent>
         </Select>
 
         <Select value={filters.value} onValueChange={(v) => onChange({ ...filters, value: v === ALL ? "all" : (v as AcceptanceFilters["value"]) })}>
-          <SelectTrigger className="w-[11rem]" aria-label="Value"><SelectValue placeholder="Value" /></SelectTrigger>
-          <SelectContent>
+          <FilterSelectTrigger
+            icon={<PyramidIcon />}
+            label="Value"
+            active={filters.value !== "all"}
+            valueLabel={VALUES.find((v) => v.id === filters.value)?.label}
+          />
+          <SelectContent align="start">
             <SelectItem value={ALL}>All values</SelectItem>
             {VALUES.map((v) => {
               const Icon = VALUE_ICON_COMPONENTS[v.id];
@@ -145,8 +181,17 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectI
         </Select>
 
         <Select value={filters.anchor} onValueChange={(v) => onChange({ ...filters, anchor: v === ALL ? "all" : v })}>
-          <SelectTrigger className="w-[11rem]" aria-label="Anchor"><SelectValue placeholder="Anchor" /></SelectTrigger>
-          <SelectContent>
+          <FilterSelectTrigger
+            icon={<WorkflowIcon />}
+            label="Anchor"
+            active={filters.anchor !== "all"}
+            valueLabel={
+              filters.anchor === UNANCHORED_FILTER
+                ? "Unanchored (intake)"
+                : anchorOptions.find((a) => a.id === filters.anchor)?.title
+            }
+          />
+          <SelectContent align="start">
             <SelectItem value={ALL}>All anchors</SelectItem>
             {/* The intake inbox: ideas filed before their flows and views exist.
                 First, not sorted in among the anchors, because it is the one entry
@@ -194,6 +239,11 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectI
               aria-pressed={allExpanded}
               aria-label={allExpanded ? "Collapse all groups" : "Expand all groups"}
               onClick={onToggleExpandAll}
+              // Border only, no fill: the filter menus beside it now use a soft
+              // filled surface to say "a value is set", and this button sets no
+              // value — it opens and shuts the groups. Same shape, so the fill
+              // has to be the thing that tells them apart.
+              className="bg-transparent dark:bg-transparent"
             >
               {allExpanded
                 ? <ListChevronsUpDownIcon className="size-4" />
