@@ -8,6 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { FilterSelectTrigger } from "@/components/layout/FilterSelectTrigger";
 import type { ProductScopeOption } from "@/lib/utils/product-scope";
 
 /**
@@ -39,6 +40,13 @@ interface ProductSelectProps {
   options: ProductScopeOption[];
   /** Rendered inside the trigger, before the label — an icon, usually. */
   triggerIcon?: ReactNode;
+  /**
+   * Compact the trigger to a square icon button — what the surfaces' filter
+   * bands use, where this control is one narrowing menu among several. The
+   * sidebar's global scope selector keeps the labelled trigger: it names the
+   * frame you are in, which is exactly the thing a glyph cannot say.
+   */
+  iconOnly?: boolean;
   triggerClassName?: string;
   contentClassName?: string;
   ariaLabel: string;
@@ -51,6 +59,7 @@ export function ProductSelect({
   onChange,
   options,
   triggerIcon,
+  iconOnly = false,
   triggerClassName,
   contentClassName,
   ariaLabel,
@@ -65,6 +74,15 @@ export function ProductSelect({
       value={selected ? selected.id : ALL_PRODUCTS}
       onValueChange={(next) => onChange(next === ALL_PRODUCTS ? null : next)}
     >
+      {iconOnly ? (
+        <FilterSelectTrigger
+          icon={triggerIcon}
+          label={ariaLabel}
+          active={selected !== null}
+          valueLabel={selected?.label}
+          className={triggerClassName}
+        />
+      ) : (
       <SelectTrigger aria-label={ariaLabel} className={triggerClassName}>
         {triggerIcon}
         {/* Children make Radix render this instead of portaling the selected
@@ -74,6 +92,7 @@ export function ProductSelect({
           <span className="truncate">{selected ? selected.label : "All products"}</span>
         </SelectValue>
       </SelectTrigger>
+      )}
       <SelectContent align="start" className={contentClassName}>
         <SelectItem value={ALL_PRODUCTS} textValue="All products">
           <span className="grid text-left leading-tight">
