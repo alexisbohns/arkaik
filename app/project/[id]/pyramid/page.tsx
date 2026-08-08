@@ -132,7 +132,6 @@ export default function PyramidPage() {
   return (
     <PageShell title="Value pyramid" meta={productScopeMetaLabel(scope)}>
       <PageSurface
-        maxWidth="max-w-6xl"
         contentClassName="flex flex-col gap-6"
         toolbar={
           <PyramidToolbar
