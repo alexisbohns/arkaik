@@ -41,6 +41,10 @@ export default function ProjectAcceptancesPage() {
   });
   const { filters, setFilters } = useAcceptanceFilters();
   const [newAcceptanceOpen, setNewAcceptanceOpen] = useState(false);
+  // Collapsed is the landing state: you arrive at the list of anchors, then open
+  // the one you came for. The toolbar toggle owns the baseline; the matrix owns
+  // the per-heading exceptions to it.
+  const [allExpanded, setAllExpanded] = useState(false);
 
   const acceptances = useMemo(
     () => dataNodes.filter((node) => node.species === "acceptance"),
@@ -211,6 +215,8 @@ export default function ProjectAcceptancesPage() {
               anchorOptions={anchorOptions}
               projectId={id}
               project={projectBundle}
+              allExpanded={allExpanded}
+              onToggleExpandAll={() => setAllExpanded((prev) => !prev)}
             />
           }
         >
@@ -221,6 +227,7 @@ export default function ProjectAcceptancesPage() {
             onSelect={handleSelectNode}
             projectId={id}
             project={projectBundle}
+            allExpanded={allExpanded}
           />
         </PageSurface>
       </PageShell>
