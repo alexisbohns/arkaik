@@ -34,6 +34,52 @@ function describeRing(title: string, segments: readonly StatusSegment[]): string
   return `${title}: ${parts.join(", ")}`;
 }
 
+interface PlatformRingProps {
+  rollup: PlatformStatusRollup;
+  platform: PlatformId;
+  size?: StatusRingSize;
+  /** Names what this ring's footer counts. */
+  platformCountLabel?: string;
+}
+
+/**
+ * One platform's ring, hover-revealing its status breakdown.
+ *
+ * Split out of {@link PlatformRings} so a surface can put its own chrome around
+ * a ring — the Overview's rows display draws each platform as a titled tile —
+ * without rebuilding the ring, the hover card and the accessible name a fourth
+ * time. Everything the ring *is* lives here; callers only decide what surrounds
+ * it and how many there are.
+ */
+export function PlatformRing({ rollup, platform, size = "lg", platformCountLabel = "acceptances" }: PlatformRingProps) {
+  const segments = getPlatformRollupSegments(rollup, platform);
+  // Summed from the segments, not read from `rollup.totals`, so the footer
+  // count and the rows above it can never disagree.
+  const platformTotal = segments.reduce((sum, segment) => sum + segment.count, 0);
+  const Icon = PLATFORM_ICONS[platform];
+  const label = PLATFORM_LABELS[platform];
+
+  return (
+    <HoverCard openDelay={150}>
+      <HoverCardTrigger asChild>
+        <span className={TRIGGER_CLASS}>
+          <StatusRing segments={segments} size={size} label={describeRing(label, segments)}>
+            <Icon className={`${size === "lg" ? "size-4" : "size-3"} text-muted-foreground`} />
+          </StatusRing>
+        </span>
+      </HoverCardTrigger>
+      <HoverCardContent className="w-60 p-3">
+        <StatusBreakdownPopover
+          title={label}
+          icon={Icon}
+          segments={segments}
+          footer={`${platformTotal} ${platformCountLabel} on ${label}`}
+        />
+      </HoverCardContent>
+    </HoverCard>
+  );
+}
+
 interface PlatformRingsProps {
   rollup: PlatformStatusRollup;
   /** The platforms to draw a ring for, in any order — re-sorted to RING_ORDER. */
@@ -54,41 +100,28 @@ interface PlatformRingsProps {
  * about what a platform ring looks like.
  */
 export function PlatformRings({ rollup, platforms, size = "lg", platformCountLabel = "acceptances" }: PlatformRingsProps) {
-  const ringPlatforms = platforms.slice().sort((left, right) => rank(left) - rank(right));
-  const centerIcon = size === "lg" ? "size-4" : "size-3";
-
   return (
     <>
-      {ringPlatforms.map((platform) => {
-        const segments = getPlatformRollupSegments(rollup, platform);
-        // Summed from the segments, not read from `rollup.totals`, so the footer
-        // count and the rows above it can never disagree.
-        const platformTotal = segments.reduce((sum, segment) => sum + segment.count, 0);
-        const Icon = PLATFORM_ICONS[platform];
-        const label = PLATFORM_LABELS[platform];
-
-        return (
-          <HoverCard key={platform} openDelay={150}>
-            <HoverCardTrigger asChild>
-              <span className={TRIGGER_CLASS}>
-                <StatusRing segments={segments} size={size} label={describeRing(label, segments)}>
-                  <Icon className={`${centerIcon} text-muted-foreground`} />
-                </StatusRing>
-              </span>
-            </HoverCardTrigger>
-            <HoverCardContent className="w-60 p-3">
-              <StatusBreakdownPopover
-                title={label}
-                icon={Icon}
-                segments={segments}
-                footer={`${platformTotal} ${platformCountLabel} on ${label}`}
-              />
-            </HoverCardContent>
-          </HoverCard>
-        );
-      })}
+      {sortRingPlatforms(platforms).map((platform) => (
+        <PlatformRing
+          key={platform}
+          rollup={rollup}
+          platform={platform}
+          size={size}
+          platformCountLabel={platformCountLabel}
+        />
+      ))}
     </>
   );
+}
+
+/**
+ * The platforms in ring order, whatever order the caller holds them in — shared
+ * so a surface arranging rings itself (the Overview's tiles) cannot reshuffle
+ * them relative to every other surface.
+ */
+export function sortRingPlatforms(platforms: readonly PlatformId[]): PlatformId[] {
+  return platforms.slice().sort((left, right) => rank(left) - rank(right));
 }
 
 interface PlatformRingSetProps {

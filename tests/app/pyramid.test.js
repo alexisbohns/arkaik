@@ -14,6 +14,7 @@ const { loadPyramid, BUILD_DIR } = require("./load-pyramid");
 const {
   computePyramidAggregation,
   computeScopedPyramidTiers,
+  splitTierColumns,
   filterAcceptances,
   EMPTY_FILTERS,
   resolveProductScope,
@@ -332,6 +333,25 @@ const emptySegments = getRollupTotalSegments(createEmptyRollup());
 assert(
   emptySegments.length === 4 && emptySegments.every((s) => s.count === 0 && s.ratio === 0 && s.percentage === 0),
   "an empty rollup yields all-zero segments and never divides by zero",
+);
+
+// --- splitTierColumns: the Overview's 90° pyramid shape -------------------
+// The whole point of deriving the columns is that today's 14/10/5/1 taxonomy
+// comes out as 7+7 / 5+5 / 3+2 / 1 without those numbers appearing anywhere.
+const columnShape = (n) => splitTierColumns(Array.from({ length: n }, (_, i) => i)).map((col) => col.length);
+
+assert(eq(columnShape(14), [7, 7]), "a 14-element tier splits into two columns of 7");
+assert(eq(columnShape(10), [5, 5]), "a 10-element tier splits into two columns of 5");
+assert(eq(columnShape(5), [3, 2]), "an odd tier puts the extra element in the first column");
+assert(eq(columnShape(1), [1]), "the apex is one column, not 1 + 0");
+assert(eq(columnShape(0), []), "an empty tier draws no columns at all");
+assert(
+  eq(splitTierColumns(["a", "b", "c"]), [["a", "b"], ["c"]]),
+  "elements keep their order, split at the halfway point",
+);
+assert(
+  tiers.every((tier) => splitTierColumns(tier.elements).flat().length === tier.elements.length),
+  "every element of every real tier lands in exactly one column",
 );
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });

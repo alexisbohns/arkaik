@@ -122,3 +122,27 @@ export function computeScopedPyramidTiers(
     { platforms: scope.platforms },
   );
 }
+
+/**
+ * A tier's elements split into the columns the Overview's 90° pyramid draws.
+ *
+ * The pyramid lies on its side: tiers read left to right, widest first, and a
+ * tier's own elements stack vertically in one or two columns. Two rather than a
+ * single tall column because a 14-element functional tier in one column is a
+ * ladder, not a pyramid — split in half it is the base the shape needs.
+ *
+ * **Derived, never hardcoded.** Today's taxonomy is 14/10/5/1, which this turns
+ * into 7+7, 5+5, 3+2 and 1 — the intended shape. Writing those numbers down
+ * instead would mis-chunk silently the day an element is added to a tier, and
+ * "silently" is the whole problem: the pyramid would still render, just wrong.
+ *
+ * A tier of one gets a single column: an apex is a point, and 1+0 would leave
+ * an empty column's worth of gap beside it.
+ */
+export function splitTierColumns<T>(elements: readonly T[]): T[][] {
+  if (elements.length === 0) return [];
+  if (elements.length === 1) return [[elements[0]]];
+
+  const first = Math.ceil(elements.length / 2);
+  return [elements.slice(0, first), elements.slice(first)];
+}

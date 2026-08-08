@@ -19,6 +19,7 @@ export function InventoryCard({ inventory, projectId }: InventoryCardProps) {
     <OverviewSection
       title="Inventory"
       icon={BookOpenIcon}
+      description="How much product there is to read at all, by species."
       subtitle={`${inventory.nodeCount} nodes · ${inventory.edgeCount} edges · ${inventory.journalEventCount} journal events`}
       href={`/project/${projectId}/library`}
       linkLabel="Library"

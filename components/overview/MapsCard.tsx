@@ -29,6 +29,7 @@ export function MapsCard({ maps, projectId }: MapsCardProps) {
     <OverviewSection
       title="Maps"
       icon={MapIcon}
+      description="The views onto this graph, and how much each one draws."
       subtitle={
         maps.length === 0
           ? "No maps yet."
