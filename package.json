@@ -33,6 +33,7 @@
     "test:keyboard-shortcuts": "node tests/app/keyboard-shortcuts.test.js",
     "test:command-palette": "node tests/app/command-palette.test.js",
     "test:coverage": "node tests/app/coverage.test.js",
+    "test:docs-visibility": "node tests/app/docs-visibility.test.js",
     "test:effective-status": "node tests/app/effective-status.test.js",
     "test:pyramid": "node tests/app/pyramid.test.js",
     "test:root-redirect": "node tests/app/root-redirect.test.js",
