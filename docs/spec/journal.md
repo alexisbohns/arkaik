@@ -114,8 +114,8 @@ Projections are pure functions over (snapshot, journal) — the same pattern as 
 |---|---|---|
 | Node timeline | "How did this view get to `live` on iOS?" | History section in the node detail panel |
 | Changelog | "What changed between 1.2 and 1.3?" | Project-level journal/changelog view |
-| Deliverables | "What units of work shipped, and in which release?" | Delivery panel of the changelog page; `arkaik release` draft grouping |
-| Commitments | "What moved from idea to committed work?" | Design panel of the changelog page |
+| Deliverables | "What units of work shipped, and in which release?" | Changelog page — one section per milestone, deliverables as its timeline; `arkaik release` draft grouping |
+| Commitments | "What moved from idea to committed work?" | Design page (backlog → commitments → decisions) |
 | Release notes | "What do we tell users shipped?" | Generated draft at `arkaik release` |
 | Backlog | "Which ideas and requests are open?" | Ideas/requests list (an `idea.proposed` is *open* until a linked node exists or a resolving event closes it) |
 

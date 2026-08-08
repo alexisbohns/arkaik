@@ -185,3 +185,14 @@ export function formatEventDate(ts: string): string {
   if (Number.isNaN(date.getTime())) return ts;
   return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
+
+/**
+ * `ts` formatted as a date *and* a time; falls back to the raw string if
+ * unparseable. For the places that have room to be exact — a hover card, a
+ * detail panel — where the bare date beside a row is deliberately coarse.
+ */
+export function formatEventDateTime(ts: string): string {
+  const date = new Date(ts);
+  if (Number.isNaN(date.getTime())) return ts;
+  return date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}

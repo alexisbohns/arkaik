@@ -30,6 +30,7 @@ export type CommandIconId =
   | "api-endpoints"
   | "pyramid"
   | "delivery"
+  | "design"
   | "changelog"
   | "settings"
   | "docs"
@@ -406,12 +407,21 @@ export function buildProjectCommands({ projectId, customMaps }: ProjectCommandIn
       target: { kind: "href", href: `${base}/delivery` },
     },
     {
+      id: "design",
+      label: "Design",
+      group: "project",
+      icon: "design",
+      keywords: ["backlog", "ideas", "commitments", "decisions", "funnel"],
+      hint: "Backlog, commitments, decisions",
+      target: { kind: "href", href: `${base}/design` },
+    },
+    {
       id: "changelog",
       label: "Changelog",
       group: "project",
       icon: "changelog",
-      keywords: ["releases", "history", "journal", "timeline"],
-      hint: "Releases and history",
+      keywords: ["releases", "milestones", "shipped", "journal", "timeline"],
+      hint: "Milestones and what shipped",
       target: { kind: "href", href: `${base}/changelog` },
     },
     {

@@ -25,8 +25,8 @@ export function BacklogCard({ backlog, projectId }: BacklogCardProps) {
           ? "No open ideas or requests."
           : `${backlog.items.length} open — ${backlog.ideas.length} idea${backlog.ideas.length === 1 ? "" : "s"}, ${backlog.requests.length} request${backlog.requests.length === 1 ? "" : "s"}`
       }
-      href={`/project/${projectId}/changelog`}
-      linkLabel="Changelog"
+      href={`/project/${projectId}/design`}
+      linkLabel="Design"
     >
       {backlog.items.length > 0 && (
         <>
@@ -47,7 +47,7 @@ export function BacklogCard({ backlog, projectId }: BacklogCardProps) {
           </div>
           {overflow > 0 && (
             <p className="text-xs text-muted-foreground">
-              +{overflow} more in the changelog
+              +{overflow} more on the Design page
             </p>
           )}
         </>

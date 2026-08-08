@@ -12,7 +12,7 @@ const INDICATOR_PATHS: Record<HealthIndicatorId, string> = {
   "views-without-screenshot": "/library?species=view",
   "nodes-without-description": "/library",
   "disconnected-nodes": "/library",
-  "open-backlog": "/changelog",
+  "open-backlog": "/design",
 };
 
 interface HealthCardProps {

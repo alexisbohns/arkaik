@@ -44,8 +44,10 @@ app/
         page.tsx        # Decision log — ADR-style records with their own status
       pyramid/
         page.tsx        # Value-elements aggregation over acceptances (Bain pyramid)
+      design/
+        page.tsx        # Design funnel — backlog, commitments, decisions from the journal
       changelog/
-        page.tsx        # Releases + backlog derived from the journal
+        page.tsx        # One section per milestone, its deliverables as a timeline
       history/
         page.tsx        # The journal itself, as a raw event log
       settings/
@@ -310,7 +312,7 @@ Library interactions reuse the same edit/create surfaces as canvas (`ProjectPane
 
 Project-level navigation is defined in `app/project/[id]/layout.tsx` and rendered by `ProjectSidebar` + `ProjectSwitcher`.
 
-- Sidebar links are route-aware across the whole shell (overview, pyramid, delivery, changelog, the maps group, library and its per-species `?species=` rows, acceptances, decisions) and preserve active state from pathname/search params.
+- Sidebar links are route-aware across the whole shell (overview, pyramid, delivery, design, changelog, the maps group, library and its per-species `?species=` rows, acceptances, decisions) and preserve active state from pathname/search params.
 - The switcher supports cross-project navigation while keeping users in the closest equivalent destination.
 - Keeping navigation in the shared project layout avoids duplicated route chrome in child pages.
 

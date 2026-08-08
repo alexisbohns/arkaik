@@ -121,6 +121,12 @@ jobs:
       - name: Command palette ranking tests
         run: npm run test:command-palette
 
+      - name: Changelog period filter tests
+        run: npm run test:changelog-period
+
+      - name: Deliverable PR-number tests
+        run: npm run test:deliverable-pr
+
       - name: Keyboard shortcut catalogue tests
         run: npm run test:keyboard-shortcuts
 

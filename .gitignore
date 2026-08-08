@@ -32,6 +32,8 @@
 /tests/app/.test-build-journey-graph/
 /tests/app/.test-build-graph-spotlight/
 /tests/app/.test-build-coverage/
+/tests/app/.test-build-changelog-period/
+/tests/app/.test-build-deliverable-pr/
 /tests/app/.test-build-panels-*/
 /tests/app/.test-build-product-*/
 /packages/cli/.test-build/
