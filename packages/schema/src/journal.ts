@@ -143,6 +143,12 @@ export interface DeliverableShippedEvent extends JournalEvent {
   url?: string;
   node_ids?: string[];
   platform?: PlatformId;
+  /** Slice 3: the Lab Note a merged PR carried (docs/spec/journal.md § Event Vocabulary). */
+  lab_note?: {
+    en: { title: string; summary: string };
+    fr?: { title?: string; summary?: string };
+    suggested?: Record<string, unknown>;
+  };
 }
 
 /** An idea, before (or linked to) any node. */
