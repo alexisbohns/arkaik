@@ -360,6 +360,21 @@ repository no project has linked answers
 
 which is almost always a typo in **Repos**, or a link that was never made.
 
+## Federation feed (optional)
+
+A hosted project can serve its journal as a **pollen feed** — the transport
+the Ariko federation reads (spec: [services.md § Pollen Feed](spec/services.md)).
+In the project's settings, set a **plant slug** under Federation; the feed
+then answers at `/api/graph/projects/{id}/pollen` for any token with
+`graph:read`.
+
+While you're there: with the GitHub App installed, a merged PR whose body
+carries a `## Lab Note` section also lands that note in the project's
+journal as a `deliverable.shipped` event — which the feed serves as a
+`shipped` envelope, French adaptation included. No note, no event; a
+malformed note is reported in the delivery response and never blocks
+acceptance promotion.
+
 ## Monorepos
 
 A single repository that builds several platforms — `apps/ios`, `apps/webapp`,
