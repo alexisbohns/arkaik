@@ -157,6 +157,9 @@ jobs:
       - name: Landing-page redirect tests (signed in → /projects)
         run: npm run test:root-redirect
 
+      - name: Pollen conformance tests (vendored ariko contract vs fixtures)
+        run: npm run test:pollen-conformance
+
       - name: Journal write-primitive (emit) tests
         run: npm run test:emit
 

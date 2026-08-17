@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "id": "ariko:intent-0001",
+  "at": "2026-08-15T08:00:00Z",
+  "target": "femfolk",
+  "kind": "research",
+  "brief": { "en": "Research the song heard at the cafe", "fr": "Recherche la chanson entendue au cafe" },
+  "anchors": { "plant": "plant:femfolk" },
+  "refs": [{ "label": "seed", "ref": "seed_9f3" }]
+}

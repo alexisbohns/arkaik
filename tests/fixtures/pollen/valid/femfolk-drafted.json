@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "id": "femfolk:dossier-42-drafted",
+  "at": "2026-08-14T02:30:00Z",
+  "source": "femfolk",
+  "kind": "drafted",
+  "title": { "en": "Song dossier drafted", "fr": "Dossier chanson en brouillon" },
+  "anchors": { "plant": "plant:femfolk" },
+  "visibility": "private"
+}

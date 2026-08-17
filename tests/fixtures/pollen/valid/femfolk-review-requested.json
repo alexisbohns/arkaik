@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "id": "femfolk:dossier-42-review",
+  "at": "2026-08-14T02:31:00Z",
+  "source": "femfolk",
+  "kind": "review.requested",
+  "title": "Dossier 42 waiting on femfolk",
+  "anchors": { "plant": "plant:femfolk" },
+  "refs": [{ "label": "intent", "ref": "ariko:intent-0001" }]
+}

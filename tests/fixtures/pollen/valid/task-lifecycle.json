@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "id": "femfolk:task-intent-0001-opened",
+  "at": "2026-08-15T09:00:00Z",
+  "source": "femfolk",
+  "kind": "task.opened",
+  "title": "Research task opened",
+  "anchors": { "plant": "plant:femfolk" },
+  "refs": [{ "label": "intent", "ref": "ariko:intent-0001" }]
+}

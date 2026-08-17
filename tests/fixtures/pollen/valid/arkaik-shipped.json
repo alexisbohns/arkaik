@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "id": "arkaik:evt_857",
+  "at": "2026-08-10T18:12:00Z",
+  "source": "arkaik",
+  "kind": "shipped",
+  "title": "Lab-note webhook shipped",
+  "anchors": { "plant": "plant:pbbls" },
+  "refs": [{ "label": "journal node", "ref": "evt_857" }]
+}
