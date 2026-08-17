@@ -174,6 +174,8 @@ interface ProjectMetadata extends Record<string, unknown> {
   /** Per-map display overrides keyed by map id — built-ins included. */
   map_display?: Record<string, MapDisplayOptions>;
   products?: ProductDefinition[];
+  /** Federation (pollen) settings for hosted serving; `plant` is the ariko plant slug this project anchors to. */
+  pollen?: { plant?: string } & Record<string, unknown>;
 }
 
 interface Project {
