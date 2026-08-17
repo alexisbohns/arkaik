@@ -68,6 +68,7 @@ function loadGraphApi() {
     ["@/lib/services/graph/restore", "./restore.js"],
     ["@/lib/services/graph/store", "./store.js"],
     ["@/lib/services/graph/read-route", "./read-route.js"],
+    ["@/lib/pollen/map", "./pollen-map.js"],
     ["@/auth", "./auth-module-stub.js"],
   ];
 
@@ -88,6 +89,19 @@ function loadGraphApi() {
   write("store.js", transpile(src("lib", "services", "graph", "store.ts"), "store.ts", COMMON));
   write("read-route.js", transpile(src("lib", "services", "graph", "read-route.ts"), "read-route.ts", COMMON));
 
+  // The pollen chain (slice 3): support → contract → map, all pure; the feed
+  // route below is what needs them. `@arkaik/schema` imports in map.ts are
+  // type-only and elided, so no schema rewrite is required here.
+  write("pollen-support.js", transpile(src("lib", "pollen", "support.ts"), "support.ts", COMMON));
+  write(
+    "pollen-contract.js",
+    transpile(src("lib", "pollen", "contract.ts"), "contract.ts", [...COMMON, ["./support", "./pollen-support.js"]]),
+  );
+  write(
+    "pollen-map.js",
+    transpile(src("lib", "pollen", "map.ts"), "map.ts", [...COMMON, ["./contract", "./pollen-contract.js"]]),
+  );
+
   const routes = {
     "projects-route.js": src("app", "api", "graph", "projects", "route.ts"),
     "project-route.js": src("app", "api", "graph", "projects", "[projectId]", "route.ts"),
@@ -97,6 +111,7 @@ function loadGraphApi() {
     "edges-route.js": src("app", "api", "graph", "projects", "[projectId]", "edges", "route.ts"),
     "journal-route.js": src("app", "api", "graph", "projects", "[projectId]", "journal", "route.ts"),
     "export-route.js": src("app", "api", "graph", "projects", "[projectId]", "export", "route.ts"),
+    "pollen-route.js": src("app", "api", "graph", "projects", "[projectId]", "pollen", "route.ts"),
   };
   for (const [out, from] of Object.entries(routes)) {
     write(out, transpile(from, "route.ts", COMMON));
@@ -125,6 +140,7 @@ function loadGraphApi() {
     GET_EDGES: req("edges-route.js").GET,
     GET_JOURNAL: req("journal-route.js").GET,
     EXPORT: req("export-route.js").GET,
+    GET_POLLEN: req("pollen-route.js").GET,
   };
 }
 

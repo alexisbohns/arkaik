@@ -240,6 +240,8 @@ jobs:
         run: npm run test:tokens
       - name: Hosted graph API integration tests (atomicity, validator gate, owner scoping)
         run: npm run test:graph
+      - name: Pollen feed integration tests (opt-in, cursor paging, 410 reset)
+        run: npm run test:pollen-feed
       - name: GitHub webhook integration tests (signature, replay guard, promotion)
         run: npm run test:github
       - name: Synk API integration tests (authz isolation, dedupe, limits, retention)
