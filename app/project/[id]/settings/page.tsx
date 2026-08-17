@@ -8,6 +8,7 @@ import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
 import { PageError } from "@/components/layout/PageError";
 import { PageShell } from "@/components/layout/PageShell";
 import { PageSurface } from "@/components/layout/PageSurface";
+import { FederationPanel } from "@/components/settings/FederationPanel";
 import { ProductManagerPanel } from "@/components/settings/ProductManagerPanel";
 import { RepoLinksPanel } from "@/components/settings/RepoLinksPanel";
 import { Button } from "@/components/ui/button";
@@ -104,6 +105,26 @@ export default function ProjectSettingsPage() {
               <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
                 This project lives in this browser, so there is no account for a repository link
                 to hang off. Move it to your account from the projects page and the links appear
+                here.
+              </p>
+            )}
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-lg font-semibold">Federation</h2>
+              <p className="text-sm text-muted-foreground">
+                Anchoring {title} to an Ariko plant serves its journal as a pollen feed — the
+                transport the federation reads. The feed itself is hosted-only; the anchor
+                travels with the bundle.
+              </p>
+            </div>
+            {hosted ? (
+              <FederationPanel project={project} updateProject={updateProject} />
+            ) : (
+              <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                This project lives in this browser, so there is no hosted API to serve its feed
+                from. Move it to your account from the projects page and the feed setting appears
                 here.
               </p>
             )}
