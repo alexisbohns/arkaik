@@ -73,7 +73,7 @@ interface JournalEvent {
 | `edge.added` | `edge_id`, `source_id`, `target_id`, `edge_type` | Relationship created |
 | `edge.removed` | `edge_id` | Relationship removed (non-cascade) |
 | `release.tagged` | `version`, `notes?`, `platform?` | A version shipped. `platform` optional: absent = project-wide; present = that platform's release rhythm |
-| `deliverable.shipped` | `deliverable_id`, `title`, `summary?`, `url?`, `node_ids?`, `platform?` | A unit of shipped work (typically one merged PR): entity changes + a summary note. Re-appending with the same `deliverable_id` **edits** — consumers resolve content latest-wins, anchored at the first occurrence |
+| `deliverable.shipped` | `deliverable_id`, `title`, `summary?`, `url?`, `node_ids?`, `platform?`, `lab_note?` | A unit of shipped work (typically one merged PR): entity changes + a summary note. Re-appending with the same `deliverable_id` **edits** — consumers resolve content latest-wins, anchored at the first occurrence |
 | `idea.proposed` | `title`, `description?`, `node_id?` | An idea, before (or linked to) any node |
 | `request.filed` | `title`, `description?`, `source?`, `node_id?` | An external ask (user feedback, stakeholder request) |
 | `ref.added` | `node_id`, `ref_id`, `ref_type`, `url` | External reference attached |
@@ -101,7 +101,10 @@ The journal is **not** event sourcing, and v1 makes no replay promises. The rule
   same `deliverable_id` edit content (latest occurrence wins) without moving
   it between releases. A first occurrence after the last marker is
   *unreleased*. There is no `deliverables[]` list on `release.tagged` — the
-  slice is the grouping.
+  slice is the grouping. A deliverable born from a merged PR's Lab Note
+  carries the full note under `lab_note` (`en` required, `fr`/`suggested`
+  optional) — the bilingual half exists so downstream projections (the
+  pollen feed) keep both languages.
 - `arkaik release` tags the version, generates the release-note draft, and MAY **compact**: move the released slice from `journal.jsonl` to `journal/archive-{version}.jsonl`. Archives are part of history (projections may read them); the working journal stays small. Compaction differs from the changesets tool's model deliberately — changeset files are *consumed* at release, journal history is *kept*.
 - Because compaction relocates history rather than dropping it, **validators MUST fold `journal/archive-*.jsonl` in alongside `journal.jsonl`** when a bundle carries no embedded journal: the archives are the journal. Reading only the working file makes an ordinary release look like data loss — the first release archives every `node.created`, and any later one can archive a node's newest transition and strand an older one as the apparent "last" — so the cross-check would fail a perfectly healthy project. A malformed archive line is the same hard error as a malformed sidecar line, reported with its file and line number. An embedded `journal` array still wins outright; the packed interchange form carries its own history.
 - The hosted app stores journals under a separate storage key from the snapshot store, so history growth never inflates every snapshot write. App-side event *emission* is gated on the IndexedDB migration for the same reason (see the roadmap in [vision.md](../vision.md)).

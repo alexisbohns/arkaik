@@ -1,0 +1,11 @@
+{
+  "v": 1,
+  "id": "melogram:album-celesta-published",
+  "at": "2026-06-01T10:00:00Z",
+  "source": "melogram",
+  "kind": "published",
+  "title": { "en": "Celesta is out", "fr": "Celesta est sorti" },
+  "anchors": { "plant": "plant:bohns-music", "pod": "pod:celesta" },
+  "refs": [{ "label": "album", "url": "https://melogram.example/celesta", "ref": "album_celesta" }],
+  "payload": { "tracks": 9 }
+}

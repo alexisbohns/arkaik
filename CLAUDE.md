@@ -10,7 +10,11 @@ orientation lives in [`README.md`](README.md).
 
 Arkaik is wired to the Ariko Lab Note pipeline. **When you open a PR that ships
 something a user would notice, you MUST include a Lab Note in the PR body.**
-Merging the PR posts it to the Ariko inbox automatically — no copy-paste.
+Merging the PR lands it automatically — for this repo, the GitHub App webhook
+appends it to the project's arkaik journal as a `deliverable.shipped` event,
+and the Ariko federation reads it from the pollen feed. (Repos not mapped to
+a hosted arkaik project still post straight to the Ariko inbox via the
+reusable workflow.) No copy-paste either way.
 
 This section is the always-loaded summary and is **self-sufficient**: you can
 author a valid note from it alone, with no plugin installed. The `lab-note`

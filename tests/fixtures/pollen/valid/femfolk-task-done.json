@@ -1,0 +1,11 @@
+{
+  "v": 1,
+  "id": "femfolk:task-intent-0001-done",
+  "at": "2026-08-16T01:10:00Z",
+  "source": "femfolk",
+  "kind": "task.done",
+  "title": { "en": "Research task finished", "fr": "Recherche terminee" },
+  "anchors": { "plant": "plant:femfolk" },
+  "refs": [{ "label": "intent", "ref": "ariko:intent-0001" }],
+  "visibility": "public"
+}

@@ -1,0 +1,11 @@
+[
+  { "file": "missing-id.json", "error": "id is required" },
+  { "file": "bad-at.json", "error": "ISO 8601" },
+  { "file": "bad-kind.json", "error": "kind must be lowercase dotted words" },
+  { "file": "missing-plant.json", "error": "anchors.plant is required" },
+  { "file": "unprefixed-anchor.json", "error": "anchors.plant must be a \"plant:<slug>\" ref" },
+  { "file": "ref-without-target.json", "error": "requires url or ref" },
+  { "file": "oversize-payload.json", "error": "payload exceeds 32 KiB" },
+  { "file": "newer-version.json", "error": "newer than this validator" },
+  { "file": "blank-title.json", "error": "title is required" }
+]

@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "id": "github:ariko-v0.2.0",
+  "at": "2026-08-13T16:45:00Z",
+  "source": "github",
+  "kind": "release.tagged",
+  "title": "ariko v0.2.0",
+  "anchors": { "plant": "plant:ariko" },
+  "refs": [{ "label": "release", "url": "https://github.com/example/ariko/releases/tag/v0.2.0" }]
+}

@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "id": "melogram:felina-1000-plays",
+  "at": "2026-08-12T00:00:00Z",
+  "source": "melogram",
+  "kind": "milestone",
+  "title": "Felina crossed 1000 plays",
+  "anchors": { "plant": "plant:bohns-music", "pod": "pod:celesta", "bean": "bean:felina" },
+  "payload": { "plays": 1000 }
+}

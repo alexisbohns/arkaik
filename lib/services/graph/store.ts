@@ -251,6 +251,33 @@ export async function getJournal(
   return rows.map((row) => row.event);
 }
 
+/**
+ * Append pre-stamped journal events WITHOUT touching the snapshot — the
+ * journal-only write path (slice 3: the Lab Note webhook). Unlike
+ * `applyMutation` there are no graph ops and no version bump: the snapshot is
+ * authoritative for state and unchanged; the journal is authoritative for
+ * history and grows. Owner-scoped like every other write.
+ */
+export async function appendJournalEvents(
+  projectId: string,
+  ownerIds: readonly string[],
+  events: readonly JournalEvent[],
+  actor: string,
+): Promise<{ ok: true } | StoreFailure> {
+  const { rows } = await query<{ id: string }>(
+    `select id from graph_projects where id = $1 and owner_id = any($2::text[]) and archived_at is null`,
+    [projectId, ownerIds],
+  );
+  if (rows.length === 0) return { ok: false, reason: "not_found" };
+  for (const event of events) {
+    await query(
+      `insert into graph_events (id, project_id, event, actor) values ($1, $2, $3, $4)`,
+      [event.id, projectId, JSON.stringify(event), actor],
+    );
+  }
+  return { ok: true };
+}
+
 /** Snapshot + version, without the (potentially large) journal. */
 export async function getProject(
   projectId: string,

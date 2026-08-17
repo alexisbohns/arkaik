@@ -2014,7 +2014,7 @@ export async function applyPullRequestEvent(
 }
 
 /** The owner of a project, as a single-element list for the store's API. */
-async function ownerIdsFor(projectId: string): Promise<string[]> {
+export async function ownerIdsFor(projectId: string): Promise<string[]> {
   const { rows } = await query<{ owner_id: string }>(
     `select owner_id from graph_projects where id = $1`,
     [projectId],

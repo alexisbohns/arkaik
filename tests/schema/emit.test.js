@@ -95,6 +95,20 @@ function main() {
   const unknown = makeEvent("custom.thing", { foo: "bar" });
   check("makeEvent tolerates an unknown type via the lenient envelope", unknown.type === "custom.thing" && unknown.foo === "bar");
 
+  // deliverable.shipped may carry a Lab Note (slice 3): typed, validated, preserved.
+  const shippedWithNote = makeEvent("deliverable.shipped", {
+    deliverable_id: "pr-42",
+    title: "Find your way around",
+    summary: "A sidebar on wide screens.",
+    url: "https://github.com/x/y/pull/42",
+    lab_note: {
+      en: { title: "Find your way around", summary: "A sidebar on wide screens." },
+      fr: { title: "Trouve ton chemin", summary: "Une barre latérale sur grand écran." },
+      suggested: { molecule: "pbbls", type: "feature" },
+    },
+  }, { actor: "github-app" });
+  check("lab_note survives makeEvent", shippedWithNote.lab_note.fr.title === "Trouve ton chemin");
+
   // --- projections re-exported from the schema package --------------------
   const events = [
     { id: "01A", ts: "2026-01-01T00:00:00.000Z", type: "node.created", node_id: "V-a", species: "view", title: "A" },

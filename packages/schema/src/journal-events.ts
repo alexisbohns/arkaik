@@ -117,6 +117,15 @@ export const DeliverableShippedEventSchema = z
     url: z.string().optional(),
     node_ids: z.array(z.string()).optional(),
     platform: PlatformSchema.optional(),
+    lab_note: z
+      .object({
+        en: z.object({ title: z.string(), summary: z.string() }).catchall(z.unknown()),
+        fr: z.object({ title: z.string().optional(), summary: z.string().optional() }).catchall(z.unknown()).optional(),
+        suggested: z.record(z.string(), z.unknown()).optional(),
+      })
+      .catchall(z.unknown())
+      .optional()
+      .meta({ description: "The Lab Note a merged PR carried (slice 3); en.title/en.summary required when present." }),
   })
   .catchall(z.unknown());
 

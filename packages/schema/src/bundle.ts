@@ -300,6 +300,8 @@ export interface ProjectMetadata extends Record<string, unknown> {
   /** Per-map display overrides keyed by map id — built-ins included. */
   map_display?: Record<string, MapDisplayOptions>;
   products?: ProductDefinition[];
+  /** Federation (pollen) settings for hosted serving; `plant` is the ariko plant slug this project anchors to. */
+  pollen?: { plant?: string } & Record<string, unknown>;
 }
 
 export const ProjectMetadataSchema: z.ZodType<ProjectMetadata> = z
@@ -315,6 +317,11 @@ export const ProjectMetadataSchema: z.ZodType<ProjectMetadata> = z
     products: z.array(ProductDefinitionSchema).optional().meta({
       description: "Product definitions (docs/spec/bundle-format.md § Products) — additive; unknown fields preserved.",
     }),
+    pollen: z
+      .object({ plant: z.string().regex(/^[a-z0-9][a-z0-9-]*$/).optional() })
+      .catchall(z.unknown())
+      .optional()
+      .meta({ description: "Federation settings — docs/spec/services.md § Pollen feed. `plant` enables the feed." }),
   })
   .catchall(z.unknown())
   .meta({ id: "ProjectMetadata", description: "Optional project-level UI settings." });

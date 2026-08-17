@@ -157,6 +157,37 @@ Rules:
 - **One-way, up.** Restore is an explicit user action (pick a version → import as local project, existing collision handling applies). The engine MUST NOT write server state into the local store unprompted.
 - **Lokal → Synk conversion** (the vision's "primary conversion funnel"): after first sign-in, existing local projects are offered for backup with one click each — the data never moves, it *gains* a backup. No migration of storage, no account-gating of local features.
 
+## Pollen Feed
+
+`GET /api/graph/projects/{projectId}/pollen?after=<id>&limit=<n>` — the
+project's journal projected to pollen envelopes (the Ariko federation
+contract; the normative document lives in the ariko repo as `docs/POLLEN.md`,
+its reference validator vendored at `lib/pollen/contract.ts` with the
+conformance fixtures at `tests/fixtures/pollen/`).
+
+- **Opt-in**: served only when `project.metadata.pollen.plant` is set
+  (project settings → Federation); otherwise the same `not_found` a missing
+  project produces, so the feed cannot be used to probe for ids either.
+- **Auth**: `graph:read`, owner-scoped — identical to `…/journal`.
+- **Order & cursor**: journal server order. `after` is the last pollen id the
+  consumer processed; an unknown `after` answers **410 Gone** (drop the
+  cursor, rebuild from the start). `limit` defaults to 100, capped at 200.
+  An empty array means caught up.
+- **Mapping (v1)**: `deliverable.shipped` → `shipped` (re-appends emit a
+  `corrects` ref to the first occurrence's envelope), `release.tagged` →
+  `release.tagged`, `decision.status_changed` into `approved` → `decided`.
+  Everything else is not exported. An event the contract cannot express is
+  skipped and logged, never a 500.
+- **Rebuilds**: a bundle restore replaces the journal wholesale; surviving
+  event ids keep their envelope ids (ULIDs are preserved), vanished cursors
+  get the 410. This is the contract's coordinated-rewrite case.
+
+The webhook's Lab-Note half feeds this: a merged PR of a linked repository
+whose body carries a `## Lab Note` section lands one `deliverable.shipped`
+event (full note under `lab_note`, actor `github-app`) per linked project,
+idempotent by content — see [journal.md](journal.md) § Event Vocabulary and
+`lib/services/github/lab-note.ts`.
+
 ## Tier Enforcement Points
 
 M4 builds the sockets Basik/Klub will plug into, and nothing else:

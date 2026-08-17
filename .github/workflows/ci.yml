@@ -157,6 +157,15 @@ jobs:
       - name: Landing-page redirect tests (signed in → /projects)
         run: npm run test:root-redirect
 
+      - name: Pollen conformance tests (vendored ariko contract vs fixtures)
+        run: npm run test:pollen-conformance
+
+      - name: Pollen projection tests (journal→envelope mapping)
+        run: npm run test:pollen-map
+
+      - name: Lab Note parsing tests (ariko wire contract, TS port)
+        run: npm run test:lab-note-parse
+
       - name: Journal write-primitive (emit) tests
         run: npm run test:emit
 
@@ -234,8 +243,12 @@ jobs:
         run: npm run test:tokens
       - name: Hosted graph API integration tests (atomicity, validator gate, owner scoping)
         run: npm run test:graph
+      - name: Pollen feed integration tests (opt-in, cursor paging, 410 reset)
+        run: npm run test:pollen-feed
       - name: GitHub webhook integration tests (signature, replay guard, promotion)
         run: npm run test:github
+      - name: Lab-Note webhook integration tests (journal append, dedupe, refusals)
+        run: npm run test:lab-note-webhook
       - name: Synk API integration tests (authz isolation, dedupe, limits, retention)
         run: npm run test:synk
       - name: Synk client SyncManager tests (debounce, hash, status transitions)

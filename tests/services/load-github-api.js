@@ -79,6 +79,9 @@ function loadGithubApi() {
     ["@/lib/services/github/paths", "./github-paths.js"],
     ["@/lib/services/github/app", "./github-app.js"],
     ["@/lib/services/github/pull-request", "./pull-request.js"],
+    // Slice 3: the Lab-Note-into-journal half, reached from the webhook route.
+    ["@/lib/services/github/lab-note-parse", "./lab-note-parse.js"],
+    ["@/lib/services/github/lab-note", "./lab-note.js"],
     ["@/auth", "./auth-module-stub.js"],
   ];
 
@@ -104,6 +107,8 @@ function loadGithubApi() {
   write("github-paths.js", transpile(src("lib", "services", "github", "paths.ts"), "paths.ts", COMMON));
   write("github-app.js", transpile(src("lib", "services", "github", "app.ts"), "app.ts", COMMON));
   write("pull-request.js", transpile(src("lib", "services", "github", "pull-request.ts"), "pull-request.ts", COMMON));
+  write("lab-note-parse.js", transpile(src("lib", "services", "github", "lab-note-parse.ts"), "lab-note-parse.ts", COMMON));
+  write("lab-note.js", transpile(src("lib", "services", "github", "lab-note.ts"), "lab-note.ts", COMMON));
   write("webhook-route.js", transpile(src("app", "api", "github", "webhook", "route.ts"), "route.ts", COMMON));
 
   for (const name of fs.readdirSync(BUILD_DIR)) {
