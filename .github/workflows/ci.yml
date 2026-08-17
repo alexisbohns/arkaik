@@ -163,6 +163,9 @@ jobs:
       - name: Pollen projection tests (journal→envelope mapping)
         run: npm run test:pollen-map
 
+      - name: Lab Note parsing tests (ariko wire contract, TS port)
+        run: npm run test:lab-note-parse
+
       - name: Journal write-primitive (emit) tests
         run: npm run test:emit
 

@@ -49,6 +49,7 @@
     "test:pollen-conformance": "node tests/app/pollen-conformance.test.js",
     "test:pollen-map": "node tests/app/pollen-map.test.js",
     "test:pollen-feed": "node tests/services/pollen-feed.test.js",
+    "test:lab-note-parse": "node tests/services/lab-note-parse.test.js",
     "test:mcp": "npm run build -w arkaik && npm run build -w arkaik-mcp && node tests/mcp/run-mcp-tests.js && node tests/mcp/journal-baseline.test.js && node tests/mcp/remote-store.test.js && node tests/mcp/version.test.js",
     "test:journal-projections": "node tests/data/journal-projections.test.js",
     "test:emit": "node tests/schema/emit.test.js",
