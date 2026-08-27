@@ -1,12 +1,12 @@
 # Kritik framework spec (reference)
 
-> This is the reusable meta-model that ships with the Kritik pack, authored on Pebbles and carried into Arkaik as base material for [RFC: Kritik](../kritik.md). Every product-specific value (surface list, domain weights) lives in a profile, so the spec itself is product-agnostic.
+> This is the reusable meta-model that ships with the Kritik pack, authored on Pebbles and carried into Arkaik as base material for [RFC: Kritik](../../docs/rfcs/kritik.md). Every product-specific value (surface list, domain weights) lives in a profile, so the spec itself is product-agnostic.
 
 ## Kritik — the quality audit framework
 
 **Version 0.1.0 · 2026-08-26 · status: proposal (first full audit run in `audits/2026-08/`)**
 
-Kritik is a quality audit framework built to answer one question repeatedly and comparably: *how good is each surface of this product, on every dimension that matters, and what exactly do we fix first?* It was designed on Pebbles (five surfaces: web, iOS, Android, admin, Supabase) but every product-specific choice is isolated in a profile, so the framework itself is reusable — and is designed to graduate into Arkaik as a first-class quality library + monitoring feature (see [`../kritik.md`](../kritik.md)).
+Kritik is a quality audit framework built to answer one question repeatedly and comparably: *how good is each surface of this product, on every dimension that matters, and what exactly do we fix first?* It was designed on Pebbles (five surfaces: web, iOS, Android, admin, Supabase) but every product-specific choice is isolated in a profile, so the framework itself is reusable — and is designed to graduate into Arkaik as a first-class quality library + monitoring feature (see [`the Kritik RFC`](../../docs/rfcs/kritik.md)).
 
 The name follows the Arkaik family convention (Synk, Publik, Kommit, Lokal): *Kritik* is the critique layer of the product graph.
 

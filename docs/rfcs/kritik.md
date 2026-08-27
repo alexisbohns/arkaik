@@ -23,8 +23,8 @@ This RFC ships with everything a fresh implementer needs. Read them in this orde
 | File | What it is |
 | --- | --- |
 | [`kritik.md`](./kritik.md) (this file) | The integration design: vocabulary, the two lanes, the data model, the plugin, the UI, the CLI/MCP surface |
-| [`kritik/framework-spec.md`](./kritik/framework-spec.md) | The reusable meta-model: entities, the 0-4 maturity scale, risk = impact x likelihood, cost, priority, roll-up and cap rules |
-| [`kritik/library.example.json`](./kritik/library.example.json) | The reference criteria pack: 88 criteria across 11 domains, the seed pack the plugin ships (Pebbles-authored, product-agnostic wording) |
+| [`packages/kritik-library/SPEC.md`](../../packages/kritik-library/SPEC.md) (MIT) | The reusable meta-model: entities, the 0-4 maturity scale, risk = impact x likelihood, cost, priority, roll-up and cap rules |
+| [`packages/kritik-library/framework.json`](../../packages/kritik-library/framework.json) (MIT) | The reference criteria pack: 88 criteria across 11 domains, the seed pack the plugin ships (Pebbles-authored, product-agnostic wording) |
 | [`kritik/pilot-pbbls.md`](./kritik/pilot-pbbls.md) | The proof: the Pebbles audit results (the matrix, the headline findings), evidence the framework produces real signal on a real project |
 
 The implementation handoff (scope, milestones, acceptance) is the companion issue this PR links.
@@ -137,7 +137,7 @@ Derived values (severity buckets, P0-P3, domain scores, grades, caps) are **proj
 
 ### 4.2 The library as a distributable pack
 
-The criteria library ships like the seed example ships: a versioned JSON pack. The pack in [`kritik/library.example.json`](./kritik/library.example.json), 11 domains, product-agnostic wording, calibrated to the Next.js / SwiftUI / Compose / Supabase stack class, is the first pack. Projects pin a pack version; criteria are append-and-supersede (`superseded_by`), so matrices stay comparable across audits. **Projects may add their own criteria** on top of the pinned pack (custom domains, custom criteria, custom issue skeletons); see §6.
+The criteria library ships like the seed example ships: a versioned JSON pack. The pack in [`packages/kritik-library/framework.json`](../../packages/kritik-library/framework.json), 11 domains, product-agnostic wording, calibrated to the Next.js / SwiftUI / Compose / Supabase stack class, is the first pack. Projects pin a pack version; criteria are append-and-supersede (`superseded_by`), so matrices stay comparable across audits. **Projects may add their own criteria** on top of the pinned pack (custom domains, custom criteria, custom issue skeletons); see §6.
 
 ### 4.3 UI
 
@@ -172,7 +172,7 @@ plugin-kritik/
   .claude-plugin/plugin.json          # generated
   skills/kritik/SKILL.md              # the audit + scoring skill (generated from docs/kritik-skill/)
   skills/kritik/references/
-    framework.md                        # the meta-model (generated from framework-spec.md)
+    framework.md                        # the meta-model (generated from packages/kritik-library/SPEC.md)
     library.json                        # the seed criteria pack (generated from the canonical pack)
   scripts/
     compute-matrix.js                   # roll-up projection (generated from @arkaik/schema)

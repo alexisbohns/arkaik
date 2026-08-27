@@ -1,0 +1,15 @@
+{
+  "name": "@arkaik/kritik-library",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Kritik reusable quality-criteria pack (framework.json) and its meta-model spec (SPEC.md). MIT so it can be pasted into other organizations' repositories, like the rest of the Arkaik toolchain.",
+  "main": "./framework.json",
+  "files": [
+    "framework.json",
+    "SPEC.md",
+    "LICENSE",
+    "README.md"
+  ]
+}

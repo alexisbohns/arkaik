@@ -1,6 +1,6 @@
 # Kritik pilot: the Pebbles audit (2026-08)
 
-This is the evidence that the [Kritik framework](./framework-spec.md) produces real, actionable signal on a real product. It condenses the full audit that lives in the Pebbles repo (`docs/quality/audits/2026-08/`, [pbbls#738](https://github.com/alexisbohns/pbbls/pull/738)) into what an Arkaik implementer needs to trust the design.
+This is the evidence that the [Kritik framework](../../packages/kritik-library/SPEC.md) produces real, actionable signal on a real product. It condenses the full audit that lives in the Pebbles repo (`docs/quality/audits/2026-08/`, [pbbls#738](https://github.com/alexisbohns/pbbls/pull/738)) into what an Arkaik implementer needs to trust the design.
 
 ## What was run
 
@@ -47,6 +47,6 @@ The caps do real work: Supabase Security scores 62 on maturity but shows **D\***
 1. **The data shapes are proven.** `scores.json` and `findings.json` in the pilot are exactly the `QualityAssessment[]` and `QualityFinding[]` the RFC proposes for the `quality` bundle section. The implementer can treat them as fixtures.
 2. **The projections are proven.** `compute-matrix.mjs` is a runnable reference for `deriveQualityMatrix(bundle)`: it computes weighted domain scores, grade bands, caps, and the surface roll-up from nothing but the data.
 3. **The rendering is proven.** `dashboard.html` is a standalone reference for the Quality page (matrix heatmap plus filterable findings explorer), so the app UI has a concrete target.
-4. **The library is proven.** [`library.example.json`](./library.example.json) is the pack that produced all of the above; it is the seed pack the plugin ships.
+4. **The library is proven.** [`packages/kritik-library/framework.json`](../../packages/kritik-library/framework.json) is the pack that produced all of the above; it is the seed pack the plugin ships.
 
 The pilot is not part of Arkaik and does not need to be ported; it is the reference implementation and the fixtures. Links back to the full material live in [pbbls#738](https://github.com/alexisbohns/pbbls/pull/738).
