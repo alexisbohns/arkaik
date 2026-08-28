@@ -38,6 +38,7 @@
 /tests/app/.test-build-pollen/
 /tests/app/.test-build-panels-*/
 /tests/app/.test-build-product-*/
+/tests/app/.test-build-quality/
 /packages/cli/.test-build/
 # transient CJS build emitted by the bootstrap-lib direct-require tests
 # (tests/cli/load-bootstrap-lib.js) — a separate dir from the one above,
