@@ -36,11 +36,17 @@ plugin-kritik/
       references/
         framework.md            # generated copy of packages/kritik-library/SPEC.md
         library.json            # generated copy of packages/kritik-library/framework.json
-  scripts/
-    compute-matrix.js          # the roll-up — the only thing that writes matrix.json
-    scaffold-criterion.js      # custom criteria + issue skeletons
-    init-profile.js            # the install-time surface picker
+      scripts/
+        compute-matrix.js       # the roll-up — the only thing that writes matrix.json
+        scaffold-criterion.js   # custom criteria + issue skeletons
+        init-profile.js         # the install-time surface picker
 ```
+
+Supporting files sit **beside `SKILL.md`**, not at the plugin root
+([Plugins reference § Skills](https://code.claude.com/docs/en/plugins-reference#skills)),
+the same layout `plugin/skills/arkaik/` uses. That is what makes
+`node <skill-path>/scripts/compute-matrix.js` resolvable from the repo being
+audited: the scripts travel with the skill, the data stays in the user's repo.
 
 The scripts are esbuild bundles of `packages/schema/src/cli/kritik-*.ts`,
 zero-dependency for the same reason `validate-bundle.js` is: an agent auditing a

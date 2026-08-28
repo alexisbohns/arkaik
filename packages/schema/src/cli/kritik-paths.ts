@@ -25,18 +25,17 @@ export const OVERLAY_FILE = "criteria.custom.json";
 export const AUDITS_DIR = "audits";
 
 /**
- * The pack shipped beside the script. The plugin lays out
- * `scripts/<name>.js` and `skills/kritik/references/library.json`, so the pack
- * sits two levels up and across; a checkout of the arkaik repo running these
- * from source finds it in the workspace instead. Both are tried before giving
- * up, because "which of my two install shapes is this" is not a question the
- * user should have to answer.
+ * The pack shipped beside the script. The plugin lays the skill out as
+ * `skills/kritik/{SKILL.md,scripts/<name>.js,references/library.json}`, so from
+ * a script the pack is one level up and across. A checkout of the arkaik repo
+ * running these from source finds it in the workspace instead. Both are tried
+ * before giving up, because "which of my two install shapes is this" is not a
+ * question the user should have to answer.
  */
 export function packCandidates(scriptDir: string): string[] {
   return [
-    join(scriptDir, "..", "skills", "kritik", "references", "library.json"),
-    join(scriptDir, "references", "library.json"),
-    join(scriptDir, "..", "..", "packages", "kritik-library", "framework.json"),
+    join(scriptDir, "..", "references", "library.json"),
+    join(scriptDir, "..", "..", "..", "..", "packages", "kritik-library", "framework.json"),
   ];
 }
 

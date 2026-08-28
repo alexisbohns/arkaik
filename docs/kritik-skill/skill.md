@@ -54,11 +54,15 @@ The framework itself ships beside this skill and is read-only:
 |---|---|
 | `references/framework.md` | The meta-model: the scales, the roll-up rules, the audit process |
 | `references/library.json` | The criteria pack: domains, criteria, anchors, checklists, signals, issue skeletons |
-| `scripts/compute-matrix.js` | The roll-up. Zero dependencies — `node scripts/compute-matrix.js <audit-id>` |
+| `scripts/compute-matrix.js` | The roll-up. Zero dependencies — `node <skill-path>/scripts/compute-matrix.js <audit-id>` |
 | `scripts/scaffold-criterion.js` | Adds a project-specific criterion to the overlay |
 | `scripts/init-profile.js` | Writes `profile.json` — the install-time surface picker |
 
 Nothing here needs `node_modules`. Every script runs with nothing but Node.
+
+`<skill-path>` below is this skill's own directory — the scripts live beside
+this file, while the audit data lives in the repo you are auditing, so every
+command is run **from the repo root** with a skill-relative path to the script.
 
 ## First: does this project have a profile?
 
@@ -88,7 +92,7 @@ Ask the user, one question at a time:
 Then write it:
 
 ```
-node scripts/init-profile.js \
+node <skill-path>/scripts/init-profile.js \
   --surface web:Web app:web \
   --surface supabase:Database contract \
   --weight SEC=2 --weight PRV=2
@@ -222,7 +226,7 @@ learning what you checked and dismissed is a reader who can trust the rest.
 ### 6. Roll up — this is the gate
 
 ```
-node scripts/compute-matrix.js 2026-08
+node <skill-path>/scripts/compute-matrix.js 2026-08
 ```
 
 It writes `matrix.json` and prints the matrix. It is the only thing that may
@@ -270,7 +274,7 @@ does not name — a domain rule, a house convention that matters, a regulation
 specific to your market — add it:
 
 ```
-node scripts/scaffold-criterion.js
+node <skill-path>/scripts/scaffold-criterion.js
 ```
 
 It asks for the pieces, writes the criterion into

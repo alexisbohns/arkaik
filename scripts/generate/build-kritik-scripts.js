@@ -22,7 +22,11 @@ const esbuild = require("esbuild");
 
 const ROOT = path.join(__dirname, "..", "..");
 const CLI_DIR = path.join(ROOT, "packages", "schema", "src", "cli");
-const OUT_DIR = path.join(ROOT, "plugin-kritik", "scripts");
+// Skill-relative, not plugin-root: an installed skill's supporting files sit
+// beside its SKILL.md (Plugins reference § Skills), which is what makes
+// `<skill-path>/scripts/…` resolvable from a user's repo — the same layout the
+// arkaik plugin uses for validate-bundle.js.
+const OUT_DIR = path.join(ROOT, "plugin-kritik", "skills", "kritik", "scripts");
 
 const SCRIPTS = [
   {

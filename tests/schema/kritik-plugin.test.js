@@ -25,7 +25,7 @@ const path = require("path");
 const { loadSchema } = require("./load-schema");
 
 const ROOT = path.join(__dirname, "..", "..");
-const SCRIPTS = path.join(ROOT, "plugin-kritik", "scripts");
+const SCRIPTS = path.join(ROOT, "plugin-kritik", "skills", "kritik", "scripts");
 const fixture = JSON.parse(fs.readFileSync(path.join(ROOT, "tests/fixtures/quality/pilot-2026-08.json"), "utf8"));
 
 const { mergeKritikLibrary, applicableCells } = loadSchema();

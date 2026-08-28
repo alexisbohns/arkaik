@@ -7,10 +7,10 @@
  * definitions, docs/spec/toolchain.md § @arkaik/schema). Zero dependencies —
  * runnable with nothing but Node.
  */
-"use strict";var A=require("node:fs"),b=require("node:path");var y=e=>Array.isArray(e)?e:[];function _(e,t){if(!t||typeof t!="object")return e;let r=[...y(e.domains)];for(let n of y(t.domains)){if(typeof n?.code!="string"||n.code==="")continue;let i=r.findIndex(a=>a?.code===n.code);i>=0?r[i]=n:r.push(n)}let c=[...y(e.criteria)];for(let n of y(t.criteria)){if(typeof n?.id!="string"||n.id==="")continue;let i=c.findIndex(a=>a?.id===n.id);i>=0?c[i]=n:c.push(n)}let s=e.scales||t.scales?{...e.scales??{},...t.scales??{}}:void 0;return{...e,domains:r,criteria:c,...s?{scales:s}:{}}}var p=require("node:fs"),f=require("node:path");var E="docs/quality";var L="criteria.custom.json";function K(e){return[(0,f.join)(e,"..","skills","kritik","references","library.json"),(0,f.join)(e,"references","library.json"),(0,f.join)(e,"..","..","packages","kritik-library","framework.json")]}function h(e){return JSON.parse((0,p.readFileSync)(e,"utf8"))}function Q(e,t){(0,p.mkdirSync)((0,f.dirname)(e),{recursive:!0}),(0,p.writeFileSync)(e,JSON.stringify(t,null,2)+`
-`)}function v(e){for(let t of K(e))if((0,p.existsSync)(t))return h(t);throw new Error(`Kritik: no criteria pack found. Looked in:
-  ${K(e).map(t=>(0,f.resolve)(t)).join(`
-  `)}`)}var x=e=>(0,f.join)(e,E,L);function w(e){let t=x(e);return(0,p.existsSync)(t)?h(t):null}function l(e){process.stderr.write(`${e}
+"use strict";var A=require("node:fs"),b=require("node:path");var y=e=>Array.isArray(e)?e:[];function _(e,t){if(!t||typeof t!="object")return e;let r=[...y(e.domains)];for(let n of y(t.domains)){if(typeof n?.code!="string"||n.code==="")continue;let i=r.findIndex(a=>a?.code===n.code);i>=0?r[i]=n:r.push(n)}let c=[...y(e.criteria)];for(let n of y(t.criteria)){if(typeof n?.id!="string"||n.id==="")continue;let i=c.findIndex(a=>a?.id===n.id);i>=0?c[i]=n:c.push(n)}let s=e.scales||t.scales?{...e.scales??{},...t.scales??{}}:void 0;return{...e,domains:r,criteria:c,...s?{scales:s}:{}}}var f=require("node:fs"),m=require("node:path");var E="docs/quality";var L="criteria.custom.json";function K(e){return[(0,m.join)(e,"..","references","library.json"),(0,m.join)(e,"..","..","..","..","packages","kritik-library","framework.json")]}function h(e){return JSON.parse((0,f.readFileSync)(e,"utf8"))}function Q(e,t){(0,f.mkdirSync)((0,m.dirname)(e),{recursive:!0}),(0,f.writeFileSync)(e,JSON.stringify(t,null,2)+`
+`)}function v(e){for(let t of K(e))if((0,f.existsSync)(t))return h(t);throw new Error(`Kritik: no criteria pack found. Looked in:
+  ${K(e).map(t=>(0,m.resolve)(t)).join(`
+  `)}`)}var x=e=>(0,m.join)(e,E,L);function w(e){let t=x(e);return(0,f.existsSync)(t)?h(t):null}function l(e){process.stderr.write(`${e}
 `),process.exit(1)}var F=["l0","l1","l2","l3","l4"],R=`scaffold-criterion.js \u2014 add a project-specific Kritik criterion, or print an issue skeleton
 
 Usage:
@@ -55,10 +55,10 @@ Writes docs/quality/criteria.custom.json`,I={id:"X-01",domain:"ARC",subcategory:
 - [ ] Target anchor holds: {target_anchor_text}`}};function O(e){let t={},r={signal:[],check:[],label:[],anchor:[]},c=new Set;for(let s=0;s<e.length;s++){let n=e[s];n.startsWith("--")||l(`scaffold-criterion: unexpected argument "${n}"
 
 ${R}`);let i=n.slice(2);if(i==="template"||i==="force"||i==="help"){c.add(i);continue}let a=e[++s];a===void 0&&l(`scaffold-criterion: --${i} needs a value`),i in r?r[i].push(a):t[i]=a}return{single:t,many:r,flags:c}}function P(e,t){return e.replace(/\{(\w+)\}/g,(r,c)=>t[c]??r)}function T(e,t,r,c,s){let n=_(v(t),w(e)),i=(n.criteria??[]).find(k=>k.id===r);i||l(`scaffold-criterion: no criterion "${r}" in the pack or the overlay.
-Known ids start with: ${(n.criteria??[]).slice(0,6).map(k=>k.id).join(", ")}\u2026`);let a=i.level_anchors??{},g=s===""?"{observed_level}":s,o=s===""?"{target_level}":String(Math.min(Number(s)+1,4)),u={surface:c,observed_level:g,target_level:o,observed_level_name:a[`l${g}`]??"{observed_level_name}",target_anchor_text:a[`l${o}`]??"{target_anchor_text}",impact:String(i.default_impact??3)},m=i.issue??{},S=P(m.title_template??`[Quality] ${i.id} on {surface}`,u),d=[...m.labels??["quality"],c];process.stdout.write(`Title: ${S}
+Known ids start with: ${(n.criteria??[]).slice(0,6).map(k=>k.id).join(", ")}\u2026`);let a=i.level_anchors??{},g=s===""?"{observed_level}":s,o=s===""?"{target_level}":String(Math.min(Number(s)+1,4)),u={surface:c,observed_level:g,target_level:o,observed_level_name:a[`l${g}`]??"{observed_level_name}",target_anchor_text:a[`l${o}`]??"{target_anchor_text}",impact:String(i.default_impact??3)},p=i.issue??{},S=P(p.title_template??`[Quality] ${i.id} on {surface}`,u),d=[...p.labels??["quality"],c];process.stdout.write(`Title: ${S}
 `),process.stdout.write(`Labels: ${d.join(", ")}
 
-`),process.stdout.write(`${P(m.body_skeleton??"",u)}
+`),process.stdout.write(`${P(p.body_skeleton??"",u)}
 `),i.remediation&&process.stdout.write(`
 <!-- Typical remediation: ${i.remediation} -->
 `)}function C(e,t){let r=["id","domain","name","question","applies-to"];for(let o of r)e[o]||l(`scaffold-criterion: --${o} is required
@@ -86,8 +86,8 @@ and an inconsistently scored criterion makes its whole row incomparable.`);let i
 `),process.exit(e.length===0?1:0)),s.has("template")){process.stdout.write(`${JSON.stringify(I,null,2)}
 `);return}let n=r.root??process.cwd();if(r["emit-issue"]){r.surface||l("scaffold-criterion: --emit-issue needs --surface"),T(n,t,r["emit-issue"],r.surface,r.level??"");return}let i=r.from?((0,A.existsSync)(r.from)||l(`scaffold-criterion: no file at ${r.from}`),h(r.from)):C(r,c);(typeof i.id!="string"||i.id==="")&&l("scaffold-criterion: the criterion has no id");let a=v(t);(a.criteria??[]).some(d=>d.id===i.id)&&!s.has("force")&&l(`scaffold-criterion: "${i.id}" is already a pack criterion.
 Overriding it changes what every score recorded against that id means.
-Use a project-reserved id (X-01, X-02, \u2026) instead, or pass --force if the override is deliberate.`);let g=x(n),o=w(n)??{extends:a.version,criteria:[]};o.criteria=Array.isArray(o.criteria)?o.criteria:[];let u=o.criteria.findIndex(d=>d?.id===i.id);u>=0&&!s.has("force")&&l(`scaffold-criterion: "${i.id}" is already in the overlay \u2014 pass --force to replace it`),u>=0?o.criteria[u]=i:o.criteria.push(i);let m=i.domain;if(!((a.domains??[]).some(d=>d.code===m)||(o.domains??[]).some(d=>d.code===m))){let d=r["domain-name"];d||l(`scaffold-criterion: "${m}" is not a pack domain and the overlay does not define it.
-Pass --domain-name "<display name>" to define it, or use an existing domain code.`),o.domains=[...o.domains??[],{code:m,name:d}]}Q(g,o),process.stdout.write(`wrote ${g}
+Use a project-reserved id (X-01, X-02, \u2026) instead, or pass --force if the override is deliberate.`);let g=x(n),o=w(n)??{extends:a.version,criteria:[]};o.criteria=Array.isArray(o.criteria)?o.criteria:[];let u=o.criteria.findIndex(d=>d?.id===i.id);u>=0&&!s.has("force")&&l(`scaffold-criterion: "${i.id}" is already in the overlay \u2014 pass --force to replace it`),u>=0?o.criteria[u]=i:o.criteria.push(i);let p=i.domain;if(!((a.domains??[]).some(d=>d.code===p)||(o.domains??[]).some(d=>d.code===p))){let d=r["domain-name"];d||l(`scaffold-criterion: "${p}" is not a pack domain and the overlay does not define it.
+Pass --domain-name "<display name>" to define it, or use an existing domain code.`),o.domains=[...o.domains??[],{code:p,name:d}]}Q(g,o),process.stdout.write(`wrote ${g}
 ${i.id} (${i.domain}) \u2014 applies to ${(i.applies_to??[]).join(", ")||"every surface"}
 issue skeleton: node scaffold-criterion.js --emit-issue ${i.id} --surface <surface>
 `)}D();

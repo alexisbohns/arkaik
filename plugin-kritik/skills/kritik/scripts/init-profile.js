@@ -7,8 +7,8 @@
  * definitions, docs/spec/toolchain.md § @arkaik/schema). Zero dependencies —
  * runnable with nothing but Node.
  */
-"use strict";var p=require("node:fs");var g="cross-surface";var l=require("node:fs"),d=require("node:path");var _="docs/quality",S="profile.json";function y(i){return JSON.parse((0,l.readFileSync)(i,"utf8"))}function h(i,t){(0,l.mkdirSync)((0,d.dirname)(i),{recursive:!0}),(0,l.writeFileSync)(i,JSON.stringify(t,null,2)+`
-`)}var b=i=>(0,d.join)(i,_,S);function n(i){process.stderr.write(`${i}
+"use strict";var p=require("node:fs");var g="cross-surface";var d=require("node:fs"),l=require("node:path");var _="docs/quality",S="profile.json";function y(i){return JSON.parse((0,d.readFileSync)(i,"utf8"))}function h(i,t){(0,d.mkdirSync)((0,l.dirname)(i),{recursive:!0}),(0,d.writeFileSync)(i,JSON.stringify(t,null,2)+`
+`)}var b=i=>(0,l.join)(i,_,S);function n(i){process.stderr.write(`${i}
 `),process.exit(1)}var k=["web","ios","android"],u=`init-profile.js \u2014 write this project's Kritik profile (its surfaces and domain weights)
 
 Usage:
