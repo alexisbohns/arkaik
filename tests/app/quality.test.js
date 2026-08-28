@@ -22,7 +22,7 @@ const pack = JSON.parse(
 );
 const section = fixture.section;
 
-const { buildFindingRows, severityOf, priorityOf } = loadQuality();
+const { buildFindingRows, severityOf, priorityOf, resolveKritikLibrary } = loadQuality();
 
 let failures = 0;
 function assert(cond, message) {
@@ -68,17 +68,43 @@ assert(orphanRows[0].domain === "", "an unresolvable criterion yields an empty d
 assert(orphanRows[0].severity === severityOf(orphanRows[0], pack), "an orphan row is still scored");
 assert(orphanRows[0].priority === priorityOf(orphanRows[0], pack), "an orphan row is still prioritised");
 
-// Degradation: no library at all.
+// NaN is a number to `typeof`, and a NaN risk renders as "NaN" and quietly
+// disables the sort's risk tiebreak, since every comparison against it is false.
+const nanRows = buildFindingRows(
+  { findings: [{ id: "F-nan", criterion_id: "SEC-01", surface: "web", title: "t", detail: "d", evidence: "e", impact: NaN, likelihood: 3, cost: "M", status: "open" }] },
+  pack,
+);
+assert(nanRows[0].impact === 0, "a NaN impact scores 0 rather than propagating");
+assert(nanRows[0].risk === 0, "risk stays finite when a finding carries garbage");
+
+// Degradation, lane 1: no library at all. Rows still build, but every one of
+// them loses its domain, which is exactly why the page never calls this path
+// directly — pinned here so the difference from the synthesized pack is visible.
 const bare = buildFindingRows(section, undefined);
 assert(bare.length === 246, "rows build with no library at all");
 assert(bare[0].criterionName !== undefined, "criterionName is defined even with no library");
+assert(bare.every((row) => row.domain === ""), "with no library at all every row loses its domain code");
+
+// Degradation, lane 2: the path the page takes. A bundle whose pack lives
+// outside the repo gets a library synthesized from the criterion ids
+// themselves, and the domain axis has to survive that — `SEC-03` still means
+// `SEC`, so the domain filter and the cell filter keep working.
+const synthesized = resolveKritikLibrary(section, undefined);
+const synthRows = buildFindingRows(section, synthesized);
+assert(synthRows.length === 246, "rows build against a synthesized library");
+assert(
+  [...new Set(synthRows.map((row) => row.domain))].sort().join(",") ===
+    "A11Y,AGT,ARC,GDP,PLT,PRF,PRV,REL,SAF,SEC,TST",
+  "a synthesized library resolves the pilot's eleven real domain codes",
+);
 
 // Absent section.
 assert(buildFindingRows(undefined, pack).length === 0, "an absent section yields no rows");
 
 // =========================== filterFindings ==================================
 
-const { filterFindings, groupByPriority, EMPTY_QUALITY_FILTERS, deriveQualityMatrix } = loadQuality();
+const { filterFindings, groupByPriority, EMPTY_QUALITY_FILTERS, deriveQualityMatrix, cellKey, parseCellKey } =
+  loadQuality();
 
 assert(
   filterFindings(rows, EMPTY_QUALITY_FILTERS).length === 246,
@@ -93,6 +119,38 @@ assert(
 
 const web = filterFindings(rows, { ...EMPTY_QUALITY_FILTERS, surface: "web" });
 assert(web.every((row) => row.surface === "web") && web.length > 0, "surface narrows to that surface");
+
+const p0 = filterFindings(rows, { ...EMPTY_QUALITY_FILTERS, priority: "P0" });
+assert(p0.every((row) => row.priority === "P0") && p0.length > 0, "priority narrows to that lane");
+assert(p0.length === rows.filter((row) => row.priority === "P0").length, "priority keeps every row in that lane");
+
+const sec = filterFindings(rows, { ...EMPTY_QUALITY_FILTERS, domain: "SEC" });
+assert(sec.every((row) => row.domain === "SEC") && sec.length > 0, "domain narrows to that domain");
+assert(sec.length === rows.filter((row) => row.domain === "SEC").length, "domain keeps every row in that domain");
+
+// The domain axis has to survive the synthesized-library path too: with no
+// pack the codes come off the criterion ids, and a filter that only worked
+// against the shipped pack would empty the board for a sidecar bundle.
+const synthSec = filterFindings(synthRows, { ...EMPTY_QUALITY_FILTERS, domain: "SEC" });
+assert(
+  synthSec.length === sec.length && synthSec.every((row) => row.domain === "SEC"),
+  "the domain filter works off a synthesized library, not just the shipped pack",
+);
+assert(
+  filterFindings(bare, { ...EMPTY_QUALITY_FILTERS, domain: "SEC" }).length === 0,
+  "with no library at all the domain filter matches nothing — the reason the page resolves one first",
+);
+
+// `useQualityFilters` hydrates the set from URL search params, so a key that
+// was never applied is simply absent. Absent has to read as "do not narrow";
+// it used to throw off `filters.search.trim()`.
+assert(filterFindings(rows, {}).length === rows.length, "a filter set with no keys at all narrows nothing");
+const noSearch = { ...EMPTY_QUALITY_FILTERS };
+delete noSearch.search;
+assert(
+  filterFindings(rows, noSearch).length === rows.length,
+  "a filter set carrying no `search` narrows nothing rather than throwing",
+);
 
 const both = filterFindings(rows, { ...EMPTY_QUALITY_FILTERS, severity: "critical", surface: "web" });
 assert(
@@ -113,15 +171,108 @@ assert(
   "search is case-insensitive",
 );
 
-// The cell filter must agree with the matrix that drew the cell.
+// The cell filter must agree with the matrix that drew the cell — on the whole
+// tally, not just the severities that happen to be nonzero in one cell.
 const matrix = deriveQualityMatrix({ quality: section }, pack);
-const cellRows = filterFindings(rows, { ...EMPTY_QUALITY_FILTERS, cell: "SEC|web" });
-const cellCounts = matrix.matrix.SEC.web.findings;
-const openCellRows = cellRows.filter((row) => row.open);
+const CELL_SEVERITIES = ["critical", "high", "medium", "low"];
+const openInCell = (domain, surface) =>
+  filterFindings(rows, { ...EMPTY_QUALITY_FILTERS, cell: cellKey(domain, surface) }).filter((row) => row.open);
+
+const cellMismatches = [];
+let cellsChecked = 0;
+for (const domain of matrix.domains) {
+  for (const surface of matrix.surfaces) {
+    const cell = matrix.matrix[domain]?.[surface];
+    if (!cell) continue;
+    cellsChecked++;
+    const open = openInCell(domain, surface);
+    const tally = CELL_SEVERITIES.reduce((total, severity) => total + cell.findings[severity], 0);
+    if (open.length !== tally) cellMismatches.push(`${domain}|${surface} total`);
+    for (const severity of CELL_SEVERITIES) {
+      if (open.filter((row) => row.severity === severity).length !== cell.findings[severity]) {
+        cellMismatches.push(`${domain}|${surface} ${severity}`);
+      }
+    }
+  }
+}
+assert(cellsChecked === 55, "every cell of the pilot's 11 x 5 matrix was cross-checked");
 assert(
-  openCellRows.filter((row) => row.severity === "high").length === cellCounts.high &&
-    openCellRows.filter((row) => row.severity === "medium").length === cellCounts.medium,
-  "the cell filter selects exactly the open findings deriveQualityMatrix counted in that cell",
+  cellMismatches.length === 0,
+  `the cell filter selects exactly the open findings deriveQualityMatrix counted, in all ${cellsChecked} cells`,
+);
+
+// And explicitly on a cell that actually holds a critical, found by scanning
+// rather than guessed: a cross-check whose only cell has no criticals cannot
+// catch a severity the filter drops.
+const criticalCell = matrix.domains
+  .flatMap((domain) => matrix.surfaces.map((surface) => ({ domain, surface, cell: matrix.matrix[domain]?.[surface] })))
+  .find((candidate) => candidate.cell && candidate.cell.findings.critical > 0);
+assert(criticalCell !== undefined, "the pilot has a cell holding an open critical to cross-check");
+const criticalCellRows = openInCell(criticalCell.domain, criticalCell.surface);
+assert(
+  criticalCellRows.length ===
+    CELL_SEVERITIES.reduce((total, severity) => total + criticalCell.cell.findings[severity], 0),
+  "the critical cell's row count is the sum of its four severity counts",
+);
+for (const severity of CELL_SEVERITIES) {
+  assert(
+    criticalCellRows.filter((row) => row.severity === severity).length === criticalCell.cell.findings[severity],
+    `the critical cell agrees with the matrix on ${severity}`,
+  );
+}
+
+// =========================== cellKey / parseCellKey ==========================
+
+assert(cellKey("SEC", "web") === "SEC|web", "a cell key is domain, pipe, surface");
+const roundTrip = parseCellKey(cellKey("A11Y", "ios"));
+assert(roundTrip.domain === "A11Y" && roundTrip.surface === "ios", "a cell key round-trips");
+assert(parseCellKey(null) === null, "no cell key is no cell");
+assert(parseCellKey("SEC") === null, "a key with no separator is not a cell");
+assert(parseCellKey("|web") === null, "a key with no domain is not a cell");
+assert(parseCellKey("SEC|") === null, "a key with no surface is not a cell");
+
+// A garbled key has to disable the cell filter, not blank the board: the key
+// travels in the URL, where anyone can mangle it, and a page that answers a
+// typo with zero findings reads as a page that failed to load.
+assert(
+  filterFindings(rows, { ...EMPTY_QUALITY_FILTERS, cell: "SEC" }).length === rows.length,
+  "a garbled cell key disables the cell filter rather than emptying the board",
+);
+
+// =========================== sortFindings ====================================
+
+const inOrder = (list, key) => list.every((row, index) => index === 0 || key(list[index - 1]).localeCompare(key(row)) <= 0);
+const severityRank = (row) => ["critical", "high", "medium", "low", "info"].indexOf(row.severity);
+const sortedBy = (sort) => filterFindings(rows, { ...EMPTY_QUALITY_FILTERS, sort });
+
+const bySeverity = sortedBy("severity");
+assert(
+  bySeverity.length === rows.length && new Set(bySeverity.map((row) => row.id)).size === rows.length,
+  "sorting is a permutation of the rows, never a filter",
+);
+assert(
+  bySeverity.every((row, index) => index === 0 || severityRank(bySeverity[index - 1]) <= severityRank(row)),
+  "the severity sort puts the worst severity first",
+);
+assert(
+  bySeverity.every(
+    (row, index) =>
+      index === 0 ||
+      severityRank(bySeverity[index - 1]) < severityRank(row) ||
+      bySeverity[index - 1].risk >= row.risk,
+  ),
+  "inside a severity, the higher risk comes first",
+);
+assert(inOrder(sortedBy("surface"), (row) => row.surface), "the surface sort groups by surface, A to Z");
+assert(inOrder(sortedBy("domain"), (row) => row.domain), "the domain sort groups by domain, A to Z");
+assert(inOrder(sortedBy("priority"), (row) => row.priority), "the priority sort runs P0 to P3");
+assert(
+  new Set(["severity", "priority", "surface", "domain"].map((sort) => sortedBy(sort).map((row) => row.id).join(","))).size === 4,
+  "each of the four sort modes yields a different order — none of them is inert",
+);
+assert(
+  sortedBy("severity").map((row) => row.id).join(",") === bySeverity.map((row) => row.id).join(","),
+  "the id tiebreak makes the order stable across runs",
 );
 
 // Status: the board can show resolved work, the matrix never counts it.
@@ -166,10 +317,26 @@ assert(
   "a surface nothing was scored on yields no criterion rows",
 );
 
+// deriveQualityMatrix clamps a level before it scores. Unclamped here, a
+// `level: 7` would read "7" in the strip beside the cell the matrix had
+// already scored 100/A.
+const outOfRange = (level) =>
+  buildCellCriteria(
+    { assessments: [{ criterion_id: "SEC-01", surface: "web", level, evidence: "e", audit_id: "a", ts: "t" }], findings: [] },
+    pack,
+    "SEC",
+    "web",
+  )[0].level;
+assert(outOfRange(7) === 4, "a level above the scale is clamped to 4, the way the matrix clamps it");
+assert(outOfRange(-3) === 0, "a level below the scale is clamped to 0, the way the matrix clamps it");
+
 // =========================== buildNodeFindingIndex ===========================
 
 const nodeIndex = buildNodeFindingIndex(section, pack);
-assert(nodeIndex.size > 0, "the node index is not empty for the pilot");
+// 34 is nodes, not findings: 29 findings carry `node_ids`, and between them
+// they name 34 distinct nodes. Pinned so a dedupe or a key regression shows up
+// as a number rather than as a still-passing `> 0`.
+assert(nodeIndex.size === 34, "the pilot's 29 linked findings name 34 distinct nodes");
 
 const profiles = nodeIndex.get("DM-profiles");
 assert(profiles !== undefined, "a node named by a finding is in the index");
@@ -198,6 +365,28 @@ const resolvedOnly = buildNodeFindingIndex(
 );
 assert(resolvedOnly.size === 0, "a resolved finding never decorates a node");
 
+const linkedFinding = (nodeIds) => ({
+  findings: [
+    { id: "F-n", criterion_id: "SEC-01", surface: "web", title: "t", detail: "d", evidence: "e", impact: 5, likelihood: 5, cost: "M", status: "open", node_ids: nodeIds },
+  ],
+});
+
+// One finding is one badge. A finding that names the same node twice used to
+// make the badge read "2" for a single problem.
+const duplicated = buildNodeFindingIndex(linkedFinding(["V-x", "V-x"]), pack);
+assert(duplicated.size === 1, "a repeated node id yields one indexed node");
+assert(duplicated.get("V-x").total === 1, "one finding counts once on a node it names twice");
+assert(duplicated.get("V-x").counts.critical === 1, "the deduped count still lands in the right severity");
+
+// Keys the canvas can never look up are worse than no key at all.
+const messy = buildNodeFindingIndex(linkedFinding([null, 42, "V-ok"]), pack);
+assert([...messy.keys()].join(",") === "V-ok", "only string node ids become index keys");
+
+// The library only decides severity here, so the index has to build without
+// one — the spec asked for it and nothing was checking it.
+const noLibraryIndex = buildNodeFindingIndex(section, undefined);
+assert(noLibraryIndex.size === nodeIndex.size, "the node index builds with no library at all");
+
 // =========================== buildSurfaceGauges ==============================
 
 const gauges = buildSurfaceGauges(matrix, section, pack);
@@ -214,6 +403,72 @@ assert(gauges[0].title === "Web app", "a gauge takes its title from the profile"
 assert(
   gauges.every((gauge) => gauge.score === null || gauge.grade !== null),
   "a gauge with a score always has a grade",
+);
+
+// The pilot scores all five surfaces, so the null branch never runs above and
+// the assertion is vacuous there. A synthetic matrix exercises both halves —
+// including a 0, which `||` instead of `??` would silently read as unscored.
+const sparseMatrix = {
+  surfaces: ["web", "unscored"],
+  domains: [],
+  matrix: {},
+  overall: { web: 0 },
+  finding_counts: { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
+};
+const sparseGauges = buildSurfaceGauges(sparseMatrix, undefined, pack);
+const unscored = sparseGauges.find((gauge) => gauge.surface === "unscored");
+assert(unscored.score === null && unscored.grade === null, "a surface nothing was scored on has no score and no grade");
+const floored = sparseGauges.find((gauge) => gauge.surface === "web");
+assert(floored.score === 0 && floored.grade === "E", "a surface that scored 0 is graded E, not left ungraded");
+assert(unscored.title === "unscored", "a gauge with no profile entry falls back to the surface id");
+
+// ================= the pack's scales, not the schema's defaults ==============
+//
+// Every assertion above scores against packages/kritik-library/framework.json,
+// whose `scales.severity_buckets` and `scales.grades` are byte-identical to
+// DEFAULT_SEVERITY_BUCKETS and DEFAULT_GRADE_BANDS in @arkaik/schema. Against
+// that one pack, "reads the pack's scales" and "hardcodes the schema defaults"
+// produce the same numbers, so the suite above cannot tell them apart: a
+// quality.ts with the buckets and bands inlined passes all of it.
+//
+// These score the same fixture against packs whose scales are deliberately NOT
+// the defaults, which is the only way the difference becomes observable. They
+// are not redundant with anything above — they are what holds this module's
+// central promise, that a project which moves a bucket moves the app with it.
+
+const looseBuckets = {
+  ...pack,
+  scales: { ...pack.scales, severity_buckets: { ...pack.scales.severity_buckets, critical: [10, 25] } },
+};
+
+const borderline = {
+  findings: [{ id: "F-scale", criterion_id: "SEC-01", surface: "web", title: "t", detail: "d", evidence: "e", impact: 5, likelihood: 2, cost: "M", status: "open" }],
+};
+assert(buildFindingRows(borderline, pack)[0].severity === "medium", "risk 10 is medium under the shipped pack");
+assert(
+  buildFindingRows(borderline, looseBuckets)[0].severity === "critical",
+  "risk 10 is critical under a pack whose critical bucket starts at 10 — the pack decides severity",
+);
+assert(
+  buildFindingRows(borderline, looseBuckets)[0].priority === "P0",
+  "and the priority lane follows the pack's severity, not a restated one",
+);
+assert(
+  buildFindingRows(section, looseBuckets).filter((row) => row.severity === "critical").length >
+    rows.filter((row) => row.severity === "critical").length,
+  "widening the critical bucket makes the pilot's board hold more criticals",
+);
+
+const lenientBands = { ...pack, scales: { ...pack.scales, grades: { A: 40, B: 30, C: 20, D: 10, E: 0 } } };
+const harshBands = { ...pack, scales: { ...pack.scales, grades: { A: 99, B: 98, C: 97, D: 96, E: 0 } } };
+assert(gauges.every((gauge) => gauge.grade === "D"), "the pilot's surfaces all grade D under the shipped pack");
+assert(
+  buildSurfaceGauges(matrix, section, lenientBands).every((gauge) => gauge.grade === "A"),
+  "the same scores grade A under a pack that lowers the bands — the pack decides the grade",
+);
+assert(
+  buildSurfaceGauges(matrix, section, harshBands).every((gauge) => gauge.grade === "E"),
+  "and grade E under a pack that raises them",
 );
 
 console.log(failures === 0 ? "\nAll quality projections OK" : `\n${failures} failure(s)`);

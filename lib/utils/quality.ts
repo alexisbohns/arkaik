@@ -15,6 +15,8 @@
  */
 
 import {
+  FINDING_PRIORITIES,
+  FINDING_SEVERITIES,
   gradeOf,
   isOpenFinding,
   priorityOf,
@@ -114,8 +116,11 @@ export function buildFindingRows(
   return asArray<QualityFinding>(section?.findings).map((finding) => {
     const criterion = criteria.get(finding.criterion_id);
     const domain = typeof criterion?.domain === "string" ? criterion.domain : "";
-    const impact = typeof finding.impact === "number" ? finding.impact : 0;
-    const likelihood = typeof finding.likelihood === "number" ? finding.likelihood : 0;
+    // `Number.isFinite` rather than a `typeof` test, which admits `NaN`: a NaN
+    // risk renders as the string "NaN" and silently disables the sort's risk
+    // tiebreak, since every comparison against NaN is false.
+    const impact = Number.isFinite(finding.impact) ? finding.impact : 0;
+    const likelihood = Number.isFinite(finding.likelihood) ? finding.likelihood : 0;
 
     return {
       id: finding.id,
@@ -184,13 +189,32 @@ export function parseCellKey(key: string | null): { domain: string; surface: str
   return { domain: key.slice(0, separator), surface: key.slice(separator + 1) };
 }
 
-const SEVERITY_ORDER: Record<FindingSeverity, number> = {
-  critical: 0,
-  high: 1,
-  medium: 2,
-  low: 3,
-  info: 4,
-};
+/**
+ * Display order, worst first, and the rank table the sort comparator reads.
+ *
+ * Both are derived from `FINDING_SEVERITIES` rather than restated. That array
+ * is already declared worst first and is where the CLI reads the order from;
+ * a sequence hand-written here would be a second opinion on which severity is
+ * worse, free to drift from the first the day a severity is added.
+ */
+const SEVERITY_WORST_FIRST: readonly FindingSeverity[] = FINDING_SEVERITIES;
+
+const SEVERITY_ORDER = Object.fromEntries(
+  FINDING_SEVERITIES.map((severity, rank) => [severity, rank]),
+) as Record<FindingSeverity, number>;
+
+/**
+ * Does this filter value actually narrow anything?
+ *
+ * `"all"` and `""` do not, per the convention below — and neither does an
+ * absent key. `useQualityFilters` hydrates the set from URL search params,
+ * where a filter nobody applied is simply missing from the query string; a
+ * board that answered that with zero rows, or with a `TypeError` off
+ * `search.trim()`, would read as broken rather than as unfiltered.
+ */
+function narrows(value: string | undefined | null): value is string {
+  return typeof value === "string" && value !== "" && value !== "all";
+}
 
 /**
  * Narrow the rows. Every filter is a conjunction, `"all"` and `""` meaning
@@ -203,14 +227,14 @@ const SEVERITY_ORDER: Record<FindingSeverity, number> = {
  */
 export function filterFindings(rows: FindingRow[], filters: QualityFilters): FindingRow[] {
   const cell = parseCellKey(filters.cell);
-  const needle = filters.search.trim().toLowerCase();
+  const needle = narrows(filters.search) ? filters.search.trim().toLowerCase() : "";
 
   const matched = rows.filter((row) => {
-    if (filters.severity !== "all" && row.severity !== filters.severity) return false;
-    if (filters.priority !== "all" && row.priority !== filters.priority) return false;
-    if (filters.status !== "all" && row.status !== filters.status) return false;
-    if (filters.surface !== "all" && row.surface !== filters.surface) return false;
-    if (filters.domain !== "all" && row.domain !== filters.domain) return false;
+    if (narrows(filters.severity) && row.severity !== filters.severity) return false;
+    if (narrows(filters.priority) && row.priority !== filters.priority) return false;
+    if (narrows(filters.status) && row.status !== filters.status) return false;
+    if (narrows(filters.surface) && row.surface !== filters.surface) return false;
+    if (narrows(filters.domain) && row.domain !== filters.domain) return false;
     if (cell && (row.domain !== cell.domain || row.surface !== cell.surface)) return false;
     if (needle === "") return true;
 
@@ -241,7 +265,8 @@ export interface PriorityGroup {
   rows: FindingRow[];
 }
 
-const PRIORITY_ORDER: readonly FindingPriority[] = ["P0", "P1", "P2", "P3"];
+/** The lane order, from the schema's own array for the reason `SEVERITY_ORDER` is. */
+const PRIORITY_ORDER: readonly FindingPriority[] = FINDING_PRIORITIES;
 
 /**
  * Findings by priority, worst lane first.
@@ -255,6 +280,17 @@ export function groupByPriority(rows: FindingRow[]): PriorityGroup[] {
     priority,
     rows: rows.filter((row) => row.priority === priority),
   }));
+}
+
+/**
+ * The clamp `deriveQualityMatrix` applies before it scores a cell, applied
+ * identically here. Without it a `level: 7` would read "7" in the criteria
+ * strip beside the very cell the matrix had already scored 100/A — one
+ * assessment, two answers.
+ */
+function clampLevel(level: MaturityLevel): MaturityLevel {
+  if (typeof level !== "number") return 0;
+  return Math.min(Math.max(level, 0), 4) as MaturityLevel;
 }
 
 /** One criterion inside an open matrix cell. */
@@ -301,7 +337,7 @@ export function buildCellCriteria(
         criterionId: assessment.criterion_id,
         name: (criterion?.name as string | undefined) ?? assessment.criterion_id,
         question: criterion?.question as string | undefined,
-        level: assessment.level,
+        level: clampLevel(assessment.level),
         evidence: assessment.evidence,
         auditId: assessment.audit_id,
         ts: assessment.ts,
@@ -317,8 +353,6 @@ export interface NodeFindingSummary {
   worst: FindingSeverity;
   total: number;
 }
-
-const SEVERITY_WORST_FIRST: readonly FindingSeverity[] = ["critical", "high", "medium", "low", "info"];
 
 /**
  * `node id -> its open findings`, built once per page.
@@ -338,7 +372,16 @@ export function buildNodeFindingIndex(
     if (!isOpenFinding(finding)) continue;
     const severity = severityOf(finding, library);
 
-    for (const nodeId of asArray<string>(finding.node_ids)) {
+    // Deduped per finding, and string elements only: a finding that names the
+    // same node twice is still one finding on that node, and a badge reading
+    // "2" for it would be wrong. Non-string elements would otherwise become
+    // map keys the canvas can never look up — the same guard `criteriaById`
+    // and `domainNames` apply to their keys.
+    const nodeIds = new Set(
+      asArray<unknown>(finding.node_ids).filter((nodeId): nodeId is string => typeof nodeId === "string"),
+    );
+
+    for (const nodeId of nodeIds) {
       let summary = index.get(nodeId);
       if (!summary) {
         summary = {
