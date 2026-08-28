@@ -15,6 +15,7 @@
  */
 
 import {
+  gradeOf,
   isOpenFinding,
   priorityOf,
   severityOf,
@@ -24,9 +25,14 @@ import {
   type KritikCriterion,
   type KritikDomain,
   type KritikLibrary,
+  type MaturityLevel,
+  type QualityAssessment,
   type QualityFinding,
+  type QualityGrade,
+  type QualityMatrix,
   type QualitySection,
   type RemediationCost,
+  type SurfaceDef,
 } from "@arkaik/schema";
 
 /** A finding with everything the board renders, resolved once. */
@@ -249,4 +255,152 @@ export function groupByPriority(rows: FindingRow[]): PriorityGroup[] {
     priority,
     rows: rows.filter((row) => row.priority === priority),
   }));
+}
+
+/** One criterion inside an open matrix cell. */
+export interface CriterionRow {
+  criterionId: string;
+  name: string;
+  question?: string;
+  level: MaturityLevel;
+  evidence: string;
+  auditId: string;
+  ts: string;
+  /** Open findings filed against this criterion on this surface. */
+  openFindings: number;
+}
+
+/**
+ * The criteria behind one matrix cell, with the level each was scored at.
+ *
+ * Scored criteria only. A criterion the audit skipped has no assessment and is
+ * absent here for the same reason it is absent from the cell's score: a narrow
+ * audit must read as narrow, not as bad.
+ */
+export function buildCellCriteria(
+  section: Pick<QualitySection, "assessments" | "findings"> | undefined,
+  library: KritikLibrary | undefined,
+  domain: string,
+  surface: string,
+): CriterionRow[] {
+  const criteria = criteriaById(library);
+  const openPerCriterion = new Map<string, number>();
+  for (const finding of asArray<QualityFinding>(section?.findings)) {
+    if (!isOpenFinding(finding) || finding.surface !== surface) continue;
+    openPerCriterion.set(finding.criterion_id, (openPerCriterion.get(finding.criterion_id) ?? 0) + 1);
+  }
+
+  return asArray<QualityAssessment>(section?.assessments)
+    .filter((assessment) => {
+      if (assessment.surface !== surface) return false;
+      return criteria.get(assessment.criterion_id)?.domain === domain;
+    })
+    .map((assessment) => {
+      const criterion = criteria.get(assessment.criterion_id);
+      return {
+        criterionId: assessment.criterion_id,
+        name: (criterion?.name as string | undefined) ?? assessment.criterion_id,
+        question: criterion?.question as string | undefined,
+        level: assessment.level,
+        evidence: assessment.evidence,
+        auditId: assessment.audit_id,
+        ts: assessment.ts,
+        openFindings: openPerCriterion.get(assessment.criterion_id) ?? 0,
+      };
+    })
+    .sort((a, b) => a.criterionId.localeCompare(b.criterionId));
+}
+
+export interface NodeFindingSummary {
+  counts: Record<FindingSeverity, number>;
+  /** The most severe severity present on this node. */
+  worst: FindingSeverity;
+  total: number;
+}
+
+const SEVERITY_WORST_FIRST: readonly FindingSeverity[] = ["critical", "high", "medium", "low", "info"];
+
+/**
+ * `node id -> its open findings`, built once per page.
+ *
+ * A map rather than a per-node scan: the canvas asks this question once per
+ * node, and a filter over 246 findings per node is 246 x n comparisons for a
+ * badge most nodes do not draw. Resolved, refuted and accepted-risk findings
+ * are excluded — a badge is a call to act, and those are not.
+ */
+export function buildNodeFindingIndex(
+  section: Pick<QualitySection, "findings"> | undefined,
+  library?: KritikLibrary,
+): Map<string, NodeFindingSummary> {
+  const index = new Map<string, NodeFindingSummary>();
+
+  for (const finding of asArray<QualityFinding>(section?.findings)) {
+    if (!isOpenFinding(finding)) continue;
+    const severity = severityOf(finding, library);
+
+    for (const nodeId of asArray<string>(finding.node_ids)) {
+      let summary = index.get(nodeId);
+      if (!summary) {
+        summary = {
+          counts: { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
+          worst: "info",
+          total: 0,
+        };
+        index.set(nodeId, summary);
+      }
+      summary.counts[severity]++;
+      summary.total++;
+    }
+  }
+
+  for (const summary of index.values()) {
+    summary.worst = SEVERITY_WORST_FIRST.find((severity) => summary.counts[severity] > 0) ?? "info";
+  }
+
+  return index;
+}
+
+export interface SurfaceGauge {
+  surface: string;
+  title: string;
+  /** The matrix's own roll-up; `null` when nothing was scored on this surface. */
+  score: number | null;
+  grade: QualityGrade | null;
+  openFindings: number;
+}
+
+/**
+ * One gauge per profile surface for the Overview.
+ *
+ * The score is read straight off `matrix.overall` rather than recomputed, so
+ * the card and the page can never disagree. The grade is banded from that
+ * score *without* re-applying caps: caps shape the cell a reader acts on, and
+ * `deriveQualityMatrix` already declined to fold them into the roll-up.
+ */
+export function buildSurfaceGauges(
+  matrix: QualityMatrix,
+  section: Pick<QualitySection, "profile" | "findings"> | undefined,
+  library?: KritikLibrary,
+): SurfaceGauge[] {
+  const titles = new Map<string, string>();
+  for (const surface of asArray<SurfaceDef>(section?.profile?.surfaces)) {
+    if (typeof surface?.id === "string") titles.set(surface.id, surface.title ?? surface.id);
+  }
+
+  const openPerSurface = new Map<string, number>();
+  for (const finding of asArray<QualityFinding>(section?.findings)) {
+    if (!isOpenFinding(finding)) continue;
+    openPerSurface.set(finding.surface, (openPerSurface.get(finding.surface) ?? 0) + 1);
+  }
+
+  return matrix.surfaces.map((surface) => {
+    const score = matrix.overall[surface] ?? null;
+    return {
+      surface,
+      title: titles.get(surface) ?? surface,
+      score,
+      grade: score === null ? null : gradeOf(score, library),
+      openFindings: openPerSurface.get(surface) ?? 0,
+    };
+  });
 }

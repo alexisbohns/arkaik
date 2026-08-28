@@ -147,5 +147,74 @@ assert(
   "empty groups are retained so the board can say 'none at this priority'",
 );
 
+// =========================== buildCellCriteria ===============================
+
+const { buildCellCriteria, buildNodeFindingIndex, buildSurfaceGauges } = loadQuality();
+
+const secWeb = buildCellCriteria(section, pack, "SEC", "web");
+assert(
+  secWeb.length === matrix.matrix.SEC.web.criteria,
+  "the cell's criterion rows match the count deriveQualityMatrix reported",
+);
+assert(
+  secWeb.every((row) => row.level >= 0 && row.level <= 4),
+  "every criterion row carries a maturity level in range",
+);
+assert(secWeb.every((row) => typeof row.criterionId === "string"), "every row names its criterion");
+assert(
+  buildCellCriteria(section, pack, "SEC", "nonexistent-surface").length === 0,
+  "a surface nothing was scored on yields no criterion rows",
+);
+
+// =========================== buildNodeFindingIndex ===========================
+
+const nodeIndex = buildNodeFindingIndex(section, pack);
+assert(nodeIndex.size > 0, "the node index is not empty for the pilot");
+
+const profiles = nodeIndex.get("DM-profiles");
+assert(profiles !== undefined, "a node named by a finding is in the index");
+assert(profiles.total > 0, "an indexed node has at least one open finding");
+assert(
+  profiles.counts[profiles.worst] > 0,
+  "worst names a severity the node actually has",
+);
+assert(
+  ["critical", "high", "medium", "low", "info"].indexOf(profiles.worst) ===
+    Math.min(
+      ...["critical", "high", "medium", "low", "info"]
+        .map((severity, index) => (profiles.counts[severity] > 0 ? index : 99)),
+    ),
+  "worst is the most severe severity present",
+);
+
+// Only open findings decorate a node — a resolved finding is history.
+const resolvedOnly = buildNodeFindingIndex(
+  {
+    findings: [
+      { id: "F-r", criterion_id: "SEC-01", surface: "web", title: "t", detail: "d", evidence: "e", impact: 5, likelihood: 5, cost: "M", status: "resolved", node_ids: ["V-x"] },
+    ],
+  },
+  pack,
+);
+assert(resolvedOnly.size === 0, "a resolved finding never decorates a node");
+
+// =========================== buildSurfaceGauges ==============================
+
+const gauges = buildSurfaceGauges(matrix, section, pack);
+assert(gauges.length === 5, "one gauge per profile surface");
+assert(
+  gauges.map((gauge) => gauge.surface).join(",") === "web,ios,android,admin,supabase",
+  "gauges keep the profile's surface order",
+);
+assert(
+  gauges.every((gauge) => gauge.score === matrix.overall[gauge.surface]),
+  "a gauge's score is the matrix's own roll-up, not a second computation",
+);
+assert(gauges[0].title === "Web app", "a gauge takes its title from the profile");
+assert(
+  gauges.every((gauge) => gauge.score === null || gauge.grade !== null),
+  "a gauge with a score always has a grade",
+);
+
 console.log(failures === 0 ? "\nAll quality projections OK" : `\n${failures} failure(s)`);
 process.exit(failures === 0 ? 0 : 1);

@@ -45,6 +45,7 @@
     "test:value-icons": "node tests/app/value-icons.test.js",
     "test:acceptance-matrix": "node tests/app/acceptance-matrix.test.js",
     "test:acceptance-intake": "node tests/app/acceptance-intake.test.js",
+    "test:quality-page": "node tests/app/quality.test.js",
     "test:product-scope": "node tests/app/product-scope.test.js",
     "test:product-editing": "node tests/app/product-editing.test.js",
     "test:decision-utils": "node tests/app/decision-utils.test.js",
