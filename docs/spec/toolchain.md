@@ -88,7 +88,12 @@ omission, because the absence has already cost twice:
 - `arkaik-mcp` on npm drifted twelve days behind `main` and silently lacked
   hosted mode entirely, so `npx -y arkaik-mcp` in a linked repo served a local
   bundle instead of the account project. The version had not been bumped either,
-  so a publish would have been rejected as a duplicate.
+  so a publish would have been rejected as a duplicate;
+- the Kritik CLI/MCP surface (#385) merged without a bump, and the **skill it
+  shipped names `npx arkaik kritik`** — an instruction the registry could not
+  yet satisfy. Caught the same day, but it shows the shape of the recurrence:
+  the rule is easy to keep when a PR is *about* a package, and easy to miss when
+  the package is one of six things the PR touches.
 
 The rules that keep both from recurring:
 
@@ -105,6 +110,12 @@ npm publish -w arkaik
 npm publish -w arkaik-mcp
 npm view arkaik version && npm view arkaik-mcp version
 ```
+
+One consequence worth stating, because it is the reason the bump matters beyond
+tidiness: **the published CLI is a dependency of the agent skills.** The Kritik
+skill tells an agent to try `npx arkaik kritik`, and the Arkaik skill's install
+path is `npx arkaik init`. A stale registry does not merely lag — it makes the
+prose we ship untrue, in a repo whose author has no way to know that.
 
 A tag-triggered workflow with a granular automation token is the durable fix and
 is not built; until it is, the checklist above is the process.
