@@ -19,6 +19,7 @@ import {
   unwindTo as unwindStackTo,
 } from "@/lib/utils/panel-stack";
 import {
+  criterionPanelKey,
   isNodeEntry,
   pruneNodeEntries,
   topNodeKey,
@@ -85,6 +86,12 @@ interface ProjectPanelsValue {
   openNode: (descriptor: OpenNodeInput, fromDepth?: number) => void;
   /** Open the raw bundle on top of whatever is open, or reveal the one already there. */
   openRaw: () => void;
+  /**
+   * Open a criterion's detail from a depth, or refresh the one already in that
+   * slot. Publishes nothing: a criterion panel is not an address, so the stack
+   * has nothing to tell the URL. The Quality page writes `?criterion=` itself.
+   */
+  openCriterion: (criterionId: string, surface?: string, fromDepth?: number) => void;
   closeAt: (index: number) => void;
   unwindTo: (depth: number) => void;
   /**
@@ -245,6 +252,27 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
     );
   }, [entries, unwindTo]);
 
+  // No `publishTop`, on purpose. Opening a criterion cannot change the top
+  // *node*, so there is nothing for the address to say — and saying it anyway
+  // would mean a second reconciler over one stack, which `?node=V-home` and
+  // `?criterion=SEC-01` together have no defined answer for. Unlike `openRaw`
+  // there is no "reveal the one already open" branch either: several criteria
+  // can stack, and `openFrom` already refreshes in place when the same
+  // criterion on the same surface lands back in the same slot.
+  const openCriterion = useCallback(
+    (criterionId: string, surface?: string, fromDepth?: number) => {
+      setEntries((previous) =>
+        openFrom<PanelDescriptor>(
+          previous,
+          fromDepth ?? previous.length,
+          criterionPanelKey(criterionId, surface),
+          { kind: "criterion", criterionId, surface },
+        ),
+      );
+    },
+    [],
+  );
+
   const pruneMissingNodes = useCallback(
     (existingIds: Set<string>) => {
       const next = pruneNodeEntries(entries, existingIds);
@@ -285,6 +313,7 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
       topPanelNodeId: top && isNodeEntry(top) ? top.key : null,
       openNode,
       openRaw,
+      openCriterion,
       closeAt,
       unwindTo,
       pruneMissingNodes,
@@ -294,6 +323,7 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
   }, [
     closeAt,
     entries,
+    openCriterion,
     openNode,
     openRaw,
     panelStates,

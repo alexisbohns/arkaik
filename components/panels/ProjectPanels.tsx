@@ -4,9 +4,14 @@ import { useCallback, useEffect, useMemo, type ReactNode } from "react";
 import Link from "next/link";
 import { EntityId } from "@/components/graph/nodes/EntityBadges";
 import { PanelStack } from "@/components/panels/PanelStack";
+import {
+  CriterionDetailPanel,
+  CriterionDetailPanelHeader,
+} from "@/components/panels/CriterionDetailPanel";
 import { NodeDetailPanel, NodeDetailPanelHeader } from "@/components/panels/NodeDetailPanel";
 import { RawBundlePanel } from "@/components/panels/RawBundlePanel";
 import { EmptyState } from "@/components/ui/empty-state";
+import type { KritikLibrary, QualitySection } from "@arkaik/schema";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { Edge, JournalEvent, Node } from "@/lib/data/types";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
@@ -50,6 +55,17 @@ interface ProjectPanelsProps {
    */
   intake?: AcceptanceIntake;
   onZoomShot?: (node: Node, platform: PlatformId) => void;
+  /**
+   * The project's Kritik state, for criterion panels.
+   *
+   * Absent on every page but Quality, which is the only one that opens one —
+   * and a criterion panel with neither is still a panel: it says the pack is
+   * not here rather than rendering blank headings. Passing them from the page
+   * rather than reading `useProject` here keeps this component free of a data
+   * dependency that nine of its ten callers would pay for and never use.
+   */
+  qualitySection?: QualitySection;
+  qualityLibrary?: KritikLibrary;
 }
 
 const NO_NODES: Node[] = [];
@@ -87,6 +103,8 @@ export function ProjectPanels({
   onCreateAcceptanceForAnchor,
   intake,
   onZoomShot,
+  qualitySection,
+  qualityLibrary,
 }: ProjectPanelsProps) {
   const { entries, openNode, closeAt, unwindTo, pruneMissingNodes, panelStates } =
     useProjectPanels();
@@ -105,10 +123,15 @@ export function ProjectPanels({
 
   // Branching on `kind` rather than on the key keeps one way to spot a raw
   // entry: the key/kind equivalence is an invariant the union does not enforce,
-  // so a second test of it is a second thing that can drift.
+  // so a second test of it is a second thing that can drift. A criterion's key
+  // is namespaced, so it is also the one kind whose key is not something a
+  // reader should ever be shown.
   const labelOf = useCallback(
-    (entry: PanelEntry<PanelDescriptor>) =>
-      entry.payload.kind === "raw" ? "Raw bundle" : nodesById.get(entry.key)?.title ?? entry.key,
+    (entry: PanelEntry<PanelDescriptor>) => {
+      if (entry.payload.kind === "raw") return "Raw bundle";
+      if (entry.payload.kind === "criterion") return entry.payload.criterionId;
+      return nodesById.get(entry.key)?.title ?? entry.key;
+    },
     [nodesById],
   );
 
@@ -134,12 +157,38 @@ export function ProjectPanels({
         if (entry.payload.kind === "raw")
           return <span className="truncate text-sm font-medium">Raw bundle</span>;
 
+        if (entry.payload.kind === "criterion")
+          return (
+            <CriterionDetailPanelHeader
+              criterionId={entry.payload.criterionId}
+              surface={entry.payload.surface}
+              library={qualityLibrary}
+              section={qualitySection}
+            />
+          );
+
         const node = nodesById.get(entry.key);
         return node ? <NodeDetailPanelHeader node={node} /> : <EntityId id={entry.key} />;
       }}
       renderBody={(entry, index) => {
         if (entry.payload.kind === "raw") {
           return <RawBundlePanel projectId={projectId} instanceId={entry.instanceId} />;
+        }
+
+        if (entry.payload.kind === "criterion") {
+          return (
+            <CriterionDetailPanel
+              criterionId={entry.payload.criterionId}
+              surface={entry.payload.surface}
+              library={qualityLibrary}
+              section={qualitySection}
+              // From this panel's own depth, like every other navigation in the
+              // stack: following a finding into the graph opens the node ABOVE
+              // the criterion, so the criterion the reader came from is still
+              // there to go back to. Opening from depth 0 would close it.
+              onOpenNode={(nodeId) => openNode({ nodeId }, index + 1)}
+            />
+          );
         }
 
         const node = nodesById.get(entry.key);
@@ -172,7 +221,7 @@ export function ProjectPanels({
           <NodeDetailPanel
             node={node}
             scope={scope}
-            initialPlatform={entry.payload.kind === "node" ? entry.payload.initialPlatform : undefined}
+            initialPlatform={entry.payload.initialPlatform}
             onUpdate={onUpdate}
             onDelete={onDelete}
             allNodes={allNodes}
