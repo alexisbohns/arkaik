@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { XIcon } from "lucide-react";
 import {
   gradeOf,
@@ -216,12 +217,6 @@ function CriteriaStrip({
  * `gradeOf` bands the roll-up row, and the caps were applied before this
  * component saw a cell — which is why a grade can read a letter worse than its
  * score, and why the legend has to say so.
- *
- * No `useMemo` around the derivations below, deliberately. The React Compiler
- * memoizes them and refuses to *preserve* a hand-written memo here, which costs
- * more than it saves: a component whose manual memoization cannot be preserved
- * is one the compiler declines to optimize at all. `CriterionDetailPanel`
- * derives the same way for the same reason.
  */
 export function QualityMatrix({
   matrix,
@@ -231,10 +226,19 @@ export function QualityMatrix({
   onSelectCell,
   onOpenCriterion,
 }: QualityMatrixProps) {
-  const titles = surfaceTitles(section);
-  const names = domainNames(library);
-  const bands = gradeBands(library);
+  const titles = useMemo(() => surfaceTitles(section), [section]);
+  const names = useMemo(() => domainNames(library), [library]);
+  const bands = useMemo(() => gradeBands(library), [library]);
   const active = parseCellKey(activeCell);
+  // Keyed on the encoded string, not on `active`: `parseCellKey` returns a
+  // fresh object every render, so a memo depending on it would miss every
+  // time. This is the one derivation here that walks the section's whole
+  // assessment and finding lists — the pilot audit's are 338 and 246 — so the
+  // miss is the difference worth spending a memo on.
+  const cellCriteria = useMemo(() => {
+    const cell = parseCellKey(activeCell);
+    return cell ? buildCellCriteria(section, library, cell.domain, cell.surface) : [];
+  }, [activeCell, section, library]);
 
   const titleOf = (surface: string) => titles.get(surface) ?? surface;
   const nameOf = (domain: string) => names.get(domain) ?? domain;
@@ -325,7 +329,10 @@ export function QualityMatrix({
         */}
         <TableFooter>
           <TableRow className="hover:bg-transparent">
-            <TableHead scope="row" className="sticky left-0 z-10 bg-muted/50 text-xs uppercase tracking-wide">
+            {/* Opaque `bg-muted`, not the row's own translucent `bg-muted/50`:
+                cells scroll *under* a sticky column, and a half-transparent one
+                would show them passing through. */}
+            <TableHead scope="row" className="sticky left-0 z-10 bg-muted text-xs uppercase tracking-wide">
               Overall
             </TableHead>
             {matrix.surfaces.map((surface) => {
@@ -357,7 +364,7 @@ export function QualityMatrix({
           domainName={nameOf(active.domain)}
           surfaceTitle={titleOf(active.surface)}
           surface={active.surface}
-          criteria={buildCellCriteria(section, library, active.domain, active.surface)}
+          criteria={cellCriteria}
           onClose={() => onSelectCell(null)}
           onOpenCriterion={onOpenCriterion}
         />
