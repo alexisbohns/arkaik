@@ -76,5 +76,76 @@ assert(bare[0].criterionName !== undefined, "criterionName is defined even with 
 // Absent section.
 assert(buildFindingRows(undefined, pack).length === 0, "an absent section yields no rows");
 
+// =========================== filterFindings ==================================
+
+const { filterFindings, groupByPriority, EMPTY_QUALITY_FILTERS, deriveQualityMatrix } = loadQuality();
+
+assert(
+  filterFindings(rows, EMPTY_QUALITY_FILTERS).length === 246,
+  "the empty filter set narrows nothing",
+);
+
+const critical = filterFindings(rows, { ...EMPTY_QUALITY_FILTERS, severity: "critical" });
+assert(
+  critical.every((row) => row.severity === "critical") && critical.length > 0,
+  "severity narrows to that severity",
+);
+
+const web = filterFindings(rows, { ...EMPTY_QUALITY_FILTERS, surface: "web" });
+assert(web.every((row) => row.surface === "web") && web.length > 0, "surface narrows to that surface");
+
+const both = filterFindings(rows, { ...EMPTY_QUALITY_FILTERS, severity: "critical", surface: "web" });
+assert(
+  both.every((row) => row.severity === "critical" && row.surface === "web"),
+  "severity and surface compose",
+);
+assert(both.length <= Math.min(critical.length, web.length), "composing filters never widens");
+
+// Search reaches title, criterion id and evidence.
+const searched = filterFindings(rows, { ...EMPTY_QUALITY_FILTERS, search: "SEC-03" });
+assert(searched.length > 0, "search finds by criterion id");
+assert(
+  filterFindings(rows, { ...EMPTY_QUALITY_FILTERS, search: "zzzznotpresent" }).length === 0,
+  "a search matching nothing yields nothing",
+);
+assert(
+  filterFindings(rows, { ...EMPTY_QUALITY_FILTERS, search: "sec-03" }).length === searched.length,
+  "search is case-insensitive",
+);
+
+// The cell filter must agree with the matrix that drew the cell.
+const matrix = deriveQualityMatrix({ quality: section }, pack);
+const cellRows = filterFindings(rows, { ...EMPTY_QUALITY_FILTERS, cell: "SEC|web" });
+const cellCounts = matrix.matrix.SEC.web.findings;
+const openCellRows = cellRows.filter((row) => row.open);
+assert(
+  openCellRows.filter((row) => row.severity === "high").length === cellCounts.high &&
+    openCellRows.filter((row) => row.severity === "medium").length === cellCounts.medium,
+  "the cell filter selects exactly the open findings deriveQualityMatrix counted in that cell",
+);
+
+// Status: the board can show resolved work, the matrix never counts it.
+const resolved = filterFindings(rows, { ...EMPTY_QUALITY_FILTERS, status: "resolved" });
+assert(resolved.every((row) => row.status === "resolved"), "status narrows to that status");
+
+// =========================== groupByPriority =================================
+
+const groups = groupByPriority(rows);
+assert(groups.length === 4, "there are always four priority groups");
+assert(
+  groups.map((group) => group.priority).join(",") === "P0,P1,P2,P3",
+  "groups are ordered P0 first",
+);
+assert(
+  groups.reduce((total, group) => total + group.rows.length, 0) === rows.length,
+  "every row lands in exactly one group",
+);
+
+const emptyGroups = groupByPriority([]);
+assert(
+  emptyGroups.length === 4 && emptyGroups.every((group) => group.rows.length === 0),
+  "empty groups are retained so the board can say 'none at this priority'",
+);
+
 console.log(failures === 0 ? "\nAll quality projections OK" : `\n${failures} failure(s)`);
 process.exit(failures === 0 ? 0 : 1);

@@ -135,3 +135,118 @@ export function buildFindingRows(
     };
   });
 }
+
+/**
+ * The board's filter set. `cell` is encoded `"<domain>|<surface>"` because it
+ * travels in the URL and a matrix cell is exactly a domain and a surface.
+ */
+export interface QualityFilters {
+  search: string;
+  severity: FindingSeverity | "all";
+  surface: string;
+  priority: FindingPriority | "all";
+  domain: string;
+  status: FindingStatus | "all";
+  /** `"SEC|web"`, or `null` for no active cell. */
+  cell: string | null;
+  sort: QualitySort;
+}
+
+export type QualitySort = "severity" | "priority" | "surface" | "domain";
+
+export const EMPTY_QUALITY_FILTERS: QualityFilters = {
+  search: "",
+  severity: "all",
+  surface: "all",
+  priority: "all",
+  domain: "all",
+  status: "all",
+  cell: null,
+  sort: "severity",
+};
+
+/** Encode a matrix cell for the URL and the filter set. */
+export function cellKey(domain: string, surface: string): string {
+  return `${domain}|${surface}`;
+}
+
+/** Decode a cell key; `null` for anything that is not one. */
+export function parseCellKey(key: string | null): { domain: string; surface: string } | null {
+  if (!key) return null;
+  const separator = key.indexOf("|");
+  if (separator <= 0 || separator === key.length - 1) return null;
+  return { domain: key.slice(0, separator), surface: key.slice(separator + 1) };
+}
+
+const SEVERITY_ORDER: Record<FindingSeverity, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+  info: 4,
+};
+
+/**
+ * Narrow the rows. Every filter is a conjunction, `"all"` and `""` meaning
+ * "do not narrow on this" — the same convention `filterAcceptances` uses, so a
+ * reader who knows one bar knows this one.
+ *
+ * Search reaches title, detail, evidence, criterion id and criterion name,
+ * because the pilot's own console searched file paths and the evidence field is
+ * where a `file:line` citation lives.
+ */
+export function filterFindings(rows: FindingRow[], filters: QualityFilters): FindingRow[] {
+  const cell = parseCellKey(filters.cell);
+  const needle = filters.search.trim().toLowerCase();
+
+  const matched = rows.filter((row) => {
+    if (filters.severity !== "all" && row.severity !== filters.severity) return false;
+    if (filters.priority !== "all" && row.priority !== filters.priority) return false;
+    if (filters.status !== "all" && row.status !== filters.status) return false;
+    if (filters.surface !== "all" && row.surface !== filters.surface) return false;
+    if (filters.domain !== "all" && row.domain !== filters.domain) return false;
+    if (cell && (row.domain !== cell.domain || row.surface !== cell.surface)) return false;
+    if (needle === "") return true;
+
+    return [row.title, row.detail, row.evidence, row.criterionId, row.criterionName]
+      .join("\n")
+      .toLowerCase()
+      .includes(needle);
+  });
+
+  return sortFindings(matched, filters.sort);
+}
+
+/** Worst first on every axis; the id breaks ties so the order is stable. */
+function sortFindings(rows: FindingRow[], sort: QualitySort): FindingRow[] {
+  const bySeverity = (a: FindingRow, b: FindingRow) =>
+    SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] || b.risk - a.risk;
+
+  return [...rows].sort((a, b) => {
+    if (sort === "priority") return a.priority.localeCompare(b.priority) || bySeverity(a, b) || a.id.localeCompare(b.id);
+    if (sort === "surface") return a.surface.localeCompare(b.surface) || bySeverity(a, b) || a.id.localeCompare(b.id);
+    if (sort === "domain") return a.domain.localeCompare(b.domain) || bySeverity(a, b) || a.id.localeCompare(b.id);
+    return bySeverity(a, b) || a.id.localeCompare(b.id);
+  });
+}
+
+export interface PriorityGroup {
+  priority: FindingPriority;
+  rows: FindingRow[];
+}
+
+const PRIORITY_ORDER: readonly FindingPriority[] = ["P0", "P1", "P2", "P3"];
+
+/**
+ * Findings by priority, worst lane first.
+ *
+ * Empty groups are retained rather than dropped: a board that silently omits P0
+ * when there is no P0 reads as a board that has not loaded. "None at this
+ * priority" is information, and it is the good news.
+ */
+export function groupByPriority(rows: FindingRow[]): PriorityGroup[] {
+  return PRIORITY_ORDER.map((priority) => ({
+    priority,
+    rows: rows.filter((row) => row.priority === priority),
+  }));
+}
