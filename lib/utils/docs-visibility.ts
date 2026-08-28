@@ -60,13 +60,14 @@ export const PUBLISHED_DOC_AREAS: readonly string[] = [
  *   them. Serving that is not publishing a quality report, it is publishing a
  *   roadmap. The same decision the Publik snapshot route enforces server-side.
  * - `rfcs` — proposals, including ones that were never taken up.
- * - `arkaik-skill`, `arkaik-bootstrap-skill` — packaged skill sources, not pages;
- *   they ship as a plugin and one of them carries a script rather than prose.
+ * - `arkaik-skill`, `arkaik-bootstrap-skill`, `kritik-skill` — packaged skill
+ *   sources, not pages; they ship as plugins and carry scripts rather than prose.
  */
 export const INTERNAL_DOC_AREAS: readonly string[] = [
   "arkaik-bootstrap-skill",
   "arkaik-skill",
   "audit",
+  "kritik-skill",
   "quality",
   "rfcs",
   "superpowers",
