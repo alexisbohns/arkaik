@@ -115,6 +115,12 @@ jobs:
       - name: Kritik plugin tests (overlay merge, generated scripts end-to-end)
         run: npm run test:kritik-plugin
 
+      # The write half of the layer — what `arkaik kritik` and the kritik_* MCP
+      # tools both call. Pure and DB-free, so it belongs in this fast job rather
+      # than beside the end-to-end suites that need a build first.
+      - name: Kritik operation tests (upserts, id minting, event payloads)
+        run: npm run test:quality-ops
+
       - name: Map projection + validation tests
         run: npm run test:maps
 

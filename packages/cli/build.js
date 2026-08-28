@@ -51,6 +51,19 @@ function copySkillAssets() {
   console.log(`copied skill assets -> ${relative(dir, SKILL_DIST_DIR)}`);
 }
 
+// The Kritik criteria pack (`arkaik kritik`, docs/rfcs/kritik.md § 4.2). Carried
+// as an asset rather than imported, for the same reason the skill is: a half-MB
+// JSON literal inlined into the bundle would double it, and a project that wants
+// a different pack version vendors one at docs/quality/library.json anyway.
+const KRITIK_PACK_SRC = join(dir, "..", "kritik-library", "framework.json");
+const KRITIK_ASSET_DIR = join(dir, "dist", "assets", "kritik");
+
+function copyKritikPack() {
+  mkdirSync(KRITIK_ASSET_DIR, { recursive: true });
+  cpSync(KRITIK_PACK_SRC, join(KRITIK_ASSET_DIR, "library.json"));
+  console.log(`copied kritik pack -> ${relative(dir, KRITIK_ASSET_DIR)}`);
+}
+
 const BOOTSTRAP_SKILL_SRC_DIR = join(dir, "..", "..", "docs", "arkaik-bootstrap-skill");
 const BOOTSTRAP_SKILL_DIST_DIR = join(dir, "dist", "assets", "bootstrap-skill");
 
@@ -99,6 +112,7 @@ async function run() {
 
   copySkillAssets();
   copyBootstrapSkillAssets();
+  copyKritikPack();
 }
 
 run().catch((err) => {

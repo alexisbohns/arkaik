@@ -104,6 +104,47 @@ precisely how two surfaces come to disagree about the same node.
 
 `arkaik release` (tagging, note drafting, compaction) stays **CLI-only** in v1 — it is a ceremony with side effects beyond the bundle, owned by `packages/cli/src/commands/release.ts`.
 
+### Quality tools (Kritik)
+
+Nine `kritik_*` tools mirror the `arkaik kritik` verbs ([kritik.md](../rfcs/kritik.md) § 4.4), which
+is what makes a **scheduled agent audit** a first-class monitoring loop: a routine wakes, reads the
+signal pack, audits what changed since the last audited commit, scores through these tools, and the
+journal accumulates the quality history the UI renders as trends.
+
+| Tool | Input | Returns | Journal events |
+|---|---|---|---|
+| `kritik_matrix` | `audit_id?`, `record?` | the comparative matrix, per-surface roll-ups, finding counts, priority lanes, the P0 list; refreshes `matrix.json` | `quality.audit.completed` (only with `record: true`) |
+| `kritik_findings` | `surface?`, `status?`, `priority?`, `criterion_id?`, `audit_id?` | findings across audits with **derived** `severity` and `priority` | — |
+| `kritik_signals` | `surface?`, `criterion_id?`, `domain?` | the signal run sheet, plus `tripped_since_last_audit` | — |
+| `kritik_issue` | `criterion_id`, `surface`, `level?`, `finding_id?` | the prefilled GitHub issue skeleton | — |
+| `kritik_score` | `criterion_id`, `surface`, `level`, `evidence`, `audit_id?`, `commit?` | the assessment, latest-per-cell | — |
+| `kritik_open_finding` | `criterion_id`, `surface`, `title`, `evidence`, `impact`, `likelihood`, `cost`, `detail?`, `remediation?`, `node_ids?`, `issue_url?`, `verification?`, `audit_id?`, `finding_id?` | the finding + its derived severity/priority | `quality.finding.opened` (none when `verification.verdict` is `REFUTED`) |
+| `kritik_resolve_finding` | `finding_id`, `resolved_by?` | the closed finding | `quality.finding.resolved` (idempotent — a second resolve writes nothing) |
+| `kritik_accept_finding` | `finding_id`, `note` | the finding as an accepted risk | — (acceptance is a state, not something that happened) |
+| `kritik_trip_signal` | `criterion_id`, `surface`, `signal`, `detail?` | ack | `quality.signal.tripped` |
+
+Three properties of this namespace are worth stating out loud, because each is a decision rather
+than a detail:
+
+**The sidecars are the store, the journal is the gate.** Kritik state lives in `docs/quality/`,
+canonical in a repository the way `journal.jsonl` is canonical while a bundle's embedded `journal[]`
+is only the interchange projection. So assessments and findings are written to those files, while the
+`quality.*` events go through `store.persist` — the same validator-gated path every other write tool
+uses. The journal write runs **first**: a refusal then leaves nothing behind, where the other order
+would leave a finding on disk that no event ever announced.
+
+**Repo mode only.** A hosted project has no `docs/quality/` directory, so in hosted mode these tools
+refuse with an explanation rather than half-working. That is not a gap to close later: an audit reads
+the *code*, and an agent auditing a hosted map has no code to read.
+
+**Nothing here authors a criterion or picks a surface.** `arkaik kritik profile` and `arkaik kritik
+criterion add` deliberately have no MCP mirror. Both are one-time design decisions about what this
+product is and how it should be judged — the choices an audit is measured *against*, not moves within
+one — and the loop these tools exist to serve is the audit, not its terms.
+
+Severity, priority, scores, grades and caps never appear in stored data and are recomputed on every
+read; a finding cannot carry a severity its own `impact × likelihood` disagrees with.
+
 ## Write Path (dual-write, validator-gated)
 
 Every mutating tool MUST follow, in order:
@@ -121,10 +162,11 @@ A flow's playlist and its `composes` edges are two views of one relationship: th
 
 `create_node` and `update_node` therefore **synthesize** the required edges: when the mutated node is a flow, they add a `composes` edge (flow → referenced node) for every playlist reference (recursing through `condition`/`junction` branches) that lacks one, fold those edges and their `edge.added` events into the *same* validated write, and return them in the tool result under `edges`. Edges that already exist are never duplicated; a reference to a missing node still fails the gate (nothing is written). This mirrors the app's own playlist editor, which adds the edge and the entry together. A populated flow is thus a single `create_node` call.
 
-## Reuse Seams (two enabling moves)
+## Reuse Seams (three enabling moves)
 
 1. **CLI file-IO becomes importable.** `packages/cli` exposes a subpath export `arkaik/io` (bundle read/write, journal sidecar IO, validation wrapper) built as a second esbuild entry. `packages/mcp` depends on `arkaik` and imports these verbatim — no drift between what the CLI and the MCP server consider "the bundle on disk". Filesystem code stays out of `@arkaik/schema`, which remains browser-safe.
 2. **Dual-write derivation moves to the schema package.** `lib/data/emit-events.ts` is already pure; its core moves to `packages/schema/src/derive.ts` with the actor as a parameter. The app keeps a thin re-export binding `actor: "arkaik-app"`; the MCP server binds `"arkaik-mcp"`; the skill doctrine stays the human-readable statement of the same rules.
+3. **The Kritik seam rides the first one.** `arkaik/io` also exports where the criteria pack lives and where quality events go (`packages/cli/src/lib/kritik-io.ts`), and the operations themselves are `@arkaik/schema` (`quality-ops.ts`, `cli/kritik-audit.ts`, `cli/kritik-overlay.ts`). The `kritik_*` tools, the `arkaik kritik` verbs and the plugin's standalone scripts are therefore three entry points over one implementation — a score written by an agent and a score written by a person are the same write.
 
 ## Distribution
 

@@ -37,10 +37,17 @@ import {
   type ValueId,
 } from "@arkaik/schema";
 import { ToolError, type ToolDefinition, type ToolHandler } from "./protocol";
+import { buildKritikCatalog } from "./kritik-tools";
 import type { LoadedGraph as StoreLoadedGraph, Store, WriteResult } from "./store";
 
 interface ToolContext {
   store: Store;
+  /**
+   * The repo root holding `docs/quality/`, when this session runs against a
+   * checkout. The `kritik_*` tools need it and nothing else does; hosted mode
+   * leaves it unset and they refuse with an explanation.
+   */
+  qualityRoot?: string;
 }
 
 /** The tools' view of a loaded graph — narrowed from the Store's shape. */
@@ -663,6 +670,13 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
     },
     journalOnly("request.filed"),
   );
+
+  // The quality layer's own tools (docs/rfcs/kritik.md § 4.4). Kept in their own
+  // module because they are a self-contained namespace over a different store —
+  // the docs/quality/ sidecars — reached through the same validated journal path.
+  const kritik = buildKritikCatalog(ctx);
+  tools.push(...kritik.tools);
+  Object.assign(handlers, kritik.handlers);
 
   return { tools, handlers };
 }

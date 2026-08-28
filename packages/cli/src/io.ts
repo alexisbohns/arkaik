@@ -24,6 +24,15 @@ export {
   compactSlice,
 } from "./lib/journal-io";
 export {
+  KRITIK_ACTOR,
+  VENDORED_PACK,
+  resolvePack,
+  loadKritikLibrary,
+  resolveJournal,
+  appendQualityEvents,
+  type ResolvedPack,
+} from "./lib/kritik-io";
+export {
   validateBundleAt,
   journalLineErrorLines,
   type BundleValidation,

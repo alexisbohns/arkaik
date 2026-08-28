@@ -24,17 +24,30 @@ export const PROFILE_FILE = "profile.json";
 export const OVERLAY_FILE = "criteria.custom.json";
 export const AUDITS_DIR = "audits";
 
+/** A pack file's name, wherever it is found — vendored or shipped. */
+export const PACK_FILE = "library.json";
+
 /**
- * The pack shipped beside the script. The plugin lays the skill out as
- * `skills/kritik/{SKILL.md,scripts/<name>.js,references/library.json}`, so from
- * a script the pack is one level up and across. A checkout of the arkaik repo
- * running these from source finds it in the workspace instead. Both are tried
- * before giving up, because "which of my two install shapes is this" is not a
+ * Where to look for the criteria pack, in order.
+ *
+ * A project may **vendor** its own copy at `docs/quality/library.json` to pin a
+ * pack version independent of whichever script or CLI happens to be running.
+ * That candidate is tried first, and by every entry point — the plugin scripts,
+ * `arkaik kritik`, and the `kritik_*` MCP tools — because the pack a score was
+ * taken against decides what the score means. Two tools in one repo scoring
+ * against different packs would produce a matrix nobody could compare across.
+ *
+ * Failing that, the pack shipped beside the script. The plugin lays the skill
+ * out as `skills/kritik/{SKILL.md,scripts/<name>.js,references/library.json}`,
+ * so from a script the pack is one level up and across; a checkout of the arkaik
+ * repo running these from source finds it in the workspace instead. All are
+ * tried before giving up, because "which of my install shapes is this" is not a
  * question the user should have to answer.
  */
-export function packCandidates(scriptDir: string): string[] {
+export function packCandidates(scriptDir: string, root?: string): string[] {
   return [
-    join(scriptDir, "..", "references", "library.json"),
+    ...(root !== undefined ? [join(root, QUALITY_DIR, PACK_FILE)] : []),
+    join(scriptDir, "..", "references", PACK_FILE),
     join(scriptDir, "..", "..", "..", "..", "packages", "kritik-library", "framework.json"),
   ];
 }
@@ -50,12 +63,12 @@ export function writeJson(path: string, value: unknown): void {
 }
 
 /** The criteria pack, from the first candidate path that exists. */
-export function loadPack(scriptDir: string): KritikLibrary {
-  for (const candidate of packCandidates(scriptDir)) {
+export function loadPack(scriptDir: string, root?: string): KritikLibrary {
+  for (const candidate of packCandidates(scriptDir, root)) {
     if (existsSync(candidate)) return readJson<KritikLibrary>(candidate);
   }
   throw new Error(
-    `Kritik: no criteria pack found. Looked in:\n  ${packCandidates(scriptDir).map((p) => resolve(p)).join("\n  ")}`,
+    `Kritik: no criteria pack found. Looked in:\n  ${packCandidates(scriptDir, root).map((p) => resolve(p)).join("\n  ")}`,
   );
 }
 
@@ -77,7 +90,7 @@ export function loadOverlay(root: string): KritikOverlay | null {
 
 /** Pack + overlay, the library every script actually scores against. */
 export function loadEffectiveLibrary(scriptDir: string, root: string): KritikLibrary {
-  return mergeKritikLibrary(loadPack(scriptDir), loadOverlay(root));
+  return mergeKritikLibrary(loadPack(scriptDir, root), loadOverlay(root));
 }
 
 /**
