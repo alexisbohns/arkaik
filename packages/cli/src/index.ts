@@ -19,6 +19,7 @@ import { runPushCli } from "./commands/push";
 import { runLinkCli } from "./commands/link";
 import { runRestoreCli } from "./commands/restore";
 import { runBootstrap } from "./commands/bootstrap";
+import { runKritik } from "./commands/kritik";
 
 const USAGE = `arkaik — CLI for Arkaik project bundles
 
@@ -40,6 +41,7 @@ Commands:
                                --list shows the projects your token can reach.
   restore [options] [path]    Replace the linked hosted project's bundle + journal (backs up first).
   bootstrap <sub> [options]   One-time onboarding: mine, plan, slice, merge a map from a repo.
+  kritik <sub> [options]      Quality audits: score criteria, open findings, roll up the matrix.
 
 Options:
   -h, --help        Show this help.
@@ -107,6 +109,9 @@ function main(argv: string[]): void {
       return;
     case "bootstrap":
       runBootstrap(rest);
+      return;
+    case "kritik":
+      runKritik(rest);
       return;
     default:
       console.error(`Unknown command: ${command}\n`);

@@ -20,10 +20,9 @@
  */
 
 import { existsSync } from "node:fs";
-import { CROSS_SURFACE_ID, type QualityProfile, type SurfaceDef } from "../quality";
+import type { QualityProfile, SurfaceDef } from "../quality";
+import { parseSurfaceSpec } from "../quality-ops";
 import { die, profilePath, readJson, writeJson } from "./kritik-paths";
-
-const PLATFORMS = ["web", "ios", "android"] as const;
 
 const USAGE = `init-profile.js — write this project's Kritik profile (its surfaces and domain weights)
 
@@ -48,27 +47,14 @@ Examples:
   node init-profile.js --surface web:Web:web --surface ios:iOS:ios \\
                        --surface supabase:Database contract --weight SEC=2`;
 
-/** `id[:title[:platform]]` — title defaults to the id, platform is optional. */
+/** `id[:title[:platform]]`, validated by the shared parser so the CLI and this
+ * script accept exactly one surface vocabulary. */
 function parseSurface(spec: string): SurfaceDef {
-  const parts = spec.split(":");
-  const id = (parts[0] ?? "").trim();
-  if (id === "") die(`init-profile: --surface needs an id (got "${spec}")\n\n${USAGE}`);
-  if (id === CROSS_SURFACE_ID) {
-    die(
-      `init-profile: "${CROSS_SURFACE_ID}" is reserved — it is the contract lens between surfaces.\n` +
-        `Findings may carry it; it holds no assessments and never becomes a matrix column, so it is not declared here.`,
-    );
+  try {
+    return parseSurfaceSpec(spec);
+  } catch (error) {
+    return die(`init-profile: ${(error as Error).message}`);
   }
-  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(id)) {
-    die(`init-profile: surface id "${id}" is not kebab-case — assessments reference it, so it has to be stable and typo-proof`);
-  }
-  const title = (parts[1] ?? "").trim() || id;
-  const platform = (parts[2] ?? "").trim();
-  if (platform !== "" && !(PLATFORMS as readonly string[]).includes(platform)) {
-    die(`init-profile: "${platform}" is not an Arkaik platform (${PLATFORMS.join(", ")}).\n` +
-        `A surface that ships no views simply has none — leave it off rather than inventing one.`);
-  }
-  return platform === "" ? { id, title } : { id, title, platform: platform as SurfaceDef["platform"] };
 }
 
 function parseWeight(spec: string): [string, number] {

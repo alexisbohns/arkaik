@@ -1,6 +1,6 @@
 ---
 name: kritik
-version: 0.1.0
+version: 0.2.0
 description: >
   Audit this product's quality with the Kritik framework — score each criterion
   on each surface against observable maturity anchors, record findings with
@@ -63,6 +63,22 @@ Nothing here needs `node_modules`. Every script runs with nothing but Node.
 `<skill-path>` below is this skill's own directory — the scripts live beside
 this file, while the audit data lives in the repo you are auditing, so every
 command is run **from the repo root** with a skill-relative path to the script.
+
+### If this repo also has the Arkaik toolchain
+
+The scripts above are the floor: they work in any repo, with nothing installed.
+Two richer paths exist when they are available, and both write **the same files**
+— so mixing them freely is safe, and none of them is a different Kritik.
+
+| Available | Use |
+|---|---|
+| the `arkaik` CLI (`npx arkaik kritik --help`) | the verbs `profile`, `score`, `finding open\|resolve\|accept`, `matrix`, `signals`, `issue`, `criterion add` |
+| `arkaik-mcp` tools in this session | `kritik_score`, `kritik_open_finding`, `kritik_matrix`, `kritik_signals`, `kritik_issue`, … |
+
+Each verb takes its own `--help` (`arkaik kritik score --help`). What they add
+over the scripts is **step 7 for free**: they append the `quality.*` journal
+events themselves when this repo keeps a journal, and say so plainly when it
+does not. Everything below stays true either way.
 
 ## First: does this project have a profile?
 
@@ -273,7 +289,8 @@ starting one just to hold quality events is not your call to make.
 
 **Always set `actor`** — a trend is only filterable by assessor kind if every
 writer says who it was, and an audit nobody can attribute is an audit nobody can
-weigh. The validator warns when a `quality.*` event has none.
+weigh. The validator warns when a `quality.*` event has none. (`--actor <name>` on any
+`arkaik kritik` verb sets it; the MCP tools stamp `arkaik-mcp` themselves.)
 
 ```json
 {"id":"<ULID>","ts":"<ISO>","actor":"claude-code","type":"quality.audit.completed","audit_id":"2026-08","framework_version":"0.1.0","commit":"<sha>","scores":{"web":{"SEC":44}},"counts":{"critical":0,"high":21,"medium":58,"low":12}}

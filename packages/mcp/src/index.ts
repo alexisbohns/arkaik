@@ -5,6 +5,7 @@
  * agent host; `npx -y arkaik-mcp` is the whole setup.
  */
 
+import { dirname, resolve, sep } from "node:path";
 import { startServer } from "./protocol";
 import { buildCatalog } from "./tools";
 import { createFileStore, resolveBundlePath, type Store } from "./store";
@@ -53,27 +54,46 @@ if (argv.includes("--help") || argv.includes("-h")) {
  * Repo bundle or hosted project — the ONLY thing that differs between the two
  * modes. The catalog built below is the same either way.
  */
-function resolveStore(): Store {
+function resolveStore(): { store: Store; qualityRoot?: string } {
   const remote = resolveRemoteConfig(argv, process.env, process.cwd());
   if (remote.mode === "remote") {
-    return createRemoteStore({
-      baseUrl: remote.baseUrl,
-      projectId: remote.projectId,
-      token: remote.token,
-    });
+    return {
+      store: createRemoteStore({
+        baseUrl: remote.baseUrl,
+        projectId: remote.projectId,
+        token: remote.token,
+      }),
+    };
   }
-  return createFileStore(resolveBundlePath(argv, process.env));
+  const bundlePath = resolveBundlePath(argv, process.env);
+  return { store: createFileStore(bundlePath), qualityRoot: qualityRootFor(bundlePath) };
+}
+
+/**
+ * The repo root holding `docs/quality/`, derived from the bundle path so the
+ * audit files and the journal are always halves of the same checkout — never
+ * from `process.cwd()`, which is wherever the agent host happened to spawn us.
+ * `ARKAIK_QUALITY_ROOT` overrides it for the layouts that are neither.
+ */
+function qualityRootFor(bundlePath: string): string {
+  if (process.env.ARKAIK_QUALITY_ROOT) return resolve(process.env.ARKAIK_QUALITY_ROOT);
+  const dir = dirname(bundlePath);
+  const parent = dirname(dir);
+  // The conventional layout is <root>/docs/arkaik/bundle.json.
+  if (dir.endsWith(`${sep}arkaik`) && parent.endsWith(`${sep}docs`)) return dirname(parent);
+  return dir;
 }
 
 let store: Store;
+let qualityRoot: string | undefined;
 try {
-  store = resolveStore();
+  ({ store, qualityRoot } = resolveStore());
 } catch (error) {
   process.stderr.write(`arkaik-mcp: ${(error as Error).message}\n`);
   process.exit(1);
 }
 
-const { tools, handlers } = buildCatalog({ store });
+const { tools, handlers } = buildCatalog({ store, qualityRoot });
 
 // stderr only — stdout belongs to the protocol.
 process.stderr.write(`arkaik-mcp v${VERSION} — ${store.describe()}\n`);

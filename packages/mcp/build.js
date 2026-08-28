@@ -19,7 +19,7 @@
  * the two unable to disagree.
  */
 import { build } from "esbuild";
-import { chmodSync, readFileSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -27,6 +27,12 @@ const dir = dirname(fileURLToPath(import.meta.url));
 const ENTRY = join(dir, "src", "index.ts");
 const OUT_FILE = join(dir, "dist", "index.js");
 const CLI_IO_SRC = join(dir, "..", "cli", "src", "io.ts");
+// The Kritik criteria pack, resolved at runtime relative to this bundle's own
+// location (packages/cli/src/lib/kritik-io.ts) — the same asset the CLI carries,
+// for the same reason: half a megabyte of JSON belongs beside the bundle, not
+// inside it.
+const KRITIK_PACK_SRC = join(dir, "..", "kritik-library", "framework.json");
+const KRITIK_ASSET_DIR = join(dir, "dist", "assets", "kritik");
 const { version: VERSION } = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
 
 async function run() {
@@ -44,6 +50,10 @@ async function run() {
   });
   chmodSync(OUT_FILE, 0o755);
   console.log(`built ${relative(dir, OUT_FILE)}`);
+
+  mkdirSync(KRITIK_ASSET_DIR, { recursive: true });
+  cpSync(KRITIK_PACK_SRC, join(KRITIK_ASSET_DIR, "library.json"));
+  console.log(`copied kritik pack -> ${relative(dir, KRITIK_ASSET_DIR)}`);
 }
 
 run().catch((err) => {

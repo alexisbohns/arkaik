@@ -74,6 +74,8 @@ The agent skill graduates from copy-paste (`docs/arkaik-skill/`) to a managed as
 
 A second skill ships through the same marketplace: **`kritik`** (`plugin-kritik/`), the quality layer's audit + scoring skill ([RFC: Kritik](../rfcs/kritik.md) § 5). It follows every rule above — canonical source at `docs/kritik-skill/`, generated assets, `version` stamped into the manifest, CI drift gate over the whole directory — with two differences. It ships **unrendered with no template parameters at all**: everything project-specific lives in the `docs/quality/` sidecars its own scripts write, not in substituted prose. And it carries three zero-dependency scripts built from `packages/schema/src/cli/kritik-*.ts` (`compute-matrix.js`, `scaffold-criterion.js`, `init-profile.js`), for the same reason the standalone validator exists: the gate has to run in a repo with no `node_modules`.
 
+Those scripts are the *third* entry point to the same code, not a fourth implementation. `arkaik kritik <verb>` and the `kritik_*` MCP tools ([mcp.md](mcp.md) § Quality tools) call the same functions — `quality-ops.ts` for the operations, `cli/kritik-audit.ts` for the audit files, `cli/kritik-overlay.ts` for the overlay — so a score written by a person at a terminal, by an agent through MCP, and by a plugin script in a repo with no toolchain are the same write. The CLI and the MCP server each carry the criteria pack as a build asset beside their bundle (`dist/assets/kritik/library.json`), the way `arkaik init` carries the skill; a project that wants a pack version independent of whichever CLI it is running vendors one at `docs/quality/library.json`, which is checked first.
+
 ## Releasing
 
 **Both packages are published by hand. Nothing in CI publishes** — there is no
