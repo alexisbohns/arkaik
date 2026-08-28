@@ -53,6 +53,12 @@ export const PUBLISHED_DOC_AREAS: readonly string[] = [
  *
  * - `superpowers` — plans, specs and agent knowledge: how the work gets done.
  * - `audit` — internal quality findings, by issue number.
+ * - `quality` — where Kritik writes: the surface profile, the criteria overlay,
+ *   and each audit's scores and findings. Internal for a sharper reason than
+ *   the rest of this list (docs/rfcs/kritik.md § 8.3): those files enumerate
+ *   open, unfixed security and privacy defects with the file paths to reach
+ *   them. Serving that is not publishing a quality report, it is publishing a
+ *   roadmap. The same decision the Publik snapshot route enforces server-side.
  * - `rfcs` — proposals, including ones that were never taken up.
  * - `arkaik-skill`, `arkaik-bootstrap-skill` — packaged skill sources, not pages;
  *   they ship as a plugin and one of them carries a script rather than prose.
@@ -61,6 +67,7 @@ export const INTERNAL_DOC_AREAS: readonly string[] = [
   "arkaik-bootstrap-skill",
   "arkaik-skill",
   "audit",
+  "quality",
   "rfcs",
   "superpowers",
 ];

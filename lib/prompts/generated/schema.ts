@@ -311,7 +311,11 @@ type KnownJournalEvent =
   | RefAddedEvent
   | RefRemovedEvent
   | RefStatusChangedEvent
-  | JournalBaselineEvent;
+  | JournalBaselineEvent
+  | QualityAuditCompletedEvent
+  | QualityFindingOpenedEvent
+  | QualityFindingResolvedEvent
+  | QualitySignalTrippedEvent;
 
 interface ProjectBundle {
   /** Bundle Format contract version (docs/spec/bundle-format.md § Schema Versioning). Absent MUST be treated as 1. */
@@ -321,5 +325,7 @@ interface ProjectBundle {
   edges: Edge[];
   /** Optional embedded journal — the interchange projection (Level 2). Canonical storage is the JSONL sidecar; see docs/spec/journal.md. */
   journal?: JournalEvent[];
+  /** Optional Kritik quality state — profile, assessments, findings (docs/rfcs/kritik.md § 4.1). Additive; the matrix is derived, never stored. */
+  quality?: QualitySection;
 }
 \`\`\``;
