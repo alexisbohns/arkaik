@@ -172,7 +172,7 @@ export function servicesUnavailable(): Response {
 }
 
 // ---------------------------------------------------------------------------
-// Journal strip
+// Default withholds (journal, quality)
 // ---------------------------------------------------------------------------
 
 /**
@@ -183,6 +183,20 @@ export function servicesUnavailable(): Response {
 export function stripJournal(bundle: Record<string, unknown>): Record<string, unknown> {
   const { journal: _journal, ...rest } = bundle;
   void _journal;
+  return rest;
+}
+
+/**
+ * Remove the `quality` section from a bundle, returning a shallow copy with
+ * every other key preserved verbatim. Same server-side enforcement as the
+ * journal strip above, and for a sharper reason (docs/rfcs/kritik.md § 8.3): a
+ * Kritik section lists open, unfixed security and privacy findings with their
+ * evidence and file paths. Published, that is not a quality report — it is a
+ * roadmap for whoever reads it first. Opt-in only, and never client-decided.
+ */
+export function stripQuality(bundle: Record<string, unknown>): Record<string, unknown> {
+  const { quality: _quality, ...rest } = bundle;
+  void _quality;
   return rest;
 }
 

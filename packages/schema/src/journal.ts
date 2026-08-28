@@ -40,6 +40,10 @@ export const JOURNAL_EVENT_TYPES = [
   "ref.removed",
   "ref.status_changed",
   "journal.baseline",
+  "quality.audit.completed",
+  "quality.finding.opened",
+  "quality.finding.resolved",
+  "quality.signal.tripped",
 ] as const;
 
 /** A `type` value in the known v1 vocabulary. */
@@ -212,6 +216,56 @@ export interface JournalBaselineEvent extends JournalEvent {
   node_ids: string[];
 }
 
+/**
+ * Kritik events (docs/rfcs/kritik.md § 3.2). Facts, never state: current
+ * quality is a projection — the latest `quality.audit.completed` plus opened
+ * minus resolved findings — exactly as delivery is a projection of
+ * `deliverable.shipped`. Payloads stay small on purpose: full evidence lives in
+ * the audit files and the bundle's `quality` section, the event carries
+ * identity and severity so a feed can summarize it without reading either.
+ */
+
+/** One audit run landed: the whole matrix, compressed to its scores and counts. */
+export interface QualityAuditCompletedEvent extends JournalEvent {
+  type: "quality.audit.completed";
+  audit_id: string;
+  framework_version: string;
+  commit?: string;
+  /** `scores[surface][domain]` as a 0–100 domain score. */
+  scores?: Record<string, Record<string, number>>;
+  counts?: { critical?: number; high?: number; medium?: number; low?: number; info?: number };
+}
+
+/** A finding retained after the adversarial verification pass. */
+export interface QualityFindingOpenedEvent extends JournalEvent {
+  type: "quality.finding.opened";
+  finding_id: string;
+  criterion_id: string;
+  surface: string;
+  severity: string;
+  priority: string;
+  title: string;
+  node_ids?: string[];
+  issue_url?: string;
+}
+
+/** The fix merged. `resolved_by` is the PR or commit URL that closed it. */
+export interface QualityFindingResolvedEvent extends JournalEvent {
+  type: "quality.finding.resolved";
+  finding_id: string;
+  resolved_by?: string;
+  node_ids?: string[];
+}
+
+/** A criterion's mechanical monitoring check failed between two audits. */
+export interface QualitySignalTrippedEvent extends JournalEvent {
+  type: "quality.signal.tripped";
+  criterion_id: string;
+  surface: string;
+  signal: string;
+  detail?: string;
+}
+
 /** The discriminated union of every known v1 event. */
 export type KnownJournalEvent =
   | NodeCreatedEvent
@@ -228,7 +282,11 @@ export type KnownJournalEvent =
   | RefAddedEvent
   | RefRemovedEvent
   | RefStatusChangedEvent
-  | JournalBaselineEvent;
+  | JournalBaselineEvent
+  | QualityAuditCompletedEvent
+  | QualityFindingOpenedEvent
+  | QualityFindingResolvedEvent
+  | QualitySignalTrippedEvent;
 
 /**
  * Order events by `ts`, tiebreaking by `id` (both ULID and ISO 8601 sort

@@ -204,14 +204,18 @@ This keeps the pack canonical and upgradeable while making every project's Kriti
 | --- | --- | --- |
 | 1 (done) | pbbls | Library + first audit + templates under `docs/quality/`; the framework proven on a real product ([pbbls#738](https://github.com/alexisbohns/pbbls/pull/738)) |
 | 2 (this PR) | arkaik | This RFC + the reference pack + the pilot evidence land as base material; the handoff issue scopes the build |
-| 3 | arkaik | `quality.ts` + `deriveQualityMatrix` projections in `@arkaik/schema` (additive); `quality.*` journal events in the vocabulary |
+| 3 (done) | arkaik | `quality.ts` + `deriveQualityMatrix` projections in `@arkaik/schema` (additive); `quality.*` journal events in the vocabulary. Landed with a golden test replaying the pilot audit's 338 assessments and 246 findings into its committed matrix |
 | 4 | arkaik | The `kritik` marketplace plugin: skill + seed pack + scaffold script; surface-selection install; custom-criteria overlay |
 | 5 | arkaik | Quality page + findings board reading the section; webhook grows `quality.finding.resolved`; the signal-pack runner |
 | 6 | pbbls | Switch from sidecar-only to the first-class section; delete nothing (the journal already carries the history) |
 
-## 8. Open questions
+## 8. Decisions and open questions
 
-1. **Library governance**: one canonical pack evolving by PR, or per-org forks? Recommendation: canonical pack plus the project-local overlay of §6, mirroring how `products` stay project-local.
-2. **Score authority**: should MCP-written scores require an `actor` distinguishing human / agent / CI, so trends can be filtered by assessor kind? Recommendation: yes; the envelope's `actor` field already exists.
-3. **Publik exposure**: are quality matrices part of a public snapshot? Recommendation: excluded by default (a security matrix is a roadmap for attackers); needs an explicit opt-in flag.
-4. **Cross-project rollup**: Ariko-level aggregation (a portfolio quality pulse over the pollen feed) is attractive but out of scope for v1; `quality.audit.completed` is deliberately shaped to be feed-summarizable later.
+Three of the four were carried into the schema PR and settled there; the fourth stays open by design.
+
+1. **Library governance — decided: one canonical pack plus a project-local overlay.** The pack evolves by PR and criteria are append-and-supersede; a project never edits it, it extends it (§6). `KritikCriterion` carries `superseded_by`, and every library object is catchall, so a pack bump adds criteria without touching a project's own. `validateBundle` warns when an assessment scores a retired criterion, which is the signal to migrate rather than a reason to fail. The overlay file itself lands with the plugin (phase B); the schema was shaped to accept it now.
+2. **Score authority — decided: yes, but as a warning, not a gate.** Trends are only filterable by assessor kind if every writer says who it was, so `quality.*` events SHOULD carry `actor`. It is *not* required in the shape: history is never rewritten, so events written before this decision must still parse. Enforcement is `validateBundle`'s `quality-event-no-actor` warning — the same place Arkaik enforces everything that must not brick an import.
+3. **Publik exposure — decided: withheld by default, opt-in per section.** A quality section lists open, unfixed findings with their evidence and file paths; published, it is a roadmap for whoever reads it first. `POST /api/publik` now strips it server-side exactly as it strips the journal (`stripQuality`), with `?include_quality=true` to opt in. The two opt-ins are independent: publishing your history and publishing your open security findings are not the same decision.
+4. **Cross-project rollup — still open, deliberately.** Ariko-level aggregation (a portfolio quality pulse over the pollen feed) is attractive but out of scope for v1; `quality.audit.completed` is shaped to be feed-summarizable later, which is all v1 owes it.
+
+One thing the pilot taught the port, worth recording: the framework's **cross-surface lens** (SPEC §6.4) needed a home in the model. Four of the pilot's findings sit on the contract *between* clients rather than on any one of them, and a profile never declares such a surface. `cross-surface` is therefore a reserved surface id: findings may carry it, it never becomes a matrix column, and its findings still count in the global tallies. An *assessment* on it warns, because it would render nowhere.

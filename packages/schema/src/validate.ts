@@ -16,6 +16,7 @@ import type { PlaylistEntry } from "./playlist";
 import { crossCheckJournal } from "./journal";
 import { isBuiltInMapId, MAP_FLOW_PLATFORMS_MODES, MAP_MINIMAP_COLOR_MODES, MAP_VIEW_PLATFORMS_MODES } from "./maps";
 import { PRODUCT_MEMBERSHIP_SPECIES, resolveProducts } from "./products";
+import { CROSS_SURFACE_ID } from "./quality";
 
 /**
  * Semantic validation for Arkaik ProjectBundles.
@@ -928,6 +929,187 @@ export function validateBundle(input: unknown): ValidationResult {
   };
   for (const id of flowGraph.keys()) {
     dfs(id);
+  }
+
+  // --- Kritik quality section (docs/rfcs/kritik.md § 4.5) ---
+  // Warning severity only, like stored maps and products above, and for the
+  // same reason: a quality section is authored by an audit run and edited by
+  // hand between them. A retired criterion, a surface dropped from the profile,
+  // a pack pinned as a sidecar rather than embedded — all of them are ordinary
+  // states of a living audit, and none may fail an import or a CI gate. Every
+  // projection already degrades safely: an unresolvable criterion lands in no
+  // cell, an unknown surface renders no column.
+  const quality = (bundle as { quality?: unknown }).quality;
+  if (typeof quality === "object" && quality !== null && !Array.isArray(quality)) {
+    const section = quality as Record<string, unknown>;
+    const assessments = Array.isArray(section.assessments) ? section.assessments : [];
+    const qualityFindings = Array.isArray(section.findings) ? section.findings : [];
+
+    const profile = typeof section.profile === "object" && section.profile !== null ? (section.profile as Record<string, unknown>) : undefined;
+    const declaredSurfaces = new Set<string>();
+    if (Array.isArray(profile?.surfaces)) {
+      (profile.surfaces as unknown[]).forEach((entry, index) => {
+        if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return;
+        const surface = entry as Record<string, unknown>;
+        const surfaceId = typeof surface.id === "string" ? surface.id : undefined;
+        if (surfaceId === undefined || surfaceId.trim() === "") return;
+        if (declaredSurfaces.has(surfaceId)) {
+          warn(`quality.profile.surfaces[${index}].id`, "quality-duplicate-surface", `Duplicate surface id "${surfaceId}" — the first wins`);
+        }
+        declaredSurfaces.add(surfaceId);
+      });
+    }
+    if (declaredSurfaces.size === 0 && (assessments.length > 0 || qualityFindings.length > 0)) {
+      warn(
+        "quality.profile.surfaces",
+        "quality-no-surfaces",
+        "Quality data is stored but the profile declares no surfaces — the matrix falls back to the surfaces the assessments name",
+      );
+    }
+
+    // The pinned pack: embedded, or a sidecar the bundle cannot see. Without it
+    // no criterion id resolves to a domain or a weight, so the whole matrix
+    // collapses to the synthesized fallback — worth saying once, not per row.
+    const library = typeof section.library === "object" && section.library !== null ? (section.library as Record<string, unknown>) : undefined;
+    const knownCriteria = new Set<string>();
+    const retiredCriteria = new Map<string, string>();
+    if (Array.isArray(library?.criteria)) {
+      for (const entry of library.criteria as unknown[]) {
+        if (typeof entry !== "object" || entry === null) continue;
+        const criterion = entry as Record<string, unknown>;
+        if (typeof criterion.id !== "string") continue;
+        knownCriteria.add(criterion.id);
+        if (typeof criterion.superseded_by === "string" && criterion.superseded_by !== "") {
+          retiredCriteria.set(criterion.id, criterion.superseded_by);
+        }
+      }
+    } else if (assessments.length > 0 || qualityFindings.length > 0) {
+      warn(
+        "quality.library",
+        "quality-library-missing",
+        "No criteria pack is embedded — criterion ids cannot be resolved to domains or weights; the matrix uses a synthesized library",
+      );
+    }
+
+    if (typeof section.framework_version !== "string" || section.framework_version === "") {
+      warn("quality.framework_version", "quality-framework-version-missing", "Quality section has no framework_version — scores are not comparable across audits without one");
+    }
+
+    /** Both rows carry `criterion_id` + `surface`; check them once, blame the right path. */
+    const checkRowRefs = (row: Record<string, unknown>, path: string, label: string) => {
+      const criterionId = typeof row.criterion_id === "string" ? row.criterion_id : undefined;
+      if (criterionId !== undefined && knownCriteria.size > 0 && !knownCriteria.has(criterionId)) {
+        warn(`${path}.criterion_id`, "quality-unknown-criterion", `${label}: criterion "${criterionId}" is not in the pinned library`);
+      }
+      const supersededBy = criterionId !== undefined ? retiredCriteria.get(criterionId) : undefined;
+      if (supersededBy !== undefined) {
+        warn(`${path}.criterion_id`, "quality-retired-criterion", `${label}: criterion "${criterionId}" is retired — superseded by "${supersededBy}"`);
+      }
+      const surface = typeof row.surface === "string" ? row.surface : undefined;
+      // `cross-surface` is the reserved contract lens (SPEC § 6.4): a finding
+      // that belongs to the seam between two clients rather than to either of
+      // them. A project never declares it, so it must not read as undeclared.
+      if (surface !== undefined && surface !== CROSS_SURFACE_ID && declaredSurfaces.size > 0 && !declaredSurfaces.has(surface)) {
+        warn(`${path}.surface`, "quality-unknown-surface", `${label}: surface "${surface}" is not declared in the profile`);
+      }
+    };
+
+    // Latest per (criterion × surface) is the section's stated invariant — the
+    // history lives in the journal, so a second row for one cell is not extra
+    // history, it is an ambiguous score.
+    const seenCells = new Set<string>();
+    assessments.forEach((entry, index) => {
+      if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return;
+      const assessment = entry as Record<string, unknown>;
+      const path = `quality.assessments[${index}]`;
+      const label = `Assessment ${index}`;
+      checkRowRefs(assessment, path, label);
+
+      const level = assessment.level;
+      if (typeof level !== "number" || !Number.isInteger(level) || level < 0 || level > 4) {
+        warn(`${path}.level`, "quality-level-range", `${label}: level must be an integer 0-4 (N/A is the absence of the row, not a level)`);
+      }
+      if (assessment.surface === CROSS_SURFACE_ID) {
+        warn(`${path}.surface`, "quality-cross-surface-assessment", `${label}: "${CROSS_SURFACE_ID}" is a findings-only lens — it carries no matrix column, so this score would render nowhere`);
+      }
+      if (typeof assessment.evidence !== "string" || assessment.evidence.trim() === "") {
+        warn(`${path}.evidence`, "quality-assessment-no-evidence", `${label}: scored with no evidence — a score without a citation is an opinion, not an assessment`);
+      }
+
+      const criterionId = typeof assessment.criterion_id === "string" ? assessment.criterion_id : undefined;
+      const surface = typeof assessment.surface === "string" ? assessment.surface : undefined;
+      if (criterionId !== undefined && surface !== undefined) {
+        const cell = `${criterionId}\u0000${surface}`;
+        if (seenCells.has(cell)) {
+          warn(`${path}`, "quality-duplicate-assessment", `${label}: a second score for (${criterionId} x ${surface}) — the section stores latest-per-cell, so this cell is ambiguous`);
+        }
+        seenCells.add(cell);
+      }
+    });
+
+    const seenFindingIds = new Set<string>();
+    qualityFindings.forEach((entry, index) => {
+      if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return;
+      const finding = entry as Record<string, unknown>;
+      const path = `quality.findings[${index}]`;
+      const label = `Finding ${index}`;
+      checkRowRefs(finding, path, label);
+
+      const findingId = typeof finding.id === "string" ? finding.id : undefined;
+      if (findingId !== undefined) {
+        if (seenFindingIds.has(findingId)) {
+          warn(`${path}.id`, "quality-duplicate-finding-id", `Duplicate finding id "${findingId}"`);
+        }
+        seenFindingIds.add(findingId);
+      }
+
+      for (const field of ["impact", "likelihood"] as const) {
+        const value = finding[field];
+        if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > 5) {
+          warn(`${path}.${field}`, "quality-risk-range", `${label}: ${field} must be an integer 1-5 — severity is derived from impact x likelihood`);
+        }
+      }
+      // Storing a derived value is how a matrix starts disagreeing with itself.
+      for (const derived of ["severity", "priority"] as const) {
+        if (derived in finding) {
+          warn(`${path}.${derived}`, "quality-derived-field-stored", `${label}: ${derived} is derived from impact, likelihood and cost — storing it lets it drift from the numbers behind it`);
+        }
+      }
+      if (finding.status === "accepted-risk" && (typeof finding.detail !== "string" || finding.detail.trim() === "")) {
+        warn(`${path}.detail`, "quality-accepted-risk-no-note", `${label}: accepted-risk with no note — an accepted risk is a decision and reads like one`);
+      }
+    });
+
+    // A `finding.resolved` for something never opened means the journal and the
+    // section disagree about what was ever wrong.
+    const openedInJournal = new Set<string>();
+    const journalEvents = Array.isArray((bundle as { journal?: unknown }).journal) ? ((bundle as { journal?: unknown[] }).journal as unknown[]) : [];
+    journalEvents.forEach((entry) => {
+      if (typeof entry !== "object" || entry === null) return;
+      const event = entry as Record<string, unknown>;
+      if (event.type === "quality.finding.opened" && typeof event.finding_id === "string") openedInJournal.add(event.finding_id);
+    });
+    journalEvents.forEach((entry, index) => {
+      if (typeof entry !== "object" || entry === null) return;
+      const event = entry as Record<string, unknown>;
+      const type = typeof event.type === "string" ? event.type : "";
+      if (!type.startsWith("quality.")) return;
+      // Score authority (RFC § 8.2): a trend is only filterable by assessor kind
+      // if every writer says who it was. A warning, never a gate — history is
+      // never rewritten, so pre-decision events must still parse.
+      if (typeof event.actor !== "string" || event.actor.trim() === "") {
+        warn(`journal[${index}].actor`, "quality-event-no-actor", `Journal event ${index}: ${type} has no actor — human, agent and CI scores become indistinguishable`);
+      }
+      if (type === "quality.finding.resolved" && typeof event.finding_id === "string") {
+        if (!openedInJournal.has(event.finding_id) && !seenFindingIds.has(event.finding_id)) {
+          warn(
+            `journal[${index}].finding_id`,
+            "quality-resolved-never-opened",
+            `Journal event ${index}: resolves finding "${event.finding_id}", which no quality.finding.opened event or stored finding ever declared`,
+          );
+        }
+      }
+    });
   }
 
   // --- Snapshot ↔ journal cross-checks (Format Level 2, docs/spec/journal.md) ---

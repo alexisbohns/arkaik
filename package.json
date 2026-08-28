@@ -21,6 +21,7 @@
     "test:refs": "node tests/schema/refs.test.js",
     "test:legacy-status": "node tests/schema/legacy-status.test.js",
     "test:journal": "node tests/schema/journal.test.js",
+    "test:quality": "node tests/schema/quality.test.js",
     "test:maps": "node tests/schema/maps.test.js",
     "test:products": "node tests/schema/products.test.js",
     "test:edge-semantics": "node tests/schema/edge-semantics.test.js",
@@ -71,6 +72,7 @@
     "test:pr-plan": "node tests/services/pr-plan.test.js",
     "test:publik": "node tests/services/publik-api.test.js",
     "test:publik-ip": "node tests/services/publik-ip.test.js",
+    "test:publik-strip": "node tests/services/publik-strip.test.js",
     "test:synk": "node tests/services/synk-api.test.js",
     "test:sync": "node tests/sync/sync-manager.test.js",
     "test:github-app": "node tests/services/github-app.test.js"

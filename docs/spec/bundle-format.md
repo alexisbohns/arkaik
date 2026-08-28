@@ -120,6 +120,34 @@ The invariant that holds either way, and that the test suite asserts across ever
 
 Absent membership is a **triage state**, not "applies everywhere" — an unassigned flow, view, or anchorless acceptance appears under "All products" only, so the warnings above read as an inbox rather than as noise duplicated into every scope. Shape faults (`products` not an array, a definition missing `title`) stay where they belong, in the parser and the JSON Schema.
 
+## Quality (Kritik)
+
+A project MAY carry a `quality` section: the Kritik quality layer's own state (docs/rfcs/kritik.md § 4.1). It is a top-level bundle section rather than a seventh species — 88 criteria times a handful of surfaces would drown a product graph, and criteria are library content, not product anatomy.
+
+```ts
+interface ProjectBundle {
+  // ... unchanged
+  quality?: QualitySection;   // additive; schema_version stays 3
+}
+
+interface QualitySection extends Record<string, unknown> {
+  framework_version: string;      // the pinned criteria pack
+  library?: KritikLibrary;        // embedded on export; repos may pin it as a sidecar instead
+  profile: { surfaces: SurfaceDef[]; domain_weights?: Record<string, number> };
+  assessments: QualityAssessment[];   // latest per (criterion x surface)
+  findings: QualityFinding[];
+}
+```
+
+**Surfaces are not platforms.** `PLATFORM_IDS` names where a *view* ships; a Kritik **surface** is any independently assessable body of code — a database contract and an admin back-office are audit targets, not user platforms. The surface list is per-project, chosen at install, and a surface MAY carry an optional `platform` mapping where the two coincide. The reserved id `cross-surface` is the contract lens between surfaces: it holds findings only, never assessments, and never becomes a matrix column.
+
+**Derived values are never stored.** Severity, priority, domain scores, grades, and the anti-averaging caps are projections in `@arkaik/schema` (`deriveQualityMatrix`), exactly as delivery and backlog are journal projections. A finding stores `impact`, `likelihood`, and `cost`; storing a `severity` beside them is a warning, because it lets the label drift from the numbers behind it.
+
+**Validation is warnings only** (never import-blocking, per the leniency doctrine): an unknown or retired `criterion_id`, a surface absent from the profile, a duplicate score for one cell, an assessment with no evidence, a risk value outside 1-5, a `quality.*` event with no `actor`, a `quality.finding.resolved` for a finding nothing ever opened.
+
+**Publik withholds it by default.** A quality section lists open, unfixed findings with the file paths to reach them, so `POST /api/publik` strips it exactly as it strips the journal, and for a sharper reason. `?include_quality=true` opts in; opting into the journal never implies it.
+
+
 ## References
 
 v2 adds typed external references to nodes, under `metadata.refs` (placed in `NodeMetadata` alongside `platformStatuses` and friends):

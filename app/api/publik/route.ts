@@ -8,13 +8,14 @@ import {
   servicesUnavailable,
   storeSnapshot,
   stripJournal,
+  stripQuality,
   validateInboundBundle,
 } from "@/lib/services/publik";
 
 /**
  * POST /api/publik — create an anonymous snapshot (docs/spec/services.md §
- * Publik → Protocol). Validates through @arkaik/schema, strips the journal by
- * default, rate-limits per IP in Postgres, and returns `201 { id, url, owner_key }`
+ * Publik → Protocol). Validates through @arkaik/schema, strips the journal and
+ * the quality section by default, rate-limits per IP in Postgres, and returns `201 { id, url, owner_key }`
  * with the owner key delivered exactly once.
  *
  * Node runtime: the `pg` driver needs Node APIs, not the edge runtime.
@@ -70,12 +71,18 @@ export async function POST(req: Request): Promise<Response> {
       );
     }
 
-    // 5. Journal strip, enforced server-side (§ "Journal stripped by default").
-    //    Operates on the vocabulary-migrated bundle the gate returned — that is
-    //    what gets stored, so a legacy-vocabulary snapshot is never persisted.
-    const includeJournal = new URL(req.url).searchParams.get("include_journal") === "true";
+    // 5. Journal + quality strips, enforced server-side (§ "Journal stripped by
+    //    default"; docs/rfcs/kritik.md § 8.3 for quality). Both operate on the
+    //    vocabulary-migrated bundle the gate returned — that is what gets
+    //    stored, so a legacy-vocabulary snapshot is never persisted. Each opts
+    //    in separately: publishing your history and publishing your open
+    //    security findings are not the same decision.
+    const params = new URL(req.url).searchParams;
+    const includeJournal = params.get("include_journal") === "true";
+    const includeQuality = params.get("include_quality") === "true";
     const bundle = validation.bundle;
-    const toStore = includeJournal ? bundle : stripJournal(bundle);
+    const withJournal = includeJournal ? bundle : stripJournal(bundle);
+    const toStore = includeQuality ? withJournal : stripQuality(withJournal);
 
     // 6. Store (immutable) and return id + one-time owner key.
     const { id, ownerKey } = await storeSnapshot(toStore);

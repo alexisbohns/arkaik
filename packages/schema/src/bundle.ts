@@ -19,6 +19,8 @@ import { JournalEventSchema } from "./journal-events";
 import type { JournalEvent } from "./journal";
 import type { MapDefinition, MapDisplayOptions } from "./maps";
 import type { ProductDefinition } from "./products";
+import type { QualitySection } from "./quality";
+import { QualitySectionSchema } from "./quality-schemas";
 
 export type PlatformStatusMap = Partial<Record<PlatformId, StatusId>>;
 export const PlatformStatusMapSchema: z.ZodType<PlatformStatusMap> = z.partialRecord(
@@ -371,6 +373,8 @@ export interface ProjectBundle {
   edges: Edge[];
   /** Optional embedded journal — the interchange projection (Level 2). Canonical storage is the JSONL sidecar; see docs/spec/journal.md. */
   journal?: JournalEvent[];
+  /** Optional Kritik quality state — profile, assessments, findings (docs/rfcs/kritik.md § 4.1). Additive; the matrix is derived, never stored. */
+  quality?: QualitySection;
 }
 
 export const ProjectBundleSchema: z.ZodType<ProjectBundle> = z.object({
@@ -384,6 +388,10 @@ export const ProjectBundleSchema: z.ZodType<ProjectBundle> = z.object({
   journal: z.array(JournalEventSchema).optional().meta({
     description:
       "Optional embedded journal events — the Level 2 interchange projection (docs/spec/journal.md). Canonical storage in repos is the JSONL sidecar; a bundle without a journal is Level 0/1, not an error.",
+  }),
+  quality: QualitySectionSchema.optional().meta({
+    description:
+      "Optional Kritik quality state (docs/rfcs/kritik.md \u00a7 4.1) \u2014 the pinned pack version, the project's surface profile, its assessments and findings. Additive: a bundle without it is not an error, and the comparative matrix is derived from it (deriveQualityMatrix), never stored.",
   }),
 }).catchall(z.unknown()).meta({
   id: "ProjectBundle",

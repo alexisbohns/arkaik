@@ -41,6 +41,10 @@
       "items": {
         "$ref": "#/$defs/JournalEvent"
       }
+    },
+    "quality": {
+      "description": "Optional Kritik quality state (docs/rfcs/kritik.md § 4.1) — the pinned pack version, the project's surface profile, its assessments and findings. Additive: a bundle without it is not an error, and the comparative matrix is derived from it (deriveQualityMatrix), never stored.",
+      "$ref": "#/$defs/QualitySection"
     }
   },
   "$defs": {
@@ -756,6 +760,493 @@
       ],
       "additionalProperties": true,
       "description": "One append-only journal event. Type-specific payload fields sit flat on the object; unknown types and fields are preserved on rewrite (forward compatibility). See docs/spec/journal.md."
+    },
+    "QualitySection": {
+      "type": "object",
+      "properties": {
+        "framework_version": {
+          "type": "string"
+        },
+        "library": {
+          "$ref": "#/$defs/KritikLibrary"
+        },
+        "profile": {
+          "$ref": "#/$defs/QualityProfile"
+        },
+        "assessments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/QualityAssessment"
+          }
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/QualityFinding"
+          }
+        }
+      },
+      "required": [
+        "framework_version",
+        "profile",
+        "assessments",
+        "findings"
+      ],
+      "additionalProperties": {},
+      "description": "The project's Kritik state (docs/rfcs/kritik.md § 4.1) — profile, assessments, findings. Criteria are library content, not graph nodes; the matrix is a projection, never stored."
+    },
+    "KritikLibrary": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string",
+          "description": "Semver of the pack; matrices are comparable only within a major."
+        },
+        "domains": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/KritikDomain"
+          }
+        },
+        "criteria": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/KritikCriterion"
+          }
+        },
+        "scales": {
+          "$ref": "#/$defs/KritikScales"
+        }
+      },
+      "required": [
+        "version",
+        "domains",
+        "criteria"
+      ],
+      "additionalProperties": {},
+      "description": "A versioned criteria pack. Embedded on export; repos may instead pin it as a sidecar file."
+    },
+    "KritikDomain": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "name"
+      ],
+      "additionalProperties": {},
+      "description": "A top-level criteria category owning a roll-up row in the matrix."
+    },
+    "KritikCriterion": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable identifier, `<DOMAIN>-NN`. Never redefined — retired via superseded_by."
+        },
+        "domain": {
+          "type": "string"
+        },
+        "subcategory": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "question": {
+          "type": "string"
+        },
+        "definition": {
+          "type": "string"
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "applies_to": {
+          "description": "Surface ids where the criterion is meaningful; absence means N/A.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "level_anchors": {
+          "description": "Observable descriptions per maturity level, keyed l0…l4.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "default_impact": {
+          "type": "number"
+        },
+        "weight": {
+          "description": "Weight in the domain roll-up (1–3; 3 = load-bearing). Absent means 1.",
+          "type": "number"
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/KritikReference"
+          }
+        },
+        "checklist": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "signals": {
+          "description": "Mechanically checkable monitoring hooks run between audits.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "remediation": {
+          "type": "string"
+        },
+        "issue": {
+          "$ref": "#/$defs/KritikIssueTemplate"
+        },
+        "superseded_by": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "domain"
+      ],
+      "additionalProperties": {},
+      "description": "The atomic auditable unit (packages/kritik-library/SPEC.md § 5)."
+    },
+    "KritikReference": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "anchor": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "additionalProperties": {},
+      "description": "A stable external anchor behind a criterion (OWASP control, GDPR article, WCAG SC…)."
+    },
+    "KritikIssueTemplate": {
+      "type": "object",
+      "properties": {
+        "title_template": {
+          "type": "string"
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "body_skeleton": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {},
+      "description": "Per-criterion issue skeleton — what `arkaik kritik issue` prefills."
+    },
+    "KritikScales": {
+      "type": "object",
+      "properties": {
+        "grades": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E"
+            ]
+          },
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "severity_buckets": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low",
+              "info"
+            ]
+          },
+          "additionalProperties": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          }
+        },
+        "caps": {
+          "type": "object",
+          "properties": {
+            "critical_open": {
+              "type": "string",
+              "enum": [
+                "A",
+                "B",
+                "C",
+                "D",
+                "E"
+              ]
+            },
+            "high_open": {
+              "type": "string",
+              "enum": [
+                "A",
+                "B",
+                "C",
+                "D",
+                "E"
+              ]
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      "additionalProperties": {},
+      "description": "Overridable maturity/severity/grade scales carried by a criteria pack. Absent entries fall back to the framework defaults (packages/kritik-library/SPEC.md § 4)."
+    },
+    "QualityProfile": {
+      "type": "object",
+      "properties": {
+        "surfaces": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SurfaceDef"
+          }
+        },
+        "domain_weights": {
+          "description": "Per-domain weight in the surface roll-up, keyed by domain code. A missing weight is 1.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "number"
+          }
+        }
+      },
+      "required": [
+        "surfaces"
+      ],
+      "additionalProperties": {},
+      "description": "The project's parameterization of the pack (RFC § 6)."
+    },
+    "SurfaceDef": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "platform": {
+          "description": "Optional bridge to PLATFORM_IDS where a surface is also a view-shipping platform. Surfaces are not platforms (RFC § 2).",
+          "$ref": "#/$defs/Platform"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title"
+      ],
+      "additionalProperties": {},
+      "description": "One independently assessable body of code — an audit target, chosen at install."
+    },
+    "QualityAssessment": {
+      "type": "object",
+      "properties": {
+        "criterion_id": {
+          "type": "string"
+        },
+        "surface": {
+          "type": "string"
+        },
+        "level": {
+          "anyOf": [
+            {
+              "type": "number",
+              "const": 0
+            },
+            {
+              "type": "number",
+              "const": 1
+            },
+            {
+              "type": "number",
+              "const": 2
+            },
+            {
+              "type": "number",
+              "const": 3
+            },
+            {
+              "type": "number",
+              "const": 4
+            }
+          ],
+          "description": "Maturity 0–4. N/A is the absence of the row, never a level."
+        },
+        "evidence": {
+          "type": "string",
+          "description": "file:line / config citations. A score without evidence is an opinion, not an assessment."
+        },
+        "audit_id": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string"
+        },
+        "ts": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "criterion_id",
+        "surface",
+        "level",
+        "evidence",
+        "audit_id",
+        "ts"
+      ],
+      "additionalProperties": {},
+      "description": "One (criterion × surface) score — latest wins; history lives in the journal."
+    },
+    "QualityFinding": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "criterion_id": {
+          "type": "string"
+        },
+        "surface": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "string"
+        },
+        "impact": {
+          "type": "number",
+          "description": "Worst plausible consequence, 1–5."
+        },
+        "likelihood": {
+          "type": "number",
+          "description": "Probability it materializes, 1–5."
+        },
+        "cost": {
+          "type": "string",
+          "enum": [
+            "S",
+            "M",
+            "L",
+            "XL"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "open",
+            "resolved",
+            "refuted",
+            "accepted-risk"
+          ]
+        },
+        "remediation": {
+          "type": "string"
+        },
+        "node_ids": {
+          "description": "Graph nodes this finding is about — the tie deliverable.shipped already uses.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "issue_url": {
+          "type": "string"
+        },
+        "verification": {
+          "description": "Result of the adversarial refutation pass. Refuted findings are disclosed, not deleted.",
+          "type": "object",
+          "properties": {
+            "verdict": {
+              "type": "string",
+              "enum": [
+                "CONFIRMED",
+                "REFUTED",
+                "DOWNGRADED"
+              ]
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      "required": [
+        "id",
+        "criterion_id",
+        "surface",
+        "title",
+        "detail",
+        "evidence",
+        "impact",
+        "likelihood",
+        "cost",
+        "status"
+      ],
+      "additionalProperties": {},
+      "description": "One concrete defect. Severity and priority are deliberately absent — they are derived from impact × likelihood and cost (deriveQualityMatrix), so a finding can never carry a severity its own numbers disagree with."
     }
   }
 }

@@ -79,6 +79,13 @@ jobs:
       - name: Publik client-IP derivation (trusted-proxy switch, spoofed XFF)
         run: npm run test:publik-ip
 
+      # In `build` for the same reason again: what a public snapshot withholds
+      # is a pure object rewrite. A Kritik quality section lists open, unfixed
+      # findings with the file paths to reach them, so a regression that lets it
+      # escape by default should fail on a laptop, not only in the Postgres job.
+      - name: Publik default withholds (journal + quality strips)
+        run: npm run test:publik-strip
+
       - name: Deterministic id generator tests
         run: npm run test:id-gen
 
@@ -93,6 +100,13 @@ jobs:
 
       - name: Journal projection tests
         run: npm run test:journal-projections
+
+      # Kritik roll-up golden: replays the Pebbles pilot audit (338 assessments,
+      # 246 findings) through deriveQualityMatrix and asserts it reproduces that
+      # audit's committed matrix. Guards the projection *and* the shipped
+      # criteria pack — a moved weight or grade band shifts a cell and fails here.
+      - name: Quality layer tests (Kritik matrix, caps, section validation)
+        run: npm run test:quality
 
       - name: Map projection + validation tests
         run: npm run test:maps

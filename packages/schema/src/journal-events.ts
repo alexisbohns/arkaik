@@ -186,6 +186,75 @@ export const JournalBaselineEventSchema = z
   .object({ ...envelope, type: z.literal("journal.baseline"), node_ids: z.array(z.string()) })
   .catchall(z.unknown());
 
+/**
+ * Kritik events (docs/rfcs/kritik.md § 3.2). They already parse and round-trip
+ * in released Arkaik through the lenient envelope's open `type` — these are the
+ * strict shapes for consumers that want them, so monitoring could start
+ * shipping quality history before any of it had a UI.
+ *
+ * `actor` stays optional here, as on every other event: the envelope is one
+ * shape and this is not the layer that argues about provenance. Score authority
+ * (RFC § 8.2) is enforced where Arkaik enforces everything else that must not
+ * brick an import — `validateBundle()` warns on a quality event with no actor,
+ * so a human score and an agent score stay tellable apart without a hard gate.
+ */
+export const QualityAuditCompletedEventSchema = z
+  .object({
+    ...envelope,
+    type: z.literal("quality.audit.completed"),
+    audit_id: z.string(),
+    framework_version: z.string(),
+    commit: z.string().optional(),
+    scores: z.record(z.string(), z.record(z.string(), z.number())).optional(),
+    counts: z
+      .object({
+        critical: z.number().optional(),
+        high: z.number().optional(),
+        medium: z.number().optional(),
+        low: z.number().optional(),
+        info: z.number().optional(),
+      })
+      .catchall(z.unknown())
+      .optional(),
+  })
+  .catchall(z.unknown());
+
+export const QualityFindingOpenedEventSchema = z
+  .object({
+    ...envelope,
+    type: z.literal("quality.finding.opened"),
+    finding_id: z.string(),
+    criterion_id: z.string(),
+    surface: z.string(),
+    severity: z.string(),
+    priority: z.string(),
+    title: z.string(),
+    node_ids: z.array(z.string()).optional(),
+    issue_url: z.string().optional(),
+  })
+  .catchall(z.unknown());
+
+export const QualityFindingResolvedEventSchema = z
+  .object({
+    ...envelope,
+    type: z.literal("quality.finding.resolved"),
+    finding_id: z.string(),
+    resolved_by: z.string().optional(),
+    node_ids: z.array(z.string()).optional(),
+  })
+  .catchall(z.unknown());
+
+export const QualitySignalTrippedEventSchema = z
+  .object({
+    ...envelope,
+    type: z.literal("quality.signal.tripped"),
+    criterion_id: z.string(),
+    surface: z.string(),
+    signal: z.string(),
+    detail: z.string().optional(),
+  })
+  .catchall(z.unknown());
+
 /** Per-type schemas keyed by `type`, for validating a single known event. */
 export const JOURNAL_EVENT_SCHEMAS = {
   "node.created": NodeCreatedEventSchema,
@@ -203,6 +272,10 @@ export const JOURNAL_EVENT_SCHEMAS = {
   "ref.removed": RefRemovedEventSchema,
   "ref.status_changed": RefStatusChangedEventSchema,
   "journal.baseline": JournalBaselineEventSchema,
+  "quality.audit.completed": QualityAuditCompletedEventSchema,
+  "quality.finding.opened": QualityFindingOpenedEventSchema,
+  "quality.finding.resolved": QualityFindingResolvedEventSchema,
+  "quality.signal.tripped": QualitySignalTrippedEventSchema,
 } as const;
 
 /**
@@ -226,4 +299,8 @@ export const KnownJournalEventSchema = z.union([
   RefRemovedEventSchema,
   RefStatusChangedEventSchema,
   JournalBaselineEventSchema,
+  QualityAuditCompletedEventSchema,
+  QualityFindingOpenedEventSchema,
+  QualityFindingResolvedEventSchema,
+  QualitySignalTrippedEventSchema,
 ]);
