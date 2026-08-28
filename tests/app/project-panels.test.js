@@ -15,8 +15,15 @@ const fs = require("fs");
 const { loadPanelStack, loadProjectPanels, BUILD_DIR } = require("./load-panel-utils");
 
 const { openFrom, initStack } = loadPanelStack();
-const { RAW_PANEL_KEY, isNodeEntry, topNodeKey, pruneNodeEntries, buildPanelCrumbs } =
-  loadProjectPanels();
+const {
+  RAW_PANEL_KEY,
+  criterionPanelKey,
+  isCriterionEntry,
+  isNodeEntry,
+  topNodeKey,
+  pruneNodeEntries,
+  buildPanelCrumbs,
+} = loadProjectPanels();
 
 let failures = 0;
 function assert(cond, message) {
@@ -123,6 +130,52 @@ assert(crumbs[3].label === "Raw bundle", "Raw is labelled from the union, never 
 assert(
   crumbs[4].label === "C",
   "a node titleOf does not know falls back to its key — a crumb is never blank",
+);
+
+// --- criterion entries: the third kind, addressless like Raw ---
+const criterionEntry = {
+  key: criterionPanelKey("SEC-03", "web"),
+  instanceId: "i-c",
+  payload: { kind: "criterion", criterionId: "SEC-03", surface: "web" },
+};
+const homeEntry = { key: "V-home", instanceId: "i-n", payload: node("V-home") };
+
+assert(
+  criterionPanelKey("SEC-03", "web") === "criterion:SEC-03@web",
+  "a criterion key is namespaced so it can never collide with a node id",
+);
+assert(
+  criterionPanelKey("SEC-03") === "criterion:SEC-03@",
+  "a criterion key without a surface is still namespaced",
+);
+assert(
+  criterionPanelKey("SEC-03", "web") !== criterionPanelKey("SEC-03", "ios"),
+  "the same criterion on two surfaces is two panels",
+);
+assert(isCriterionEntry(criterionEntry) === true, "a criterion entry is recognised");
+assert(isCriterionEntry(homeEntry) === false, "a node entry is not a criterion entry");
+assert(isCriterionEntry(rawEntry) === false, "a raw entry is not a criterion entry");
+assert(isNodeEntry(criterionEntry) === false, "a criterion entry is not a node entry");
+
+assert(
+  topNodeKey([homeEntry, criterionEntry]) === "V-home",
+  "a criterion panel above a node does not displace what ?node= names",
+);
+assert(
+  topNodeKey([criterionEntry]) === null,
+  "a stack of only criterion panels addresses no node",
+);
+
+const criterionPruned = pruneNodeEntries([homeEntry, criterionEntry], new Set());
+assert(
+  criterionPruned.length === 1 && isCriterionEntry(criterionPruned[0]),
+  "a node prune never evicts a criterion panel",
+);
+
+const criterionCrumbs = buildPanelCrumbs([criterionEntry], "Quality", () => undefined);
+assert(
+  criterionCrumbs[criterionCrumbs.length - 1].label === "SEC-03",
+  "a criterion crumb reads as its criterion id, not its namespaced key",
 );
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });

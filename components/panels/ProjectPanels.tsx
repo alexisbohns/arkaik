@@ -172,7 +172,7 @@ export function ProjectPanels({
           <NodeDetailPanel
             node={node}
             scope={scope}
-            initialPlatform={entry.payload.initialPlatform}
+            initialPlatform={entry.payload.kind === "node" ? entry.payload.initialPlatform : undefined}
             onUpdate={onUpdate}
             onDelete={onDelete}
             allNodes={allNodes}
