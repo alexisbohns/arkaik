@@ -21,6 +21,11 @@ const STEPS = [
   // schema.md into the plugin channel (docs/spec/toolchain.md § Skill
   // Distribution).
   "generate-plugin.js",
+  // The Kritik channel (docs/rfcs/kritik.md § 5). Scripts first — the plugin
+  // assembler copies the skill and the pack around them, and the drift gate
+  // diffs the whole directory either way.
+  "build-kritik-scripts.js",
+  "generate-kritik-plugin.js",
 ];
 
 for (const step of STEPS) {

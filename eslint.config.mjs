@@ -21,6 +21,9 @@ const eslintConfig = defineConfig([
     // Claude Code plugin: a byte-identical generated copy of
     // docs/arkaik-skill/scripts/** (see scripts/generate/generate-plugin.js).
     "plugin/**",
+    // The Kritik plugin channel, same reason: everything under it is generated
+    // (esbuild-minified scripts + copied skill/pack assets), never app source.
+    "plugin-kritik/**",
     // esbuild-bundled CLI/MCP output + their Node build scripts (not app source).
     "packages/cli/dist/**",
     "packages/cli/build.js",

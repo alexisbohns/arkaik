@@ -25,7 +25,7 @@ jobs:
         run: npm run generate
 
       - name: Fail on generated-artifact drift
-        run: git diff --exit-code -- public/schema/project-bundle.json docs/arkaik-skill/scripts/validate-bundle.js docs/arkaik-skill/references/schema.md lib/prompts/generated plugin/.claude-plugin/plugin.json plugin/.mcp.json plugin/skills/arkaik lib/wobble/wobble-registry.generated.ts app/wobble.generated.css
+        run: git diff --exit-code -- public/schema/project-bundle.json docs/arkaik-skill/scripts/validate-bundle.js docs/arkaik-skill/references/schema.md lib/prompts/generated plugin/.claude-plugin/plugin.json plugin/.mcp.json plugin/skills/arkaik plugin-kritik lib/wobble/wobble-registry.generated.ts app/wobble.generated.css
 
       - name: Lint
         run: npm run lint
@@ -107,6 +107,13 @@ jobs:
       # criteria pack — a moved weight or grade band shifts a cell and fails here.
       - name: Quality layer tests (Kritik matrix, caps, section validation)
         run: npm run test:quality
+
+      # Drives the three generated scripts as separate Node processes in a temp
+      # repo — the only way to check that the zero-dependency claim still holds.
+      # A bundling regression would otherwise surface first in someone else's
+      # repository, which is exactly where it must not.
+      - name: Kritik plugin tests (overlay merge, generated scripts end-to-end)
+        run: npm run test:kritik-plugin
 
       - name: Map projection + validation tests
         run: npm run test:maps

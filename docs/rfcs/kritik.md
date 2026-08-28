@@ -205,7 +205,7 @@ This keeps the pack canonical and upgradeable while making every project's Kriti
 | 1 (done) | pbbls | Library + first audit + templates under `docs/quality/`; the framework proven on a real product ([pbbls#738](https://github.com/alexisbohns/pbbls/pull/738)) |
 | 2 (this PR) | arkaik | This RFC + the reference pack + the pilot evidence land as base material; the handoff issue scopes the build |
 | 3 (done) | arkaik | `quality.ts` + `deriveQualityMatrix` projections in `@arkaik/schema` (additive); `quality.*` journal events in the vocabulary. Landed with a golden test replaying the pilot audit's 338 assessments and 246 findings into its committed matrix |
-| 4 | arkaik | The `kritik` marketplace plugin: skill + seed pack + scaffold script; surface-selection install; custom-criteria overlay |
+| 4 (done) | arkaik | The `kritik` marketplace plugin: skill + seed pack + scaffold script; surface-selection install; custom-criteria overlay. `plugin-kritik/` is generated from `docs/kritik-skill/` + `packages/kritik-library/` and drift-gated; the three scripts bundle zero-dependency out of `@arkaik/schema` |
 | 5 | arkaik | Quality page + findings board reading the section; webhook grows `quality.finding.resolved`; the signal-pack runner |
 | 6 | pbbls | Switch from sidecar-only to the first-class section; delete nothing (the journal already carries the history) |
 

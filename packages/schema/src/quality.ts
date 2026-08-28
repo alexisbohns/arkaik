@@ -35,6 +35,9 @@
 import type { PlatformId } from "./ids";
 import type { ProjectBundle } from "./bundle";
 
+/** Read an unknown field as an array, never throwing on a hand-edited section. */
+const asArray = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
+
 // --- Scales (packages/kritik-library/SPEC.md § 4) ----------------------------
 
 /** How systematically a criterion is handled on a surface. N/A = row absent. */
@@ -264,6 +267,92 @@ export interface QualitySection extends Record<string, unknown> {
   findings: QualityFinding[];
 }
 
+// --- The project-local overlay (RFC § 6) -------------------------------------
+
+/**
+ * A project's own criteria, layered over the pinned pack at load. It lives
+ * beside the pack rather than inside it — `docs/quality/criteria.custom.json` —
+ * which is the whole point: a pack upgrade rewrites the pack and never touches
+ * this file, so a project's own criteria survive every bump.
+ */
+export interface KritikOverlay extends Record<string, unknown> {
+  /** The pack version this overlay was authored against. Informational. */
+  extends?: string;
+  /** Project-defined domains, for criteria that fit none of the pack's. */
+  domains?: KritikDomain[];
+  criteria?: KritikCriterion[];
+  /** Scale overrides, shallow-merged over the pack's. */
+  scales?: KritikScales;
+}
+
+/**
+ * The effective library: the pinned pack with a project's overlay layered on.
+ *
+ * Matching ids **replace** rather than merge — an overlay criterion is a
+ * complete criterion, and half of one silently inheriting the other half's
+ * anchors would produce a criterion nobody wrote. Non-matching ids append, in
+ * pack-then-overlay order, so a custom criterion rolls up into its domain
+ * exactly like a pack one.
+ *
+ * Returns fresh data and never mutates either input. An absent or malformed
+ * overlay yields the pack untouched: a project that has not written one yet is
+ * the normal case, not an error.
+ */
+export function mergeKritikLibrary(pack: KritikLibrary, overlay?: KritikOverlay | null): KritikLibrary {
+  if (!overlay || typeof overlay !== "object") return pack;
+
+  const domains = [...asArray<KritikDomain>(pack.domains)];
+  for (const domain of asArray<KritikDomain>(overlay.domains)) {
+    if (typeof domain?.code !== "string" || domain.code === "") continue;
+    const at = domains.findIndex((existing) => existing?.code === domain.code);
+    if (at >= 0) domains[at] = domain;
+    else domains.push(domain);
+  }
+
+  const criteria = [...asArray<KritikCriterion>(pack.criteria)];
+  for (const criterion of asArray<KritikCriterion>(overlay.criteria)) {
+    if (typeof criterion?.id !== "string" || criterion.id === "") continue;
+    const at = criteria.findIndex((existing) => existing?.id === criterion.id);
+    if (at >= 0) criteria[at] = criterion;
+    else criteria.push(criterion);
+  }
+
+  const scales =
+    pack.scales || overlay.scales
+      ? { ...(pack.scales ?? {}), ...(overlay.scales ?? {}) }
+      : undefined;
+
+  return { ...pack, domains, criteria, ...(scales ? { scales } : {}) };
+}
+
+/**
+ * The criteria a run should actually score, given a library and the surfaces a
+ * profile declares: every non-retired criterion whose `applies_to` intersects
+ * the selected surfaces, paired with those surfaces. A criterion with no
+ * `applies_to` is treated as applying everywhere — the pack always states it,
+ * but a hand-written custom criterion that forgot to should widen rather than
+ * silently vanish.
+ *
+ * This is what collapses a single-surface project's matrix to one column
+ * without any special case: intersect a five-surface pack with one surface and
+ * every cell set has exactly one member.
+ */
+export function applicableCells(
+  library: Pick<KritikLibrary, "criteria">,
+  surfaces: readonly string[],
+): { criterion_id: string; surfaces: string[] }[] {
+  const selected = surfaces.filter((id) => id !== CROSS_SURFACE_ID);
+  const cells: { criterion_id: string; surfaces: string[] }[] = [];
+  for (const criterion of asArray<KritikCriterion>(library.criteria)) {
+    if (typeof criterion?.id !== "string" || criterion.id === "") continue;
+    if (typeof criterion.superseded_by === "string" && criterion.superseded_by !== "") continue;
+    const appliesTo = Array.isArray(criterion.applies_to) ? criterion.applies_to : undefined;
+    const matched = appliesTo === undefined ? [...selected] : selected.filter((id) => appliesTo.includes(id));
+    if (matched.length > 0) cells.push({ criterion_id: criterion.id, surfaces: matched });
+  }
+  return cells;
+}
+
 // --- Derivations (SPEC §4.2–4.5) ---------------------------------------------
 
 function bucketsOf(library?: KritikLibrary): Record<FindingSeverity, readonly [number, number]> {
@@ -389,8 +478,6 @@ export interface QualityMatrix {
   /** Every open finding by severity, including ones outside any cell. */
   finding_counts: Record<FindingSeverity, number>;
 }
-
-const asArray = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
 
 /**
  * The library to score against: an explicit pack (the sidecar case, lane 1),
