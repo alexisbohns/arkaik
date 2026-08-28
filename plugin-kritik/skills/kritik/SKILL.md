@@ -241,9 +241,20 @@ live account-takeover.
 
 ### 7. Record it in the journal
 
-If this repo keeps an Arkaik journal, append one `quality.audit.completed` plus
-one `quality.finding.opened` per retained finding. **Always set `actor`** — a
-trend is only filterable by assessor kind if every writer says who it was.
+Only if this repo keeps an Arkaik journal — a `docs/arkaik/journal.jsonl`
+sidecar next to `docs/arkaik/bundle.json`. Append one line per event, JSONL:
+one `quality.audit.completed`, plus one `quality.finding.opened` per retained
+finding. If there is no journal, skip this step; Kritik does not need one, and
+starting one just to hold quality events is not your call to make.
+
+> **If `docs/arkaik/arkaik.json` exists, the map is hosted** — it lives in an
+> arkaik account, not in a file here, and there is no sidecar to append to. Use
+> the `arkaik-mcp` tools if they are available, and if they are not, say so and
+> skip the step rather than writing a file nothing reads.
+
+**Always set `actor`** — a trend is only filterable by assessor kind if every
+writer says who it was, and an audit nobody can attribute is an audit nobody can
+weigh. The validator warns when a `quality.*` event has none.
 
 ```json
 {"id":"<ULID>","ts":"<ISO>","actor":"claude-code","type":"quality.audit.completed","audit_id":"2026-08","framework_version":"0.1.0","commit":"<sha>","scores":{"web":{"SEC":44}},"counts":{"critical":0,"high":21,"medium":58,"low":12}}
