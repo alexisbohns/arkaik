@@ -52,6 +52,23 @@ const SORT_LABELS: Record<QualitySort, string> = {
   domain: "Domain",
 };
 
+/**
+ * The options that can actually be picked.
+ *
+ * A `SurfaceDef` or a `KritikDomain` with a blank id is not a filter anybody
+ * can apply — `""` is the one value `filterFindings` reads as "do not narrow"
+ * — and Radix throws outright on a `SelectItem` with an empty `value`. A
+ * hand-edited profile is a supported input here, so the menu drops the entry
+ * rather than the page.
+ */
+function namedSurfaces(surfaces: SurfaceDef[]): SurfaceDef[] {
+  return surfaces.filter((surface) => typeof surface?.id === "string" && surface.id !== "");
+}
+
+function namedDomains(domains: KritikDomain[]): KritikDomain[] {
+  return domains.filter((domain) => typeof domain?.code === "string" && domain.code !== "");
+}
+
 /** A surface's title as the profile writes it, falling back to its raw id. */
 function surfaceTitleOf(surface: string, surfaces: SurfaceDef[]): string {
   return surfaces.find((candidate) => candidate?.id === surface)?.title ?? surface;
@@ -221,7 +238,7 @@ export function QualityFilterBar({ filters, onChange, surfaces, domains }: Quali
           />
           <SelectContent align="start">
             <SelectItem value={ALL}>All surfaces</SelectItem>
-            {surfaces.map((surface) => (
+            {namedSurfaces(surfaces).map((surface) => (
               <SelectItem key={surface.id} value={surface.id}>
                 {surface.title ?? surface.id}
               </SelectItem>
@@ -241,7 +258,7 @@ export function QualityFilterBar({ filters, onChange, surfaces, domains }: Quali
           />
           <SelectContent align="start">
             <SelectItem value={ALL}>All domains</SelectItem>
-            {domains.map((domain) => (
+            {namedDomains(domains).map((domain) => (
               <SelectItem key={domain.code} value={domain.code}>
                 <span className="inline-flex items-center gap-2">
                   <span className="font-mono text-[10px] text-muted-foreground">{domain.code}</span>
