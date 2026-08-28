@@ -192,19 +192,38 @@ Write each row into `docs/quality/audits/<id>/scores.json`:
 
 ### 4. Emit findings
 
-Emit a finding for everything you found at or below its target level. One
-finding is one defect — not one criterion, and not one surface's worth of
-grumbling. It carries what someone needs to act:
+**The default target is level 3** — Managed: systematic across the surface,
+tested or reviewed. A cell scoring below it warrants a finding, unless you can
+say concretely why this surface should not reach 3 (a criterion that is genuinely
+marginal here, a deliberate and recorded trade-off). Say that in the evidence
+rather than leaving the gap silent. A cell at 3 with a real defect still gets a
+finding; the level and the defect are different claims.
+
+One finding is one defect — not one criterion, and not one surface's worth of
+grumbling. It carries what someone needs to act, in
+`docs/quality/audits/<id>/findings.json`, wrapped exactly like `scores.json`:
 
 ```json
-{ "id": "F-2026-08-SEC-web-01", "criterion_id": "SEC-01", "surface": "web",
-  "title": "One line naming the actual defect, not the category",
-  "detail": "What breaks, for whom, and the path that gets there.",
-  "evidence": "file:line citations",
-  "impact": 4, "likelihood": 3, "cost": "S", "status": "open",
-  "remediation": "The fix, concretely.",
-  "node_ids": ["V-settings"] }
+{
+  "audit_id": "2026-08",
+  "commit": "<sha>",
+  "framework_version": "0.1.0",
+  "findings": [
+    { "id": "F-2026-08-SEC-web-01", "criterion_id": "SEC-01", "surface": "web",
+      "title": "One line naming the actual defect, not the category",
+      "detail": "What breaks, for whom, and the path that gets there.",
+      "evidence": "file:line citations",
+      "impact": 4, "likelihood": 3, "cost": "S", "status": "open",
+      "remediation": "The fix, concretely.",
+      "node_ids": ["V-settings"] }
+  ]
+}
 ```
+
+The `findings` key is not optional dressing: the roll-up reads it by name, so a
+bare array in that file rolls up as **zero findings** and every cap silently
+fails to fire. If a run genuinely produced none, write the wrapper with an empty
+array rather than skipping the file.
 
 `node_ids` is optional and ties the finding to the Arkaik product graph when
 this repo has a map — use the real node ids, never guessed ones.
