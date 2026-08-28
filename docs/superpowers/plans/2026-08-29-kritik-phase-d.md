@@ -1453,10 +1453,12 @@ Expected: all pass. `test:quality` and `test:quality-ops` are the phase A/C suit
 - [ ] **Step 4: Confirm the address contract held**
 
 ```bash
-git diff main -- lib/hooks/useProjectPanels.tsx | grep -E "publishTop|topNodeKey|reconcileArrival|NODE_PANEL_PARAM"
+git diff -U0 main -- lib/hooks/useProjectPanels.tsx | grep -E "^[+-].*(publishTop|topNodeKey|reconcileArrival|NODE_PANEL_PARAM)"
 ```
 
 Expected: **no output**. Any hit means the criterion panel reached into the `?node=` machinery, which the design forbids.
+
+`-U0` and the `^[+-]` anchor are both load-bearing: without them the grep reads the diff's *context* lines too, and `openCriterion` cannot be written without importing `criterionPanelKey` into the same block that already imports `topNodeKey` — so the unchanged neighbour lands in context and the check fails on a line nobody touched. The contract is about changed lines, and this is the command that tests it.
 
 - [ ] **Step 5: Document the snapshot gap**
 

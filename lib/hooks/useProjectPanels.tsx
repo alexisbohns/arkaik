@@ -252,13 +252,15 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
     );
   }, [entries, unwindTo]);
 
-  // No `publishTop`, on purpose. Opening a criterion cannot change the top
-  // *node*, so there is nothing for the address to say — and saying it anyway
-  // would mean a second reconciler over one stack, which `?node=V-home` and
-  // `?criterion=SEC-01` together have no defined answer for. Unlike `openRaw`
-  // there is no "reveal the one already open" branch either: several criteria
-  // can stack, and `openFrom` already refreshes in place when the same
-  // criterion on the same surface lands back in the same slot.
+  // Publishes nothing, on purpose. A criterion panel is not an address, so
+  // opening one cannot change what the URL names — and giving it an address
+  // here would mean a second reconciler over one stack, which
+  // `?node=V-home&criterion=SEC-01` has no defined answer for. The Quality page
+  // owns `?criterion=` instead, and it is the only page that opens one.
+  //
+  // Unlike `openRaw` there is no "reveal the one already open" branch either:
+  // several criteria can stack, and `openFrom` already refreshes in place when
+  // the same criterion on the same surface lands back in the same slot.
   const openCriterion = useCallback(
     (criterionId: string, surface?: string, fromDepth?: number) => {
       setEntries((previous) =>
