@@ -90,7 +90,8 @@ export function isCriterionEntry(
 /**
  * The node the URL addresses: the topmost *node* entry, scanning past anything
  * above it. A Raw or criterion panel opened over a node panel leaves the
- * address alone — which is why neither needed a line here when it was added.
+ * address alone. Neither exception needed a change here when it landed: looking
+ * only for node entries excludes them by construction rather than by care.
  */
 export function topNodeKey(entries: ProjectPanelEntry[]): string | null {
   for (let index = entries.length - 1; index >= 0; index -= 1) {
