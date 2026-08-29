@@ -6,6 +6,7 @@ import {
   verifySignature,
 } from "@/lib/services/github/verify";
 import { applyLabNote } from "@/lib/services/github/lab-note";
+import { applyQualityResolutions } from "@/lib/services/github/quality";
 import {
   applyPullRequestEvent,
   claimDelivery,
@@ -117,12 +118,16 @@ export async function POST(req: Request): Promise<Response> {
 
   try {
     const outcomes = await applyPullRequestEvent(prEvent);
-    // The Lab-Note half runs only for a merge, inside the same try: a
-    // transient failure releases the delivery claim and the retry redoes both
-    // halves — both are idempotent (promotions by construction, notes by
-    // content dedupe). Parse refusals are outcomes, never throws.
-    const labNotes =
-      prEvent.action === "closed" && prEvent.merged ? await applyLabNote(prEvent) : [];
+    // The Lab-Note and Kritik halves run only for a merge, inside the same
+    // try: a transient failure releases the delivery claim and the retry redoes
+    // all three — all three are idempotent (promotions by construction, notes
+    // by content dedupe, resolutions by the already-resolved check, which is
+    // what covers a PR reopened and re-merged rather than merely redelivered).
+    // Parse refusals are outcomes, never throws.
+    const isMerge = prEvent.action === "closed" && prEvent.merged;
+    const labNotes = isMerge ? await applyLabNote(prEvent) : [];
+    // A merged PR that names a finding — by id, or by the issue it closes.
+    const quality = isMerge ? await applyQualityResolutions(prEvent) : [];
     // A typo'd repo link — or no link at all — is the commonest reason "nothing
     // happened", and `{status:"ok", outcomes:[]}` names nothing at all: the one
     // page docs/hosted-projects.md tells people to read would show a green 200
@@ -137,11 +142,11 @@ export async function POST(req: Request): Promise<Response> {
     // the same `skipped` key `ApplyOutcome` already uses to explain a no-op.
     if (outcomes.length === 0) {
       return Response.json(
-        { status: "ok", outcomes, labNotes, skipped: `no project has linked ${prEvent.repoFullName}` },
+        { status: "ok", outcomes, labNotes, quality, skipped: `no project has linked ${prEvent.repoFullName}` },
         { status: 200 },
       );
     }
-    return Response.json({ status: "ok", outcomes, labNotes }, { status: 200 });
+    return Response.json({ status: "ok", outcomes, labNotes, quality }, { status: 200 });
   } catch (err) {
     console.error("[github] webhook failed:", err instanceof Error ? err.message : "unknown error");
     // Release the claim so GitHub's retry can redo this. Holding it would turn
