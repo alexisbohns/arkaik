@@ -27,23 +27,31 @@ function Gallery({ children }: { children: ReactNode }) {
     // comparison the moment they use the page. `snap-x` so a flick lands on a
     // card rather than between two.
     //
-    // `overflow-y-hidden` is the wheel-trap fix, not decoration — the identical
-    // one `components/ui/table.tsx` carries, and worth restating because it is
-    // invisible until somebody tries to scroll. `overflow-x-auto` alone leaves
-    // `overflow-y` at `visible`, which CSS *computes to `auto`* (visible cannot
-    // pair with a non-visible value on the other axis), so this div is silently
-    // a vertical scrollport with nothing in it to scroll. `globals.css` then
-    // gives every `.overflow-x-auto` `overscroll-behavior: contain` — there to
-    // stop swipes becoming browser navigation — and containment also blocks the
-    // chaining that would hand an exhausted scroller's wheel to its ancestor.
-    // Together: a wheel anywhere over a gallery stopped dead, and the page only
-    // scrolled from the hairline of margin between two sections.
+    // `overscroll-y-auto` is the wheel fix, and it has to name the axis.
+    // `globals.css` gives every `.overflow-x-auto` `overscroll-behavior:
+    // contain` — there to stop a swipe becoming browser back/forward — and that
+    // shorthand sets BOTH axes. A vertical wheel over the gallery therefore had
+    // nowhere to go: containment blocks the scroll chaining that would hand it
+    // to the surface, and the gallery itself has nothing to scroll vertically.
+    // A wheel over a card stopped dead, and the page only scrolled from the
+    // hairline of margin between two sections.
     //
-    // Naming the axis keeps the horizontal scroll the cards need and leaves no
-    // vertical scrollport for containment to hold on to. `py-1` is the rent it
-    // charges: a clipped axis clips a focus ring too, and these cards are
-    // buttons somebody tabs through.
-    <div className="-mx-4 flex snap-x gap-2 overflow-x-auto overflow-y-hidden px-4 py-1">
+    // Measured, not reasoned — the two intuitive fixes are both wrong, and the
+    // second is the one this repo already believes in:
+    //
+    //   overflow-x-auto                      → trapped
+    //   + overflow-y-hidden                  → trapped
+    //   + overscroll-behavior: auto          → trapped (specificity, not axes)
+    //   + overscroll-behavior-y: auto        → scrolls
+    //
+    // `overflow-y: hidden` does not help because it removes the y axis's
+    // *overflow*, not its scroll-container-ness, and `overscroll-behavior`
+    // applies to scroll containers either way. **`components/ui/table.tsx`
+    // carries that non-fix and is still trapped** — out of scope here, but it
+    // is the same bug and the comment there is wrong.
+    //
+    // `overscroll-x-contain` keeps the half that was actually wanted.
+    <div className="-mx-4 flex snap-x gap-2 overflow-x-auto overscroll-x-contain overscroll-y-auto px-4 py-1">
       {children}
     </div>
   );
