@@ -121,6 +121,12 @@ jobs:
       - name: Kritik operation tests (upserts, id minting, event payloads)
         run: npm run test:quality-ops
 
+      # Two audits compared. Scored against a pack whose severity buckets are
+      # deliberately NOT the schema defaults, so the suite can tell "reads the
+      # pack" from "hardcodes 20..25" — the hole that survived phases A to D.
+      - name: Kritik regression tests (level drops, new severity, reopens)
+        run: npm run test:quality-regressions
+
       # The webhook half of the quality loop — the mention grammar and the
       # resolution pass. DB-free on purpose: the grammar imports nothing and
       # the project read is injected, so a Postgres-less runner still gates it.
