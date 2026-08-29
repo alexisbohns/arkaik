@@ -55,6 +55,7 @@ The framework itself ships beside this skill and is read-only:
 | `references/framework.md` | The meta-model: the scales, the roll-up rules, the audit process |
 | `references/library.json` | The criteria pack: domains, criteria, anchors, checklists, signals, issue skeletons |
 | `scripts/compute-matrix.js` | The roll-up. Zero dependencies — `node <skill-path>/scripts/compute-matrix.js <audit-id>` |
+| `scripts/detect-regressions.js` | What got worse between two audits. Reads them, writes nothing, exits 1 on a regression |
 | `scripts/scaffold-criterion.js` | Adds a project-specific criterion to the overlay |
 | `scripts/init-profile.js` | Writes `profile.json` — the install-time surface picker |
 
@@ -72,8 +73,8 @@ Two richer paths exist when they are available, and both write **the same files*
 
 | Available | Use |
 |---|---|
-| the `arkaik` CLI (`npx arkaik kritik --help`) | the verbs `profile`, `score`, `finding open\|resolve\|accept`, `matrix`, `signals`, `issue`, `criterion add` |
-| `arkaik-mcp` tools in this session | `kritik_score`, `kritik_open_finding`, `kritik_matrix`, `kritik_signals`, `kritik_issue`, … |
+| the `arkaik` CLI (`npx arkaik kritik --help`) | the verbs `profile`, `score`, `finding open\|resolve\|accept`, `matrix`, `signals`, `regressions`, `issue`, `criterion add` |
+| `arkaik-mcp` tools in this session | `kritik_score`, `kritik_open_finding`, `kritik_matrix`, `kritik_signals`, `kritik_regressions`, `kritik_issue`, … |
 
 Each verb takes its own `--help` (`arkaik kritik score --help`). What they add
 over the scripts is **step 7 for free**: they append the `quality.*` journal
@@ -298,8 +299,9 @@ weigh. The validator warns when a `quality.*` event has none. (`--actor <name>` 
 ```
 
 When the fix merges, append `quality.finding.resolved` with `resolved_by` set to
-the PR URL. Events are facts, never state: the current picture is always the
-latest audit plus opened-minus-resolved, computed, not stored.
+the PR URL — *When a fix merges* below says who appends it, and where. Events are
+facts, never state: the current picture is always the latest audit plus
+opened-minus-resolved, computed, not stored.
 
 ### 8. File issues for P0 and P1
 
@@ -307,12 +309,136 @@ Each criterion in the pack ships an `issue` skeleton — `title_template`,
 `labels`, `body_skeleton`. Fill every `{placeholder}` and file. P2/P3 batch at
 the maintainer's discretion; do not open sixty issues nobody asked for.
 
-## Between audits: signals
+## Between audits
 
-Every criterion carries `signals[]` — mechanically checkable hooks. A grep that
-must return nothing; a CI job that must exist. They are cheap, so run them
-between full audits and append `quality.signal.tripped` when one regresses.
-A tripped signal is not a finding; it is the prompt to go look.
+Two checks live here — one you perform yourself, one the two audits on disk
+answer without you. Confusing them wastes a run.
+
+### Signals — the checks *you* run
+
+Every criterion carries `signals[]`: mechanically checkable statements. A grep
+that must return nothing; a CI job that must exist.
+
+```
+arkaik kritik signals --surface <s>
+```
+
+prints the **run sheet** for those cells — one numbered row per statement.
+**It checks nothing.** No grep is executed, no CI config is read: the pack's
+signals span greps, CI introspection and database queries, and a runner that
+guessed at executing them would be wrong in a way nobody could see. The checking
+is yours to do. Unfiltered it prints only a count — the whole sheet runs to four
+figures — so narrow it with `--surface`, `--criterion` or `--domain`, or take the
+lot with `--json`.
+
+Then record each statement you found to be false:
+
+```
+arkaik kritik signals --trip <criterion> --surface <s> --signal <index>
+```
+
+`<index>` is the row's `[n]` on the sheet you just printed — the position in that
+criterion's own `signals[]`, counted from 0. The statement's own text works too.
+A number that is not one of that criterion's rows is stored verbatim *as* the
+statement, which records nothing anyone can read, so copy the `[n]` rather than
+guessing it. `--detail <what you saw>` is worth the extra words: the statement
+says what should be true, the detail says what you actually found.
+
+This appends `quality.signal.tripped` — subject to step 7's journal rule. A repo
+with no journal has nowhere to put the event, says so, and appends nothing, which
+makes `--trip` a report to the human in front of you rather than a record.
+
+### Regressions — the check that needs nobody
+
+```
+arkaik kritik regressions [--from <audit>] [--to <audit>]
+```
+
+compares two audits and says what got worse, with nobody checking anything: a
+cell whose maturity level dropped, a cell that gained an open Critical or High
+finding, a finding that was resolved and is open again. It defaults to the
+newest audit and the one before it. A cell scored in only one of the two is not
+compared — a half-finished audit is not a regression. `--record` appends one
+`quality.signal.tripped` per regression; `--json` prints the list. It needs two
+audits under `docs/quality/audits/` and says so plainly when there is one: a
+single reading is a baseline, not a trend.
+
+**This is the one to put in CI.** It exits 1 when anything regressed, and it
+depends on nothing but the two audits on disk. (`signals` exits 1 too, but only
+when a `quality.signal.tripped` was already recorded since the last
+`quality.audit.completed` — with no journal to read it always exits 0. It
+reports what somebody told it; it discovers nothing.)
+
+The same comparison with no CLI installed:
+
+```
+node <skill-path>/scripts/detect-regressions.js [--from <a>] [--to <a>] [--json]
+```
+
+Zero dependencies, same exit code, and it **writes nothing** — recording the
+trips is `arkaik kritik regressions --record`. There is no script counterpart for
+the run sheet; read the criteria's `signals[]` straight out of
+`references/library.json`.
+
+### A tripped signal is not a finding
+
+It is the prompt to go look — cheap, frequent, and allowed to be wrong. Opening
+a finding is the expensive, rare act that has to survive step 5's adversarial
+pass. So never open one *from* a trip: go and read the code the statement points
+at, and open a finding only if there is a defect there, with its own evidence and
+its own risk numbers. A regression is no different — it compares records, not the
+product, and what it names is where to look next.
+
+## When a fix merges
+
+Two things close a finding, and they are not alternatives.
+
+**Always, in the repo:**
+
+```
+arkaik kritik finding resolve <id> --by <pr-url>
+```
+
+`findings.json` is the canonical record, and this is the only thing that updates
+it. It appends `quality.finding.resolved` to the journal sidecar when there is
+one and says so when there is not, exactly as step 7 describes. Re-running is
+safe: a finding already resolved is left alone and no second event is written.
+
+**And, on a project the Arkaik GitHub App delivers to, the App does it too.**
+Merging the PR appends `quality.finding.resolved` to the **hosted** project's
+journal. Nothing reaches this checkout, which is why the command above is still
+yours to run.
+
+*Which case am I in?* Two facts, and only the first is visible from here:
+`docs/arkaik/arkaik.json` exists — what `arkaik link` writes, so there is a
+hosted project at all — **and** this repository is linked to that project under
+its **Repos** button in the app, which is what the webhook actually reads. Those
+two links are independent; either exists without the other, so the file on its
+own proves nothing about the App. If you cannot confirm the second, treat the
+project as repo-only. The repo command is required in both cases anyway, and
+running it on a hosted project costs nothing.
+
+The App reads two channels:
+
+- **the finding id** — `F-2026-08-SEC-web-01`, anywhere in the PR's title *or*
+  body, with no keyword needed. This is the channel an agent working from
+  `arkaik kritik issue` uses.
+- **a closing keyword in the body** — `Closes #123`, `Fixes owner/repo#123`, or
+  the full issue URL. Body only, because GitHub does not honour a keyword in a
+  title either. It reaches a finding through that finding's own `issue_url`, so
+  it does nothing unless the issue you filed in step 8 is recorded there
+  (`--issue-url` on `finding open`).
+
+Both scans skip fenced code blocks, and only an **open** finding is closed this
+way: `refuted` and `accepted-risk` are decisions somebody recorded, and a merge
+does not overturn them.
+
+> **Name a finding id in a PR only when that PR fixes it.** The id alone closes
+> it — no keyword, and the title counts — so one mentioned in passing ("adjacent
+> to F-2026-08-SEC-web-01", "not to be confused with…") resolves a defect that is
+> still there. To refer to one without closing it, put it inside a fenced code
+> block — a fence, not inline backticks; only fenced blocks are skipped. That is
+> exactly what makes a PR *about* this syntax safe.
 
 ## Adding a criterion of your own
 
