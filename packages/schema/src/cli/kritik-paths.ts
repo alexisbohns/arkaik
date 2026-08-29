@@ -52,8 +52,23 @@ export function packCandidates(scriptDir: string, root?: string): string[] {
   ];
 }
 
+/**
+ * Read and parse a JSON sidecar, naming the file when it will not parse.
+ *
+ * Every Kritik file passes through here, and a bare `JSON.parse` failure
+ * ("Unexpected token 'o'") says nothing about which of a repo's profile,
+ * overlay, pack, scores or findings is the corrupt one — the single most
+ * useful fact. `readFileSync` already names the path when it cannot read it;
+ * this makes the parse half say as much. Same wording as journal.ts's
+ * per-line JSONL parse error, so the two read alike.
+ */
 export function readJson<T>(path: string): T {
-  return JSON.parse(readFileSync(path, "utf8")) as T;
+  const text = readFileSync(path, "utf8");
+  try {
+    return JSON.parse(text) as T;
+  } catch (e) {
+    throw new Error(`${path}: not valid JSON — ${(e as Error).message}`);
+  }
 }
 
 /** Write JSON with a trailing newline, creating parent directories as needed. */
@@ -74,7 +89,9 @@ export function loadPack(scriptDir: string, root?: string): KritikLibrary {
 
 export const profilePath = (root: string): string => join(root, QUALITY_DIR, PROFILE_FILE);
 export const overlayPath = (root: string): string => join(root, QUALITY_DIR, OVERLAY_FILE);
-export const auditDir = (root: string, auditId: string): string => join(root, QUALITY_DIR, AUDITS_DIR, auditId);
+/** Where every audit directory lives — the path to name when there are none. */
+export const auditsDir = (root: string): string => join(root, QUALITY_DIR, AUDITS_DIR);
+export const auditDir = (root: string, auditId: string): string => join(auditsDir(root), auditId);
 
 /** The project's profile, or null when Kritik has not been installed here yet. */
 export function loadProfile(root: string): QualityProfile | null {

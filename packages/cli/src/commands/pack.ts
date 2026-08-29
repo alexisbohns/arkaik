@@ -10,7 +10,21 @@
  *     embedded-wins-else-sidecar precedence `arkaik validate` folds by, see
  *     lib/journal-io.ts). `--no-journal` strips `journal[]` instead — the
  *     Publik-safe posture (docs/spec/journal.md:41);
- *  3. `--inline-assets` (OFF by default, local-only in v1): every
+ *  3. quality folding — `docs/quality/` is the canonical home of a project's
+ *     audit data exactly as `journal.jsonl` is for its history (docs/rfcs/
+ *     kritik.md § 8.3), with `bundle.quality` as the interchange projection.
+ *     So the sidecars belonging to the *packed bundle's own* repo root are
+ *     merged into `quality`: assessments latest-wins per (criterion x
+ *     surface) across every audit, findings pooled, the derived `severity`
+ *     and `priority` dropped (`lib/kritik-io.ts`). A repo with no audits or
+ *     no profile is reported and skipped, never failed — quality is additive
+ *     to a bundle, and a half-installed Kritik must not break `pack`. The
+ *     source `docs/quality/` tree is only ever READ. `noQuality` skips the
+ *     fold outright (the Publik-safe posture `--no-journal` takes for
+ *     history, and what `arkaik push` uses) and `audit` pins one audit's
+ *     snapshot instead of the merge; both are programmatic options today,
+ *     their CLI flags still to come (#389);
+ *  4. `--inline-assets` (OFF by default, local-only in v1): every
  *     `metadata.platformScreenshots` value that is a *relative path* (no URI
  *     scheme, no leading `/` — docs/spec/bundle-format.md § Asset Values) is
  *     read from disk (resolved against the bundle's directory) and rewritten
@@ -18,7 +32,7 @@
  *     extension. Absolute `https://` URLs and existing `data:` URIs are left
  *     untouched. Uploading to a hosted bucket is OUT OF SCOPE for v1 — only
  *     local relative-path assets can be inlined;
- *  4. the (possibly mutated) bundle object — never reconstructed as
+ *  5. the (possibly mutated) bundle object — never reconstructed as
  *     `{project,nodes,edges}` — is written out via `serializeBundle`, so it
  *     lands in canonical form (top-level key order incl. `journal`) and every
  *     unknown top-level key / unknown field round-trips untouched (the
@@ -30,7 +44,7 @@
  * pure bundle JSON in the no-`--out` case.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, extname, resolve } from "node:path";
+import { basename, dirname, extname, resolve } from "node:path";
 import { serializeBundle } from "@arkaik/schema";
 import { readBundle } from "../lib/bundle-io";
 import { loadJournalEvents } from "../lib/journal-io";
@@ -127,6 +141,8 @@ export interface RunPackResult {
   inlinedAssets: InlinedAsset[];
   /** Non-fatal notices — e.g. an asset referenced by a relative path that was not found on disk. */
   assetWarnings: string[];
+  /** Whether a `quality` section was actually folded in. Absent with --no-quality. */
+  qualityFolded?: boolean;
   /** What the quality fold did — folded, skipped, or nothing to fold. Absent with --no-quality. */
   qualityNotice?: string;
   /** The canonical packed bundle text (serializeBundle output), always populated on success. */
@@ -144,6 +160,30 @@ function fatalResult(bundlePath: string, message: string): RunPackResult {
     assetWarnings: [],
     output: "",
   };
+}
+
+/**
+ * The repo root whose `docs/quality/` gets folded in.
+ *
+ * Derived from the bundle being packed, NOT from the cwd, so every input to a
+ * pack comes from the same place: `loadJournalEvents` finds the journal as a
+ * sibling of the bundle, asset inlining resolves against the bundle's own
+ * directory, and quality resolves against the repo that bundle lives in.
+ * Rooting this at the cwd instead would let `cd /a && arkaik pack
+ * /b/docs/arkaik/bundle.json` fold /a's audit into /b's bundle — quality data
+ * from a project the output has nothing to do with.
+ *
+ * Only the conventional `<root>/docs/arkaik/<file>` layout is recognised: the
+ * one `arkaik init` writes and `DEFAULT_BUNDLE_PATH` names. A bundle kept
+ * anywhere else has no root to discover, so the cwd stands in and `root` says
+ * otherwise. That the `kritik` verb family is cwd-rooted is not a
+ * counterexample — those verbs have no bundle path to derive from.
+ */
+function resolveQualityRoot(cwd: string, filePath: string, root?: string): string {
+  if (root !== undefined) return resolve(cwd, root);
+  const dir = dirname(filePath);
+  if (basename(dir) === "arkaik" && basename(dirname(dir)) === "docs") return resolve(dir, "..", "..");
+  return cwd;
 }
 
 /**
@@ -177,11 +217,14 @@ export function runPack(options: RunPackOptions = {}): RunPackResult {
     }
   }
 
+  let qualityFolded: boolean | undefined;
   let qualityNotice: string | undefined;
   if (!(options.noQuality ?? false)) {
-    const root = resolve(cwd, options.root ?? ".");
+    const root = resolveQualityRoot(cwd, filePath, options.root);
     try {
-      qualityNotice = foldQualitySection(bundle, root, options.audit).notice;
+      const fold = foldQualitySection(bundle, root, options.audit);
+      qualityFolded = fold.folded;
+      qualityNotice = fold.notice;
     } catch (e) {
       return fatalResult(filePath, (e as Error).message);
     }
@@ -224,7 +267,7 @@ export function runPack(options: RunPackOptions = {}): RunPackResult {
     writeFileSync(outPath, output);
   }
 
-  return { ok: true, bundlePath: filePath, outPath, journalIncluded, journalEventCount, inlinedAssets, assetWarnings, qualityNotice, output };
+  return { ok: true, bundlePath: filePath, outPath, journalIncluded, journalEventCount, inlinedAssets, assetWarnings, qualityFolded, qualityNotice, output };
 }
 
 export function runPackCli(args: string[]): void {

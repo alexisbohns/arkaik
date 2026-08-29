@@ -182,7 +182,13 @@ export async function runPush(options: RunPushOptions = {}): Promise<RunPushResu
 
   // Reuse pack's internals verbatim — noJournal strips journal[] before
   // serialization, so a stripped push never even has journal bytes to send.
-  const packed = runPack({ path: filePath, noJournal: !includeJournal, cwd });
+  // noQuality is the same posture for docs/quality/: an open finding names an
+  // unfixed vulnerability and the file to find it in (docs/rfcs/kritik.md
+  // § 8.3), so it must not leave the machine by default. lib/services/publik.ts
+  // also strips it server-side, and this is exactly the belt this file's header
+  // refuses to leave to those braces. Hardcoded `true` until #389 adds
+  // `--include-quality`; it becomes `!includeQuality` then, beside the journal.
+  const packed = runPack({ path: filePath, noJournal: !includeJournal, noQuality: true, cwd });
   if (!packed.ok) {
     return fatalResult(filePath, packed.fatal ?? "pack failed");
   }

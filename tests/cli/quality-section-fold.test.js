@@ -26,7 +26,7 @@
  */
 
 const { spawnSync } = require("child_process");
-const { existsSync, mkdirSync, mkdtempSync, writeFileSync } = require("fs");
+const { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } = require("fs");
 const { tmpdir } = require("os");
 const path = require("path");
 
@@ -97,10 +97,13 @@ const PROFILE = {
   domain_weights: { SEC: 2, TST: 1 },
 };
 
+// 9.9.8, where 2026-09 carries 9.9.9: without the difference the
+// framework_version assertion below passes against newest-wins,
+// oldest-wins and any-wins alike, and so tests nothing.
 const SCORES_08 = {
   audit_id: "2026-08",
   commit: "aaaaaaa",
-  framework_version: "9.9.9",
+  framework_version: "9.9.8",
   assessments: [
     { criterion_id: "SEC-01", surface: "web", level: 2, evidence: "app/a.ts:1", audit_id: "2026-08", ts: "2026-08-01T00:00:00.000Z" },
     { criterion_id: "SEC-02", surface: "web", level: 4, evidence: "app/b.ts:1", audit_id: "2026-08", ts: "2026-08-01T00:00:00.000Z" },
@@ -113,7 +116,7 @@ const SCORES_08 = {
 // and the fold must drop them.
 const FINDINGS_08 = {
   audit_id: "2026-08",
-  framework_version: "9.9.9",
+  framework_version: "9.9.8",
   findings: [
     {
       id: "F-2026-08-SEC-web-01",
@@ -272,14 +275,118 @@ function packIn(dir, args = []) {
   check("framework_version comes from the newest audit", section.framework_version === "9.9.9", section.framework_version);
   check(
     "the profile is carried verbatim",
-    section.profile && Array.isArray(section.profile.surfaces) && section.profile.surfaces.length === 2,
+    section.profile &&
+      Array.isArray(section.profile.surfaces) &&
+      section.profile.surfaces.length === 2 &&
+      section.profile.surfaces[0].id === "web" &&
+      section.profile.domain_weights &&
+      section.profile.domain_weights.SEC === 2 &&
+      section.profile.domain_weights.TST === 1,
     JSON.stringify(section.profile),
+  );
+
+  // Provenance: the section must embed the pack the scores were TAKEN
+  // against, not whichever one the CLI happens to ship, or a reader grades a
+  // 97-is-an-A project against an 85-is-an-A scale and calls it a promotion.
+  check(
+    "the section embeds the project's effective pack, not the shipped one",
+    section.library && section.library.scales.grades.A === 97,
+    JSON.stringify(section.library && section.library.scales),
+  );
+  check(
+    "the overlay is merged into the embedded library",
+    ((section.library && section.library.criteria) || []).some((c) => c.id === "SEC-99"),
+    JSON.stringify(((section.library && section.library.criteria) || []).map((c) => c.id)),
   );
   check("the notice names what was folded", /Quality: folded 5 assessment\(s\), 2 finding\(s\) from 2 audit\(s\)/.test(result.stderr), result.stderr);
 
   // --- 4. the bundle file on disk is NEVER rewritten ---
   const onDisk = require(path.join(dir, "docs", "arkaik", "bundle.json"));
   check("pack does not write quality into the source bundle", onDisk.quality === undefined);
+}
+
+// --- 5. `arkaik open` folds too --------------------------------------------
+
+// The two verbs that wrap `runPack` take OPPOSITE postures, and neither may
+// be left to whatever `runPack` happens to default to. `push` sends bytes to
+// a server and must not carry open findings (push.ts pins that with
+// `noQuality: true`); `open` writes a file for the app's own import picker,
+// which is precisely where the section is meant to ride along.
+{
+  const dir = makeRepo();
+  const out = path.join(dir, "opened.json");
+  const result = runIn(dir, ["open", "--no-open", "--out", out]);
+
+  check("open exits 0 on the fixture repo", result.status === 0, `${result.stdout}\n${result.stderr}`);
+  const opened = existsSync(out) ? JSON.parse(readFileSync(out, "utf8")) : undefined;
+  check(
+    "open hands the app a bundle with the quality section folded in",
+    opened && opened.quality && opened.quality.assessments.length === 5,
+    JSON.stringify(opened && opened.quality && opened.quality.assessments.length),
+  );
+}
+
+// --- 6. the root follows the bundle, not the cwd ---------------------------
+
+// Every other input to a pack comes from the bundle's own path: the journal
+// is read as its sibling, assets resolve against its directory. Quality
+// rooted at the cwd instead meant `cd /elsewhere && arkaik pack
+// /repo/docs/arkaik/bundle.json` folded /elsewhere's audits into /repo's
+// bundle — here, /elsewhere has none, so the section silently vanished.
+{
+  const dir = makeRepo();
+  const elsewhere = mkdtempSync(path.join(tmpdir(), "arkaik-qfold-cwd-"));
+  const { result, bundle } = packIn(elsewhere, [path.join(dir, "docs", "arkaik", "bundle.json")]);
+
+  check("pack from an unrelated cwd exits 0", result.status === 0, result.stderr);
+  check(
+    "the fold follows the bundle's own repo, not the cwd",
+    bundle && bundle.quality && bundle.quality.assessments.length === 5,
+    result.stderr,
+  );
+}
+
+// --- 7. nothing to fold is a notice, never a failure -----------------------
+
+// A repo mid-installation still packs. Each notice names a path AND a way
+// forward, because "no audit yet" and "wrong root" are the two ways to land
+// here and only the path tells them apart.
+{
+  const bare = makeRepo({ audits: false, profile: false });
+  const { result } = packIn(bare, []);
+  check(
+    "a repo with no audits packs anyway, naming the directory it looked in",
+    result.status === 0 && result.stderr.includes(path.join("docs", "quality", "audits")),
+    result.stderr,
+  );
+  check(
+    "and the notice says what to do about it",
+    /arkaik kritik score/.test(result.stderr),
+    result.stderr,
+  );
+
+  const noProfile = makeRepo({ profile: false });
+  const skipped = packIn(noProfile, []).result;
+  check(
+    "audits but no profile is skipped, not failed, and points at the fix",
+    skipped.status === 0 && /no profile at .*profile\.json.*arkaik kritik profile/.test(skipped.stderr),
+    skipped.stderr,
+  );
+}
+
+// --- 8. a corrupt sidecar names the file it could not parse ----------------
+
+{
+  const dir = makeRepo();
+  writeFileSync(path.join(dir, "docs", "quality", "audits", "2026-08", "scores.json"), "nope\n");
+  const { result } = packIn(dir, []);
+
+  check("a corrupt sidecar fails the pack", result.status === 1, `${result.status}`);
+  check(
+    "and the FATAL names the file, not just the byte",
+    result.stderr.includes(path.join("audits", "2026-08", "scores.json")) && result.stderr.includes("not valid JSON"),
+    result.stderr,
+  );
 }
 
 console.log(`\n${failures === 0 ? "OK" : "FAILURES"}: quality-section-fold`);

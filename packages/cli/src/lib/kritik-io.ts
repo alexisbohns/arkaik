@@ -19,9 +19,23 @@ import {
   type EventInput,
   type JournalEvent,
   type KritikLibrary,
+  type QualitySection,
 } from "@arkaik/schema";
-import { listAuditIds, loadCurrentQualitySection } from "@arkaik/schema/src/cli/kritik-audit";
-import { PACK_FILE, QUALITY_DIR, loadOverlay, loadProfile, profilePath, readJson } from "@arkaik/schema/src/cli/kritik-paths";
+import {
+  listAuditIds,
+  loadAuditQualitySection,
+  loadCurrentQualitySection,
+  requireAudit,
+} from "@arkaik/schema/src/cli/kritik-audit";
+import {
+  PACK_FILE,
+  QUALITY_DIR,
+  auditsDir,
+  loadOverlay,
+  loadProfile,
+  profilePath,
+  readJson,
+} from "@arkaik/schema/src/cli/kritik-paths";
 import { readBundle } from "./bundle-io";
 import { appendJournalEvent, ensureJournalBaseline, journalPathFor } from "./journal-io";
 
@@ -114,21 +128,37 @@ export function appendQualityEvents(
  *
  * The projection is `@arkaik/schema`'s; what lives here is only what "being
  * the CLI's environment" means — resolving the effective pack, and turning
- * "there is nothing to fold" into a line a human can act on.
+ * "there is nothing to fold" into a line a human can act on. With no
+ * `auditId` that projection is the merge across every audit
+ * (`loadCurrentQualitySection`); with one it is that audit's snapshot
+ * (`loadAuditQualitySection`).
  *
- * Never throws for a *data* state. A repo with no audits, or with audits but
- * no profile, is a repo mid-installation, and neither is a reason for
- * `arkaik pack` to fail: quality is additive to a bundle. A named `auditId`
- * that does not exist is different — the user typed it — and propagates.
+ * MUTATES `bundle`, setting `bundle.quality` in place — the opposite of
+ * `stripJournal`/`stripQuality`'s copy-and-return, and the reason the name is
+ * a verb. `runPack` already owns a throwaway parse of the source file, and
+ * what its caller wants back is the notice, not a second object to reconcile.
+ *
+ * An *absent* profile and *absent* audits are ordinary mid-installation
+ * states: each returns `folded: false` with a notice and leaves the bundle
+ * alone, because quality is additive and neither is a reason for `arkaik
+ * pack` to fail. What DOES throw: a *malformed* sidecar, and a named
+ * `auditId` that is not on disk. The second is checked first, before either
+ * of the it-is-fine-to-have-nothing returns can swallow it — a typo'd
+ * `--audit` in a repo that happens to have no audits is still a typo.
  */
 export function foldQualitySection(
   bundle: Record<string, unknown>,
   root: string,
   auditId?: string,
 ): { folded: boolean; notice: string } {
+  if (auditId !== undefined) requireAudit(root, auditId);
+
   const auditIds = listAuditIds(root);
   if (auditIds.length === 0) {
-    return { folded: false, notice: `Quality: none to fold (no audits under ${root})` };
+    return {
+      folded: false,
+      notice: `Quality: none to fold — no audits under ${auditsDir(root)} (run \`arkaik kritik score\` to open one)`,
+    };
   }
   if (loadProfile(root) === null) {
     return {
@@ -138,10 +168,12 @@ export function foldQualitySection(
   }
 
   const { library } = loadKritikLibrary(root);
-  const section = loadCurrentQualitySection(root, library, auditId);
-  if (section === undefined) {
-    return { folded: false, notice: `Quality: none to fold (no audits under ${root})` };
-  }
+  // Both of the merge's `undefined` cases — no audits, no profile — are ruled
+  // out by the two guards above, so it cannot come back empty here.
+  const section =
+    auditId === undefined
+      ? (loadCurrentQualitySection(root, library) as QualitySection)
+      : loadAuditQualitySection(root, auditId, library);
 
   bundle.quality = section;
   const count = auditId === undefined ? auditIds.length : 1;
