@@ -93,9 +93,17 @@ const severe = detectRegressions(
 check("a new Critical on a comparable cell is a regression", severe.length === 1 && severe[0].kind === "new-severe-finding", JSON.stringify(severe));
 check("the detail carries the pack's severity", severe[0]?.detail.includes("critical"), severe[0]?.detail);
 
-// The provenance assertion: impact 3 x likelihood 3 is 9 — Critical under
-// RETUNED, Medium under the schema defaults. A mutant that hardcodes the
-// defaults reports nothing here.
+// The other half of the provenance pair, and it guards the OPPOSITE direction
+// from the assertion above — worth being exact about, because the whole point
+// of this suite is knowing which assertion protects you.
+//
+// impact 3 x likelihood 3 is 9: Critical under RETUNED, Medium under the schema
+// defaults. A mutant that hardcodes the DEFAULT buckets is killed by the
+// RETUNED assertion above (it reports no regression where one is expected);
+// this assertion still passes under such a mutant. What it catches is a mutant
+// hardcoding buckets LOWER than the defaults, which would invent a regression
+// here. Together they pin severity to the pack in both directions; neither
+// does it alone.
 const defaults = detectRegressions(
   { assessments: both, findings: [] },
   { assessments: bothNext, findings: [find("F-2")] },

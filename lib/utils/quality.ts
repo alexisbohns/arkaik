@@ -503,8 +503,14 @@ export function foldResolvedFindings(
     const findingId = (event as { finding_id?: unknown }).finding_id;
     if (typeof findingId !== "string" || findingId === "") continue;
     const by = (event as { resolved_by?: unknown }).resolved_by;
-    // Latest wins: a re-resolution names the PR that actually landed it.
-    resolvedBy.set(findingId, typeof by === "string" && by !== "" ? by : undefined);
+    // The latest event that NAMES a PR wins — not simply the latest event. A
+    // resolution carrying no url is a real shape (`findingResolvedInput` omits
+    // `resolved_by` when it has none, which is what `arkaik kritik finding
+    // resolve` without `--by` produces), and letting one erase the evidence an
+    // earlier resolution carried would lose the only thing separating
+    // "resolved" from "we stopped looking at it".
+    const named = typeof by === "string" && by !== "" ? by : undefined;
+    resolvedBy.set(findingId, named ?? resolvedBy.get(findingId));
   }
   if (resolvedBy.size === 0) return section;
 

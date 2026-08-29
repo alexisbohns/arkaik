@@ -51,7 +51,17 @@ export interface Regression {
 /** The half of an audit this compares — what `loadQualitySection` returns. */
 export type AuditState = Pick<QualitySection, "assessments" | "findings">;
 
-/** `::` cannot appear in a criterion id or a surface id, so it cannot collide. */
+/**
+ * Key a cell as `criterion::surface`.
+ *
+ * Surfaces are held to kebab-case by `parseSurfaceSpec`, and criterion ids are
+ * pack content that follows the same convention — so in practice `::` appears
+ * in neither and the key is unambiguous. It is a CONVENTION, not a guarantee:
+ * `QualityAssessmentSchema` types both as bare strings, so a hand-authored pack
+ * could contrive a collision (`SEC-01::web` x `x` keys the same as `SEC-01` x
+ * `web::x`). The cost of that is one fabricated trip — a prompt to go look at a
+ * cell that does not exist — which is the cheapest failure this module has.
+ */
 const cellKey = (criterionId: string, surface: string): string => `${criterionId}::${surface}`;
 
 const rowsOf = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);

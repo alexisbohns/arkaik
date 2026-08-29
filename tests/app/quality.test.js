@@ -559,6 +559,26 @@ for (const status of ["refuted", "accepted-risk"]) {
 const noUrl = foldResolvedFindings(foldSection([openCritical]), [RESOLVED_EVENT("F-1", { resolved_by: undefined })]);
 assert(noUrl.findings[0].resolved_by === undefined, "no resolved_by on the event leaves none on the finding");
 
+
+// A later url-less resolution must not erase the url an earlier one carried.
+// `findingResolvedInput` omits `resolved_by` when it has none, so this shape
+// is what `arkaik kritik finding resolve` produces without `--by`.
+const keptUrl = foldResolvedFindings(foldSection([openCritical]), [
+  RESOLVED_EVENT("F-1"),
+  RESOLVED_EVENT("F-1", { resolved_by: undefined }),
+]);
+assert(
+  keptUrl.findings[0].resolved_by === "https://github.com/acme/app/pull/7",
+  `a url-less re-resolution keeps the known PR (got ${keptUrl.findings[0].resolved_by})`,
+);
+const laterUrl = foldResolvedFindings(foldSection([openCritical]), [
+  RESOLVED_EVENT("F-1", { resolved_by: undefined }),
+  RESOLVED_EVENT("F-1", { resolved_by: "https://github.com/acme/app/pull/9" }),
+]);
+assert(
+  laterUrl.findings[0].resolved_by === "https://github.com/acme/app/pull/9",
+  `a later named resolution still wins (got ${laterUrl.findings[0].resolved_by})`,
+);
 // The pair that makes the fold matter: a capped cell uncaps, and the node
 // badge clears, once the Critical behind them is folded resolved.
 const badged = { ...openCritical, node_ids: ["V-home"] };
