@@ -64,3 +64,11 @@ reminder clears its own comment once the body is fixed. Fix by editing the PR
 body — posting is idempotent.
 
 Full pipeline docs: [ariko README — "Making it a requirement"](https://github.com/alexisbohns/ariko#lab-note-pipeline-c1--github-connector).
+
+## Larger work ships as a stack
+
+Anything bigger than a single focused change is split into **parts** — one part
+is one branch is one PR — chained with `gh stack` so each PR's diff shows only
+its own layer. Before planning such work, read
+[`docs/conventions.md` § "Shipping larger work"](docs/conventions.md) for how to
+cut the parts, and use the `gh-stack` skill to drive the commands.
