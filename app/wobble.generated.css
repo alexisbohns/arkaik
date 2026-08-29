@@ -9,6 +9,7 @@ svg.lucide.no-wobble { filter: none; }
 
 .lucide-apple { filter: url(#wob-apple); }
 .lucide-arrow-down { filter: url(#wob-arrow-down); }
+.lucide-arrow-down-wide-narrow { filter: url(#wob-arrow-down-wide-narrow); }
 .lucide-arrow-left { filter: url(#wob-arrow-left); }
 .lucide-arrow-right-left { filter: url(#wob-arrow-right-left); }
 .lucide-arrow-up { filter: url(#wob-arrow-up); }
@@ -61,6 +62,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-figma { filter: url(#wob-figma); }
 .lucide-file-text { filter: url(#wob-file-text); }
 .lucide-file-up { filter: url(#wob-file-up); }
+.lucide-flag { filter: url(#wob-flag); }
 .lucide-flame { filter: url(#wob-flame); }
 .lucide-folder-kanban { filter: url(#wob-folder-kanban); }
 .lucide-folder-open { filter: url(#wob-folder-open); }

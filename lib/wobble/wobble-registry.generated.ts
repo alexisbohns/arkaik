@@ -12,6 +12,7 @@ export interface WobbleIcon {
 export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "apple", seed: 7 },
   { name: "arrow-down", seed: 9 },
+  { name: "arrow-down-wide-narrow", seed: 9 },
   { name: "arrow-left", seed: 12 },
   { name: "arrow-right-left", seed: 9 },
   { name: "arrow-up", seed: 8 },
@@ -64,6 +65,7 @@ export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "figma", seed: 15 },
   { name: "file-text", seed: 1 },
   { name: "file-up", seed: 11 },
+  { name: "flag", seed: 11 },
   { name: "flame", seed: 4 },
   { name: "folder-kanban", seed: 7 },
   { name: "folder-open", seed: 0 },
