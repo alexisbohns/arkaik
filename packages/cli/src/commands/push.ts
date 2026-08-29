@@ -1,5 +1,5 @@
 /**
- * `arkaik push [--include-journal] [--api <base-url>] [path]`
+ * `arkaik push [--include-journal] [--include-quality] [--api <base-url>] [path]`
  * `arkaik push --delete <id> --key <owner_key> [--api <base-url>]`
  *
  * Completes the Kommit journey — repo bundle to shareable URL without
@@ -17,13 +17,16 @@
  *     wire, so nothing rests on what the server chooses to do with them.
  *     `noJournal: true` is the Publik-safe posture for history
  *     (docs/spec/journal.md:41); `--include-journal` flips it off, embedding
- *     the journal exactly like a bare `arkaik pack` would. `noQuality: true`
- *     is that posture for a Kritik section (docs/rfcs/kritik.md § 8.3), and
- *     it DELETES rather than merely declines to fold — a bundle that arrived
- *     already carrying a hand-written `quality` key must not be pushed with
- *     it either. Its `--include-quality` counterpart is still to come
- *     (#389), so today that strip is unconditional.
- *  3. `POST {api}/api/publik[?include_journal=true]` with the packed,
+ *     the journal exactly like a bare `arkaik pack` would.
+ *     `noQuality: !includeQuality` is that posture for a Kritik section
+ *     (docs/rfcs/kritik.md § 8.3), and it DELETES rather than merely
+ *     declines to fold — a bundle that arrived already carrying a
+ *     hand-written `quality` key must not be pushed with it either.
+ *     `--include-quality` flips it. The two are separate decisions on
+ *     purpose: publishing your history and publishing your open findings are
+ *     different disclosures, and both default to no.
+ *  3. `POST {api}/api/publik[?include_journal=true][&include_quality=true]`
+ *     with the packed,
  *     canonical bundle as the body (docs/spec/services.md § Publik →
  *     Protocol — the API this command talks to is implemented at
  *     `app/api/publik/route.ts` / `lib/services/publik.ts`).
@@ -61,7 +64,7 @@ const DEFAULT_BUNDLE_PATH = "docs/arkaik/bundle.json";
 /** Default Publik host — override with `--api <base-url>` for self-hosted deployments. */
 export const DEFAULT_API_BASE = "https://arkaik.app";
 
-const USAGE = `arkaik push [--include-journal] [--api <base-url>] [path]
+const USAGE = `arkaik push [--include-journal] [--include-quality] [--api <base-url>] [path]
 arkaik push --delete <id> --key <owner_key> [--api <base-url>]
 
 Publish a project bundle to Publik (anonymous, account-less snapshot
@@ -75,9 +78,9 @@ Publik-safe posture (docs/spec/journal.md). --include-journal embeds it
 (like a bare "arkaik pack") and forwards ?include_journal=true so the server
 knows to keep it.
 
-A Kritik "quality" section is stripped too, and always: open findings name
-unfixed vulnerabilities and where to find them, so they are never published.
-Use "arkaik pack" if you want a bundle that keeps them.
+A Kritik "quality" section is stripped by default too, and separately:
+publishing your history and publishing your open findings are two decisions,
+not one, and both default to no. --include-quality opts in.
 
 Snapshots are immutable: there is no update verb. Pushing again always mints
 a new id. The owner key printed on success is shown exactly once and cannot
@@ -91,6 +94,13 @@ Options:
   --include-journal   Embed the journal in the pushed bundle and forward
                        ?include_journal=true. Default: stripped, omitted
                        entirely from the request body.
+  --include-quality   Embed the Kritik quality section and forward
+                       ?include_quality=true. Opt-in rather than opt-out
+                       because an open finding is an unfixed vulnerability
+                       plus the path to find it in (docs/rfcs/kritik.md
+                       § 8.3) — publishing that is a decision worth typing.
+                       Default: deleted before packing, so it is never in the
+                       request body at all.
   --api <base-url>    Publik API base URL (default: ${DEFAULT_API_BASE}).
                        Point at a self-hosted deployment.
   --delete <id>       Delete a snapshot by id instead of pushing. Requires
@@ -113,6 +123,8 @@ export interface RunPushOptions {
   path?: string;
   /** Embed the journal (forwarding ?include_journal=true) instead of stripping it. */
   includeJournal?: boolean;
+  /** Embed the quality section (forwarding ?include_quality=true) instead of stripping it. */
+  includeQuality?: boolean;
   /** Publik API base URL (default: https://arkaik.app). */
   apiBase?: string;
   /** Base directory `path` resolves against (default: process.cwd()). */
@@ -164,7 +176,8 @@ function fatalResult(bundlePath: string, message: string): RunPushResult {
 }
 
 /**
- * Validate, pack (journal stripped unless `includeJournal`), and POST to
+ * Validate, pack (journal stripped unless `includeJournal`, quality stripped
+ * unless `includeQuality`), and POST to
  * Publik. Mirrors `runOpen`'s validate-gate shape: an invalid bundle returns
  * `ok: true, valid: false` with findings and never reaches pack/network.
  */
@@ -172,6 +185,7 @@ export async function runPush(options: RunPushOptions = {}): Promise<RunPushResu
   const cwd = options.cwd ?? process.cwd();
   const filePath = resolve(cwd, options.path ?? DEFAULT_BUNDLE_PATH);
   const includeJournal = options.includeJournal ?? false;
+  const includeQuality = options.includeQuality ?? false;
   const apiBase = options.apiBase ?? DEFAULT_API_BASE;
   const httpClient = options.httpClient ?? DEFAULT_HTTP_CLIENT;
 
@@ -194,14 +208,21 @@ export async function runPush(options: RunPushOptions = {}): Promise<RunPushResu
   // to send — lib/services/publik.ts stripping quality server-side too is a
   // second line, not the one being relied on here. An open finding names an
   // unfixed vulnerability and the file to find it in (docs/rfcs/kritik.md
-  // § 8.3). `noQuality` is hardcoded until #389 adds `--include-quality`; it
-  // becomes `!includeQuality` then, beside the journal's flag.
-  const packed = runPack({ path: filePath, noJournal: !includeJournal, noQuality: true, cwd });
+  // § 8.3), so it takes its own opt-in rather than riding on the journal's.
+  // No `root:` here on purpose — runPack derives it from the bundle's own
+  // path, and passing the cwd would fold whichever repo the user happens to
+  // be standing in.
+  const packed = runPack({ path: filePath, noJournal: !includeJournal, noQuality: !includeQuality, cwd });
   if (!packed.ok) {
     return fatalResult(filePath, packed.fatal ?? "pack failed");
   }
 
-  const url = `${apiBase}/api/publik${includeJournal ? "?include_journal=true" : ""}`;
+  // Built from a list rather than concatenated: two independent opt-ins can
+  // now both be on, and `?a=true?b=true` is not a query string.
+  const params: string[] = [];
+  if (includeJournal) params.push("include_journal=true");
+  if (includeQuality) params.push("include_quality=true");
+  const url = `${apiBase}/api/publik${params.length > 0 ? `?${params.join("&")}` : ""}`;
 
   let res: Response;
   try {
@@ -392,6 +413,7 @@ function reportDelete(id: string, result: RunPushDeleteResult): never {
 
 export function runPushCli(args: string[]): void {
   let includeJournal = false;
+  let includeQuality = false;
   let apiBase: string | undefined;
   let deleteId: string | undefined;
   let key: string | undefined;
@@ -404,6 +426,8 @@ export function runPushCli(args: string[]): void {
       process.exit(0);
     } else if (arg === "--include-journal") {
       includeJournal = true;
+    } else if (arg === "--include-quality") {
+      includeQuality = true;
     } else if (arg === "--api") {
       const value = args[++i];
       if (value === undefined) fail(`Missing value for --api\n\n${USAGE}`);
@@ -439,7 +463,7 @@ export function runPushCli(args: string[]): void {
 
   const filePath = positionals[0] ?? DEFAULT_BUNDLE_PATH;
 
-  runPush({ path: filePath, includeJournal, apiBase })
+  runPush({ path: filePath, includeJournal, includeQuality, apiBase })
     .then((result) => {
       if (!result.ok) fail(`FATAL: ${result.fatal}`);
       reportPush(result);

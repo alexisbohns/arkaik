@@ -22,6 +22,8 @@
  *  - a Kritik `quality` section the SOURCE bundle carries is deleted before
  *    packing and never sent (#389) — open findings name unfixed
  *    vulnerabilities and where to find them;
+ *  - --include-quality opts back in, forwarding ?include_quality=true, and
+ *    combines with --include-journal into a two-parameter query;
  *  - --include-journal: journal embedded in the body, ?include_journal=true
  *    forwarded;
  *  - validation failure: an invalid bundle never reaches pack or the network;
@@ -133,6 +135,62 @@ function fixture() {
   return { dir, bundlePath, journalPath };
 }
 
+/**
+ * Like {@link fixture}, but the bundle ARRIVES carrying a Kritik `quality`
+ * section — five assessed cells and an open finding.
+ *
+ * A fixture with no `quality` key cannot tell "push stripped it" from "push
+ * never had one to strip", which is how a leak survived two reviews. The
+ * sidecar journal comes along too, so the both-flags case has a journal to
+ * embed as well as a section to keep.
+ */
+function qualityFixture() {
+  const { dir, bundlePath, journalPath } = fixture();
+  const cell = (criterionId, surface, level) => ({
+    criterion_id: criterionId,
+    surface,
+    level,
+    evidence: `app/${criterionId.toLowerCase()}.ts:1`,
+    audit_id: "2026-08",
+  });
+  writeFileSync(
+    bundlePath,
+    JSON.stringify(
+      {
+        ...makeBundle(),
+        quality: {
+          framework_version: "9.9.9",
+          profile: { surfaces: [{ id: "web", title: "Web app" }, { id: "admin", title: "Admin console" }] },
+          assessments: [
+            cell("SEC-01", "web", 4),
+            cell("SEC-02", "web", 4),
+            cell("TST-01", "web", 1),
+            cell("SEC-01", "admin", 3),
+            cell("TST-01", "admin", 2),
+          ],
+          findings: [
+            {
+              id: "F-2026-08-SEC-web-01",
+              criterion_id: "SEC-01",
+              surface: "web",
+              title: "Token in the repo",
+              detail: "A live token is committed.",
+              evidence: "app/a.ts:1",
+              impact: 5,
+              likelihood: 4,
+              cost: "M",
+              status: "open",
+            },
+          ],
+        },
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  return { dir, bundlePath, journalPath };
+}
+
 /** Fresh temp dir with a copy of the shared dangling-edge (invalid) fixture, no sidecar. */
 function invalidFixture() {
   const dir = mkdtempSync(path.join(tmpdir(), "arkaik-push-invalid-"));
@@ -223,49 +281,19 @@ async function main() {
   // -------------------------------------------------------------------------
   // A `quality` section on the SOURCE bundle is stripped, never sent (#389).
   //
-  // The case above cannot show this: its fixture has no `quality` key, so
-  // `sent.quality === undefined` would hold whether push strips one or merely
-  // declines to add one. Here the bundle arrives carrying findings — the exact
-  // shape `arkaik pack` writes — and they must not reach the wire. Server-side
-  // stripping (lib/services/publik.ts) is a second line, not this one.
+  // The success case above cannot show this: its fixture has no `quality`
+  // key, so `sent.quality === undefined` would hold whether push strips one
+  // or merely declines to add one. Here the bundle arrives carrying findings
+  // — the exact shape `arkaik pack` writes — and they must not reach the
+  // wire. Server-side stripping (lib/services/publik.ts) is a second line,
+  // not this one.
   // -------------------------------------------------------------------------
   {
-    const dir = mkdtempSync(path.join(tmpdir(), "arkaik-push-quality-"));
-    createdDirs.push(dir);
-    const bundlePath = path.join(dir, "bundle.json");
-    writeFileSync(
-      bundlePath,
-      JSON.stringify(
-        {
-          ...makeBundle(),
-          quality: {
-            framework_version: "1.0.0",
-            profile: { surfaces: [{ id: "web", title: "Web" }] },
-            assessments: [{ criterion_id: "SEC-01", surface: "web", level: 1, evidence: "auth.ts:1" }],
-            findings: [
-              {
-                id: "F-2026-08-SEC-web-01",
-                criterion_id: "SEC-01",
-                surface: "web",
-                title: "Token in the repo",
-                detail: "A live token is committed.",
-                evidence: "app/a.ts:1",
-                impact: 5,
-                likelihood: 4,
-                cost: "M",
-                status: "open",
-              },
-            ],
-          },
-        },
-        null,
-        2,
-      ) + "\n",
-    );
-
-    const httpClient = makeMockHttpClient(() =>
-      jsonResponse(201, { id: "q1", url: `${DEFAULT_API_BASE}/p/q1`, owner_key: "33333333-3333-4333-8333-333333333333" }),
-    );
+    const { bundlePath } = qualityFixture();
+    const httpClient = makeMockHttpClient((url) => {
+      check("no include_quality query by default", url === `${DEFAULT_API_BASE}/api/publik`, url);
+      return jsonResponse(201, { id: "q1", url: `${DEFAULT_API_BASE}/p/q1`, owner_key: "33333333-3333-4333-8333-333333333333" });
+    });
     const result = await runPush({ path: bundlePath, httpClient });
 
     check("push of a quality-carrying bundle ok", result.ok === true && result.status === 201, JSON.stringify(result));
@@ -281,6 +309,74 @@ async function main() {
       httpClient.calls[0].init.body.slice(0, 300),
     );
     check("the rest of the bundle still goes", sentBundle.project && sentBundle.project.id === "demo");
+  }
+
+  // -------------------------------------------------------------------------
+  // --include-quality: the opt-in. Same fixture, opposite expectation.
+  // -------------------------------------------------------------------------
+  {
+    const { bundlePath } = qualityFixture();
+    const httpClient = makeMockHttpClient((url) => {
+      check(
+        "--include-quality forwards ?include_quality=true",
+        url === `${DEFAULT_API_BASE}/api/publik?include_quality=true`,
+        url,
+      );
+      return jsonResponse(201, { id: "q2", url: `${DEFAULT_API_BASE}/p/q2`, owner_key: "44444444-4444-4444-8444-444444444444" });
+    });
+    const result = await runPush({ path: bundlePath, includeQuality: true, httpClient });
+
+    check("include-quality push ok", result.ok === true && result.status === 201, JSON.stringify(result));
+    const sentBundle = JSON.parse(httpClient.calls[0].init.body);
+    check(
+      "the whole section is sent, not just the key",
+      sentBundle.quality && sentBundle.quality.assessments.length === 5,
+      JSON.stringify(sentBundle.quality && sentBundle.quality.assessments.length),
+    );
+    check(
+      "including the findings that were the reason for the default",
+      sentBundle.quality && sentBundle.quality.findings.length === 1,
+      JSON.stringify(sentBundle.quality && sentBundle.quality.findings),
+    );
+    check(
+      "and the journal is still stripped — the two opt-ins are independent",
+      sentBundle.journal === undefined,
+      JSON.stringify(Object.keys(sentBundle)),
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Both opt-ins at once: two query parameters, both sections in the body.
+  //
+  // This is what the URL is assembled from a list for. Appending a second
+  // "?..." would produce `?include_journal=true?include_quality=true`, which
+  // the server reads as one parameter with a junk value — and every
+  // single-flag case above would still pass.
+  // -------------------------------------------------------------------------
+  {
+    const { bundlePath } = qualityFixture();
+    const httpClient = makeMockHttpClient((url) => {
+      check(
+        "both flags produce one query with two parameters",
+        url === `${DEFAULT_API_BASE}/api/publik?include_journal=true&include_quality=true`,
+        url,
+      );
+      return jsonResponse(201, { id: "q3", url: `${DEFAULT_API_BASE}/p/q3`, owner_key: "55555555-5555-4555-8555-555555555555" });
+    });
+    const result = await runPush({ path: bundlePath, includeJournal: true, includeQuality: true, httpClient });
+
+    check("both-flags push ok", result.ok === true && result.status === 201, JSON.stringify(result));
+    const sentBundle = JSON.parse(httpClient.calls[0].init.body);
+    check(
+      "the body carries the journal",
+      Array.isArray(sentBundle.journal) && sentBundle.journal.length === 1,
+      JSON.stringify(sentBundle.journal),
+    );
+    check(
+      "and the quality section, in the same request",
+      sentBundle.quality && sentBundle.quality.assessments.length === 5,
+      JSON.stringify(sentBundle.quality && sentBundle.quality.assessments.length),
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -490,6 +586,7 @@ async function main() {
     check("push --help exits 0", help.status === 0 && /arkaik push/.test(help.stdout), help.stdout);
     check("help documents --delete", /--delete/.test(help.stdout));
     check("help documents --include-journal", /--include-journal/.test(help.stdout));
+    check("help documents --include-quality", /--include-quality/.test(help.stdout));
     check("help documents --api", /--api/.test(help.stdout));
 
     const noKey = runCli(["push", "--delete", "abc123"]);
@@ -504,6 +601,15 @@ async function main() {
 
     const badFlag = runCli(["push", "--nope"]);
     check("unknown flag exits 1", badFlag.status === 1);
+
+    // --include-quality must reach runPush, not the unknown-flag branch. Both
+    // outcomes exit 1 on a missing file, so the reason is what is asserted.
+    const optIn = runCli(["push", "--include-quality", path.join(tmpdir(), "arkaik-push-does-not-exist", "bundle.json")]);
+    check(
+      "--include-quality parses, and fails on the file rather than the flag",
+      optIn.status === 1 && !/Unknown option/.test(`${optIn.stdout}${optIn.stderr}`) && /FATAL/.test(`${optIn.stdout}${optIn.stderr}`),
+      `${optIn.stdout}\n${optIn.stderr}`,
+    );
 
     const missingFile = runCli(["push", path.join(tmpdir(), "arkaik-push-does-not-exist", "bundle.json")]);
     check("missing bundle file exits 1 (fatal, before any network)", missingFile.status === 1, `${missingFile.stdout}\n${missingFile.stderr}`);
