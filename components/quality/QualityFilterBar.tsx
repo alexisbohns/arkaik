@@ -156,10 +156,22 @@ export function QualityFilterBar({ filters, onChange, surfaces, domains }: Quali
           throw away a search somebody ran inside the cell they were reading.
         */}
         {cell && (
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-md border bg-accent px-2 py-1 text-xs dark:bg-accent/50">
-            <span className="font-medium">{domainNameOf(cell.domain, domains)}</span>
+          <span
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border bg-accent px-2 py-1 text-xs dark:bg-accent/50"
+            /* Both halves are truncated below, and this is where the untrimmed
+               pair still reads. */
+            title={`${domainNameOf(cell.domain, domains)} × ${surfaceTitleOf(cell.surface, surfaces)}`}
+          >
+            {/* Bounded, because a domain name is the pack's to write and this
+                pack's run to "Agentic Development Readiness": the chip does not
+                shrink, so an unbounded name inside a group capped at
+                `md:max-w-sm` squeezes the search box beside it toward nothing.
+                The name and not the code — the code names nothing to a reader
+                who has not read the pack, and the matrix cell this chip echoes
+                was clicked under its name. */}
+            <span className="max-w-[10rem] truncate font-medium">{domainNameOf(cell.domain, domains)}</span>
             <span className="text-muted-foreground">×</span>
-            <span>{surfaceTitleOf(cell.surface, surfaces)}</span>
+            <span className="max-w-[8rem] truncate">{surfaceTitleOf(cell.surface, surfaces)}</span>
             <button
               type="button"
               onClick={() => onChange({ ...filters, cell: null })}

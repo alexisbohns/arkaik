@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ChevronDownIcon, ChevronRightIcon, ExternalLinkIcon } from "lucide-react";
+import type { QualityFinding } from "@arkaik/schema";
 import type { Node } from "@/lib/data/types";
 import type { FindingRow } from "@/lib/utils/quality";
 import { Badge } from "@/components/ui/badge";
@@ -33,7 +34,7 @@ interface FindingCardProps {
  * that has to be spelled out: a finding the pass argued *down* still stands,
  * and a reader who takes it for a refusal will skip a real defect.
  */
-const VERDICT_LABEL: Record<"CONFIRMED" | "REFUTED" | "DOWNGRADED", string> = {
+const VERDICT_LABEL: Record<NonNullable<QualityFinding["verification"]>["verdict"], string> = {
   CONFIRMED: "Confirmed",
   REFUTED: "Refuted",
   DOWNGRADED: "Downgraded",
@@ -68,7 +69,12 @@ export function FindingCard({
   // note field, so the rationale is the refutation pass's note when it wrote
   // one and the filed detail otherwise — and the detail is also what the
   // expanded body renders.
-  const acceptedNote = acceptedRisk ? row.verification?.note ?? row.detail : undefined;
+  //
+  // `||` rather than `??`, because `""` is not a note somebody wrote: a
+  // verification that carries an empty one would otherwise draw the bordered
+  // callout around an empty paragraph, which reads as a rationale that failed
+  // to load rather than as one nobody recorded.
+  const acceptedNote = acceptedRisk ? row.verification?.note || row.detail : undefined;
 
   return (
     <article

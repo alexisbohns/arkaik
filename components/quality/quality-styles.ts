@@ -9,12 +9,11 @@ import type {
  * What the quality scales look like, and what they are called.
  *
  * One module rather than a map per component, for the reason `node-styles.ts`
- * keeps `STATUS_STYLES` in one place: three surfaces render a severity — the
- * matrix's finding dots, the board's chips, the filter bar's menu — and a copy
- * per component is three answers to "what does critical look like", free to
- * drift the day one of them is restyled. `CriterionDetailPanel` still carries
- * its own dot with a note saying it is waiting for exactly this; folding it in
- * is a one-line change on a file this unit must not touch.
+ * keeps `STATUS_STYLES` in one place: six surfaces render a severity — the
+ * matrix's finding dots, the board's chips, the filter bar's menu, the
+ * criterion panel's rows, the node panel's Findings list and the canvas badge —
+ * and a copy per component is six answers to "what does critical look like",
+ * free to drift the day one of them is restyled.
  *
  * Whole literal class strings, never composed from a shade: Tailwind's scanner
  * reads source text, so a `bg-${family}-500` would generate no CSS at all —

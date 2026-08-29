@@ -111,10 +111,18 @@ function FindingDots({ findings }: { findings: QualityMatrixCell["findings"] }) 
   );
 }
 
-/** A 0–4 maturity level as a four-segment meter beside its number. */
+/**
+ * A 0–4 maturity level as a four-segment meter beside its number.
+ *
+ * `role="img"` rather than a bare `<span>` carrying an `aria-label`: a span maps
+ * to `generic`, which prohibits an accessible name, so the label was inert and
+ * the row read out as "L2". As an image the whole meter announces the sentence
+ * and its own contents go presentational, which is exactly right — the segments
+ * are the number drawn twice.
+ */
 function LevelMeter({ level }: { level: MaturityLevel }) {
   return (
-    <span className="flex shrink-0 items-center gap-1.5" aria-label={`Level ${level} of 4`}>
+    <span className="flex shrink-0 items-center gap-1.5" role="img" aria-label={`Level ${level} of 4`}>
       <span className="font-mono text-[10px] text-muted-foreground">L{level}</span>
       <span className="flex gap-0.5" aria-hidden="true">
         {[1, 2, 3, 4].map((step) => (
@@ -279,6 +287,11 @@ export function QualityMatrix({
                 const cell = matrix.matrix[domain]?.[surface] ?? null;
                 const key = cellKey(domain, surface);
                 const isActive = activeCell === key;
+                // Once per cell, for the two attributes that want the same
+                // sentence: `cellLabel` filters, maps and joins the four
+                // severities, and fifty-five cells calling it twice is a
+                // hundred and ten of those passes per render.
+                const label = cell === null ? "" : cellLabel(nameOf(domain), titleOf(surface), cell);
 
                 return (
                   <TableCell key={surface} className="p-1">
@@ -293,8 +306,8 @@ export function QualityMatrix({
                         type="button"
                         onClick={() => onSelectCell(isActive ? null : key)}
                         aria-pressed={isActive}
-                        aria-label={cellLabel(nameOf(domain), titleOf(surface), cell)}
-                        title={cellLabel(nameOf(domain), titleOf(surface), cell)}
+                        aria-label={label}
+                        title={label}
                         className={cn(
                           "flex h-16 w-24 flex-col items-center justify-center gap-1 rounded-md px-1 transition-all",
                           GRADE_TINT[cell.grade],
@@ -334,21 +347,28 @@ export function QualityMatrix({
             </TableHead>
             {matrix.surfaces.map((surface) => {
               const score = matrix.overall[surface] ?? null;
+              if (score === null) {
+                return (
+                  <TableCell key={surface} className="p-1 text-center">
+                    <span className="text-xs text-muted-foreground">N/A</span>
+                  </TableCell>
+                );
+              }
+
+              // Banded once — the tint and the letter are the same answer, and
+              // asking `gradeOf` twice invites the day they stop agreeing.
+              const grade = gradeOf(score, library);
               return (
                 <TableCell key={surface} className="p-1 text-center">
-                  {score === null ? (
-                    <span className="text-xs text-muted-foreground">N/A</span>
-                  ) : (
-                    <span
-                      className={cn(
-                        "inline-flex h-10 w-24 items-center justify-center gap-1.5 rounded-md",
-                        GRADE_TINT[gradeOf(score, library)],
-                      )}
-                    >
-                      <span className="text-base font-semibold tabular-nums">{score}</span>
-                      <span className="text-[11px] font-medium">{gradeOf(score, library)}</span>
-                    </span>
-                  )}
+                  <span
+                    className={cn(
+                      "inline-flex h-10 w-24 items-center justify-center gap-1.5 rounded-md",
+                      GRADE_TINT[grade],
+                    )}
+                  >
+                    <span className="text-base font-semibold tabular-nums">{score}</span>
+                    <span className="text-[11px] font-medium">{grade}</span>
+                  </span>
                 </TableCell>
               );
             })}
