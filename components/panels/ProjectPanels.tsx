@@ -18,6 +18,7 @@ import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useProjectId } from "@/lib/hooks/useProjectId";
 import type { PanelEntry } from "@/lib/utils/panel-stack";
 import type { PanelDescriptor } from "@/lib/utils/project-panels";
+import { buildFindingRows } from "@/lib/utils/quality";
 import { resolveProductScope, type ProductScope } from "@/lib/utils/product-scope";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 
@@ -113,6 +114,20 @@ export function ProjectPanels({
 
   const nodesById = useMemo(() => new Map(allNodes.map((node) => [node.id, node])), [allNodes]);
 
+  // Denormalized here rather than inside the criterion panel, which cannot
+  // memoize it: `react-hooks/preserve-manual-memoization` is an error, and it
+  // refuses the memo that would wrap the whole derivation down there — see the
+  // note in `CriterionDetailPanel`. Once per stack rather than once per open
+  // criterion is also the right altitude for it: the rows are a property of the
+  // section, not of any one criterion. Every page but Quality passes no section
+  // at all, and `buildFindingRows` over an absent one is two empty maps and an
+  // empty array, so the nine callers that will never open a criterion panel pay
+  // effectively nothing for it.
+  const qualityFindings = useMemo(
+    () => buildFindingRows(qualitySection, qualityLibrary),
+    [qualitySection, qualityLibrary],
+  );
+
   // An empty list is the loading window, not a deleted project — pruning then
   // would close a panel restored from `?node=` before its node ever arrived.
   // It is also what every page that passes no nodes at all looks like.
@@ -182,10 +197,22 @@ export function ProjectPanels({
               surface={entry.payload.surface}
               library={qualityLibrary}
               section={qualitySection}
+              findings={qualityFindings}
               // From this panel's own depth, like every other navigation in the
               // stack: following a finding into the graph opens the node ABOVE
-              // the criterion, so the criterion the reader came from is still
-              // there to go back to. Opening from depth 0 would close it.
+              // the criterion rather than in place of it, which is what depth 0
+              // would do.
+              //
+              // Sitting above it is not the same as surviving it, and no
+              // comment here should promise that it is. Opening the node
+              // publishes `?node=`; Back — or closing that node panel, which
+              // republishes an empty address — hands `reconcileArrival` a
+              // missing id, and a missing id closes the *whole* stack, this
+              // criterion with it. One address, and a criterion is not it. Raw
+              // has had the identical behaviour since it landed. What brings
+              // the panel back is the Quality page's own `?criterion=` sync,
+              // and it comes back remounted, so the reader loses their scroll
+              // position in it.
               onOpenNode={(nodeId) => openNode({ nodeId }, index + 1)}
             />
           );

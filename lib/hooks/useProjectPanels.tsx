@@ -261,6 +261,16 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
   // Unlike `openRaw` there is no "reveal the one already open" branch either:
   // several criteria can stack, and `openFrom` already refreshes in place when
   // the same criterion on the same surface lands back in the same slot.
+  //
+  // `fromDepth` omitted means `previous.length` — append, above whatever is
+  // already open. That is the right default for `openRaw`, which is invoked
+  // from the header and so has nothing to do with what the surface is showing,
+  // and it is the wrong one for a criteria strip: the strip lives *on* the
+  // surface, and this stack's rule is that a surface click is depth 0 and
+  // leaves exactly one panel open. On the default, clicking criterion A and
+  // then B in the strip leaves `[A, B]`, and the stack grows with every click.
+  // **A caller opening a criterion from the surface passes `0`** — that is what
+  // the parameter is here for.
   const openCriterion = useCallback(
     (criterionId: string, surface?: string, fromDepth?: number) => {
       setEntries((previous) =>
