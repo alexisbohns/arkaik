@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import { useMemo } from "react";
 import { LayersIcon } from "lucide-react";
 import type { KritikLibrary, QualityMatrix, QualitySection } from "@arkaik/schema";
 import { SectionHeading } from "@/components/layout/SectionHeading";
+import { QualityGallery } from "@/components/quality/QualityGallery";
 import { QualityLegend } from "@/components/quality/QualityLegend";
 import { SurfaceScoreCard, cellLabel } from "@/components/quality/SurfaceScoreCard";
 import { domainIcon } from "@/lib/config/quality-domain-icons";
@@ -16,45 +17,6 @@ interface QualityMatrixSectionsProps {
   /** The open cell as `cellKey` encodes it, or `null`. Owned by the URL. */
   activeCell: string | null;
   onSelectCell: (domain: string, surface: string) => void;
-}
-
-/** The gallery: cards in a row, scrolling horizontally when they overflow. */
-function Gallery({ children }: { children: ReactNode }) {
-  return (
-    // Its own scrollport, and the reason it is per-section rather than shared:
-    // one scrollport across every domain means reaching `api` in Security
-    // scrolls it out of view in Accessibility, and the reader loses the
-    // comparison the moment they use the page. `snap-x` so a flick lands on a
-    // card rather than between two.
-    //
-    // `overscroll-y-auto` is the wheel fix, and it has to name the axis.
-    // `globals.css` gives every `.overflow-x-auto` `overscroll-behavior:
-    // contain` — there to stop a swipe becoming browser back/forward — and that
-    // shorthand sets BOTH axes. A vertical wheel over the gallery therefore had
-    // nowhere to go: containment blocks the scroll chaining that would hand it
-    // to the surface, and the gallery itself has nothing to scroll vertically.
-    // A wheel over a card stopped dead, and the page only scrolled from the
-    // hairline of margin between two sections.
-    //
-    // Measured, not reasoned — the two intuitive fixes are both wrong, and the
-    // second is the one this repo already believes in:
-    //
-    //   overflow-x-auto                      → trapped
-    //   + overflow-y-hidden                  → trapped
-    //   + overscroll-behavior: auto          → trapped (specificity, not axes)
-    //   + overscroll-behavior-y: auto        → scrolls
-    //
-    // `overflow-y: hidden` does not help because it removes the y axis's
-    // *overflow*, not its scroll-container-ness, and `overscroll-behavior`
-    // applies to scroll containers either way. **`components/ui/table.tsx`
-    // carries that non-fix and is still trapped** — out of scope here, but it
-    // is the same bug and the comment there is wrong.
-    //
-    // `overscroll-x-contain` keeps the half that was actually wanted.
-    <div className="-mx-4 flex snap-x gap-2 overflow-x-auto overscroll-x-contain overscroll-y-auto px-4 py-1">
-      {children}
-    </div>
-  );
 }
 
 /**
@@ -82,94 +44,90 @@ export function QualityMatrixSections({
 
   return (
     <div className="flex flex-col">
-      <div className="divide-y">
-        {/*
-          The surface roll-up, promoted from the old table's `tfoot` to the top
-          of the page: a summary read *before* the detail is a summary, read
-          after it is a twelfth domain. It is banded straight off its score with
-          no caps re-applied — `deriveQualityMatrix` deliberately declined to
-          fold them in here, since a cap shapes the cell you act on and folding
-          it into the roll-up too would punish one finding twice.
-        */}
-        <section className="flex flex-col gap-3 p-4">
-          <SectionHeading
-            title="Overall"
-            icon={LayersIcon}
-            orientation="inline"
-            description="Every domain weighed together, surface by surface."
-            subtitle={`${matrix.surfaces.length} surface${matrix.surfaces.length === 1 ? "" : "s"}`}
-          />
-          <Gallery>
-            {gauges.map((gauge) => (
-              <SurfaceScoreCard
-                key={gauge.surface}
-                title={gauge.title}
-                score={gauge.score}
-                grade={gauge.grade}
-                meta={`${gauge.openFindings} open`}
-                label={
-                  gauge.score === null
-                    ? `${gauge.title} — nothing scored`
-                    : `${gauge.title} — ${gauge.score} out of 100, grade ${gauge.grade} — ${gauge.openFindings} open findings`
-                }
-              />
-            ))}
-          </Gallery>
-        </section>
-
-        {sections.map((domain) => (
-          <section key={domain.domain} className="flex flex-col gap-3 p-4">
-            {/*
-              Heading above the gallery, never beside it. `SectionRow`'s
-              two-column shape would leave the gallery a `1fr` remainder of an
-              already narrow column the moment a panel opens, and every gallery
-              would scroll two cards at a time. Full width means the scrollport
-              is the surface's width and narrows gracefully instead.
-            */}
-            <SectionHeading
-              title={domain.name}
-              icon={domainIcon(domain.domain)}
-              orientation="inline"
-              description={domain.description}
-              subtitle={
-                domain.average === null
-                  ? "not scored"
-                  : `avg ${domain.average} · ${domain.scored} scored`
+      {/*
+        The surface roll-up, promoted from the old table's `tfoot` to the top
+        of the page: a summary read *before* the detail is a summary, read
+        after it is a twelfth domain. It is banded straight off its score with
+        no caps re-applied — `deriveQualityMatrix` deliberately declined to
+        fold them in here, since a cap shapes the cell you act on and folding
+        it into the roll-up too would punish one finding twice.
+      */}
+      <section className="flex flex-col gap-3 p-4">
+        <SectionHeading
+          title="Overall"
+          icon={LayersIcon}
+          description="Every domain weighed together, surface by surface."
+          subtitle={`${matrix.surfaces.length} surface${matrix.surfaces.length === 1 ? "" : "s"}`}
+        />
+        <QualityGallery className="-mx-4 px-4">
+          {gauges.map((gauge) => (
+            <SurfaceScoreCard
+              key={gauge.surface}
+              title={gauge.title}
+              score={gauge.score}
+              grade={gauge.grade}
+              meta={`${gauge.openFindings} open`}
+              label={
+                gauge.score === null
+                  ? `${gauge.title} — nothing scored`
+                  : `${gauge.title} — ${gauge.score} out of 100, grade ${gauge.grade} — ${gauge.openFindings} open findings`
               }
             />
-            <Gallery>
-              {domain.cards.map((card) => {
-                const key = cellKey(domain.domain, card.surface);
-                return (
-                  <SurfaceScoreCard
-                    key={card.surface}
-                    title={card.title}
-                    score={card.cell?.score ?? null}
-                    grade={card.cell?.grade ?? null}
-                    capped={card.cell?.capped}
-                    findings={card.cell?.findings}
-                    meta={
-                      card.cell
-                        ? `${card.cell.criteria} criteri${card.cell.criteria === 1 ? "on" : "a"}`
-                        : undefined
-                    }
-                    label={
-                      card.cell
-                        ? cellLabel(domain.name, card.title, card.cell)
-                        : `${domain.name} on ${card.title} — nothing scored`
-                    }
-                    active={activeCell === key}
-                    // An unscored cell gets no handler, so `SurfaceScoreCard`
-                    // renders it as inert rather than as a button that opens a
-                    // panel with nothing in it.
-                    onClick={card.cell ? () => onSelectCell(domain.domain, card.surface) : undefined}
-                  />
-                );
-              })}
-            </Gallery>
-          </section>
-        ))}
-      </div>
+          ))}
+        </QualityGallery>
+      </section>
+
+      {sections.map((domain) => (
+        <section key={domain.domain} className="flex flex-col gap-3 p-4">
+          {/*
+            Heading above the gallery, never beside it. `SectionRow`'s
+            two-column shape would leave the gallery a `1fr` remainder of an
+            already narrow column the moment a panel opens, and every gallery
+            would scroll two cards at a time. Full width means the scrollport
+            is the surface's width and narrows gracefully instead.
+          */}
+          <SectionHeading
+            title={domain.name}
+            icon={domainIcon(domain.domain)}
+              description={domain.description}
+            subtitle={
+              domain.average === null
+                ? "not scored"
+                : `avg ${domain.average} · ${domain.scored} scored`
+            }
+          />
+          <QualityGallery className="-mx-4 px-4">
+            {domain.cards.map((card) => {
+              const key = cellKey(domain.domain, card.surface);
+              return (
+                <SurfaceScoreCard
+                  key={card.surface}
+                  title={card.title}
+                  score={card.cell?.score ?? null}
+                  grade={card.cell?.grade ?? null}
+                  capped={card.cell?.capped}
+                  findings={card.cell?.findings}
+                  meta={
+                    card.cell
+                      ? `${card.cell.criteria} criteri${card.cell.criteria === 1 ? "on" : "a"}`
+                      : undefined
+                  }
+                  label={
+                    card.cell
+                      ? cellLabel(domain.name, card.title, card.cell)
+                      : `${domain.name} on ${card.title} — nothing scored`
+                  }
+                  active={activeCell === key}
+                  // An unscored cell gets no handler, so `SurfaceScoreCard`
+                  // renders it as inert rather than as a button that opens a
+                  // panel with nothing in it.
+                  onClick={card.cell ? () => onSelectCell(domain.domain, card.surface) : undefined}
+                />
+              );
+            })}
+          </QualityGallery>
+        </section>
+      ))}
 
       <div className="border-t p-4">
         <QualityLegend library={library} />

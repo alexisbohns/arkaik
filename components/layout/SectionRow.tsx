@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { SectionHeading, type SectionHeadingProps } from "@/components/layout/SectionHeading";
 
 export interface SectionRowProps
-  extends Omit<SectionHeadingProps, "orientation" | "className"> {
+  extends Omit<SectionHeadingProps, "className"> {
   className?: string;
   /**
    * Pin the heading while its own content scrolls past. Opt-in: it only earns
@@ -30,7 +30,7 @@ export interface SectionRowProps
  * cannot drift into two different ideas of the same row.
  *
  * The heading itself is `SectionHeading`, shared with the Quality matrix, which
- * needs the same heading above its content rather than beside it.
+ * shows the same heading above its content rather than beside it.
  */
 export function SectionRow({
   title,
