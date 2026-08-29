@@ -65,12 +65,18 @@
  *    nothing to back up, and writing one anyway would clutter
  *    `.backups/` with files that were never protecting anything.
  *
- * ── Why quality does NOT follow the journal's embedded-wins rule ────────────
- * A bundle's embedded `journal` wins over the sidecar (above). Its embedded
- * `quality` does the opposite: the fold re-projects `docs/quality/` over
- * whatever section the local file carried, so `arkaik restore <backup-path>`
- * sends the LIVE repo's sidecars, not the backup's captured section. That
- * inversion is deliberate, and it is not the split-brain the journal rule
+ * ── How quality's precedence differs from the journal's ─────────────────────
+ * A bundle's embedded `journal` always wins over the sidecar (above).
+ * `quality` follows a different rule, in two halves:
+ *
+ *   the fold WINS when it has something to project — sidecars on disk
+ *   re-project over whatever section the local file carried;
+ *   the local section SURVIVES when the fold has nothing — no audits, no
+ *   profile, no resolvable pack — and ships as it arrived.
+ *
+ * So `arkaik restore <backup-path>` sends the LIVE repo's sidecars when that
+ * repo has any, and the backup's own captured section when it does not. Both
+ * halves are deliberate. The first is not the split-brain the journal rule
  * exists to prevent:
  *
  *  - a journal is an append-only history that exists NOWHERE else. A backup's
@@ -80,7 +86,10 @@
  *    the repo (docs/rfcs/kritik.md § 8.3) and that a restore never reads
  *    from, writes to, or rolls back. Re-projecting them reproduces the state
  *    the backup captured — unless the hosted section came from a different
- *    machine, which is exactly what the quality-loss guard is for;
+ *    machine, which the quality-loss guard catches only when the outbound
+ *    bundle ends up with NO section at all. A stale section that survives a
+ *    failed fold passes that guard, because the guard's question is "would
+ *    this erase the hosted section", and a section is being sent;
  *  - server-side quality writes append journal events and never mutate
  *    `snapshot.quality` (`applyQualityResolutions`), so a resolution made in
  *    the app comes back with the JOURNAL — under the embedded-wins rule —
@@ -88,8 +97,15 @@
  *  - and flipping it would collide with `--no-quality`, whose whole point is
  *    that a section the local bundle carried gets DELETED rather than sent.
  *
- * So: history is restored, quality is re-derived. Pinned by
- * tests/cli/bootstrap-restore.test.js so it reads as chosen, not accidental.
+ * And the second half is what makes the undo path whole: a backup file always
+ * carries a `quality` section, because the export it was written from
+ * includes one. Dropping it on a machine whose sidecars are missing would
+ * make `arkaik restore <backup-path>` silently undo the snapshot and the
+ * journal while discarding the quality half of the very state being restored.
+ *
+ * So: history is always restored, quality is re-derived where it can be and
+ * carried through where it cannot. Both halves are pinned by
+ * tests/cli/bootstrap-restore.test.js so they read as chosen, not accidental.
  *
  * ── Steps, in order ──────────────────────────────────────────────────────────
  *  1. read the link file for the project id and remote (mirrors `link.ts`);
@@ -154,7 +170,7 @@
 import { existsSync, linkSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { journalPathFor, loadJournalEvents } from "../lib/journal-io";
-import { foldQualitySection, resolveQualityRoot } from "../lib/kritik-io";
+import { foldQualitySection, isQualitySection, resolveQualityRoot } from "../lib/kritik-io";
 import { QUALITY_DIR } from "@arkaik/schema/src/cli/kritik-paths";
 import { DEFAULT_HTTP_CLIENT, type HttpClient } from "../lib/providers";
 
@@ -764,16 +780,19 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
   // `--no-quality` deliberately does NOT imply this flag — see
   // `describeQualityLoss`.
   //
-  // Both sides are tested the same way — "a section" means a non-null object,
-  // nothing else. Checking only `=== undefined` on the outbound side let a
+  // Both sides are tested with the SAME predicate (`isQualitySection`, shared
+  // with the fold). Checking only `=== undefined` on the outbound side let a
   // local `"quality": null` or `"quality": "oops"` count as a section and sail
   // past into the request. The schema rejects it one layer down, so this is
   // defence in depth rather than the only line, but a guard that fails open on
   // a shape it never considered is not a guard.
-  const isSection = (v: unknown): v is Record<string, unknown> =>
-    typeof v === "object" && v !== null && !Array.isArray(v);
+  //
+  // Note what this guard CANNOT see: a section the local bundle carried that
+  // the fold did not replace (`carriedSection`). The outbound bundle has one,
+  // so nothing fires — correctly, since that is the undo path. See the
+  // precedence section in this file's header.
   const hostedQuality = exportedBundle.quality;
-  if (isSection(hostedQuality) && !isSection(outboundBundle.quality) && !allowQualityLoss) {
+  if (isQualitySection(hostedQuality) && !isQualitySection(outboundBundle.quality) && !allowQualityLoss) {
     return fatalResult(dryRun, describeQualityLoss(hostedQuality, qualityRoot, noQuality, qualityNotice), qualityFields);
   }
 

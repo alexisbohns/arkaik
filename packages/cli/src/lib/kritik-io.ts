@@ -123,6 +123,34 @@ export function appendQualityEvents(
 }
 
 /**
+ * Is this value a `quality` section, as opposed to merely present?
+ *
+ * "A section" means a non-null object and nothing else. `null` is the
+ * reachable wrong answer — `JSON.stringify` writes it, hand-editing produces
+ * it — and a bare presence check treats it as one. Shared with
+ * `commands/restore.ts`'s loss guard so both sides of that comparison test
+ * the same thing; a guard that fails open on a shape it never considered is
+ * not a guard.
+ */
+export function isQualitySection(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** What {@link foldQualitySection} did, for a caller that wants the fact rather than the sentence. */
+export interface FoldQualityResult {
+  /** A section was built from `docs/quality/` and written onto the bundle. */
+  folded: boolean;
+  /**
+   * The fold produced nothing AND the bundle arrived carrying its own
+   * section, which is therefore still on it. The case `arkaik restore`'s
+   * quality-loss guard cannot see, because the outbound bundle does have a
+   * section — just not one this fold made.
+   */
+  carriedSection: boolean;
+  notice: string;
+}
+
+/**
  * Fold the repo's quality sidecars into a bundle's `quality` section.
  *
  * The projection is `@arkaik/schema`'s; what lives here is only what "being
@@ -146,6 +174,14 @@ export function appendQualityEvents(
  * a reason for `arkaik pack` to fail, because quality is additive to a
  * bundle: a project with nothing to do with Kritik must still pack.
  *
+ * "Leave the bundle untouched" is literal, and it is the half that used to go
+ * unsaid: a section the bundle ALREADY CARRIED survives a failed fold and
+ * ships. That is deliberate — it is what makes `arkaik restore <backup-path>`
+ * put back the quality half of what it is undoing — but reporting it as
+ * "none to fold" told the operator the opposite of what happened. So every
+ * non-folding return says which of the two it was, and `carriedSection` is
+ * the field a caller reads instead of the prose.
+ *
  * What DOES throw is what is wrong with THIS command's inputs: a *malformed*
  * sidecar, and a named `auditId` that is not on disk. The second is checked
  * first, before any of the it-is-fine-to-have-nothing returns can swallow it
@@ -156,15 +192,33 @@ export function foldQualitySection(
   bundle: Record<string, unknown>,
   root: string,
   auditId?: string,
-): { folded: boolean; notice: string } {
+): FoldQualityResult {
+  /**
+   * A non-folding outcome, saying whether the bundle's own section survived.
+   *
+   * The distinction is invisible from the notice's first line and it changes
+   * what ships: "nothing to fold and nothing was there" sends no section,
+   * while "nothing to fold, so what you brought was kept" sends whatever the
+   * source file carried — including, on `arkaik restore`, a section the
+   * quality-loss guard will then not fire on, because the outbound bundle
+   * does have one.
+   */
+  const notFolded = (reason: string): FoldQualityResult => {
+    const carriedSection = isQualitySection(bundle.quality);
+    return {
+      folded: false,
+      carriedSection,
+      notice: carriedSection
+        ? `Quality: ${reason}\n  Kept the quality section this bundle already carried — nothing replaced it.`
+        : `Quality: ${reason}`,
+    };
+  };
+
   if (auditId !== undefined) requireAudit(root, auditId);
 
   const auditIds = listAuditIds(root);
   if (auditIds.length === 0) {
-    return {
-      folded: false,
-      notice: `Quality: none to fold — no audits under ${auditsDir(root)} (run \`arkaik kritik score\` to open one)`,
-    };
+    return notFolded(`none to fold — no audits under ${auditsDir(root)} (run \`arkaik kritik score\` to open one)`);
   }
   // `!profile`, not `=== null`, so this and the merge's own guard
   // (`loadCurrentQualitySection`) refuse exactly the same set. A profile.json
@@ -172,10 +226,7 @@ export function foldQualitySection(
   // here would wave it through, the merge would refuse it, and the fallback
   // below would report the wrong cause.
   if (!loadProfile(root)) {
-    return {
-      folded: false,
-      notice: `Quality: skipped — no profile at ${profilePath(root)} (run \`arkaik kritik profile\`)`,
-    };
+    return notFolded(`skipped, no profile — nothing at ${profilePath(root)} (run \`arkaik kritik profile\`)`);
   }
 
   // Loud, not fatal. `resolvePack` already explains itself well ("its absence
@@ -187,7 +238,11 @@ export function foldQualitySection(
   try {
     ({ library } = loadKritikLibrary(root));
   } catch (e) {
-    return { folded: false, notice: `Quality: skipped — ${(e as Error).message}` };
+    // "skipped, no pack" rather than a bare "skipped —": the profile notice
+    // above shares that prefix, and an agent prefix-matching the skill's
+    // table would otherwise diagnose a missing profile and run `arkaik kritik
+    // profile` against a broken install.
+    return notFolded(`skipped, no pack — ${(e as Error).message}`);
   }
 
   const section =
@@ -203,16 +258,14 @@ export function foldQualitySection(
   // guard weakened upstream then surfaces as a notice naming both candidate
   // causes, instead of `undefined` typed into `bundle.quality`.
   if (section === undefined) {
-    return {
-      folded: false,
-      notice: `Quality: nothing to fold — no audits under ${auditsDir(root)}, or no profile at ${profilePath(root)}`,
-    };
+    return notFolded(`nothing to fold — no audits under ${auditsDir(root)}, or no profile at ${profilePath(root)}`);
   }
 
   bundle.quality = section;
   const count = auditId === undefined ? auditIds.length : 1;
   return {
     folded: true,
+    carriedSection: false,
     notice: `Quality: folded ${section.assessments.length} assessment(s), ${section.findings.length} finding(s) from ${count} audit(s)`,
   };
 }
@@ -239,6 +292,15 @@ export function foldQualitySection(
  * It lives here, beside "where is the pack" and "where is the journal",
  * because "which repo owns this bundle" is the same class of question: what
  * being the CLI's environment means, rather than anything a projection knows.
+ *
+ * KNOWN DIVERGENCE from `packages/mcp/src/index.ts`'s `qualityRootFor`, which
+ * answers the same question for the MCP server and answers it differently in
+ * two ways: its fallback for an unconventional layout is the bundle's own
+ * DIRECTORY, not the cwd (it has no meaningful cwd — the agent host chooses
+ * it), and it honours `$ARKAIK_QUALITY_ROOT`, which this does not. Both
+ * predate #389 and neither is obviously wrong for its caller; they are simply
+ * not one function. Reconcile deliberately if you get there, not as a
+ * drive-by.
  */
 export function resolveQualityRoot(cwd: string, filePath: string, root?: string): string {
   if (root !== undefined) return resolve(cwd, root);

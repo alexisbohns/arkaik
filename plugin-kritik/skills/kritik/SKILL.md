@@ -328,8 +328,17 @@ just finished**: the latest level for each (criterion × surface) across every
 audit, plus every audit's findings. So a cap can fire in the app that did not
 fire in this audit's `matrix.json` — an open Critical from two audits ago still
 caps its cell, which is true. Those are two different questions, both answered
-correctly. `--audit <id>` folds one audit's snapshot instead; `--no-quality`
-folds none.
+correctly.
+
+`pack` and `restore` take flags over that default: `--audit <id>` folds one
+audit's snapshot instead, `--no-quality` folds none (and deletes any section
+the bundle already carried), `--root <dir>` says where `docs/quality/` lives.
+
+**`open` takes none of them** — it parses only `--no-open` and `--out`, and
+rejects the other three as unknown options. It hands a file to a browser
+import picker; there is nothing to pin there. If you need control over what a
+handoff file carries, build it with `arkaik pack --out <path>` and drag that
+in instead.
 
 `arkaik push` is the exception: it publishes to Publik and **strips** the
 section, because a list of open findings with the file paths to reach them is a
@@ -339,13 +348,33 @@ decision worth typing.
 **Nothing writes `docs/arkaik/bundle.json`.** There is no file to commit and no
 diff to inspect — the section exists only inside the bundle a verb hands over,
 exactly as the journal's embedded `journal[]` does. So when the app's Quality
-page comes up empty, read the verb's stderr rather than the bundle:
+page comes up empty, read the verb's notice rather than the bundle. `pack`,
+`open` and `push` print it on **stderr**; `restore` prints it on **stdout**,
+beside the backup path and the delta.
 
-| Line on stderr | What it means |
+Match on the whole line, not a prefix — two of these begin `Quality: skipped,`
+and mean different things.
+
+| Notice | What it means |
 |---|---|
 | `Quality: folded N assessment(s), M finding(s) from K audit(s)` | it worked |
-| `Quality: none to fold — no audits under <dir>` | no `audits/` under the directory it names — usually the wrong repo root, which `--root <dir>` fixes |
-| `Quality: skipped — no profile at <path>` | no `profile.json` yet. Nothing is folded rather than something the app would render without columns — run `arkaik kritik profile` |
+| `Quality: none to fold — no audits under <dir>` | no `audits/` under the directory it names — usually the wrong repo root, which `--root <dir>` fixes on `pack`/`restore` |
+| `Quality: skipped, no profile — nothing at <path>` | no `profile.json` yet. Nothing is folded rather than something the app would render without columns — run `arkaik kritik profile` |
+| `Quality: skipped, no pack — no criteria pack found. Looked in: …` | neither a vendored `docs/quality/library.json` nor the pack shipped inside the CLI could be found. **Spans several lines.** A broken install, not a repo problem — reinstall `arkaik`, or vendor a pack. Do NOT run `arkaik kritik profile` at this one |
+| `Quality: nothing to fold — no audits under <dir>, or no profile at <path>` | a defensive fallback that should not be reachable. If you see it, the two guards have drifted apart — report it |
+| `Quality: stripped, not sent (pass --include-quality to publish it)` | `arkaik push` only: the default, and the section never reached the wire |
+| `Quality: deleted before sending (--no-quality)` | `arkaik restore` only: you asked for no section, and one the bundle carried went too |
+
+Any of the non-folding notices may be followed by a second, indented line:
+
+```
+  Kept the quality section this bundle already carried — nothing replaced it.
+```
+
+That means the fold found nothing to project, but the bundle you handed the
+verb already had a `quality` section, so **that one was sent**. It is how
+`arkaik restore <backup-path>` puts back the quality half of what it is
+undoing. If you did not intend it, `--no-quality` removes it.
 
 ## Between audits
 

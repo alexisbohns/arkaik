@@ -1306,9 +1306,15 @@ async function main() {
       /profile\.json/.test(result.fatal || "") && /arkaik kritik profile/.test(result.fatal || ""),
       result.fatal,
     );
+    // `|| ""` makes a pure negative pass when `fatal` is undefined, which is
+    // exactly what happens if the guard is deleted — this survived that
+    // mutation while its four siblings failed. Assert the message EXISTS and
+    // is the right one first.
     check(
       "and does NOT blame --root, which is not the problem here",
-      !/--root/.test(result.fatal || ""),
+      typeof result.fatal === "string" &&
+        /ERASE the hosted project's quality section/.test(result.fatal) &&
+        !/--root/.test(result.fatal),
       result.fatal,
     );
     check("it still names the escape hatch", /--allow-quality-loss/.test(result.fatal || ""), result.fatal);
@@ -1426,6 +1432,50 @@ async function main() {
       Array.isArray(sent && sent.journal),
       JSON.stringify(sent && sent.journal),
     );
+  }
+
+  // 13b. A section that survives a FAILED fold is passed through — and the
+  //      loss guard cannot see it, because the outbound bundle has one.
+  //
+  //      This is the undo path working: a backup file always carries a
+  //      `quality` section (the export it was written from includes one), so
+  //      dropping it on a machine whose sidecars are missing would make
+  //      `arkaik restore <backup-path>` undo the snapshot and the journal
+  //      while discarding the quality half of the state being restored.
+  //      Deliberate, and now reported as such rather than as "none to fold".
+  {
+    const { dir, bundlePath } = fixture();
+    const local = JSON.parse(readFileSync(bundlePath, "utf8"));
+    local.quality = {
+      framework_version: "0.0.1",
+      profile: { surfaces: [{ id: "web", title: "Web" }] },
+      assessments: [],
+      findings: [{ id: "F-FROM-BACKUP-01", criterion_id: "SEC-01", surface: "web", title: "Captured in the backup" }],
+    };
+    writeFileSync(bundlePath, JSON.stringify(local));
+
+    // No sidecars anywhere: the fold has nothing to project.
+    let sent;
+    const httpClient = makeMockHttpClient(qualityResponder(HOSTED_EXPORT_WITH_QUALITY, (b) => { sent = b; }));
+    const result = await runQualityRestore(dir, bundlePath, httpClient);
+
+    check("a restore carrying its own section proceeds", result.ok === true && result.status === 200, JSON.stringify(result));
+    check(
+      "the backup's captured section is sent verbatim",
+      sent && sent.quality && sent.quality.findings[0].id === "F-FROM-BACKUP-01",
+      JSON.stringify(sent && sent.quality),
+    );
+    check(
+      "the loss guard does NOT fire — the outbound bundle does have a section",
+      result.ok === true,
+      result.fatal,
+    );
+    check(
+      "and the notice says the section was kept, not that nothing was folded",
+      /Kept the quality section this bundle already carried/.test(result.qualityNotice || ""),
+      result.qualityNotice,
+    );
+    check("qualityFolded stays false — nothing was projected", result.qualityFolded === false, String(result.qualityFolded));
   }
 
   // 14. --dry-run folds, but reaches no guard (S8).

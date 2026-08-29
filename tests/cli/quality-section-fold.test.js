@@ -385,7 +385,7 @@ function packIn(dir, args = []) {
   const skipped = packIn(noProfile, []).result;
   check(
     "audits but no profile is skipped, not failed, and points at the fix",
-    skipped.status === 0 && /no profile at .*profile\.json.*arkaik kritik profile/.test(skipped.stderr),
+    skipped.status === 0 && /skipped, no profile — nothing at .*profile\.json.*arkaik kritik profile/.test(skipped.stderr),
     skipped.stderr,
   );
 
@@ -397,10 +397,77 @@ function packIn(dir, args = []) {
   writeJson(path.join(falsyProfile, "docs", "quality", "profile.json"), false);
   const falsy = packIn(falsyProfile, []).result;
   check(
-    "a falsy-but-valid profile.json is named as the profile, not as missing audits",
-    falsy.status === 0 && /no profile at .*profile\.json/.test(falsy.stderr),
+    "a falsy-but-valid profile.json is named as the profile...",
+    falsy.status === 0 && /skipped, no profile — nothing at .*profile\.json/.test(falsy.stderr),
     falsy.stderr,
   );
+  // The second half of that claim, which went unchecked: the fallback notice
+  // names profile.json TOO, so the positive clause above passes even when the
+  // CLI guard has drifted to `=== null` and the merge's guard is what refused.
+  // Only the absence of "or no profile at" tells the two apart.
+  check(
+    "...not by the fallback that blames the audits directory as well",
+    !/nothing to fold/.test(falsy.stderr) && !/or no profile at/.test(falsy.stderr),
+    falsy.stderr,
+  );
+}
+
+// --- 7b. a section the bundle CARRIED survives a failed fold ---------------
+
+// `foldQualitySection` only ever SETS `bundle.quality`; it never clears one.
+// So when there is nothing to fold, whatever the source file carried ships.
+// That is deliberate — it is what lets `arkaik restore <backup-path>` put back
+// the quality half of what it is undoing — but it used to be reported as
+// "none to fold", which says the opposite of what happened.
+{
+  const dir = makeRepo({ audits: false, profile: false });
+  const bundlePath = path.join(dir, "docs", "arkaik", "bundle.json");
+  writeJson(bundlePath, { ...BUNDLE, quality: { framework_version: "0.0.1", profile: PROFILE, assessments: [], findings: [{ id: "F-CARRIED-01", title: "CARRIED MARKER" }] } });
+
+  const { result, bundle } = packIn(dir, []);
+  check("pack with nothing to fold still exits 0", result.status === 0, result.stderr);
+  check(
+    "the section the bundle carried is passed through, not dropped",
+    bundle && bundle.quality && bundle.quality.findings[0].id === "F-CARRIED-01",
+    JSON.stringify(bundle && bundle.quality),
+  );
+  check(
+    "and the notice SAYS it was kept, rather than only that nothing was folded",
+    /Kept the quality section this bundle already carried/.test(result.stderr),
+    result.stderr,
+  );
+
+  // open takes the same path through runPack, and must report it the same way.
+  const out = path.join(dir, "opened.json");
+  const opened = runIn(dir, ["open", "--no-open", "--out", out]);
+  check("open with nothing to fold exits 0", opened.status === 0, `${opened.stdout}\n${opened.stderr}`);
+  check(
+    "open passes the carried section through too",
+    existsSync(out) && JSON.parse(readFileSync(out, "utf8")).quality.findings[0].id === "F-CARRIED-01",
+    out,
+  );
+  check("and open reports the keep", /Kept the quality section/.test(opened.stderr), opened.stderr);
+
+  // --no-quality is the one posture that DOES clear it.
+  const strippedCli = packIn(dir, ["--no-quality"]);
+  check(
+    "--no-quality still deletes a carried section",
+    strippedCli.bundle && strippedCli.bundle.quality === undefined,
+    JSON.stringify(strippedCli.bundle && Object.keys(strippedCli.bundle)),
+  );
+}
+
+// --- 7c. a fold that SUCCEEDS replaces what the bundle carried -------------
+
+{
+  const dir = makeRepo();
+  const bundlePath = path.join(dir, "docs", "arkaik", "bundle.json");
+  writeJson(bundlePath, { ...BUNDLE, quality: { framework_version: "0.0.1", profile: PROFILE, assessments: [], findings: [{ id: "F-CARRIED-01", title: "CARRIED MARKER" }] } });
+
+  const { result, bundle } = packIn(dir, []);
+  const ids = ((bundle && bundle.quality && bundle.quality.findings) || []).map((f) => f.id);
+  check("a successful fold overwrites the carried section", !ids.includes("F-CARRIED-01") && ids.length === 2, JSON.stringify(ids));
+  check("and says folded, not kept", /Quality: folded/.test(result.stderr) && !/Kept the quality section/.test(result.stderr), result.stderr);
 }
 
 // --- 8. a corrupt sidecar names the file it could not parse ----------------
@@ -551,8 +618,16 @@ async function inProcess() {
       quality: { framework_version: "9.9.9", profile: PROFILE, assessments: [], findings: FINDINGS_08.findings },
     });
 
+    // Read the SOURCE, not a packed output: packing folds a section in
+    // whether or not the file had one, so asserting on `kept.output` proved
+    // the fold ran, never the precondition this case depends on.
+    check(
+      "a source bundle's own quality section is there to strip",
+      JSON.parse(readFileSync(bundlePath, "utf8")).quality !== undefined,
+      bundlePath,
+    );
     const kept = runPack({ path: bundlePath, cwd: dir });
-    check("a source bundle's own quality section is there to strip", JSON.parse(kept.output).quality !== undefined);
+    check("and packing it normally still emits one", JSON.parse(kept.output).quality !== undefined);
 
     const stripped = runPack({ path: bundlePath, cwd: dir, noQuality: true });
     check("noQuality packs ok", stripped.ok === true, stripped.fatal);

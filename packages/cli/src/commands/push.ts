@@ -160,6 +160,16 @@ export interface RunPushResult {
   retryAfter?: string | null;
   /** Human-readable message for any non-201 outcome (network error, non-201 status, or a request that never got sent). */
   errorMessage?: string;
+  /**
+   * What happened to quality on the way out — `runPack`'s notice, verbatim.
+   *
+   * Set even with the default strip, and printed. `push` puts bytes on
+   * someone else's server: "I sent your open findings" and "I did not" are
+   * both facts worth stating, and until now it said neither on either stream
+   * — including when `--include-quality` folded and shipped megabytes of
+   * them.
+   */
+  qualityNotice?: string;
 }
 
 function fatalResult(bundlePath: string, message: string): RunPushResult {
@@ -215,6 +225,9 @@ export async function runPush(options: RunPushOptions = {}): Promise<RunPushResu
   if (!packed.ok) {
     return fatalResult(filePath, packed.fatal ?? "pack failed");
   }
+  // `runPack` reports nothing under `noQuality` (it deleted rather than
+  // folded), so say it here instead of leaving the default posture silent.
+  const qualityNotice = packed.qualityNotice ?? "Quality: stripped, not sent (pass --include-quality to publish it)";
 
   // Built from a list rather than concatenated: two independent opt-ins can
   // now both be on, and `?a=true?b=true` is not a query string.
@@ -254,6 +267,7 @@ export async function runPush(options: RunPushOptions = {}): Promise<RunPushResu
       warningLines,
       requestSent: true,
       status,
+      qualityNotice,
       id: body.id,
       url: body.url,
       ownerKey: body.owner_key,
@@ -277,6 +291,7 @@ export async function runPush(options: RunPushOptions = {}): Promise<RunPushResu
     warningLines,
     requestSent: true,
     status,
+    qualityNotice,
     serverFindings: errBody.findings,
     retryAfter: status === 429 ? res.headers.get("retry-after") : undefined,
     errorMessage: errBody.message ?? `Request failed with status ${status}`,
@@ -287,6 +302,14 @@ function reportPush(result: RunPushResult): never {
   if (result.warningLines.length > 0) {
     console.error(`Warnings: ${result.warningLines.length}`);
     result.warningLines.forEach((w) => console.error(`  ${w}`));
+  }
+
+  // stderr, as `arkaik pack` prints it and for the same reason: this
+  // command's stdout carries the URL and the one-time owner key, which people
+  // pipe and copy. Printed for the strip as well as the send — publishing
+  // someone's open findings and declining to are both worth one line.
+  if (result.qualityNotice !== undefined) {
+    console.error(result.qualityNotice);
   }
 
   if (!result.valid) {

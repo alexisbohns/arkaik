@@ -78,6 +78,16 @@ if (!existsSync(CLI)) {
  * kritik profile` (#389). Pinning it costs one line and closes the class
  * rather than the instance.
  */
+/**
+ * A fixed empty directory, used as `cwd` by every spawned CLI case AND by
+ * every in-process `runPush` whose fixture is not a repo.
+ *
+ * Those calls are safe today only because `push` defaults to
+ * `noQuality: true`, and `runPack`'s strip branch returns before
+ * `resolveQualityRoot` is reached. The first `includeQuality: true` case
+ * written without a `cwd:` reopens the non-hermeticity fixed in 7f30926 and
+ * again in 1b5293e. Pinning it here means there is no such case to write.
+ */
 const CLI_CWD = mkdtempSync(path.join(tmpdir(), "arkaik-push-cli-"));
 function runCli(args) {
   return spawnSync(process.execPath, [CLI, ...args], { encoding: "utf8", cwd: CLI_CWD });
@@ -365,7 +375,7 @@ async function main() {
       });
     });
 
-    const result = await runPush({ path: bundlePath, httpClient });
+    const result = await runPush({ path: bundlePath, cwd: CLI_CWD, httpClient });
 
     check("runPush ok", result.ok === true, JSON.stringify(result));
     check("push validates first (valid: true)", result.valid === true);
@@ -497,6 +507,55 @@ async function main() {
   }
 
   // -------------------------------------------------------------------------
+  // --include-quality from a repo with NO sidecars: the section the bundle
+  // carried goes on the wire, and push says so (#389 I2/S9).
+  //
+  // The fold only ever SETS `quality`; it never clears one. So "nothing to
+  // fold" does not mean "nothing is sent" — and push used to say nothing at
+  // all on either stream, including when it folded and shipped megabytes.
+  // -------------------------------------------------------------------------
+  {
+    const { dir, bundlePath, elsewhere } = qualityFixture({ ownSection: true });
+    rmSync(path.join(dir, "docs", "quality"), { recursive: true, force: true });
+
+    const httpClient = makeMockHttpClient(() =>
+      jsonResponse(201, { id: "q4", url: `${DEFAULT_API_BASE}/p/q4`, owner_key: "66666666-6666-4666-8666-666666666666" }),
+    );
+    const result = await runPush({ path: bundlePath, cwd: elsewhere, includeQuality: true, httpClient });
+
+    check("include-quality with no sidecars still pushes", result.ok === true && result.status === 201, JSON.stringify(result));
+    const sentBundle = JSON.parse(httpClient.calls[0].init.body);
+    check(
+      "the section the bundle carried is what goes on the wire",
+      sentBundle.quality && sentBundle.quality.findings[0].title === LOCAL_SECTION_MARKER,
+      JSON.stringify(sentBundle.quality),
+    );
+    check(
+      "and push says the section was kept rather than folded",
+      /Kept the quality section this bundle already carried/.test(result.qualityNotice || ""),
+      result.qualityNotice,
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // push reports what it did with quality, in both directions (S9).
+  // -------------------------------------------------------------------------
+  {
+    const { bundlePath, elsewhere } = qualityFixture();
+    const client = makeMockHttpClient(() => jsonResponse(201, { id: "q5", url: "u", owner_key: "k" }));
+    const sent = await runPush({ path: bundlePath, cwd: elsewhere, includeQuality: true, httpClient: client });
+    check("a folded push reports the fold", /folded 5 assessment/.test(sent.qualityNotice || ""), sent.qualityNotice);
+
+    const client2 = makeMockHttpClient(() => jsonResponse(201, { id: "q6", url: "u", owner_key: "k" }));
+    const stripped = await runPush({ path: bundlePath, cwd: elsewhere, httpClient: client2 });
+    check(
+      "and the DEFAULT strip is reported too, rather than being silent",
+      /stripped, not sent/.test(stripped.qualityNotice || "") && /--include-quality/.test(stripped.qualityNotice || ""),
+      stripped.qualityNotice,
+    );
+  }
+
+  // -------------------------------------------------------------------------
   // Both opt-ins at once: two query parameters, both sections in the body.
   //
   // This is what the URL is assembled from a list for. Appending a second
@@ -548,7 +607,7 @@ async function main() {
       return jsonResponse(201, { id: "xyz", url: `${DEFAULT_API_BASE}/p/xyz`, owner_key: "22222222-2222-4222-8222-222222222222" });
     });
 
-    const result = await runPush({ path: bundlePath, includeJournal: true, httpClient });
+    const result = await runPush({ path: bundlePath, cwd: CLI_CWD, includeJournal: true, httpClient });
 
     check("include-journal push ok", result.ok === true && result.status === 201, JSON.stringify(result));
     const sentBundle = JSON.parse(httpClient.calls[0].init.body);
@@ -568,7 +627,7 @@ async function main() {
       throw new Error("must not be called");
     });
 
-    const result = await runPush({ path: bundlePath, httpClient });
+    const result = await runPush({ path: bundlePath, cwd: CLI_CWD, httpClient });
 
     check("runPush ok (validation ran, just failed)", result.ok === true, JSON.stringify(result));
     check("valid is false", result.valid === false);
@@ -586,7 +645,7 @@ async function main() {
       jsonResponse(429, { error: "rate_limited", message: "Too many snapshots created. Try again later." }, { "retry-after": "37" }),
     );
 
-    const result = await runPush({ path: bundlePath, httpClient });
+    const result = await runPush({ path: bundlePath, cwd: CLI_CWD, httpClient });
 
     check("429 result ok (request completed)", result.ok === true);
     check("status 429", result.status === 429);
@@ -602,7 +661,7 @@ async function main() {
     const findings = [{ path: "nodes[0].title", rule: "required", message: "Title is required.", severity: "error" }];
     const httpClient = makeMockHttpClient(() => jsonResponse(422, { error: "validation_failed", findings }));
 
-    const result = await runPush({ path: bundlePath, httpClient });
+    const result = await runPush({ path: bundlePath, cwd: CLI_CWD, httpClient });
 
     check("status 422", result.status === 422);
     check("serverFindings surfaced", Array.isArray(result.serverFindings) && result.serverFindings.length === 1, JSON.stringify(result.serverFindings));
@@ -617,7 +676,7 @@ async function main() {
       jsonResponse(413, { error: "payload_too_large", message: "Bundle exceeds the 5242880 byte limit." }),
     );
 
-    const result = await runPush({ path: bundlePath, httpClient });
+    const result = await runPush({ path: bundlePath, cwd: CLI_CWD, httpClient });
 
     check("status 413", result.status === 413);
     check("413 message surfaced", /exceeds the/.test(result.errorMessage || ""), result.errorMessage);
@@ -632,7 +691,7 @@ async function main() {
       jsonResponse(503, { error: "services_unavailable", message: "arkaik services (Publik) are not configured on this deployment." }),
     );
 
-    const result = await runPush({ path: bundlePath, httpClient });
+    const result = await runPush({ path: bundlePath, cwd: CLI_CWD, httpClient });
 
     check("status 503", result.status === 503);
     check("503 message surfaced", /not configured/.test(result.errorMessage || ""), result.errorMessage);
@@ -647,7 +706,7 @@ async function main() {
       throw new Error("getaddrinfo ENOTFOUND arkaik.app");
     };
 
-    const result = await runPush({ path: bundlePath, httpClient });
+    const result = await runPush({ path: bundlePath, cwd: CLI_CWD, httpClient });
 
     check("network error result ok (no crash)", result.ok === true, JSON.stringify(result));
     check("request not marked sent", result.requestSent === false);
@@ -665,7 +724,7 @@ async function main() {
       return jsonResponse(201, { id: "id1", url: `${customBase}/p/id1`, owner_key: "33333333-3333-4333-8333-333333333333" });
     });
 
-    const result = await runPush({ path: bundlePath, apiBase: customBase, httpClient });
+    const result = await runPush({ path: bundlePath, cwd: CLI_CWD, apiBase: customBase, httpClient });
     check("custom --api push ok", result.status === 201);
     check("returned url uses the custom base", result.url === `${customBase}/p/id1`, result.url);
   }

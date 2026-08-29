@@ -175,8 +175,12 @@ export function loadQualitySection(
  * `quality-derived-field-stored` on either, and a projection that emits a
  * bundle its own validator objects to is a broken projection. The sidecar
  * keeps whatever it keeps; this is a read.
+ *
+ * Module-internal: the two projections below are the only callers, and both
+ * are exported. Nothing outside should be stripping findings by hand — that
+ * would be a second answer to "what does the interchange carry".
  */
-export function stripDerived(finding: QualityFinding): QualityFinding {
+function stripDerived(finding: QualityFinding): QualityFinding {
   const { severity: _severity, priority: _priority, ...rest } = finding as QualityFinding &
     Record<"severity" | "priority", unknown>;
   void _severity;

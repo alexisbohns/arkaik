@@ -377,3 +377,57 @@ Cases:
 3. **Two call sites drifting.** `pack` and `restore` both fold, and only a test
    keeps them agreeing. Cases 6 and 10 cover each; the shared
    `foldQualitySection` is what makes the drift small if it happens.
+
+## As built
+
+The decisions above are the record of what was agreed and are left as written.
+This section notes where the implementation ended up elsewhere, and why. All
+four design decisions hold; the divergences are in mechanism and naming.
+
+**`--audit` uses `loadAuditQualitySection`, not `loadQualitySection`.** This
+design named `loadQualitySection` for the pinned path. That function embeds no
+`library` and strips no derived fields, so every `pack --audit` would have
+emitted a bundle its own validator objects to — `quality-library-missing` and
+`quality-derived-field-stored` on each finding. A second projection,
+`loadAuditQualitySection`, wraps it to add both, and it is what makes decisions
+2 and 4 true on the pinned path as well as the merged one. A correction to the
+design rather than a deviation from it.
+
+**A fold that finds nothing does not clear a section the bundle carried.**
+Unstated here, and load-bearing: `foldQualitySection` only ever *sets*
+`bundle.quality`. So a bundle arriving with its own section keeps it when the
+sidecars yield nothing. That is what lets `arkaik restore <backup-path>` put
+back the quality half of the state it is undoing — a backup file always carries
+a section, since the export it was written from includes one. `--no-quality` is
+the posture that deletes. The notices distinguish the two outcomes explicitly,
+because "nothing to fold" alone said the opposite of what shipped. Note the
+consequence: `restore`'s quality-loss guard cannot fire on a carried section,
+since the outbound bundle does have one.
+
+**An unresolvable criteria pack is a notice, not a fatal.** Absent audits and
+an absent profile were designed as non-fatal; a missing pack was not
+considered, and initially took `arkaik pack` down with it on a broken install.
+It is now a third it-is-fine-to-have-nothing state, which is what "quality is
+additive to a bundle" requires.
+
+**`--no-quality` does not imply `--allow-quality-loss` on `restore`.** Not
+specified here. "Do not send mine" and "destroy theirs" are different
+statements, and this verb has no server-side undo, so the second must be typed.
+
+**The fold's root follows the bundle, not the cwd.** `resolveQualityRoot`
+derives it from the bundle's own path (`<root>/docs/arkaik/<file>`), with the
+cwd only as a fallback and `--root` as the override — so `cd /a && arkaik pack
+/b/docs/arkaik/bundle.json` folds /b's audits. It diverges from the MCP
+server's pre-existing `qualityRootFor` on the fallback and on
+`$ARKAIK_QUALITY_ROOT`; both sides carry a cross-reference comment, and
+reconciling them is deliberately left out of scope.
+
+**Notice strings.** The literal strings quoted earlier in this document
+predate three rounds of review. `docs/kritik-skill/skill.md` carries the
+current table, including the two `Quality: skipped,` variants that must be
+matched on the whole line rather than the prefix.
+
+**Test file names.** The suite is `tests/cli/quality-section-fold.test.js`
+(not `quality-fold.test.js`, which is an unrelated pre-existing suite under
+`tests/data/`), plus quality cases added to `tests/cli/pack-open.test.js`,
+`tests/cli/push.test.js` and `tests/cli/bootstrap-restore.test.js`.
