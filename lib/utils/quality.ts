@@ -24,6 +24,7 @@ import {
   type FindingPriority,
   type FindingSeverity,
   type FindingStatus,
+  type JournalEvent,
   type KritikCriterion,
   type KritikDomain,
   type KritikLibrary,
@@ -466,4 +467,58 @@ export function buildSurfaceGauges(
       openFindings: openPerSurface.get(surface) ?? 0,
     };
   });
+}
+
+/**
+ * Fold `quality.finding.resolved` over a stored section (issue #382 phase E).
+ *
+ * The webhook appends, and appends only: a merged PR that fixes a finding
+ * writes a journal fact, and the finding's stored `status` stays exactly as the
+ * last audit left it. This is the projection that makes the fact visible, and
+ * it is the reading RFC § 3.2 declared from the start — current state is the
+ * latest audit plus open-minus-resolved.
+ *
+ * Returns the section BY REFERENCE when nothing matches. That is the
+ * overwhelmingly common case — every project with no resolution since its last
+ * audit — and returning the same object means no allocation, no changed memo
+ * identity, and no re-render for the reader who gained nothing.
+ *
+ * `refuted` and `accepted-risk` are left alone, for the reason the webhook
+ * refuses to resolve one: they are decisions somebody recorded. An event naming
+ * a finding the section does not hold is ignored — `validateBundle` already
+ * warns about that class, and a read projection is not the place to raise it
+ * a second time.
+ */
+export function foldResolvedFindings(
+  section: QualitySection | undefined,
+  events: readonly JournalEvent[],
+): QualitySection | undefined {
+  if (section === undefined) return undefined;
+  const findings = Array.isArray(section.findings) ? section.findings : [];
+  if (findings.length === 0 || events.length === 0) return section;
+
+  const resolvedBy = new Map<string, string | undefined>();
+  for (const event of events) {
+    if (event?.type !== "quality.finding.resolved") continue;
+    const findingId = (event as { finding_id?: unknown }).finding_id;
+    if (typeof findingId !== "string" || findingId === "") continue;
+    const by = (event as { resolved_by?: unknown }).resolved_by;
+    // Latest wins: a re-resolution names the PR that actually landed it.
+    resolvedBy.set(findingId, typeof by === "string" && by !== "" ? by : undefined);
+  }
+  if (resolvedBy.size === 0) return section;
+
+  let changed = false;
+  const next = findings.map((finding) => {
+    if (!isOpenFinding(finding) || !resolvedBy.has(finding.id)) return finding;
+    changed = true;
+    const by = resolvedBy.get(finding.id);
+    return {
+      ...finding,
+      status: "resolved" as QualityFinding["status"],
+      ...(by !== undefined ? { resolved_by: by } : {}),
+    };
+  });
+
+  return changed ? { ...section, findings: next } : section;
 }
