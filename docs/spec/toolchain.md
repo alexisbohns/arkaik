@@ -54,10 +54,23 @@ The standalone validator artifact remains a first-class contract: agents operati
 | `arkaik log [--node <id>]` | Human-readable journal: project changelog or per-node timeline | 3 |
 | `arkaik release <version> [--platform <p>]` | Append `release.tagged`, generate release-note draft from the slice since the last release, compact to `journal/archive-{version}.jsonl` | 3 |
 | `arkaik sync` | Mirror external ref status (GitHub/GitLab/Linear APIs, tokens from env), update `external_status`/`synced_at`, append `ref.status_changed` events | 3 |
-| `arkaik pack [--no-journal] [--inline-assets]` | Produce a single-file interchange bundle: embed the journal, inline or upload assets | 3 |
+| `arkaik pack [--no-journal] [--no-quality] [--inline-assets]` | Produce a single-file interchange bundle: embed the journal, fold `docs/quality/` into the `quality` section, inline or upload assets | 3 |
 | `arkaik open` | Validate, then hand off to arkaik.app import (packed bundle) | 3 |
-| `arkaik push` | Publish to Publik / a synced account project from the terminal or CI | 4 |
+| `arkaik push [--include-journal] [--include-quality]` | Publish to Publik / a synced account project from the terminal or CI; the journal and the `quality` section are stripped before packing unless opted in | 4 |
 | `arkaik dev` | Local viewer over the repo's bundle, Storybook-style. **Not committed:** requires the app's `/project/[id]` routing to become static-export compatible first; decided on its own merits in Phase 3 | 3–4 (decision) |
+
+**The `quality` section is folded at bundle-assembly time**, exactly as the journal is embedded there: `docs/quality/` is canonical in the repo and `bundle.quality` is only its interchange projection, so the verbs below produce one while assembling a bundle and nothing ever writes it back to `docs/arkaik/bundle.json` ([bundle-format.md](bundle-format.md) § Quality (Kritik)).
+
+| Verb | Default | Flags |
+|---|---|---|
+| `arkaik pack` | folds | `--no-quality` **deletes** the section rather than merely declining to add one — a source bundle that already carried a hand-written `quality` key must not be packed with it either. `--audit <id>` pins one audit's snapshot instead of merging every audit into current state; an id that is not on disk is an error, not an empty section. `--root <dir>` says where `docs/quality/` lives; the default is derived from the *bundle's* own path, not the cwd, so packing `<repo>/docs/arkaik/bundle.json` folds `<repo>`'s audits whatever directory you run from |
+| `arkaik open` | folds | none of its own — it packs through `runPack` and inherits every default above, quality section included, which is the point: what `open` hands the import picker is what the app will render |
+| `arkaik push` | strips | `--include-quality` embeds the section and forwards `?include_quality=true`. Independent of `--include-journal` on purpose: publishing your history and publishing your open findings are two disclosures, not one, and both default to no ([RFC: Kritik](../rfcs/kritik.md) § 8.3) |
+| `arkaik restore` | folds | `--no-quality`, `--audit <id>` and `--root <dir>` behave as on `pack`, plus `--allow-quality-loss`, required before a restore may erase a `quality` section the hosted project has and the outbound bundle does not. `--no-quality` deliberately does **not** imply it: "do not send mine" and "destroy theirs" are different decisions, and only the second is irreversible |
+
+A repo with no audits, or with audits but no `docs/quality/profile.json`, is reported on stderr and skipped — never failed. Quality is additive to a bundle, and a half-installed Kritik must not break `arkaik pack`. The notice names the directory it searched (`Quality: none to fold …`) or the profile it wanted (`Quality: skipped …`), because the two ways to reach either line are "not audited yet" and "wrong `--root`", and the path tells them apart at a glance.
+
+**`arkaik restore --dry-run` cannot preview a guard that needs the hosted export.** A dry run asks the server what the restore *would* do and takes no backup, on purpose: nothing destructive happens, so there is nothing to protect against. But the backup and the guards read the same `GET .../export`, and a dry run never fetches it — so the history-loss, deletion and quality-loss refusals are all structurally invisible in preview, and a dry run that prints a clean delta can still be refused for real. This is a standing property of `--dry-run` rather than anything specific to quality: the guards live on the destructive path, which is the path they exist to protect.
 
 ## Skill Distribution
 

@@ -1,7 +1,7 @@
 {
   "name": "kritik",
   "displayName": "Kritik",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Agent skill that audits a product's quality with the Kritik framework — a maturity score per criterion per surface backed by evidence, findings carrying risk and remediation cost, and a comparative matrix whose anti-averaging caps stop one open Critical from being averaged into a B. Ships the 88-criterion pack; projects pick their surfaces and add criteria of their own.",
   "author": {
     "name": "Arkaik"

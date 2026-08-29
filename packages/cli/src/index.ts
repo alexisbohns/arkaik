@@ -33,13 +33,13 @@ Commands:
   release <version> [path]    Tag a release (append release.tagged) and draft its notes.
   deliverable <title> [path]  Record a deliverable (append deliverable.shipped).
   sync [options] [path]       Mirror external ref status (GitHub issues/PRs) into node refs.
-  pack [options] [path]       Produce a single self-contained interchange bundle (embeds the journal).
+  pack [options] [path]       Produce a self-contained interchange bundle (embeds journal + quality).
   open [options] [path]       Validate, then hand off the packed bundle to arkaik.app import.
-  push [options] [path]       Validate, pack (journal stripped), and publish to Publik.
+  push [options] [path]       Validate, pack (journal + quality stripped), and publish to Publik.
                                --delete <id> --key <owner_key> removes a snapshot.
   link [options] [path]       Point this repo at a hosted project so an agent can edit it.
                                --list shows the projects your token can reach.
-  restore [options] [path]    Replace the linked hosted project's bundle + journal (backs up first).
+  restore [options] [path]    Replace the linked project's bundle, journal + quality (backs up first).
   bootstrap <sub> [options]   One-time onboarding: mine, plan, slice, merge a map from a repo.
   kritik <sub> [options]      Quality audits: score criteria, open findings, roll up the matrix.
 

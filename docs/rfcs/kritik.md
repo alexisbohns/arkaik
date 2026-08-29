@@ -133,6 +133,8 @@ interface QualitySection {
 // ProjectBundle gains: quality?: QualitySection
 ```
 
+**Lane 2's writer (#389) is assembly-time.** `loadCurrentQualitySection` (`packages/schema/src/cli/kritik-audit.ts`) merges every audit on disk into current state — assessments latest-wins per `(criterion x surface)`, findings pooled, the derived `severity`/`priority` dropped, the effective pack ⊕ overlay embedded as `library` — and `foldQualitySection` (`packages/cli/src/lib/kritik-io.ts`) is the CLI seam that calls it, or its pinned sibling `loadAuditQualitySection` when `--audit <id>` names one run. `arkaik pack` and `arkaik restore` call that seam while they assemble a bundle. The `docs/quality/` sidecars stay canonical and **no verb writes `bundle.quality` to disk**: the same split as `journal.jsonl` and the bundle's embedded `journal[]`, so the section is always regenerated from the tree rather than kept in step with it.
+
 Derived values (severity buckets, P0-P3, domain scores, grades, caps) are **projections in `@arkaik/schema`** (`deriveQualityMatrix(bundle)`), exactly as delivery and backlog are journal projections today. Stored data stays minimal and un-fake-able. The pilot ships a reference implementation of these projections as `docs/quality/scripts/compute-matrix.mjs`; porting it into `@arkaik/schema` is most of the schema work.
 
 ### 4.2 The library as a distributable pack
