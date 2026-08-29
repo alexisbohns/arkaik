@@ -557,7 +557,8 @@ export async function applyQualityResolutions(
       matched.set(finding.id, finding);
     }
     for (const finding of state.findings) {
-      if (typeof finding.issue_url !== "string") continue;
+      // No `typeof` guard: `parseIssueRef` takes `string | null | undefined`
+      // precisely so a finding with no `issue_url` needs no ceremony here.
       const ref = parseIssueRef(finding.issue_url);
       if (ref !== undefined && issueKeys.has(`${ref.repo}#${ref.number}`)) matched.set(finding.id, finding);
     }
@@ -937,8 +938,8 @@ Expected: no errors.
 
 - [ ] **Step 5: Run the suites this could break**
 
-Run: `node tests/app/quality.test.js && npm run test:graph-api`
-Expected: PASS, or a clean skip from `test:graph-api` when Postgres is absent.
+Run: `node tests/app/quality.test.js && npm run test:graph`
+Expected: PASS, or a clean skip from `test:graph` when Postgres is absent.
 
 - [ ] **Step 6: Commit**
 
