@@ -48,11 +48,11 @@
  * pure bundle JSON in the no-`--out` case.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, extname, resolve } from "node:path";
+import { dirname, extname, resolve } from "node:path";
 import { serializeBundle } from "@arkaik/schema";
 import { readBundle } from "../lib/bundle-io";
 import { loadJournalEvents } from "../lib/journal-io";
-import { foldQualitySection } from "../lib/kritik-io";
+import { foldQualitySection, resolveQualityRoot } from "../lib/kritik-io";
 
 const DEFAULT_BUNDLE_PATH = "docs/arkaik/bundle.json";
 
@@ -186,30 +186,6 @@ function fatalResult(bundlePath: string, message: string): RunPackResult {
     assetWarnings: [],
     output: "",
   };
-}
-
-/**
- * The repo root whose `docs/quality/` gets folded in.
- *
- * Derived from the bundle being packed, NOT from the cwd, so every input to a
- * pack comes from the same place: `loadJournalEvents` finds the journal as a
- * sibling of the bundle, asset inlining resolves against the bundle's own
- * directory, and quality resolves against the repo that bundle lives in.
- * Rooting this at the cwd instead would let `cd /a && arkaik pack
- * /b/docs/arkaik/bundle.json` fold /a's audit into /b's bundle — quality data
- * from a project the output has nothing to do with.
- *
- * Only the conventional `<root>/docs/arkaik/<file>` layout is recognised: the
- * one `arkaik init` writes and `DEFAULT_BUNDLE_PATH` names. A bundle kept
- * anywhere else has no root to discover, so the cwd stands in and `root` says
- * otherwise. That the `kritik` verb family is cwd-rooted is not a
- * counterexample — those verbs have no bundle path to derive from.
- */
-function resolveQualityRoot(cwd: string, filePath: string, root?: string): string {
-  if (root !== undefined) return resolve(cwd, root);
-  const dir = dirname(filePath);
-  if (basename(dir) === "arkaik" && basename(dirname(dir)) === "docs") return resolve(dir, "..", "..");
-  return cwd;
 }
 
 /**

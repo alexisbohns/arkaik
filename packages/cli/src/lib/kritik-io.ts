@@ -11,7 +11,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   makeEvent,
@@ -197,4 +197,34 @@ export function foldQualitySection(
     folded: true,
     notice: `Quality: folded ${section.assessments.length} assessment(s), ${section.findings.length} finding(s) from ${count} audit(s)`,
   };
+}
+
+/**
+ * The repo root whose `docs/quality/` belongs to a given bundle file.
+ *
+ * Derived from the bundle, NOT from the cwd, so every input a verb assembles
+ * comes from the same place: `loadJournalEvents` finds the journal as a
+ * sibling of the bundle, `arkaik pack`'s asset inlining resolves against the
+ * bundle's own directory, and quality resolves against the repo that bundle
+ * lives in. Rooting this at the cwd instead would let `cd /a && arkaik pack
+ * /b/docs/arkaik/bundle.json` fold /a's audit into /b's bundle — quality data
+ * from a project the output has nothing to do with. `arkaik restore` shares
+ * this for the same reason and with more at stake: there, the wrong root
+ * sends one repo's findings to another repo's hosted project.
+ *
+ * Only the conventional `<root>/docs/arkaik/<file>` layout is recognised: the
+ * one `arkaik init` writes and {@link DEFAULT_BUNDLE_PATH} names. A bundle
+ * kept anywhere else has no root to discover, so the cwd stands in and `root`
+ * says otherwise. That the `kritik` verb family is cwd-rooted is not a
+ * counterexample — those verbs have no bundle path to derive from.
+ *
+ * It lives here, beside "where is the pack" and "where is the journal",
+ * because "which repo owns this bundle" is the same class of question: what
+ * being the CLI's environment means, rather than anything a projection knows.
+ */
+export function resolveQualityRoot(cwd: string, filePath: string, root?: string): string {
+  if (root !== undefined) return resolve(cwd, root);
+  const dir = dirname(filePath);
+  if (basename(dir) === "arkaik" && basename(dirname(dir)) === "docs") return resolve(dir, "..", "..");
+  return cwd;
 }
