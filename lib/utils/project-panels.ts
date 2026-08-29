@@ -8,8 +8,11 @@
  * what `?node=` names. A criterion panel is the second such exception, for the
  * neighbouring reason: it shows library content, identical in every project
  * that pins the same pack, so it is not a location in *this* graph either. The
- * Quality page addresses it with `?criterion=`, which is a param that page owns
- * — the stack still has exactly one address, and it is still `?node=`.
+ * Findings page addresses it with `?criterion=`, which is a param that page
+ * owns. A cell panel is the third: a domain crossed with a surface is a
+ * *reading* of this project's audit rather than a node in its graph, and the
+ * Matrix page addresses it with `?cell=`. The stack still has exactly one
+ * address, and it is still `?node=`.
  *
  * One invariant holds it together: a node entry's `key` *is* its node id. What
  * `topNodeKey` returns goes into the URL and comes back through
@@ -50,6 +53,22 @@ export function criterionPanelKey(criterionId: string, surface?: string): string
   return `criterion:${criterionId}@${surface ?? ""}`;
 }
 
+/**
+ * A matrix cell panel's key — one domain crossed with one surface.
+ *
+ * Namespaced for exactly `criterionPanelKey`'s reason, and with more cause: a
+ * domain code is a short uppercase word a pack chooses freely, so nothing at
+ * all stops one from being `raw` or from colliding with a species prefix. The
+ * namespace settles it rather than trusting no pack ever picks the wrong word.
+ *
+ * Both halves ride in the key, so clicking the next card down a gallery
+ * refreshes the panel in place while a different domain on the same surface is
+ * a different panel — which is what makes the matrix quick to sweep.
+ */
+export function cellPanelKey(domain: string, surface: string): string {
+  return `cell:${domain}@${surface}`;
+}
+
 export interface NodePanelDescriptor {
   kind: "node";
   nodeId: string;
@@ -68,9 +87,22 @@ export interface CriterionPanelDescriptor {
   surface?: string;
 }
 
+/**
+ * One matrix cell: its criteria and its findings. Addressless in the stack for
+ * the reason stated at the top of this file — the Matrix page owns `?cell=`.
+ */
+export interface CellPanelDescriptor {
+  kind: "cell";
+  /** Domain code, e.g. `SEC`. */
+  domain: string;
+  /** Surface id, e.g. `web`. */
+  surface: string;
+}
+
 export type PanelDescriptor =
   | NodePanelDescriptor
   | CriterionPanelDescriptor
+  | CellPanelDescriptor
   | { kind: "raw" };
 
 export type ProjectPanelEntry = PanelEntry<PanelDescriptor>;
@@ -85,6 +117,12 @@ export function isCriterionEntry(
   entry: ProjectPanelEntry,
 ): entry is PanelEntry<CriterionPanelDescriptor> {
   return entry.payload.kind === "criterion";
+}
+
+export function isCellEntry(
+  entry: ProjectPanelEntry,
+): entry is PanelEntry<CellPanelDescriptor> {
+  return entry.payload.kind === "cell";
 }
 
 /**
@@ -133,7 +171,9 @@ export function buildPanelCrumbs(
           ? "Raw bundle"
           : entry.payload.kind === "criterion"
             ? entry.payload.criterionId
-            : titleOf(entry.key) ?? entry.key,
+            : entry.payload.kind === "cell"
+              ? `${entry.payload.domain} × ${entry.payload.surface}`
+              : titleOf(entry.key) ?? entry.key,
       id: entry.instanceId,
       depth: index === entries.length - 1 ? null : index + 1,
     })),

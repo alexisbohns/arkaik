@@ -74,6 +74,13 @@ function ProjectChrome({ children }: { children: React.ReactNode }) {
     return params.toString();
   }, [currentView, searchParams]);
 
+  // Which Quality page is open. `null` on `/quality` itself, which is a
+  // redirect to the matrix and never renders a page of its own — the Matrix
+  // item stays lit through that frame rather than blinking off and back on.
+  const qualityPrefix = `/project/${id}/quality/`;
+  const currentQualityView =
+    currentView === "quality" && pathname.startsWith(`${qualityPrefix}findings`) ? "findings" : null;
+
   const mapsPrefix = `/project/${id}/maps/`;
   const currentMapId =
     currentView === "maps" && pathname.startsWith(mapsPrefix)
@@ -160,6 +167,7 @@ function ProjectChrome({ children }: { children: React.ReactNode }) {
         projectFailed={projectError !== null}
         currentView={currentView}
         currentSpecies={currentSpecies}
+        currentQualityView={currentQualityView}
         currentMapId={currentMapId}
         customMaps={customMaps}
         currentQueryString={currentQueryString}

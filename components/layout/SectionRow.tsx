@@ -1,20 +1,10 @@
 "use client";
 
-import Link from "next/link";
-import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import { SectionHeading, type SectionHeadingProps } from "@/components/layout/SectionHeading";
 
-export interface SectionRowProps {
-  title: string;
-  /** The section's mark — big and muted, the Pyramid element card's idiom. */
-  icon: LucideIcon;
-  /** The section's headline number, or a sentence when it has none to give. */
-  subtitle?: ReactNode;
-  /** What question this section answers, in one line. */
-  description?: string;
-  /** Jump-off target, when the section has a working surface behind it. */
-  href?: string;
-  linkLabel?: string;
+export interface SectionRowProps
+  extends Omit<SectionHeadingProps, "orientation" | "className"> {
   className?: string;
   /**
    * Pin the heading while its own content scrolls past. Opt-in: it only earns
@@ -38,10 +28,13 @@ export interface SectionRowProps {
  * Born on the Overview (`OverviewSection`) and lifted here when the Changelog
  * adopted the same shape for its milestones — one shell, so the two pages
  * cannot drift into two different ideas of the same row.
+ *
+ * The heading itself is `SectionHeading`, shared with the Quality matrix, which
+ * needs the same heading above its content rather than beside it.
  */
 export function SectionRow({
   title,
-  icon: Icon,
+  icon,
   subtitle,
   description,
   href,
@@ -58,23 +51,15 @@ export function SectionRow({
           grid item stretches to its row by default, and a full-height box has
           nowhere to travel. It releases with its own section, because a sticky
           element is bounded by its parent. */}
-      <div
-        className={`flex min-w-0 flex-col gap-3 ${
-          stickyHeader ? "md:sticky md:top-(--surface-sticky-top) md:self-start md:pb-6" : ""
-        }`}
-      >
-        <Icon className="size-7 text-muted-foreground" aria-hidden="true" />
-        <div className="flex flex-col gap-1">
-          <h2 className="text-base font-semibold leading-tight">{title}</h2>
-          {description && <p className="text-xs text-muted-foreground">{description}</p>}
-          {subtitle && <p className="text-xs font-medium text-foreground/80">{subtitle}</p>}
-        </div>
-        {href && linkLabel && (
-          <Link href={href} className="text-xs text-muted-foreground transition-colors hover:text-foreground">
-            {linkLabel} →
-          </Link>
-        )}
-      </div>
+      <SectionHeading
+        title={title}
+        icon={icon}
+        subtitle={subtitle}
+        description={description}
+        href={href}
+        linkLabel={linkLabel}
+        className={stickyHeader ? "md:sticky md:top-(--surface-sticky-top) md:self-start md:pb-6" : ""}
+      />
       {/* `min-w-0` on a grid child, or a wide body (the pyramid, a gauge list)
           pushes the column past its track instead of scrolling inside it. */}
       {/* `flex-col gap-3` matches the card body: a body of two blocks relies on

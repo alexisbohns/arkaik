@@ -19,6 +19,7 @@ import {
   unwindTo as unwindStackTo,
 } from "@/lib/utils/panel-stack";
 import {
+  cellPanelKey,
   criterionPanelKey,
   isNodeEntry,
   pruneNodeEntries,
@@ -92,6 +93,12 @@ interface ProjectPanelsValue {
    * has nothing to tell the URL. The Quality page writes `?criterion=` itself.
    */
   openCriterion: (criterionId: string, surface?: string, fromDepth?: number) => void;
+  /**
+   * Open a matrix cell's panel — its criteria and its findings. `fromDepth`
+   * behaves as {@link ProjectPanelsValue.openCriterion}'s does; a surface click
+   * passes `0`.
+   */
+  openCell: (domain: string, surface: string, fromDepth?: number) => void;
   closeAt: (index: number) => void;
   unwindTo: (depth: number) => void;
   /**
@@ -285,6 +292,26 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  /**
+   * Open one matrix cell. Publishes nothing, exactly like `openCriterion` and
+   * for the identical reason: the stack has one address and it is `?node=`.
+   * The Matrix page owns `?cell=` and syncs it through the shared
+   * `useAddressedBottomPanel`.
+   *
+   * `fromDepth` carries the same warning as `openCriterion`'s. A card in a
+   * domain gallery lives *on* the surface, so the Matrix page passes `0` and
+   * sweeping the gallery refreshes one panel rather than stacking a dozen.
+   */
+  const openCell = useCallback((domain: string, surface: string, fromDepth?: number) => {
+    setEntries((previous) =>
+      openFrom<PanelDescriptor>(previous, fromDepth ?? previous.length, cellPanelKey(domain, surface), {
+        kind: "cell",
+        domain,
+        surface,
+      }),
+    );
+  }, []);
+
   const pruneMissingNodes = useCallback(
     (existingIds: Set<string>) => {
       const next = pruneNodeEntries(entries, existingIds);
@@ -326,6 +353,7 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
       openNode,
       openRaw,
       openCriterion,
+      openCell,
       closeAt,
       unwindTo,
       pruneMissingNodes,
@@ -335,6 +363,7 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
   }, [
     closeAt,
     entries,
+    openCell,
     openCriterion,
     openNode,
     openRaw,

@@ -17,7 +17,9 @@ const { loadPanelStack, loadProjectPanels, BUILD_DIR } = require("./load-panel-u
 const { openFrom, initStack } = loadPanelStack();
 const {
   RAW_PANEL_KEY,
+  cellPanelKey,
   criterionPanelKey,
+  isCellEntry,
   isCriterionEntry,
   isNodeEntry,
   topNodeKey,
@@ -176,6 +178,46 @@ const criterionCrumbs = buildPanelCrumbs([criterionEntry], "Quality", () => unde
 assert(
   criterionCrumbs[criterionCrumbs.length - 1].label === "SEC-03",
   "a criterion crumb reads as its criterion id, not its namespaced key",
+);
+
+// --- cell entries: the fourth kind, addressless for the same reason ---
+const cellEntry = {
+  key: cellPanelKey("SEC", "web"),
+  instanceId: "i-cell",
+  payload: { kind: "cell", domain: "SEC", surface: "web" },
+};
+
+assert(
+  cellPanelKey("SEC", "web") === "cell:SEC@web",
+  "a cell key namespaces both halves — a domain code is a word a pack picks freely",
+);
+assert(
+  cellPanelKey("SEC", "web") !== cellPanelKey("SEC", "ios"),
+  "the same domain on two surfaces is two panels",
+);
+assert(
+  cellPanelKey("SEC", "web") !== RAW_PANEL_KEY && !isNodeEntry(cellEntry),
+  "a cell entry is neither the raw panel nor a node",
+);
+assert(
+  isCellEntry(cellEntry) && !isCellEntry(criterionEntry) && !isCriterionEntry(cellEntry),
+  "the three non-node kinds are told apart by kind, never by key",
+);
+assert(
+  topNodeKey([homeEntry, cellEntry]) === "V-home",
+  "a cell panel above a node does not displace what ?node= names",
+);
+
+const cellPruned = pruneNodeEntries([homeEntry, cellEntry], new Set());
+assert(
+  cellPruned.length === 1 && isCellEntry(cellPruned[0]),
+  "a node prune never evicts a cell panel",
+);
+
+const cellCrumbs = buildPanelCrumbs([cellEntry], "Matrix", () => undefined);
+assert(
+  cellCrumbs[cellCrumbs.length - 1].label === "SEC × web",
+  "a cell crumb reads as its domain and surface, not its namespaced key",
 );
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });

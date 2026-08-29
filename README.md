@@ -31,7 +31,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) — create a project or load the seed example from the projects page.
+Open [http://localhost:4242](http://localhost:4242) — create a project or load the seed example from the projects page.
 
 ## Folder Structure
 

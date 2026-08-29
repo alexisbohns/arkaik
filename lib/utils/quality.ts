@@ -33,6 +33,7 @@ import {
   type QualityFinding,
   type QualityGrade,
   type QualityMatrix,
+  type QualityMatrixCell,
   type QualitySection,
   type RemediationCost,
   type SurfaceDef,
@@ -369,6 +370,82 @@ export function buildCellCriteria(
       };
     })
     .sort((a, b) => a.criterionId.localeCompare(b.criterionId));
+}
+
+/** One card in a domain gallery: the cell, plus what the card must name. */
+export interface DomainSurfaceCard {
+  surface: string;
+  /** The profile's title for the surface, falling back to its id. */
+  title: string;
+  /** `null` when this domain was not scored on this surface. */
+  cell: QualityMatrixCell | null;
+}
+
+/** One stacked section on the Matrix page: a domain and its surfaces. */
+export interface DomainSection {
+  domain: string;
+  name: string;
+  description?: string;
+  cards: DomainSurfaceCard[];
+  /**
+   * The mean of the scored cells, rounded — the heading's headline number.
+   * `null` when this domain was scored on no surface at all, which reads as
+   * "not audited here" rather than as a zero.
+   *
+   * Deliberately unweighted across surfaces: `deriveQualityMatrix` weights
+   * criteria *within* a cell, and no weight exists that says a web surface
+   * counts more than an iOS one. A plain mean is the only honest roll-up, and
+   * it is a heading, not a score anybody acts on.
+   */
+  average: number | null;
+  /** How many of the matrix's surfaces this domain was actually scored on. */
+  scored: number;
+}
+
+/**
+ * The Matrix page's sections: one per library domain, in the library's own
+ * order, each carrying one card per surface in the matrix's own order.
+ *
+ * A projection rather than a derivation inside the component, so the numbers
+ * the headings quote are testable without React. Nothing is scored here —
+ * every cell comes from `deriveQualityMatrix` untouched, and a domain the
+ * matrix does not carry is simply absent.
+ */
+export function buildDomainSections(
+  matrix: QualityMatrix,
+  section: Pick<QualitySection, "profile"> | undefined,
+  library?: KritikLibrary,
+): DomainSection[] {
+  const titles = buildSurfaceTitles(section);
+  const meta = new Map<string, KritikDomain>();
+  for (const domain of asArray<KritikDomain>(library?.domains)) {
+    if (typeof domain?.code === "string") meta.set(domain.code, domain);
+  }
+
+  return matrix.domains.map((domain) => {
+    const cards = matrix.surfaces.map((surface) => ({
+      surface,
+      title: titles.get(surface) ?? surface,
+      cell: matrix.matrix[domain]?.[surface] ?? null,
+    }));
+
+    const scores = cards
+      .map((card) => card.cell?.score)
+      .filter((score): score is number => typeof score === "number");
+
+    const definition = meta.get(domain);
+    return {
+      domain,
+      name: (definition?.name as string | undefined) ?? domain,
+      description: definition?.description as string | undefined,
+      cards,
+      average:
+        scores.length === 0
+          ? null
+          : Math.round(scores.reduce((total, score) => total + score, 0) / scores.length),
+      scored: scores.length,
+    };
+  });
 }
 
 export interface NodeFindingSummary {

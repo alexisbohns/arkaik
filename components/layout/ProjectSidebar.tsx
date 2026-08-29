@@ -5,6 +5,7 @@ import {
   BookOpenIcon,
   GemIcon,
   LayoutDashboardIcon,
+  ListChecksIcon,
   MapIcon,
   MapPinnedIcon,
   NetworkIcon,
@@ -53,6 +54,8 @@ interface ProjectSidebarProps {
   projectFailed?: boolean;
   currentView: ProjectView;
   currentSpecies: string | null;
+  /** Which Quality page is open, when `currentView` is "quality". */
+  currentQualityView: "matrix" | "findings" | null;
   /** Active map id when currentView is "maps" and a specific map is open. */
   currentMapId: string | null;
   /** Custom maps stored at project.metadata.maps, for direct navigation. */
@@ -82,6 +85,7 @@ export function ProjectSidebar({
   projectFailed = false,
   currentView,
   currentSpecies,
+  currentQualityView,
   currentMapId,
   customMaps,
   currentQueryString,
@@ -179,11 +183,36 @@ export function ProjectSidebar({
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
+
+        {/* Quality is a section rather than a page: the matrix you sweep and the
+            findings you work are two jobs, and stacking them in one scrollport
+            meant the grid scrolled away exactly when you clicked a cell. */}
+        <SidebarGroup>
+          <SidebarGroupLabel>Quality</SidebarGroupLabel>
+          <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={currentView === "quality"} tooltip="Quality audit">
-                <Link href={qualityHref}>
+              <SidebarMenuButton
+                asChild
+                isActive={currentView === "quality" && currentQualityView !== "findings"}
+                tooltip="Audit matrix"
+              >
+                <Link href={`${qualityHref}/matrix`}>
                   <GemIcon />
-                  <span>Quality</span>
+                  <span>Matrix</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                isActive={currentView === "quality" && currentQualityView === "findings"}
+                tooltip="Findings"
+              >
+                <Link href={`${qualityHref}/findings`}>
+                  <ListChecksIcon />
+                  <span>Findings</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

@@ -7,6 +7,8 @@ svg.lucide { overflow: visible; }
 /* Escape hatch: opt an icon out of the wobble entirely. */
 svg.lucide.no-wobble { filter: none; }
 
+.lucide-accessibility { filter: url(#wob-accessibility); }
+.lucide-activity { filter: url(#wob-activity); }
 .lucide-apple { filter: url(#wob-apple); }
 .lucide-arrow-down { filter: url(#wob-arrow-down); }
 .lucide-arrow-down-wide-narrow { filter: url(#wob-arrow-down-wide-narrow); }
@@ -64,6 +66,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-file-up { filter: url(#wob-file-up); }
 .lucide-flag { filter: url(#wob-flag); }
 .lucide-flame { filter: url(#wob-flame); }
+.lucide-flask-conical { filter: url(#wob-flask-conical); }
 .lucide-folder-kanban { filter: url(#wob-folder-kanban); }
 .lucide-folder-open { filter: url(#wob-folder-open); }
 .lucide-folder-tree { filter: url(#wob-folder-tree); }
@@ -78,6 +81,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-globe { filter: url(#wob-globe); }
 .lucide-grid3x3 { filter: url(#wob-grid3x3); }
 .lucide-handshake { filter: url(#wob-handshake); }
+.lucide-heart-handshake { filter: url(#wob-heart-handshake); }
 .lucide-heart-pulse { filter: url(#wob-heart-pulse); }
 .lucide-history { filter: url(#wob-history); }
 .lucide-hourglass { filter: url(#wob-hourglass); }
@@ -95,6 +99,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-lightbulb { filter: url(#wob-lightbulb); }
 .lucide-link2 { filter: url(#wob-link2); }
 .lucide-list { filter: url(#wob-list); }
+.lucide-list-checks { filter: url(#wob-list-checks); }
 .lucide-list-chevrons-down-up { filter: url(#wob-list-chevrons-down-up); }
 .lucide-list-chevrons-up-down { filter: url(#wob-list-chevrons-up-down); }
 .lucide-loader-circle { filter: url(#wob-loader-circle); }
@@ -132,6 +137,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-settings2 { filter: url(#wob-settings2); }
 .lucide-shapes { filter: url(#wob-shapes); }
 .lucide-share2 { filter: url(#wob-share2); }
+.lucide-shield { filter: url(#wob-shield); }
 .lucide-shield-check { filter: url(#wob-shield-check); }
 .lucide-sliders-horizontal { filter: url(#wob-sliders-horizontal); }
 .lucide-sparkles { filter: url(#wob-sparkles); }
@@ -139,6 +145,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-square-kanban { filter: url(#wob-square-kanban); }
 .lucide-star { filter: url(#wob-star); }
 .lucide-stethoscope { filter: url(#wob-stethoscope); }
+.lucide-store { filter: url(#wob-store); }
 .lucide-sun { filter: url(#wob-sun); }
 .lucide-sun-moon { filter: url(#wob-sun-moon); }
 .lucide-sunrise { filter: url(#wob-sunrise); }
