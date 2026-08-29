@@ -185,5 +185,87 @@ const repo101 = "a".repeat(101);
 check("a 100-character repo name is within GitHub's ceiling and parses", parseIssueRef(`https://github.com/acme/${repo100}/issues/1`)?.repo === `acme/${repo100}`);
 check("a 101-character repo name exceeds the cap and does not parse", parseIssueRef(`https://github.com/acme/${repo101}/issues/1`) === undefined);
 
-fs.rmSync(BUILD_DIR, { recursive: true, force: true });
-process.exit(failures ? 1 : 0);
+// --- the resolution pass -----------------------------------------------------
+
+const { applyQualityResolutions } = kritik;
+
+const FINDING = (over = {}) => ({
+  id: "F-2026-08-SEC-web-01",
+  criterion_id: "SEC-01",
+  surface: "web",
+  title: "Anonymous read on the profiles table",
+  detail: "d",
+  evidence: "e",
+  impact: 5,
+  likelihood: 4,
+  cost: "M",
+  status: "open",
+  ...over,
+});
+
+/** The injected seam: one project, whatever findings and events a case needs. */
+function state({ findings = [FINDING()], resolvedIds = [] } = {}) {
+  const appended = [];
+  return {
+    appended,
+    readState: async () => [
+      {
+        projectId: "prj_1",
+        findings,
+        resolvedFindingIds: new Set(resolvedIds),
+        append: async (events) => { appended.push(...events); return events.map((e) => e.id); },
+      },
+    ],
+  };
+}
+
+const merged = (over = {}) => ({
+  action: "closed",
+  merged: true,
+  repoFullName: REPO,
+  number: 7,
+  url: `https://github.com/${REPO}/pull/7`,
+  title: "",
+  body: "",
+  state: "closed",
+  installationId: null,
+  ...over,
+});
+
+(async () => {
+  const byId = state();
+  const idOutcomes = await applyQualityResolutions(merged({ body: "Fixes F-2026-08-SEC-web-01." }), { readState: byId.readState });
+  check("a finding named by id resolves", idOutcomes.some((o) => o.status === "resolved" && o.findingId === "F-2026-08-SEC-web-01"), JSON.stringify(idOutcomes));
+  check("exactly one event is appended", byId.appended.length === 1 && byId.appended[0].type === "quality.finding.resolved", JSON.stringify(byId.appended));
+  check("resolved_by is the PR url", byId.appended[0].resolved_by === `https://github.com/${REPO}/pull/7`, JSON.stringify(byId.appended[0]));
+  check("the actor is the app", byId.appended[0].actor === "github-app", JSON.stringify(byId.appended[0]));
+
+  const withNodes = state({ findings: [FINDING({ node_ids: ["V-profile"] })] });
+  await applyQualityResolutions(merged({ body: "Fixes F-2026-08-SEC-web-01." }), { readState: withNodes.readState });
+  check("node_ids ride along", JSON.stringify(withNodes.appended[0].node_ids) === JSON.stringify(["V-profile"]), JSON.stringify(withNodes.appended[0]));
+
+  const byIssue = state({ findings: [FINDING({ issue_url: `https://github.com/${REPO}/issues/44/` })] });
+  await applyQualityResolutions(merged({ body: "Closes #44" }), { readState: byIssue.readState });
+  check("a finding matched by its issue resolves", byIssue.appended.length === 1, JSON.stringify(byIssue.appended));
+
+  for (const status of ["refuted", "accepted-risk", "resolved"]) {
+    const guarded = state({ findings: [FINDING({ status })] });
+    const outcomes = await applyQualityResolutions(merged({ body: "Fixes F-2026-08-SEC-web-01." }), { readState: guarded.readState });
+    check(`a ${status} finding is not re-resolved`, guarded.appended.length === 0 && outcomes.some((o) => o.status === "unchanged"), JSON.stringify(outcomes));
+  }
+
+  const already = state({ resolvedIds: ["F-2026-08-SEC-web-01"] });
+  const secondMerge = await applyQualityResolutions(merged({ body: "Fixes F-2026-08-SEC-web-01." }), { readState: already.readState });
+  check("a second merge appends nothing", already.appended.length === 0 && secondMerge.some((o) => o.status === "unchanged"), JSON.stringify(secondMerge));
+
+  const typo = state();
+  const unknown = await applyQualityResolutions(merged({ body: "Fixes F-2026-08-SEC-web-99." }), { readState: typo.readState });
+  check("an unmatched id is reported, not swallowed", typo.appended.length === 0 && unknown.some((o) => o.status === "unknown" && o.findingId === "F-2026-08-SEC-web-99"), JSON.stringify(unknown));
+
+  const silent = state();
+  const none = await applyQualityResolutions(merged({ body: "Just a refactor." }), { readState: silent.readState });
+  check("a PR naming nothing reads no project at all", none.length === 1 && none[0].status === "no_mentions", JSON.stringify(none));
+
+  fs.rmSync(BUILD_DIR, { recursive: true, force: true });
+  process.exit(failures ? 1 : 0);
+})();
