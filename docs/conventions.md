@@ -218,3 +218,32 @@ Non-interactive but focusable elements (e.g. branch nodes, static cards) use `cu
 - **Types:** PascalCase (`SpeciesId`, `ProjectBundle`)
 - **Config arrays:** UPPER_SNAKE_CASE (`SPECIES`, `STATUSES`, `EDGE_TYPES`)
 - **Hooks:** camelCase with `use` prefix (`useNodes`, `useJournal`)
+
+### Shipping larger work — parts, tasks, and stacked PRs
+
+Anything bigger than a single focused change is planned as **parts**, each part
+broken into **tasks**. One part is one branch is one PR, and the branches are
+chained into a **GitHub Stack** (`gh stack`, see the `gh-stack` skill) so each
+PR's diff shows only its own layer. The extension is a one-time install:
+`gh extension install github/gh-stack`.
+
+- **A part is a reviewable unit, not a milestone.** It should stand on its own:
+  a reviewer who reads only that PR should be able to say yes or no to it. If a
+  part can't be described without referring forward to the next one, the split
+  is in the wrong place.
+- **Order parts by dependency, never by convenience.** Shared types and domain
+  models go lowest, then persistence, then the API, then the UI that consumes
+  it. If code in one layer needs code from another, the dependency belongs in
+  the same part or a lower one.
+- **Separate a move from a rewrite.** When work both relocates existing code and
+  changes it, make the relocation its own part. A pure-move diff is read in
+  seconds; the same change tangled with a redesign hides the redesign.
+- **Fix a lower layer in the layer that owns it.** Discovering mid-stack that a
+  lower part needs a change means navigating down (`gh stack down`), committing
+  there, and running `gh stack rebase --upstack` — not patching around it at the
+  top. Otherwise the fix lands in the wrong PR.
+- **Each part is independently verifiable.** It must pass
+  the lint and typecheck on its own, without the parts above
+  it. A part that only compiles once a later part lands is not a part.
+- **One stack tells one story.** Unrelated work — a different feature, a drive-by
+  fix — starts its own stack rather than riding along.
