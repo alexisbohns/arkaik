@@ -20,7 +20,8 @@ import {
   type JournalEvent,
   type KritikLibrary,
 } from "@arkaik/schema";
-import { PACK_FILE, QUALITY_DIR, loadOverlay, readJson } from "@arkaik/schema/src/cli/kritik-paths";
+import { listAuditIds, loadCurrentQualitySection } from "@arkaik/schema/src/cli/kritik-audit";
+import { PACK_FILE, QUALITY_DIR, loadOverlay, loadProfile, profilePath, readJson } from "@arkaik/schema/src/cli/kritik-paths";
 import { readBundle } from "./bundle-io";
 import { appendJournalEvent, ensureJournalBaseline, journalPathFor } from "./journal-io";
 
@@ -106,4 +107,46 @@ export function appendQualityEvents(
   const events = inputs.map((input) => makeEvent(input.type, input.payload, { actor }));
   for (const event of events) appendJournalEvent(journal.journalPath, event);
   return { journalPath: journal.journalPath, events, ...(baseline !== undefined ? { baseline } : {}) };
+}
+
+/**
+ * Fold the repo's quality sidecars into a bundle's `quality` section.
+ *
+ * The projection is `@arkaik/schema`'s; what lives here is only what "being
+ * the CLI's environment" means — resolving the effective pack, and turning
+ * "there is nothing to fold" into a line a human can act on.
+ *
+ * Never throws for a *data* state. A repo with no audits, or with audits but
+ * no profile, is a repo mid-installation, and neither is a reason for
+ * `arkaik pack` to fail: quality is additive to a bundle. A named `auditId`
+ * that does not exist is different — the user typed it — and propagates.
+ */
+export function foldQualitySection(
+  bundle: Record<string, unknown>,
+  root: string,
+  auditId?: string,
+): { folded: boolean; notice: string } {
+  const auditIds = listAuditIds(root);
+  if (auditIds.length === 0) {
+    return { folded: false, notice: `Quality: none to fold (no audits under ${root})` };
+  }
+  if (loadProfile(root) === null) {
+    return {
+      folded: false,
+      notice: `Quality: skipped — no profile at ${profilePath(root)} (run \`arkaik kritik profile\`)`,
+    };
+  }
+
+  const { library } = loadKritikLibrary(root);
+  const section = loadCurrentQualitySection(root, library, auditId);
+  if (section === undefined) {
+    return { folded: false, notice: `Quality: none to fold (no audits under ${root})` };
+  }
+
+  bundle.quality = section;
+  const count = auditId === undefined ? auditIds.length : 1;
+  return {
+    folded: true,
+    notice: `Quality: folded ${section.assessments.length} assessment(s), ${section.findings.length} finding(s) from ${count} audit(s)`,
+  };
 }

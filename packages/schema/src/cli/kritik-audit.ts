@@ -166,6 +166,88 @@ export function loadQualitySection(
 }
 
 /**
+ * A finding as the interchange projection carries it: without `severity` and
+ * without `priority`.
+ *
+ * Both are derived from `impact × likelihood` (and, for priority, `cost`) by
+ * `severityOf`/`priorityOf`, which never read a stored value — so dropping
+ * them loses nothing a reader can observe. `validateBundle` warns
+ * `quality-derived-field-stored` on either, and a projection that emits a
+ * bundle its own validator objects to is a broken projection. The sidecar
+ * keeps whatever it keeps; this is a read.
+ */
+export function stripDerived(finding: QualityFinding): QualityFinding {
+  const { severity: _severity, priority: _priority, ...rest } = finding as QualityFinding &
+    Record<"severity" | "priority", unknown>;
+  return rest as QualityFinding;
+}
+
+/**
+ * The project's **current** quality state, assembled from every audit on disk
+ * — the interchange projection `bundle.quality` carries.
+ *
+ * This is not `loadQualitySection` over the newest audit, and the difference
+ * is the point. `arkaik kritik score` writes into the newest audit directory,
+ * so a partial re-audit leaves a sparse newest `scores.json`; taking it whole
+ * would render a mostly-empty matrix and drop every still-open finding from
+ * earlier runs. So assessments are **latest-wins per (criterion × surface)**
+ * across every audit — which is what `QualitySection.assessments` is
+ * documented as, and what `validateBundle`'s `quality-duplicate-assessment`
+ * insists on — and findings are pooled, the way `locateFinding` and
+ * `allFindings` already read the tree.
+ *
+ * The consequence is deliberate: this answers "where does the product stand",
+ * while `matrix.json` and `arkaik kritik matrix` answer "how did this audit
+ * go". They are different questions, and a cap can fire here that did not
+ * fire in a single audit's roll-up — an open Critical from two audits ago
+ * still caps its cell, which is true. Pass `auditId` to ask the other
+ * question instead.
+ *
+ * `undefined` — never a throw — when there is nothing to project: no audits,
+ * or no profile. Both are ordinary states in a repo that has not finished
+ * installing Kritik, and neither is a reason to fail a bundle assembly. A
+ * *named* `auditId` that does not exist IS a throw: the user typed it.
+ */
+export function loadCurrentQualitySection(
+  root: string,
+  library: KritikLibrary,
+  auditId?: string,
+): QualitySection | undefined {
+  const available = listAuditIds(root);
+  if (auditId !== undefined && !available.includes(auditId)) {
+    throw new Error(`no audit "${auditId}" under ${join(root, QUALITY_DIR, AUDITS_DIR)}`);
+  }
+  const auditIds = auditId !== undefined ? [auditId] : available;
+  if (auditIds.length === 0) return undefined;
+
+  const profile = loadProfile(root);
+  if (!profile) return undefined;
+
+  // Insertion-ordered: re-setting a key keeps the cell's original position and
+  // replaces its value, so the output is stable for a given tree.
+  const cells = new Map<string, QualityAssessment>();
+  const findings: QualityFinding[] = [];
+  let frameworkVersion: string | undefined;
+
+  for (const id of auditIds) {
+    const scores = loadScoresOrEmpty(root, id);
+    if (typeof scores.framework_version === "string") frameworkVersion = scores.framework_version;
+    for (const assessment of scores.assessments) {
+      cells.set(`${assessment.criterion_id}\u0000${assessment.surface}`, assessment);
+    }
+    for (const finding of loadFindings(root, id).findings) findings.push(stripDerived(finding));
+  }
+
+  return {
+    framework_version: frameworkVersion ?? library.version,
+    library,
+    profile,
+    assessments: [...cells.values()],
+    findings,
+  };
+}
+
+/**
  * Roll an audit up and write its `matrix.json`.
  *
  * This is the **only** thing that may write that file. Everything it returns is

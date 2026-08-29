@@ -34,6 +34,7 @@ import { dirname, extname, resolve } from "node:path";
 import { serializeBundle } from "@arkaik/schema";
 import { readBundle } from "../lib/bundle-io";
 import { loadJournalEvents } from "../lib/journal-io";
+import { foldQualitySection } from "../lib/kritik-io";
 
 const DEFAULT_BUNDLE_PATH = "docs/arkaik/bundle.json";
 
@@ -104,6 +105,12 @@ export interface RunPackOptions {
   noJournal?: boolean;
   /** Inline local relative-path screenshot assets as data: URIs. */
   inlineAssets?: boolean;
+  /** Skip folding docs/quality/ into bundle.quality. The Publik-safe posture, as --no-journal is for history. */
+  noQuality?: boolean;
+  /** Pin one audit's snapshot instead of merging every audit into current state. */
+  audit?: string;
+  /** Repo root holding docs/quality/, resolved against `cwd` (default: `cwd`). */
+  root?: string;
   /** Base directory `path`/`out` resolve against (default: process.cwd()). */
   cwd?: string;
 }
@@ -120,6 +127,8 @@ export interface RunPackResult {
   inlinedAssets: InlinedAsset[];
   /** Non-fatal notices — e.g. an asset referenced by a relative path that was not found on disk. */
   assetWarnings: string[];
+  /** What the quality fold did — folded, skipped, or nothing to fold. Absent with --no-quality. */
+  qualityNotice?: string;
   /** The canonical packed bundle text (serializeBundle output), always populated on success. */
   output: string;
 }
@@ -168,6 +177,16 @@ export function runPack(options: RunPackOptions = {}): RunPackResult {
     }
   }
 
+  let qualityNotice: string | undefined;
+  if (!(options.noQuality ?? false)) {
+    const root = resolve(cwd, options.root ?? ".");
+    try {
+      qualityNotice = foldQualitySection(bundle, root, options.audit).notice;
+    } catch (e) {
+      return fatalResult(filePath, (e as Error).message);
+    }
+  }
+
   const inlinedAssets: InlinedAsset[] = [];
   const assetWarnings: string[] = [];
   if (inlineAssets) {
@@ -205,7 +224,7 @@ export function runPack(options: RunPackOptions = {}): RunPackResult {
     writeFileSync(outPath, output);
   }
 
-  return { ok: true, bundlePath: filePath, outPath, journalIncluded, journalEventCount, inlinedAssets, assetWarnings, output };
+  return { ok: true, bundlePath: filePath, outPath, journalIncluded, journalEventCount, inlinedAssets, assetWarnings, qualityNotice, output };
 }
 
 export function runPackCli(args: string[]): void {
@@ -244,6 +263,9 @@ export function runPackCli(args: string[]): void {
     console.error("Journal: omitted (--no-journal)");
   } else {
     console.error("Journal: none to embed (no embedded journal, no sidecar)");
+  }
+  if (result.qualityNotice !== undefined) {
+    console.error(result.qualityNotice);
   }
   for (const asset of result.inlinedAssets) {
     console.error(`Inlined asset: ${asset.nodeId}/${asset.platform} (${asset.path})`);
