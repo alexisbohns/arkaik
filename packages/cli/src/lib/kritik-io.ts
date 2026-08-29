@@ -137,13 +137,20 @@ export function appendQualityEvents(
  * a verb. `runPack` already owns a throwaway parse of the source file, and
  * what its caller wants back is the notice, not a second object to reconcile.
  *
- * An *absent* profile and *absent* audits are ordinary mid-installation
- * states: each returns `folded: false` with a notice and leaves the bundle
- * alone, because quality is additive and neither is a reason for `arkaik
- * pack` to fail. What DOES throw: a *malformed* sidecar, and a named
- * `auditId` that is not on disk. The second is checked first, before either
- * of the it-is-fine-to-have-nothing returns can swallow it — a typo'd
- * `--audit` in a repo that happens to have no audits is still a typo.
+ * THREE states return `folded: false` with a notice and leave the bundle
+ * untouched rather than throwing: absent audits, an absent profile, and a
+ * criteria pack that cannot be resolved. The first two are ordinary
+ * mid-installation states. The third is a broken install or a vendored file
+ * nobody committed — a fact about the machine, not about this bundle, and the
+ * one failure mode a user cannot fix from inside their repo. None of them is
+ * a reason for `arkaik pack` to fail, because quality is additive to a
+ * bundle: a project with nothing to do with Kritik must still pack.
+ *
+ * What DOES throw is what is wrong with THIS command's inputs: a *malformed*
+ * sidecar, and a named `auditId` that is not on disk. The second is checked
+ * first, before any of the it-is-fine-to-have-nothing returns can swallow it
+ * — a typo'd `--audit` in a repo that happens to have no audits is still a
+ * typo.
  */
 export function foldQualitySection(
   bundle: Record<string, unknown>,
@@ -171,7 +178,18 @@ export function foldQualitySection(
     };
   }
 
-  const { library } = loadKritikLibrary(root);
+  // Loud, not fatal. `resolvePack` already explains itself well ("its absence
+  // means a broken install — reinstall `arkaik`"); what it must not do is take
+  // `arkaik pack` down with it, on a bundle that may have nothing to do with
+  // quality. Its wording is reused verbatim rather than paraphrased, so there
+  // is exactly one explanation of a missing pack in the CLI.
+  let library: KritikLibrary;
+  try {
+    ({ library } = loadKritikLibrary(root));
+  } catch (e) {
+    return { folded: false, notice: `Quality: skipped — ${(e as Error).message}` };
+  }
+
   const section =
     auditId === undefined
       ? loadCurrentQualitySection(root, library)

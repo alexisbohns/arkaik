@@ -182,13 +182,17 @@ function writeJson(file, value) {
 /**
  * A repo with a bundle and, unless told otherwise, a vendored pack, an
  * overlay, a profile and two audits.
+ *
+ * `pack: false` keeps the audits and the profile but omits the vendored
+ * `library.json` — the only way to reach "no criteria pack anywhere", since
+ * the in-process layer's esbuild output has no reachable bundled pack either.
  */
 function makeRepo(options = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), "arkaik-qfold-"));
   writeJson(path.join(dir, "docs", "arkaik", "bundle.json"), BUNDLE);
   if (options.profile !== false) writeJson(path.join(dir, "docs", "quality", "profile.json"), PROFILE);
   if (options.audits !== false) {
-    writeJson(path.join(dir, "docs", "quality", "library.json"), PACK);
+    if (options.pack !== false) writeJson(path.join(dir, "docs", "quality", "library.json"), PACK);
     writeJson(path.join(dir, "docs", "quality", "criteria.custom.json"), OVERLAY);
     writeJson(path.join(dir, "docs", "quality", "audits", "2026-08", "scores.json"), SCORES_08);
     writeJson(path.join(dir, "docs", "quality", "audits", "2026-08", "findings.json"), FINDINGS_08);
@@ -604,6 +608,39 @@ async function inProcess() {
       ghostBare.ok === false && /no audit "2099-01"/.test(ghostBare.fatal || ""),
       ghostBare.fatal,
     );
+  }
+
+  // A criteria pack that cannot be resolved is an ENVIRONMENT problem — a
+  // broken install, or a vendored file nobody committed — not a statement
+  // about this bundle. It must be loud and it must not be fatal, or "quality
+  // is additive to a bundle" is false for the one failure mode a user cannot
+  // fix from inside their repo.
+  //
+  // This layer is where that is reachable at all: under esbuild, `pack.ts`'s
+  // BUNDLED_PACK resolves via `import.meta.url` into `.test-build-quality/
+  // assets/`, which does not exist. So a fixture with no VENDORED pack has no
+  // pack anywhere — the exact state the built CLI can never be asked for,
+  // because it ships one.
+  {
+    const dir = makeRepo({ pack: false });
+    const bundlePath = path.join(dir, "docs", "arkaik", "bundle.json");
+    const result = runPack({ path: bundlePath, cwd: dir });
+
+    check("an unresolvable criteria pack does not fail the pack", result.ok === true, result.fatal);
+    const packed = result.ok ? JSON.parse(result.output) : {};
+    check("no quality section is emitted", packed.quality === undefined, JSON.stringify(Object.keys(packed)));
+    check("qualityFolded reports the skip without parsing prose", result.qualityFolded === false, String(result.qualityFolded));
+    check(
+      "the notice names the problem",
+      /Quality: skipped/.test(result.qualityNotice || "") && /no criteria pack found/.test(result.qualityNotice || ""),
+      result.qualityNotice,
+    );
+    check(
+      "and says what to do about it",
+      /reinstall/.test(result.qualityNotice || ""),
+      result.qualityNotice,
+    );
+    check("the rest of the bundle is packed as normal", Array.isArray(packed.nodes) && packed.nodes.length === 1, JSON.stringify(packed.nodes));
   }
 
   rmSync(TEST_BUILD_DIR, { recursive: true, force: true });
