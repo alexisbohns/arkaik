@@ -1,5 +1,7 @@
 /**
- * `arkaik restore [--dry-run] [--allow-history-loss] [--allow-deletions] [--api <base-url>] [path]`
+ * `arkaik restore [--dry-run] [--allow-history-loss] [--allow-deletions]
+ *                 [--no-quality] [--allow-quality-loss] [--audit <id>]
+ *                 [--root <dir>] [--api <base-url>] [path]`
  *
  * Land a locally-built bundle — history included — on the hosted project
  * this repo is linked to (docs/superpowers/specs/2026-08-04-bootstrap-method-
@@ -46,7 +48,10 @@
  *    shrink really is intended;
  *  - the same export is diffed BY ID against the outbound snapshot, and any
  *    hosted node or edge the local bundle does not carry refuses the run
- *    (`--allow-deletions` is that guard's escape hatch). The count-based
+ *    (`--allow-deletions` is that guard's escape hatch), as does an outbound
+ *    bundle with no quality section landing on a hosted project that has one
+ *    (`--allow-quality-loss`, and note that `--no-quality` does NOT imply it
+ *    — see `describeQualityLoss`). The count-based
  *    history guard above structurally cannot see this class: a hosted
  *    project that has drifted ahead of the committed cache (someone edited
  *    it in the app) yields a delta like `nodes 173 -> 448 (+276 -1 ~172)`,
@@ -74,8 +79,13 @@
  *     `docs/arkaik/.backups/<ts>-bundle.json` and abort on ANY failure — see
  *     above. Both guards run BEFORE the backup is written: a refused run
  *     should leave no trace in `.backups/`, exactly like a dry run;
- *  4. assemble the outbound bundle: the local `bundle.json` plus its journal,
- *     via `loadJournalEvents` (embedded journal wins over the `journal.jsonl`
+ *  4. assemble the outbound bundle: the local `bundle.json`, plus its
+ *     journal and its `docs/quality/` sidecars. `restore` does not go through
+ *     `runPack`, so it folds both itself: quality via `foldQualitySection`
+ *     over the root `resolveQualityRoot` derives from the bundle's own path
+ *     (`--root` overrides; `--audit` pins one audit; `--no-quality` deletes
+ *     the section instead, including one the local file already carried), and
+ *     the journal via `loadJournalEvents` (embedded journal wins over the `journal.jsonl`
  *     sidecar, the same precedence `arkaik validate` uses — load-bearing here
  *     for a reason beyond mere consistency: a BACKUP file always carries its
  *     journal embedded, so if the sidecar ever won instead, running `arkaik
@@ -113,6 +123,7 @@
 import { existsSync, linkSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { journalPathFor, loadJournalEvents } from "../lib/journal-io";
+import { foldQualitySection, resolveQualityRoot } from "../lib/kritik-io";
 import { DEFAULT_HTTP_CLIENT, type HttpClient } from "../lib/providers";
 
 const LINK_FILE = "docs/arkaik/arkaik.json";
@@ -123,7 +134,8 @@ export const DEFAULT_API_BASE = "https://arkaik.app";
 
 const USAGE = `arkaik restore [options] [path]
 
-Replace the linked hosted project's bundle AND journal with a local bundle —
+Replace the linked hosted project's bundle, journal AND quality section with
+a local bundle —
 the landing step for a bootstrapped map. Before sending anything, this
 exports the CURRENT hosted state (snapshot + journal) to
 docs/arkaik/.backups/<timestamp>-bundle.json (next to the link file — not
@@ -135,7 +147,8 @@ Arguments:
   path                Path to the local bundle JSON file
                        (default: ${DEFAULT_BUNDLE_PATH}). Its journal.jsonl
                        sidecar (or an embedded journal, which wins) is folded
-                       in automatically.
+                       in automatically, as is the docs/quality/ tree of the
+                       repo that bundle belongs to.
 
 Options:
   --dry-run             Ask the server what this restore WOULD do and print
@@ -155,6 +168,25 @@ Options:
                         local copy (edited in the app), not an intended
                         deletion. Undoing a restore from a backup is the
                         common case where it IS intended.
+  --no-quality          Do not send a quality section: skip the docs/quality/
+                        fold AND drop any section the local bundle already
+                        carries. Does NOT by itself permit erasing the hosted
+                        one — that needs --allow-quality-loss too, because
+                        "don't send mine" and "destroy theirs" are different
+                        decisions and only one of them is irreversible.
+  --allow-quality-loss  Proceed even though the restore would erase a quality
+                        section the hosted project currently has. Without this
+                        flag, that refuses outright — it usually means
+                        docs/quality/ was looked for in the wrong place, which
+                        --root fixes, rather than an intended wipe.
+  --audit <id>          Fold ONE audit's snapshot rather than merging every
+                        audit into current state. An id that is not on disk is
+                        an error, not an empty section.
+  --root <dir>          Where docs/quality/ lives. Default: derived from the
+                        bundle's own path, so restoring <repo>/docs/arkaik/
+                        bundle.json folds <repo>'s audits whatever directory
+                        you run from; only a bundle kept outside that layout
+                        falls back to the cwd.
   --api <base-url>      Override the remote from docs/arkaik/arkaik.json
                         (also overridable with $ARKAIK_URL).
   -h, --help            Show this help.
@@ -178,6 +210,14 @@ export interface RunRestoreOptions {
   allowHistoryLoss?: boolean;
   /** Proceed even when the outbound snapshot drops hosted nodes or edges. Default: false. */
   allowDeletions?: boolean;
+  /** Skip folding docs/quality/ into the outbound bundle, and drop any section the local bundle carries. Default: false. */
+  noQuality?: boolean;
+  /** Pin one audit's snapshot instead of merging every audit into current state. */
+  audit?: string;
+  /** Repo root holding docs/quality/. Default: derived from the bundle's path, cwd as fallback. */
+  root?: string;
+  /** Proceed even when the restore would wipe a quality section the hosted project has. Default: false. */
+  allowQualityLoss?: boolean;
   /** Hosted API base URL, overriding $ARKAIK_URL and the link file's `remote`. */
   apiBase?: string;
   /** Base directory the link file / bundle path resolve against (default: process.cwd()). */
@@ -425,12 +465,48 @@ function describeDeletions(removedNodes: string[], removedEdges: string[], bundl
   return lines.join("\n");
 }
 
+/**
+ * Why a restore that would erase the hosted quality section is refused, and
+ * what to do about it — which depends on how the outbound bundle came to have
+ * no section.
+ *
+ * `--no-quality` gets its own branch because pointing that caller at `--root`
+ * would be actively wrong advice: their root is fine, they asked not to send.
+ * The distinction is the whole point of not letting `--no-quality` imply
+ * `--allow-quality-loss` — "don't send my findings" and "destroy the ones
+ * already up there" are different sentences, and only one of them is
+ * irreversible.
+ */
+function describeQualityLoss(hostedFindingCount: number, root: string, noQuality: boolean): string {
+  const held =
+    hostedFindingCount === 1 ? "1 open finding" : `${hostedFindingCount} finding${hostedFindingCount === 1 ? "" : "s"}`;
+  const lines = [
+    `This restore would ERASE the hosted project's quality section (${held}) — the outbound bundle has none. Nothing was sent.`,
+  ];
+  if (noQuality) {
+    lines.push(
+      `You passed --no-quality, which says "do not send my quality data" — not "destroy what is already there". ` +
+        `Those are different decisions, and this verb has no server-side undo, so the second one has to be typed: ` +
+        `re-run with --allow-quality-loss as well if you really mean to wipe it.`,
+    );
+  } else {
+    lines.push(
+      `Usually this means the sidecars were not found where they were looked for, not that you meant to wipe them: ` +
+        `no docs/quality/ under ${root}. Point --root at the repo that holds it and the section is rebuilt rather than removed.`,
+    );
+    lines.push(`If the hosted section really is meant to go, re-run with --allow-quality-loss.`);
+  }
+  return lines.join("\n");
+}
+
 export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRestoreResult> {
   const cwd = options.cwd ?? process.cwd();
   const env = options.env ?? process.env;
   const dryRun = options.dryRun ?? false;
   const allowHistoryLoss = options.allowHistoryLoss ?? false;
   const allowDeletions = options.allowDeletions ?? false;
+  const noQuality = options.noQuality ?? false;
+  const allowQualityLoss = options.allowQualityLoss ?? false;
   const httpClient = options.httpClient ?? DEFAULT_HTTP_CLIENT;
 
   const linkPath = join(cwd, LINK_FILE);
@@ -472,7 +548,23 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
   }
   const local = localRaw as Record<string, unknown>;
   const journalEvents = loadJournalEvents(local, bundlePath);
-  const outboundBundle = { ...local, journal: journalEvents };
+  // Step 4b: quality. `restore` assembles its own outbound bundle rather than
+  // going through `runPack`, so it needs its own fold — and `delete` rather
+  // than "skip the fold" for the same reason `pack` does: a local bundle.json
+  // may already carry a `quality` key, and declining to add one would send
+  // that one. `qualityRoot` is kept for the loss guard's message below, which
+  // needs to name the directory that was actually searched.
+  const outboundBundle: Record<string, unknown> = { ...local, journal: journalEvents };
+  const qualityRoot = resolveQualityRoot(cwd, bundlePath, options.root);
+  if (noQuality) {
+    delete outboundBundle.quality;
+  } else {
+    try {
+      foldQualitySection(outboundBundle, qualityRoot, options.audit);
+    } catch (e) {
+      return fatalResult(dryRun, (e as Error).message);
+    }
+  }
 
   const headers = { Authorization: `Bearer ${token}` };
 
@@ -536,7 +628,7 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
   if (typeof exported !== "object" || exported === null || Array.isArray(exported)) {
     return fatalResult(dryRun, "The export response was not a bundle. Refusing to restore without a backup. Nothing was sent.");
   }
-  const exportedBundle = exported as { nodes?: unknown; edges?: unknown; journal?: unknown };
+  const exportedBundle = exported as { nodes?: unknown; edges?: unknown; journal?: unknown; quality?: unknown };
   if (!Array.isArray(exportedBundle.journal) || !Array.isArray(exportedBundle.nodes) || !Array.isArray(exportedBundle.edges)) {
     return fatalResult(
       dryRun,
@@ -564,6 +656,24 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
         `Nothing was sent. If that is intended, re-run with --allow-history-loss; ` +
         `otherwise check that ${journalPathFor(bundlePath)} exists and is current.`,
     );
+  }
+
+  // ── Quality-loss guard ───────────────────────────────────────────────────
+  // Same shape as the history guard above, and the same blind spot without
+  // it: a repo with no sidecars restoring over a hosted project that HAS a
+  // quality section erases every open finding on it, and the printed delta
+  // says nothing about quality at all. The export is already in hand for the
+  // backup, so this costs no extra round-trip. Runs before the backup write
+  // for the reason the history guard states: a refused run should leave
+  // nothing behind in `.backups/`.
+  //
+  // `--no-quality` deliberately does NOT imply this flag — see
+  // `describeQualityLoss`.
+  const hostedQuality = exportedBundle.quality;
+  if (hostedQuality !== undefined && hostedQuality !== null && outboundBundle.quality === undefined && !allowQualityLoss) {
+    const hostedFindings = (hostedQuality as { findings?: unknown }).findings;
+    const count = Array.isArray(hostedFindings) ? hostedFindings.length : 0;
+    return fatalResult(dryRun, describeQualityLoss(count, qualityRoot, noQuality));
   }
 
   // ── Deletion guard ───────────────────────────────────────────────────────
@@ -721,6 +831,10 @@ export function runRestoreCli(argv: string[]): void {
   let dryRun = false;
   let allowHistoryLoss = false;
   let allowDeletions = false;
+  let noQuality = false;
+  let allowQualityLoss = false;
+  let audit: string | undefined;
+  let root: string | undefined;
   let apiBase: string | undefined;
   const positionals: string[] = [];
 
@@ -736,6 +850,18 @@ export function runRestoreCli(argv: string[]): void {
       allowHistoryLoss = true;
     } else if (arg === "--allow-deletions") {
       allowDeletions = true;
+    } else if (arg === "--no-quality") {
+      noQuality = true;
+    } else if (arg === "--allow-quality-loss") {
+      allowQualityLoss = true;
+    } else if (arg === "--audit") {
+      const value = argv[++i];
+      if (value === undefined) fail(`Missing value for --audit\n\n${USAGE}`);
+      audit = value;
+    } else if (arg === "--root") {
+      const value = argv[++i];
+      if (value === undefined) fail(`Missing value for --root\n\n${USAGE}`);
+      root = value;
     } else if (arg === "--api") {
       const value = argv[++i];
       if (value === undefined) fail(`Missing value for --api\n\n${USAGE}`);
@@ -749,7 +875,14 @@ export function runRestoreCli(argv: string[]): void {
 
   if (positionals.length > 1) fail(`Unexpected argument(s): ${positionals.slice(1).join(" ")}\n\n${USAGE}`);
 
-  runRestore({ path: positionals[0], dryRun, allowHistoryLoss, allowDeletions, apiBase })
+  // Carried over from `arkaik pack`: one names an audit to fold, the other
+  // removes the section. Not extended to --root, which says WHERE to look and
+  // is inert rather than contradictory when nothing is looked up.
+  if (noQuality && audit !== undefined) {
+    fail(`--audit and --no-quality contradict each other: one names an audit to fold, the other removes the section\n\n${USAGE}`);
+  }
+
+  runRestore({ path: positionals[0], dryRun, allowHistoryLoss, allowDeletions, noQuality, allowQualityLoss, audit, root, apiBase })
     .then((result) => reportRestore(result))
     .catch((e: unknown) => fail(`FATAL: ${(e as Error).message}`));
 }

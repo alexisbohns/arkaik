@@ -28,6 +28,13 @@
  *    argv-parsing / exit-code / --help contract, using only cases that fail
  *    before any network call would be attempted.
  *
+ * Quality (#389) is covered here too, because `restore` assembles its own
+ * outbound bundle rather than going through `runPack` and so inherited none
+ * of `pack`'s fold: the merged section riding along, `--no-quality` deleting
+ * one the local bundle carried, `--audit` pinning a snapshot, and the
+ * quality-loss guard — which, like the history and deletion guards, must
+ * refuse BEFORE the backup is written.
+ *
  * Probe -> coverage map (original six):
  *  1. Backup-before-destructive, fail-closed: export GET throws, export GET
  *     non-200, export response not bundle-shaped, export bundle missing a
@@ -191,6 +198,116 @@ const HOSTED_EXPORT = {
   nodes: [{ id: "V-old", project_id: "demo", species: "view", title: "Old", status: "live", platforms: ["web"] }],
   edges: [],
   journal: [{ id: "01J9ZK4E4N0000000000000000", ts: "2025-12-01T00:00:00.000Z", actor: "human", type: "node.created", node_id: "V-old", species: "view", title: "Old" }],
+};
+
+/**
+ * `docs/quality/` sidecars for a fixture repo: two audits that merge to five
+ * cells and two findings, the same shape tests/cli/quality-section-fold.js
+ * builds. 2026-09 re-scores one of 2026-08's cells, so a fold that
+ * concatenated or took only the newest would land a different number here.
+ *
+ * Findings are stored WITH severity/priority, as the real sidecars are, so
+ * the outbound body can be asserted to have dropped them.
+ */
+function writeQualitySidecars(dir) {
+  const write = (relative, value) => {
+    const file = path.join(dir, "docs", "quality", ...relative);
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify(value, null, 2) + "\n");
+  };
+  const cell = (criterionId, surface, level, auditId) => ({
+    criterion_id: criterionId,
+    surface,
+    level,
+    evidence: `app/${criterionId.toLowerCase()}.ts:1`,
+    audit_id: auditId,
+  });
+  write(["profile.json"], {
+    surfaces: [{ id: "web", title: "Web app", platform: "web" }, { id: "admin", title: "Admin console" }],
+    domain_weights: { SEC: 2, TST: 1 },
+  });
+  write(["library.json"], {
+    name: "test-pack",
+    version: "9.9.9",
+    domains: [{ code: "SEC", name: "Security" }, { code: "TST", name: "Testing" }],
+    criteria: [
+      { id: "SEC-01", domain: "SEC", name: "Secrets", weight: 3 },
+      { id: "SEC-02", domain: "SEC", name: "Authorization", weight: 1 },
+      { id: "TST-01", domain: "TST", name: "Unit tests", weight: 2 },
+    ],
+    scales: { grades: { A: 97, B: 88, C: 71, D: 52, E: 0 } },
+  });
+  write(["audits", "2026-08", "scores.json"], {
+    audit_id: "2026-08",
+    framework_version: "9.9.8",
+    assessments: [
+      cell("SEC-01", "web", 2, "2026-08"),
+      cell("SEC-02", "web", 4, "2026-08"),
+      cell("TST-01", "web", 1, "2026-08"),
+      cell("SEC-01", "admin", 3, "2026-08"),
+    ],
+  });
+  write(["audits", "2026-08", "findings.json"], {
+    audit_id: "2026-08",
+    framework_version: "9.9.8",
+    findings: [
+      {
+        id: "F-2026-08-SEC-web-01",
+        criterion_id: "SEC-01",
+        surface: "web",
+        title: "Token in the repo",
+        detail: "A live token is committed.",
+        evidence: "app/a.ts:1",
+        impact: 5,
+        likelihood: 4,
+        cost: "M",
+        status: "open",
+        severity: "critical",
+        priority: "P0",
+      },
+    ],
+  });
+  write(["audits", "2026-09", "scores.json"], {
+    audit_id: "2026-09",
+    framework_version: "9.9.9",
+    // Re-scores 2026-08's SEC-01/web (2 -> 4) and adds a cell it never had.
+    assessments: [cell("SEC-01", "web", 4, "2026-09"), cell("TST-01", "admin", 2, "2026-09")],
+  });
+  write(["audits", "2026-09", "findings.json"], {
+    audit_id: "2026-09",
+    framework_version: "9.9.9",
+    findings: [
+      {
+        id: "F-2026-09-TST-admin-01",
+        criterion_id: "TST-01",
+        surface: "admin",
+        title: "No tests on the admin console",
+        detail: "Nothing covers it.",
+        evidence: "app/e.ts:1",
+        impact: 2,
+        likelihood: 2,
+        cost: "S",
+        status: "open",
+        severity: "low",
+        priority: "P3",
+      },
+    ],
+  });
+}
+
+/** The hosted export, but with a quality section — what the loss guard sees. */
+const HOSTED_EXPORT_WITH_QUALITY = {
+  ...HOSTED_EXPORT,
+  quality: {
+    framework_version: "9.9.9",
+    profile: { surfaces: [{ id: "web", title: "Web app" }] },
+    assessments: [],
+    findings: [
+      { id: "F-hosted-01", criterion_id: "SEC-01", surface: "web", title: "Hosted finding one", detail: "d", evidence: "e", impact: 5, likelihood: 5, cost: "M", status: "open" },
+      { id: "F-hosted-02", criterion_id: "SEC-02", surface: "web", title: "Hosted finding two", detail: "d", evidence: "e", impact: 3, likelihood: 3, cost: "S", status: "open" },
+      { id: "F-hosted-03", criterion_id: "TST-01", surface: "web", title: "Hosted finding three", detail: "d", evidence: "e", impact: 2, likelihood: 2, cost: "S", status: "open" },
+    ],
+  },
 };
 
 const createdDirs = [];
@@ -1008,6 +1125,151 @@ async function main() {
   }
 
   // -------------------------------------------------------------------------
+  // Quality (#389). `restore` assembles its own outbound bundle rather than
+  // going through runPack, so it inherited none of the fold and none of the
+  // strip — and it is the verb that actually lands a bundle on a hosted
+  // project, which makes it the one the Quality page depends on.
+  //
+  // A shared responder: every case below differs only in what the export
+  // returns and what the outbound body is expected to hold.
+  // -------------------------------------------------------------------------
+  const qualityResponder = (exportBundle, onPut) => (url, init) => {
+    if (url.endsWith("/api/graph/projects/prj_demo")) return jsonResponse(200, { version: "7" }, { ETag: '"7"' });
+    if (url.endsWith("/api/graph/projects/prj_demo/export")) return jsonResponse(200, { bundle: exportBundle });
+    if (url.endsWith("/api/graph/projects/prj_demo/bundle")) {
+      if (onPut) onPut(JSON.parse(init.body).bundle);
+      return jsonResponse(200, { version: "8", delta: {}, dryRun: false }, { ETag: '"8"' });
+    }
+    throw new Error(`unexpected URL ${url}`);
+  };
+  const runQualityRestore = (dir, bundlePath, httpClient, extra = {}) =>
+    runRestore({ path: bundlePath, apiBase: "http://example.invalid", env: { ARKAIK_TOKEN: "tok" }, cwd: dir, httpClient, ...extra });
+
+  // 1. Sidecars present -> the merged section rides along.
+  {
+    const { dir, bundlePath } = fixture();
+    writeQualitySidecars(dir);
+    let sent;
+    const httpClient = makeMockHttpClient(qualityResponder(HOSTED_EXPORT, (b) => { sent = b; }));
+    const result = await runQualityRestore(dir, bundlePath, httpClient);
+
+    check("restore with sidecars ok", result.ok === true, JSON.stringify(result));
+    check("the PUT body carries a quality section", sent && sent.quality !== undefined, JSON.stringify(sent && Object.keys(sent)));
+    check(
+      "merged across both audits: 5 cells, not 6 (concatenated) or 2 (newest only)",
+      sent && sent.quality && sent.quality.assessments.length === 5,
+      JSON.stringify(sent && sent.quality && sent.quality.assessments.length),
+    );
+    check(
+      "the newer audit wins the re-scored cell",
+      sent && sent.quality && sent.quality.assessments.some((a) => a.criterion_id === "SEC-01" && a.surface === "web" && a.level === 4),
+      JSON.stringify(sent && sent.quality && sent.quality.assessments),
+    );
+    check("findings pool across audits", sent && sent.quality && sent.quality.findings.length === 2, JSON.stringify(sent && sent.quality && sent.quality.findings.map((f) => f.id)));
+    check(
+      "derived severity/priority are stripped on the way out",
+      sent && sent.quality && sent.quality.findings.every((f) => !("severity" in f) && !("priority" in f)),
+      JSON.stringify(sent && sent.quality && sent.quality.findings.map((f) => Object.keys(f))),
+    );
+  }
+
+  // 2. --no-quality DELETES, including a section the local bundle carried.
+  //    A fixture with no section could not tell that apart from "did not add".
+  {
+    const { dir, bundlePath } = fixture();
+    writeQualitySidecars(dir);
+    const local = JSON.parse(readFileSync(bundlePath, "utf8"));
+    local.quality = { framework_version: "0.0.1", profile: { surfaces: [] }, assessments: [], findings: [{ id: "F-local-01", title: "LOCAL SECTION MARKER" }] };
+    writeFileSync(bundlePath, JSON.stringify(local));
+
+    let sent;
+    let rawBody;
+    const httpClient = makeMockHttpClient((url, init) => {
+      if (url.endsWith("/bundle")) rawBody = init.body;
+      return qualityResponder(HOSTED_EXPORT, (b) => { sent = b; })(url, init);
+    });
+    const result = await runQualityRestore(dir, bundlePath, httpClient, { noQuality: true });
+
+    check("--no-quality restore ok", result.ok === true, JSON.stringify(result));
+    check("--no-quality sends no quality section", sent && sent.quality === undefined, JSON.stringify(sent && Object.keys(sent)));
+    check(
+      "and the LOCAL bundle's own section goes with it",
+      rawBody !== undefined && !rawBody.includes("LOCAL SECTION MARKER"),
+      String(rawBody).slice(0, 300),
+    );
+  }
+
+  // 3. Hosted has a section, outbound does not -> refused, nothing sent.
+  {
+    const { dir, bundlePath } = fixture();
+    const httpClient = makeMockHttpClient(qualityResponder(HOSTED_EXPORT_WITH_QUALITY));
+    const result = await runQualityRestore(dir, bundlePath, httpClient);
+
+    check("a would-be quality wipe is refused", result.ok === false, JSON.stringify(result));
+    check("no PUT was sent", httpClient.calls.filter((c) => c.url.endsWith("/bundle")).length === 0, JSON.stringify(httpClient.calls.map((c) => c.url)));
+    check("the message names the hosted finding count", /3 findings/.test(result.fatal || ""), result.fatal);
+    check("the message names the escape hatch", /--allow-quality-loss/.test(result.fatal || ""), result.fatal);
+    check("and points at --root, the likeliest innocent cause", /--root/.test(result.fatal || ""), result.fatal);
+
+    // 7. Refused BEFORE the backup is written — the ordering the history
+    //    guard documents and the one a future edit is most likely to break.
+    check("the refusal leaves nothing behind in .backups/", backupsIn(dir).length === 0, JSON.stringify(backupsIn(dir)));
+  }
+
+  // 4. Same refusal, but caused by --no-quality: the advice must change.
+  //    --no-quality says "do not send mine", never "destroy theirs".
+  {
+    const { dir, bundlePath } = fixture();
+    writeQualitySidecars(dir);
+    const httpClient = makeMockHttpClient(qualityResponder(HOSTED_EXPORT_WITH_QUALITY));
+    const result = await runQualityRestore(dir, bundlePath, httpClient, { noQuality: true });
+
+    check("--no-quality does not imply --allow-quality-loss", result.ok === false, JSON.stringify(result));
+    check("no PUT was sent", httpClient.calls.filter((c) => c.url.endsWith("/bundle")).length === 0, JSON.stringify(httpClient.calls.map((c) => c.url)));
+    check("the message blames --no-quality, not the root", /--no-quality/.test(result.fatal || "") && !/--root/.test(result.fatal || ""), result.fatal);
+    check("and still names --allow-quality-loss", /--allow-quality-loss/.test(result.fatal || ""), result.fatal);
+  }
+
+  // 5. --allow-quality-loss proceeds.
+  {
+    const { dir, bundlePath } = fixture();
+    const httpClient = makeMockHttpClient(qualityResponder(HOSTED_EXPORT_WITH_QUALITY));
+    const result = await runQualityRestore(dir, bundlePath, httpClient, { allowQualityLoss: true });
+
+    check("--allow-quality-loss proceeds", result.ok === true && result.status === 200, JSON.stringify(result));
+    check("exactly one PUT", httpClient.calls.filter((c) => c.url.endsWith("/bundle")).length === 1, JSON.stringify(httpClient.calls.map((c) => c.url)));
+  }
+
+  // 6. Neither side has quality: the guard must not fire. Every existing user
+  //    is in this state, and refusing them would be the worst regression here.
+  {
+    const { dir, bundlePath } = fixture();
+    const httpClient = makeMockHttpClient(qualityResponder(HOSTED_EXPORT));
+    const result = await runQualityRestore(dir, bundlePath, httpClient);
+
+    check("an ordinary quality-free restore is untouched by the guard", result.ok === true && result.status === 200, JSON.stringify(result));
+    check("exactly one PUT", httpClient.calls.filter((c) => c.url.endsWith("/bundle")).length === 1, JSON.stringify(httpClient.calls.map((c) => c.url)));
+  }
+
+  // 8. --audit pins one audit's snapshot in the outbound body.
+  {
+    const { dir, bundlePath } = fixture();
+    writeQualitySidecars(dir);
+    let sent;
+    const httpClient = makeMockHttpClient(qualityResponder(HOSTED_EXPORT, (b) => { sent = b; }));
+    const result = await runQualityRestore(dir, bundlePath, httpClient, { audit: "2026-08" });
+
+    check("--audit restore ok", result.ok === true, JSON.stringify(result));
+    check("--audit sends that audit's 4 cells, not the merge's 5", sent && sent.quality && sent.quality.assessments.length === 4, JSON.stringify(sent && sent.quality && sent.quality.assessments.length));
+    const cell = sent && sent.quality && sent.quality.assessments.find((a) => a.criterion_id === "SEC-01" && a.surface === "web");
+    check("--audit reports the pre-rescore level", cell && cell.level === 2, JSON.stringify(cell));
+    check("--audit sends only that audit's finding", sent && sent.quality && sent.quality.findings.length === 1 && sent.quality.findings[0].id === "F-2026-08-SEC-web-01", JSON.stringify(sent && sent.quality && sent.quality.findings.map((f) => f.id)));
+
+    const ghost = await runQualityRestore(dir, bundlePath, makeMockHttpClient(qualityResponder(HOSTED_EXPORT)), { audit: "2099-01" });
+    check("an audit id that is not on disk refuses before anything is sent", ghost.ok === false && /2099-01/.test(ghost.fatal || ""), ghost.fatal);
+  }
+
+  // -------------------------------------------------------------------------
   // CLI-level: argv parsing / exit codes / --help, spawned — every case here
   // fails before any network call would be attempted.
   // -------------------------------------------------------------------------
@@ -1017,8 +1279,19 @@ async function main() {
     check("help documents --dry-run", /--dry-run/.test(help.stdout));
     check("help documents --allow-history-loss", /--allow-history-loss/.test(help.stdout));
     check("help documents --allow-deletions", /--allow-deletions/.test(help.stdout));
+    check("help documents --no-quality", /--no-quality/.test(help.stdout));
+    check("help documents --allow-quality-loss", /--allow-quality-loss/.test(help.stdout));
+    check("help documents --audit", /--audit <id>/.test(help.stdout));
+    check("help documents --root", /--root <dir>/.test(help.stdout));
     check("help documents --api", /--api/.test(help.stdout));
     check("help documents ARKAIK_URL", /ARKAIK_URL/.test(help.stdout));
+
+    const contradiction = runCli(["restore", "--no-quality", "--audit", "2026-08"]);
+    check(
+      "--audit with --no-quality is refused at argv, before any network call",
+      contradiction.status === 1 && /contradict each other/.test(`${contradiction.stdout}${contradiction.stderr}`),
+      `${contradiction.stdout}\n${contradiction.stderr}`,
+    );
 
     const badFlag = runCli(["restore", "--nope"]);
     check("unknown flag exits 1", badFlag.status === 1);
