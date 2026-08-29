@@ -9,7 +9,8 @@
  *  1. INVALID bundle: print the findings, exit non-zero. Nothing is packed,
  *     nothing is written, no browser is opened;
  *  2. VALID bundle: pack it (`../commands/pack`'s `runPack`, default settings
- *     — journal embedded, no asset inlining) to `--out` when given, else to a
+ *     — journal embedded, `docs/quality/` folded into `quality`, no asset
+ *     inlining) to `--out` when given, else to a
  *     fresh temp file under `os.tmpdir()` (the app needs a single file to
  *     import; the CLI has no way to drop a stream into a browser's file
  *     picker, so a real file on disk is the handoff artifact);
@@ -18,6 +19,14 @@
  *     "Import JSON" file picker; there is no dedicated /import route yet) via
  *     the injectable `opener` seam, then print the packed file's path and the
  *     URL so a human (or an agent) can complete the drag-in.
+ *
+ * Quality is folded here, where `arkaik push` strips it. The two verbs look
+ * alike and their postures are opposite on purpose: `push` puts bytes on
+ * someone else's server, while `open` writes a file for this user's own
+ * browser to hand to the import picker — precisely where a `quality` section
+ * is meant to ride along. The fold's notice is surfaced (`qualityNotice`)
+ * rather than swallowed, so "no profile yet, so no section in your import" is
+ * something the user reads instead of something they discover.
  *
  * The opener is ALWAYS an injected seam (`RunOpenOptions.opener`, defaulting
  * to a real `open`/`xdg-open`/`start` spawn) and `--no-open` skips calling it
@@ -103,6 +112,8 @@ export interface RunOpenResult {
   url?: string;
   /** True iff the opener seam was actually invoked (never true with --no-open). */
   opened: boolean;
+  /** Set only when `valid` — what the pack's quality fold did, for the caller to report. */
+  qualityNotice?: string;
 }
 
 function fatalResult(bundlePath: string, message: string): RunOpenResult {
@@ -152,7 +163,17 @@ export async function runOpen(options: RunOpenOptions = {}): Promise<RunOpenResu
     opened = true;
   }
 
-  return { ok: true, bundlePath: filePath, valid: true, errorLines, warningLines, outPath, url: OPEN_URL, opened };
+  return {
+    ok: true,
+    bundlePath: filePath,
+    valid: true,
+    errorLines,
+    warningLines,
+    outPath,
+    url: OPEN_URL,
+    opened,
+    qualityNotice: packed.qualityNotice,
+  };
 }
 
 export function runOpenCli(args: string[]): void {
@@ -196,6 +217,9 @@ export function runOpenCli(args: string[]): void {
         process.exit(1);
       }
 
+      if (result.qualityNotice !== undefined) {
+        console.error(result.qualityNotice);
+      }
       console.log(`Packed -> ${result.outPath}`);
       if (result.opened) {
         console.log(`Opened ${result.url}`);

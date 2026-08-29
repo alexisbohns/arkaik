@@ -28,7 +28,7 @@ import {
   type QualityProfile,
   type QualitySection,
 } from "../quality";
-import { AUDITS_DIR, QUALITY_DIR, auditDir, loadProfile, readJson, writeJson } from "./kritik-paths";
+import { QUALITY_DIR, auditDir, auditsDir, loadProfile, readJson, writeJson } from "./kritik-paths";
 
 /** `scores.json`: one audit run's assessments, plus what they were scored against. */
 export interface ScoresFile {
@@ -73,7 +73,7 @@ export const matrixPath = (root: string, auditId: string): string => join(auditD
 
 /** Every audit id present, oldest first. Audit ids sort chronologically by convention (`YYYY-MM`). */
 export function listAuditIds(root: string): string[] {
-  const dir = join(root, QUALITY_DIR, AUDITS_DIR);
+  const dir = auditsDir(root);
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
     .filter((name) => statSync(join(dir, name)).isDirectory())
@@ -87,7 +87,7 @@ export function listAuditIds(root: string): string[] {
  * and the path tells them apart at a glance.
  */
 export function newestAuditId(root: string): string {
-  const dir = join(root, QUALITY_DIR, AUDITS_DIR);
+  const dir = auditsDir(root);
   if (!existsSync(dir)) throw new Error(`no audits directory at ${dir}`);
   const ids = listAuditIds(root);
   if (ids.length === 0) throw new Error(`no audits found under ${dir}`);
@@ -163,6 +163,130 @@ export function loadQualitySection(
     assessments: scores.assessments,
     findings: findings.findings,
   };
+}
+
+/**
+ * A finding as the interchange projection carries it: without `severity` and
+ * without `priority`.
+ *
+ * Both are derived from `impact × likelihood` (and, for priority, `cost`) by
+ * `severityOf`/`priorityOf`, which never read a stored value — so dropping
+ * them loses nothing a reader can observe. `validateBundle` warns
+ * `quality-derived-field-stored` on either, and a projection that emits a
+ * bundle its own validator objects to is a broken projection. The sidecar
+ * keeps whatever it keeps; this is a read.
+ *
+ * Module-internal: the two projections below are the only callers, and both
+ * are exported. Nothing outside should be stripping findings by hand — that
+ * would be a second answer to "what does the interchange carry".
+ */
+function stripDerived(finding: QualityFinding): QualityFinding {
+  const { severity: _severity, priority: _priority, ...rest } = finding as QualityFinding &
+    Record<"severity" | "priority", unknown>;
+  void _severity;
+  void _priority;
+  return rest as QualityFinding;
+}
+
+/**
+ * Refuse a named audit that is not on disk.
+ *
+ * Shared by the projection and by the CLI seam that calls it, so "you named an
+ * audit that isn't there" is one error with one wording, raised before either
+ * layer's it-is-fine-to-have-nothing short-circuits can swallow it.
+ */
+export function requireAudit(root: string, auditId: string): void {
+  if (!listAuditIds(root).includes(auditId)) {
+    throw new Error(`no audit "${auditId}" under ${auditsDir(root)}`);
+  }
+}
+
+/**
+ * The project's **current** quality state, merged across every audit on disk
+ * — the interchange projection `bundle.quality` carries.
+ *
+ * This is not {@link loadQualitySection} over the newest audit, and the
+ * difference is the point. `arkaik kritik score` writes into the newest audit
+ * directory, so a partial re-audit leaves a sparse newest `scores.json`;
+ * taking it whole would render a mostly-empty matrix and drop every
+ * still-open finding from earlier runs. So assessments are **latest-wins per
+ * (criterion × surface)** across every audit — which is what
+ * `QualitySection.assessments` is documented as, and what `validateBundle`'s
+ * `quality-duplicate-assessment` insists on — and findings are pooled, the
+ * way `locateFinding` and `allFindings` already read the tree.
+ *
+ * The consequence is deliberate: this answers "where does the product stand".
+ * {@link loadAuditQualitySection}, `matrix.json` and `arkaik kritik matrix`
+ * answer "how did this audit go". They are different questions, and a cap can
+ * fire here that did not fire in a single audit's roll-up — an open Critical
+ * from two audits ago still caps its cell, which is true.
+ *
+ * `undefined`, rather than a throw, when there is nothing to merge: no
+ * audits, or no profile. Both are ordinary states in a repo that has not
+ * finished installing Kritik, and neither is a reason to fail a bundle
+ * assembly. A *malformed* sidecar is not one of them and does throw — a
+ * broken file is a broken file, not an unfinished install.
+ */
+export function loadCurrentQualitySection(root: string, library: KritikLibrary): QualitySection | undefined {
+  const auditIds = listAuditIds(root);
+  if (auditIds.length === 0) return undefined;
+
+  const profile = loadProfile(root);
+  if (!profile) return undefined;
+
+  // Insertion-ordered: re-setting a key keeps the cell's original position and
+  // replaces its value, so the output is stable for a given tree.
+  const cells = new Map<string, QualityAssessment>();
+  const findings: QualityFinding[] = [];
+  let frameworkVersion: string | undefined;
+
+  for (const id of auditIds) {
+    const scores = loadScoresOrEmpty(root, id);
+    if (typeof scores.framework_version === "string") frameworkVersion = scores.framework_version;
+    for (const assessment of scores.assessments) {
+      cells.set(`${assessment.criterion_id}\u0000${assessment.surface}`, assessment);
+    }
+    for (const finding of loadFindings(root, id).findings) findings.push(stripDerived(finding));
+  }
+
+  return {
+    framework_version: frameworkVersion ?? library.version,
+    library,
+    profile,
+    assessments: [...cells.values()],
+    findings,
+  };
+}
+
+/**
+ * ONE audit's state, as the interchange projection would carry it — the
+ * snapshot, not the merge.
+ *
+ * {@link loadQualitySection} already assembles an audit; this is that, plus
+ * the two things a *projection* owes a reader the merge also gives it: the
+ * effective library embedded, so the section can be graded without the
+ * sidecars, and `severity`/`priority` stripped, so the bundle does not store
+ * what {@link stripDerived} explains nobody may store.
+ *
+ * Throws, where {@link loadCurrentQualitySection} returns `undefined`, and the
+ * asymmetry is the argument: naming an audit is a claim that it exists.
+ *
+ * It reads scores through {@link loadScoresOrEmpty}, though — the seam
+ * `loadQualitySection`'s fourth argument exists for. An audit directory
+ * holding `findings.json` and no `scores.json` is a real state (a finding
+ * opened before anything on that surface was scored), and the merge already
+ * tolerates it. Letting the pinned path throw on it would mean `pack`
+ * succeeding and `pack --audit <that one>` failing on the same tree, which
+ * tells the user nothing true about their repo.
+ */
+export function loadAuditQualitySection(
+  root: string,
+  auditId: string,
+  library: KritikLibrary,
+): QualitySection {
+  requireAudit(root, auditId);
+  const section = loadQualitySection(root, auditId, library, loadScoresOrEmpty(root, auditId));
+  return { ...section, library, findings: section.findings.map(stripDerived) };
 }
 
 /**

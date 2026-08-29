@@ -1,6 +1,6 @@
 ---
 name: kritik
-version: 0.2.0
+version: 0.3.0
 description: >
   Audit this product's quality with the Kritik framework — score each criterion
   on each surface against observable maturity anchors, record findings with
@@ -45,8 +45,9 @@ docs/quality/
 These sidecar files are **canonical in a repository**, exactly as the journal's
 JSONL sidecar is canonical while a bundle's embedded `journal[]` is only the
 interchange projection. If this repo also has an Arkaik map, the bundle's
-`quality` section is that same kind of projection — produced from these files,
-never edited in place instead of them.
+`quality` section is that same kind of projection — produced from these files
+by `arkaik pack`/`arkaik restore` (step 9 below), never edited in place
+instead of them.
 
 The framework itself ships beside this skill and is read-only:
 
@@ -309,6 +310,72 @@ Each criterion in the pack ships an `issue` skeleton — `title_template`,
 `labels`, `body_skeleton`. Fill every `{placeholder}` and file. P2/P3 batch at
 the maintainer's discretion; do not open sixty issues nobody asked for.
 
+### 9. Land the audit in the app
+
+Only if this repo has an Arkaik map — a `docs/arkaik/bundle.json`, or the
+hosted project `docs/arkaik/arkaik.json` points at. The files above stay
+canonical; this is how they reach a reader who is not standing in the repo.
+
+```
+arkaik pack --out packed.json   # a single file to drag into the app
+arkaik open                     # the same bundle, handed to the importer
+arkaik restore                  # hosted project — destructive; read its --help
+```
+
+All three fold `docs/quality/` into the bundle's `quality` section by default,
+at the moment they assemble it. What lands is **current state, not the run you
+just finished**: the latest level for each (criterion × surface) across every
+audit, plus every audit's findings. So a cap can fire in the app that did not
+fire in this audit's `matrix.json` — an open Critical from two audits ago still
+caps its cell, which is true. Those are two different questions, both answered
+correctly.
+
+`pack` and `restore` take flags over that default: `--audit <id>` folds one
+audit's snapshot instead, `--no-quality` folds none (and deletes any section
+the bundle already carried), `--root <dir>` says where `docs/quality/` lives.
+
+**`open` takes none of them** — it parses only `--no-open` and `--out`, and
+rejects the other three as unknown options. It hands a file to a browser
+import picker; there is nothing to pin there. If you need control over what a
+handoff file carries, build it with `arkaik pack --out <path>` and drag that
+in instead.
+
+`arkaik push` is the exception: it publishes to Publik and **strips** the
+section, because a list of open findings with the file paths to reach them is a
+roadmap for whoever reads it first. `--include-quality` opts in, and that is a
+decision worth typing.
+
+**Nothing writes `docs/arkaik/bundle.json`.** There is no file to commit and no
+diff to inspect — the section exists only inside the bundle a verb hands over,
+exactly as the journal's embedded `journal[]` does. So when the app's Quality
+page comes up empty, read the verb's notice rather than the bundle. `pack`,
+`open` and `push` print it on **stderr**; `restore` prints it on **stdout**,
+beside the backup path and the delta.
+
+Match on the whole line, not a prefix — two of these begin `Quality: skipped,`
+and mean different things.
+
+| Notice | What it means |
+|---|---|
+| `Quality: folded N assessment(s), M finding(s) from K audit(s)` | it worked |
+| `Quality: none to fold — no audits under <dir>` | no `audits/` under the directory it names — usually the wrong repo root, which `--root <dir>` fixes on `pack`/`restore` |
+| `Quality: skipped, no profile — nothing at <path>` | no `profile.json` yet. Nothing is folded rather than something the app would render without columns — run `arkaik kritik profile` |
+| `Quality: skipped, no pack — no criteria pack found. Looked in: …` | neither a vendored `docs/quality/library.json` nor the pack shipped inside the CLI could be found. **Spans several lines.** A broken install, not a repo problem — reinstall `arkaik`, or vendor a pack. Do NOT run `arkaik kritik profile` at this one |
+| `Quality: nothing to fold — no audits under <dir>, or no profile at <path>` | a defensive fallback that should not be reachable. If you see it, the two guards have drifted apart — report it |
+| `Quality: stripped, not sent (pass --include-quality to publish it)` | `arkaik push` only: the default, and the section never reached the wire |
+| `Quality: deleted before sending (--no-quality)` | `arkaik restore` only: you asked for no section, and one the bundle carried went too |
+
+Any of the non-folding notices may be followed by a second, indented line:
+
+```
+  Kept the quality section this bundle already carried — nothing replaced it.
+```
+
+That means the fold found nothing to project, but the bundle you handed the
+verb already had a `quality` section, so **that one was sent**. It is how
+`arkaik restore <backup-path>` puts back the quality half of what it is
+undoing. If you did not intend it, `--no-quality` removes it.
+
 ## Between audits
 
 Two checks live here — one you perform yourself, one the two audits on disk
@@ -410,12 +477,14 @@ journal. Nothing reaches this checkout, which is why the command above is still
 yours to run.
 
 *May*, because the App can only close a finding the hosted project already
-carries in its own `quality` section — and nothing in the toolchain copies
-`docs/quality/` there. A repository that audits into sidecars, which is every
-repository following this skill, has a hosted project that knows none of its
-findings, so the App will match nothing and say so. Treat the App as a
-convenience that might fire, never as the thing that closed the finding. The
-repo command above is what makes `findings.json` true, and it is not optional.
+carries in its own `quality` section, and it carries one only once somebody has
+put it there — `arkaik restore` folds `docs/quality/` in as it lands the bundle
+(step 9 above). Until a restore has run, the hosted project knows none of this
+repo's findings, so the App matches nothing and says so; after one, it knows
+whatever that restore sent, which is not necessarily what `findings.json` says
+today. Treat the App as a convenience that might fire, never as the thing that
+closed the finding. The repo command above is what makes `findings.json` true,
+and it is not optional.
 
 *Which case am I in?* Two facts, and only the first is visible from here:
 `docs/arkaik/arkaik.json` exists — what `arkaik link` writes, so there is a

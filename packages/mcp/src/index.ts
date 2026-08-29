@@ -74,6 +74,15 @@ function resolveStore(): { store: Store; qualityRoot?: string } {
  * audit files and the journal are always halves of the same checkout — never
  * from `process.cwd()`, which is wherever the agent host happened to spawn us.
  * `ARKAIK_QUALITY_ROOT` overrides it for the layouts that are neither.
+ *
+ * KNOWN DIVERGENCE from `packages/cli/src/lib/kritik-io.ts`'s
+ * `resolveQualityRoot`, which answers the same question for the CLI: its
+ * fallback for an unconventional layout is the CWD rather than the bundle's
+ * directory, and it has no `$ARKAIK_QUALITY_ROOT`. The cwd is meaningful
+ * there (a person typed the command in a repo) and meaningless here (the
+ * agent host picked it), so the difference is defensible — but it is a
+ * difference, and it is not one function. Reconcile deliberately if you get
+ * there, not as a drive-by.
  */
 function qualityRootFor(bundlePath: string): string {
   if (process.env.ARKAIK_QUALITY_ROOT) return resolve(process.env.ARKAIK_QUALITY_ROOT);

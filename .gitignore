@@ -49,6 +49,11 @@
 # cleaned up on a successful run, kept ignored in case a crashed run leaves
 # it behind
 /packages/cli/.test-build-restore/
+# transient ESM bundle emitted by tests/cli/quality-section-fold.test.js
+# (esbuild-bundles pack.ts to reach runPack options that have no CLI flag
+# yet) — cleaned up on a successful run, kept ignored in case a crashed run
+# leaves it behind
+/packages/cli/.test-build-quality/
 
 # next.js
 /.next/

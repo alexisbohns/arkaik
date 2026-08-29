@@ -1,5 +1,5 @@
 /**
- * `arkaik push [--include-journal] [--api <base-url>] [path]`
+ * `arkaik push [--include-journal] [--include-quality] [--api <base-url>] [path]`
  * `arkaik push --delete <id> --key <owner_key> [--api <base-url>]`
  *
  * Completes the Kommit journey — repo bundle to shareable URL without
@@ -12,15 +12,22 @@
  *     `validateBundleAt`). An INVALID bundle prints findings and exits
  *     non-zero; nothing is packed or sent.
  *  2. pack — reuse `arkaik pack`'s internals (`./pack`'s `runPack`) rather
- *     than re-implementing bundle assembly. The journal is stripped by
- *     default (`noJournal: true`, the Publik-safe posture,
- *     docs/spec/journal.md:41): it is never even embedded, so a stripped
- *     push never sends journal bytes over the wire regardless of what the
- *     server does with them. `--include-journal` flips that off, embedding
+ *     than re-implementing bundle assembly. Two sections are stripped by
+ *     default, on the same reasoning both times: the bytes never reach the
+ *     wire, so nothing rests on what the server chooses to do with them.
+ *     `noJournal: true` is the Publik-safe posture for history
+ *     (docs/spec/journal.md:41); `--include-journal` flips it off, embedding
  *     the journal exactly like a bare `arkaik pack` would.
- *  3. `POST {api}/api/publik[?include_journal=true]` with the packed,
- *     canonical bundle as the body (docs/spec/services.md § Publik →
- *     Protocol — the API this command talks to is implemented at
+ *     `noQuality: !includeQuality` is that posture for a Kritik section
+ *     (docs/rfcs/kritik.md § 8.3), and it DELETES rather than merely
+ *     declines to fold — a bundle that arrived already carrying a
+ *     hand-written `quality` key must not be pushed with it either.
+ *     `--include-quality` flips it. The two are separate decisions on
+ *     purpose: publishing your history and publishing your open findings are
+ *     different disclosures, and both default to no.
+ *  3. `POST {api}/api/publik[?include_journal=true][&include_quality=true]`
+ *     with the packed, canonical bundle as the body (docs/spec/services.md
+ *     § Publik → Protocol — the API this command talks to is implemented at
  *     `app/api/publik/route.ts` / `lib/services/publik.ts`).
  *  4. report the response: `201` prints the URL + owner key prominently
  *     with a save-it warning (the key is returned exactly once and there is
@@ -56,7 +63,7 @@ const DEFAULT_BUNDLE_PATH = "docs/arkaik/bundle.json";
 /** Default Publik host — override with `--api <base-url>` for self-hosted deployments. */
 export const DEFAULT_API_BASE = "https://arkaik.app";
 
-const USAGE = `arkaik push [--include-journal] [--api <base-url>] [path]
+const USAGE = `arkaik push [--include-journal] [--include-quality] [--api <base-url>] [path]
 arkaik push --delete <id> --key <owner_key> [--api <base-url>]
 
 Publish a project bundle to Publik (anonymous, account-less snapshot
@@ -70,6 +77,10 @@ Publik-safe posture (docs/spec/journal.md). --include-journal embeds it
 (like a bare "arkaik pack") and forwards ?include_journal=true so the server
 knows to keep it.
 
+A Kritik "quality" section is stripped by default too, and separately:
+publishing your history and publishing your open findings are two decisions,
+not one, and both default to no. --include-quality opts in.
+
 Snapshots are immutable: there is no update verb. Pushing again always mints
 a new id. The owner key printed on success is shown exactly once and cannot
 be recovered — save it if you may need to delete the snapshot later.
@@ -82,6 +93,13 @@ Options:
   --include-journal   Embed the journal in the pushed bundle and forward
                        ?include_journal=true. Default: stripped, omitted
                        entirely from the request body.
+  --include-quality   Embed the Kritik quality section and forward
+                       ?include_quality=true. Opt-in rather than opt-out
+                       because an open finding is an unfixed vulnerability
+                       plus the path to find it in (docs/rfcs/kritik.md
+                       § 8.3) — publishing that is a decision worth typing.
+                       Default: deleted before packing, so it is never in the
+                       request body at all.
   --api <base-url>    Publik API base URL (default: ${DEFAULT_API_BASE}).
                        Point at a self-hosted deployment.
   --delete <id>       Delete a snapshot by id instead of pushing. Requires
@@ -104,6 +122,8 @@ export interface RunPushOptions {
   path?: string;
   /** Embed the journal (forwarding ?include_journal=true) instead of stripping it. */
   includeJournal?: boolean;
+  /** Embed the quality section (forwarding ?include_quality=true) instead of stripping it. */
+  includeQuality?: boolean;
   /** Publik API base URL (default: https://arkaik.app). */
   apiBase?: string;
   /** Base directory `path` resolves against (default: process.cwd()). */
@@ -140,6 +160,16 @@ export interface RunPushResult {
   retryAfter?: string | null;
   /** Human-readable message for any non-201 outcome (network error, non-201 status, or a request that never got sent). */
   errorMessage?: string;
+  /**
+   * What happened to quality on the way out — `runPack`'s notice, verbatim.
+   *
+   * Set even with the default strip, and printed. `push` puts bytes on
+   * someone else's server: "I sent your open findings" and "I did not" are
+   * both facts worth stating, and until now it said neither on either stream
+   * — including when `--include-quality` folded and shipped megabytes of
+   * them.
+   */
+  qualityNotice?: string;
 }
 
 function fatalResult(bundlePath: string, message: string): RunPushResult {
@@ -155,7 +185,8 @@ function fatalResult(bundlePath: string, message: string): RunPushResult {
 }
 
 /**
- * Validate, pack (journal stripped unless `includeJournal`), and POST to
+ * Validate, pack (journal stripped unless `includeJournal`, quality stripped
+ * unless `includeQuality`), and POST to
  * Publik. Mirrors `runOpen`'s validate-gate shape: an invalid bundle returns
  * `ok: true, valid: false` with findings and never reaches pack/network.
  */
@@ -163,6 +194,7 @@ export async function runPush(options: RunPushOptions = {}): Promise<RunPushResu
   const cwd = options.cwd ?? process.cwd();
   const filePath = resolve(cwd, options.path ?? DEFAULT_BUNDLE_PATH);
   const includeJournal = options.includeJournal ?? false;
+  const includeQuality = options.includeQuality ?? false;
   const apiBase = options.apiBase ?? DEFAULT_API_BASE;
   const httpClient = options.httpClient ?? DEFAULT_HTTP_CLIENT;
 
@@ -180,14 +212,29 @@ export async function runPush(options: RunPushOptions = {}): Promise<RunPushResu
     return { ok: true, bundlePath: filePath, valid: false, errorLines, warningLines, requestSent: false };
   }
 
-  // Reuse pack's internals verbatim — noJournal strips journal[] before
-  // serialization, so a stripped push never even has journal bytes to send.
-  const packed = runPack({ path: filePath, noJournal: !includeJournal, cwd });
+  // Reuse pack's internals verbatim. Both strips DELETE their section before
+  // serialization (step 2 above), so neither journal nor quality bytes exist
+  // to send — lib/services/publik.ts stripping quality server-side too is a
+  // second line, not the one being relied on here. An open finding names an
+  // unfixed vulnerability and the file to find it in (docs/rfcs/kritik.md
+  // § 8.3), so it takes its own opt-in rather than riding on the journal's.
+  // No `root:` here on purpose — runPack derives it from the bundle's own
+  // path, and passing the cwd would fold whichever repo the user happens to
+  // be standing in.
+  const packed = runPack({ path: filePath, noJournal: !includeJournal, noQuality: !includeQuality, cwd });
   if (!packed.ok) {
     return fatalResult(filePath, packed.fatal ?? "pack failed");
   }
+  // `runPack` reports nothing under `noQuality` (it deleted rather than
+  // folded), so say it here instead of leaving the default posture silent.
+  const qualityNotice = packed.qualityNotice ?? "Quality: stripped, not sent (pass --include-quality to publish it)";
 
-  const url = `${apiBase}/api/publik${includeJournal ? "?include_journal=true" : ""}`;
+  // Built from a list rather than concatenated: two independent opt-ins can
+  // now both be on, and `?a=true?b=true` is not a query string.
+  const params: string[] = [];
+  if (includeJournal) params.push("include_journal=true");
+  if (includeQuality) params.push("include_quality=true");
+  const url = `${apiBase}/api/publik${params.length > 0 ? `?${params.join("&")}` : ""}`;
 
   let res: Response;
   try {
@@ -220,6 +267,7 @@ export async function runPush(options: RunPushOptions = {}): Promise<RunPushResu
       warningLines,
       requestSent: true,
       status,
+      qualityNotice,
       id: body.id,
       url: body.url,
       ownerKey: body.owner_key,
@@ -243,6 +291,7 @@ export async function runPush(options: RunPushOptions = {}): Promise<RunPushResu
     warningLines,
     requestSent: true,
     status,
+    qualityNotice,
     serverFindings: errBody.findings,
     retryAfter: status === 429 ? res.headers.get("retry-after") : undefined,
     errorMessage: errBody.message ?? `Request failed with status ${status}`,
@@ -253,6 +302,14 @@ function reportPush(result: RunPushResult): never {
   if (result.warningLines.length > 0) {
     console.error(`Warnings: ${result.warningLines.length}`);
     result.warningLines.forEach((w) => console.error(`  ${w}`));
+  }
+
+  // stderr, as `arkaik pack` prints it and for the same reason: this
+  // command's stdout carries the URL and the one-time owner key, which people
+  // pipe and copy. Printed for the strip as well as the send — publishing
+  // someone's open findings and declining to are both worth one line.
+  if (result.qualityNotice !== undefined) {
+    console.error(result.qualityNotice);
   }
 
   if (!result.valid) {
@@ -378,6 +435,7 @@ function reportDelete(id: string, result: RunPushDeleteResult): never {
 
 export function runPushCli(args: string[]): void {
   let includeJournal = false;
+  let includeQuality = false;
   let apiBase: string | undefined;
   let deleteId: string | undefined;
   let key: string | undefined;
@@ -390,6 +448,8 @@ export function runPushCli(args: string[]): void {
       process.exit(0);
     } else if (arg === "--include-journal") {
       includeJournal = true;
+    } else if (arg === "--include-quality") {
+      includeQuality = true;
     } else if (arg === "--api") {
       const value = args[++i];
       if (value === undefined) fail(`Missing value for --api\n\n${USAGE}`);
@@ -425,7 +485,7 @@ export function runPushCli(args: string[]): void {
 
   const filePath = positionals[0] ?? DEFAULT_BUNDLE_PATH;
 
-  runPush({ path: filePath, includeJournal, apiBase })
+  runPush({ path: filePath, includeJournal, includeQuality, apiBase })
     .then((result) => {
       if (!result.ok) fail(`FATAL: ${result.fatal}`);
       reportPush(result);
