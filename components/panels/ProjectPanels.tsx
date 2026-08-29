@@ -107,7 +107,7 @@ export function ProjectPanels({
   qualitySection,
   qualityLibrary,
 }: ProjectPanelsProps) {
-  const { entries, openNode, closeAt, unwindTo, pruneMissingNodes, panelStates } =
+  const { entries, openNode, openCriterion, closeAt, unwindTo, pruneMissingNodes, panelStates } =
     useProjectPanels();
 
   const projectId = useProjectId();
@@ -259,6 +259,12 @@ export function ProjectPanels({
             onCreateAcceptanceForAnchor={onCreateAcceptanceForAnchor}
             intake={intake}
             onZoomShot={onZoomShot}
+            findings={qualityFindings}
+            // From this panel's own depth, the rule the criterion panel's
+            // `onOpenNode` above already follows: a criterion opened out of a
+            // node sits ABOVE that node rather than replacing it, so the trail
+            // still reads back to the node the reader came from.
+            onOpenCriterion={(criterionId, surface) => openCriterion(criterionId, surface, index + 1)}
           />
         );
       }}
