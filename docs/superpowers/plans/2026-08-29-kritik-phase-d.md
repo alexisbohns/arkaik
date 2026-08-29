@@ -18,6 +18,9 @@
 - **Never reimplement a scale.** `severityOf`, `priorityOf`, `gradeOf`, `capGrade`, `isOpenFinding`, `resolveKritikLibrary`, `deriveQualityMatrix` are all imported from `@arkaik/schema`.
 - **Lint is a CI gate.** `npm run lint` must report 0 errors. Warnings are tolerated (main sits at 4).
 - **Comments explain *why*.** This codebase writes long "why it is built this way" comments. Match that density — see `lib/utils/project-panels.ts` for the house voice. Do not write comments that restate the code.
+- **The React Compiler does NOT run in this app's build.** `next.config.ts` never sets `reactCompiler` and `babel-plugin-react-compiler` is not installed; the compiler exists here only as a lint diagnostic inside `eslint-plugin-react-hooks`. So `useMemo` is real memoization and deleting one deletes it — never remove a memo believing a compiler will cover it. `react-hooks/preserve-manual-memoization` is severity **2**, though, so a memo that trips it fails CI.
+
+The trigger is narrower than it first looked, and worth stating as the bisected fact rather than as a theory: `useMemo(() => buildFindingRows(section, library), [section, library])` — an opaque imported call taking raw object props that are also its deps — **lints clean**. What failed was one memo wrapping a *whole multi-argument derivation chain*; splitting it (build, then narrow off the memo-derived local) is clean too. So when you hit it, split the derivation or take the upstream half as a prop. **Never delete the memo and claim a compiler covers it** — that is how a false comment got into this tree twice.
 - **No `any`.** `tsconfig` has `strict`. `noUncheckedIndexedAccess` is OFF, so indexed reads are typed as present — guard them anyway where a miss is real.
 
 ### The fixture
@@ -1283,11 +1286,15 @@ const groups = useMemo(() => groupByPriority(filtered), [filtered]);
 
 The page owns two params outside the filter hook's `KEYS`:
 
-- On mount and whenever `?criterion=` changes to something not already open, call `openCriterion(criterion, csurface)`.
+- On mount and whenever `?criterion=` changes to something not already open, call **`openCriterion(criterion, csurface, 0)`**.
 - When a cell or a finding opens a criterion, write both params through `useQueryWriter`.
 - When the criterion panel closes, delete both.
 
 Read `lib/hooks/useQueryWriter.ts` before writing this — it reads the live query at call time, which is what keeps two writers on the same URL from clobbering each other.
+
+**Pass depth `0` explicitly.** `openCriterion`'s default is `previous.length`, which appends — right for the Raw panel, which is invoked from the header, wrong here. The criteria strip lives *on the surface*, and this stack's rule is that a surface click is depth 0 and leaves exactly one panel open. Without the `0`, clicking criterion A then B in the strip yields `[A, B]` and the stack grows with every click.
+
+**This sync is also what makes Back work, and that is not cosmetic.** `reconcileArrival`'s rule is that a missing `?node=` closes the *whole* stack. So opening a linked node from the criterion panel and then pressing Back (or closing the node panel) wipes the criterion panel too — pre-existing behaviour the Raw panel shares, and out of scope to fix here. The `?criterion=` effect is what puts the panel back. Consequence to accept and not paper over silently: the panel **remounts**, so its scroll position is lost. Say so in a comment where the effect lives.
 
 - [ ] **Step 3: Verify and commit**
 
@@ -1349,7 +1356,7 @@ interface FindingBadgeProps {
 
 Returns `null` when `summary` is undefined or `summary.total === 0` — a node with no findings draws nothing, and that is most nodes. Otherwise a small badge colored by `summary.worst` with `summary.total` as its label and an accessible name reading e.g. `"3 open findings, worst: critical"`.
 
-Colors come from the same severity token set the board uses. Extract them into a shared `SEVERITY_STYLES` map in `components/quality/severity-styles.ts` if Task 8 defined them inline, and have both import it — one definition of what critical looks like.
+Colors come from `SEVERITY_DOT` / `SEVERITY_CHIP` / `SEVERITY_LABEL` in **`components/quality/quality-styles.ts`** — the shared module Task 6 created. (An earlier draft of this plan called it `severity-styles.ts`; the built name is broader because it also holds `GRADE_TINT`, `PRIORITY_CHIP` and `FINDING_STATUS_LABEL`.) Import from it. Do not write a second answer to what critical looks like.
 
 - [ ] **Step 2: Thread the summary to the canvas**
 

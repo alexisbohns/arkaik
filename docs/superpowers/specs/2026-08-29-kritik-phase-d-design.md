@@ -77,12 +77,14 @@ Pure functions, no React, no fs, no network. Every one reads
 | `groupByPriority(rows)` | `P0`–`P3` groups, empty ones retained | the board's sections |
 | `buildCellCriteria(section, library, domain, surface)` | criterion rows with maturity levels and evidence | the active-cell strip |
 | `buildNodeFindingIndex(section, library)` | `Map<nodeId, { counts, worst }>` | node badges |
-| `buildSurfaceGauges(matrix, library)` | per-surface score + grade | the overview card |
+| `buildSurfaceGauges(matrix, section, library)` | per-surface score + grade | the overview card |
 
-`buildFindingRows` is the single place a finding is denormalized. The board,
-the node index and the criterion panel all consume its output rather than
-walking `section.findings` again, so severity is computed once per finding per
-render and the three surfaces cannot disagree about what a finding is.
+`buildFindingRows` is the single place a finding is denormalized **for the
+board**. The node index and the cell criteria take `(section, library)` and walk
+`section.findings` themselves, because they aggregate rather than list and would
+otherwise pay for a denormalization they throw away. All three route severity
+through the same `severityOf`, so they cannot disagree about how bad a finding
+is even though they read it separately.
 
 ### 2. The criterion panel, and the address it does not take
 
