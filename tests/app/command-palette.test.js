@@ -53,6 +53,7 @@ const expectedHrefs = [
   "/project/proj-1/pyramid",
   "/project/proj-1/delivery",
   "/project/proj-1/changelog",
+  "/project/proj-1/quality",
   "/project/proj-1/settings",
 ];
 const hrefs = new Set(

@@ -55,6 +55,7 @@ export type ProjectView =
   | "delivery"
   | "design"
   | "changelog"
+  | "quality"
   | "history"
   | "acceptances"
   | "decisions"
@@ -72,6 +73,7 @@ export const PROJECT_VIEW_SEGMENTS = [
   "delivery",
   "design",
   "changelog",
+  "quality",
   "history",
   "acceptances",
   "decisions",

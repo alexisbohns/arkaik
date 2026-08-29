@@ -19,6 +19,7 @@ import {
   unwindTo as unwindStackTo,
 } from "@/lib/utils/panel-stack";
 import {
+  criterionPanelKey,
   isNodeEntry,
   pruneNodeEntries,
   topNodeKey,
@@ -85,6 +86,12 @@ interface ProjectPanelsValue {
   openNode: (descriptor: OpenNodeInput, fromDepth?: number) => void;
   /** Open the raw bundle on top of whatever is open, or reveal the one already there. */
   openRaw: () => void;
+  /**
+   * Open a criterion's detail from a depth, or refresh the one already in that
+   * slot. Publishes nothing: a criterion panel is not an address, so the stack
+   * has nothing to tell the URL. The Quality page writes `?criterion=` itself.
+   */
+  openCriterion: (criterionId: string, surface?: string, fromDepth?: number) => void;
   closeAt: (index: number) => void;
   unwindTo: (depth: number) => void;
   /**
@@ -245,6 +252,39 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
     );
   }, [entries, unwindTo]);
 
+  // Publishes nothing, on purpose. A criterion panel is not an address, so
+  // opening one cannot change what the URL names — and giving it an address
+  // here would mean a second reconciler over one stack, which
+  // `?node=V-home&criterion=SEC-01` has no defined answer for. The Quality page
+  // owns `?criterion=` instead, and it is the only page that opens one.
+  //
+  // Unlike `openRaw` there is no "reveal the one already open" branch either:
+  // several criteria can stack, and `openFrom` already refreshes in place when
+  // the same criterion on the same surface lands back in the same slot.
+  //
+  // `fromDepth` omitted means `previous.length` — append, above whatever is
+  // already open. That is the right default for `openRaw`, which is invoked
+  // from the header and so has nothing to do with what the surface is showing,
+  // and it is the wrong one for a criteria strip: the strip lives *on* the
+  // surface, and this stack's rule is that a surface click is depth 0 and
+  // leaves exactly one panel open. On the default, clicking criterion A and
+  // then B in the strip leaves `[A, B]`, and the stack grows with every click.
+  // **A caller opening a criterion from the surface passes `0`** — that is what
+  // the parameter is here for.
+  const openCriterion = useCallback(
+    (criterionId: string, surface?: string, fromDepth?: number) => {
+      setEntries((previous) =>
+        openFrom<PanelDescriptor>(
+          previous,
+          fromDepth ?? previous.length,
+          criterionPanelKey(criterionId, surface),
+          { kind: "criterion", criterionId, surface },
+        ),
+      );
+    },
+    [],
+  );
+
   const pruneMissingNodes = useCallback(
     (existingIds: Set<string>) => {
       const next = pruneNodeEntries(entries, existingIds);
@@ -285,6 +325,7 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
       topPanelNodeId: top && isNodeEntry(top) ? top.key : null,
       openNode,
       openRaw,
+      openCriterion,
       closeAt,
       unwindTo,
       pruneMissingNodes,
@@ -294,6 +335,7 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
   }, [
     closeAt,
     entries,
+    openCriterion,
     openNode,
     openRaw,
     panelStates,

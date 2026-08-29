@@ -7,6 +7,8 @@ import type { StatusId } from "@/lib/config/statuses";
 import type { NodeMetadata } from "@/lib/data/types";
 import { StatusBadge } from "@/components/layout/StatusBadge";
 import { SPECIES_GRAPH_ICONS } from "@/lib/config/species-icons";
+import type { NodeFindingSummary } from "@/lib/utils/quality";
+import { FindingBadge } from "./FindingBadge";
 import { STATUS_GHOST_STYLES, SYSTEM_LAYER_STYLES, type SystemLayerSpecies } from "./node-styles";
 
 /**
@@ -36,6 +38,7 @@ function makeSystemLayerNode(species: SystemLayerSpecies) {
     const status = (data.status as StatusId) ?? "idea";
     const label = String(data.label ?? fallbackLabel);
     const blockedBy = (data.metadata as NodeMetadata | undefined)?.blocked_by;
+    const findingSummary = data.findingSummary as NodeFindingSummary | undefined;
     const ghostClass = STATUS_GHOST_STYLES[status];
 
     return (
@@ -50,6 +53,7 @@ function makeSystemLayerNode(species: SystemLayerSpecies) {
             <span title={label} className="text-sm font-medium leading-tight line-clamp-2 flex-1">
               {label}
             </span>
+            <FindingBadge summary={findingSummary} />
           </div>
           <StatusBadge status={status} blockedBy={blockedBy} className="self-start" />
         </div>

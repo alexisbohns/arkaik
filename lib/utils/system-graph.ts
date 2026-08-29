@@ -4,6 +4,7 @@ import type { Node as DataNode, Edge as DataEdge } from "@/lib/data/types";
 import { EDGE_TYPE_TO_FLOW_TYPE, SPECIES_TO_NODE_TYPE } from "@/lib/utils/graph-build";
 import { addEffectiveNodeToRollup, createEmptyRollup, getEffectivePlatformStatuses, getRollupDisplayStatus } from "@/lib/utils/platform-status";
 import { mapProductId, type ProductGraph, type ProductScope } from "@/lib/utils/product-scope";
+import type { NodeFindingSummary } from "@/lib/utils/quality";
 
 export interface SystemGraphHandlers {
   onOpenDetails?: (node: DataNode) => void;
@@ -54,6 +55,14 @@ export function buildSystemGraph(
   handlers: SystemGraphHandlers = {},
   display: ResolvedMapDisplay = DEFAULT_MAP_DISPLAY,
   productScope?: SystemGraphScope,
+  /**
+   * Open findings per node id (`buildNodeFindingIndex`), the same index the
+   * Journey builder takes. Optional for the same reason it is optional there: a
+   * project with no audit passes nothing and no card draws a badge. Without it
+   * the severity badge would appear on one map and not the other, which reads
+   * as a bug in the badge rather than as a difference between the maps.
+   */
+  nodeFindings?: ReadonlyMap<string, NodeFindingSummary>,
 ): { nodes: Node[]; edges: Edge[] } {
   const subgraph = computeMapSubgraph(definition, dataNodes, dataEdges, {
     product: mapProductId(definition, productScope?.scope.productId ?? null),
@@ -67,6 +76,12 @@ export function buildSystemGraph(
       status: node.status,
       platforms: node.platforms,
       metadata: node.metadata,
+      // The subgraph's nodes are data nodes and this map renders each one once,
+      // so the React Flow id below IS the data id — but the lookup names
+      // `node.id` explicitly all the same, matching the Journey builder, where
+      // playlist expansion draws one node under several generated visual ids and
+      // every copy has to carry the same badge.
+      findingSummary: nodeFindings?.get(node.id),
     } as Record<string, unknown>;
 
     if (node.species === "view") {

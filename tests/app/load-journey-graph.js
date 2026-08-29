@@ -5,6 +5,10 @@
  * the config const arrays. All `@xyflow/react` imports in this graph are
  * type-only (erased); `@arkaik/schema` is a real require since the module took
  * on `computeMapSubgraph`, and is pointed at the schema package's test build.
+ *
+ * `system-graph.ts` and `quality.ts` ride along because the two map builders
+ * now share one input — the node finding index — and a badge that appears on
+ * one canvas and not the other is a bug only a suite holding both can see.
  */
 
 const fs = require("fs");
@@ -25,7 +29,9 @@ const MODULES = [
   // The membership restriction and the anchor chain the journey now resolves
   // through — the same module the app calls, not a restatement of it.
   ["lib/utils/product-scope.ts", "product-scope"],
+  ["lib/utils/quality.ts", "quality"],
   ["lib/utils/journey-graph.ts", "journey-graph"],
+  ["lib/utils/system-graph.ts", "system-graph"],
 ];
 
 // `@/lib/...` specifier → build output basename.
@@ -39,6 +45,7 @@ const SPECIFIER_MAP = {
   "@/lib/utils/platform-status": "./platform-status",
   "@/lib/utils/graph-build": "./graph-build",
   "@/lib/utils/product-scope": "./product-scope",
+  "@/lib/utils/quality": "./quality", // type-only in both graph builders
 };
 
 function loadJourneyGraph() {
@@ -76,6 +83,13 @@ function loadJourneyGraph() {
   }
   return {
     ...require(path.join(BUILD_DIR, "journey-graph.js")),
+    // The System map's own builder, and the index both builders read: the
+    // severity badge is one feature drawn by two modules.
+    buildSystemGraph: require(path.join(BUILD_DIR, "system-graph.js")).buildSystemGraph,
+    buildNodeFindingIndex: require(path.join(BUILD_DIR, "quality.js")).buildNodeFindingIndex,
+    // The visual-id decoder, so a suite can ask which DATA node a duplicated
+    // card was drawn from rather than restating the id format.
+    getBaseNodeId: require(path.join(BUILD_DIR, "graph-build.js")).getBaseNodeId,
     // The scope resolver every journey assertion needs to name a product, and
     // the graph a membership answer is built from.
     resolveProductScope: require(path.join(BUILD_DIR, "product-scope.js")).resolveProductScope,

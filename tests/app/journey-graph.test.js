@@ -13,6 +13,9 @@ const { loadJourneyGraph, BUILD_DIR } = require("./load-journey-graph");
 
 const {
   buildJourneyGraph,
+  buildNodeFindingIndex,
+  buildSystemGraph,
+  getBaseNodeId,
   computeComposeClosure,
   computeViewApiRelations,
   resolveJourneySelection,
@@ -354,6 +357,86 @@ assert(
     .nodes === 137,
   "the System map's count is untouched — 137 nodes under All products",
 );
+
+// --- The severity badge is drawn by both map builders, or by neither ---------
+//
+// `findingSummary` is what `ViewNode`, `FlowNode` and `SystemLayerNode` read to
+// draw a badge, and each builder assembles its own node data. Journey stamped it
+// and System did not, which on screen reads as a bug in the badge rather than as
+// a difference between two maps.
+{
+  const pilot = JSON.parse(
+    fs.readFileSync(path.join(ROOT, "tests", "fixtures", "quality", "pilot-2026-08.json"), "utf8"),
+  ).section;
+  const nodeFindings = buildNodeFindingIndex(pilot);
+
+  // The pilot audited Pebbles, so its `node_ids` and this seed overlap. Only the
+  // overlap can be asserted on, and it has to be non-empty for the rest of this
+  // block to mean anything.
+  const audited = dataNodes.filter((node) => nodeFindings.has(node.id));
+  assert(audited.length === 6, `the pilot's findings name 6 seed nodes (got ${audited.length})`);
+
+  const scope = scopeOf(null);
+  const display = { images: true, flow_platforms: "rings", view_platforms: "chips" };
+  const selection = resolveJourneySelection({
+    definition: JOURNEY, dataNodes, dataEdges, project: bundle.project, scope, graph: productGraph,
+  });
+  const journeyGraph = buildJourneyGraph({
+    dataNodes: selection.nodes,
+    dataEdges,
+    nodesById: selection.nodesById,
+    composeParentByChild: selection.composeParentByChild,
+    explicitRootNode: selection.anchorNode,
+    composeClosure: selection.composeClosure,
+    // Expanded, so the duplication the key rule is written against actually
+    // happens: one data node drawn under several generated visual ids.
+    expandedFlows: new Set([firstTopLevelFlowId]),
+    display,
+    viewApiRelationsByViewId: computeViewApiRelations(dataEdges, selection.nodesById),
+    nodeFindings,
+  });
+  const systemGraph = buildSystemGraph(
+    SYSTEM, dataNodes, dataEdges, {}, display, { scope, graph: productGraph }, nodeFindings,
+  );
+
+  // Every card on either canvas, checked against the index by the DATA id it was
+  // drawn from — `getBaseNodeId` strips the visual suffix playlist expansion
+  // adds, so a node drawn three times is checked three times.
+  const mismatches = [];
+  const badged = new Set();
+  for (const [label, graph, dataIdOf] of [
+    ["Journey", journeyGraph, (id) => getBaseNodeId(id)],
+    ["System", systemGraph, (id) => id],
+  ]) {
+    for (const node of graph.nodes) {
+      const dataId = dataIdOf(node.id);
+      const expected = nodeFindings.get(dataId);
+      if (node.data.findingSummary !== expected) mismatches.push(`${label}/${node.id}`);
+      if (expected !== undefined) badged.add(`${label}/${dataId}`);
+    }
+  }
+
+  assert(mismatches.length === 0, `every card on both maps carries its own node's summary (${mismatches.join(", ")})`);
+  assert(badged.size > 0, `badges are actually drawn — ${[...badged].sort().join(", ")}`);
+  assert(
+    [...badged].some((entry) => entry.startsWith("Journey/")) &&
+      [...badged].some((entry) => entry.startsWith("System/")),
+    "…on BOTH maps, which is the parity this block exists for",
+  );
+
+  // The duplication rule itself: the expanded flow draws copies, and a copy is
+  // the same node, so it wears the same badge object.
+  const copies = journeyGraph.nodes.filter((node) => node.id !== getBaseNodeId(node.id));
+  assert(copies.length > 0, `the expanded flow drew ${copies.length} duplicated cards`);
+
+  // And no index means no badge anywhere — what every project without an audit
+  // renders, on both maps.
+  const noIndex = buildSystemGraph(SYSTEM, dataNodes, dataEdges, {}, display, { scope, graph: productGraph });
+  assert(
+    noIndex.nodes.every((node) => node.data.findingSummary === undefined),
+    "an unaudited project draws no badge on the System map",
+  );
+}
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 

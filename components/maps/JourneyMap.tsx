@@ -7,6 +7,7 @@ import { PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 import {
   buildProductUsageIndex,
+  resolveKritikLibrary,
   resolveMapDisplay,
   type MapDefinition,
   type MapDisplayOptions,
@@ -51,6 +52,7 @@ import {
   computeViewApiRelations,
   resolveJourneySelection,
 } from "@/lib/utils/journey-graph";
+import { buildNodeFindingIndex } from "@/lib/utils/quality";
 
 /** Stable identity, so the empty branch never re-triggers the layout effect. */
 const EMPTY_GRAPH: { nodes: Node[]; edges: Edge[] } = { nodes: [], edges: [] };
@@ -181,6 +183,15 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   const viewApiRelationsByViewId = useMemo(
     () => computeViewApiRelations(dataEdges, nodesById),
     [dataEdges, nodesById],
+  );
+
+  // On `quality` alone, not on the bundle: this feeds `buildJourneyGraph`, and a
+  // fresh map here would rebuild the graph — and re-run ELK — every time an
+  // unrelated corner of the project changed. Projects with no audit memoize
+  // an empty map once and never think about it again.
+  const nodeFindings = useMemo(
+    () => buildNodeFindingIndex(projectBundle?.quality, resolveKritikLibrary(projectBundle?.quality)),
+    [projectBundle?.quality],
   );
 
   const getPlaylist = useCallback((nodeId: string): string[] => {
@@ -681,6 +692,7 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
             expandedFlows,
             display,
             viewApiRelationsByViewId,
+            nodeFindings,
             handlers: {
               onToggleFlow: toggleFlow,
               onAddChild: (flowId) => handleAddChildNode(flowId, "view"),
@@ -700,6 +712,7 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
       explicitRootNode,
       handleAddChildNode,
       handleInsertBetween,
+      nodeFindings,
       openNode,
       selection,
       toggleFlow,

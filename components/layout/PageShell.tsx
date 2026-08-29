@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { PageHeader, type PageAction } from "@/components/layout/PageHeader";
 import { ProjectPanels } from "@/components/panels/ProjectPanels";
+import type { KritikLibrary, QualitySection } from "@arkaik/schema";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { Edge, JournalEvent, Node } from "@/lib/data/types";
 import type { ProductScope } from "@/lib/utils/product-scope";
@@ -41,6 +42,9 @@ interface PageShellProps {
   /** The acceptance decompose gestures — see `useAcceptanceIntake`. */
   intake?: AcceptanceIntake;
   onZoomShot?: (node: Node, platform: PlatformId) => void;
+  /** Kritik state for criterion panels — see `ProjectPanels`. Quality only. */
+  qualitySection?: QualitySection;
+  qualityLibrary?: KritikLibrary;
 }
 
 /**

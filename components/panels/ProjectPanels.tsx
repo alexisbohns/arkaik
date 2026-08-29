@@ -4,15 +4,21 @@ import { useCallback, useEffect, useMemo, type ReactNode } from "react";
 import Link from "next/link";
 import { EntityId } from "@/components/graph/nodes/EntityBadges";
 import { PanelStack } from "@/components/panels/PanelStack";
+import {
+  CriterionDetailPanel,
+  CriterionDetailPanelHeader,
+} from "@/components/panels/CriterionDetailPanel";
 import { NodeDetailPanel, NodeDetailPanelHeader } from "@/components/panels/NodeDetailPanel";
 import { RawBundlePanel } from "@/components/panels/RawBundlePanel";
 import { EmptyState } from "@/components/ui/empty-state";
+import type { KritikLibrary, QualitySection } from "@arkaik/schema";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { Edge, JournalEvent, Node } from "@/lib/data/types";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useProjectId } from "@/lib/hooks/useProjectId";
 import type { PanelEntry } from "@/lib/utils/panel-stack";
 import type { PanelDescriptor } from "@/lib/utils/project-panels";
+import { buildFindingRows } from "@/lib/utils/quality";
 import { resolveProductScope, type ProductScope } from "@/lib/utils/product-scope";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 
@@ -50,6 +56,17 @@ interface ProjectPanelsProps {
    */
   intake?: AcceptanceIntake;
   onZoomShot?: (node: Node, platform: PlatformId) => void;
+  /**
+   * The project's Kritik state, for criterion panels.
+   *
+   * Absent on every page but Quality, which is the only one that opens one —
+   * and a criterion panel with neither is still a panel: it says the pack is
+   * not here rather than rendering blank headings. Passing them from the page
+   * rather than reading `useProject` here keeps this component free of a data
+   * dependency that nine of its ten callers would pay for and never use.
+   */
+  qualitySection?: QualitySection;
+  qualityLibrary?: KritikLibrary;
 }
 
 const NO_NODES: Node[] = [];
@@ -87,13 +104,29 @@ export function ProjectPanels({
   onCreateAcceptanceForAnchor,
   intake,
   onZoomShot,
+  qualitySection,
+  qualityLibrary,
 }: ProjectPanelsProps) {
-  const { entries, openNode, closeAt, unwindTo, pruneMissingNodes, panelStates } =
+  const { entries, openNode, openCriterion, closeAt, unwindTo, pruneMissingNodes, panelStates } =
     useProjectPanels();
 
   const projectId = useProjectId();
 
   const nodesById = useMemo(() => new Map(allNodes.map((node) => [node.id, node])), [allNodes]);
+
+  // Denormalized here rather than inside the criterion panel, which cannot
+  // memoize it: `react-hooks/preserve-manual-memoization` is an error, and it
+  // refuses the memo that would wrap the whole derivation down there — see the
+  // note in `CriterionDetailPanel`. Once per stack rather than once per open
+  // criterion is also the right altitude for it: the rows are a property of the
+  // section, not of any one criterion. Every page but Quality passes no section
+  // at all, and `buildFindingRows` over an absent one is two empty maps and an
+  // empty array, so the nine callers that will never open a criterion panel pay
+  // effectively nothing for it.
+  const qualityFindings = useMemo(
+    () => buildFindingRows(qualitySection, qualityLibrary),
+    [qualitySection, qualityLibrary],
+  );
 
   // An empty list is the loading window, not a deleted project — pruning then
   // would close a panel restored from `?node=` before its node ever arrived.
@@ -105,10 +138,15 @@ export function ProjectPanels({
 
   // Branching on `kind` rather than on the key keeps one way to spot a raw
   // entry: the key/kind equivalence is an invariant the union does not enforce,
-  // so a second test of it is a second thing that can drift.
+  // so a second test of it is a second thing that can drift. A criterion's key
+  // is namespaced, so it is also the one kind whose key is not something a
+  // reader should ever be shown.
   const labelOf = useCallback(
-    (entry: PanelEntry<PanelDescriptor>) =>
-      entry.payload.kind === "raw" ? "Raw bundle" : nodesById.get(entry.key)?.title ?? entry.key,
+    (entry: PanelEntry<PanelDescriptor>) => {
+      if (entry.payload.kind === "raw") return "Raw bundle";
+      if (entry.payload.kind === "criterion") return entry.payload.criterionId;
+      return nodesById.get(entry.key)?.title ?? entry.key;
+    },
     [nodesById],
   );
 
@@ -134,12 +172,50 @@ export function ProjectPanels({
         if (entry.payload.kind === "raw")
           return <span className="truncate text-sm font-medium">Raw bundle</span>;
 
+        if (entry.payload.kind === "criterion")
+          return (
+            <CriterionDetailPanelHeader
+              criterionId={entry.payload.criterionId}
+              surface={entry.payload.surface}
+              library={qualityLibrary}
+              section={qualitySection}
+            />
+          );
+
         const node = nodesById.get(entry.key);
         return node ? <NodeDetailPanelHeader node={node} /> : <EntityId id={entry.key} />;
       }}
       renderBody={(entry, index) => {
         if (entry.payload.kind === "raw") {
           return <RawBundlePanel projectId={projectId} instanceId={entry.instanceId} />;
+        }
+
+        if (entry.payload.kind === "criterion") {
+          return (
+            <CriterionDetailPanel
+              criterionId={entry.payload.criterionId}
+              surface={entry.payload.surface}
+              library={qualityLibrary}
+              section={qualitySection}
+              findings={qualityFindings}
+              // From this panel's own depth, like every other navigation in the
+              // stack: following a finding into the graph opens the node ABOVE
+              // the criterion rather than in place of it, which is what depth 0
+              // would do.
+              //
+              // Sitting above it is not the same as surviving it, and no
+              // comment here should promise that it is. Opening the node
+              // publishes `?node=`; Back — or closing that node panel, which
+              // republishes an empty address — hands `reconcileArrival` a
+              // missing id, and a missing id closes the *whole* stack, this
+              // criterion with it. One address, and a criterion is not it. Raw
+              // has had the identical behaviour since it landed. What brings
+              // the panel back is the Quality page's own `?criterion=` sync,
+              // and it comes back remounted, so the reader loses their scroll
+              // position in it.
+              onOpenNode={(nodeId) => openNode({ nodeId }, index + 1)}
+            />
+          );
         }
 
         const node = nodesById.get(entry.key);
@@ -183,6 +259,12 @@ export function ProjectPanels({
             onCreateAcceptanceForAnchor={onCreateAcceptanceForAnchor}
             intake={intake}
             onZoomShot={onZoomShot}
+            findings={qualityFindings}
+            // From this panel's own depth, the rule the criterion panel's
+            // `onOpenNode` above already follows: a criterion opened out of a
+            // node sits ABOVE that node rather than replacing it, so the trail
+            // still reads back to the node the reader came from.
+            onOpenCriterion={(criterionId, surface) => openCriterion(criterionId, surface, index + 1)}
           />
         );
       }}

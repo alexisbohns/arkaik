@@ -6,10 +6,12 @@ import { ChevronDown, ChevronRight, Info, PlusCircle, Split } from "lucide-react
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import { flowGaugePlatforms, type PlatformStatusRollup } from "@/lib/utils/platform-status";
+import type { NodeFindingSummary } from "@/lib/utils/quality";
 import { StageIcon } from "@/components/layout/StageIcon";
 import { STATUS_GHOST_STYLES } from "./node-styles";
 import { useToolbarHover } from "@/lib/hooks/useToolbarHover";
 import { useCanvasScopePlatforms } from "../canvas-scope";
+import { FindingBadge } from "./FindingBadge";
 import { PlatformAvailability } from "./PlatformAvailability";
 
 function FlowNodeComponent({ data }: NodeProps) {
@@ -25,6 +27,7 @@ function FlowNodeComponent({ data }: NodeProps) {
   const renderVariant = data.renderVariant as string | undefined;
   const branchKind = data.branchKind as string | undefined;
   const branchSummary = data.branchSummary as string | undefined;
+  const findingSummary = data.findingSummary as NodeFindingSummary | undefined;
   const onToggle = data.onToggle as (() => void) | undefined;
   const onOpenDetails = data.onOpenDetails as (() => void) | undefined;
   const onAddChild = data.onAddChild as (() => void) | undefined;
@@ -95,6 +98,7 @@ function FlowNodeComponent({ data }: NodeProps) {
             {label}
           </span>
           <div className="flex items-center gap-1">
+            <FindingBadge summary={findingSummary} />
             {stage && !isBranch && <StageIcon stage={stage} />}
             {onOpenDetails && !isBranch && (
               <button

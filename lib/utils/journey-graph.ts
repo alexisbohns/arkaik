@@ -29,6 +29,7 @@ import {
   type ProductGraph,
   type ProductScope,
 } from "@/lib/utils/product-scope";
+import type { NodeFindingSummary } from "@/lib/utils/quality";
 
 /**
  * The Journey map's graph construction (docs/spec/maps.md § Built-in Maps) —
@@ -175,6 +176,12 @@ export interface JourneyGraphParams {
   /** Resolved card rendering for this map (docs/spec/maps.md § Display Options). */
   display: ResolvedMapDisplay;
   viewApiRelationsByViewId: ReadonlyMap<string, ViewApiRelations>;
+  /**
+   * Open findings per node id (`buildNodeFindingIndex`). Optional: every caller
+   * but an audited project's canvas passes nothing, and a node with no entry
+   * draws no badge — which stays the common case once a pack is pinned.
+   */
+  nodeFindings?: ReadonlyMap<string, NodeFindingSummary>;
   handlers?: JourneyGraphHandlers;
 }
 
@@ -197,6 +204,7 @@ export function buildJourneyGraph(params: JourneyGraphParams): { nodes: Node[]; 
     expandedFlows,
     display,
     viewApiRelationsByViewId,
+    nodeFindings,
     handlers = {},
   } = params;
 
@@ -231,6 +239,10 @@ export function buildJourneyGraph(params: JourneyGraphParams): { nodes: Node[]; 
       status: node.status,
       platforms: node.platforms,
       metadata: node.metadata,
+      // Keyed on the DATA node id, never on `visualNodeId`: playlist expansion
+      // draws one node several times under generated ids, and a finding is filed
+      // against the node — so every copy of it has to carry the same badge.
+      findingSummary: nodeFindings?.get(node.id),
     } as Record<string, unknown>;
 
     if (node.species === "flow") {

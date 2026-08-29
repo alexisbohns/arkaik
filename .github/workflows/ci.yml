@@ -169,6 +169,9 @@ jobs:
       - name: Acceptance-first intake rule tests
         run: npm run test:acceptance-intake
 
+      - name: Quality page projections
+        run: npm run test:quality-page
+
       - name: Effective platform-status seam tests
         run: npm run test:effective-status
 
