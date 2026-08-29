@@ -570,6 +570,16 @@ git commit -m "feat(kritik): fold docs/quality/ sidecars into bundle.quality on 
 
 ---
 
+> **Revised during execution — Tasks 2 and 3 were merged.** Task 1's review
+> rounds pulled a great deal forward: the two skip notices, the corrupt-sidecar
+> error, `--root`'s derivation from the bundle path (which replaced this task's
+> cwd default entirely), and an in-process `runPack` layer in the suite that
+> already pins `--audit`'s semantics — snapshot shape, the pinned audit's own
+> `framework_version`, and a ghost id refused even in a repo with no audits.
+> What survives of both tasks is the argv contract: parsing the three flags,
+> the usage text, and five CLI-level cases proving the spellings reach the
+> options `runPack` already honours. They ship as one commit.
+
 ## Task 2: `--no-quality`, `--root`, and the two skip notices
 
 **Files:**
