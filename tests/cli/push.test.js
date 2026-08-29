@@ -19,6 +19,9 @@
  * Covers (the issue's required scenarios plus the full response matrix):
  *  - success (201): journal stripped by default and never sent, prints the
  *    URL + owner key;
+ *  - a Kritik `quality` section the SOURCE bundle carries is deleted before
+ *    packing and never sent (#389) — open findings name unfixed
+ *    vulnerabilities and where to find them;
  *  - --include-journal: journal embedded in the body, ?include_journal=true
  *    forwarded;
  *  - validation failure: an invalid bundle never reaches pack or the network;
@@ -215,6 +218,69 @@ async function main() {
     const sentBundle = JSON.parse(call.init.body);
     check("sent body has no journal key at all (stripped, not just empty)", sentBundle.journal === undefined, JSON.stringify(Object.keys(sentBundle)));
     check("sent body carries the project", sentBundle.project && sentBundle.project.id === "demo", JSON.stringify(sentBundle.project));
+  }
+
+  // -------------------------------------------------------------------------
+  // A `quality` section on the SOURCE bundle is stripped, never sent (#389).
+  //
+  // The case above cannot show this: its fixture has no `quality` key, so
+  // `sent.quality === undefined` would hold whether push strips one or merely
+  // declines to add one. Here the bundle arrives carrying findings — the exact
+  // shape `arkaik pack` writes — and they must not reach the wire. Server-side
+  // stripping (lib/services/publik.ts) is a second line, not this one.
+  // -------------------------------------------------------------------------
+  {
+    const dir = mkdtempSync(path.join(tmpdir(), "arkaik-push-quality-"));
+    createdDirs.push(dir);
+    const bundlePath = path.join(dir, "bundle.json");
+    writeFileSync(
+      bundlePath,
+      JSON.stringify(
+        {
+          ...makeBundle(),
+          quality: {
+            framework_version: "1.0.0",
+            profile: { surfaces: [{ id: "web", title: "Web" }] },
+            assessments: [{ criterion_id: "SEC-01", surface: "web", level: 1, evidence: "auth.ts:1" }],
+            findings: [
+              {
+                id: "F-2026-08-SEC-web-01",
+                criterion_id: "SEC-01",
+                surface: "web",
+                title: "Token in the repo",
+                detail: "A live token is committed.",
+                evidence: "app/a.ts:1",
+                impact: 5,
+                likelihood: 4,
+                cost: "M",
+                status: "open",
+              },
+            ],
+          },
+        },
+        null,
+        2,
+      ) + "\n",
+    );
+
+    const httpClient = makeMockHttpClient(() =>
+      jsonResponse(201, { id: "q1", url: `${DEFAULT_API_BASE}/p/q1`, owner_key: "33333333-3333-4333-8333-333333333333" }),
+    );
+    const result = await runPush({ path: bundlePath, httpClient });
+
+    check("push of a quality-carrying bundle ok", result.ok === true && result.status === 201, JSON.stringify(result));
+    const sentBundle = JSON.parse(httpClient.calls[0].init.body);
+    check(
+      "the source bundle's quality section is not sent",
+      sentBundle.quality === undefined,
+      JSON.stringify(Object.keys(sentBundle)),
+    );
+    check(
+      "and no finding text leaks through any other key",
+      !httpClient.calls[0].init.body.includes("Token in the repo"),
+      httpClient.calls[0].init.body.slice(0, 300),
+    );
+    check("the rest of the bundle still goes", sentBundle.project && sentBundle.project.id === "demo");
   }
 
   // -------------------------------------------------------------------------

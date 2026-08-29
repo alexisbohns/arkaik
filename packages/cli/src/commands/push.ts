@@ -12,12 +12,17 @@
  *     `validateBundleAt`). An INVALID bundle prints findings and exits
  *     non-zero; nothing is packed or sent.
  *  2. pack — reuse `arkaik pack`'s internals (`./pack`'s `runPack`) rather
- *     than re-implementing bundle assembly. The journal is stripped by
- *     default (`noJournal: true`, the Publik-safe posture,
- *     docs/spec/journal.md:41): it is never even embedded, so a stripped
- *     push never sends journal bytes over the wire regardless of what the
- *     server does with them. `--include-journal` flips that off, embedding
- *     the journal exactly like a bare `arkaik pack` would.
+ *     than re-implementing bundle assembly. Two sections are stripped by
+ *     default, on the same reasoning both times: the bytes never reach the
+ *     wire, so nothing rests on what the server chooses to do with them.
+ *     `noJournal: true` is the Publik-safe posture for history
+ *     (docs/spec/journal.md:41); `--include-journal` flips it off, embedding
+ *     the journal exactly like a bare `arkaik pack` would. `noQuality: true`
+ *     is that posture for a Kritik section (docs/rfcs/kritik.md § 8.3), and
+ *     it DELETES rather than merely declines to fold — a bundle that arrived
+ *     already carrying a hand-written `quality` key must not be pushed with
+ *     it either. Its `--include-quality` counterpart is still to come
+ *     (#389), so today that strip is unconditional.
  *  3. `POST {api}/api/publik[?include_journal=true]` with the packed,
  *     canonical bundle as the body (docs/spec/services.md § Publik →
  *     Protocol — the API this command talks to is implemented at
@@ -69,6 +74,10 @@ The journal is stripped before packing by default and never sent — the
 Publik-safe posture (docs/spec/journal.md). --include-journal embeds it
 (like a bare "arkaik pack") and forwards ?include_journal=true so the server
 knows to keep it.
+
+A Kritik "quality" section is stripped too, and always: open findings name
+unfixed vulnerabilities and where to find them, so they are never published.
+Use "arkaik pack" if you want a bundle that keeps them.
 
 Snapshots are immutable: there is no update verb. Pushing again always mints
 a new id. The owner key printed on success is shown exactly once and cannot
@@ -180,14 +189,13 @@ export async function runPush(options: RunPushOptions = {}): Promise<RunPushResu
     return { ok: true, bundlePath: filePath, valid: false, errorLines, warningLines, requestSent: false };
   }
 
-  // Reuse pack's internals verbatim — noJournal strips journal[] before
-  // serialization, so a stripped push never even has journal bytes to send.
-  // noQuality is the same posture for docs/quality/: an open finding names an
+  // Reuse pack's internals verbatim. Both strips DELETE their section before
+  // serialization (step 2 above), so neither journal nor quality bytes exist
+  // to send — lib/services/publik.ts stripping quality server-side too is a
+  // second line, not the one being relied on here. An open finding names an
   // unfixed vulnerability and the file to find it in (docs/rfcs/kritik.md
-  // § 8.3), so it must not leave the machine by default. lib/services/publik.ts
-  // also strips it server-side, and this is exactly the belt this file's header
-  // refuses to leave to those braces. Hardcoded `true` until #389 adds
-  // `--include-quality`; it becomes `!includeQuality` then, beside the journal.
+  // § 8.3). `noQuality` is hardcoded until #389 adds `--include-quality`; it
+  // becomes `!includeQuality` then, beside the journal's flag.
   const packed = runPack({ path: filePath, noJournal: !includeJournal, noQuality: true, cwd });
   if (!packed.ok) {
     return fatalResult(filePath, packed.fatal ?? "pack failed");

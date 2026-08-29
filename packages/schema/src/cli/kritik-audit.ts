@@ -217,9 +217,11 @@ export function requireAudit(root: string, auditId: string): void {
  * fire here that did not fire in a single audit's roll-up — an open Critical
  * from two audits ago still caps its cell, which is true.
  *
- * `undefined` — never a throw — when there is nothing to merge: no audits, or
- * no profile. Both are ordinary states in a repo that has not finished
- * installing Kritik, and neither is a reason to fail a bundle assembly.
+ * `undefined`, rather than a throw, when there is nothing to merge: no
+ * audits, or no profile. Both are ordinary states in a repo that has not
+ * finished installing Kritik, and neither is a reason to fail a bundle
+ * assembly. A *malformed* sidecar is not one of them and does throw — a
+ * broken file is a broken file, not an unfinished install.
  */
 export function loadCurrentQualitySection(root: string, library: KritikLibrary): QualitySection | undefined {
   const auditIds = listAuditIds(root);
@@ -264,6 +266,14 @@ export function loadCurrentQualitySection(root: string, library: KritikLibrary):
  *
  * Throws, where {@link loadCurrentQualitySection} returns `undefined`, and the
  * asymmetry is the argument: naming an audit is a claim that it exists.
+ *
+ * It reads scores through {@link loadScoresOrEmpty}, though — the seam
+ * `loadQualitySection`'s fourth argument exists for. An audit directory
+ * holding `findings.json` and no `scores.json` is a real state (a finding
+ * opened before anything on that surface was scored), and the merge already
+ * tolerates it. Letting the pinned path throw on it would mean `pack`
+ * succeeding and `pack --audit <that one>` failing on the same tree, which
+ * tells the user nothing true about their repo.
  */
 export function loadAuditQualitySection(
   root: string,
@@ -271,7 +281,7 @@ export function loadAuditQualitySection(
   library: KritikLibrary,
 ): QualitySection {
   requireAudit(root, auditId);
-  const section = loadQualitySection(root, auditId, library);
+  const section = loadQualitySection(root, auditId, library, loadScoresOrEmpty(root, auditId));
   return { ...section, library, findings: section.findings.map(stripDerived) };
 }
 

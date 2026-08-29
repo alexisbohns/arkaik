@@ -19,11 +19,13 @@
  *     and `priority` dropped (`lib/kritik-io.ts`). A repo with no audits or
  *     no profile is reported and skipped, never failed — quality is additive
  *     to a bundle, and a half-installed Kritik must not break `pack`. The
- *     source `docs/quality/` tree is only ever READ. `noQuality` skips the
- *     fold outright (the Publik-safe posture `--no-journal` takes for
- *     history, and what `arkaik push` uses) and `audit` pins one audit's
- *     snapshot instead of the merge; both are programmatic options today,
- *     their CLI flags still to come (#389);
+ *     source `docs/quality/` tree is only ever READ. `noQuality` DELETES
+ *     `quality` instead, exactly as `--no-journal` deletes `journal[]`: a
+ *     posture that only declined to fold would still ship a section the
+ *     source bundle already carried, which is the case `arkaik push` exists
+ *     to prevent. `audit` pins one audit's snapshot instead of the merge.
+ *     Both are programmatic options today, their CLI flags still to come
+ *     (#389);
  *  4. `--inline-assets` (OFF by default, local-only in v1): every
  *     `metadata.platformScreenshots` value that is a *relative path* (no URI
  *     scheme, no leading `/` — docs/spec/bundle-format.md § Asset Values) is
@@ -119,7 +121,7 @@ export interface RunPackOptions {
   noJournal?: boolean;
   /** Inline local relative-path screenshot assets as data: URIs. */
   inlineAssets?: boolean;
-  /** Skip folding docs/quality/ into bundle.quality. The Publik-safe posture, as --no-journal is for history. */
+  /** Delete `quality` rather than folding docs/quality/ in — including a section the source bundle already carried. The Publik-safe posture, as `noJournal` is for history. */
   noQuality?: boolean;
   /** Pin one audit's snapshot instead of merging every audit into current state. */
   audit?: string;
@@ -141,9 +143,9 @@ export interface RunPackResult {
   inlinedAssets: InlinedAsset[];
   /** Non-fatal notices — e.g. an asset referenced by a relative path that was not found on disk. */
   assetWarnings: string[];
-  /** Whether a `quality` section was actually folded in. Absent with --no-quality. */
+  /** Whether a `quality` section was actually folded in. Absent with `noQuality`. */
   qualityFolded?: boolean;
-  /** What the quality fold did — folded, skipped, or nothing to fold. Absent with --no-quality. */
+  /** What the quality fold did — folded, skipped, or nothing to fold. Absent with `noQuality`. */
   qualityNotice?: string;
   /** The canonical packed bundle text (serializeBundle output), always populated on success. */
   output: string;
@@ -219,7 +221,12 @@ export function runPack(options: RunPackOptions = {}): RunPackResult {
 
   let qualityFolded: boolean | undefined;
   let qualityNotice: string | undefined;
-  if (!(options.noQuality ?? false)) {
+  if (options.noQuality ?? false) {
+    // `delete`, not "don't fold" — mirroring the journal branch above. A
+    // source bundle may already carry a hand-written `quality` section, and
+    // declining to add one would still hand `arkaik push` the old one to send.
+    delete bundle.quality;
+  } else {
     const root = resolveQualityRoot(cwd, filePath, options.root);
     try {
       const fold = foldQualitySection(bundle, root, options.audit);

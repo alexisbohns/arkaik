@@ -25,13 +25,18 @@
  * phases; do not normalize these numbers.
  */
 
+const { build } = require("esbuild");
 const { spawnSync } = require("child_process");
-const { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } = require("fs");
+const { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require("fs");
 const { tmpdir } = require("os");
 const path = require("path");
+const { pathToFileURL } = require("url");
 
 const ROOT = path.join(__dirname, "..", "..");
 const CLI = path.join(ROOT, "packages", "cli", "dist", "index.js");
+const PACK_ENTRY = path.join(ROOT, "packages", "cli", "src", "commands", "pack.ts");
+const TEST_BUILD_DIR = path.join(ROOT, "packages", "cli", ".test-build-quality");
+const PACK_BUNDLE = path.join(TEST_BUILD_DIR, "pack.mjs");
 
 if (!existsSync(CLI)) {
   console.error(`CLI not built at ${CLI}. Run \`npm run build -w arkaik\` first.`);
@@ -351,6 +356,13 @@ function packIn(dir, args = []) {
 // A repo mid-installation still packs. Each notice names a path AND a way
 // forward, because "no audit yet" and "wrong root" are the two ways to land
 // here and only the path tells them apart.
+//
+// What these cases do NOT pin, and cannot: that `foldQualitySection` returns
+// on an empty audit list BEFORE resolving the pack. That ordering is real and
+// load-bearing — resolving first would make a repo with no quality data at all
+// fail `arkaik pack` whenever the bundled pack is missing or broken — but a
+// spawned CLI always ships a pack for `resolvePack` to find, so both orderings
+// pass here. Do not "simplify" the function by reordering those two.
 {
   const bare = makeRepo({ audits: false, profile: false });
   const { result } = packIn(bare, []);
@@ -372,6 +384,19 @@ function packIn(dir, args = []) {
     skipped.status === 0 && /no profile at .*profile\.json.*arkaik kritik profile/.test(skipped.stderr),
     skipped.stderr,
   );
+
+  // `false` is valid JSON and falsy. A `=== null` guard in the CLI seam waves
+  // it through, the merge's own `!profile` guard refuses it, and the notice
+  // then blames the audits directory for a profile problem — the exact
+  // misattribution the notices were rewritten to prevent.
+  const falsyProfile = makeRepo();
+  writeJson(path.join(falsyProfile, "docs", "quality", "profile.json"), false);
+  const falsy = packIn(falsyProfile, []).result;
+  check(
+    "a falsy-but-valid profile.json is named as the profile, not as missing audits",
+    falsy.status === 0 && /no profile at .*profile\.json/.test(falsy.stderr),
+    falsy.stderr,
+  );
 }
 
 // --- 8. a corrupt sidecar names the file it could not parse ----------------
@@ -389,5 +414,109 @@ function packIn(dir, args = []) {
   );
 }
 
-console.log(`\n${failures === 0 ? "OK" : "FAILURES"}: quality-section-fold`);
-process.exit(failures > 0 ? 1 : 0);
+// --- 9. the options no CLI flag reaches yet --------------------------------
+
+/**
+ * `noQuality` and `audit` are `runPack` options with no argv spelling until
+ * #389's later phases, and `arkaik push` is the only shipped caller that sets
+ * one. So this layer bundles pack.ts and calls `runPack` directly — the same
+ * technique tests/cli/pack-open.test.js and tests/cli/push.test.js use, and
+ * the only way to cover behaviour the built binary cannot yet be asked for.
+ */
+async function inProcess() {
+  mkdirSync(TEST_BUILD_DIR, { recursive: true });
+  await build({
+    entryPoints: [PACK_ENTRY],
+    outfile: PACK_BUNDLE,
+    bundle: true,
+    platform: "node",
+    target: "node18",
+    format: "esm",
+    legalComments: "none",
+  });
+  const { runPack } = await import(pathToFileURL(PACK_BUNDLE).href);
+
+  // noQuality STRIPS, it does not merely decline to fold. Every other fixture
+  // starts from a bundle with no `quality` key, which makes an assertion that
+  // the output has none pass whether the option deletes or does nothing; this
+  // one hands it a section to actually get rid of. It is what `arkaik push`
+  // relies on to keep open findings off the wire.
+  {
+    const dir = makeRepo();
+    const bundlePath = path.join(dir, "docs", "arkaik", "bundle.json");
+    writeJson(bundlePath, {
+      ...BUNDLE,
+      quality: { framework_version: "9.9.9", profile: PROFILE, assessments: [], findings: FINDINGS_08.findings },
+    });
+
+    const kept = runPack({ path: bundlePath, cwd: dir });
+    check("a source bundle's own quality section is there to strip", JSON.parse(kept.output).quality !== undefined);
+
+    const stripped = runPack({ path: bundlePath, cwd: dir, noQuality: true });
+    check("noQuality packs ok", stripped.ok === true, stripped.fatal);
+    check(
+      "noQuality deletes a quality section the SOURCE bundle carried",
+      JSON.parse(stripped.output).quality === undefined,
+      JSON.stringify(Object.keys(JSON.parse(stripped.output))),
+    );
+    check("and reports nothing about a fold it never ran", stripped.qualityNotice === undefined && stripped.qualityFolded === undefined);
+  }
+
+  // A pinned audit is a snapshot, not the merge — and it tolerates the same
+  // half-finished audit the merge does. An audit opened with a finding before
+  // anything on that surface was scored has no scores.json; `pack` succeeding
+  // while `pack --audit <that one>` fails would say something untrue about
+  // the tree.
+  {
+    const dir = makeRepo();
+    const bundlePath = path.join(dir, "docs", "arkaik", "bundle.json");
+
+    const pinned = runPack({ path: bundlePath, cwd: dir, audit: "2026-08" });
+    const section = JSON.parse(pinned.output).quality;
+    check("--audit pins one audit's snapshot", section && section.assessments.length === 4, JSON.stringify(section && section.assessments.length));
+    check("the pinned audit's findings are its own", section && section.findings.length === 1 && section.findings[0].id === "F-2026-08-SEC-web-01");
+    check("a pinned snapshot strips derived fields too", section && !("severity" in section.findings[0]));
+    check("a pinned snapshot embeds the effective pack", section && section.library && section.library.scales.grades.A === 97);
+    check("the notice counts one audit, not every audit", /from 1 audit\(s\)/.test(pinned.qualityNotice || ""), pinned.qualityNotice);
+    check("qualityFolded says so without parsing prose", pinned.qualityFolded === true);
+
+    // findings.json with no scores.json beside it.
+    writeJson(path.join(dir, "docs", "quality", "audits", "2026-10", "findings.json"), {
+      audit_id: "2026-10",
+      framework_version: "9.9.9",
+      findings: [{ ...FINDINGS_09.findings[0], id: "F-2026-10-TST-admin-01" }],
+    });
+    const scoreless = runPack({ path: bundlePath, cwd: dir, audit: "2026-10" });
+    check("an audit with findings but no scores.json still packs", scoreless.ok === true, scoreless.fatal);
+    const sparse = scoreless.ok ? JSON.parse(scoreless.output).quality : undefined;
+    check(
+      "and yields its findings with no assessments, as the merge would",
+      sparse && sparse.assessments.length === 0 && sparse.findings.length === 1,
+      JSON.stringify(sparse && { a: sparse.assessments.length, f: sparse.findings.length }),
+    );
+
+    const ghost = runPack({ path: bundlePath, cwd: dir, audit: "2099-01" });
+    check("a named audit that is not on disk is refused", ghost.ok === false && /no audit "2099-01"/.test(ghost.fatal || ""), ghost.fatal);
+
+    // The guard runs before the it-is-fine-to-have-nothing returns.
+    const bare = makeRepo({ audits: false, profile: false });
+    const ghostBare = runPack({ path: path.join(bare, "docs", "arkaik", "bundle.json"), cwd: bare, audit: "2099-01" });
+    check(
+      "and is refused even in a repo with no audits at all",
+      ghostBare.ok === false && /no audit "2099-01"/.test(ghostBare.fatal || ""),
+      ghostBare.fatal,
+    );
+  }
+
+  rmSync(TEST_BUILD_DIR, { recursive: true, force: true });
+}
+
+inProcess()
+  .then(() => {
+    console.log(`\n${failures === 0 ? "OK" : "FAILURES"}: quality-section-fold`);
+    process.exit(failures > 0 ? 1 : 0);
+  })
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });

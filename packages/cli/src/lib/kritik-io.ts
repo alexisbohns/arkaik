@@ -159,7 +159,12 @@ export function foldQualitySection(
       notice: `Quality: none to fold — no audits under ${auditsDir(root)} (run \`arkaik kritik score\` to open one)`,
     };
   }
-  if (loadProfile(root) === null) {
+  // `!profile`, not `=== null`, so this and the merge's own guard
+  // (`loadCurrentQualitySection`) refuse exactly the same set. A profile.json
+  // holding `false`, `0` or `""` is valid JSON and falsy: a `=== null` check
+  // here would wave it through, the merge would refuse it, and the fallback
+  // below would report the wrong cause.
+  if (!loadProfile(root)) {
     return {
       folded: false,
       notice: `Quality: skipped — no profile at ${profilePath(root)} (run \`arkaik kritik profile\`)`,
@@ -172,12 +177,18 @@ export function foldQualitySection(
       ? loadCurrentQualitySection(root, library)
       : loadAuditQualitySection(root, auditId, library);
 
-  // Unreachable today: the merge returns `undefined` only for no audits or no
-  // profile, and both are ruled out by the guards above. Handled rather than
-  // cast away so that deleting one of those guards fails here, loudly, instead
-  // of typing `undefined` as a section and shipping an empty `quality` key.
+  // Defence against divergence, not dead code, and not a proof of
+  // impossibility. The merge returns `undefined` for exactly the two states
+  // the guards above refuse, so this cannot fire while all four conditions
+  // agree — but that agreement lives in two functions in two packages, and
+  // this is what catches them drifting. Handled rather than cast away: a
+  // guard weakened upstream then surfaces as a notice naming both candidate
+  // causes, instead of `undefined` typed into `bundle.quality`.
   if (section === undefined) {
-    return { folded: false, notice: `Quality: nothing to fold under ${auditsDir(root)}` };
+    return {
+      folded: false,
+      notice: `Quality: nothing to fold — no audits under ${auditsDir(root)}, or no profile at ${profilePath(root)}`,
+    };
   }
 
   bundle.quality = section;
