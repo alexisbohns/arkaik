@@ -92,3 +92,7 @@ next-env.d.ts
 
 # git worktrees for isolated feature work
 /.worktrees/
+
+# local quality-audit framework (templates, scripts, generated projections) —
+# working material, not part of the repo
+/docs/quality/
