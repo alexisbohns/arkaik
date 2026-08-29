@@ -396,6 +396,11 @@ export function buildKritikCatalog(ctx: KritikContext): {
       const from = typeof args.from === "string" && args.from !== "" ? known(args.from) : audits[audits.indexOf(to) - 1];
       if (from === undefined) throw new ToolError(`"${to}" is the oldest audit — there is nothing before it to compare against.`);
       if (from === to) throw new ToolError(`from and to name the same audit ("${to}") — a regression needs two readings.`);
+      // Order is the whole verdict: a hand-swapped pair reports a clean run
+      // where a real regression exists.
+      if (audits.indexOf(from) > audits.indexOf(to)) {
+        throw new ToolError(`from "${from}" is newer than to "${to}" — swap them, or the comparison inverts.`);
+      }
 
       let regressions: Regression[];
       try {

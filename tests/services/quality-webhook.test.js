@@ -262,6 +262,22 @@ const merged = (over = {}) => ({
   const unknown = await applyQualityResolutions(merged({ body: "Fixes F-2026-08-SEC-web-99." }), { readState: typo.readState });
   check("an unmatched id is reported, not swallowed", typo.appended.length === 0 && unknown.some((o) => o.status === "unknown" && o.findingId === "F-2026-08-SEC-web-99"), JSON.stringify(unknown));
 
+  // A journal that refuses the append must not be reported as a resolution —
+  // the delivery response is the one place anybody looks to see what happened.
+  const refusing = {
+    readState: async () => [
+      { projectId: "prj_1", findings: [FINDING()], resolvedFindingIds: new Set(), append: async () => [] },
+    ],
+  };
+  const refused = await applyQualityResolutions(merged({ body: "Fixes F-2026-08-SEC-web-01." }), refusing);
+  check("a refused append reports refused, not resolved", refused.length === 1 && refused[0].status === "refused" && refused[0].findingId === "F-2026-08-SEC-web-01", JSON.stringify(refused));
+
+  // "the PR named nothing" and "no project holds what it named" are different
+  // answers; the second is what a hosted project with no quality section gives.
+  const noSection = { readState: async () => [] };
+  const empty = await applyQualityResolutions(merged({ body: "Fixes F-2026-08-SEC-web-01." }), noSection);
+  check("a PR naming a finding nobody holds is not 'no_mentions'", empty.length === 1 && empty[0].status === "no_quality_data", JSON.stringify(empty));
+
   const silent = state();
   const none = await applyQualityResolutions(merged({ body: "Just a refactor." }), { readState: silent.readState });
   check("a PR naming nothing reads no project at all", none.length === 1 && none[0].status === "no_mentions", JSON.stringify(none));

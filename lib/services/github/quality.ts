@@ -25,6 +25,8 @@ export type QualityResolutionOutcome =
   | { projectId: string; status: "resolved"; findingId: string; eventId: string }
   | { projectId: string; status: "unchanged"; findingId: string }
   | { projectId: string; status: "unknown"; findingId: string }
+  | { projectId: string; status: "refused"; findingId: string }
+  | { status: "no_quality_data" }
   | { status: "no_mentions" };
 
 /** One project's quality state, and the way to write back to it. */
@@ -94,12 +96,27 @@ export async function applyQualityResolutions(
 
     if (events.length === 0) continue;
     const eventIds = await state.append(events);
+    // An append that wrote nothing is a REFUSAL, not a resolution. Reporting it
+    // as `resolved` would tell the one diagnostic surface anybody reads — the
+    // delivery response docs/hosted-projects.md points people at — that a
+    // finding was closed when the journal never took it.
+    if (eventIds.length === 0) {
+      for (const findingId of resolving) {
+        outcomes.push({ projectId: state.projectId, status: "refused", findingId });
+      }
+      continue;
+    }
     resolving.forEach((findingId, index) => {
       outcomes.push({ projectId: state.projectId, status: "resolved", findingId, eventId: eventIds[index] });
     });
   }
 
-  return outcomes.length > 0 ? outcomes : [{ status: "no_mentions" }];
+  // Two different silences, deliberately named apart. `no_mentions` is "the PR
+  // claimed nothing" and is decided before any read; this is "the PR claimed
+  // something, and no linked project holds a finding it names" — the shape a
+  // hosted project with no `quality` section in its snapshot produces. Reusing
+  // `no_mentions` here would deny the one fact we actually know.
+  return outcomes.length > 0 ? outcomes : [{ status: "no_quality_data" }];
 }
 
 /**

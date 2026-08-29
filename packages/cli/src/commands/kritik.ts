@@ -860,6 +860,12 @@ function auditPair(root: string, from?: string, to?: string): { from: string; to
   if (older === newer) {
     fail(`kritik: --from and --to name the same audit ("${newer}") — a regression needs two readings.`);
   }
+  // Order is the whole verdict: `detectRegressions` reads its first argument as
+  // the EARLIER reading, so a hand-swapped pair reports a clean run where a real
+  // regression exists — a false green in the CI step this verb exists to be.
+  if (audits.indexOf(older) > audits.indexOf(newer)) {
+    fail(`kritik: --from "${older}" is newer than --to "${newer}" — swap them, or the comparison inverts.`);
+  }
   return { from: older, to: newer };
 }
 

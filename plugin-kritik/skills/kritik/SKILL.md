@@ -404,10 +404,18 @@ it. It appends `quality.finding.resolved` to the journal sidecar when there is
 one and says so when there is not, exactly as step 7 describes. Re-running is
 safe: a finding already resolved is left alone and no second event is written.
 
-**And, on a project the Arkaik GitHub App delivers to, the App does it too.**
+**And, on a project the Arkaik GitHub App delivers to, the App may do it too.**
 Merging the PR appends `quality.finding.resolved` to the **hosted** project's
 journal. Nothing reaches this checkout, which is why the command above is still
 yours to run.
+
+*May*, because the App can only close a finding the hosted project already
+carries in its own `quality` section — and nothing in the toolchain copies
+`docs/quality/` there. A repository that audits into sidecars, which is every
+repository following this skill, has a hosted project that knows none of its
+findings, so the App will match nothing and say so. Treat the App as a
+convenience that might fire, never as the thing that closed the finding. The
+repo command above is what makes `findings.json` true, and it is not optional.
 
 *Which case am I in?* Two facts, and only the first is visible from here:
 `docs/arkaik/arkaik.json` exists — what `arkaik link` writes, so there is a

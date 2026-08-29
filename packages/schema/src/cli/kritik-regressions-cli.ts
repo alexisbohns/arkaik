@@ -61,12 +61,28 @@ function main(): void {
         `${audits.length === 0 ? "docs/quality/audits/ holds none" : `only "${audits[0]}" exists`}.`,
     );
   }
-  const known = (id: string): string | undefined => (audits.includes(id) ? id : undefined);
-  const to = requestedTo === undefined ? audits[audits.length - 1] : known(requestedTo);
-  if (to === undefined) return die(`detect-regressions: no audit "${requestedTo}" (have: ${audits.join(", ")})`);
-  const from = requestedFrom === undefined ? audits[audits.indexOf(to) - 1] : known(requestedFrom);
-  if (from === undefined) return die(`detect-regressions: no older audit to compare "${to}" against`);
+  // An unknown id and "there is nothing older" are different refusals and must
+  // read differently — folding them together names the wrong audit and hides
+  // what the repo actually holds. The CLI verb and the MCP tool say the same
+  // two things; a third wording here is how three entry points drift apart.
+  const known = (id: string, flag: string): string => {
+    if (!audits.includes(id)) {
+      die(`detect-regressions: no audit "${id}" for ${flag} (have: ${audits.join(", ")})`);
+    }
+    return id;
+  };
+  const to = requestedTo === undefined ? audits[audits.length - 1] : known(requestedTo, "--to");
+  const from = requestedFrom === undefined ? audits[audits.indexOf(to) - 1] : known(requestedFrom, "--from");
+  if (from === undefined) {
+    return die(`detect-regressions: "${to}" is the oldest audit — there is nothing before it to compare against.`);
+  }
   if (from === to) return die(`detect-regressions: --from and --to name the same audit ("${to}")`);
+  // Order is the whole verdict: `detectRegressions` reads its first argument as
+  // the earlier reading, so a hand-swapped pair would silently report a clean
+  // run where a real regression exists — a false green in CI.
+  if (audits.indexOf(from) > audits.indexOf(to)) {
+    return die(`detect-regressions: --from "${from}" is newer than --to "${to}" — swap them, or the comparison inverts.`);
+  }
 
   const library = loadEffectiveLibrary(scriptDir, root);
   let regressions: Regression[];
