@@ -54,9 +54,10 @@ check("isFindingId rejects empty segments", !isFindingId("F-----01"));
 const overlong = mentionedFindings(ev("", `F-${"a".repeat(90)} trailing text`));
 check("a token past the 80-char cap vanishes rather than truncating", overlong.length === 0, JSON.stringify(overlong));
 
-// Attacker-influenced input: a PR body is up to 2 MB and anyone can open one
-// from a fork. The grammar must be linear, so a body of pathological `F-`
-// repetitions has to finish in well under a second.
+// Attacker-influenced input: a PR body is anyone-can-open-a-fork input, and
+// GitHub allows up to 65,536 characters of it. The grammar must be linear, so
+// a body of pathological `F-` repetitions has to finish in well under a
+// second regardless.
 const hostile = "F-".repeat(200000);
 const start = Date.now();
 mentionedFindings(ev("", hostile));
@@ -132,6 +133,39 @@ check(
   JSON.stringify(closuresPastFence),
 );
 
+const tildeFence = mentionedFindings(ev("", ["Before.", "~~~", "F-2026-08-SEC-web-09 is only in the fence.", "~~~", "F-2026-08-SEC-web-10 is outside."].join("\n")));
+check(
+  "a ~~~ fence hides content the same way a ``` fence does",
+  tildeFence.length === 1 && tildeFence[0] === "F-2026-08-SEC-web-10",
+  JSON.stringify(tildeFence),
+);
+
+const unclosedFence = closedIssues(ev("", ["Before the fence.", "```", "Closes #7"].join("\n")));
+check("an unclosed fence swallows everything after it", unclosedFence.length === 0, JSON.stringify(unclosedFence));
+
+// Splitting into runs, not one joined string: `[\s:]{1,20}` matches a
+// newline, so gluing the text on either side of a stripped fence together let
+// a dangling keyword before the fence reach a bare number after it.
+const crossFenceBleed = closedIssues(ev("", ["The crash is fixed", "```", "stack trace", "```", "#124 tracked this."].join("\n")));
+check("a keyword before a fence cannot reach a reference after it", crossFenceBleed.length === 0, JSON.stringify(crossFenceBleed));
+
+// A fence closes only on a marker of the SAME character, at least as long as
+// the one that opened it — not on any ``` or ~~~ line. A four-backtick fence
+// wrapping a three-backtick example of the closing grammar must not be
+// closed by that shorter inner marker.
+const nestedFence = closedIssues(
+  ev(
+    "",
+    ["Here is how you close an issue in this repo:", "````", "```", "Closes #99", "Closes #1", "````"].join("\n"),
+  ),
+);
+check("a fenced example of the closing grammar does not leak through its own inner marker", nestedFence.length === 0, JSON.stringify(nestedFence));
+
+// A mismatched marker character does not close a fence either: a ``` opener
+// stays open through a ~~~ line and closes only on a real ```.
+const mismatchedMarker = closedIssues(ev("", ["```", "Closes #5", "~~~", "Closes #6", "```"].join("\n")));
+check("a ~~~ line does not close a ``` fence", mismatchedMarker.length === 0, JSON.stringify(mismatchedMarker));
+
 // --- parseIssueRef -----------------------------------------------------------
 
 check("parseIssueRef reads a plain URL", JSON.stringify(parseIssueRef("https://github.com/acme/notes-app/issues/44")) === JSON.stringify({ repo: "acme/notes-app", number: 44 }));
@@ -143,6 +177,13 @@ check("junk is undefined", parseIssueRef("not a url") === undefined);
 check("a copied comment-fragment link still reads the issue number", parseIssueRef("https://github.com/acme/notes-app/issues/44#issuecomment-9")?.number === 44);
 check("undefined is undefined", parseIssueRef(undefined) === undefined);
 check("null is undefined", parseIssueRef(null) === undefined);
+
+// The {1,100} bound is GitHub's own repository-name ceiling — a cap short of
+// it would silently drop a legal reference.
+const repo100 = "a".repeat(100);
+const repo101 = "a".repeat(101);
+check("a 100-character repo name is within GitHub's ceiling and parses", parseIssueRef(`https://github.com/acme/${repo100}/issues/1`)?.repo === `acme/${repo100}`);
+check("a 101-character repo name exceeds the cap and does not parse", parseIssueRef(`https://github.com/acme/${repo101}/issues/1`) === undefined);
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 process.exit(failures ? 1 : 0);
