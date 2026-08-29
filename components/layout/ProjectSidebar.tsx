@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
   BookOpenIcon,
+  GemIcon,
   LayoutDashboardIcon,
   MapIcon,
   MapPinnedIcon,
@@ -95,6 +96,7 @@ export function ProjectSidebar({
   const deliveryHref = `/project/${projectId}/delivery`;
   const designHref = `/project/${projectId}/design`;
   const changelogHref = `/project/${projectId}/changelog`;
+  const qualityHref = `/project/${projectId}/quality`;
   const pyramidHref = `/project/${projectId}/pyramid`;
   const AcceptanceIcon = SPECIES_NAV_ICONS.acceptance;
   const DecisionIcon = SPECIES_NAV_ICONS.decision;
@@ -174,6 +176,14 @@ export function ProjectSidebar({
                 <Link href={changelogHref}>
                   <ScrollTextIcon />
                   <span>Changelog</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={currentView === "quality"} tooltip="Quality audit">
+                <Link href={qualityHref}>
+                  <GemIcon />
+                  <span>Quality</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

@@ -32,6 +32,7 @@ export type CommandIconId =
   | "delivery"
   | "design"
   | "changelog"
+  | "quality"
   | "settings"
   | "docs"
   | "publish"
@@ -423,6 +424,15 @@ export function buildProjectCommands({ projectId, customMaps }: ProjectCommandIn
       keywords: ["releases", "milestones", "shipped", "journal", "timeline"],
       hint: "Milestones and what shipped",
       target: { kind: "href", href: `${base}/changelog` },
+    },
+    {
+      id: "quality",
+      label: "Quality",
+      group: "project",
+      icon: "quality",
+      keywords: ["audit", "findings", "matrix", "kritik", "severity"],
+      hint: "Audit matrix and findings",
+      target: { kind: "href", href: `${base}/quality` },
     },
     {
       id: "settings",
