@@ -1,5 +1,6 @@
 /**
- * `arkaik pack [--no-journal] [--inline-assets] [--out <path>] [path]`.
+ * `arkaik pack [--no-journal] [--no-quality] [--inline-assets] [--audit <id>]
+ *              [--root <dir>] [--out <path>] [path]`.
  *
  * Produces a SINGLE self-contained interchange bundle (docs/spec/journal.md §
  * Interchange: embedded journal[]; docs/spec/bundle-format.md § Asset Values):
@@ -19,13 +20,14 @@
  *     and `priority` dropped (`lib/kritik-io.ts`). A repo with no audits or
  *     no profile is reported and skipped, never failed — quality is additive
  *     to a bundle, and a half-installed Kritik must not break `pack`. The
- *     source `docs/quality/` tree is only ever READ. `noQuality` DELETES
+ *     source `docs/quality/` tree is only ever READ. `--no-quality` DELETES
  *     `quality` instead, exactly as `--no-journal` deletes `journal[]`: a
  *     posture that only declined to fold would still ship a section the
  *     source bundle already carried, which is the case `arkaik push` exists
- *     to prevent. `audit` pins one audit's snapshot instead of the merge.
- *     Both are programmatic options today, their CLI flags still to come
- *     (#389);
+ *     to prevent. `--audit <id>` pins one audit's snapshot instead of the
+ *     merge, and `--root <dir>` overrides the repo root the sidecars are
+ *     looked for under (see `resolveQualityRoot` — the default follows the
+ *     bundle, not the cwd);
  *  4. `--inline-assets` (OFF by default, local-only in v1): every
  *     `metadata.platformScreenshots` value that is a *relative path* (no URI
  *     scheme, no leading `/` — docs/spec/bundle-format.md § Asset Values) is
@@ -54,12 +56,14 @@ import { foldQualitySection } from "../lib/kritik-io";
 
 const DEFAULT_BUNDLE_PATH = "docs/arkaik/bundle.json";
 
-const USAGE = `arkaik pack [--no-journal] [--inline-assets] [--out <path>] [path]
+const USAGE = `arkaik pack [--no-journal] [--no-quality] [--inline-assets] [--audit <id>]
+            [--root <dir>] [--out <path>] [path]
 
 Produce a single self-contained interchange bundle: fold in the sidecar
-journal (or keep an existing embedded one) and, with --inline-assets, inline
-local screenshot files as data: URIs. Written canonically via serializeBundle.
-Unknown top-level keys and unknown fields always round-trip.
+journal (or keep an existing embedded one), fold docs/quality/ into the
+quality section, and, with --inline-assets, inline local screenshot files as
+data: URIs. Written canonically via serializeBundle. Unknown top-level keys
+and unknown fields always round-trip.
 
 Arguments:
   path              Path to the bundle JSON file (default: ${DEFAULT_BUNDLE_PATH}).
@@ -71,12 +75,32 @@ Options:
                      interchange) — embedded wins over the sidecar when the
                      bundle already carries one, otherwise the sidecar is used
                      (same precedence "arkaik validate" folds by).
+  --no-quality      DELETE the quality section rather than folding one in —
+                     not merely "skip the fold", because the source bundle may
+                     already carry a section of its own and that one goes too.
+                     For any bundle that must not travel with open findings:
+                     a finding names an unfixed vulnerability and the file to
+                     find it in. ("arkaik push" always packs this way.)
+                     Default: docs/quality/ IS folded in.
   --inline-assets   Convert relative-path metadata.platformScreenshots values
                      into data: URIs by reading the file from disk (resolved
                      against the bundle's directory). Absolute https:// URLs
                      and existing data: URIs are left as-is. v1 scope: local
                      files only — uploading a remote/hosted copy is not
                      implemented.
+  --audit <id>      Pin ONE audit's snapshot instead of the default merge.
+                     They answer different questions: the merge (every audit,
+                     latest score per criterion x surface) answers "where does
+                     the product stand", while a pinned audit answers "how did
+                     that audit go" — the question its own matrix.json
+                     answers. An id that is not on disk is an error, not an
+                     empty section.
+  --root <dir>      Where docs/quality/ lives. Default: NOT the current
+                     directory — it is derived from the bundle's own path, so
+                     packing <repo>/docs/arkaik/bundle.json folds <repo>'s
+                     audits whatever directory you run from. Only a bundle
+                     kept outside that conventional layout falls back to the
+                     cwd, and that is the case this flag is for.
   --out <path>      Write the packed bundle here instead of stdout.
   -h, --help        Show this help.`;
 
@@ -279,7 +303,10 @@ export function runPack(options: RunPackOptions = {}): RunPackResult {
 
 export function runPackCli(args: string[]): void {
   let noJournal = false;
+  let noQuality = false;
   let inlineAssets = false;
+  let audit: string | undefined;
+  let root: string | undefined;
   let out: string | undefined;
   const positionals: string[] = [];
 
@@ -290,8 +317,18 @@ export function runPackCli(args: string[]): void {
       process.exit(0);
     } else if (arg === "--no-journal") {
       noJournal = true;
+    } else if (arg === "--no-quality") {
+      noQuality = true;
     } else if (arg === "--inline-assets") {
       inlineAssets = true;
+    } else if (arg === "--audit") {
+      const value = args[++i];
+      if (value === undefined) fail(`Missing value for --audit\n\n${USAGE}`);
+      audit = value;
+    } else if (arg === "--root") {
+      const value = args[++i];
+      if (value === undefined) fail(`Missing value for --root\n\n${USAGE}`);
+      root = value;
     } else if (arg === "--out") {
       const value = args[++i];
       if (value === undefined) fail(`Missing value for --out\n\n${USAGE}`);
@@ -304,7 +341,7 @@ export function runPackCli(args: string[]): void {
   }
 
   const filePath = positionals[0] ?? DEFAULT_BUNDLE_PATH;
-  const result = runPack({ path: filePath, out, noJournal, inlineAssets });
+  const result = runPack({ path: filePath, out, noJournal, inlineAssets, noQuality, audit, root });
   if (!result.ok) fail(`FATAL: ${result.fatal}`);
 
   if (result.journalIncluded) {

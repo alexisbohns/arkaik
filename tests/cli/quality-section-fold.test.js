@@ -414,14 +414,97 @@ function packIn(dir, args = []) {
   );
 }
 
-// --- 9. the options no CLI flag reaches yet --------------------------------
+// --- 9. the argv contract --------------------------------------------------
+
+// `runPack` has honoured these three options since the fold landed; what is
+// tested here is only that the flags reach them. The semantics live in
+// section 10, in process — no point spawning a CLI twice for the same fact.
+{
+  const dir = makeRepo();
+
+  // --no-quality: the section is absent, nothing is announced, and NOTHING
+  // ELSE moves. The last clause is why this compares whole bundles rather
+  // than checking for the key: a strip that also dropped, reordered or
+  // re-encoded another top-level key would pass a key check.
+  const plain = packIn(dir, []);
+  const stripped = packIn(dir, ["--no-quality"]);
+  check("--no-quality exits 0", stripped.result.status === 0, stripped.result.stderr);
+  check("--no-quality emits no quality section", stripped.bundle && stripped.bundle.quality === undefined, JSON.stringify(stripped.bundle && Object.keys(stripped.bundle)));
+  check("--no-quality says nothing about a fold it never ran", !/^Quality:/m.test(stripped.result.stderr), stripped.result.stderr);
+  const plainMinusQuality = { ...(plain.bundle || {}) };
+  delete plainMinusQuality.quality;
+  check(
+    "--no-quality changes nothing but that key",
+    JSON.stringify(plainMinusQuality) === JSON.stringify(stripped.bundle),
+    `${JSON.stringify(Object.keys(plainMinusQuality))}\n${JSON.stringify(stripped.bundle && Object.keys(stripped.bundle))}`,
+  );
+
+  // --root: the explicit override, a different branch of resolveQualityRoot
+  // from section 6's derivation. The bundle is deliberately NOT at the
+  // conventional docs/arkaik/ path, so the derivation cannot find the repo
+  // and only the flag can — which is what makes the control below meaningful.
+  const stray = path.join(dir, "stray-bundle.json");
+  writeJson(stray, BUNDLE);
+  const elsewhere = mkdtempSync(path.join(tmpdir(), "arkaik-qfold-root-"));
+  const withoutRoot = packIn(elsewhere, [stray]);
+  check(
+    "a bundle outside docs/arkaik/ finds no repo on its own",
+    withoutRoot.bundle && withoutRoot.bundle.quality === undefined,
+    withoutRoot.result.stderr,
+  );
+  const withRoot = packIn(elsewhere, ["--root", dir, stray]);
+  check("--root exits 0", withRoot.result.status === 0, withRoot.result.stderr);
+  check(
+    "--root points the fold at that repo from an unrelated cwd",
+    withRoot.bundle && withRoot.bundle.quality && withRoot.bundle.quality.assessments.length === 5,
+    withRoot.result.stderr,
+  );
+
+  // --audit: the older audit's own numbers, not the merge's.
+  const pinned = packIn(dir, ["--audit", "2026-08"]);
+  const section = (pinned.bundle && pinned.bundle.quality) || {};
+  check("--audit exits 0", pinned.result.status === 0, pinned.result.stderr);
+  check("--audit pins that audit's assessments", (section.assessments || []).length === 4, JSON.stringify((section.assessments || []).length));
+  const rescored = (section.assessments || []).find((a) => a.criterion_id === "SEC-01" && a.surface === "web");
+  check("--audit reports the pre-rescore level, where the merge reports 4", rescored && rescored.level === 2, JSON.stringify(rescored));
+  check("--audit takes framework_version from that audit", section.framework_version === "9.9.8", section.framework_version);
+  check("--audit counts one audit in the notice", /from 1 audit\(s\)/.test(pinned.result.stderr), pinned.result.stderr);
+
+  const ghost = packIn(dir, ["--audit", "2026-99"]);
+  check("an audit id that is not on disk exits 1", ghost.result.status === 1, `${ghost.result.status}`);
+  check(
+    "and the error names both the id and where it looked",
+    /2026-99/.test(ghost.result.stderr) && ghost.result.stderr.includes(path.join("docs", "quality", "audits")),
+    ghost.result.stderr,
+  );
+
+  // The value-taking branches, which are the easiest to get wrong and the
+  // least likely to be run.
+  for (const flag of ["--audit", "--root"]) {
+    const missing = packIn(dir, [flag]);
+    check(
+      `${flag} with no value exits 1 with the usage text`,
+      missing.result.status === 1 &&
+        missing.result.stderr.includes(`Missing value for ${flag}`) &&
+        missing.result.stderr.includes("arkaik pack ["),
+      missing.result.stderr,
+    );
+  }
+}
+
+// --- 10. the same options in process ---------------------------------------
 
 /**
- * `noQuality` and `audit` are `runPack` options with no argv spelling until
- * #389's later phases, and `arkaik push` is the only shipped caller that sets
- * one. So this layer bundles pack.ts and calls `runPack` directly — the same
- * technique tests/cli/pack-open.test.js and tests/cli/push.test.js use, and
- * the only way to cover behaviour the built binary cannot yet be asked for.
+ * The SEMANTICS of `noQuality` and `audit`, exercised against `runPack`
+ * directly — pack.ts esbuild-bundled, the technique
+ * tests/cli/pack-open.test.js and tests/cli/push.test.js use.
+ *
+ * Section 9 above covers the argv spellings that reach these; this covers
+ * what they then do, plus the two cases argv cannot construct at all: a
+ * source bundle that arrives already carrying a `quality` section, and the
+ * `qualityFolded` / `qualityNotice` fields a caller reads instead of the
+ * printed line. `arkaik push` is the shipped caller that sets `noQuality`
+ * without a flag, so this layer is where its posture is provable.
  */
 async function inProcess() {
   mkdirSync(TEST_BUILD_DIR, { recursive: true });
