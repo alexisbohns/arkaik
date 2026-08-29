@@ -68,8 +68,19 @@ if (!existsSync(CLI)) {
   process.exit(1);
 }
 
+/**
+ * Spawn the built CLI in a fixed, empty directory.
+ *
+ * Every spawned case here fails before packing (bad argv, or a bundle path
+ * that does not exist), so nothing currently folds — but inheriting the
+ * runner's cwd is the trap that made both this suite and
+ * tests/cli/pack-open.test.js depend on whether the developer had run `arkaik
+ * kritik profile` (#389). Pinning it costs one line and closes the class
+ * rather than the instance.
+ */
+const CLI_CWD = mkdtempSync(path.join(tmpdir(), "arkaik-push-cli-"));
 function runCli(args) {
-  return spawnSync(process.execPath, [CLI, ...args], { encoding: "utf8" });
+  return spawnSync(process.execPath, [CLI, ...args], { encoding: "utf8", cwd: CLI_CWD });
 }
 
 let failures = 0;
@@ -762,7 +773,7 @@ async function main() {
     check("--api with no value exits 1", missingApiValue.status === 1);
   }
 
-  for (const dir of createdDirs) rmSync(dir, { recursive: true, force: true });
+  for (const dir of [...createdDirs, CLI_CWD]) rmSync(dir, { recursive: true, force: true });
   rmSync(TEST_BUILD_DIR, { recursive: true, force: true });
 
   console.log(`\n${passes} passed, ${failures} failed.`);

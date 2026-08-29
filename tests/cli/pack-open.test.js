@@ -64,8 +64,17 @@ if (!existsSync(CLI)) {
 
 const { serializeBundle, validateBundle } = require("../schema/load-schema").loadSchema();
 
-function runCli(args) {
-  return spawnSync(process.execPath, [CLI, ...args], { encoding: "utf8" });
+/**
+ * Spawn the built CLI. `cwd` is REQUIRED, and for the same reason `fixture()`
+ * insists on it in process: `arkaik pack` folds `docs/quality/` from a root it
+ * derives from the bundle path, falling back to the cwd for a bundle outside
+ * `docs/arkaik/` — which every fixture here is. Inheriting the runner's cwd
+ * makes a checkout that has run `arkaik kritik profile` fold a real quality
+ * section into this suite's stdout, which then overruns spawnSync's default
+ * maxBuffer and fails as a JSON parse error nowhere near the cause (#389).
+ */
+function runCli(args, cwd) {
+  return spawnSync(process.execPath, [CLI, ...args], { encoding: "utf8", cwd });
 }
 
 let failures = 0;
@@ -124,7 +133,19 @@ const ASSET_BYTES = Buffer.from("FAKE-PNG-BYTES");
 
 const createdDirs = [];
 
-/** Fresh temp dir with bundle.json + journal.jsonl + assets/home.png. */
+/**
+ * Fresh temp dir with bundle.json + journal.jsonl + assets/home.png.
+ *
+ * ALWAYS pass the returned `dir` as `cwd:` to `runPack`/`runOpen`. The bundle
+ * deliberately does NOT sit at the conventional `docs/arkaik/` path (these
+ * cases are about journal embedding, asset inlining and key round-tripping,
+ * not repo layout), so `resolveQualityRoot` can derive no root from it and
+ * falls back to whatever cwd it is given. Left to default, that is
+ * `process.cwd()` — the checkout the test runner happens to be standing in —
+ * and the suite starts depending on whether the developer has run `arkaik
+ * kritik profile` (#389). Handing it `dir` makes the fold look inside this
+ * fixture, find no `docs/quality/`, and report "none to fold" every time.
+ */
 function fixture() {
   const dir = mkdtempSync(path.join(tmpdir(), "arkaik-pack-"));
   createdDirs.push(dir);
@@ -167,8 +188,8 @@ async function main() {
   // pack: embeds the sidecar journal by default; canonical + parses + valid.
   // -------------------------------------------------------------------------
   {
-    const { bundlePath } = fixture();
-    const result = runPack({ path: bundlePath });
+    const { bundlePath, dir } = fixture();
+    const result = runPack({ path: bundlePath, cwd: dir });
 
     check("runPack ok", result.ok === true, JSON.stringify(result));
     check(
@@ -193,8 +214,8 @@ async function main() {
   // pack --no-journal: omits journal[] entirely.
   // -------------------------------------------------------------------------
   {
-    const { bundlePath } = fixture();
-    const result = runPack({ path: bundlePath, noJournal: true });
+    const { bundlePath, dir } = fixture();
+    const result = runPack({ path: bundlePath, noJournal: true, cwd: dir });
 
     check("runPack --no-journal ok", result.ok === true);
     check("journalIncluded is false", result.journalIncluded === false);
@@ -207,9 +228,9 @@ async function main() {
   // Without the flag, assets are left exactly as-is.
   // -------------------------------------------------------------------------
   {
-    const { bundlePath, originalBundle } = fixture();
+    const { bundlePath, dir, originalBundle } = fixture();
 
-    const inlined = runPack({ path: bundlePath, inlineAssets: true });
+    const inlined = runPack({ path: bundlePath, inlineAssets: true, cwd: dir });
     check("runPack --inline-assets ok", inlined.ok === true);
     const parsedInlined = JSON.parse(inlined.output);
     const shots = parsedInlined.nodes[0].metadata.platformScreenshots;
@@ -226,7 +247,7 @@ async function main() {
       JSON.stringify(inlined.inlinedAssets),
     );
 
-    const plain = runPack({ path: bundlePath });
+    const plain = runPack({ path: bundlePath, cwd: dir });
     const parsedPlain = JSON.parse(plain.output);
     const plainShots = parsedPlain.nodes[0].metadata.platformScreenshots;
     const originalShots = originalBundle.nodes[0].metadata.platformScreenshots;
@@ -243,13 +264,13 @@ async function main() {
   // reconstructed as {project,nodes,edges} — bundle-format.md:40's defect).
   // -------------------------------------------------------------------------
   {
-    const { bundlePath } = fixture();
+    const { bundlePath, dir } = fixture();
     const raw = JSON.parse(readFileSync(bundlePath, "utf8"));
     raw.custom_top_level = { z: 1, a: 2 };
     raw.nodes[0].custom_node_field = "kept";
     writeFileSync(bundlePath, JSON.stringify(raw, null, 2) + "\n");
 
-    const result = runPack({ path: bundlePath });
+    const result = runPack({ path: bundlePath, cwd: dir });
     const parsed = JSON.parse(result.output);
     check(
       "unknown top-level key survives packing",
@@ -267,7 +288,7 @@ async function main() {
     const openerCalls = [];
     const opener = async (url) => openerCalls.push(url);
 
-    const result = await runOpen({ path: invalidPath, opener });
+    const result = await runOpen({ path: invalidPath, opener, cwd: fixture().dir });
 
     check("runOpen ok (validation itself ran without a fatal error)", result.ok === true, JSON.stringify(result));
     check("runOpen reports the bundle invalid", result.valid === false);
@@ -282,11 +303,11 @@ async function main() {
   // URL without calling the opener; without --no-open the seam IS called.
   // -------------------------------------------------------------------------
   {
-    const { bundlePath } = fixture();
+    const { bundlePath, dir } = fixture();
 
     const openerCallsA = [];
     const openerA = async (url) => openerCallsA.push(url);
-    const noOpenResult = await runOpen({ path: bundlePath, noOpen: true, opener: openerA });
+    const noOpenResult = await runOpen({ path: bundlePath, noOpen: true, opener: openerA, cwd: dir });
 
     check("runOpen (valid, --no-open) ok", noOpenResult.ok === true, JSON.stringify(noOpenResult));
     check("runOpen (valid, --no-open) reports valid:true", noOpenResult.valid === true);
@@ -303,7 +324,7 @@ async function main() {
 
     const openerCallsB = [];
     const openerB = async (url) => openerCallsB.push(url);
-    const openResult = await runOpen({ path: bundlePath, opener: openerB });
+    const openResult = await runOpen({ path: bundlePath, opener: openerB, cwd: dir });
 
     check(
       "without --no-open: the injected opener IS called, with the URL",
@@ -321,7 +342,7 @@ async function main() {
     const outPath = path.join(dir, "handoff.json");
     const opener = async () => {};
 
-    const result = await runOpen({ path: bundlePath, out: outPath, noOpen: true, opener });
+    const result = await runOpen({ path: bundlePath, out: outPath, noOpen: true, opener, cwd: dir });
     check("open --out writes to the given path", result.outPath === outPath, JSON.stringify(result));
     check("the file exists at --out", existsSync(outPath));
   }
@@ -332,21 +353,21 @@ async function main() {
   // can never reach the real (unmocked) browser-launch code either.
   // -------------------------------------------------------------------------
   {
-    const { bundlePath } = fixture();
+    const { bundlePath, dir } = fixture();
 
-    const packHelp = runCli(["pack", "--help"]);
+    const packHelp = runCli(["pack", "--help"], dir);
     check("pack --help exits 0", packHelp.status === 0 && /arkaik pack/.test(packHelp.stdout), packHelp.stdout);
 
-    const openHelp = runCli(["open", "--help"]);
+    const openHelp = runCli(["open", "--help"], dir);
     check("open --help exits 0", openHelp.status === 0 && /arkaik open/.test(openHelp.stdout), openHelp.stdout);
 
-    const packBadFlag = runCli(["pack", "--nope", bundlePath]);
+    const packBadFlag = runCli(["pack", "--nope", bundlePath], dir);
     check("pack with an unknown flag exits 1", packBadFlag.status === 1);
 
-    const openBadFlag = runCli(["open", "--nope", bundlePath]);
+    const openBadFlag = runCli(["open", "--nope", bundlePath], dir);
     check("open with an unknown flag exits 1", openBadFlag.status === 1);
 
-    const packStdout = runCli(["pack", bundlePath]);
+    const packStdout = runCli(["pack", bundlePath], dir);
     check("pack via CLI (no --out) exits 0", packStdout.status === 0, `${packStdout.stdout}\n${packStdout.stderr}`);
     const parsedStdout = JSON.parse(packStdout.stdout);
     check(
@@ -355,7 +376,7 @@ async function main() {
       packStdout.stdout,
     );
 
-    const openNoOpenCli = runCli(["open", "--no-open", bundlePath]);
+    const openNoOpenCli = runCli(["open", "--no-open", bundlePath], dir);
     check(
       "open --no-open via CLI exits 0 (real opener never invoked)",
       openNoOpenCli.status === 0,
@@ -365,7 +386,7 @@ async function main() {
 
     // No --no-open here — safe only because the bundle is invalid, so runOpen
     // returns before ever touching the opener (verified above, in-process).
-    const invalidCli = runCli(["open", path.join(FIXTURES, "duplicate-node-id.json")]);
+    const invalidCli = runCli(["open", path.join(FIXTURES, "duplicate-node-id.json")], dir);
     check(
       "open on an invalid bundle via CLI (no --no-open) exits 1 without opening a browser",
       invalidCli.status === 1,
