@@ -1,9 +1,9 @@
 "use client";
 
 import { GemIcon } from "lucide-react";
-import { GRADE_TINT } from "@/components/quality/quality-styles";
+import { QualityGallery } from "@/components/quality/QualityGallery";
+import { SurfaceScoreCard } from "@/components/quality/SurfaceScoreCard";
 import type { SurfaceGauge } from "@/lib/utils/quality";
-import { cn } from "@/lib/utils";
 import { useOverviewLayoutContext } from "./OverviewLayoutContext";
 import { OverviewSection } from "./OverviewSection";
 
@@ -25,19 +25,22 @@ interface QualityCardProps {
  * gauges themselves rather than a `quality` flag, so an audit that exists but
  * has scored nothing is silent too, which is the same news.
  *
- * Not one number is computed here: `buildSurfaceGauges` reads the score off
- * `deriveQualityMatrix` and bands the grade with the pack's own scales, so this
- * card and the Quality page cannot disagree about how the product is doing.
+ * Not one number is computed here, and not one is *drawn* here either. The
+ * gauges come from `buildSurfaceGauges`, and the item is the matrix's own
+ * `SurfaceScoreCard` in the matrix's own `QualityGallery` — the same component
+ * the Quality page's "Overall" row renders from the same gauges, so the two
+ * surfaces cannot disagree about how the product is doing *or* about what a
+ * surface's standing looks like.
  */
 export function QualityCard({ gauges, projectId }: QualityCardProps) {
-  const asTiles = useOverviewLayoutContext() === "rows";
+  const asRows = useOverviewLayoutContext() === "rows";
 
   if (gauges.length === 0) return null;
 
-  // The findings these rows actually account for, not the section's total: a
+  // The findings these cards actually account for, not the section's total: a
   // finding filed on a surface the profile no longer declares has no gauge to
   // sit under, and counting it here would make the sum unexplainable from the
-  // rows beneath it.
+  // cards beneath it.
   const openFindings = gauges.reduce((total, gauge) => total + gauge.openFindings, 0);
 
   return (
@@ -49,57 +52,25 @@ export function QualityCard({ gauges, projectId }: QualityCardProps) {
       href={`/project/${projectId}/quality/matrix`}
       linkLabel="Quality"
     >
-      {asTiles ? (
-        <div className="flex flex-wrap gap-3">
-          {gauges.map((gauge) => (
-            <div
-              key={gauge.surface}
-              className="flex min-w-[9rem] flex-1 items-center gap-3 rounded-lg border bg-card px-3 py-2.5"
-            >
-              <GradeMark grade={gauge.grade} className="size-10 rounded-lg text-lg" />
-              <div className="flex min-w-0 flex-col">
-                <span className="truncate text-sm font-medium">{gauge.title}</span>
-                <span className="text-xs tabular-nums text-muted-foreground">
-                  {gauge.score === null ? "Not scored" : `${gauge.score}/100`} · {gauge.openFindings} open
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {gauges.map((gauge) => (
-            <li key={gauge.surface} className="flex items-center justify-between gap-2 text-xs">
-              <span className="truncate font-medium">{gauge.title}</span>
-              <span className="flex shrink-0 items-center gap-2 tabular-nums text-muted-foreground">
-                <span>{gauge.openFindings} open</span>
-                <span className="font-medium text-foreground">{gauge.score === null ? "—" : gauge.score}</span>
-                <GradeMark grade={gauge.grade} className="size-5 rounded text-[11px]" />
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
+      {/* The bleed is the shell's, not the gallery's: the card shell pads by 4
+          and the cards should reach its edge, the row layout's content column
+          has no padding to escape. */}
+      <QualityGallery className={asRows ? undefined : "-mx-4 px-4"}>
+        {gauges.map((gauge) => (
+          <SurfaceScoreCard
+            key={gauge.surface}
+            title={gauge.title}
+            score={gauge.score}
+            grade={gauge.grade}
+            meta={`${gauge.openFindings} open`}
+            label={
+              gauge.score === null
+                ? `${gauge.title} — nothing scored`
+                : `${gauge.title} — ${gauge.score} out of 100, grade ${gauge.grade} — ${gauge.openFindings} open findings`
+            }
+          />
+        ))}
+      </QualityGallery>
     </OverviewSection>
-  );
-}
-
-/**
- * A surface's grade in its band's colour, or the matrix's own N/A treatment when
- * nothing on that surface was scored — muted rather than green, because an
- * unaudited surface is not a passing one.
- */
-function GradeMark({ grade, className }: { grade: SurfaceGauge["grade"]; className?: string }) {
-  return (
-    <span
-      className={cn(
-        "flex shrink-0 items-center justify-center font-semibold",
-        grade ? GRADE_TINT[grade] : "bg-muted text-muted-foreground",
-        className,
-      )}
-      aria-label={grade ? `Grade ${grade}` : "Not scored"}
-    >
-      {grade ?? "–"}
-    </span>
   );
 }
