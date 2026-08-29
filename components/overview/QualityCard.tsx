@@ -46,7 +46,7 @@ export function QualityCard({ gauges, projectId }: QualityCardProps) {
       icon={GemIcon}
       description="How the product scores against its audit pack, surface by surface."
       subtitle={`${openFindings} open finding${openFindings === 1 ? "" : "s"} across ${gauges.length} surface${gauges.length === 1 ? "" : "s"}`}
-      href={`/project/${projectId}/quality`}
+      href={`/project/${projectId}/quality/matrix`}
       linkLabel="Quality"
     >
       {asTiles ? (

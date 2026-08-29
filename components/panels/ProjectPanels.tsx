@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, type ReactNode } from "react";
 import Link from "next/link";
 import { EntityId } from "@/components/graph/nodes/EntityBadges";
 import { PanelStack } from "@/components/panels/PanelStack";
+import { CellDetailPanel, CellDetailPanelHeader } from "@/components/panels/CellDetailPanel";
 import {
   CriterionDetailPanel,
   CriterionDetailPanelHeader,
@@ -11,7 +12,7 @@ import {
 import { NodeDetailPanel, NodeDetailPanelHeader } from "@/components/panels/NodeDetailPanel";
 import { RawBundlePanel } from "@/components/panels/RawBundlePanel";
 import { EmptyState } from "@/components/ui/empty-state";
-import type { KritikLibrary, QualitySection } from "@arkaik/schema";
+import { deriveQualityMatrix, type KritikLibrary, type QualitySection } from "@arkaik/schema";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { Edge, JournalEvent, Node } from "@/lib/data/types";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
@@ -128,6 +129,16 @@ export function ProjectPanels({
     [qualitySection, qualityLibrary],
   );
 
+  // The scored matrix, once per stack, for the same reason the findings are
+  // denormalized here: a cell panel must show the number the card it was opened
+  // from shows, and the only way to guarantee that is for both to read one
+  // `deriveQualityMatrix`. Over an absent section it is a walk of two empty
+  // arrays, so the pages that never open a cell panel pay nothing for it.
+  const qualityMatrix = useMemo(
+    () => deriveQualityMatrix({ quality: qualitySection }, qualityLibrary),
+    [qualitySection, qualityLibrary],
+  );
+
   // An empty list is the loading window, not a deleted project — pruning then
   // would close a panel restored from `?node=` before its node ever arrived.
   // It is also what every page that passes no nodes at all looks like.
@@ -145,6 +156,7 @@ export function ProjectPanels({
     (entry: PanelEntry<PanelDescriptor>) => {
       if (entry.payload.kind === "raw") return "Raw bundle";
       if (entry.payload.kind === "criterion") return entry.payload.criterionId;
+      if (entry.payload.kind === "cell") return `${entry.payload.domain} × ${entry.payload.surface}`;
       return nodesById.get(entry.key)?.title ?? entry.key;
     },
     [nodesById],
@@ -172,6 +184,16 @@ export function ProjectPanels({
         if (entry.payload.kind === "raw")
           return <span className="truncate text-sm font-medium">Raw bundle</span>;
 
+        if (entry.payload.kind === "cell")
+          return (
+            <CellDetailPanelHeader
+              domain={entry.payload.domain}
+              surface={entry.payload.surface}
+              library={qualityLibrary}
+              section={qualitySection}
+            />
+          );
+
         if (entry.payload.kind === "criterion")
           return (
             <CriterionDetailPanelHeader
@@ -188,6 +210,29 @@ export function ProjectPanels({
       renderBody={(entry, index) => {
         if (entry.payload.kind === "raw") {
           return <RawBundlePanel projectId={projectId} instanceId={entry.instanceId} />;
+        }
+
+        if (entry.payload.kind === "cell") {
+          const { domain, surface } = entry.payload;
+          return (
+            <CellDetailPanel
+              domain={domain}
+              surface={surface}
+              library={qualityLibrary}
+              section={qualitySection}
+              cell={qualityMatrix.matrix[domain]?.[surface] ?? null}
+              findings={qualityFindings}
+              nodesById={nodesById}
+              projectId={projectId}
+              // Above this panel, never in place of it — the rule every other
+              // navigation in the stack follows, and the reason the trail still
+              // reads back to the cell the reader came from.
+              onOpenNode={(nodeId) => openNode({ nodeId }, index + 1)}
+              onOpenCriterion={(criterionId, criterionSurface) =>
+                openCriterion(criterionId, criterionSurface, index + 1)
+              }
+            />
+          );
         }
 
         if (entry.payload.kind === "criterion") {

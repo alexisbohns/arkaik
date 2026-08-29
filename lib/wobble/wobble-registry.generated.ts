@@ -10,6 +10,8 @@ export interface WobbleIcon {
 }
 
 export const WOBBLE_ICONS: WobbleIcon[] = [
+  { name: "accessibility", seed: 15 },
+  { name: "activity", seed: 4 },
   { name: "apple", seed: 7 },
   { name: "arrow-down", seed: 9 },
   { name: "arrow-down-wide-narrow", seed: 9 },
@@ -67,6 +69,7 @@ export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "file-up", seed: 11 },
   { name: "flag", seed: 11 },
   { name: "flame", seed: 4 },
+  { name: "flask-conical", seed: 4 },
   { name: "folder-kanban", seed: 7 },
   { name: "folder-open", seed: 0 },
   { name: "folder-tree", seed: 12 },
@@ -81,6 +84,7 @@ export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "globe", seed: 6 },
   { name: "grid3x3", seed: 15 },
   { name: "handshake", seed: 14 },
+  { name: "heart-handshake", seed: 11 },
   { name: "heart-pulse", seed: 3 },
   { name: "history", seed: 19 },
   { name: "hourglass", seed: 9 },
@@ -98,6 +102,7 @@ export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "lightbulb", seed: 0 },
   { name: "link2", seed: 1 },
   { name: "list", seed: 5 },
+  { name: "list-checks", seed: 17 },
   { name: "list-chevrons-down-up", seed: 11 },
   { name: "list-chevrons-up-down", seed: 5 },
   { name: "loader-circle", seed: 17 },
@@ -135,6 +140,7 @@ export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "settings2", seed: 18 },
   { name: "shapes", seed: 19 },
   { name: "share2", seed: 14 },
+  { name: "shield", seed: 4 },
   { name: "shield-check", seed: 1 },
   { name: "sliders-horizontal", seed: 12 },
   { name: "sparkles", seed: 18 },
@@ -142,6 +148,7 @@ export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "square-kanban", seed: 6 },
   { name: "star", seed: 13 },
   { name: "stethoscope", seed: 14 },
+  { name: "store", seed: 14 },
   { name: "sun", seed: 17 },
   { name: "sun-moon", seed: 9 },
   { name: "sunrise", seed: 0 },

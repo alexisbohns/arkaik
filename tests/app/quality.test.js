@@ -594,5 +594,68 @@ assert(
   "the node badge clears",
 );
 
+// ========================== buildDomainSections ==============================
+//
+// The Matrix page's stacked sections. What matters is that they are a *view* of
+// deriveQualityMatrix and never a second scoring of it.
+
+const { buildDomainSections } = loadQuality();
+const sections = buildDomainSections(matrix, section, pack);
+
+assert(
+  sections.length === matrix.domains.length &&
+    sections.every((row, index) => row.domain === matrix.domains[index]),
+  "one section per matrix domain, in the matrix's own order",
+);
+assert(
+  sections.every(
+    (row) =>
+      row.cards.length === matrix.surfaces.length &&
+      row.cards.every((card, index) => card.surface === matrix.surfaces[index]),
+  ),
+  "one card per matrix surface, in the matrix's own order",
+);
+assert(
+  sections.every((row) =>
+    row.cards.every((card) => card.cell === (matrix.matrix[row.domain]?.[card.surface] ?? null)),
+  ),
+  "every card carries the matrix's own cell object, never a copy or a re-score",
+);
+assert(
+  sections.every((row) => row.scored === row.cards.filter((card) => card.cell !== null).length),
+  "scored counts the cells that exist, not the surfaces offered",
+);
+
+const secSection = sections.find((row) => row.domain === "SEC");
+const secScores = secSection.cards.filter((card) => card.cell).map((card) => card.cell.score);
+assert(
+  secSection.average === Math.round(secScores.reduce((total, score) => total + score, 0) / secScores.length),
+  `a section's average is the plain mean of its scored cells (SEC = ${secSection.average})`,
+);
+assert(
+  secSection.name === "Security" && typeof secSection.description === "string" && secSection.description !== "",
+  "a section takes its name and description from the pack's domain, not from its code",
+);
+assert(
+  secSection.cards.every((card) => card.title === (section.profile.surfaces.find((s) => s.id === card.surface)?.title ?? card.surface)),
+  "a card names its surface the way the profile titles it",
+);
+
+// A domain the audit never touched: not scored is not zero, and a heading that
+// said "avg 0" would read as a failing domain rather than an unaudited one.
+const unscoredDomain = buildDomainSections(
+  { domains: ["ZZZ"], surfaces: ["web"], matrix: { ZZZ: { web: null } }, overall: { web: null } },
+  section,
+  pack,
+);
+assert(
+  unscoredDomain[0].average === null && unscoredDomain[0].scored === 0,
+  "a domain scored nowhere reports a null average, never a zero",
+);
+assert(
+  unscoredDomain[0].name === "ZZZ",
+  "a domain the pack does not define falls back to its own code",
+);
+
 console.log(failures === 0 ? "\nAll quality projections OK" : `\n${failures} failure(s)`);
 process.exit(failures === 0 ? 0 : 1);

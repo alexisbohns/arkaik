@@ -33,6 +33,7 @@ export type CommandIconId =
   | "design"
   | "changelog"
   | "quality"
+  | "quality-findings"
   | "settings"
   | "docs"
   | "publish"
@@ -427,12 +428,21 @@ export function buildProjectCommands({ projectId, customMaps }: ProjectCommandIn
     },
     {
       id: "quality",
-      label: "Quality",
+      label: "Quality matrix",
       group: "project",
       icon: "quality",
-      keywords: ["audit", "findings", "matrix", "kritik", "severity"],
-      hint: "Audit matrix and findings",
-      target: { kind: "href", href: `${base}/quality` },
+      keywords: ["audit", "matrix", "kritik", "score", "grade", "domain", "surface"],
+      hint: "Every domain, surface by surface",
+      target: { kind: "href", href: `${base}/quality/matrix` },
+    },
+    {
+      id: "quality-findings",
+      label: "Findings",
+      group: "project",
+      icon: "quality-findings",
+      keywords: ["audit", "findings", "kritik", "severity", "priority", "issues"],
+      hint: "What the audit raised",
+      target: { kind: "href", href: `${base}/quality/findings` },
     },
     {
       id: "settings",
