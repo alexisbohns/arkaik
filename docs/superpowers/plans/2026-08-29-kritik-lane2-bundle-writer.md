@@ -764,6 +764,11 @@ In `tests/cli/quality-section-fold.test.js`, insert before the final `console.lo
   check("--audit 2026-08 carries only that audit's finding", (section.findings || []).length === 1, JSON.stringify((section.findings || []).map((f) => f.id)));
   check("--audit still strips derived fields", (section.findings || []).every((f) => !("severity" in f) && !("priority" in f)));
   check("--audit still embeds the library", section.library !== undefined && section.library.version === "9.9.9");
+  // The PINNED audit's own framework_version, not the newest one. SCORES_08 is
+  // "9.9.8" and SCORES_09 is "9.9.9" precisely so this can tell them apart —
+  // see the m4 fix in Task 1. `library.version` above stays "9.9.9" because
+  // that is the vendored pack's version, which no audit changes.
+  check("--audit reports the pinned audit's framework_version", section.framework_version === "9.9.8", section.framework_version);
   check("--audit reports one audit", /from 1 audit\(s\)/.test(result.stderr), result.stderr);
 }
 
@@ -835,6 +840,31 @@ git commit -m "test(kritik): pin --audit to one audit's snapshot (#389)"
   check("push --include-quality sends the section", sent.quality !== undefined && sent.quality.assessments.length === 5);
   check("push --include-quality forwards include_quality=true", httpClient.calls[0].url.includes("include_quality=true"), httpClient.calls[0].url);
 }
+
+// THE NON-VACUOUS CASE. Both assertions above start from a bundle with no
+// `quality` key, so `sent.quality === undefined` would pass even if push did
+// nothing at all — which is exactly how a real leak survived two reviews of
+// Task 1. Here the SOURCE bundle already carries a section and there are no
+// sidecars, so the default posture has something it must actively remove.
+{
+  const dir = makeQualityRepo();
+  const bundlePath = path.join(dir, "docs", "arkaik", "bundle.json");
+  const preloaded = JSON.parse(readFileSync(bundlePath, "utf8"));
+  preloaded.quality = {
+    framework_version: "9.9.9",
+    profile: { surfaces: [{ id: "web", title: "Web" }] },
+    assessments: [],
+    findings: [{ id: "F-LEAK", criterion_id: "SEC-01", surface: "web", title: "Live token at app/secret.ts:4", impact: 5, likelihood: 5, cost: "S", status: "open" }],
+  };
+  writeFileSync(bundlePath, JSON.stringify(preloaded, null, 2) + "\n");
+
+  const httpClient = makeMockHttpClient(() => jsonResponse(201, { id: "abc", owner_key: "k", url: "https://arkaik.app/p/abc" }));
+  await runPush({ path: bundlePath, apiBase: "http://example.invalid", cwd: dir, httpClient });
+  const sent = JSON.parse(httpClient.calls[0].init.body);
+
+  check("push strips a quality section the source bundle already carried", sent.quality === undefined, JSON.stringify(sent.quality));
+  check("no finding text reaches the request body", !httpClient.calls[0].init.body.includes("F-LEAK"));
+}
 ```
 
 Add a `makeQualityRepo()` helper to `tests/cli/push.test.js` that writes the same tree Task 1's `makeRepo()` writes — a valid bundle at `docs/arkaik/bundle.json`, `docs/quality/{library.json,profile.json}` and the two audit directories. Copy the constants from `tests/cli/quality-section-fold.test.js`; they are small and duplicating them keeps each suite runnable on its own, which is how every other suite in `tests/cli/` is written.
@@ -862,7 +892,7 @@ In `runPush`, after `const includeJournal = options.includeJournal ?? false;`:
 Change the `runPack` call to strip quality by default:
 
 ```typescript
-  const packed = runPack({ path: filePath, noJournal: !includeJournal, noQuality: !includeQuality, cwd, root: cwd });
+  const packed = runPack({ path: filePath, noJournal: !includeJournal, noQuality: !includeQuality, cwd });
 ```
 
 Replace the single-parameter URL construction with a two-parameter one:
