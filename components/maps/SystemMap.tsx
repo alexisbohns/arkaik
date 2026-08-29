@@ -5,6 +5,7 @@ import { type Connection, type EdgeMouseHandler, type NodeMouseHandler } from "@
 import { PlusIcon } from "lucide-react";
 import {
   buildProductUsageIndex,
+  resolveKritikLibrary,
   resolveMapDisplay,
   type MapDefinition,
   type MapDisplayOptions,
@@ -31,6 +32,7 @@ import { useProject } from "@/lib/hooks/useProject";
 import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
 import { generateNodeId, edgeId } from "@/lib/utils/id";
 import { mapProductId, type ProductGraph } from "@/lib/utils/product-scope";
+import { buildNodeFindingIndex } from "@/lib/utils/quality";
 import { buildSystemGraph } from "@/lib/utils/system-graph";
 import type { ElkLayoutOptions } from "@/lib/utils/elk-layout";
 
@@ -119,6 +121,15 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
     [definition, projectBundle?.project],
   );
 
+  // On `quality` alone, not on the bundle — JourneyMap's twin, and for its
+  // reason: this feeds `buildSystemGraph`, so a fresh map here would rebuild the
+  // graph and re-run ELK over 137 cards every time an unrelated corner of the
+  // project changed.
+  const nodeFindings = useMemo(
+    () => buildNodeFindingIndex(projectBundle?.quality, resolveKritikLibrary(projectBundle?.quality)),
+    [projectBundle?.quality],
+  );
+
   const graph = useMemo(
     () =>
       buildSystemGraph(
@@ -128,8 +139,9 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
         { onOpenDetails: (node) => openNode({ nodeId: node.id }) },
         display,
         { scope, graph: productGraph },
+        nodeFindings,
       ),
-    [dataEdges, dataNodes, definition, display, openNode, productGraph, scope],
+    [dataEdges, dataNodes, definition, display, nodeFindings, openNode, productGraph, scope],
   );
 
   // The per-map override record — see JourneyMap's twin (docs/spec/maps.md
