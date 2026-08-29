@@ -11,7 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { blockedByOf } from "@/lib/utils/blocked";
 import { scopedPlatforms } from "@/lib/utils/product-scope";
+import type { NodeFindingSummary } from "@/lib/utils/quality";
 import { useCanvasProductScope } from "../canvas-scope";
+import { FindingBadge } from "./FindingBadge";
 import { STATUS_GHOST_STYLES, STATUS_ICONS, STATUS_LABELS, STATUS_STYLES, PLATFORM_ICONS, PLATFORM_LABELS } from "./node-styles";
 
 interface ViewApiRelation {
@@ -155,6 +157,7 @@ function ViewNodeComponent({ data }: NodeProps) {
   const firstScreenshot = declaredPlatforms.reduce<string | undefined>(
     (found, p) => found ?? platformScreenshots[p], undefined,
   );
+  const findingSummary = data.findingSummary as NodeFindingSummary | undefined;
   const onOpenDetails = data.onOpenDetails as (() => void) | undefined;
   const onZoomShot = data.onZoomShot as (() => void) | undefined;
   const ghostClass = STATUS_GHOST_STYLES[status];
@@ -179,21 +182,24 @@ function ViewNodeComponent({ data }: NodeProps) {
             <span title={label} className="text-sm font-medium leading-tight line-clamp-2">
               {label}
             </span>
-            {onOpenDetails && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 shrink-0 text-muted-foreground cursor-pointer"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onOpenDetails();
-                }}
-                aria-label={`Open details for ${label}`}
-              >
-                <Info className="size-4" />
-              </Button>
-            )}
+            <div className="flex shrink-0 items-center gap-1">
+              <FindingBadge summary={findingSummary} />
+              {onOpenDetails && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0 text-muted-foreground cursor-pointer"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onOpenDetails();
+                  }}
+                  aria-label={`Open details for ${label}`}
+                >
+                  <Info className="size-4" />
+                </Button>
+              )}
+            </div>
           </div>
 
           {imageUrl && (
