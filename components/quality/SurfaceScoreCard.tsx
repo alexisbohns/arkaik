@@ -2,7 +2,8 @@
 
 import type { QualityGrade, QualityMatrixCell } from "@arkaik/schema";
 import { FindingDots, CELL_SEVERITIES } from "@/components/quality/FindingDots";
-import { GRADE_TINT, SEVERITY_LABEL } from "@/components/quality/quality-styles";
+import { GradeScale } from "@/components/quality/GradeScale";
+import { GRADE_BORDER, SEVERITY_LABEL } from "@/components/quality/quality-styles";
 import { cn } from "@/lib/utils";
 
 interface SurfaceScoreCardProps {
@@ -71,27 +72,30 @@ export function SurfaceScoreCard({
   const body = (
     <>
       {score === null ? (
-        <span className="text-sm text-muted-foreground">N/A</span>
+        <span className="py-2 text-sm text-muted-foreground">N/A</span>
       ) : (
         <>
-          <span className="text-2xl font-semibold leading-none tabular-nums">{score}</span>
-          <span className="text-[11px] font-medium leading-none">
-            {grade}
-            {capped && "*"}
-          </span>
+          <span className="text-3xl font-semibold leading-none tabular-nums">{score}</span>
+          <GradeScale grade={grade ?? "C"} capped={capped} />
         </>
       )}
       {findings && <FindingDots findings={findings} />}
-      <span className="w-full truncate text-center text-xs font-medium" title={title}>
+      {/* Foreground, never the grade's colour. The title is the card's *name* —
+          which surface this is — and a name tinted by its own diagnosis reads
+          as part of the verdict. */}
+      <span className="w-full truncate text-center text-xs font-medium text-foreground" title={title}>
         {title}
       </span>
       {meta && <span className="text-[10px] text-muted-foreground">{meta}</span>}
     </>
   );
 
+  // No background tint: eleven galleries of tinted blocks is a page of colour
+  // with no figure in it, and a tint behind the whole card leaves nowhere for
+  // the title to be neutral. The grade lives on the edge and in the scale.
   const shape = cn(
-    "flex w-28 shrink-0 snap-start flex-col items-center justify-center gap-1.5 rounded-lg px-2 py-3",
-    score === null ? "bg-muted/40 text-muted-foreground" : GRADE_TINT[grade ?? "C"],
+    "flex w-40 shrink-0 snap-start flex-col items-center justify-center gap-2 rounded-lg border bg-card px-3 py-4",
+    score === null ? "border-dashed text-muted-foreground" : GRADE_BORDER[grade ?? "C"],
   );
 
   // Not a button when there is nothing to open: an unscored cell has no
@@ -114,8 +118,11 @@ export function SurfaceScoreCard({
       title={label}
       className={cn(
         shape,
-        "transition-all hover:ring-1 hover:ring-inset hover:ring-foreground/30",
-        active && "ring-2 ring-inset ring-foreground/70",
+        // Outside the border rather than inset, now that there is a border to
+        // sit outside of: an inset ring would paint over the grade's edge and
+        // the selected card would lose the colour it was selected for.
+        "transition-all hover:ring-1 hover:ring-foreground/30",
+        active && "ring-2 ring-foreground/70",
       )}
     >
       {body}

@@ -5,7 +5,8 @@ import Link from "next/link";
 import type { KritikLibrary, QualityMatrixCell, QualitySection } from "@arkaik/schema";
 import { FindingsBoard } from "@/components/quality/FindingsBoard";
 import { CriteriaList } from "@/components/quality/CriteriaList";
-import { GRADE_TINT } from "@/components/quality/quality-styles";
+import { GradeScale } from "@/components/quality/GradeScale";
+import { GRADE_BORDER } from "@/components/quality/quality-styles";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FIELD_LABEL_CLASS } from "@/components/ui/field";
 import type { Node } from "@/lib/data/types";
@@ -131,17 +132,17 @@ export function CellDetailPanel({
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <div className="flex items-center gap-4 border-b px-4 py-4">
         {cell && (
+          // The card the reader clicked, restated: same border-and-scale
+          // idiom, so the panel does not answer with a different-looking
+          // object than the one that opened it.
           <span
             className={cn(
-              "flex size-14 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg",
-              GRADE_TINT[cell.grade],
+              "flex shrink-0 flex-col items-center justify-center gap-1.5 rounded-lg border bg-card px-3 py-2.5",
+              GRADE_BORDER[cell.grade],
             )}
           >
-            <span className="text-xl font-semibold leading-none tabular-nums">{cell.score}</span>
-            <span className="text-[11px] font-medium leading-none">
-              {cell.grade}
-              {cell.capped && "*"}
-            </span>
+            <span className="text-2xl font-semibold leading-none tabular-nums">{cell.score}</span>
+            <GradeScale grade={cell.grade} capped={cell.capped} size="md" />
           </span>
         )}
         <span className="flex min-w-0 flex-col gap-0.5">
