@@ -106,7 +106,7 @@ precisely how two surfaces come to disagree about the same node.
 
 ### Quality tools (Kritik)
 
-Nine `kritik_*` tools mirror the `arkaik kritik` verbs ([kritik.md](../rfcs/kritik.md) § 4.4), which
+Ten `kritik_*` tools mirror the `arkaik kritik` verbs ([kritik.md](../rfcs/kritik.md) § 4.4), which
 is what makes a **scheduled agent audit** a first-class monitoring loop: a routine wakes, reads the
 signal pack, audits what changed since the last audited commit, scores through these tools, and the
 journal accumulates the quality history the UI renders as trends.
@@ -116,6 +116,7 @@ journal accumulates the quality history the UI renders as trends.
 | `kritik_matrix` | `audit_id?`, `record?` | the comparative matrix, per-surface roll-ups, finding counts, priority lanes, the P0 list; refreshes `matrix.json` | `quality.audit.completed` (only with `record: true`) |
 | `kritik_findings` | `surface?`, `status?`, `priority?`, `criterion_id?`, `audit_id?` | findings across audits with **derived** `severity` and `priority` | — |
 | `kritik_signals` | `surface?`, `criterion_id?`, `domain?` | the signal run sheet, plus `tripped_since_last_audit` | — |
+| `kritik_regressions` | `from?`, `to?`, `record?` | what got worse between two audits: a dropped maturity level, a cell that gained an open Critical or High, a finding resolved and open again | `quality.signal.tripped`, one per regression (only with `record: true`) |
 | `kritik_issue` | `criterion_id`, `surface`, `level?`, `finding_id?` | the prefilled GitHub issue skeleton | — |
 | `kritik_score` | `criterion_id`, `surface`, `level`, `evidence`, `audit_id?`, `commit?` | the assessment, latest-per-cell | — |
 | `kritik_open_finding` | `criterion_id`, `surface`, `title`, `evidence`, `impact`, `likelihood`, `cost`, `detail?`, `remediation?`, `node_ids?`, `issue_url?`, `verification?`, `audit_id?`, `finding_id?` | the finding + its derived severity/priority | `quality.finding.opened` (none when `verification.verdict` is `REFUTED`) |

@@ -157,6 +157,7 @@ async function run() {
       "kritik_resolve_finding",
       "kritik_accept_finding",
       "kritik_trip_signal",
+      "kritik_regressions",
     ]) {
       check(`catalog includes ${name}`, names.includes(name));
     }
@@ -307,6 +308,46 @@ async function run() {
       finding_id: opened.json.finding.id,
     });
     check("finding_id lands the finding's evidence", fromFinding.json.body.includes("migrations/003.sql:8"), fromFinding.json.body.slice(-300));
+
+    // --- regressions (phase E) --------------------------------------------------
+
+    // detectRegressions needs two audits with a comparable cell to say anything.
+    // Everything above scored SEC-01 x web at level 3 in the one audit the run
+    // has used so far (`scored.json.audit_id`) — write a second audit, lexically
+    // after the first so it sorts as the newer one, scoring the same cell lower.
+    const auditA = scored.json.audit_id;
+    const auditB = `${auditA}-2`;
+    const tripsBefore = session.journal().filter((event) => event.type === "quality.signal.tripped").length;
+
+    const regressedScore = await session.call("kritik_score", {
+      criterion_id: "SEC-01",
+      surface: "web",
+      level: 1,
+      evidence: "regressed on purpose, for the regressions test",
+      audit_id: auditB,
+    });
+    check("a second audit can be scored explicitly by audit_id", !regressedScore.isError && regressedScore.json.audit_id === auditB, regressedScore.text.slice(0, 200));
+
+    const regressions = await session.call("kritik_regressions", {});
+    check("kritik_regressions names both audits", !regressions.isError && typeof regressions.json.from === "string" && typeof regressions.json.to === "string", regressions.text.slice(0, 200));
+    check("it picked the two audits on disk, oldest to newest", regressions.json.from === auditA && regressions.json.to === auditB, JSON.stringify({ from: regressions.json.from, to: regressions.json.to }));
+    check("kritik_regressions reports the level drop", regressions.json.regressions.some((r) => r.kind === "level-drop"), JSON.stringify(regressions.json.regressions));
+    check("it appends nothing without record", regressions.json.events.length === 0);
+
+    const recordedRegressions = await session.call("kritik_regressions", { record: true });
+    check("record=true returns the events it appended", Array.isArray(recordedRegressions.json.events) && recordedRegressions.json.events.length === recordedRegressions.json.regressions.length, recordedRegressions.text.slice(0, 300));
+    check("every appended event is a trip", recordedRegressions.json.events.every((e) => e.type === "quality.signal.tripped"), JSON.stringify(recordedRegressions.json.events));
+    const tripsAfter = session.journal().filter((event) => event.type === "quality.signal.tripped").length;
+    check("exactly one trip per regression landed in the journal", tripsAfter - tripsBefore === recordedRegressions.json.regressions.length, `${tripsBefore} -> ${tripsAfter}, ${recordedRegressions.json.regressions.length} regression(s)`);
+
+    const refused = await session.call("kritik_regressions", { from: "nope" });
+    check("an unknown audit is refused", refused.isError && refused.json.message.includes("nope"), refused.text);
+
+    const onlyOne = await session.call("kritik_regressions", { from: auditA, to: auditA });
+    check("from and to naming the same audit is refused", onlyOne.isError && onlyOne.json.message.includes("same audit"), onlyOne.text);
+
+    const noOlder = await session.call("kritik_regressions", { to: auditA });
+    check("the oldest audit has nothing before it to compare against", noOlder.isError && noOlder.json.message.includes("oldest"), noOlder.text);
 
     // --- the whole journal -----------------------------------------------------
 

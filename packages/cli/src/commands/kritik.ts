@@ -28,6 +28,7 @@ import {
   REMEDIATION_COSTS,
   acceptFinding,
   auditCompletedInput,
+  detectRegressions,
   findingOpenedInput,
   findingResolvedInput,
   isOpenFinding,
@@ -49,6 +50,7 @@ import {
   type QualityAssessment,
   type QualityFinding,
   type QualityProfile,
+  type Regression,
   type RemediationCost,
   type SurfaceDef,
 } from "@arkaik/schema";
@@ -56,6 +58,7 @@ import {
   computeAuditMatrix,
   listAuditIds,
   loadFindings,
+  loadQualitySection,
   loadScoresOrEmpty,
   locateFinding,
   matrixPath,
@@ -91,6 +94,7 @@ Subcommands:
   finding accept <id>   Accept it as a known, owned risk.
   matrix [audit-id]     Roll an audit up (writes matrix.json).
   signals               The signal pack, and what has tripped since the last audit.
+  regressions           What got worse between two audits.
   issue <criterion>     Print the prefilled GitHub issue skeleton.
   criterion add ...     Add a project-specific criterion to the overlay.
 
@@ -168,6 +172,21 @@ makes it usable as a CI step.
   --trip            Record one as tripped: appends quality.signal.tripped.
                     --signal takes the row's index from the run sheet, or the text.
   --json            The full run sheet as JSON (what an agent should read).`;
+
+const REGRESSIONS_USAGE = `arkaik kritik regressions [--from <audit>] [--to <audit>] [--record] [--json]
+
+What got worse between two audits: a cell whose maturity dropped, a cell that
+gained an open Critical or High finding, a finding that was resolved and is open
+again. Cells scored in only one of the two audits are not compared — a
+half-finished audit is not a regression.
+
+Exits 1 when anything regressed, which is what makes it usable as a CI step or a
+scheduled routine.
+
+  --from <audit>    The older reading (default: the audit before --to).
+  --to <audit>      The newer reading (default: the newest on disk).
+  --record          Append one quality.signal.tripped per regression.
+  --json            The full list as JSON.`;
 
 const ISSUE_USAGE = `arkaik kritik issue <criterion> --surface <s> [--level <n>] [--finding <id>]
 
@@ -797,7 +816,10 @@ function runSignals(args: string[], common: CommonOptions): void {
     const criteria = new Set(rows.map((row) => row.criterion_id)).size;
     console.log(
       `\n  ${rows.length} checks across ${criteria} criteria and ${(profile.surfaces ?? []).length} surfaces.\n` +
-        `  Narrow it (--surface, --criterion, --domain) to read them, or --json to take the lot.`,
+        `  Narrow it (--surface, --criterion, --domain) to read them, or --json to take the lot.` +
+        (listAuditIds(common.root).length > 1
+          ? `\n  Comparing two audits is \`arkaik kritik regressions\`.`
+          : ""),
     );
   }
 
@@ -812,6 +834,94 @@ function runSignals(args: string[], common: CommonOptions): void {
   }
   console.log("");
   process.exit(0);
+}
+
+// --- regressions --------------------------------------------------------------
+
+/** The two audits to compare, or a refusal saying why there is no pair. */
+function auditPair(root: string, from?: string, to?: string): { from: string; to: string } {
+  const audits = listAuditIds(root);
+  if (audits.length < 2) {
+    fail(
+      `kritik: regressions needs two audits to compare — ` +
+        `${audits.length === 0 ? "docs/quality/audits/ holds none" : `only "${audits[0]}" exists`}.\n` +
+        `A regression is the difference between two readings; one reading is a baseline.`,
+    );
+  }
+  const known = (id: string): string => {
+    if (!audits.includes(id)) fail(`kritik: no audit "${id}" under docs/quality/audits/ (have: ${audits.join(", ")})`);
+    return id;
+  };
+  const newer = to === undefined ? audits[audits.length - 1] : known(to);
+  const older = from === undefined ? audits[audits.indexOf(newer) - 1] : known(from);
+  if (older === undefined) {
+    fail(`kritik: "${newer}" is the oldest audit — there is nothing before it to compare against.`);
+  }
+  if (older === newer) {
+    fail(`kritik: --from and --to name the same audit ("${newer}") — a regression needs two readings.`);
+  }
+  // Order is the whole verdict: `detectRegressions` reads its first argument as
+  // the EARLIER reading, so a hand-swapped pair reports a clean run where a real
+  // regression exists — a false green in the CI step this verb exists to be.
+  if (audits.indexOf(older) > audits.indexOf(newer)) {
+    fail(`kritik: --from "${older}" is newer than --to "${newer}" — swap them, or the comparison inverts.`);
+  }
+  return { from: older, to: newer };
+}
+
+function runRegressions(args: string[], common: CommonOptions): void {
+  const { single, flags } = collect(args, [], ["json", "record"]);
+  if (flags.has("help")) {
+    console.log(REGRESSIONS_USAGE);
+    process.exit(0);
+  }
+
+  const library = loadLibraryOrFail(common.root);
+  profileOrFail(common.root);
+  const { from, to } = auditPair(common.root, single.from, single.to);
+
+  let regressions: Regression[];
+  try {
+    regressions = detectRegressions(
+      loadQualitySection(common.root, from, library),
+      loadQualitySection(common.root, to, library),
+      library,
+    );
+  } catch (error) {
+    return fail(`kritik: ${(error as Error).message}`);
+  }
+
+  if (flags.has("json")) {
+    console.log(JSON.stringify({ from, to, total: regressions.length, regressions }, null, 2));
+  } else if (regressions.length === 0) {
+    console.log(`\n  nothing regressed between ${from} and ${to}.\n`);
+  } else {
+    console.log("");
+    for (const regression of regressions) {
+      console.log(`  [${regression.kind}] ${regression.criterion_id} x ${regression.surface}`);
+      console.log(`    ${regression.detail}`);
+    }
+    console.log(`\n  ${regressions.length} regression${regressions.length === 1 ? "" : "s"} between ${from} and ${to}.`);
+  }
+
+  if (flags.has("record") && regressions.length > 0) {
+    reportJournal(
+      common.root,
+      regressions.map((regression) =>
+        signalTrippedInput({
+          criterion_id: regression.criterion_id,
+          surface: regression.surface,
+          signal: regression.signal,
+          detail: regression.detail,
+        }),
+      ),
+      common,
+    );
+    console.log(`  a tripped signal is not a finding — it is the prompt to go look.\n`);
+  }
+
+  // Exit 1 on regressions, the same CI contract `signals` already offers.
+  process.exit(regressions.length > 0 ? 1 : 0);
 }
 
 // --- issue -------------------------------------------------------------------
@@ -962,6 +1072,8 @@ export function runKritik(args: string[]): void {
       return runMatrix(subArgs, common);
     case "signals":
       return runSignals(subArgs, common);
+    case "regressions":
+      return runRegressions(subArgs, common);
     case "issue":
       return runIssue(subArgs, common);
     case "criterion":

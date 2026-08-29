@@ -504,5 +504,95 @@ assert(
   "and grade E under a pack that raises them",
 );
 
+// =========================== the fold (phase E) ===============================
+//
+// The webhook appends a `quality.finding.resolved` event and never rewrites the
+// stored finding (RFC §3.2). `foldResolvedFindings` is the projection that
+// makes the appended fact visible without a rewrite — pinned here against the
+// two consumers a stale `open` status actually breaks: the matrix's
+// anti-averaging cap, and the node badge.
+
+const { foldResolvedFindings } = loadQuality();
+
+const RESOLVED_EVENT = (findingId, over = {}) => ({
+  id: `01J${findingId}`,
+  ts: "2026-09-01T00:00:00.000Z",
+  type: "quality.finding.resolved",
+  finding_id: findingId,
+  resolved_by: "https://github.com/acme/app/pull/7",
+  ...over,
+});
+
+const foldSection = (findings) => ({
+  framework_version: "0.1.0",
+  profile: { surfaces: [{ id: "web", title: "Web" }] },
+  assessments: [{ criterion_id: "SEC-01", surface: "web", level: 3, evidence: "e", audit_id: "2026-08", ts: "2026-08-01T00:00:00.000Z" }],
+  findings,
+});
+
+const openCritical = { id: "F-1", criterion_id: "SEC-01", surface: "web", title: "t", detail: "d", evidence: "e", impact: 5, likelihood: 5, cost: "M", status: "open" };
+
+const untouched = foldSection([openCritical]);
+assert(
+  foldResolvedFindings(untouched, [RESOLVED_EVENT("F-other")]) === untouched,
+  "no matching event returns the SAME object",
+);
+assert(foldResolvedFindings(untouched, []) === untouched, "an empty journal returns the same object");
+assert(
+  foldResolvedFindings(undefined, [RESOLVED_EVENT("F-1")]) === undefined,
+  "an undefined section stays undefined",
+);
+
+const folded = foldResolvedFindings(foldSection([openCritical]), [RESOLVED_EVENT("F-1")]);
+assert(
+  folded.findings[0].status === "resolved",
+  `a matched finding reads resolved (${JSON.stringify(folded.findings[0])})`,
+);
+assert(folded.findings[0].resolved_by === "https://github.com/acme/app/pull/7", "resolved_by lands on the finding");
+assert(openCritical.status === "open", "the input was not mutated");
+
+for (const status of ["refuted", "accepted-risk"]) {
+  const decided = foldResolvedFindings(foldSection([{ ...openCritical, status }]), [RESOLVED_EVENT("F-1")]);
+  assert(decided.findings[0].status === status, `a ${status} finding survives the fold`);
+}
+
+const noUrl = foldResolvedFindings(foldSection([openCritical]), [RESOLVED_EVENT("F-1", { resolved_by: undefined })]);
+assert(noUrl.findings[0].resolved_by === undefined, "no resolved_by on the event leaves none on the finding");
+
+
+// A later url-less resolution must not erase the url an earlier one carried.
+// `findingResolvedInput` omits `resolved_by` when it has none, so this shape
+// is what `arkaik kritik finding resolve` produces without `--by`.
+const keptUrl = foldResolvedFindings(foldSection([openCritical]), [
+  RESOLVED_EVENT("F-1"),
+  RESOLVED_EVENT("F-1", { resolved_by: undefined }),
+]);
+assert(
+  keptUrl.findings[0].resolved_by === "https://github.com/acme/app/pull/7",
+  `a url-less re-resolution keeps the known PR (got ${keptUrl.findings[0].resolved_by})`,
+);
+const laterUrl = foldResolvedFindings(foldSection([openCritical]), [
+  RESOLVED_EVENT("F-1", { resolved_by: undefined }),
+  RESOLVED_EVENT("F-1", { resolved_by: "https://github.com/acme/app/pull/9" }),
+]);
+assert(
+  laterUrl.findings[0].resolved_by === "https://github.com/acme/app/pull/9",
+  `a later named resolution still wins (got ${laterUrl.findings[0].resolved_by})`,
+);
+// The pair that makes the fold matter: a capped cell uncaps, and the node
+// badge clears, once the Critical behind them is folded resolved.
+const badged = { ...openCritical, node_ids: ["V-home"] };
+const before = deriveQualityMatrix({ quality: foldSection([badged]) });
+const after = deriveQualityMatrix({ quality: foldResolvedFindings(foldSection([badged]), [RESOLVED_EVENT("F-1")]) });
+assert(
+  before.matrix.SEC.web.capped === true && after.matrix.SEC.web.capped === false,
+  `the cap lifts once the Critical resolves (${JSON.stringify(before.matrix.SEC.web)} -> ${JSON.stringify(after.matrix.SEC.web)})`,
+);
+assert(
+  buildNodeFindingIndex(foldSection([badged])).size === 1 &&
+    buildNodeFindingIndex(foldResolvedFindings(foldSection([badged]), [RESOLVED_EVENT("F-1")])).size === 0,
+  "the node badge clears",
+);
+
 console.log(failures === 0 ? "\nAll quality projections OK" : `\n${failures} failure(s)`);
 process.exit(failures === 0 ? 0 : 1);

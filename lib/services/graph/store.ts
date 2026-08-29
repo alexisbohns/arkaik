@@ -252,6 +252,33 @@ export async function getJournal(
 }
 
 /**
+ * A project's `quality.finding.resolved` events, and nothing else.
+ *
+ * The Quality surfaces need these to fold resolutions over the stored findings
+ * (lib/utils/quality.ts), and a project's full history is the wrong price for a
+ * handful of events — the Pebbles journal alone runs to thousands of rows.
+ *
+ * Owner-scoped identically to {@link getJournal}: the same `loadProject` check
+ * gates access before `graph_events` is ever queried, rather than a second,
+ * independently-written `owner_id = any(...)` clause that could quietly drift
+ * from it.
+ */
+export async function qualityResolutionEvents(
+  projectId: string,
+  ownerIds: readonly string[],
+): Promise<JournalEvent[]> {
+  const loaded = await loadProject(projectId, ownerIds);
+  if (!loaded) return [];
+  const { rows } = await query<{ event: JournalEvent }>(
+    `select event from graph_events
+      where project_id = $1 and event->>'type' = 'quality.finding.resolved'
+      order by seq asc`,
+    [projectId],
+  );
+  return rows.map((row) => row.event);
+}
+
+/**
  * Append pre-stamped journal events WITHOUT touching the snapshot — the
  * journal-only write path (slice 3: the Lab Note webhook). Unlike
  * `applyMutation` there are no graph ops and no version bump: the snapshot is

@@ -121,6 +121,18 @@ jobs:
       - name: Kritik operation tests (upserts, id minting, event payloads)
         run: npm run test:quality-ops
 
+      # Two audits compared. Scored against a pack whose severity buckets are
+      # deliberately NOT the schema defaults, so the suite can tell "reads the
+      # pack" from "hardcodes 20..25" — the hole that survived phases A to D.
+      - name: Kritik regression tests (level drops, new severity, reopens)
+        run: npm run test:quality-regressions
+
+      # The webhook half of the quality loop — the mention grammar and the
+      # resolution pass. DB-free on purpose: the grammar imports nothing and
+      # the project read is injected, so a Postgres-less runner still gates it.
+      - name: Kritik webhook tests (finding mentions, resolution pass)
+        run: npm run test:quality-webhook
+
       - name: Map projection + validation tests
         run: npm run test:maps
 
@@ -210,6 +222,13 @@ jobs:
 
       - name: Provider-injection seam + mutation-notification tests
         run: npm run test:provider
+
+      # Pins foldResolvedFindings (lib/utils/quality.ts) to its real consumer —
+      # lib/data/local-provider.ts getProject — since the pure function is
+      # already covered exhaustively in tests/app/quality.test.js but its call
+      # site was not (issue #382 phase E, commit 519b9b6).
+      - name: Quality fold wired to the local provider's getProject
+        run: npm run test:quality-fold
 
       - name: Projects page section + create-target routing
         run: npm run test:project-sections

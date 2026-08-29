@@ -390,6 +390,73 @@ try {
     rmSync(pinDir, { recursive: true, force: true });
   }
 
+  // --- regressions (phase E) ---------------------------------------------------
+
+  // The suite's existing audit is `currentAudit`. Score the same cell lower in a
+  // second, later audit so there is something to regress.
+  const laterAudit = "2099-12";
+  run(["score", "SEC-01", "web", "1", "--evidence", "src/a.ts:1", "--audit", laterAudit]);
+
+  const unknownAudit = run(["regressions", "--from", "nope", "--to", laterAudit]);
+  check("an unknown audit is refused by name", unknownAudit.status === 1 && unknownAudit.stderr.includes("nope"), unknownAudit.stderr);
+
+  const toOldest = run(["regressions", "--to", currentAudit]);
+  check(
+    "naming the oldest audit as --to is refused because there is nothing before it",
+    toOldest.status === 1 && toOldest.stderr.includes("oldest audit"),
+    toOldest.stderr,
+  );
+
+  const compared = run(["regressions", "--from", currentAudit, "--to", laterAudit, "--json"]);
+  check("regressions exits 1 when something regressed", compared.status === 1, `status ${compared.status}`);
+  const regressionsParsed = JSON.parse(compared.stdout);
+  check("the level drop is reported", regressionsParsed.regressions.some((r) => r.kind === "level-drop" && r.criterion_id === "SEC-01"), compared.stdout);
+  check("the json names both audits", regressionsParsed.from === currentAudit && regressionsParsed.to === laterAudit, compared.stdout);
+
+  // The suite already tripped one signal earlier (the `signals --trip` block
+  // above), so the assertion below counts new trips rather than the total.
+  const tripsBefore = journal().filter((e) => e.type === "quality.signal.tripped").length;
+  const regressionsRecorded = run(["regressions", "--from", currentAudit, "--to", laterAudit, "--record"]);
+  check("--record exits 1 too", regressionsRecorded.status === 1, `status ${regressionsRecorded.status}`);
+  const trips = journal().filter((e) => e.type === "quality.signal.tripped");
+  check(
+    "one trip per regression",
+    trips.length - tripsBefore === regressionsParsed.regressions.length,
+    JSON.stringify(trips.map((t) => t.criterion_id)),
+  );
+  const newTrip = trips[trips.length - 1];
+  check(
+    "the trip carries the cell and the statement",
+    newTrip?.surface === "web" && typeof newTrip?.signal === "string" && newTrip.signal.length > 0,
+    JSON.stringify(newTrip),
+  );
+  check("the trip carries a detail", typeof newTrip?.detail === "string" && newTrip.detail.includes("level"), JSON.stringify(newTrip));
+
+  const sameTwice = run(["regressions", "--from", laterAudit, "--to", laterAudit]);
+  check("the same audit twice is refused", sameTwice.status === 1 && sameTwice.stderr.includes("two readings"), sameTwice.stderr);
+
+  const soloDir = mkdtempSync(path.join(tmpdir(), "arkaik-kritik-solo-"));
+  const soloRun = (args) => spawnSync(process.execPath, [CLI, "kritik", ...args], { encoding: "utf8", cwd: soloDir });
+  try {
+    soloRun(["profile", "--surface", "web"]);
+    soloRun(["score", "SEC-01", "web", "2", "--evidence", "e"]);
+    const notEnough = soloRun(["regressions"]);
+    check(
+      "fewer than two audits is refused with the baseline reasoning",
+      notEnough.status === 1 && notEnough.stderr.includes("one reading is a baseline"),
+      notEnough.stderr,
+    );
+  } finally {
+    rmSync(soloDir, { recursive: true, force: true });
+  }
+
+  const signalsPointer = run(["signals"]);
+  check(
+    "the unfiltered signals summary points at regressions once there is a pair to compare",
+    signalsPointer.stdout.includes("arkaik kritik regressions"),
+    signalsPointer.stdout,
+  );
+
   // --- the journal is the only thing this touched ---------------------------
 
   const kinds = new Set(journal().map((e) => e.type));

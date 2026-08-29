@@ -30,6 +30,7 @@ import {
   REMEDIATION_COSTS,
   acceptFinding,
   auditCompletedInput,
+  detectRegressions,
   findingOpenedInput,
   findingResolvedInput,
   isOpenFinding,
@@ -51,12 +52,14 @@ import {
   type QualityAssessment,
   type QualityFinding,
   type QualityProfile,
+  type Regression,
   type RemediationCost,
 } from "@arkaik/schema";
 import {
   computeAuditMatrix,
   listAuditIds,
   loadFindings,
+  loadQualitySection,
   loadScoresOrEmpty,
   locateFinding,
   newestAuditId,
@@ -357,6 +360,76 @@ export function buildKritikCatalog(ctx: KritikContext): {
       const tripped = events.slice(lastAudit + 1).filter((event) => event.type === "quality.signal.tripped");
 
       return { library_version: library.version, total: rows.length, signals: rows, tripped_since_last_audit: tripped };
+    },
+  );
+
+  tool(
+    {
+      name: "kritik_regressions",
+      description:
+        "What got worse between two audits: a cell whose maturity level dropped, a cell that gained an open Critical or High finding, and a finding that was resolved and is open again. Cells scored in only one of the two audits are not compared — a half-finished audit is not a regression. With record=true, appends one quality.signal.tripped per regression. A tripped signal is NOT a finding; it is the prompt to go look.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          from: { type: "string", description: "The older audit. Default: the audit before `to`." },
+          to: { type: "string", description: "The newer audit. Default: the newest on disk." },
+          record: { type: "boolean", description: "Append one quality.signal.tripped per regression." },
+        },
+        additionalProperties: false,
+      },
+    },
+    async (args) => {
+      const root = rootOf(ctx);
+      const library = libraryOf(root);
+      const audits = listAuditIds(root);
+      if (audits.length < 2) {
+        throw new ToolError(
+          `regressions needs two audits to compare — ${audits.length === 0 ? "docs/quality/audits/ holds none" : `only "${audits[0]}" exists`}. ` +
+            `A regression is the difference between two readings; one reading is a baseline.`,
+        );
+      }
+      const known = (id: string): string => {
+        if (!audits.includes(id)) throw new ToolError(`no audit "${id}" under docs/quality/audits/ (have: ${audits.join(", ")})`);
+        return id;
+      };
+      const to = typeof args.to === "string" && args.to !== "" ? known(args.to) : audits[audits.length - 1];
+      const from = typeof args.from === "string" && args.from !== "" ? known(args.from) : audits[audits.indexOf(to) - 1];
+      if (from === undefined) throw new ToolError(`"${to}" is the oldest audit — there is nothing before it to compare against.`);
+      if (from === to) throw new ToolError(`from and to name the same audit ("${to}") — a regression needs two readings.`);
+      // Order is the whole verdict: a hand-swapped pair reports a clean run
+      // where a real regression exists.
+      if (audits.indexOf(from) > audits.indexOf(to)) {
+        throw new ToolError(`from "${from}" is newer than to "${to}" — swap them, or the comparison inverts.`);
+      }
+
+      let regressions: Regression[];
+      try {
+        regressions = detectRegressions(
+          loadQualitySection(root, from, library),
+          loadQualitySection(root, to, library),
+          library,
+        );
+      } catch (error) {
+        throw new ToolError((error as Error).message);
+      }
+
+      let events: JournalEvent[] = [];
+      if (args.record === true && regressions.length > 0) {
+        const graph = await load();
+        events = await record(
+          graph,
+          regressions.map((regression) =>
+            signalTrippedInput({
+              criterion_id: regression.criterion_id,
+              surface: regression.surface,
+              signal: regression.signal,
+              detail: regression.detail,
+            }),
+          ),
+        );
+      }
+
+      return { from, to, total: regressions.length, regressions, events };
     },
   );
 

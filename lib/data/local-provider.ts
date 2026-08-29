@@ -10,6 +10,7 @@ import {
   type ProjectRecord,
 } from "./db";
 import { toJournalEvents } from "./emit-events";
+import { foldResolvedFindings } from "@/lib/utils/quality";
 
 /**
  * The app's `DataProvider`, backed by IndexedDB (Dexie — see `./db.ts`).
@@ -154,7 +155,14 @@ export const localProvider: DataProvider = {
     const record = await db.projects.get(id);
     if (!record) return undefined;
     const journalRow = await db.journals.get(id);
-    return assembleBundle(record.snapshot, journalRow?.events);
+    const bundle = assembleBundle(record.snapshot, journalRow?.events);
+    // Same projection the hosted read applies (app/api/graph/projects/[projectId]
+    // route.ts), from the journal this provider already holds. A local project
+    // receives no webhook, but it does receive imported bundles whose journals
+    // carry resolutions — and the two providers must not disagree about what a
+    // bundle says.
+    const quality = foldResolvedFindings(bundle.quality, journalRow?.events ?? []);
+    return quality === bundle.quality ? bundle : { ...bundle, quality };
   },
 
   /**

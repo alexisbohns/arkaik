@@ -1,7 +1,8 @@
 import { getCaller, hasScope } from "@/lib/services/auth";
 import { MAX_BUNDLE_BYTES, servicesConfigured, servicesUnavailable } from "@/lib/services/db";
-import { archiveProject, getProject, updateProjectFields } from "@/lib/services/graph/store";
-import type { Project } from "@arkaik/schema";
+import { archiveProject, getProject, qualityResolutionEvents, updateProjectFields } from "@/lib/services/graph/store";
+import { foldResolvedFindings } from "@/lib/utils/quality";
+import type { Project, QualitySection } from "@arkaik/schema";
 
 /**
  * A single hosted project (db/migrations/008_graph_projects.sql).
@@ -34,8 +35,21 @@ export async function GET(
   try {
     const found = await getProject(projectId, caller.ownerIds);
     if (!found) return Response.json({ error: "not_found" }, { status: 404 });
+    // The app's read, and the only one that folds. `store.getProject` keeps
+    // returning exactly what Postgres holds because its other callers — the
+    // acceptance planner in pull-request.ts, the pollen route — load a bundle
+    // to plan mutations from; a derived finding status inside the object a
+    // mutation is planned from is one refactor away from being written back
+    // as though it had been stored. So the fold happens here instead, on the
+    // one caller that is a read all the way out to the client.
+    const storedQuality = (found.bundle as { quality?: QualitySection }).quality;
+    const quality = foldResolvedFindings(
+      storedQuality,
+      await qualityResolutionEvents(projectId, caller.ownerIds),
+    );
+    const bundle = quality === storedQuality ? found.bundle : { ...found.bundle, quality };
     return Response.json(
-      { bundle: found.bundle, version: found.version },
+      { bundle, version: found.version },
       { status: 200, headers: { ETag: `"${found.version}"` } },
     );
   } catch (err) {

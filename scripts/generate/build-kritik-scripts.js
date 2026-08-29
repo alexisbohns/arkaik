@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Builds the three standalone Kritik scripts under plugin-kritik/scripts/ as
+ * Builds the four standalone Kritik scripts under plugin-kritik/scripts/ as
  * esbuild-bundled, zero-dependency artifacts of @arkaik/schema — the same
  * pipeline and the same reason as build-validator.js: an agent auditing a repo
  * that has no node_modules must still be able to run the roll-up and the
@@ -43,6 +43,11 @@ const SCRIPTS = [
     entry: "kritik-profile-cli.ts",
     out: "init-profile.js",
     summary: "Kritik install-time surface picker — writes docs/quality/profile.json.",
+  },
+  {
+    entry: "kritik-regressions-cli.ts",
+    out: "detect-regressions.js",
+    summary: "Kritik regression runner — what got worse between two audits.",
   },
 ];
 
