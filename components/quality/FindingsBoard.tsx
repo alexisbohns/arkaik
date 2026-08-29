@@ -11,6 +11,8 @@ interface FindingsBoardProps {
   /** Every lane, worst first — `groupByPriority` keeps the empty ones. */
   groups: PriorityGroup[];
   nodesById: ReadonlyMap<string, Node>;
+  /** `surface id -> title`, built once on the page and handed to every card. */
+  surfaceTitles: ReadonlyMap<string, string>;
   onOpenNode: (nodeId: string) => void;
   onOpenCriterion: (criterionId: string, surface: string) => void;
 }
@@ -30,7 +32,13 @@ interface FindingsBoardProps {
  * that, a section heading scrolling away leaves a wall of cards with no way to
  * tell which lane you are reading.
  */
-export function FindingsBoard({ groups, nodesById, onOpenNode, onOpenCriterion }: FindingsBoardProps) {
+export function FindingsBoard({
+  groups,
+  nodesById,
+  surfaceTitles,
+  onOpenNode,
+  onOpenCriterion,
+}: FindingsBoardProps) {
   // Four headings each announcing nothing is a board that looks broken rather
   // than filtered — so when the whole set is empty, one sentence replaces all
   // of it. `every` is also the right answer for a `groups` that is itself
@@ -80,6 +88,7 @@ export function FindingsBoard({ groups, nodesById, onOpenNode, onOpenCriterion }
                   <FindingCard
                     row={row}
                     nodesById={nodesById}
+                    surfaceTitles={surfaceTitles}
                     onOpenNode={onOpenNode}
                     onOpenCriterion={onOpenCriterion}
                   />

@@ -300,7 +300,7 @@ assert(
 
 // =========================== buildCellCriteria ===============================
 
-const { buildCellCriteria, buildNodeFindingIndex, buildSurfaceGauges } = loadQuality();
+const { buildCellCriteria, buildNodeFindingIndex, buildSurfaceGauges, buildSurfaceTitles } = loadQuality();
 
 const secWeb = buildCellCriteria(section, pack, "SEC", "web");
 assert(
@@ -386,6 +386,39 @@ assert([...messy.keys()].join(",") === "V-ok", "only string node ids become inde
 // one — the spec asked for it and nothing was checking it.
 const noLibraryIndex = buildNodeFindingIndex(section, undefined);
 assert(noLibraryIndex.size === nodeIndex.size, "the node index builds with no library at all");
+
+// =========================== buildSurfaceTitles ==============================
+//
+// One map, built on the page and read by the matrix's column headers and by
+// every finding card. The failure it exists to prevent is a reader clicking the
+// "Database contract" column and then reading `supabase` on every card it
+// returned — two vocabularies for one axis, one screen apart.
+
+const surfaceTitles = buildSurfaceTitles(section);
+assert(surfaceTitles.size === 5, `one entry per profile surface (got ${surfaceTitles.size})`);
+assert(
+  surfaceTitles.get("supabase") === "Database contract",
+  "a surface reads as the profile titled it, not as its id",
+);
+assert(
+  buildSurfaceGauges(matrix, section, pack).every(
+    (gauge) => gauge.title === (surfaceTitles.get(gauge.surface) ?? gauge.surface),
+  ),
+  "the gauges' titles come from the same map, so the Overview and the board cannot disagree",
+);
+// `CROSS_SURFACE_ID` is a findings-only lens no profile declares, and 4 of the
+// pilot's findings carry it. The card falls back to the id, which is legible
+// English; a blank cell there would read as a finding filed against nothing.
+assert(
+  surfaceTitles.get("cross-surface") === undefined &&
+    section.findings.some((finding) => finding.surface === "cross-surface"),
+  "cross-surface is absent from the map, so a card filed against it falls back to the id",
+);
+assert(buildSurfaceTitles(undefined).size === 0, "no section is an empty map, not a throw");
+assert(
+  buildSurfaceTitles({ profile: { surfaces: [{ id: "db" }] } }).get("db") === "db",
+  "a surface the profile never titled falls back to its own id",
+);
 
 // =========================== buildSurfaceGauges ==============================
 

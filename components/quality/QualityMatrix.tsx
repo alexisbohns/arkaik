@@ -21,6 +21,12 @@ interface QualityMatrixProps {
   matrix: QualityMatrixData;
   section?: QualitySection;
   library?: KritikLibrary;
+  /**
+   * `surface id -> title`, built once on the page. A prop rather than a
+   * derivation of `section` here, so the column headers and the finding cards
+   * below the table read one map — see `buildSurfaceTitles`.
+   */
+  surfaceTitles: ReadonlyMap<string, string>;
   /** The open cell as `cellKey` encodes it, or `null`. Owned by the URL. */
   activeCell: string | null;
   onSelectCell: (key: string | null) => void;
@@ -37,15 +43,6 @@ const CELL_SEVERITIES = ["critical", "high", "medium", "low"] as const;
 
 /** At most this many dots per severity; the true count stays in the label. */
 const MAX_DOTS = 4;
-
-/** `surface id -> title`, as the profile writes it. */
-function surfaceTitles(section?: QualitySection): Map<string, string> {
-  const titles = new Map<string, string>();
-  for (const surface of section?.profile?.surfaces ?? []) {
-    if (typeof surface?.id === "string") titles.set(surface.id, surface.title ?? surface.id);
-  }
-  return titles;
-}
 
 /** `domain code -> display name`, as the pack writes it. */
 function domainNames(library?: KritikLibrary): Map<string, string> {
@@ -222,11 +219,11 @@ export function QualityMatrix({
   matrix,
   section,
   library,
+  surfaceTitles,
   activeCell,
   onSelectCell,
   onOpenCriterion,
 }: QualityMatrixProps) {
-  const titles = useMemo(() => surfaceTitles(section), [section]);
   const names = useMemo(() => domainNames(library), [library]);
   const bands = useMemo(() => gradeBands(library), [library]);
   const active = parseCellKey(activeCell);
@@ -240,7 +237,7 @@ export function QualityMatrix({
     return cell ? buildCellCriteria(section, library, cell.domain, cell.surface) : [];
   }, [activeCell, section, library]);
 
-  const titleOf = (surface: string) => titles.get(surface) ?? surface;
+  const titleOf = (surface: string) => surfaceTitles.get(surface) ?? surface;
   const nameOf = (domain: string) => names.get(domain) ?? domain;
 
   return (

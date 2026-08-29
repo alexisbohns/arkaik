@@ -83,6 +83,29 @@ function criteriaById(library?: KritikLibrary): Map<string, KritikCriterion> {
   return index;
 }
 
+/**
+ * `surface id -> title`, as the profile writes it.
+ *
+ * Built once per page and handed down, rather than derived again by every
+ * component that renders a surface: the matrix's column headers, the board's
+ * cards and the criteria strip all name the same axis, and three derivations of
+ * it are three chances to say `supabase` where the header said "Database
+ * contract".
+ *
+ * `CROSS_SURFACE_ID` is deliberately absent — it is a findings-only lens the
+ * profile never declares — so a finding filed against it falls back to its own
+ * id, which is the readable `cross-surface`.
+ */
+export function buildSurfaceTitles(
+  section: Pick<QualitySection, "profile"> | undefined,
+): Map<string, string> {
+  const titles = new Map<string, string>();
+  for (const surface of asArray<SurfaceDef>(section?.profile?.surfaces)) {
+    if (typeof surface?.id === "string") titles.set(surface.id, surface.title ?? surface.id);
+  }
+  return titles;
+}
+
 /** `domain code -> display name`, falling back to the code itself. */
 function domainNames(library?: KritikLibrary): Map<string, string> {
   const index = new Map<string, string>();
@@ -425,10 +448,7 @@ export function buildSurfaceGauges(
   section: Pick<QualitySection, "profile" | "findings"> | undefined,
   library?: KritikLibrary,
 ): SurfaceGauge[] {
-  const titles = new Map<string, string>();
-  for (const surface of asArray<SurfaceDef>(section?.profile?.surfaces)) {
-    if (typeof surface?.id === "string") titles.set(surface.id, surface.title ?? surface.id);
-  }
+  const titles = buildSurfaceTitles(section);
 
   const openPerSurface = new Map<string, number>();
   for (const finding of asArray<QualityFinding>(section?.findings)) {

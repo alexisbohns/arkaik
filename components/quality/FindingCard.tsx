@@ -17,6 +17,13 @@ interface FindingCardProps {
   row: FindingRow;
   /** The graph, for naming a finding's linked nodes. A `Map` satisfies this. */
   nodesById: ReadonlyMap<string, Node>;
+  /**
+   * `surface id -> title`, built once on the page. The card names the surface
+   * the way the matrix's column header and the Surface menu name it; the id
+   * itself stays one hover away, and is the fallback for a surface the profile
+   * never titled — `cross-surface`, above all, which no profile declares.
+   */
+  surfaceTitles: ReadonlyMap<string, string>;
   onOpenNode: (nodeId: string) => void;
   onOpenCriterion: (criterionId: string, surface: string) => void;
 }
@@ -45,7 +52,13 @@ const VERDICT_LABEL: Record<"CONFIRMED" | "REFUTED" | "DOWNGRADED", string> = {
  * several cards while working through a lane, and eight `?open=` ids is not a
  * link anybody wants to share.
  */
-export function FindingCard({ row, nodesById, onOpenNode, onOpenCriterion }: FindingCardProps) {
+export function FindingCard({
+  row,
+  nodesById,
+  surfaceTitles,
+  onOpenNode,
+  onOpenCriterion,
+}: FindingCardProps) {
   const [expanded, setExpanded] = useState(false);
   const Chevron = expanded ? ChevronDownIcon : ChevronRightIcon;
   const verdict = row.verification?.verdict;
@@ -103,9 +116,12 @@ export function FindingCard({ row, nodesById, onOpenNode, onOpenCriterion }: Fin
         {row.criterionName !== row.criterionId && (
           <span className="max-w-[16rem] truncate">{row.criterionName}</span>
         )}
-        {/* The raw surface id, not the profile's title: it is the vocabulary the
-            audit itself uses, down to the finding's own id. */}
-        <span className="font-mono text-[10px]">{row.surface}</span>
+        {/* The profile's title, the same word the matrix column header and the
+            Surface menu use — a reader who clicked the "Database contract"
+            column must not then read `supabase` on every card it returned. The
+            id is on the hover, and is the fallback for a surface the profile
+            never titled. */}
+        <span title={row.surface}>{surfaceTitles.get(row.surface) ?? row.surface}</span>
         <span>
           · {row.impact} × {row.likelihood} = {row.risk}
         </span>
@@ -188,17 +204,28 @@ export function FindingCard({ row, nodesById, onOpenNode, onOpenCriterion }: Fin
             </div>
           )}
 
-          {row.issueUrl && (
-            <a
-              href={row.issueUrl}
-              target="_blank"
-              rel="nofollow noreferrer"
-              className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
-            >
-              <ExternalLinkIcon className="size-3.5" aria-hidden="true" />
-              {row.issueUrl}
-            </a>
-          )}
+          {/* The finding's own id, expanded only — it is what somebody pastes
+              into an issue or hands to `arkaik kritik`, and it is also where the
+              audit's raw vocabulary gets its context back, beside the surface id
+              on the hover above. Collapsed it would be one more monospace token
+              in a row already carrying two. */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
+            <span className="select-all font-mono">{row.id}</span>
+            {row.issueUrl && (
+              // `break-all` on the text and `shrink-0` on the icon: the card
+              // clips its overflow, and a GitHub issue URL is long enough to be
+              // cut off mid-path rather than wrapped.
+              <a
+                href={row.issueUrl}
+                target="_blank"
+                rel="nofollow noreferrer"
+                className="inline-flex min-w-0 max-w-full items-start gap-1.5 underline underline-offset-4 hover:text-foreground"
+              >
+                <ExternalLinkIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                <span className="min-w-0 break-all">{row.issueUrl}</span>
+              </a>
+            )}
+          </div>
         </div>
       )}
     </article>

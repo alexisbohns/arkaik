@@ -20,7 +20,12 @@ import { useProjectId } from "@/lib/hooks/useProjectId";
 import { useQueryWriter } from "@/lib/hooks/useQueryWriter";
 import { NODE_PANEL_PARAM, useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { criterionPanelKey, isCriterionEntry } from "@/lib/utils/project-panels";
-import { buildFindingRows, filterFindings, groupByPriority } from "@/lib/utils/quality";
+import {
+  buildFindingRows,
+  buildSurfaceTitles,
+  filterFindings,
+  groupByPriority,
+} from "@/lib/utils/quality";
 
 /**
  * The criterion panel's address, and the surface it is read on.
@@ -74,6 +79,11 @@ export default function ProjectQualityPage() {
   // audited is never offered as a way to narrow to nothing.
   const surfaces = useMemo(() => section?.profile?.surfaces ?? [], [section]);
   const domains = useMemo(() => library?.domains ?? [], [library]);
+  // One titles map for the whole page. The matrix's column headers and the
+  // board's cards name the same axis, and a component deriving its own would be
+  // free to call `supabase` what the header two rows up calls "Database
+  // contract".
+  const surfaceTitles = useMemo(() => buildSurfaceTitles(section), [section]);
 
   // ---- `?criterion=` <-> the criterion panel ---------------------------------
 
@@ -288,6 +298,7 @@ export default function ProjectQualityPage() {
             matrix={matrix}
             section={section}
             library={library}
+            surfaceTitles={surfaceTitles}
             activeCell={filters.cell}
             onSelectCell={handleSelectCell}
             onOpenCriterion={handleOpenCriterion}
@@ -308,6 +319,7 @@ export default function ProjectQualityPage() {
           <FindingsBoard
             groups={groups}
             nodesById={nodesById}
+            surfaceTitles={surfaceTitles}
             onOpenNode={handleOpenNode}
             onOpenCriterion={handleOpenCriterion}
           />
