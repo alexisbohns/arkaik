@@ -71,6 +71,14 @@ export function SurfaceScoreCard({
 }: SurfaceScoreCardProps) {
   const body = (
     <>
+      {/* The title leads. A card is read top-down, and the first question is
+          *which surface is this* — the score answers "how is it doing", which
+          is not a question until you know what "it" is. Foreground, never the
+          grade's colour: the title is the card's name, and a name tinted by its
+          own diagnosis reads as part of the verdict. */}
+      <span className="w-full truncate text-center text-xs font-medium text-foreground" title={title}>
+        {title}
+      </span>
       {score === null ? (
         <span className="py-2 text-sm text-muted-foreground">N/A</span>
       ) : (
@@ -80,12 +88,6 @@ export function SurfaceScoreCard({
         </>
       )}
       {findings && <FindingDots findings={findings} />}
-      {/* Foreground, never the grade's colour. The title is the card's *name* —
-          which surface this is — and a name tinted by its own diagnosis reads
-          as part of the verdict. */}
-      <span className="w-full truncate text-center text-xs font-medium text-foreground" title={title}>
-        {title}
-      </span>
       {meta && <span className="text-[10px] text-muted-foreground">{meta}</span>}
     </>
   );
