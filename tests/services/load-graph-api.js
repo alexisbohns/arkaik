@@ -69,11 +69,17 @@ function loadGraphApi() {
     ["@/lib/services/graph/store", "./store.js"],
     ["@/lib/services/graph/read-route", "./read-route.js"],
     ["@/lib/pollen/map", "./pollen-map.js"],
+    ["@/lib/utils/quality", "./quality.js"],
     ["@/auth", "./auth-module-stub.js"],
   ];
 
   const src = (...parts) => path.join(ROOT, ...parts);
 
+  // The REAL module: `foldResolvedFindings`, which the project GET route calls
+  // to fold quality.finding.resolved events over a bundle's stored findings on
+  // read (issue #382 phase E). Pure, and its only runtime import is
+  // @arkaik/schema, so COMMON covers it.
+  write("quality.js", transpile(src("lib", "utils", "quality.ts"), "quality.ts", COMMON));
   write("db.js", transpile(src("lib", "services", "db.ts"), "db.ts", COMMON));
   write("limits.js", transpile(src("lib", "services", "limits.ts"), "limits.ts", COMMON));
   write("owners.js", transpile(src("lib", "services", "owners.ts"), "owners.ts", COMMON));
