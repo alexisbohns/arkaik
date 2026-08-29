@@ -19,7 +19,6 @@ import {
   type EventInput,
   type JournalEvent,
   type KritikLibrary,
-  type QualitySection,
 } from "@arkaik/schema";
 import {
   listAuditIds,
@@ -168,12 +167,18 @@ export function foldQualitySection(
   }
 
   const { library } = loadKritikLibrary(root);
-  // Both of the merge's `undefined` cases — no audits, no profile — are ruled
-  // out by the two guards above, so it cannot come back empty here.
   const section =
     auditId === undefined
-      ? (loadCurrentQualitySection(root, library) as QualitySection)
+      ? loadCurrentQualitySection(root, library)
       : loadAuditQualitySection(root, auditId, library);
+
+  // Unreachable today: the merge returns `undefined` only for no audits or no
+  // profile, and both are ruled out by the guards above. Handled rather than
+  // cast away so that deleting one of those guards fails here, loudly, instead
+  // of typing `undefined` as a section and shipping an empty `quality` key.
+  if (section === undefined) {
+    return { folded: false, notice: `Quality: nothing to fold under ${auditsDir(root)}` };
+  }
 
   bundle.quality = section;
   const count = auditId === undefined ? auditIds.length : 1;
