@@ -2,14 +2,15 @@
 
 /**
  * The Kritik plugin channel (docs/rfcs/kritik.md § 5-6, issue #382 phase B):
- * the overlay merge in @arkaik/schema, and the three generated scripts run
+ * the overlay merge in @arkaik/schema, and the four generated scripts run
  * end-to-end the way a consuming repo runs them.
  *
  * The second half is the part worth having. It builds a throwaway repo in a
  * temp dir, writes the Pebbles pilot audit into it from the committed fixture,
- * and drives `init-profile.js` → `compute-matrix.js` → `scaffold-criterion.js`
- * as separate Node processes with no `node_modules` on the path — which is the
- * only way to find out whether the zero-dependency claim is still true. A
+ * and drives `init-profile.js` → `compute-matrix.js` → `detect-regressions.js`
+ * → `scaffold-criterion.js` as separate Node processes with no `node_modules`
+ * on the path — which is the only way to find out whether the zero-dependency
+ * claim is still true. A
  * bundling regression that broke these scripts would otherwise surface for the
  * first time in someone else's repository.
  *
@@ -55,6 +56,24 @@ function runExpectingFailure(script, args, cwd) {
     return null;
   } catch (err) {
     return String(err.stderr ?? "");
+  }
+}
+/**
+ * Run a generated script in `cwd`, always returning `{ status, stdout, stderr }`
+ * regardless of exit code — for detect-regressions.js, where exiting 1 is the
+ * correct answer to "did anything regress", not a failure the way the other
+ * scripts' non-zero exits are.
+ */
+function runReportingExit(script, args, cwd) {
+  try {
+    const stdout = execFileSync(process.execPath, [path.join(SCRIPTS, script), ...args], {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return { status: 0, stdout, stderr: "" };
+  } catch (err) {
+    return { status: err.status, stdout: String(err.stdout ?? ""), stderr: String(err.stderr ?? "") };
   }
 }
 
@@ -176,7 +195,36 @@ try {
   check("the printed table marks a capped cell with an asterisk", /\(\w\*\)/.test(printed), printed.split("\n")[2]);
   check("the report leads with the P0 lane, not the matrix alone", printed.includes("P0 — fix first:"));
 
-  // 3. scaffold-criterion.js — the overlay, and that it behaves like a pack criterion.
+  // 3. detect-regressions.js — what got worse between an older reading and the
+  // pilot audit. The older audit sorts *before* "2026-08" ("2026-07") so it
+  // never displaces "2026-08" as the newest audit the later sections below
+  // still resolve to by default — only its own file is written or mutated,
+  // the shared "2026-08" audit is never touched.
+  const olderAuditDir = path.join(repo, "docs/quality/audits/2026-07");
+  fs.mkdirSync(olderAuditDir, { recursive: true });
+  fs.writeFileSync(path.join(olderAuditDir, "scores.json"), fs.readFileSync(path.join(auditDir, "scores.json"), "utf8"));
+  fs.writeFileSync(path.join(olderAuditDir, "findings.json"), fs.readFileSync(path.join(auditDir, "findings.json"), "utf8"));
+
+  const clean = runReportingExit("detect-regressions.js", ["--root", repo, "--json"], repo);
+  check("detect-regressions exits 0 when nothing regressed", clean.status === 0, `status ${clean.status}`);
+  check("a clean comparison reports zero regressions", JSON.parse(clean.stdout).total === 0, clean.stdout);
+
+  const olderScores = JSON.parse(fs.readFileSync(path.join(olderAuditDir, "scores.json"), "utf8"));
+  olderScores.assessments = olderScores.assessments.map((a) =>
+    a.criterion_id === "A11Y-01" && a.surface === "web" ? { ...a, level: 4 } : a,
+  );
+  fs.writeFileSync(path.join(olderAuditDir, "scores.json"), JSON.stringify(olderScores));
+
+  const regressed = runReportingExit("detect-regressions.js", ["--root", repo, "--json"], repo);
+  check("detect-regressions exits 1 on a regression", regressed.status === 1, `status ${regressed.status}`);
+  check(
+    "detect-regressions reports the level drop",
+    JSON.parse(regressed.stdout).regressions.some((r) => r.kind === "level-drop"),
+    regressed.stdout,
+  );
+  check("detect-regressions runs with zero dependencies", !regressed.stderr.includes("Cannot find module"), regressed.stderr);
+
+  // 4. scaffold-criterion.js — the overlay, and that it behaves like a pack criterion.
   const collision = runExpectingFailure("scaffold-criterion.js", [
     "--id", "SEC-01", "--domain", "SEC", "--name", "x", "--question", "y?", "--applies-to", "web",
     ...["l0", "l1", "l2", "l3", "l4"].flatMap((k) => ["--anchor", `${k}=a`]),
@@ -261,7 +309,7 @@ try {
   check("the marketplace lists kritik alongside arkaik", Boolean(entry) && entry.source === "./plugin-kritik");
 
   // The whole point of bundling: these run where there is no node_modules.
-  for (const script of ["compute-matrix.js", "scaffold-criterion.js", "init-profile.js"]) {
+  for (const script of ["compute-matrix.js", "scaffold-criterion.js", "init-profile.js", "detect-regressions.js"]) {
     const source = fs.readFileSync(path.join(SCRIPTS, script), "utf8");
     check(`${script} bundles to a zero-dependency artifact`, !/require\((['"])(?!node:)/.test(source));
     check(`${script} is executable and shebanged`, source.startsWith("#!/usr/bin/env node"));
