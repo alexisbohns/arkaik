@@ -152,9 +152,18 @@ function loadLocalProvider() {
     rewriteSchemaRequire(transpile(path.join(ROOT, "lib", "data", "migrate.ts"), "migrate.ts")),
   );
 
-  // local-provider.js — transpiled; @arkaik/schema and the `@/lib/utils/cycle`
-  // alias rewritten (the alias isn't resolvable by plain Node require, so it's
-  // pointed at the sibling cycle.js written above; every other import is a
+  // quality.js — `foldResolvedFindings`, which local-provider calls to fold
+  // quality.finding.resolved events over a bundle's stored findings on read
+  // (issue #382 phase E). Same treatment as cycle.js: its only runtime import
+  // is @arkaik/schema.
+  fs.writeFileSync(
+    path.join(BUILD_DIR, "quality.js"),
+    rewriteSchemaRequire(transpile(path.join(ROOT, "lib", "utils", "quality.ts"), "quality.ts")),
+  );
+
+  // local-provider.js — transpiled; @arkaik/schema and the `@/lib/utils/*`
+  // aliases rewritten (the aliases aren't resolvable by plain Node require, so
+  // they're pointed at the siblings written above; every other import is a
   // real relative path ("./migrate", "./db", "./emit-events") that resolves
   // naturally since all these files live in the same BUILD_DIR).
   let localProviderOut = transpile(path.join(ROOT, "lib", "data", "local-provider.ts"), "local-provider.ts");
@@ -163,10 +172,14 @@ function loadLocalProvider() {
     /require\((['"])@\/lib\/utils\/cycle\1\)/g,
     `require("./cycle")`,
   );
+  localProviderOut = localProviderOut.replace(
+    /require\((['"])@\/lib\/utils\/quality\1\)/g,
+    `require("./quality")`,
+  );
   const outFile = path.join(BUILD_DIR, "local-provider.js");
   fs.writeFileSync(outFile, localProviderOut);
 
-  for (const name of ["db", "cycle", "emit-events", "migrate", "local-provider"]) {
+  for (const name of ["db", "cycle", "quality", "emit-events", "migrate", "local-provider"]) {
     delete require.cache[path.join(BUILD_DIR, `${name}.js`)];
   }
 
