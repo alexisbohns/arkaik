@@ -121,6 +121,12 @@ jobs:
       - name: Kritik operation tests (upserts, id minting, event payloads)
         run: npm run test:quality-ops
 
+      # The webhook half of the quality loop — the mention grammar and the
+      # resolution pass. DB-free on purpose: the grammar imports nothing and
+      # the project read is injected, so a Postgres-less runner still gates it.
+      - name: Kritik webhook tests (finding mentions, resolution pass)
+        run: npm run test:quality-webhook
+
       - name: Map projection + validation tests
         run: npm run test:maps
 
