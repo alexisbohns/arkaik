@@ -1,7 +1,13 @@
 "use client";
 
 import { useMemo } from "react";
-import { buildProductUsageIndex, computeParityGaps, listMaps } from "@arkaik/schema";
+import {
+  buildProductUsageIndex,
+  computeParityGaps,
+  deriveQualityMatrix,
+  listMaps,
+  resolveKritikLibrary,
+} from "@arkaik/schema";
 import { LayoutGridIcon, RowsIcon } from "lucide-react";
 import { BacklogCard } from "@/components/overview/BacklogCard";
 import { DeliverySnapshotCard } from "@/components/overview/DeliverySnapshotCard";
@@ -12,6 +18,7 @@ import { OverviewLayoutProvider } from "@/components/overview/OverviewLayoutCont
 import { ParityCard } from "@/components/overview/ParityCard";
 import { PlatformGaugesCard } from "@/components/overview/PlatformGaugesCard";
 import { PyramidCard } from "@/components/overview/PyramidCard";
+import { QualityCard } from "@/components/overview/QualityCard";
 import { ReleasePulseCard } from "@/components/overview/ReleasePulseCard";
 import { PageError } from "@/components/layout/PageError";
 import { PageLoading } from "@/components/layout/PageLoading";
@@ -37,6 +44,7 @@ import {
 import { computeBacklog } from "@/lib/utils/journal";
 import { computeMapCounts } from "@/lib/utils/journey-graph";
 import { getRollupPlatforms } from "@/lib/utils/platform-status";
+import { buildSurfaceGauges } from "@/lib/utils/quality";
 import { productScopeMetaLabel, type ProductGraph } from "@/lib/utils/product-scope";
 import { computeScopedPyramidTiers } from "@/lib/utils/pyramid";
 
@@ -131,6 +139,15 @@ export default function OverviewPage() {
     [acceptances, dataEdges, nodesById, scope],
   );
 
+  // On `quality` alone: nothing else on the bundle feeds the audit, and a
+  // project that never adopts Kritik derives one empty matrix and is done.
+  // `QualityCard` decides whether there is an audit to show at all.
+  const surfaceGauges = useMemo(() => {
+    const section = projectBundle?.quality;
+    const library = resolveKritikLibrary(section);
+    return buildSurfaceGauges(deriveQualityMatrix({ quality: section }, library), section, library);
+  }, [projectBundle?.quality]);
+
   const health = useMemo(
     () =>
       computeHealthIndicators(dataNodes, dataEdges, journal, {
@@ -207,7 +224,7 @@ export default function OverviewPage() {
       }
     >
       {/*
-        Two displays of the same nine sections. The grid is a two-column wall of
+        Two displays of the same ten sections. The grid is a two-column wall of
         cards; rows give each section a full width, heading left and content
         right, which is the only shape the platform tiles and the 90° value
         pyramid have room to draw in. The switch is the reader's, remembered.
@@ -224,6 +241,7 @@ export default function OverviewPage() {
           ) : (
             <>
               <PlatformGaugesCard rollup={rollup} platforms={gaugePlatforms} projectId={id} />
+              <QualityCard gauges={surfaceGauges} projectId={id} />
               <ParityCard gaps={parityGaps} platforms={scope.platforms} projectId={id} />
               <PyramidCard tiers={pyramidTiers} platforms={scope.platforms} projectId={id} />
               <DeliverySnapshotCard snapshot={snapshot} projectId={id} />
