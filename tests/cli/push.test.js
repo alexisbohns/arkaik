@@ -22,8 +22,10 @@
  *  - a Kritik `quality` section the SOURCE bundle carries is deleted before
  *    packing and never sent (#389) — open findings name unfixed
  *    vulnerabilities and where to find them;
- *  - --include-quality opts back in, forwarding ?include_quality=true, and
- *    combines with --include-journal into a two-parameter query;
+ *  - --include-quality opts back in, folding the repo's docs/quality/ into
+ *    the body (root DERIVED from the bundle's path, never the cwd) and
+ *    forwarding ?include_quality=true; combines with --include-journal into a
+ *    two-parameter query;
  *  - --include-journal: journal embedded in the body, ?include_journal=true
  *    forwarded;
  *  - validation failure: an invalid bundle never reaches pack or the network;
@@ -136,59 +138,160 @@ function fixture() {
 }
 
 /**
- * Like {@link fixture}, but the bundle ARRIVES carrying a Kritik `quality`
- * section — five assessed cells and an open finding.
+ * `docs/quality/` sidecars for a fixture repo: two audits that merge to five
+ * cells and two findings. 2026-09 re-scores one of 2026-08's cells, so a fold
+ * that concatenated or took only the newest would land a different number.
  *
- * A fixture with no `quality` key cannot tell "push stripped it" from "push
- * never had one to strip", which is how a leak survived two reviews. The
- * sidecar journal comes along too, so the both-flags case has a journal to
- * embed as well as a section to keep.
+ * The vendored `library.json` is not decoration. Without it `resolvePack`
+ * falls through to the pack shipped beside the CLI, which under esbuild
+ * resolves `import.meta.url` into `.test-build/assets/` — a directory that
+ * does not exist — and the fold dies with a misleading "reinstall arkaik".
+ * Vendoring makes these cases independent of how the module under test was
+ * built.
+ *
+ * Findings are stored WITH severity/priority, exactly as the real sidecars
+ * are, so a body that has them proves the section was passed through and a
+ * body that lacks them proves it was folded.
  */
-function qualityFixture() {
-  const { dir, bundlePath, journalPath } = fixture();
-  const cell = (criterionId, surface, level) => ({
+function writeQualitySidecars(dir) {
+  const write = (relative, value) => {
+    const file = path.join(dir, "docs", "quality", ...relative);
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify(value, null, 2) + "\n");
+  };
+  const cell = (criterionId, surface, level, auditId) => ({
     criterion_id: criterionId,
     surface,
     level,
     evidence: `app/${criterionId.toLowerCase()}.ts:1`,
-    audit_id: "2026-08",
+    audit_id: auditId,
   });
-  writeFileSync(
-    bundlePath,
-    JSON.stringify(
+  write(["profile.json"], {
+    surfaces: [{ id: "web", title: "Web app", platform: "web" }, { id: "admin", title: "Admin console" }],
+    domain_weights: { SEC: 2, TST: 1 },
+  });
+  write(["library.json"], {
+    name: "test-pack",
+    version: "9.9.9",
+    domains: [{ code: "SEC", name: "Security" }, { code: "TST", name: "Testing" }],
+    criteria: [
+      { id: "SEC-01", domain: "SEC", name: "Secrets", weight: 3 },
+      { id: "SEC-02", domain: "SEC", name: "Authorization", weight: 1 },
+      { id: "TST-01", domain: "TST", name: "Unit tests", weight: 2 },
+    ],
+    scales: { grades: { A: 97, B: 88, C: 71, D: 52, E: 0 } },
+  });
+  write(["audits", "2026-08", "scores.json"], {
+    audit_id: "2026-08",
+    framework_version: "9.9.8",
+    assessments: [
+      cell("SEC-01", "web", 2, "2026-08"),
+      cell("SEC-02", "web", 4, "2026-08"),
+      cell("TST-01", "web", 1, "2026-08"),
+      cell("SEC-01", "admin", 3, "2026-08"),
+    ],
+  });
+  write(["audits", "2026-08", "findings.json"], {
+    audit_id: "2026-08",
+    framework_version: "9.9.8",
+    findings: [
       {
-        ...makeBundle(),
-        quality: {
-          framework_version: "9.9.9",
-          profile: { surfaces: [{ id: "web", title: "Web app" }, { id: "admin", title: "Admin console" }] },
-          assessments: [
-            cell("SEC-01", "web", 4),
-            cell("SEC-02", "web", 4),
-            cell("TST-01", "web", 1),
-            cell("SEC-01", "admin", 3),
-            cell("TST-01", "admin", 2),
-          ],
-          findings: [
-            {
-              id: "F-2026-08-SEC-web-01",
-              criterion_id: "SEC-01",
-              surface: "web",
-              title: "Token in the repo",
-              detail: "A live token is committed.",
-              evidence: "app/a.ts:1",
-              impact: 5,
-              likelihood: 4,
-              cost: "M",
-              status: "open",
-            },
-          ],
-        },
+        id: "F-2026-08-SEC-web-01",
+        criterion_id: "SEC-01",
+        surface: "web",
+        title: "Token in the repo",
+        detail: "A live token is committed.",
+        evidence: "app/a.ts:1",
+        impact: 5,
+        likelihood: 4,
+        cost: "M",
+        status: "open",
+        severity: "critical",
+        priority: "P0",
       },
-      null,
-      2,
-    ) + "\n",
-  );
-  return { dir, bundlePath, journalPath };
+    ],
+  });
+  write(["audits", "2026-09", "scores.json"], {
+    audit_id: "2026-09",
+    framework_version: "9.9.9",
+    // Re-scores 2026-08's SEC-01/web (2 -> 4) and adds a cell it never had.
+    assessments: [cell("SEC-01", "web", 4, "2026-09"), cell("TST-01", "admin", 2, "2026-09")],
+  });
+  write(["audits", "2026-09", "findings.json"], {
+    audit_id: "2026-09",
+    framework_version: "9.9.9",
+    findings: [
+      {
+        id: "F-2026-09-TST-admin-01",
+        criterion_id: "TST-01",
+        surface: "admin",
+        title: "No tests on the admin console",
+        detail: "Nothing covers it.",
+        evidence: "app/e.ts:1",
+        impact: 2,
+        likelihood: 2,
+        cost: "S",
+        status: "open",
+        severity: "low",
+        priority: "P3",
+      },
+    ],
+  });
+}
+
+/** Marker text planted in a bundle's OWN quality section, greppable in a request body. */
+const LOCAL_SECTION_MARKER = "LOCAL SECTION MARKER";
+
+/**
+ * A real repo, unlike {@link fixture}: the bundle sits at the conventional
+ * `docs/arkaik/bundle.json` with its journal sidecar beside it and a
+ * `docs/quality/` tree alongside. That layout is what lets
+ * `resolveQualityRoot` DERIVE the root from the bundle's own path — which is
+ * both the behaviour `push.ts` relies on (it passes no `root:`, deliberately)
+ * and what keeps these cases hermetic: `cwd` is pointed at an unrelated empty
+ * directory, so nothing can reach into the repo the test runner happens to be
+ * standing in. With the bundle at `<dir>/bundle.json` instead, the derivation
+ * finds nothing, the fold silently falls back to `process.cwd()`, and the
+ * suite's result depends on whether the developer's own checkout has a
+ * `docs/quality/profile.json`.
+ *
+ * WHICH SECTION EACH CASE GETS — both end up at five assessments, and the
+ * coincidence is worth spelling out:
+ *  - `ownSection: true` plants a section on the bundle itself, one the fold
+ *    did not create. Only the STRIP case uses it, because "deleted a section
+ *    that was already there" is exactly what it has to prove;
+ *  - by default there is no `quality` key at all, so any section in the
+ *    request body was built by folding `docs/quality/`. That is the primary
+ *    use case — pushing from a repo that has sidecars — and the opt-in cases
+ *    assert it by the merge's own fingerprints: the re-scored cell at its
+ *    NEWER level, and findings with `severity`/`priority` stripped, neither
+ *    of which a pass-through could produce.
+ */
+function qualityFixture({ ownSection = false } = {}) {
+  const dir = mkdtempSync(path.join(tmpdir(), "arkaik-push-quality-"));
+  createdDirs.push(dir);
+  const arkaikDir = path.join(dir, "docs", "arkaik");
+  mkdirSync(arkaikDir, { recursive: true });
+
+  const bundle = makeBundle();
+  if (ownSection) {
+    bundle.quality = {
+      framework_version: "0.0.1",
+      profile: { surfaces: [{ id: "web", title: "Web" }] },
+      assessments: [],
+      findings: [{ id: "F-local-01", title: LOCAL_SECTION_MARKER }],
+    };
+  }
+  const bundlePath = path.join(arkaikDir, "bundle.json");
+  writeFileSync(bundlePath, JSON.stringify(bundle, null, 2) + "\n");
+  writeFileSync(path.join(arkaikDir, "journal.jsonl"), JOURNAL);
+  writeQualitySidecars(dir);
+
+  // An empty directory to hand `runPush` as its cwd. Nothing under test may
+  // read it, and if anything does, it finds no repo and fails loudly.
+  const elsewhere = mkdtempSync(path.join(tmpdir(), "arkaik-push-elsewhere-"));
+  createdDirs.push(elsewhere);
+  return { dir, bundlePath, elsewhere };
 }
 
 /** Fresh temp dir with a copy of the shared dangling-edge (invalid) fixture, no sidecar. */
@@ -281,41 +384,58 @@ async function main() {
   // -------------------------------------------------------------------------
   // A `quality` section on the SOURCE bundle is stripped, never sent (#389).
   //
-  // The success case above cannot show this: its fixture has no `quality`
-  // key, so `sent.quality === undefined` would hold whether push strips one
-  // or merely declines to add one. Here the bundle arrives carrying findings
-  // — the exact shape `arkaik pack` writes — and they must not reach the
-  // wire. Server-side stripping (lib/services/publik.ts) is a second line,
-  // not this one.
+  // This is the one case that plants its own section: the success case above
+  // has no `quality` key, so `sent.quality === undefined` would hold there
+  // whether push deletes one or merely declines to add one. Here the bundle
+  // arrives carrying findings — and the repo has sidecars that would fold
+  // into a section too — so both routes to a section are live and both must
+  // come to nothing. Server-side stripping (lib/services/publik.ts) is a
+  // second line, not this one.
   // -------------------------------------------------------------------------
   {
-    const { bundlePath } = qualityFixture();
+    const { bundlePath, elsewhere } = qualityFixture({ ownSection: true });
     const httpClient = makeMockHttpClient((url) => {
       check("no include_quality query by default", url === `${DEFAULT_API_BASE}/api/publik`, url);
       return jsonResponse(201, { id: "q1", url: `${DEFAULT_API_BASE}/p/q1`, owner_key: "33333333-3333-4333-8333-333333333333" });
     });
-    const result = await runPush({ path: bundlePath, httpClient });
+    const result = await runPush({ path: bundlePath, cwd: elsewhere, httpClient });
 
     check("push of a quality-carrying bundle ok", result.ok === true && result.status === 201, JSON.stringify(result));
-    const sentBundle = JSON.parse(httpClient.calls[0].init.body);
-    check(
-      "the source bundle's quality section is not sent",
-      sentBundle.quality === undefined,
-      JSON.stringify(Object.keys(sentBundle)),
-    );
-    check(
-      "and no finding text leaks through any other key",
-      !httpClient.calls[0].init.body.includes("Token in the repo"),
-      httpClient.calls[0].init.body.slice(0, 300),
-    );
-    check("the rest of the bundle still goes", sentBundle.project && sentBundle.project.id === "demo");
+    if (httpClient.calls.length === 0) {
+      check("the source bundle's quality section is not sent", false, "no request was sent");
+    } else {
+      const sentBundle = JSON.parse(httpClient.calls[0].init.body);
+      check(
+        "the source bundle's quality section is not sent",
+        sentBundle.quality === undefined,
+        JSON.stringify(Object.keys(sentBundle)),
+      );
+      check(
+        "and no finding text leaks through any other key",
+        !httpClient.calls[0].init.body.includes(LOCAL_SECTION_MARKER) &&
+          !httpClient.calls[0].init.body.includes("Token in the repo"),
+        httpClient.calls[0].init.body.slice(0, 300),
+      );
+      check("the rest of the bundle still goes", sentBundle.project && sentBundle.project.id === "demo");
+    }
   }
 
   // -------------------------------------------------------------------------
-  // --include-quality: the opt-in. Same fixture, opposite expectation.
+  // --include-quality: the opt-in, and the first case that folds for real.
+  //
+  // The bundle carries NO quality key, so everything asserted below was built
+  // by folding this repo's docs/quality/ — the primary use case, and one a
+  // fixture with a pre-loaded section could never have exercised. The
+  // fingerprints are the merge's own: five cells rather than the six a
+  // concatenation gives or the two a newest-only takes, the re-scored cell at
+  // its NEWER level, and findings whose stored severity/priority are gone.
+  //
+  // `cwd` is an unrelated empty dir. The root that finds the sidecars is
+  // DERIVED from the bundle's path — which is why push.ts passes no `root:`,
+  // and why passing one would break this.
   // -------------------------------------------------------------------------
   {
-    const { bundlePath } = qualityFixture();
+    const { bundlePath, elsewhere } = qualityFixture();
     const httpClient = makeMockHttpClient((url) => {
       check(
         "--include-quality forwards ?include_quality=true",
@@ -324,25 +444,45 @@ async function main() {
       );
       return jsonResponse(201, { id: "q2", url: `${DEFAULT_API_BASE}/p/q2`, owner_key: "44444444-4444-4444-8444-444444444444" });
     });
-    const result = await runPush({ path: bundlePath, includeQuality: true, httpClient });
+    const result = await runPush({ path: bundlePath, cwd: elsewhere, includeQuality: true, httpClient });
 
     check("include-quality push ok", result.ok === true && result.status === 201, JSON.stringify(result));
-    const sentBundle = JSON.parse(httpClient.calls[0].init.body);
-    check(
-      "the whole section is sent, not just the key",
-      sentBundle.quality && sentBundle.quality.assessments.length === 5,
-      JSON.stringify(sentBundle.quality && sentBundle.quality.assessments.length),
-    );
-    check(
-      "including the findings that were the reason for the default",
-      sentBundle.quality && sentBundle.quality.findings.length === 1,
-      JSON.stringify(sentBundle.quality && sentBundle.quality.findings),
-    );
-    check(
-      "and the journal is still stripped — the two opt-ins are independent",
-      sentBundle.journal === undefined,
-      JSON.stringify(Object.keys(sentBundle)),
-    );
+    if (httpClient.calls.length === 0) {
+      check("the folded section is sent", false, "no request was sent");
+    } else {
+      const sentBundle = JSON.parse(httpClient.calls[0].init.body);
+      const quality = sentBundle.quality;
+      check(
+        "the folded section is sent, merged across both audits (5 cells, not 6 or 2)",
+        quality && quality.assessments.length === 5,
+        JSON.stringify(quality && quality.assessments.length),
+      );
+      check(
+        "the newer audit won the re-scored cell — a pass-through could not do this",
+        quality && quality.assessments.some((a) => a.criterion_id === "SEC-01" && a.surface === "web" && a.level === 4),
+        JSON.stringify(quality && quality.assessments),
+      );
+      check(
+        "the findings that were the reason for the default, pooled across audits",
+        quality && quality.findings.length === 2,
+        JSON.stringify(quality && quality.findings.map((f) => f.id)),
+      );
+      check(
+        "derived severity/priority stripped, as only a fold does",
+        quality && quality.findings.every((f) => !("severity" in f) && !("priority" in f)),
+        JSON.stringify(quality && quality.findings.map((f) => Object.keys(f))),
+      );
+      check(
+        "the vendored pack rode along, not the one the CLI ships",
+        quality && quality.library && quality.library.scales.grades.A === 97,
+        JSON.stringify(quality && quality.library && quality.library.scales),
+      );
+      check(
+        "and the journal is still stripped — the two opt-ins are independent",
+        sentBundle.journal === undefined,
+        JSON.stringify(Object.keys(sentBundle)),
+      );
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -354,7 +494,7 @@ async function main() {
   // single-flag case above would still pass.
   // -------------------------------------------------------------------------
   {
-    const { bundlePath } = qualityFixture();
+    const { bundlePath, elsewhere } = qualityFixture();
     const httpClient = makeMockHttpClient((url) => {
       check(
         "both flags produce one query with two parameters",
@@ -363,20 +503,24 @@ async function main() {
       );
       return jsonResponse(201, { id: "q3", url: `${DEFAULT_API_BASE}/p/q3`, owner_key: "55555555-5555-4555-8555-555555555555" });
     });
-    const result = await runPush({ path: bundlePath, includeJournal: true, includeQuality: true, httpClient });
+    const result = await runPush({ path: bundlePath, cwd: elsewhere, includeJournal: true, includeQuality: true, httpClient });
 
     check("both-flags push ok", result.ok === true && result.status === 201, JSON.stringify(result));
-    const sentBundle = JSON.parse(httpClient.calls[0].init.body);
-    check(
-      "the body carries the journal",
-      Array.isArray(sentBundle.journal) && sentBundle.journal.length === 1,
-      JSON.stringify(sentBundle.journal),
-    );
-    check(
-      "and the quality section, in the same request",
-      sentBundle.quality && sentBundle.quality.assessments.length === 5,
-      JSON.stringify(sentBundle.quality && sentBundle.quality.assessments.length),
-    );
+    if (httpClient.calls.length === 0) {
+      check("the body carries the journal", false, "no request was sent");
+    } else {
+      const sentBundle = JSON.parse(httpClient.calls[0].init.body);
+      check(
+        "the body carries the journal",
+        Array.isArray(sentBundle.journal) && sentBundle.journal.length === 1,
+        JSON.stringify(sentBundle.journal),
+      );
+      check(
+        "and the folded quality section, in the same request",
+        sentBundle.quality && sentBundle.quality.assessments.length === 5,
+        JSON.stringify(sentBundle.quality && sentBundle.quality.assessments.length),
+      );
+    }
   }
 
   // -------------------------------------------------------------------------

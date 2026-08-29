@@ -26,9 +26,8 @@
  *     purpose: publishing your history and publishing your open findings are
  *     different disclosures, and both default to no.
  *  3. `POST {api}/api/publik[?include_journal=true][&include_quality=true]`
- *     with the packed,
- *     canonical bundle as the body (docs/spec/services.md § Publik →
- *     Protocol — the API this command talks to is implemented at
+ *     with the packed, canonical bundle as the body (docs/spec/services.md
+ *     § Publik → Protocol — the API this command talks to is implemented at
  *     `app/api/publik/route.ts` / `lib/services/publik.ts`).
  *  4. report the response: `201` prints the URL + owner key prominently
  *     with a save-it warning (the key is returned exactly once and there is

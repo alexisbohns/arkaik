@@ -80,7 +80,8 @@ Options:
                      already carry a section of its own and that one goes too.
                      For any bundle that must not travel with open findings:
                      a finding names an unfixed vulnerability and the file to
-                     find it in. ("arkaik push" always packs this way.)
+                     find it in. ("arkaik push" packs this way by default;
+                     its --include-quality opts back in.)
                      Default: docs/quality/ IS folded in.
   --inline-assets   Convert relative-path metadata.platformScreenshots values
                      into data: URIs by reading the file from disk (resolved
@@ -149,7 +150,7 @@ export interface RunPackOptions {
   noQuality?: boolean;
   /** Pin one audit's snapshot instead of merging every audit into current state. */
   audit?: string;
-  /** Repo root holding docs/quality/, resolved against `cwd` (default: `cwd`). */
+  /** Repo root holding docs/quality/, resolved against `cwd`. Default: NOT `cwd` — {@link resolveQualityRoot} derives it from the bundle's own path, with `cwd` only as the fallback for a bundle outside `docs/arkaik/`. */
   root?: string;
   /** Base directory `path`/`out` resolve against (default: process.cwd()). */
   cwd?: string;
