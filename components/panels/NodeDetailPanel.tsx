@@ -37,6 +37,9 @@ import { productOf } from "@arkaik/schema";
 import { findWhereUsed } from "@/lib/utils/where-used";
 import { computeNodeTimeline } from "@/lib/utils/journal";
 import { FeedRow } from "@/components/journal/FeedRow";
+import { SEVERITY_CHIP, SEVERITY_LABEL } from "@/components/quality/quality-styles";
+import { EMPTY_QUALITY_FILTERS, filterFindings, type FindingRow } from "@/lib/utils/quality";
+import { cn } from "@/lib/utils";
 
 interface NodeDetailPanelProps {
   node: Node;
@@ -60,6 +63,17 @@ interface NodeDetailPanelProps {
   /** The acceptance decompose gestures, on surfaces whose panels can write. */
   intake?: AcceptanceIntake;
   onZoomShot?: (node: Node, platform: PlatformId) => void;
+  /**
+   * Every finding in the project, denormalized once by `buildFindingRows` — the
+   * Findings section picks out this node's own. The whole list rather than a
+   * pre-filtered one because the caller builds it once for a whole panel stack,
+   * and re-filtering it per open panel is what a panel is for.
+   *
+   * Optional with `onOpenCriterion`, and the section is absent without both: a
+   * list of findings nothing can open is a dead end.
+   */
+  findings?: FindingRow[];
+  onOpenCriterion?: (criterionId: string, surface: string) => void;
 }
 
 interface NodeFieldsProps {
@@ -345,6 +359,67 @@ function RefsSection({ node }: { node: Node }) {
   );
 }
 
+interface FindingsSectionProps {
+  node: Node;
+  findings: FindingRow[];
+  onOpenCriterion: (criterionId: string, surface: string) => void;
+}
+
+/**
+ * The audit's open findings against this node, worst first.
+ *
+ * Open only, matching the canvas badge exactly: both ask `row.open`, so a node
+ * wearing a red "3" opens onto three rows and never onto a resolved fourth the
+ * reader has to work out is history.
+ *
+ * The order is `filterFindings`' own — the board's comparator, run with the
+ * filter set that narrows nothing. A `sort` written here would be a second
+ * opinion on which finding is worse than which, and the two lists would read
+ * differently the day a pack moved a bucket.
+ */
+function FindingsSection({ node, findings, onOpenCriterion }: FindingsSectionProps) {
+  const own = filterFindings(
+    findings.filter((row) => row.open && row.nodeIds.includes(node.id)),
+    EMPTY_QUALITY_FILTERS,
+  );
+
+  if (own.length === 0) {
+    return null;
+  }
+
+  return (
+    <PanelSection title="Findings">
+      <div className="flex flex-col gap-0.5">
+        {own.map((row) => (
+          // Into the criterion, not into the finding: a finding has no panel of
+          // its own, and the criterion is where its question, its bands and its
+          // siblings on the same surface live.
+          <button
+            key={row.id}
+            type="button"
+            onClick={() => onOpenCriterion(row.criterionId, row.surface)}
+            className="flex items-center gap-2 text-sm text-left rounded-md px-2 py-1.5 hover:bg-muted transition-colors w-full"
+            title={`Open ${row.criterionName}`}
+          >
+            <span
+              className={cn(
+                "shrink-0 rounded border px-1.5 py-0.5 text-[11px] font-medium",
+                SEVERITY_CHIP[row.severity],
+              )}
+            >
+              {SEVERITY_LABEL[row.severity]}
+            </span>
+            <span className="flex-1 truncate">{row.title}</span>
+            <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground">
+              {row.criterionId}
+            </span>
+          </button>
+        ))}
+      </div>
+    </PanelSection>
+  );
+}
+
 interface ConnectionsSectionProps {
   node: Node;
   allNodes: Node[];
@@ -593,6 +668,8 @@ export function NodeDetailPanel({
   onCreateAcceptanceForAnchor,
   intake,
   onZoomShot,
+  findings,
+  onOpenCriterion,
 }: NodeDetailPanelProps) {
   void onDelete;
 
@@ -601,6 +678,19 @@ export function NodeDetailPanel({
       <NodeFields key={node.id} node={node} onUpdate={onUpdate} allNodes={allNodes} onNavigate={onNavigate} />
       <ProductSection key={`product-${node.id}`} node={node} scope={scope} onUpdate={onUpdate} />
       <RefsSection key={`refs-${node.id}`} node={node} />
+      {/* High, with what is *true* about the node rather than down with the
+          read-only cross-references: an open critical finding is the most urgent
+          thing this panel can tell a reader, and the canvas badge sends them
+          here to find it. Under the playlist editor it would be a promise the
+          panel does not keep. */}
+      {findings && onOpenCriterion && (
+        <FindingsSection
+          key={`findings-${node.id}`}
+          node={node}
+          findings={findings}
+          onOpenCriterion={onOpenCriterion}
+        />
+      )}
       {(node.species === "view" || node.species === "flow") && allNodes && allEdges && (
         <AcceptancesSection
           key={`acceptances-${node.id}`}
