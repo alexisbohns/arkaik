@@ -74,9 +74,10 @@ const FINDING_TOKEN = /\bF-[A-Za-z0-9-]{3,80}\b/g;
  * couple of characters, so the cap is never reached honestly and costs
  * nothing when it is.
  *
- * `owner` and `repo` are each capped at `{1,64}` — comfortably longer than
- * any name GitHub actually issues, chosen to bound the quantifier rather
- * than to encode GitHub's exact limit precisely.
+ * `owner` and `repo` are each capped at `{1,100}`, which is GitHub's own
+ * ceiling for a repository name (an owner name stops at 39). One bound for
+ * both rather than two exact ones: the point is to bound the quantifier, and
+ * a cap SHORT of what GitHub issues would silently drop a legal reference.
  *
  * `\d{1,9}` caps the issue number at nine digits (GitHub issue numbers do not
  * get remotely close). `Closes #12345678901` — eleven digits — therefore
@@ -96,11 +97,11 @@ const FINDING_TOKEN = /\bF-[A-Za-z0-9-]{3,80}\b/g;
  * backtrack.
  */
 const CLOSING_REFERENCE =
-  /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)[\s:]{1,20}(?:https?:\/\/(?:www\.)?github\.com\/([A-Za-z0-9._-]{1,64})\/([A-Za-z0-9._-]{1,64})\/issues\/|([A-Za-z0-9._-]{1,64})\/([A-Za-z0-9._-]{1,64})#|#)(\d{1,9})\b/gi;
+  /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)[\s:]{1,20}(?:https?:\/\/(?:www\.)?github\.com\/([A-Za-z0-9._-]{1,100})\/([A-Za-z0-9._-]{1,100})\/issues\/|([A-Za-z0-9._-]{1,100})\/([A-Za-z0-9._-]{1,100})#|#)(\d{1,9})\b/gi;
 
 /** A full issue URL, tolerant of scheme, `www.`, and anything after the number. */
 const ISSUE_URL =
-  /^https?:\/\/(?:www\.)?github\.com\/([A-Za-z0-9._-]{1,64})\/([A-Za-z0-9._-]{1,64})\/issues\/(\d{1,9})(?:[/?#].*)?$/i;
+  /^https?:\/\/(?:www\.)?github\.com\/([A-Za-z0-9._-]{1,100})\/([A-Za-z0-9._-]{1,100})\/issues\/(\d{1,9})(?:[/?#].*)?$/i;
 
 /** A line opening or closing a fenced code block — see {@link stripFencedCode}. */
 const FENCE_LINE = /^\s*(?:```|~~~)/;
