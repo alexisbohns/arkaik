@@ -38,6 +38,7 @@ function loadQualityParse() {
   };
   const dbStub = stub("db-stub");
   const storeStub = stub("store-stub");
+  const pullRequestStub = stub("pull-request-stub");
   const schemaIndex = path.join(SCHEMA_BUILD_DIR, "index.js");
 
   const compile = (relative, outName) => {
@@ -52,7 +53,7 @@ function loadQualityParse() {
       .replace(/require\((['"])@\/lib\/services\/db\1\)/g, `require(${JSON.stringify(dbStub)})`)
       .replace(/require\((['"])@\/lib\/services\/graph\/store\1\)/g, `require(${JSON.stringify(storeStub)})`)
       .replace(/require\((['"])@\/lib\/services\/github\/quality-parse\1\)/g, `require(${JSON.stringify(path.join(BUILD_DIR, "quality-parse.js"))})`)
-      .replace(/require\((['"])@\/lib\/services\/github\/pull-request\1\)/g, `require(${JSON.stringify(storeStub)})`);
+      .replace(/require\((['"])@\/lib\/services\/github\/pull-request\1\)/g, `require(${JSON.stringify(pullRequestStub)})`);
     const outFile = path.join(BUILD_DIR, outName);
     fs.writeFileSync(outFile, rewritten);
     delete require.cache[outFile];
