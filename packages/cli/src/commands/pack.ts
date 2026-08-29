@@ -340,6 +340,17 @@ export function runPackCli(args: string[]): void {
     }
   }
 
+  // `--audit` names WHAT to fold and `--no-quality` says don't fold; whichever
+  // the user meant, the other half of the command is not what they think it
+  // is. Deliberately NOT extended to `--root` + `--no-quality`: `--root` names
+  // WHERE to look, which is inert rather than contradictory when nothing is
+  // looked up, and it is exactly the sort of flag a wrapper script or Makefile
+  // sets unconditionally. Refusing that would break a reasonable pattern to
+  // make a point.
+  if (noQuality && audit !== undefined) {
+    fail(`--audit and --no-quality contradict each other: one names an audit to fold, the other removes the section\n\n${USAGE}`);
+  }
+
   const filePath = positionals[0] ?? DEFAULT_BUNDLE_PATH;
   const result = runPack({ path: filePath, out, noJournal, inlineAssets, noQuality, audit, root });
   if (!result.ok) fail(`FATAL: ${result.fatal}`);

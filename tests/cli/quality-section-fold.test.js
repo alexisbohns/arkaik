@@ -478,6 +478,21 @@ function packIn(dir, args = []) {
     ghost.result.stderr,
   );
 
+  const contradiction = packIn(dir, ["--no-quality", "--audit", "2026-08"]);
+  check(
+    "--no-quality with --audit is refused rather than silently dropping one",
+    contradiction.result.status === 1 && /contradict each other/.test(contradiction.result.stderr),
+    contradiction.result.stderr,
+  );
+  // --root is NOT part of that guard: it says where to look, which is inert
+  // when nothing is looked up, and wrapper scripts set it unconditionally.
+  const inert = packIn(dir, ["--no-quality", "--root", dir]);
+  check(
+    "--no-quality with --root is fine, because --root is inert rather than contradictory",
+    inert.result.status === 0 && inert.bundle && inert.bundle.quality === undefined,
+    inert.result.stderr,
+  );
+
   // The value-taking branches, which are the easiest to get wrong and the
   // least likely to be run.
   for (const flag of ["--audit", "--root"]) {
