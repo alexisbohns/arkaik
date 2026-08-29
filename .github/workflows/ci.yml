@@ -223,6 +223,13 @@ jobs:
       - name: Provider-injection seam + mutation-notification tests
         run: npm run test:provider
 
+      # Pins foldResolvedFindings (lib/utils/quality.ts) to its real consumer —
+      # lib/data/local-provider.ts getProject — since the pure function is
+      # already covered exhaustively in tests/app/quality.test.js but its call
+      # site was not (issue #382 phase E, commit 519b9b6).
+      - name: Quality fold wired to the local provider's getProject
+        run: npm run test:quality-fold
+
       - name: Projects page section + create-target routing
         run: npm run test:project-sections
 
