@@ -103,7 +103,7 @@ assert(buildFindingRows(undefined, pack).length === 0, "an absent section yields
 
 // =========================== filterFindings ==================================
 
-const { filterFindings, groupByPriority, EMPTY_QUALITY_FILTERS, deriveQualityMatrix, cellKey, parseCellKey } =
+const { filterFindings, EMPTY_QUALITY_FILTERS, deriveQualityMatrix, cellKey, parseCellKey } =
   loadQuality();
 
 assert(
@@ -279,24 +279,6 @@ assert(
 const resolved = filterFindings(rows, { ...EMPTY_QUALITY_FILTERS, status: "resolved" });
 assert(resolved.every((row) => row.status === "resolved"), "status narrows to that status");
 
-// =========================== groupByPriority =================================
-
-const groups = groupByPriority(rows);
-assert(groups.length === 4, "there are always four priority groups");
-assert(
-  groups.map((group) => group.priority).join(",") === "P0,P1,P2,P3",
-  "groups are ordered P0 first",
-);
-assert(
-  groups.reduce((total, group) => total + group.rows.length, 0) === rows.length,
-  "every row lands in exactly one group",
-);
-
-const emptyGroups = groupByPriority([]);
-assert(
-  emptyGroups.length === 4 && emptyGroups.every((group) => group.rows.length === 0),
-  "empty groups are retained so the board can say 'none at this priority'",
-);
 
 // =========================== buildCellCriteria ===============================
 

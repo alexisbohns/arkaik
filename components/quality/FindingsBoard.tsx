@@ -1,49 +1,50 @@
 "use client";
 
 import type { Node } from "@/lib/data/types";
-import type { PriorityGroup } from "@/lib/utils/quality";
+import type { FindingRow } from "@/lib/utils/quality";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FindingCard } from "@/components/quality/FindingCard";
-import { PRIORITY_CHIP, PRIORITY_HINT } from "@/components/quality/quality-styles";
+import { ScaleChip } from "@/components/quality/ScaleChip";
+import {
+  PRIORITY_GLOSS,
+  PRIORITY_TERM,
+  PRIORITY_TILE,
+} from "@/components/quality/quality-styles";
 import { cn } from "@/lib/utils";
 
 interface FindingsBoardProps {
-  /** Every lane, worst first — `groupByPriority` keeps the empty ones. */
-  groups: PriorityGroup[];
+  /** Every finding to show, already filtered and sorted — worst first. */
+  rows: FindingRow[];
   nodesById: ReadonlyMap<string, Node>;
-  /** `surface id -> title`, built once on the page and handed to every card. */
+  /** `surface id -> title`, built once on the page and handed to every entry. */
   surfaceTitles: ReadonlyMap<string, string>;
   onOpenNode: (nodeId: string) => void;
   onOpenCriterion: (criterionId: string, surface: string) => void;
 }
 
 /**
- * The findings, in vertical priority sections with pinning headings.
+ * The findings, as one timeline — the Changelog's rail, applied to work that
+ * has not been done rather than work that shipped.
  *
- * Sections stacked down the page rather than kanban lanes across it, and that
- * is a layout decision with a reason: the matrix above is already wide enough
- * to need its own horizontal scrollport, and four columns beneath it would give
- * the page a second one while squeezing finding titles that routinely run past
- * a hundred characters. Down the page each title gets the full width.
+ * There are no priority sections any more. Four pinned headings cut a list that
+ * is already sorted worst-first into four lists that each had to re-announce
+ * where you were, and three of them were usually the same answer: a lane
+ * heading tells you nothing the marks down the rail do not. The rail carries
+ * the priority instead — one square per finding, the lane's number in the
+ * lane's colour — so a run of P0s reads as a run of red squares and the reader
+ * scans the rail rather than the headings.
  *
- * The heading treatment is `AcceptanceMatrix`'s anchor groups: flush to the
- * surface's edges, `bg-card` behind them because rows read straight through a
- * transparent pinned band, and each one pinning as you scroll past it. Without
- * that, a section heading scrolling away leaves a wall of cards with no way to
- * tell which lane you are reading.
+ * The order is whatever `filterFindings` sorted, which is the filter bar's
+ * Sort. That was true inside a lane before; now it is true of the whole page.
  */
 export function FindingsBoard({
-  groups,
+  rows,
   nodesById,
   surfaceTitles,
   onOpenNode,
   onOpenCriterion,
 }: FindingsBoardProps) {
-  // Four headings each announcing nothing is a board that looks broken rather
-  // than filtered — so when the whole set is empty, one sentence replaces all
-  // of it. `every` is also the right answer for a `groups` that is itself
-  // empty, which is what a page renders before its bundle resolves.
-  if (groups.every((group) => group.rows.length === 0)) {
+  if (rows.length === 0) {
     return (
       <div className="p-4">
         <EmptyState message="No findings match these filters." />
@@ -52,52 +53,47 @@ export function FindingsBoard({
   }
 
   return (
-    <div className="flex flex-col">
-      {groups.map((group) => (
-        <section key={group.priority}>
-          {/*
-            Pinned against `--surface-sticky-top`, the variable `PageSurface`
-            publishes so nothing has to hard-code the toolbar's height. The
-            `0px` fallback is load-bearing rather than defensive: `PageSurface
-            fill` — which is how the Quality page mounts, the toolbar being a
-            sibling of the scrollport rather than inside it — does not set the
-            variable at all, and `top: var(--undefined)` computes to `auto`,
-            which is a sticky heading that does not stick. At `0px` it pins to
-            the scrollport's own top edge, which in `fill` is exactly the
-            toolbar's hairline.
-          */}
-          <h3 className="sticky top-[var(--surface-sticky-top,0px)] z-10 flex items-center gap-2 border-b bg-card px-4 py-2.5">
-            <span className={cn("rounded border px-1.5 py-0.5 text-xs font-medium", PRIORITY_CHIP[group.priority])}>
-              {group.priority}
-            </span>
-            <span className="text-sm text-muted-foreground">{PRIORITY_HINT[group.priority]}</span>
-            <span className="ms-auto text-xs text-muted-foreground">
-              {group.rows.length} finding{group.rows.length === 1 ? "" : "s"}
-            </span>
-          </h3>
+    <ol className="flex flex-col p-4">
+      {rows.map((row, index) => {
+        const last = index === rows.length - 1;
+        return (
+          <li key={row.id} className="grid grid-cols-[auto_1fr] gap-x-3">
+            {/* The rail, built the way the Changelog builds it: the connector
+                is `flex-1` in a stretched grid cell, so it runs the full height
+                of an entry however far it expands, and is absent on the last
+                one. The breathing room below belongs to the content column, not
+                to the `<li>` — padding on the row would end the connector above
+                the gap and leave the squares unlinked. */}
+            <div className="flex flex-col items-center">
+              {/* The mark is the priority and nothing else: the digit alone,
+                  because `P` repeated down a column of squares is a letter
+                  nobody reads twice. The chip's own gloss says what the lane
+                  means, which is what the section heading used to say. */}
+              <ScaleChip
+                term={PRIORITY_TERM[row.priority]}
+                hint={PRIORITY_GLOSS[row.priority]}
+                className={cn(
+                  "inline-flex size-6 shrink-0 items-center justify-center rounded-md text-xs font-semibold tabular-nums",
+                  PRIORITY_TILE[row.priority],
+                )}
+              >
+                {row.priority.slice(1)}
+              </ScaleChip>
+              {!last && <span className="w-px flex-1 bg-border" aria-hidden="true" />}
+            </div>
 
-          {group.rows.length === 0 ? (
-            // Stated, not skipped: a lane that silently disappears when it is
-            // empty reads as a lane that failed to load, and "none at this
-            // priority" is the good news.
-            <p className="px-4 py-3 text-sm text-muted-foreground">None at this priority.</p>
-          ) : (
-            <ul className="flex flex-col gap-2 p-4">
-              {group.rows.map((row) => (
-                <li key={row.id}>
-                  <FindingCard
-                    row={row}
-                    nodesById={nodesById}
-                    surfaceTitles={surfaceTitles}
-                    onOpenNode={onOpenNode}
-                    onOpenCriterion={onOpenCriterion}
-                  />
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      ))}
-    </div>
+            <div className={cn("min-w-0", !last && "pb-4")}>
+              <FindingCard
+                row={row}
+                nodesById={nodesById}
+                surfaceTitles={surfaceTitles}
+                onOpenNode={onOpenNode}
+                onOpenCriterion={onOpenCriterion}
+              />
+            </div>
+          </li>
+        );
+      })}
+    </ol>
   );
 }

@@ -1,5 +1,6 @@
 import type {
   FindingPriority,
+  RemediationCost,
   FindingSeverity,
   FindingStatus,
   QualityGrade,
@@ -48,6 +49,19 @@ export const SEVERITY_CHIP: Record<FindingSeverity, string> = {
   info: "border-gray-400/40 bg-gray-400/10 text-gray-700 dark:text-gray-400",
 };
 
+/**
+ * The severity families again, one step more saturated — the score half of the
+ * {@link SEVERITY_CHIP} pill. Two tints of one family rather than two colours:
+ * the halves are one fact split at a hairline, not two facts sat side by side.
+ */
+export const SEVERITY_SCORE: Record<FindingSeverity, string> = {
+  critical: "bg-red-500/20",
+  high: "bg-orange-500/20",
+  medium: "bg-amber-500/20",
+  low: "bg-blue-400/20",
+  info: "bg-gray-400/20",
+};
+
 export const SEVERITY_LABEL: Record<FindingSeverity, string> = {
   critical: "Critical",
   high: "High",
@@ -65,6 +79,49 @@ export const PRIORITY_CHIP: Record<FindingPriority, string> = {
 };
 
 /**
+ * Priority as the timeline's rail mark: the chip's tint, no border.
+ *
+ * The Changelog's `ICON_TILE` idiom — a 24px square carrying colour on the tile
+ * and nothing on its edge. On a rail the border is what the connector already
+ * is, and a ringed square reads as a button somebody forgot to make clickable.
+ */
+export const PRIORITY_TILE: Record<FindingPriority, string> = {
+  P0: "bg-red-500/10 text-red-700 dark:text-red-400",
+  P1: "bg-orange-500/10 text-orange-700 dark:text-orange-400",
+  P2: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+  P3: "bg-muted text-muted-foreground",
+};
+
+/**
+ * Remediation cost as a chip (SPEC §4.3). Neutral in every band: cost is not a
+ * severity, and an XL painted red would say "alarming" about a finding whose
+ * numbers may be mild. It earns a chip rather than grey prose because `S` is an
+ * abbreviation, and an abbreviation on this board carries its gloss.
+ */
+export const COST_CHIP: Record<RemediationCost, string> = {
+  S: "border-border bg-muted text-muted-foreground",
+  M: "border-border bg-muted text-muted-foreground",
+  L: "border-border bg-muted text-muted-foreground",
+  XL: "border-border bg-muted text-muted-foreground",
+};
+
+/** What the cost band stands for — the abbreviation's expansion. */
+export const COST_TERM: Record<RemediationCost, string> = {
+  S: "S — Small",
+  M: "M — Medium",
+  L: "L — Large",
+  XL: "XL — Extra large",
+};
+
+/** The cost band in a sentence, for the chip's gloss. */
+export const COST_HINT: Record<RemediationCost, string> = {
+  S: "Hours of work — a contained fix.",
+  M: "A day or two, touching a handful of places.",
+  L: "Several days, or a change that ripples.",
+  XL: "A project of its own — scope it before you start it.",
+};
+
+/**
  * What each lane means, quoted from the pack spec (SPEC §4.4) rather than
  * paraphrased. `P2` on its own is a label only somebody who has read the spec
  * can act on, and the board's whole job is to be actionable.
@@ -74,6 +131,40 @@ export const PRIORITY_HINT: Record<FindingPriority, string> = {
   P1: "Next milestone",
   P2: "Planned backlog",
   P3: "Opportunistic",
+};
+
+/**
+ * What each severity actually claims about a defect. `Critical` and `Low` are
+ * the audit's words, and a chip that only repeats them tells a reader nothing
+ * they can act on; the gloss is what {@link SEVERITY_CHIP} is worn beside in
+ * `ScaleChip`.
+ */
+export const SEVERITY_HINT: Record<FindingSeverity, string> = {
+  critical: "Breaks the product or exposes data — nothing ships past it.",
+  high: "A real defect users will hit, with no workaround worth the name.",
+  medium: "A defect with a workaround, or a small blast radius.",
+  low: "A rough edge rather than a fault.",
+  info: "An observation worth recording, not a defect.",
+};
+
+/** What a priority lane is called, spelled out — the abbreviation's expansion. */
+export const PRIORITY_TERM: Record<FindingPriority, string> = {
+  P0: "P0 — Drop everything",
+  P1: "P1 — Next milestone",
+  P2: "P2 — Planned backlog",
+  P3: "P3 — Opportunistic",
+};
+
+/**
+ * A priority lane in a sentence, for the chip's gloss. {@link PRIORITY_HINT} is
+ * the board's three-word column subtitle; this is the line that says what the
+ * lane asks of you.
+ */
+export const PRIORITY_GLOSS: Record<FindingPriority, string> = {
+  P0: "Work it now — it blocks the release, and everything else waits.",
+  P1: "Scheduled into the next milestone, not into today.",
+  P2: "Real work, planned into the backlog behind the current milestone.",
+  P3: "Worth doing when you are already in that code.",
 };
 
 /**

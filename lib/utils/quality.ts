@@ -15,7 +15,6 @@
  */
 
 import {
-  FINDING_PRIORITIES,
   FINDING_SEVERITIES,
   gradeOf,
   isOpenFinding,
@@ -198,7 +197,11 @@ export const EMPTY_QUALITY_FILTERS: QualityFilters = {
   domain: "all",
   status: "all",
   cell: null,
-  sort: "severity",
+  // Priority first, severity inside it — the board's two scales in the order a
+  // reader triages them. Severity alone put a Critical that is only worth doing
+  // opportunistically above a P0, which is the one ordering the priority lane
+  // exists to prevent.
+  sort: "priority",
 };
 
 /** Encode a matrix cell for the URL and the filter set. */
@@ -283,28 +286,6 @@ function sortFindings(rows: FindingRow[], sort: QualitySort): FindingRow[] {
     if (sort === "domain") return a.domain.localeCompare(b.domain) || bySeverity(a, b) || a.id.localeCompare(b.id);
     return bySeverity(a, b) || a.id.localeCompare(b.id);
   });
-}
-
-export interface PriorityGroup {
-  priority: FindingPriority;
-  rows: FindingRow[];
-}
-
-/** The lane order, from the schema's own array for the reason `SEVERITY_ORDER` is. */
-const PRIORITY_ORDER: readonly FindingPriority[] = FINDING_PRIORITIES;
-
-/**
- * Findings by priority, worst lane first.
- *
- * Empty groups are retained rather than dropped: a board that silently omits P0
- * when there is no P0 reads as a board that has not loaded. "None at this
- * priority" is information, and it is the good news.
- */
-export function groupByPriority(rows: FindingRow[]): PriorityGroup[] {
-  return PRIORITY_ORDER.map((priority) => ({
-    priority,
-    rows: rows.filter((row) => row.priority === priority),
-  }));
 }
 
 /**

@@ -14,7 +14,7 @@ import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useQualityData } from "@/lib/hooks/useQualityData";
 import { useQueryWriter } from "@/lib/hooks/useQueryWriter";
 import { criterionPanelKey, isCriterionEntry } from "@/lib/utils/project-panels";
-import { filterFindings, groupByPriority } from "@/lib/utils/quality";
+import { filterFindings } from "@/lib/utils/quality";
 
 /**
  * The criterion panel's address, and the surface it is read on.
@@ -35,7 +35,7 @@ const CRITERION_SURFACE_PARAM = "csurface";
  * The findings, full width and fully filterable.
  *
  * The Matrix page's cell panel shows a slice of this same board — same
- * component, same `filterFindings`, same `groupByPriority`, with one cell
+ * component, same `filterFindings`, with one cell
  * pinned. This page is the one you come to when the filter you want is not a
  * cell.
  */
@@ -53,7 +53,6 @@ export default function ProjectQualityFindingsPage() {
   const scope = useEffectiveProduct(id, data.project);
 
   const filtered = useMemo(() => filterFindings(data.rows, filters), [data.rows, filters]);
-  const groups = useMemo(() => groupByPriority(filtered), [filtered]);
 
   const criterionParam = searchParams.get(CRITERION_PARAM);
   const surfaceParam = searchParams.get(CRITERION_SURFACE_PARAM);
@@ -127,15 +126,15 @@ export default function ProjectQualityFindingsPage() {
     >
       {data.rows.length === 0 ? (
         // An audit that found nothing is not a filter that matched nothing, and
-        // only this page can tell them apart: `FindingsBoard` sees four empty
-        // groups either way and says "No findings match these filters." — which
+        // only this page can tell them apart: `FindingsBoard` sees an empty
+        // list either way and says "No findings match these filters." — which
         // would greet a clean audit by blaming the reader for it.
         <div className="p-4">
           <EmptyState message="Nothing to fix. This audit scored every surface and raised no findings at all." />
         </div>
       ) : (
         <FindingsBoard
-          groups={groups}
+          rows={filtered}
           nodesById={data.nodesById}
           surfaceTitles={data.surfaceTitles}
           onOpenNode={handleOpenNode}

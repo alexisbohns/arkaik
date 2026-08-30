@@ -4,7 +4,13 @@ import { useMemo } from "react";
 import { ExternalLinkIcon } from "lucide-react";
 import { EntityId } from "@/components/graph/nodes/EntityBadges";
 import { PanelSection } from "@/components/panels/PanelSection";
-import { SEVERITY_DOT } from "@/components/quality/quality-styles";
+import {
+  PRIORITY_GLOSS,
+  PRIORITY_TERM,
+  SEVERITY_DOT,
+} from "@/components/quality/quality-styles";
+import { ScaleChip } from "@/components/quality/ScaleChip";
+import { SeverityPill } from "@/components/quality/SeverityPill";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
@@ -521,11 +527,18 @@ function FindingRowItem({ row, showSurface, surfaceTitle, onOpenNode }: FindingR
         )}
       </div>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-4 text-xs text-muted-foreground">
-        <span>{row.severity}</span>
+        <SeverityPill
+          impact={row.impact}
+          likelihood={row.likelihood}
+          risk={row.risk}
+          severity={row.severity}
+        />
         <span>
-          · {row.impact} × {row.likelihood} = {row.risk}
+          ·{" "}
+          <ScaleChip term={PRIORITY_TERM[row.priority]} hint={PRIORITY_GLOSS[row.priority]}>
+            {row.priority}
+          </ScaleChip>
         </span>
-        <span>· {row.priority}</span>
         <span>· cost {row.cost}</span>
         {showSurface && !crossSurface && surfaceTitle !== "" && <span>· {surfaceTitle}</span>}
         {row.issueUrl && (
