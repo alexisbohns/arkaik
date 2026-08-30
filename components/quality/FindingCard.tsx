@@ -8,11 +8,13 @@ import type { FindingRow } from "@/lib/utils/quality";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
+  COST_CHIP,
+  COST_HINT,
+  COST_TERM,
   FINDING_STATUS_LABEL,
-  PRIORITY_CHIP,
-  SEVERITY_CHIP,
-  SEVERITY_LABEL,
 } from "@/components/quality/quality-styles";
+import { ScaleChip } from "@/components/quality/ScaleChip";
+import { SeverityPill } from "@/components/quality/SeverityPill";
 
 interface FindingCardProps {
   row: FindingRow;
@@ -50,8 +52,14 @@ const VERDICT_LABEL: Record<NonNullable<QualityFinding["verification"]>["verdict
  * saying another. `severityOf` is the pack's answer; this only paints it.
  *
  * Expansion is local state and deliberately not in the URL. A reader opens
- * several cards while working through a lane, and eight `?open=` ids is not a
- * link anybody wants to share.
+ * several entries while working through the board, and eight `?open=` ids is
+ * not a link anybody wants to share.
+ *
+ * No card chrome. The entry sits on the timeline's rail, and a bordered box per
+ * entry inside a rail that is already the grouping is the second lid the
+ * Changelog dropped for the same reason: the title leads, and every parameter
+ * of the finding — severity, risk, cost, criterion, surface, status — reads as
+ * one meta line under it.
  */
 export function FindingCard({
   row,
@@ -79,38 +87,33 @@ export function FindingCard({
   return (
     <article
       className={cn(
-        "overflow-hidden rounded-lg border bg-card",
+        "flex min-w-0 flex-col gap-1",
         // Resolved and refuted findings are history, not work. Dimmed rather
         // than dropped, because the board is also where somebody checks what
         // was already answered — and the status filter is how you hide them.
         !row.open && "opacity-70",
       )}
     >
+      {/* The name first, on the line the rail's square centres against. */}
       <button
         type="button"
         onClick={() => setExpanded((open) => !open)}
         aria-expanded={expanded}
-        className="flex w-full items-start gap-3 px-4 pt-3 text-left"
+        className="flex w-full items-start gap-3 text-left"
       >
-        <span
-          className={cn(
-            "mt-0.5 shrink-0 rounded-md border px-1.5 py-0.5 text-[11px] font-medium",
-            SEVERITY_CHIP[row.severity],
-          )}
-        >
-          {SEVERITY_LABEL[row.severity]}
-        </span>
-        <span className="flex-1 text-sm leading-relaxed">{row.title}</span>
+        <span className="flex-1 text-sm font-medium leading-relaxed">{row.title}</span>
         <Chevron className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
       </button>
 
-      {/* Outside the disclosure button, because the criterion in it is a control
-          of its own and a button inside a button is not markup a browser will
-          honour. */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 pb-3 pt-1.5 text-xs text-muted-foreground">
-        <span className={cn("rounded border px-1 font-medium", PRIORITY_CHIP[row.priority])}>
-          {row.priority}
-        </span>
+      {/* The reference, on its own line: which criterion this finding answers
+          to, and on which surface. It is what somebody quotes when they file it
+          or argue it, so it is not left to fight for space in a meta line with
+          five numbers in it.
+
+          Outside the disclosure button, because the criterion in it is a
+          control of its own and a button inside a button is not markup a
+          browser will honour. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
         <button
           type="button"
           onClick={() => onOpenCriterion(row.criterionId, row.surface)}
@@ -120,18 +123,35 @@ export function FindingCard({
           {row.criterionId}
         </button>
         {row.criterionName !== row.criterionId && (
-          <span className="max-w-[16rem] truncate">{row.criterionName}</span>
+          <span className="max-w-[24rem] truncate">{row.criterionName}</span>
         )}
         {/* The profile's title, the same word the matrix column header and the
             Surface menu use — a reader who clicked the "Database contract"
             column must not then read `supabase` on every card it returned. The
             id is on the hover, and is the fallback for a surface the profile
             never titled. */}
-        <span title={row.surface}>{surfaceTitles.get(row.surface) ?? row.surface}</span>
-        <span>
-          · {row.impact} × {row.likelihood} = {row.risk}
-        </span>
-        <span>· cost {row.cost}</span>
+        <span title={row.surface}>· {surfaceTitles.get(row.surface) ?? row.surface}</span>
+      </div>
+
+      {/* The scales, on the third line: severity and cost as chips that gloss
+          themselves, with the numbers severity is read from between them.
+
+          The priority is not repeated here: it is the square on the rail. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+        <SeverityPill
+          impact={row.impact}
+          likelihood={row.likelihood}
+          risk={row.risk}
+          severity={row.severity}
+        />
+        <span>· cost</span>
+        <ScaleChip
+          term={COST_TERM[row.cost]}
+          hint={COST_HINT[row.cost]}
+          className={cn("rounded border px-1 font-medium", COST_CHIP[row.cost])}
+        >
+          {row.cost}
+        </ScaleChip>
         {verdict && <span>· {VERDICT_LABEL[verdict]}</span>}
         {/* The accepted-risk callout below states the status in its own badge,
             in the treatment that says it is a decision; a second badge up here
@@ -151,7 +171,7 @@ export function FindingCard({
         disclosure invites the next reader to re-litigate it.
       */}
       {acceptedRisk && (
-        <div className="mx-4 mb-3 rounded-lg border bg-muted/30 px-3 py-2.5">
+        <div className="mt-1 rounded-lg border bg-muted/30 px-3 py-2.5">
           <Badge variant="outline" className="mb-1.5">
             {FINDING_STATUS_LABEL["accepted-risk"]}
           </Badge>
@@ -160,7 +180,7 @@ export function FindingCard({
       )}
 
       {expanded && (
-        <div className="flex flex-col gap-3 border-t px-4 py-3">
+        <div className="mt-1.5 flex flex-col gap-3 border-l pl-3">
           {row.detail !== "" && row.detail !== acceptedNote && (
             <p className="text-sm leading-relaxed">{row.detail}</p>
           )}

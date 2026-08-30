@@ -17,7 +17,6 @@ import {
   buildSurfaceTitles,
   cellKey,
   filterFindings,
-  groupByPriority,
   type FindingRow,
 } from "@/lib/utils/quality";
 
@@ -84,8 +83,7 @@ export function CellDetailPanelHeader({
  *
  * It is deliberately the *same* board the Findings page renders, fed the same
  * filter set with a cell pinned. The redundancy is real and it is bounded:
- * `FindingsBoard`, `filterFindings` and `groupByPriority` have exactly one
- * implementation each, and this panel is a preset of them with a criteria list
+ * `FindingsBoard` and `filterFindings` have exactly one implementation each, and this panel is a preset of them with a criteria list
  * on top.
  *
  * Addressless in the stack — see the head of `lib/utils/project-panels.ts`. The
@@ -123,7 +121,6 @@ export function CellDetailPanel({
     () => filterFindings(findings, { ...EMPTY_QUALITY_FILTERS, cell: key }),
     [findings, key],
   );
-  const groups = useMemo(() => groupByPriority(narrowed), [narrowed]);
   const surfaceTitles = useMemo(() => buildSurfaceTitles(section), [section]);
 
   const openFindings = narrowed.filter((row) => row.open).length;
@@ -179,7 +176,7 @@ export function CellDetailPanel({
           </div>
         ) : (
           <FindingsBoard
-            groups={groups}
+            rows={narrowed}
             nodesById={nodesById}
             surfaceTitles={surfaceTitles}
             onOpenNode={onOpenNode}
