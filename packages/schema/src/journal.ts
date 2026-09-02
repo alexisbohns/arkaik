@@ -276,6 +276,7 @@ export interface QualitySignalTrippedEvent extends JournalEvent {
   criterion_id: string;
   surface: string;
   signal: string;
+  commit?: string;
   detail?: string;
 }
 

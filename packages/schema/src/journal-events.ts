@@ -261,6 +261,7 @@ export const QualitySignalTrippedEventSchema = z
     criterion_id: z.string(),
     surface: z.string(),
     signal: z.string(),
+    commit: z.string().optional(),
     detail: z.string().optional(),
   })
   .catchall(z.unknown());

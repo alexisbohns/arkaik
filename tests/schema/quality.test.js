@@ -38,6 +38,7 @@ const {
   QualityFindingSchema,
   DEFAULT_CAPS,
   findingAcceptedInput,
+  signalTrippedInput,
   makeEvent,
 } = loadSchema();
 
@@ -276,6 +277,28 @@ check("a quality.finding.accepted event validates strictly", KnownJournalEventSc
 
   const noNodes = findingAcceptedInput({ id: "F-1" }, "why");
   check("node_ids omitted when absent", !("node_ids" in noNodes.payload));
+}
+
+// #406: a hosted trip carries the commit it observed. Optional at this layer —
+// repo-mode trips have no obligation to anchor; requiring it is a route policy
+// about one caller class (see the spec).
+{
+  const withCommit = signalTrippedInput({
+    criterion_id: "SEC-supabase-01",
+    surface: "supabase",
+    signal: "delete-account edge function rejects an unauthenticated call",
+    commit: "0123456789abcdef0123456789abcdef01234567",
+    detail: "https://github.com/o/r/actions/runs/1",
+  });
+  check("signalTrippedInput carries commit", withCommit.payload.commit === "0123456789abcdef0123456789abcdef01234567");
+  check("signalTrippedInput carries detail", typeof withCommit.payload.detail === "string");
+
+  const event = makeEvent(withCommit.type, withCommit.payload, { actor: "arkaik-agent" });
+  const parsed = JOURNAL_EVENT_SCHEMAS["quality.signal.tripped"].safeParse(event);
+  check("tripped event with commit validates", parsed.success, JSON.stringify(parsed.error?.issues ?? []));
+
+  const bare = signalTrippedInput({ criterion_id: "C-1", surface: "web", signal: "s" });
+  check("commit key omitted when absent", !("commit" in bare.payload));
 }
 
 // --- validateBundle warnings (RFC § 4.5) ------------------------------------
