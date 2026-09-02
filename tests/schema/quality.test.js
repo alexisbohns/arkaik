@@ -35,6 +35,7 @@ const {
   JOURNAL_EVENT_SCHEMAS,
   KnownJournalEventSchema,
   QualitySectionSchema,
+  QualityFindingSchema,
   DEFAULT_CAPS,
   findingAcceptedInput,
   makeEvent,
@@ -341,6 +342,16 @@ check("warns when quality data is stored but no surface was picked", rules(noSur
 
 check("a bundle with no quality section raises no quality warnings", !rules(validateBundle(base)).some((r) => r.startsWith("quality-")));
 check("a non-object quality value is ignored rather than throwing", validateBundle({ ...base, quality: [] }).valid);
+
+{
+  const finding = {
+    id: "F-2026-08-SEC-web-01", criterion_id: "SEC-01", surface: "web",
+    title: "t", detail: "d", evidence: "file.ts:1", impact: 4, likelihood: 4,
+    cost: "M", status: "open", commit: "0123abc",
+  };
+  const parsed = QualityFindingSchema.safeParse(finding);
+  check("finding accepts optional commit anchor", parsed.success, JSON.stringify(parsed.error?.issues ?? []));
+}
 
 console.log(failures === 0 ? "\nAll quality tests passed" : `\n${failures} quality test(s) failed`);
 process.exit(failures === 0 ? 0 : 1);

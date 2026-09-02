@@ -155,6 +155,10 @@ export const QualityFindingSchema: z.ZodType<QualityFinding> = z
     remediation: z.string().optional(),
     node_ids: z.array(z.string()).optional().meta({ description: "Graph nodes this finding is about — the tie deliverable.shipped already uses." }),
     issue_url: z.string().optional(),
+    commit: z.string().optional().meta({
+      description:
+        "Commit SHA anchoring the file:line evidence. Required by policy on any finding written away from a checkout (issue #400 decision 4) — without it a stale citation is indistinguishable from a wrong one.",
+    }),
     verification: z
       .object({ verdict: z.enum(["CONFIRMED", "REFUTED", "DOWNGRADED"]), note: z.string().optional() })
       .catchall(z.unknown())

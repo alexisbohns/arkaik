@@ -1211,6 +1211,10 @@
         "issue_url": {
           "type": "string"
         },
+        "commit": {
+          "description": "Commit SHA anchoring the file:line evidence. Required by policy on any finding written away from a checkout (issue #400 decision 4) — without it a stale citation is indistinguishable from a wrong one.",
+          "type": "string"
+        },
         "verification": {
           "description": "Result of the adversarial refutation pass. Refuted findings are disclosed, not deleted.",
           "type": "object",
