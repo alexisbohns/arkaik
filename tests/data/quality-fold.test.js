@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 /**
- * Pins `foldResolvedFindings` (lib/utils/quality.ts) to its real consumer:
+ * Pins `foldFindingEvents` (lib/utils/quality.ts) to its real consumer:
  * `lib/data/local-provider.ts` `getProject` (issue #382 phase E, commit
- * 519b9b6). `foldResolvedFindings` itself is exhaustively covered as a pure
+ * 519b9b6). `foldFindingEvents` itself is exhaustively covered as a pure
  * function in tests/app/quality.test.js (112 assertions) — this suite does
  * NOT re-test its folding rules. It only pins the wiring: does the provider
  * actually call it, on the read path, with the right inputs, without ever

@@ -1,7 +1,7 @@
 import { getCaller, hasScope } from "@/lib/services/auth";
 import { MAX_BUNDLE_BYTES, servicesConfigured, servicesUnavailable } from "@/lib/services/db";
 import { archiveProject, getProject, qualityResolutionEvents, updateProjectFields } from "@/lib/services/graph/store";
-import { foldResolvedFindings } from "@/lib/utils/quality";
+import { foldFindingEvents } from "@/lib/utils/quality";
 import type { Project, QualitySection } from "@arkaik/schema";
 
 /**
@@ -43,7 +43,7 @@ export async function GET(
     // as though it had been stored. So the fold happens here instead, on the
     // one caller that is a read all the way out to the client.
     const storedQuality = (found.bundle as { quality?: QualitySection }).quality;
-    const quality = foldResolvedFindings(
+    const quality = foldFindingEvents(
       storedQuality,
       await qualityResolutionEvents(projectId, caller.ownerIds),
     );

@@ -75,7 +75,7 @@ function loadGraphApi() {
 
   const src = (...parts) => path.join(ROOT, ...parts);
 
-  // The REAL module: `foldResolvedFindings`, which the project GET route calls
+  // The REAL module: `foldFindingEvents`, which the project GET route calls
   // to fold quality.finding.resolved events over a bundle's stored findings on
   // read (issue #382 phase E). Pure, and its only runtime import is
   // @arkaik/schema, so COMMON covers it.

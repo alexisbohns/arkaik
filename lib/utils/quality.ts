@@ -528,26 +528,50 @@ export function buildSurfaceGauges(
 }
 
 /**
- * Fold `quality.finding.resolved` over a stored section (issue #382 phase E).
+ * Fold `quality.finding.resolved` and `quality.finding.accepted` over a stored
+ * section (issue #382 phase E; accepted events added for #400 hosted Kritik).
  *
- * The webhook appends, and appends only: a merged PR that fixes a finding
- * writes a journal fact, and the finding's stored `status` stays exactly as the
- * last audit left it. This is the projection that makes the fact visible, and
- * it is the reading RFC § 3.2 declared from the start — current state is the
- * latest audit plus open-minus-resolved.
+ * The webhook — and, for accepted, the hosted write route — appends, and
+ * appends only: a merged PR that fixes a finding, or a person accepting a
+ * risk, writes a journal fact, and the finding's stored `status` stays exactly
+ * as the last audit left it. This is the projection that makes the fact
+ * visible, and it is the reading RFC § 3.2 declared from the start — current
+ * state is the latest audit plus open-minus-decided.
+ *
+ * Events are walked in journal order, and the FIRST decision on an open
+ * finding wins: once an event has moved a finding out of `open`, every later
+ * event naming that finding is ignored, with one exception (below). This
+ * mirrors the write route: it refuses to accept a `quality.finding.accepted`
+ * or `quality.finding.resolved` event against a finding that is not currently
+ * `open`, so an event that would have been refused at write time must never
+ * take effect here at read time either — the journal cannot literally contain
+ * two decisions on the same finding once the write path enforces this, but the
+ * fold has to be safe against a journal from before that enforcement existed
+ * (or one written by a client that skipped it) all the same.
+ *
+ * The one exception, preserving phase E's original behavior: a later
+ * `resolved` event that NAMES a `resolved_by` may still upgrade a
+ * fold-produced `resolved` status that lacks one. A resolution carrying no url
+ * is a real shape (`findingResolvedInput` omits `resolved_by` when it has
+ * none, which is what `arkaik kritik finding resolve` without `--by`
+ * produces), and a later event naming the PR is new evidence, not a second
+ * decision — "the latest event that names a PR wins". This only ever upgrades
+ * a status THIS fold produced (guarded by `patched.has`); a `resolved` status
+ * that was already in the snapshot is left untouched, same as `refuted` and
+ * `accepted-risk`.
  *
  * Returns the section BY REFERENCE when nothing matches. That is the
- * overwhelmingly common case — every project with no resolution since its last
+ * overwhelmingly common case — every project with no decision since its last
  * audit — and returning the same object means no allocation, no changed memo
  * identity, and no re-render for the reader who gained nothing.
  *
- * `refuted` and `accepted-risk` are left alone, for the reason the webhook
- * refuses to resolve one: they are decisions somebody recorded. An event naming
- * a finding the section does not hold is ignored — `validateBundle` already
- * warns about that class, and a read projection is not the place to raise it
- * a second time.
+ * `refuted` and `accepted-risk` already in the snapshot are left alone, for
+ * the reason the write path refuses to touch them: they are decisions
+ * somebody recorded. An event naming a finding the section does not hold is
+ * ignored — `validateBundle` already warns about that class, and a read
+ * projection is not the place to raise it a second time.
  */
-export function foldResolvedFindings(
+export function foldFindingEvents(
   section: QualitySection | undefined,
   events: readonly JournalEvent[],
 ): QualitySection | undefined {
@@ -555,34 +579,50 @@ export function foldResolvedFindings(
   const findings = Array.isArray(section.findings) ? section.findings : [];
   if (findings.length === 0 || events.length === 0) return section;
 
-  const resolvedBy = new Map<string, string | undefined>();
+  const byId = new Map(findings.map((finding, index) => [finding.id, index] as const));
+  const patched = new Map<number, QualityFinding>();
+  const current = (index: number) => patched.get(index) ?? findings[index];
+
   for (const event of events) {
-    if (event?.type !== "quality.finding.resolved") continue;
+    const type = event?.type;
+    if (type !== "quality.finding.resolved" && type !== "quality.finding.accepted") continue;
     const findingId = (event as { finding_id?: unknown }).finding_id;
     if (typeof findingId !== "string" || findingId === "") continue;
-    const by = (event as { resolved_by?: unknown }).resolved_by;
-    // The latest event that NAMES a PR wins — not simply the latest event. A
-    // resolution carrying no url is a real shape (`findingResolvedInput` omits
-    // `resolved_by` when it has none, which is what `arkaik kritik finding
-    // resolve` without `--by` produces), and letting one erase the evidence an
-    // earlier resolution carried would lose the only thing separating
-    // "resolved" from "we stopped looking at it".
-    const named = typeof by === "string" && by !== "" ? by : undefined;
-    resolvedBy.set(findingId, named ?? resolvedBy.get(findingId));
-  }
-  if (resolvedBy.size === 0) return section;
+    const index = byId.get(findingId);
+    if (index === undefined) continue;
+    const finding = current(index);
 
-  let changed = false;
-  const next = findings.map((finding) => {
-    if (!isOpenFinding(finding) || !resolvedBy.has(finding.id)) return finding;
-    changed = true;
-    const by = resolvedBy.get(finding.id);
-    return {
+    if (type === "quality.finding.resolved") {
+      const by = (event as { resolved_by?: unknown }).resolved_by;
+      const named = typeof by === "string" && by !== "" ? by : undefined;
+      if (isOpenFinding(finding)) {
+        patched.set(index, {
+          ...finding,
+          status: "resolved" as QualityFinding["status"],
+          ...(named !== undefined ? { resolved_by: named } : {}),
+        });
+      } else if (
+        finding.status === "resolved" &&
+        named !== undefined &&
+        patched.has(index) &&
+        finding.resolved_by === undefined
+      ) {
+        patched.set(index, { ...finding, resolved_by: named });
+      }
+      continue;
+    }
+
+    // quality.finding.accepted
+    if (!isOpenFinding(finding)) continue;
+    const reason = (event as { reason?: unknown }).reason;
+    const note = typeof reason === "string" ? reason : "";
+    patched.set(index, {
       ...finding,
-      status: "resolved" as QualityFinding["status"],
-      ...(by !== undefined ? { resolved_by: by } : {}),
-    };
-  });
+      status: "accepted-risk" as QualityFinding["status"],
+      detail: `${finding.detail}\n\nAccepted risk: ${note}`.trim(),
+    });
+  }
 
-  return changed ? { ...section, findings: next } : section;
+  if (patched.size === 0) return section;
+  return { ...section, findings: findings.map((finding, index) => patched.get(index) ?? finding) };
 }
