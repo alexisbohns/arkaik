@@ -130,7 +130,9 @@ async function appendHosted(
 /** Hosted quality state: the stored section, already folded by the server. */
 function hostedSection(graph: LoadedGraph): { section: QualitySection; library: KritikLibrary | undefined } {
   const section = (graph.loaded.bundle as { quality?: QualitySection }).quality;
-  if (section === undefined || !Array.isArray(section.findings)) {
+  // Both arrays are required by the section schema; checking both here means
+  // no caller downstream dereferences one this function never vouched for.
+  if (section === undefined || !Array.isArray(section.findings) || !Array.isArray(section.assessments)) {
     throw new ToolError(
       "This hosted project has no quality section yet. Run an audit in the repository and `arkaik restore` it — hosted Kritik reads what an audit stored.",
     );
@@ -355,6 +357,12 @@ export function buildKritikCatalog(ctx: KritikContext): {
       const hosted = ctx.qualityRoot === undefined;
       if (hosted) {
         if (args.record === true) refuseHostedRecord("quality.audit.completed");
+        // Refused, not ignored: silently returning the whole-pool matrix for a
+        // request that believed it scoped to one audit is the wrong-answer
+        // failure mode issue #400 was opened against.
+        if (typeof args.audit_id === "string" && args.audit_id !== "") {
+          throw new ToolError("The hosted matrix is the current state, not one audit — audit_id does not partition it (issue #400 decision 3).");
+        }
         const graph = await load();
         const { section, library } = hostedSection(graph);
         const m = deriveQualityMatrix({ quality: section }, library);

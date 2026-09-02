@@ -296,7 +296,12 @@ export function foldQualitySection(
  * Shared by the CLI and the MCP server (`packages/mcp/src/index.ts` calls
  * this directly via the `arkaik/io` barrel) — before #400 they were two
  * separate functions answering the same question differently, one drifting
- * from the other. The one remaining deliberate difference between the
+ * from the other. Reconciling them collapsed one difference on purpose: the
+ * CLI now honors `$ARKAIK_QUALITY_ROOT` too, which it previously ignored —
+ * and since the env var outranks layout detection, a value exported for one
+ * repo's MCP config redirects `arkaik kritik` in EVERY repo until unset;
+ * `--root` still wins over it per invocation. The one remaining deliberate
+ * difference between the
  * callers is `fallback`: the CLI passes its cwd, meaningful because a person
  * typed the command inside a repo; the MCP server passes the bundle's own
  * directory, because it has no meaningful cwd — the agent host chose it, not

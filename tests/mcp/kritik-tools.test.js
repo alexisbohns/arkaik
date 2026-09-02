@@ -518,6 +518,15 @@ async function run() {
     const matrixRecord = await hosted.call("kritik_matrix", { record: true });
     check("hosted matrix refuses record", matrixRecord.isError && /audit run/.test(matrixRecord.json.message), matrixRecord.text.slice(0, 300));
 
+    // Refused, not silently ignored — an agent that asked for one audit's
+    // matrix must not be handed the whole pool as though it were scoped.
+    const matrixScoped = await hosted.call("kritik_matrix", { audit_id: "2026-08" });
+    check(
+      "hosted matrix refuses audit_id rather than ignoring it",
+      matrixScoped.isError && /does not partition/.test(matrixScoped.json.message),
+      matrixScoped.text.slice(0, 300),
+    );
+
     const regressions = await hosted.call("kritik_regressions", {});
     check(
       "hosted regressions compares the assessment groups it can see",
