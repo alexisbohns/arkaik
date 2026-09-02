@@ -43,6 +43,7 @@ export const JOURNAL_EVENT_TYPES = [
   "quality.audit.completed",
   "quality.finding.opened",
   "quality.finding.resolved",
+  "quality.finding.accepted",
   "quality.signal.tripped",
 ] as const;
 
@@ -257,6 +258,18 @@ export interface QualityFindingResolvedEvent extends JournalEvent {
   node_ids?: string[];
 }
 
+/**
+ * A known, owned risk, recorded away from the checkout. In a repository,
+ * acceptance is a state of the finding and no event is written — this event
+ * exists only for hosted writes, which have no findings file to hold it.
+ */
+export interface QualityFindingAcceptedEvent extends JournalEvent {
+  type: "quality.finding.accepted";
+  finding_id: string;
+  reason: string;
+  node_ids?: string[];
+}
+
 /** A criterion's mechanical monitoring check failed between two audits. */
 export interface QualitySignalTrippedEvent extends JournalEvent {
   type: "quality.signal.tripped";
@@ -286,6 +299,7 @@ export type KnownJournalEvent =
   | QualityAuditCompletedEvent
   | QualityFindingOpenedEvent
   | QualityFindingResolvedEvent
+  | QualityFindingAcceptedEvent
   | QualitySignalTrippedEvent;
 
 /**

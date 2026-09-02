@@ -464,6 +464,29 @@ export function findingResolvedInput(
 }
 
 /**
+ * `quality.finding.accepted` — a known, owned risk, recorded as an event.
+ *
+ * In a repository, acceptance is a state of the finding (`acceptFinding`
+ * patches the file) and no event is written. This event exists for writes
+ * made AWAY from the checkout: a hosted project has no findings file, so the
+ * journal is the only place the decision can live, and the read derives the
+ * status from it (`foldFindingEvents`).
+ */
+export function findingAcceptedInput(
+  finding: Pick<QualityFinding, "id" | "node_ids">,
+  reason: string,
+): EventInput {
+  return {
+    type: "quality.finding.accepted",
+    payload: {
+      finding_id: finding.id,
+      reason,
+      ...(finding.node_ids !== undefined ? { node_ids: finding.node_ids } : {}),
+    },
+  };
+}
+
+/**
  * `quality.signal.tripped` — a mechanical check regressed between audits.
  *
  * A tripped signal is not a finding. It is the prompt to go look: cheap,

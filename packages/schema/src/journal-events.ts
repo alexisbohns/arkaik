@@ -244,6 +244,16 @@ export const QualityFindingResolvedEventSchema = z
   })
   .catchall(z.unknown());
 
+export const QualityFindingAcceptedEventSchema = z
+  .object({
+    ...envelope,
+    type: z.literal("quality.finding.accepted"),
+    finding_id: z.string(),
+    reason: z.string(),
+    node_ids: z.array(z.string()).optional(),
+  })
+  .catchall(z.unknown());
+
 export const QualitySignalTrippedEventSchema = z
   .object({
     ...envelope,
@@ -275,6 +285,7 @@ export const JOURNAL_EVENT_SCHEMAS = {
   "quality.audit.completed": QualityAuditCompletedEventSchema,
   "quality.finding.opened": QualityFindingOpenedEventSchema,
   "quality.finding.resolved": QualityFindingResolvedEventSchema,
+  "quality.finding.accepted": QualityFindingAcceptedEventSchema,
   "quality.signal.tripped": QualitySignalTrippedEventSchema,
 } as const;
 

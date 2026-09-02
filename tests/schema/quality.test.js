@@ -36,6 +36,8 @@ const {
   KnownJournalEventSchema,
   QualitySectionSchema,
   DEFAULT_CAPS,
+  findingAcceptedInput,
+  makeEvent,
 } = loadSchema();
 
 let failures = 0;
@@ -247,13 +249,31 @@ check("an unknown key inside the section round-trips", (() => {
   return r.success && eq(r.data.quality.future_key, { any: "thing" });
 })());
 
-for (const type of ["quality.audit.completed", "quality.finding.opened", "quality.finding.resolved", "quality.signal.tripped"]) {
+for (const type of ["quality.audit.completed", "quality.finding.opened", "quality.finding.resolved", "quality.finding.accepted", "quality.signal.tripped"]) {
   check(`${type} is in the known event vocabulary`, Boolean(JOURNAL_EVENT_SCHEMAS[type]));
 }
 const auditEvent = { id: "01J", ts: "2026-08-26T00:00:00.000Z", actor: "claude-code", type: "quality.audit.completed", audit_id: "2026-08", framework_version: "0.1.0", commit: "abc", scores: { web: { SEC: 44 } }, counts: { critical: 0, high: 21 } };
 check("a quality.audit.completed event validates strictly", KnownJournalEventSchema.safeParse(auditEvent).success);
 const openedEvent = { id: "01K", ts: "2026-08-26T00:00:00.000Z", actor: "ci", type: "quality.finding.opened", finding_id: "F-1", criterion_id: "SEC-03", surface: "supabase", severity: "critical", priority: "P0", title: "t", node_ids: ["V-x"] };
 check("a quality.finding.opened event validates strictly", KnownJournalEventSchema.safeParse(openedEvent).success);
+
+// quality.finding.accepted — the event that records an accepted risk written
+// away from the checkout (hosted mode has no findings file to hold the state).
+{
+  const input = findingAcceptedInput({ id: "F-2026-08-SEC-web-01", node_ids: ["V-home"] }, "Cost outweighs exposure");
+  check("findingAcceptedInput carries finding_id + reason + node_ids",
+    input.type === "quality.finding.accepted" &&
+    input.payload.finding_id === "F-2026-08-SEC-web-01" &&
+    input.payload.reason === "Cost outweighs exposure" &&
+    Array.isArray(input.payload.node_ids));
+
+  const event = makeEvent(input.type, input.payload, { actor: "arkaik-agent" });
+  const parsed = JOURNAL_EVENT_SCHEMAS["quality.finding.accepted"].safeParse(event);
+  check("quality.finding.accepted event validates", parsed.success, JSON.stringify(parsed.error?.issues ?? []));
+
+  const noNodes = findingAcceptedInput({ id: "F-1" }, "why");
+  check("node_ids omitted when absent", !("node_ids" in noNodes.payload));
+}
 
 // --- validateBundle warnings (RFC § 4.5) ------------------------------------
 

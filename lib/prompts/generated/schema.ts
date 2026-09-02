@@ -315,6 +315,7 @@ type KnownJournalEvent =
   | QualityAuditCompletedEvent
   | QualityFindingOpenedEvent
   | QualityFindingResolvedEvent
+  | QualityFindingAcceptedEvent
   | QualitySignalTrippedEvent;
 
 interface ProjectBundle {
