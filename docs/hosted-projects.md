@@ -42,6 +42,39 @@ export ARKAIK_TOKEN=ark_...
 Scopes default to `graph:read` + `graph:write`. Token management itself is
 session-only, so a leaked token can never mint another or widen its own scopes.
 
+### A token for CI: `quality:append`
+
+There is a fourth scope, and you have to ask for it — it is never a default.
+`quality:append` can append one kind of event to one route: a tripped Kritik
+signal. It cannot read your graph, cannot read your findings, and cannot decide
+one. Send it a `quality.finding.resolved` and you get a 403 naming the scope you
+did not take.
+
+That narrowness is the whole point. This is the credential you can put in a
+**public** repository's Actions secrets, because there is nothing in it worth
+stealing beyond the ability to write an observation you would have written
+anyway. When your nightly harness goes red, the ledger that raised the finding
+hears about it:
+
+```yaml
+- name: Record the trip
+  if: failure()
+  run: |
+    curl -sS -X POST "$ARKAIK_URL/api/graph/projects/$PROJECT_ID/quality/events" \
+      -H "Authorization: Bearer $ARKAIK_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "$(jq -n --arg c "$GITHUB_SHA" --arg d "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+        '{events:[{type:"quality.signal.tripped",criterion_id:"SEC-supabase-01",surface:"supabase",signal:"contract harnesses pass against the linked project",commit:$c,detail:$d}]}')"
+  env:
+    ARKAIK_TOKEN: ${{ secrets.ARKAIK_QUALITY_TOKEN }}
+```
+
+`commit` is required here — a workflow already knows it, so this route asks for
+it. The run URL rides in the free-form `detail`.
+
+A trip is **not** a finding. Nothing in CI mints findings; a trip is cheap,
+frequent, allowed to be wrong, and the prompt to go look.
+
 ## 2. Get a hosted project
 
 On `/projects`, either create a project while signed in, or take a browser-held
