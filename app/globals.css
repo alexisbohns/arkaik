@@ -211,15 +211,23 @@
     padding-left: 1.2rem;
   }
 
-  .markdown-content ul li {
-    margin-top: 0.4rem;
-    margin-bottom: 0.4rem;
+  /* The app's bullet, in one place. `.markdown-content ul` gets it because a
+     doc's list is authored as markdown; `.arkaik-bullets` is the same mark for
+     a list built in JSX — a panel's checklist reads as the same prose the docs
+     do, so it should not wear a different glyph. */
+  .markdown-content ul li,
+  .arkaik-bullets li {
     list-style-type: "✻";
     padding-left: 1rem;
 
     &::marker {
       color: hsl(var(--muted-foreground));
     }
+  }
+
+  .markdown-content ul li {
+    margin-top: 0.4rem;
+    margin-bottom: 0.4rem;
   }
 
   .markdown-content ol {
