@@ -113,30 +113,51 @@ journal accumulates the quality history the UI renders as trends.
 
 | Tool | Input | Returns | Journal events |
 |---|---|---|---|
-| `kritik_matrix` | `audit_id?`, `record?` | the comparative matrix, per-surface roll-ups, finding counts, priority lanes, the P0 list; refreshes `matrix.json` | `quality.audit.completed` (only with `record: true`) |
-| `kritik_findings` | `surface?`, `status?`, `priority?`, `criterion_id?`, `audit_id?` | findings across audits with **derived** `severity` and `priority` | — |
-| `kritik_signals` | `surface?`, `criterion_id?`, `domain?` | the signal run sheet, plus `tripped_since_last_audit` | — |
-| `kritik_regressions` | `from?`, `to?`, `record?` | what got worse between two audits: a dropped maturity level, a cell that gained an open Critical or High, a finding resolved and open again | `quality.signal.tripped`, one per regression (only with `record: true`) |
+| `kritik_matrix` | `audit_id?`, `record?` | the comparative matrix, per-surface roll-ups, finding counts, priority lanes, the P0 list; refreshes `matrix.json` in repo mode. Hosted reads the stored quality section instead — no `audit_id`/`commit` (hosted has no audit file) — and `record` is refused there | `quality.audit.completed` (only with `record: true`, repo mode only — recording belongs to the audit run) |
+| `kritik_findings` | `surface?`, `status?`, `priority?`, `criterion_id?`, `audit_id?`, `finding_id?` | findings with **derived** `severity` and `priority`; `finding_id` fetches one. Repo mode reads across every audit under `docs/quality/audits/`; hosted findings are a single living pool with no `audit_id` partition (the filter is refused there) | — |
+| `kritik_signals` | `surface?`, `criterion_id?`, `domain?` | the signal run sheet, plus `tripped_since_last_audit`. Repo sessions only — the pack and its run sheet live with the code | — |
+| `kritik_regressions` | `from?`, `to?`, `record?` | what got worse between two audits: a dropped maturity level, a cell that gained an open Critical or High, a finding resolved and open again. Hosted comparisons are read-only and cover assessment-level drops only — hosted findings are a living pool, not a per-audit snapshot, so the other two regression kinds don't apply there | `quality.signal.tripped`, one per regression (only with `record: true`, repo mode only) |
 | `kritik_issue` | `criterion_id`, `surface`, `level?`, `finding_id?` | the prefilled GitHub issue skeleton | — |
-| `kritik_score` | `criterion_id`, `surface`, `level`, `evidence`, `audit_id?`, `commit?` | the assessment, latest-per-cell | — |
-| `kritik_open_finding` | `criterion_id`, `surface`, `title`, `evidence`, `impact`, `likelihood`, `cost`, `detail?`, `remediation?`, `node_ids?`, `issue_url?`, `verification?`, `audit_id?`, `finding_id?` | the finding + its derived severity/priority | `quality.finding.opened` (none when `verification.verdict` is `REFUTED`) |
-| `kritik_resolve_finding` | `finding_id`, `resolved_by?` | the closed finding | `quality.finding.resolved` (idempotent — a second resolve writes nothing) |
-| `kritik_accept_finding` | `finding_id`, `note` | the finding as an accepted risk | — (acceptance is a state, not something that happened) |
-| `kritik_trip_signal` | `criterion_id`, `surface`, `signal`, `detail?` | ack | `quality.signal.tripped` |
+| `kritik_score` | `criterion_id`, `surface`, `level`, `evidence`, `audit_id?`, `commit?` | the assessment, latest-per-cell. Repo sessions only — scoring reads the code, so a hosted session refuses | — |
+| `kritik_open_finding` | `criterion_id`, `surface`, `title`, `evidence`, `impact`, `likelihood`, `cost`, `detail?`, `remediation?`, `node_ids?`, `issue_url?`, `verification?`, `audit_id?`, `finding_id?` | the finding + its derived severity/priority. Repo sessions only — a new finding cites code, so a hosted session refuses | `quality.finding.opened` (none when `verification.verdict` is `REFUTED`) |
+| `kritik_resolve_finding` | `finding_id`, `resolved_by?` | the closed finding | `quality.finding.resolved` — repo mode writes it via `store.persist`; hosted posts it to the host (idempotent either way — a second resolve writes nothing) |
+| `kritik_accept_finding` | `finding_id`, `note` | the finding as an accepted risk | repo mode: none (acceptance is a state, written straight to the findings file); hosted: `quality.finding.accepted`, since there is no findings file to hold that state — the read derives `accepted-risk` from the event |
+| `kritik_trip_signal` | `criterion_id`, `surface`, `signal`, `detail?` | ack. Repo sessions only | `quality.signal.tripped` |
 
-Three properties of this namespace are worth stating out loud, because each is a decision rather
+Four properties of this namespace are worth stating out loud, because each is a decision rather
 than a detail:
 
-**The sidecars are the store, the journal is the gate.** Kritik state lives in `docs/quality/`,
-canonical in a repository the way `journal.jsonl` is canonical while a bundle's embedded `journal[]`
-is only the interchange projection. So assessments and findings are written to those files, while the
-`quality.*` events go through `store.persist` — the same validator-gated path every other write tool
-uses. The journal write runs **first**: a refusal then leaves nothing behind, where the other order
-would leave a finding on disk that no event ever announced.
+**The sidecars are the store, the journal is the gate — in repo mode.** Kritik state lives in
+`docs/quality/`, canonical in a repository the way `journal.jsonl` is canonical while a bundle's
+embedded `journal[]` is only the interchange projection. So assessments and findings are written to
+those files, while the `quality.*` events go through `store.persist` — the same validator-gated path
+every other write tool uses. The journal write runs **first**: a refusal then leaves nothing behind,
+where the other order would leave a finding on disk that no event ever announced.
 
-**Repo mode only.** A hosted project has no `docs/quality/` directory, so in hosted mode these tools
-refuse with an explanation rather than half-working. That is not a gap to close later: an audit reads
-the *code*, and an agent auditing a hosted map has no code to read.
+**Hosted sessions read and transition findings; they don't audit.** A hosted project has no
+`docs/quality/` directory — instead the server folds the account's own journal events into the
+stored bundle's quality section, and `kritik_matrix`, `kritik_findings`, `kritik_regressions` and
+`kritik_issue` read that folded section directly, no checkout required. Transitions
+(`kritik_resolve_finding`, `kritik_accept_finding`) go the same way in reverse: the tool posts a
+whitelisted event — `quality.finding.resolved` or `quality.finding.accepted` — to
+`POST /api/graph/projects/{id}/quality/events` under the `graph:write` scope, and the snapshot's
+`quality` section is never mutated by that route; current status is re-derived on every read, the
+same "current state is a projection" doctrine as everywhere else (§3.2), and the same path the
+GitHub App's own resolution pass uses. What stays repo-only is the audit *run* —
+`kritik_score`, `kritik_signals`, `kritik_trip_signal`, `kritik_open_finding` — because scoring a
+cell and opening a finding both read the code, and an agent pointed at a hosted map has no checkout
+to read it against; those four refuse with that reason stated, not a blanket "hosted isn't
+supported". The half of the old repo-only decision that still holds: **running** an audit needs a
+working tree — only *auditing* does, not reading or deciding on what a past audit already found
+(issue #400).
+
+A few shapes of that split are worth being explicit about: writes are events-only (no snapshot
+mutation, no new tables — the fold is the only place a hosted finding's status is computed);
+findings stay a living pool rather than being partitioned by `audit_id` the way repo findings are;
+an optional `commit` anchor on a finding is required by policy for any future hosted-written
+`kritik_open_finding`, should that ever ship; the token scope split stays `graph:read` for the reads
+above and `graph:write` for the two transitions; and Publik's `stripQuality` is unaffected — it
+strips the whole quality section before either read or write path is reachable.
 
 **Nothing here authors a criterion or picks a surface.** `arkaik kritik profile` and `arkaik kritik
 criterion add` deliberately have no MCP mirror. Both are one-time design decisions about what this
