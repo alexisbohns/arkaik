@@ -441,8 +441,17 @@ async function run() {
 
     const matrix = await hosted.call("kritik_matrix", {});
     check(
-      "kritik_matrix reads the hosted section",
-      !matrix.isError && Array.isArray(matrix.json.matrix?.surfaces) && matrix.json.matrix.surfaces.includes("web") && matrix.json.open_findings === 1,
+      "kritik_matrix reads the hosted section, flat like repo mode's ...file spread",
+      !matrix.isError &&
+        "web" in matrix.json.overall &&
+        typeof matrix.json.matrix === "object" &&
+        matrix.json.matrix.SEC?.web !== undefined &&
+        matrix.json.open_findings === 1,
+      matrix.text.slice(0, 300),
+    );
+    check(
+      "hosted matrix carries no audit_id/commit — there is no audit file to carry them",
+      !("audit_id" in matrix.json) && !("commit" in matrix.json),
       matrix.text.slice(0, 300),
     );
 

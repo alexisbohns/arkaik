@@ -109,6 +109,11 @@ function hostedSection(graph: LoadedGraph): { section: QualitySection; library: 
   return { section, library: resolveKritikLibrary(section) };
 }
 
+/** Recording belongs to the audit run — the same refusal for every hosted write `kritik_matrix`/`kritik_regressions` might otherwise attempt. */
+function refuseHostedRecord(eventType: string): never {
+  throw new ToolError(`Recording ${eventType} belongs to the audit run, which reads code. Run the audit where the checkout is.`);
+}
+
 /** Open findings, tallied into priority lanes and the P0 shortlist — the piece `kritik_matrix` needs identically in both modes. */
 function openFindingsSummary(
   findings: readonly QualityFinding[],
@@ -131,6 +136,52 @@ function openFindingsSummary(
       severity: severityOf(finding, library),
     }));
   return { open, lanes, p0 };
+}
+
+/**
+ * Resolve the `from`/`to` pair for a regression comparison out of a known list
+ * of audit ids (ascending), applying the same not-found / too-few / same-audit
+ * / inverted-order guards `kritik_regressions` needs in both modes — only the
+ * "no audit under X" phrasing and where `audits` itself comes from differ.
+ */
+function resolveAuditPair(
+  audits: readonly string[],
+  args: Record<string, unknown>,
+  notFoundHint: string,
+): { from: string; to: string } {
+  if (audits.length < 2) {
+    throw new ToolError(
+      `regressions needs two audits to compare — ${audits.length === 0 ? `${notFoundHint} holds none` : `only "${audits[0]}" exists`}. ` +
+        `A regression is the difference between two readings; one reading is a baseline.`,
+    );
+  }
+  const known = (id: string): string => {
+    if (!audits.includes(id)) throw new ToolError(`no audit "${id}" ${notFoundHint} (have: ${audits.join(", ")})`);
+    return id;
+  };
+  const to = typeof args.to === "string" && args.to !== "" ? known(args.to) : audits[audits.length - 1];
+  const from = typeof args.from === "string" && args.from !== "" ? known(args.from) : audits[audits.indexOf(to) - 1];
+  if (from === undefined) throw new ToolError(`"${to}" is the oldest audit — there is nothing before it to compare against.`);
+  if (from === to) throw new ToolError(`from and to name the same audit ("${to}") — a regression needs two readings.`);
+  // Order is the whole verdict: a hand-swapped pair reports a clean run where
+  // a real regression exists.
+  if (audits.indexOf(from) > audits.indexOf(to)) {
+    throw new ToolError(`from "${from}" is newer than to "${to}" — swap them, or the comparison inverts.`);
+  }
+  return { from, to };
+}
+
+/** The five-condition filter `kritik_findings` applies identically in both modes. */
+function matchesFindingArgs(
+  row: { surface: string; status?: string; priority: string; criterion_id: string; id: string },
+  args: Record<string, unknown>,
+): boolean {
+  if (typeof args.surface === "string" && row.surface !== args.surface) return false;
+  if (typeof args.status === "string" && (row.status ?? "open") !== args.status) return false;
+  if (typeof args.priority === "string" && row.priority !== args.priority) return false;
+  if (typeof args.criterion_id === "string" && row.criterion_id !== args.criterion_id) return false;
+  if (typeof args.finding_id === "string" && row.id !== args.finding_id) return false;
+  return true;
 }
 
 function libraryOf(root: string): KritikLibrary {
@@ -258,7 +309,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
     {
       name: "kritik_matrix",
       description:
-        "The comparative quality matrix: a score and grade per (domain x surface), the weighted roll-up per surface, and open findings by priority lane. Anti-averaging caps are applied — one open Critical caps its cell at D, one open High at B — so a cell full of 3s cannot absorb a live defect. In repo mode this refreshes the audit's matrix.json, and with record=true appends quality.audit.completed; in hosted mode it is a read of the stored quality section and record is refused — recording belongs to the audit run, which reads code.",
+        "The comparative quality matrix: a score and grade per (domain x surface), the weighted roll-up per surface, and open findings by priority lane. Anti-averaging caps are applied — one open Critical caps its cell at D, one open High at B — so a cell full of 3s cannot absorb a live defect. In repo mode this refreshes the audit's matrix.json, and with record=true appends quality.audit.completed; in hosted mode it is a read of the stored quality section (no audit_id/commit — hosted has no audit file) and record is refused — recording belongs to the audit run, which reads code.",
       inputSchema: {
         type: "object",
         properties: {
@@ -274,17 +325,20 @@ export function buildKritikCatalog(ctx: KritikContext): {
     async (args) => {
       const hosted = ctx.qualityRoot === undefined;
       if (hosted) {
-        if (args.record === true) {
-          throw new ToolError(
-            "Recording quality.audit.completed belongs to the audit run, which reads code. Run the audit where the checkout is.",
-          );
-        }
+        if (args.record === true) refuseHostedRecord("quality.audit.completed");
         const graph = await load();
         const { section, library } = hostedSection(graph);
-        const matrix = deriveQualityMatrix({ quality: section }, library);
+        const m = deriveQualityMatrix({ quality: section }, library);
         const { open, lanes, p0 } = openFindingsSummary(section.findings, library);
+        // Normalized to the SAME flat shape repo mode's `...file` spread
+        // produces (matrix = the cell grid, overall/finding_counts siblings of
+        // it) — audit_id/commit are legitimately absent, hosted has no audit
+        // file to carry them.
         return {
-          matrix,
+          ...(m.framework_version !== undefined ? { framework_version: m.framework_version } : {}),
+          matrix: m.matrix,
+          overall: m.overall,
+          finding_counts: m.finding_counts,
           assessment_count: section.assessments.length,
           open_findings: open.length,
           lanes,
@@ -366,14 +420,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
           severity: severityOf(finding, library),
           priority: priorityOf(finding, library),
         }));
-        const matches = rows.filter((row) => {
-          if (typeof args.surface === "string" && row.surface !== args.surface) return false;
-          if (typeof args.status === "string" && (row.status ?? "open") !== args.status) return false;
-          if (typeof args.priority === "string" && row.priority !== args.priority) return false;
-          if (typeof args.criterion_id === "string" && row.criterion_id !== args.criterion_id) return false;
-          if (typeof args.finding_id === "string" && row.id !== args.finding_id) return false;
-          return true;
-        });
+        const matches = rows.filter((row) => matchesFindingArgs(row, args));
         return { total: matches.length, findings: matches };
       }
 
@@ -389,14 +436,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
           priority: priorityOf(finding, library),
         })),
       );
-      const matches = rows.filter((row) => {
-        if (typeof args.surface === "string" && row.surface !== args.surface) return false;
-        if (typeof args.status === "string" && (row.status ?? "open") !== args.status) return false;
-        if (typeof args.priority === "string" && row.priority !== args.priority) return false;
-        if (typeof args.criterion_id === "string" && row.criterion_id !== args.criterion_id) return false;
-        if (typeof args.finding_id === "string" && row.id !== args.finding_id) return false;
-        return true;
-      });
+      const matches = rows.filter((row) => matchesFindingArgs(row, args));
       return { total: matches.length, findings: matches };
     },
   );
@@ -456,11 +496,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
     async (args) => {
       const hosted = ctx.qualityRoot === undefined;
       if (hosted) {
-        if (args.record === true) {
-          throw new ToolError(
-            "Recording quality.audit.completed belongs to the audit run, which reads code. Run the audit where the checkout is.",
-          );
-        }
+        if (args.record === true) refuseHostedRecord("quality.signal.tripped");
         const graph = await load();
         const { section, library } = hostedSection(graph);
         const grouped = new Map<string, QualityAssessment[]>();
@@ -471,23 +507,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
           else grouped.set(assessment.audit_id, [assessment]);
         }
         const audits = [...grouped.keys()].sort();
-        if (audits.length < 2) {
-          throw new ToolError(
-            `regressions needs two audits to compare — ${audits.length === 0 ? "this project's assessments name none" : `only "${audits[0]}" exists`}. ` +
-              `A regression is the difference between two readings; one reading is a baseline.`,
-          );
-        }
-        const known = (id: string): string => {
-          if (!audits.includes(id)) throw new ToolError(`no audit "${id}" in this project's assessments (have: ${audits.join(", ")})`);
-          return id;
-        };
-        const to = typeof args.to === "string" && args.to !== "" ? known(args.to) : audits[audits.length - 1];
-        const from = typeof args.from === "string" && args.from !== "" ? known(args.from) : audits[audits.indexOf(to) - 1];
-        if (from === undefined) throw new ToolError(`"${to}" is the oldest audit — there is nothing before it to compare against.`);
-        if (from === to) throw new ToolError(`from and to name the same audit ("${to}") — a regression needs two readings.`);
-        if (audits.indexOf(from) > audits.indexOf(to)) {
-          throw new ToolError(`from "${from}" is newer than to "${to}" — swap them, or the comparison inverts.`);
-        }
+        const { from, to } = resolveAuditPair(audits, args, "in this project's assessments");
 
         // Both sides share the same living pool of findings (issue #400
         // decision 3), so finding-based regression kinds cannot fire here: a
@@ -518,25 +538,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
       const root = rootOf(ctx);
       const library = libraryOf(root);
       const audits = listAuditIds(root);
-      if (audits.length < 2) {
-        throw new ToolError(
-          `regressions needs two audits to compare — ${audits.length === 0 ? "docs/quality/audits/ holds none" : `only "${audits[0]}" exists`}. ` +
-            `A regression is the difference between two readings; one reading is a baseline.`,
-        );
-      }
-      const known = (id: string): string => {
-        if (!audits.includes(id)) throw new ToolError(`no audit "${id}" under docs/quality/audits/ (have: ${audits.join(", ")})`);
-        return id;
-      };
-      const to = typeof args.to === "string" && args.to !== "" ? known(args.to) : audits[audits.length - 1];
-      const from = typeof args.from === "string" && args.from !== "" ? known(args.from) : audits[audits.indexOf(to) - 1];
-      if (from === undefined) throw new ToolError(`"${to}" is the oldest audit — there is nothing before it to compare against.`);
-      if (from === to) throw new ToolError(`from and to name the same audit ("${to}") — a regression needs two readings.`);
-      // Order is the whole verdict: a hand-swapped pair reports a clean run
-      // where a real regression exists.
-      if (audits.indexOf(from) > audits.indexOf(to)) {
-        throw new ToolError(`from "${from}" is newer than to "${to}" — swap them, or the comparison inverts.`);
-      }
+      const { from, to } = resolveAuditPair(audits, args, "under docs/quality/audits/");
 
       let regressions: Regression[];
       try {
