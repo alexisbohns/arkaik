@@ -164,8 +164,9 @@ criterion add` deliberately have no MCP mirror. Both are one-time design decisio
 product is and how it should be judged — the choices an audit is measured *against*, not moves within
 one — and the loop these tools exist to serve is the audit, not its terms.
 
-Severity, priority, scores, grades and caps never appear in stored data and are recomputed on every
-read; a finding cannot carry a severity its own `impact × likelihood` disagrees with.
+**Severity is derived, never stored.** Severity, priority, scores, grades and caps never appear in
+stored data and are recomputed on every read; a finding cannot carry a severity its own
+`impact × likelihood` disagrees with.
 
 ## Write Path (dual-write, validator-gated)
 
