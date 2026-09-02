@@ -133,6 +133,12 @@ jobs:
       - name: Kritik webhook tests (finding mentions, resolution pass)
         run: npm run test:quality-webhook
 
+      # The hosted events-only write path (issue #400, task 5): the pure core
+      # behind POST .../quality/events. DB-free the same way — the section and
+      # prior journal events are injected, not read.
+      - name: Kritik hosted-events tests (whitelist, all-or-nothing refusal)
+        run: npm run test:quality-events
+
       - name: Map projection + validation tests
         run: npm run test:maps
 
@@ -223,7 +229,7 @@ jobs:
       - name: Provider-injection seam + mutation-notification tests
         run: npm run test:provider
 
-      # Pins foldResolvedFindings (lib/utils/quality.ts) to its real consumer —
+      # Pins foldFindingEvents (lib/utils/quality.ts) to its real consumer —
       # lib/data/local-provider.ts getProject — since the pure function is
       # already covered exhaustively in tests/app/quality.test.js but its call
       # site was not (issue #382 phase E, commit 519b9b6).

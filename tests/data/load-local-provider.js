@@ -152,7 +152,7 @@ function loadLocalProvider() {
     rewriteSchemaRequire(transpile(path.join(ROOT, "lib", "data", "migrate.ts"), "migrate.ts")),
   );
 
-  // quality.js — `foldResolvedFindings`, which local-provider calls to fold
+  // quality.js — `foldFindingEvents`, which local-provider calls to fold
   // quality.finding.resolved events over a bundle's stored findings on read
   // (issue #382 phase E). Same treatment as cycle.js: its only runtime import
   // is @arkaik/schema.

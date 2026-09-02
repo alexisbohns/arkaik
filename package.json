@@ -26,6 +26,7 @@
     "test:quality-ops": "node tests/schema/quality-ops.test.js",
     "test:quality-regressions": "node tests/schema/quality-regressions.test.js",
     "test:quality-webhook": "node tests/services/quality-webhook.test.js",
+    "test:quality-events": "node tests/services/quality-events.test.js",
     "test:maps": "node tests/schema/maps.test.js",
     "test:products": "node tests/schema/products.test.js",
     "test:edge-semantics": "node tests/schema/edge-semantics.test.js",

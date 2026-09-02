@@ -17,7 +17,7 @@ import { linkedProjects, ownerIdsFor, type PullRequestEvent } from "@/lib/servic
  * them — and the already-resolved check below makes that retry safe.
  *
  * **This appends, and appends only.** The finding's stored `status` stays as
- * the last audit left it; `foldResolvedFindings` (lib/utils/quality.ts) is what
+ * the last audit left it; `foldFindingEvents` (lib/utils/quality.ts) is what
  * makes the resolution visible on every read. RFC § 3.2 said so first: current
  * state is a projection, latest audit plus open-minus-resolved.
  */
@@ -33,8 +33,16 @@ export type QualityResolutionOutcome =
 export interface ProjectQualityState {
   projectId: string;
   findings: QualityFinding[];
-  /** Findings a `quality.finding.resolved` already names. */
-  resolvedFindingIds: Set<string>;
+  /**
+   * Findings a `quality.finding.resolved` OR `quality.finding.accepted`
+   * event already names. A finding accepted via event still LOOKS open in
+   * the unfolded snapshot this state is read from (the fold that would show
+   * otherwise is a read projection, not this write path's business — see the
+   * comment on `loadProjectQualityState` below) — so without this set, a
+   * merge that mentions it would silently reopen-then-reclose a decision
+   * somebody already recorded.
+   */
+  decidedFindingIds: Set<string>;
   append: (events: JournalEvent[]) => Promise<string[]>;
 }
 
@@ -85,7 +93,7 @@ export async function applyQualityResolutions(
       // `refuted` and `accepted-risk` are decisions somebody recorded, not
       // defects waiting to be closed, and `resolved` is already done. Only an
       // open finding can be closed by a merge.
-      if (!isOpenFinding(finding) || state.resolvedFindingIds.has(finding.id)) {
+      if (!isOpenFinding(finding) || state.decidedFindingIds.has(finding.id)) {
         outcomes.push({ projectId: state.projectId, status: "unchanged", findingId: finding.id });
         continue;
       }
@@ -141,16 +149,17 @@ const loadProjectQualityState: ReadProjectQualityState = async (event) => {
     const findings = Array.isArray(snapshots[0]?.findings) ? snapshots[0].findings : [];
     if (findings.length === 0) continue;
 
-    const { rows: resolved } = await query<{ finding_id: string }>(
+    const { rows: decided } = await query<{ finding_id: string }>(
       `select event->>'finding_id' as finding_id from graph_events
-        where project_id = $1 and event->>'type' = 'quality.finding.resolved'`,
+        where project_id = $1
+          and event->>'type' in ('quality.finding.resolved', 'quality.finding.accepted')`,
       [projectId],
     );
 
     states.push({
       projectId,
       findings,
-      resolvedFindingIds: new Set(resolved.map((row) => row.finding_id).filter((id): id is string => typeof id === "string")),
+      decidedFindingIds: new Set(decided.map((row) => row.finding_id).filter((id): id is string => typeof id === "string")),
       append: async (events) => {
         const ownerIds = await ownerIdsFor(projectId);
         const result = await appendJournalEvents(projectId, ownerIds, events, "github-app");
