@@ -177,5 +177,77 @@ const acceptedPlan = planQualityEvents(
 );
 check("a valid accept plans ok with a quality.finding.accepted event", acceptedPlan.ok === true && acceptedPlan.events[0].type === "quality.finding.accepted", JSON.stringify(acceptedPlan));
 
+// --- #406: quality.signal.tripped -------------------------------------------
+
+// The third whitelisted type. A trip decides nothing, so it never consults a
+// finding: no unknown_finding, no not_open, no batch bookkeeping.
+const TRIP = {
+  type: "quality.signal.tripped",
+  criterion_id: "SEC-supabase-01",
+  surface: "supabase",
+  signal: "delete-account rejects an unauthenticated call",
+  commit: "0123456789abcdef0123456789abcdef01234567",
+  detail: "https://github.com/o/r/actions/runs/1",
+};
+
+{
+  const parsed = parseQualityEventInputs({ events: [TRIP] });
+  check("trip parses", Array.isArray(parsed) && parsed[0].type === "quality.signal.tripped", JSON.stringify(parsed));
+  check("trip keeps commit", Array.isArray(parsed) && parsed[0].commit === TRIP.commit, JSON.stringify(parsed));
+  check("trip keeps detail", Array.isArray(parsed) && parsed[0].detail === TRIP.detail, JSON.stringify(parsed));
+}
+for (const field of ["criterion_id", "surface", "signal", "commit"]) {
+  const bad = { ...TRIP, [field]: undefined };
+  const parsed = parseQualityEventInputs({ events: [bad] });
+  check(`trip without ${field} is refused`, !Array.isArray(parsed) && parsed.error.includes(field), JSON.stringify(parsed));
+}
+{
+  const parsed = parseQualityEventInputs({ events: [{ ...TRIP, detail: undefined }] });
+  check("detail is optional", Array.isArray(parsed) && !("detail" in parsed[0]), JSON.stringify(parsed));
+}
+{
+  const parsed = parseQualityEventInputs({ events: [{ ...TRIP, detail: "" }] });
+  check("an empty detail on a trip is a parse error", !Array.isArray(parsed) && typeof parsed.error === "string", JSON.stringify(parsed));
+}
+{
+  const parsed = parseQualityEventInputs({ events: [{ type: "node.created", id: "V-x" }] });
+  check("unknown type names all three legal values",
+    !Array.isArray(parsed) &&
+    parsed.error.includes("quality.signal.tripped") &&
+    parsed.error.includes("quality.finding.resolved") &&
+    parsed.error.includes("quality.finding.accepted"), JSON.stringify(parsed));
+}
+{
+  // No section, no prior events, no findings anywhere — a trip still plans.
+  const inputs = parseQualityEventInputs({ events: [TRIP] });
+  const plan = planQualityEvents(undefined, [], inputs, "arkaik-agent");
+  check("trip plans without any section", plan.ok && plan.events.length === 1, JSON.stringify(plan));
+  check("trip event carries criterion + commit",
+    plan.ok && plan.events[0].type === "quality.signal.tripped" &&
+    plan.events[0].criterion_id === "SEC-supabase-01" && plan.events[0].commit === TRIP.commit, JSON.stringify(plan));
+}
+{
+  // A trip alongside a VALID finding decision: both events are planned.
+  const inputs = parseQualityEventInputs({
+    events: [TRIP, { type: "quality.finding.resolved", finding_id: "F-mixed" }],
+  });
+  const plan = planQualityEvents(SECTION([FINDING({ id: "F-mixed" })]), [], inputs, "arkaik-agent");
+  check("a trip batched with a valid resolution plans two events", plan.ok && plan.events.length === 2, JSON.stringify(plan));
+  check("the two events are the trip and the resolution",
+    plan.ok && plan.events[0].type === "quality.signal.tripped" && plan.events[1].type === "quality.finding.resolved", JSON.stringify(plan));
+}
+{
+  // All-or-nothing still holds across types: a refused finding decision
+  // refuses the trip batched with it — and the trip never appears in refusals,
+  // because a trip has nothing to refuse.
+  const inputs = parseQualityEventInputs({
+    events: [TRIP, { type: "quality.finding.resolved", finding_id: "F-nope" }],
+  });
+  const plan = planQualityEvents(SECTION(), [], inputs, "arkaik-agent");
+  check("a trip batched with a refused decision refuses the whole batch", plan.ok === false, JSON.stringify(plan));
+  check("refusals name only the finding, never the trip",
+    plan.ok === false && plan.refusals.length === 1 && plan.refusals[0].finding_id === "F-nope", JSON.stringify(plan));
+}
+
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 process.exit(failures ? 1 : 0);
