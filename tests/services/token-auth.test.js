@@ -82,10 +82,35 @@ function mintReq(body) {
   });
 }
 
+/**
+ * The scope vocabulary, checked without a database.
+ *
+ * Everything else in this file needs a migrated Postgres, which is exactly why
+ * these three checks run first and on their own: what a token is *allowed to
+ * ask for* is pure data, and the machine that has no local Postgres still gets
+ * to find out when someone widens the default grant by accident.
+ */
+function checkScopeVocabulary() {
+  const { isTokenScope, DEFAULT_TOKEN_SCOPES } = loadTokenApi().tokens;
+
+  // #406: a fourth scope, for a credential that lives in a public repo's CI
+  // secrets. It must not be in the defaults — nothing mints it by accident.
+  check("quality:append is a recognized scope", isTokenScope("quality:append"));
+  check("quality:append is not a default", !DEFAULT_TOKEN_SCOPES.includes("quality:append"));
+  check("defaults are unchanged", DEFAULT_TOKEN_SCOPES.join(",") === "graph:read,graph:write");
+
+  fs.rmSync(BUILD_DIR, { recursive: true, force: true });
+}
+
 async function main() {
+  checkScopeVocabulary();
+
   if (!process.env.DATABASE_URL) {
-    console.error("DATABASE_URL is not set — this integration test needs a migrated Postgres.");
-    process.exit(1);
+    console.error(
+      "DATABASE_URL is not set — the integration checks below need a migrated Postgres; " +
+        "only the DB-free scope checks above ran.",
+    );
+    process.exit(failures > 0 ? 1 : 0);
   }
   // getCaller() refuses to resolve anyone unless auth is configured; these are
   // never used for a real OAuth round-trip (NextAuth itself is stubbed).
@@ -139,6 +164,23 @@ async function main() {
       "verification returns the stored scopes",
       resolved && resolved.scopes.join(",") === "graph:read,graph:write",
       resolved && resolved.scopes.join(","),
+    );
+
+    // #406: the CI writer's credential. A token minted with nothing but
+    // `quality:append` round-trips holding exactly that — the narrow grant
+    // survives storage and verification, so what a public repo's secrets hold
+    // is what the settings UI said it would be.
+    const appendOnly = await tokens.mintToken({
+      ownerId: ownerA,
+      userId: userA,
+      name: "nightly-ci",
+      scopes: ["quality:append"],
+    });
+    const appendResolved = await tokens.verifyToken(appendOnly.plaintext);
+    check(
+      "a quality:append-only token round-trips with exactly that scope",
+      appendResolved && appendResolved.scopes.join(",") === "quality:append",
+      appendResolved && appendResolved.scopes.join(","),
     );
 
     // The secret is the credential; the prefix alone must be worthless.

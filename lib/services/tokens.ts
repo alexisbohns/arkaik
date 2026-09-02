@@ -43,8 +43,16 @@ const SECRET_BYTES = 32;
  * whole backup history, and the split makes that the default rather than a
  * discipline. Token management itself is session-only (never scoped), so a
  * leaked token can neither mint another token nor widen its own scopes.
+ *
+ * `quality:append` is narrower still: the append-only scope for a machine that
+ * only ever adds an observation — a CI job recording a tripped Kritik signal.
+ * It grants one route and, within it, one event type; it can read nothing and
+ * decide nothing. It is deliberately not a default, because the caller class it
+ * exists for keeps its credential in a public repository's Actions secrets, and
+ * a scope you can only get by asking for it on purpose is the only kind that
+ * belongs there (#406).
  */
-export const TOKEN_SCOPES = ["graph:read", "graph:write", "synk"] as const;
+export const TOKEN_SCOPES = ["graph:read", "graph:write", "synk", "quality:append"] as const;
 export type TokenScope = (typeof TOKEN_SCOPES)[number];
 
 /** What the settings UI mints unless told otherwise: the agent plane, nothing else. */
