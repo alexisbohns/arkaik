@@ -12,6 +12,7 @@ import {
 import { ScaleChip } from "@/components/quality/ScaleChip";
 import { SeverityPill } from "@/components/quality/SeverityPill";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import {
   CROSS_SURFACE_ID,
@@ -218,12 +219,17 @@ export function CriterionDetailPanelHeader({
 
   return (
     <>
-      {domainLabel !== "" && (
-        <span className="inline-flex shrink-0 items-center rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground">
-          {domainLabel}
-        </span>
-      )}
-      <EntityId id={criterionId} />
+      {/* Domain and id share a line: two short chips, and the panel's first
+          screenful is worth more to the criterion's own prose than to a
+          three-row stack of labels. */}
+      <div className="flex min-w-0 items-center gap-2">
+        {domainLabel !== "" && (
+          <span className="inline-flex shrink-0 items-center rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground">
+            {domainLabel}
+          </span>
+        )}
+        <EntityId id={criterionId} />
+      </div>
       {name !== "" && <span className="truncate text-sm font-medium">{name}</span>}
       {surfaceTitle !== "" && (
         <span className="shrink-0 text-xs text-muted-foreground">{surfaceTitle}</span>
@@ -311,8 +317,17 @@ export function CriterionDetailPanel({
   // say nothing about any of them.
   const scoredLevel = assessments.length === 1 ? assessments[0].level : undefined;
 
+  // The tab that opens. The scored level when the pack wrote an anchor for it,
+  // and otherwise the lowest anchor there is — a strip has to open on
+  // something, and "the first one that exists" is the only neutral choice both
+  // when the panel is not narrowed to a single scored cell and when the pack
+  // skipped the level this project was scored at.
+  const defaultAnchorLevel = anchors.some((anchor) => anchor.level === scoredLevel)
+    ? scoredLevel
+    : anchors[0]?.level;
+
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-4 pb-6 pt-4">
+    <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-6 pb-6 pt-4">
       {!packEmbedded && (
         <p className="px-6 text-sm text-muted-foreground">
           This bundle does not carry the criteria pack, so what this criterion asks is not
@@ -326,42 +341,56 @@ export function CriterionDetailPanel({
 
       {definition !== "" && (
         <PanelSection title="Definition">
-          <p className="text-sm leading-relaxed text-muted-foreground">{definition}</p>
+          <p className="text-sm leading-relaxed">{definition}</p>
         </PanelSection>
       )}
 
       {anchors.length > 0 && (
         <PanelSection title="Maturity anchors">
-          <ol className="flex flex-col gap-1">
-            {anchors.map(({ level, text }) => {
-              const scored = level === scoredLevel;
-              return (
-                <li
-                  key={level}
-                  aria-current={scored ? "true" : undefined}
-                  className={cn(
-                    "flex gap-2 rounded-md px-2 py-1.5 text-sm",
-                    scored && "bg-muted",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "shrink-0 font-mono text-xs",
-                      scored ? "text-foreground" : "text-muted-foreground",
-                    )}
+          {/* A strip rather than a list: five anchors are five paragraphs, and
+              only one of them is this cell's answer. The scored level opens by
+              default so the panel says where the project stands without the
+              reader scrolling past the four levels it does not stand at; the
+              other four are one click away, which is what reading an anchor
+              against its neighbours actually needs. Falls back to the lowest
+              anchor written when there is no single score to open on — see
+              `scoredLevel`. */}
+          <Tabs defaultValue={String(defaultAnchorLevel)}>
+            <TabsList className="w-full">
+              {anchors.map(({ level }) => {
+                const scored = level === scoredLevel;
+                return (
+                  <TabsTrigger
+                    key={level}
+                    value={String(level)}
+                    // Two marks that do not compete: the selected tab is the
+                    // one raised out of the rail (border, weight, foreground
+                    // text), and the scored one carries a dot it keeps whether
+                    // it is selected or not. Reading L2 while the project sits
+                    // at L4 is the whole reason the strip is clickable, so
+                    // "where I am" and "where the project is" have to be
+                    // legible at the same time.
+                    className="font-mono data-[state=active]:border-border data-[state=active]:font-semibold data-[state=active]:text-foreground"
                   >
+                    {scored && (
+                      <span
+                        className="size-1.5 rounded-full bg-muted-foreground"
+                        aria-hidden="true"
+                      />
+                    )}
                     L{level}
-                  </span>
-                  <span className="flex-1 leading-relaxed text-muted-foreground">{text}</span>
-                  {scored && (
-                    <Badge variant="secondary" className="shrink-0 self-start">
-                      Scored
-                    </Badge>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+            {anchors.map(({ level, text }) => (
+              <TabsContent key={level} value={String(level)}>
+                <div className="flex items-start gap-2">
+                  <p className="flex-1 text-sm leading-relaxed">{text}</p>
+                </div>
+              </TabsContent>
+            ))}
+          </Tabs>
         </PanelSection>
       )}
 
@@ -375,7 +404,7 @@ export function CriterionDetailPanel({
                 key={`${assessment.criterion_id}@${assessment.surface}`}
                 className="flex flex-col gap-1.5 rounded-md border p-3"
               >
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
                   <span className="font-medium text-foreground">Level {assessment.level}</span>
                   {/* The surface is repeated here even when the panel is scoped to
                       one, because this block is the thing a reader quotes. */}
@@ -398,9 +427,9 @@ export function CriterionDetailPanel({
 
       {checklist.length > 0 && (
         <PanelSection title="Checklist">
-          <ul className="flex list-disc flex-col gap-1.5 pl-4">
+          <ul className="arkaik-bullets space-y-1.5 pl-4">
             {checklist.map((step, index) => (
-              <li key={index} className="text-sm leading-relaxed text-muted-foreground">
+              <li key={index} className="text-sm leading-relaxed">
                 {step}
               </li>
             ))}
@@ -444,9 +473,9 @@ export function CriterionDetailPanel({
 
       {signals.length > 0 && (
         <PanelSection title="Signals">
-          <ul className="flex list-disc flex-col gap-1.5 pl-4">
+          <ul className="arkaik-bullets space-y-1.5 pl-4">
             {signals.map((signal, index) => (
-              <li key={index} className="text-sm leading-relaxed text-muted-foreground">
+              <li key={index} className="text-sm leading-relaxed">
                 {signal}
               </li>
             ))}
@@ -456,7 +485,7 @@ export function CriterionDetailPanel({
 
       {remediation !== "" && (
         <PanelSection title="Remediation">
-          <p className="text-sm leading-relaxed text-muted-foreground">{remediation}</p>
+          <p className="text-sm leading-relaxed">{remediation}</p>
         </PanelSection>
       )}
 

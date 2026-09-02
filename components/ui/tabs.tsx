@@ -45,7 +45,7 @@ const tabsTriggerVariants = cva(
     variants: {
       variant: {
         default:
-          "data-[state=active]:bg-background dark:data-[state=active]:text-foreground focus-visible:border-ring dark:data-[state=active]:border-input dark:data-[state=active]:bg-input/30 text-foreground dark:text-muted-foreground h-[calc(100%-1px)] flex-1 rounded-md border border-transparent px-2 py-1 text-sm data-[state=active]:shadow-sm [&_svg:not([class*='size-'])]:size-4",
+          "data-[state=active]:bg-card dark:data-[state=active]:text-foreground focus-visible:border-ring dark:data-[state=active]:border-input dark:data-[state=active]:bg-input/30 text-muted-foreground dark:text-muted-foreground h-[calc(100%-1px)] flex-1 rounded-md border border-transparent px-2 py-1 text-sm [&_svg:not([class*='size-'])]:size-4",
         underline:
           "-mb-px border-b-2 border-transparent px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground data-[state=active]:border-foreground data-[state=active]:text-foreground [&_svg:not([class*='size-'])]:size-3.5",
       },

@@ -227,7 +227,7 @@ export function PanelStack<T>({
               )}
             >
               <header className="flex shrink-0 items-center justify-between gap-2 border-b p-6">
-                <div className="flex min-w-0 items-center gap-2">{renderHeader(entry, index)}</div>
+                <div className="flex flex-col min-w-0 items-start gap-2">{renderHeader(entry, index)}</div>
                 <Button
                   variant="ghost"
                   size="icon"
