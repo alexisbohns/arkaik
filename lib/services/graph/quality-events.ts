@@ -3,6 +3,7 @@ import {
   findingResolvedInput,
   isOpenFinding,
   makeEvent,
+  signalTrippedInput,
   type JournalEvent,
   type QualityFinding,
   type QualitySection,
@@ -32,18 +33,31 @@ import { foldFindingEvents } from "@/lib/utils/quality";
  * an appended event into a finding that reads as resolved or accepted-risk.
  * Same doctrine as the webhook's resolution pass, applied to a second writer.
  *
- * **The whitelist is the point.** Exactly two event types can be appended
- * through this path — `quality.finding.resolved` and
- * `quality.finding.accepted` — and nothing else. This is not a general
- * event-append surface: the journal's `GET` stays read-only, and every other
- * event type in the schema is written by the mutation pipeline or the
- * webhook, never by a caller naming a type directly.
+ * **The whitelist is the point.** Exactly three event types can be appended
+ * through this path — `quality.finding.resolved`, `quality.finding.accepted`
+ * and `quality.signal.tripped` (issue #406) — and nothing else. The first two
+ * are decisions; the third is admitted on a different ground, and the
+ * difference is what the rule is made of: a trip is append-only *by
+ * construction*. It decides nothing, so there is no verdict for it to
+ * overwrite, no finding for it to reach, and nothing a second trip can undo.
+ * That is why {@link requiredScopeFor} can let a narrower credential send one.
+ * This is still not a general event-append surface: the journal's `GET` stays
+ * read-only, and every other event type in the schema is written by the
+ * mutation pipeline or the webhook, never by a caller naming a type directly.
  */
 
 /** One caller-supplied event, after the whitelist has narrowed its shape. */
 export type QualityEventInput =
   | { type: "quality.finding.resolved"; finding_id: string; resolved_by?: string }
-  | { type: "quality.finding.accepted"; finding_id: string; reason: string };
+  | { type: "quality.finding.accepted"; finding_id: string; reason: string }
+  | {
+      type: "quality.signal.tripped";
+      criterion_id: string;
+      surface: string;
+      signal: string;
+      commit: string;
+      detail?: string;
+    };
 
 /** Why one finding in a batch was refused. */
 export type QualityEventRefusal = {
@@ -67,10 +81,18 @@ function isNonEmptyString(value: unknown): value is string {
  * via `Array.isArray`, since a legal batch is never mistaken for
  * `{ error }`.
  *
- * Whitelist: `type` must be `quality.finding.resolved` or
- * `quality.finding.accepted`; `finding_id` a non-empty string on both;
- * `resolved_by`, when present, a non-empty string; `reason` a required
- * non-empty string for `accepted`. 1–50 entries.
+ * Whitelist: `type` must be `quality.finding.resolved`,
+ * `quality.finding.accepted` or `quality.signal.tripped`. `type` is read
+ * FIRST and the per-type fields after it, because the three shapes no longer
+ * share a field — a trip names a criterion, not a finding. On the two finding
+ * types: `finding_id` a non-empty string; `resolved_by`, when present, a
+ * non-empty string; `reason` a required non-empty string for `accepted`. On a
+ * trip: `criterion_id`, `surface`, `signal` and `commit` non-empty strings,
+ * `detail` a non-empty string when present. 1–50 entries.
+ *
+ * `commit` is required here rather than in the schema (where it is optional,
+ * because it describes every trip in every mode) — this parser only ever sees
+ * the hosted caller class, and that class pays nothing for the anchor.
  */
 export function parseQualityEventInputs(body: unknown): QualityEventInput[] | { error: string } {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
@@ -87,11 +109,11 @@ export function parseQualityEventInputs(body: unknown): QualityEventInput[] | { 
       return { error: `events[${index}] must be an object` };
     }
     const entry = raw as Record<string, unknown>;
-    if (!isNonEmptyString(entry.finding_id)) {
-      return { error: `events[${index}].finding_id must be a non-empty string` };
-    }
 
     if (entry.type === "quality.finding.resolved") {
+      if (!isNonEmptyString(entry.finding_id)) {
+        return { error: `events[${index}].finding_id must be a non-empty string` };
+      }
       if (entry.resolved_by !== undefined && !isNonEmptyString(entry.resolved_by)) {
         return { error: `events[${index}].resolved_by must be a non-empty string when present` };
       }
@@ -104,6 +126,9 @@ export function parseQualityEventInputs(body: unknown): QualityEventInput[] | { 
     }
 
     if (entry.type === "quality.finding.accepted") {
+      if (!isNonEmptyString(entry.finding_id)) {
+        return { error: `events[${index}].finding_id must be a non-empty string` };
+      }
       if (!isNonEmptyString(entry.reason)) {
         return { error: `events[${index}].reason must be a non-empty string` };
       }
@@ -111,7 +136,29 @@ export function parseQualityEventInputs(body: unknown): QualityEventInput[] | { 
       continue;
     }
 
-    return { error: `events[${index}].type must be quality.finding.resolved or quality.finding.accepted` };
+    if (entry.type === "quality.signal.tripped") {
+      for (const field of ["criterion_id", "surface", "signal", "commit"] as const) {
+        if (!isNonEmptyString(entry[field])) {
+          return { error: `events[${index}].${field} must be a non-empty string` };
+        }
+      }
+      if (entry.detail !== undefined && !isNonEmptyString(entry.detail)) {
+        return { error: `events[${index}].detail must be a non-empty string when present` };
+      }
+      parsed.push({
+        type: "quality.signal.tripped",
+        criterion_id: entry.criterion_id as string,
+        surface: entry.surface as string,
+        signal: entry.signal as string,
+        commit: entry.commit as string,
+        ...(entry.detail !== undefined ? { detail: entry.detail as string } : {}),
+      });
+      continue;
+    }
+
+    return {
+      error: `events[${index}].type must be quality.finding.resolved, quality.finding.accepted or quality.signal.tripped`,
+    };
   }
 
   return parsed;
@@ -128,6 +175,11 @@ export function parseQualityEventInputs(body: unknown): QualityEventInput[] | { 
  * the stored snapshot — was never touched. A finding decided earlier in the
  * SAME batch is refused the same way, via `decidedInBatch`, so two entries
  * naming the same finding cannot both succeed.
+ *
+ * A `quality.signal.tripped` entry skips all of that: it decides nothing, so
+ * it consults no finding and can produce no refusal. It is still bound by the
+ * batch's fate — a trip sent alongside a finding decision that is refused is
+ * refused with it.
  *
  * All-or-nothing, mirroring `persistMutation`: any refusal — one unknown id,
  * one not-open finding, anywhere in the batch — refuses every entry. No
@@ -155,6 +207,15 @@ export function planQualityEvents(
   const decidedInBatch = new Set<string>();
 
   for (const input of inputs) {
+    // A trip is handled before the finding lookup because it has no finding to
+    // look up: it decides nothing, so `unknown_finding`, `not_open` and
+    // `decidedInBatch` all have nothing to say about it.
+    if (input.type === "quality.signal.tripped") {
+      const trip = signalTrippedInput(input);
+      events.push(makeEvent(trip.type, trip.payload, { actor }));
+      continue;
+    }
+
     const finding = findings.get(input.finding_id);
     if (finding === undefined) {
       refusals.push({ finding_id: input.finding_id, reason: "unknown_finding" });
@@ -175,4 +236,41 @@ export function planQualityEvents(
 
   if (refusals.length > 0) return { ok: false, refusals };
   return { ok: true, events };
+}
+
+/**
+ * The NARROWEST scope that suffices for this batch — not the only one that
+ * does.
+ *
+ * A trip is append-only by construction, so `quality:append` suffices for a
+ * batch of nothing but trips. Any finding decision in the batch is a verdict
+ * on the graph's quality state and needs `graph:write` — which is what makes
+ * a CI credential in a public repo unable to decide a finding's fate, the
+ * bar issue #406 exists to clear.
+ *
+ * The caller must treat `graph:write` as subsuming `quality:append`, because
+ * this returns a floor rather than an exact requirement: a `graph:write`-only
+ * agent token appending a trip is asking for LESS than it holds, and refusing
+ * it would break every #400 caller the moment it sent an observation. The
+ * route does that; a future caller must too.
+ */
+export function requiredScopeFor(inputs: readonly QualityEventInput[]): "graph:write" | "quality:append" {
+  return inputs.every((i) => i.type === "quality.signal.tripped") ? "quality:append" : "graph:write";
+}
+
+/**
+ * Whether a caller holding `scopes` may send this batch.
+ *
+ * The subsumption rule, in one place instead of in a route comment: holding
+ * `graph:write` is enough for anything this route accepts, including a batch
+ * of nothing but trips. {@link requiredScopeFor} returns a floor, and a caller
+ * that asks for less than it holds must not be refused — checking the returned
+ * scope on its own would 403 every `graph:write`-only agent token (issue #400's
+ * callers) the moment it appended an observation.
+ */
+export function callerMaySendQualityEvents(
+  scopes: readonly string[],
+  inputs: readonly QualityEventInput[],
+): boolean {
+  return scopes.includes("graph:write") || scopes.includes(requiredScopeFor(inputs));
 }

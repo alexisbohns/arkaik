@@ -1,7 +1,12 @@
 import { getCaller, hasScope } from "@/lib/services/auth";
 import { MAX_BUNDLE_BYTES, servicesConfigured, servicesUnavailable } from "@/lib/services/db";
 import { appendJournalEvents, getProject, qualityFindingEvents } from "@/lib/services/graph/store";
-import { parseQualityEventInputs, planQualityEvents } from "@/lib/services/graph/quality-events";
+import {
+  callerMaySendQualityEvents,
+  parseQualityEventInputs,
+  planQualityEvents,
+  requiredScopeFor,
+} from "@/lib/services/graph/quality-events";
 import type { QualitySection } from "@arkaik/schema";
 
 export const runtime = "nodejs";
@@ -11,13 +16,22 @@ export const dynamic = "force-dynamic";
  * `POST` — the hosted, events-only write path for Kritik findings (issue
  * #400, part 2 of the stack).
  *
- * A batch of `{ type, finding_id, resolved_by? | reason }` entries, each
- * either `quality.finding.resolved` or `quality.finding.accepted` — nothing
- * else. That whitelist is the point: this route is not a general
- * event-append surface (the journal `GET` stays read-only), it is the one
- * place a caller with `graph:write` can record a Kritik decision on a
- * project that has no checkout for `arkaik kritik finding resolve` or
- * `accept` to run against.
+ * A batch of typed entries, each one of exactly three whitelisted types —
+ * `quality.finding.resolved`, `quality.finding.accepted`, or
+ * `quality.signal.tripped` (issue #406) — and nothing else. That whitelist is
+ * the point: this route is not a general event-append surface (the journal
+ * `GET` stays read-only), it is the one place a caller can record a Kritik
+ * decision, or a Kritik observation, on a project that has no checkout for
+ * `arkaik kritik finding resolve`, `accept` or `trip-signal` to run against.
+ *
+ * **The scope guard is asymmetric.** `graph:write` may send all three.
+ * `quality:append` alone may send only a trip: a trip decides nothing, so it
+ * can overwrite no verdict, which is exactly why a narrower credential can be
+ * trusted with it. A `quality:append`-only caller that sends a finding
+ * decision gets a 403 naming `graph:write`. That asymmetry is the whole
+ * feature — it is what lets a nightly workflow in a PUBLIC repository hold a
+ * token that can append an observation and do nothing else: no graph reads,
+ * no graph writes, no finding decisions.
  *
  * `snapshot.quality` is NEVER mutated here — same doctrine as the GitHub
  * App's resolution pass in `lib/services/github/quality.ts`. A finding's
@@ -40,7 +54,10 @@ export async function POST(
 
   const caller = await getCaller(req);
   if (!caller) return Response.json({ error: "unauthorized" }, { status: 401 });
-  if (!hasScope(caller, "graph:write")) {
+  // Pre-parse, this can only ask whether the caller could POST here at all.
+  // The broad scope stays the one named for the broad ask: a caller holding
+  // neither is being told what a full-powered request to this route needs.
+  if (!hasScope(caller, "graph:write") && !hasScope(caller, "quality:append")) {
     return Response.json({ error: "insufficient_scope", required: "graph:write" }, { status: 403 });
   }
 
@@ -62,9 +79,27 @@ export async function POST(
     return Response.json({ error: "invalid_json" }, { status: 400 });
   }
 
+  // Stricter than the schema on one field: a trip sent through THIS route must
+  // carry the `commit` it observed. The schema leaves `commit` optional
+  // because it describes every trip in every mode, and a repo-mode trip has
+  // no obligation to anchor — but the caller class this route exists for is a
+  // CI job, which pays nothing for the anchor (`GITHUB_SHA` is ambient). A
+  // missing `commit` is a shape error, so it lands here as a 400, not as a
+  // 422 refusal: the caller sent something malformed, not something the graph
+  // declined.
   const inputs = parseQualityEventInputs(body);
   if (!Array.isArray(inputs)) {
     return Response.json({ error: "invalid_events", message: inputs.error }, { status: 400 });
+  }
+
+  // Post-parse, because the answer depends on the event types — which is also
+  // why this cannot be folded into the guard above.
+  //
+  // `requiredScopeFor` returns the NARROWEST scope that suffices, not the only
+  // one that does — `callerMaySendQualityEvents` is where that subsumption
+  // lives, so the rule is tested rather than trusted.
+  if (!callerMaySendQualityEvents(caller.scopes, inputs)) {
+    return Response.json({ error: "insufficient_scope", required: requiredScopeFor(inputs) }, { status: 403 });
   }
 
   try {
