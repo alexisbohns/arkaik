@@ -390,6 +390,12 @@ async function run() {
     },
   };
 
+  // Recorded POST bodies to /quality/events, and a mode switch for the 422
+  // "refused" response the server sends when a status transition targets a
+  // finding that is not open post-fold.
+  const eventsReceived = [];
+  let refuseEvents = false;
+
   function startHostedStub() {
     return http.createServer((req, res) => {
       const json = (status, body) => {
@@ -398,6 +404,30 @@ async function run() {
       };
       if (req.url === "/api/graph/projects/demo" && req.method === "GET") return json(200, { bundle: HOSTED_BUNDLE, version: "v1" });
       if (req.url === "/api/graph/projects/demo/journal" && req.method === "GET") return json(200, { journal: [] });
+      if (req.url === "/api/graph/projects/demo/quality/events" && req.method === "POST") {
+        let raw = "";
+        req.on("data", (chunk) => (raw += chunk));
+        req.on("end", () => {
+          const body = JSON.parse(raw);
+          eventsReceived.push(body);
+          if (refuseEvents) {
+            return json(422, { error: "refused", refusals: [{ finding_id: "F-B", reason: "not_open" }] });
+          }
+          return json(
+            200,
+            {
+              events: body.events.map((input) => ({
+                id: "01X",
+                ts: "2026-09-02T00:00:00.000Z",
+                type: input.type,
+                finding_id: input.finding_id,
+                actor: "arkaik-agent",
+              })),
+            },
+          );
+        });
+        return;
+      }
       return json(404, { error: "not_found" });
     });
   }
@@ -473,6 +503,67 @@ async function run() {
       "kritik_issue renders from a hosted finding",
       !issue.isError && ((issue.json.body && issue.json.body.includes("Open crit")) || (issue.json.title && issue.json.title.includes("Open crit"))),
       issue.text.slice(0, 300),
+    );
+
+    // --- hosted resolve/accept -------------------------------------------------
+
+    eventsReceived.length = 0;
+    const resolvedA = await hosted.call("kritik_resolve_finding", { finding_id: "F-A", resolved_by: "https://pr/9" });
+    check(
+      "hosted resolve posts exactly one resolved event",
+      eventsReceived.length === 1 &&
+        JSON.stringify(eventsReceived[0]) ===
+          JSON.stringify({ events: [{ type: "quality.finding.resolved", finding_id: "F-A", resolved_by: "https://pr/9" }] }),
+      JSON.stringify(eventsReceived),
+    );
+    check(
+      "hosted resolve returns a resolved finding",
+      !resolvedA.isError && resolvedA.json.finding.status === "resolved" && resolvedA.json.finding.resolved_by === "https://pr/9" && resolvedA.json.events.length > 0,
+      resolvedA.text.slice(0, 300),
+    );
+
+    eventsReceived.length = 0;
+    const resolvedB = await hosted.call("kritik_resolve_finding", { finding_id: "F-B" });
+    check(
+      "hosted resolve of an already-resolved finding is idempotent — no POST",
+      !resolvedB.isError && eventsReceived.length === 0 && /Already resolved/.test(resolvedB.json.note),
+      resolvedB.text.slice(0, 300),
+    );
+
+    eventsReceived.length = 0;
+    const accepted = await hosted.call("kritik_accept_finding", { finding_id: "F-A", note: "owned" });
+    check(
+      "hosted accept posts exactly one accepted event",
+      eventsReceived.length === 1 &&
+        JSON.stringify(eventsReceived[0]) === JSON.stringify({ events: [{ type: "quality.finding.accepted", finding_id: "F-A", reason: "owned" }] }),
+      JSON.stringify(eventsReceived),
+    );
+    check(
+      "hosted accept returns accepted-risk with the note appended",
+      !accepted.isError && accepted.json.finding.status === "accepted-risk" && accepted.json.finding.detail.endsWith("Accepted risk: owned"),
+      accepted.text.slice(0, 300),
+    );
+
+    refuseEvents = true;
+    const resolveRefused = await hosted.call("kritik_resolve_finding", { finding_id: "F-A" });
+    check(
+      "hosted resolve surfaces the server's not_open refusal",
+      resolveRefused.isError && /not_open/.test(resolveRefused.text),
+      resolveRefused.text.slice(0, 300),
+    );
+    const acceptRefused = await hosted.call("kritik_accept_finding", { finding_id: "F-A", note: "owned" });
+    check(
+      "hosted accept surfaces the server's not_open refusal",
+      acceptRefused.isError && /not_open/.test(acceptRefused.text),
+      acceptRefused.text.slice(0, 300),
+    );
+    refuseEvents = false;
+
+    const resolveMissing = await hosted.call("kritik_resolve_finding", { finding_id: "F-NOPE" });
+    check(
+      "hosted resolve of an unknown finding_id",
+      resolveMissing.isError && /No finding "F-NOPE"/.test(resolveMissing.json.message),
+      resolveMissing.text.slice(0, 300),
     );
   } finally {
     hosted.stop();

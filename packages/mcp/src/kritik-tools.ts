@@ -98,6 +98,25 @@ function rootOf(ctx: KritikContext): string {
   return ctx.qualityRoot;
 }
 
+/**
+ * Hosted status transitions go through the server, which owns the openness
+ * verdict (post-fold) — so this does no client-side pre-checking beyond the
+ * resolve idempotency case, and surfaces the server's refusal verbatim.
+ */
+async function appendHosted(
+  store: Store,
+  inputs: readonly { type: string; finding_id: string; resolved_by?: string; reason?: string }[],
+): Promise<JournalEvent[]> {
+  if (store.appendQualityEvents === undefined) {
+    throw new ToolError(`${store.describe()} cannot append quality events.`);
+  }
+  try {
+    return await store.appendQualityEvents(inputs);
+  } catch (error) {
+    throw new ToolError((error as Error).message);
+  }
+}
+
 /** Hosted quality state: the stored section, already folded by the server. */
 function hostedSection(graph: LoadedGraph): { section: QualitySection; library: KritikLibrary | undefined } {
   const section = (graph.loaded.bundle as { quality?: QualitySection }).quality;
@@ -834,15 +853,36 @@ export function buildKritikCatalog(ctx: KritikContext): {
       },
     },
     async (args) => {
-      const root = rootOf(ctx);
       const id = requireString(args, "finding_id");
+      const resolvedBy = typeof args.resolved_by === "string" && args.resolved_by !== "" ? args.resolved_by : undefined;
+
+      if (ctx.qualityRoot === undefined) {
+        const graph = await load();
+        const { section } = hostedSection(graph);
+        const finding = section.findings.find((candidate) => candidate.id === id);
+        if (!finding) throw new ToolError(`No finding "${id}" in this hosted project's quality section.`);
+        if (finding.status === "resolved") {
+          return { finding, events: [] as JournalEvent[], note: "Already resolved — nothing written." };
+        }
+
+        // The server's post-fold openness check is the only "not open" verdict
+        // that matters here — see appendHosted.
+        const events = await appendHosted(ctx.store, [
+          { type: "quality.finding.resolved", finding_id: finding.id, ...(resolvedBy !== undefined ? { resolved_by: resolvedBy } : {}) },
+        ]);
+        return {
+          finding: { ...finding, status: "resolved" as const, ...(resolvedBy !== undefined ? { resolved_by: resolvedBy } : {}) },
+          events,
+        };
+      }
+
+      const root = rootOf(ctx);
       const located = locateFinding(root, id);
       if (!located) throw new ToolError(`No finding "${id}" in any audit under docs/quality/audits/.`);
       if (located.finding.status === "resolved") {
         return { finding: located.finding, audit_id: located.auditId, events: [], note: "Already resolved — nothing written." };
       }
 
-      const resolvedBy = typeof args.resolved_by === "string" && args.resolved_by !== "" ? args.resolved_by : undefined;
       const graph = await load();
       const events = await record(graph, [findingResolvedInput(located.finding, resolvedBy)]);
 
@@ -856,7 +896,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
     {
       name: "kritik_accept_finding",
       description:
-        "Record a finding as a known, owned risk. The note is required — an accepted risk is a decision and reads like one, and the findings board renders it as a decision-log entry. No journal event: acceptance is a state of the finding, not something that happened to the product.",
+        "Record a finding as a known, owned risk. The note is required — an accepted risk is a decision and reads like one, and the findings board renders it as a decision-log entry. In repo mode acceptance is a state of the finding, written straight to the findings file with no journal event; a hosted session has no findings file to hold that state, so it appends quality.finding.accepted instead, and the read derives status accepted-risk from it.",
       inputSchema: {
         type: "object",
         properties: {
@@ -868,9 +908,27 @@ export function buildKritikCatalog(ctx: KritikContext): {
       },
     },
     async (args) => {
-      const root = rootOf(ctx);
       const id = requireString(args, "finding_id");
       const note = requireString(args, "note");
+
+      if (ctx.qualityRoot === undefined) {
+        const graph = await load();
+        const { section } = hostedSection(graph);
+        const finding = section.findings.find((candidate) => candidate.id === id);
+        if (!finding) throw new ToolError(`No finding "${id}" in this hosted project's quality section.`);
+
+        const events = await appendHosted(ctx.store, [{ type: "quality.finding.accepted", finding_id: finding.id, reason: note }]);
+        // Mirrors what the server's fold will derive: lib/utils/quality.ts
+        // folds an accepted event into status accepted-risk with the note
+        // appended to detail — this is that same shape, computed client-side
+        // for the immediate reply.
+        return {
+          finding: { ...finding, status: "accepted-risk" as const, detail: `${finding.detail}\n\nAccepted risk: ${note}`.trim() },
+          events,
+        };
+      }
+
+      const root = rootOf(ctx);
       const located = locateFinding(root, id);
       if (!located) throw new ToolError(`No finding "${id}" in any audit under docs/quality/audits/.`);
 
