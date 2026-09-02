@@ -1,6 +1,6 @@
 import { getCaller, hasScope } from "@/lib/services/auth";
 import { MAX_BUNDLE_BYTES, servicesConfigured, servicesUnavailable } from "@/lib/services/db";
-import { archiveProject, getProject, qualityResolutionEvents, updateProjectFields } from "@/lib/services/graph/store";
+import { archiveProject, getProject, qualityFindingEvents, updateProjectFields } from "@/lib/services/graph/store";
 import { foldFindingEvents } from "@/lib/utils/quality";
 import type { Project, QualitySection } from "@arkaik/schema";
 
@@ -45,7 +45,7 @@ export async function GET(
     const storedQuality = (found.bundle as { quality?: QualitySection }).quality;
     const quality = foldFindingEvents(
       storedQuality,
-      await qualityResolutionEvents(projectId, caller.ownerIds),
+      await qualityFindingEvents(projectId, caller.ownerIds),
     );
     const bundle = quality === storedQuality ? found.bundle : { ...found.bundle, quality };
     return Response.json(

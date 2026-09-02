@@ -204,7 +204,7 @@ const FINDING = (over = {}) => ({
 });
 
 /** The injected seam: one project, whatever findings and events a case needs. */
-function state({ findings = [FINDING()], resolvedIds = [] } = {}) {
+function state({ findings = [FINDING()], decidedIds = [] } = {}) {
   const appended = [];
   return {
     appended,
@@ -212,7 +212,7 @@ function state({ findings = [FINDING()], resolvedIds = [] } = {}) {
       {
         projectId: "prj_1",
         findings,
-        resolvedFindingIds: new Set(resolvedIds),
+        decidedFindingIds: new Set(decidedIds),
         append: async (events) => { appended.push(...events); return events.map((e) => e.id); },
       },
     ],
@@ -254,9 +254,21 @@ const merged = (over = {}) => ({
     check(`a ${status} finding is not re-resolved`, guarded.appended.length === 0 && outcomes.some((o) => o.status === "unchanged"), JSON.stringify(outcomes));
   }
 
-  const already = state({ resolvedIds: ["F-2026-08-SEC-web-01"] });
+  const already = state({ decidedIds: ["F-2026-08-SEC-web-01"] });
   const secondMerge = await applyQualityResolutions(merged({ body: "Fixes F-2026-08-SEC-web-01." }), { readState: already.readState });
   check("a second merge appends nothing", already.appended.length === 0 && secondMerge.some((o) => o.status === "unchanged"), JSON.stringify(secondMerge));
+
+  // A finding decided by a `quality.finding.accepted` event still looks
+  // "open" in the unfolded snapshot this pass reads — `decidedFindingIds` is
+  // what stops a merge from treating that as still-outstanding and silently
+  // overwriting a recorded accept-risk decision with a resolve.
+  const acceptedByEvent = state({ decidedIds: ["F-2026-08-SEC-web-01"] });
+  const acceptedOutcomes = await applyQualityResolutions(merged({ body: "Fixes F-2026-08-SEC-web-01." }), { readState: acceptedByEvent.readState });
+  check(
+    "a finding decided via quality.finding.accepted reports unchanged, not resolved",
+    acceptedByEvent.appended.length === 0 && acceptedOutcomes.some((o) => o.status === "unchanged" && o.findingId === "F-2026-08-SEC-web-01"),
+    JSON.stringify(acceptedOutcomes),
+  );
 
   const typo = state();
   const unknown = await applyQualityResolutions(merged({ body: "Fixes F-2026-08-SEC-web-99." }), { readState: typo.readState });
@@ -266,7 +278,7 @@ const merged = (over = {}) => ({
   // the delivery response is the one place anybody looks to see what happened.
   const refusing = {
     readState: async () => [
-      { projectId: "prj_1", findings: [FINDING()], resolvedFindingIds: new Set(), append: async () => [] },
+      { projectId: "prj_1", findings: [FINDING()], decidedFindingIds: new Set(), append: async () => [] },
     ],
   };
   const refused = await applyQualityResolutions(merged({ body: "Fixes F-2026-08-SEC-web-01." }), refusing);

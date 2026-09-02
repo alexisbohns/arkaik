@@ -252,18 +252,20 @@ export async function getJournal(
 }
 
 /**
- * A project's `quality.finding.resolved` events, and nothing else.
+ * A project's `quality.finding.resolved` and `quality.finding.accepted`
+ * events, and nothing else.
  *
- * The Quality surfaces need these to fold resolutions over the stored findings
- * (lib/utils/quality.ts), and a project's full history is the wrong price for a
- * handful of events — the Pebbles journal alone runs to thousands of rows.
+ * The Quality surfaces need these to fold both kinds of decision over the
+ * stored findings (`foldFindingEvents` in lib/utils/quality.ts), and a
+ * project's full history is the wrong price for a handful of events — the
+ * Pebbles journal alone runs to thousands of rows.
  *
  * Owner-scoped identically to {@link getJournal}: the same `loadProject` check
  * gates access before `graph_events` is ever queried, rather than a second,
  * independently-written `owner_id = any(...)` clause that could quietly drift
  * from it.
  */
-export async function qualityResolutionEvents(
+export async function qualityFindingEvents(
   projectId: string,
   ownerIds: readonly string[],
 ): Promise<JournalEvent[]> {
@@ -271,7 +273,8 @@ export async function qualityResolutionEvents(
   if (!loaded) return [];
   const { rows } = await query<{ event: JournalEvent }>(
     `select event from graph_events
-      where project_id = $1 and event->>'type' = 'quality.finding.resolved'
+      where project_id = $1
+        and event->>'type' in ('quality.finding.resolved', 'quality.finding.accepted')
       order by seq asc`,
     [projectId],
   );
