@@ -83,9 +83,10 @@ interface JournalEvent {
 | `quality.audit.completed` | `audit_id`, `framework_version`, `commit?`, `scores?`, `counts?` | A Kritik audit run landed. `scores[surface][domain]` is a 0-100 domain score; `counts` tallies open findings by severity. The full evidence stays in the bundle's `quality` section — the event carries what a feed can summarize |
 | `quality.finding.opened` | `finding_id`, `criterion_id`, `surface`, `severity`, `priority`, `title`, `node_ids?`, `issue_url?` | A quality finding was retained after the adversarial verification pass. `node_ids` ties it to the graph exactly as `deliverable.shipped` does |
 | `quality.finding.resolved` | `finding_id`, `resolved_by?`, `node_ids?` | The fix merged; `resolved_by` is the PR or commit URL that closed it |
+| `quality.finding.accepted` | `finding_id`, `reason`, `node_ids?` | The risk was accepted as known and owned, recorded away from a checkout (issue #400) — in a repo, acceptance is written into the findings file instead and no event is emitted. The read derives `accepted-risk` from it |
 | `quality.signal.tripped` | `criterion_id`, `surface`, `signal`, `detail?` | A criterion's mechanical monitoring check failed between two audits |
 
-The four `quality.*` types are Kritik's (docs/rfcs/kritik.md § 3.2). They follow the same rule as every other event — facts, not state: current quality is a projection (`deriveQualityMatrix`), the latest audit plus opened-minus-resolved findings. Writers SHOULD set `actor` on them so human, agent, and CI scores stay tellable apart; `validateBundle` warns when one does not, and never blocks.
+The five `quality.*` types are Kritik's (docs/rfcs/kritik.md § 3.2). They follow the same rule as every other event — facts, not state: current quality is a projection (`deriveQualityMatrix`), the latest audit plus opened-minus-resolved-or-accepted findings. Writers SHOULD set `actor` on them so human, agent, and CI scores stay tellable apart; `validateBundle` warns when one does not, and never blocks.
 
 ## Authority & Consistency Model
 
