@@ -12,15 +12,22 @@
  *
  * **Two stores, one of them without a floor.** Kritik's state lives in
  * `docs/quality/` sidecars, canonical in a repository the way `journal.jsonl`
- * is. A hosted project has no such directory, so these tools exist only in repo
- * mode and say so plainly rather than half-working. That is not a gap: an audit
- * reads the code, and an agent auditing a hosted map has no code to read.
+ * is. A hosted project has no such directory — instead it reads the quality
+ * section the server folds from the journal, and transitions findings by
+ * posting journal events to the host (issue #400). What stays repo-only is the
+ * audit RUN itself — `kritik_score`, `kritik_signals`, `kritik_trip_signal`,
+ * `kritik_open_finding` — because scoring and opening a finding read the code,
+ * and an agent auditing a hosted map has no checkout to read it against. Those
+ * four say so plainly rather than half-working; every other tool works in
+ * both modes.
  *
- * **Journal first, sidecar second.** The journal write is the gated one — it
- * runs through `store.persist`, which folds the events into the bundle in
- * memory and refuses the whole thing on a validator error. Doing it first means
- * a refusal leaves nothing behind; doing it second would leave a finding on
- * disk that no event ever announced.
+ * **Journal first, sidecar second.** In repo mode, the journal write is the
+ * gated one — it runs through `store.persist`, which folds the events into
+ * the bundle in memory and refuses the whole thing on a validator error. Doing
+ * it first means a refusal leaves nothing behind; doing it second would leave
+ * a finding on disk that no event ever announced. Hosted writes have no
+ * sidecar at all — the journal event is the only thing written, and the
+ * server's fold is the read.
  */
 
 import {
@@ -87,17 +94,19 @@ export interface KritikContext {
   qualityRoot?: string;
 }
 
-/** The repo root Kritik reads, or the refusal that says why there isn't one. */
-function rootOf(ctx: KritikContext): string {
+/** The repo root, or the refusal explaining what genuinely needs a checkout. */
+function repoRootOf(ctx: KritikContext, needs: string): string {
   if (ctx.qualityRoot === undefined) {
     throw new ToolError(
-      `Kritik runs against a repository's docs/quality/ files, and this session is connected to a hosted project ` +
-        `(${ctx.store.describe()}). Point the server at the checkout instead — \`arkaik-mcp --bundle <path>\` — ` +
-        `and run the audit where the code is.`,
+      `${needs} This session is connected to a hosted project (${ctx.store.describe()}); ` +
+        `run it where the checkout is — \`arkaik-mcp --bundle <path>\`.`,
     );
   }
   return ctx.qualityRoot;
 }
+
+/** Repo-mode branch reached only after the hosted case above has already returned — the refusal text is never shown. */
+const REPO_MODE_ONLY = "Repo-mode reads come from docs/quality/ files.";
 
 /**
  * Hosted status transitions go through the server, which owns the openness
@@ -367,7 +376,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
         };
       }
 
-      const root = rootOf(ctx);
+      const root = repoRootOf(ctx, REPO_MODE_ONLY);
       const library = libraryOf(root);
       let auditId: string;
       try {
@@ -444,7 +453,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
         return { total: matches.length, findings: matches };
       }
 
-      const root = rootOf(ctx);
+      const root = repoRootOf(ctx, REPO_MODE_ONLY);
       const library = libraryOf(root);
       const auditIds = typeof args.audit_id === "string" && args.audit_id !== "" ? [args.audit_id] : listAuditIds(root);
 
@@ -477,7 +486,10 @@ export function buildKritikCatalog(ctx: KritikContext): {
       },
     },
     async (args) => {
-      const root = rootOf(ctx);
+      const root = repoRootOf(
+        ctx,
+        "Signals are statements checked against the repository — the pack and its run sheet live with the code.",
+      );
       const library = libraryOf(root);
       const profile = profileOf(root);
       const filter = {
@@ -555,7 +567,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
         };
       }
 
-      const root = rootOf(ctx);
+      const root = repoRootOf(ctx, REPO_MODE_ONLY);
       const library = libraryOf(root);
       const audits = listAuditIds(root);
       const { from, to } = resolveAuditPair(audits, args, "under docs/quality/audits/");
@@ -633,7 +645,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
         });
       }
 
-      const root = rootOf(ctx);
+      const root = repoRootOf(ctx, REPO_MODE_ONLY);
       const library = libraryOf(root);
       const criterion = criterionOf(library, requireString(args, "criterion_id"));
       const surface = requireString(args, "surface");
@@ -684,7 +696,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
       },
     },
     async (args) => {
-      const root = rootOf(ctx);
+      const root = repoRootOf(ctx, "Scoring reads the code — evidence is file:line against a working tree.");
       const library = libraryOf(root);
       const profile = profileOf(root);
       const criterionId = requireString(args, "criterion_id");
@@ -768,7 +780,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
       },
     },
     async (args) => {
-      const root = rootOf(ctx);
+      const root = repoRootOf(ctx, "A new finding cites code: evidence is file:line, verified adversarially against the checkout.");
       const library = libraryOf(root);
       const profile = profileOf(root);
       const criterionId = requireString(args, "criterion_id");
@@ -877,7 +889,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
         };
       }
 
-      const root = rootOf(ctx);
+      const root = repoRootOf(ctx, REPO_MODE_ONLY);
       const located = locateFinding(root, id);
       if (!located) throw new ToolError(`No finding "${id}" in any audit under docs/quality/audits/.`);
       if (located.finding.status === "resolved") {
@@ -929,7 +941,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
         };
       }
 
-      const root = rootOf(ctx);
+      const root = repoRootOf(ctx, REPO_MODE_ONLY);
       const located = locateFinding(root, id);
       if (!located) throw new ToolError(`No finding "${id}" in any audit under docs/quality/audits/.`);
 
@@ -957,7 +969,10 @@ export function buildKritikCatalog(ctx: KritikContext): {
       },
     },
     async (args) => {
-      const root = rootOf(ctx);
+      const root = repoRootOf(
+        ctx,
+        "Signals are statements checked against the repository — the pack and its run sheet live with the code.",
+      );
       const library = libraryOf(root);
       const profile = profileOf(root);
       const criterion = criterionOf(library, requireString(args, "criterion_id"));

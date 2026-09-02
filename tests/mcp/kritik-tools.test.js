@@ -447,10 +447,40 @@ async function run() {
       clientInfo: { name: "kritik-test", version: "0" },
     });
 
-    // kritik_score's own hosted refusal message is Task 9's to change — only
-    // assert isError here so this test doesn't pin text that is about to move.
+    // The repo-only four refuse with a reason specific to why THEY need a
+    // checkout — not the old blanket "point the server at the checkout" text.
     const scoreRefused = await hosted.call("kritik_score", { criterion_id: "SEC-01", surface: "web", level: 2, evidence: "x" });
     check("kritik_score still refuses in hosted mode", scoreRefused.isError, scoreRefused.text.slice(0, 200));
+    check("kritik_score's refusal says why: reads the code", /reads the code/.test(scoreRefused.text), scoreRefused.text.slice(0, 300));
+    check(
+      "kritik_score's refusal is not the old blanket text",
+      !/Point the server at the checkout/.test(scoreRefused.text),
+      scoreRefused.text.slice(0, 300),
+    );
+
+    const openFindingRefused = await hosted.call("kritik_open_finding", {
+      criterion_id: "SEC-01",
+      surface: "web",
+      title: "x",
+      evidence: "x",
+      impact: 1,
+      likelihood: 1,
+      cost: "S",
+    });
+    check("kritik_open_finding refuses in hosted mode", openFindingRefused.isError, openFindingRefused.text.slice(0, 200));
+    check("kritik_open_finding's refusal says why: cites code", /cites code/.test(openFindingRefused.text), openFindingRefused.text.slice(0, 300));
+
+    const signalsRefused = await hosted.call("kritik_signals", { criterion_id: "SEC-01" });
+    check("kritik_signals refuses in hosted mode", signalsRefused.isError, signalsRefused.text.slice(0, 200));
+    check("kritik_signals' refusal says why: live with the code", /live with the code/.test(signalsRefused.text), signalsRefused.text.slice(0, 300));
+
+    const tripSignalRefused = await hosted.call("kritik_trip_signal", { criterion_id: "SEC-01", surface: "web", signal: "x" });
+    check("kritik_trip_signal refuses in hosted mode", tripSignalRefused.isError, tripSignalRefused.text.slice(0, 200));
+    check(
+      "kritik_trip_signal's refusal says why: live with the code",
+      /live with the code/.test(tripSignalRefused.text),
+      tripSignalRefused.text.slice(0, 300),
+    );
 
     const byId = await hosted.call("kritik_findings", { finding_id: "F-A" });
     check(
