@@ -204,6 +204,16 @@ export function resolveFinding(
 }
 
 /**
+ * The one shape an acceptance note takes in a finding's `detail` — shared by
+ * `acceptFinding` (repo files), the server's event fold, and the MCP client's
+ * optimistic mirror of that fold, so the three can never drift into showing a
+ * reader two different records of the same decision.
+ */
+export function acceptedDetail(detail: string, note: string): string {
+  return `${detail}\n\nAccepted risk: ${note}`.trim();
+}
+
+/**
  * Accept a finding as a known, owned risk. The note is not optional politeness:
  * an accepted risk is a decision, the validator warns when it reads like
  * anything less (`quality-accepted-risk-no-note`), and the findings board
@@ -216,7 +226,7 @@ export function acceptFinding(
   note: string,
 ): { findings: QualityFinding[]; finding?: QualityFinding; previous?: QualityFinding } {
   const existing = findings.find((candidate) => candidate.id === id);
-  const detail = existing === undefined ? note : `${existing.detail}\n\nAccepted risk: ${note}`.trim();
+  const detail = existing === undefined ? note : acceptedDetail(existing.detail, note);
   return patchFinding(findings, id, { status: "accepted-risk", detail });
 }
 
