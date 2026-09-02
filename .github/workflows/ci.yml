@@ -133,6 +133,12 @@ jobs:
       - name: Kritik webhook tests (finding mentions, resolution pass)
         run: npm run test:quality-webhook
 
+      # The hosted events-only write path (issue #400, task 5): the pure core
+      # behind POST .../quality/events. DB-free the same way — the section and
+      # prior journal events are injected, not read.
+      - name: Kritik hosted-events tests (whitelist, all-or-nothing refusal)
+        run: npm run test:quality-events
+
       - name: Map projection + validation tests
         run: npm run test:maps
 
