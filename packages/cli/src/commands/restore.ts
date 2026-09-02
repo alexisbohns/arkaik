@@ -658,7 +658,7 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
   // that one. `qualityRoot` is kept for the loss guard's message below, which
   // needs to name the directory that was actually searched.
   const outboundBundle: Record<string, unknown> = { ...local, journal: journalEvents };
-  const qualityRoot = resolveQualityRoot(cwd, bundlePath, options.root);
+  const qualityRoot = resolveQualityRoot({ root: options.root, bundlePath, fallback: cwd });
   let qualityFolded = false;
   let qualityNotice: string | undefined;
   if (noQuality) {

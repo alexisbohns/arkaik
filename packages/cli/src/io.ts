@@ -30,6 +30,7 @@ export {
   loadKritikLibrary,
   resolveJournal,
   appendQualityEvents,
+  resolveQualityRoot,
   type ResolvedPack,
 } from "./lib/kritik-io";
 export {

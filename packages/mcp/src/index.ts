@@ -5,12 +5,13 @@
  * agent host; `npx -y arkaik-mcp` is the whole setup.
  */
 
-import { dirname, resolve, sep } from "node:path";
+import { dirname } from "node:path";
 import { startServer } from "./protocol";
 import { buildCatalog } from "./tools";
 import { createFileStore, resolveBundlePath, type Store } from "./store";
 import { createRemoteStore } from "./remote-store";
 import { resolveRemoteConfig } from "./config";
+import { resolveQualityRoot } from "arkaik/io";
 
 /**
  * Substituted from package.json by build.js. NOT a literal, and never to be
@@ -66,31 +67,15 @@ function resolveStore(): { store: Store; qualityRoot?: string } {
     };
   }
   const bundlePath = resolveBundlePath(argv, process.env);
-  return { store: createFileStore(bundlePath), qualityRoot: qualityRootFor(bundlePath) };
-}
-
-/**
- * The repo root holding `docs/quality/`, derived from the bundle path so the
- * audit files and the journal are always halves of the same checkout — never
- * from `process.cwd()`, which is wherever the agent host happened to spawn us.
- * `ARKAIK_QUALITY_ROOT` overrides it for the layouts that are neither.
- *
- * KNOWN DIVERGENCE from `packages/cli/src/lib/kritik-io.ts`'s
- * `resolveQualityRoot`, which answers the same question for the CLI: its
- * fallback for an unconventional layout is the CWD rather than the bundle's
- * directory, and it has no `$ARKAIK_QUALITY_ROOT`. The cwd is meaningful
- * there (a person typed the command in a repo) and meaningless here (the
- * agent host picked it), so the difference is defensible — but it is a
- * difference, and it is not one function. Reconcile deliberately if you get
- * there, not as a drive-by.
- */
-function qualityRootFor(bundlePath: string): string {
-  if (process.env.ARKAIK_QUALITY_ROOT) return resolve(process.env.ARKAIK_QUALITY_ROOT);
-  const dir = dirname(bundlePath);
-  const parent = dirname(dir);
-  // The conventional layout is <root>/docs/arkaik/bundle.json.
-  if (dir.endsWith(`${sep}arkaik`) && parent.endsWith(`${sep}docs`)) return dirname(parent);
-  return dir;
+  // The repo root holding `docs/quality/`, derived from the bundle path so
+  // the audit files and the journal are always halves of the same checkout
+  // — never from `process.cwd()`, which is wherever the agent host happened
+  // to spawn us. Shared with the CLI's `resolveQualityRoot`
+  // (packages/cli/src/lib/kritik-io.ts) via the `arkaik/io` barrel; see that
+  // function's comment for the one deliberate difference between the two
+  // callers.
+  const qualityRoot = resolveQualityRoot({ bundlePath, fallback: dirname(bundlePath) });
+  return { store: createFileStore(bundlePath), qualityRoot };
 }
 
 let store: Store;

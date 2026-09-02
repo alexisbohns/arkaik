@@ -15,6 +15,7 @@
  */
 
 const { spawn } = require("child_process");
+const http = require("node:http");
 const { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require("fs");
 const { tmpdir } = require("os");
 const path = require("path");
@@ -364,11 +365,80 @@ async function run() {
     session.stop();
   }
 
-  // --- hosted mode -----------------------------------------------------------
+  // --- hosted mode -------------------------------------------------------------
+  //
+  // kritik_score (and the other writes) still refuse outright — Task 9 owns
+  // their message. kritik_findings/matrix/regressions/issue are hosted reads
+  // over the folded quality section a stub server stands in for.
+
+  const HOSTED_BUNDLE = {
+    schema_version: 3,
+    project: { id: "demo", title: "Demo", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z" },
+    nodes: [{ id: "V-home", project_id: "demo", species: "view", title: "Home", status: "live", platforms: ["web"] }],
+    edges: [],
+    quality: {
+      framework_version: "1.0.0",
+      profile: { surfaces: [{ id: "web", title: "Web" }] },
+      assessments: [
+        { criterion_id: "SEC-01", surface: "web", level: 3, evidence: "e", audit_id: "2026-07", ts: "2026-07-01T00:00:00.000Z" },
+        { criterion_id: "SEC-01", surface: "web", level: 2, evidence: "e", audit_id: "2026-08", ts: "2026-08-01T00:00:00.000Z" },
+      ],
+      findings: [
+        { id: "F-A", criterion_id: "SEC-01", surface: "web", title: "Open crit", detail: "d", evidence: "Open crit — middleware.ts:14", impact: 5, likelihood: 5, cost: "M", status: "open" },
+        { id: "F-B", criterion_id: "SEC-01", surface: "web", title: "Done", detail: "d", evidence: "e", impact: 2, likelihood: 2, cost: "S", status: "resolved" },
+      ],
+    },
+  };
+
+  // Recorded POST bodies to /quality/events, and a mode switch for the 422
+  // "refused" response the server sends when a status transition targets a
+  // finding that is not open post-fold.
+  const eventsReceived = [];
+  let refuseEvents = false;
+
+  function startHostedStub() {
+    return http.createServer((req, res) => {
+      const json = (status, body) => {
+        res.writeHead(status, { "content-type": "application/json" });
+        res.end(JSON.stringify(body));
+      };
+      if (req.url === "/api/graph/projects/demo" && req.method === "GET") return json(200, { bundle: HOSTED_BUNDLE, version: "v1" });
+      if (req.url === "/api/graph/projects/demo/journal" && req.method === "GET") return json(200, { journal: [] });
+      if (req.url === "/api/graph/projects/demo/quality/events" && req.method === "POST") {
+        let raw = "";
+        req.on("data", (chunk) => (raw += chunk));
+        req.on("end", () => {
+          const body = JSON.parse(raw);
+          eventsReceived.push(body);
+          if (refuseEvents) {
+            return json(422, { error: "refused", refusals: [{ finding_id: "F-B", reason: "not_open" }] });
+          }
+          return json(
+            200,
+            {
+              events: body.events.map((input) => ({
+                id: "01X",
+                ts: "2026-09-02T00:00:00.000Z",
+                type: input.type,
+                finding_id: input.finding_id,
+                actor: "arkaik-agent",
+              })),
+            },
+          );
+        });
+        return;
+      }
+      return json(404, { error: "not_found" });
+    });
+  }
+
+  const stub = startHostedStub();
+  await new Promise((resolvePromise) => stub.listen(0, resolvePromise));
+  const baseUrl = `http://127.0.0.1:${stub.address().port}`;
 
   const hosted = startSession(["--remote", "--project", "demo"], {
     ARKAIK_TOKEN: "t",
-    ARKAIK_URL: "https://example.invalid",
+    ARKAIK_URL: baseUrl,
   });
   try {
     await hosted.request("initialize", {
@@ -376,11 +446,167 @@ async function run() {
       capabilities: {},
       clientInfo: { name: "kritik-test", version: "0" },
     });
-    const refused = await hosted.call("kritik_matrix");
-    check("a hosted session refuses Kritik rather than half-working", refused.isError, refused.text.slice(0, 200));
-    check("and says where to run the audit instead", refused.json.message.includes("--bundle"), refused.text.slice(0, 300));
+
+    // The repo-only four refuse with a reason specific to why THEY need a
+    // checkout — not the old blanket "point the server at the checkout" text.
+    const scoreRefused = await hosted.call("kritik_score", { criterion_id: "SEC-01", surface: "web", level: 2, evidence: "x" });
+    check("kritik_score still refuses in hosted mode", scoreRefused.isError, scoreRefused.text.slice(0, 200));
+    check("kritik_score's refusal says why: reads the code", /reads the code/.test(scoreRefused.text), scoreRefused.text.slice(0, 300));
+    check(
+      "kritik_score's refusal is not the old blanket text",
+      !/Point the server at the checkout/.test(scoreRefused.text),
+      scoreRefused.text.slice(0, 300),
+    );
+
+    const openFindingRefused = await hosted.call("kritik_open_finding", {
+      criterion_id: "SEC-01",
+      surface: "web",
+      title: "x",
+      evidence: "x",
+      impact: 1,
+      likelihood: 1,
+      cost: "S",
+    });
+    check("kritik_open_finding refuses in hosted mode", openFindingRefused.isError, openFindingRefused.text.slice(0, 200));
+    check("kritik_open_finding's refusal says why: cites code", /cites code/.test(openFindingRefused.text), openFindingRefused.text.slice(0, 300));
+
+    const signalsRefused = await hosted.call("kritik_signals", { criterion_id: "SEC-01" });
+    check("kritik_signals refuses in hosted mode", signalsRefused.isError, signalsRefused.text.slice(0, 200));
+    check("kritik_signals' refusal says why: live with the code", /live with the code/.test(signalsRefused.text), signalsRefused.text.slice(0, 300));
+
+    const tripSignalRefused = await hosted.call("kritik_trip_signal", { criterion_id: "SEC-01", surface: "web", signal: "x" });
+    check("kritik_trip_signal refuses in hosted mode", tripSignalRefused.isError, tripSignalRefused.text.slice(0, 200));
+    check(
+      "kritik_trip_signal's refusal says why: live with the code",
+      /live with the code/.test(tripSignalRefused.text),
+      tripSignalRefused.text.slice(0, 300),
+    );
+
+    const byId = await hosted.call("kritik_findings", { finding_id: "F-A" });
+    check(
+      "kritik_findings finds by finding_id",
+      !byId.isError && byId.json.total === 1 && byId.json.findings[0].id === "F-A" && byId.json.findings[0].severity === "critical" && byId.json.findings[0].priority === "P0",
+      byId.text.slice(0, 300),
+    );
+
+    const openOnly = await hosted.call("kritik_findings", { status: "open" });
+    check("kritik_findings filters by status", !openOnly.isError && openOnly.json.total === 1, openOnly.text.slice(0, 200));
+
+    const partitioned = await hosted.call("kritik_findings", { audit_id: "2026-08" });
+    check(
+      "hosted findings refuse audit_id partitioning",
+      partitioned.isError && /living pool/.test(partitioned.json.message),
+      partitioned.text.slice(0, 300),
+    );
+
+    const matrix = await hosted.call("kritik_matrix", {});
+    check(
+      "kritik_matrix reads the hosted section, flat like repo mode's ...file spread",
+      !matrix.isError &&
+        "web" in matrix.json.overall &&
+        typeof matrix.json.matrix === "object" &&
+        matrix.json.matrix.SEC?.web !== undefined &&
+        matrix.json.open_findings === 1,
+      matrix.text.slice(0, 300),
+    );
+    check(
+      "hosted matrix carries no audit_id/commit — there is no audit file to carry them",
+      !("audit_id" in matrix.json) && !("commit" in matrix.json),
+      matrix.text.slice(0, 300),
+    );
+
+    const matrixRecord = await hosted.call("kritik_matrix", { record: true });
+    check("hosted matrix refuses record", matrixRecord.isError && /audit run/.test(matrixRecord.json.message), matrixRecord.text.slice(0, 300));
+
+    // Refused, not silently ignored — an agent that asked for one audit's
+    // matrix must not be handed the whole pool as though it were scoped.
+    const matrixScoped = await hosted.call("kritik_matrix", { audit_id: "2026-08" });
+    check(
+      "hosted matrix refuses audit_id rather than ignoring it",
+      matrixScoped.isError && /does not partition/.test(matrixScoped.json.message),
+      matrixScoped.text.slice(0, 300),
+    );
+
+    const regressions = await hosted.call("kritik_regressions", {});
+    check(
+      "hosted regressions compares the assessment groups it can see",
+      !regressions.isError && regressions.json.total === 1 && regressions.json.regressions[0]?.kind === "level-drop" && /living pool/.test(regressions.json.note),
+      regressions.text.slice(0, 300),
+    );
+
+    const regressionsRecord = await hosted.call("kritik_regressions", { record: true });
+    check("hosted regressions refuses record", regressionsRecord.isError && /audit run/.test(regressionsRecord.json.message), regressionsRecord.text.slice(0, 300));
+
+    const issue = await hosted.call("kritik_issue", { criterion_id: "SEC-01", surface: "web", finding_id: "F-A" });
+    check(
+      "kritik_issue renders from a hosted finding",
+      !issue.isError && ((issue.json.body && issue.json.body.includes("Open crit")) || (issue.json.title && issue.json.title.includes("Open crit"))),
+      issue.text.slice(0, 300),
+    );
+
+    // --- hosted resolve/accept -------------------------------------------------
+
+    eventsReceived.length = 0;
+    const resolvedA = await hosted.call("kritik_resolve_finding", { finding_id: "F-A", resolved_by: "https://pr/9" });
+    check(
+      "hosted resolve posts exactly one resolved event",
+      eventsReceived.length === 1 &&
+        JSON.stringify(eventsReceived[0]) ===
+          JSON.stringify({ events: [{ type: "quality.finding.resolved", finding_id: "F-A", resolved_by: "https://pr/9" }] }),
+      JSON.stringify(eventsReceived),
+    );
+    check(
+      "hosted resolve returns a resolved finding",
+      !resolvedA.isError && resolvedA.json.finding.status === "resolved" && resolvedA.json.finding.resolved_by === "https://pr/9" && resolvedA.json.events.length > 0,
+      resolvedA.text.slice(0, 300),
+    );
+
+    eventsReceived.length = 0;
+    const resolvedB = await hosted.call("kritik_resolve_finding", { finding_id: "F-B" });
+    check(
+      "hosted resolve of an already-resolved finding is idempotent — no POST",
+      !resolvedB.isError && eventsReceived.length === 0 && /Already resolved/.test(resolvedB.json.note),
+      resolvedB.text.slice(0, 300),
+    );
+
+    eventsReceived.length = 0;
+    const accepted = await hosted.call("kritik_accept_finding", { finding_id: "F-A", note: "owned" });
+    check(
+      "hosted accept posts exactly one accepted event",
+      eventsReceived.length === 1 &&
+        JSON.stringify(eventsReceived[0]) === JSON.stringify({ events: [{ type: "quality.finding.accepted", finding_id: "F-A", reason: "owned" }] }),
+      JSON.stringify(eventsReceived),
+    );
+    check(
+      "hosted accept returns accepted-risk with the note appended",
+      !accepted.isError && accepted.json.finding.status === "accepted-risk" && accepted.json.finding.detail.endsWith("Accepted risk: owned"),
+      accepted.text.slice(0, 300),
+    );
+
+    refuseEvents = true;
+    const resolveRefused = await hosted.call("kritik_resolve_finding", { finding_id: "F-A" });
+    check(
+      "hosted resolve surfaces the server's not_open refusal",
+      resolveRefused.isError && /not_open/.test(resolveRefused.text),
+      resolveRefused.text.slice(0, 300),
+    );
+    const acceptRefused = await hosted.call("kritik_accept_finding", { finding_id: "F-A", note: "owned" });
+    check(
+      "hosted accept surfaces the server's not_open refusal",
+      acceptRefused.isError && /not_open/.test(acceptRefused.text),
+      acceptRefused.text.slice(0, 300),
+    );
+    refuseEvents = false;
+
+    const resolveMissing = await hosted.call("kritik_resolve_finding", { finding_id: "F-NOPE" });
+    check(
+      "hosted resolve of an unknown finding_id",
+      resolveMissing.isError && /No finding "F-NOPE"/.test(resolveMissing.json.message),
+      resolveMissing.text.slice(0, 300),
+    );
   } finally {
     hosted.stop();
+    stub.close();
   }
 }
 

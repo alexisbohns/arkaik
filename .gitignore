@@ -29,6 +29,7 @@
 /tests/services/.test-build-github-app/
 /tests/services/.test-build-graph-restore/
 /tests/services/.test-build-lab-note-parse/
+/tests/mcp/.test-build-remote-store/
 /tests/app/.test-build-delivery/
 /tests/app/.test-build-journey-graph/
 /tests/app/.test-build-graph-spotlight/

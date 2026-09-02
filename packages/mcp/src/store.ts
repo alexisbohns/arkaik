@@ -101,6 +101,16 @@ export interface Store {
   ): Promise<WriteResult>;
   /** For the startup banner. */
   describe(): string;
+  /**
+   * Hosted-only: append whitelisted quality finding events (resolved/accepted)
+   * via `POST …/quality/events`. `undefined` on the file store — in a repo the
+   * kritik tools write the findings file and journal themselves, which is the
+   * dual-write the CLI performs; only a session with no checkout needs the
+   * server to hold the pen.
+   */
+  appendQualityEvents?(
+    inputs: readonly { type: string; finding_id: string; resolved_by?: string; reason?: string }[],
+  ): Promise<JournalEvent[]>;
 }
 
 /** The snapshot's node ids, in order — the input side of the provenance check. */
