@@ -29,6 +29,7 @@ import {
   MATURITY_LEVELS,
   REMEDIATION_COSTS,
   acceptFinding,
+  acceptedDetail,
   auditCompletedInput,
   deriveQualityMatrix,
   detectRegressions,
@@ -921,9 +922,9 @@ export function buildKritikCatalog(ctx: KritikContext): {
         // Mirrors what the server's fold will derive: lib/utils/quality.ts
         // folds an accepted event into status accepted-risk with the note
         // appended to detail — this is that same shape, computed client-side
-        // for the immediate reply.
+        // for the immediate reply, through the same `acceptedDetail`.
         return {
-          finding: { ...finding, status: "accepted-risk" as const, detail: `${finding.detail}\n\nAccepted risk: ${note}`.trim() },
+          finding: { ...finding, status: "accepted-risk" as const, detail: acceptedDetail(finding.detail, note) },
           events,
         };
       }
