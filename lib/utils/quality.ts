@@ -549,16 +549,16 @@ export function buildSurfaceGauges(
  * fold has to be safe against a journal from before that enforcement existed
  * (or one written by a client that skipped it) all the same.
  *
- * The one exception, preserving phase E's original behavior: a later
- * `resolved` event that NAMES a `resolved_by` may still upgrade a
- * fold-produced `resolved` status that lacks one. A resolution carrying no url
- * is a real shape (`findingResolvedInput` omits `resolved_by` when it has
- * none, which is what `arkaik kritik finding resolve` without `--by`
- * produces), and a later event naming the PR is new evidence, not a second
- * decision — "the latest event that names a PR wins". This only ever upgrades
- * a status THIS fold produced (guarded by `patched.has`); a `resolved` status
- * that was already in the snapshot is left untouched, same as `refuted` and
- * `accepted-risk`.
+ * The one exception, preserving phase E's original behavior: for `resolved_by`
+ * specifically, the LATEST `resolved` event that NAMES one wins, not the
+ * first. A resolution carrying no url is a real shape (`findingResolvedInput`
+ * omits `resolved_by` when it has none, which is what `arkaik kritik finding
+ * resolve` without `--by` produces), and an unnamed event never erases a name
+ * an earlier event carried — but a later NAMED event is new evidence and
+ * overwrites whatever name (or absence of one) is there, first decision or
+ * not. This only ever touches a status THIS fold produced (guarded by
+ * `patched.has`); a `resolved` status that was already in the snapshot is
+ * left untouched, same as `refuted` and `accepted-risk`.
  *
  * Returns the section BY REFERENCE when nothing matches. That is the
  * overwhelmingly common case — every project with no decision since its last
@@ -579,7 +579,18 @@ export function foldFindingEvents(
   const findings = Array.isArray(section.findings) ? section.findings : [];
   if (findings.length === 0 || events.length === 0) return section;
 
-  const byId = new Map(findings.map((finding, index) => [finding.id, index] as const));
+  // Ids are unique by contract — `validateBundle` warns on a collision — so
+  // first-occurrence-wins below is only a tie-break for malformed data, not a
+  // real ambiguity. Entries that are not an object with a string `id` are
+  // skipped rather than dereferenced, matching the defensive-read idiom the
+  // rest of this file uses for section content nobody has re-validated since
+  // it left storage.
+  const byId = new Map<string, number>();
+  findings.forEach((finding, index) => {
+    const id = (finding as { id?: unknown } | null)?.id;
+    if (typeof id !== "string" || id === "") return;
+    if (!byId.has(id)) byId.set(id, index);
+  });
   const patched = new Map<number, QualityFinding>();
   const current = (index: number) => patched.get(index) ?? findings[index];
 
@@ -601,12 +612,7 @@ export function foldFindingEvents(
           status: "resolved" as QualityFinding["status"],
           ...(named !== undefined ? { resolved_by: named } : {}),
         });
-      } else if (
-        finding.status === "resolved" &&
-        named !== undefined &&
-        patched.has(index) &&
-        finding.resolved_by === undefined
-      ) {
+      } else if (finding.status === "resolved" && named !== undefined && patched.has(index)) {
         patched.set(index, { ...finding, resolved_by: named });
       }
       continue;

@@ -561,6 +561,17 @@ assert(
   laterUrl.findings[0].resolved_by === "https://github.com/acme/app/pull/9",
   `a later named resolution still wins (got ${laterUrl.findings[0].resolved_by})`,
 );
+// A later NAMED resolution overwrites an earlier NAMED one too — the latest
+// event that names a PR wins outright, not just the latest that upgrades an
+// unnamed one.
+const namedThenNamed = foldFindingEvents(foldSection([openCritical]), [
+  RESOLVED_EVENT("F-1", { resolved_by: "https://github.com/acme/app/pull/1" }),
+  RESOLVED_EVENT("F-1", { resolved_by: "https://github.com/acme/app/pull/2" }),
+]);
+assert(
+  namedThenNamed.findings[0].resolved_by === "https://github.com/acme/app/pull/2",
+  `named then named — the later name wins (got ${namedThenNamed.findings[0].resolved_by})`,
+);
 // The pair that makes the fold matter: a capped cell uncaps, and the node
 // badge clears, once the Critical behind them is folded resolved.
 const badged = { ...openCritical, node_ids: ["V-home"] };
@@ -605,6 +616,26 @@ assert(
   assert(
     foldFindingEvents(section, [accepted, resolvedAfter]).findings[0].status === "accepted-risk",
     "first decision wins — resolve after accept is ignored",
+  );
+}
+
+// A malformed `findings` array — a null entry, an object with no `id` — must
+// not crash the fold. The old implementation returned the section unchanged
+// on a non-empty journal that named no valid finding; a naive `finding.id`
+// dereference while building the id index would throw instead, and
+// `lib/data/local-provider.ts:164` calls this fold with no try/catch around
+// it.
+{
+  const malformed = {
+    framework_version: "1",
+    profile: { surfaces: [] },
+    assessments: [],
+    findings: [null, { criterion_id: "SEC-01", surface: "web", title: "t", detail: "d", evidence: "e", impact: 1, likelihood: 1, cost: "S", status: "open" }],
+  };
+  const unrelated = { id: "01D", ts: "2026-09-01T00:00:00.000Z", type: "quality.finding.resolved", finding_id: "F-nonexistent", resolved_by: "https://pr/1" };
+  assert(
+    foldFindingEvents(malformed, [unrelated]) === malformed,
+    "a null/id-less findings entry does not crash the fold, and an unrelated event returns the same object",
   );
 }
 
