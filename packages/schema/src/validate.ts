@@ -1109,6 +1109,18 @@ export function validateBundle(input: unknown): ValidationResult {
           );
         }
       }
+      // The accepted event is a decision on a finding the same way resolved is
+      // a close on one, so it earns the same orphan check: a decision on a
+      // finding nothing ever declared is a decision about nothing.
+      if (type === "quality.finding.accepted" && typeof event.finding_id === "string") {
+        if (!openedInJournal.has(event.finding_id) && !seenFindingIds.has(event.finding_id)) {
+          warn(
+            `journal[${index}].finding_id`,
+            "quality-accepted-never-opened",
+            `Journal event ${index}: accepts finding "${event.finding_id}", which no quality.finding.opened event or stored finding ever declared`,
+          );
+        }
+      }
     });
   }
 

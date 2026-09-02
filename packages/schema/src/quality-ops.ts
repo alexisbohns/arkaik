@@ -204,6 +204,16 @@ export function resolveFinding(
 }
 
 /**
+ * The one shape an acceptance note takes in a finding's `detail` — shared by
+ * `acceptFinding` (repo files), the server's event fold, and the MCP client's
+ * optimistic mirror of that fold, so the three can never drift into showing a
+ * reader two different records of the same decision.
+ */
+export function acceptedDetail(detail: string, note: string): string {
+  return `${detail}\n\nAccepted risk: ${note}`.trim();
+}
+
+/**
  * Accept a finding as a known, owned risk. The note is not optional politeness:
  * an accepted risk is a decision, the validator warns when it reads like
  * anything less (`quality-accepted-risk-no-note`), and the findings board
@@ -216,7 +226,7 @@ export function acceptFinding(
   note: string,
 ): { findings: QualityFinding[]; finding?: QualityFinding; previous?: QualityFinding } {
   const existing = findings.find((candidate) => candidate.id === id);
-  const detail = existing === undefined ? note : `${existing.detail}\n\nAccepted risk: ${note}`.trim();
+  const detail = existing === undefined ? note : acceptedDetail(existing.detail, note);
   return patchFinding(findings, id, { status: "accepted-risk", detail });
 }
 
@@ -458,6 +468,29 @@ export function findingResolvedInput(
     payload: {
       finding_id: finding.id,
       ...(resolvedBy !== undefined ? { resolved_by: resolvedBy } : {}),
+      ...(finding.node_ids !== undefined ? { node_ids: finding.node_ids } : {}),
+    },
+  };
+}
+
+/**
+ * `quality.finding.accepted` — a known, owned risk, recorded as an event.
+ *
+ * In a repository, acceptance is a state of the finding (`acceptFinding`
+ * patches the file) and no event is written. This event exists for writes
+ * made AWAY from the checkout: a hosted project has no findings file, so the
+ * journal is the only place the decision can live, and the read derives the
+ * status from it (`foldFindingEvents`).
+ */
+export function findingAcceptedInput(
+  finding: Pick<QualityFinding, "id" | "node_ids">,
+  reason: string,
+): EventInput {
+  return {
+    type: "quality.finding.accepted",
+    payload: {
+      finding_id: finding.id,
+      reason,
       ...(finding.node_ids !== undefined ? { node_ids: finding.node_ids } : {}),
     },
   };

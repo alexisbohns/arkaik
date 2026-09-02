@@ -35,7 +35,10 @@ const {
   JOURNAL_EVENT_SCHEMAS,
   KnownJournalEventSchema,
   QualitySectionSchema,
+  QualityFindingSchema,
   DEFAULT_CAPS,
+  findingAcceptedInput,
+  makeEvent,
 } = loadSchema();
 
 let failures = 0;
@@ -247,13 +250,33 @@ check("an unknown key inside the section round-trips", (() => {
   return r.success && eq(r.data.quality.future_key, { any: "thing" });
 })());
 
-for (const type of ["quality.audit.completed", "quality.finding.opened", "quality.finding.resolved", "quality.signal.tripped"]) {
+for (const type of ["quality.audit.completed", "quality.finding.opened", "quality.finding.resolved", "quality.finding.accepted", "quality.signal.tripped"]) {
   check(`${type} is in the known event vocabulary`, Boolean(JOURNAL_EVENT_SCHEMAS[type]));
 }
 const auditEvent = { id: "01J", ts: "2026-08-26T00:00:00.000Z", actor: "claude-code", type: "quality.audit.completed", audit_id: "2026-08", framework_version: "0.1.0", commit: "abc", scores: { web: { SEC: 44 } }, counts: { critical: 0, high: 21 } };
 check("a quality.audit.completed event validates strictly", KnownJournalEventSchema.safeParse(auditEvent).success);
 const openedEvent = { id: "01K", ts: "2026-08-26T00:00:00.000Z", actor: "ci", type: "quality.finding.opened", finding_id: "F-1", criterion_id: "SEC-03", surface: "supabase", severity: "critical", priority: "P0", title: "t", node_ids: ["V-x"] };
 check("a quality.finding.opened event validates strictly", KnownJournalEventSchema.safeParse(openedEvent).success);
+const acceptedEvent = { id: "01L", ts: "2026-08-26T00:00:00.000Z", actor: "arkaik-agent", type: "quality.finding.accepted", finding_id: "F-1", reason: "owned" };
+check("a quality.finding.accepted event validates strictly", KnownJournalEventSchema.safeParse(acceptedEvent).success);
+
+// quality.finding.accepted — the event that records an accepted risk written
+// away from the checkout (hosted mode has no findings file to hold the state).
+{
+  const input = findingAcceptedInput({ id: "F-2026-08-SEC-web-01", node_ids: ["V-home"] }, "Cost outweighs exposure");
+  check("findingAcceptedInput carries finding_id + reason + node_ids",
+    input.type === "quality.finding.accepted" &&
+    input.payload.finding_id === "F-2026-08-SEC-web-01" &&
+    input.payload.reason === "Cost outweighs exposure" &&
+    Array.isArray(input.payload.node_ids));
+
+  const event = makeEvent(input.type, input.payload, { actor: "arkaik-agent" });
+  const parsed = JOURNAL_EVENT_SCHEMAS["quality.finding.accepted"].safeParse(event);
+  check("quality.finding.accepted event validates", parsed.success, JSON.stringify(parsed.error?.issues ?? []));
+
+  const noNodes = findingAcceptedInput({ id: "F-1" }, "why");
+  check("node_ids omitted when absent", !("node_ids" in noNodes.payload));
+}
 
 // --- validateBundle warnings (RFC § 4.5) ------------------------------------
 
@@ -290,6 +313,7 @@ const dirty = validateBundle({
   },
   journal: [
     { id: "01A", ts: "2026-08-26T00:00:00.000Z", type: "quality.finding.resolved", finding_id: "F-ghost" },
+    { id: "01B", ts: "2026-08-26T00:00:00.000Z", type: "quality.finding.accepted", finding_id: "F-ghost2", reason: "r" },
   ],
 });
 const dirtyRules = rules(dirty);
@@ -308,6 +332,7 @@ for (const rule of [
   "quality-accepted-risk-no-note",
   "quality-event-no-actor",
   "quality-resolved-never-opened",
+  "quality-accepted-never-opened",
 ]) {
   check(`warns: ${rule}`, dirtyRules.includes(rule), dirtyRules.filter((r) => r.startsWith("quality-")).join());
 }
@@ -321,6 +346,16 @@ check("warns when quality data is stored but no surface was picked", rules(noSur
 
 check("a bundle with no quality section raises no quality warnings", !rules(validateBundle(base)).some((r) => r.startsWith("quality-")));
 check("a non-object quality value is ignored rather than throwing", validateBundle({ ...base, quality: [] }).valid);
+
+{
+  const finding = {
+    id: "F-2026-08-SEC-web-01", criterion_id: "SEC-01", surface: "web",
+    title: "t", detail: "d", evidence: "file.ts:1", impact: 4, likelihood: 4,
+    cost: "M", status: "open", commit: "0123abc",
+  };
+  const parsed = QualityFindingSchema.safeParse(finding);
+  check("finding accepts optional commit anchor", parsed.success, JSON.stringify(parsed.error?.issues ?? []));
+}
 
 console.log(failures === 0 ? "\nAll quality tests passed" : `\n${failures} quality test(s) failed`);
 process.exit(failures === 0 ? 0 : 1);

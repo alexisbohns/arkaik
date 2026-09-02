@@ -247,6 +247,8 @@ export interface QualityFinding extends Record<string, unknown> {
   /** Graph nodes this finding is about — the same tie `deliverable.shipped` uses. */
   node_ids?: string[];
   issue_url?: string;
+  /** Commit SHA anchoring the `file:line` evidence (issue #400 decision 4). */
+  commit?: string;
   /** Result of the adversarial refutation pass (SPEC §6.5). */
   verification?: { verdict: "CONFIRMED" | "REFUTED" | "DOWNGRADED"; note?: string };
 }
