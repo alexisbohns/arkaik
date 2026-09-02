@@ -502,11 +502,19 @@ export function findingAcceptedInput(
  * A tripped signal is not a finding. It is the prompt to go look: cheap,
  * frequent, and allowed to be wrong, where a finding is expensive, rare, and
  * has survived an adversarial pass. Emitting one does not open anything.
+ *
+ * A hosted trip written from CI carries the `commit` it observed (#406) — the
+ * one writer class that pays nothing for the anchor, since the revision under
+ * test is ambient in a workflow. It stays optional here because this shape
+ * describes every trip in every mode, and a repo-mode trip has no obligation
+ * to anchor; requiring it is a route policy about a caller class, and lives
+ * where that class is identified.
  */
 export function signalTrippedInput(trip: {
   criterion_id: string;
   surface: string;
   signal: string;
+  commit?: string;
   detail?: string;
 }): EventInput {
   return {
@@ -515,6 +523,7 @@ export function signalTrippedInput(trip: {
       criterion_id: trip.criterion_id,
       surface: trip.surface,
       signal: trip.signal,
+      ...(trip.commit !== undefined ? { commit: trip.commit } : {}),
       ...(trip.detail !== undefined ? { detail: trip.detail } : {}),
     },
   };
