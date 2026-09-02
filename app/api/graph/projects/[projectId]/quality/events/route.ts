@@ -71,14 +71,30 @@ export async function POST(
     const found = await getProject(projectId, caller.ownerIds);
     if (!found) return Response.json({ error: "not_found" }, { status: 404 });
 
+    // The audit trail records what acted, not just who: an agent's writes are
+    // distinguishable from the same person's edits in the browser. Mirrors
+    // the mutations route (app/api/graph/projects/[projectId]/mutations/route.ts) —
+    // `getCaller` grants `graph:write` to both token (agent) and session
+    // (browser) callers, so the route, not the pure core, is what knows which
+    // one this request actually is.
+    const actor = caller.via === "token" ? "arkaik-agent" : "arkaik-app";
+
     const section = (found.bundle as { quality?: QualitySection }).quality;
     const priorEvents = await qualityFindingEvents(projectId, caller.ownerIds);
-    const plan = planQualityEvents(section, priorEvents, inputs, "arkaik-agent");
+    // Deliberately unlocked. The journal is append-only and `snapshot.quality`
+    // is never touched here, and `foldFindingEvents` folds events in seq
+    // order, first-decision-wins: if two concurrent batches both decide the
+    // same finding, whichever event lands first in the journal is the one
+    // every later read honors, and the later batch's event — though it does
+    // get appended — is inert from then on, the same outcome a lock would
+    // have produced by refusing it outright. No row lock buys anything a
+    // lock-free append-and-fold doesn't already give for free.
+    const plan = planQualityEvents(section, priorEvents, inputs, actor);
     if (!plan.ok) {
       return Response.json({ error: "refused", refusals: plan.refusals }, { status: 422 });
     }
 
-    const result = await appendJournalEvents(projectId, caller.ownerIds, plan.events, "arkaik-agent");
+    const result = await appendJournalEvents(projectId, caller.ownerIds, plan.events, actor);
     if (!result.ok) {
       return Response.json({ error: "refused", reason: result.reason }, { status: 422 });
     }
