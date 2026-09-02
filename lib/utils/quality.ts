@@ -16,6 +16,7 @@
 
 import {
   FINDING_SEVERITIES,
+  acceptedDetail,
   gradeOf,
   isOpenFinding,
   priorityOf,
@@ -625,7 +626,7 @@ export function foldFindingEvents(
     patched.set(index, {
       ...finding,
       status: "accepted-risk" as QualityFinding["status"],
-      detail: `${finding.detail}\n\nAccepted risk: ${note}`.trim(),
+      detail: acceptedDetail(finding.detail, note),
     });
   }
 
