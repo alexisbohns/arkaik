@@ -141,9 +141,14 @@ export function planQualityEvents(
   actor: string,
 ): { ok: true; events: JournalEvent[] } | { ok: false; refusals: QualityEventRefusal[] } {
   const folded = foldFindingEvents(section, priorEvents);
-  const findings = new Map<string, QualityFinding>(
-    (Array.isArray(folded?.findings) ? folded.findings : []).map((finding) => [finding.id, finding]),
-  );
+  // Guarded entry-by-entry for the same reason the fold is: this is section
+  // content nobody has re-validated since it left storage, and a malformed
+  // entry must fall out as `unknown_finding`, not surface as a 500.
+  const findings = new Map<string, QualityFinding>();
+  for (const finding of Array.isArray(folded?.findings) ? folded.findings : []) {
+    const id = (finding as { id?: unknown } | null)?.id;
+    if (typeof id === "string" && id !== "" && !findings.has(id)) findings.set(id, finding);
+  }
 
   const refusals: QualityEventRefusal[] = [];
   const events: JournalEvent[] = [];
