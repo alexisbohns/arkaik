@@ -16,7 +16,7 @@ const fs = require("fs");
 const { loadQualityEvents, BUILD_DIR } = require("./load-quality-events");
 
 const kritik = loadQualityEvents();
-const { parseQualityEventInputs, planQualityEvents, requiredScopeFor } = kritik;
+const { parseQualityEventInputs, planQualityEvents, requiredScopeFor, callerMaySendQualityEvents } = kritik;
 
 let failures = 0;
 function check(name, cond, detail) {
@@ -262,6 +262,19 @@ for (const field of ["criterion_id", "surface", "signal", "commit"]) {
     events: [TRIP, { type: "quality.finding.accepted", finding_id: "F-1", reason: "tracked" }],
   });
   check("a mixed batch requires graph:write", requiredScopeFor(mixed) === "graph:write");
+
+  // `requiredScopeFor` is a FLOOR, not an exact requirement. Enforcing it
+  // exactly would have refused every #400 caller — a graph:write-only agent
+  // token — the moment it appended a trip.
+  const WRITE = ["graph:read", "graph:write"];
+  const APPEND = ["quality:append"];
+  check("graph:write may send trips", callerMaySendQualityEvents(WRITE, trips));
+  check("graph:write may send a decision", callerMaySendQualityEvents(WRITE, resolution));
+  check("graph:write may send a mixed batch", callerMaySendQualityEvents(WRITE, mixed));
+  check("quality:append may send trips", callerMaySendQualityEvents(APPEND, trips));
+  check("quality:append may NOT send a decision", !callerMaySendQualityEvents(APPEND, resolution));
+  check("quality:append may NOT send a mixed batch", !callerMaySendQualityEvents(APPEND, mixed));
+  check("graph:read alone may send nothing", !callerMaySendQualityEvents(["graph:read"], trips));
 }
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });

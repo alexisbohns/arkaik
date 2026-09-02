@@ -239,14 +239,38 @@ export function planQualityEvents(
 }
 
 /**
- * Which scope this batch requires.
+ * The NARROWEST scope that suffices for this batch — not the only one that
+ * does.
  *
  * A trip is append-only by construction, so `quality:append` suffices for a
  * batch of nothing but trips. Any finding decision in the batch is a verdict
  * on the graph's quality state and needs `graph:write` — which is what makes
  * a CI credential in a public repo unable to decide a finding's fate, the
  * bar issue #406 exists to clear.
+ *
+ * The caller must treat `graph:write` as subsuming `quality:append`, because
+ * this returns a floor rather than an exact requirement: a `graph:write`-only
+ * agent token appending a trip is asking for LESS than it holds, and refusing
+ * it would break every #400 caller the moment it sent an observation. The
+ * route does that; a future caller must too.
  */
 export function requiredScopeFor(inputs: readonly QualityEventInput[]): "graph:write" | "quality:append" {
   return inputs.every((i) => i.type === "quality.signal.tripped") ? "quality:append" : "graph:write";
+}
+
+/**
+ * Whether a caller holding `scopes` may send this batch.
+ *
+ * The subsumption rule, in one place instead of in a route comment: holding
+ * `graph:write` is enough for anything this route accepts, including a batch
+ * of nothing but trips. {@link requiredScopeFor} returns a floor, and a caller
+ * that asks for less than it holds must not be refused — checking the returned
+ * scope on its own would 403 every `graph:write`-only agent token (issue #400's
+ * callers) the moment it appended an observation.
+ */
+export function callerMaySendQualityEvents(
+  scopes: readonly string[],
+  inputs: readonly QualityEventInput[],
+): boolean {
+  return scopes.includes("graph:write") || scopes.includes(requiredScopeFor(inputs));
 }

@@ -1,7 +1,12 @@
 import { getCaller, hasScope } from "@/lib/services/auth";
 import { MAX_BUNDLE_BYTES, servicesConfigured, servicesUnavailable } from "@/lib/services/db";
 import { appendJournalEvents, getProject, qualityFindingEvents } from "@/lib/services/graph/store";
-import { parseQualityEventInputs, planQualityEvents, requiredScopeFor } from "@/lib/services/graph/quality-events";
+import {
+  callerMaySendQualityEvents,
+  parseQualityEventInputs,
+  planQualityEvents,
+  requiredScopeFor,
+} from "@/lib/services/graph/quality-events";
 import type { QualitySection } from "@arkaik/schema";
 
 export const runtime = "nodejs";
@@ -89,9 +94,12 @@ export async function POST(
 
   // Post-parse, because the answer depends on the event types — which is also
   // why this cannot be folded into the guard above.
-  const required = requiredScopeFor(inputs);
-  if (!hasScope(caller, required)) {
-    return Response.json({ error: "insufficient_scope", required }, { status: 403 });
+  //
+  // `requiredScopeFor` returns the NARROWEST scope that suffices, not the only
+  // one that does — `callerMaySendQualityEvents` is where that subsumption
+  // lives, so the rule is tested rather than trusted.
+  if (!callerMaySendQualityEvents(caller.scopes, inputs)) {
+    return Response.json({ error: "insufficient_scope", required: requiredScopeFor(inputs) }, { status: 403 });
   }
 
   try {
