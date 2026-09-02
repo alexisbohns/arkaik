@@ -30,6 +30,7 @@ import {
   REMEDIATION_COSTS,
   acceptFinding,
   auditCompletedInput,
+  deriveQualityMatrix,
   detectRegressions,
   findingOpenedInput,
   findingResolvedInput,
@@ -39,11 +40,13 @@ import {
   priorityOf,
   renderIssue,
   resolveFinding,
+  resolveKritikLibrary,
   severityOf,
   signalRunSheet,
   signalTrippedInput,
   upsertAssessment,
   upsertFinding,
+  type AuditState,
   type EventInput,
   type JournalEvent,
   type KritikCriterion,
@@ -52,6 +55,7 @@ import {
   type QualityAssessment,
   type QualityFinding,
   type QualityProfile,
+  type QualitySection,
   type Regression,
   type RemediationCost,
 } from "@arkaik/schema";
@@ -92,6 +96,41 @@ function rootOf(ctx: KritikContext): string {
     );
   }
   return ctx.qualityRoot;
+}
+
+/** Hosted quality state: the stored section, already folded by the server. */
+function hostedSection(graph: LoadedGraph): { section: QualitySection; library: KritikLibrary | undefined } {
+  const section = (graph.loaded.bundle as { quality?: QualitySection }).quality;
+  if (section === undefined || !Array.isArray(section.findings)) {
+    throw new ToolError(
+      "This hosted project has no quality section yet. Run an audit in the repository and `arkaik restore` it — hosted Kritik reads what an audit stored.",
+    );
+  }
+  return { section, library: resolveKritikLibrary(section) };
+}
+
+/** Open findings, tallied into priority lanes and the P0 shortlist — the piece `kritik_matrix` needs identically in both modes. */
+function openFindingsSummary(
+  findings: readonly QualityFinding[],
+  library: KritikLibrary | undefined,
+): {
+  open: QualityFinding[];
+  lanes: Record<string, number>;
+  p0: { id: string; surface: string; criterion_id: string; title: string; severity: string }[];
+} {
+  const open = findings.filter(isOpenFinding);
+  const lanes: Record<string, number> = { P0: 0, P1: 0, P2: 0, P3: 0 };
+  for (const finding of open) lanes[priorityOf(finding, library)]++;
+  const p0 = open
+    .filter((finding) => priorityOf(finding, library) === "P0")
+    .map((finding) => ({
+      id: finding.id,
+      surface: finding.surface,
+      criterion_id: finding.criterion_id,
+      title: finding.title,
+      severity: severityOf(finding, library),
+    }));
+  return { open, lanes, p0 };
 }
 
 function libraryOf(root: string): KritikLibrary {
@@ -219,7 +258,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
     {
       name: "kritik_matrix",
       description:
-        "The comparative quality matrix for one audit: a score and grade per (domain x surface), the weighted roll-up per surface, and open findings by priority lane. Anti-averaging caps are applied — one open Critical caps its cell at D, one open High at B — so a cell full of 3s cannot absorb a live defect. Refreshes the audit's matrix.json, and with record=true appends quality.audit.completed.",
+        "The comparative quality matrix: a score and grade per (domain x surface), the weighted roll-up per surface, and open findings by priority lane. Anti-averaging caps are applied — one open Critical caps its cell at D, one open High at B — so a cell full of 3s cannot absorb a live defect. In repo mode this refreshes the audit's matrix.json, and with record=true appends quality.audit.completed; in hosted mode it is a read of the stored quality section and record is refused — recording belongs to the audit run, which reads code.",
       inputSchema: {
         type: "object",
         properties: {
@@ -233,6 +272,27 @@ export function buildKritikCatalog(ctx: KritikContext): {
       },
     },
     async (args) => {
+      const hosted = ctx.qualityRoot === undefined;
+      if (hosted) {
+        if (args.record === true) {
+          throw new ToolError(
+            "Recording quality.audit.completed belongs to the audit run, which reads code. Run the audit where the checkout is.",
+          );
+        }
+        const graph = await load();
+        const { section, library } = hostedSection(graph);
+        const matrix = deriveQualityMatrix({ quality: section }, library);
+        const { open, lanes, p0 } = openFindingsSummary(section.findings, library);
+        return {
+          matrix,
+          assessment_count: section.assessments.length,
+          open_findings: open.length,
+          lanes,
+          p0,
+          events: [] as JournalEvent[],
+        };
+      }
+
       const root = rootOf(ctx);
       const library = libraryOf(root);
       let auditId: string;
@@ -250,9 +310,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
       }
       const { section, matrix, file } = computed;
 
-      const open = section.findings.filter(isOpenFinding);
-      const lanes: Record<string, number> = { P0: 0, P1: 0, P2: 0, P3: 0 };
-      for (const finding of open) lanes[priorityOf(finding, library)]++;
+      const { open, lanes, p0 } = openFindingsSummary(section.findings, library);
 
       let events: JournalEvent[] = [];
       if (args.record === true) {
@@ -271,15 +329,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
         assessment_count: section.assessments.length,
         open_findings: open.length,
         lanes,
-        p0: open
-          .filter((finding) => priorityOf(finding, library) === "P0")
-          .map((finding) => ({
-            id: finding.id,
-            surface: finding.surface,
-            criterion_id: finding.criterion_id,
-            title: finding.title,
-            severity: severityOf(finding, library),
-          })),
+        p0,
         events,
       };
     },
@@ -289,7 +339,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
     {
       name: "kritik_findings",
       description:
-        "Findings across every audit, with their derived severity and priority. Filter by surface, status, priority, or criterion. Severity and priority are computed from impact x likelihood and cost on every read — they are never stored, so they cannot drift from the numbers behind them.",
+        "Findings, with their derived severity and priority. Filter by surface, status, priority, criterion, or finding id. Severity and priority are computed from impact x likelihood and cost on every read — they are never stored, so they cannot drift from the numbers behind them. Repo mode reads across every audit under docs/quality/audits/, filterable by audit_id; hosted findings are a single living pool with no audit_id partition.",
       inputSchema: {
         type: "object",
         properties: {
@@ -297,12 +347,36 @@ export function buildKritikCatalog(ctx: KritikContext): {
           status: { type: "string", enum: [...FINDING_STATUSES] },
           priority: { type: "string", enum: ["P0", "P1", "P2", "P3"] },
           criterion_id: { type: "string" },
-          audit_id: { type: "string", description: "Default: every audit." },
+          finding_id: { type: "string" },
+          audit_id: { type: "string", description: "Default: every audit. Not valid in hosted mode." },
         },
         additionalProperties: false,
       },
     },
     async (args) => {
+      const hosted = ctx.qualityRoot === undefined;
+      if (hosted) {
+        if (typeof args.audit_id === "string" && args.audit_id !== "") {
+          throw new ToolError("Hosted findings are a living pool — audit_id does not partition them (issue #400 decision 3).");
+        }
+        const graph = await load();
+        const { section, library } = hostedSection(graph);
+        const rows = section.findings.map((finding) => ({
+          ...finding,
+          severity: severityOf(finding, library),
+          priority: priorityOf(finding, library),
+        }));
+        const matches = rows.filter((row) => {
+          if (typeof args.surface === "string" && row.surface !== args.surface) return false;
+          if (typeof args.status === "string" && (row.status ?? "open") !== args.status) return false;
+          if (typeof args.priority === "string" && row.priority !== args.priority) return false;
+          if (typeof args.criterion_id === "string" && row.criterion_id !== args.criterion_id) return false;
+          if (typeof args.finding_id === "string" && row.id !== args.finding_id) return false;
+          return true;
+        });
+        return { total: matches.length, findings: matches };
+      }
+
       const root = rootOf(ctx);
       const library = libraryOf(root);
       const auditIds = typeof args.audit_id === "string" && args.audit_id !== "" ? [args.audit_id] : listAuditIds(root);
@@ -320,6 +394,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
         if (typeof args.status === "string" && (row.status ?? "open") !== args.status) return false;
         if (typeof args.priority === "string" && row.priority !== args.priority) return false;
         if (typeof args.criterion_id === "string" && row.criterion_id !== args.criterion_id) return false;
+        if (typeof args.finding_id === "string" && row.id !== args.finding_id) return false;
         return true;
       });
       return { total: matches.length, findings: matches };
@@ -367,7 +442,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
     {
       name: "kritik_regressions",
       description:
-        "What got worse between two audits: a cell whose maturity level dropped, a cell that gained an open Critical or High finding, and a finding that was resolved and is open again. Cells scored in only one of the two audits are not compared — a half-finished audit is not a regression. With record=true, appends one quality.signal.tripped per regression. A tripped signal is NOT a finding; it is the prompt to go look.",
+        "What got worse between two audits: a cell whose maturity level dropped, a cell that gained an open Critical or High finding, and a finding that was resolved and is open again. Cells scored in only one of the two audits are not compared — a half-finished audit is not a regression. With record=true, appends one quality.signal.tripped per regression (repo mode only — hosted comparisons are read-only and cover assessment-level drops, since hosted findings are a living pool rather than per-audit snapshots). A tripped signal is NOT a finding; it is the prompt to go look.",
       inputSchema: {
         type: "object",
         properties: {
@@ -379,6 +454,67 @@ export function buildKritikCatalog(ctx: KritikContext): {
       },
     },
     async (args) => {
+      const hosted = ctx.qualityRoot === undefined;
+      if (hosted) {
+        if (args.record === true) {
+          throw new ToolError(
+            "Recording quality.audit.completed belongs to the audit run, which reads code. Run the audit where the checkout is.",
+          );
+        }
+        const graph = await load();
+        const { section, library } = hostedSection(graph);
+        const grouped = new Map<string, QualityAssessment[]>();
+        for (const assessment of section.assessments) {
+          if (typeof assessment.audit_id !== "string" || assessment.audit_id === "") continue;
+          const bucket = grouped.get(assessment.audit_id);
+          if (bucket) bucket.push(assessment);
+          else grouped.set(assessment.audit_id, [assessment]);
+        }
+        const audits = [...grouped.keys()].sort();
+        if (audits.length < 2) {
+          throw new ToolError(
+            `regressions needs two audits to compare — ${audits.length === 0 ? "this project's assessments name none" : `only "${audits[0]}" exists`}. ` +
+              `A regression is the difference between two readings; one reading is a baseline.`,
+          );
+        }
+        const known = (id: string): string => {
+          if (!audits.includes(id)) throw new ToolError(`no audit "${id}" in this project's assessments (have: ${audits.join(", ")})`);
+          return id;
+        };
+        const to = typeof args.to === "string" && args.to !== "" ? known(args.to) : audits[audits.length - 1];
+        const from = typeof args.from === "string" && args.from !== "" ? known(args.from) : audits[audits.indexOf(to) - 1];
+        if (from === undefined) throw new ToolError(`"${to}" is the oldest audit — there is nothing before it to compare against.`);
+        if (from === to) throw new ToolError(`from and to name the same audit ("${to}") — a regression needs two readings.`);
+        if (audits.indexOf(from) > audits.indexOf(to)) {
+          throw new ToolError(`from "${from}" is newer than to "${to}" — swap them, or the comparison inverts.`);
+        }
+
+        // Both sides share the same living pool of findings (issue #400
+        // decision 3), so finding-based regression kinds cannot fire here: a
+        // severe finding already open before `from` suppresses new-severe, and
+        // a finding's status is identical on both sides so reopened cannot
+        // fire either. Only the assessment-level level-drop kind is honest to
+        // report against a single pool of findings.
+        const fromState: AuditState = { assessments: grouped.get(from) ?? [], findings: section.findings };
+        const toState: AuditState = { assessments: grouped.get(to) ?? [], findings: section.findings };
+
+        let regressions: Regression[];
+        try {
+          regressions = detectRegressions(fromState, toState, library);
+        } catch (error) {
+          throw new ToolError((error as Error).message);
+        }
+
+        return {
+          from,
+          to,
+          total: regressions.length,
+          regressions,
+          events: [] as JournalEvent[],
+          note: "hosted comparison covers assessment level drops only — findings are a living pool (issue #400 decision 3)",
+        };
+      }
+
       const root = rootOf(ctx);
       const library = libraryOf(root);
       const audits = listAuditIds(root);
@@ -451,6 +587,30 @@ export function buildKritikCatalog(ctx: KritikContext): {
       },
     },
     async (args) => {
+      const hosted = ctx.qualityRoot === undefined;
+      if (hosted) {
+        const graph = await load();
+        const { section, library } = hostedSection(graph);
+        if (library === undefined) {
+          throw new ToolError("This hosted project's quality section carries no criteria vocabulary — no embedded library and no scored criteria to synthesize one from.");
+        }
+        const criterion = criterionOf(library, requireString(args, "criterion_id"));
+        const surface = requireString(args, "surface");
+        if (section.profile) surfaceOf(section.profile, surface, true);
+
+        let finding: QualityFinding | undefined;
+        if (typeof args.finding_id === "string" && args.finding_id !== "") {
+          finding = section.findings.find((candidate) => candidate.id === args.finding_id);
+          if (!finding) throw new ToolError(`No finding "${args.finding_id}" in this hosted project's quality section.`);
+        }
+
+        return renderIssue(criterion, {
+          surface,
+          ...(typeof args.level === "number" ? { level: args.level } : {}),
+          ...(finding !== undefined ? { finding, library } : {}),
+        });
+      }
+
       const root = rootOf(ctx);
       const library = libraryOf(root);
       const criterion = criterionOf(library, requireString(args, "criterion_id"));

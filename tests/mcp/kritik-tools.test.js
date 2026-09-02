@@ -15,6 +15,7 @@
  */
 
 const { spawn } = require("child_process");
+const http = require("node:http");
 const { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require("fs");
 const { tmpdir } = require("os");
 const path = require("path");
@@ -364,11 +365,50 @@ async function run() {
     session.stop();
   }
 
-  // --- hosted mode -----------------------------------------------------------
+  // --- hosted mode -------------------------------------------------------------
+  //
+  // kritik_score (and the other writes) still refuse outright — Task 9 owns
+  // their message. kritik_findings/matrix/regressions/issue are hosted reads
+  // over the folded quality section a stub server stands in for.
+
+  const HOSTED_BUNDLE = {
+    schema_version: 3,
+    project: { id: "demo", title: "Demo", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z" },
+    nodes: [{ id: "V-home", project_id: "demo", species: "view", title: "Home", status: "live", platforms: ["web"] }],
+    edges: [],
+    quality: {
+      framework_version: "1.0.0",
+      profile: { surfaces: [{ id: "web", title: "Web" }] },
+      assessments: [
+        { criterion_id: "SEC-01", surface: "web", level: 3, evidence: "e", audit_id: "2026-07", ts: "2026-07-01T00:00:00.000Z" },
+        { criterion_id: "SEC-01", surface: "web", level: 2, evidence: "e", audit_id: "2026-08", ts: "2026-08-01T00:00:00.000Z" },
+      ],
+      findings: [
+        { id: "F-A", criterion_id: "SEC-01", surface: "web", title: "Open crit", detail: "d", evidence: "Open crit — middleware.ts:14", impact: 5, likelihood: 5, cost: "M", status: "open" },
+        { id: "F-B", criterion_id: "SEC-01", surface: "web", title: "Done", detail: "d", evidence: "e", impact: 2, likelihood: 2, cost: "S", status: "resolved" },
+      ],
+    },
+  };
+
+  function startHostedStub() {
+    return http.createServer((req, res) => {
+      const json = (status, body) => {
+        res.writeHead(status, { "content-type": "application/json" });
+        res.end(JSON.stringify(body));
+      };
+      if (req.url === "/api/graph/projects/demo" && req.method === "GET") return json(200, { bundle: HOSTED_BUNDLE, version: "v1" });
+      if (req.url === "/api/graph/projects/demo/journal" && req.method === "GET") return json(200, { journal: [] });
+      return json(404, { error: "not_found" });
+    });
+  }
+
+  const stub = startHostedStub();
+  await new Promise((resolvePromise) => stub.listen(0, resolvePromise));
+  const baseUrl = `http://127.0.0.1:${stub.address().port}`;
 
   const hosted = startSession(["--remote", "--project", "demo"], {
     ARKAIK_TOKEN: "t",
-    ARKAIK_URL: "https://example.invalid",
+    ARKAIK_URL: baseUrl,
   });
   try {
     await hosted.request("initialize", {
@@ -376,11 +416,58 @@ async function run() {
       capabilities: {},
       clientInfo: { name: "kritik-test", version: "0" },
     });
-    const refused = await hosted.call("kritik_matrix");
-    check("a hosted session refuses Kritik rather than half-working", refused.isError, refused.text.slice(0, 200));
-    check("and says where to run the audit instead", refused.json.message.includes("--bundle"), refused.text.slice(0, 300));
+
+    // kritik_score's own hosted refusal message is Task 9's to change — only
+    // assert isError here so this test doesn't pin text that is about to move.
+    const scoreRefused = await hosted.call("kritik_score", { criterion_id: "SEC-01", surface: "web", level: 2, evidence: "x" });
+    check("kritik_score still refuses in hosted mode", scoreRefused.isError, scoreRefused.text.slice(0, 200));
+
+    const byId = await hosted.call("kritik_findings", { finding_id: "F-A" });
+    check(
+      "kritik_findings finds by finding_id",
+      !byId.isError && byId.json.total === 1 && byId.json.findings[0].id === "F-A" && byId.json.findings[0].severity === "critical" && byId.json.findings[0].priority === "P0",
+      byId.text.slice(0, 300),
+    );
+
+    const openOnly = await hosted.call("kritik_findings", { status: "open" });
+    check("kritik_findings filters by status", !openOnly.isError && openOnly.json.total === 1, openOnly.text.slice(0, 200));
+
+    const partitioned = await hosted.call("kritik_findings", { audit_id: "2026-08" });
+    check(
+      "hosted findings refuse audit_id partitioning",
+      partitioned.isError && /living pool/.test(partitioned.json.message),
+      partitioned.text.slice(0, 300),
+    );
+
+    const matrix = await hosted.call("kritik_matrix", {});
+    check(
+      "kritik_matrix reads the hosted section",
+      !matrix.isError && Array.isArray(matrix.json.matrix?.surfaces) && matrix.json.matrix.surfaces.includes("web") && matrix.json.open_findings === 1,
+      matrix.text.slice(0, 300),
+    );
+
+    const matrixRecord = await hosted.call("kritik_matrix", { record: true });
+    check("hosted matrix refuses record", matrixRecord.isError && /audit run/.test(matrixRecord.json.message), matrixRecord.text.slice(0, 300));
+
+    const regressions = await hosted.call("kritik_regressions", {});
+    check(
+      "hosted regressions compares the assessment groups it can see",
+      !regressions.isError && regressions.json.total === 1 && regressions.json.regressions[0]?.kind === "level-drop" && /living pool/.test(regressions.json.note),
+      regressions.text.slice(0, 300),
+    );
+
+    const regressionsRecord = await hosted.call("kritik_regressions", { record: true });
+    check("hosted regressions refuses record", regressionsRecord.isError && /audit run/.test(regressionsRecord.json.message), regressionsRecord.text.slice(0, 300));
+
+    const issue = await hosted.call("kritik_issue", { criterion_id: "SEC-01", surface: "web", finding_id: "F-A" });
+    check(
+      "kritik_issue renders from a hosted finding",
+      !issue.isError && ((issue.json.body && issue.json.body.includes("Open crit")) || (issue.json.title && issue.json.title.includes("Open crit"))),
+      issue.text.slice(0, 300),
+    );
   } finally {
     hosted.stop();
+    stub.close();
   }
 }
 
