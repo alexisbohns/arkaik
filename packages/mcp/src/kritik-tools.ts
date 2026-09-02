@@ -474,7 +474,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
     {
       name: "kritik_signals",
       description:
-        "The signal pack: every applicable criterion's mechanically checkable statements, expanded across the surfaces it applies to, plus anything that has tripped since the last recorded audit. These are statements to CHECK, not commands to run — a grep that must return nothing, a CI job that must exist — so run them yourself and report what failed with kritik_trip_signal.",
+        "The signal pack: every applicable criterion's mechanically checkable statements, expanded across the surfaces it applies to, plus anything that has tripped since the last recorded audit. These are statements to CHECK, not commands to run — a grep that must return nothing, a CI job that must exist — so run them yourself and report what failed with kritik_trip_signal. Repo sessions only: the pack and its run sheet live with the code.",
       inputSchema: {
         type: "object",
         properties: {
@@ -676,7 +676,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
     {
       name: "kritik_score",
       description:
-        "Record one (criterion x surface) maturity level with the evidence behind it. A cell holds exactly one level, so re-scoring replaces in place. Evidence is required: a score without a citation is an opinion, not an assessment. Score what the code IS, never what an open PR promises — that is what makes a trend real.",
+        "Record one (criterion x surface) maturity level with the evidence behind it. A cell holds exactly one level, so re-scoring replaces in place. Evidence is required: a score without a citation is an opinion, not an assessment. Score what the code IS, never what an open PR promises — that is what makes a trend real. Repo sessions only: scoring reads the code, so a hosted session refuses.",
       inputSchema: {
         type: "object",
         properties: {
@@ -747,7 +747,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
     {
       name: "kritik_open_finding",
       description:
-        "Open a finding on a (criterion x surface) cell and append quality.finding.opened. One finding is one defect — not one criterion, and not one surface's worth of grumbling. Verify Critical and High adversarially BEFORE opening: try to refute them against the repo, and record the verdict. Severity and priority come back derived; they are never stored.",
+        "Open a finding on a (criterion x surface) cell and append quality.finding.opened. One finding is one defect — not one criterion, and not one surface's worth of grumbling. Verify Critical and High adversarially BEFORE opening: try to refute them against the repo, and record the verdict. Severity and priority come back derived; they are never stored. Repo sessions only: a new finding cites code, so a hosted session refuses.",
       inputSchema: {
         type: "object",
         properties: {
@@ -955,7 +955,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
     {
       name: "kritik_trip_signal",
       description:
-        "Record that a monitoring signal failed between audits: appends quality.signal.tripped. A tripped signal is NOT a finding — it is the prompt to go look. Cheap, frequent, and allowed to be wrong, where a finding is expensive, rare, and has survived an adversarial pass.",
+        "Record that a monitoring signal failed between audits: appends quality.signal.tripped. A tripped signal is NOT a finding — it is the prompt to go look. Cheap, frequent, and allowed to be wrong, where a finding is expensive, rare, and has survived an adversarial pass. Repo sessions only: signals are checked against the repository.",
       inputSchema: {
         type: "object",
         properties: {
