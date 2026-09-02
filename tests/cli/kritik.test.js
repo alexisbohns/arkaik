@@ -43,6 +43,12 @@ const BUNDLE = JSON.stringify({
 
 const now = new Date();
 const currentAudit = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+// The audit every fixture above is scored into, named explicitly with `--audit`
+// so the ids it produces (`F-2026-08-SEC-web-01`) are stable to assert against.
+// The regressions block compares *this* one, not `currentAudit`: the two were
+// the same month when the block was written, and the suite started failing the
+// moment the wall clock left 2026-08.
+const baseAudit = "2026-08";
 
 const dir = mkdtempSync(path.join(tmpdir(), "arkaik-kritik-"));
 const run = (args) => spawnSync(process.execPath, [CLI, "kritik", ...args], { encoding: "utf8", cwd: dir });
@@ -392,7 +398,7 @@ try {
 
   // --- regressions (phase E) ---------------------------------------------------
 
-  // The suite's existing audit is `currentAudit`. Score the same cell lower in a
+  // The suite's existing audit is `baseAudit`. Score the same cell lower in a
   // second, later audit so there is something to regress.
   const laterAudit = "2099-12";
   run(["score", "SEC-01", "web", "1", "--evidence", "src/a.ts:1", "--audit", laterAudit]);
@@ -400,23 +406,23 @@ try {
   const unknownAudit = run(["regressions", "--from", "nope", "--to", laterAudit]);
   check("an unknown audit is refused by name", unknownAudit.status === 1 && unknownAudit.stderr.includes("nope"), unknownAudit.stderr);
 
-  const toOldest = run(["regressions", "--to", currentAudit]);
+  const toOldest = run(["regressions", "--to", baseAudit]);
   check(
     "naming the oldest audit as --to is refused because there is nothing before it",
     toOldest.status === 1 && toOldest.stderr.includes("oldest audit"),
     toOldest.stderr,
   );
 
-  const compared = run(["regressions", "--from", currentAudit, "--to", laterAudit, "--json"]);
+  const compared = run(["regressions", "--from", baseAudit, "--to", laterAudit, "--json"]);
   check("regressions exits 1 when something regressed", compared.status === 1, `status ${compared.status}`);
   const regressionsParsed = JSON.parse(compared.stdout);
   check("the level drop is reported", regressionsParsed.regressions.some((r) => r.kind === "level-drop" && r.criterion_id === "SEC-01"), compared.stdout);
-  check("the json names both audits", regressionsParsed.from === currentAudit && regressionsParsed.to === laterAudit, compared.stdout);
+  check("the json names both audits", regressionsParsed.from === baseAudit && regressionsParsed.to === laterAudit, compared.stdout);
 
   // The suite already tripped one signal earlier (the `signals --trip` block
   // above), so the assertion below counts new trips rather than the total.
   const tripsBefore = journal().filter((e) => e.type === "quality.signal.tripped").length;
-  const regressionsRecorded = run(["regressions", "--from", currentAudit, "--to", laterAudit, "--record"]);
+  const regressionsRecorded = run(["regressions", "--from", baseAudit, "--to", laterAudit, "--record"]);
   check("--record exits 1 too", regressionsRecorded.status === 1, `status ${regressionsRecorded.status}`);
   const trips = journal().filter((e) => e.type === "quality.signal.tripped");
   check(
