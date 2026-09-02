@@ -83,6 +83,26 @@ function startStubServer(state) {
     if (req.url === `/api/graph/projects/${PROJECT_ID}/journal` && req.method === "GET") {
       return json(200, { journal: state.journal });
     }
+    if (req.url === `/api/graph/projects/${PROJECT_ID}/quality/events` && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        const parsed = JSON.parse(body);
+        state.receivedQualityBody = parsed;
+        if (state.refuseQuality) {
+          return json(422, state.refuseQuality);
+        }
+        return json(200, {
+          events: parsed.events.map((e, i) => ({
+            id: `01KN44ARM0JH4YFMX52BGKN${String(i).padStart(3, "0")}`,
+            ts: "2026-01-01T00:00:00.000Z",
+            actor: "arkaik-agent",
+            ...e,
+          })),
+        });
+      });
+      return undefined;
+    }
     if (req.url === `/api/graph/projects/${PROJECT_ID}/mutations` && req.method === "POST") {
       let body = "";
       req.on("data", (chunk) => (body += chunk));
@@ -381,6 +401,43 @@ async function main() {
       JSON.stringify(resultText(badToken.responses, 9)).includes("ARKAIK_TOKEN"),
       JSON.stringify(resultText(badToken.responses, 9)),
     );
+    // --- appendQualityEvents (Task 6) ---------------------------------------
+    // The built server's kritik tools don't call this yet (Tasks 7-8), so
+    // there is no tool path to reach it over stdio; exercised directly
+    // against the store module instead.
+    const { loadRemoteStore } = require("./load-remote-store");
+    const { createRemoteStore } = loadRemoteStore();
+    const directStore = createRemoteStore({ baseUrl, projectId: PROJECT_ID, token: state.token });
+
+    const qualityInputs = [{ type: "quality.finding.resolved", finding_id: "F-1", resolved_by: "alexis" }];
+    const qualityEvents = await directStore.appendQualityEvents(qualityInputs);
+    check(
+      "appendQualityEvents sends { events: inputs } and resolves with the stamped events",
+      JSON.stringify(state.receivedQualityBody) === JSON.stringify({ events: qualityInputs }) &&
+        Array.isArray(qualityEvents) &&
+        qualityEvents.length === 1 &&
+        qualityEvents[0].finding_id === "F-1",
+      JSON.stringify({ receivedQualityBody: state.receivedQualityBody, qualityEvents }),
+    );
+
+    state.refuseQuality = {
+      error: "refused",
+      refusals: [{ finding_id: "F-9", reason: "unknown_finding" }],
+    };
+    let refusalError;
+    try {
+      await directStore.appendQualityEvents([{ type: "quality.finding.resolved", finding_id: "F-9" }]);
+    } catch (err) {
+      refusalError = err;
+    }
+    check(
+      "a 422 refusal rejects with an error naming the finding id and reason",
+      refusalError instanceof Error &&
+        refusalError.message.includes("F-9") &&
+        refusalError.message.includes("unknown_finding"),
+      String(refusalError),
+    );
+    state.refuseQuality = null;
   } finally {
     server.close();
     fs.rmSync(tmp, { recursive: true, force: true });

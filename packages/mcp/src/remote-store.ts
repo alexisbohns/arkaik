@@ -178,6 +178,36 @@ export function createRemoteStore(options: RemoteStoreOptions): Store {
     describe() {
       return `hosted project: ${options.projectId} at ${base}`;
     },
+
+    // `quality.finding.*` events do not fold through `applyOps` — a finding
+    // isn't a node or edge — so they get their own endpoint rather than riding
+    // `/mutations`. And unlike `persist`, there is no client-side gate at all:
+    // whether a finding is still open is a post-fold read of the journal, and
+    // the server holds that journal. Sending an "open" guess from here could
+    // only be stale the moment two sessions race, so this method does no
+    // checking of its own — it forwards the inputs and lets the server's
+    // verdict (post-fold, under its row lock) be the only one that counts.
+    async appendQualityEvents(inputs): Promise<JournalEvent[]> {
+      try {
+        const result = await request<{ events: JournalEvent[] }>("/quality/events", {
+          method: "POST",
+          body: JSON.stringify({ events: inputs }),
+        });
+        return result.events;
+      } catch (err) {
+        const e = err as Error & {
+          status?: number;
+          body?: { error?: string; reason?: string; refusals?: { finding_id: string; reason: string }[] };
+        };
+        if (e.status === 422 && e.body?.error === "refused") {
+          const detail = e.body.refusals
+            ? e.body.refusals.map((r) => `${r.finding_id}: ${r.reason}`).join(", ")
+            : (e.body.reason ?? "refused");
+          throw new Error(`Quality events refused — ${detail}`);
+        }
+        throw err;
+      }
+    },
   };
 }
 
