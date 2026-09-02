@@ -16,7 +16,7 @@ const fs = require("fs");
 const { loadQualityEvents, BUILD_DIR } = require("./load-quality-events");
 
 const kritik = loadQualityEvents();
-const { parseQualityEventInputs, planQualityEvents } = kritik;
+const { parseQualityEventInputs, planQualityEvents, requiredScopeFor } = kritik;
 
 let failures = 0;
 function check(name, cond, detail) {
@@ -247,6 +247,21 @@ for (const field of ["criterion_id", "surface", "signal", "commit"]) {
   check("a trip batched with a refused decision refuses the whole batch", plan.ok === false, JSON.stringify(plan));
   check("refusals name only the finding, never the trip",
     plan.ok === false && plan.refusals.length === 1 && plan.refusals[0].finding_id === "F-nope", JSON.stringify(plan));
+}
+
+// --- requiredScopeFor --------------------------------------------------------
+
+{
+  const trips = parseQualityEventInputs({ events: [TRIP, { ...TRIP, criterion_id: "SEC-supabase-02" }] });
+  check("a batch of nothing but trips requires quality:append", requiredScopeFor(trips) === "quality:append");
+
+  const resolution = parseQualityEventInputs({ events: [{ type: "quality.finding.resolved", finding_id: "F-1" }] });
+  check("a finding decision requires graph:write", requiredScopeFor(resolution) === "graph:write");
+
+  const mixed = parseQualityEventInputs({
+    events: [TRIP, { type: "quality.finding.accepted", finding_id: "F-1", reason: "tracked" }],
+  });
+  check("a mixed batch requires graph:write", requiredScopeFor(mixed) === "graph:write");
 }
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });

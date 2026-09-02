@@ -40,6 +40,7 @@ import { foldFindingEvents } from "@/lib/utils/quality";
  * difference is what the rule is made of: a trip is append-only *by
  * construction*. It decides nothing, so there is no verdict for it to
  * overwrite, no finding for it to reach, and nothing a second trip can undo.
+ * That is why {@link requiredScopeFor} can let a narrower credential send one.
  * This is still not a general event-append surface: the journal's `GET` stays
  * read-only, and every other event type in the schema is written by the
  * mutation pipeline or the webhook, never by a caller naming a type directly.
@@ -237,3 +238,15 @@ export function planQualityEvents(
   return { ok: true, events };
 }
 
+/**
+ * Which scope this batch requires.
+ *
+ * A trip is append-only by construction, so `quality:append` suffices for a
+ * batch of nothing but trips. Any finding decision in the batch is a verdict
+ * on the graph's quality state and needs `graph:write` — which is what makes
+ * a CI credential in a public repo unable to decide a finding's fate, the
+ * bar issue #406 exists to clear.
+ */
+export function requiredScopeFor(inputs: readonly QualityEventInput[]): "graph:write" | "quality:append" {
+  return inputs.every((i) => i.type === "quality.signal.tripped") ? "quality:append" : "graph:write";
+}
