@@ -228,7 +228,7 @@ export function runPack(options: RunPackOptions = {}): RunPackResult {
     // declining to add one would still hand `arkaik push` the old one to send.
     delete bundle.quality;
   } else {
-    const root = resolveQualityRoot(cwd, filePath, options.root);
+    const root = resolveQualityRoot({ root: options.root, bundlePath: filePath, fallback: cwd });
     try {
       const fold = foldQualitySection(bundle, root, options.audit);
       qualityFolded = fold.folded;

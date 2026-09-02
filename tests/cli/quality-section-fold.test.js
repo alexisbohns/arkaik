@@ -531,6 +531,45 @@ function packIn(dir, args = []) {
     withRoot.result.stderr,
   );
 
+  // $ARKAIK_QUALITY_ROOT: the CLI's half of #400's reconciliation with the
+  // MCP server's own resolver — same fallback ladder, reached via env
+  // instead of --root, and losing to --root when both are set.
+  const withEnvRoot = spawnSync(process.execPath, [CLI, "pack", stray], {
+    encoding: "utf8",
+    cwd: elsewhere,
+    env: { ...process.env, ARKAIK_QUALITY_ROOT: dir },
+  });
+  const envBundle = (() => {
+    try {
+      return JSON.parse(withEnvRoot.stdout);
+    } catch {
+      return undefined;
+    }
+  })();
+  check("ARKAIK_QUALITY_ROOT exits 0", withEnvRoot.status === 0, withEnvRoot.stderr);
+  check(
+    "ARKAIK_QUALITY_ROOT points the fold at that repo from an unrelated cwd",
+    envBundle && envBundle.quality && envBundle.quality.assessments.length === 5,
+    withEnvRoot.stderr,
+  );
+  const withBoth = spawnSync(process.execPath, [CLI, "pack", "--root", elsewhere, stray], {
+    encoding: "utf8",
+    cwd: elsewhere,
+    env: { ...process.env, ARKAIK_QUALITY_ROOT: dir },
+  });
+  const bothBundle = (() => {
+    try {
+      return JSON.parse(withBoth.stdout);
+    } catch {
+      return undefined;
+    }
+  })();
+  check(
+    "--root wins outright over ARKAIK_QUALITY_ROOT when both are set",
+    bothBundle && bothBundle.quality === undefined,
+    withBoth.stderr,
+  );
+
   // --audit: the older audit's own numbers, not the merge's.
   const pinned = packIn(dir, ["--audit", "2026-08"]);
   const section = (pinned.bundle && pinned.bundle.quality) || {};

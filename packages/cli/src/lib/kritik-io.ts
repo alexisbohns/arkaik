@@ -293,18 +293,30 @@ export function foldQualitySection(
  * because "which repo owns this bundle" is the same class of question: what
  * being the CLI's environment means, rather than anything a projection knows.
  *
- * KNOWN DIVERGENCE from `packages/mcp/src/index.ts`'s `qualityRootFor`, which
- * answers the same question for the MCP server and answers it differently in
- * two ways: its fallback for an unconventional layout is the bundle's own
- * DIRECTORY, not the cwd (it has no meaningful cwd — the agent host chooses
- * it), and it honours `$ARKAIK_QUALITY_ROOT`, which this does not. Both
- * predate #389 and neither is obviously wrong for its caller; they are simply
- * not one function. Reconcile deliberately if you get there, not as a
- * drive-by.
+ * Shared by the CLI and the MCP server (`packages/mcp/src/index.ts` calls
+ * this directly via the `arkaik/io` barrel) — before #400 they were two
+ * separate functions answering the same question differently, one drifting
+ * from the other. The one remaining deliberate difference between the
+ * callers is `fallback`: the CLI passes its cwd, meaningful because a person
+ * typed the command inside a repo; the MCP server passes the bundle's own
+ * directory, because it has no meaningful cwd — the agent host chose it, not
+ * someone operating inside a repo. `root` is CLI-only (its `--root` flag);
+ * the MCP server never has one to pass.
  */
-export function resolveQualityRoot(cwd: string, filePath: string, root?: string): string {
-  if (root !== undefined) return resolve(cwd, root);
-  const dir = dirname(filePath);
+export function resolveQualityRoot(options: {
+  /** Explicit override, resolved against `fallback` — e.g. the CLI's `--root` flag. Wins outright. */
+  root?: string;
+  /** Environment to read `$ARKAIK_QUALITY_ROOT` from. Defaults to `process.env`. */
+  env?: Record<string, string | undefined>;
+  /** The bundle's own path — the conventional `<root>/docs/arkaik/<file>` layout is detected from its directory. */
+  bundlePath: string;
+  /** Where an unconventional layout falls back: the CLI's cwd, or the MCP server's bundle dir. */
+  fallback: string;
+}): string {
+  if (options.root !== undefined) return resolve(options.fallback, options.root);
+  const envRoot = (options.env ?? process.env).ARKAIK_QUALITY_ROOT;
+  if (envRoot) return resolve(envRoot);
+  const dir = dirname(options.bundlePath);
   if (basename(dir) === "arkaik" && basename(dirname(dir)) === "docs") return resolve(dir, "..", "..");
-  return cwd;
+  return options.fallback;
 }
