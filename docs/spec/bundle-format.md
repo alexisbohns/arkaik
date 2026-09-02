@@ -149,7 +149,7 @@ The fold embeds the **effective** library — the pinned pack ⊕ this project's
 
 **Derived values are never stored.** Severity, priority, domain scores, grades, and the anti-averaging caps are projections in `@arkaik/schema` (`deriveQualityMatrix`), exactly as delivery and backlog are journal projections. A finding stores `impact`, `likelihood`, and `cost`; storing a `severity` beside them is a warning, because it lets the label drift from the numbers behind it.
 
-**Validation is warnings only** (never import-blocking, per the leniency doctrine): an unknown or retired `criterion_id`, a surface absent from the profile, a duplicate score for one cell, an assessment with no evidence, a risk value outside 1-5, a `quality.*` event with no `actor`, a `quality.finding.resolved` for a finding nothing ever opened.
+**Validation is warnings only** (never import-blocking, per the leniency doctrine): an unknown or retired `criterion_id`, a surface absent from the profile, a duplicate score for one cell, an assessment with no evidence, a risk value outside 1-5, a `quality.*` event with no `actor`, a `quality.finding.resolved` or `quality.finding.accepted` for a finding nothing ever opened.
 
 **Publik withholds it by default.** A quality section lists open, unfixed findings with the file paths to reach them, so `POST /api/publik` strips it exactly as it strips the journal, and for a sharper reason. `?include_quality=true` opts in; opting into the journal never implies it.
 

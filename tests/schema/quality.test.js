@@ -257,6 +257,8 @@ const auditEvent = { id: "01J", ts: "2026-08-26T00:00:00.000Z", actor: "claude-c
 check("a quality.audit.completed event validates strictly", KnownJournalEventSchema.safeParse(auditEvent).success);
 const openedEvent = { id: "01K", ts: "2026-08-26T00:00:00.000Z", actor: "ci", type: "quality.finding.opened", finding_id: "F-1", criterion_id: "SEC-03", surface: "supabase", severity: "critical", priority: "P0", title: "t", node_ids: ["V-x"] };
 check("a quality.finding.opened event validates strictly", KnownJournalEventSchema.safeParse(openedEvent).success);
+const acceptedEvent = { id: "01L", ts: "2026-08-26T00:00:00.000Z", actor: "arkaik-agent", type: "quality.finding.accepted", finding_id: "F-1", reason: "owned" };
+check("a quality.finding.accepted event validates strictly", KnownJournalEventSchema.safeParse(acceptedEvent).success);
 
 // quality.finding.accepted — the event that records an accepted risk written
 // away from the checkout (hosted mode has no findings file to hold the state).
@@ -311,6 +313,7 @@ const dirty = validateBundle({
   },
   journal: [
     { id: "01A", ts: "2026-08-26T00:00:00.000Z", type: "quality.finding.resolved", finding_id: "F-ghost" },
+    { id: "01B", ts: "2026-08-26T00:00:00.000Z", type: "quality.finding.accepted", finding_id: "F-ghost2", reason: "r" },
   ],
 });
 const dirtyRules = rules(dirty);
@@ -329,6 +332,7 @@ for (const rule of [
   "quality-accepted-risk-no-note",
   "quality-event-no-actor",
   "quality-resolved-never-opened",
+  "quality-accepted-never-opened",
 ]) {
   check(`warns: ${rule}`, dirtyRules.includes(rule), dirtyRules.filter((r) => r.startsWith("quality-")).join());
 }

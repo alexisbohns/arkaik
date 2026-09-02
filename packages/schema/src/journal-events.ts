@@ -313,5 +313,6 @@ export const KnownJournalEventSchema = z.union([
   QualityAuditCompletedEventSchema,
   QualityFindingOpenedEventSchema,
   QualityFindingResolvedEventSchema,
+  QualityFindingAcceptedEventSchema,
   QualitySignalTrippedEventSchema,
 ]);
