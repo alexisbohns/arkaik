@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { cn } from "@/lib/utils";
 
 interface ChapterIndexProps {
   items: { id: string; title: string }[];
@@ -35,7 +36,14 @@ export function ChapterIndex({ items }: ChapterIndexProps) {
   }, [items]);
 
   return (
-    <nav aria-label="Sections" className="mt-6 text-sm leading-8">
+    // Below `lg` the same index is a horizontal chip row (spec § Theme,
+    // responsive); above it, the vertical list with rules. Horizontal overflow
+    // is an arbitrary property on purpose: globals.css traps the vertical
+    // wheel over every `.overflow-x-auto`.
+    <nav
+      aria-label="Sections"
+      className="-mx-6 flex gap-2 px-6 text-sm [overflow-x:auto] lg:mx-0 lg:mt-6 lg:flex-col lg:gap-0 lg:px-0 lg:leading-8 lg:[overflow-x:visible]"
+    >
       {items.map((item) => {
         const active = item.id === activeId;
         return (
@@ -43,15 +51,17 @@ export function ChapterIndex({ items }: ChapterIndexProps) {
             key={item.id}
             href={`#${item.id}`}
             aria-current={active ? "true" : undefined}
-            className={
+            className={cn(
+              "flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border px-3 py-1 text-xs transition-colors",
+              "lg:rounded-none lg:border-0 lg:px-0 lg:py-0 lg:text-sm",
               active
-                ? "flex items-center gap-2 text-foreground"
-                : "flex items-center gap-2 text-muted-foreground hover:text-foreground"
-            }
+                ? "border-foreground text-foreground"
+                : "text-muted-foreground hover:text-foreground",
+            )}
           >
             <span
               aria-hidden
-              className={active ? "h-px w-6 bg-foreground transition-all" : "h-px w-3.5 bg-border transition-all"}
+              className={cn("hidden h-px transition-all lg:block", active ? "w-6 bg-foreground" : "w-3.5 bg-border")}
             />
             {item.title}
           </a>

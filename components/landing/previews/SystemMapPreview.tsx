@@ -22,7 +22,7 @@ const DEFINITION: MapDefinition = {
   layout: { algorithm: "organic" },
 };
 
-/** The system tiers around one data model of Arkaik's own map, organic around the anchor, read-only. */
+/** One hop around a data model of Arkaik's own map: the views that render it, read-only. */
 export function SystemMapPreview({ bundle }: PreviewProps) {
   const props = useMemo(() => {
     const nodesById = new Map(bundle.nodes.map((node) => [node.id, node]));
@@ -44,7 +44,6 @@ export function SystemMapPreview({ bundle }: PreviewProps) {
       display={props.display}
       productScope={props.productScope}
       layoutMode="organic"
-      minimapColor={props.display.minimap_color}
       fitSignal={fitSignal}
       onLayoutVersion={reframe}
       readOnly

@@ -152,8 +152,9 @@ blue. Inline SVG, `currentColor` and CSS variables for theme.
 - Dark mode through the existing tokens only. Frames, cards and the dot
   grid use `--card`, `--border`, `--muted-foreground`. No hard-coded greys
   outside the SVG's species rails.
-- Below 900px the chapter column stops being sticky and becomes a header
-  above its sections; the index becomes a horizontal chip row. Frames keep
+- Below the `lg` breakpoint (1024px) the chapter column stops being sticky
+  and becomes a header above its sections; the index becomes a horizontal
+  chip row. Frames keep
   their aspect but scroll horizontally inside the frame, never the page.
 - Motion is limited to the index highlight transition and the canvases'
   fit-view on mount. No scroll-driven animation, no parallax.

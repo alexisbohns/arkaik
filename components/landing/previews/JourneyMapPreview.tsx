@@ -57,7 +57,6 @@ export function JourneyMapPreview({ bundle }: PreviewProps) {
       display={props.display}
       viewApiRelationsByViewId={props.viewApiRelationsByViewId}
       scope={props.scope}
-      minimapColor={props.display.minimap_color}
       fitSignal={fitSignal}
       onLayout={reframe}
       readOnly

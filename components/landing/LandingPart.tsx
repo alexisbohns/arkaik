@@ -15,7 +15,7 @@ interface LandingPartProps {
 /**
  * A chapter (spec § Rhythm): the sticky chapter column on the left — mono
  * kicker, handwritten title, one-line intro, the section index — and the
- * sections scrolling on the right. Below 900px the column becomes a header.
+ * sections scrolling on the right. Below the `lg` breakpoint the column becomes a header and the index a chip row.
  */
 export function LandingPart({ part, number, total, sections, children }: LandingPartProps) {
   const kicker = `PART ${String(number).padStart(2, "0")} · OF ${String(total).padStart(2, "0")}`;
@@ -28,7 +28,7 @@ export function LandingPart({ part, number, total, sections, children }: Landing
             {part.title}
           </h2>
           <p className="mt-3 max-w-[260px] text-sm leading-relaxed text-muted-foreground">{part.intro}</p>
-          <div className="hidden lg:block">
+          <div className="mt-5 lg:mt-0">
             <ChapterIndex items={sections.map((s) => ({ id: s.id, title: s.title }))} />
           </div>
         </div>
