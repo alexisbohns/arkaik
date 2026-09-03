@@ -55,6 +55,13 @@ interface CanvasProps {
   scope?: ProductScope;
   /** What a minimap node's fill encodes (docs/spec/maps.md § Display Options). */
   minimapColor?: MapMinimapColorMode;
+  /**
+   * A canvas that only shows: no connecting, dragging or selecting, and no
+   * controls or minimap. Panning and zooming stay on. The marketing page's
+   * previews and any future embedded reading use this; the map pages never
+   * pass it.
+   */
+  readOnly?: boolean;
 }
 
 export function Canvas({
@@ -68,6 +75,7 @@ export function Canvas({
   spotlightNodeId = null,
   scope,
   minimapColor,
+  readOnly = false,
 }: CanvasProps) {
   const reactFlowRef = useRef<ReactFlowInstance<Node, Edge> | null>(null);
   const lastFitSignal = useRef(fitSignal);
@@ -195,16 +203,19 @@ export function Canvas({
           style={flowStyle}
           fitView
           minZoom={0.05}
+          nodesDraggable={!readOnly}
+          nodesConnectable={!readOnly}
+          elementsSelectable={!readOnly}
           onInit={handleInit}
           onNodesChange={handleNodesChange}
           onNodeClick={handleNodeClick}
-          onConnect={onConnect}
-          onEdgeClick={onEdgeClick}
+          onConnect={readOnly ? undefined : onConnect}
+          onEdgeClick={readOnly ? undefined : onEdgeClick}
           onNodeMouseEnter={spotlight ? handleNodeMouseEnter : undefined}
           onNodeMouseLeave={spotlight ? handleNodeMouseLeave : undefined}
         >
-          <Controls />
-          <Minimap colorBy={minimapColor} />
+          {!readOnly && <Controls />}
+          {!readOnly && <Minimap colorBy={minimapColor} />}
           <Background />
         </ReactFlow>
       </div>
