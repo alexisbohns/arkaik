@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ChevronDownIcon, ChevronRightIcon, ExternalLinkIcon } from "lucide-react";
-import type { QualityFinding } from "@arkaik/schema";
+import { CROSS_SURFACE_ID, type QualityFinding } from "@arkaik/schema";
 import type { Node } from "@/lib/data/types";
 import type { FindingRow } from "@/lib/utils/quality";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +28,16 @@ interface FindingCardProps {
    */
   surfaceTitles: ReadonlyMap<string, string>;
   onOpenNode: (nodeId: string) => void;
-  onOpenCriterion: (criterionId: string, surface: string) => void;
+  /**
+   * Opens the criterion this finding answers to — and, by its absence, says the
+   * reader is already inside it.
+   *
+   * The criterion chip is a control, not a label: in the criterion panel it
+   * would re-open the panel it is drawn in, under a heading that already names
+   * the same criterion. So an omitted handler drops the chip and the name with
+   * it, rather than leaving a dead button behind.
+   */
+  onOpenCriterion?: (criterionId: string, surface: string) => void;
 }
 
 /**
@@ -114,23 +123,41 @@ export function FindingCard({
           control of its own and a button inside a button is not markup a
           browser will honour. */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-        <button
-          type="button"
-          onClick={() => onOpenCriterion(row.criterionId, row.surface)}
-          className="rounded bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] transition-colors hover:bg-muted hover:text-foreground"
-          title={`Open ${row.criterionName}`}
-        >
-          {row.criterionId}
-        </button>
-        {row.criterionName !== row.criterionId && (
-          <span className="max-w-[24rem] truncate">{row.criterionName}</span>
+        {onOpenCriterion && (
+          <>
+            <button
+              type="button"
+              onClick={() => onOpenCriterion(row.criterionId, row.surface)}
+              className="rounded bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] transition-colors hover:bg-muted hover:text-foreground"
+              title={`Open ${row.criterionName}`}
+            >
+              {row.criterionId}
+            </button>
+            {row.criterionName !== row.criterionId && (
+              <span className="max-w-[24rem] truncate">{row.criterionName}</span>
+            )}
+          </>
         )}
-        {/* The profile's title, the same word the matrix column header and the
-            Surface menu use — a reader who clicked the "Database contract"
-            column must not then read `supabase` on every card it returned. The
-            id is on the hover, and is the fallback for a surface the profile
-            never titled. */}
-        <span title={row.surface}>· {surfaceTitles.get(row.surface) ?? row.surface}</span>
+        {/* A finding that belongs to no single surface is called that, in a
+            badge, rather than left to read as a surface id nobody titled —
+            `cross-surface` is a findings-only lens and no profile declares it,
+            so the fallback below would print the raw slug. It is also the row a
+            reader is most likely to mistake for the surface they are scoped to.
+
+            Everywhere else: the profile's title, the same word the matrix
+            column header and the Surface menu use — a reader who clicked the
+            "Database contract" column must not then read `supabase` on every
+            card it returned. The id is on the hover. */}
+        {row.surface === CROSS_SURFACE_ID ? (
+          <Badge variant="outline" className="font-normal">
+            Cross-surface
+          </Badge>
+        ) : (
+          <span title={row.surface}>
+            {onOpenCriterion && "· "}
+            {surfaceTitles.get(row.surface) ?? row.surface}
+          </span>
+        )}
       </div>
 
       {/* The scales, on the third line: severity and cost as chips that gloss
@@ -156,8 +183,18 @@ export function FindingCard({
         {/* The accepted-risk callout below states the status in its own badge,
             in the treatment that says it is a decision; a second badge up here
             would say it twice and more quietly. */}
+        {/* The rail's mark is a glyph; this is the word for it, and the only
+            copy of it a screen reader meets. Tinted to match the tick for
+            `resolved` alone — the same rule the rail follows, and the reason
+            the badge did not simply give way to the mark. */}
         {!row.open && !acceptedRisk && (
-          <Badge variant="outline" className="ms-auto">
+          <Badge
+            variant="outline"
+            className={cn(
+              "ms-auto",
+              row.status === "resolved" && "border-green-500/40 text-green-700 dark:text-green-400",
+            )}
+          >
             {FINDING_STATUS_LABEL[row.status]}
           </Badge>
         )}

@@ -11,10 +11,10 @@ import {
   type FindingStatus,
 } from "@arkaik/schema";
 import { useQueryWriter } from "@/lib/hooks/useQueryWriter";
-import { EMPTY_QUALITY_FILTERS, parseCellKey } from "@/lib/utils/quality";
+import { DEFAULT_QUALITY_FILTERS, parseCellKey } from "@/lib/utils/quality";
 import type { QualityFilters, QualitySort } from "@/lib/utils/quality";
 
-export { EMPTY_QUALITY_FILTERS } from "@/lib/utils/quality";
+export { DEFAULT_QUALITY_FILTERS, EMPTY_QUALITY_FILTERS } from "@/lib/utils/quality";
 export type { QualityFilters, QualitySort } from "@/lib/utils/quality";
 
 const KEYS = ["search", "severity", "surface", "priority", "domain", "status", "cell", "sort"] as const;
@@ -44,7 +44,18 @@ function oneOf<T extends string>(value: string | null, allowed: readonly string[
 /** The sort axis, the one param whose "nothing set" value is not `"all"`. */
 function sortOf(value: string | null): QualitySort {
   const allowed: readonly string[] = QUALITY_SORTS;
-  return value !== null && allowed.includes(value) ? (value as QualitySort) : EMPTY_QUALITY_FILTERS.sort;
+  return value !== null && allowed.includes(value) ? (value as QualitySort) : DEFAULT_QUALITY_FILTERS.sort;
+}
+
+/**
+ * The status axis: an explicit `all`, a named status, or — for anything else,
+ * absence included — the default, which is `open`.
+ */
+function statusOf(value: string | null): FindingStatus | "all" {
+  if (value === "all") return "all";
+  return value && FINDING_STATUSES.includes(value as FindingStatus)
+    ? (value as FindingStatus)
+    : DEFAULT_QUALITY_FILTERS.status;
 }
 
 /**
@@ -71,7 +82,11 @@ function readFilters(params: URLSearchParams): QualityFilters {
     surface: params.get("surface") || "all",
     priority: oneOf<FindingPriority>(params.get("priority"), FINDING_PRIORITIES),
     domain: params.get("domain") || "all",
-    status: oneOf<FindingStatus>(params.get("status"), FINDING_STATUSES),
+    // The one narrowing param whose "nothing set" value is not `"all"`, for the
+    // same reason `sort`'s is not: the board opens on the work still to do, and
+    // a URL that says nothing about status is asking for that, not for the
+    // archive. `?status=all` is how you widen, and it is written explicitly.
+    status: statusOf(params.get("status")),
     // Validated through the parser the matrix encodes with, so a hand-typed
     // `?cell=SEC` — which `filterFindings` would ignore — cannot leave the bar
     // showing a dismissible chip for a cell that is narrowing nothing.
@@ -103,18 +118,20 @@ export function useQualityFilters(): {
         if (next.surface !== "all") params.set("surface", next.surface);
         if (next.priority !== "all") params.set("priority", next.priority);
         if (next.domain !== "all") params.set("domain", next.domain);
-        if (next.status !== "all") params.set("status", next.status);
+        // Written whenever it is not the default — including `all`, which here
+        // is a widening somebody asked for and not the absence of a choice.
+        if (next.status !== DEFAULT_QUALITY_FILTERS.status) params.set("status", next.status);
         if (next.cell) params.set("cell", next.cell);
         // The default sort is the one thing here with a value other than "all",
         // so it is written only when it is not the default — a URL that says
         // nothing about sorting is the same URL as one that asks for the
         // default, and shared links should not carry the difference.
-        if (next.sort !== EMPTY_QUALITY_FILTERS.sort) params.set("sort", next.sort);
+        if (next.sort !== DEFAULT_QUALITY_FILTERS.sort) params.set("sort", next.sort);
       });
     },
     [writeQuery],
   );
 
-  const reset = useCallback(() => setFilters(EMPTY_QUALITY_FILTERS), [setFilters]);
+  const reset = useCallback(() => setFilters(DEFAULT_QUALITY_FILTERS), [setFilters]);
   return { filters, setFilters, reset };
 }

@@ -4,16 +4,9 @@ import { useMemo } from "react";
 import { ExternalLinkIcon } from "lucide-react";
 import { EntityId } from "@/components/graph/nodes/EntityBadges";
 import { PanelSection } from "@/components/panels/PanelSection";
-import {
-  PRIORITY_GLOSS,
-  PRIORITY_TERM,
-  SEVERITY_DOT,
-} from "@/components/quality/quality-styles";
-import { ScaleChip } from "@/components/quality/ScaleChip";
-import { SeverityPill } from "@/components/quality/SeverityPill";
-import { Badge } from "@/components/ui/badge";
+import { FindingsBoard } from "@/components/quality/FindingsBoard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
+import type { Node } from "@/lib/data/types";
 import {
   CROSS_SURFACE_ID,
   MATURITY_LEVELS,
@@ -23,7 +16,12 @@ import {
   type QualityAssessment,
   type QualitySection,
 } from "@arkaik/schema";
-import { filterFindings, EMPTY_QUALITY_FILTERS, type FindingRow } from "@/lib/utils/quality";
+import {
+  buildSurfaceTitles,
+  filterFindings,
+  EMPTY_QUALITY_FILTERS,
+  type FindingRow,
+} from "@/lib/utils/quality";
 
 interface CriterionDetailPanelProps {
   criterionId: string;
@@ -37,6 +35,8 @@ interface CriterionDetailPanelProps {
    * see the memo note in the component for why the building happens up there.
    */
   findings: FindingRow[];
+  /** The graph, so a finding's linked nodes read as titles rather than as ids. */
+  nodesById: ReadonlyMap<string, Node>;
   onOpenNode: (nodeId: string) => void;
 }
 
@@ -184,8 +184,9 @@ function assessmentsOn(
  * never becomes a matrix column, which makes this panel the only place a reader
  * meets one. Dropping it when the panel is scoped would hide exactly the defect
  * that belongs to no single surface, and so to nobody in particular.
- * `FindingRowItem` marks those rows so they cannot be read as the scoped
- * surface's own.
+ * `FindingCard` badges those rows "Cross-surface" so they cannot be read as the
+ * scoped surface's own — a marking the board gained from this panel, and now
+ * shows on the Findings page too.
  *
  * At module scope, like `assessmentsOn` above: the panel is a pure read, so
  * everything it derives is a function of its props, and pulling those functions
@@ -211,7 +212,7 @@ export function CriterionDetailPanelHeader({
   surface,
   library,
   section,
-}: Omit<CriterionDetailPanelProps, "onOpenNode" | "findings">) {
+}: Omit<CriterionDetailPanelProps, "onOpenNode" | "findings" | "nodesById">) {
   const criterion = criterionOf(criterionId, library);
   const domainLabel = domainLabelOf(criterion, library);
   const name = typeof criterion?.name === "string" ? criterion.name : "";
@@ -261,6 +262,7 @@ export function CriterionDetailPanel({
   library,
   section,
   findings,
+  nodesById,
   onOpenNode,
 }: CriterionDetailPanelProps) {
   const criterion = criterionOf(criterionId, library);
@@ -311,6 +313,7 @@ export function CriterionDetailPanel({
     () => findingsOn(findings, criterionId, surface),
     [findings, criterionId, surface],
   );
+  const surfaceTitles = useMemo(() => buildSurfaceTitles(section), [section]);
 
   // Marked only when there is exactly one: opened without a surface, a criterion
   // carries one level per surface, and highlighting five anchors at once would
@@ -490,110 +493,31 @@ export function CriterionDetailPanel({
       )}
 
       {criterionFindings.length > 0 && (
+        // The board, not a list of its own. This panel had a second rendering
+        // of a finding — a bordered row with a severity dot — and two
+        // renderings meant two answers to "which of these is worst": the rail's
+        // marks say it at a glance, and the dot did not say it at all. The
+        // Findings page and the cell panel already share this component; a
+        // criterion is the third place a finding is read and had no business
+        // being the one that looked different.
+        //
+        // `-mx-6` because `PanelSection` gutters its body at `px-6` and the
+        // board carries its own `p-4`; without it the rail sits a gutter and a
+        // half in from the prose above it.
+        //
+        // No `onOpenCriterion`: every row here answers to the criterion in this
+        // panel's own header, so the chip would be a button that re-opens the
+        // panel it is drawn in. `FindingCard` drops it with the handler.
         <PanelSection title="Findings">
-          <div className="flex flex-col gap-2">
-            {criterionFindings.map((finding) => (
-              <FindingRowItem
-                key={finding.id}
-                row={finding}
-                showSurface={surfaceScope(surface) === undefined}
-                surfaceTitle={surfaceTitleOf(finding.surface, section)}
-                onOpenNode={onOpenNode}
-              />
-            ))}
+          <div className="-mx-6">
+            <FindingsBoard
+              rows={criterionFindings}
+              nodesById={nodesById}
+              surfaceTitles={surfaceTitles}
+              onOpenNode={onOpenNode}
+            />
           </div>
         </PanelSection>
-      )}
-    </div>
-  );
-}
-
-interface FindingRowItemProps {
-  row: FindingRow;
-  /**
-   * The surface only earns a line when the panel is not already scoped to one.
-   * A cross-surface row ignores this and carries its own marker either way.
-   */
-  showSurface: boolean;
-  surfaceTitle: string;
-  onOpenNode: (nodeId: string) => void;
-}
-
-/**
- * One finding, at reading depth rather than triage depth.
- *
- * The board is where a finding is worked; here it is context for the criterion,
- * so this row carries what identifies it and the way back into the graph, and
- * leaves the detail and the evidence to the board's card. Resolved and refuted
- * findings are listed too — what a criterion has already survived is part of
- * what it asks — with their status stated so nobody reads history as a to-do.
- */
-function FindingRowItem({ row, showSurface, surfaceTitle, onOpenNode }: FindingRowItemProps) {
-  // Marked beside the title rather than down in the meta line, which is where a
-  // reader stops looking the moment the panel is scoped — down there the
-  // surface is implied, and a contract finding is precisely the row that is not
-  // the scoped surface's. It is also the row least likely to be picked up
-  // anywhere else, since no matrix column carries it.
-  const crossSurface = row.surface === CROSS_SURFACE_ID;
-
-  return (
-    <div className="flex flex-col gap-1.5 rounded-md border p-3">
-      <div className="flex items-start gap-2">
-        <span
-          className={cn("mt-1.5 size-2 shrink-0 rounded-full", SEVERITY_DOT[row.severity])}
-          aria-hidden="true"
-        />
-        <span className="flex-1 text-sm leading-relaxed">{row.title}</span>
-        {crossSurface && (
-          <Badge variant="outline" className="shrink-0">
-            Cross-surface
-          </Badge>
-        )}
-        {!row.open && (
-          <Badge variant="outline" className="shrink-0">
-            {row.status}
-          </Badge>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-4 text-xs text-muted-foreground">
-        <SeverityPill
-          impact={row.impact}
-          likelihood={row.likelihood}
-          risk={row.risk}
-          severity={row.severity}
-        />
-        <span>
-          ·{" "}
-          <ScaleChip term={PRIORITY_TERM[row.priority]} hint={PRIORITY_GLOSS[row.priority]}>
-            {row.priority}
-          </ScaleChip>
-        </span>
-        <span>· cost {row.cost}</span>
-        {showSurface && !crossSurface && surfaceTitle !== "" && <span>· {surfaceTitle}</span>}
-        {row.issueUrl && (
-          <a
-            href={row.issueUrl}
-            target="_blank"
-            rel="nofollow noreferrer"
-            className="underline underline-offset-4 hover:text-foreground"
-          >
-            Issue
-          </a>
-        )}
-      </div>
-      {row.nodeIds.length > 0 && (
-        <div className="flex flex-wrap gap-1 pl-4">
-          {row.nodeIds.map((nodeId) => (
-            <button
-              key={nodeId}
-              type="button"
-              onClick={() => onOpenNode(nodeId)}
-              className="rounded bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              {nodeId}
-            </button>
-          ))}
-        </div>
       )}
     </div>
   );

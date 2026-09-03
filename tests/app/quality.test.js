@@ -279,6 +279,24 @@ assert(
 const resolved = filterFindings(rows, { ...EMPTY_QUALITY_FILTERS, status: "resolved" });
 assert(resolved.every((row) => row.status === "resolved"), "status narrows to that status");
 
+// The two filter sets are not the same set, and the difference is the point:
+// EMPTY narrows nothing (three panels borrow it purely for the comparator),
+// DEFAULT is what the board opens on — the triage queue, minus decided work.
+const { DEFAULT_QUALITY_FILTERS } = loadQuality();
+assert(EMPTY_QUALITY_FILTERS.status === "all", "EMPTY still narrows nothing on status");
+assert(DEFAULT_QUALITY_FILTERS.status === "open", "the board's default narrows to open");
+const defaulted = filterFindings(rows, DEFAULT_QUALITY_FILTERS);
+assert(defaulted.every((row) => row.open), "the default set hides every decided finding");
+assert(
+  defaulted.length === filterFindings(rows, EMPTY_QUALITY_FILTERS).filter((row) => row.open).length,
+  "and hides nothing else — same rows the open predicate keeps",
+);
+assert(
+  defaulted.map((row) => row.id).join(",") ===
+    filterFindings(rows, { ...DEFAULT_QUALITY_FILTERS, sort: "priority" }).map((row) => row.id).join(","),
+  "the default sort is still priority — narrowing on status did not reorder the board",
+);
+
 
 // =========================== buildCellCriteria ===============================
 
