@@ -34,31 +34,12 @@ import { generateNodeId, edgeId } from "@/lib/utils/id";
 import { mapProductId, type ProductGraph } from "@/lib/utils/product-scope";
 import { buildNodeFindingIndex } from "@/lib/utils/quality";
 import { buildSystemGraph } from "@/lib/utils/system-graph";
-import type { ElkLayoutOptions } from "@/lib/utils/elk-layout";
+import { systemLayoutOptions, type SystemLayoutMode } from "@/lib/utils/system-layout-options";
 
 interface SystemMapProps {
   projectId: string;
   definition: MapDefinition;
 }
-
-// Tiered: views feed APIs feed data models — pin the tiers regardless of edge
-// shape (spike-verified partitioning; orphans stay in their tier).
-const SYSTEM_TIERED_LAYOUT_OPTIONS: ElkLayoutOptions = {
-  algorithm: "layered",
-  direction: "DOWN",
-  layoutEdgeTypes: ["calls", "displays", "queries"],
-  partitionByNodeType: { view: 0, apiEndpoint: 1, dataModel: 2 },
-};
-
-// Organic: force-directed structure with overlap removal — at whole-product
-// scale the tiered rendition degenerates into an unreadably wide ribbon
-// (docs/spec/maps.md § MapDefinition, layout.algorithm).
-const SYSTEM_ORGANIC_LAYOUT_OPTIONS: ElkLayoutOptions = {
-  algorithm: "organic",
-  layoutEdgeTypes: ["calls", "displays", "queries"],
-};
-
-type SystemLayoutMode = "tiered" | "organic";
 
 /**
  * The System map: the model-centered reading — views, API endpoints, and data
@@ -171,10 +152,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
     [definition.id, projectBundle, updateProject],
   );
 
-  const { nodes, layoutVersion } = useElkLayout(
-    graph,
-    layoutMode === "tiered" ? SYSTEM_TIERED_LAYOUT_OPTIONS : SYSTEM_ORGANIC_LAYOUT_OPTIONS,
-  );
+  const { nodes, layoutVersion } = useElkLayout(graph, systemLayoutOptions(layoutMode));
 
   // Re-frame the viewport when a layout the user asked for lands: armed at
   // mount (ReactFlow's one-time fitView fires while nodes still sit at the
