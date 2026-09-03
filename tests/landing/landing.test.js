@@ -8,7 +8,7 @@ const fs = require("fs");
 const path = require("path");
 const { loadLanding } = require("./load-landing");
 
-const { PREVIEW_IDS, PREVIEW_META, PARTS, SECTIONS, FIXTURES, sliceBundle } = loadLanding();
+const { PREVIEW_IDS, PREVIEW_META, PARTS, SECTIONS, FIXTURES, sliceBundle, prepareBundle } = loadLanding();
 
 let failures = 0;
 function assert(cond, message) {
@@ -72,6 +72,35 @@ for (const [previewId, fixture] of Object.entries(FIXTURES)) {
   assert(!stray, "slice keeps only events about kept nodes (plus node-less events)");
   assert((s.journal ?? []).some((e) => e.type === "release.tagged"), "slice keeps release.tagged events");
   assert(s.project === b.project, "slice reuses the project record");
+}
+
+// Prepare: client previews receive only their subgraph
+{
+  const self = SEEDS["self-map"];
+  const journey = prepareBundle("journey-map", self);
+  const [rootFlow] = FIXTURES["journey-map"].nodeIds;
+  assert(journey.nodes.some((n) => n.id === rootFlow), "journey slice contains the root flow");
+  assert(journey.nodes.length > 1 && journey.nodes.length < 60, `journey slice is small (${journey.nodes.length} nodes)`);
+
+  const system = prepareBundle("system-map", self);
+  const [anchor] = FIXTURES["system-map"].nodeIds;
+  assert(system.nodes.some((n) => n.id === anchor), "system slice contains the anchor");
+  assert(system.nodes.length > 1 && system.nodes.length < 60, `system slice is small (${system.nodes.length} nodes)`);
+
+  const pebbles = SEEDS.pebbles;
+  const matrix = prepareBundle("acceptance-matrix", pebbles);
+  const matrixIds = new Set(matrix.nodes.map((n) => n.id));
+  for (const id of FIXTURES["acceptance-matrix"].nodeIds) assert(matrixIds.has(id), `matrix slice contains pinned ${id}`);
+  const acceptanceIds = new Set(pebbles.nodes.filter((n) => n.species === "acceptance").map((n) => n.id));
+  const covered = pebbles.edges.filter((e) => e.edge_type === "covers" && acceptanceIds.has(e.source_id)).map((e) => e.target_id);
+  assert(covered.length > 0 && covered.every((id) => matrixIds.has(id)), "matrix slice contains every covered node");
+  assert([...acceptanceIds].every((id) => matrixIds.has(id)), "matrix slice contains every acceptance");
+
+  for (const id of PREVIEW_IDS) {
+    if (id === "journey-map" || id === "system-map" || id === "acceptance-matrix") continue;
+    const seed = SEEDS[PREVIEW_META[id].source];
+    assert(prepareBundle(id, seed).nodes.length === seed.nodes.length, `${id}: prepare leaves the bundle whole`);
+  }
 }
 
 if (failures > 0) { console.log(`\n${failures} failure(s)`); process.exit(1); }

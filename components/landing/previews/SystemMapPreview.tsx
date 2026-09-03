@@ -2,27 +2,20 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useMemo, useState } from "react";
-import { buildProductUsageIndex, resolveMapDisplay, type MapDefinition } from "@arkaik/schema";
-import { FIXTURES } from "@/components/landing/fixtures";
+import { buildProductUsageIndex, resolveMapDisplay } from "@arkaik/schema";
+import { SYSTEM_DEFINITION } from "@/components/landing/previews/definitions";
 import type { PreviewProps } from "@/components/landing/previews/types";
 import { resolveProductScope, type ProductGraph } from "@/lib/utils/product-scope";
 
 // Client-only, for the same reason as JourneyMapPreview.
 const SystemCanvas = dynamic(() => import("@/components/graph/SystemCanvas").then((m) => m.SystemCanvas), { ssr: false });
 
-const [ANCHOR_ID] = FIXTURES["system-map"].nodeIds!;
+const DEFINITION = SYSTEM_DEFINITION;
 
-const DEFINITION: MapDefinition = {
-  id: "landing-system",
-  kind: "system",
-  title: "System",
-  root_node_id: ANCHOR_ID,
-  // One hop around the anchor: the views and endpoints that touch this model.
-  depth: 1,
-  layout: { algorithm: "organic" },
-};
-
-/** One hop around a data model of Arkaik's own map: the views that render it, read-only. */
+/**
+ * One hop around a data model of Arkaik's own map: the views that render it,
+ * read-only. The bundle arrives already sliced to that hop (lib/landing/prepare.ts).
+ */
 export function SystemMapPreview({ bundle }: PreviewProps) {
   const props = useMemo(() => {
     const nodesById = new Map(bundle.nodes.map((node) => [node.id, node]));

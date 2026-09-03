@@ -3,6 +3,7 @@ import { LandingPart } from "@/components/landing/LandingPart";
 import { LandingSection } from "@/components/landing/LandingSection";
 import { PREVIEW_META } from "@/components/landing/previews/ids";
 import { PREVIEW_REGISTRY } from "@/components/landing/previews/registry";
+import { prepareBundle } from "@/lib/landing/prepare";
 import { loadLandingSeeds } from "@/lib/landing/seeds";
 
 /**
@@ -24,10 +25,11 @@ export function LandingPage() {
               }
               const Preview = PREVIEW_REGISTRY[section.preview];
               const meta = PREVIEW_META[section.preview];
-              const seed = seeds[meta.source];
-              // A client preview that never reads the journal must not carry it
-              // across the RSC boundary; the catalogue says which ones do.
-              const bundle = meta.journal ? seed : { ...seed, journal: [] };
+              // Client previews get only the subgraph they draw, and one that
+              // never reads the journal must not carry it across the RSC
+              // boundary either; the catalogue says which ones do.
+              const prepared = prepareBundle(section.preview, seeds[meta.source]);
+              const bundle = meta.journal ? prepared : { ...prepared, journal: [] };
               return <LandingSection key={section.id} section={section} preview={<Preview bundle={bundle} />} />;
             })}
           </LandingPart>

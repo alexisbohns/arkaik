@@ -2,8 +2,8 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useMemo, useState } from "react";
-import { buildProductUsageIndex, resolveMapDisplay, type MapDefinition } from "@arkaik/schema";
-import { FIXTURES } from "@/components/landing/fixtures";
+import { buildProductUsageIndex, resolveMapDisplay } from "@arkaik/schema";
+import { JOURNEY_DEFINITION } from "@/components/landing/previews/definitions";
 import type { PreviewProps } from "@/components/landing/previews/types";
 import { computeViewApiRelations, resolveJourneySelection } from "@/lib/utils/journey-graph";
 import { resolveProductScope, type ProductGraph } from "@/lib/utils/product-scope";
@@ -12,13 +12,13 @@ import { resolveProductScope, type ProductGraph } from "@/lib/utils/product-scop
 // cannot know, and React Flow is not needed for first paint.
 const JourneyCanvas = dynamic(() => import("@/components/graph/JourneyCanvas").then((m) => m.JourneyCanvas), { ssr: false });
 
-const [ROOT_FLOW_ID] = FIXTURES["journey-map"].nodeIds!;
-
-const DEFINITION: MapDefinition = { id: "landing-journey", kind: "journey", title: "Journey", root_node_id: ROOT_FLOW_ID };
+const DEFINITION = JOURNEY_DEFINITION;
+const ROOT_FLOW_ID = DEFINITION.root_node_id!;
 
 /**
  * One flow of Arkaik's own journey, expanded, read-only. Every input is a pure
  * function over the bundle — the same ones `JourneyMap` calls through hooks.
+ * The bundle arrives already sliced to the flow's closure (lib/landing/prepare.ts).
  */
 export function JourneyMapPreview({ bundle }: PreviewProps) {
   const props = useMemo(() => {
