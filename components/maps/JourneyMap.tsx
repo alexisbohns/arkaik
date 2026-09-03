@@ -180,7 +180,7 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     [dataEdges, nodesById],
   );
 
-  // On `quality` alone, not on the bundle: this feeds `buildJourneyGraph`, and a
+  // On `quality` alone, not on the bundle: this feeds `JourneyCanvas`'s graph build, and a
   // fresh map here would rebuild the graph — and re-run ELK — every time an
   // unrelated corner of the project changed. Projects with no audit memoize
   // an empty map once and never think about it again.

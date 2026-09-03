@@ -315,9 +315,9 @@ Replace the `<Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} o
 
 ```tsx
           <JourneyCanvas
-            dataNodes={dataNodes}
+            dataNodes={selection.nodes}
             dataEdges={dataEdges}
-            nodesById={nodesById}
+            nodesById={selection.nodesById}
             composeParentByChild={selection.composeParentByChild}
             explicitRootNode={explicitRootNode}
             composeClosure={composeClosure}
@@ -336,7 +336,7 @@ Replace the `<Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} o
           />
 ```
 
-Check the old `useMemo` for the exact source of `composeParentByChild` (it is `selection.composeParentByChild` today) and `explicitRootNode` and pass the same values.
+The old `useMemo` passes the product-scoped `selection.nodes` / `selection.nodesById` (not the raw hook values) and `selection.composeParentByChild`; pass exactly what it passed. Its `emptyReason` guard and the module-level `EMPTY_GRAPH` become unreachable (the canvas is only mounted in the non-empty branch) and are deleted.
 
 - [ ] **Step 4: Fix imports**
 
