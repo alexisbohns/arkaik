@@ -34,7 +34,7 @@ export function UseCasePicker({ onSelect, selected = null, className }: UseCaseP
             key={uc.id}
             type="button"
             onClick={() => onSelect(uc.id)}
-            aria-pressed={isSelected}
+            aria-pressed={selected !== null ? isSelected : undefined}
             className={cn(
               "flex flex-col items-start gap-3 rounded-xl border bg-card p-6 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               isSelected && "border-foreground",
