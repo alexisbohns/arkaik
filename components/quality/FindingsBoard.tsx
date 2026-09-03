@@ -42,7 +42,8 @@ interface FindingsBoardProps {
   /** `surface id -> title`, built once on the page and handed to every entry. */
   surfaceTitles: ReadonlyMap<string, string>;
   onOpenNode: (nodeId: string) => void;
-  onOpenCriterion: (criterionId: string, surface: string) => void;
+  /** Passed straight through; omitted inside the criterion panel — see `FindingCard`. */
+  onOpenCriterion?: (criterionId: string, surface: string) => void;
 }
 
 /**

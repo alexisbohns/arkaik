@@ -243,6 +243,7 @@ export function ProjectPanels({
               library={qualityLibrary}
               section={qualitySection}
               findings={qualityFindings}
+              nodesById={nodesById}
               // From this panel's own depth, like every other navigation in the
               // stack: following a finding into the graph opens the node ABOVE
               // the criterion rather than in place of it, which is what depth 0
