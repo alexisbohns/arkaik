@@ -32,7 +32,8 @@ for (const id of PREVIEW_IDS) {
   const meta = PREVIEW_META[id];
   assert(meta && (meta.source === "self-map" || meta.source === "pebbles"), `${id}: names a seed source`);
   assert(meta && Number.isInteger(meta.height) && meta.height >= 160, `${id}: fixed frame height`);
-  assert(meta && typeof meta.breadcrumb === "string" && meta.breadcrumb.length > 0, `${id}: breadcrumb`);
+  assert(meta && Array.isArray(meta.breadcrumb) && meta.breadcrumb.length > 0, `${id}: breadcrumb`);
+  assert(meta && typeof meta.journal === "boolean", `${id}: journal flag`);
 }
 
 // Content

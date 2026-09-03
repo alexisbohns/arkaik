@@ -2,8 +2,8 @@ import type { ReactNode } from "react";
 import { PreviewErrorBoundary } from "./PreviewErrorBoundary";
 
 interface PreviewFrameProps {
-  /** In-app path shown in the bar, e.g. "Project › Delivery"; from the catalogue. */
-  breadcrumb: string;
+  /** In-app path shown in the bar, e.g. `["Project", "Delivery"]`; from the catalogue. */
+  breadcrumb: readonly string[];
   /** Fixed body height in px, from the catalogue. */
   height: number;
   /** The one-line source line under the frame. */
@@ -19,7 +19,6 @@ interface PreviewFrameProps {
  * breadcrumb and caption arrive as props.
  */
 export function PreviewFrame({ breadcrumb, height, caption, children }: PreviewFrameProps) {
-  const [root, ...rest] = breadcrumb.split(" › ");
   return (
     <figure className="m-0">
       <div className="overflow-hidden rounded-[calc(var(--radius)+2px)] border bg-card shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_-12px_rgba(0,0,0,0.12)]">
@@ -27,12 +26,12 @@ export function PreviewFrame({ breadcrumb, height, caption, children }: PreviewF
           <span aria-hidden className="size-2 rounded-full bg-border" />
           <span aria-hidden className="size-2 rounded-full bg-border" />
           <span className="ml-1.5">
-            Arkaik <span aria-hidden>›</span> {root}
-            {rest.map((crumb, i) => (
-              <span key={crumb}>
+            Arkaik
+            {breadcrumb.map((crumb, i) => (
+              <span key={i}>
                 {" "}
                 <span aria-hidden>›</span>{" "}
-                <span className={i === rest.length - 1 ? "font-medium text-foreground" : undefined}>
+                <span className={i === breadcrumb.length - 1 ? "font-medium text-foreground" : undefined}>
                   {crumb}
                 </span>
               </span>

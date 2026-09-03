@@ -43,6 +43,7 @@ export function JourneyMapPreview({ bundle }: PreviewProps) {
   const [fitSignal, setFitSignal] = useState(0);
   const reframe = useCallback(() => setFitSignal((value) => value + 1), []);
 
+  // The fixture test is the gate; this `null` is not a fallback to design around.
   if (props.selection.emptyReason !== null) return null;
 
   return (

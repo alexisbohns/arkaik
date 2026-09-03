@@ -24,18 +24,24 @@ export interface PreviewMeta {
   source: PreviewSource;
   /** Frame height in px, fixed so canvases mounting never shift the page. */
   height: number;
-  /** The in-app path shown in the frame's title bar, e.g. "Project › Delivery". */
-  breadcrumb: string;
+  /** The in-app path shown in the frame's title bar, e.g. `["Project", "Delivery"]`. */
+  breadcrumb: readonly string[];
+  /**
+   * Whether the preview reads `bundle.journal`; a client preview without it
+   * receives `journal: []`, so the journal never crosses the RSC boundary for
+   * nothing. Informational for server previews, but kept honest.
+   */
+  journal: boolean;
 }
 
 export const PREVIEW_META: Record<PreviewId, PreviewMeta> = {
-  "journey-map":       { source: "self-map", height: 420, breadcrumb: "Maps › Journey" },
-  "system-map":        { source: "self-map", height: 420, breadcrumb: "Maps › System" },
-  "delivery-board":    { source: "pebbles",  height: 360, breadcrumb: "Project › Delivery" },
-  "overview-cards":    { source: "pebbles",  height: 300, breadcrumb: "Project › Overview" },
-  "platform-statuses": { source: "pebbles",  height: 200, breadcrumb: "Library › Views" },
-  "acceptance-matrix": { source: "pebbles",  height: 340, breadcrumb: "Project › Acceptances" },
-  "value-pyramid":     { source: "self-map", height: 320, breadcrumb: "Project › Pyramid" },
-  "decision-chain":    { source: "pebbles",  height: 280, breadcrumb: "Project › Decisions" },
-  "journal-changelog": { source: "self-map", height: 360, breadcrumb: "Project › Changelog" },
+  "journey-map":       { source: "self-map", height: 420, breadcrumb: ["Maps", "Journey"],       journal: false },
+  "system-map":        { source: "self-map", height: 420, breadcrumb: ["Maps", "System"],        journal: false },
+  "delivery-board":    { source: "pebbles", height: 360, breadcrumb: ["Project", "Delivery"],   journal: false },
+  "overview-cards":    { source: "pebbles", height: 300, breadcrumb: ["Project", "Overview"],   journal: true },
+  "platform-statuses": { source: "pebbles", height: 200, breadcrumb: ["Library", "Views"],      journal: false },
+  "acceptance-matrix": { source: "pebbles", height: 340, breadcrumb: ["Project", "Acceptances"], journal: false },
+  "value-pyramid":     { source: "self-map", height: 320, breadcrumb: ["Project", "Pyramid"],    journal: false },
+  "decision-chain":    { source: "pebbles", height: 280, breadcrumb: ["Project", "Decisions"],  journal: true },
+  "journal-changelog": { source: "self-map", height: 360, breadcrumb: ["Project", "Changelog"],  journal: true },
 };

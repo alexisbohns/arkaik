@@ -23,7 +23,11 @@ export function LandingPage() {
                 return <LandingSection key={section.id} section={section} preview={null} />;
               }
               const Preview = PREVIEW_REGISTRY[section.preview];
-              const bundle = seeds[PREVIEW_META[section.preview].source];
+              const meta = PREVIEW_META[section.preview];
+              const seed = seeds[meta.source];
+              // A client preview that never reads the journal must not carry it
+              // across the RSC boundary; the catalogue says which ones do.
+              const bundle = meta.journal ? seed : { ...seed, journal: [] };
               return <LandingSection key={section.id} section={section} preview={<Preview bundle={bundle} />} />;
             })}
           </LandingPart>
