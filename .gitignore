@@ -97,3 +97,4 @@ next-env.d.ts
 # local quality-audit framework (templates, scripts, generated projections) —
 # working material, not part of the repo
 /docs/quality/
+/tests/landing/.test-build-landing/
