@@ -1,12 +1,16 @@
 "use client";
 
-import { useMemo } from "react";
+import dynamic from "next/dynamic";
+import { useCallback, useMemo, useState } from "react";
 import { buildProductUsageIndex, resolveMapDisplay, type MapDefinition } from "@arkaik/schema";
-import { JourneyCanvas } from "@/components/graph/JourneyCanvas";
 import { FIXTURES } from "@/components/landing/fixtures";
 import type { PreviewProps } from "@/components/landing/previews/types";
 import { computeViewApiRelations, resolveJourneySelection } from "@/lib/utils/journey-graph";
 import { resolveProductScope, type ProductGraph } from "@/lib/utils/product-scope";
+
+// Client-only: the canvas styles itself by the resolved theme, which the server
+// cannot know, and React Flow is not needed for first paint.
+const JourneyCanvas = dynamic(() => import("@/components/graph/JourneyCanvas").then((m) => m.JourneyCanvas), { ssr: false });
 
 const [ROOT_FLOW_ID] = FIXTURES["journey-map"].nodeIds!;
 
@@ -34,6 +38,11 @@ export function JourneyMapPreview({ bundle }: PreviewProps) {
     };
   }, [bundle]);
 
+  // Re-frame once ELK lands: the canvas's one-time fitView runs over the
+  // {0,0} placeholders, which would leave the preview zoomed onto one card.
+  const [fitSignal, setFitSignal] = useState(0);
+  const reframe = useCallback(() => setFitSignal((value) => value + 1), []);
+
   if (props.selection.emptyReason !== null) return null;
 
   return (
@@ -49,6 +58,8 @@ export function JourneyMapPreview({ bundle }: PreviewProps) {
       viewApiRelationsByViewId={props.viewApiRelationsByViewId}
       scope={props.scope}
       minimapColor={props.display.minimap_color}
+      fitSignal={fitSignal}
+      onLayout={reframe}
       readOnly
     />
   );

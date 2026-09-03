@@ -18,7 +18,7 @@ interface LandingSectionProps {
 export function LandingSection({ section, preview }: LandingSectionProps) {
   const meta = section.preview === "none" ? null : PREVIEW_META[section.preview];
   return (
-    <section id={section.id} className="scroll-mt-24">
+    <section id={section.id} className="min-w-0 scroll-mt-24">
       <h3 className="text-xl font-semibold tracking-tight">{section.title}</h3>
       <p className="mt-2 max-w-prose text-[15px] leading-relaxed text-foreground">{section.why}</p>
       {meta && preview !== null && (

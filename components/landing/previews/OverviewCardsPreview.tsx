@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { OverviewLayoutProvider } from "@/components/overview/OverviewLayoutContext";
 import { PlatformGaugesCard } from "@/components/overview/PlatformGaugesCard";
 import { ReleasePulseCard } from "@/components/overview/ReleasePulseCard";
 import type { PreviewProps } from "@/components/landing/previews/types";
@@ -19,9 +20,12 @@ export function OverviewCardsPreview({ bundle }: PreviewProps) {
   }, [bundle]);
 
   return (
+    // Grid, not rows: the rows rendition assumes the Overview page's own grid.
+    <OverviewLayoutProvider value="grid">
     <div className="grid h-full gap-4 overflow-hidden p-4 lg:grid-cols-2">
       <PlatformGaugesCard rollup={props.rollup} platforms={props.platforms} projectId={bundle.project.id} />
       <ReleasePulseCard releases={props.releases.slice(0, 3)} projectId={bundle.project.id} />
     </div>
+    </OverviewLayoutProvider>
   );
 }

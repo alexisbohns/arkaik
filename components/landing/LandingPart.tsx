@@ -21,7 +21,7 @@ export function LandingPart({ part, number, total, sections, children }: Landing
   const kicker = `PART ${String(number).padStart(2, "0")} · OF ${String(total).padStart(2, "0")}`;
   return (
     <section aria-labelledby={`part-${part.id}`} className="grid gap-10 py-20 lg:grid-cols-[1fr_1.7fr] lg:gap-16">
-      <div>
+      <div className="min-w-0">
         <div className="lg:sticky lg:top-24">
           <p className="font-mono text-[11px] tracking-[0.14em] text-muted-foreground">{kicker}</p>
           <h2 id={`part-${part.id}`} className={`${gochiHand.className} mt-2 text-[40px] leading-none text-foreground`}>
@@ -33,7 +33,7 @@ export function LandingPart({ part, number, total, sections, children }: Landing
           </div>
         </div>
       </div>
-      <div className="flex flex-col gap-16">{children}</div>
+      <div className="flex min-w-0 flex-col gap-16">{children}</div>
     </section>
   );
 }
