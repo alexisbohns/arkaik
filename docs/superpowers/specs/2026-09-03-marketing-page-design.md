@@ -68,7 +68,7 @@ lives in `components/landing/content.ts`.
 | C2 | `findings-board` | real | `FindingsBoard` with two `FindingCard`s plus one `quality.signal.tripped` `FeedRow` |
 | D1 | `agent-skill-diff` | tailored | a diff-styled block: a code change left, the node patch and journal event it produced right |
 | D2 | `mcp-diagram` + `mcp-call` | tailored | an inline SVG diagram (§ D2 diagram) and a tool call with its real JSON response |
-| D3 | `prompt-builder` | tailored | the use-case picker (`PromptBuilderForm`'s picker primitive) and a truncated generated prompt from `assemblePrompt` |
+| D3 | `prompt-builder` | tailored | the use-case picker (`UseCasePicker`, extracted from the generate page) and a truncated generated prompt from `assemblePrompt` |
 | E1 | `none` | — | four static cards |
 | E2 | `journey-map` (full) | real | full-width read-only Arkaik journey, link to the public self-map |
 | E3 | `none` | — | CTA row |
@@ -248,8 +248,9 @@ constructs its own data through `useNodes`, `useEdges`, `useProject`,
 - `JourneyMap` keeps the hooks, panels and editing and becomes the
   controller.
 - `JourneyCanvas` is the new presentational component: props are the
-  constructed graph (from `lib/utils/journey-graph.ts`), display settings,
-  `readOnly`, and callbacks. The controller renders it. The preview renders it
+  graph builder's inputs (`JourneyGraphParams` from
+  `lib/utils/journey-graph.ts`), display settings, `readOnly`, and callbacks;
+  it builds the graph and runs ELK itself. The controller renders it. The preview renders it
   with the fixture slice.
 
 Same split for `SystemMap` → `SystemCanvas`.
@@ -259,8 +260,8 @@ Same split for `SystemMap` → `SystemCanvas`.
 props-driven and need no change beyond, where missing, a `readOnly` prop that
 hides edit affordances.
 
-The prompt builder's use-case picker is extracted from `PromptBuilderForm`
-into its own primitive so D3 can render it without the form state.
+The generate page's use-case picker is extracted from `app/generate/page.tsx`
+into `components/generate/UseCasePicker.tsx` so D3 can render it without the form state.
 
 ### Data flow
 

@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-03-marketing-page-design.md` § Refactors this requires.
 
+**Status:** implemented; the shipped `JourneyCanvas`/`SystemCanvas` latch their layout callbacks in a ref and fire only on a ready layout (a review improvement over the snippets below).
+
 **Shipping shape:** this is **PR 1 of a 4-part `gh stack`** (spec § Shipping). Branch: `marketing-1-canvas-split`, based on `main`. Chore-only: **no Lab Note**; add the `no-lab-note` label if the advisory reminder comments. Plans for parts 2–4 are written once this part lands, because their previews import the seams created here.
 
 **Repo rails every task must respect:**
@@ -39,7 +41,7 @@
 
 ### Task 1: Branch
 
-- [ ] **Step 1: Create the branch from main**
+- [x] **Step 1: Create the branch from main**
 
 ```bash
 git checkout main && git pull --ff-only
@@ -55,7 +57,7 @@ Expected: `Switched to a new branch 'marketing-1-canvas-split'`.
 **Files:**
 - Modify: `components/graph/Canvas.tsx`
 
-- [ ] **Step 1: Add the prop to the interface**
+- [x] **Step 1: Add the prop to the interface**
 
 In `CanvasProps`, after `minimapColor`, add:
 
@@ -69,11 +71,11 @@ In `CanvasProps`, after `minimapColor`, add:
   readOnly?: boolean;
 ```
 
-- [ ] **Step 2: Destructure it with a default**
+- [x] **Step 2: Destructure it with a default**
 
 In the `Canvas` function signature, after `minimapColor,` add `readOnly = false,`.
 
-- [ ] **Step 3: Apply it to React Flow**
+- [x] **Step 3: Apply it to React Flow**
 
 Replace the `<ReactFlow ...>` opening tag's prop list and its children so they read:
 
@@ -106,12 +108,12 @@ Replace the `<ReactFlow ...>` opening tag's prop list and its children so they r
 
 `onNodeClick` stays wired in read-only mode: the preview may still centre on a card, and the callback is a no-op when the caller passes none.
 
-- [ ] **Step 4: Typecheck and lint**
+- [x] **Step 4: Typecheck and lint**
 
 Run: `npx tsc --noEmit && npm run lint`
 Expected: no errors (warnings that already exist on `main` are fine).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add components/graph/Canvas.tsx
@@ -125,7 +127,7 @@ git commit -m "Canvas: readOnly prop turns off editing, controls and minimap"
 **Files:**
 - Create: `components/graph/JourneyCanvas.tsx`
 
-- [ ] **Step 1: Create the component**
+- [x] **Step 1: Create the component**
 
 ```tsx
 "use client";
@@ -245,12 +247,12 @@ export function JourneyCanvas({
 }
 ```
 
-- [ ] **Step 2: Typecheck**
+- [x] **Step 2: Typecheck**
 
 Run: `npx tsc --noEmit`
 Expected: no errors. If `JourneyGraphParams` is not exported from `lib/utils/journey-graph.ts`, it is (line 168) — do not duplicate it.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add components/graph/JourneyCanvas.tsx
@@ -266,7 +268,7 @@ git commit -m "JourneyCanvas: the Journey map's presentational half"
 
 The controller currently does, in order: `useMemo(buildJourneyGraph(...))` (the block ending around line 715 whose dependency list starts with `composeClosure`), `useElkLayout(graphData)`, an effect that watches `layoutedNodes` for the pending-fit marker, then `<Canvas nodes={nodes} edges={edges} ... />` inside `PageShell`.
 
-- [ ] **Step 1: Keep the handlers object, drop the build**
+- [x] **Step 1: Keep the handlers object, drop the build**
 
 Find the `graphData` `useMemo`. It builds an object literal of params and a `handlers` object. Replace the whole `useMemo` with a memoised **handlers** object only:
 
@@ -288,7 +290,7 @@ Find the `graphData` `useMemo`. It builds an object literal of params and a `han
 
 These are the five handlers in the current `handlers:` block (lines 697–704), verbatim.
 
-- [ ] **Step 2: Replace the layout hook and the pending-fit effect with an `onLayout` callback**
+- [x] **Step 2: Replace the layout hook and the pending-fit effect with an `onLayout` callback**
 
 Delete the line `const { nodes: layoutedNodes } = useElkLayout(graphData);` and the `useEffect` beneath it that reads `pendingFitFlowRef`. Delete `const nodes = layoutedNodes;` and `const edges = graphData.edges;`. Add in their place:
 
@@ -309,7 +311,7 @@ Delete the line `const { nodes: layoutedNodes } = useElkLayout(graphData);` and 
   }, []);
 ```
 
-- [ ] **Step 3: Render `JourneyCanvas`**
+- [x] **Step 3: Render `JourneyCanvas`**
 
 Replace the `<Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} onEdgeClick={handleEdgeClick} fitSignal={fitSignal} scope={scope} minimapColor={display.minimap_color} />` line with:
 
@@ -338,7 +340,7 @@ Replace the `<Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} o
 
 The old `useMemo` passes the product-scoped `selection.nodes` / `selection.nodesById` (not the raw hook values) and `selection.composeParentByChild`; pass exactly what it passed. Its `emptyReason` guard and the module-level `EMPTY_GRAPH` become unreachable (the canvas is only mounted in the non-empty branch) and are deleted.
 
-- [ ] **Step 4: Fix imports**
+- [x] **Step 4: Fix imports**
 
 Remove `Canvas` and `useElkLayout` imports. Remove `buildJourneyGraph` from the `@/lib/utils/journey-graph` import if nothing else in the file uses it (keep the other names). Add:
 
@@ -348,12 +350,12 @@ import { JourneyCanvas } from "@/components/graph/JourneyCanvas";
 
 Keep `type Node` from `@xyflow/react` (used by `handleLayout`); drop `type Edge` if unused.
 
-- [ ] **Step 5: Typecheck, lint, golden tests**
+- [x] **Step 5: Typecheck, lint, golden tests**
 
 Run: `npx tsc --noEmit && npm run lint && npm run test:journey-graph`
 Expected: no type errors, 0 lint errors, every `PASS:` line and `failures: 0` (or no `FAIL:` lines).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add components/maps/JourneyMap.tsx
@@ -368,7 +370,7 @@ git commit -m "JourneyMap: render JourneyCanvas; controller keeps hooks and dial
 - Create: `lib/utils/system-layout-options.ts`
 - Modify: `components/maps/SystemMap.tsx:40-60`
 
-- [ ] **Step 1: Create the module**
+- [x] **Step 1: Create the module**
 
 ```ts
 import type { ElkLayoutOptions } from "@/lib/utils/elk-layout";
@@ -397,7 +399,7 @@ export function systemLayoutOptions(mode: SystemLayoutMode): ElkLayoutOptions {
 }
 ```
 
-- [ ] **Step 2: Remove the two consts and the `SystemLayoutMode` type from `SystemMap.tsx`**
+- [x] **Step 2: Remove the two consts and the `SystemLayoutMode` type from `SystemMap.tsx`**
 
 Delete lines 44–60 of `components/maps/SystemMap.tsx` (the two option objects, their comments, and `type SystemLayoutMode`). Replace the `import type { ElkLayoutOptions } from "@/lib/utils/elk-layout";` line with:
 
@@ -407,12 +409,12 @@ import { systemLayoutOptions, type SystemLayoutMode } from "@/lib/utils/system-l
 
 Replace the `useElkLayout(graph, layoutMode === "tiered" ? SYSTEM_TIERED_LAYOUT_OPTIONS : SYSTEM_ORGANIC_LAYOUT_OPTIONS)` call with `useElkLayout(graph, systemLayoutOptions(layoutMode))` (this call moves again in Task 7; keep it compiling now).
 
-- [ ] **Step 3: Typecheck**
+- [x] **Step 3: Typecheck**
 
 Run: `npx tsc --noEmit`
 Expected: no errors.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add lib/utils/system-layout-options.ts components/maps/SystemMap.tsx
@@ -426,7 +428,7 @@ git commit -m "System map layout presets move to lib/utils for reuse"
 **Files:**
 - Create: `components/graph/SystemCanvas.tsx`
 
-- [ ] **Step 1: Create the component**
+- [x] **Step 1: Create the component**
 
 ```tsx
 "use client";
@@ -520,12 +522,12 @@ export function SystemCanvas({
 }
 ```
 
-- [ ] **Step 2: Typecheck**
+- [x] **Step 2: Typecheck**
 
 Run: `npx tsc --noEmit`
 Expected: no errors. If `SystemGraphHandlers` or `SystemGraphScope` is not exported from `lib/utils/system-graph.ts`, export the existing interface (do not redefine it).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add components/graph/SystemCanvas.tsx
@@ -539,7 +541,7 @@ git commit -m "SystemCanvas: the System map's presentational half"
 **Files:**
 - Modify: `components/maps/SystemMap.tsx`
 
-- [ ] **Step 1: Replace the graph build with a memoised handlers object**
+- [x] **Step 1: Replace the graph build with a memoised handlers object**
 
 Replace the `const graph = useMemo(() => buildSystemGraph(...), [...])` block with:
 
@@ -551,7 +553,7 @@ Replace the `const graph = useMemo(() => buildSystemGraph(...), [...])` block wi
   const systemScope = useMemo(() => ({ scope, graph: productGraph }), [productGraph, scope]);
 ```
 
-- [ ] **Step 2: Move the layout-version effect behind a callback**
+- [x] **Step 2: Move the layout-version effect behind a callback**
 
 Delete `const { nodes, layoutVersion } = useElkLayout(graph, systemLayoutOptions(layoutMode));`. Replace the `useEffect` that watches `layoutVersion` with:
 
@@ -569,7 +571,7 @@ Delete `const { nodes, layoutVersion } = useElkLayout(graph, systemLayoutOptions
 
 Keep `pendingFitRef`, `fitSignal`, `reframe` and `handleLayoutModeChange` as they are. (The `requestAnimationFrame` dance existed to survive StrictMode's doubled effects; a callback fires once per layout, so it is no longer needed.)
 
-- [ ] **Step 3: Render `SystemCanvas`**
+- [x] **Step 3: Render `SystemCanvas`**
 
 Replace the `<Canvas ... />` element inside `PageShell` with:
 
@@ -595,7 +597,7 @@ Replace the `<Canvas ... />` element inside `PageShell` with:
         />
 ```
 
-- [ ] **Step 4: Fix imports**
+- [x] **Step 4: Fix imports**
 
 Remove `Canvas`, `useElkLayout`, `buildSystemGraph`, `systemLayoutOptions` imports (keep `type SystemLayoutMode`). Add:
 
@@ -603,12 +605,12 @@ Remove `Canvas`, `useElkLayout`, `buildSystemGraph`, `systemLayoutOptions` impor
 import { SystemCanvas } from "@/components/graph/SystemCanvas";
 ```
 
-- [ ] **Step 5: Typecheck, lint, golden tests**
+- [x] **Step 5: Typecheck, lint, golden tests**
 
 Run: `npx tsc --noEmit && npm run lint && npm run test:journey-graph && npm run test:spotlight`
 Expected: no type errors, 0 lint errors, no `FAIL:` lines.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add components/maps/SystemMap.tsx
@@ -623,7 +625,7 @@ git commit -m "SystemMap: render SystemCanvas; controller keeps hooks and dialog
 - Create: `components/generate/UseCasePicker.tsx`
 - Modify: `app/generate/page.tsx`
 
-- [ ] **Step 1: Create the component**
+- [x] **Step 1: Create the component**
 
 ```tsx
 "use client";
@@ -680,7 +682,7 @@ export function UseCasePicker({ onSelect, selected = null, className }: UseCaseP
 }
 ```
 
-- [ ] **Step 2: Use it on the generate page**
+- [x] **Step 2: Use it on the generate page**
 
 In `app/generate/page.tsx`, delete the `USE_CASE_ICONS` const and the `Lightbulb, FileText, GitBranch` names from the `lucide-react` import (keep `ArrowLeft`). Replace the `<div className="grid w-full gap-4 sm:grid-cols-3">…</div>` block (the `USE_CASES.map` grid) with:
 
@@ -696,12 +698,12 @@ import { UseCasePicker } from "@/components/generate/UseCasePicker";
 
 If `USE_CASES` is now only used by the `USE_CASES.find(...)` label lookup, keep its import; if unused, remove it.
 
-- [ ] **Step 3: Typecheck and lint**
+- [x] **Step 3: Typecheck and lint**
 
 Run: `npx tsc --noEmit && npm run lint`
 Expected: no errors.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add components/generate/UseCasePicker.tsx app/generate/page.tsx
@@ -715,17 +717,17 @@ git commit -m "UseCasePicker: the generate page's use-case cards as a component"
 **Files:**
 - Modify: `docs/architecture.md` (the `components/graph/` entry in the component map)
 
-- [ ] **Step 1: Regenerate and check for drift**
+- [x] **Step 1: Regenerate and check for drift**
 
 Run: `npm run generate && git status --short`
 Expected: either clean, or only generated files changed (commit those: `git add -A && git commit -m "chore: regenerate"`).
 
-- [ ] **Step 2: Production build**
+- [x] **Step 2: Production build**
 
 Run: `npm run build`
 Expected: `✓ Compiled successfully` and no type errors. `/generate` must still prerender behind its Suspense boundary (the build fails loudly if not).
 
-- [ ] **Step 3: Document the seam**
+- [x] **Step 3: Document the seam**
 
 In `docs/architecture.md`, find the component map entry for `components/graph/Canvas.tsx` and add beneath it:
 
@@ -736,7 +738,7 @@ In `docs/architecture.md`, find the component map entry for `components/graph/Ca
 
 If `docs/architecture.md` has no such entry, add the two lines to the `components/graph/` block in `README.md` § Folder Structure instead.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/architecture.md README.md
@@ -752,13 +754,13 @@ There is no React render harness, so this is the check that the two controllers 
 **Files:**
 - Create (scratchpad, not committed): `$SCRATCHPAD/smoke-canvas.mjs`
 
-- [ ] **Step 1: Install Playwright in the scratchpad**
+- [x] **Step 1: Install Playwright in the scratchpad**
 
 ```bash
 cd "$SCRATCHPAD" && npm init -y >/dev/null && npm i playwright@1 >/dev/null && npx playwright install chromium
 ```
 
-- [ ] **Step 2: Start the dev server in the background**
+- [x] **Step 2: Start the dev server in the background**
 
 ```bash
 cd /Users/alexis/code/arkaik && npm run dev
@@ -766,7 +768,7 @@ cd /Users/alexis/code/arkaik && npm run dev
 
 (Run with `run_in_background`; wait for `Ready` in its output.)
 
-- [ ] **Step 3: Write the smoke script**
+- [x] **Step 3: Write the smoke script**
 
 ```js
 import { chromium } from "playwright";
@@ -796,7 +798,7 @@ await browser.close();
 process.exit(errors.length === 0 && cards === 3 ? 0 : 1);
 ```
 
-- [ ] **Step 4: Run it**
+- [x] **Step 4: Run it**
 
 Run: `cd "$SCRATCHPAD" && node smoke-canvas.mjs`
 Expected:
@@ -810,7 +812,7 @@ page errors: 0
 
 Open `journey.png` and `system.png` with the Read tool and confirm cards, edges, controls and the minimap are drawn (this part is not read-only, so both must be present).
 
-- [ ] **Step 5: Stop the dev server**
+- [x] **Step 5: Stop the dev server**
 
 Stop the background task started in Step 2.
 
@@ -818,7 +820,7 @@ Stop the background task started in Step 2.
 
 ### Task 11: Open PR 1 of the stack
 
-- [ ] **Step 1: Push and open the PR with `gh stack`**
+- [x] **Step 1: Push and open the PR with `gh stack`**
 
 Use the `gh-stack` skill. Title: `marketing 1: JourneyCanvas, SystemCanvas, UseCasePicker seams`. Body:
 
@@ -836,7 +838,7 @@ No user-visible change.
 
 Add the `no-lab-note` label.
 
-- [ ] **Step 2: Read the PR comments**
+- [x] **Step 2: Read the PR comments**
 
 Run: `gh pr view --comments`
 Expected: no Lab Note reminder, or one silenced by the label. CI green on lint, build and the test jobs.
