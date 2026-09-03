@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { type Node, type Edge, type NodeMouseHandler, type Connection, type EdgeMouseHandler } from "@xyflow/react";
+import { type Node, type NodeMouseHandler, type Connection, type EdgeMouseHandler } from "@xyflow/react";
 import { PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -12,7 +12,7 @@ import {
   type MapDefinition,
   type MapDisplayOptions,
 } from "@arkaik/schema";
-import { Canvas } from "@/components/graph/Canvas";
+import { JourneyCanvas } from "@/components/graph/JourneyCanvas";
 import { MapDisplayPopover } from "@/components/maps/MapDisplayPopover";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
@@ -31,7 +31,6 @@ import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
-import { useElkLayout } from "@/lib/hooks/useElkLayout";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
 import { generateNodeId, edgeId } from "@/lib/utils/id";
 import { wouldCreateCycle } from "@/lib/utils/cycle";
@@ -48,14 +47,10 @@ import {
   getPlaylistEntries,
 } from "@/lib/utils/graph-build";
 import {
-  buildJourneyGraph,
   computeViewApiRelations,
   resolveJourneySelection,
 } from "@/lib/utils/journey-graph";
 import { buildNodeFindingIndex } from "@/lib/utils/quality";
-
-/** Stable identity, so the empty branch never re-triggers the layout effect. */
-const EMPTY_GRAPH: { nodes: Node[]; edges: Edge[] } = { nodes: [], edges: [] };
 
 interface JourneyMapProps {
   projectId: string;
@@ -675,71 +670,34 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     },
   });
 
-  // Build graph topology - ELK will compute positions asynchronously. Skipped
-  // outright when the selection has nothing to draw: the render below shows the
-  // empty state instead, and laying out a graph nobody sees is a real ELK pass.
-  const graphData = useMemo(
-    () =>
-      selection.emptyReason !== null
-        ? EMPTY_GRAPH
-        : buildJourneyGraph({
-            dataNodes: selection.nodes,
-            dataEdges,
-            nodesById: selection.nodesById,
-            composeParentByChild: selection.composeParentByChild,
-            explicitRootNode,
-            composeClosure,
-            expandedFlows,
-            display,
-            viewApiRelationsByViewId,
-            nodeFindings,
-            handlers: {
-              onToggleFlow: toggleFlow,
-              onAddChild: (flowId) => handleAddChildNode(flowId, "view"),
-              onOpenDetails: (node) => openNode({ nodeId: node.id }),
-              onZoomShot: (node) => {
-                setZoomNode(node);
-                setZoomPlatform(undefined);
-              },
-              onInsertBetween: handleInsertBetween,
-            },
-          }),
-    [
-      composeClosure,
-      dataEdges,
-      display,
-      expandedFlows,
-      explicitRootNode,
-      handleAddChildNode,
-      handleInsertBetween,
-      nodeFindings,
-      openNode,
-      selection,
-      toggleFlow,
-      viewApiRelationsByViewId,
-    ],
+  const journeyHandlers = useMemo(
+    () => ({
+      onToggleFlow: toggleFlow,
+      onAddChild: (flowId: string) => handleAddChildNode(flowId, "view"),
+      onOpenDetails: (node: DataNode) => openNode({ nodeId: node.id }),
+      onZoomShot: (node: DataNode) => {
+        setZoomNode(node);
+        setZoomPlatform(undefined);
+      },
+      onInsertBetween: handleInsertBetween,
+    }),
+    [handleAddChildNode, handleInsertBetween, openNode, toggleFlow],
   );
-
-  const { nodes: layoutedNodes } = useElkLayout(graphData);
 
   // The one-time ReactFlow fitView frames the pre-expansion layout; once the
   // auto-expanded flow's playlist nodes land in a computed layout, re-frame.
-  useEffect(() => {
+  // A callback rather than an effect over the canvas's nodes: the layout now
+  // lives inside JourneyCanvas, and a parent must not reach into it.
+  const handleLayout = useCallback((layoutedNodes: Node[]) => {
     const flowId = pendingFitFlowRef.current;
     if (!flowId) return;
 
     const marker = `${VISUAL_NODE_ID_SEPARATOR}${flowId}:`;
-    if (!layoutedNodes.some((node: Node) => node.id.includes(marker))) return;
+    if (!layoutedNodes.some((node) => node.id.includes(marker))) return;
 
     pendingFitFlowRef.current = null;
-    // The ref is cleared first, so the re-render this causes takes the early
-    // return above rather than bumping the signal again.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFitSignal((value) => value + 1);
-  }, [layoutedNodes]);
-
-  const nodes = layoutedNodes;
-  const edges = graphData.edges;
+  }, []);
 
   // The product this journey reads through, as a reader would name it. Falls
   // back to the id for a scope pointing at a product the project no longer
@@ -837,7 +795,26 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
             />
           </div>
         ) : (
-          <Canvas nodes={nodes} edges={edges} onNodeClick={handleNodeClick} onConnect={handleConnect} onEdgeClick={handleEdgeClick} fitSignal={fitSignal} scope={scope} minimapColor={display.minimap_color} />
+          <JourneyCanvas
+            dataNodes={selection.nodes}
+            dataEdges={dataEdges}
+            nodesById={selection.nodesById}
+            composeParentByChild={selection.composeParentByChild}
+            explicitRootNode={explicitRootNode}
+            composeClosure={composeClosure}
+            expandedFlows={expandedFlows}
+            display={display}
+            viewApiRelationsByViewId={viewApiRelationsByViewId}
+            nodeFindings={nodeFindings}
+            handlers={journeyHandlers}
+            scope={scope}
+            fitSignal={fitSignal}
+            minimapColor={display.minimap_color}
+            onNodeClick={handleNodeClick}
+            onConnect={handleConnect}
+            onEdgeClick={handleEdgeClick}
+            onLayout={handleLayout}
+          />
         )}
       </PageShell>
       <ShotPreviewDialog
