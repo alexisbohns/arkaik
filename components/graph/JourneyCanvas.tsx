@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { Node, NodeMouseHandler, OnConnect, EdgeMouseHandler } from "@xyflow/react";
 import type { MapMinimapColorMode } from "@arkaik/schema";
 import { Canvas } from "@/components/graph/Canvas";
@@ -13,16 +13,24 @@ export interface JourneyCanvasProps extends JourneyGraphParams {
   scope: ProductScope;
   /** Increment to re-frame the viewport (see `Canvas`). */
   fitSignal?: number;
+  /** What a minimap node's fill encodes (docs/spec/maps.md § Display Options). */
   minimapColor?: MapMinimapColorMode;
-  /** Show only: no connect, drag, select, controls or minimap. */
+  /**
+   * Show only: no connect, drag, select, controls or minimap. Disables
+   * canvas-level editing only — card-level affordances (add child, insert
+   * between) come from `handlers`, so a read-only caller should pass none or
+   * only the reading handlers (`onToggleFlow`, `onOpenDetails`).
+   */
   readOnly?: boolean;
   onNodeClick?: NodeMouseHandler;
   onConnect?: OnConnect;
   onEdgeClick?: EdgeMouseHandler;
   /**
-   * Called with the positioned nodes each time an ELK layout lands. The
-   * Journey controller uses it to re-frame once the auto-expanded flow's
-   * playlist has a computed layout; a preview passes nothing.
+   * Called with the positioned nodes once an ELK layout has landed — never
+   * with the `{0,0}` placeholder positions `buildJourneyGraph` returns before
+   * layout runs. The Journey controller uses it to re-frame once the
+   * auto-expanded flow's playlist has a computed layout; a preview passes
+   * nothing.
    */
   onLayout?: (nodes: Node[]) => void;
 }
@@ -35,6 +43,9 @@ export interface JourneyCanvasProps extends JourneyGraphParams {
  *
  * `JourneyGraphParams` is spread straight into `buildJourneyGraph`, so the
  * props here are exactly the builder's inputs plus the canvas's own knobs.
+ * `handlers` must be referentially stable (memoised by the caller): it is a
+ * `buildJourneyGraph` input, so a fresh object every render rebuilds the graph
+ * and re-runs ELK every render.
  */
 export function JourneyCanvas({
   scope,
@@ -93,11 +104,21 @@ export function JourneyCanvas({
     ],
   );
 
-  const { nodes: layoutedNodes } = useElkLayout(graphData);
+  const { nodes: layoutedNodes, ready } = useElkLayout(graphData);
+
+  // The callback is read through a ref, refreshed in an effect rather than
+  // during render (a render-phase write is a side effect `react-hooks/refs`
+  // rejects, and concurrent rendering may run a render more than once per
+  // commit) — so an unstable parent callback cannot re-fire the layout effect.
+  const onLayoutRef = useRef(onLayout);
+  useEffect(() => {
+    onLayoutRef.current = onLayout;
+  });
 
   useEffect(() => {
-    onLayout?.(layoutedNodes);
-  }, [layoutedNodes, onLayout]);
+    if (!ready) return;
+    onLayoutRef.current?.(layoutedNodes);
+  }, [layoutedNodes, ready]);
 
   return (
     <Canvas
