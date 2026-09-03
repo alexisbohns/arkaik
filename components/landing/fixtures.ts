@@ -16,20 +16,11 @@ export interface PreviewFixture {
 export const FIXTURES: Record<PreviewId, PreviewFixture> = {
   "journey-map": { source: "self-map", nodeIds: ["F-audit-value-coverage"] },
   "system-map": { source: "self-map", nodeIds: ["DM-node"] },
-  // Eight views for three columns — pick ids whose statuses spread across
-  // backlog / development / live (the seed is mostly live; take what exists).
   "delivery-board": {
-    source: "self-map",
-    nodeIds: [
-      "V-projects",
-      "V-create-project-dialog",
-      "V-maps-index",
-      "V-journey-map",
-      "V-system-map",
-      "V-map-editor-dialog",
-      "V-command-palette",
-      "V-node-detail-panel",
-    ],
+    source: "pebbles",
+    // Five views across idea / development / live; V-pebble-detail is live on
+    // iOS and idea elsewhere, so it sits in two columns — the point the copy makes.
+    nodeIds: ["V-pebble-detail", "V-souls-list", "V-timeline", "V-home", "V-glyph-detail"],
   },
   "overview-cards": { source: "pebbles", versions: ["0.3.0", "0.4.0"] },
   "platform-statuses": { source: "pebbles", nodeIds: ["V-pebble-detail"] },

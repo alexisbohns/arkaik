@@ -15,7 +15,7 @@
 **Data reality that shapes this part (from the seed audit):**
 - `seed/arkaik-self-map.json` (231 nodes, 809 events) is **web-only**: no `metadata.platformStatuses` anywhere, no parity gaps, no `supersedes` edges, every acceptance `live`. `PlatformGaugesCard` returns `null` under two platforms.
 - `seed/pebbles.json` (152 nodes, 183 events, project id `pebbles`) has three platforms, `V-pebble-detail` with `{ios: live, web: idea, android: idea}`, parity gaps on `AC-pebble-draw-in-animation` and `AC-emotion-palette-on-read`, and `DEC-adopt-glyph-wobble` superseding `DEC-linear-glyph-fade`.
-- Therefore every preview declares its **source**: `self-map` for Journey, System, Delivery, Pyramid, Journal; `pebbles` for Overview gauges, Platform statuses, Acceptances, Decisions. The frame caption names the source.
+- Therefore every preview declares its **source**: `self-map` for Journey, System, Pyramid, Journal; `pebbles` for Delivery (every self-map view is `live`, so the board would have one column), Overview gauges, Platform statuses, Acceptances, Decisions. The frame caption names the source.
 
 **Repo rails every task must respect:**
 - **CI gates on lint.** `npm run lint` must show 0 errors. React Compiler rules are on (`react-hooks/set-state-in-effect`, `react-hooks/refs`).
@@ -987,12 +987,12 @@ import { STATUSES, type StatusId } from "@/lib/config/statuses";
 import { sliceBundle } from "@/lib/landing/slice";
 import { computeDeliveryItems, groupItemsByStatus } from "@/lib/utils/delivery";
 
-const COLUMNS: StatusId[] = ["backlog", "development", "live"];
+const COLUMNS: StatusId[] = ["idea", "development", "live"];
 const STATUS_LABEL = Object.fromEntries(STATUSES.map((s) => [s.id, s.label])) as Record<StatusId, string>;
 const SPECIES_LABEL = Object.fromEntries(SPECIES.map((s) => [s.id, s.label]));
 const SPECIES_DESCRIPTION = Object.fromEntries(SPECIES.map((s) => [s.id, s.description]));
 
-/** Three columns of the real board over eight views of Arkaik's own map. */
+/** Three columns of the real board over five Pebbles views; one of them sits in two columns. */
 export function DeliveryBoardPreview({ bundle }: PreviewProps) {
   const columns = useMemo(() => {
     const slice = sliceBundle(bundle, FIXTURES["delivery-board"].nodeIds!);

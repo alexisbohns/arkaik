@@ -31,7 +31,7 @@ export interface PreviewMeta {
 export const PREVIEW_META: Record<PreviewId, PreviewMeta> = {
   "journey-map":       { source: "self-map", height: 420, breadcrumb: "Maps › Journey" },
   "system-map":        { source: "self-map", height: 420, breadcrumb: "Maps › System" },
-  "delivery-board":    { source: "self-map", height: 360, breadcrumb: "Project › Delivery" },
+  "delivery-board":    { source: "pebbles",  height: 360, breadcrumb: "Project › Delivery" },
   "overview-cards":    { source: "pebbles",  height: 300, breadcrumb: "Project › Overview" },
   "platform-statuses": { source: "pebbles",  height: 200, breadcrumb: "Library › Views" },
   "acceptance-matrix": { source: "pebbles",  height: 340, breadcrumb: "Project › Acceptances" },

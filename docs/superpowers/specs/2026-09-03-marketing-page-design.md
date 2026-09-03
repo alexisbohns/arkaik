@@ -61,7 +61,7 @@ lives in `components/landing/content.ts`.
 |---|---|---|---|
 | A1 | `journey-map` | real | `JourneyCanvas` (see § Refactors) scoped to one flow, four or five view cards, hover and drill-down only |
 | A2 | `system-map` | real | `SystemCanvas` scoped around one data model, three tiers |
-| A3 | `delivery-board` | real | `DeliveryBoard` with three status columns, six or seven `PlatformItemCard`s |
+| A3 | `delivery-board` | real | `DeliveryBoard` with three status columns over five views, one view in two columns (Pebbles: every self-map view is live) |
 | A4 | `overview-cards` | real | `PlatformGaugesCard` and `ReleasePulseCard` side by side (Pebbles: the gauges need two platforms) |
 | B1 | `platform-statuses` | tailored | one view's platform chip row with the rollup `StatusBadge` above it, built from `PlatformList`, `StatusMark`, `StatusRing` (Pebbles) |
 | B2 | `acceptance-matrix` | real | `AcceptanceMatrix` for one flow, one row a parity gap (Pebbles) |
