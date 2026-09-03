@@ -37,11 +37,11 @@ export interface PreviewMeta {
 export const PREVIEW_META: Record<PreviewId, PreviewMeta> = {
   "journey-map":       { source: "self-map", height: 420, breadcrumb: ["Maps", "Journey"],       journal: false },
   "system-map":        { source: "self-map", height: 420, breadcrumb: ["Maps", "System"],        journal: false },
-  "delivery-board":    { source: "pebbles", height: 360, breadcrumb: ["Project", "Delivery"],   journal: false },
-  "overview-cards":    { source: "pebbles", height: 300, breadcrumb: ["Project", "Overview"],   journal: true },
-  "platform-statuses": { source: "pebbles", height: 200, breadcrumb: ["Library", "Views"],      journal: false },
-  "acceptance-matrix": { source: "pebbles", height: 340, breadcrumb: ["Project", "Acceptances"], journal: false },
+  "delivery-board":    { source: "pebbles",  height: 360, breadcrumb: ["Project", "Delivery"],   journal: false },
+  "overview-cards":    { source: "pebbles",  height: 300, breadcrumb: ["Project", "Overview"],   journal: true },
+  "platform-statuses": { source: "pebbles",  height: 200, breadcrumb: ["Library", "Views"],      journal: false },
+  "acceptance-matrix": { source: "pebbles",  height: 340, breadcrumb: ["Project", "Acceptances"], journal: false },
   "value-pyramid":     { source: "self-map", height: 320, breadcrumb: ["Project", "Pyramid"],    journal: false },
-  "decision-chain":    { source: "pebbles", height: 280, breadcrumb: ["Project", "Decisions"],  journal: true },
+  "decision-chain":    { source: "pebbles",  height: 280, breadcrumb: ["Project", "Decisions"],  journal: true },
   "journal-changelog": { source: "self-map", height: 360, breadcrumb: ["Project", "Changelog"],  journal: true },
 };

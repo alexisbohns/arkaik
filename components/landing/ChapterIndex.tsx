@@ -16,6 +16,9 @@ interface ChapterIndexProps {
 export function ChapterIndex({ items }: ChapterIndexProps) {
   const [activeId, setActiveId] = useState<string | null>(items[0]?.id ?? null);
 
+  // `items` arrives as an RSC prop, so it keeps its identity across the
+  // client's own re-renders. If `LandingPart` ever becomes a client
+  // component, key this effect on the joined ids instead.
   useEffect(() => {
     const elements = items
       .map((item) => document.getElementById(item.id))
@@ -33,9 +36,6 @@ export function ChapterIndex({ items }: ChapterIndexProps) {
     );
     for (const el of elements) observer.observe(el);
     return () => observer.disconnect();
-    // `items` arrives as an RSC prop, so it keeps its identity across the
-    // client's own re-renders. If `LandingPart` ever becomes a client
-    // component, key this effect on the joined ids instead.
   }, [items]);
 
   return (

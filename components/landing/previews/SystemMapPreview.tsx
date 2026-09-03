@@ -10,7 +10,6 @@ import { resolveProductScope, type ProductGraph } from "@/lib/utils/product-scop
 // Client-only, for the same reason as JourneyMapPreview.
 const SystemCanvas = dynamic(() => import("@/components/graph/SystemCanvas").then((m) => m.SystemCanvas), { ssr: false });
 
-const DEFINITION = SYSTEM_DEFINITION;
 
 /**
  * One hop around a data model of Arkaik's own map: the views that render it,
@@ -21,7 +20,7 @@ export function SystemMapPreview({ bundle }: PreviewProps) {
     const nodesById = new Map(bundle.nodes.map((node) => [node.id, node]));
     const scope = resolveProductScope(bundle, null);
     const graph: ProductGraph = { edges: bundle.edges, nodesById, usageIndex: buildProductUsageIndex(bundle.nodes, bundle.edges) };
-    return { scope, productScope: { scope, graph }, display: resolveMapDisplay(DEFINITION, bundle.project) };
+    return { scope, productScope: { scope, graph }, display: resolveMapDisplay(SYSTEM_DEFINITION, bundle.project) };
   }, [bundle]);
 
   // Re-frame once ELK lands: the canvas's one-time fitView runs over the
@@ -31,7 +30,7 @@ export function SystemMapPreview({ bundle }: PreviewProps) {
 
   return (
     <SystemCanvas
-      definition={DEFINITION}
+      definition={SYSTEM_DEFINITION}
       dataNodes={bundle.nodes}
       dataEdges={bundle.edges}
       display={props.display}

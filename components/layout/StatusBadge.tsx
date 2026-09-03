@@ -1,3 +1,5 @@
+"use client";
+
 import { Ban } from "lucide-react";
 import type { StatusId } from "@/lib/config/statuses";
 import { normalizeBlockedBy } from "@/lib/utils/blocked";

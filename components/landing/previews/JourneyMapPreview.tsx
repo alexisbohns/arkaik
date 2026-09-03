@@ -12,8 +12,7 @@ import { resolveProductScope, type ProductGraph } from "@/lib/utils/product-scop
 // cannot know, and React Flow is not needed for first paint.
 const JourneyCanvas = dynamic(() => import("@/components/graph/JourneyCanvas").then((m) => m.JourneyCanvas), { ssr: false });
 
-const DEFINITION = JOURNEY_DEFINITION;
-const ROOT_FLOW_ID = DEFINITION.root_node_id!;
+const ROOT_FLOW_ID = JOURNEY_DEFINITION.root_node_id!;
 
 /**
  * One flow of Arkaik's own journey, expanded, read-only. Every input is a pure
@@ -27,11 +26,11 @@ export function JourneyMapPreview({ bundle }: PreviewProps) {
     const nodesById = new Map(dataNodes.map((node) => [node.id, node]));
     const scope = resolveProductScope(bundle, null);
     const graph: ProductGraph = { edges: dataEdges, nodesById, usageIndex: buildProductUsageIndex(dataNodes, dataEdges) };
-    const selection = resolveJourneySelection({ definition: DEFINITION, dataNodes, dataEdges, project: bundle.project, scope, graph });
+    const selection = resolveJourneySelection({ definition: JOURNEY_DEFINITION, dataNodes, dataEdges, project: bundle.project, scope, graph });
     return {
       scope,
       selection,
-      display: resolveMapDisplay(DEFINITION, bundle.project),
+      display: resolveMapDisplay(JOURNEY_DEFINITION, bundle.project),
       viewApiRelationsByViewId: computeViewApiRelations(dataEdges, nodesById),
       expandedFlows: new Set([ROOT_FLOW_ID]),
       dataEdges,

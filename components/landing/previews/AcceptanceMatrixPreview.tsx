@@ -25,10 +25,9 @@ export function AcceptanceMatrixPreview({ bundle }: PreviewProps) {
           edges={bundle.edges}
           nodesById={nodesById}
           projectId={bundle.project.id}
-          // Neither `AcceptanceMatrix` nor `useEffectiveProduct` (nor the
-          // product-scope resolver under it) reads `journal` — they only need
-          // `project` and `products` — so the journal stays on the server.
-          project={{ ...bundle, journal: [] }}
+          // The journal is stripped upstream (LandingPage, via the catalogue's
+          // `journal: false`): the matrix never reads it.
+          project={bundle}
           allExpanded
         />
       </Suspense>

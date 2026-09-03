@@ -7,10 +7,11 @@ import { sliceBundle } from "@/lib/landing/slice";
 
 /**
  * The bundle a preview actually needs, computed on the server before the
- * element crosses to the client. The three previews whose leaves are client
- * components and would otherwise carry a whole seed get the induced sub-bundle
- * over the nodes they draw; every other id gets the bundle unchanged, since a
- * server preview already hands its leaf only rendered props.
+ * element crosses to the client. The two canvas previews are client components
+ * and the matrix hands a whole `nodesById` to a client leaf, so all three would
+ * otherwise carry an entire seed; they get the induced sub-bundle over the
+ * nodes they draw. Every other id gets the bundle unchanged, since a server
+ * preview already hands its leaf only rendered props.
  */
 export function prepareBundle(id: PreviewId, bundle: ProjectBundle): ProjectBundle {
   switch (id) {
@@ -35,9 +36,11 @@ export function prepareBundle(id: PreviewId, bundle: ProjectBundle): ProjectBund
  * root; `computeMapSubgraph` is not used for the journey because its BFS is
  * undirected and would walk up out of the flow into the whole product.
  *
- * The view → API `calls` relations are cross-layer edges whose endpoints sit
- * outside this closure, and the read-only canvas draws them only when both
- * ends are visible, so the closure alone is the correct slice.
+ * Plus one hop over `calls` edges from or to those views: `ViewNode` draws its
+ * inbound/outbound API popovers from `computeViewApiRelations` over the sliced
+ * edges, and that function keeps a `calls` edge only when *both* ends resolve
+ * in `nodesById` — so the endpoints have to come along or every view card
+ * loses its API affordances.
  */
 function journeyClosureIds(bundle: ProjectBundle): string[] {
   const rootId = JOURNEY_DEFINITION.root_node_id!;
@@ -61,7 +64,13 @@ function journeyClosureIds(bundle: ProjectBundle): string[] {
       queue.push(childId);
     }
   }
-  return [...visited];
+  const endpoints = new Set<string>();
+  for (const edge of bundle.edges) {
+    if (edge.edge_type !== "calls") continue;
+    if (visited.has(edge.source_id) && speciesById.get(edge.target_id) === "api-endpoint") endpoints.add(edge.target_id);
+    if (visited.has(edge.target_id) && speciesById.get(edge.source_id) === "api-endpoint") endpoints.add(edge.source_id);
+  }
+  return [...visited, ...endpoints];
 }
 
 /**

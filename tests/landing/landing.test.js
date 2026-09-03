@@ -81,6 +81,16 @@ for (const [previewId, fixture] of Object.entries(FIXTURES)) {
   const [rootFlow] = FIXTURES["journey-map"].nodeIds;
   assert(journey.nodes.some((n) => n.id === rootFlow), "journey slice contains the root flow");
   assert(journey.nodes.length > 1 && journey.nodes.length < 60, `journey slice is small (${journey.nodes.length} nodes)`);
+  {
+    // Every `calls` edge touching a view of the closure survives, endpoint included.
+    const journeyIds = new Set(journey.nodes.map((n) => n.id));
+    const journeyEdgeIds = new Set(journey.edges.map((e) => e.id));
+    const viewIds = new Set(journey.nodes.filter((n) => n.species === "view").map((n) => n.id));
+    const calls = self.edges.filter((e) => e.edge_type === "calls" && (viewIds.has(e.source_id) || viewIds.has(e.target_id)));
+    assert(calls.length > 0, `journey closure views have calls edges (${calls.length})`);
+    assert(calls.every((e) => journeyEdgeIds.has(e.id)), "journey slice keeps every calls edge of its views");
+    assert(calls.every((e) => journeyIds.has(e.source_id) && journeyIds.has(e.target_id)), "journey slice contains the endpoints those calls name");
+  }
 
   const system = prepareBundle("system-map", self);
   const [anchor] = FIXTURES["system-map"].nodeIds;

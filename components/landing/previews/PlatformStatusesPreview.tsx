@@ -1,5 +1,5 @@
 import { PlatformList } from "@/components/graph/nodes/PlatformList";
-import { StatusBadge } from "@/components/landing/previews/client/StatusBadge";
+import { StatusBadge } from "@/components/layout/StatusBadge";
 import { FIXTURES } from "@/components/landing/fixtures";
 import type { PreviewProps } from "@/components/landing/previews/types";
 import { addNodeToRollup, createEmptyRollup, getEffectivePlatformStatuses, getRollupDisplayStatus } from "@/lib/utils/platform-status";
