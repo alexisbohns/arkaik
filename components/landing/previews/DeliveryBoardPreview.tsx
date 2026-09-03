@@ -23,7 +23,8 @@ export function DeliveryBoardPreview({ bundle }: PreviewProps) {
   }, [bundle]);
 
   return (
-    <div className="h-full overflow-x-auto p-3">
+    // Arbitrary property on purpose: globals.css traps the vertical wheel over every `.overflow-x-auto`.
+    <div className="h-full [overflow-x:auto] p-3">
       <DeliveryBoard columns={columns} speciesLabelById={SPECIES_LABEL} speciesDescriptionById={SPECIES_DESCRIPTION} onSelectItem={() => {}} />
     </div>
   );

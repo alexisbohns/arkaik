@@ -21,7 +21,8 @@ export function AcceptanceMatrixPreview({ bundle }: PreviewProps) {
   }, [bundle]);
 
   return (
-    <div className="h-full overflow-auto p-3">
+    // Arbitrary property on purpose: globals.css traps the vertical wheel over every `.overflow-auto`.
+    <div className="h-full [overflow:auto] p-3">
       <Suspense fallback={null}>
         <AcceptanceMatrix
           acceptances={props.acceptances}
