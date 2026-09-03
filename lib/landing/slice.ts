@@ -1,4 +1,4 @@
-import type { ProjectBundle, JournalEvent } from "@/lib/data/types";
+import type { ProjectBundle } from "@/lib/data/types";
 
 /**
  * The induced sub-bundle over `nodeIds`: those nodes, every edge with both ends
@@ -12,7 +12,9 @@ export function sliceBundle(bundle: ProjectBundle, nodeIds: readonly string[]): 
   const nodes = bundle.nodes.filter((node) => keep.has(node.id));
   const edges = bundle.edges.filter((edge) => keep.has(edge.source_id) && keep.has(edge.target_id));
   const journal = (bundle.journal ?? []).filter((event) => {
-    const nodeId = (event as JournalEvent & { node_id?: unknown }).node_id;
+    // The envelope is an open record; `node_id` is a payload field of the
+    // node.* events and reads as `unknown` here.
+    const nodeId = event.node_id;
     return typeof nodeId !== "string" || keep.has(nodeId);
   });
   return { ...bundle, nodes, edges, journal };

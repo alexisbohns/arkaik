@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
-import type { Section } from "@/components/landing/content";
+import { SOURCE_CAPTION, type Section } from "@/components/landing/content";
 import { PreviewFrame } from "@/components/landing/PreviewFrame";
-import { PREVIEW_META, SOURCE_CAPTION } from "@/components/landing/previews/ids";
+import { PREVIEW_META } from "@/components/landing/previews/ids";
 
 interface LandingSectionProps {
   section: Section;

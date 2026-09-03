@@ -1,4 +1,4 @@
-import type { PreviewId } from "@/components/landing/previews/ids";
+import type { PreviewId, PreviewSource } from "@/components/landing/previews/ids";
 
 export type PartId = "maps" | "truth" | "quality" | "agents" | "run";
 
@@ -81,3 +81,9 @@ export const SECTIONS: Section[] = [
     how: "The snapshot is authoritative for now, the journal for history, and the validator cross-checks them by value.",
   },
 ];
+
+/** The frame caption naming a preview's seed. Copy, so it lives here, not in the catalogue. */
+export const SOURCE_CAPTION: Record<PreviewSource, string> = {
+  "self-map": "Rendered from Arkaik's own map, right now.",
+  pebbles: "Rendered from the built-in Pebbles example, right now.",
+};

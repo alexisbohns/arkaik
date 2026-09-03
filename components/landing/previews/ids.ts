@@ -39,8 +39,3 @@ export const PREVIEW_META: Record<PreviewId, PreviewMeta> = {
   "decision-chain":    { source: "pebbles",  height: 280, breadcrumb: "Project › Decisions" },
   "journal-changelog": { source: "self-map", height: 360, breadcrumb: "Project › Changelog" },
 };
-
-export const SOURCE_CAPTION: Record<PreviewSource, string> = {
-  "self-map": "Rendered from Arkaik's own map, right now.",
-  pebbles: "Rendered from the built-in Pebbles example, right now.",
-};
