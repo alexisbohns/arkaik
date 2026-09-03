@@ -101,7 +101,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
   );
 
   // On `quality` alone, not on the bundle — JourneyMap's twin, and for its
-  // reason: this feeds `buildSystemGraph`, so a fresh map here would rebuild the
+  // reason: this feeds `SystemCanvas`'s graph build, so a fresh map here would rebuild the
   // graph and re-run ELK over 137 cards every time an unrelated corner of the
   // project changed.
   const nodeFindings = useMemo(
@@ -151,8 +151,10 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
   const pendingFitRef = useRef(true);
   const [fitSignal, setFitSignal] = useState(0);
 
-  const handleLayoutVersion = useCallback((layoutVersion: number) => {
-    if (layoutVersion === 0 || !pendingFitRef.current) return;
+  // The canvas only reports landed layouts (never the placeholder pass), so
+  // the ref is the whole condition.
+  const handleLayoutVersion = useCallback(() => {
+    if (!pendingFitRef.current) return;
     pendingFitRef.current = false;
     setFitSignal((value) => value + 1);
   }, []);
@@ -332,7 +334,6 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
           productScope={systemScope}
           nodeFindings={nodeFindings}
           layoutMode={layoutMode}
-          scope={scope}
           fitSignal={fitSignal}
           minimapColor={display.minimap_color}
           spotlight

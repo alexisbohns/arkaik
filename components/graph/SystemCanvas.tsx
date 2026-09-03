@@ -22,14 +22,23 @@ export interface SystemCanvasProps {
   productScope?: SystemGraphScope;
   nodeFindings?: ReadonlyMap<string, NodeFindingSummary>;
   layoutMode: SystemLayoutMode;
-  /** The scope the cards read platforms from; defaults to `productScope.scope`. */
+  /**
+   * The scope the cards read platforms from. Defaults to `productScope.scope`,
+   * which is what a controller wants; pass it explicitly only when the cards
+   * should read a different scope than membership was resolved on.
+   */
   scope?: ProductScope;
+  /** Increment to re-frame the viewport (see `Canvas`). */
   fitSignal?: number;
   /** What a minimap node's fill encodes (docs/spec/maps.md § Display Options). */
   minimapColor?: MapMinimapColorMode;
   spotlight?: boolean;
   spotlightNodeId?: string | null;
-  /** Show only: no connect, drag, select, controls or minimap. Card-level affordances come from `handlers`. */
+  /**
+   * Show only: no connect, drag, select, controls or minimap. Card-level
+   * affordances come from `handlers`, so a read-only caller passes none or
+   * only the reading handler (`onOpenDetails`).
+   */
   readOnly?: boolean;
   onNodeClick?: NodeMouseHandler;
   onConnect?: OnConnect;
