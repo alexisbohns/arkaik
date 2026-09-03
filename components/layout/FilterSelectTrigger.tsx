@@ -15,6 +15,12 @@ interface FilterSelectTriggerProps
   active?: boolean;
   /** The current selection in words, shown in the tooltip while `active`. */
   valueLabel?: string;
+  /**
+   * Show `valueLabel` even while unset — for a menu whose *default* narrows.
+   * A status filter that opens on "Open" is hiding rows, and a tooltip that
+   * said only "Status" would make the reader work that out for themselves.
+   */
+  forceValueLabel?: boolean;
 }
 
 /**
@@ -42,6 +48,7 @@ export function FilterSelectTrigger({
   label,
   active = false,
   valueLabel,
+  forceValueLabel = false,
   className,
   ...props
 }: FilterSelectTriggerProps) {
@@ -64,7 +71,7 @@ export function FilterSelectTrigger({
         </SelectPrimitive.Trigger>
       </TooltipTrigger>
       <TooltipContent>
-        {active && valueLabel ? `${label}: ${valueLabel}` : label}
+        {(active || forceValueLabel) && valueLabel ? `${label}: ${valueLabel}` : label}
       </TooltipContent>
     </Tooltip>
   );

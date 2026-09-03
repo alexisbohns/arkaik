@@ -226,3 +226,29 @@ export const FINDING_STATUS_LABEL: Record<FindingStatus, string> = {
   refuted: "Refuted",
   "accepted-risk": "Accepted risk",
 };
+
+/**
+ * A decided finding's rail mark, in place of {@link PRIORITY_TILE}.
+ *
+ * A finding somebody has answered has no priority worth a square: "P0" down the
+ * rail beside a fix that shipped reads as work still owed, which is exactly the
+ * misread that sent a resolved critical back to the top of somebody's list. The
+ * lane it *was* in is not lost — it is in the mark's own gloss below.
+ *
+ * Green only for `resolved`, the one status that means the defect is gone.
+ * `refuted` and `accepted-risk` are answers too, but neither is a fix, and a
+ * green tick on an accepted risk would quietly retire a risk somebody
+ * deliberately kept.
+ */
+export const FINDING_STATUS_TILE: Record<Exclude<FindingStatus, "open">, string> = {
+  resolved: "bg-green-500/10 text-green-700 dark:text-green-400",
+  refuted: "bg-muted text-muted-foreground",
+  "accepted-risk": "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+};
+
+/** What the mark stands for — its label, with the lane it retired. */
+export const FINDING_STATUS_GLOSS: Record<Exclude<FindingStatus, "open">, string> = {
+  resolved: "Fixed and verified — this one is done.",
+  refuted: "Argued down: the audit filed it, the review found no defect.",
+  "accepted-risk": "Weighed and kept, on purpose. Not a thing to re-litigate.",
+};

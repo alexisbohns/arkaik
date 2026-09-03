@@ -156,8 +156,18 @@ export function FindingCard({
         {/* The accepted-risk callout below states the status in its own badge,
             in the treatment that says it is a decision; a second badge up here
             would say it twice and more quietly. */}
+        {/* The rail's mark is a glyph; this is the word for it, and the only
+            copy of it a screen reader meets. Tinted to match the tick for
+            `resolved` alone — the same rule the rail follows, and the reason
+            the badge did not simply give way to the mark. */}
         {!row.open && !acceptedRisk && (
-          <Badge variant="outline" className="ms-auto">
+          <Badge
+            variant="outline"
+            className={cn(
+              "ms-auto",
+              row.status === "resolved" && "border-green-500/40 text-green-700 dark:text-green-400",
+            )}
+          >
             {FINDING_STATUS_LABEL[row.status]}
           </Badge>
         )}

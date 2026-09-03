@@ -1,16 +1,39 @@
 "use client";
 
+import type { ReactNode } from "react";
+import { CheckIcon, ShieldIcon, XIcon } from "lucide-react";
+import type { FindingStatus } from "@arkaik/schema";
 import type { Node } from "@/lib/data/types";
 import type { FindingRow } from "@/lib/utils/quality";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FindingCard } from "@/components/quality/FindingCard";
 import { ScaleChip } from "@/components/quality/ScaleChip";
 import {
+  FINDING_STATUS_GLOSS,
+  FINDING_STATUS_LABEL,
+  FINDING_STATUS_TILE,
   PRIORITY_GLOSS,
   PRIORITY_TERM,
   PRIORITY_TILE,
 } from "@/components/quality/quality-styles";
 import { cn } from "@/lib/utils";
+
+/** Every status other than `open` — the ones that get a verdict mark. */
+type DecidedStatus = Exclude<FindingStatus, "open">;
+
+/** The rail's 24px square, shared by both marks so they sit on the same axis. */
+const MARK_CLASS = "inline-flex size-6 shrink-0 items-center justify-center rounded-md";
+
+/**
+ * The verdict, as a glyph. A tick for the fix, a cross for the defect that was
+ * not one, a shield for the risk somebody chose to carry — three different
+ * answers, and three different marks, because "not open" is not one state.
+ */
+const STATUS_ICON: Record<DecidedStatus, ReactNode> = {
+  resolved: <CheckIcon className="size-3.5" aria-hidden="true" />,
+  refuted: <XIcon className="size-3.5" aria-hidden="true" />,
+  "accepted-risk": <ShieldIcon className="size-3.5" aria-hidden="true" />,
+};
 
 interface FindingsBoardProps {
   /** Every finding to show, already filtered and sorted — worst first. */
@@ -65,20 +88,32 @@ export function FindingsBoard({
                 to the `<li>` — padding on the row would end the connector above
                 the gap and leave the squares unlinked. */}
             <div className="flex flex-col items-center">
-              {/* The mark is the priority and nothing else: the digit alone,
-                  because `P` repeated down a column of squares is a letter
-                  nobody reads twice. The chip's own gloss says what the lane
-                  means, which is what the section heading used to say. */}
-              <ScaleChip
-                term={PRIORITY_TERM[row.priority]}
-                hint={PRIORITY_GLOSS[row.priority]}
-                className={cn(
-                  "inline-flex size-6 shrink-0 items-center justify-center rounded-md text-xs font-semibold tabular-nums",
-                  PRIORITY_TILE[row.priority],
-                )}
-              >
-                {row.priority.slice(1)}
-              </ScaleChip>
+              {/* On an open finding the mark is the priority and nothing else:
+                  the digit alone, because `P` repeated down a column of squares
+                  is a letter nobody reads twice. The chip's own gloss says what
+                  the lane means, which is what the section heading used to say.
+
+                  On a decided one the priority gives way to the verdict — a
+                  green tick reads down the rail as "answered" at the same
+                  glance the red squares read as "owed", and the lane it was in
+                  moves into the gloss. */}
+              {row.open ? (
+                <ScaleChip
+                  term={PRIORITY_TERM[row.priority]}
+                  hint={PRIORITY_GLOSS[row.priority]}
+                  className={cn(MARK_CLASS, "text-xs font-semibold tabular-nums", PRIORITY_TILE[row.priority])}
+                >
+                  {row.priority.slice(1)}
+                </ScaleChip>
+              ) : (
+                <ScaleChip
+                  term={`${FINDING_STATUS_LABEL[row.status]} — filed ${row.priority}`}
+                  hint={FINDING_STATUS_GLOSS[row.status as DecidedStatus]}
+                  className={cn(MARK_CLASS, FINDING_STATUS_TILE[row.status as DecidedStatus])}
+                >
+                  {STATUS_ICON[row.status as DecidedStatus]}
+                </ScaleChip>
+              )}
               {!last && <span className="w-px flex-1 bg-border" aria-hidden="true" />}
             </div>
 

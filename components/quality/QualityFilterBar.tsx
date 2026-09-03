@@ -17,7 +17,7 @@ import {
   type KritikDomain,
   type SurfaceDef,
 } from "@arkaik/schema";
-import { EMPTY_QUALITY_FILTERS, parseCellKey } from "@/lib/utils/quality";
+import { DEFAULT_QUALITY_FILTERS, parseCellKey } from "@/lib/utils/quality";
 import type { QualityFilters, QualitySort } from "@/lib/utils/quality";
 import { QUALITY_SORTS } from "@/components/quality/quality-filters";
 import { SearchInput } from "@/components/ui/search-input";
@@ -99,9 +99,9 @@ export function QualityFilterBar({ filters, onChange, surfaces, domains }: Quali
     filters.priority !== "all" ||
     filters.surface !== "all" ||
     filters.domain !== "all" ||
-    filters.status !== "all" ||
+    filters.status !== DEFAULT_QUALITY_FILTERS.status ||
     filters.cell !== null ||
-    filters.sort !== EMPTY_QUALITY_FILTERS.sort;
+    filters.sort !== DEFAULT_QUALITY_FILTERS.sort;
 
   // The search field's own copy of the text, debounced into the URL. Lifted
   // wholesale from `AcceptanceFilterBar`, including the self-echo guard, and
@@ -290,8 +290,13 @@ export function QualityFilterBar({ filters, onChange, surfaces, domains }: Quali
           <FilterSelectTrigger
             icon={<CircleDotIcon />}
             label="Status"
-            active={filters.status !== "all"}
-            valueLabel={filters.status === "all" ? undefined : FINDING_STATUS_LABEL[filters.status]}
+            /* The one menu that reads its value out even while unset: the
+               board hides decided findings by default, and a trigger that
+               looked exactly like "All statuses" would leave a reader hunting
+               for a P0 they resolved with nothing on screen admitting it. */
+            active={filters.status !== DEFAULT_QUALITY_FILTERS.status}
+            valueLabel={filters.status === "all" ? "All" : FINDING_STATUS_LABEL[filters.status]}
+            forceValueLabel
           />
           <SelectContent align="start">
             <SelectItem value={ALL}>All statuses</SelectItem>
@@ -305,12 +310,12 @@ export function QualityFilterBar({ filters, onChange, surfaces, domains }: Quali
 
         {/* The sort has no "all", so its trigger reads active whenever the order
             is not the default — the same rule the menus beside it follow, told
-            against `EMPTY_QUALITY_FILTERS` instead of against the word. */}
+            against `DEFAULT_QUALITY_FILTERS` instead of against the word. */}
         <Select value={filters.sort} onValueChange={(value) => onChange({ ...filters, sort: value as QualitySort })}>
           <FilterSelectTrigger
             icon={<ArrowDownWideNarrowIcon />}
             label="Sort"
-            active={filters.sort !== EMPTY_QUALITY_FILTERS.sort}
+            active={filters.sort !== DEFAULT_QUALITY_FILTERS.sort}
             valueLabel={SORT_LABELS[filters.sort]}
           />
           <SelectContent align="start">
@@ -329,7 +334,7 @@ export function QualityFilterBar({ filters, onChange, surfaces, domains }: Quali
             size="sm"
             onClick={() => {
               setSearchDraft("");
-              onChange(EMPTY_QUALITY_FILTERS);
+              onChange(DEFAULT_QUALITY_FILTERS);
             }}
             aria-label="Clear filters"
           >

@@ -205,6 +205,22 @@ export const EMPTY_QUALITY_FILTERS: QualityFilters = {
   sort: "priority",
 };
 
+/**
+ * The findings board's opening filter set: everything, minus the findings
+ * somebody has already answered.
+ *
+ * Distinct from {@link EMPTY_QUALITY_FILTERS}, which stays what it says —
+ * *narrows nothing* — because three panels pass it purely to borrow
+ * `filterFindings`' comparator, and a criterion read in a panel must still show
+ * the finding that was resolved against it. Only the URL layer
+ * (`useQualityFilters`) defaults to this one: the board is the triage queue,
+ * and a queue that opens holding work somebody finished cannot be emptied.
+ */
+export const DEFAULT_QUALITY_FILTERS: QualityFilters = {
+  ...EMPTY_QUALITY_FILTERS,
+  status: "open",
+};
+
 /** Encode a matrix cell for the URL and the filter set. */
 export function cellKey(domain: string, surface: string): string {
   return `${domain}|${surface}`;
