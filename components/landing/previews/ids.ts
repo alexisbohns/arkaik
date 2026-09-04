@@ -24,6 +24,7 @@ export const PREVIEW_IDS = [
   "quality-matrix",
   "findings-board",
   "agent-skill-diff",
+  "mcp-server",
 ] as const;
 
 export type PreviewId = (typeof PREVIEW_IDS)[number];
@@ -55,4 +56,5 @@ export const PREVIEW_META: Record<PreviewId, PreviewMeta> = {
   "quality-matrix":    { source: "pilot-audit", height: 380, breadcrumb: ["Quality", "Matrix"],  journal: false },
   "findings-board":    { source: "pilot-audit", height: 420, breadcrumb: ["Quality", "Findings"], journal: true },
   "agent-skill-diff":  { source: "self-map", height: 400, breadcrumb: ["Repo", "docs/arkaik"],  journal: false },
+  "mcp-server":        { source: "self-map", height: 460, breadcrumb: ["arkaik-mcp"],            journal: false },
 };

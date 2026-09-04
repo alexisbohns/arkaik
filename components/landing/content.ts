@@ -100,6 +100,12 @@ export const SECTIONS: Section[] = [
     what: "A Claude Code skill that knows the schema, patches the affected nodes surgically, and appends the matching journal event.",
     how: "npx arkaik init scaffolds it into any repo; the bundled validator is a hard gate, so a snapshot its journal contradicts never lands.",
   },
+  {
+    id: "mcp-server", part: "agents", title: "The MCP server", preview: "mcp-server",
+    why: "An agent should not parse a 4,000-line JSON into its context to answer \"what is live on the web\".",
+    what: "arkaik-mcp: read tools that are the pages' own projections, write tools gated by the validator, Kritik tools for findings and signals.",
+    how: "One tool catalog over two stores, a repo bundle or the hosted API. Clients send operations, not graphs, and every write is a journal event.",
+  },
 ];
 
 /** The frame caption naming a preview's seed. Copy, so it lives here, not in the catalogue. */

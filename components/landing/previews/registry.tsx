@@ -8,6 +8,7 @@ import { DeliveryBoardPreview } from "./DeliveryBoardPreview";
 import { FindingsBoardPreview } from "./FindingsBoardPreview";
 import { JournalChangelogPreview } from "./JournalChangelogPreview";
 import { JourneyMapPreview } from "./JourneyMapPreview";
+import { McpServerPreview } from "./McpServerPreview";
 import { OverviewCardsPreview } from "./OverviewCardsPreview";
 import { PlatformStatusesPreview } from "./PlatformStatusesPreview";
 import { QualityMatrixPreview } from "./QualityMatrixPreview";
@@ -31,4 +32,5 @@ export const PREVIEW_REGISTRY: Record<PreviewId, ComponentType<PreviewProps>> = 
   "quality-matrix": QualityMatrixPreview,
   "findings-board": FindingsBoardPreview,
   "agent-skill-diff": AgentSkillDiffPreview,
+  "mcp-server": McpServerPreview,
 };
