@@ -8,6 +8,22 @@ export interface Part {
   intro: string;
 }
 
+/** A static card under a preview-less section (E1: the four run modes). */
+export interface SectionCard {
+  title: string;
+  /** Mono kicker above the title, e.g. "LOCAL-FIRST". */
+  kicker: string;
+  body: string;
+}
+
+/** A call to action under a section; `primary` gets the filled button. */
+export interface SectionLink {
+  label: string;
+  href: string;
+  primary?: boolean;
+  external?: boolean;
+}
+
 export interface Section {
   id: string;
   part: PartId;
@@ -16,6 +32,8 @@ export interface Section {
   what: string;
   how: string;
   preview: PreviewId | "none";
+  cards?: SectionCard[];
+  links?: SectionLink[];
 }
 
 /** Page order of chapters. Reordering the page is reordering this array. */
@@ -24,6 +42,7 @@ export const PARTS: Part[] = [
   { id: "truth", title: "Track truth, not fields",  intro: "Status is a history with a platform, not a dropdown. Every claim on the map can be checked." },
   { id: "quality", title: "Keep it honest", intro: "A map says what exists. Kritik says how good it is, surface by surface, and what to fix first." },
   { id: "agents", title: "Maintained by agents", intro: "Nobody maintains a map by hand for long. Arkaik is built to be read and written by the agents that already write the code." },
+  { id: "run",   title: "Run it your way",        intro: "No account to start, no lock-in to stay. One bundle format under every way of running it." },
 ];
 
 /** Page order within each chapter. */
@@ -111,6 +130,37 @@ export const SECTIONS: Section[] = [
     why: "An empty map is the hardest one to start.",
     what: "A prompt builder that turns a pitch, an existing plan or a map you already have into a first bundle, for whichever model you use.",
     how: "The generated output goes through the same schema validation as everything else before it is imported, so a hallucinated field never lands.",
+  },
+  {
+    id: "modes", part: "run", title: "Lokal, Publik, Synk, Inkognito", preview: "none",
+    why: "A tool for your product's anatomy should not decide where that anatomy lives.",
+    what: "Four ways to run Arkaik, from a browser tab with no account to your own infrastructure.",
+    how: "The same bundle format under all of them: export from one, import into another. The schema and toolchain are MIT; the hosted services are open too.",
+    cards: [
+      { kicker: "LOKAL", title: "In your browser", body: "Local-first in IndexedDB. Works offline, needs no account, and exports the whole project as one JSON file." },
+      { kicker: "PUBLIK", title: "Published snapshot", body: "A read-only copy at arkaik.app/p/{id} for anyone you send the link to. Strip what should stay private before it leaves." },
+      { kicker: "SYNK", title: "Hosted with a free account", body: "Backups, hosted projects, the GitHub App and the MCP remote store, behind a GitHub sign-in." },
+      { kicker: "INKOGNITO", title: "Self-hosted", body: "Run the services on your own Postgres and storage. Same code, your keys, nobody else's database." },
+    ],
+  },
+  {
+    id: "self-map", part: "run", title: "Arkaik maps itself", preview: "self-map-journey",
+    why: "The strongest proof of a product graph is the tool's own.",
+    what: "One of Arkaik's own flows, every sub-flow open, exactly as the built-in self-map project ships in the app. Pan around, then open it and drill anywhere.",
+    how: "The same seed file the app loads, maintained by the same skill, validated by the same gate, and published with every release.",
+    links: [{ label: "Open the self-map", href: "/project/arkaik-self-map/maps/journey" }],
+  },
+  {
+    id: "start", part: "run", title: "Start with your product", preview: "none",
+    why: "Everything above was rendered from a JSON file. Yours can be one prompt or one command away.",
+    what: "Create a project in the browser, generate a first map from a pitch, or run npx arkaik init in a repo and let the skill grow it.",
+    how: "Free to start, open source to stay. The docs cover every path, and the self-map is the worked example.",
+    links: [
+      { label: "Start building", href: "/projects", primary: true },
+      { label: "Generate a map", href: "/generate" },
+      { label: "Read the docs", href: "/docs" },
+      { label: "GitHub", href: "https://github.com/alexisbohns/arkaik", external: true },
+    ],
   },
 ];
 

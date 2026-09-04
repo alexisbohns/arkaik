@@ -51,7 +51,13 @@ for (const s of SECTIONS) {
   assert(PARTS.some((p) => p.id === s.part), `${s.id}: known part`);
   assert(s.title && s.why && s.what && s.how, `${s.id}: why/what/how present`);
   assert(s.preview === "none" || PREVIEW_IDS.includes(s.preview), `${s.id}: preview in catalogue`);
+  // A section without a preview must show something: cards, links, or both.
+  assert(s.preview !== "none" || (s.cards?.length ?? 0) > 0 || (s.links?.length ?? 0) > 0, `${s.id}: a preview-less section has cards or links`);
+  for (const card of s.cards ?? []) assert(card.title && card.body, `${s.id}: card ${card.title} has title and body`);
+  for (const link of s.links ?? []) assert(link.label && (link.href.startsWith("/") || /^https:\/\//.test(link.href)), `${s.id}: link ${link.label} has a label and an absolute or root-relative href`);
 }
+assert(PARTS.some((p) => p.id === "run"), "the run chapter exists");
+assert(SECTIONS.some((s) => s.id === "modes" && s.cards && s.cards.length === 4), "the modes section has four cards");
 
 // Fixtures: every id exists in the seed the fixture names
 for (const [previewId, fixture] of Object.entries(FIXTURES)) {
@@ -110,8 +116,18 @@ for (const [previewId, fixture] of Object.entries(FIXTURES)) {
   assert(covered.length > 0 && covered.every((id) => matrixIds.has(id)), "matrix slice contains every covered node");
   assert([...acceptanceIds].every((id) => matrixIds.has(id)), "matrix slice contains every acceptance");
 
+  const deep = prepareBundle("self-map-journey", self);
+  const [deepRoot] = FIXTURES["self-map-journey"].nodeIds;
+  assert(deep.nodes.some((n) => n.id === deepRoot), "self-map journey slice contains its root flow");
+  assert(deep.nodes.filter((n) => n.species === "flow").length >= 4, "self-map journey slice has several sub-flows to expand");
+  assert(deep.nodes.length > 6 && deep.nodes.length < 60, `self-map journey slice is small (${deep.nodes.length} nodes)`);
+  {
+    const deepIds = new Set(deep.nodes.map((n) => n.id));
+    assert(deep.edges.length > 0 && deep.edges.every((e) => deepIds.has(e.source_id) && deepIds.has(e.target_id)), "self-map journey slice edges are induced");
+  }
+
   for (const id of PREVIEW_IDS) {
-    if (id === "journey-map" || id === "system-map" || id === "acceptance-matrix") continue;
+    if (id === "journey-map" || id === "system-map" || id === "acceptance-matrix" || id === "self-map-journey") continue;
     const seed = SEEDS[PREVIEW_META[id].source];
     assert(prepareBundle(id, seed).nodes.length === seed.nodes.length, `${id}: prepare leaves the bundle whole`);
   }

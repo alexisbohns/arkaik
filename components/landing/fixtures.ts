@@ -37,4 +37,7 @@ export const FIXTURES: Record<PreviewId, PreviewFixture> = {
   "agent-skill-diff": { source: "self-map", nodeIds: ["V-journey-map"] },
   "mcp-server": { source: "self-map" }, // the call and its response are generated; nothing to pin
   "prompt-builder": { source: "pebbles" }, // reads only the project title
+  // The flow about the self-map itself, every sub-flow expanded: the deepest
+  // closure in the seed (11 nodes, 6 sub-flows).
+  "self-map-journey": { source: "self-map", nodeIds: ["F-explore-sandbox"] },
 };
