@@ -30,12 +30,7 @@ export function JourneyPreviewCanvas({ bundle, definition, expandedFlowIds }: Jo
     const nodesById = new Map(dataNodes.map((node) => [node.id, node]));
     const scope = resolveProductScope(bundle, null);
     const graph: ProductGraph = { edges: dataEdges, nodesById, usageIndex: buildProductUsageIndex(dataNodes, dataEdges) };
-    // A definition without a root means "the whole product": every parentless
-    // flow as a card. The anchor chain would otherwise fall through to the
-    // project's front door (`project.root_node_id`, a view) and draw only its
-    // own compose chain, so the project record is withheld from the anchor.
-    const project = definition.root_node_id ? bundle.project : null;
-    const selection = resolveJourneySelection({ definition, dataNodes, dataEdges, project, scope, graph });
+    const selection = resolveJourneySelection({ definition, dataNodes, dataEdges, project: bundle.project, scope, graph });
     return {
       scope,
       selection,

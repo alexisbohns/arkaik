@@ -206,6 +206,11 @@ export function Canvas({
           nodesDraggable={!readOnly}
           nodesConnectable={!readOnly}
           elementsSelectable={!readOnly}
+          // A read-only canvas is embedded in a scrolling page (the landing
+          // previews): the wheel must scroll the page, not zoom the graph.
+          // Panning by drag stays.
+          zoomOnScroll={!readOnly}
+          preventScrolling={!readOnly}
           onInit={handleInit}
           onNodesChange={handleNodesChange}
           onNodeClick={handleNodeClick}

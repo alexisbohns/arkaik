@@ -116,13 +116,14 @@ for (const [previewId, fixture] of Object.entries(FIXTURES)) {
   assert(covered.length > 0 && covered.every((id) => matrixIds.has(id)), "matrix slice contains every covered node");
   assert([...acceptanceIds].every((id) => matrixIds.has(id)), "matrix slice contains every acceptance");
 
-  const whole = prepareBundle("self-map-journey", self);
-  assert(whole.nodes.every((n) => n.species === "flow" || n.species === "view"), "self-map journey slice holds flows and views only");
-  const flowCount = self.nodes.filter((n) => n.species === "flow").length;
-  assert(whole.nodes.filter((n) => n.species === "flow").length === flowCount, "self-map journey slice keeps every flow");
+  const deep = prepareBundle("self-map-journey", self);
+  const [deepRoot] = FIXTURES["self-map-journey"].nodeIds;
+  assert(deep.nodes.some((n) => n.id === deepRoot), "self-map journey slice contains its root flow");
+  assert(deep.nodes.filter((n) => n.species === "flow").length >= 4, "self-map journey slice has several sub-flows to expand");
+  assert(deep.nodes.length > 6 && deep.nodes.length < 60, `self-map journey slice is small (${deep.nodes.length} nodes)`);
   {
-    const wholeIds = new Set(whole.nodes.map((n) => n.id));
-    assert(whole.edges.length > 0 && whole.edges.every((e) => wholeIds.has(e.source_id) && wholeIds.has(e.target_id)), "self-map journey slice edges are induced");
+    const deepIds = new Set(deep.nodes.map((n) => n.id));
+    assert(deep.edges.length > 0 && deep.edges.every((e) => deepIds.has(e.source_id) && deepIds.has(e.target_id)), "self-map journey slice edges are induced");
   }
 
   for (const id of PREVIEW_IDS) {

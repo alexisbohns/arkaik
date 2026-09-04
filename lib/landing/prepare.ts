@@ -1,6 +1,6 @@
 import { computeMapSubgraph } from "@arkaik/schema";
 import { FIXTURES } from "@/components/landing/fixtures";
-import { JOURNEY_DEFINITION, SYSTEM_DEFINITION } from "@/components/landing/previews/definitions";
+import { JOURNEY_DEFINITION, SELF_MAP_DEFINITION, SYSTEM_DEFINITION } from "@/components/landing/previews/definitions";
 import type { PreviewId } from "@/components/landing/previews/ids";
 import type { ProjectBundle } from "@/lib/data/types";
 import { sliceBundle } from "@/lib/landing/slice";
@@ -16,7 +16,7 @@ import { sliceBundle } from "@/lib/landing/slice";
 export function prepareBundle(id: PreviewId, bundle: ProjectBundle): ProjectBundle {
   switch (id) {
     case "journey-map":
-      return sliceBundle(bundle, journeyClosureIds(bundle));
+      return sliceBundle(bundle, journeyClosureIds(bundle, JOURNEY_DEFINITION.root_node_id!));
     case "system-map": {
       const subgraph = computeMapSubgraph(SYSTEM_DEFINITION, bundle.nodes, bundle.edges);
       return sliceBundle(bundle, subgraph.nodes.map((node) => node.id));
@@ -24,10 +24,7 @@ export function prepareBundle(id: PreviewId, bundle: ProjectBundle): ProjectBund
     case "acceptance-matrix":
       return sliceBundle(bundle, matrixIds(bundle));
     case "self-map-journey":
-      // Every flow and view, nothing else: the top-level cards render collapsed
-      // and read status from the views, so the graph's other species would
-      // only add payload (flows + views ≈ 45 KB raw against 200 KB for all).
-      return sliceBundle(bundle, bundle.nodes.filter((n) => n.species === "flow" || n.species === "view").map((n) => n.id));
+      return sliceBundle(bundle, journeyClosureIds(bundle, SELF_MAP_DEFINITION.root_node_id!));
     default:
       return bundle;
   }
@@ -47,8 +44,7 @@ export function prepareBundle(id: PreviewId, bundle: ProjectBundle): ProjectBund
  * in `nodesById` — so the endpoints have to come along or every view card
  * loses its API affordances.
  */
-function journeyClosureIds(bundle: ProjectBundle): string[] {
-  const rootId = JOURNEY_DEFINITION.root_node_id!;
+function journeyClosureIds(bundle: ProjectBundle, rootId: string): string[] {
   const speciesById = new Map(bundle.nodes.map((node) => [node.id, node.species]));
   const childrenByParent = new Map<string, string[]>();
   for (const edge of bundle.edges) {
