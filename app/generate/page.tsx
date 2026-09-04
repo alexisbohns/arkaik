@@ -3,21 +3,16 @@
 import { Suspense, useState, useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, Lightbulb, FileText, GitBranch } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { parseCreateTarget, type CreateTarget } from "@/lib/data/create-target";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { PromptBuilderForm } from "@/components/generate/PromptBuilderForm";
 import { PromptOutput } from "@/components/generate/PromptOutput";
+import { UseCasePicker } from "@/components/generate/UseCasePicker";
 import { assemblePrompt, estimateTokens } from "@/lib/prompts/assemble";
 import type { PromptConfig, UseCase } from "@/lib/prompts/types";
 import { USE_CASES } from "@/lib/prompts/types";
-
-const USE_CASE_ICONS = {
-  "from-pitch": Lightbulb,
-  "from-plan": FileText,
-  "extend-map": GitBranch,
-} as const;
 
 const DEFAULT_CONFIG: PromptConfig = {
   useCase: "from-pitch",
@@ -134,25 +129,7 @@ function GeneratePageBody() {
             </p>
           </div>
 
-          <div className="grid w-full gap-4 sm:grid-cols-3">
-            {USE_CASES.map((uc) => {
-              const Icon = USE_CASE_ICONS[uc.id];
-              return (
-                <button
-                  key={uc.id}
-                  type="button"
-                  onClick={() => handleUseCaseSelect(uc.id)}
-                  className="flex flex-col items-start gap-3 rounded-xl border bg-card p-6 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <Icon className="size-6 text-primary" />
-                  <div>
-                    <div className="font-medium">{uc.label}</div>
-                    <p className="mt-1 text-sm text-muted-foreground">{uc.description}</p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+          <UseCasePicker onSelect={handleUseCaseSelect} />
         </main>
       ) : (
         <main className="mx-auto flex w-full max-w-7xl flex-1 gap-6 px-6 py-6">

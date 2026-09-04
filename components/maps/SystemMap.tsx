@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { type Connection, type EdgeMouseHandler, type NodeMouseHandler } from "@xyflow/react";
 import { PlusIcon } from "lucide-react";
 import {
@@ -11,7 +11,7 @@ import {
   type MapDisplayOptions,
 } from "@arkaik/schema";
 import { toast } from "sonner";
-import { Canvas } from "@/components/graph/Canvas";
+import { SystemCanvas } from "@/components/graph/SystemCanvas";
 import { MapDisplayPopover } from "@/components/maps/MapDisplayPopover";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
@@ -23,7 +23,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { EdgeTypeId } from "@/lib/config/edge-types";
 import type { Node as DataNode, Edge as DataEdge } from "@/lib/data/types";
 import { useEdges } from "@/lib/hooks/useEdges";
-import { useElkLayout } from "@/lib/hooks/useElkLayout";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
@@ -33,32 +32,12 @@ import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope
 import { generateNodeId, edgeId } from "@/lib/utils/id";
 import { mapProductId, type ProductGraph } from "@/lib/utils/product-scope";
 import { buildNodeFindingIndex } from "@/lib/utils/quality";
-import { buildSystemGraph } from "@/lib/utils/system-graph";
-import type { ElkLayoutOptions } from "@/lib/utils/elk-layout";
+import type { SystemLayoutMode } from "@/lib/utils/system-layout-options";
 
 interface SystemMapProps {
   projectId: string;
   definition: MapDefinition;
 }
-
-// Tiered: views feed APIs feed data models — pin the tiers regardless of edge
-// shape (spike-verified partitioning; orphans stay in their tier).
-const SYSTEM_TIERED_LAYOUT_OPTIONS: ElkLayoutOptions = {
-  algorithm: "layered",
-  direction: "DOWN",
-  layoutEdgeTypes: ["calls", "displays", "queries"],
-  partitionByNodeType: { view: 0, apiEndpoint: 1, dataModel: 2 },
-};
-
-// Organic: force-directed structure with overlap removal — at whole-product
-// scale the tiered rendition degenerates into an unreadably wide ribbon
-// (docs/spec/maps.md § MapDefinition, layout.algorithm).
-const SYSTEM_ORGANIC_LAYOUT_OPTIONS: ElkLayoutOptions = {
-  algorithm: "organic",
-  layoutEdgeTypes: ["calls", "displays", "queries"],
-};
-
-type SystemLayoutMode = "tiered" | "organic";
 
 /**
  * The System map: the model-centered reading — views, API endpoints, and data
@@ -122,7 +101,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
   );
 
   // On `quality` alone, not on the bundle — JourneyMap's twin, and for its
-  // reason: this feeds `buildSystemGraph`, so a fresh map here would rebuild the
+  // reason: this feeds `SystemCanvas`'s graph build, so a fresh map here would rebuild the
   // graph and re-run ELK over 137 cards every time an unrelated corner of the
   // project changed.
   const nodeFindings = useMemo(
@@ -130,19 +109,11 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
     [projectBundle?.quality],
   );
 
-  const graph = useMemo(
-    () =>
-      buildSystemGraph(
-        definition,
-        dataNodes,
-        dataEdges,
-        { onOpenDetails: (node) => openNode({ nodeId: node.id }) },
-        display,
-        { scope, graph: productGraph },
-        nodeFindings,
-      ),
-    [dataEdges, dataNodes, definition, display, nodeFindings, openNode, productGraph, scope],
+  const systemHandlers = useMemo(
+    () => ({ onOpenDetails: (node: DataNode) => openNode({ nodeId: node.id }) }),
+    [openNode],
   );
+  const systemScope = useMemo(() => ({ scope, graph: productGraph }), [productGraph, scope]);
 
   // The per-map override record — see JourneyMap's twin (docs/spec/maps.md
   // § Display Options).
@@ -171,29 +142,22 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
     [definition.id, projectBundle, updateProject],
   );
 
-  const { nodes, layoutVersion } = useElkLayout(
-    graph,
-    layoutMode === "tiered" ? SYSTEM_TIERED_LAYOUT_OPTIONS : SYSTEM_ORGANIC_LAYOUT_OPTIONS,
-  );
-
   // Re-frame the viewport when a layout the user asked for lands: armed at
   // mount (ReactFlow's one-time fitView fires while nodes still sit at the
   // origin) and re-armed on each rendition switch. Data-edit relayouts leave
   // the ref unarmed so they never yank the viewport while someone works.
+  // A callback from SystemCanvas rather than an effect: it fires exactly once
+  // per landed layout, so the requestAnimationFrame dedupe is no longer needed.
   const pendingFitRef = useRef(true);
   const [fitSignal, setFitSignal] = useState(0);
 
-  useEffect(() => {
-    if (layoutVersion === 0 || !pendingFitRef.current) return;
-    // Consume the flag inside the frame callback: if a second layout lands
-    // before the frame fires (StrictMode's doubled effects), the cleanup
-    // cancels this frame and the still-armed ref re-schedules — exactly one fit.
-    const frame = requestAnimationFrame(() => {
-      pendingFitRef.current = false;
-      setFitSignal((value) => value + 1);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [layoutVersion]);
+  // The canvas only reports landed layouts (never the placeholder pass), so
+  // the ref is the whole condition.
+  const handleLayoutVersion = useCallback(() => {
+    if (!pendingFitRef.current) return;
+    pendingFitRef.current = false;
+    setFitSignal((value) => value + 1);
+  }, []);
 
   // The canvas is a grid cell now: opening a panel narrows it and closing one
   // gives the room back, so re-frame rather than leave the map half off-cell.
@@ -361,17 +325,23 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
         onCreateNode={handleCreateNodeFromPanel}
         intake={intake}
       >
-        <Canvas
-          nodes={nodes}
-          edges={graph.edges}
-          onNodeClick={handleNodeClick}
-          onConnect={handleConnect}
-          onEdgeClick={handleEdgeClick}
+        <SystemCanvas
+          definition={definition}
+          dataNodes={dataNodes}
+          dataEdges={dataEdges}
+          display={display}
+          handlers={systemHandlers}
+          productScope={systemScope}
+          nodeFindings={nodeFindings}
+          layoutMode={layoutMode}
           fitSignal={fitSignal}
           minimapColor={display.minimap_color}
           spotlight
           spotlightNodeId={addressedNodeId}
-          scope={scope}
+          onNodeClick={handleNodeClick}
+          onConnect={handleConnect}
+          onEdgeClick={handleEdgeClick}
+          onLayoutVersion={handleLayoutVersion}
         />
       </PageShell>
       <NewNodeForm

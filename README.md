@@ -59,6 +59,8 @@ app/
 components/
   graph/
     Canvas.tsx                # React Flow wrapper + node/edge type registry
+    JourneyCanvas.tsx         # Journey graph → ELK → Canvas, props only (JourneyMap is the controller)
+    SystemCanvas.tsx          # System graph → ELK → Canvas, props only (SystemMap is the controller)
     nodes/                    # FlowNode, ViewNode, DataModelNode, ApiEndpointNode
     edges/                    # ComposeEdge, CrossLayerEdge, FloatingDottedEdge
   maps/                       # JourneyMap, SystemMap, map cards + editor dialog

@@ -81,7 +81,9 @@ The Journey map (`components/maps/JourneyMap.tsx`) is the core of the graph rend
 ```
 components/
   graph/
-    Canvas.tsx              # ReactFlow wrapper — registers node/edge types, renders Controls, MiniMap, Background
+    Canvas.tsx              # ReactFlow wrapper — registers node/edge types, renders Controls, MiniMap, Background; `readOnly` drops editing and chrome
+    JourneyCanvas.tsx       # Journey graph → ELK → Canvas, props only (JourneyMap is the controller)
+    SystemCanvas.tsx        # System graph → ELK → Canvas, props only (SystemMap is the controller)
     nodes/                  # Custom React Flow node components
       FlowNode.tsx          # Container card for flow nodes with rollup gauges
       ViewNode.tsx          # Variant-based View cards (compact/large), API actions, platform/API popovers
