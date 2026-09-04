@@ -6,6 +6,8 @@
 
 **Architecture:** Same page-as-data model (spec `docs/superpowers/specs/2026-09-03-marketing-page-design.md`; Parts 1–3 in `docs/superpowers/plans/2026-09-04-marketing-page-{1,2,3}-*.md`). `Section` gains two optional data fields, `cards` and `links`, that `LandingSection` renders in the same stacked unit; no new component holds copy. E2 reuses the journey canvas through a small shared client component with a root-less map definition, sliced server-side to flows and views only so the whole product costs ~45 KB raw, not the seed.
 
+> **Status (2026-09-04):** executed. Deviation: E2 is not the root-less whole product (ELK lays 28 root cards in one unreadable row) but the `F-explore-sandbox` flow with every sub-flow expanded, sliced to its closure; read-only canvases now pass the wheel through (`zoomOnScroll`/`preventScrolling` off in `Canvas.tsx`).
+
 **Tech Stack:** Next.js 16 RSC, React 19, `@xyflow/react` via `JourneyCanvas`, `@arkaik/schema` (`resolveMapDisplay`, `buildProductUsageIndex`), Tailwind 4 zinc tokens, plain-node landing tests, Playwright in the scratchpad.
 
 ---
@@ -25,7 +27,7 @@
 **Files:**
 - Modify: `components/landing/content.ts`, `components/landing/LandingSection.tsx`, `tests/landing/landing.test.js`
 
-- [ ] **Step 1: Failing assertions**
+- [x] **Step 1: Failing assertions**
 
 In `tests/landing/landing.test.js`, replace the section loop's last assertion block with:
 
@@ -45,7 +47,7 @@ assert(SECTIONS.some((s) => s.id === "modes" && s.cards && s.cards.length === 4)
 
 Run: `npm run test:landing` → FAIL on "the run chapter exists".
 
-- [ ] **Step 2: The model**
+- [x] **Step 2: The model**
 
 In `components/landing/content.ts` add above `Section`:
 
@@ -97,7 +99,7 @@ Append to `SECTIONS`:
   },
 ```
 
-- [ ] **Step 3: Render cards and links**
+- [x] **Step 3: Render cards and links**
 
 Rewrite `components/landing/LandingSection.tsx`:
 
@@ -175,7 +177,7 @@ export function LandingSection({ section, preview }: LandingSectionProps) {
 
 > `Button` is `components/ui/button` (shadcn); check its `size`/`variant` unions before using `"lg"`/`"outline"` and adjust to what exists.
 
-- [ ] **Step 4: Verify, commit**
+- [x] **Step 4: Verify, commit**
 
 `npm run test:landing && npx tsc --noEmit -p . && npm run lint` green.
 
@@ -192,7 +194,7 @@ git commit -m "landing: the run chapter opens with the four modes"
 - Create: `components/landing/previews/client/JourneyPreviewCanvas.tsx`, `components/landing/previews/SelfMapJourneyPreview.tsx`
 - Modify: `components/landing/previews/JourneyMapPreview.tsx` (delegates), `components/landing/previews/definitions.ts`, `components/landing/previews/ids.ts`, `components/landing/fixtures.ts`, `components/landing/content.ts`, `components/landing/previews/registry.tsx`, `lib/landing/prepare.ts`, `tests/landing/landing.test.js`
 
-- [ ] **Step 1: Failing test**
+- [x] **Step 1: Failing test**
 
 Append to the "Prepare" block of `tests/landing/landing.test.js` (before the loop that asserts other ids leave the bundle whole; add `"self-map-journey"` to that loop's skip list):
 
@@ -206,7 +208,7 @@ Append to the "Prepare" block of `tests/landing/landing.test.js` (before the loo
 
 (Keep the last line simple: `sliceBundle` already induces edges; the assertion documents intent.) Also add the catalogue entry assertions by running the suite: FAIL on `prepareBundle("self-map-journey")` returning the whole bundle.
 
-- [ ] **Step 2: Catalogue, fixture, definition, slice**
+- [x] **Step 2: Catalogue, fixture, definition, slice**
 
 `ids.ts`: `PREVIEW_IDS` += `"self-map-journey"`; `PREVIEW_META`:
 
@@ -249,7 +251,7 @@ export const SELF_MAP_DEFINITION: MapDefinition = {
   },
 ```
 
-- [ ] **Step 3: The shared canvas client component**
+- [x] **Step 3: The shared canvas client component**
 
 Create `components/landing/previews/client/JourneyPreviewCanvas.tsx` by moving the body of `JourneyMapPreview` and parameterising it:
 
@@ -359,7 +361,7 @@ export function SelfMapJourneyPreview({ bundle }: PreviewProps) {
 
 `registry.tsx` += `"self-map-journey": SelfMapJourneyPreview,`.
 
-- [ ] **Step 4: Verify, commit**
+- [x] **Step 4: Verify, commit**
 
 `npm run test:landing && npx tsc --noEmit -p . && npm run lint` green. Load `http://localhost:4242/` and check the E2 frame draws many collapsed flow cards and the A1 frame is unchanged (Playwright smoke: `canvasNodes` grows well past 18).
 
@@ -375,7 +377,7 @@ git commit -m "landing: Arkaik's whole journey, live, in the run chapter"
 **Files:**
 - Modify: `components/landing/content.ts`
 
-- [ ] **Step 1: The section**
+- [x] **Step 1: The section**
 
 Append to `SECTIONS`:
 
@@ -394,7 +396,7 @@ Append to `SECTIONS`:
   },
 ```
 
-- [ ] **Step 2: Verify, commit**
+- [x] **Step 2: Verify, commit**
 
 `npm run test:landing` green (links assertion covers the external href).
 
@@ -409,11 +411,11 @@ git commit -m "landing: the closing CTA row"
 
 **Files:** whatever the screenshots demand under `components/landing/**` (and `app/page.tsx` only for the seam between the hero's footer line and the chapters, if it reads wrong).
 
-- [ ] **Step 1: Full-page captures**
+- [x] **Step 1: Full-page captures**
 
 With the dev server up, run the scratchpad `smoke-landing.mjs` (expected: `frames` = 17 figures + 2 diagram figures = 19, `unavailable=0`, `page errors: 0`, no horizontal scroll at 390) and open `landing-desktop-light.png`, `landing-desktop-dark.png`, `landing-mobile-light.png`. Also shoot the three `run` sections with a `shot-part4.mjs` (copy `shot-part3.mjs`, ids `["modes","self-map","start"]`) in light and dark.
 
-- [ ] **Step 2: Checklist, fix what fails**
+- [x] **Step 2: Checklist, fix what fails**
 
 - Chapter column: at 390 the kicker/title/intro/chip row stack above the sections; at 1280 the column pins and the index tracks scrolling for the `run` chapter too (five parts now: kicker reads `PART 05 · OF 05`).
 - The hero's "with love by" footer line sits between the hero and PART 01; if it reads like a stray line, move it into a `<footer>` rendered by `LandingPage` after the last part (keep the byline text byte-identical) and note it in the PR.
@@ -427,11 +429,11 @@ Commit fixes as `landing: responsive and theme pass`.
 
 ### Task 5: Docs, Lab Note, PR
 
-- [ ] **Step 1: Docs**
+- [x] **Step 1: Docs**
 
 Extend the `landing/` block in `docs/architecture.md` (added in Part 3) with `JourneyPreviewCanvas.tsx` and the `cards`/`links` fields, one line each. Commit `docs: landing run chapter`.
 
-- [ ] **Step 2: Gates, push, PR**
+- [x] **Step 2: Gates, push, PR**
 
 `npx tsc --noEmit -p . && npm run lint && npm run test:landing && npm run test:root-redirect && npm run generate && git status --short` (clean).
 
