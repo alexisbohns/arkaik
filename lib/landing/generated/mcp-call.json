@@ -1,0 +1,41 @@
+{
+  "tool": "list_nodes",
+  "arguments": {
+    "species": "view",
+    "status": "live",
+    "query": "map",
+    "limit": 3
+  },
+  "result": {
+    "total": 10,
+    "nodes": [
+      {
+        "id": "V-projects",
+        "title": "/projects",
+        "species": "view",
+        "status": "live",
+        "platforms": [
+          "web"
+        ]
+      },
+      {
+        "id": "V-maps-index",
+        "title": "Maps Index",
+        "species": "view",
+        "status": "live",
+        "platforms": [
+          "web"
+        ]
+      },
+      {
+        "id": "V-journey-map",
+        "title": "Journey Map Canvas",
+        "species": "view",
+        "status": "live",
+        "platforms": [
+          "web"
+        ]
+      }
+    ]
+  }
+}

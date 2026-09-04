@@ -139,5 +139,18 @@ for (const [previewId, fixture] of Object.entries(FIXTURES)) {
   assert(LANDING_QUALITY_EVENTS.some((e) => e.type === "quality.signal.tripped"), "quality events include a tripped signal");
 }
 
+// Generated samples: present, shaped, and about the self-map
+{
+  const gen = (name) => JSON.parse(fs.readFileSync(path.join(ROOT, "lib", "landing", "generated", name), "utf8"));
+  const cli = gen("cli-validate.json");
+  assert(cli.command.startsWith("arkaik validate"), "cli sample records its command");
+  assert(/Result: VALID/.test(cli.output), "cli sample is a VALID run");
+  assert(cli.output.includes(`Nodes: ${SEEDS["self-map"].nodes.length}`), "cli sample counts the self-map's nodes");
+  const mcp = gen("mcp-call.json");
+  assert(mcp.tool === "list_nodes" && mcp.arguments && typeof mcp.arguments === "object", "mcp sample is a list_nodes call");
+  assert(Array.isArray(mcp.result.nodes) && mcp.result.nodes.length > 0 && mcp.result.nodes.length <= mcp.arguments.limit, "mcp sample result is bounded by its limit");
+  assert(mcp.result.nodes.every((n) => nodeIds["self-map"].has(n.id)), "mcp sample nodes exist in the self-map");
+}
+
 if (failures > 0) { console.log(`\n${failures} failure(s)`); process.exit(1); }
 console.log("\nAll landing tests passed.");

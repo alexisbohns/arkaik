@@ -1,0 +1,4 @@
+{
+  "command": "arkaik validate seed/arkaik-self-map.json",
+  "output": "\n  Arkaik Bundle Validation\n  =======================\n\n  Nodes: 231 (35 views, 38 flows, 26 data-models, 23 api-endpoints)\n  Edges: 436\n  Journal: 809 embedded event(s)\n\n  Result: VALID"
+}
