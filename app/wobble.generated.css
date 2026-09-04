@@ -97,6 +97,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-layout-dashboard { filter: url(#wob-layout-dashboard); }
 .lucide-layout-grid { filter: url(#wob-layout-grid); }
 .lucide-leaf { filter: url(#wob-leaf); }
+.lucide-library-big { filter: url(#wob-library-big); }
 .lucide-lightbulb { filter: url(#wob-lightbulb); }
 .lucide-link2 { filter: url(#wob-link2); }
 .lucide-list { filter: url(#wob-list); }
@@ -115,10 +116,13 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-moon { filter: url(#wob-moon); }
 .lucide-mountain { filter: url(#wob-mountain); }
 .lucide-network { filter: url(#wob-network); }
+.lucide-newspaper { filter: url(#wob-newspaper); }
+.lucide-notebook-pen { filter: url(#wob-notebook-pen); }
 .lucide-package { filter: url(#wob-package); }
 .lucide-palette { filter: url(#wob-palette); }
 .lucide-panel-left { filter: url(#wob-panel-left); }
 .lucide-party-popper { filter: url(#wob-party-popper); }
+.lucide-pen-tool { filter: url(#wob-pen-tool); }
 .lucide-pencil { filter: url(#wob-pencil); }
 .lucide-pencil-ruler { filter: url(#wob-pencil-ruler); }
 .lucide-piggy-bank { filter: url(#wob-piggy-bank); }
@@ -126,8 +130,10 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-plus { filter: url(#wob-plus); }
 .lucide-pyramid { filter: url(#wob-pyramid); }
 .lucide-radar { filter: url(#wob-radar); }
+.lucide-rainbow { filter: url(#wob-rainbow); }
 .lucide-refresh-cw { filter: url(#wob-refresh-cw); }
 .lucide-replace { filter: url(#wob-replace); }
+.lucide-rocket { filter: url(#wob-rocket); }
 .lucide-rotate-ccw { filter: url(#wob-rotate-ccw); }
 .lucide-rotate-cw { filter: url(#wob-rotate-cw); }
 .lucide-route { filter: url(#wob-route); }
@@ -154,6 +160,8 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-table2 { filter: url(#wob-table2); }
 .lucide-tag { filter: url(#wob-tag); }
 .lucide-tags { filter: url(#wob-tags); }
+.lucide-telescope { filter: url(#wob-telescope); }
+.lucide-terminal { filter: url(#wob-terminal); }
 .lucide-thumbs-up { filter: url(#wob-thumbs-up); }
 .lucide-ticket { filter: url(#wob-ticket); }
 .lucide-timer { filter: url(#wob-timer); }
@@ -166,4 +174,5 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-users { filter: url(#wob-users); }
 .lucide-wand-sparkles { filter: url(#wob-wand-sparkles); }
 .lucide-workflow { filter: url(#wob-workflow); }
+.lucide-wrench { filter: url(#wob-wrench); }
 .lucide-x { filter: url(#wob-x); }
