@@ -6,6 +6,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { ArkaikLogoBoil } from "@/components/branding/ArkaikLogoBoil";
 import { AsciiTerrainBackground } from "@/components/background/AsciiTerrainBackground";
 import { getSession } from "@/lib/services/auth";
+import { LandingPage } from "@/components/landing/LandingPage";
 
 const gochiHand = Gochi_Hand({
   subsets: ["latin"],
@@ -38,6 +39,7 @@ export default async function Home() {
   }
 
   return (
+    <>
     <div className="relative flex min-h-screen flex-col overflow-hidden bg-background font-sans">
       <AsciiTerrainBackground />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(127,127,127,0.12),transparent_62%)]" />
@@ -71,5 +73,7 @@ export default async function Home() {
         with love by <a className="underline underline-offset-4" href="https://github.com/alexisbohns" target="_blank" rel="noreferrer">@alexisbohns</a>
       </footer>
     </div>
+      <LandingPage />
+    </>
   );
 }

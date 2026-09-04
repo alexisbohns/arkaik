@@ -59,6 +59,8 @@ const STUBS = {
   "@/components/theme-toggle": { ThemeToggle: () => null },
   "@/components/branding/ArkaikLogoBoil": { ArkaikLogoBoil: () => null },
   "@/components/background/AsciiTerrainBackground": { AsciiTerrainBackground: () => null },
+  // The chapters below the hero: a server component over the seeds, inert here.
+  "@/components/landing/LandingPage": { LandingPage: () => null },
   "@/lib/services/auth": { getSession: async () => currentSession },
 };
 

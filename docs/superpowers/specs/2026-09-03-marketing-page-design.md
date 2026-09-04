@@ -18,11 +18,15 @@ re-capturing anything.
 2. **Previews are components, never images.** Every preview renders a real
    or tailored React component over real data. A schema change that breaks a
    preview breaks the build, which is the maintenance model.
-3. **The data is Arkaik's own map.** Previews read slices of
-   `seed/arkaik-self-map.json` (231 nodes, 436 edges, 809 journal events).
-   One exception: the self-map has no `quality` section, so the two Kritik
-   previews read a small hand-authored quality fixture typed by
-   `@arkaik/schema`'s quality types and parsed through it in a test.
+3. **The data is the two shipped seeds.** Previews read
+   `seed/arkaik-self-map.json` (Arkaik's own map) wherever it can carry the
+   point, and `seed/pebbles.json` (the built-in example project) where the
+   self-map structurally cannot: it is web-only, so it has no per-platform
+   statuses, no parity gaps, and no superseded decisions. Each preview
+   declares its source and the frame caption names it. Neither seed has a
+   `quality` section, so the two Kritik previews read a small hand-authored
+   quality fixture typed by `@arkaik/schema`'s quality types and parsed
+   through it in a test.
 4. **The page is data.** Order, grouping, copy, layout variant and preview
    choice for every section live in one typed array. Reordering the page is
    moving array entries.
@@ -57,12 +61,12 @@ lives in `components/landing/content.ts`.
 |---|---|---|---|
 | A1 | `journey-map` | real | `JourneyCanvas` (see § Refactors) scoped to one flow, four or five view cards, hover and drill-down only |
 | A2 | `system-map` | real | `SystemCanvas` scoped around one data model, three tiers |
-| A3 | `delivery-board` | real | `DeliveryBoard` with three status columns, six or seven `PlatformItemCard`s |
-| A4 | `overview-cards` | real | `PlatformGaugesCard` and `ReleasePulseCard` side by side |
-| B1 | `platform-statuses` | tailored | one view's platform chip row with the rollup `StatusBadge` above it, built from `PlatformList`, `StatusMark`, `StatusRing` |
-| B2 | `acceptance-matrix` | real | `AcceptanceMatrix` for one flow, one row a parity gap |
+| A3 | `delivery-board` | real | `DeliveryBoard` with three status columns over five views, one view in two columns (Pebbles: every self-map view is live) |
+| A4 | `overview-cards` | real | `PlatformGaugesCard` and `ReleasePulseCard` side by side (Pebbles: the gauges need two platforms) |
+| B1 | `platform-statuses` | tailored | one view's platform chip row with the rollup `StatusBadge` above it, built from `PlatformList`, `StatusMark`, `StatusRing` (Pebbles) |
+| B2 | `acceptance-matrix` | real | `AcceptanceMatrix` for one flow, one row a parity gap (Pebbles) |
 | B3 | `value-pyramid` | tailored | one `PyramidTierGroup` with three `PyramidElementCard`s |
-| B4 | `decision-chain` | tailored | two decision cards, one superseding the other, with an `impacts` link; built from the `DecisionLog` row primitives |
+| B4 | `decision-chain` | tailored | two decision cards, one superseding the other, with an `impacts` link; built from the `DecisionLog` row primitives (Pebbles) |
 | B5 | `journal-changelog` | real | node timeline (`FeedRow`s) left, changelog excerpt between two real releases right |
 | C1 | `quality-matrix` | real | `QualityGallery` of `SurfaceScoreCard`s with `LevelMeter`s |
 | C2 | `findings-board` | real | `FindingsBoard` with two `FindingCard`s plus one `quality.signal.tripped` `FeedRow` |
@@ -148,8 +152,9 @@ blue. Inline SVG, `currentColor` and CSS variables for theme.
 - Dark mode through the existing tokens only. Frames, cards and the dot
   grid use `--card`, `--border`, `--muted-foreground`. No hard-coded greys
   outside the SVG's species rails.
-- Below 900px the chapter column stops being sticky and becomes a header
-  above its sections; the index becomes a horizontal chip row. Frames keep
+- Below the `lg` breakpoint (1024px) the chapter column stops being sticky
+  and becomes a header above its sections; the index becomes a horizontal
+  chip row. Frames keep
   their aspect but scroll horizontally inside the frame, never the page.
 - Motion is limited to the index highlight transition and the canvases'
   fit-view on mount. No scroll-driven animation, no parallax.

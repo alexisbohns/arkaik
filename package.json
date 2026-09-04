@@ -33,6 +33,7 @@
     "test:decision": "node tests/schema/decision.test.js",
     "test:delivery": "node tests/app/delivery.test.js",
     "test:journey-graph": "node tests/app/journey-graph.test.js",
+    "test:landing": "node tests/landing/landing.test.js",
     "test:spotlight": "node tests/app/graph-spotlight.test.js",
     "test:panel-stack": "node tests/app/panel-stack.test.js",
     "test:project-panels": "node tests/app/project-panels.test.js",
