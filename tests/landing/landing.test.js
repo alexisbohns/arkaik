@@ -51,7 +51,13 @@ for (const s of SECTIONS) {
   assert(PARTS.some((p) => p.id === s.part), `${s.id}: known part`);
   assert(s.title && s.why && s.what && s.how, `${s.id}: why/what/how present`);
   assert(s.preview === "none" || PREVIEW_IDS.includes(s.preview), `${s.id}: preview in catalogue`);
+  // A section without a preview must show something: cards, links, or both.
+  assert(s.preview !== "none" || (s.cards?.length ?? 0) > 0 || (s.links?.length ?? 0) > 0, `${s.id}: a preview-less section has cards or links`);
+  for (const card of s.cards ?? []) assert(card.title && card.body, `${s.id}: card ${card.title} has title and body`);
+  for (const link of s.links ?? []) assert(link.label && (link.href.startsWith("/") || /^https:\/\//.test(link.href)), `${s.id}: link ${link.label} has a label and an absolute or root-relative href`);
 }
+assert(PARTS.some((p) => p.id === "run"), "the run chapter exists");
+assert(SECTIONS.some((s) => s.id === "modes" && s.cards && s.cards.length === 4), "the modes section has four cards");
 
 // Fixtures: every id exists in the seed the fixture names
 for (const [previewId, fixture] of Object.entries(FIXTURES)) {
