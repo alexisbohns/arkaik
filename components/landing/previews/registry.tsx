@@ -13,6 +13,7 @@ import { OverviewCardsPreview } from "./OverviewCardsPreview";
 import { PlatformStatusesPreview } from "./PlatformStatusesPreview";
 import { PromptBuilderPreview } from "./PromptBuilderPreview";
 import { QualityMatrixPreview } from "./QualityMatrixPreview";
+import { SelfMapJourneyPreview } from "./SelfMapJourneyPreview";
 import { SystemMapPreview } from "./SystemMapPreview";
 import { ValuePyramidPreview } from "./ValuePyramidPreview";
 
@@ -35,4 +36,5 @@ export const PREVIEW_REGISTRY: Record<PreviewId, ComponentType<PreviewProps>> = 
   "agent-skill-diff": AgentSkillDiffPreview,
   "mcp-server": McpServerPreview,
   "prompt-builder": PromptBuilderPreview,
+  "self-map-journey": SelfMapJourneyPreview,
 };

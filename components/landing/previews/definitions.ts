@@ -16,6 +16,13 @@ export const JOURNEY_DEFINITION: MapDefinition = {
   root_node_id: ROOT_FLOW_ID,
 };
 
+/** The whole product, no root: every top-level flow as a collapsed card. */
+export const SELF_MAP_DEFINITION: MapDefinition = {
+  id: "landing-self-map",
+  kind: "journey",
+  title: "Journey",
+};
+
 export const SYSTEM_DEFINITION: MapDefinition = {
   id: "landing-system",
   kind: "system",

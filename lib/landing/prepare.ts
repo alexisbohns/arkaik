@@ -23,6 +23,11 @@ export function prepareBundle(id: PreviewId, bundle: ProjectBundle): ProjectBund
     }
     case "acceptance-matrix":
       return sliceBundle(bundle, matrixIds(bundle));
+    case "self-map-journey":
+      // Every flow and view, nothing else: the top-level cards render collapsed
+      // and read status from the views, so the graph's other species would
+      // only add payload (flows + views ≈ 45 KB raw against 200 KB for all).
+      return sliceBundle(bundle, bundle.nodes.filter((n) => n.species === "flow" || n.species === "view").map((n) => n.id));
     default:
       return bundle;
   }

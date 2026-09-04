@@ -143,6 +143,13 @@ export const SECTIONS: Section[] = [
       { kicker: "INKOGNITO", title: "Self-hosted", body: "Run the services on your own Postgres and storage. Same code, your keys, nobody else's database." },
     ],
   },
+  {
+    id: "self-map", part: "run", title: "Arkaik maps itself", preview: "self-map-journey",
+    why: "The strongest proof of a product graph is the tool's own.",
+    what: "Every flow of Arkaik, live, as the built-in self-map project ships in the app. Pan around, then open it and drill in.",
+    how: "The same seed file the app loads, maintained by the same skill, validated by the same gate, and published with every release.",
+    links: [{ label: "Open the self-map", href: "/project/arkaik-self-map/maps/journey" }],
+  },
 ];
 
 /** The frame caption naming a preview's seed. Copy, so it lives here, not in the catalogue. */

@@ -116,8 +116,17 @@ for (const [previewId, fixture] of Object.entries(FIXTURES)) {
   assert(covered.length > 0 && covered.every((id) => matrixIds.has(id)), "matrix slice contains every covered node");
   assert([...acceptanceIds].every((id) => matrixIds.has(id)), "matrix slice contains every acceptance");
 
+  const whole = prepareBundle("self-map-journey", self);
+  assert(whole.nodes.every((n) => n.species === "flow" || n.species === "view"), "self-map journey slice holds flows and views only");
+  const flowCount = self.nodes.filter((n) => n.species === "flow").length;
+  assert(whole.nodes.filter((n) => n.species === "flow").length === flowCount, "self-map journey slice keeps every flow");
+  {
+    const wholeIds = new Set(whole.nodes.map((n) => n.id));
+    assert(whole.edges.length > 0 && whole.edges.every((e) => wholeIds.has(e.source_id) && wholeIds.has(e.target_id)), "self-map journey slice edges are induced");
+  }
+
   for (const id of PREVIEW_IDS) {
-    if (id === "journey-map" || id === "system-map" || id === "acceptance-matrix") continue;
+    if (id === "journey-map" || id === "system-map" || id === "acceptance-matrix" || id === "self-map-journey") continue;
     const seed = SEEDS[PREVIEW_META[id].source];
     assert(prepareBundle(id, seed).nodes.length === seed.nodes.length, `${id}: prepare leaves the bundle whole`);
   }
