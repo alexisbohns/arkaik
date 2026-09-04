@@ -8,7 +8,8 @@ const fs = require("fs");
 const path = require("path");
 const { loadLanding } = require("./load-landing");
 
-const { PREVIEW_IDS, PREVIEW_META, PARTS, SECTIONS, FIXTURES, sliceBundle, prepareBundle } = loadLanding();
+const { PREVIEW_IDS, PREVIEW_META, PARTS, SECTIONS, FIXTURES, sliceBundle, prepareBundle, LANDING_QUALITY, LANDING_QUALITY_EVENTS } = loadLanding();
+const { QualitySectionSchema, resolveKritikLibrary, deriveQualityMatrix, KnownJournalEventSchema } = require(path.join(require("../schema/load-schema").BUILD_DIR, "index.js"));
 
 let failures = 0;
 function assert(cond, message) {
@@ -17,9 +18,12 @@ function assert(cond, message) {
 }
 
 const ROOT = path.join(__dirname, "..", "..");
+const pebbles = JSON.parse(fs.readFileSync(path.join(ROOT, "seed", "pebbles.json"), "utf8"));
 const SEEDS = {
   "self-map": JSON.parse(fs.readFileSync(path.join(ROOT, "seed", "arkaik-self-map.json"), "utf8")),
-  pebbles: JSON.parse(fs.readFileSync(path.join(ROOT, "seed", "pebbles.json"), "utf8")),
+  pebbles,
+  // Mirrors lib/landing/seeds.ts: Pebbles plus the illustrative audit.
+  "pilot-audit": { ...pebbles, quality: LANDING_QUALITY, journal: [...(pebbles.journal ?? []), ...LANDING_QUALITY_EVENTS] },
 };
 const nodeIds = Object.fromEntries(Object.entries(SEEDS).map(([k, b]) => [k, new Set(b.nodes.map((n) => n.id))]));
 const versions = Object.fromEntries(
@@ -30,7 +34,7 @@ const versions = Object.fromEntries(
 assert(PREVIEW_IDS.length > 0, "catalogue is non-empty");
 for (const id of PREVIEW_IDS) {
   const meta = PREVIEW_META[id];
-  assert(meta && (meta.source === "self-map" || meta.source === "pebbles"), `${id}: names a seed source`);
+  assert(meta && ["self-map", "pebbles", "pilot-audit"].includes(meta.source), `${id}: names a seed source`);
   assert(meta && Number.isInteger(meta.height) && meta.height >= 160, `${id}: fixed frame height`);
   assert(meta && Array.isArray(meta.breadcrumb) && meta.breadcrumb.length > 0, `${id}: breadcrumb`);
   assert(meta && typeof meta.journal === "boolean", `${id}: journal flag`);
@@ -111,6 +115,41 @@ for (const [previewId, fixture] of Object.entries(FIXTURES)) {
     const seed = SEEDS[PREVIEW_META[id].source];
     assert(prepareBundle(id, seed).nodes.length === seed.nodes.length, `${id}: prepare leaves the bundle whole`);
   }
+}
+
+// Quality fixture: parses, resolves a library, derives a grade per surface, names real nodes
+{
+  const parsed = QualitySectionSchema.safeParse(LANDING_QUALITY);
+  assert(parsed.success, `quality fixture parses (${parsed.success ? "ok" : JSON.stringify(parsed.error.issues[0])})`);
+  const library = resolveKritikLibrary(LANDING_QUALITY);
+  assert(library && library.criteria.length > 0, "quality fixture carries its own library");
+  const matrix = deriveQualityMatrix({ quality: LANDING_QUALITY }, library);
+  for (const surface of LANDING_QUALITY.profile.surfaces) {
+    assert(typeof matrix.overall[surface.id] === "number", `quality fixture scores surface ${surface.id}`);
+  }
+  assert(LANDING_QUALITY.findings.some((f) => f.status === "open"), "quality fixture has an open finding");
+  assert(LANDING_QUALITY.findings.some((f) => f.status === "resolved"), "quality fixture has a resolved finding");
+  for (const f of LANDING_QUALITY.findings) {
+    for (const id of f.node_ids ?? []) assert(nodeIds.pebbles.has(id), `finding ${f.id} names node ${id} in pebbles`);
+  }
+  for (const e of LANDING_QUALITY_EVENTS) {
+    const ok = KnownJournalEventSchema.safeParse(e);
+    assert(ok.success, `quality event ${e.type} is a known journal event`);
+  }
+  assert(LANDING_QUALITY_EVENTS.some((e) => e.type === "quality.signal.tripped"), "quality events include a tripped signal");
+}
+
+// Generated samples: present, shaped, and about the self-map
+{
+  const gen = (name) => JSON.parse(fs.readFileSync(path.join(ROOT, "lib", "landing", "generated", name), "utf8"));
+  const cli = gen("cli-validate.json");
+  assert(cli.command.startsWith("arkaik validate"), "cli sample records its command");
+  assert(/Result: VALID/.test(cli.output), "cli sample is a VALID run");
+  assert(cli.output.includes(`Nodes: ${SEEDS["self-map"].nodes.length}`), "cli sample counts the self-map's nodes");
+  const mcp = gen("mcp-call.json");
+  assert(mcp.tool === "list_nodes" && mcp.arguments && typeof mcp.arguments === "object", "mcp sample is a list_nodes call");
+  assert(Array.isArray(mcp.result.nodes) && mcp.result.nodes.length > 0 && mcp.result.nodes.length <= mcp.arguments.limit, "mcp sample result is bounded by its limit");
+  assert(mcp.result.nodes.every((n) => nodeIds["self-map"].has(n.id)), "mcp sample nodes exist in the self-map");
 }
 
 if (failures > 0) { console.log(`\n${failures} failure(s)`); process.exit(1); }

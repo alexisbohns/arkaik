@@ -94,6 +94,26 @@ components/
     edges/
       ComposeEdge.tsx       # Straight — hierarchy (composes)
       CrossLayerEdge.tsx    # Dashed straight — registered in Canvas for calls, displays, queries
+  landing/                  # Everything below the hero on `/` — the page is data, previews are real components
+    content.ts              # PARTS and SECTIONS: chapter order, grouping and copy; SOURCE_CAPTION per seed source
+    fixtures.ts             # Node/version ids each preview pins into its seed (tests/landing pins them)
+    quality-fixture.ts      # The illustrative Kritik section behind the `quality` chapter (source `pilot-audit` = Pebbles + this)
+    LandingPage.tsx         # Loops PARTS → SECTIONS; loads the seeds once, pre-slices per preview (lib/landing/prepare.ts)
+    LandingPart.tsx         # Chapter: sticky column with kicker, title, intro, index; sections on the right
+    LandingSection.tsx      # Title → why → PreviewFrame → what/how
+    PreviewFrame.tsx        # App-chrome frame: breadcrumb, LIVE pill, fixed height, error boundary, caption
+    previews/
+      ids.ts                # The preview catalogue (PreviewId, PreviewSource, PREVIEW_META)
+      registry.tsx          # Record<PreviewId, component> — coverage is a type error, not an empty frame
+      *Preview.tsx          # One per catalogue id; server components unless they need interaction (the canvases)
+      client/ReadOnly*.tsx  # Thin client wrappers supplying the no-op handler a leaf requires
+      CodeBlock.tsx         # The mono block the agent previews share (diff, validator run, tool call, prompt)
+      McpDiagram.tsx        # Inline SVG in the canvas's node-card vocabulary: one projection/three readers, the write path
+      samples/              # Hand-written illustrative data (the agent-skill diff)
+lib/landing/
+    seeds.ts                # The seed sources: self-map, pebbles, pilot-audit
+    slice.ts / prepare.ts   # Induced sub-bundle per preview, computed server side
+    generated/              # Real `arkaik validate` output and a real `list_nodes` call, from scripts/generate/generate-landing-samples.js
   maps/
     JourneyMap.tsx          # The Journey map surface: expansion state, editing, dialogs, toolbar
     SystemMap.tsx           # The System map surface: species tiers, cross-layer edges, connect-to-create

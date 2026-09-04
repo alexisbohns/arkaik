@@ -4,7 +4,12 @@
  * `registry.tsx`, whose `Record<PreviewId, …>` makes tsc refuse an id with no
  * component, and this file is what the plain-node test reads.
  */
-export type PreviewSource = "self-map" | "pebbles";
+/**
+ * `pilot-audit` is Pebbles with the illustrative quality section attached
+ * (`components/landing/quality-fixture.ts`): the two Kritik previews need a
+ * `bundle.quality` and neither shipped seed has one.
+ */
+export type PreviewSource = "self-map" | "pebbles" | "pilot-audit";
 
 export const PREVIEW_IDS = [
   "journey-map",
@@ -16,6 +21,11 @@ export const PREVIEW_IDS = [
   "value-pyramid",
   "decision-chain",
   "journal-changelog",
+  "quality-matrix",
+  "findings-board",
+  "agent-skill-diff",
+  "mcp-server",
+  "prompt-builder",
 ] as const;
 
 export type PreviewId = (typeof PREVIEW_IDS)[number];
@@ -44,4 +54,9 @@ export const PREVIEW_META: Record<PreviewId, PreviewMeta> = {
   "value-pyramid":     { source: "self-map", height: 320, breadcrumb: ["Project", "Pyramid"],    journal: false },
   "decision-chain":    { source: "pebbles",  height: 280, breadcrumb: ["Project", "Decisions"],  journal: true },
   "journal-changelog": { source: "self-map", height: 360, breadcrumb: ["Project", "Changelog"],  journal: true },
+  "quality-matrix":    { source: "pilot-audit", height: 300, breadcrumb: ["Quality", "Matrix"],  journal: false },
+  "findings-board":    { source: "pilot-audit", height: 420, breadcrumb: ["Quality", "Findings"], journal: true },
+  "agent-skill-diff":  { source: "self-map", height: 440, breadcrumb: ["Repo", "docs/arkaik"],  journal: false },
+  "mcp-server":        { source: "self-map", height: 460, breadcrumb: ["arkaik-mcp"],            journal: false },
+  "prompt-builder":    { source: "pebbles",  height: 440, breadcrumb: ["Generate"],              journal: false },
 };

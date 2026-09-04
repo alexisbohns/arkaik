@@ -22,6 +22,8 @@ export interface Section {
 export const PARTS: Part[] = [
   { id: "maps",  title: "Read your product",        intro: "One graph, four maps. A strategist zooms out, an operator zooms in, an agent queries. Same data." },
   { id: "truth", title: "Track truth, not fields",  intro: "Status is a history with a platform, not a dropdown. Every claim on the map can be checked." },
+  { id: "quality", title: "Keep it honest", intro: "A map says what exists. Kritik says how good it is, surface by surface, and what to fix first." },
+  { id: "agents", title: "Maintained by agents", intro: "Nobody maintains a map by hand for long. Arkaik is built to be read and written by the agents that already write the code." },
 ];
 
 /** Page order within each chapter. */
@@ -80,10 +82,41 @@ export const SECTIONS: Section[] = [
     what: "An append-only event log; node timelines, changelogs per release, release notes and the backlog are derived from it.",
     how: "The snapshot is authoritative for now, the journal for history, and the validator cross-checks them by value.",
   },
+  {
+    id: "quality-matrix", part: "quality", title: "Quality matrix", preview: "quality-matrix",
+    why: "\"How good is each surface, and what do we fix first\" deserves one comparable answer, not a folder of audit PDFs.",
+    what: "Criteria scored 0 to 4 per surface, weighted into domain scores and rolled up to a grade. An open critical finding caps the grade.",
+    how: "Scores and findings are data files in the repo; severity, priority and grade are derived, never stored, so two readers cannot disagree.",
+  },
+  {
+    id: "findings-board", part: "quality", title: "Findings and signals", preview: "findings-board",
+    why: "An audit is a snapshot. Regressions happen between audits, when nobody is looking.",
+    what: "Findings with a lifecycle: open, resolved, refuted, accepted risk. Signals that trip on regression. A board that opens on the open work.",
+    how: "CI trips signals over HTTP; agents open and resolve findings through MCP tools. Both are journal events, so the board is never stale.",
+  },
+  {
+    id: "agent-skill-diff", part: "agents", title: "The agent skill", preview: "agent-skill-diff",
+    why: "Documentation rots because updating it is a second task. A map that lives in the repo can be patched in the same commit as the code.",
+    what: "A Claude Code skill that knows the schema, patches the affected nodes surgically, and appends the matching journal event.",
+    how: "npx arkaik init scaffolds it into any repo; the bundled validator is a hard gate, so a snapshot its journal contradicts never lands.",
+  },
+  {
+    id: "mcp-server", part: "agents", title: "The MCP server", preview: "mcp-server",
+    why: "An agent should not parse a 4,000-line JSON into its context to answer \"what is live on the web\".",
+    what: "arkaik-mcp: read tools that are the pages' own projections, write tools gated by the validator, Kritik tools for findings and signals.",
+    how: "One tool catalog over two stores, a repo bundle or the hosted API. Clients send operations, not graphs, and every write is a journal event.",
+  },
+  {
+    id: "prompt-builder", part: "agents", title: "Start from a prompt", preview: "prompt-builder",
+    why: "An empty map is the hardest one to start.",
+    what: "A prompt builder that turns a pitch, an existing plan or a map you already have into a first bundle, for whichever model you use.",
+    how: "The generated output goes through the same schema validation as everything else before it is imported, so a hallucinated field never lands.",
+  },
 ];
 
 /** The frame caption naming a preview's seed. Copy, so it lives here, not in the catalogue. */
 export const SOURCE_CAPTION: Record<PreviewSource, string> = {
   "self-map": "Rendered from Arkaik's own map, right now.",
   pebbles: "Rendered from the built-in Pebbles example, right now.",
+  "pilot-audit": "Rendered from an illustrative Kritik audit of the Pebbles example, right now.",
 };

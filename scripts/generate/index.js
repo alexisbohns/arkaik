@@ -26,6 +26,8 @@ const STEPS = [
   // diffs the whole directory either way.
   "build-kritik-scripts.js",
   "generate-kritik-plugin.js",
+  // Landing page samples: runs the built CLI and MCP server over the self-map.
+  "generate-landing-samples.js",
 ];
 
 for (const step of STEPS) {
