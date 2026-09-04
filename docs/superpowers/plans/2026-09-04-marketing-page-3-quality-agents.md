@@ -6,6 +6,8 @@
 
 **Architecture:** Same page-as-data model as Part 2 (`docs/superpowers/plans/2026-09-04-marketing-page-2-maps-truth.md`, spec `docs/superpowers/specs/2026-09-03-marketing-page-design.md`). Each task adds one preview end to end — catalogue id, fixture, section copy, registry entry, component — so every commit typechecks and `npm run test:landing` stays green. A third seed source, `pilot-audit`, is the Pebbles bundle carrying an illustrative quality section (neither shipped seed has one). Quality previews are server components handing pre-derived rows to the real quality leaves; D1/D2/D3 are tailored previews over a shared `CodeBlock` primitive and generated JSON samples produced by running the real CLI and the real MCP server.
 
+> **Status (2026-09-04):** executed; PR #417 on stack #415. Deviations: schema test build path, `npx tsc --noEmit -p .` (no `typecheck` script), MCP protocol `2025-06-18`, `depth: "detailed"`, `hsl(var(--…))` for SVG tokens, write-path figure on two rows, `McpServerPreview` zero-arg.
+
 **Tech Stack:** Next.js 16 App Router (RSC), React 19, `@arkaik/schema` quality projections (`resolveKritikLibrary`, `deriveQualityMatrix`), `lib/utils/quality` (`buildFindingRows`, `buildSurfaceGauges`, `buildCellCriteria`, `buildSurfaceTitles`), Tailwind 4 zinc tokens, plain-node test loader (`tests/landing/load-landing.js`), the `scripts/generate` family.
 
 ---
@@ -30,7 +32,7 @@
 - Modify: `components/landing/content.ts` (`SOURCE_CAPTION` only)
 - Modify: `tests/landing/load-landing.js`, `tests/landing/landing.test.js`
 
-- [ ] **Step 1: Extend the test loader and write the failing assertions**
+- [x] **Step 1: Extend the test loader and write the failing assertions**
 
 In `tests/landing/load-landing.js` add to `MODULES`:
 
@@ -99,12 +101,12 @@ Append, before the final failure summary:
 }
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `npm run test:landing`
 Expected: throws `Cannot find module …quality-fixture` (or `LANDING_QUALITY is not defined`).
 
-- [ ] **Step 3: Write the fixture**
+- [x] **Step 3: Write the fixture**
 
 Create `components/landing/quality-fixture.ts`:
 
@@ -260,7 +262,7 @@ function a(criterion_id: string, surface: string, level: 0 | 1 | 2 | 3 | 4, evid
 
 > `JournalEvent` and `QualitySection` are exported from `@arkaik/schema`; if `JournalEvent` is not (check `packages/schema/src/index.ts`), import it from `@/lib/data/types` instead — that import is type-only and erased by the test loader.
 
-- [ ] **Step 4: Add the source, seed and caption**
+- [x] **Step 4: Add the source, seed and caption**
 
 `components/landing/previews/ids.ts`:
 
@@ -312,12 +314,12 @@ export const SOURCE_CAPTION: Record<PreviewSource, string> = {
 };
 ```
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run: `npm run test:landing && npm run typecheck && npm run lint`
 Expected: all landing assertions PASS (including the new quality block); typecheck clean; lint 0 errors.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add components/landing/quality-fixture.ts components/landing/previews/ids.ts lib/landing/seeds.ts components/landing/content.ts tests/landing/load-landing.js tests/landing/landing.test.js
@@ -334,7 +336,7 @@ git commit -m "landing: the pilot-audit source and the illustrative quality fixt
 
 `FeedRow` renders `describeJournalEvent(event)`, which has no case for the five `quality.*` event types and falls back to the raw type string. C2 shows a `quality.signal.tripped` row, so the describer learns them. This is a real app improvement (the changelog and node history pages get it too).
 
-- [ ] **Step 1: Add icons and cases**
+- [x] **Step 1: Add icons and cases**
 
 In the lucide import add `ClipboardCheck, TriangleAlert, CircleCheck, ShieldCheck, Radar`. In `EVENT_ICONS` add:
 
@@ -372,12 +374,12 @@ In the `switch`, before `default:`:
     }
 ```
 
-- [ ] **Step 2: Regenerate the icon registry and verify**
+- [x] **Step 2: Regenerate the icon registry and verify**
 
 Run: `npm run generate && git status --short`
 Expected: only `components/journal/describe-event.ts` plus (possibly) `lib/wobble/wobble-registry.generated.ts` and `app/wobble.generated.css` are modified. Then `npm run typecheck && npm run lint`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add components/journal/describe-event.ts lib/wobble/wobble-registry.generated.ts app/wobble.generated.css
@@ -392,7 +394,7 @@ git commit -m "journal: describe the five quality.* events in the feed"
 - Create: `components/landing/previews/QualityMatrixPreview.tsx`
 - Modify: `components/landing/previews/ids.ts`, `components/landing/fixtures.ts`, `components/landing/content.ts`, `components/landing/previews/registry.tsx`
 
-- [ ] **Step 1: Catalogue, fixture, copy**
+- [x] **Step 1: Catalogue, fixture, copy**
 
 `ids.ts` — append to `PREVIEW_IDS`:
 
@@ -429,7 +431,7 @@ and to `SECTIONS`:
   },
 ```
 
-- [ ] **Step 2: The preview**
+- [x] **Step 2: The preview**
 
 Create `components/landing/previews/QualityMatrixPreview.tsx`:
 
@@ -512,12 +514,12 @@ function sumFindings(
 
 `registry.tsx` — import and add `"quality-matrix": QualityMatrixPreview,`.
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 Run: `npm run typecheck && npm run lint && npm run test:landing`
 Expected: green. Note `SurfaceScoreCard` is `"use client"` with an optional `onClick`; rendering it from a server component without a handler is fine.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add components/landing/previews/QualityMatrixPreview.tsx components/landing/previews/ids.ts components/landing/fixtures.ts components/landing/content.ts components/landing/previews/registry.tsx
@@ -532,7 +534,7 @@ git commit -m "landing: the quality chapter opens with the matrix preview"
 - Create: `components/landing/previews/FindingsBoardPreview.tsx`, `components/landing/previews/client/ReadOnlyFindingsBoard.tsx`
 - Modify: `ids.ts`, `fixtures.ts`, `content.ts`, `registry.tsx`
 
-- [ ] **Step 1: Catalogue, fixture, copy**
+- [x] **Step 1: Catalogue, fixture, copy**
 
 `PREVIEW_IDS` += `"findings-board"`; `PREVIEW_META`:
 
@@ -557,7 +559,7 @@ git commit -m "landing: the quality chapter opens with the matrix preview"
   },
 ```
 
-- [ ] **Step 2: The client wrapper**
+- [x] **Step 2: The client wrapper**
 
 Create `components/landing/previews/client/ReadOnlyFindingsBoard.tsx`:
 
@@ -577,7 +579,7 @@ export function ReadOnlyFindingsBoard(props: Omit<ComponentProps<typeof Findings
 }
 ```
 
-- [ ] **Step 3: The preview**
+- [x] **Step 3: The preview**
 
 Create `components/landing/previews/FindingsBoardPreview.tsx`:
 
@@ -624,7 +626,7 @@ export function FindingsBoardPreview({ bundle }: PreviewProps) {
 
 `registry.tsx` — import and add `"findings-board": FindingsBoardPreview,`.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 Run: `npm run typecheck && npm run lint && npm run test:landing` — green.
 
@@ -643,7 +645,7 @@ git commit -m "landing: the findings board preview with its journal facts"
 
 The spec wants D1's validator output and D2's tool response to be real. The script builds the CLI and the MCP server (their `dist/` is git-ignored, and CI runs `npm run generate` right after `npm ci`), runs `arkaik validate` over the self-map, and drives the MCP server over stdio exactly as `tests/mcp/run-mcp-tests.js` does.
 
-- [ ] **Step 1: Failing test**
+- [x] **Step 1: Failing test**
 
 Append to `tests/landing/landing.test.js`:
 
@@ -664,7 +666,7 @@ Append to `tests/landing/landing.test.js`:
 
 Run: `npm run test:landing` → fails with `ENOENT … cli-validate.json`.
 
-- [ ] **Step 2: The generator**
+- [x] **Step 2: The generator**
 
 Create `scripts/generate/generate-landing-samples.js`:
 
@@ -756,12 +758,12 @@ Append `"generate-landing-samples.js",` to `STEPS` in `scripts/generate/index.js
 
 In `.github/workflows/ci.yml`, add `lib/landing/generated` to the `git diff --exit-code --` path list of the "Fail on generated-artifact drift" step.
 
-- [ ] **Step 3: Generate and verify**
+- [x] **Step 3: Generate and verify**
 
 Run: `node scripts/generate/generate-landing-samples.js && npm run test:landing && git status --short`
 Expected: two JSON files created, test green, and `git status` shows only the files this task names (run `npm run generate` once too — it must be a no-op on the second run: `npm run generate && git diff --stat lib/landing/generated` prints nothing).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add scripts/generate/generate-landing-samples.js scripts/generate/index.js lib/landing/generated .github/workflows/ci.yml tests/landing/landing.test.js
@@ -776,7 +778,7 @@ git commit -m "landing: generate real CLI and MCP samples for the agents chapter
 - Create: `components/landing/previews/CodeBlock.tsx`, `components/landing/previews/samples/agent-skill.ts`, `components/landing/previews/AgentSkillDiffPreview.tsx`
 - Modify: `ids.ts`, `fixtures.ts`, `content.ts`, `registry.tsx`
 
-- [ ] **Step 1: Catalogue, fixture, copy**
+- [x] **Step 1: Catalogue, fixture, copy**
 
 `PREVIEW_IDS` += `"agent-skill-diff"`; `PREVIEW_META`:
 
@@ -807,7 +809,7 @@ git commit -m "landing: generate real CLI and MCP samples for the agents chapter
   },
 ```
 
-- [ ] **Step 2: The shared code block**
+- [x] **Step 2: The shared code block**
 
 Create `components/landing/previews/CodeBlock.tsx`:
 
@@ -855,7 +857,7 @@ export function CodeBlock({ title, lines, className }: CodeBlockProps) {
 }
 ```
 
-- [ ] **Step 3: The sample data**
+- [x] **Step 3: The sample data**
 
 Create `components/landing/previews/samples/agent-skill.ts`:
 
@@ -900,7 +902,7 @@ export function journalLine(nodeId: string, from: string, to: string): CodeLine[
 }
 ```
 
-- [ ] **Step 4: The preview**
+- [x] **Step 4: The preview**
 
 Create `components/landing/previews/AgentSkillDiffPreview.tsx`:
 
@@ -943,7 +945,7 @@ export function AgentSkillDiffPreview({ bundle }: PreviewProps) {
 
 > JSON imports: `tsconfig.json` already has `resolveJsonModule` (the seeds import the same way). If `cliValidate.output` types as `string` but lint complains about the `as const`, drop it and type `validator` as `CodeLine[]`.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run: `npm run typecheck && npm run lint && npm run test:landing` — green.
 
@@ -960,7 +962,7 @@ git commit -m "landing: the agents chapter opens with the skill diff preview"
 - Create: `components/landing/previews/McpDiagram.tsx`, `components/landing/previews/McpServerPreview.tsx`
 - Modify: `ids.ts`, `fixtures.ts`, `content.ts`, `registry.tsx`
 
-- [ ] **Step 1: Catalogue, fixture, copy**
+- [x] **Step 1: Catalogue, fixture, copy**
 
 `PREVIEW_IDS` += `"mcp-server"`; `PREVIEW_META`:
 
@@ -985,7 +987,7 @@ git commit -m "landing: the agents chapter opens with the skill diff preview"
   },
 ```
 
-- [ ] **Step 2: The diagram**
+- [x] **Step 2: The diagram**
 
 Create `components/landing/previews/McpDiagram.tsx`. Spec § Diagrams: node cards (card fill, radius 8, species-coloured left rail, title + muted subtitle), curved edges with small arrowheads, on the canvas dot grid, theme through CSS variables. Two figures: audience symmetry, and the write path.
 
@@ -1098,7 +1100,7 @@ export function McpDiagram() {
 }
 ```
 
-- [ ] **Step 3: The preview**
+- [x] **Step 3: The preview**
 
 Create `components/landing/previews/McpServerPreview.tsx`:
 
@@ -1143,7 +1145,7 @@ export function McpServerPreview() {
 
 > If `mcpCall.result.total` is not a field of the generated response, read the sample and use whatever count it carries, or drop that line.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 Run: `npm run typecheck && npm run lint && npm run test:landing` — green.
 
@@ -1160,7 +1162,7 @@ git commit -m "landing: the MCP diagram and a real tool call"
 - Create: `components/landing/previews/client/ReadOnlyUseCasePicker.tsx`, `components/landing/previews/PromptBuilderPreview.tsx`
 - Modify: `ids.ts`, `fixtures.ts`, `content.ts`, `registry.tsx`
 
-- [ ] **Step 1: Catalogue, fixture, copy**
+- [x] **Step 1: Catalogue, fixture, copy**
 
 `PREVIEW_IDS` += `"prompt-builder"`; `PREVIEW_META`:
 
@@ -1185,7 +1187,7 @@ git commit -m "landing: the MCP diagram and a real tool call"
   },
 ```
 
-- [ ] **Step 2: The client wrapper**
+- [x] **Step 2: The client wrapper**
 
 Create `components/landing/previews/client/ReadOnlyUseCasePicker.tsx`:
 
@@ -1201,7 +1203,7 @@ export function ReadOnlyUseCasePicker(props: Omit<ComponentProps<typeof UseCaseP
 }
 ```
 
-- [ ] **Step 3: The preview**
+- [x] **Step 3: The preview**
 
 Create `components/landing/previews/PromptBuilderPreview.tsx`:
 
@@ -1250,7 +1252,7 @@ export function PromptBuilderPreview({ bundle }: PreviewProps) {
 
 `registry.tsx` — import and add `"prompt-builder": PromptBuilderPreview,`.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 Run: `npm run typecheck && npm run lint && npm run test:landing` — green.
 
@@ -1267,17 +1269,17 @@ git commit -m "landing: the prompt builder preview closes the agents chapter"
 - Modify: `docs/architecture.md` (landing section, if Part 2 added one: list the new previews and the `pilot-audit` source), `README.md` component map if it lists landing previews.
 - Scratchpad: `smoke-landing.mjs` (exists; extend the expected frame count).
 
-- [ ] **Step 1: Smoke run**
+- [x] **Step 1: Smoke run**
 
 With the dev server on 4242 (`nohup npm run dev > <scratchpad>/dev.log 2>&1 &` if not running; never pipe through `head`), run the scratchpad `smoke-landing.mjs`. Expected: `frames=14`, `unavailable=0`, `page errors: 0`, no horizontal scroll at 390. Open the three screenshots and check: C1 shows three score cards and five criteria rows with level meters; C2 shows three finding cards (one resolved with the check glyph) and two feed rows with real text (not `quality.signal.tripped`); D1 three code blocks with coloured +/- lines and `Result: VALID`; D2 the two diagrams on the dot grid, dark mode too; D3 the picker with the first card pressed and a prompt excerpt fading out.
 
 Fix anything off, commit as `landing: polish after smoke`.
 
-- [ ] **Step 2: Docs**
+- [x] **Step 2: Docs**
 
 Add the five previews, `CodeBlock`, `McpDiagram`, the `pilot-audit` source, the quality fixture and `scripts/generate/generate-landing-samples.js` to wherever Part 2 documented the landing architecture. Commit `docs: landing quality and agents chapters`.
 
-- [ ] **Step 3: Full gates, push, PR**
+- [x] **Step 3: Full gates, push, PR**
 
 Run: `npm run generate && git status --short` (clean apart from nothing), `npm run typecheck && npm run lint && npm run test:landing && npm run test:root-redirect`.
 
