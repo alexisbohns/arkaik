@@ -87,6 +87,12 @@ export const SECTIONS: Section[] = [
     what: "Criteria scored 0 to 4 per surface, weighted into domain scores and rolled up to a grade. An open critical finding caps the grade.",
     how: "Scores and findings are data files in the repo; severity, priority and grade are derived, never stored, so two readers cannot disagree.",
   },
+  {
+    id: "findings-board", part: "quality", title: "Findings and signals", preview: "findings-board",
+    why: "An audit is a snapshot. Regressions happen between audits, when nobody is looking.",
+    what: "Findings with a lifecycle: open, resolved, refuted, accepted risk. Signals that trip on regression. A board that opens on the open work.",
+    how: "CI trips signals over HTTP; agents open and resolve findings through MCP tools. Both are journal events, so the board is never stale.",
+  },
 ];
 
 /** The frame caption naming a preview's seed. Copy, so it lives here, not in the catalogue. */
