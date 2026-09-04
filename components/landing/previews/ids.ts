@@ -25,6 +25,7 @@ export const PREVIEW_IDS = [
   "findings-board",
   "agent-skill-diff",
   "mcp-server",
+  "prompt-builder",
 ] as const;
 
 export type PreviewId = (typeof PREVIEW_IDS)[number];
@@ -57,4 +58,5 @@ export const PREVIEW_META: Record<PreviewId, PreviewMeta> = {
   "findings-board":    { source: "pilot-audit", height: 420, breadcrumb: ["Quality", "Findings"], journal: true },
   "agent-skill-diff":  { source: "self-map", height: 400, breadcrumb: ["Repo", "docs/arkaik"],  journal: false },
   "mcp-server":        { source: "self-map", height: 460, breadcrumb: ["arkaik-mcp"],            journal: false },
+  "prompt-builder":    { source: "pebbles",  height: 440, breadcrumb: ["Generate"],              journal: false },
 };

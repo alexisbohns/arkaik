@@ -11,6 +11,7 @@ import { JourneyMapPreview } from "./JourneyMapPreview";
 import { McpServerPreview } from "./McpServerPreview";
 import { OverviewCardsPreview } from "./OverviewCardsPreview";
 import { PlatformStatusesPreview } from "./PlatformStatusesPreview";
+import { PromptBuilderPreview } from "./PromptBuilderPreview";
 import { QualityMatrixPreview } from "./QualityMatrixPreview";
 import { SystemMapPreview } from "./SystemMapPreview";
 import { ValuePyramidPreview } from "./ValuePyramidPreview";
@@ -33,4 +34,5 @@ export const PREVIEW_REGISTRY: Record<PreviewId, ComponentType<PreviewProps>> = 
   "findings-board": FindingsBoardPreview,
   "agent-skill-diff": AgentSkillDiffPreview,
   "mcp-server": McpServerPreview,
+  "prompt-builder": PromptBuilderPreview,
 };

@@ -106,6 +106,12 @@ export const SECTIONS: Section[] = [
     what: "arkaik-mcp: read tools that are the pages' own projections, write tools gated by the validator, Kritik tools for findings and signals.",
     how: "One tool catalog over two stores, a repo bundle or the hosted API. Clients send operations, not graphs, and every write is a journal event.",
   },
+  {
+    id: "prompt-builder", part: "agents", title: "Start from a prompt", preview: "prompt-builder",
+    why: "An empty map is the hardest one to start.",
+    what: "A prompt builder that turns a pitch, an existing plan or a map you already have into a first bundle, for whichever model you use.",
+    how: "The generated output goes through the same schema validation as everything else before it is imported, so a hallucinated field never lands.",
+  },
 ];
 
 /** The frame caption naming a preview's seed. Copy, so it lives here, not in the catalogue. */
