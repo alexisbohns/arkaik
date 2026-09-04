@@ -150,6 +150,18 @@ export const SECTIONS: Section[] = [
     how: "The same seed file the app loads, maintained by the same skill, validated by the same gate, and published with every release.",
     links: [{ label: "Open the self-map", href: "/project/arkaik-self-map/maps/journey" }],
   },
+  {
+    id: "start", part: "run", title: "Start with your product", preview: "none",
+    why: "Everything above was rendered from a JSON file. Yours can be one prompt or one command away.",
+    what: "Create a project in the browser, generate a first map from a pitch, or run npx arkaik init in a repo and let the skill grow it.",
+    how: "Free to start, open source to stay. The docs cover every path, and the self-map is the worked example.",
+    links: [
+      { label: "Start building", href: "/projects", primary: true },
+      { label: "Generate a map", href: "/generate" },
+      { label: "Read the docs", href: "/docs" },
+      { label: "GitHub", href: "https://github.com/alexisbohns/arkaik", external: true },
+    ],
+  },
 ];
 
 /** The frame caption naming a preview's seed. Copy, so it lives here, not in the catalogue. */
