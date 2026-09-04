@@ -52,6 +52,35 @@ const NODES = [{ id: "DEC-postgres-first", species: "decision", title: "PostgreS
   check("shipped validates warning-free", validated.ok && validated.warnings.length === 0, validated.ok ? "" : validated.error);
 }
 
+// --- a deliverable's platform reaches the feed ---
+//
+// The federation renders these grains, and a shipped grain that says WHAT
+// changed while staying silent about WHERE it landed is half a fact — the same
+// half the changelog card was missing before the deliverable carried a
+// platform at all. `release.tagged` already carries its own; this is the other
+// event that has one.
+{
+  const events = [
+    { id: "01D2", ts: "2026-08-24T10:00:00Z", type: "deliverable.shipped", deliverable_id: "pr-731",
+      title: "One step at a time", summary: "Recording is a sequence now.",
+      url: "https://github.com/x/pbbls/pull/731", node_ids: ["V-timeline"], platform: "android" },
+  ];
+  const p = journalToPollen(events, NODES, CONFIG).pollen[0];
+  check("a shipped grain carries the deliverable's platform", p.payload.platform === "android", JSON.stringify(p.payload));
+  const validated = validatePollen(p);
+  check("…and still validates warning-free", validated.ok && validated.warnings.length === 0, validated.ok ? "" : validated.error);
+}
+{
+  // Absent, never null: a deliverable with no single platform is unscoped, and
+  // an explicit null in the payload is a different claim from saying nothing.
+  const events = [
+    { id: "01D3", ts: "2026-08-24T10:00:00Z", type: "deliverable.shipped", deliverable_id: "pr-757",
+      title: "Two platforms at once", url: "https://github.com/x/pbbls/pull/757" },
+  ];
+  const p = journalToPollen(events, NODES, CONFIG).pollen[0];
+  check("an unscoped deliverable carries no platform key at all", !("platform" in p.payload), JSON.stringify(p.payload));
+}
+
 // --- bilingual title from lab_note ---
 {
   const events = [
