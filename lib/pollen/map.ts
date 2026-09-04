@@ -68,6 +68,13 @@ function mapEvent(
     if (note?.fr?.summary) payload.summary_fr = note.fr.summary;
     if (note?.suggested) payload.suggested = note.suggested;
     if (Array.isArray(event.node_ids)) payload.node_ids = event.node_ids;
+    // WHERE it landed, beside what it moved. A shipped grain that names the
+    // nodes but not the platform is half a fact, and it is the same half the
+    // changelog card was missing before a deliverable carried a platform at
+    // all. Omitted rather than nulled when there is none: a deliverable that
+    // spans two platforms is deliberately unscoped, and `platform: null` in a
+    // payload is a different claim from saying nothing.
+    if (typeof event.platform === "string" && event.platform) payload.platform = event.platform;
     return { ...base, kind: "shipped", title, refs, payload };
   }
 
