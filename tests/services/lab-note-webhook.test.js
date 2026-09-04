@@ -150,6 +150,24 @@ async function main() {
             status: "backlog",
             platforms: ["ios", "web"],
           },
+          // A view and a data model: species a MENTION can never name, and so
+          // the whole reason the note carries a `nodes:` key.
+          {
+            id: "V-sidebar",
+            project_id: "gp-notes",
+            species: "view",
+            title: "Sidebar",
+            status: "idea",
+            platforms: ["ios", "web"],
+          },
+          {
+            id: "DM-navigation",
+            project_id: "gp-notes",
+            species: "data-model",
+            title: "Navigation",
+            status: "idea",
+            platforms: ["ios", "web"],
+          },
         ],
         edges: [],
       },
@@ -317,6 +335,72 @@ async function main() {
       "…and the latest occurrence still carries the note, having simply stopped naming the node",
       stored11[1]?.event.title === "Find your way around" && stored11[1]?.event.node_ids === undefined,
       JSON.stringify(stored11[1]?.event),
+    );
+
+    // --- nodes: declared in the note ----------------------------------------
+    //
+    // A mention can only ever name an acceptance, so the deliverable a merge
+    // writes could never list the views, flows, endpoints and models a replayed
+    // history lists. The note's `nodes:` key is where the author says what the
+    // change touched, and it is the half that makes a PR-born card read like a
+    // replayed one.
+    const declaring = NOTE.replace("suggested:", "nodes: [V-sidebar, DM-navigation]\nsuggested:");
+    const declared = await POST(webhookReq(prPayload({ number: 14, body: declaring })));
+    const declaredBody = await declared.json();
+    check("a declaring merge succeeds", declared.status === 200, String(declared.status));
+    const stored14 = await rowsFor(projectId, "pr-14");
+    check("the declaring merge appends one deliverable", stored14.length === 1, String(stored14.length));
+    check(
+      "the deliverable records the nodes the note declared",
+      JSON.stringify(stored14[0]?.event.node_ids) === '["V-sidebar","DM-navigation"]',
+      JSON.stringify(stored14[0]?.event),
+    );
+    check(
+      "the note itself still lands verbatim, nodes key included",
+      JSON.stringify(stored14[0]?.event.lab_note?.nodes) === '["V-sidebar","DM-navigation"]',
+      JSON.stringify(stored14[0]?.event.lab_note),
+    );
+
+    // Declared ids lead — the author's own order, and the richer half. A
+    // mention can only append acceptances to the end of it.
+    const both = `Implements AC-find-your-way\n\n${declaring}`;
+    const mixed = await POST(webhookReq(prPayload({ number: 15, body: both })));
+    check("the declaring-and-mentioning merge succeeds", mixed.status === 200, String(mixed.status));
+    const stored15 = await rowsFor(projectId, "pr-15");
+    check(
+      "declared ids lead and the mentioned acceptance follows",
+      JSON.stringify(stored15[0]?.event.node_ids) === '["V-sidebar","DM-navigation","AC-find-your-way"]',
+      JSON.stringify(stored15[0]?.event),
+    );
+
+    // A dropped id is REPORTED. A silent drop is the failure nobody notices —
+    // the author writes an id, the card renders without it, and nothing
+    // anywhere says why.
+    const withUnknown = NOTE.replace("suggested:", "nodes: [V-sidebar, V-ghost]\nsuggested:");
+    const reported = await POST(webhookReq(prPayload({ number: 16, body: withUnknown })));
+    const reportedBody = await reported.json();
+    check("the unknown-node merge succeeds", reported.status === 200, String(reported.status));
+    const stored16 = await rowsFor(projectId, "pr-16");
+    check(
+      "the id nothing answers to is left off the deliverable",
+      JSON.stringify(stored16[0]?.event.node_ids) === '["V-sidebar"]',
+      JSON.stringify(stored16[0]?.event),
+    );
+    const mine16 = (reportedBody.outcomes ?? []).filter((o) => o.projectId === projectId);
+    check(
+      "…and named in the delivery response, which is the only channel the author has",
+      mine16.some((o) => (o.warnings ?? []).some((w) => w.includes("V-ghost"))),
+      JSON.stringify(mine16),
+    );
+    check(
+      "…without naming the ids that were fine",
+      mine16.every((o) => (o.warnings ?? []).every((w) => !w.includes("V-sidebar"))),
+      JSON.stringify(mine16),
+    );
+    check(
+      "a clean declaration earns no warning at all",
+      ((declaredBody.outcomes ?? []).find((o) => o.projectId === projectId)?.warnings ?? []).length === 0,
+      JSON.stringify(declaredBody.outcomes),
     );
   } finally {
     if (userId !== undefined) {

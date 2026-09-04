@@ -1014,8 +1014,15 @@ export interface DeliverableScope {
  * The deliverable's two fields, from the delivery's own evidence.
  *
  * ── `node_ids`: NAMED, AND HELD ────────────────────────────────────────────
- * Every id the pull request names — usable mention or not — that exists in the
- * project's snapshot. Two deliberate choices, in opposite directions:
+ * Every id the pull request names — declared in the Lab Note's `nodes:` key, or
+ * mentioned in the body, usably or not — that exists in the project's snapshot.
+ *
+ * DECLARED IDS LEAD. They are the author's own list, in the order they would
+ * read it out, and they are the richer half: the mention grammar only ever
+ * names ACCEPTANCES, so mentions can only append acceptances to the end of it.
+ * An id that is both declared and mentioned keeps its declared position.
+ *
+ * Two further choices, in opposite directions:
  *
  *   - an id the project does not hold is DROPPED rather than written. The card
  *     resolves ids against the graph and silently skips the ones it cannot
@@ -1055,12 +1062,18 @@ export function deliverableScope(input: {
   scope: RepoScope;
   /** The ids the project's snapshot holds, so a dangling mention is dropped. */
   nodeIds: ReadonlySet<string>;
+  /**
+   * The Lab Note's `nodes:` key, as parsed. Absent for every delivery that is
+   * not a merge carrying a note — the same value as an empty list, so the
+   * caller never has to spell one.
+   */
+  declaredNodes?: readonly string[];
 }): DeliverableScope {
-  const { event, scope, nodeIds } = input;
+  const { event, scope, nodeIds, declaredNodes = [] } = input;
   const { mentions, unknown } = mentionedAcceptances(event);
 
   const named: string[] = [];
-  for (const id of [...mentions.map((m) => m.id), ...unknown.map((u) => u.id)]) {
+  for (const id of [...declaredNodes, ...mentions.map((m) => m.id), ...unknown.map((u) => u.id)]) {
     if (nodeIds.has(id) && !named.includes(id)) named.push(id);
   }
 
@@ -1092,6 +1105,38 @@ export function deliverableScope(input: {
     node_ids: named,
     ...(decided.length === 1 ? { platform: decided[0] } : {}),
   };
+}
+
+/**
+ * The report a declared id nothing answers to earns.
+ *
+ * A SILENT DROP IS THE FAILURE NOBODY NOTICES, and it is the exact failure this
+ * whole area is repairing: the author writes an id, the card renders without
+ * it, and nothing anywhere says why. `deliverableScope` drops it for good
+ * reason — a dangling id inflates a count of "nodes I can tell you about" by
+ * the nodes it cannot — but dropping and reporting are two different acts, and
+ * only doing the first is how a typo becomes permanent.
+ *
+ * ONE LINE NAMING EVERY UNKNOWN ID, not one line each: they are one mistake
+ * (a stale list, a guessed prefix), and a warning per id buries the acceptance
+ * refusals beside it in the same response body.
+ *
+ * Pure, and exported, so the database-free suite can pin the wording — the
+ * delivery response is the only channel the author has, and
+ * docs/hosted-projects.md tells them to read it.
+ */
+export function unknownNodeWarnings(
+  declared: readonly string[] | undefined,
+  nodeIds: ReadonlySet<string>,
+): string[] {
+  const unknown = [...new Set(declared ?? [])].filter((id) => !nodeIds.has(id));
+  if (unknown.length === 0) return [];
+  return [
+    `nodes: ${unknown.join(", ")} ${unknown.length === 1 ? "is" : "are"} not in this project's ` +
+      `graph, so ${unknown.length === 1 ? "it was" : "they were"} left off the deliverable. ` +
+      `Everything else in the list was recorded. Check the id against the map, or drop it from ` +
+      `the note — editing the pull request re-delivers.`,
+  ];
 }
 
 interface NodeWithRefs extends Node {
@@ -2053,6 +2098,14 @@ export async function applyPullRequestEvent(
      * arrives as a claim rather than a second parse of the same body.
      */
     scopesADeliverable?: boolean;
+    /**
+     * The `nodes:` the Lab Note declared, from the same parse. It is checked
+     * HERE rather than by the note writer because this is the one place holding
+     * both the declaration and the project's snapshot — the writer never loads
+     * a bundle, and giving it one just to validate a list would make a refused
+     * note able to fail a promotion.
+     */
+    declaredNodes?: readonly string[];
   } = {},
 ): Promise<ApplyOutcome[]> {
   const rows = await linkedProjects(event.repoFullName);
@@ -2113,8 +2166,10 @@ export async function applyPullRequestEvent(
     }
 
     const repoScope = scopes.get(group.projectId);
+    const heldNodeIds = new Set((loaded.bundle.nodes as readonly Node[]).map((node) => node.id));
     const deliverable = deliverableScope({
       event,
+      declaredNodes: options.declaredNodes,
       // Same fallback as the planner's below, and for the same reason: a
       // missing entry means the two lists disagree, and guessing a platform
       // there is the direction this file forbids.
@@ -2124,8 +2179,12 @@ export async function applyPullRequestEvent(
         detail: "arkaik could not resolve which of its repository links this pull request belongs to",
         prefixes: group.links.map((link) => link.pathPrefix),
       },
-      nodeIds: new Set((loaded.bundle.nodes as readonly Node[]).map((node) => node.id)),
+      nodeIds: heldNodeIds,
     });
+    // PER PROJECT, not with `textWarnings`: the declaration is the same for
+    // every project, but whether an id exists is a question only that project's
+    // snapshot answers, and one repository can be linked by two of them.
+    const nodeWarnings = unknownNodeWarnings(options.declaredNodes, heldNodeIds);
 
     const { ops, warnings: planWarnings } = planForProject(
       loaded.bundle as unknown as Parameters<typeof planForProject>[0],
@@ -2142,9 +2201,10 @@ export async function applyPullRequestEvent(
         prefixes: group.links.map((link) => link.pathPrefix),
       },
     );
+    const projectWarnings = [...planWarnings, ...nodeWarnings];
     // Logged for the same reason as above: the response body is read by whoever
     // opens Recent Deliveries, the log by whoever is watching the server.
-    for (const warning of planWarnings) {
+    for (const warning of projectWarnings) {
       console.warn(`[github] ${event.repoFullName}#${event.number}: ${warning}`);
     }
 
@@ -2156,7 +2216,13 @@ export async function applyPullRequestEvent(
     // into the silence it replaced.
     if (ops.length === 0) {
       outcomes.push(
-        assembleOutcome({ projectId: group.projectId, textWarnings, planWarnings, opCount: 0, deliverable }),
+        assembleOutcome({
+          projectId: group.projectId,
+          textWarnings,
+          planWarnings: projectWarnings,
+          opCount: 0,
+          deliverable,
+        }),
       );
       continue;
     }
@@ -2173,7 +2239,7 @@ export async function applyPullRequestEvent(
       assembleOutcome({
         projectId: group.projectId,
         textWarnings,
-        planWarnings,
+        planWarnings: projectWarnings,
         opCount: ops.length,
         failure: result.ok ? null : describeFailure(result),
         deliverable,

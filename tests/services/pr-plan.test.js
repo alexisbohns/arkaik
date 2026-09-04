@@ -183,6 +183,7 @@ async function main() {
     resolveDeliveryScopes,
     resolveInstallationId,
     deliverableScope,
+    unknownNodeWarnings,
   } = loadPrPlan();
 
   /**
@@ -4179,6 +4180,116 @@ async function main() {
       "an unusable @suffix names no platform either — a typo must not be answered with the repo default",
       scoped({ title: "t", body: "Fixes AC-x@windows" }, wholeRepo("ios")).platform === undefined,
       () => JSON.stringify(scoped({ title: "t", body: "Fixes AC-x@windows" }, wholeRepo("ios"))),
+    );
+  }
+
+  // ── deliverableScope: the nodes the author declared in the note ──────────
+  //
+  // The mention grammar only ever names ACCEPTANCES, so a deliverable built
+  // from mentions alone can never list the views, flows, endpoints and models a
+  // replayed history lists. The Lab Note's `nodes:` key is where an author says
+  // so, and it arrives here as `declaredNodes` because this is the one place
+  // holding both the delivery's evidence and the project's snapshot.
+  {
+    const held = new Set(["AC-x", "AC-y", "V-record", "F-flow", "DM-pebble"]);
+    const scoped = (event, declaredNodes, nodeIds = held) =>
+      deliverableScope({ event, scope: wholeRepo(), nodeIds, declaredNodes });
+
+    check(
+      "a declared node the project holds is recorded, mention or no mention",
+      JSON.stringify(scoped({ title: "t", body: "" }, ["V-record", "F-flow"]).node_ids) ===
+        '["V-record","F-flow"]',
+      () => JSON.stringify(scoped({ title: "t", body: "" }, ["V-record", "F-flow"])),
+    );
+    // Declared first: it is the author's own list, written in the order they
+    // would read it out, and it is the richer of the two — a mention can only
+    // ever add acceptances to the end.
+    check(
+      "declared ids lead, mentioned ones follow",
+      JSON.stringify(scoped({ title: "t", body: "Fixes AC-x" }, ["V-record"]).node_ids) ===
+        '["V-record","AC-x"]',
+      () => JSON.stringify(scoped({ title: "t", body: "Fixes AC-x" }, ["V-record"])),
+    );
+    check(
+      "an id both declared and mentioned is listed once, in its declared position",
+      JSON.stringify(scoped({ title: "t", body: "Fixes AC-x" }, ["AC-x", "V-record"]).node_ids) ===
+        '["AC-x","V-record"]',
+      () => JSON.stringify(scoped({ title: "t", body: "Fixes AC-x" }, ["AC-x", "V-record"])),
+    );
+    check(
+      "a declared id the project does not hold is dropped, exactly like a mentioned one",
+      JSON.stringify(scoped({ title: "t", body: "" }, ["V-record", "V-ghost"]).node_ids) ===
+        '["V-record"]',
+      () => JSON.stringify(scoped({ title: "t", body: "" }, ["V-record", "V-ghost"])),
+    );
+    check(
+      "no declared list is the same as an empty one, never a crash",
+      JSON.stringify(deliverableScope({ event: { title: "t", body: "Fixes AC-x" }, scope: wholeRepo(), nodeIds: held }).node_ids) ===
+        '["AC-x"]',
+      () =>
+        JSON.stringify(
+          deliverableScope({ event: { title: "t", body: "Fixes AC-x" }, scope: wholeRepo(), nodeIds: held }),
+        ),
+    );
+    // Declaring a node is not a platform claim: `nodes:` says what the change
+    // touched, and the platform still comes from the sources that know where it
+    // shipped. A declared list must not quietly turn an unscoped deliverable
+    // into a scoped one, or the other way round.
+    check(
+      "declaring nodes changes nothing about the platform",
+      scoped({ title: "t", body: "" }, ["V-record"]).platform === undefined &&
+        deliverableScope({
+          event: { title: "t", body: "" },
+          scope: wholeRepo("ios"),
+          nodeIds: held,
+          declaredNodes: ["V-record"],
+        }).platform === "ios",
+      () =>
+        JSON.stringify([
+          scoped({ title: "t", body: "" }, ["V-record"]),
+          deliverableScope({
+            event: { title: "t", body: "" },
+            scope: wholeRepo("ios"),
+            nodeIds: held,
+            declaredNodes: ["V-record"],
+          }),
+        ]),
+    );
+  }
+
+  // ── unknownNodeWarnings: a dropped id is reported, never merely dropped ───
+  //
+  // A silent drop is the failure nobody notices — the author writes an id, the
+  // card renders without it, and nothing anywhere says why. The delivery
+  // response is the one channel they have (docs/hosted-projects.md tells them
+  // to read it), so a declared id nothing answers to is named there.
+  {
+    const held = new Set(["V-record", "AC-x"]);
+    check(
+      "an id the project holds earns no warning",
+      unknownNodeWarnings(["V-record"], held).length === 0,
+      () => JSON.stringify(unknownNodeWarnings(["V-record"], held)),
+    );
+    check(
+      "no declared ids at all earns no warning",
+      unknownNodeWarnings([], held).length === 0 && unknownNodeWarnings(undefined, held).length === 0,
+      () => JSON.stringify([unknownNodeWarnings([], held), unknownNodeWarnings(undefined, held)]),
+    );
+    const warned = unknownNodeWarnings(["V-record", "V-ghost", "DM-nope"], held);
+    check(
+      "the unknown ids are reported in ONE line, naming every one of them",
+      warned.length === 1 && warned[0].includes("V-ghost") && warned[0].includes("DM-nope"),
+      () => JSON.stringify(warned),
+    );
+    check(
+      "…and the line does not name the ids that were fine",
+      warned.length === 1 && !warned[0].includes("V-record"),
+      () => JSON.stringify(warned),
+    );
+    check(
+      "…and says what happened rather than only what was wrong",
+      warned.length === 1 && /nodes:/.test(warned[0]) && /deliverable/i.test(warned[0]),
+      () => JSON.stringify(warned),
     );
   }
 

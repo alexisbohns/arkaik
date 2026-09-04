@@ -14,6 +14,20 @@ export interface LabNote {
   en: { title: string; summary: string };
   fr?: { title?: string; summary?: string };
   suggested?: { molecule?: string; atom?: string; type?: string; tags?: string[] };
+  /**
+   * Graph node ids this change touched, in the author's own order.
+   *
+   * ARKAIK-SPECIFIC, and deliberately a top-level key rather than something
+   * under `suggested`: `suggested` prefills triage in the Ariko admin, while
+   * this names entities in a product graph. The shared contract ignores unknown
+   * top-level keys, so no other pipeline has to learn it.
+   *
+   * It exists because the mention grammar only ever names ACCEPTANCES. A
+   * deliverable built from mentions alone can never list the views, flows,
+   * endpoints and data models a replayed history lists, and that gap is visible
+   * in the changelog as a card with nothing under it.
+   */
+  nodes?: string[];
 }
 
 export type LabNoteResult = { ok: true; note: LabNote } | { ok: false; error: string };
@@ -90,6 +104,22 @@ export function parseLabNote(yamlText: string): LabNoteResult {
     ...(nonEmptyString(fr.summary) ? { summary: fr.summary.trim() } : {}),
   };
   if (Object.keys(frOut).length > 0) note.fr = frOut;
+  // A MALFORMED OPTIONAL KEY MUST NEVER COST THE NOTE. Refusing here would lose
+  // the changelog line, both languages and the federation envelope over a field
+  // whose entire job is to add detail to them — so unusable entries are dropped
+  // one at a time and a value that is not a list is dropped whole. What the
+  // author cannot see here, they see in the delivery response: the ids that
+  // survive are checked against the project's graph, and the ones nothing
+  // answers to are reported by name (`unknownNodeWarnings`).
+  if (Array.isArray(doc.nodes)) {
+    const ids: string[] = [];
+    for (const entry of doc.nodes) {
+      if (!nonEmptyString(entry)) continue;
+      const id = entry.trim();
+      if (!ids.includes(id)) ids.push(id);
+    }
+    if (ids.length > 0) note.nodes = ids;
+  }
   if (isMapping(doc.suggested)) {
     const s = doc.suggested;
     const suggested = {

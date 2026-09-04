@@ -6,7 +6,7 @@ import {
   verifySignature,
 } from "@/lib/services/github/verify";
 import { applyLabNote } from "@/lib/services/github/lab-note";
-import { extractLabNoteYaml } from "@/lib/services/github/lab-note-parse";
+import { extractLabNoteYaml, parseLabNote } from "@/lib/services/github/lab-note-parse";
 import { applyQualityResolutions } from "@/lib/services/github/quality";
 import {
   applyPullRequestEvent,
@@ -126,10 +126,22 @@ export async function POST(req: Request): Promise<Response> {
   // inside it is valid is `applyLabNote`'s answer, and a note that turns out to
   // be malformed costs one changed-files call, which is the right way round.
   const isMerge = prEvent.action === "closed" && prEvent.merged;
-  const scopesADeliverable = isMerge && extractLabNoteYaml(prEvent.body) !== null;
+  const noteYaml = isMerge ? extractLabNoteYaml(prEvent.body) : null;
+  const scopesADeliverable = noteYaml !== null;
+  // The note's `nodes:` — the views, flows, endpoints and models a mention can
+  // never name. The acceptance half checks them against the project's snapshot,
+  // which is the only place holding both the declaration and the graph.
+  //
+  // PARSED TWICE, here and inside `applyLabNote`, and deliberately: the parse
+  // is pure and cheap, and the alternative is handing the note across the two
+  // halves, which would make the note writer's refusal reachable from the
+  // promotion path. Those two must stay independent — a refused note must not
+  // block a status transition, and vice versa.
+  const parsedNote = noteYaml === null ? null : parseLabNote(noteYaml);
+  const declaredNodes = parsedNote?.ok ? parsedNote.note.nodes : undefined;
 
   try {
-    const outcomes = await applyPullRequestEvent(prEvent, { scopesADeliverable });
+    const outcomes = await applyPullRequestEvent(prEvent, { scopesADeliverable, declaredNodes });
     // The touched nodes and the platform each project resolved, keyed by
     // project — the two fields the changelog renders that a Lab Note cannot
     // carry. Handed over rather than recomputed: resolving it can cost a

@@ -419,6 +419,25 @@ link. Those two fields are what the changelog renders as a deliverable's
 unscoped rather than shown as one of them. A repository linked **All platforms**
 names none, so its deliverables carry no chip.
 
+**And the note can name the rest.** A mention only ever names an acceptance, so
+a top-level `nodes:` key in the Lab Note is how a change says it touched a view,
+a flow, an endpoint or a data model:
+
+```yaml
+en:
+  title: "Your photos, right where you start"
+  summary: "Recording a pebble now opens straight onto your photo library."
+nodes: [V-record-photo-step, F-record-pebble-flow, AC-record-pebble-flow]
+```
+
+Declared ids lead, in the order you wrote them; acceptances the body mentions
+follow. Every id is checked against the project's graph — one nothing answers to
+is left off the deliverable and **named in the delivery response**, so a typo is
+visible rather than silently swallowed. A malformed `nodes:` value never costs
+the note: unusable entries are dropped one at a time and the entry still ships.
+Other Lab Note pipelines ignore the key, as they ignore any top-level key they
+do not know.
+
 ## Monorepos
 
 A single repository that builds several platforms — `apps/ios`, `apps/webapp`,
