@@ -578,8 +578,23 @@ export function groupLinksByProject(rows: readonly LinkedRepo[]): ProjectLinks[]
 export function needsChangedFiles(
   event: Pick<PullRequestEvent, "title" | "body">,
   links: readonly RepoLinkRow[],
+  options: { scopesADeliverable?: boolean } = {},
 ): boolean {
   if (!links.some((link) => normalizePathPrefix(link.pathPrefix) !== "")) return false;
+
+  // A THIRD condition, and the only one that is not about refs: this delivery
+  // will write a `deliverable.shipped` (a merge carrying a Lab Note), whose
+  // `platform` the changelog renders as a pill and whose only source is the
+  // path match. Condition 2 below cannot cover it — a pull request that ships
+  // something a user notices very often mentions no acceptance at all, and
+  // every one of those resolved to `not-consulted` and shipped a deliverable
+  // that could name no platform for a fact this delivery could have read.
+  //
+  // It sits AFTER the whole-repository short-circuit for the same reason
+  // everything else does: with no path-scoped link there is nothing a file list
+  // could decide. And it is a caller's claim rather than something read from
+  // the body here, so this module keeps knowing nothing about Lab Notes.
+  if (options.scopesADeliverable) return true;
 
   const { mentions, unknown } = mentionedAcceptances(event);
   const explicit = new Set(mentions.filter((m) => m.platform !== null).map((m) => m.id));
@@ -957,11 +972,13 @@ export async function resolveDeliveryScopes(input: {
   event: PullRequestEvent;
   installationId: string | null;
   fetchFiles: FetchChangedFiles;
+  /** This delivery will write a deliverable, whose platform the files decide. */
+  scopesADeliverable?: boolean;
 }): Promise<Map<string, RepoScope>> {
-  const { groups, event, installationId, fetchFiles } = input;
+  const { groups, event, installationId, fetchFiles, scopesADeliverable } = input;
 
   let evidence: ChangedFilesEvidence = { kind: "not-needed" };
-  if (groups.some((group) => needsChangedFiles(event, group.links))) {
+  if (groups.some((group) => needsChangedFiles(event, group.links, { scopesADeliverable }))) {
     const result = await fetchFiles({
       repoFullName: event.repoFullName,
       number: event.number,
@@ -973,6 +990,108 @@ export async function resolveDeliveryScopes(input: {
   }
 
   return new Map(groups.map((group) => [group.projectId, resolveRepoScope(group.links, evidence)]));
+}
+
+/**
+ * What a merged pull request's `deliverable.shipped` records BEYOND its Lab
+ * Note — the two fields the changelog card reads and the note cannot carry.
+ *
+ * `node_ids` fills the card's TOUCHED list and its "N nodes" chip; `platform`
+ * fills the pill beside them (components/journal/DeliverableHoverCard.tsx).
+ * Both were absent from every deliverable the PR routine has ever written,
+ * because the Lab-Note writer builds its payload from the note alone — while
+ * the very same delivery had already read the mentions and resolved the
+ * repository scope, and threw both away.
+ */
+export interface DeliverableScope {
+  /** Ids the pull request names that the project actually holds. Never absent. */
+  node_ids: string[];
+  /** Set only when the delivery resolves to exactly one platform. */
+  platform?: PlatformId;
+}
+
+/**
+ * The deliverable's two fields, from the delivery's own evidence.
+ *
+ * ── `node_ids`: NAMED, AND HELD ────────────────────────────────────────────
+ * Every id the pull request names — usable mention or not — that exists in the
+ * project's snapshot. Two deliberate choices, in opposite directions:
+ *
+ *   - an id the project does not hold is DROPPED rather than written. The card
+ *     resolves ids against the graph and silently skips the ones it cannot
+ *     find, so a dangling id would inflate a count of "nodes I can tell you
+ *     about" by exactly the nodes it cannot. The journal is also the wrong
+ *     place to record a name nothing answers to;
+ *   - an id whose only mention carried an unusable `@suffix` is KEPT, even
+ *     though `planForProject` refuses to attach a ref or promote a status for
+ *     it. Those refusals are about a status CLAIM; naming which acceptance the
+ *     pull request was about claims nothing, and dropping it would leave the
+ *     changelog emptier than the pull request over a typo the changelog never
+ *     shows.
+ *
+ * Order is first mention, title before body — the order a reader would list
+ * them in, and stable for a given body, so a redelivery cannot look like an
+ * edit (see `contentKey` in lab-note.ts).
+ *
+ * ── `platform`: EXACTLY ONE, OR NONE ───────────────────────────────────────
+ * The field holds one platform, and a deliverable that spans two is a fact
+ * about two of them. So each source is consulted in the same precedence the
+ * refs use — the mention, then the path-scoped links, then the whole-repository
+ * link — and the first source that names anything decides, but only if it names
+ * exactly ONE thing. Two is not a reason to pick one: a pull request touching
+ * `apps/ios` and `apps/android` ships on both, and a pill saying either is a
+ * confidently wrong answer where an absent pill is merely a quiet one.
+ *
+ * An unusable `@suffix` anywhere in the pull request refuses the platform
+ * outright — not only the repository default, but a clean `@ios` sitting beside
+ * it. An author who typed two suffixes meant two platforms, and answering with
+ * the one that parsed would say "this shipped on iOS alone", which is the
+ * confidently wrong answer again wearing the other suffix's clothes. The id
+ * still reaches `node_ids` above: the two fields answer different questions,
+ * and only one of them is a claim.
+ */
+export function deliverableScope(input: {
+  event: Pick<PullRequestEvent, "title" | "body">;
+  scope: RepoScope;
+  /** The ids the project's snapshot holds, so a dangling mention is dropped. */
+  nodeIds: ReadonlySet<string>;
+}): DeliverableScope {
+  const { event, scope, nodeIds } = input;
+  const { mentions, unknown } = mentionedAcceptances(event);
+
+  const named: string[] = [];
+  for (const id of [...mentions.map((m) => m.id), ...unknown.map((u) => u.id)]) {
+    if (nodeIds.has(id) && !named.includes(id)) named.push(id);
+  }
+
+  // The mention source is silent when nothing named a platform, and REFUSES
+  // when something tried to and could not — hence the two states rather than
+  // one list. `unknown` is only ever a refusal: the grammar puts a suffix there
+  // precisely because it could not be read.
+  const explicit = [...new Set(mentions.map((m) => m.platform).filter((p): p is PlatformId => p !== null))];
+  const mentionRefused = unknown.length > 0;
+
+  const pathPlatforms =
+    scope.kind === "links" ? [...new Set(scope.pathPlatforms.filter(IS_PLATFORM))] : [];
+  const linkPlatform =
+    scope.kind === "links" && scope.linkPlatform && IS_PLATFORM(scope.linkPlatform)
+      ? scope.linkPlatform
+      : null;
+
+  const decided = mentionRefused
+    ? []
+    : explicit.length > 0
+      ? explicit
+      : pathPlatforms.length > 0
+        ? pathPlatforms
+        : linkPlatform
+          ? [linkPlatform]
+          : [];
+
+  return {
+    node_ids: named,
+    ...(decided.length === 1 ? { platform: decided[0] } : {}),
+  };
 }
 
 interface NodeWithRefs extends Node {
@@ -1771,6 +1890,21 @@ export interface ApplyOutcome {
    * already tell people to read.
    */
   warnings?: string[];
+  /**
+   * What a `deliverable.shipped` for this pull request should record beyond its
+   * Lab Note — see `deliverableScope`.
+   *
+   * ON THE OUTCOME rather than recomputed by the note writer, because it is a
+   * property of the DELIVERY: the repository scope it resolves costs a
+   * changed-files call, and one delivery must make at most one. It is also the
+   * only channel that reaches the writer, which runs beside this half and never
+   * inside it (a refused note must not block a promotion, and vice versa).
+   *
+   * Absent when the project could not be loaded — there is then no snapshot to
+   * check an id against, and writing one unchecked is the dangling reference
+   * `deliverableScope` exists to prevent.
+   */
+  deliverable?: DeliverableScope;
 }
 
 /**
@@ -1841,6 +1975,15 @@ export interface OutcomeInput {
    * mutation the validator refused are both this.
    */
   failure?: string | null;
+  /**
+   * Passed straight through, and DELIBERATELY not gated on `opCount` or on
+   * `failure`. A pull request that ships something a user notices very often
+   * mentions no acceptance at all: it applies zero ops, reports "no matching
+   * acceptance", and still writes a deliverable whose platform this is the only
+   * carrier of. Gating it on a successful mutation would blank the field for
+   * exactly the deliveries it was added for.
+   */
+  deliverable?: DeliverableScope;
 }
 
 /**
@@ -1864,7 +2007,7 @@ export interface OutcomeInput {
  *     answer.
  */
 export function assembleOutcome(input: OutcomeInput): ApplyOutcome {
-  const { projectId, textWarnings, planWarnings, opCount, failure } = input;
+  const { projectId, textWarnings, planWarnings, opCount, failure, deliverable } = input;
   const warnings = [...textWarnings, ...planWarnings];
 
   const skipped = failure
@@ -1882,6 +2025,7 @@ export function assembleOutcome(input: OutcomeInput): ApplyOutcome {
     applied: failure ? 0 : opCount,
     ...(skipped === undefined ? {} : { skipped }),
     ...(warnings.length > 0 ? { warnings } : {}),
+    ...(deliverable === undefined ? {} : { deliverable }),
   };
 }
 
@@ -1900,7 +2044,16 @@ export function assembleOutcome(input: OutcomeInput): ApplyOutcome {
  */
 export async function applyPullRequestEvent(
   event: PullRequestEvent,
-  options: { fetchFiles?: FetchChangedFiles } = {},
+  options: {
+    fetchFiles?: FetchChangedFiles;
+    /**
+     * Whether this delivery will also write a `deliverable.shipped` — i.e. it
+     * is a merge whose body carries a Lab Note. The route knows that (it is the
+     * half that parses the note) and this half deliberately does not, so it
+     * arrives as a claim rather than a second parse of the same body.
+     */
+    scopesADeliverable?: boolean;
+  } = {},
 ): Promise<ApplyOutcome[]> {
   const rows = await linkedProjects(event.repoFullName);
   const groups = groupLinksByProject(rows);
@@ -1934,6 +2087,7 @@ export async function applyPullRequestEvent(
     event,
     installationId,
     fetchFiles: options.fetchFiles ?? ((pr) => githubApp().listPullRequestFiles(pr)),
+    scopesADeliverable: options.scopesADeliverable,
   });
 
   for (const group of groups) {
@@ -1958,14 +2112,30 @@ export async function applyPullRequestEvent(
       continue;
     }
 
+    const repoScope = scopes.get(group.projectId);
+    const deliverable = deliverableScope({
+      event,
+      // Same fallback as the planner's below, and for the same reason: a
+      // missing entry means the two lists disagree, and guessing a platform
+      // there is the direction this file forbids.
+      scope: repoScope ?? {
+        kind: "no-platform",
+        reason: "not-consulted",
+        detail: "arkaik could not resolve which of its repository links this pull request belongs to",
+        prefixes: group.links.map((link) => link.pathPrefix),
+      },
+      nodeIds: new Set((loaded.bundle.nodes as readonly Node[]).map((node) => node.id)),
+    });
+
     const { ops, warnings: planWarnings } = planForProject(
       loaded.bundle as unknown as Parameters<typeof planForProject>[0],
       event,
       // Present for every group by construction — `scopes` is built from the
       // same list. The fallback refuses rather than defaulting to a platform,
       // because a missing entry would mean the two lists disagree and guessing
-      // then is exactly the direction this file forbids.
-      scopes.get(group.projectId) ?? {
+      // then is exactly the direction this file forbids. Resolved once above,
+      // so the planner and the deliverable cannot answer from two scopes.
+      repoScope ?? {
         kind: "no-platform",
         reason: "not-consulted",
         detail: "arkaik could not resolve which of its repository links this pull request belongs to",
@@ -1986,7 +2156,7 @@ export async function applyPullRequestEvent(
     // into the silence it replaced.
     if (ops.length === 0) {
       outcomes.push(
-        assembleOutcome({ projectId: group.projectId, textWarnings, planWarnings, opCount: 0 }),
+        assembleOutcome({ projectId: group.projectId, textWarnings, planWarnings, opCount: 0, deliverable }),
       );
       continue;
     }
@@ -2006,6 +2176,7 @@ export async function applyPullRequestEvent(
         planWarnings,
         opCount: ops.length,
         failure: result.ok ? null : describeFailure(result),
+        deliverable,
       }),
     );
   }

@@ -182,6 +182,7 @@ async function main() {
     resolveRepoScope,
     resolveDeliveryScopes,
     resolveInstallationId,
+    deliverableScope,
   } = loadPrPlan();
 
   /**
@@ -4056,6 +4057,161 @@ async function main() {
       "a transient fetch failure propagates instead of resolving to some scope",
       thrown === boom,
       () => String(thrown),
+    );
+  }
+
+  // ── deliverableScope: what a merged PR's deliverable records ─────────────
+  //
+  // The changelog card's TOUCHED list, its "N nodes" chip and its platform pill
+  // are read from `deliverable.shipped`'s `node_ids` and `platform`
+  // (components/journal/DeliverableHoverCard.tsx). The Lab-Note writer set
+  // neither, so every deliverable a merged PR has ever produced rendered as a
+  // title and a summary while the replayed history beside it rendered in full.
+  // Both facts are already in the delivery: the mentions name the acceptances,
+  // and the repository scope names the platform. This is the one place that
+  // turns them into the two fields the card reads.
+  {
+    const held = new Set(["AC-x", "AC-y"]);
+    const scoped = (event, scope, nodeIds = held) => deliverableScope({ event, scope, nodeIds });
+
+    check(
+      "a mentioned acceptance the project holds is recorded as touched",
+      JSON.stringify(scoped({ title: "t", body: "Fixes AC-x" }, wholeRepo()).node_ids) === '["AC-x"]',
+      () => JSON.stringify(scoped({ title: "t", body: "Fixes AC-x" }, wholeRepo())),
+    );
+    check(
+      "an id no node in the project carries is DROPPED, not written as a dangling reference",
+      JSON.stringify(scoped({ title: "t", body: "Fixes AC-x and AC-ghost" }, wholeRepo()).node_ids) ===
+        '["AC-x"]',
+      () => JSON.stringify(scoped({ title: "t", body: "Fixes AC-x and AC-ghost" }, wholeRepo())),
+    );
+    check(
+      "ids keep first-mention order and are deduped across title and body",
+      JSON.stringify(
+        scoped({ title: "AC-y: grades", body: "Fixes AC-x, AC-y" }, wholeRepo()).node_ids,
+      ) === '["AC-y","AC-x"]',
+      () => JSON.stringify(scoped({ title: "AC-y: grades", body: "Fixes AC-x, AC-y" }, wholeRepo())),
+    );
+    // An unusable `@suffix` refuses a SCOPE — a status claim. Saying which
+    // acceptance the pull request was about claims nothing, so the refusal does
+    // not reach here: dropping the id would leave the card emptier than the
+    // pull request, for a typo the card never shows.
+    check(
+      "an id whose only mention carried an unusable @suffix is still recorded as touched",
+      JSON.stringify(scoped({ title: "t", body: "Fixes AC-x@windows" }, wholeRepo()).node_ids) ===
+        '["AC-x"]',
+      () => JSON.stringify(scoped({ title: "t", body: "Fixes AC-x@windows" }, wholeRepo())),
+    );
+    check(
+      "a pull request naming no acceptance records no nodes — an empty list, never undefined",
+      JSON.stringify(scoped({ title: "chore: bump deps", body: "" }, wholeRepo()).node_ids) === "[]",
+      () => JSON.stringify(scoped({ title: "chore: bump deps", body: "" }, wholeRepo())),
+    );
+
+    // ── platform ──────────────────────────────────────────────────────────
+    // The single field the changelog pill reads, so it is set only when the
+    // delivery resolves to exactly ONE platform. Two is not a reason to pick
+    // one, and the whole point of the chip is that it is true.
+    check(
+      "the platform comes from the path-scoped link this PR's files landed in",
+      scoped({ title: "t", body: "" }, pathScope([IOS_LINK, WEB_LINK], ["apps/ios/A.swift"])).platform ===
+        "ios",
+      () =>
+        JSON.stringify(scoped({ title: "t", body: "" }, pathScope([IOS_LINK, WEB_LINK], ["apps/ios/A.swift"]))),
+    );
+    check(
+      "…even for a pull request that mentions no acceptance at all",
+      scoped({ title: "feat(web): a fan picker", body: "no ids here" }, pathScope([IOS_LINK, WEB_LINK], ["apps/webapp/p.tsx"]))
+        .platform === "web",
+      () =>
+        JSON.stringify(
+          scoped({ title: "feat(web): a fan picker", body: "no ids here" }, pathScope([IOS_LINK, WEB_LINK], ["apps/webapp/p.tsx"])),
+        ),
+    );
+    check(
+      "a whole-repository link that names a platform decides when no path link matched",
+      scoped({ title: "t", body: "" }, wholeRepo("ios")).platform === "ios",
+      () => JSON.stringify(scoped({ title: "t", body: "" }, wholeRepo("ios"))),
+    );
+    check(
+      "an All-platforms link names nothing, so the deliverable stays unscoped",
+      scoped({ title: "t", body: "" }, wholeRepo()).platform === undefined,
+      () => JSON.stringify(scoped({ title: "t", body: "" }, wholeRepo())),
+    );
+    check(
+      "an explicit @platform in the mention outranks the path match, exactly as the ref precedence does",
+      scoped({ title: "t", body: "Fixes AC-x@android" }, pathScope([IOS_LINK, ANDROID_LINK], ["apps/ios/A.swift"]))
+        .platform === "android",
+      () =>
+        JSON.stringify(
+          scoped({ title: "t", body: "Fixes AC-x@android" }, pathScope([IOS_LINK, ANDROID_LINK], ["apps/ios/A.swift"])),
+        ),
+    );
+    check(
+      "a pull request landing in TWO path-scoped links is left unscoped rather than given one of them",
+      scoped({ title: "t", body: "" }, pathScope([IOS_LINK, ANDROID_LINK], ["apps/ios/A.swift", "apps/android/B.kt"]))
+        .platform === undefined,
+      () =>
+        JSON.stringify(
+          scoped({ title: "t", body: "" }, pathScope([IOS_LINK, ANDROID_LINK], ["apps/ios/A.swift", "apps/android/B.kt"])),
+        ),
+    );
+    check(
+      "…and so is one whose mentions name two different platforms",
+      scoped({ title: "t", body: "AC-x@ios and AC-y@android" }, pathScope([IOS_LINK, WEB_LINK], ["apps/ios/A.swift"]))
+        .platform === undefined,
+      () =>
+        JSON.stringify(
+          scoped({ title: "t", body: "AC-x@ios and AC-y@android" }, pathScope([IOS_LINK, WEB_LINK], ["apps/ios/A.swift"])),
+        ),
+    );
+    check(
+      "the same acceptance named twice for ONE platform is not an ambiguity",
+      scoped({ title: "AC-x@ios", body: "Fixes AC-x@ios" }, wholeRepo()).platform === "ios",
+      () => JSON.stringify(scoped({ title: "AC-x@ios", body: "Fixes AC-x@ios" }, wholeRepo())),
+    );
+    check(
+      "a scope that could not be resolved names no platform — the refusal is not a fallback",
+      scoped({ title: "t", body: "" }, pathScope([IOS_LINK, WEB_LINK], ["README.md"])).platform === undefined,
+      () => JSON.stringify(scoped({ title: "t", body: "" }, pathScope([IOS_LINK, WEB_LINK], ["README.md"]))),
+    );
+    check(
+      "an unusable @suffix names no platform either — a typo must not be answered with the repo default",
+      scoped({ title: "t", body: "Fixes AC-x@windows" }, wholeRepo("ios")).platform === undefined,
+      () => JSON.stringify(scoped({ title: "t", body: "Fixes AC-x@windows" }, wholeRepo("ios"))),
+    );
+  }
+
+  // ── needsChangedFiles: a note-carrying merge is worth one request ─────────
+  //
+  // Without this, the platform above is derivable for almost nothing: of the
+  // nineteen deliverables the pbbls PR routine produced, only five mention an
+  // acceptance, while EVERY one of them lands under exactly one `apps/*` tree.
+  // The existing rule fetches only for a mention, so fourteen of them resolve
+  // to `not-consulted` and the pill stays empty for a fact the delivery could
+  // have read. One request, on merge deliveries only, in repositories that
+  // already asked to be scoped by path.
+  {
+    const bare = { title: "chore: bump deps", body: "" };
+    check(
+      "precondition: a mention-free pull request needs nothing today",
+      needsChangedFiles(bare, [IOS_LINK, WEB_LINK]) === false,
+      "otherwise the assertion below passes for the wrong reason",
+    );
+    check(
+      "a merge that will write a deliverable needs the changed files even with no mention",
+      needsChangedFiles(bare, [IOS_LINK, WEB_LINK], { scopesADeliverable: true }) === true,
+      () => "a note-carrying merge skipped the fetch, so its deliverable can name no platform",
+    );
+    check(
+      "the whole-repository short-circuit STILL comes first — nothing to scope, nothing to fetch",
+      needsChangedFiles(bare, [ALL_LINK], { scopesADeliverable: true }) === false,
+      () => "a deployment with no path-scoped link at all was made to call GitHub back",
+    );
+    check(
+      "an absent flag reads as false rather than as true",
+      needsChangedFiles(bare, [IOS_LINK, WEB_LINK], {}) === false,
+      () => "an empty options object turned the fetch on",
     );
   }
 

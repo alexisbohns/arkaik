@@ -5,7 +5,12 @@ import { makeEvent, type DeliverableShippedEvent } from "@arkaik/schema";
 import { query } from "@/lib/services/db";
 import { appendJournalEvents } from "@/lib/services/graph/store";
 import { extractLabNoteYaml, parseLabNote, type LabNote } from "@/lib/services/github/lab-note-parse";
-import { linkedProjects, ownerIdsFor, type PullRequestEvent } from "@/lib/services/github/pull-request";
+import {
+  linkedProjects,
+  ownerIdsFor,
+  type DeliverableScope,
+  type PullRequestEvent,
+} from "@/lib/services/github/pull-request";
 
 /**
  * The Lab-Note-into-journal half of a merged-PR delivery (slice 3).
@@ -22,7 +27,18 @@ export type LabNoteOutcome =
   | { status: "no_note" }
   | { status: "invalid"; error: string };
 
-export async function applyLabNote(event: PullRequestEvent): Promise<LabNoteOutcome[]> {
+/**
+ * @param scopes What each project's delivery resolved for this pull request —
+ *   the touched node ids and the platform, keyed by project id. Computed by the
+ *   acceptance half (`applyPullRequestEvent`) because resolving it can cost a
+ *   changed-files call and one delivery must make at most one; passed in rather
+ *   than recomputed so the two halves cannot answer from two different scopes.
+ *   An absent entry simply means those fields are not written — never a guess.
+ */
+export async function applyLabNote(
+  event: PullRequestEvent,
+  scopes: ReadonlyMap<string, DeliverableScope> = new Map(),
+): Promise<LabNoteOutcome[]> {
   const yaml = extractLabNoteYaml(event.body);
   if (yaml === null) return [{ status: "no_note" }];
   const parsed = parseLabNote(yaml);
@@ -37,7 +53,7 @@ export async function applyLabNote(event: PullRequestEvent): Promise<LabNoteOutc
   const projectIds = [...new Set((await linkedProjects(event.repoFullName)).map((r) => r.projectId))];
   const outcomes: LabNoteOutcome[] = [];
   for (const projectId of projectIds) {
-    outcomes.push(await appendToProject(projectId, event, parsed.note));
+    outcomes.push(await appendToProject(projectId, event, parsed.note, scopes.get(projectId)));
   }
   return outcomes;
 }
@@ -58,18 +74,53 @@ function canonical(value: unknown): string {
   return `{${entries.join(",")}}`;
 }
 
-/** The fields whose equality means "this re-delivery brings nothing new". */
-function contentKey(payload: { title?: string; summary?: string; url?: string; lab_note?: LabNote }): string {
-  return canonical([payload.title ?? null, payload.summary ?? null, payload.url ?? null, payload.lab_note ?? null]);
+/**
+ * The fields whose equality means "this re-delivery brings nothing new".
+ *
+ * `node_ids` and `platform` are IN the key, not merely written. They are
+ * resolved per delivery rather than read from the body, so a redelivery can
+ * legitimately carry ones the stored occurrence lacks — a repository link that
+ * gained a platform, a mention whose acceptance now exists, or a deliverable
+ * written before this half of the payload existed at all. Leaving them out
+ * would judge every one of those "unchanged" and make the enrichment
+ * unreachable for exactly the deliverables that need it.
+ */
+function contentKey(payload: {
+  title?: string;
+  summary?: string;
+  url?: string;
+  lab_note?: LabNote;
+  node_ids?: readonly string[];
+  platform?: string;
+}): string {
+  return canonical([
+    payload.title ?? null,
+    payload.summary ?? null,
+    payload.url ?? null,
+    payload.lab_note ?? null,
+    payload.node_ids ?? null,
+    payload.platform ?? null,
+  ]);
 }
 
-async function appendToProject(projectId: string, event: PullRequestEvent, note: LabNote): Promise<LabNoteOutcome> {
+async function appendToProject(
+  projectId: string,
+  event: PullRequestEvent,
+  note: LabNote,
+  scope: DeliverableScope | undefined,
+): Promise<LabNoteOutcome> {
   const deliverableId = `pr-${event.number}`;
+  // An EMPTY node list is omitted rather than written as `[]`: the projection
+  // reads a missing array and an empty one identically, and a stored `[]` would
+  // be one more shape for the same nothing in a journal that is read by hand.
+  const nodeIds = scope?.node_ids ?? [];
   const payload = {
     deliverable_id: deliverableId,
     title: note.en.title,
     summary: note.en.summary,
     url: event.url,
+    ...(nodeIds.length > 0 ? { node_ids: nodeIds } : {}),
+    ...(scope?.platform ? { platform: scope.platform } : {}),
     lab_note: note,
   };
 
@@ -83,7 +134,16 @@ async function appendToProject(projectId: string, event: PullRequestEvent, note:
   );
   if (rows.length > 0) {
     const prev = rows[0].event;
-    if (contentKey({ title: prev.title, summary: prev.summary, url: prev.url, lab_note: prev.lab_note as LabNote }) === contentKey(payload)) {
+    if (
+      contentKey({
+        title: prev.title,
+        summary: prev.summary,
+        url: prev.url,
+        lab_note: prev.lab_note as LabNote,
+        node_ids: prev.node_ids,
+        platform: prev.platform,
+      }) === contentKey(payload)
+    ) {
       return { projectId, status: "unchanged" };
     }
   }
