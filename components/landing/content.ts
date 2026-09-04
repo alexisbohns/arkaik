@@ -22,6 +22,7 @@ export interface Section {
 export const PARTS: Part[] = [
   { id: "maps",  title: "Read your product",        intro: "One graph, four maps. A strategist zooms out, an operator zooms in, an agent queries. Same data." },
   { id: "truth", title: "Track truth, not fields",  intro: "Status is a history with a platform, not a dropdown. Every claim on the map can be checked." },
+  { id: "quality", title: "Keep it honest", intro: "A map says what exists. Kritik says how good it is, surface by surface, and what to fix first." },
 ];
 
 /** Page order within each chapter. */
@@ -79,6 +80,12 @@ export const SECTIONS: Section[] = [
     why: "\"What changed between versions\" needs history, and history must never bloat the snapshot.",
     what: "An append-only event log; node timelines, changelogs per release, release notes and the backlog are derived from it.",
     how: "The snapshot is authoritative for now, the journal for history, and the validator cross-checks them by value.",
+  },
+  {
+    id: "quality-matrix", part: "quality", title: "Quality matrix", preview: "quality-matrix",
+    why: "\"How good is each surface, and what do we fix first\" deserves one comparable answer, not a folder of audit PDFs.",
+    what: "Criteria scored 0 to 4 per surface, weighted into domain scores and rolled up to a grade. An open critical finding caps the grade.",
+    how: "Scores and findings are data files in the repo; severity, priority and grade are derived, never stored, so two readers cannot disagree.",
   },
 ];
 

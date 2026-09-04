@@ -32,4 +32,5 @@ export const FIXTURES: Record<PreviewId, PreviewFixture> = {
     nodeIds: ["V-journey-map"],
     versions: ["going-multi-product", "the-self-map"],
   },
+  "quality-matrix": { source: "pilot-audit", nodeIds: [] }, // reads bundle.quality; the criteria list is pinned in the preview
 };

@@ -21,6 +21,7 @@ export const PREVIEW_IDS = [
   "value-pyramid",
   "decision-chain",
   "journal-changelog",
+  "quality-matrix",
 ] as const;
 
 export type PreviewId = (typeof PREVIEW_IDS)[number];
@@ -49,4 +50,5 @@ export const PREVIEW_META: Record<PreviewId, PreviewMeta> = {
   "value-pyramid":     { source: "self-map", height: 320, breadcrumb: ["Project", "Pyramid"],    journal: false },
   "decision-chain":    { source: "pebbles",  height: 280, breadcrumb: ["Project", "Decisions"],  journal: true },
   "journal-changelog": { source: "self-map", height: 360, breadcrumb: ["Project", "Changelog"],  journal: true },
+  "quality-matrix":    { source: "pilot-audit", height: 380, breadcrumb: ["Quality", "Matrix"],  journal: false },
 };

@@ -8,6 +8,7 @@ import { JournalChangelogPreview } from "./JournalChangelogPreview";
 import { JourneyMapPreview } from "./JourneyMapPreview";
 import { OverviewCardsPreview } from "./OverviewCardsPreview";
 import { PlatformStatusesPreview } from "./PlatformStatusesPreview";
+import { QualityMatrixPreview } from "./QualityMatrixPreview";
 import { SystemMapPreview } from "./SystemMapPreview";
 import { ValuePyramidPreview } from "./ValuePyramidPreview";
 
@@ -25,4 +26,5 @@ export const PREVIEW_REGISTRY: Record<PreviewId, ComponentType<PreviewProps>> = 
   "value-pyramid": ValuePyramidPreview,
   "decision-chain": DecisionChainPreview,
   "journal-changelog": JournalChangelogPreview,
+  "quality-matrix": QualityMatrixPreview,
 };
