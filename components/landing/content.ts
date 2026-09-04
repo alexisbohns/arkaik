@@ -23,6 +23,7 @@ export const PARTS: Part[] = [
   { id: "maps",  title: "Read your product",        intro: "One graph, four maps. A strategist zooms out, an operator zooms in, an agent queries. Same data." },
   { id: "truth", title: "Track truth, not fields",  intro: "Status is a history with a platform, not a dropdown. Every claim on the map can be checked." },
   { id: "quality", title: "Keep it honest", intro: "A map says what exists. Kritik says how good it is, surface by surface, and what to fix first." },
+  { id: "agents", title: "Maintained by agents", intro: "Nobody maintains a map by hand for long. Arkaik is built to be read and written by the agents that already write the code." },
 ];
 
 /** Page order within each chapter. */
@@ -92,6 +93,12 @@ export const SECTIONS: Section[] = [
     why: "An audit is a snapshot. Regressions happen between audits, when nobody is looking.",
     what: "Findings with a lifecycle: open, resolved, refuted, accepted risk. Signals that trip on regression. A board that opens on the open work.",
     how: "CI trips signals over HTTP; agents open and resolve findings through MCP tools. Both are journal events, so the board is never stale.",
+  },
+  {
+    id: "agent-skill-diff", part: "agents", title: "The agent skill", preview: "agent-skill-diff",
+    why: "Documentation rots because updating it is a second task. A map that lives in the repo can be patched in the same commit as the code.",
+    what: "A Claude Code skill that knows the schema, patches the affected nodes surgically, and appends the matching journal event.",
+    how: "npx arkaik init scaffolds it into any repo; the bundled validator is a hard gate, so a snapshot its journal contradicts never lands.",
   },
 ];
 

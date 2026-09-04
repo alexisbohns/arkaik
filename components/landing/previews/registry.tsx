@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import type { PreviewId } from "@/components/landing/previews/ids";
 import type { PreviewProps } from "@/components/landing/previews/types";
 import { AcceptanceMatrixPreview } from "./AcceptanceMatrixPreview";
+import { AgentSkillDiffPreview } from "./AgentSkillDiffPreview";
 import { DecisionChainPreview } from "./DecisionChainPreview";
 import { DeliveryBoardPreview } from "./DeliveryBoardPreview";
 import { FindingsBoardPreview } from "./FindingsBoardPreview";
@@ -29,4 +30,5 @@ export const PREVIEW_REGISTRY: Record<PreviewId, ComponentType<PreviewProps>> = 
   "journal-changelog": JournalChangelogPreview,
   "quality-matrix": QualityMatrixPreview,
   "findings-board": FindingsBoardPreview,
+  "agent-skill-diff": AgentSkillDiffPreview,
 };

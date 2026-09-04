@@ -23,6 +23,7 @@ export const PREVIEW_IDS = [
   "journal-changelog",
   "quality-matrix",
   "findings-board",
+  "agent-skill-diff",
 ] as const;
 
 export type PreviewId = (typeof PREVIEW_IDS)[number];
@@ -53,4 +54,5 @@ export const PREVIEW_META: Record<PreviewId, PreviewMeta> = {
   "journal-changelog": { source: "self-map", height: 360, breadcrumb: ["Project", "Changelog"],  journal: true },
   "quality-matrix":    { source: "pilot-audit", height: 380, breadcrumb: ["Quality", "Matrix"],  journal: false },
   "findings-board":    { source: "pilot-audit", height: 420, breadcrumb: ["Quality", "Findings"], journal: true },
+  "agent-skill-diff":  { source: "self-map", height: 400, breadcrumb: ["Repo", "docs/arkaik"],  journal: false },
 };
