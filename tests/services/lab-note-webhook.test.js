@@ -31,6 +31,8 @@ function check(name, cond, detail) {
 
 const SECRET = "labnote-test-secret";
 const REPO = "acme/notes-app";
+/** A second repository on the same project, linked whole-repo but scoped to iOS. */
+const IOS_REPO = "acme/notes-ios";
 
 function sign(body, secret = SECRET) {
   return `sha256=${crypto.createHmac("sha256", secret).update(body, "utf8").digest("hex")}`;
@@ -73,15 +75,15 @@ const NOTE = [
 
 const INVALID_NOTE = ["## Lab Note", "", "```yaml", "en:", '  title: "Only a title"', "```"].join("\n");
 
-function prPayload({ number = 7, body = NOTE, merged = true, action = "closed" } = {}) {
+function prPayload({ number = 7, body = NOTE, merged = true, action = "closed", repo = REPO, title = "Ship it" } = {}) {
   return JSON.stringify({
     action,
-    repository: { full_name: REPO },
+    repository: { full_name: repo },
     installation: { id: 9002 },
     pull_request: {
       number,
-      html_url: `https://github.com/${REPO}/pull/${number}`,
-      title: "Ship it",
+      html_url: `https://github.com/${repo}/pull/${number}`,
+      title,
       body,
       merged,
       state: "closed",
@@ -139,7 +141,16 @@ async function main() {
           created_at: "2026-01-01T00:00:00.000Z",
           updated_at: "2026-01-01T00:00:00.000Z",
         },
-        nodes: [],
+        nodes: [
+          {
+            id: "AC-find-your-way",
+            project_id: "gp-notes",
+            species: "acceptance",
+            title: "Find your way around",
+            status: "backlog",
+            platforms: ["ios", "web"],
+          },
+        ],
         edges: [],
       },
     });
@@ -156,6 +167,15 @@ async function main() {
       { params: Promise.resolve({ projectId }) },
     );
     check("repo linked", linked.status === 201, String(linked.status));
+    const linkedIos = await api.LINK_REPO(
+      new Request("https://arkaik.test", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ repo_full_name: IOS_REPO, platform: "ios" }),
+      }),
+      { params: Promise.resolve({ projectId }) },
+    );
+    check("iOS repo linked", linkedIos.status === 201, String(linkedIos.status));
     api.setSession(null);
 
     // --- merged PR with a valid note ---------------------------------------
@@ -218,6 +238,86 @@ async function main() {
     check("unmerged close succeeds", closedUnmerged.status === 200);
     check("unmerged close runs no lab-note handling", (closedBody.labNotes ?? []).length === 0, JSON.stringify(closedBody.labNotes));
     check("unmerged close appends nothing", (await rowsFor(projectId, "pr-10")).length === 0);
+
+    // --- the two fields the changelog card reads -----------------------------
+    //
+    // A deliverable is not just its note. The card lists the TOUCHED nodes and
+    // chips their count from `node_ids`, and pills the release rhythm from
+    // `platform` (components/journal/DeliverableHoverCard.tsx). The writer used
+    // to build its payload from the note alone, so every deliverable the PR
+    // routine ever wrote rendered as a title and a summary beside a replayed
+    // history that rendered in full — while the SAME delivery had already read
+    // the mentions and resolved the repository scope.
+    const mentioning = `Implements AC-find-your-way\n\n${NOTE}`;
+    const scoped = await POST(webhookReq(prPayload({ number: 11, body: mentioning })));
+    check("a mentioning merge succeeds", scoped.status === 200, String(scoped.status));
+    let stored11 = await rowsFor(projectId, "pr-11");
+    check("the mentioning merge appends one deliverable", stored11.length === 1, String(stored11.length));
+    check(
+      "the deliverable records the acceptance the PR names",
+      JSON.stringify(stored11[0]?.event.node_ids) === '["AC-find-your-way"]',
+      JSON.stringify(stored11[0]?.event),
+    );
+    check(
+      "an All-platforms link leaves the deliverable unscoped rather than claiming one",
+      stored11[0]?.event.platform === undefined,
+      JSON.stringify(stored11[0]?.event),
+    );
+
+    // An id the project does not hold is DROPPED: the card resolves ids against
+    // the graph and skips what it cannot find, so a dangling id would inflate a
+    // count of "nodes I can tell you about" by exactly the nodes it cannot.
+    const withGhost = `Implements AC-find-your-way and AC-ghost\n\n${NOTE}`;
+    const ghosted = await POST(webhookReq(prPayload({ number: 12, body: withGhost })));
+    check("the ghost-mentioning merge succeeds", ghosted.status === 200, String(ghosted.status));
+    const stored12 = await rowsFor(projectId, "pr-12");
+    check(
+      "an id no node answers to is dropped, not stored",
+      JSON.stringify(stored12[0]?.event.node_ids) === '["AC-find-your-way"]',
+      JSON.stringify(stored12[0]?.event),
+    );
+
+    // The platform half, from a repository link that names one. No changed-file
+    // call is involved: the link is whole-repository, so the delivery answers
+    // from the payload alone.
+    const iosMerge = await POST(webhookReq(prPayload({ number: 13, repo: IOS_REPO })));
+    check("the iOS-repo merge succeeds", iosMerge.status === 200, String(iosMerge.status));
+    const stored13 = await rowsFor(projectId, "pr-13");
+    check("the iOS-repo merge appends one deliverable", stored13.length === 1, String(stored13.length));
+    check(
+      "a platform-scoped repository link becomes the deliverable's platform",
+      stored13[0]?.event.platform === "ios",
+      JSON.stringify(stored13[0]?.event),
+    );
+
+    // --- the dedupe key has to cover the new fields --------------------------
+    //
+    // It compares title/summary/url/lab_note; a redelivery that resolves nodes
+    // the stored event lacks is a REAL correction and must append, or the
+    // enrichment can never reach a deliverable already written. The identical
+    // redelivery beside it proves the key did not simply stop deduping.
+    const redeliveredScoped = await POST(webhookReq(prPayload({ number: 11, body: mentioning })));
+    check("the identical redelivery succeeds", redeliveredScoped.status === 200);
+    stored11 = await rowsFor(projectId, "pr-11");
+    check(
+      "identical content still appends nothing, node_ids and all",
+      stored11.length === 1,
+      JSON.stringify(stored11.map((r) => r.event.node_ids)),
+    );
+
+    const unmentioning = await POST(webhookReq(prPayload({ number: 11, body: NOTE })));
+    check("the mention-dropping redelivery succeeds", unmentioning.status === 200);
+    stored11 = await rowsFor(projectId, "pr-11");
+    check(
+      "a delivery whose node_ids differ appends a correcting occurrence",
+      stored11.length === 2,
+      JSON.stringify(stored11.map((r) => r.event.node_ids)),
+    );
+    check(
+      "…and the latest occurrence still carries the note, having simply stopped naming the node",
+      stored11[1]?.event.title === "Find your way around" && stored11[1]?.event.node_ids === undefined,
+      JSON.stringify(stored11[1]?.event),
+    );
   } finally {
     if (userId !== undefined) {
       const ownerIds = [`own-u${userId}`];

@@ -6,6 +6,7 @@ import {
   verifySignature,
 } from "@/lib/services/github/verify";
 import { applyLabNote } from "@/lib/services/github/lab-note";
+import { extractLabNoteYaml } from "@/lib/services/github/lab-note-parse";
 import { applyQualityResolutions } from "@/lib/services/github/quality";
 import {
   applyPullRequestEvent,
@@ -116,16 +117,35 @@ export async function POST(req: Request): Promise<Response> {
     installationId,
   };
 
+  // Decided BEFORE the acceptance half runs, because it changes what that half
+  // reads: a merge that will write a deliverable needs the pull request's
+  // changed files to know which platform to record, and the fetch happens once,
+  // inside `applyPullRequestEvent`. Read here rather than there so the planner
+  // keeps knowing nothing about Lab Notes — this route is already the half that
+  // parses them. `extractLabNoteYaml` only finds the section; whether the YAML
+  // inside it is valid is `applyLabNote`'s answer, and a note that turns out to
+  // be malformed costs one changed-files call, which is the right way round.
+  const isMerge = prEvent.action === "closed" && prEvent.merged;
+  const scopesADeliverable = isMerge && extractLabNoteYaml(prEvent.body) !== null;
+
   try {
-    const outcomes = await applyPullRequestEvent(prEvent);
+    const outcomes = await applyPullRequestEvent(prEvent, { scopesADeliverable });
+    // The touched nodes and the platform each project resolved, keyed by
+    // project — the two fields the changelog renders that a Lab Note cannot
+    // carry. Handed over rather than recomputed: resolving it can cost a
+    // changed-files call, and one delivery makes at most one.
+    const deliverableScopes = new Map(
+      outcomes.flatMap((outcome) =>
+        outcome.deliverable ? [[outcome.projectId, outcome.deliverable] as const] : [],
+      ),
+    );
     // The Lab-Note and Kritik halves run only for a merge, inside the same
     // try: a transient failure releases the delivery claim and the retry redoes
     // all three — all three are idempotent (promotions by construction, notes
     // by content dedupe, resolutions by the already-resolved check, which is
     // what covers a PR reopened and re-merged rather than merely redelivered).
     // Parse refusals are outcomes, never throws.
-    const isMerge = prEvent.action === "closed" && prEvent.merged;
-    const labNotes = isMerge ? await applyLabNote(prEvent) : [];
+    const labNotes = isMerge ? await applyLabNote(prEvent, deliverableScopes) : [];
     // A merged PR that names a finding — by id, or by the issue it closes.
     const quality = isMerge ? await applyQualityResolutions(prEvent) : [];
     // A typo'd repo link — or no link at all — is the commonest reason "nothing

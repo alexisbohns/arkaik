@@ -408,6 +408,17 @@ journal as a `deliverable.shipped` event — which the feed serves as a
 malformed note is reported in the delivery response and never blocks
 acceptance promotion.
 
+**The deliverable records more than the note.** The same delivery already knows
+which acceptances the PR named and which platform it resolved to, so it writes
+both onto the event: `node_ids` for the acceptances the project actually holds
+(an id nothing answers to is dropped, never stored), and `platform` when the
+delivery resolves to exactly **one** — the `@platform` in a mention, else the
+[path-scoped link](#monorepos) the changed files landed in, else the repository
+link. Those two fields are what the changelog renders as a deliverable's
+**Touched** list and its platform chip; a PR that spans two platforms is left
+unscoped rather than shown as one of them. A repository linked **All platforms**
+names none, so its deliverables carry no chip.
+
 ## Monorepos
 
 A single repository that builds several platforms — `apps/ios`, `apps/webapp`,
