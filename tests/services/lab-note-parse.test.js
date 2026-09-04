@@ -82,5 +82,66 @@ check("unquoted colon fails with the quoting hint", !unquoted.ok && unquoted.err
 const notMapping = parseLabNote("- just\n- a list");
 check("non-mapping refused", !notMapping.ok && notMapping.error.includes("mapping"));
 
+// --- nodes: what the change touched, in the author's own words -------------
+//
+// The mention grammar only ever names acceptances, so a deliverable built from
+// mentions alone can never list the views, flows, endpoints and models a
+// replayed history lists. This is the key that lets an author say so. It is
+// arkaik-specific and therefore an UNKNOWN top-level key everywhere else, which
+// the shared contract already ignores — no other pipeline has to learn it.
+const nodes = parseLabNote(
+  ["en:", '  title: "T"', '  summary: "S"', "nodes: [V-record-photo, F-record-flow]"].join("\n"),
+);
+check(
+  "a nodes list is read as written",
+  nodes.ok && JSON.stringify(nodes.note.nodes) === '["V-record-photo","F-record-flow"]',
+  JSON.stringify(nodes),
+);
+check("nodes omitted when absent", enOnly.ok && enOnly.note.nodes === undefined, JSON.stringify(enOnly));
+
+const nodesBlock = parseLabNote(
+  ["en:", '  title: "T"', '  summary: "S"', "nodes:", "  - V-a", "  -  V-b  "].join("\n"),
+);
+check(
+  "the block form is the same list, trimmed",
+  nodesBlock.ok && JSON.stringify(nodesBlock.note.nodes) === '["V-a","V-b"]',
+  JSON.stringify(nodesBlock),
+);
+
+const nodesDupes = parseLabNote(
+  ["en:", '  title: "T"', '  summary: "S"', "nodes: [V-a, V-b, V-a]"].join("\n"),
+);
+check(
+  "a repeated id is listed once, in first-written order",
+  nodesDupes.ok && JSON.stringify(nodesDupes.note.nodes) === '["V-a","V-b"]',
+  JSON.stringify(nodesDupes),
+);
+
+// A malformed OPTIONAL key must never cost the note. The whole entry would be
+// lost — the changelog line, both languages, the federation envelope — over a
+// field whose entire job is to add detail to it.
+const nodesJunk = parseLabNote(
+  ["en:", '  title: "T"', '  summary: "S"', "nodes: V-not-a-list"].join("\n"),
+);
+check(
+  "a nodes value that is not a list is dropped, and the note still parses",
+  nodesJunk.ok && nodesJunk.note.nodes === undefined,
+  JSON.stringify(nodesJunk),
+);
+const nodesMixed = parseLabNote(
+  ["en:", '  title: "T"', '  summary: "S"', "nodes: [V-a, 42, \"\"]"].join("\n"),
+);
+check(
+  "unusable entries are dropped one by one rather than taking the usable ones with them",
+  nodesMixed.ok && JSON.stringify(nodesMixed.note.nodes) === '["V-a"]',
+  JSON.stringify(nodesMixed),
+);
+const nodesEmpty = parseLabNote(["en:", '  title: "T"', '  summary: "S"', "nodes: []"].join("\n"));
+check(
+  "an empty list is omitted rather than stored as one more shape for nothing",
+  nodesEmpty.ok && nodesEmpty.note.nodes === undefined,
+  JSON.stringify(nodesEmpty),
+);
+
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 process.exit(failures ? 1 : 0);

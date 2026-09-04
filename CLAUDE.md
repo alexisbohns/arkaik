@@ -38,6 +38,7 @@ en:
 fr:                                              # recommended — adaptation, informal "Tu"
   title: "Titre court, orienté bénéfice"
   summary: "Une ou deux phrases, adaptées, pas traduites littéralement."
+nodes: [V-changelog, F-review-a-release]         # optional — what the change touched
 suggested:                                       # optional — prefills triage in the Ariko admin
   molecule: arkaik       # THIS repo's molecule slug
   type: feature          # feature | improvement | fix | announcement
@@ -45,12 +46,21 @@ suggested:                                       # optional — prefills triage 
   # atom: <slug>         # ONLY when you know the slug exists — never guess
 ```
 
+**`nodes:` is what makes the changelog card readable.** A deliverable renders a
+**Touched** list, a node count and a platform chip from the graph ids it
+carries, and the delivery can only ever infer ACCEPTANCES on its own — from an
+`AC-…` mention in the title or body. Views, flows, API endpoints, data models
+and decisions have to be declared, so list the ids your change actually touched,
+most important first. Ids you know exist: an id nothing answers to is left off
+the deliverable and named back at you in the delivery response, never guessed
+at. Omit the key entirely when the change touched no node.
+
 **Always double-quote every title and summary.** A colon is the natural way to
 write a sentence ("Heads up: it moved", "ton compte : ceux que...") and it is
 exactly what an unquoted YAML value cannot hold — the parser reads `key: value`
 and the whole note fails. Quoting removes the failure mode outright, and makes
-apostrophes and em dashes free too. Slug-ish values (`molecule`, `type`,
-`tags`) need no quotes.
+apostrophes and em dashes free too. Slug-ish values (`nodes`, `molecule`,
+`type`, `tags`) need no quotes.
 
 **Tone.** Lead with the benefit, not the mechanism; keep it short; warm and a
 little playful, never corporate; no engineering jargon, ticket numbers, or
