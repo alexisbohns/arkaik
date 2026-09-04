@@ -23,6 +23,11 @@ import {
   RefreshCw,
   Scale,
   Package,
+  ClipboardCheck,
+  TriangleAlert,
+  CircleCheck,
+  ShieldCheck,
+  Radar,
 } from "lucide-react";
 import type { JournalEvent, Node } from "@/lib/data/types";
 import { SPECIES } from "@/lib/config/species";
@@ -54,6 +59,11 @@ const EVENT_ICONS: Record<string, LucideIcon> = {
   "ref.status_changed": RefreshCw,
   "decision.status_changed": Scale,
   "deliverable.shipped": Package,
+  "quality.audit.completed": ClipboardCheck,
+  "quality.finding.opened": TriangleAlert,
+  "quality.finding.resolved": CircleCheck,
+  "quality.finding.accepted": ShieldCheck,
+  "quality.signal.tripped": Radar,
 };
 
 export interface DescribedEvent {
@@ -172,6 +182,27 @@ export function describeJournalEvent(
         icon,
         text: `${resolveTitle(event.node_id, nodesById)}: reference ${from ? `${from} → ${to}` : to}`,
       };
+    }
+    case "quality.audit.completed": {
+      const audit = str(event.audit_id) ?? "?";
+      const framework = str(event.framework_version);
+      return { icon, text: `Audit ${audit} completed`, meta: framework ? `Kritik ${framework}` : undefined };
+    }
+    case "quality.finding.opened": {
+      const severity = str(event.severity);
+      const where = `${str(event.criterion_id) ?? "?"} on ${str(event.surface) ?? "?"}`;
+      return { icon, text: str(event.title) ?? `Finding ${str(event.finding_id) ?? "?"} opened`, meta: severity ? `${severity} · ${where}` : where };
+    }
+    case "quality.finding.resolved": {
+      const by = str(event.resolved_by);
+      return { icon, text: `Finding ${str(event.finding_id) ?? "?"} resolved`, meta: by ? `by ${by}` : undefined };
+    }
+    case "quality.finding.accepted":
+      return { icon, text: `Finding ${str(event.finding_id) ?? "?"} accepted as a risk`, meta: str(event.reason) };
+    case "quality.signal.tripped": {
+      const where = `${str(event.criterion_id) ?? "?"} on ${str(event.surface) ?? "?"}`;
+      const commit = str(event.commit);
+      return { icon, text: `Signal tripped: ${where}`, meta: [str(event.signal), commit ? `at ${commit.slice(0, 7)}` : undefined].filter(Boolean).join(" · ") };
     }
     default:
       // Unknown type — forward-compatible: render the raw type rather than erroring.
