@@ -38,7 +38,7 @@ en:
 fr:                                              # recommended — adaptation, informal "Tu"
   title: "Titre court, orienté bénéfice"
   summary: "Une ou deux phrases, adaptées, pas traduites littéralement."
-nodes: [V-changelog, F-review-a-release]         # optional — what the change touched
+nodes: [V-changelog, F-review-changelog]         # optional — what the change touched
 suggested:                                       # optional — prefills triage in the Ariko admin
   molecule: arkaik       # THIS repo's molecule slug
   type: feature          # feature | improvement | fix | announcement
