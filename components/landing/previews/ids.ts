@@ -54,9 +54,9 @@ export const PREVIEW_META: Record<PreviewId, PreviewMeta> = {
   "value-pyramid":     { source: "self-map", height: 320, breadcrumb: ["Project", "Pyramid"],    journal: false },
   "decision-chain":    { source: "pebbles",  height: 280, breadcrumb: ["Project", "Decisions"],  journal: true },
   "journal-changelog": { source: "self-map", height: 360, breadcrumb: ["Project", "Changelog"],  journal: true },
-  "quality-matrix":    { source: "pilot-audit", height: 380, breadcrumb: ["Quality", "Matrix"],  journal: false },
+  "quality-matrix":    { source: "pilot-audit", height: 300, breadcrumb: ["Quality", "Matrix"],  journal: false },
   "findings-board":    { source: "pilot-audit", height: 420, breadcrumb: ["Quality", "Findings"], journal: true },
-  "agent-skill-diff":  { source: "self-map", height: 400, breadcrumb: ["Repo", "docs/arkaik"],  journal: false },
+  "agent-skill-diff":  { source: "self-map", height: 440, breadcrumb: ["Repo", "docs/arkaik"],  journal: false },
   "mcp-server":        { source: "self-map", height: 460, breadcrumb: ["arkaik-mcp"],            journal: false },
   "prompt-builder":    { source: "pebbles",  height: 440, breadcrumb: ["Generate"],              journal: false },
 };

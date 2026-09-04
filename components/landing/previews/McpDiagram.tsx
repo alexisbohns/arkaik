@@ -20,24 +20,26 @@ interface CardProps { x: number; y: number; title: string; subtitle: string; rai
 function Card({ x, y, title, subtitle, rail }: CardProps) {
   return (
     <g transform={`translate(${x} ${y})`}>
-      <rect width={CARD_W} height={CARD_H} rx="8" fill="var(--card)" stroke="var(--border)" />
+      <rect width={CARD_W} height={CARD_H} rx="8" fill="hsl(var(--card))" stroke="hsl(var(--border))" />
       <path d={`M8 0h3v${CARD_H}h-3a8 8 0 0 1 -8 -8v-${CARD_H - 16}a8 8 0 0 1 8 -8z`} fill={RAIL[rail]} />
       <text x="18" y="17" fontSize="9.5" fontWeight="600" fill="currentColor">{title}</text>
-      <text x="18" y="30" fontSize="8" fill="var(--muted-foreground)">{subtitle}</text>
+      <text x="18" y="30" fontSize="8" fill="hsl(var(--muted-foreground))">{subtitle}</text>
     </g>
   );
 }
 
-/** A curved compose-style edge from the right edge of one card to the left edge of another. */
-function Edge({ from, to }: { from: [number, number]; to: [number, number] }) {
+/** A curved compose-style edge between two card anchors; horizontal by default, `vertical` bends down. */
+function Edge({ from, to, vertical = false }: { from: [number, number]; to: [number, number]; vertical?: boolean }) {
   const [x1, y1] = from;
   const [x2, y2] = to;
-  const dx = Math.max(24, (x2 - x1) / 2);
+  const d = vertical
+    ? `M${x1} ${y1} C${x1} ${(y1 + y2) / 2}, ${x2} ${(y1 + y2) / 2}, ${x2} ${y2}`
+    : `M${x1} ${y1} C${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2} ${y2}`;
   return (
     <path
-      d={`M${x1} ${y1} C${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`}
+      d={d}
       fill="none"
-      stroke="var(--muted-foreground)"
+      stroke="hsl(var(--muted-foreground))"
       strokeWidth="1.2"
       markerEnd="url(#mcp-arrow)"
     />
@@ -50,10 +52,10 @@ function Figure({ viewBox, label, children }: { viewBox: string; label: string; 
       <svg viewBox={viewBox} className="block w-full text-foreground" role="img" aria-label={label}>
         <defs>
           <pattern id="mcp-dots" width="12" height="12" patternUnits="userSpaceOnUse">
-            <circle cx="1" cy="1" r="0.8" fill="var(--border)" />
+            <circle cx="1" cy="1" r="0.8" fill="hsl(var(--border))" />
           </pattern>
           <marker id="mcp-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-            <path d="M0 0L8 4L0 8z" fill="var(--muted-foreground)" />
+            <path d="M0 0L8 4L0 8z" fill="hsl(var(--muted-foreground))" />
           </marker>
         </defs>
         <rect width="100%" height="100%" rx="6" fill="url(#mcp-dots)" />
@@ -64,9 +66,11 @@ function Figure({ viewBox, label, children }: { viewBox: string; label: string; 
   );
 }
 
-/** Right-edge and left-edge anchor points of a card at (x, y). */
+/** Edge anchor points of a card at (x, y). */
 const right = (x: number, y: number): [number, number] => [x + CARD_W, y + CARD_H / 2];
 const left = (x: number, y: number): [number, number] => [x, y + CARD_H / 2];
+const bottom = (x: number, y: number): [number, number] => [x + CARD_W / 2, y + CARD_H];
+const top = (x: number, y: number): [number, number] => [x + CARD_W / 2, y];
 
 /**
  * Two figures in the canvas's own vocabulary (spec § D2 diagram). Figure 1:
@@ -80,8 +84,13 @@ export function McpDiagram() {
   const C1: [number, number] = [236, 12];
   const C2: [number, number] = [236, 64];
   const C3: [number, number] = [236, 116];
-  // Figure 2 — the write path, left to right.
-  const W = [16, 132, 248, 364, 480].map((x) => [x, 14] as [number, number]);
+  // Figure 2 — the write path, on two rows so the cards keep figure 1's scale:
+  // host → server → store, then down to the validator and back to the journal.
+  const W1: [number, number] = [16, 12];
+  const W2: [number, number] = [136, 12];
+  const W3: [number, number] = [256, 12];
+  const W4: [number, number] = [256, 76];
+  const W5: [number, number] = [136, 76];
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <Figure viewBox="0 0 360 168" label="One projection, three readers">
@@ -93,13 +102,16 @@ export function McpDiagram() {
         <Edge from={right(...P)} to={left(...C2)} />
         <Edge from={right(...P)} to={left(...C3)} />
       </Figure>
-      <Figure viewBox="0 0 604 68" label="The write path">
-        <Card x={W[0][0]} y={W[0][1]} title="Agent host" subtitle="Claude Code" rail="violet" />
-        <Card x={W[1][0]} y={W[1][1]} title="arkaik-mcp" subtitle="update_node" rail="teal" />
-        <Card x={W[2][0]} y={W[2][1]} title="Store" subtitle="repo · hosted" rail="amber" />
-        <Card x={W[3][0]} y={W[3][1]} title="Validator" subtitle="hard gate" rail="green" />
-        <Card x={W[4][0]} y={W[4][1]} title="Journal" subtitle="append only" rail="blue" />
-        {W.slice(0, -1).map((from, i) => <Edge key={i} from={right(...from)} to={left(...W[i + 1])} />)}
+      <Figure viewBox="0 0 380 128" label="The write path">
+        <Card x={W1[0]} y={W1[1]} title="Agent host" subtitle="Claude Code" rail="violet" />
+        <Card x={W2[0]} y={W2[1]} title="arkaik-mcp" subtitle="update_node" rail="teal" />
+        <Card x={W3[0]} y={W3[1]} title="Store" subtitle="repo · hosted" rail="amber" />
+        <Card x={W4[0]} y={W4[1]} title="Validator" subtitle="hard gate" rail="green" />
+        <Card x={W5[0]} y={W5[1]} title="Journal" subtitle="append only" rail="blue" />
+        <Edge from={right(...W1)} to={left(...W2)} />
+        <Edge from={right(...W2)} to={left(...W3)} />
+        <Edge from={bottom(...W3)} to={top(...W4)} vertical />
+        <Edge from={left(...W4)} to={right(...W5)} />
       </Figure>
     </div>
   );

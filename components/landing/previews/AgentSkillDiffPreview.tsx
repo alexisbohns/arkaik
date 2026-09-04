@@ -18,7 +18,8 @@ export function AgentSkillDiffPreview({ bundle }: PreviewProps) {
   const from = to === "development" ? "idea" : "development";
   const validator: CodeLine[] = [
     { text: `$ ${cliValidate.command}`, kind: "muted" },
-    ...cliValidate.output.split("\n").map((text) => ({ text })),
+    // The real output, minus its blank spacer lines, so the verdict fits the frame.
+    ...cliValidate.output.split("\n").filter((line) => line.trim() !== "").map((text) => ({ text })),
   ];
   return (
     <div className="grid h-full gap-3 overflow-hidden p-4 lg:grid-cols-2">

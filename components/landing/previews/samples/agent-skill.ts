@@ -30,9 +30,7 @@ export function nodePatch(nodeId: string, from: string, to: string): CodeLine[] 
 export function journalLine(nodeId: string, from: string, to: string): CodeLine[] {
   return [
     { text: "docs/arkaik/journal.jsonl", kind: "muted" },
-    {
-      kind: "add",
-      text: `+{"id":"01K4…","ts":"2026-09-04T10:12:00Z","actor":"claude-code","type":"node.status_changed","node_id":"${nodeId}","from":"${from}","to":"${to}"}`,
-    },
+    { text: '+{"id":"01K4…","ts":"2026-09-04T10:12:00Z","actor":"claude-code",', kind: "add" },
+    { text: `+ "type":"node.status_changed","node_id":"${nodeId}","from":"${from}","to":"${to}"}`, kind: "add" },
   ];
 }
