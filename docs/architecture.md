@@ -1,3 +1,7 @@
+---
+icon: architecture
+---
+
 # Architecture
 
 ## Overview

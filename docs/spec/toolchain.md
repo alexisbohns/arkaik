@@ -2,6 +2,7 @@
 title: "Spec: Toolchain & Packaging"
 navTitle: "Toolchain"
 order: 3
+icon: wrench
 ---
 
 # Toolchain & Packaging

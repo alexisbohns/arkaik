@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpenIcon, FolderTreeIcon, FileTextIcon } from "lucide-react";
+import { DocsSearch } from "@/components/docs/DocsSearch";
+import { DocsSpaceSwitcher } from "@/components/docs/DocsSpaceSwitcher";
 import {
   Sidebar,
   SidebarContent,
@@ -14,16 +15,25 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import {
+  DEFAULT_DOC_ICON,
+  DEFAULT_DOC_SECTION_ICON,
+  resolveDocIcon,
+} from "@/lib/config/docs-icons";
+import type { DocsPage } from "@/lib/utils/command-palette";
 import type { DocsNavItem } from "@/lib/utils/docs";
 
 interface DocsSidebarProps {
   items: DocsNavItem[];
+  /** The ⌘K catalogue, indexed server-side and handed to the palette here. */
+  searchPages: readonly DocsPage[];
 }
 
 interface FlatDocsNavItem {
   key: string;
   title: string;
   href?: string;
+  icon?: string;
   depth: number;
 }
 
@@ -34,6 +44,7 @@ function flattenItems(items: DocsNavItem[], depth = 0, parentKey = ""): FlatDocs
       key,
       title: item.title,
       href: item.href,
+      icon: item.icon,
       depth,
     };
 
@@ -61,23 +72,15 @@ function isHrefActive(href: string, pathname: string) {
   return normalizedPath === normalizedHref || normalizedPath.startsWith(`${normalizedHref}/`);
 }
 
-export function DocsSidebar({ items }: DocsSidebarProps) {
+export function DocsSidebar({ items, searchPages }: DocsSidebarProps) {
   const pathname = normalizePath(usePathname());
   const flatItems = flattenItems(items);
 
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild tooltip="Documentation" isActive={pathname === "/docs"}>
-              <Link href="/docs">
-                <BookOpenIcon />
-                <span>Documentation</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <DocsSpaceSwitcher />
+        <DocsSearch pages={searchPages} />
       </SidebarHeader>
 
       <SidebarContent>
@@ -86,8 +89,11 @@ export function DocsSidebar({ items }: DocsSidebarProps) {
           <SidebarMenu>
             {flatItems.map((item) => {
               const active = item.href ? isHrefActive(item.href, pathname) : false;
-              const icon = item.href ? FileTextIcon : FolderTreeIcon;
-              const Icon = icon;
+              // A page's glyph comes from its own `icon:` frontmatter; a section
+              // row has no file to read one from, so it keeps the folder mark.
+              const Icon = item.href
+                ? resolveDocIcon(item.icon, DEFAULT_DOC_ICON)
+                : DEFAULT_DOC_SECTION_ICON;
 
               if (item.href) {
                 return (

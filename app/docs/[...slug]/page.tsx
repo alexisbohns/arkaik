@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { MarkdownContent } from "@/components/docs/MarkdownContent";
+import { DocsArticle } from "@/components/docs/DocsArticle";
 import { getAllDocEntries, getDocBySlugParts } from "@/lib/utils/docs";
 
 interface DocsSlugPageProps {
@@ -35,9 +35,5 @@ export default async function DocsSlugPage({ params }: DocsSlugPageProps) {
     redirect("/docs");
   }
 
-  return (
-    <main className="mx-auto w-full max-w-5xl px-4 py-8 md:px-8">
-      <MarkdownContent source={doc.content} />
-    </main>
-  );
+  return <DocsArticle title={doc.title} source={doc.content} />;
 }

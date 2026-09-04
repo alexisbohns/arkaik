@@ -2,6 +2,7 @@
 title: "Spec: Maps & Projections"
 navTitle: "Maps"
 order: 5
+icon: map
 ---
 
 # Maps & Projections

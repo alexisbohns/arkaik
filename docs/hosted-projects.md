@@ -2,6 +2,7 @@
 title: "Hosted Projects & the Agent Plane"
 navTitle: "Hosted Projects"
 order: 7
+icon: cloud
 ---
 
 # Hosted Projects & the Agent Plane

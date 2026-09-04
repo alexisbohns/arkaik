@@ -2,6 +2,7 @@
 title: "Spec: Bundle Format v2"
 navTitle: "Bundle Format"
 order: 1
+icon: package
 ---
 
 # Bundle Format v2

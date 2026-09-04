@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { MarkdownContent } from "@/components/docs/MarkdownContent";
+import { DocsArticle } from "@/components/docs/DocsArticle";
 import { getDocBySlugParts } from "@/lib/utils/docs";
 
 export const runtime = "nodejs";
@@ -20,9 +20,5 @@ export default async function DocsHomePage() {
     notFound();
   }
 
-  return (
-    <main className="mx-auto w-full max-w-5xl px-4 py-8 md:px-8">
-      <MarkdownContent source={doc.content} />
-    </main>
-  );
+  return <DocsArticle title={doc.title} source={doc.content} />;
 }

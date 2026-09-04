@@ -16,6 +16,13 @@ interface DocFrontmatter {
   navTitle?: string;
   order?: number;
   hidden?: boolean;
+  /**
+   * The name of the glyph the sidebar shows for this page, from the allowlist in
+   * `lib/config/docs-icons.ts`. Left free-form here — resolution (and the
+   * fallback for a name nobody registered) belongs to the component that draws
+   * it, not to the index that reads the file.
+   */
+  icon?: string;
 }
 
 export interface DocEntry {
@@ -25,6 +32,7 @@ export interface DocEntry {
   title: string;
   navTitle: string;
   order: number;
+  icon?: string;
   sourcePath: string;
   filePath: string;
 }
@@ -36,6 +44,7 @@ export interface DocDocument extends DocEntry {
 export interface DocsNavItem {
   title: string;
   href?: string;
+  icon?: string;
   children?: DocsNavItem[];
 }
 
@@ -48,6 +57,7 @@ interface DocsIndex {
 interface NavNode {
   title: string;
   href?: string;
+  icon?: string;
   order: number;
   children: Map<string, NavNode>;
 }
@@ -141,6 +151,7 @@ function createEntryFromFile(
     title,
     navTitle: frontmatter.navTitle?.trim() || title,
     order: Number.isFinite(frontmatter.order) ? Number(frontmatter.order) : 0,
+    icon: frontmatter.icon?.trim() || undefined,
     sourcePath: `docs/${sourcePath}`,
     filePath,
   };
@@ -166,6 +177,7 @@ async function readMarkdownDocument(
     title,
     navTitle: frontmatter.navTitle?.trim() || title,
     order: Number.isFinite(frontmatter.order) ? Number(frontmatter.order) : 0,
+    icon: frontmatter.icon?.trim() || undefined,
     sourcePath,
     filePath,
     content,
@@ -235,6 +247,7 @@ function addEntryToTree(root: Map<string, NavNode>, entry: DocEntry) {
     if (isLeaf) {
       node.title = entry.navTitle;
       node.href = entry.href;
+      node.icon = entry.icon;
       node.order = entry.order;
     }
 
@@ -256,6 +269,7 @@ function sortNavNodes(nodes: Iterable<NavNode>): DocsNavItem[] {
       return {
         title: node.title,
         href: node.href,
+        icon: node.icon,
         children: children.length > 0 ? children : undefined,
       };
     });
@@ -270,7 +284,7 @@ export const getDocsNavigation = cache(async (): Promise<DocsNavItem[]> => {
   }
 
   return [
-    { title: "Overview", href: "/docs" },
+    { title: "Overview", href: "/docs", icon: "compass" },
     ...sortNavNodes(root.values()),
   ];
 });
@@ -296,6 +310,7 @@ export async function getDocBySlugParts(slugParts: string[]): Promise<DocDocumen
     ...entry,
     title: frontmatter.title?.trim() || entry.title,
     navTitle: frontmatter.navTitle?.trim() || entry.navTitle,
+    icon: frontmatter.icon?.trim() || entry.icon,
     content,
   };
 }

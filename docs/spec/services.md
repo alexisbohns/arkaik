@@ -2,6 +2,7 @@
 title: "Spec: Services (Publik & Synk)"
 navTitle: "Services"
 order: 4
+icon: server
 ---
 
 # Services — Publik & Synk

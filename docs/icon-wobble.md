@@ -1,3 +1,7 @@
+---
+icon: sparkles
+---
+
 # Icon Wobble
 
 A subtle hand-drawn "wobble" applied to every lucide icon: a fixed distortion at

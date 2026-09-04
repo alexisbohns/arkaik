@@ -1,6 +1,6 @@
-import { DocsSearch } from "@/components/docs/DocsSearch";
+import { DocsMenuFab } from "@/components/docs/DocsMenuFab";
 import { DocsSidebar } from "@/components/layout/DocsSidebar";
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { getDocsNavigation, getDocsSearchPages } from "@/lib/utils/docs";
 
 export const runtime = "nodejs";
@@ -18,17 +18,15 @@ export default async function DocsLayout({
 
   return (
     <SidebarProvider defaultOpen>
-      <DocsSidebar items={navigation} />
+      {/* Space switcher, search and pages all live in the sidebar now. The
+          header bar that used to carry the first two held nothing else, so it
+          was a strip of chrome above every page for one button and one field —
+          on mobile, `DocsMenuFab` opens the sheet instead. */}
+      <DocsSidebar items={navigation} searchPages={searchPages} />
       <SidebarInset className="h-svh overflow-hidden">
-        <div className="flex h-full flex-col">
-          <header className="flex h-11 items-center gap-2 border-b px-3">
-            <SidebarTrigger />
-            <span className="text-sm font-medium">Documentation</span>
-            <DocsSearch pages={searchPages} className="ml-auto" />
-          </header>
-          <div className="flex-1 overflow-auto">{children}</div>
-        </div>
+        <div className="h-full overflow-auto">{children}</div>
       </SidebarInset>
+      <DocsMenuFab />
     </SidebarProvider>
   );
 }

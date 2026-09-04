@@ -1,3 +1,7 @@
+---
+icon: scale
+---
+
 # Conventions
 
 ## File Organization
@@ -20,7 +24,7 @@ components/
   panels/               # The push-panel stack, its panel content, and forms
     PanelStack.tsx      # Content-agnostic column stack: keyboard, breadcrumb, visibility
     ProjectPanels.tsx   # Binds the stack to panel kind: node detail, or the raw bundle
-  docs/                 # Markdown renderer + docs search for the in-app /docs space
+  docs/                 # The /docs space's shell: article frame, markdown renderer, ⌘K search, space switcher, mobile FAB
   ui/                   # shadcn/ui primitives (do not edit directly — use CLI)
   wobble/               # The hand-drawn icon effect (docs/icon-wobble.md)
 lib/
@@ -195,6 +199,31 @@ Never write to `localStorage`, IndexedDB, or `/api/graph` directly, and never im
 - Route-aware active states should derive from `usePathname()` and `useSearchParams()`.
 - When a UI control represents a shareable filter, keep it URL-driven. The library `species` filter is the current example.
 - Cross-project navigation should preserve the current in-project destination when it can be mapped safely.
+
+## Documentation Frontmatter
+
+Every file `/docs` serves may open with a YAML frontmatter block. All of it is
+optional — a doc with no frontmatter takes its title from its first `# Heading`
+and sorts by that title.
+
+| Key | Effect |
+|---|---|
+| `title` | The page title, shown in the handwritten face above the prose. Defaults to the first `# Heading`. |
+| `navTitle` | A shorter label for the sidebar and the ⌘K palette. Defaults to `title`. |
+| `order` | Sort weight within its section, ascending. Defaults to `0`, then ties break alphabetically. |
+| `icon` | The sidebar glyph, by name from `lib/config/docs-icons.ts`. Defaults to the generic file mark. |
+| `hidden` | Withholds the page from the index entirely. |
+
+`icon` names come from an allowlist, not from `lucide-react` directly: a name
+nobody registered falls back to the file mark rather than reaching an arbitrary
+export, and the sidebar's bundle carries only the glyphs docs actually use. Add
+a name to `DOC_ICONS` to use a new one — `tests/app/docs-icons.test.js` fails on
+an `icon:` that names nothing.
+
+The page title is rendered as chrome, above the body, so `MarkdownContent` never
+sees the document's opening `# Heading` (see `components/docs/DocsArticle.tsx`).
+Keep writing it: it is what the title is derived from, and what the file looks
+like on GitHub.
 
 ## Cursor Semantics
 
