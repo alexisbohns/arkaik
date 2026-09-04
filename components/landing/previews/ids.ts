@@ -4,7 +4,12 @@
  * `registry.tsx`, whose `Record<PreviewId, …>` makes tsc refuse an id with no
  * component, and this file is what the plain-node test reads.
  */
-export type PreviewSource = "self-map" | "pebbles";
+/**
+ * `pilot-audit` is Pebbles with the illustrative quality section attached
+ * (`components/landing/quality-fixture.ts`): the two Kritik previews need a
+ * `bundle.quality` and neither shipped seed has one.
+ */
+export type PreviewSource = "self-map" | "pebbles" | "pilot-audit";
 
 export const PREVIEW_IDS = [
   "journey-map",

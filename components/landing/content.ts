@@ -86,4 +86,5 @@ export const SECTIONS: Section[] = [
 export const SOURCE_CAPTION: Record<PreviewSource, string> = {
   "self-map": "Rendered from Arkaik's own map, right now.",
   pebbles: "Rendered from the built-in Pebbles example, right now.",
+  "pilot-audit": "Rendered from an illustrative Kritik audit of the Pebbles example, right now.",
 };

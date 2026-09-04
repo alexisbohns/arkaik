@@ -22,6 +22,7 @@ const MODULES = [
   ["lib/landing/slice.ts", "slice"],
   ["components/landing/previews/definitions.ts", "definitions"],
   ["lib/landing/prepare.ts", "prepare"],
+  ["components/landing/quality-fixture.ts", "quality-fixture"],
 ];
 
 // `@/…` specifier → build output basename. Type-only imports are erased by
@@ -69,6 +70,7 @@ function loadLanding() {
     ...require(path.join(BUILD_DIR, "slice.js")),
     ...require(path.join(BUILD_DIR, "definitions.js")),
     ...require(path.join(BUILD_DIR, "prepare.js")),
+    ...require(path.join(BUILD_DIR, "quality-fixture.js")),
   };
 }
 
