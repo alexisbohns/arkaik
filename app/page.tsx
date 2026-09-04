@@ -1,17 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Gochi_Hand } from "next/font/google";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ArkaikLogoBoil } from "@/components/branding/ArkaikLogoBoil";
 import { AsciiTerrainBackground } from "@/components/background/AsciiTerrainBackground";
 import { getSession } from "@/lib/services/auth";
 import { LandingPage } from "@/components/landing/LandingPage";
-
-const gochiHand = Gochi_Hand({
-  subsets: ["latin"],
-  weight: "400",
-});
+import { gochiHand } from "@/lib/fonts";
 
 /**
  * `force-dynamic` because the landing page's answer depends on the session

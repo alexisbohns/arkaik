@@ -1,3 +1,7 @@
+---
+icon: telescope
+---
+
 # Vision
 
 > This document describes long-term direction while staying aligned with the current architecture.

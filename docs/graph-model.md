@@ -1,3 +1,7 @@
+---
+icon: network
+---
+
 # Graph Model
 
 The graph is built from nodes and edges with structure driven by persisted relationships.

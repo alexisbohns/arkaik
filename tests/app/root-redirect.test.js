@@ -53,8 +53,9 @@ const STUBS = {
     },
   },
   "next/link": { default: () => null },
-  // next/font/google returns a loaded-font object; the page only reads .className.
-  "next/font/google": { Gochi_Hand: () => ({ className: "font-gochi" }) },
+  // The shared handwritten face is a loaded-font object; the page reads only
+  // its .className.
+  "@/lib/fonts": { gochiHand: { className: "font-gochi" } },
   "@/components/ui/button": { Button: () => null },
   "@/components/theme-toggle": { ThemeToggle: () => null },
   "@/components/branding/ArkaikLogoBoil": { ArkaikLogoBoil: () => null },

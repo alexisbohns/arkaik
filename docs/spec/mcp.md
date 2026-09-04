@@ -2,6 +2,7 @@
 title: "Spec: MCP Server (Agent Plane)"
 navTitle: "MCP Server"
 order: 6
+icon: plug
 ---
 
 # MCP Server — the Agent Plane

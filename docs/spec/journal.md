@@ -2,6 +2,7 @@
 title: "Spec: Journal & Events"
 navTitle: "Journal & Events"
 order: 2
+icon: notebook
 ---
 
 # Journal & Events

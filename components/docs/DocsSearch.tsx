@@ -13,11 +13,14 @@ import {
 } from "@/lib/utils/command-palette";
 import { KeyboardShortcutsDialog } from "@/components/layout/KeyboardShortcutsDialog";
 import { isCommandPaletteShortcut, isShortcutsDialogShortcut } from "@/lib/utils/keyboard";
-import { cn } from "@/lib/utils";
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar";
 
 interface DocsSearchProps {
   pages: readonly DocsPage[];
-  className?: string;
 }
 
 /**
@@ -25,9 +28,14 @@ interface DocsSearchProps {
  *
  * The trigger and the shortcut live together here rather than being split
  * across the layout and the sidebar: the docs shell has no other command state
- * to own, so a self-contained button is the whole feature.
+ * to own, so a self-contained row is the whole feature.
+ *
+ * That row is a `SidebarMenuButton` shaped exactly like `ProjectSidebar`'s
+ * Search row, because it sits in the same slot of the same chrome. Search used
+ * to live in a docs-only header bar; the header is gone, and searching the docs
+ * should not look like a different gesture from searching a project.
  */
-export function DocsSearch({ pages, className }: DocsSearchProps) {
+export function DocsSearch({ pages }: DocsSearchProps) {
   const modKey = useModKeyLabel();
   const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
@@ -73,24 +81,23 @@ export function DocsSearch({ pages, className }: DocsSearchProps) {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        // The label is hidden below sm, where the button is the icon alone.
-        aria-label="Search docs"
-        className={cn(
-          "flex h-7 cursor-pointer items-center gap-2 rounded-md border bg-muted/40 px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-          className,
-        )}
-      >
-        <SearchIcon className="size-3.5 shrink-0" />
-        <span className="hidden sm:inline">Search docs</span>
-        {modKey ? (
-          <kbd className="hidden items-center rounded border bg-background px-1.5 py-0.5 font-sans text-[10px] font-medium sm:inline-flex">
-            {modKey === "⌘" ? "⌘K" : "Ctrl+K"}
-          </kbd>
-        ) : null}
-      </button>
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            tooltip="Search the documentation"
+            onClick={() => setOpen(true)}
+            className="cursor-pointer text-sidebar-foreground/70"
+          >
+            <SearchIcon />
+            <span>Search</span>
+            {modKey ? (
+              <kbd className="ml-auto inline-flex items-center rounded border bg-sidebar-accent px-1.5 py-0.5 font-sans text-[10px] font-medium group-data-[collapsible=icon]:hidden">
+                {modKey === "⌘" ? "⌘K" : "Ctrl+K"}
+              </kbd>
+            ) : null}
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
 
       <CommandPalette
         open={open}

@@ -2,6 +2,7 @@
 title: "Bootstrap: onboarding a repo onto Arkaik"
 navTitle: "Bootstrap"
 order: 8
+icon: rocket
 ---
 
 # Bootstrap: onboarding a repo onto Arkaik

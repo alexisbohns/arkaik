@@ -160,6 +160,9 @@ jobs:
       - name: Docs publication boundary tests
         run: npm run test:docs-visibility
 
+      - name: Docs sidebar icon registry tests
+        run: npm run test:docs-icons
+
       - name: Push-panel stack tests
         run: npm run test:panel-stack
 
