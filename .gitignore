@@ -25,6 +25,7 @@
 /tests/data/.test-build-project-queries/
 /tests/services/.test-build-publik/
 /tests/services/.test-build-graph/
+/tests/services/.test-build-graph-etag/
 /tests/services/.test-build-github/
 /tests/services/.test-build-pr-plan/
 /tests/services/.test-build-github-app/

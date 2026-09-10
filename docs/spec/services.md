@@ -158,6 +158,52 @@ Rules:
 - **One-way, up.** Restore is an explicit user action (pick a version → import as local project, existing collision handling applies). The engine MUST NOT write server state into the local store unprompted.
 - **Lokal → Synk conversion** (the vision's "primary conversion funnel"): after first sign-in, existing local projects are offered for backup with one click each — the data never moves, it *gains* a backup. No migration of storage, no account-gating of local features.
 
+## Hosted Graph Projects
+
+The Klub tier's database-of-record for a project's graph — where Synk stores *backups* of a local project, this holds the authoritative snapshot and journal, and agents write to it over HTTP (`db/migrations/008_graph_projects.sql`; `lib/services/graph/store.ts` is the only module that touches those tables).
+
+### Machine auth
+
+One seam answers "who is calling?" for every route: `getCaller()` in `lib/services/auth.ts`.
+
+- **Two kinds of caller.** An interactively signed-in human (Auth.js session) or a machine holding a bearer token (`Authorization: Bearer …`, minted in project settings and stored hashed in `api_tokens`).
+- **Scopes.** `graph:read` and `graph:write`. A token carries the scopes it was minted with; a session caller carries all of them — scopes exist to limit machines, not people. A caller without the scope gets `403 { error: "insufficient_scope", required }`.
+- **Owner scoping, not user scoping.** Every statement filters on the caller's owner ids (`lib/services/owners.ts`), so shared ownership works and a project belonging to another owner is `404`, never `403` — the API cannot be used to probe for project ids.
+
+### Write path
+
+| Endpoint | Scope | Behavior |
+|---|---|---|
+| `POST /api/graph/projects/{id}/mutations` | `graph:write` | **The** graph write path: a batch of typed ops applied atomically, journalled, version bumped |
+| `PUT /api/graph/projects/{id}/bundle` | `graph:write` | Wholesale restore — snapshot and journal replaced together |
+| `PATCH /api/graph/projects/{id}` | `graph:write` | Project-level fields only (title, description, version, metadata) — deliberately cannot touch nodes or edges |
+| `DELETE /api/graph/projects/{id}` | `graph:write` | Archive (`archived_at`); leaves the listing, stays readable |
+| `POST /api/graph/projects/{id}/quality/events` | `graph:write` | Journal-only quality decisions — no snapshot change, no version bump |
+
+Rules:
+
+- **`If-Match` is strong, and it is the snapshot `version`** (a bigint, returned as a string in the project GET's JSON body). A stale version writes nothing: `409` on `…/mutations`, `412` on `PUT …/bundle` (a known, deliberate inconsistency, documented at the mutations route). `PUT …/bundle` *requires* the header — `428` when it is absent.
+- **A weak validator in `If-Match` is refused, never applied.** `PUT …/bundle` answers `400 if_match_unsupported` (`classifyIfMatch` in `lib/services/graph/restore.ts` treats `W/…`, `*` and comma lists as unsupported shapes); on `…/mutations` a `W/"…"` cannot equal a decimal version and lands as a `409`. This is what makes the weak read validators below safe to hand out.
+- **The version bumps on every snapshot write and never on a journal-only append.** An appended `deliverable.shipped` or quality decision grows the journal while the snapshot — and the version every writer is racing on — stands still.
+
+### Read contract
+
+| Endpoint | Body | Read validator |
+|---|---|---|
+| `GET /api/graph/projects/{id}` | The bundle with quality decisions folded in, plus `version` | `W/"<version>.<quality decision count>"` |
+| `GET /api/graph/projects/{id}/nodes` | `{ nodes }` | `W/"<version>"` |
+| `GET /api/graph/projects/{id}/edges` | `{ edges }` | `W/"<version>"` |
+| `GET /api/graph/projects/{id}/journal` | `{ journal }`, server order | `W/"<version>.<event count>"` |
+| `GET /api/graph/projects/{id}/export` | `{ bundle }` with the journal embedded | `W/"<version>.<event count>"` |
+
+- **Every read answers with `ETag`, `Cache-Control: private, no-cache` and `Vary: Authorization`** — on the `200` and on the `304` alike. `private` because every body is owner-scoped, `no-cache` because a client must revalidate rather than reuse blind, `Vary` because a bearer token selects the owner.
+- **`If-None-Match` earns a bodiless `304`.** The comparison is weak (RFC 9110 § 8.8.3.2): a case-insensitive `W/` on either side is ignored, `*` matches any representation that exists, and a comma list matches on any member. A matching conditional read costs the auth queries plus one validator statement — no snapshot is loaded, nothing but headers is written.
+- **The validators are weak on purpose.** Marking them weak is what makes a client that echoes a read ETag into `If-Match` fail loudly (see the Write path) instead of silently writing against a version it never read.
+- **Each route validates on exactly what its body depends on.** `/nodes` and `/edges` move only when the snapshot does. `/journal` and `/export` move on every appended event. The bundle GET counts *quality decisions only*, because those are the only events it folds — a merged PR's `deliverable.shipped` must not turn the next map revalidation into a multi-megabyte `200`.
+- **Counts, not `max(seq)`.** Journal appends are not transactional, so two concurrent appends can commit out of `seq` order and a max taken between them would never learn about the earlier row. A count moves on every commit whatever the order, and the only deleter (a bundle restore) always bumps the version. It also keeps the platform-wide `bigserial` out of a tenant-visible header.
+- **An archived project still reads.** Only the writes refuse it. A conditional read answers `304`/`200` for exactly the projects an unconditional read answers `200` for — otherwise an archived project would start `404`ing the moment a client revalidated.
+- **A `304` is never an existence oracle.** The validator statement is owner-scoped exactly like the body load, so another owner gets `404` whatever it sends, `*` included.
+
 ## Pollen Feed
 
 `GET /api/graph/projects/{projectId}/pollen?after=<id>&limit=<n>` — the

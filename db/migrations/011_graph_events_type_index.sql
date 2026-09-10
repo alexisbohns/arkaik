@@ -1,0 +1,24 @@
+-- 011_graph_events_type_index.sql
+--
+-- An expression index on the event type, for every read that asks a project's
+-- journal "which of these types?" (docs/spec/services.md § Hosted Graph
+-- Projects → Read contract).
+--
+-- WHY. 008 indexed (project_id, seq) — "this project, in order" — and that is
+-- still the right shape for the whole journal. But a growing set of readers
+-- wants a SUBSET by type and reads every row's jsonb to find it: the quality
+-- decisions the bundle GET folds on every read (`qualityFindingEvents`), the
+-- quality-decision count in that route's read validator, the Lab Note
+-- webhook's dedupe lookup, the quality webhook's decided-ids lookup, and the
+-- `?types=` journal projection the app's changelog and design pages read.
+-- On a journal of thousands of prose-heavy rows every one of those was a heap
+-- scan of the project's whole history. Leading with project_id keeps the
+-- index tenant-local; ending with seq lets a typed read come out in server
+-- order straight from the index.
+--
+-- IDEMPOTENT, like every file here (`if not exists`); plain `create index`
+-- rather than `concurrently`, because the runner wraps each file in a
+-- transaction and `concurrently` cannot run inside one. The table is small
+-- enough today that the brief lock is not worth a second code path.
+create index if not exists graph_events_project_type_seq_idx
+  on graph_events (project_id, (event->>'type'), seq);

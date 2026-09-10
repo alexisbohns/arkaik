@@ -207,48 +207,159 @@ export async function listProjects(ownerIds: readonly string[]): Promise<GraphPr
   }));
 }
 
+/**
+ * The read validators of a project — what the read routes' ETags are built
+ * from (lib/services/graph/etag.ts explains the composites and why they are
+ * weak; docs/spec/services.md § Hosted Graph Projects → Read contract).
+ *
+ * All three are STRINGS: `version` is a bigint and the counts are bigints
+ * too, and `pg` hands both over as decimal strings. They are compared and
+ * concatenated, never arithmetically used, so nothing here ever goes through
+ * `Number()` — past 2^53 that would silently collapse two versions into one.
+ */
+export interface ProjectValidators {
+  version: string;
+  /** Every `graph_events` row of the project — `/journal` and `/export` depend on all of them. */
+  eventCount: string;
+  /** Only the `quality.finding.*` decisions — the ones `foldFindingEvents` reads into the bundle. */
+  qualityEventCount: string;
+}
+
+interface ValidatorColumns {
+  version: string;
+  event_count: string;
+  quality_event_count: string;
+}
+
+/**
+ * The validator columns, selected off `graph_projects p` in the SAME
+ * statement as whatever body a read returns, so ETag and body come from one
+ * snapshot-consistent read. `count(*)`, not `max(seq)`: `appendJournalEvents`
+ * inserts outside a transaction, so two concurrent appends can commit out of
+ * `seq` order and a max taken between them would never learn about the
+ * earlier row; a count moves on every commit whatever the order.
+ */
+const VALIDATOR_COLUMNS = `
+            p.version::text as version,
+            (select count(*) from graph_events e where e.project_id = p.id)::text as event_count,
+            (select count(*) from graph_events e
+              where e.project_id = p.id
+                and e.event->>'type' in ('quality.finding.resolved', 'quality.finding.accepted'))::text as quality_event_count`;
+
+/**
+ * The owner scope every read shares — and deliberately NO `archived_at`
+ * filter: an archived project is still readable (and exportable) by its
+ * owner; only the writes refuse it. A conditional read must answer 304 or
+ * 200 for exactly the projects an unconditional one answers 200 for, or an
+ * archived project would silently start 404ing on revalidation.
+ */
+const READ_SCOPE = `p.id = $1 and p.owner_id = any($2::text[])`;
+
+function toValidators(row: ValidatorColumns): ProjectValidators {
+  return {
+    version: String(row.version),
+    eventCount: String(row.event_count),
+    qualityEventCount: String(row.quality_event_count),
+  };
+}
+
+/**
+ * The validators alone — the 304 path. No snapshot leaves Postgres: a
+ * revalidation that matches costs the auth queries plus this one statement.
+ */
+export async function loadValidators(
+  projectId: string,
+  ownerIds: readonly string[],
+): Promise<ProjectValidators | null> {
+  const { rows } = await query<ValidatorColumns>(
+    `select ${VALIDATOR_COLUMNS}
+       from graph_projects p
+      where ${READ_SCOPE}`,
+    [projectId, ownerIds],
+  );
+  return rows.length === 0 ? null : toValidators(rows[0]);
+}
+
 interface LoadedProject {
   snapshot: SnapshotShape;
-  version: string;
-  ownerId: string;
+  validators: ProjectValidators;
 }
 
 async function loadProject(
   projectId: string,
   ownerIds: readonly string[],
 ): Promise<LoadedProject | null> {
-  const { rows } = await query<{ snapshot: SnapshotShape; version: string; owner_id: string }>(
-    `select snapshot, version, owner_id
-       from graph_projects
-      where id = $1 and owner_id = any($2::text[])`,
+  const { rows } = await query<ValidatorColumns & { snapshot: SnapshotShape }>(
+    `select p.snapshot, ${VALIDATOR_COLUMNS}
+       from graph_projects p
+      where ${READ_SCOPE}`,
     [projectId, ownerIds],
   );
   if (rows.length === 0) return null;
-  return { snapshot: rows[0].snapshot, version: String(rows[0].version), ownerId: rows[0].owner_id };
+  return { snapshot: rows[0].snapshot, validators: toValidators(rows[0]) };
 }
 
-export async function getNodes(projectId: string, ownerIds: readonly string[]): Promise<Node[] | null> {
-  const loaded = await loadProject(projectId, ownerIds);
-  return loaded ? loaded.snapshot.nodes : null;
+/**
+ * One top-level array of the snapshot with the validators, in one statement.
+ * `snapshot->'nodes'` rather than the whole column: Postgres still detoasts
+ * the datum to evaluate the operator, but only the array crosses the wire and
+ * gets JSON-parsed in Node — the same trick `listProjects` already plays with
+ * `jsonb_array_length`.
+ */
+async function loadSnapshotArray<T>(
+  projectId: string,
+  ownerIds: readonly string[],
+  field: "nodes" | "edges",
+): Promise<{ items: T[]; validators: ProjectValidators } | null> {
+  const { rows } = await query<ValidatorColumns & { items: T[] | null }>(
+    `select p.snapshot->'${field}' as items, ${VALIDATOR_COLUMNS}
+       from graph_projects p
+      where ${READ_SCOPE}`,
+    [projectId, ownerIds],
+  );
+  if (rows.length === 0) return null;
+  return { items: rows[0].items ?? [], validators: toValidators(rows[0]) };
 }
 
-export async function getEdges(projectId: string, ownerIds: readonly string[]): Promise<Edge[] | null> {
-  const loaded = await loadProject(projectId, ownerIds);
-  return loaded ? loaded.snapshot.edges : null;
+export async function getNodes(
+  projectId: string,
+  ownerIds: readonly string[],
+): Promise<{ nodes: Node[]; validators: ProjectValidators } | null> {
+  const loaded = await loadSnapshotArray<Node>(projectId, ownerIds, "nodes");
+  return loaded ? { nodes: loaded.items, validators: loaded.validators } : null;
 }
 
-/** The project's events in server order. Owner-scoped via the project row. */
+export async function getEdges(
+  projectId: string,
+  ownerIds: readonly string[],
+): Promise<{ edges: Edge[]; validators: ProjectValidators } | null> {
+  const loaded = await loadSnapshotArray<Edge>(projectId, ownerIds, "edges");
+  return loaded ? { edges: loaded.items, validators: loaded.validators } : null;
+}
+
+/**
+ * The project's events in server order, with the validators.
+ *
+ * Validators FIRST, then the rows — the order is the correctness argument.
+ * The two run as separate statements on separate pool connections, so an
+ * append can land between them; taken in this order the ETag can only be
+ * OLDER than the body, which costs one extra 200 on the next revalidation.
+ * The other order could stamp a fresh ETag on a body that predates an event,
+ * and a client would then sit on a 304 with stale history until the next
+ * write. The validator query is also the owner check: no snapshot is loaded
+ * to authorize a journal read any more.
+ */
 export async function getJournal(
   projectId: string,
   ownerIds: readonly string[],
-): Promise<JournalEvent[] | null> {
-  const loaded = await loadProject(projectId, ownerIds);
-  if (!loaded) return null;
+): Promise<{ journal: JournalEvent[]; validators: ProjectValidators } | null> {
+  const validators = await loadValidators(projectId, ownerIds);
+  if (!validators) return null;
   const { rows } = await query<{ event: JournalEvent }>(
     `select event from graph_events where project_id = $1 order by seq asc`,
     [projectId],
   );
-  return rows.map((row) => row.event);
+  return { journal: rows.map((row) => row.event), validators };
 }
 
 /**
@@ -260,17 +371,21 @@ export async function getJournal(
  * project's full history is the wrong price for a handful of events — the
  * Pebbles journal alone runs to thousands of rows.
  *
- * Owner-scoped identically to {@link getJournal}: the same `loadProject` check
- * gates access before `graph_events` is ever queried, rather than a second,
- * independently-written `owner_id = any(...)` clause that could quietly drift
- * from it.
+ * Owner-scoped with the same `READ_SCOPE` clause every read uses, as a
+ * one-row existence check rather than a snapshot load: both callers (the
+ * project GET and the quality-events POST) have already loaded the snapshot
+ * through `getProject`, and loading it a second time here purely to
+ * authorize was the bundle GET's second multi-megabyte read.
  */
 export async function qualityFindingEvents(
   projectId: string,
   ownerIds: readonly string[],
 ): Promise<JournalEvent[]> {
-  const loaded = await loadProject(projectId, ownerIds);
-  if (!loaded) return [];
+  const owned = await query<{ owned: number }>(
+    `select 1 as owned from graph_projects p where ${READ_SCOPE}`,
+    [projectId, ownerIds],
+  );
+  if (owned.rows.length === 0) return [];
   const { rows } = await query<{ event: JournalEvent }>(
     `select event from graph_events
       where project_id = $1
@@ -308,24 +423,41 @@ export async function appendJournalEvents(
   return { ok: true };
 }
 
-/** Snapshot + version, without the (potentially large) journal. */
+/**
+ * Snapshot + version, without the (potentially large) journal. `version`
+ * stays a top-level field beside the validators: the project GET's JSON
+ * `version` is what `arkaik restore` builds its `If-Match` from, and the
+ * pollen route and the GitHub App's planner read `bundle` off this shape.
+ */
 export async function getProject(
   projectId: string,
   ownerIds: readonly string[],
-): Promise<{ bundle: SnapshotShape; version: string } | null> {
+): Promise<{ bundle: SnapshotShape; version: string; validators: ProjectValidators } | null> {
   const loaded = await loadProject(projectId, ownerIds);
-  return loaded ? { bundle: loaded.snapshot, version: loaded.version } : null;
+  return loaded
+    ? { bundle: loaded.snapshot, version: loaded.validators.version, validators: loaded.validators }
+    : null;
 }
 
-/** The full interchange bundle: snapshot with its journal embedded. */
+/**
+ * The full interchange bundle: snapshot with its journal embedded. One
+ * snapshot load, then the rows — the journal query does not re-authorize
+ * (the snapshot statement just did), and the validators are the snapshot
+ * statement's, so they can only be older than the embedded journal (see
+ * `getJournal` for why that direction is the safe one).
+ */
 export async function exportProject(
   projectId: string,
   ownerIds: readonly string[],
-): Promise<ProjectBundle | null> {
+): Promise<{ bundle: ProjectBundle; validators: ProjectValidators } | null> {
   const loaded = await loadProject(projectId, ownerIds);
   if (!loaded) return null;
-  const journal = (await getJournal(projectId, ownerIds)) ?? [];
-  return { ...loaded.snapshot, journal } as ProjectBundle;
+  const { rows } = await query<{ event: JournalEvent }>(
+    `select event from graph_events where project_id = $1 order by seq asc`,
+    [projectId],
+  );
+  const journal = rows.map((row) => row.event);
+  return { bundle: { ...loaded.snapshot, journal } as ProjectBundle, validators: loaded.validators };
 }
 
 // ---------------------------------------------------------------------------
