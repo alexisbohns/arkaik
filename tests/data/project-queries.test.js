@@ -20,7 +20,9 @@
  *  - the loading/error mapping after success → failed refetch → refetch;
  *  - a warm refetch that changes nothing notifies an observer zero times;
  *  - the invalidation seams are harmless without a browser client;
- *  - the local mutation bus invalidates the right entries.
+ *  - the local mutation bus invalidates the right entries;
+ *  - a conditional read sends the stored validator, and a 304 keeps the
+ *    previous entry BY REFERENCE while a fresh one replaces it.
  */
 
 const fs = require("fs");
@@ -638,6 +640,134 @@ async function main() {
     notifyLocalMutation("p5");
     await tick();
     check("after unsubscribe a mutation changes nothing", client.getQueryState(bundleKey("p5")).isInvalidated === false);
+  }
+
+  // --- conditional reads (Part 2b) --------------------------------------------
+  // The queryFn reads the previous entry, sends its validator, and on
+  // `not-modified` returns that entry unchanged. Returning the SAME OBJECT is
+  // the point: structural sharing short-circuits on identity, so a
+  // revalidation that changes nothing costs zero renders downstream.
+  {
+    const client = newClient();
+    const bundle = makeBundle("p-cond", [makeNode("V-a", "p-cond")]);
+    const seen = [];
+    let answer = { status: "fresh", value: structuredClone(bundle), etag: 'W/"1.0"', version: "1" };
+    const provider = makeProvider({
+      getProject: async () => {
+        throw new Error("a provider with readProject must not be read unconditionally");
+      },
+      readProject: async (id, options) => {
+        seen.push(options.etag);
+        return answer.status === "fresh" ? { ...answer, value: structuredClone(answer.value) } : answer;
+      },
+    });
+    setProvider(provider);
+
+    const first = await client.fetchQuery(bundleQueryOptions("p-cond"));
+    check("the first read is unconditional", seen.length === 1 && seen[0] === null, JSON.stringify(seen));
+    check(
+      "the entry stores the server validator and version",
+      first.etag === 'W/"1.0"' && first.version === "1",
+      JSON.stringify({ etag: first.etag, version: first.version }),
+    );
+
+    answer = { status: "not-modified" };
+    await client.refetchQueries({ queryKey: bundleKey("p-cond"), type: "all" });
+    const second = client.getQueryData(bundleKey("p-cond"));
+    check("the refetch sent the stored validator", seen[1] === 'W/"1.0"', JSON.stringify(seen));
+    check("a not-modified answer keeps the previous entry — by reference", second === first);
+    // …and the validator survives it, or the read after a quiet minute would
+    // go out unconditional and pull the whole bundle back for nothing.
+    await client.refetchQueries({ queryKey: bundleKey("p-cond"), type: "all" });
+    check("the validator survives a not-modified refetch", seen[2] === 'W/"1.0"', JSON.stringify(seen));
+
+    answer = { status: "fresh", value: makeBundle("p-cond", [makeNode("V-b", "p-cond")]), etag: 'W/"2.0"', version: "2" };
+    await client.refetchQueries({ queryKey: bundleKey("p-cond"), type: "all" });
+    const third = client.getQueryData(bundleKey("p-cond"));
+    check(
+      "a fresh answer replaces the entry and stores the new validator",
+      third !== first && third.bundle.nodes[0].id === "V-b" && third.etag === 'W/"2.0"' && third.version === "2",
+      JSON.stringify({ etag: third.etag, version: third.version, first: third.bundle.nodes[0].id }),
+    );
+
+    // A `missing` answer is a not-found entry, not an error, exactly as an
+    // `undefined` from `getProject` was before the conditional read.
+    answer = { status: "missing" };
+    await client.refetchQueries({ queryKey: bundleKey("p-cond"), type: "all" });
+    check("a missing answer resolves to a null entry", client.getQueryData(bundleKey("p-cond")) === null);
+  }
+
+  // A 304 with nothing cached should not happen — no entry means no validator
+  // was sent — but a server that answers one anyway must not leave the query
+  // without data. The queryFn re-reads unconditionally.
+  {
+    const client = newClient();
+    const seen = [];
+    let answers = [{ status: "not-modified" }, { status: "fresh", value: makeBundle("p-304", []), etag: null }];
+    const provider = makeProvider({
+      readProject: async (id, options) => {
+        seen.push(options.etag);
+        return answers.shift();
+      },
+    });
+    setProvider(provider);
+
+    const entry = await client.fetchQuery(bundleQueryOptions("p-304"));
+    check(
+      "an unexpected 304 on a cold entry is retried unconditionally",
+      seen.length === 2 && seen[0] === null && seen[1] === null && entry !== null && entry.bundle.project.id === "p-304",
+      JSON.stringify(seen),
+    );
+  }
+
+  // The journal reads through the same path, and hands its projection along.
+  {
+    const client = newClient();
+    const seen = [];
+    let answer = { status: "fresh", value: [makeEvent("e1", "node.created")], etag: 'W/"1.1"' };
+    const provider = makeProvider({
+      getJournal: async () => {
+        throw new Error("a provider with readJournal must not be read unconditionally");
+      },
+      readJournal: async (id, options) => {
+        seen.push({ etag: options.etag, types: options.types });
+        return answer;
+      },
+    });
+    setProvider(provider);
+
+    const first = await client.fetchQuery(journalQueryOptions("p-cond", ["b", "a"]));
+    check(
+      "a journal read carries its normalized projection to the provider",
+      JSON.stringify(seen[0].types) === JSON.stringify(["a", "b"]),
+      JSON.stringify(seen[0]),
+    );
+    check("the journal entry stores its validator", first.etag === 'W/"1.1"', JSON.stringify(first));
+
+    answer = { status: "not-modified" };
+    await client.refetchQueries({ queryKey: journalKey("p-cond", ["a", "b"]), type: "all" });
+    check("the journal refetch sent the stored validator", seen[1].etag === 'W/"1.1"', JSON.stringify(seen));
+    check(
+      "a not-modified journal answer keeps the previous entry — by reference",
+      client.getQueryData(journalKey("p-cond", ["a", "b"])) === first,
+    );
+  }
+
+  // --- hosted polling ---------------------------------------------------------
+  // A hosted project is written by agents, the CLI and the GitHub App while a
+  // tab is open, and the remote provider has no mutation bus to hear it. Local
+  // and seed projects do have one, and must not poll.
+  {
+    const hosted = bundleQueryOptions("prj_abc123");
+    const local = bundleQueryOptions("local-1");
+    check("a hosted bundle query polls once a minute", hosted.refetchInterval === 60_000, String(hosted.refetchInterval));
+    check("…only while the tab is visible", hosted.refetchIntervalInBackground === false);
+    check("a local bundle query never polls", local.refetchInterval === false, String(local.refetchInterval));
+    check(
+      "the journal follows the same rule",
+      journalQueryOptions("prj_abc123", null).refetchInterval === 60_000 &&
+        journalQueryOptions("local-1", null).refetchInterval === false,
+    );
   }
 
   for (const client of clients) client.clear();

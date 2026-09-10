@@ -1,6 +1,12 @@
 import type { MutationOp } from "@arkaik/schema";
 
-import type { DataProvider, ProjectSummary } from "./data-provider";
+import type {
+  DataProvider,
+  ProjectSummary,
+  ReadJournalOptions,
+  ReadProjectOptions,
+  ReadResult,
+} from "./data-provider";
 import { isHostedProjectId } from "./remote-provider";
 import { isSeedProjectId } from "./seed-project-id";
 import type { Edge, JournalEvent, Node, Project, ProjectBundle } from "./types";
@@ -110,6 +116,27 @@ export function createRoutingProvider(options: RoutingProviderOptions): DataProv
      */
     importProject: (bundle: ProjectBundle): Promise<Project> =>
       seed && isSeedProjectId(bundle.project.id) ? seed.importProject(bundle) : local.importProject(bundle),
+
+    /**
+     * The conditional reads are optional on the interface, and THIS is where
+     * the fallback lives: the query cache only ever sees the router, so a
+     * literal forward would throw for every local and seed project — every
+     * signed-out user and the public self-map. A backend without the method
+     * gets its plain read wrapped as a `fresh` answer with no validator, which
+     * is exactly what an unconditional read is.
+     */
+    async readProject(id: string, options: ReadProjectOptions): Promise<ReadResult<ProjectBundle>> {
+      const target = forProject(id);
+      if (target.readProject) return target.readProject(id, options);
+      const bundle = await target.getProject(id);
+      return bundle === undefined ? { status: "missing" } : { status: "fresh", value: bundle, etag: null };
+    },
+
+    async readJournal(projectId: string, options: ReadJournalOptions): Promise<ReadResult<JournalEvent[]>> {
+      const target = forProject(projectId);
+      if (target.readJournal) return target.readJournal(projectId, options);
+      return { status: "fresh", value: await target.getJournal(projectId), etag: null };
+    },
   } satisfies DataProvider as DataProvider;
 }
 

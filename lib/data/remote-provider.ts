@@ -1,6 +1,13 @@
 import type { MutationOp } from "@arkaik/schema";
 
-import type { DataProvider, MutationResult, ProjectSummary } from "./data-provider";
+import type {
+  DataProvider,
+  MutationResult,
+  ProjectSummary,
+  ReadJournalOptions,
+  ReadProjectOptions,
+  ReadResult,
+} from "./data-provider";
 import type { Edge, JournalEvent, Node, Project, ProjectBundle } from "./types";
 
 /**
@@ -25,6 +32,14 @@ import type { Edge, JournalEvent, Node, Project, ProjectBundle } from "./types";
  * It never stores a write for later: every mutation still goes to the server
  * right away and fails loudly when the network is down. Local-first remains
  * its own mode, fully intact.
+ *
+ * READS CAN BE CONDITIONAL. `readProject`/`readJournal` send the validator the
+ * cache stored as `If-None-Match` and turn the server's 304 into
+ * `not-modified` — no body, no value: the cache keeps what it has. Nothing is
+ * memoized here for the same reason there is no replay queue: this provider
+ * is a transport, and the one copy of a read lives in the cache above it.
+ * `cache: "no-store"` stays on every call — the browser's own HTTP cache
+ * would only double-store what the query cache already validates.
  */
 
 /** Server-owned project ids carry this prefix (lib/services/graph/store.ts). */
@@ -75,17 +90,62 @@ export function createRemoteProvider(options: RemoteProviderOptions = {}): DataP
   const doFetch = options.fetchImpl ?? ((...args: Parameters<typeof fetch>) => fetch(...args));
   const base = options.baseUrl ?? "";
 
-  async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  /** The one answer a conditional read can get that has no body. */
+  const NOT_MODIFIED = Symbol("not-modified");
+
+  interface SendOptions {
+    signal?: AbortSignal;
+    /** Sent as `If-None-Match` when present — only a conditional read sets it. */
+    ifNoneMatch?: string | null;
+  }
+
+  /**
+   * The single choke point every call goes through. A 304 is recognized
+   * BEFORE the `ok` check: it is not ok (2xx) and has no body, so the generic
+   * error path would try to parse nothing and throw — and only a request that
+   * sent `If-None-Match` can ever receive one.
+   */
+  async function send(path: string, init: RequestInit | undefined, options: SendOptions): Promise<Response | typeof NOT_MODIFIED> {
     const res = await doFetch(`${base}/api/graph${path}`, {
       ...init,
-      headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
+      headers: {
+        "content-type": "application/json",
+        ...(options.ifNoneMatch ? { "if-none-match": options.ifNoneMatch } : {}),
+        ...(init?.headers ?? {}),
+      },
       cache: "no-store",
+      ...(options.signal ? { signal: options.signal } : {}),
     });
+    if (res.status === 304) return NOT_MODIFIED;
     if (!res.ok) {
       const body = await res.json().catch(() => null);
       throw new RemoteProviderError(res.status, body, messageFor(res.status, body));
     }
+    return res;
+  }
+
+  async function request<T>(path: string, init?: RequestInit, options: SendOptions = {}): Promise<T> {
+    const res = await send(path, init, { signal: options.signal });
+    // Unreachable for an unconditional request — the server answers 304 only
+    // to `If-None-Match` — but the type has to say so somewhere.
+    if (res === NOT_MODIFIED) throw new RemoteProviderError(304, null, "Unexpected 304 on an unconditional read.");
     return (await res.json()) as T;
+  }
+
+  /**
+   * A GET that revalidates: `etag` (when given) travels as `If-None-Match`,
+   * and the answer is either the fresh body with the validator the server
+   * put on it, or the bodiless `not-modified`. A 404 still throws here; each
+   * caller maps it to `missing` so a 401 or a 500 keeps surfacing as an error
+   * rather than being mistaken for "no such project".
+   */
+  async function conditionalGet<T>(
+    path: string,
+    { etag, signal }: ReadProjectOptions,
+  ): Promise<{ status: "not-modified" } | { status: "fresh"; body: T; etag: string | null }> {
+    const res = await send(path, undefined, { signal, ifNoneMatch: etag });
+    if (res === NOT_MODIFIED) return { status: "not-modified" };
+    return { status: "fresh", body: (await res.json()) as T, etag: res.headers.get("etag") };
   }
 
   /**
@@ -224,6 +284,36 @@ export function createRemoteProvider(options: RemoteProviderOptions = {}): DataP
       // The hosted project gets a server-owned id, so the returned project is
       // NOT the one that was sent — callers must navigate to the id from here.
       return { ...bundle.project, id };
+    },
+
+    async readProject(id: string, options: ReadProjectOptions): Promise<ReadResult<ProjectBundle>> {
+      try {
+        const got = await conditionalGet<{ bundle: ProjectBundle; version: string }>(
+          `/projects/${encodeURIComponent(id)}`,
+          options,
+        );
+        if (got.status === "not-modified") return { status: "not-modified" };
+        return { status: "fresh", value: got.body.bundle, etag: got.etag, version: got.body.version };
+      } catch (err) {
+        if (err instanceof RemoteProviderError && err.status === 404) return { status: "missing" };
+        throw err;
+      }
+    },
+
+    // `types` is accepted but not yet sent: the `?types=` projection is the
+    // server's next step (Part 2c), and the cache already keys on it.
+    async readJournal(projectId: string, options: ReadJournalOptions): Promise<ReadResult<JournalEvent[]>> {
+      try {
+        const got = await conditionalGet<{ journal: JournalEvent[] }>(
+          `/projects/${encodeURIComponent(projectId)}/journal`,
+          { etag: options.etag, signal: options.signal },
+        );
+        if (got.status === "not-modified") return { status: "not-modified" };
+        return { status: "fresh", value: got.body.journal, etag: got.etag };
+      } catch (err) {
+        if (err instanceof RemoteProviderError && err.status === 404) return { status: "missing" };
+        throw err;
+      }
     },
   };
 }

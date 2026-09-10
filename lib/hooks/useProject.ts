@@ -3,7 +3,14 @@
 import { useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { bundleQueryOptions, deriveLoadState, writeBackBundle } from "@/lib/data/project-queries";
+import {
+  bundleKey,
+  bundleQueryOptions,
+  deriveLoadState,
+  readProjectBundle,
+  writeBackBundle,
+  type BundleEntry,
+} from "@/lib/data/project-queries";
 import { getProvider } from "@/lib/data/provider-registry";
 import type { Project, ProjectBundle } from "@/lib/data/types";
 
@@ -32,7 +39,7 @@ export function useProject(id: string) {
         throw new Error("Cannot update project before it is loaded");
       }
 
-      // A fresh provider read, not the cached entry: the local and seed
+      // A provider read, not the cached entry: the local and seed
       // `saveProject` rewrite nodes, edges and the journal from the bundle they
       // are given, so the bundle saved here must be what storage holds now —
       // never a copy a bypassing writer may have left behind. And not a cache
@@ -41,8 +48,21 @@ export function useProject(id: string) {
       // with the REVERTED pre-mutation snapshot — query-core answers a
       // revert-cancel with `state.data` instead of rejecting — and that click
       // would then be saved away.
-      const fresh = await getProvider().getProject(id);
-      const current = fresh ?? project;
+      //
+      // Conditional where the backend allows it: the cached entry's validator
+      // goes along, and a `not-modified` answer means the entry IS what the
+      // server holds, so it is read straight off the cache at that moment —
+      // a plain lookup, not a fetch, so the cancel trap above cannot bite.
+      // The routing provider falls back to a plain read for local and seed,
+      // which is the fresh read those backends require.
+      const entry = client.getQueryData<BundleEntry | null>(bundleKey(id));
+      const read = await readProjectBundle(getProvider(), id, { etag: entry?.etag ?? null });
+      const current =
+        read.status === "fresh"
+          ? read.value
+          : read.status === "not-modified"
+            ? (client.getQueryData<BundleEntry | null>(bundleKey(id))?.bundle ?? project)
+            : project;
 
       const now = new Date().toISOString();
       const nextBundle: ProjectBundle = {

@@ -46,6 +46,35 @@ export interface MutationResult {
   events?: JournalEvent[];
 }
 
+/**
+ * What a conditional read answers (docs/data-layer.md § Providers).
+ *
+ * - `fresh` — the backend produced a body; `etag` is the validator to send
+ *   next time (`null` when the backend has none), `version` the server's
+ *   strong version when it reports one.
+ * - `not-modified` — the validator the caller sent still matches, so the
+ *   caller's previous value is the current one. No value travels: the query
+ *   cache already holds it, and a provider-side memo would only duplicate
+ *   every bundle the tab has visited.
+ * - `missing` — the project is not there or not the caller's (the same
+ *   `undefined` `getProject` answers).
+ */
+export type ReadResult<T> =
+  | { status: "fresh"; value: T; etag: string | null; version?: string }
+  | { status: "not-modified" }
+  | { status: "missing" };
+
+export interface ReadProjectOptions {
+  /** The validator from the previous read, or `null` for an unconditional one. */
+  etag: string | null;
+  signal?: AbortSignal;
+}
+
+export interface ReadJournalOptions extends ReadProjectOptions {
+  /** The projection, or `null` for the whole journal (Part 2c wires it). */
+  types?: readonly string[] | null;
+}
+
 export interface DataProvider {
   getProject(id: string): Promise<ProjectBundle | undefined>;
   listProjects(): Promise<ProjectSummary[]>;
@@ -97,4 +126,21 @@ export interface DataProvider {
 
   exportProject(id: string): Promise<ProjectBundle>;
   importProject(bundle: ProjectBundle): Promise<Project>;
+
+  /**
+   * Conditional reads — OPTIONAL, because only a backend with a server
+   * validator has a reason to implement them (the remote provider sends
+   * `If-None-Match` and understands a 304). The query cache reads through
+   * these, passing the validator it stored, and keeps its previous entry on
+   * `not-modified`.
+   *
+   * THE ROUTING PROVIDER OWNS THE FALLBACK. `getProvider()` always answers
+   * with the router, and the router implements both methods for every
+   * project: it forwards to a backend that has them and otherwise wraps that
+   * backend's `getProject`/`getJournal` as a `fresh` read with `etag: null`.
+   * So a caller reading through `getProvider()` may call these
+   * unconditionally; only a bare local or seed provider lacks them.
+   */
+  readProject?(id: string, options: ReadProjectOptions): Promise<ReadResult<ProjectBundle>>;
+  readJournal?(projectId: string, options: ReadJournalOptions): Promise<ReadResult<JournalEvent[]>>;
 }
