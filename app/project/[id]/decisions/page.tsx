@@ -24,6 +24,12 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { lifecycleStatusForDecision } from "@arkaik/schema";
 
+/**
+ * Only `node.created`: the log reads it for each decision's "recorded on" date
+ * (`DecisionLog`'s `createdTs`) and nothing else from the journal.
+ */
+const DECISION_EVENT_TYPES = ["node.created"] as const;
+
 export default function ProjectDecisionsPage() {
   const id = useProjectId();
 
@@ -31,7 +37,7 @@ export default function ProjectDecisionsPage() {
   const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes, updateNode, addNode } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges } = useEdges(id);
   const { project: projectBundle, error: projectError, reload: reloadProject } = useProject(id);
-  const { journal, error: journalError, reload: reloadJournal } = useJournal(id);
+  const { journal, error: journalError, reload: reloadJournal } = useJournal(id, { types: DECISION_EVENT_TYPES });
   const scope = useEffectiveProduct(id, projectBundle);
 
   const [newOpen, setNewOpen] = useState(false);

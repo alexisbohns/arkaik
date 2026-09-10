@@ -88,7 +88,7 @@ export function createRoutingProvider(options: RoutingProviderOptions): DataProv
 
     getNodes: (projectId) => forProject(projectId).getNodes(projectId),
     getEdges: (projectId) => forProject(projectId).getEdges(projectId),
-    getJournal: (projectId) => forProject(projectId).getJournal(projectId),
+    getJournal: (projectId, options) => forProject(projectId).getJournal(projectId, options),
 
     createNode: (node: Node) => forProject(node.project_id).createNode(node),
     updateNode: (projectId, id, patch) => forProject(projectId).updateNode(projectId, id, patch),
@@ -135,7 +135,7 @@ export function createRoutingProvider(options: RoutingProviderOptions): DataProv
     async readJournal(projectId: string, options: ReadJournalOptions): Promise<ReadResult<JournalEvent[]>> {
       const target = forProject(projectId);
       if (target.readJournal) return target.readJournal(projectId, options);
-      return { status: "fresh", value: await target.getJournal(projectId), etag: null };
+      return { status: "fresh", value: await target.getJournal(projectId, { types: options.types }), etag: null };
     },
   } satisfies DataProvider as DataProvider;
 }

@@ -573,6 +573,80 @@ async function main() {
     }
     setSession(sessionFor(userA));
 
+    // --- The ?types= journal projection -------------------------------------
+    // The pages that read a handful of event types ask for those, and the rows
+    // they do not need never leave Postgres.
+    const journalUrl = (query) => new Request(`${ORIGIN}/api/graph/projects/${projectId}/journal${query}`);
+    const typed = await api.GET_JOURNAL(journalUrl("?types=deliverable.shipped,quality.finding.resolved"), ctx(projectId));
+    const typedBody = await typed.json();
+    check(
+      "a projection returns only the types asked for, in server order",
+      typed.status === 200 &&
+        typedBody.journal.length === 2 &&
+        typedBody.journal[0].type === "deliverable.shipped" &&
+        typedBody.journal[1].type === "quality.finding.resolved",
+      JSON.stringify(typedBody.journal.map((e) => e.type)),
+    );
+    const repeated = await api.GET_JOURNAL(
+      journalUrl("?types=quality.finding.resolved&types=deliverable.shipped"),
+      ctx(projectId),
+    );
+    check(
+      "the repeated-parameter form is the same projection, still in server order",
+      JSON.stringify((await repeated.json()).journal.map((e) => e.type)) ===
+        JSON.stringify(typedBody.journal.map((e) => e.type)),
+    );
+    const unknown = await api.GET_JOURNAL(journalUrl("?types=nothing.writes.this"), ctx(projectId));
+    const unknownBody = await unknown.json();
+    check(
+      "an unknown type is an empty projection, not an error",
+      unknown.status === 200 && Array.isArray(unknownBody.journal) && unknownBody.journal.length === 0,
+      `${unknown.status} ${JSON.stringify(unknownBody).slice(0, 120)}`,
+    );
+    const whole = await (await api.GET_JOURNAL(journalUrl(""), ctx(projectId))).json();
+    check(
+      "…and the whole journal is still the default",
+      whole.journal.length > typedBody.journal.length,
+      `${whole.journal.length} vs ${typedBody.journal.length}`,
+    );
+    check(
+      "a projection carries the WHOLE journal's validator — one aggregate, not one per projection",
+      typed.headers.get("etag") === (await api.GET_JOURNAL(journalUrl(""), ctx(projectId))).headers.get("etag"),
+      typed.headers.get("etag") ?? "(none)",
+    );
+    const tooMany = await api.GET_JOURNAL(
+      journalUrl(`?types=${Array.from({ length: 33 }, (_, i) => `t${i}`).join(",")}`),
+      ctx(projectId),
+    );
+    check(
+      "more than 32 types is refused, fail-closed",
+      tooMany.status === 400 && (await tooMany.json()).error === "invalid_types",
+      String(tooMany.status),
+    );
+
+    // The projection belongs to the journal route alone. /export builds an
+    // interchange bundle, and a bundle missing most of its history because a
+    // stray query string survived a copy-paste would restore as data loss.
+    const exportedTyped = await api.EXPORT(
+      new Request(`${ORIGIN}/api/graph/projects/${projectId}/export?types=deliverable.shipped`),
+      ctx(projectId),
+    );
+    check(
+      "/export ignores ?types= and still embeds every event",
+      (await exportedTyped.json()).bundle.journal.length === whole.journal.length,
+      `${(await (await api.EXPORT(new Request(ORIGIN), ctx(projectId))).json()).bundle.journal.length}`,
+    );
+    const nodesTyped = await api.GET_NODES(
+      new Request(`${ORIGIN}/api/graph/projects/${projectId}/nodes?types=deliverable.shipped`),
+      ctx(projectId),
+    );
+    const nodesPlain = await api.GET_NODES(new Request(ORIGIN), ctx(projectId));
+    check(
+      "/nodes ignores ?types= too — same body, same validator",
+      JSON.stringify((await nodesTyped.json()).nodes) === JSON.stringify((await nodesPlain.json()).nodes) &&
+        nodesTyped.headers.get("etag") === nodesPlain.headers.get("etag"),
+    );
+
     // --- Bad requests -------------------------------------------------------
     setSession(sessionFor(userA));
     check(
