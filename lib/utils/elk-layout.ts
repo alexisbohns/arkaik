@@ -1,7 +1,7 @@
-import ELK, { type ElkNode, type ElkExtendedEdge } from "elkjs/lib/elk.bundled.js";
+import type { ElkNode, ElkExtendedEdge } from "elkjs/lib/elk-api";
 import type { Node, Edge } from "@xyflow/react";
 
-const elk = new ELK();
+import { getElkEngine } from "./elk-engine";
 
 // Chrome every card pays: py-3 (24) + border-2 (4) + the title row (28).
 const CARD_CHROME_HEIGHT = 56;
@@ -115,6 +115,10 @@ export async function computeElkLayout(
       sources: [edge.source],
       targets: [edge.target],
     }));
+
+  // One engine per layout call, not per pass: `getElkEngine()` is memoized, so
+  // this is a promise lookup after the first map of the session.
+  const elk = await getElkEngine();
 
   let layoutedChildren: ElkNode[];
 
