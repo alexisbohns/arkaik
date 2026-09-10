@@ -135,6 +135,7 @@ Declared in [lib/data/data-provider.ts](../lib/data/data-provider.ts) — **read
 - **`listProjects()` returns `ProjectSummary[]`, not bundles.** A summary is `{ project, nodeCount, edgeCount, hosted, seed? }`. It used to return full `ProjectBundle`s, which meant the projects page read every node, edge and journal event of every project just to render titles and counts — merely wasteful against IndexedDB, untenable against a server.
 - **Every mutator takes `projectId` explicitly**, including the ones whose subject id would seem to be enough. The local provider can get away without it by scanning IndexedDB for the project holding a node id; a remote provider cannot scan, and the routing provider below could not even tell which backend to ask. It is free at the call sites — the hooks are already built as `useNodes(projectId)`.
 - **`applyMutations(projectId, ops)` is the atomic batch**: all ops commit, or none do. The single-op methods cannot express "create this node *and* this edge together", which forces callers into a create-then-create sequence with a hand-rolled rollback when the second half fails. The local provider runs one IndexedDB transaction; the remote provider sends one request. `MutationOp` comes from `@arkaik/schema`.
+- **`applyMutations` answers with more than the graph.** Its `MutationResult` is `{ nodes, edges, version?, events? }`: the whole graph after the write, plus — when the backend knows them — the server's strong `version` after the write and the journal `events` the write appended, in append order. Both exist for the query cache (§ Hooks below), which writes the result straight into its project entry instead of re-reading the project, guards that write with `version`, and extends its cached journal with `events` instead of re-downloading it.
 
 `archiveProject` performs a soft delete. Archived projects remain in storage but are excluded by default from `listProjects()`.
 
@@ -151,6 +152,8 @@ Declared in [lib/data/data-provider.ts](../lib/data/data-provider.ts) — **read
 The routing rule is the id namespace, not a cache ([lib/data/routing-provider.ts](../lib/data/routing-provider.ts)): hosted ids are minted server-side and the import path refuses to give a local project one, so routing is a total function of the id with nothing to populate, invalidate, or get wrong offline. `listProjects()` is the one call that spans all three — it always leads with the seed, adds the account's hosted projects when `/api/auth/status` says there is an account, and degrades to the local list rather than blanking the page if that request fails.
 
 Signed out, or with services unconfigured, nothing reaches the network and the app behaves exactly as it did before hosted projects existed.
+
+What each fills into `applyMutations`' result: the remote provider forwards the `version` and `events` the mutations route already returned; local and seed return the events their own `runOps` derived and appended (the same `toJournalEvents(outcome.eventInputs)` the journal row received) and no `version` — Dexie transactions and the in-memory sandbox serialize, so their results resolve in commit order and there is nothing to guard against. The routing provider passes the result through untouched.
 
 ## Local Provider
 
@@ -192,17 +195,36 @@ These assets are generated from the canonical zod source in `packages/schema` (`
 
 ## Hooks
 
-Hooks in `lib/hooks/` provide React state wrappers around the provider:
+Hooks in `lib/hooks/` are thin bindings over a query cache (below); their return shapes are frozen:
 
 | Hook | Returns | Purpose |
 |------|---------|---------|
-| `useProject(id)` | `{ project, loading, error, updateProject }` | Load and update project-level metadata/settings |
+| `useProject(id)` | `{ project, loading, error, reload, updateProject }` | Load and update project-level metadata/settings |
 | `useProjects()` | `{ projects, loading, error }` | The active `ProjectSummary[]` for shell navigation |
-| `useNodes(projectId)` | `{ nodes, loading, error, addNode, removeNode, removeNodes, updateNode, applyMutations }` | CRUD for nodes, plus the atomic batch |
-| `useEdges(projectId)` | `{ edges, loading, error, addEdge, removeEdge, syncEdges }` | CRUD for edges |
-| `useJournal(projectId)` | `{ journal, loading, error }` | Read-only journal events for timelines and the changelog |
+| `useNodes(projectId)` | `{ nodes, loading, error, reload, addNode, removeNode, removeNodes, updateNode, applyMutations }` | CRUD for nodes, plus the atomic batch |
+| `useEdges(projectId)` | `{ edges, loading, error, reload, addEdge, removeEdge, syncEdges }` | CRUD for edges |
+| `useJournal(projectId)` | `{ journal, loading, error, reload }` | Read-only journal events for timelines and the changelog |
+
+`reload()` is the retry behind every `PageError` on a project surface: it re-runs the read and resolves when it settles. A page that fans one retry into several `reload()` calls is re-running one query, so each call joins the fetch already in flight rather than cancelling it. `loading` is `true` whenever the data has not been read yet — never `false` with an empty list before a read — and a retry after an error with no data looks like a load again. `error` is `null` exactly when absent; a failed *background* refetch over data already on screen is not reported (the surface keeps what it has).
 
 The Journey map (`components/maps/JourneyMap.tsx`) uses `useProject` for root-node anchoring and project-level card-style preferences, and still manages `expandedFlows` as local state.
+
+### The query cache
+
+Every project surface used to run its own reads on mount, so one navigation cost up to six provider reads of the same project. The hooks now observe a TanStack Query cache — one `QueryClient` per browser ([lib/data/query-client.ts](../lib/data/query-client.ts)), handed to React by `components/query/QueryProvider.tsx` in the root layout — described entirely in [lib/data/project-queries.ts](../lib/data/project-queries.ts), which is the cache's **only writer**. Components never touch the client; the hooks are the binding layer, and everything else goes through a seam.
+
+| Key | Data | Shared by |
+|---|---|---|
+| `["projects"]` | `ProjectSummary[]` | `useProjects` |
+| `["project", id, "bundle"]` | `BundleEntry = { bundle, version, etag } \| null` (`null` = not found) | `useProject`, and `useNodes` / `useEdges` as hoisted `select`s over it |
+| `["project", id, "journal", { types }]` | `JournalEntry = { events, etag }` | `useJournal` (`types: null` = the whole journal; typed projections arrive with the `?types=` read) |
+
+- **Freshness.** A project entry is fresh for 30 s (navigation inside the window is a cache hit with no request; beyond it the cached data paints immediately and a background refetch runs), survives 30 min unobserved, retries once and never on a 4xx. Refetch on window focus is on, listening to window `focus` as well as `visibilitychange`. The listing is fresh for 60 s. `version` guards write-backs; `etag` is the read validator a conditional refetch will send (reserved — always `null` until the read routes emit one).
+- **Write-back.** Every hook mutator goes through `provider.applyMutations` and writes its `MutationResult` back: cancel any in-flight read of the entry (a refetch that started before the mutation must not land after it), then adopt `nodes` and `edges` under the version guard (a result whose `version` is older than the entry's is dropped — two hosted writes are routinely in flight together), then cancel any in-flight read of the journal projections (for the same reason) and append the returned `events` to every projection that admits them, or mark the projections stale without refetching when the backend returned none, then mark the listing stale. A cancelled read that had no data to revert to is re-issued for any mounted observer, so a first load overlapping a write never stays `loading`. `syncEdges` carries the result's `version` so its edge-only write-back keeps the same guard. `updateProject` re-reads the bundle straight from the provider (not through the entry: a write-back's cancel would hand a cache fetch the reverted snapshot), saves, and replaces the entry. Structural sharing is on and the selectors are module-level, so an unchanged refetch keeps `project.project`, `nodes` and `edges` identities and nothing downstream re-renders or re-lays out.
+- **Seams.** Writers that bypass the hooks call `invalidateProject(id)` (bundle and journal, refetched where mounted — the raw-bundle save) or `invalidateProjects()` (the listing, marked stale for its next mount — import, archive, the projects page's create/import/move, and `useAuthStatus` when it resolves signed-in). Both read the client through `getQueryClient()`, so they are harmless on the server.
+- **The local bus.** `QueryProvider` subscribes to the local provider's `subscribeToMutations` and invalidates `["project", id]` and `["projects"]` on every local write, so an import or a restore refreshes whatever is on screen without a seam. It fires for the hooks' own writes too; those cancel the bundle and journal entries before writing back, so the reads the bus started are ignored rather than adopted (Dexie has no abort — the reads themselves still complete). Seed and remote have no bus.
+
+The suite is `npm run test:project-queries` (`tests/data/project-queries.test.js`), against the real TanStack core with the providers stubbed.
 
 ### Node Editing Flow
 

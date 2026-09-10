@@ -8,6 +8,7 @@ import { serializeBundle } from "@arkaik/schema";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { invalidateProject, invalidateProjects } from "@/lib/data/project-queries";
 import type { ProjectBundle } from "@/lib/data/types";
 import { usePanelSelfState } from "@/lib/hooks/useProjectPanels";
 import { exportProject, importProject, normalizeProjectTimestamps, parseAndValidateBundle } from "@/lib/utils/export";
@@ -242,6 +243,11 @@ export function RawBundlePanel({ projectId, instanceId }: RawBundlePanelProps) {
       const parsedBundle = parseDraftToBundle(draftText, format);
       const scopedBundle = scopeBundleToCurrentProject(parsedBundle);
       await importProject(scopedBundle);
+      // The save bypassed the hooks, so the page behind this panel would keep
+      // showing the previous graph: refetch its project entry now, and let the
+      // listing pick up the new counts on its next mount.
+      await invalidateProject(projectId);
+      void invalidateProjects();
       const refreshedBundle = await exportProject(projectId);
       setBundle(refreshedBundle);
       syncDrafts(refreshedBundle);

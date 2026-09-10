@@ -1,122 +1,109 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { MutationOp } from "@arkaik/schema";
-import type { Edge, Node } from "@/lib/data/types";
+
+import {
+  bundleKey,
+  bundleQueryOptions,
+  deriveLoadState,
+  EMPTY_EDGES,
+  EMPTY_NODES,
+  selectNodes,
+  writeBackGraph,
+  type BundleEntry,
+} from "@/lib/data/project-queries";
 import { getProvider } from "@/lib/data/provider-registry";
+import type { Edge, Node } from "@/lib/data/types";
 
+/**
+ * The project's nodes, as a projection of the one cached bundle entry
+ * (`lib/data/project-queries.ts`). Every mutator is a batch through
+ * `applyMutations` whose result is written straight back into that entry —
+ * nodes AND edges, so a cascaded delete or a synthesized `composes` edge
+ * reaches `useEdges` at once instead of on the next reload.
+ */
 export function useNodes(projectId: string) {
-  const [nodes, setNodes] = useState<Node[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const client = useQueryClient();
+  const result = useQuery({ ...bundleQueryOptions(projectId), select: selectNodes });
+  const nodes: Node[] = result.data ?? EMPTY_NODES;
+  const { loading, error } = deriveLoadState(result, "Failed to load nodes");
 
-  /**
-   * Which load is allowed to write. Bumped per attempt; an answer carrying a
-   * token that is no longer the current one is dropped on the floor.
-   *
-   * Two loads genuinely overlap once `reload` is wired to a button: a retry
-   * fired while the failing read is still hanging (a remote request that
-   * eventually 500s takes as long as it takes), and the effect re-running for a
-   * new `projectId`. Without the token the SLOWER answer wins by arriving last
-   * — the retry succeeds, the user sees their nodes, and then the original
-   * failure lands and throws the surface back into its error state over a list
-   * it has already adopted. The reverse is just as bad: a stale success
-   * overwriting fresh nodes with the previous project's.
-   */
-  const loadToken = useRef(0);
+  const { refetch } = result;
+  /** The retry behind every `PageError` — joins a fetch already in flight. */
+  const reload = useCallback(() => refetch({ cancelRefetch: false }).then(() => undefined), [refetch]);
 
-  /**
-   * The read itself, extracted from the effect so an error gate can run it
-   * again (#362): every surface that reads `error` needs a way out of it, and
-   * "reload the whole page" is not one when the read that failed was transient.
-   *
-   * It writes state only from the promise's callbacks — never synchronously —
-   * which is what keeps the effect below a legal effect (`set-state-in-effect`)
-   * and is exactly what the inline load it replaced did. The two synchronous
-   * writes a retry needs live in `reload`, which only ever runs from an event
-   * handler.
-   */
-  const runLoad = useCallback(() => {
-    const token = ++loadToken.current;
-    return getProvider()
-      .getNodes(projectId)
-      .then((n) => {
-        if (loadToken.current !== token) return;
-        setNodes(n);
-        setLoading(false);
-      })
-      .catch((err) => {
-        if (loadToken.current !== token) return;
-        console.error("[useNodes] Failed to load nodes:", err);
-        setError(err instanceof Error ? err.message : "Failed to load nodes");
-        setLoading(false);
-      });
-  }, [projectId]);
+  /** The one write path: commit the batch, then adopt its result. */
+  const commit = useCallback(
+    async (ops: MutationOp[]) => {
+      const outcome = await getProvider().applyMutations(projectId, ops);
+      await writeBackGraph(client, projectId, outcome);
+      return outcome;
+    },
+    [client, projectId],
+  );
 
-  /** Re-run the read — the retry behind every `PageError` on a project surface. */
-  const reload = useCallback(() => {
-    // Not folded into `runLoad`: `loading` is already true on the first run, so
-    // these two only matter on a retry, which has to look like a load rather
-    // than like a button that does nothing.
-    setLoading(true);
-    setError(null);
-    return runLoad();
-  }, [runLoad]);
+  const addNode = useCallback(
+    async (node: Node) => {
+      const outcome = await commit([{ op: "create_node", node }]);
+      return outcome.nodes.find((candidate) => candidate.id === node.id) ?? node;
+    },
+    [commit],
+  );
 
-  // `runLoad` is the whole dependency list because it already carries
-  // `projectId`: it is rebuilt exactly when the project changes, which is
-  // exactly when the read must run again.
-  useEffect(() => {
-    void runLoad();
-  }, [runLoad]);
+  const removeNode = useCallback(
+    async (id: string) => {
+      await commit([{ op: "delete_node", node_id: id }]);
+    },
+    [commit],
+  );
 
-  const addNode = useCallback(async (node: Node) => {
-    const created = await getProvider().createNode(node);
-    // The provider returns a fresh node and does not mutate this hook's state
-    // (the IndexedDB backend hands back new objects, not shared references).
-    // The id guard stays as a defensive no-op against a double add.
-    setNodes((prev) => {
-      if (prev.some((n) => n.id === created.id)) return prev;
-      return [...prev, created];
-    });
-    return created;
-  }, []);
-
-  const removeNode = useCallback(async (id: string) => {
-    await getProvider().deleteNode(projectId, id);
-    setNodes((prev) => prev.filter((n) => n.id !== id));
-  }, [projectId]);
-
-  const removeNodes = useCallback(async (ids: string[]) => {
-    await getProvider().deleteNodes(projectId, ids);
-    const idSet = new Set(ids);
-    setNodes((prev) => prev.filter((n) => !idSet.has(n.id)));
-  }, [projectId]);
+  const removeNodes = useCallback(
+    async (ids: string[]) => {
+      // An empty batch is a 400 on the server and a no-op everywhere else.
+      if (ids.length === 0) return;
+      await commit([{ op: "delete_nodes", node_ids: ids }]);
+    },
+    [commit],
+  );
 
   const updateNode = useCallback(
     async (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => {
-      const updated = await getProvider().updateNode(projectId, id, patch);
-      setNodes((prev) => prev.map((n) => (n.id === id ? updated : n)));
+      const outcome = await commit([{ op: "update_node", node_id: id, patch }]);
+      const updated = outcome.nodes.find((candidate) => candidate.id === id);
+      if (!updated) throw new Error(`Node ${id} not found`);
       return updated;
     },
-    [projectId]
+    [commit],
   );
 
   /**
-   * Apply several ops as one atomic write and adopt the resulting node list.
+   * Apply several ops as one atomic write and adopt the resulting graph.
    *
    * Use this instead of chaining single-op calls whenever a half-applied result
-   * would be wrong — creating a node and the edge that anchors it, say. It
-   * returns the edges too, so a caller holding `useEdges` can sync that half
-   * with `syncEdges`; the write itself already committed as a unit.
+   * would be wrong — creating a node and the edge that anchors it, say. The
+   * edges are returned too so a caller holding `useEdges` can `syncEdges`
+   * them, with the server `version` they came under so that write-back keeps
+   * the same guard; the cache already has both halves by the time this
+   * resolves.
    */
   const applyMutations = useCallback(
-    async (ops: MutationOp[]): Promise<{ nodes: Node[]; edges: Edge[] }> => {
-      const result = await getProvider().applyMutations(projectId, ops);
-      setNodes(result.nodes);
-      return result;
+    async (ops: MutationOp[]): Promise<{ nodes: Node[]; edges: Edge[]; version?: string }> => {
+      if (ops.length === 0) {
+        // Nothing to commit: answer from the cache rather than send an empty
+        // batch, which the server refuses.
+        const entry = client.getQueryData<BundleEntry | null>(bundleKey(projectId));
+        return {
+          nodes: entry?.bundle.nodes ?? EMPTY_NODES,
+          edges: entry?.bundle.edges ?? EMPTY_EDGES,
+          version: entry?.version ?? undefined,
+        };
+      }
+      const outcome = await commit(ops);
+      return { nodes: outcome.nodes, edges: outcome.edges, version: outcome.version };
     },
-    [projectId],
+    [client, commit, projectId],
   );
 
   return { nodes, loading, error, reload, addNode, removeNode, removeNodes, updateNode, applyMutations };

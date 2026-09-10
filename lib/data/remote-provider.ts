@@ -1,6 +1,6 @@
 import type { MutationOp } from "@arkaik/schema";
 
-import type { DataProvider, ProjectSummary } from "./data-provider";
+import type { DataProvider, MutationResult, ProjectSummary } from "./data-provider";
 import type { Edge, JournalEvent, Node, Project, ProjectBundle } from "./types";
 
 /**
@@ -16,11 +16,15 @@ import type { Edge, JournalEvent, Node, Project, ProjectBundle } from "./types";
  * atomicity guarantee — there is no second way to write, and therefore no way
  * for the two to drift.
  *
- * NO LOCAL CACHE, deliberately. A hosted project is online-only (the tradeoff
- * recorded in the plan): the alternative is a replay queue against a
- * validator-gated server, where a queued mutation can become invalid before it
- * is sent, which reintroduces exactly the conflict handling this architecture
- * was chosen to avoid. Local-first remains its own mode, fully intact.
+ * WRITES ARE ONLINE-ONLY, deliberately. This provider holds no replay queue:
+ * a queued mutation against a validator-gated server can become invalid
+ * before it is sent, which reintroduces exactly the conflict handling this
+ * architecture was chosen to avoid. What sits above it is a different thing —
+ * a READ cache (`lib/data/project-queries.ts`, TanStack Query) that remembers
+ * what this provider already answered and revalidates it against the server.
+ * It never stores a write for later: every mutation still goes to the server
+ * right away and fails loudly when the network is down. Local-first remains
+ * its own mode, fully intact.
  */
 
 /** Server-owned project ids carry this prefix (lib/services/graph/store.ts). */
@@ -84,9 +88,16 @@ export function createRemoteProvider(options: RemoteProviderOptions = {}): DataP
     return (await res.json()) as T;
   }
 
-  /** The one write path — every mutator below is a batch of ops through here. */
+  /**
+   * The one write path — every mutator below is a batch of ops through here.
+   *
+   * The route answers with the strong version after the write and the journal
+   * events it appended (app/api/graph/projects/[projectId]/mutations/route.ts);
+   * `applyMutations` forwards both so the query cache can write the result
+   * back without re-reading the project.
+   */
   async function mutate(projectId: string, ops: MutationOp[]) {
-    return request<{ version: string; nodes: Node[]; edges: Edge[] }>(
+    return request<{ version: string; nodes: Node[]; edges: Edge[]; events?: JournalEvent[] }>(
       `/projects/${encodeURIComponent(projectId)}/mutations`,
       { method: "POST", body: JSON.stringify({ ops }) },
     );
@@ -193,9 +204,9 @@ export function createRemoteProvider(options: RemoteProviderOptions = {}): DataP
       await mutate(projectId, [{ op: "delete_edge", edge_id: id }]);
     },
 
-    async applyMutations(projectId: string, ops: MutationOp[]) {
+    async applyMutations(projectId: string, ops: MutationOp[]): Promise<MutationResult> {
       const result = await mutate(projectId, ops);
-      return { nodes: result.nodes, edges: result.edges };
+      return { nodes: result.nodes, edges: result.edges, version: result.version, events: result.events };
     },
 
     async exportProject(id: string): Promise<ProjectBundle> {

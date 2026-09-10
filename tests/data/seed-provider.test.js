@@ -295,6 +295,16 @@ async function main() {
       "applyMutations with one create_node op returns the graph",
       Array.isArray(outcome.nodes) && Array.isArray(outcome.edges) && outcome.nodes.some((n) => n.id === "V-batch"),
     );
+    // The events it hands back are exactly the ones the sandbox journal
+    // gained — what the query cache appends instead of re-reading the journal.
+    const journalAfterBatch = await provider.getJournal(PROJECT_ID);
+    const lastEvent = journalAfterBatch[journalAfterBatch.length - 1];
+    check(
+      "applyMutations returns the events it appended",
+      Array.isArray(outcome.events) && outcome.events.length === 1 && outcome.events[0].type === "node.created" && outcome.events[0].id === lastEvent.id,
+      JSON.stringify(outcome.events),
+    );
+    check("applyMutations reports no server version", outcome.version === undefined);
     // Clean up so later "current state" assertions aren't polluted.
     await provider.deleteNode(PROJECT_ID, "V-batch");
   }
