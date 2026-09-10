@@ -126,7 +126,7 @@ Declared in [lib/data/data-provider.ts](../lib/data/data-provider.ts) — **read
 | Group | Methods |
 |---|---|
 | Projects | `getProject(id)` · `listProjects()` · `saveProject(bundle)` · `archiveProject(id)` |
-| Reads | `getNodes(projectId)` · `getEdges(projectId)` · `getJournal(projectId)` |
+| Reads | `getNodes(projectId)` · `getEdges(projectId)` · `getJournal(projectId, { types })` |
 | Node writes | `createNode(node)` · `updateNode(projectId, id, patch)` · `deleteNode(projectId, id)` · `deleteNodes(projectId, ids)` |
 | Edge writes | `createEdge(edge)` · `deleteEdge(projectId, id)` |
 | Batch write | `applyMutations(projectId, ops)` |
@@ -216,9 +216,9 @@ Hooks in `lib/hooks/` are thin bindings over a query cache (below); their return
 | `useProjects()` | `{ projects, loading, error }` | The active `ProjectSummary[]` for shell navigation |
 | `useNodes(projectId)` | `{ nodes, loading, error, reload, addNode, removeNode, removeNodes, updateNode, applyMutations }` | CRUD for nodes, plus the atomic batch |
 | `useEdges(projectId)` | `{ edges, loading, error, reload, addEdge, removeEdge, syncEdges }` | CRUD for edges |
-| `useJournal(projectId)` | `{ journal, loading, error, reload }` | Read-only journal events for timelines and the changelog |
+| `useJournal(projectId, { types })` | `{ journal, loading, error, reload }` | Read-only journal events, projected to the types the caller renders (omit `types` for the whole journal) |
 
-The node panel's History section reads the journal itself (`useJournal(projectId)` inside `NodeDetailPanel`, keyed by the route id from `useProjectId()` — never `node.project_id`, which on a hosted project is the imported bundle's own id rather than the `prj_…` route id — and mounted when a page passes `history` to `PageShell`), so only the Changelog, Design, Decisions, History and Overview pages still request the journal at page level — the maps, Library, Delivery and Acceptances no longer request it at page level (their node panels read it lazily on first open and share one cached entry), and the Overview no longer holds its first paint for it.
+The node panel's History section reads the journal itself (`useJournal(projectId)` inside `NodeDetailPanel`, keyed by the route id from `useProjectId()` — never `node.project_id`, which on a hosted project is the imported bundle's own id rather than the `prj_…` route id — and mounted when a page passes `history` to `PageShell`), so only the Changelog, Design, Decisions, History and Overview pages still request the journal at page level — the first three as projections of the event types they render, the last two whole — the maps, Library, Delivery and Acceptances no longer request it at page level (their node panels read it lazily on first open and share one cached entry), and the Overview no longer holds its first paint for it.
 
 `reload()` is the retry behind every `PageError` on a project surface: it re-runs the read and resolves when it settles. A page that fans one retry into several `reload()` calls is re-running one query, so each call joins the fetch already in flight rather than cancelling it. `loading` is `true` whenever the data has not been read yet — never `false` with an empty list before a read — and a retry after an error with no data looks like a load again. `error` is `null` exactly when absent; a failed *background* refetch over data already on screen is not reported (the surface keeps what it has).
 
@@ -240,7 +240,7 @@ Every project surface used to run its own reads on mount, so one navigation cost
 - **Seams.** Writers that bypass the hooks call `invalidateProject(id)` (bundle and journal, refetched where mounted — the raw-bundle save) or `invalidateProjects()` (the listing, marked stale for its next mount — import, archive, the projects page's create/import/move, and `useAuthStatus` when it resolves signed-in). Both read the client through `getQueryClient()`, so they are harmless on the server.
 - **The local bus.** `QueryProvider` subscribes to the local provider's `subscribeToMutations` and invalidates `["project", id]` and `["projects"]` on every local write, so an import or a restore refreshes whatever is on screen without a seam. It fires for the hooks' own writes too; those cancel the bundle and journal entries before writing back, so the reads the bus started are ignored rather than adopted (Dexie has no abort — the reads themselves still complete). Seed and remote have no bus.
 
-The suite is `npm run test:project-queries` (`tests/data/project-queries.test.js`), against the real TanStack core with the providers stubbed.
+The suite is `npm run test:project-queries` (`tests/data/project-queries.test.js`), against the real TanStack core with the providers stubbed. The provider side of the same contract — conditional reads, the routing fallback, `?types=` on the URL — is `npm run test:provider`, and the server's half of it is `npm run test:graph-etag` (pure, no database) and `npm run test:graph` (against a migrated Postgres).
 
 ### Node Editing Flow
 

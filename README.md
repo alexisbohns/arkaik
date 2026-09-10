@@ -71,7 +71,8 @@ components/
   ui/                         # shadcn/ui primitives (button, card, dialog, etc.)
 lib/
   config/                     # Label/order arrays for the ids in @arkaik/schema (see docs/conventions.md)
-  data/                       # DataProvider interface + local (Dexie), remote, seed and routing providers
+  data/                       # DataProvider interface + local (Dexie), remote, seed and routing providers,
+                              #   and the query cache the hooks observe (project-queries.ts)
   hooks/                      # useNodes, useEdges, useProject, useJournal, etc.
   services/                   # Server-side: hosted graph store, publik, synk, github app
   utils/                      # export, layout, cycle detection, platform-status rollups

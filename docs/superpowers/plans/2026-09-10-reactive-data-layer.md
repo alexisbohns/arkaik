@@ -413,43 +413,27 @@ revalidates by ETag, `buster` including `CURRENT_SCHEMA_VERSION` **and** the
 user id, `loading` reported while a restored entry is being validated, and
 the `docs/conventions.md` "never write to IndexedDB directly" rule amended.
 
-## Parts (one commit each, in order)
+## Parts — the stack that shipped
 
-1. **Query cache behind the hooks** — `query-client.ts`, `project-queries.ts`,
-   `QueryProvider` (bus subscription, focus listener), the five hooks, the
-   `applyMutations` contract (`version`, `events`) in local/seed/remote/routing,
-   invalidation seams at the bypass sites, `invalidateProjects()` from
-   `useAuthStatus`, tests (`tests/data/project-queries.test.js`, wired into
-   `package.json`, `ci.yml`, `.gitignore`; provider tests for `version`/`events`),
-   docs that become true with it (`docs/data-layer.md` § Hooks + a cache
-   section, `docs/conventions.md` § State Management and file tree,
-   `remote-provider.ts` header).
-2. **2a — Panel History reads its own journal** — `history` prop,
-   `HistorySection` self-read, nine page edits, Overview off the journal gate
-   with pending card states.
-3. **2b — Conditional GETs** — `etag.ts`, validator SQL, read routes,
-   single-load bundle GET, cheaper SQL, migration 011, `readProject`/`readJournal`
-   + `AbortSignal`, remote 304 handling, queryFn conditional read, hosted
-   polling, tests (`tests/services/graph-etag.test.js` + CI step + ignore
-   line; `graph-api.test.js` ETag/304/append/archived/other-owner cases;
-   provider 304 test inside `test:provider`), loader table entries,
-   `docs/spec/services.md` § Hosted Graph Projects (Machine auth, Write path,
-   Read contract — the section three code comments already cite).
-4. **2c — Journal projection** — `?types=` parsing and SQL, `getJournal`
-   options in all providers and the router, `useJournal` options, typed
-   journal entries for the event append, changelog/design/decisions
-   switch, empty-state sentences, tests.
-5. **Docs** — `docs/architecture.md`, `docs/hosted-projects.md` ("online-only
-   for writes; reads are cached and revalidated by ETag"), this plan's
-   "Lessons learned".
-6. **ELK worker** — last, cherry-pickable.
+Cut as a `gh stack` of one-branch-one-PR parts (`docs/conventions.md`
+§ "Shipping larger work"). The plan above was written for one branch; the
+split happened after the first three commits existed, which is why parts 1–3
+are those commits verbatim and part 2b became two parts — the API below the
+UI that consumes it.
 
-Each part passes `npm run lint`, `npx tsc --noEmit`, `npm run build`, the
-affected `test:*` scripts (sequentially — several share
-`packages/schema/.test-build/`), `npm run test:graph` against the local
-Postgres for the server parts, and `npm run generate` drift (a new
-`lucide-react` icon import changes generated files; `loader-circle` and
-`refresh-cw` are already registered).
+| # | Branch | PR | What |
+|---|---|---|---|
+| 1 | `reactive-data-1-groundwork` | #431 | `@tanstack/react-query` and this design record |
+| 2 | `reactive-data-2-query-cache` | #432 | `query-client.ts`, `project-queries.ts`, `QueryProvider`, the five hooks, the `applyMutations` contract (`version`, `events`) across the providers, the invalidation seams, `tests/data/project-queries.test.js` |
+| 3 | `reactive-data-3-panel-history` | #433 | 2a — the `history` prop, `HistorySection`'s self-read, nine page edits, the Overview off the journal gate |
+| 4 | `reactive-data-4-etag-reads` | #435 | 2b server — `etag.ts`, the validator SQL, the read routes, the single-load bundle GET, migration 011, `graph-etag` + `graph-api` coverage, `docs/spec/services.md` § Hosted Graph Projects |
+| 5 | `reactive-data-5-conditional-reads` | #436 | 2b client — `readProject`/`readJournal`, the routing fallback, the conditional queryFns, hosted polling, `updateProject`'s conditional pre-read |
+| 6 | `reactive-data-6-journal-projection` | #437 | 2c — `?types=` end to end, the changelog/design/decisions projections and their empty states |
+| 7 | `reactive-data-7-docs` | #438 | this commit: the architecture diagram, the hosted-projects wording, the doc audit, these lessons |
+
+The ELK worker is **not** in this stack: it is the layout thread, not the data
+layer, and ships on its own branch off `main` (issue #427). The deferred
+follow-ups are issue #429.
 
 ## Verification plan
 
@@ -514,3 +498,49 @@ clause from both summaries.)
   bundle's own id and the routing provider sends it to the local Dexie store
   (an empty journal, or a colliding local project's). The History section
   reads by the route id (`useProjectId()`), like every other project hook.
+
+- **Splitting after the fact worked, but cost a PR.** Parts 1–3 were three
+  commits on one branch before the split. Turning them into a stack was
+  mechanical (`git branch` at each commit, then `gh stack init`), but renaming
+  the original branch on GitHub so its PR would follow **closed** that PR
+  instead: GitHub retargets a renamed branch for pull requests that use it as
+  a *base*, not as a *head*. Rename first, or accept a new PR number. Cutting
+  the parts up front stays cheaper than either.
+
+- **The handover diff was a starting point, not a review candidate — as
+  labelled.** The unverified diff attached to #425 had never been compiled: it
+  left every caller of the changed store functions unadapted (the pollen route
+  was a type error), and its `store.ts` half was truncated mid-file by the
+  issue body it travelled in. It also needed `git apply --recount`. What it
+  did carry, and what was worth carrying, was the *reasoning* — why weak
+  validators, why counts rather than `max(seq)`, why the journal's validators
+  are read before its rows. Attach reasoning to a handover even when the code
+  is unfinished; the code was rewritten, the reasoning survived intact.
+
+- **Part 2b, D6's cost estimate held up.** Measured on 20 000 events after a
+  `vacuum analyze`: the quality-decision count is an index scan on migration
+  011's new index (0.015 ms) and the whole-event count an index-only scan
+  (~1 ms). Both are noise against the multi-megabyte snapshot read a 304
+  avoids — which is why the same shared validator statement serves `/nodes`
+  and `/edges` too, whose ETag uses only one of its three columns.
+
+- **A new module breaks the CommonJS test loaders silently.** `lib/data/
+  journal-projection.ts` is a plain relative import, and both provider loaders
+  had to learn to transpile it before the suites could even load. The same
+  trap as an `@/…` alias: the loaders enumerate their modules by hand. Adding
+  a file to `lib/data/` means checking `tests/data/load-*.js`.
+
+- **Part 2c: an empty projection is the whole journal.** The first
+  implementation made `[]` filter to nothing in memory while the server's
+  parser and the remote URL both read it as "no projection". A test caught it
+  at the seed provider. The rule now lives in one sentence in three places
+  (`normalizeJournalTypes`, `projectJournal`, `parseJournalTypes`) and in the
+  cache key, so `[]`, `null` and `undefined` cannot disagree — and a typed
+  entry still admits every appended event it should.
+
+- **A projection makes an empty state lie.** "No journal yet" was true when
+  the page read the whole journal and false the moment it read two event
+  types. Every page that narrows its read has to narrow its empty-state
+  sentence with it — the changelog now says "No releases tagged yet, and
+  nothing shipped since." This is the reviewable half of a projection, and it
+  is not in the diff of the read.
