@@ -87,7 +87,7 @@ export default function DesignPage() {
       allNodes={dataNodes}
       allEdges={dataEdges}
       scope={scope}
-      journal={journal}
+      history
     >
       <PageSurface contentClassName="flex flex-col divide-y">
         {isEmpty ? (

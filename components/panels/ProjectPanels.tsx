@@ -14,7 +14,7 @@ import { RawBundlePanel } from "@/components/panels/RawBundlePanel";
 import { EmptyState } from "@/components/ui/empty-state";
 import { deriveQualityMatrix, type KritikLibrary, type QualitySection } from "@arkaik/schema";
 import type { PlatformId } from "@/lib/config/platforms";
-import type { Edge, JournalEvent, Node } from "@/lib/data/types";
+import type { Edge, Node } from "@/lib/data/types";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useProjectId } from "@/lib/hooks/useProjectId";
 import type { PanelEntry } from "@/lib/utils/panel-stack";
@@ -45,7 +45,8 @@ interface ProjectPanelsProps {
    * only panel is the raw bundle and there is nothing to scope.
    */
   scope?: ProductScope;
-  journal?: JournalEvent[];
+  /** Whether node panels carry a History section — see `PageShell`. */
+  history?: boolean;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
   onDelete?: (nodeId: string) => void;
   onCreateNode?: (species: "flow" | "view", title: string) => Promise<Node>;
@@ -98,7 +99,7 @@ export function ProjectPanels({
   allNodes = NO_NODES,
   allEdges = NO_EDGES,
   scope = UNSCOPED,
-  journal,
+  history,
   onUpdate,
   onDelete,
   onCreateNode,
@@ -299,7 +300,7 @@ export function ProjectPanels({
             onDelete={onDelete}
             allNodes={allNodes}
             allEdges={allEdges}
-            journal={journal}
+            history={history}
             onNavigate={(target) => openNode({ nodeId: target.id }, index + 1)}
             onCreateNode={onCreateNode}
             onCreateAcceptanceForAnchor={onCreateAcceptanceForAnchor}

@@ -355,7 +355,7 @@ here.
 | Decisions (`DecisionLog`) | `node.created` | projection |
 | Overview | whole-journal counts (`journalEventCount`, `eventCount` per release) | whole journal, **off the first-paint gate**: bundle-backed cards paint first, journal-backed cards show a pending state (a server aggregate is a follow-up) |
 | History | everything | whole journal |
-| Node panel History section | every scalar-`node_id` type + `edge.*` | whole journal, **read by the section itself** via `useJournal(node.project_id)`, lazily on mount |
+| Node panel History section | every scalar-`node_id` type + `edge.*` | whole journal, **read by the section itself** via `useJournal(useProjectId())` (the route id — a hosted node's `project_id` is the imported bundle's own id), lazily on mount |
 | Maps, Library, Delivery, Acceptances | nothing | **no journal request** |
 
 - `PageShell`/`ProjectPanels`/`NodeDetailPanel` replace the
@@ -508,4 +508,9 @@ clause from both summaries.)
 
 ## Lessons learned
 
-_(filled in after the parts land)_
+- **Part 2a.** D7's `useJournal(node.project_id)` wording was wrong for hosted
+  projects: `createProject` / `replaceProjectBundle` store the bundle verbatim
+  under a server-minted `prj_…` id, so a hosted node's `project_id` is the
+  bundle's own id and the routing provider sends it to the local Dexie store
+  (an empty journal, or a colliding local project's). The History section
+  reads by the route id (`useProjectId()`), like every other project hook.

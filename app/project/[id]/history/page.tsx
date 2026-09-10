@@ -102,7 +102,7 @@ export default function HistoryPage() {
       title="History"
       meta={`${journal.length} event${journal.length === 1 ? "" : "s"}`}
       allNodes={dataNodes}
-      journal={journal}
+      history
     >
       <PageSurface contentClassName="flex flex-col gap-4">
         {journal.length === 0 ? (

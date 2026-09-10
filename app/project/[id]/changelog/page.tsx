@@ -207,7 +207,7 @@ export default function ChangelogPage() {
       allNodes={dataNodes}
       allEdges={dataEdges}
       scope={scope}
-      journal={journal}
+      history
       headerExtra={
         projectBundle?.project.version ? (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">

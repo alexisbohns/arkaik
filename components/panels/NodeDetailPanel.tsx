@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   Select,
   SelectContent,
@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { PanelSection } from "@/components/panels/PanelSection";
 import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
-import type { Node, Edge, JournalEvent } from "@/lib/data/types";
+import type { Node, Edge } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import { SPECIES } from "@/lib/config/species";
@@ -24,6 +24,8 @@ import { AcceptanceEditor } from "@/components/panels/AcceptanceEditor";
 import { AcceptancesSection } from "@/components/panels/AcceptancesSection";
 import { DecisionEditor } from "@/components/panels/DecisionEditor";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
+import { useJournal } from "@/lib/hooks/useJournal";
+import { useProjectId } from "@/lib/hooks/useProjectId";
 import {
   computeFlowPlatformRollup,
   getEditablePlatformStatuses,
@@ -56,7 +58,12 @@ interface NodeDetailPanelProps {
   onDelete?: (nodeId: string) => void;
   allNodes?: Node[];
   allEdges?: Edge[];
-  journal?: JournalEvent[];
+  /**
+   * Mount the History section. The section fetches the journal itself (one
+   * cached read shared by every open panel), so this is only the surface's say
+   * on whether the panel has a history to show at all.
+   */
+  history?: boolean;
   onNavigate?: (node: Node) => void;
   onCreateNode?: (species: "flow" | "view", title: string) => Promise<Node>;
   onCreateAcceptanceForAnchor?: (anchor: Node, title: string) => Promise<Node>;
@@ -492,18 +499,59 @@ function ConnectionItem({
 
 interface HistorySectionProps {
   node: Node;
-  journal: JournalEvent[];
   allNodes: Node[];
 }
 
-function HistorySection({ node, journal, allNodes }: HistorySectionProps) {
-  const timeline = computeNodeTimeline(journal, node.id);
+// Module-level so a panel with no node list hands the section the same empty
+// array every render, and the `nodesById` memo keyed on it stays quiet.
+const NO_NODES: Node[] = [];
+
+/**
+ * The node's own timeline, read from the journal by the section itself rather
+ * than handed down from the page. Most pages that open node panels (the maps,
+ * Library, Delivery, Acceptances) read nothing else from the journal, so
+ * fetching it up there meant paying for the whole journal on every navigation
+ * for a section that only shows once a panel opens. Reading here defers that
+ * request to the first panel, and because every mount observes the same
+ * cached query, a stack of open panels still costs one read.
+ *
+ * Absent only when the journal has been read and says nothing about this
+ * node: while the read is in flight the section stays mounted with a one-line
+ * pending state, so a panel does not grow a History section a moment after it
+ * opened.
+ *
+ * The journal is read by the route's id, never `node.project_id`. A hosted
+ * project stores the imported bundle verbatim under a server-minted `prj_…`
+ * row, so its nodes keep the bundle's own project id ("pebbles", "gp"); that
+ * id would route to the local provider and read an empty — or, worse, some
+ * other local project's — journal. The panel only ever mounts under
+ * `app/project/[id]/`, the same assumption `ProjectPanels` makes.
+ */
+function HistorySection({ node, allNodes }: HistorySectionProps) {
+  const projectId = useProjectId();
+  const { journal, loading, error } = useJournal(projectId);
+  const timeline = useMemo(() => computeNodeTimeline(journal, node.id), [journal, node.id]);
+  const nodesById = useMemo(() => new Map(allNodes.map((n) => [n.id, n])), [allNodes]);
+
+  if (loading) {
+    return (
+      <PanelSection title="History">
+        <p className="text-xs text-muted-foreground">Loading history…</p>
+      </PanelSection>
+    );
+  }
+
+  if (error) {
+    return (
+      <PanelSection title="History">
+        <p className="text-xs text-muted-foreground">{error}</p>
+      </PanelSection>
+    );
+  }
 
   if (timeline.length === 0) {
     return null;
   }
-
-  const nodesById = new Map(allNodes.map((n) => [n.id, n]));
 
   return (
     <PanelSection title="History">
@@ -662,7 +710,7 @@ export function NodeDetailPanel({
   onDelete,
   allNodes,
   allEdges,
-  journal,
+  history,
   onNavigate,
   onCreateNode,
   onCreateAcceptanceForAnchor,
@@ -769,12 +817,11 @@ export function NodeDetailPanel({
           onNavigate={onNavigate}
         />
       )}
-      {journal && (
+      {history && (
         <HistorySection
           key={`history-${node.id}`}
           node={node}
-          journal={journal}
-          allNodes={allNodes ?? []}
+          allNodes={allNodes ?? NO_NODES}
         />
       )}
     </div>

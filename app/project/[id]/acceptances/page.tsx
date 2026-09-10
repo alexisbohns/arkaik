@@ -9,7 +9,6 @@ import { useEdges } from "@/lib/hooks/useEdges";
 import { useProjectId } from "@/lib/hooks/useProjectId";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useProject } from "@/lib/hooks/useProject";
-import { useJournal } from "@/lib/hooks/useJournal";
 import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
 import { useAcceptanceFilters } from "@/components/acceptances/acceptance-filters";
@@ -31,7 +30,6 @@ export default function ProjectAcceptancesPage() {
   const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes, updateNode, addNode, applyMutations } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges, syncEdges } = useEdges(id);
   const { project: projectBundle, error: projectError, reload: reloadProject } = useProject(id);
-  const { journal, error: journalError, reload: reloadJournal } = useJournal(id);
   const intake = useAcceptanceIntake({
     projectId: id,
     nodes: dataNodes,
@@ -162,7 +160,7 @@ export default function ProjectAcceptancesPage() {
   // Before the matrix, never after (#362): with no nodes the header reads
   // "0 total · 0 shown" and the matrix draws its own empty body — a project
   // whose entire acceptance coverage looks deleted rather than unread.
-  const loadError = nodesError ?? edgesError ?? projectError ?? journalError;
+  const loadError = nodesError ?? edgesError ?? projectError;
   if (loadError) {
     return (
       <PageError
@@ -172,7 +170,6 @@ export default function ProjectAcceptancesPage() {
           void reloadNodes();
           void reloadEdges();
           void reloadProject();
-          void reloadJournal();
         }}
       />
     );
@@ -195,7 +192,7 @@ export default function ProjectAcceptancesPage() {
         allNodes={dataNodes}
         allEdges={dataEdges}
         scope={scope}
-        journal={journal}
+        history
         onUpdate={handleNodeUpdate}
         onCreateAcceptanceForAnchor={handleCreateAcceptanceForAnchor}
         intake={intake}
