@@ -111,13 +111,30 @@ function countLabel(count: number): string {
  * used to share this screen (backlog, commitments, decisions) has its own page;
  * none of it had shipped, which is the one thing a changelog is about.
  */
+/**
+ * What this page reads. A projection, so it must stay in step with what the
+ * page renders — and with its empty state, which now says "no releases, nothing
+ * shipped" rather than "no journal": the events that would contradict a
+ * broader claim are no longer read.
+ */
+const CHANGELOG_EVENT_TYPES = ["deliverable.shipped", "release.tagged"] as const;
+
 export default function ChangelogPage() {
   const id = useProjectId();
 
   const { project: projectBundle, loading: projectLoading, error: projectError, reload: reloadProject } = useProject(id);
   const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes } = useNodes(id);
   const { edges: dataEdges, error: edgesError, reload: reloadEdges } = useEdges(id);
-  const { journal, loading: journalLoading, error: journalError, reload: reloadJournal } = useJournal(id);
+  // The page renders shipped work and the releases it falls under, and nothing
+  // else: on a hosted project the rest of the journal never crosses the wire
+  // (`computeDeliverables` reads exactly these two types, and the release
+  // filter below reads one of them).
+  const {
+    journal,
+    loading: journalLoading,
+    error: journalError,
+    reload: reloadJournal,
+  } = useJournal(id, { types: CHANGELOG_EVENT_TYPES });
   // Display only — the changelog itself stays unscoped; this just fills the
   // header's meta line with the same scope name every other surface shows.
   const scope = useEffectiveProduct(id, projectBundle);
@@ -236,7 +253,7 @@ export default function ChangelogPage() {
         }
       >
         {isEmpty ? (
-          <EmptyState message="No journal yet. Releases and updates will appear here once history is recorded." />
+          <EmptyState message="No releases tagged yet, and nothing shipped since." />
         ) : nothingInPeriod ? (
           <EmptyState
             message={

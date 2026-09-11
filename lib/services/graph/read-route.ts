@@ -27,14 +27,24 @@ import { loadValidators, type ProjectValidators } from "@/lib/services/graph/sto
  * read (the CLI, the MCP remote store) gets its validators from the body
  * load for free, and never sees a 304.
  */
-export function graphReadRoute<K extends string, T>(
+export function graphReadRoute<K extends string, T, O = undefined>(
   label: string,
   key: K,
   load: (
     projectId: string,
     ownerIds: readonly string[],
+    options: O,
   ) => Promise<(Record<K, T> & { validators: ProjectValidators }) | null>,
   etagFor: (validators: ProjectValidators) => string,
+  /**
+   * Reads the loader's options off the request — the `?types=` projection, and
+   * only the journal route has one. A route WITHOUT a parser ignores the query
+   * string entirely: `/nodes`, `/edges` and `/export` answer the same body
+   * whatever is appended to their URL, which is what makes their validators
+   * honest (a projection that changed the body without changing the ETag
+   * would hand every client a 304 over the wrong rows).
+   */
+  parseOptions?: (req: Request) => { ok: true; options: O } | { ok: false; error: string },
 ) {
   return async function GET(
     req: Request,
@@ -49,6 +59,15 @@ export function graphReadRoute<K extends string, T>(
     }
 
     const { projectId } = await params;
+
+    // Before the conditional check and before any load: a request that cannot
+    // be read at all is a 400 whatever it would have matched.
+    let options = undefined as O;
+    if (parseOptions) {
+      const parsed = parseOptions(req);
+      if (!parsed.ok) return Response.json({ error: parsed.error }, { status: 400 });
+      options = parsed.options;
+    }
 
     try {
       // null means "not yours or not there" — the same 404 either way, so this
@@ -65,7 +84,7 @@ export function graphReadRoute<K extends string, T>(
         }
       }
 
-      const result = await load(projectId, caller.ownerIds);
+      const result = await load(projectId, caller.ownerIds, options);
       if (result === null) return Response.json({ error: "not_found" }, { status: 404 });
       return Response.json(
         { [key]: result[key] },

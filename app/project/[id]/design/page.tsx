@@ -30,13 +30,34 @@ import { productScopeMetaLabel } from "@/lib/utils/product-scope";
  * changelog answers "what shipped", and none of this has shipped. Same rows
  * shell as the Overview (`SectionRow`) — heading left, content right.
  */
+/**
+ * What this page reads. Keep it in step with the projections below and with
+ * the empty state, which claims only what these four types can disprove.
+ */
+const DESIGN_EVENT_TYPES = [
+  "idea.proposed",
+  "request.filed",
+  "node.status_changed",
+  "decision.status_changed",
+] as const;
+
 export default function DesignPage() {
   const id = useProjectId();
 
   const { project: projectBundle, loading: projectLoading, error: projectError, reload: reloadProject } = useProject(id);
   const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes } = useNodes(id);
   const { edges: dataEdges, error: edgesError, reload: reloadEdges } = useEdges(id);
-  const { journal, loading: journalLoading, error: journalError, reload: reloadJournal } = useJournal(id);
+  // A projection of four types, not the whole history: `computeBacklog` reads
+  // the two intake types (and takes `existingNodeIds` from the snapshot below,
+  // so it needs no node.created/node.deleted to work out what is still open),
+  // `computeCommitments` reads node.status_changed, and the decisions feed
+  // reads decision.status_changed.
+  const {
+    journal,
+    loading: journalLoading,
+    error: journalError,
+    reload: reloadJournal,
+  } = useJournal(id, { types: DESIGN_EVENT_TYPES });
   const { openNode } = useProjectPanels();
   // Display only — the design funnel itself stays unscoped; this just fills the
   // header's meta line with the same scope name every other surface shows.
@@ -91,7 +112,7 @@ export default function DesignPage() {
     >
       <PageSurface contentClassName="flex flex-col divide-y">
         {isEmpty ? (
-          <EmptyState message="No journal yet. Ideas, commitments and decisions appear here once history is recorded." />
+          <EmptyState message="No ideas, commitments or decisions recorded yet." />
         ) : (
           <>
             <SectionRow

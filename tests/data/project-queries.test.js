@@ -135,6 +135,12 @@ async function main() {
     );
     check("journalKey carries null for the whole journal", JSON.stringify(journalKey("p", null)[3]) === '{"types":null}');
     check(
+      "an empty projection IS the whole journal — [] and undefined share that key",
+      JSON.stringify(journalKey("p", [])) === JSON.stringify(journalKey("p", null)) &&
+        JSON.stringify(journalKey("p", undefined)) === JSON.stringify(journalKey("p", null)),
+      JSON.stringify(journalKey("p", [])),
+    );
+    check(
       "projectKey is a prefix of both",
       JSON.stringify(bundleKey("p").slice(0, 2)) === JSON.stringify(projectKey("p")) &&
         JSON.stringify(journalKey("p", null).slice(0, 2)) === JSON.stringify(projectKey("p")),

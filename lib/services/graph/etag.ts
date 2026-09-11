@@ -102,6 +102,47 @@ export function ifNoneMatchSatisfied(header: string | null, etag: string): boole
     .some((candidate) => candidate.length > 0 && candidate === wanted);
 }
 
-// `parseJournalTypes` — the `?types=` projection's parser — arrives with the
-// journal projection (Part 2c) and lives here beside the validators it
-// shares a route with.
+/**
+ * The most types one request may project. A projection exists to make a read
+ * SMALLER; past a few dozen types the caller is asking for the whole journal
+ * the long way round, and the `= any($2)` predicate stops being worth its
+ * index lookup. Fail closed rather than truncate — a silently trimmed list
+ * would answer with a subset the caller never asked for and cannot detect.
+ */
+const MAX_JOURNAL_TYPES = 32;
+
+export type ParsedJournalTypes =
+  | { ok: true; types: string[] | null }
+  | { ok: false; error: string };
+
+/**
+ * The `?types=` projection of a journal read: which event types the caller
+ * wants, or `null` for the whole journal (docs/spec/services.md § Hosted
+ * Graph Projects → Read contract).
+ *
+ * The grammar is deliberately forgiving in shape and strict in size.
+ * `?types=a&types=b` and `?types=a,b` mean the same thing, whitespace around
+ * a token is ignored and empty tokens are dropped, so a client can build the
+ * value by joining without guarding for a trailing comma. The result is
+ * deduped and SORTED, which makes it a canonical form: the same projection
+ * always produces the same list whatever order it was asked in — the same
+ * normalization the query cache's journal key already performs, so client
+ * and server agree on what "the same projection" means.
+ *
+ * No token is validated against the known vocabulary. An unknown type is a
+ * type nothing has written yet, and it answers with an empty list, not a
+ * `400` — a client reading a forward-compatible event type must not break
+ * against an older server.
+ */
+export function parseJournalTypes(searchParams: URLSearchParams): ParsedJournalTypes {
+  const seen = new Set<string>();
+  for (const value of searchParams.getAll("types")) {
+    for (const token of value.split(",")) {
+      const trimmed = token.trim();
+      if (trimmed.length > 0) seen.add(trimmed);
+    }
+  }
+  if (seen.size === 0) return { ok: true, types: null };
+  if (seen.size > MAX_JOURNAL_TYPES) return { ok: false, error: "invalid_types" };
+  return { ok: true, types: [...seen].sort() };
+}

@@ -352,13 +352,27 @@ export async function getEdges(
 export async function getJournal(
   projectId: string,
   ownerIds: readonly string[],
+  options: { types?: readonly string[] | null } = {},
 ): Promise<{ journal: JournalEvent[]; validators: ProjectValidators } | null> {
   const validators = await loadValidators(projectId, ownerIds);
   if (!validators) return null;
-  const { rows } = await query<{ event: JournalEvent }>(
-    `select event from graph_events where project_id = $1 order by seq asc`,
-    [projectId],
-  );
+  const types = options.types ?? null;
+  // The projection is a WHERE, not a post-filter: the point is that the rows
+  // never leave Postgres. `(project_id, (event->>'type'), seq)` from migration
+  // 011 serves both the predicate and the ordering, so a typed read comes out
+  // in server order straight from the index.
+  const { rows } =
+    types === null
+      ? await query<{ event: JournalEvent }>(
+          `select event from graph_events where project_id = $1 order by seq asc`,
+          [projectId],
+        )
+      : await query<{ event: JournalEvent }>(
+          `select event from graph_events
+            where project_id = $1 and event->>'type' = any($2::text[])
+            order by seq asc`,
+          [projectId, types],
+        );
   return { journal: rows.map((row) => row.event), validators };
 }
 

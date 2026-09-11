@@ -462,6 +462,31 @@ async function main() {
       `${seen[0]?.url} ${JSON.stringify(journal)}`,
     );
 
+    // The projection travels as ?types=, on both the plain and the conditional
+    // read, so a page asking for two event types downloads two event types.
+    seen.length = 0;
+    await router.getJournal(HOSTED, { types: ["release.tagged", "deliverable.shipped"] });
+    check(
+      "getJournal appends ?types= for a hosted project",
+      seen[0].url.endsWith("/journal?types=release.tagged%2Cdeliverable.shipped"),
+      seen[0]?.url,
+    );
+    seen.length = 0;
+    await router.readJournal(HOSTED, { etag: null, types: ["deliverable.shipped"] });
+    check(
+      "readJournal sends the same projection",
+      seen[0].url.endsWith("/journal?types=deliverable.shipped"),
+      seen[0]?.url,
+    );
+    seen.length = 0;
+    await router.getJournal(HOSTED, { types: [] });
+    await router.getJournal(HOSTED);
+    check(
+      "an empty projection and none at all are both the whole journal — no query string",
+      seen.every((request) => request.url.endsWith(`/projects/${HOSTED}/journal`)),
+      seen.map((r) => r.url).join(" | "),
+    );
+
     // The router's fallback: a local id has no server validator, so the plain
     // read stands in as an unconditional `fresh` answer — no network, no throw.
     resetCalls();

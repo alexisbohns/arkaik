@@ -70,10 +70,17 @@ export interface ReadProjectOptions {
   signal?: AbortSignal;
 }
 
-export interface ReadJournalOptions extends ReadProjectOptions {
-  /** The projection, or `null` for the whole journal (Part 2c wires it). */
+export interface JournalProjection {
+  /**
+   * The event types to read, or `null`/absent for the whole journal. Every
+   * backend honours it: the remote one as `?types=`, the local and seed ones
+   * as an in-memory filter. Order is always server order, never the order the
+   * types were asked in.
+   */
   types?: readonly string[] | null;
 }
+
+export interface ReadJournalOptions extends ReadProjectOptions, JournalProjection {}
 
 export interface DataProvider {
   getProject(id: string): Promise<ProjectBundle | undefined>;
@@ -89,7 +96,7 @@ export interface DataProvider {
    * only the embedded journal; repo `.jsonl` sidecar loading is a CLI/M3
    * concern (docs/spec/journal.md § Storage Shapes).
    */
-  getJournal(projectId: string): Promise<JournalEvent[]>;
+  getJournal(projectId: string, options?: JournalProjection): Promise<JournalEvent[]>;
 
   /**
    * Mutators all take `projectId` explicitly, including the ones whose subject

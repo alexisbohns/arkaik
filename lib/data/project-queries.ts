@@ -43,9 +43,16 @@ const journalPrefix = (projectId: string) => [...projectKey(projectId), "journal
  * asking for the same events in a different order share one entry. `null`
  * is the whole journal.
  */
-export function normalizeJournalTypes(types: readonly string[] | null): string[] | null {
-  if (types === null) return null;
-  return [...new Set(types)].sort();
+export function normalizeJournalTypes(types: readonly string[] | null | undefined): string[] | null {
+  if (types === null || types === undefined) return null;
+  const unique = [...new Set(types)].sort();
+  // An EMPTY list is not a projection of nothing — it is a caller with nothing
+  // to narrow by, and the whole journal is the honest answer. Collapsing it to
+  // `null` here keeps one entry per projection (`[]`, `null` and `undefined`
+  // share a key), keeps the event append admitting everything into it, and
+  // matches both the remote provider's URL and the server's own parser, where
+  // zero tokens likewise mean the whole journal.
+  return unique.length === 0 ? null : unique;
 }
 
 // --- Entry shapes ----------------------------------------------------------
@@ -99,7 +106,7 @@ async function readProjectJournal(
   options: { etag: string | null; types: readonly string[] | null; signal?: AbortSignal },
 ): Promise<ReadResult<JournalEvent[]>> {
   if (provider.readJournal) return provider.readJournal(projectId, options);
-  return { status: "fresh", value: await provider.getJournal(projectId), etag: null };
+  return { status: "fresh", value: await provider.getJournal(projectId, { types: options.types }), etag: null };
 }
 
 // --- Query descriptors -------------------------------------------------------

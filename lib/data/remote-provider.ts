@@ -2,6 +2,7 @@ import type { MutationOp } from "@arkaik/schema";
 
 import type {
   DataProvider,
+  JournalProjection,
   MutationResult,
   ProjectSummary,
   ReadJournalOptions,
@@ -133,6 +134,20 @@ export function createRemoteProvider(options: RemoteProviderOptions = {}): DataP
   }
 
   /**
+   * The journal route with its projection, if any. Comma-joined and encoded
+   * once — the server splits on commas and accepts the repeated-parameter
+   * form too, but one parameter keeps the URL (and the cache key it becomes
+   * in a proxy log) short. An empty list is not a projection: it means the
+   * caller has nothing to ask for, and the whole journal is the honest answer,
+   * matching `normalizeJournalTypes` in the query cache.
+   */
+  function journalPath(projectId: string, types: readonly string[] | null | undefined): string {
+    const base = `/projects/${encodeURIComponent(projectId)}/journal`;
+    if (!types || types.length === 0) return base;
+    return `${base}?types=${encodeURIComponent(types.join(","))}`;
+  }
+
+  /**
    * A GET that revalidates: `etag` (when given) travels as `If-None-Match`,
    * and the answer is either the fresh body with the validator the server
    * put on it, or the bodiless `not-modified`. A 404 still throws here; each
@@ -222,10 +237,8 @@ export function createRemoteProvider(options: RemoteProviderOptions = {}): DataP
       return edges;
     },
 
-    async getJournal(projectId: string): Promise<JournalEvent[]> {
-      const { journal } = await request<{ journal: JournalEvent[] }>(
-        `/projects/${encodeURIComponent(projectId)}/journal`,
-      );
+    async getJournal(projectId: string, options?: JournalProjection): Promise<JournalEvent[]> {
+      const { journal } = await request<{ journal: JournalEvent[] }>(journalPath(projectId, options?.types));
       return journal;
     },
 
@@ -300,12 +313,10 @@ export function createRemoteProvider(options: RemoteProviderOptions = {}): DataP
       }
     },
 
-    // `types` is accepted but not yet sent: the `?types=` projection is the
-    // server's next step (Part 2c), and the cache already keys on it.
     async readJournal(projectId: string, options: ReadJournalOptions): Promise<ReadResult<JournalEvent[]>> {
       try {
         const got = await conditionalGet<{ journal: JournalEvent[] }>(
-          `/projects/${encodeURIComponent(projectId)}/journal`,
+          journalPath(projectId, options.types),
           { etag: options.etag, signal: options.signal },
         );
         if (got.status === "not-modified") return { status: "not-modified" };

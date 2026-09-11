@@ -44,6 +44,7 @@ const {
   bundleEtag,
   readResponseHeaders,
   ifNoneMatchSatisfied,
+  parseJournalTypes,
 } = loadEtag();
 
 let failures = 0;
@@ -121,6 +122,44 @@ assert(ifNoneMatchSatisfied(",,", 'W/"3.4"') === false, "a list of empty members
 assert(
   ifNoneMatchSatisfied("3.4", 'W/"3.4"') === false,
   "an unquoted value is not an entity-tag — a malformed member simply misses",
+);
+
+// --- The ?types= projection -------------------------------------------------
+const types = (query) => parseJournalTypes(new URLSearchParams(query));
+
+assert(types("").types === null, "no types at all means the whole journal");
+assert(types("types=").types === null, "an empty value means the whole journal, not an empty projection");
+assert(types("types=,,").types === null, "a value of nothing but separators means the whole journal");
+assert(JSON.stringify(types("types=release.tagged").types) === JSON.stringify(["release.tagged"]), "one type");
+assert(JSON.stringify(types("types=b,a").types) === JSON.stringify(["a", "b"]), "a comma list is split and sorted");
+assert(
+  JSON.stringify(types("types=b&types=a").types) === JSON.stringify(["a", "b"]),
+  "a repeated parameter is the same grammar",
+);
+assert(
+  JSON.stringify(types("types=b,c&types=a").types) === JSON.stringify(["a", "b", "c"]),
+  "…and the two forms mix",
+);
+assert(
+  JSON.stringify(types("types=%20b%20,%20a%20,").types) === JSON.stringify(["a", "b"]),
+  "tokens are trimmed and empty ones dropped, so a trailing comma is harmless",
+);
+assert(
+  JSON.stringify(types("types=a,b,a&types=b").types) === JSON.stringify(["a", "b"]),
+  "duplicates collapse — the sorted, deduped list is a canonical projection",
+);
+assert(
+  JSON.stringify(types("types=not.a.known.type").types) === JSON.stringify(["not.a.known.type"]),
+  "an unknown type is accepted — it answers empty, and a forward-compatible client must not break",
+);
+
+const thirtyTwo = Array.from({ length: 32 }, (_, i) => `t${i}`).join(",");
+assert(types(`types=${thirtyTwo}`).ok === true, "32 types is allowed");
+assert(types(`types=${thirtyTwo},t32`).ok === false, "33 types is refused");
+assert(types(`types=${thirtyTwo},t32`).error === "invalid_types", "…as invalid_types, which the route answers 400 to");
+assert(
+  types(`types=${thirtyTwo},t0`).ok === true,
+  "…and the cap counts DISTINCT types, so repeats never push a caller over it",
 );
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });

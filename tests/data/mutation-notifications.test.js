@@ -252,6 +252,30 @@ async function main() {
     check("applyMutations reports no server version", outcome.version === undefined);
     const noop = await localProvider.applyMutations(PROJECT_D, [{ op: "update_node", node_id: "V-d1", patch: { title: "d1 renamed" } }]);
     check("a no-op batch returns an empty events list", Array.isArray(noop.events) && noop.events.length === 0, JSON.stringify(noop.events));
+
+    // The `?types=` projection, in memory. A local project has nothing to save
+    // by narrowing the read — the events are already in Dexie — but every
+    // backend answers the same question, so a page can ask for its types
+    // without knowing where the project lives.
+    const whole = await localProvider.getJournal(PROJECT_D);
+    const created = await localProvider.getJournal(PROJECT_D, { types: ["node.created"] });
+    check(
+      "getJournal({ types }) filters to those types, in journal order",
+      created.length > 0 &&
+        created.every((event) => event.type === "node.created") &&
+        JSON.stringify(created.map((e) => e.id)) ===
+          JSON.stringify(whole.filter((e) => e.type === "node.created").map((e) => e.id)),
+      JSON.stringify(created.map((e) => e.type)),
+    );
+    check(
+      "an unknown type projects to nothing",
+      (await localProvider.getJournal(PROJECT_D, { types: ["nothing.writes.this"] })).length === 0,
+    );
+    check(
+      "no projection, an empty one and a null one are all the whole journal",
+      (await localProvider.getJournal(PROJECT_D, { types: [] })).length === whole.length &&
+        (await localProvider.getJournal(PROJECT_D, { types: null })).length === whole.length,
+    );
   }
 
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
