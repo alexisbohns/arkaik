@@ -1,9 +1,10 @@
-import type { QueryClient } from "@tanstack/query-core";
+import type { QueryClient, QueryFunctionContext } from "@tanstack/query-core";
 
-import type { MutationResult, ProjectSummary } from "@/lib/data/data-provider";
+import type { DataProvider, MutationResult, ProjectSummary, ReadResult } from "@/lib/data/data-provider";
 import { subscribeToMutations } from "@/lib/data/local-provider";
 import { getProvider } from "@/lib/data/provider-registry";
 import { getQueryClient } from "@/lib/data/query-client";
+import { isHostedProjectId } from "@/lib/data/remote-provider";
 import type { Edge, JournalEvent, Node, ProjectBundle } from "@/lib/data/types";
 
 /**
@@ -54,7 +55,9 @@ export function normalizeJournalTypes(types: readonly string[] | null): string[]
  * data cannot be `undefined`, and a missing project must still resolve so the
  * surface stops loading. `version` is the server's strong version, used to
  * refuse a write-back that belongs to an older request; `etag` is the read
- * validator a conditional refetch will send (Part 2b — always `null` today).
+ * validator the next refetch sends as `If-None-Match` (`null` for a backend
+ * without one, and after every write-back — the entry no longer matches any
+ * server ETag).
  */
 export interface BundleEntry {
   bundle: ProjectBundle;
@@ -67,36 +70,109 @@ export interface JournalEntry {
   etag: string | null;
 }
 
+// --- Conditional reads ---------------------------------------------------------
+
+/**
+ * A project read through the provider's conditional method. The routing
+ * provider — what `getProvider()` answers in the app — always has one, and
+ * owns the fallback for its local and seed backends. The wrap here is for a
+ * BARE provider installed through `setProvider` (a test fake, the read-only
+ * repo-bundle viewer): the optional method is absent, and the plain read is
+ * an unconditional `fresh` answer with no validator.
+ *
+ * Exported for `useProject`'s pre-save read, which must not go through the
+ * cache (see there) but should still be conditional on a hosted project.
+ */
+export async function readProjectBundle(
+  provider: DataProvider,
+  projectId: string,
+  options: { etag: string | null; signal?: AbortSignal },
+): Promise<ReadResult<ProjectBundle>> {
+  if (provider.readProject) return provider.readProject(projectId, options);
+  const bundle = await provider.getProject(projectId);
+  return bundle === undefined ? { status: "missing" } : { status: "fresh", value: bundle, etag: null };
+}
+
+async function readProjectJournal(
+  provider: DataProvider,
+  projectId: string,
+  options: { etag: string | null; types: readonly string[] | null; signal?: AbortSignal },
+): Promise<ReadResult<JournalEvent[]>> {
+  if (provider.readJournal) return provider.readJournal(projectId, options);
+  return { status: "fresh", value: await provider.getJournal(projectId), etag: null };
+}
+
 // --- Query descriptors -------------------------------------------------------
+
+/**
+ * Hosted projects are written server-side while a tab is open — by agents,
+ * the CLI, the GitHub App — and the remote provider has no mutation bus to
+ * hear about it. So they poll, one conditional GET a minute that the server
+ * answers with a bodiless 304 while nothing moved, and only while the tab is
+ * visible. Local and seed projects have a bus (or no writers but this tab)
+ * and never poll.
+ */
+function pollingFor(projectId: string): { refetchInterval: number | false; refetchIntervalInBackground: boolean } {
+  return { refetchInterval: isHostedProjectId(projectId) ? 60_000 : false, refetchIntervalInBackground: false };
+}
 
 /**
  * No `enabled` gate on any of these: `useProjectId()` falls back to `""`, and
  * an empty id must resolve to a not-found entry with `loading: false`, exactly
  * as `getProject("")` did in the hooks before the cache.
+ *
+ * The read is conditional on the entry already cached: its `etag` travels as
+ * `If-None-Match`, and a `not-modified` answer returns THAT SAME ENTRY — same
+ * reference, so structural sharing short-circuits and nothing downstream
+ * renders. `signal` is TanStack's, so a `cancelQueries` (every write-back
+ * starts with one) actually tears the request down rather than letting a
+ * stale body arrive and be ignored.
  */
 export function bundleQueryOptions(projectId: string) {
   return {
     queryKey: bundleKey(projectId),
-    queryFn: async (): Promise<BundleEntry | null> => {
-      const bundle = await getProvider().getProject(projectId);
-      return bundle === undefined ? null : { bundle, version: null, etag: null };
+    queryFn: async ({ client, signal }: QueryFunctionContext): Promise<BundleEntry | null> => {
+      const provider = getProvider();
+      const previous = client.getQueryData<BundleEntry | null>(bundleKey(projectId));
+      let read = await readProjectBundle(provider, projectId, { etag: previous?.etag ?? null, signal });
+      if (read.status === "not-modified") {
+        if (previous) return previous;
+        // A 304 with nothing to fall back on should not happen (no entry, no
+        // etag sent) — but a server that answered one anyway must not leave
+        // the query without data. Read again, unconditionally.
+        read = await readProjectBundle(provider, projectId, { etag: null, signal });
+      }
+      if (read.status !== "fresh") return null;
+      return { bundle: read.value, version: read.version ?? null, etag: read.etag };
     },
+    ...pollingFor(projectId),
   };
 }
 
 /**
- * `types` is in the key today but not yet in the read: the providers only
- * know how to return the whole journal (Part 2c adds the projection). Keeping
- * the parameter now means the callers and the event append already speak the
- * final shape.
+ * The same conditional read for a journal projection. `types` is in the key
+ * and handed to the provider, but the providers still return the whole
+ * journal (Part 2c wires the `?types=` read); the callers and the event
+ * append already speak the final shape. A missing project is a `null` entry,
+ * like the bundle's.
  */
 export function journalQueryOptions(projectId: string, types: readonly string[] | null) {
+  const key = journalKey(projectId, types);
   return {
-    queryKey: journalKey(projectId, types),
-    queryFn: async (): Promise<JournalEntry> => {
-      const events = await getProvider().getJournal(projectId);
-      return { events, etag: null };
+    queryKey: key,
+    queryFn: async ({ client, signal }: QueryFunctionContext): Promise<JournalEntry | null> => {
+      const provider = getProvider();
+      const previous = client.getQueryData<JournalEntry | null>(key);
+      const options = { types: key[3].types, signal };
+      let read = await readProjectJournal(provider, projectId, { ...options, etag: previous?.etag ?? null });
+      if (read.status === "not-modified") {
+        if (previous) return previous;
+        read = await readProjectJournal(provider, projectId, { ...options, etag: null });
+      }
+      if (read.status !== "fresh") return null;
+      return { events: read.value, etag: read.etag };
     },
+    ...pollingFor(projectId),
   };
 }
 

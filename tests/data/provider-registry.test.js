@@ -365,6 +365,122 @@ async function main() {
     check("...promptly", Date.now() - started < 500, String(Date.now() - started));
   }
 
+  // --- Conditional reads (Part 2b) -----------------------------------------
+  // The remote provider sends the validator the cache stored and turns the
+  // server's 304 into "keep what you have"; the ROUTER owns the fallback, so
+  // a caller may call these for any id.
+  {
+    const seen = [];
+    const answer = { status: 200, body: { bundle: { project: { id: HOSTED } }, version: "7" }, etag: 'W/"7.3"' };
+    const router = routing.createRoutingProvider({
+      local: reg.localFake,
+      remote: remote.createRemoteProvider({
+        fetchImpl: async (url, init) => {
+          seen.push({ url: String(url), headers: init?.headers ?? {}, signal: init?.signal });
+          if (answer.status === 304) return new Response(null, { status: 304, headers: { etag: answer.etag } });
+          if (answer.status !== 200) return new Response(JSON.stringify({ error: "nope" }), { status: answer.status });
+          return new Response(JSON.stringify(answer.body), {
+            status: 200,
+            headers: { "content-type": "application/json", etag: answer.etag },
+          });
+        },
+      }),
+      isRemoteAvailable: () => true,
+    });
+
+    // An unconditional read sends no validator.
+    seen.length = 0;
+    const first = await router.readProject(HOSTED, { etag: null });
+    check(
+      "readProject with no etag sends no If-None-Match",
+      seen.length === 1 && !("if-none-match" in seen[0].headers),
+      JSON.stringify(seen[0]?.headers),
+    );
+    check(
+      "…and answers fresh with the bundle, the server ETag and the version",
+      first.status === "fresh" &&
+        first.value.project.id === HOSTED &&
+        first.etag === 'W/"7.3"' &&
+        first.version === "7",
+      JSON.stringify(first),
+    );
+
+    // The stored validator travels back as If-None-Match.
+    seen.length = 0;
+    await router.readProject(HOSTED, { etag: 'W/"7.3"' });
+    check(
+      "readProject sends the stored validator as If-None-Match",
+      seen[0].headers["if-none-match"] === 'W/"7.3"',
+      JSON.stringify(seen[0].headers),
+    );
+
+    // A 304 is recognized before the ok-check and carries no value.
+    answer.status = 304;
+    const unchanged = await router.readProject(HOSTED, { etag: 'W/"7.3"' });
+    check(
+      "a 304 answers not-modified, with no value to overwrite the cache",
+      unchanged.status === "not-modified" && !("value" in unchanged),
+      JSON.stringify(unchanged),
+    );
+    const unchangedJournal = await router.readJournal(HOSTED, { etag: 'W/"7.3"' });
+    check("…and so does a 304 on the journal", unchangedJournal.status === "not-modified", JSON.stringify(unchangedJournal));
+
+    // A 404 is "no such project", distinct from an error.
+    answer.status = 404;
+    const gone = await router.readProject(HOSTED, { etag: null });
+    check("a 404 answers missing, not an error", gone.status === "missing", JSON.stringify(gone));
+
+    // Anything else still throws — a 401 must never look like an empty project.
+    answer.status = 401;
+    let threw = null;
+    try {
+      await router.readProject(HOSTED, { etag: null });
+    } catch (err) {
+      threw = err;
+    }
+    check("a 401 still throws rather than reading as missing", threw !== null && threw.status === 401, String(threw));
+
+    // The query cache's AbortSignal reaches fetch, so a cancelled read is torn
+    // down rather than merely ignored.
+    answer.status = 200;
+    seen.length = 0;
+    const controller = new AbortController();
+    await router.readProject(HOSTED, { etag: null, signal: controller.signal });
+    check("the AbortSignal is forwarded to fetch", seen[0].signal === controller.signal);
+
+    // The journal read hits the journal route and keeps its own validator.
+    answer.body = { journal: [{ id: "e1", type: "node.created" }] };
+    answer.etag = 'W/"7.9"';
+    seen.length = 0;
+    const journal = await router.readJournal(HOSTED, { etag: null, types: null });
+    check(
+      "readJournal reads the journal route and returns its events and validator",
+      seen[0].url.endsWith(`/api/graph/projects/${HOSTED}/journal`) &&
+        journal.status === "fresh" &&
+        journal.value.length === 1 &&
+        journal.etag === 'W/"7.9"',
+      `${seen[0]?.url} ${JSON.stringify(journal)}`,
+    );
+
+    // The router's fallback: a local id has no server validator, so the plain
+    // read stands in as an unconditional `fresh` answer — no network, no throw.
+    resetCalls();
+    seen.length = 0;
+    const localJournal = await router.readJournal(LOCAL, { etag: null, types: null });
+    check(
+      "a local id falls back to getJournal, with no validator and no network",
+      localJournal.status === "fresh" && localJournal.etag === null && seen.length === 0 &&
+        calls.includes(`getJournal:${LOCAL}`),
+      `${JSON.stringify(localJournal)} | ${calls.join(",")}`,
+    );
+    const localProject = await router.readProject(LOCAL, { etag: null });
+    check(
+      "…and readProject falls back to getProject, whose undefined is missing",
+      localProject.status === "missing" && calls.includes(`getProject:${LOCAL}`) && seen.length === 0,
+      `${JSON.stringify(localProject)} | ${calls.join(",")}`,
+    );
+  }
+
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 
   if (failures > 0) {
