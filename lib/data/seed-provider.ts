@@ -1,9 +1,9 @@
 import { applyOps, type MutationOp } from "@arkaik/schema";
 
-import type { DataProvider } from "./data-provider";
+import type { DataProvider, MutationResult } from "./data-provider";
 import { toJournalEvents } from "./emit-events";
 import { migrateBundle } from "./migrate";
-import type { Node, ProjectBundle } from "./types";
+import type { JournalEvent, Node, ProjectBundle } from "./types";
 
 /**
  * The public self-map's provider (self-map program, cycle 4): a `DataProvider`
@@ -66,10 +66,14 @@ export function createSeedProvider(loadBundle: () => ProjectBundle): DataProvide
     const outcome = applyOps({ projectId, nodes: current.nodes, edges: current.edges }, structuredClone(ops));
     current.nodes = outcome.nodes;
     current.edges = outcome.edges;
-    if (outcome.eventInputs.length > 0) {
-      current.journal = [...(current.journal ?? []), ...toJournalEvents(outcome.eventInputs)];
+    // Derived once and handed back alongside the graph, so `applyMutations`
+    // reports exactly what the sandbox's journal gained — the same contract
+    // the local provider's `runOps` keeps.
+    const events: JournalEvent[] = toJournalEvents(outcome.eventInputs);
+    if (events.length > 0) {
+      current.journal = [...(current.journal ?? []), ...events];
     }
-    return outcome;
+    return { ...outcome, events };
   };
 
   const matchesProject = (projectId: string): boolean => ensure().project.id === projectId;
@@ -154,9 +158,9 @@ export function createSeedProvider(loadBundle: () => ProjectBundle): DataProvide
       runOps(projectId, [{ op: "delete_edge", edge_id: id }]);
     },
 
-    async applyMutations(projectId, ops) {
-      const { nodes, edges } = runOps(projectId, ops);
-      return structuredClone({ nodes, edges });
+    async applyMutations(projectId, ops): Promise<MutationResult> {
+      const { nodes, edges, events } = runOps(projectId, ops);
+      return structuredClone({ nodes, edges, events });
     },
 
     async exportProject(id) {

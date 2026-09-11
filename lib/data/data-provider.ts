@@ -21,6 +21,31 @@ export interface ProjectSummary {
   seed?: boolean;
 }
 
+/**
+ * What `applyMutations` hands back once the batch has committed.
+ *
+ * `nodes`/`edges` are the whole graph after the write — the shape every backend
+ * already produced. The two optional fields exist for the query cache
+ * (`lib/data/project-queries.ts`), which writes this result straight into its
+ * project entry instead of re-reading the project:
+ *
+ * - `version` — the server's strong version after the write. Only the hosted
+ *   backend has one; the cache uses it to drop a write-back that belongs to an
+ *   older request than the one already applied (two hosted POSTs are routinely
+ *   in flight together). Local and seed leave it out: Dexie transactions and
+ *   the in-memory sandbox serialize, so their results resolve in commit order.
+ * - `events` — exactly the journal events this write appended, in the order
+ *   they were appended, so the cache can extend its journal entries without
+ *   re-downloading the whole journal. A backend that cannot say what it
+ *   appended leaves it out and the cache marks its journal entries stale.
+ */
+export interface MutationResult {
+  nodes: Node[];
+  edges: Edge[];
+  version?: string;
+  events?: JournalEvent[];
+}
+
 export interface DataProvider {
   getProject(id: string): Promise<ProjectBundle | undefined>;
   listProjects(): Promise<ProjectSummary[]>;
@@ -63,8 +88,12 @@ export interface DataProvider {
    * hand-rolled rollback when the second half fails. A batch removes that whole
    * class of half-written state. A remote provider sends one request; the local
    * one runs a single IndexedDB transaction.
+   *
+   * The result carries the whole graph after the write plus, when the backend
+   * knows them, the server `version` and the journal `events` it appended —
+   * see {@link MutationResult} for what each is for.
    */
-  applyMutations(projectId: string, ops: MutationOp[]): Promise<{ nodes: Node[]; edges: Edge[] }>;
+  applyMutations(projectId: string, ops: MutationOp[]): Promise<MutationResult>;
 
   exportProject(id: string): Promise<ProjectBundle>;
   importProject(bundle: ProjectBundle): Promise<Project>;

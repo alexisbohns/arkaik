@@ -1,62 +1,80 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import type { Edge } from "@/lib/data/types";
+import { useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { MutationOp } from "@arkaik/schema";
+
+import {
+  bundleQueryOptions,
+  deriveLoadState,
+  EMPTY_EDGES,
+  selectEdges,
+  writeBackEdges,
+  writeBackGraph,
+} from "@/lib/data/project-queries";
 import { getProvider } from "@/lib/data/provider-registry";
+import type { Edge } from "@/lib/data/types";
 
+/**
+ * The project's edges, as a projection of the one cached bundle entry that
+ * `useNodes` and `useProject` observe too (`lib/data/project-queries.ts`).
+ * Mutators write their whole result back — nodes included — so nothing
+ * observed elsewhere goes stale.
+ */
 export function useEdges(projectId: string) {
-  const [edges, setEdges] = useState<Edge[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const client = useQueryClient();
+  const result = useQuery({ ...bundleQueryOptions(projectId), select: selectEdges });
+  const edges: Edge[] = result.data ?? EMPTY_EDGES;
+  const { loading, error } = deriveLoadState(result, "Failed to load edges");
 
-  /** Which load may write — see {@link useNodes} for why a token, not a flag. */
-  const loadToken = useRef(0);
+  const { refetch } = result;
+  /** The retry behind every `PageError` — joins a fetch already in flight. */
+  const reload = useCallback(() => refetch({ cancelRefetch: false }).then(() => undefined), [refetch]);
 
-  /** The read — see {@link useNodes} for why the synchronous writes are not here. */
-  const runLoad = useCallback(() => {
-    const token = ++loadToken.current;
-    return getProvider()
-      .getEdges(projectId)
-      .then((e) => {
-        if (loadToken.current !== token) return;
-        setEdges(e);
-        setLoading(false);
-      })
-      .catch((err) => {
-        if (loadToken.current !== token) return;
-        console.error("[useEdges] Failed to load edges:", err);
-        setError(err instanceof Error ? err.message : "Failed to load edges");
-        setLoading(false);
-      });
-  }, [projectId]);
+  /** The one write path: commit the batch, then adopt its result. */
+  const commit = useCallback(
+    async (ops: MutationOp[]) => {
+      const outcome = await getProvider().applyMutations(projectId, ops);
+      await writeBackGraph(client, projectId, outcome);
+      return outcome;
+    },
+    [client, projectId],
+  );
 
-  /** Re-run the read — the retry behind every `PageError` on a project surface. */
-  const reload = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    return runLoad();
-  }, [runLoad]);
+  const addEdge = useCallback(
+    async (edge: Edge) => {
+      const outcome = await commit([{ op: "create_edge", edge }]);
+      // The stored edge, not the caller's input: the backends normalize the id
+      // to `e-{source}-{target}`, so it is found by its endpoints.
+      return (
+        outcome.edges.find(
+          (candidate) => candidate.source_id === edge.source_id && candidate.target_id === edge.target_id,
+        ) ?? edge
+      );
+    },
+    [commit],
+  );
 
-  useEffect(() => {
-    void runLoad();
-  }, [runLoad]);
-
-  const addEdge = useCallback(async (edge: Edge) => {
-    const created = await getProvider().createEdge(edge);
-    setEdges((prev) => [...prev, created]);
-    return created;
-  }, []);
-
-  const removeEdge = useCallback(async (id: string) => {
-    await getProvider().deleteEdge(projectId, id);
-    setEdges((prev) => prev.filter((e) => e.id !== id));
-  }, [projectId]);
+  const removeEdge = useCallback(
+    async (id: string) => {
+      await commit([{ op: "delete_edge", edge_id: id }]);
+    },
+    [commit],
+  );
 
   /**
    * Adopt an edge list produced by an atomic batch elsewhere (see `useNodes`'s
-   * `applyMutations`). Local state only — the write has already committed.
+   * `applyMutations`). The write has already committed — and, since that batch
+   * wrote both halves back itself, this is idempotent on its result. `version`
+   * is the server version the list came under: without it, a list the batch's
+   * own write-back refused as older would be adopted here regardless.
    */
-  const syncEdges = useCallback((next: Edge[]) => setEdges(next), []);
+  const syncEdges = useCallback(
+    (next: Edge[], version?: string) => {
+      void writeBackEdges(client, projectId, next, version);
+    },
+    [client, projectId],
+  );
 
   return { edges, loading, error, reload, addEdge, removeEdge, syncEdges };
 }

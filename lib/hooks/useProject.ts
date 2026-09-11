@@ -1,42 +1,30 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import type { Project, ProjectBundle } from "@/lib/data/types";
+import { useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { bundleQueryOptions, deriveLoadState, writeBackBundle } from "@/lib/data/project-queries";
 import { getProvider } from "@/lib/data/provider-registry";
+import type { Project, ProjectBundle } from "@/lib/data/types";
 
+/**
+ * The project bundle, off the one cached entry per project that `useNodes` and
+ * `useEdges` share (`lib/data/project-queries.ts` owns the entry, the
+ * freshness policy and every write). Same return shape as before the cache.
+ */
 export function useProject(id: string) {
-  const [project, setProject] = useState<ProjectBundle | undefined>(undefined);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const client = useQueryClient();
+  const result = useQuery(bundleQueryOptions(id));
+  const project: ProjectBundle | undefined = result.data?.bundle;
+  const { loading, error } = deriveLoadState(result, "Failed to load project");
 
-  /** Which load may write — see {@link useNodes} for why a token, not a flag. */
-  const loadToken = useRef(0);
-
-  /** The read — see {@link useNodes} for why the synchronous writes are not here. */
-  const runLoad = useCallback(() => {
-    const token = ++loadToken.current;
-    return getProvider().getProject(id).then((p) => {
-      if (loadToken.current !== token) return;
-      setProject(p);
-      setLoading(false);
-    }).catch((err) => {
-      if (loadToken.current !== token) return;
-      console.error("[useProject] Failed to load project:", err);
-      setError(err instanceof Error ? err.message : "Failed to load project");
-      setLoading(false);
-    });
-  }, [id]);
-
-  /** Re-run the read — the retry behind every `PageError` on a project surface. */
-  const reload = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    return runLoad();
-  }, [runLoad]);
-
-  useEffect(() => {
-    void runLoad();
-  }, [runLoad]);
+  const { refetch } = result;
+  /**
+   * The retry behind every `PageError` on a project surface. Pages fan one
+   * retry into several `reload()` calls on what is now one query, so each
+   * joins the fetch already in flight instead of cancelling it.
+   */
+  const reload = useCallback(() => refetch({ cancelRefetch: false }).then(() => undefined), [refetch]);
 
   const updateProject = useCallback(
     async (patch: Partial<Omit<Project, "id" | "created_at">>) => {
@@ -44,13 +32,17 @@ export function useProject(id: string) {
         throw new Error("Cannot update project before it is loaded");
       }
 
-      // Re-read the current bundle before saving. With the IndexedDB provider,
-      // getProject returns a fresh snapshot, so this hook's `project` state does
-      // not reflect node/edge edits made concurrently via useNodes/useEdges
-      // (which the old shared-in-memory store surfaced automatically). Saving
-      // our own stale `project.nodes`/`edges` would clobber those edits, so we
-      // patch project-level fields onto the freshest stored bundle instead.
-      const current = (await getProvider().getProject(project.project.id)) ?? project;
+      // A fresh provider read, not the cached entry: the local and seed
+      // `saveProject` rewrite nodes, edges and the journal from the bundle they
+      // are given, so the bundle saved here must be what storage holds now —
+      // never a copy a bypassing writer may have left behind. And not a cache
+      // fetch either: a graph write-back's `cancelQueries` overlapping it (a
+      // status click during a title autosave) would make `fetchQuery` resolve
+      // with the REVERTED pre-mutation snapshot — query-core answers a
+      // revert-cancel with `state.data` instead of rejecting — and that click
+      // would then be saved away.
+      const fresh = await getProvider().getProject(id);
+      const current = fresh ?? project;
 
       const now = new Date().toISOString();
       const nextBundle: ProjectBundle = {
@@ -63,10 +55,10 @@ export function useProject(id: string) {
       };
 
       await getProvider().saveProject(nextBundle);
-      setProject(nextBundle);
+      await writeBackBundle(client, id, nextBundle);
       return nextBundle.project;
     },
-    [project],
+    [client, id, project],
   );
 
   return { project, loading, error, reload, updateProject };

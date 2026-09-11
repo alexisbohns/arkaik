@@ -235,6 +235,12 @@ jobs:
       - name: Provider-injection seam + mutation-notification tests
         run: npm run test:provider
 
+      # The query cache behind the data hooks, against the real TanStack core
+      # with the providers stubbed: write-back ordering, the version guard,
+      # the loading/error mapping and the zero-render refetch.
+      - name: Query cache tests (write-back, version guard, load-state mapping)
+        run: npm run test:project-queries
+
       # Pins foldFindingEvents (lib/utils/quality.ts) to its real consumer —
       # lib/data/local-provider.ts getProject — since the pure function is
       # already covered exhaustively in tests/app/quality.test.js but its call

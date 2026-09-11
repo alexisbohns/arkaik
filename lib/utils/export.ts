@@ -6,6 +6,7 @@ import {
   validateBundle,
   type ValidationFinding,
 } from "@arkaik/schema";
+import { invalidateProjects } from "@/lib/data/project-queries";
 import { getProvider } from "@/lib/data/provider-registry";
 import { HOSTED_ID_PREFIX } from "@/lib/data/remote-provider";
 import { SEED_PROJECT_ID } from "@/lib/data/seed-project-id";
@@ -206,11 +207,21 @@ export async function exportProject(id: string): Promise<ProjectBundle> {
  * storage. Returns the created {@link Project}.
  */
 export async function importProject(bundle: ProjectBundle): Promise<Project> {
-  return getProvider().importProject(bundle);
+  const project = await getProvider().importProject(bundle);
+  // These writes bypass the hooks, so the cached listing is told it is stale
+  // (lib/data/project-queries.ts). The project entry is not: an import that
+  // replaces a local project is announced on the local provider's bus, and
+  // a hosted one gets a fresh id nobody has cached.
+  void invalidateProjects();
+  return project;
 }
 
 export async function archiveProject(id: string): Promise<void> {
-  return getProvider().archiveProject(id);
+  await getProvider().archiveProject(id);
+  // Only the listing. The project entry is left to expire on its own: the
+  // layout is still mounted when the settings page archives, and dropping the
+  // entry would make it refetch a project that just went away.
+  void invalidateProjects();
 }
 
 /**
@@ -249,5 +260,7 @@ export async function importProjectFromFile(file: File): Promise<Project> {
       ? normalizedBundle
       : rewriteBundleProjectId(normalizedBundle, resolvedProjectId);
 
-  return getProvider().importProject(finalBundle);
+  const project = await getProvider().importProject(finalBundle);
+  void invalidateProjects();
+  return project;
 }

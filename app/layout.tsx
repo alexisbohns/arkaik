@@ -4,6 +4,7 @@ import { GeistMono } from "geist/font/mono";
 import "highlight.js/styles/github.css";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import { QueryProvider } from "@/components/query/QueryProvider";
 import { AppToaster } from "@/components/ui/toaster";
 import { SyncProvider } from "@/components/sync/SyncProvider";
 import { WobbleFilters } from "@/components/wobble/WobbleFilters";
@@ -75,9 +76,11 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {children}
-          <AppToaster />
-          <SyncProvider />
+          <QueryProvider>
+            {children}
+            <AppToaster />
+            <SyncProvider />
+          </QueryProvider>
         </ThemeProvider>
       </body>
     </html>

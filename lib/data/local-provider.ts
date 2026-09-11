@@ -1,5 +1,5 @@
-import type { DataProvider } from "./data-provider";
-import type { Node, Edge, ProjectBundle } from "./types";
+import type { DataProvider, MutationResult } from "./data-provider";
+import type { Node, Edge, JournalEvent, ProjectBundle } from "./types";
 import { migrateBundle } from "./migrate";
 import { applyOps, type MutationOp } from "@arkaik/schema";
 import {
@@ -118,6 +118,7 @@ async function runOps(projectId: string, ops: MutationOp[], notFoundMessage: str
 
   let nextNodes: Node[] = [];
   let nextEdges: Edge[] = [];
+  let appended: JournalEvent[] = [];
   let changed = false;
 
   await db.transaction("rw", db.projects, db.journals, async () => {
@@ -136,16 +137,20 @@ async function runOps(projectId: string, ops: MutationOp[], notFoundMessage: str
     // `applyOps` derives no events when nothing actually changed — a patch that
     // sets a field to its current value, or a delete whose ids are not here.
     changed = outcome.eventInputs.length > 0;
+    // Derived once: the very events that go into the journal row are the ones
+    // handed back, so a caller holding a cached journal can append them
+    // without re-reading the row.
+    appended = toJournalEvents(outcome.eventInputs);
 
     await db.projects.put(record);
-    await appendJournalEvents(db, projectId, toJournalEvents(outcome.eventInputs));
+    await appendJournalEvents(db, projectId, appended);
   });
 
   // Notify only on a real change. A no-op mutation firing a notification would
   // wake the Synk backup engine to re-upload an identical bundle, and would make
   // "did anything happen?" unanswerable for any future subscriber.
   if (changed) notifyMutation(projectId);
-  return { nodes: nextNodes, edges: nextEdges, projectId };
+  return { nodes: nextNodes, edges: nextEdges, events: appended, projectId };
 }
 
 export const localProvider: DataProvider = {
@@ -289,9 +294,11 @@ export const localProvider: DataProvider = {
    * node and its edge together instead of creating the node, creating the edge,
    * and hand-rolling a rollback when the second call fails.
    */
-  async applyMutations(projectId: string, ops: MutationOp[]) {
-    const { nodes, edges } = await runOps(projectId, ops, `Project ${projectId} not found`);
-    return { nodes, edges };
+  async applyMutations(projectId: string, ops: MutationOp[]): Promise<MutationResult> {
+    const { nodes, edges, events } = await runOps(projectId, ops, `Project ${projectId} not found`);
+    // No `version`: Dexie serializes the transactions, so results resolve in
+    // commit order and the cache has nothing to guard against.
+    return { nodes, edges, events };
   },
 
   async exportProject(id: string) {

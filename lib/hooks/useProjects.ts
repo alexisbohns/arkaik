@@ -1,35 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getProvider } from "@/lib/data/provider-registry";
+import { useQuery } from "@tanstack/react-query";
+
 import type { ProjectSummary } from "@/lib/data/data-provider";
+import { deriveLoadState, EMPTY_PROJECTS, projectsQueryOptions } from "@/lib/data/project-queries";
 
+/**
+ * The active `ProjectSummary[]` for the shell, off the cached listing
+ * (`lib/data/project-queries.ts`). Fresh for a minute; every writer that
+ * changes the listing marks it stale for its next mount.
+ */
 export function useProjects() {
-  const [projects, setProjects] = useState<ProjectSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    getProvider()
-      .listProjects()
-      .then((nextProjects) => {
-        if (cancelled) return;
-        setProjects(nextProjects);
-        setLoading(false);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        console.error("[useProjects] Failed to load projects:", err);
-        setError(err instanceof Error ? err.message : "Failed to load projects");
-        setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const result = useQuery(projectsQueryOptions());
+  const projects: ProjectSummary[] = result.data ?? EMPTY_PROJECTS;
+  const { loading, error } = deriveLoadState(result, "Failed to load projects");
 
   return { projects, loading, error };
 }

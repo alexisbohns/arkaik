@@ -229,6 +229,31 @@ async function main() {
     check("deleteNodes affecting no node fires no notification", received.length === 0, JSON.stringify(received));
   }
 
+  // --- applyMutations returns the events it appended ---
+  // The query cache appends these to its journal entries instead of re-reading
+  // the row, so they must be the very events the row gained, in order.
+  {
+    const PROJECT_D = "p-d";
+    await localProvider.saveProject(makeBundle(PROJECT_D, [makeNode("V-d1", PROJECT_D)]));
+    const before = await localProvider.getJournal(PROJECT_D);
+    const outcome = await localProvider.applyMutations(PROJECT_D, [
+      { op: "create_node", node: makeNode("V-d2", PROJECT_D) },
+      { op: "update_node", node_id: "V-d1", patch: { title: "d1 renamed" } },
+    ]);
+    const after = await localProvider.getJournal(PROJECT_D);
+    const gained = after.slice(before.length);
+    check(
+      "applyMutations returns exactly the events the journal row gained, in order",
+      Array.isArray(outcome.events) &&
+        outcome.events.length === gained.length &&
+        outcome.events.every((event, i) => event.id === gained[i].id && event.type === gained[i].type),
+      JSON.stringify({ returned: outcome.events?.map((e) => e.type), gained: gained.map((e) => e.type) }),
+    );
+    check("applyMutations reports no server version", outcome.version === undefined);
+    const noop = await localProvider.applyMutations(PROJECT_D, [{ op: "update_node", node_id: "V-d1", patch: { title: "d1 renamed" } }]);
+    check("a no-op batch returns an empty events list", Array.isArray(noop.events) && noop.events.length === 0, JSON.stringify(noop.events));
+  }
+
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
   fs.rmSync(SCHEMA_BUILD_DIR, { recursive: true, force: true });
 

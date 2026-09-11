@@ -17,6 +17,7 @@ components/
   acceptances/ decisions/ pyramid/ values/   # The acceptance + decision + value surfaces
   library/ journal/     # Node browser; one event's human sentence
   projects/             # The project-list surfaces (create, import, seed, restore)
+  query/                # QueryProvider: hands the one QueryClient to React, wires the local bus + focus listener
   generate/             # Prompt builder form/output components for /generate
   publik/ sync/ auth/   # Share, Synk backup, sign-in surfaces
   settings/             # Product manager, repo links, token manager
@@ -30,6 +31,8 @@ components/
 lib/
   config/               # Labels + display order for the ids in @arkaik/schema (§ Config / Taxonomies)
   data/                 # DataProvider interface + local, remote, seed and routing implementations
+    project-queries.ts  # The query cache's keys, entry shapes, selectors, write-back reducers and seams — its only writer
+    query-client.ts     # The one QueryClient per browser (fresh per call on the server)
   hooks/                # React hooks for state management
     useProjectPanels.tsx # Panel-stack provider + the `?node=` contract
   services/             # Server-only: hosted graph store, publik, synk, auth, GitHub App
@@ -54,6 +57,7 @@ docs/                   # This documentation
 ## State Management
 
 - **No global store for domain data.** No Zustand, Redux, or Context-based state for nodes, edges, projects, or the journal — those flow through hooks and props.
+- **A query cache is not a store.** The hooks read through a TanStack Query cache (`lib/data/project-queries.ts`, [data-layer.md](data-layer.md) § "The query cache") that only deduplicates and remembers reads; domain data still flows through the same hooks and props. `lib/data/project-queries.ts` is the cache's **only writer**: components never call `useQueryClient()` — a write that bypasses the hooks calls one of its invalidation seams instead.
 - **Route-shell UI state may use a scoped provider**, mounted in the project layout alongside `SidebarProvider`. The panel stack (`ProjectPanelsProvider`) is the one that exists; the bar for adding another is that a page segment cannot own the state, because it remounts when its dynamic params change.
 - Reusable state logic lives in hooks: `useNodes`, `useEdges`, `useProject`, `useProjects`, `useJournal`.
 - Hook intent:

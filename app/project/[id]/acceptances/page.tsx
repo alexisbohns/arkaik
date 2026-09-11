@@ -149,7 +149,7 @@ export default function ProjectAcceptancesPage() {
         },
       },
     ]);
-    syncEdges(result.edges);
+    syncEdges(result.edges, result.version);
 
     handleSelectNode(created);
     return created;

@@ -38,9 +38,9 @@ interface AcceptanceIntakeParams {
   nodes: readonly Node[];
   edges: readonly Edge[];
   /** `useNodes`'s atomic batch — every gesture here is more than one write. */
-  applyMutations: (ops: MutationOp[]) => Promise<{ nodes: Node[]; edges: Edge[] }>;
+  applyMutations: (ops: MutationOp[]) => Promise<{ nodes: Node[]; edges: Edge[]; version?: string }>;
   /** `useEdges`'s adopt-the-batch-result, since `applyMutations` owns only nodes. */
-  syncEdges: (edges: Edge[]) => void;
+  syncEdges: (edges: Edge[], version?: string) => void;
 }
 
 /**
@@ -69,7 +69,7 @@ export function useAcceptanceIntake({
     async function commit(ops: MutationOp[]): Promise<void> {
       if (ops.length === 0) return;
       const result = await applyMutations(ops);
-      syncEdges(result.edges);
+      syncEdges(result.edges, result.version);
     }
 
     return {
