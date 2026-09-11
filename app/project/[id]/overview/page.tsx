@@ -173,7 +173,15 @@ export default function OverviewPage() {
     });
   }, [dataEdges, dataNodes, productGraph, projectBundle, scope]);
 
-  if (nodesLoading || edgesLoading || projectLoading || journalLoading) {
+  // The journal is off this gate on purpose: it is the largest read a project
+  // has and every card but four is drawn from the bundle alone. Those four
+  // (Inventory's event count, Release pulse, Backlog, Health's backlog row)
+  // carry their own pending and error state until it lands instead of holding
+  // — or, later, unmounting — the whole page. The one exception is a graph
+  // with no nodes to paint: there the journal is the read that decides between
+  // the cards and the empty state, so the page waits for it rather than
+  // painting ten zero-count cards and swapping them out a moment later.
+  if (nodesLoading || edgesLoading || projectLoading || (dataNodes.length === 0 && journalLoading)) {
     return <PageLoading label="overview" />;
   }
 
@@ -182,7 +190,9 @@ export default function OverviewPage() {
   // from an empty graph, and "Nothing here yet. Sketch the product on the
   // Journey map" over a product with two hundred nodes is the worst sentence
   // this app can show.
-  const loadError = nodesError ?? edgesError ?? projectError ?? journalError;
+  // The journal is not in this chain: its failure reaches the four cards that
+  // read it, not a page that has already painted from the bundle.
+  const loadError = nodesError ?? edgesError ?? projectError;
   if (loadError) {
     return (
       <PageError
@@ -192,13 +202,16 @@ export default function OverviewPage() {
           void reloadNodes();
           void reloadEdges();
           void reloadProject();
-          void reloadJournal();
         }}
       />
     );
   }
 
-  const isEmpty = dataNodes.length === 0 && journal.length === 0;
+  // The gate above guarantees the journal has landed whenever there are no
+  // nodes, so "nothing here" is only ever said over a read journal: a project
+  // with no nodes yet but a journal of ideas is not empty, and neither is one
+  // whose journal failed to load.
+  const isEmpty = dataNodes.length === 0 && journalError === null && journal.length === 0;
 
   return (
     <PageShell
@@ -245,10 +258,26 @@ export default function OverviewPage() {
               <ParityCard gaps={parityGaps} platforms={scope.platforms} projectId={id} />
               <PyramidCard tiers={pyramidTiers} platforms={scope.platforms} projectId={id} />
               <DeliverySnapshotCard snapshot={snapshot} projectId={id} />
-              <ReleasePulseCard releases={releases} projectId={id} />
-              <BacklogCard backlog={backlog} projectId={id} />
-              <InventoryCard inventory={inventory} projectId={id} />
-              <HealthCard indicators={health} projectId={id} />
+              <ReleasePulseCard
+                releases={releases}
+                projectId={id}
+                pending={journalLoading}
+                error={journalError}
+                onRetry={() => void reloadJournal()}
+              />
+              <BacklogCard backlog={backlog} projectId={id} pending={journalLoading} error={journalError} />
+              <InventoryCard
+                inventory={inventory}
+                projectId={id}
+                journalPending={journalLoading}
+                journalError={journalError}
+              />
+              <HealthCard
+                indicators={health}
+                projectId={id}
+                backlogPending={journalLoading}
+                backlogError={journalError}
+              />
               <MapsCard maps={maps} projectId={id} />
             </>
           )}

@@ -20,7 +20,6 @@ import {
 } from "@/lib/config/statuses";
 import type { Node as DataNode } from "@/lib/data/types";
 import { useEdges } from "@/lib/hooks/useEdges";
-import { useJournal } from "@/lib/hooks/useJournal";
 import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { useProjectId } from "@/lib/hooks/useProjectId";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
@@ -71,7 +70,6 @@ export default function ProjectDeliveryPage() {
     syncEdges,
   });
   const { project: projectBundle, error: projectError, reload: reloadProject } = useProject(id);
-  const { journal, error: journalError, reload: reloadJournal } = useJournal(id);
   // The shell's scope, narrowed by this surface's own `?product=` when it has
   // one (#315). `projectBundle` is `undefined` until `useProject`'s effect
   // lands, and a scope resolved from nothing declares no products — which
@@ -162,7 +160,7 @@ export default function ProjectDeliveryPage() {
   // with zero items, and "No delivery items match. Pick a species, widen the
   // platform filter, or create a node." then sends the reader to fiddle with
   // filters that were never the problem.
-  const loadError = nodesError ?? edgesError ?? projectError ?? journalError;
+  const loadError = nodesError ?? edgesError ?? projectError;
   if (loadError) {
     return (
       <PageError
@@ -172,7 +170,6 @@ export default function ProjectDeliveryPage() {
           void reloadNodes();
           void reloadEdges();
           void reloadProject();
-          void reloadJournal();
         }}
       />
     );
@@ -191,7 +188,7 @@ export default function ProjectDeliveryPage() {
         allNodes={dataNodes}
         allEdges={dataEdges}
         scope={scope}
-        journal={journal}
+        history
         onUpdate={handleNodeUpdate}
         onCreateNode={handleCreateNodeFromPanel}
         intake={intake}

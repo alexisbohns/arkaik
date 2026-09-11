@@ -205,6 +205,8 @@ Hooks in `lib/hooks/` are thin bindings over a query cache (below); their return
 | `useEdges(projectId)` | `{ edges, loading, error, reload, addEdge, removeEdge, syncEdges }` | CRUD for edges |
 | `useJournal(projectId)` | `{ journal, loading, error, reload }` | Read-only journal events for timelines and the changelog |
 
+The node panel's History section reads the journal itself (`useJournal(projectId)` inside `NodeDetailPanel`, keyed by the route id from `useProjectId()` — never `node.project_id`, which on a hosted project is the imported bundle's own id rather than the `prj_…` route id — and mounted when a page passes `history` to `PageShell`), so only the Changelog, Design, Decisions, History and Overview pages still request the journal at page level — the maps, Library, Delivery and Acceptances no longer request it at page level (their node panels read it lazily on first open and share one cached entry), and the Overview no longer holds its first paint for it.
+
 `reload()` is the retry behind every `PageError` on a project surface: it re-runs the read and resolves when it settles. A page that fans one retry into several `reload()` calls is re-running one query, so each call joins the fetch already in flight rather than cancelling it. `loading` is `true` whenever the data has not been read yet — never `false` with an empty list before a read — and a retry after an error with no data looks like a load again. `error` is `null` exactly when absent; a failed *background* refetch over data already on screen is not reported (the surface keeps what it has).
 
 The Journey map (`components/maps/JourneyMap.tsx`) uses `useProject` for root-node anchoring and project-level card-style preferences, and still manages `expandedFlows` as local state.

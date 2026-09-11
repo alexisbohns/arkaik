@@ -112,7 +112,7 @@ export default function ProjectDecisionsPage() {
         allNodes={dataNodes}
         allEdges={dataEdges}
         scope={scope}
-        journal={journal}
+        history
         onUpdate={handleNodeUpdate}
       >
         <PageSurface

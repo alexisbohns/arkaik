@@ -12,6 +12,7 @@
  */
 
 const fs = require("fs");
+const path = require("path");
 const { loadPanelStack, loadProjectPanels, BUILD_DIR } = require("./load-panel-utils");
 
 const { openFrom, initStack } = loadPanelStack();
@@ -218,6 +219,29 @@ const cellCrumbs = buildPanelCrumbs([cellEntry], "Matrix", () => undefined);
 assert(
   cellCrumbs[cellCrumbs.length - 1].label === "SEC × web",
   "a cell crumb reads as its domain and surface, not its namespaced key",
+);
+
+// --- the History section reads the journal by the route id, never the node's ---
+// A hosted project stores the imported bundle verbatim under a server-minted
+// `prj_…` id, so its nodes keep the bundle's own `project_id`; a section keyed
+// on that would route to the local provider and read an empty (or a colliding
+// local project's) journal. Pinned at the source because the panel is a
+// client component with no bundler-free load path.
+const panelSource = fs.readFileSync(
+  path.join(__dirname, "..", "..", "components", "panels", "NodeDetailPanel.tsx"),
+  "utf8",
+);
+assert(
+  !panelSource.includes("useJournal(node.project_id)"),
+  "HistorySection never keys the journal on node.project_id",
+);
+assert(
+  /const projectId = useProjectId\(\);\s*\n\s*const \{[^}]*\} = useJournal\(projectId\);/.test(panelSource),
+  "HistorySection reads the journal by the route id from useProjectId()",
+);
+assert(
+  panelSource.includes('import { useProjectId } from "@/lib/hooks/useProjectId";'),
+  "NodeDetailPanel imports useProjectId from the shared route-param hook",
 );
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });

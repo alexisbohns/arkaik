@@ -5,7 +5,7 @@ import { PageHeader, type PageAction } from "@/components/layout/PageHeader";
 import { ProjectPanels } from "@/components/panels/ProjectPanels";
 import type { KritikLibrary, QualitySection } from "@arkaik/schema";
 import type { PlatformId } from "@/lib/config/platforms";
-import type { Edge, JournalEvent, Node } from "@/lib/data/types";
+import type { Edge, Node } from "@/lib/data/types";
 import type { ProductScope } from "@/lib/utils/product-scope";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 
@@ -34,7 +34,13 @@ interface PageShellProps {
   allEdges?: Edge[];
   /** The surface's product scope, forwarded to every node panel it opens. */
   scope?: ProductScope;
-  journal?: JournalEvent[];
+  /**
+   * Mount the History section in every node panel this page opens. The
+   * section reads the journal itself, so a page that passes this pays for the
+   * journal only once a panel opens — and a page that passes nothing (Overview,
+   * Pyramid, Settings, Quality) opens panels without a History section.
+   */
+  history?: boolean;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
   onDelete?: (nodeId: string) => void;
   onCreateNode?: (species: "flow" | "view", title: string) => Promise<Node>;
