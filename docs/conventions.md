@@ -64,7 +64,7 @@ docs/                   # This documentation
   - `useNodes` and `useEdges` handle project graph CRUD.
   - `useProject` handles project-level metadata (including `root_node_id` and card preferences).
   - `useProjects` powers project lists/switching in route shell UI.
-  - `useJournal` exposes the read-only event log for timelines and the changelog.
+  - `useJournal` exposes the read-only event log for timelines and the changelog, projected to the event types the caller renders (`useJournal(id, { types })`).
 - The Journey map (`components/maps/JourneyMap.tsx`) uses `useNodes` and `useEdges` for data, and manages flow expansion as local `useState` (`expandedFlows`); graph construction is the pure `buildJourneyGraph` (`lib/utils/journey-graph.ts`).
 - Data flows via props from the project page down to canvas components.
 - Route-shell concerns such as the project switcher and persistent sidebar should stay in the project layout and use route state plus lightweight hooks instead of introducing shared global state.
@@ -247,7 +247,7 @@ Non-interactive but focusable elements (e.g. branch nodes, static cards) use `cu
 ## Naming
 
 - **Files:** kebab-case for config and utils (`edge-types.ts`), PascalCase for components (`FlowNode.tsx`)
-  - Current graph node components include `FlowNode.tsx`, `ViewNode.tsx`, `DataModelNode.tsx`, `ApiEndpointNode.tsx`
+  - Current graph node components are `FlowNode.tsx`, `ViewNode.tsx` and `SystemLayerNode.tsx` (`components/graph/nodes/`)
 - **Types:** PascalCase (`SpeciesId`, `ProjectBundle`)
 - **Config arrays:** UPPER_SNAKE_CASE (`SPECIES`, `STATUSES`, `EDGE_TYPES`)
 - **Hooks:** camelCase with `use` prefix (`useNodes`, `useJournal`)

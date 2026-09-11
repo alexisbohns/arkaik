@@ -185,7 +185,13 @@ IndexedDB (Dexie) | hosted graph API (app/api/graph) | in-memory seed
 localProvider / remoteProvider / seedProvider
     ↕ (routed by project id)
 routingProvider (implements DataProvider, the default behind getProvider())
-    ↕ (async calls)
+    ↕ (async calls — reads are conditional where the backend has a validator)
+Query cache (TanStack Query; one client per browser)
+  · lib/data/project-queries.ts is its ONLY writer: keys, entry shapes,
+    reducers, write-backs, and the invalidateProject/invalidateProjects
+    seams the writers that bypass the hooks call (raw-bundle save,
+    import, archive, the projects page)
+    ↕ (observers)
 Hooks: useNodes, useEdges, useProject, useProjects, useJournal
     ↕ (state)
 app/project/[id]/layout.tsx (sidebar shell + route-aware navigation)

@@ -615,8 +615,22 @@ then on.
 - **`ref_policy` has no UI** — step 6 requires the raw bundle editor.
 - **The refs editor is read-only** — a human links a PR by mentioning the
   acceptance id; attaching a ref by hand in the app is not possible yet.
-- **Hosted projects are online-only** — local-first projects still work offline;
-  hosted ones do not. Export is always available.
+- **Hosted projects are online-only for writes** — every mutation goes to the
+  server as it happens and fails loudly when the network is down; nothing is
+  queued for later. Reads are gentler than that: what a tab has already read is
+  cached in the browser for the session, so moving between a project's surfaces
+  costs no request, and a background revalidation sends the read validator as
+  `If-None-Match` and gets a bodiless `304` while nothing has changed. The cache
+  does not survive a reload — a return visit reads the project again (see
+  below). Local-first projects still work fully offline, and export is always
+  available.
+- **The read cache is not persisted** — deliberately, for now. Keeping it in
+  IndexedDB would let a return visit paint from cache and revalidate by ETag,
+  but the straightforward implementation costs a multi-megabyte rewrite per
+  cache event and gates every query behind a restore. The design, and the
+  three correctness hazards it has to answer, are recorded in
+  [superpowers/plans/2026-09-10-reactive-data-layer.md](superpowers/plans/2026-09-10-reactive-data-layer.md)
+  § Deferred.
 - **`propose_idea` / `file_request` do not work against hosted projects** — the
   hosted write path has no journal-only operation yet. They are refused with an
   explicit message rather than silently dropped.
