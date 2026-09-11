@@ -71,6 +71,13 @@ jobs:
       - name: Graph restore rules (If-Match matching, bundle delta, tier limit)
         run: npm run test:graph-restore
 
+      # Same reasoning one step up: the read validators' format and the weak
+      # If-None-Match comparison are pure, and they decide whether a client
+      # revalidating a project gets a 304 or a multi-megabyte 200. Pinned in
+      # the fast job so a regression fails without a database.
+      - name: Graph read validators (ETag format, weak If-None-Match)
+        run: npm run test:graph-etag
+
       # In `build` for the same reason as the two steps above: which client IP
       # the Publik throttle buckets on is pure header + env logic. It decides
       # whether a spoofed X-Forwarded-For can reset an unauthenticated caller's
