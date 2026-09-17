@@ -529,6 +529,18 @@ so a PR that meant to close one and got the grammar wrong — a wrapped verb, or
 a `Closes` left in the title — says so at merge, in **Advanced → Recent
 Deliveries**, rather than months later in the matrix.
 
+**The App also checks a closure against the map you gave it.** A surface in
+your profile can declare where it lives in the repo (`path` — `apps/ios`,
+`packages/supabase`), and when a merged pull request closes a finding on that
+surface without touching a single file under its path, the `resolved` outcome
+carries a `warning` saying so. The finding still closes — this is a second
+opinion, not a gate. `path` is optional, and a real fix can legitimately live
+in a shared package, so refusing the closure over this would fail the other,
+worse way: a genuinely fixed finding left open. And it only ever fires against
+a file list the App is sure is complete — an incomplete or unreadable one
+raises nothing, because a missing file could manufacture a mismatch that was
+never there.
+
 ## Adding a criterion of your own
 
 The pack is generic on purpose. When this product has a quality concern the pack
