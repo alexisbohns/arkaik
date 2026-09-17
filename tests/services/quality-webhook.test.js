@@ -367,6 +367,60 @@ const merged = (over = {}) => ({
   const unknown = await applyQualityResolutions(merged({ body: "Fixes F-2026-08-SEC-web-99." }), { readState: typo.readState });
   check("an unmatched id is reported, not swallowed", typo.appended.length === 0 && unknown.some((o) => o.status === "unknown" && o.findingId === "F-2026-08-SEC-web-99"), JSON.stringify(unknown));
 
+  // ISSUE #440. A bare id resolves nothing, and says so — the delivery
+  // response is the one place anybody looks to find out what happened.
+  const named = state();
+  const mentions = await applyQualityResolutions(merged({ body: "Adjacent to F-2026-08-SEC-web-01; not fixed here." }), { readState: named.readState });
+  check("a bare id appends nothing", named.appended.length === 0, JSON.stringify(named.appended));
+  check(
+    "a bare id is reported as mentioned",
+    mentions.some((o) => o.status === "mentioned" && o.findingId === "F-2026-08-SEC-web-01"),
+    JSON.stringify(mentions),
+  );
+  check(
+    "the mentioned hint names the verb to write",
+    mentions.find((o) => o.status === "mentioned")?.hint === "named without a closing verb — write `Closes F-2026-08-SEC-web-01` to resolve it",
+    JSON.stringify(mentions),
+  );
+
+  // Prose that happens to look id-shaped is not a report. Only a finding the
+  // project actually holds earns one.
+  const ghost = state();
+  const ghostOutcomes = await applyQualityResolutions(merged({ body: "Unrelated to F-2026-08-SEC-web-99." }), { readState: ghost.readState });
+  check("a bare id nobody holds is not reported", ghostOutcomes.every((o) => o.status !== "mentioned" && o.status !== "unknown"), JSON.stringify(ghostOutcomes));
+
+  // An id under a verb that matches nothing IS reported — the author asserted
+  // a closure and it failed, which is actionable. A bare one is just text.
+  const assertedTypo = state();
+  const assertedOutcomes = await applyQualityResolutions(merged({ body: "Closes F-2026-08-SEC-web-99." }), { readState: assertedTypo.readState });
+  check("an id under a verb that matches nothing is still unknown", assertedOutcomes.some((o) => o.status === "unknown" && o.findingId === "F-2026-08-SEC-web-99"), JSON.stringify(assertedOutcomes));
+
+  // A finding already decided earns no mention either — it is not outstanding,
+  // so there is nothing for the author to do about it.
+  for (const status of ["resolved", "accepted-risk", "refuted"]) {
+    const settled = state({ findings: [FINDING({ status })] });
+    const settledOutcomes = await applyQualityResolutions(merged({ body: "See F-2026-08-SEC-web-01." }), { readState: settled.readState });
+    check(`a bare id naming a ${status} finding is not reported`, settledOutcomes.every((o) => o.status !== "mentioned"), JSON.stringify(settledOutcomes));
+  }
+
+  const decidedByEvent = state({ decidedIds: ["F-2026-08-SEC-web-01"] });
+  const decidedOutcomes = await applyQualityResolutions(merged({ body: "See F-2026-08-SEC-web-01." }), { readState: decidedByEvent.readState });
+  check("a bare id naming an event-decided finding is not reported", decidedOutcomes.every((o) => o.status !== "mentioned"), JSON.stringify(decidedOutcomes));
+
+  // A body that closes one finding and names another does both, in one pass.
+  const mixed = state({ findings: [FINDING(), FINDING({ id: "F-2026-08-PLT-ios-02", surface: "ios" })] });
+  const mixedOutcomes = await applyQualityResolutions(
+    merged({ body: "Closes F-2026-08-SEC-web-01. Follow-up: F-2026-08-PLT-ios-02." }),
+    { readState: mixed.readState },
+  );
+  check("one closed and one mentioned in the same body", mixed.appended.length === 1, JSON.stringify(mixed.appended));
+  check(
+    "the closed one resolves and the named one is only reported",
+    mixedOutcomes.some((o) => o.status === "resolved" && o.findingId === "F-2026-08-SEC-web-01") &&
+      mixedOutcomes.some((o) => o.status === "mentioned" && o.findingId === "F-2026-08-PLT-ios-02"),
+    JSON.stringify(mixedOutcomes),
+  );
+
   // A journal that refuses the append must not be reported as a resolution —
   // the delivery response is the one place anybody looks to see what happened.
   const refusing = {

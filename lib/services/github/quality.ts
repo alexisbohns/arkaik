@@ -4,7 +4,7 @@ import { findingResolvedInput, isOpenFinding, makeEvent, type JournalEvent, type
 
 import { query } from "@/lib/services/db";
 import { appendJournalEvents } from "@/lib/services/graph/store";
-import { closedIssues, mentionedFindings, parseIssueRef } from "@/lib/services/github/quality-parse";
+import { closedIssues, parseIssueRef, scanFindings } from "@/lib/services/github/quality-parse";
 import { linkedProjects, ownerIdsFor, type PullRequestEvent } from "@/lib/services/github/pull-request";
 
 /**
@@ -26,6 +26,14 @@ export type QualityResolutionOutcome =
   | { projectId: string; status: "unchanged"; findingId: string }
   | { projectId: string; status: "unknown"; findingId: string }
   | { projectId: string; status: "refused"; findingId: string }
+  /**
+   * The finding was NAMED, with no closing verb, and is still open (issue
+   * #440). Nothing was written. Reported rather than swallowed because the
+   * delivery response is the one diagnostic surface docs/hosted-projects.md
+   * points people at, and a grammar change that produced a new silence would
+   * be this round's defect at one remove.
+   */
+  | { projectId: string; status: "mentioned"; findingId: string; hint: string }
   | { status: "no_quality_data" }
   | { status: "no_mentions" };
 
@@ -53,16 +61,27 @@ export interface ProjectQualityState {
  */
 export type ReadProjectQualityState = (event: PullRequestEvent) => Promise<ProjectQualityState[]>;
 
+/** What a `mentioned` outcome tells the author to write instead. */
+const mentionHint = (findingId: string) =>
+  `named without a closing verb — write \`Closes ${findingId}\` to resolve it`;
+
 export async function applyQualityResolutions(
   event: PullRequestEvent,
   options: { readState?: ReadProjectQualityState } = {},
 ): Promise<QualityResolutionOutcome[]> {
-  const mentioned = mentionedFindings(event);
+  const scan = scanFindings(event);
   const issues = closedIssues(event);
   // Read nothing when the PR claims nothing. The overwhelming majority of
   // merges are this case, and a database round trip per project to discover it
   // would be a cost paid on every delivery for the rare one.
-  if (mentioned.length === 0 && issues.length === 0) return [{ status: "no_mentions" }];
+  //
+  // A BARE MENTION COUNTS AS A CLAIM here, even though it resolves nothing:
+  // deciding whether to report it needs the finding — does this project hold
+  // it, and is it still open — and only the read has that. Paying for the
+  // report is the point of issue #440; a mention nobody ever sees is not one.
+  if (scan.closed.length === 0 && scan.mentioned.length === 0 && issues.length === 0) {
+    return [{ status: "no_mentions" }];
+  }
 
   const issueKeys = new Set(issues.map((ref) => `${ref.repo}#${ref.number}`));
   const readState = options.readState ?? loadProjectQualityState;
@@ -72,7 +91,7 @@ export async function applyQualityResolutions(
     const byId = new Map(state.findings.map((finding) => [finding.id, finding]));
     const matched = new Map<string, QualityFinding>();
 
-    for (const id of mentioned) {
+    for (const id of scan.closed) {
       const finding = byId.get(id);
       if (finding === undefined) {
         outcomes.push({ projectId: state.projectId, status: "unknown", findingId: id });
@@ -100,6 +119,27 @@ export async function applyQualityResolutions(
       const input = findingResolvedInput(finding, event.url);
       events.push(makeEvent(input.type, input.payload, { actor: "github-app" }));
       resolving.push(finding.id);
+    }
+
+    // Reported after the closures are decided, so `matched` is complete: an id
+    // both closed by a verb and named bare elsewhere, or reached through its
+    // own issue, is a closure and must not also be reported as a loose end.
+    for (const id of scan.mentioned) {
+      const finding = byId.get(id);
+      // Unlike the `closed` channel above, an id nothing answers to is NOT
+      // reported. There the author asserted a closure and it failed, which is
+      // actionable; here it is prose that happened to look id-shaped, and
+      // reporting it would make every PR discussing findings noisy.
+      if (finding === undefined || matched.has(finding.id)) continue;
+      // Nor is a finding somebody already decided: it is not outstanding, so
+      // there is nothing the author could do about it.
+      if (!isOpenFinding(finding) || state.decidedFindingIds.has(finding.id)) continue;
+      outcomes.push({
+        projectId: state.projectId,
+        status: "mentioned",
+        findingId: finding.id,
+        hint: mentionHint(finding.id),
+      });
     }
 
     if (events.length === 0) continue;
