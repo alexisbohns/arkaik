@@ -17,7 +17,7 @@ const { loadQualityParse, BUILD_DIR } = require("./load-quality-parse");
 // BUILD_DIR, so calling it twice would pull the directory out from under the
 // modules the first call already required.
 const kritik = loadQualityParse();
-const { scanFindings, closedIssues, parseIssueRef, isFindingId } = kritik;
+const { scanFindings, closedIssues, parseIssueRef, isFindingId, surfaceMismatchWarning } = kritik;
 
 let failures = 0;
 function check(name, cond, detail) {
@@ -278,6 +278,71 @@ const repo101 = "a".repeat(101);
 check("a 100-character repo name is within GitHub's ceiling and parses", parseIssueRef(`https://github.com/acme/${repo100}/issues/1`)?.repo === `acme/${repo100}`);
 check("a 101-character repo name exceeds the cap and does not parse", parseIssueRef(`https://github.com/acme/${repo101}/issues/1`) === undefined);
 
+// --- the surface sanity check ------------------------------------------------
+
+// The pbbls profile, as docs/quality/library/framework.json actually writes it.
+const PROFILE = {
+  surfaces: [
+    { id: "web", title: "Web app", platform: "web", path: "apps/web" },
+    { id: "ios", title: "iOS", platform: "ios", path: "apps/ios" },
+    { id: "supabase", title: "Database contract", path: "packages/supabase" },
+    { id: "docs", title: "Docs" },
+  ],
+};
+const files = (...paths) => ({ kind: "files", paths, incomplete: [] });
+const warn = (surface, evidence, profile = PROFILE) =>
+  surfaceMismatchWarning({ findingId: "F-2026-08-PLT-ios-02", surface, profile, evidence });
+
+check(
+  "a resolution touching nothing under the surface's path warns",
+  warn("ios", files("packages/supabase/schema.sql", "docs/x.md")) ===
+    "resolved F-2026-08-PLT-ios-02, but this pull request changed no file under `apps/ios` (surface `ios`)",
+  JSON.stringify(warn("ios", files("packages/supabase/schema.sql"))),
+);
+
+check("a resolution touching the surface's path is silent", warn("ios", files("apps/ios/Report.swift")) === undefined);
+check("one file among many is enough", warn("ios", files("docs/x.md", "apps/ios/Report.swift", ".github/w.yml")) === undefined);
+
+// Containment is on SEGMENT boundaries, by the same `pathMatchesPrefix` that
+// decides it for path-scoped repository links.
+check("a sibling directory sharing a prefix does not count", typeof warn("ios", files("apps/ios-shared/x.swift")) === "string");
+
+// A MISSING FILE CAN INVENT A MISMATCH. `RepoScope` already states the mirror
+// rule — a missing file cannot invent a match — and both point the same way:
+// under-claim, never over-claim. Warning off a partial list would be a false
+// accusation printed against a correct resolution.
+check("an incomplete list warns about nothing", warn("ios", { kind: "files", paths: ["docs/x.md"], incomplete: ["github-file-cap"] }) === undefined);
+check("an unavailable list warns about nothing", warn("ios", { kind: "unavailable", reason: "no installation id" }) === undefined);
+check("a list nobody fetched warns about nothing", warn("ios", { kind: "not-needed" }) === undefined);
+
+// Nothing to compare against is not evidence of a mismatch.
+check("a surface the profile does not declare is silent", warn("android", files("docs/x.md")) === undefined);
+check("a surface declaring no path is silent", warn("docs", files("apps/ios/x.swift")) === undefined);
+// `warn`'s own default parameter would swallow an explicit `undefined` right
+// back into `PROFILE` (JS substitutes a default on `undefined`, not only on
+// omission), so this one goes straight to the function to actually pass none.
+check("no profile at all is silent", surfaceMismatchWarning({
+  findingId: "F-2026-08-PLT-ios-02", surface: "ios", evidence: files("docs/x.md"), profile: undefined,
+}) === undefined);
+check("a profile with no surfaces array is silent", warn("ios", files("docs/x.md"), {}) === undefined);
+
+// `cross-surface` is a findings-only lens the profile never declares, so it
+// falls out of the rule above rather than needing one of its own.
+check("cross-surface is silent", warn("cross-surface", files("docs/x.md")) === undefined);
+
+// A path written with stray separators still normalises to the same prefix.
+check("a path with leading and trailing slashes still matches", surfaceMismatchWarning({
+  findingId: "F-1", surface: "ios", evidence: files("apps/ios/x.swift"),
+  profile: { surfaces: [{ id: "ios", title: "iOS", path: "/apps/ios/" }] },
+}) === undefined);
+
+// A path that normalises to the whole repository says nothing about where a
+// fix belongs, so it cannot support a warning.
+check("a path that normalises to the repository root is silent", surfaceMismatchWarning({
+  findingId: "F-1", surface: "ios", evidence: files("docs/x.md"),
+  profile: { surfaces: [{ id: "ios", title: "iOS", path: "/" }] },
+}) === undefined);
+
 // --- the resolution pass -----------------------------------------------------
 
 const { applyQualityResolutions } = kritik;
@@ -296,8 +361,8 @@ const FINDING = (over = {}) => ({
   ...over,
 });
 
-/** The injected seam: one project, whatever findings and events a case needs. */
-function state({ findings = [FINDING()], decidedIds = [] } = {}) {
+/** The injected seam: one project, whatever findings, events and profile a case needs. */
+function state({ findings = [FINDING()], decidedIds = [], profile = undefined } = {}) {
   const appended = [];
   return {
     appended,
@@ -305,12 +370,20 @@ function state({ findings = [FINDING()], decidedIds = [] } = {}) {
       {
         projectId: "prj_1",
         findings,
+        profile,
         decidedFindingIds: new Set(decidedIds),
         append: async (events) => { appended.push(...events); return events.map((e) => e.id); },
       },
     ],
   };
 }
+
+/** A `fetchFiles` seam that counts its calls, so "at most one" is testable. */
+function fetcher(result) {
+  const calls = [];
+  return { calls, fetchFiles: async (pr) => { calls.push(pr); return result; } };
+}
+const OK_FILES = (...paths) => ({ ok: true, changed: { paths, incomplete: [] } });
 
 const merged = (over = {}) => ({
   action: "closed",
@@ -511,6 +584,68 @@ const merged = (over = {}) => ({
   const titled = state();
   const titledOut = await applyQualityResolutions(merged({ title: "Closes F-2026-08-SEC-web-01", body: "Nothing here." }), { readState: titled.readState });
   check("a title-only closure reports, and says the body is where it belongs", titledOut[0]?.hint?.includes("in the PR body"), JSON.stringify(titledOut));
+
+  // --- the surface warning, end to end --------------------------------------
+
+  const IOS_PROFILE = { surfaces: [{ id: "ios", title: "iOS", platform: "ios", path: "apps/ios" }] };
+  const iosFinding = () => FINDING({ id: "F-2026-08-PLT-ios-02", surface: "ios" });
+
+  const mismatch = state({ findings: [iosFinding()], profile: IOS_PROFILE });
+  const mismatchFetch = fetcher(OK_FILES("packages/supabase/schema.sql"));
+  const mismatchOutcomes = await applyQualityResolutions(
+    merged({ body: "Closes F-2026-08-PLT-ios-02" }),
+    { readState: mismatch.readState, fetchFiles: mismatchFetch.fetchFiles },
+  );
+  check("the resolution is still appended", mismatch.appended.length === 1, JSON.stringify(mismatch.appended));
+  check(
+    "the resolved outcome carries the surface warning",
+    mismatchOutcomes.find((o) => o.status === "resolved")?.warning ===
+      "resolved F-2026-08-PLT-ios-02, but this pull request changed no file under `apps/ios` (surface `ios`)",
+    JSON.stringify(mismatchOutcomes),
+  );
+
+  const onTarget = state({ findings: [iosFinding()], profile: IOS_PROFILE });
+  const onTargetFetch = fetcher(OK_FILES("apps/ios/Report.swift"));
+  const onTargetOutcomes = await applyQualityResolutions(
+    merged({ body: "Closes F-2026-08-PLT-ios-02" }),
+    { readState: onTarget.readState, fetchFiles: onTargetFetch.fetchFiles },
+  );
+  check("a resolution landing in its surface carries no warning", onTargetOutcomes.find((o) => o.status === "resolved")?.warning === undefined, JSON.stringify(onTargetOutcomes));
+  check("the file list is fetched exactly once", onTargetFetch.calls.length === 1, JSON.stringify(onTargetFetch.calls));
+  check("the fetch names the pull request", onTargetFetch.calls[0]?.repoFullName === REPO && onTargetFetch.calls[0]?.number === 7, JSON.stringify(onTargetFetch.calls));
+
+  // No `fetchFiles` is the explicit under-claiming default, the same posture
+  // `ChangedFilesEvidence` demands of every caller that has not fetched.
+  const noFetcher = state({ findings: [iosFinding()], profile: IOS_PROFILE });
+  const noFetchOutcomes = await applyQualityResolutions(merged({ body: "Closes F-2026-08-PLT-ios-02" }), { readState: noFetcher.readState });
+  check("without a fetcher there is no warning", noFetchOutcomes.find((o) => o.status === "resolved")?.warning === undefined, JSON.stringify(noFetchOutcomes));
+  check("without a fetcher the resolution still happens", noFetcher.appended.length === 1, JSON.stringify(noFetcher.appended));
+
+  // NO FETCH AT ALL when nothing resolvable declares a path: a delivery must
+  // not buy a GitHub request for a question it cannot ask.
+  const pathless = state({ findings: [iosFinding()], profile: { surfaces: [{ id: "ios", title: "iOS" }] } });
+  const pathlessFetch = fetcher(OK_FILES("docs/x.md"));
+  await applyQualityResolutions(merged({ body: "Closes F-2026-08-PLT-ios-02" }), { readState: pathless.readState, fetchFiles: pathlessFetch.fetchFiles });
+  check("a surface with no path costs no fetch", pathlessFetch.calls.length === 0, JSON.stringify(pathlessFetch.calls));
+
+  const unknownSurface = state({ findings: [FINDING({ surface: "web" })], profile: IOS_PROFILE });
+  const unknownFetch = fetcher(OK_FILES("docs/x.md"));
+  await applyQualityResolutions(merged({ body: "Closes F-2026-08-SEC-web-01" }), { readState: unknownSurface.readState, fetchFiles: unknownFetch.fetchFiles });
+  check("a surface the profile does not declare costs no fetch", unknownFetch.calls.length === 0, JSON.stringify(unknownFetch.calls));
+
+  // A merge that resolves nothing never asks either.
+  const mentionOnly = state({ findings: [iosFinding()], profile: IOS_PROFILE });
+  const mentionFetch = fetcher(OK_FILES("docs/x.md"));
+  await applyQualityResolutions(merged({ body: "Adjacent to F-2026-08-PLT-ios-02." }), { readState: mentionOnly.readState, fetchFiles: mentionFetch.fetchFiles });
+  check("a merge that resolves nothing costs no fetch", mentionFetch.calls.length === 0, JSON.stringify(mentionFetch.calls));
+
+  // An unreadable list is not a mismatch.
+  const unavailable = state({ findings: [iosFinding()], profile: IOS_PROFILE });
+  const unavailableOutcomes = await applyQualityResolutions(
+    merged({ body: "Closes F-2026-08-PLT-ios-02" }),
+    { readState: unavailable.readState, fetchFiles: async () => ({ ok: false, reason: "no installation id" }) },
+  );
+  check("an unreadable file list produces no warning", unavailableOutcomes.find((o) => o.status === "resolved")?.warning === undefined, JSON.stringify(unavailableOutcomes));
 
   // --- issue #440, as it actually happened -----------------------------------
   //

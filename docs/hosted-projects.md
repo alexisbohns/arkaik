@@ -382,6 +382,23 @@ the title rather than the body. Nothing was written for it:
   "hint": "named but not closed — write `Closes F-2026-08-PLT-ios-02` in the PR body, verb and id on one line with nothing but spaces or a colon between them" }
 ```
 
+A `resolved` entry may also carry a `warning`. A surface can declare where it
+lives in the repo — `path` in the profile, `apps/ios` and the like — and a
+resolution whose pull request touched no file under that path says so:
+
+```json
+{ "status": "resolved", "findingId": "F-2026-08-PLT-ios-02", "eventId": "…",
+  "warning": "resolved F-2026-08-PLT-ios-02, but this pull request changed no file under `apps/ios` (surface `ios`)" }
+```
+
+It is a second opinion, never a refusal: the finding is resolved either way.
+`path` is optional, and a real fix can legitimately live in a shared package,
+so gating the closure on this would fail in the opposite direction — findings
+that were genuinely fixed would silently stay open. It is also only ever
+raised against a **complete** file list: when the changed-file list came back
+incomplete or unreadable, there is no warning at all, because a missing file
+could invent a mismatch that was never really there.
+
 A finding closes only on `Closes`/`Fixes`/`Resolves` before its id, in the
 body, on the same line, with nothing but spaces or a colon between them — a
 wrapped verb or one left in the title reports instead of closing. That is
