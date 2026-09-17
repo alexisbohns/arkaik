@@ -1353,6 +1353,13 @@ The advisory Lab Note reminder comments at PR-open time. If it reports a problem
 > earlier draft spelled one out, and an agent that also added its own produced a
 > commit carrying two.
 >
+> **A new `@/…` import needs its test loaders taught about it.** There are TWO
+> hand-maintained rewrite tables — `tests/services/load-quality-parse.js` and
+> `tests/services/load-github-api.js` — and a module added to one still breaks
+> the other. Task 8 added `quality-surface` to `quality.ts`, updated the first,
+> and `test:github` died before its first check. **Every verification step in
+> Part B runs `test:github` (it needs Postgres) alongside `test:quality-webhook`.**
+>
 > **Part B's text was written before Tasks 1c and 2c.** Two things it predates:
 > the grammar's separator is now same-line (`[ \t:]{1,20}`), and
 > `QualityResolutionOutcome` has gained a `nothing_to_do` variant plus an
