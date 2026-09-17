@@ -17,7 +17,7 @@ const { loadQualityParse, BUILD_DIR } = require("./load-quality-parse");
 // BUILD_DIR, so calling it twice would pull the directory out from under the
 // modules the first call already required.
 const kritik = loadQualityParse();
-const { scanFindings, closedIssues, parseIssueRef, isFindingId } = kritik;
+const { scanFindings, closedIssues, parseIssueRef, isFindingId, surfaceMismatchWarning } = kritik;
 
 let failures = 0;
 function check(name, cond, detail) {
@@ -277,6 +277,71 @@ const repo100 = "a".repeat(100);
 const repo101 = "a".repeat(101);
 check("a 100-character repo name is within GitHub's ceiling and parses", parseIssueRef(`https://github.com/acme/${repo100}/issues/1`)?.repo === `acme/${repo100}`);
 check("a 101-character repo name exceeds the cap and does not parse", parseIssueRef(`https://github.com/acme/${repo101}/issues/1`) === undefined);
+
+// --- the surface sanity check ------------------------------------------------
+
+// The pbbls profile, as docs/quality/library/framework.json actually writes it.
+const PROFILE = {
+  surfaces: [
+    { id: "web", title: "Web app", platform: "web", path: "apps/web" },
+    { id: "ios", title: "iOS", platform: "ios", path: "apps/ios" },
+    { id: "supabase", title: "Database contract", path: "packages/supabase" },
+    { id: "docs", title: "Docs" },
+  ],
+};
+const files = (...paths) => ({ kind: "files", paths, incomplete: [] });
+const warn = (surface, evidence, profile = PROFILE) =>
+  surfaceMismatchWarning({ findingId: "F-2026-08-PLT-ios-02", surface, profile, evidence });
+
+check(
+  "a resolution touching nothing under the surface's path warns",
+  warn("ios", files("packages/supabase/schema.sql", "docs/x.md")) ===
+    "resolved F-2026-08-PLT-ios-02, but this pull request changed no file under `apps/ios` (surface `ios`)",
+  JSON.stringify(warn("ios", files("packages/supabase/schema.sql"))),
+);
+
+check("a resolution touching the surface's path is silent", warn("ios", files("apps/ios/Report.swift")) === undefined);
+check("one file among many is enough", warn("ios", files("docs/x.md", "apps/ios/Report.swift", ".github/w.yml")) === undefined);
+
+// Containment is on SEGMENT boundaries, by the same `pathMatchesPrefix` that
+// decides it for path-scoped repository links.
+check("a sibling directory sharing a prefix does not count", typeof warn("ios", files("apps/ios-shared/x.swift")) === "string");
+
+// A MISSING FILE CAN INVENT A MISMATCH. `RepoScope` already states the mirror
+// rule — a missing file cannot invent a match — and both point the same way:
+// under-claim, never over-claim. Warning off a partial list would be a false
+// accusation printed against a correct resolution.
+check("an incomplete list warns about nothing", warn("ios", { kind: "files", paths: ["docs/x.md"], incomplete: ["github-file-cap"] }) === undefined);
+check("an unavailable list warns about nothing", warn("ios", { kind: "unavailable", reason: "no installation id" }) === undefined);
+check("a list nobody fetched warns about nothing", warn("ios", { kind: "not-needed" }) === undefined);
+
+// Nothing to compare against is not evidence of a mismatch.
+check("a surface the profile does not declare is silent", warn("android", files("docs/x.md")) === undefined);
+check("a surface declaring no path is silent", warn("docs", files("apps/ios/x.swift")) === undefined);
+// `warn`'s own default parameter would swallow an explicit `undefined` right
+// back into `PROFILE` (JS substitutes a default on `undefined`, not only on
+// omission), so this one goes straight to the function to actually pass none.
+check("no profile at all is silent", surfaceMismatchWarning({
+  findingId: "F-2026-08-PLT-ios-02", surface: "ios", evidence: files("docs/x.md"), profile: undefined,
+}) === undefined);
+check("a profile with no surfaces array is silent", warn("ios", files("docs/x.md"), {}) === undefined);
+
+// `cross-surface` is a findings-only lens the profile never declares, so it
+// falls out of the rule above rather than needing one of its own.
+check("cross-surface is silent", warn("cross-surface", files("docs/x.md")) === undefined);
+
+// A path written with stray separators still normalises to the same prefix.
+check("a path with leading and trailing slashes still matches", surfaceMismatchWarning({
+  findingId: "F-1", surface: "ios", evidence: files("apps/ios/x.swift"),
+  profile: { surfaces: [{ id: "ios", title: "iOS", path: "/apps/ios/" }] },
+}) === undefined);
+
+// A path that normalises to the whole repository says nothing about where a
+// fix belongs, so it cannot support a warning.
+check("a path that normalises to the repository root is silent", surfaceMismatchWarning({
+  findingId: "F-1", surface: "ios", evidence: files("docs/x.md"),
+  profile: { surfaces: [{ id: "ios", title: "iOS", path: "/" }] },
+}) === undefined);
 
 // --- the resolution pass -----------------------------------------------------
 
