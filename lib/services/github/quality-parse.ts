@@ -4,10 +4,17 @@
 // bare transpile.
 //
 // TWO CHANNELS, because two kinds of author write these PRs. An agent working
-// from `arkaik kritik issue` quotes the finding id, which is exactly why
-// `mintFindingId` made it quotable. A person working from the filed GitHub
-// issue writes `Closes #123` and never sees a finding id at all. Reading only
-// one channel would leave half the loop silent.
+// from `arkaik kritik issue` writes `Closes F-2026-08-SEC-web-01`, which is
+// exactly why `mintFindingId` made the id quotable. A person working from the
+// filed GitHub issue writes `Closes #123` and never sees a finding id at all.
+// Reading only one channel would leave half the loop silent.
+//
+// BOTH CHANNELS NEED A VERB (issue #440). A bare id used to close the finding
+// it named, so a PR that shipped one finding and named five more in a
+// "Follow-ups" table resolved all six. Naming a finding and closing one are
+// different acts; the verb is
+// what tells them apart, and it is GitHub's own convention rather than a new
+// one to learn.
 //
 // LINEAR BY CONSTRUCTION, because a PR body is attacker-influenced input —
 // anyone can open a PR from a fork — and GitHub itself allows up to 65,536
@@ -48,10 +55,12 @@ export interface IssueRef {
  *
  * Two ids written back-to-back with nothing separating them
  * (`...-01F-2026-...`) fuse into a single token, because `\b` cannot cut
- * between two word characters (`1` and `F`). The fused token almost always
- * fails {@link isFindingId}'s shape check and is simply dropped — the same
- * "stays one unrecognised token rather than becomes a wrong confident answer"
- * trade `ACCEPTANCE_MENTION` makes for the identical adjacency case in
+ * between two word characters (`1` and `F`). The fused token often PASSES
+ * {@link isFindingId} — segment counts and a two-digit tail survive
+ * concatenation — and becomes one id that names nothing. Downstream that is a
+ * plain lookup miss, reported unknown, while both real ids go unreported: an
+ * under-claim, which is the safe direction and the same trade
+ * `ACCEPTANCE_MENTION` makes for the identical adjacency case in
  * pull-request.ts.
  */
 const FINDING_TOKEN = /\bF-[A-Za-z0-9-]{3,80}\b/g;
@@ -88,6 +97,54 @@ const FINDING_TOKEN = /\bF-[A-Za-z0-9-]{3,80}\b/g;
  */
 const CLOSING_REFERENCE =
   /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)[\s:]{1,20}(?:https?:\/\/(?:www\.)?github\.com\/([A-Za-z0-9._-]{1,100})\/([A-Za-z0-9._-]{1,100})\/issues\/|([A-Za-z0-9._-]{1,100})\/([A-Za-z0-9._-]{1,100})#|#)(\d{1,9})\b/gi;
+
+/**
+ * arkaik's own closing grammar: one of GitHub's nine keywords, then a finding
+ * id. `Closes F-2026-08-SEC-web-01` closes; a bare id does not.
+ *
+ * ISSUE #440 IS WHY THIS EXISTS. A bare id used to close, so pbbls#832 —
+ * which shipped one finding and named five more in a "Follow-ups" table —
+ * resolved all six, and the matrix went on to answer "done" for a pillar
+ * whose clients shipped none of it. A reference and a closure are different
+ * acts, GitHub already distinguishes them with exactly these keywords, and
+ * requiring the verb is the smallest thing that makes the distinction real.
+ *
+ * THE KEYWORD IS {@link CLOSING_REFERENCE}'s, character for character. THE
+ * SEPARATOR IS NOT, and the difference is the point: that one spells
+ * `[\s:]{1,20}`, which matches a newline, and a heading that DECLINES a
+ * finding ends in a closing keyword — `Findings we did NOT fix:` followed by
+ * the ids on the lines below. Reaching across the break closed the first of
+ * them. So this one is `[ \t:]{1,20}`: spaces, tabs and the colon this repo's
+ * own convention writes, and no line break. The verb and the id must sit on
+ * one line.
+ *
+ * A `Closes` wrapped away from its id therefore closes nothing and is
+ * reported through {@link FindingScan.mentioned} instead — an under-claim the
+ * author is told about, rather than an over-claim nobody sees. Markdown
+ * between the two breaks the pair for the same reason and with the same
+ * result: `**Closes** F-…` and `Closes [F-…](url)` report rather than close.
+ *
+ * WHAT THIS STILL CANNOT SEE is intent on a single line. `Won't fix:
+ * F-2026-08-SEC-web-01` closes it, exactly as `won't fix #12` closes an issue
+ * on GitHub. Bounding a separator cannot read a sentence, and the alternative
+ * — a list of negation words — is the kind of heuristic that looks like a
+ * rule until the day someone writes "unable to". Accepted, deliberately: the
+ * surface check in quality-surface.ts is the second opinion on this case.
+ *
+ * ONE VERB, ONE ID, like GitHub's own rule that a keyword closes the single
+ * reference after it. `Closes F-2026-08-SEC-web-01, F-2026-08-SEC-web-02`
+ * closes the first and reports the second through
+ * {@link FindingScan.mentioned}, which is the loud failure mode: the author
+ * is told at merge, in the delivery response, rather than discovering it in
+ * the matrix months later.
+ *
+ * Linear like everything else here: the alternation's branches are
+ * prefix-distinct, `[ \t:]{1,20}` and `[A-Za-z0-9-]{3,80}` are both bounded,
+ * and the trailing `\b` is the same non-backtracking terminator
+ * {@link FINDING_TOKEN} uses.
+ */
+const CLOSING_FINDING =
+  /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)[ \t:]{1,20}(F-[A-Za-z0-9-]{3,80})\b/gi;
 
 /** A full issue URL, tolerant of scheme, `www.`, and anything after the number. */
 const ISSUE_URL =
@@ -215,31 +272,67 @@ function splitOnFencedCode(text: string): string[] {
 }
 
 /**
- * Finding ids named in a PR's title or body, deduped, in the order they
- * appear.
+ * What a pull request says about findings: the ones it CLOSES, and the ones it
+ * merely names.
  *
- * Scans BOTH title and body — unlike {@link closedIssues} below, which reads
- * GitHub's own grammar and is body-only for that reason. This grammar is
- * arkaik's own: `F-2026-08-SEC-web-01` means the same thing wherever an
- * author puts it, the way `AC-x` does for `mentionedAcceptances` in
- * pull-request.ts, which also reads both title and body. The two functions'
- * scopes differ because the GRAMMARS they read differ, not by oversight.
- * (One further divergence from `mentionedAcceptances`: this function strips
- * fenced code first and that one does not, because `AC-x@platform` carries no
- * "someone is quoting the syntax" failure mode the way a closing keyword or a
- * finding id does — an intentional difference, not an oversight either.)
+ * TWO SETS, NOT ONE LIST, because they are two different speech acts and the
+ * App must not confuse them (issue #440). `closed` is acted on; `mentioned` is
+ * reported and nothing more — `applyQualityResolutions` turns it into a
+ * `mentioned` outcome so an author who expected the old behaviour is told, at
+ * merge, in the one diagnostic surface the docs point them at.
+ *
+ * `closed` IS BODY-ONLY, matching {@link closedIssues} and GitHub itself,
+ * which honours a closing keyword in a description and never in a title.
+ * `mentioned` still reads BOTH, because naming a finding is arkaik's own
+ * grammar and means the same thing wherever an author puts it — the same
+ * split, for the same reason, that `mentionedAcceptances` and `closedIssues`
+ * already have between them.
+ *
+ * An id under a verb AND named bare elsewhere is CLOSED, once. Reporting it in
+ * both would tell an author their own closure was also a loose reference.
+ *
+ * Both channels strip fenced code first: a fence creates no reference on
+ * GitHub's side, and this repo's own task-plan PRs quote this very syntax.
  */
-export function mentionedFindings(event: Pick<PullRequestEvent, "title" | "body">): string[] {
-  const found = new Set<string>();
-  for (const text of [event.title, event.body]) {
-    if (!text) continue;
-    for (const run of splitOnFencedCode(text)) {
-      for (const match of run.matchAll(FINDING_TOKEN)) {
-        if (isFindingId(match[0])) found.add(match[0]);
-      }
+export interface FindingScan {
+  /** Ids a closing keyword names in the BODY. These resolve. */
+  closed: string[];
+  /**
+   * Ids this PR names but does not close — including a title's `Closes F-…`,
+   * which GitHub would not honour either. Reported, never acted on.
+   */
+  mentioned: string[];
+}
+
+export function scanFindings(event: Pick<PullRequestEvent, "title" | "body">): FindingScan {
+  // Split ONCE per text, so "both channels see the same runs of the same
+  // body" is a fact about the code rather than about two call sites agreeing.
+  const bodyRuns = event.body ? splitOnFencedCode(event.body) : [];
+  const titleRuns = event.title ? splitOnFencedCode(event.title) : [];
+
+  const closed = new Set<string>();
+  for (const run of bodyRuns) {
+    for (const match of run.matchAll(CLOSING_FINDING)) {
+      const token = match[1];
+      // The `i` flag exists for the KEYWORD — `CLOSES`, `Fixes` — and also
+      // reaches the id, where {@link FINDING_TOKEN} (no `i`) would never
+      // match a lowercase `f-`. Without this the two channels disagree about
+      // what a finding id even is, and the same finding could land in
+      // `closed` AND `mentioned` at once, which the contract above says
+      // cannot happen.
+      if (!token.startsWith("F-")) continue;
+      if (isFindingId(token)) closed.add(token);
     }
   }
-  return [...found];
+
+  const mentioned = new Set<string>();
+  for (const run of [...titleRuns, ...bodyRuns]) {
+    for (const match of run.matchAll(FINDING_TOKEN)) {
+      if (isFindingId(match[0]) && !closed.has(match[0])) mentioned.add(match[0]);
+    }
+  }
+
+  return { closed: [...closed], mentioned: [...mentioned] };
 }
 
 /**
@@ -247,11 +340,11 @@ export function mentionedFindings(event: Pick<PullRequestEvent, "title" | "body"
  *
  * GitHub does not honour a closing keyword in a pull request's TITLE — only
  * in its description, or in a commit message the merge later carries in.
- * (See {@link mentionedFindings} above for why ITS scan still covers both —
- * a different grammar, not the same rule applied inconsistently.) Scanning
- * the title here would let arkaik mark a finding resolved while the GitHub
- * issue it names stays open, which is exactly the over-claim this loop
- * exists to avoid.
+ * {@link scanFindings} draws the same line for the same reason: its `closed`
+ * channel is body-only too, and only its `mentioned` one — which closes
+ * nothing — reads a title at all. Scanning the title here would let arkaik
+ * mark a finding resolved while the GitHub issue it names stays open, which
+ * is exactly the over-claim this loop exists to avoid.
  *
  * A bare `#12` takes the PR's own repository, because that is what GitHub
  * does with it; `owner/repo#12` keeps the one it names, and so does a full

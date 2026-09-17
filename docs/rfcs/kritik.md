@@ -93,7 +93,7 @@ A finding about a mappable feature attaches to its node(s) two existing ways: `n
 
 1. **Per-audit:** an agent (or an agent army, as in the pilot) runs the framework, writes `scores.json` and `findings.json`, appends `quality.audit.completed` plus one `quality.finding.opened` per retained finding to `docs/arkaik/journal.jsonl`, and files issues from the templates.
 2. **Between audits:** each criterion's `signals[]` is mechanically checkable (greps that must return nothing, CI jobs that must exist). A scheduled job (CI cron or a Claude routine) runs the signal pack and appends `quality.signal.tripped` on regressions.
-3. **On merge:** the existing Arkaik GitHub App webhook already appends `deliverable.shipped` per merged PR; a PR closing a quality issue appends `quality.finding.resolved` (lane 1: a small workflow step greps the PR body for `finding_id`; lane 2: the webhook grows native support).
+3. **On merge:** the existing Arkaik GitHub App webhook already appends `deliverable.shipped` per merged PR; a PR closing a quality issue appends `quality.finding.resolved` (lane 1: a small workflow step greps the PR body for `finding_id`; lane 2: the webhook grows native support). Lane 2 requires a closing verb — `Closes F-…` in the body, GitHub's own keywords — because a bare id read as a closure resolved findings a PR merely referred to (issue #440).
 
 ## 4. Lane 2: first-class Kritik (the app feature)
 

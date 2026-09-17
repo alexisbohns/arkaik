@@ -4,7 +4,7 @@ import { findingResolvedInput, isOpenFinding, makeEvent, type JournalEvent, type
 
 import { query } from "@/lib/services/db";
 import { appendJournalEvents } from "@/lib/services/graph/store";
-import { closedIssues, mentionedFindings, parseIssueRef } from "@/lib/services/github/quality-parse";
+import { closedIssues, parseIssueRef, scanFindings } from "@/lib/services/github/quality-parse";
 import { linkedProjects, ownerIdsFor, type PullRequestEvent } from "@/lib/services/github/pull-request";
 
 /**
@@ -26,6 +26,22 @@ export type QualityResolutionOutcome =
   | { projectId: string; status: "unchanged"; findingId: string }
   | { projectId: string; status: "unknown"; findingId: string }
   | { projectId: string; status: "refused"; findingId: string }
+  /**
+   * The finding was NAMED, with no closing verb, and is still open (issue
+   * #440). Nothing was written. Reported rather than swallowed because the
+   * delivery response is the one diagnostic surface docs/hosted-projects.md
+   * points people at, and a grammar change that produced a new silence would
+   * be this round's defect at one remove.
+   */
+  | { projectId: string; status: "mentioned"; findingId: string; hint: string }
+  /**
+   * A linked project DOES hold a finding this pull request names, and there
+   * was nothing to do about it — every one was already resolved, accepted or
+   * refuted. Distinct from `no_quality_data` below, which denies that any
+   * project holds what the PR named: saying that about a project whose
+   * findings we had just read would deny a fact this pass knows.
+   */
+  | { status: "nothing_to_do" }
   | { status: "no_quality_data" }
   | { status: "no_mentions" };
 
@@ -53,31 +69,66 @@ export interface ProjectQualityState {
  */
 export type ReadProjectQualityState = (event: PullRequestEvent) => Promise<ProjectQualityState[]>;
 
+/**
+ * What a `mentioned` outcome tells the author to do instead.
+ *
+ * IT DOES NOT DIAGNOSE, because it cannot. Three different bodies land here
+ * and only one of them forgot a verb: a bare id did, a `Closes` wrapped onto
+ * the line above its id did not, and a `Closes F-…` in the TITLE did not
+ * either. The first wording said "named without a closing verb", which told
+ * two of those three authors they had omitted something they had in fact
+ * written — and pointed them back at the text that was already there.
+ *
+ * So it states the outcome ("named but not closed") and then the shape that
+ * works, which is true advice for all three: in the body, on one line, with
+ * nothing but spaces or a colon between the verb and the id. That last clause
+ * also covers `**Closes** F-…` and `Closes [F-…](url)`, which break the pair
+ * the same way and would otherwise be a fourth silent case.
+ */
+const mentionHint = (findingId: string) =>
+  `named but not closed — write \`Closes ${findingId}\` in the PR body, ` +
+  `verb and id on one line with nothing but spaces or a colon between them`;
+
 export async function applyQualityResolutions(
   event: PullRequestEvent,
   options: { readState?: ReadProjectQualityState } = {},
 ): Promise<QualityResolutionOutcome[]> {
-  const mentioned = mentionedFindings(event);
+  const scan = scanFindings(event);
   const issues = closedIssues(event);
   // Read nothing when the PR claims nothing. The overwhelming majority of
   // merges are this case, and a database round trip per project to discover it
   // would be a cost paid on every delivery for the rare one.
-  if (mentioned.length === 0 && issues.length === 0) return [{ status: "no_mentions" }];
+  //
+  // A BARE MENTION COUNTS AS A CLAIM here, even though it resolves nothing:
+  // deciding whether to report it needs the finding — does this project hold
+  // it, is it still open — and only the read has that. This costs no more
+  // deliveries than before, either: `mentionedFindings` scanned the same two
+  // texts for the same tokens, and `closed` ∪ `mentioned` is exactly the set
+  // it returned. What changed is what happens after the read, not how often
+  // one happens.
+  if (scan.closed.length === 0 && scan.mentioned.length === 0 && issues.length === 0) {
+    return [{ status: "no_mentions" }];
+  }
 
   const issueKeys = new Set(issues.map((ref) => `${ref.repo}#${ref.number}`));
   const readState = options.readState ?? loadProjectQualityState;
   const outcomes: QualityResolutionOutcome[] = [];
+  // Whether ANY linked project turned out to hold a finding this PR named —
+  // the one fact that separates the two silences below, and knowable only
+  // after the reads.
+  let anyKnown = false;
 
   for (const state of await readState(event)) {
     const byId = new Map(state.findings.map((finding) => [finding.id, finding]));
     const matched = new Map<string, QualityFinding>();
 
-    for (const id of mentioned) {
+    for (const id of scan.closed) {
       const finding = byId.get(id);
       if (finding === undefined) {
         outcomes.push({ projectId: state.projectId, status: "unknown", findingId: id });
         continue;
       }
+      anyKnown = true;
       matched.set(finding.id, finding);
     }
     for (const finding of state.findings) {
@@ -102,6 +153,32 @@ export async function applyQualityResolutions(
       resolving.push(finding.id);
     }
 
+    // ABOVE the `events.length === 0` bail below, and that is the constraint
+    // that pins it: a project whose PR closes nothing — the pure-mention case
+    // this outcome exists for — never reaches the lines past that bail, and
+    // neither does one whose append is refused. Both would silently report no
+    // mentions at all. (It also has to follow the two loops above, so
+    // `matched` is complete and a finding reached through its own issue is
+    // not reported as a loose end as well.)
+    for (const id of scan.mentioned) {
+      const finding = byId.get(id);
+      // Unlike the `closed` channel above, an id nothing answers to is NOT
+      // reported. There the author asserted a closure and it failed, which is
+      // actionable; here it is prose that happened to look id-shaped, and
+      // reporting it would make every PR discussing findings noisy.
+      if (finding === undefined || matched.has(finding.id)) continue;
+      anyKnown = true;
+      // Nor is a finding somebody already decided: it is not outstanding, so
+      // there is nothing the author could do about it.
+      if (!isOpenFinding(finding) || state.decidedFindingIds.has(finding.id)) continue;
+      outcomes.push({
+        projectId: state.projectId,
+        status: "mentioned",
+        findingId: finding.id,
+        hint: mentionHint(finding.id),
+      });
+    }
+
     if (events.length === 0) continue;
     const eventIds = await state.append(events);
     // An append that wrote nothing is a REFUSAL, not a resolution. Reporting it
@@ -119,12 +196,15 @@ export async function applyQualityResolutions(
     });
   }
 
-  // Two different silences, deliberately named apart. `no_mentions` is "the PR
-  // claimed nothing" and is decided before any read; this is "the PR claimed
-  // something, and no linked project holds a finding it names" — the shape a
-  // hosted project with no `quality` section in its snapshot produces. Reusing
-  // `no_mentions` here would deny the one fact we actually know.
-  return outcomes.length > 0 ? outcomes : [{ status: "no_quality_data" }];
+  // THREE silences, and they are not interchangeable. `no_mentions` is "the PR
+  // claimed nothing" and is decided before any read. `nothing_to_do` is "a
+  // project holds what it named, and every one was already decided". And this
+  // last one is "the PR claimed something, and no linked project holds a
+  // finding it names" — the shape a hosted project with no `quality` section
+  // in its snapshot produces. Collapsing any pair of them would have the one
+  // diagnostic surface anybody reads deny something this pass knows.
+  if (outcomes.length > 0) return outcomes;
+  return [{ status: anyKnown ? "nothing_to_do" : "no_quality_data" }];
 }
 
 /**
