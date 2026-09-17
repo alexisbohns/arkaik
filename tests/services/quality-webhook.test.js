@@ -361,8 +361,8 @@ const FINDING = (over = {}) => ({
   ...over,
 });
 
-/** The injected seam: one project, whatever findings and events a case needs. */
-function state({ findings = [FINDING()], decidedIds = [] } = {}) {
+/** The injected seam: one project, whatever findings, events and profile a case needs. */
+function state({ findings = [FINDING()], decidedIds = [], profile = undefined } = {}) {
   const appended = [];
   return {
     appended,
@@ -370,12 +370,20 @@ function state({ findings = [FINDING()], decidedIds = [] } = {}) {
       {
         projectId: "prj_1",
         findings,
+        profile,
         decidedFindingIds: new Set(decidedIds),
         append: async (events) => { appended.push(...events); return events.map((e) => e.id); },
       },
     ],
   };
 }
+
+/** A `fetchFiles` seam that counts its calls, so "at most one" is testable. */
+function fetcher(result) {
+  const calls = [];
+  return { calls, fetchFiles: async (pr) => { calls.push(pr); return result; } };
+}
+const OK_FILES = (...paths) => ({ ok: true, changed: { paths, incomplete: [] } });
 
 const merged = (over = {}) => ({
   action: "closed",
@@ -576,6 +584,68 @@ const merged = (over = {}) => ({
   const titled = state();
   const titledOut = await applyQualityResolutions(merged({ title: "Closes F-2026-08-SEC-web-01", body: "Nothing here." }), { readState: titled.readState });
   check("a title-only closure reports, and says the body is where it belongs", titledOut[0]?.hint?.includes("in the PR body"), JSON.stringify(titledOut));
+
+  // --- the surface warning, end to end --------------------------------------
+
+  const IOS_PROFILE = { surfaces: [{ id: "ios", title: "iOS", platform: "ios", path: "apps/ios" }] };
+  const iosFinding = () => FINDING({ id: "F-2026-08-PLT-ios-02", surface: "ios" });
+
+  const mismatch = state({ findings: [iosFinding()], profile: IOS_PROFILE });
+  const mismatchFetch = fetcher(OK_FILES("packages/supabase/schema.sql"));
+  const mismatchOutcomes = await applyQualityResolutions(
+    merged({ body: "Closes F-2026-08-PLT-ios-02" }),
+    { readState: mismatch.readState, fetchFiles: mismatchFetch.fetchFiles },
+  );
+  check("the resolution is still appended", mismatch.appended.length === 1, JSON.stringify(mismatch.appended));
+  check(
+    "the resolved outcome carries the surface warning",
+    mismatchOutcomes.find((o) => o.status === "resolved")?.warning ===
+      "resolved F-2026-08-PLT-ios-02, but this pull request changed no file under `apps/ios` (surface `ios`)",
+    JSON.stringify(mismatchOutcomes),
+  );
+
+  const onTarget = state({ findings: [iosFinding()], profile: IOS_PROFILE });
+  const onTargetFetch = fetcher(OK_FILES("apps/ios/Report.swift"));
+  const onTargetOutcomes = await applyQualityResolutions(
+    merged({ body: "Closes F-2026-08-PLT-ios-02" }),
+    { readState: onTarget.readState, fetchFiles: onTargetFetch.fetchFiles },
+  );
+  check("a resolution landing in its surface carries no warning", onTargetOutcomes.find((o) => o.status === "resolved")?.warning === undefined, JSON.stringify(onTargetOutcomes));
+  check("the file list is fetched exactly once", onTargetFetch.calls.length === 1, JSON.stringify(onTargetFetch.calls));
+  check("the fetch names the pull request", onTargetFetch.calls[0]?.repoFullName === REPO && onTargetFetch.calls[0]?.number === 7, JSON.stringify(onTargetFetch.calls));
+
+  // No `fetchFiles` is the explicit under-claiming default, the same posture
+  // `ChangedFilesEvidence` demands of every caller that has not fetched.
+  const noFetcher = state({ findings: [iosFinding()], profile: IOS_PROFILE });
+  const noFetchOutcomes = await applyQualityResolutions(merged({ body: "Closes F-2026-08-PLT-ios-02" }), { readState: noFetcher.readState });
+  check("without a fetcher there is no warning", noFetchOutcomes.find((o) => o.status === "resolved")?.warning === undefined, JSON.stringify(noFetchOutcomes));
+  check("without a fetcher the resolution still happens", noFetcher.appended.length === 1, JSON.stringify(noFetcher.appended));
+
+  // NO FETCH AT ALL when nothing resolvable declares a path: a delivery must
+  // not buy a GitHub request for a question it cannot ask.
+  const pathless = state({ findings: [iosFinding()], profile: { surfaces: [{ id: "ios", title: "iOS" }] } });
+  const pathlessFetch = fetcher(OK_FILES("docs/x.md"));
+  await applyQualityResolutions(merged({ body: "Closes F-2026-08-PLT-ios-02" }), { readState: pathless.readState, fetchFiles: pathlessFetch.fetchFiles });
+  check("a surface with no path costs no fetch", pathlessFetch.calls.length === 0, JSON.stringify(pathlessFetch.calls));
+
+  const unknownSurface = state({ findings: [FINDING({ surface: "web" })], profile: IOS_PROFILE });
+  const unknownFetch = fetcher(OK_FILES("docs/x.md"));
+  await applyQualityResolutions(merged({ body: "Closes F-2026-08-SEC-web-01" }), { readState: unknownSurface.readState, fetchFiles: unknownFetch.fetchFiles });
+  check("a surface the profile does not declare costs no fetch", unknownFetch.calls.length === 0, JSON.stringify(unknownFetch.calls));
+
+  // A merge that resolves nothing never asks either.
+  const mentionOnly = state({ findings: [iosFinding()], profile: IOS_PROFILE });
+  const mentionFetch = fetcher(OK_FILES("docs/x.md"));
+  await applyQualityResolutions(merged({ body: "Adjacent to F-2026-08-PLT-ios-02." }), { readState: mentionOnly.readState, fetchFiles: mentionFetch.fetchFiles });
+  check("a merge that resolves nothing costs no fetch", mentionFetch.calls.length === 0, JSON.stringify(mentionFetch.calls));
+
+  // An unreadable list is not a mismatch.
+  const unavailable = state({ findings: [iosFinding()], profile: IOS_PROFILE });
+  const unavailableOutcomes = await applyQualityResolutions(
+    merged({ body: "Closes F-2026-08-PLT-ios-02" }),
+    { readState: unavailable.readState, fetchFiles: async () => ({ ok: false, reason: "no installation id" }) },
+  );
+  check("an unreadable file list produces no warning", unavailableOutcomes.find((o) => o.status === "resolved")?.warning === undefined, JSON.stringify(unavailableOutcomes));
 
   // --- issue #440, as it actually happened -----------------------------------
   //

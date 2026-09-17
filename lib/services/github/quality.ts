@@ -1,11 +1,18 @@
 import "server-only";
 
-import { findingResolvedInput, isOpenFinding, makeEvent, type JournalEvent, type QualityFinding } from "@arkaik/schema";
+import { findingResolvedInput, isOpenFinding, makeEvent, type JournalEvent, type QualityFinding, type QualityProfile, type SurfaceDef } from "@arkaik/schema";
 
 import { query } from "@/lib/services/db";
 import { appendJournalEvents } from "@/lib/services/graph/store";
 import { closedIssues, parseIssueRef, scanFindings } from "@/lib/services/github/quality-parse";
-import { linkedProjects, ownerIdsFor, type PullRequestEvent } from "@/lib/services/github/pull-request";
+import { surfaceMismatchWarning } from "@/lib/services/github/quality-surface";
+import {
+  linkedProjects,
+  ownerIdsFor,
+  type ChangedFilesEvidence,
+  type FetchChangedFiles,
+  type PullRequestEvent,
+} from "@/lib/services/github/pull-request";
 
 /**
  * The Kritik half of a merged-PR delivery (issue #382 phase E, RFC § 3.4).
@@ -22,7 +29,18 @@ import { linkedProjects, ownerIdsFor, type PullRequestEvent } from "@/lib/servic
  * state is a projection, latest audit plus open-minus-resolved.
  */
 export type QualityResolutionOutcome =
-  | { projectId: string; status: "resolved"; findingId: string; eventId: string }
+  | {
+      projectId: string;
+      status: "resolved";
+      findingId: string;
+      eventId: string;
+      /**
+       * The resolution happened, and something about it does not add up —
+       * today, only that the pull request changed no file under the finding's
+       * surface (issue #440). Never a refusal: see `quality-surface.ts`.
+       */
+      warning?: string;
+    }
   | { projectId: string; status: "unchanged"; findingId: string }
   | { projectId: string; status: "unknown"; findingId: string }
   | { projectId: string; status: "refused"; findingId: string }
@@ -49,6 +67,12 @@ export type QualityResolutionOutcome =
 export interface ProjectQualityState {
   projectId: string;
   findings: QualityFinding[];
+  /**
+   * The project's surface profile, for the surface sanity check. Optional
+   * because it is read defensively from stored section content — a project
+   * whose snapshot carries none simply earns no warnings.
+   */
+  profile?: QualityProfile;
   /**
    * Findings a `quality.finding.resolved` OR `quality.finding.accepted`
    * event already names. A finding accepted via event still LOOKS open in
@@ -91,7 +115,21 @@ const mentionHint = (findingId: string) =>
 
 export async function applyQualityResolutions(
   event: PullRequestEvent,
-  options: { readState?: ReadProjectQualityState } = {},
+  options: {
+    readState?: ReadProjectQualityState;
+    /**
+     * The pull request's changed files, for the surface sanity check. The
+     * route passes the SAME memoized fetcher it gives the delivery half
+     * (`onceChangedFiles`), so a delivery that needs the list in both places
+     * still makes one request.
+     *
+     * OPTIONAL, AND ABSENT MEANS `not-needed`, never a silent fetch: it is the
+     * explicit under-claiming default `ChangedFilesEvidence` demands of every
+     * caller that has not fetched. A caller that forgets gets no warnings, not
+     * a wrong one.
+     */
+    fetchFiles?: FetchChangedFiles;
+  } = {},
 ): Promise<QualityResolutionOutcome[]> {
   const scan = scanFindings(event);
   const issues = closedIssues(event);
@@ -112,6 +150,33 @@ export async function applyQualityResolutions(
 
   const issueKeys = new Set(issues.map((ref) => `${ref.repo}#${ref.number}`));
   const readState = options.readState ?? loadProjectQualityState;
+  // Fetched at most once, and only if some finding this delivery is about to
+  // resolve has a surface that declares a path — the question cannot be asked
+  // otherwise, and a delivery must not buy a GitHub request for a question it
+  // cannot ask. The route's fetcher is itself memoized across both halves, so
+  // this is the second of at most two asks and at most one call.
+  let evidence: ChangedFilesEvidence | undefined;
+  const changedFiles = async (): Promise<ChangedFilesEvidence> => {
+    if (evidence !== undefined) return evidence;
+    if (options.fetchFiles === undefined) {
+      evidence = { kind: "not-needed" };
+      return evidence;
+    }
+    // `event.installationId` rather than the stored fallback the delivery half
+    // resolves: reading that costs a query, and the route runs this half
+    // SECOND, so the memo is normally already warm with the good answer. When
+    // it is not and the payload carried no installation, the fetch fails and
+    // the evidence is `unavailable` — silence, which is the safe direction.
+    const result = await options.fetchFiles({
+      repoFullName: event.repoFullName,
+      number: event.number,
+      installationId: event.installationId,
+    });
+    evidence = result.ok
+      ? { kind: "files", paths: result.changed.paths, incomplete: result.changed.incomplete }
+      : { kind: "unavailable", reason: result.reason };
+    return evidence;
+  };
   const outcomes: QualityResolutionOutcome[] = [];
   // Whether ANY linked project turned out to hold a finding this PR named —
   // the one fact that separates the two silences below, and knowable only
@@ -139,7 +204,9 @@ export async function applyQualityResolutions(
     }
 
     const events: JournalEvent[] = [];
-    const resolving: string[] = [];
+    // The FINDINGS, not their ids: the surface check below needs `surface`,
+    // and re-looking each one up from `byId` would be the same map twice.
+    const resolving: QualityFinding[] = [];
     for (const finding of matched.values()) {
       // `refuted` and `accepted-risk` are decisions somebody recorded, not
       // defects waiting to be closed, and `resolved` is already done. Only an
@@ -150,7 +217,7 @@ export async function applyQualityResolutions(
       }
       const input = findingResolvedInput(finding, event.url);
       events.push(makeEvent(input.type, input.payload, { actor: "github-app" }));
-      resolving.push(finding.id);
+      resolving.push(finding);
     }
 
     // ABOVE the `events.length === 0` bail below, and that is the constraint
@@ -186,13 +253,33 @@ export async function applyQualityResolutions(
     // delivery response docs/hosted-projects.md points people at — that a
     // finding was closed when the journal never took it.
     if (eventIds.length === 0) {
-      for (const findingId of resolving) {
-        outcomes.push({ projectId: state.projectId, status: "refused", findingId });
+      for (const finding of resolving) {
+        outcomes.push({ projectId: state.projectId, status: "refused", findingId: finding.id });
       }
       continue;
     }
-    resolving.forEach((findingId, index) => {
-      outcomes.push({ projectId: state.projectId, status: "resolved", findingId, eventId: eventIds[index] });
+    // Asked only now, and only when a resolved finding's surface declares a
+    // path: `surfaceMismatchWarning` would return `undefined` for every other
+    // case anyway, and a GitHub request to learn that is a request wasted.
+    const surfaces: readonly unknown[] = Array.isArray(state.profile?.surfaces) ? state.profile.surfaces : [];
+    const declaresPath = (finding: QualityFinding) =>
+      typeof surfaces.find((entry): entry is SurfaceDef => (entry as SurfaceDef | null)?.id === finding.surface)?.path === "string";
+    const files = resolving.some(declaresPath) ? await changedFiles() : ({ kind: "not-needed" } as const);
+
+    resolving.forEach((finding, index) => {
+      const warning = surfaceMismatchWarning({
+        findingId: finding.id,
+        surface: finding.surface,
+        profile: state.profile,
+        evidence: files,
+      });
+      outcomes.push({
+        projectId: state.projectId,
+        status: "resolved",
+        findingId: finding.id,
+        eventId: eventIds[index],
+        ...(warning !== undefined ? { warning } : {}),
+      });
     });
   }
 
@@ -222,12 +309,19 @@ const loadProjectQualityState: ReadProjectQualityState = async (event) => {
   const states: ProjectQualityState[] = [];
 
   for (const projectId of projectIds) {
-    const { rows: snapshots } = await query<{ findings: QualityFinding[] | null }>(
-      `select snapshot->'quality'->'findings' as findings from graph_projects where id = $1 and archived_at is null`,
+    const { rows: snapshots } = await query<{ findings: QualityFinding[] | null; profile: QualityProfile | null }>(
+      `select snapshot->'quality'->'findings' as findings,
+              snapshot->'quality'->'profile'  as profile
+         from graph_projects where id = $1 and archived_at is null`,
       [projectId],
     );
     const findings = Array.isArray(snapshots[0]?.findings) ? snapshots[0].findings : [];
     if (findings.length === 0) continue;
+    // Read beside the findings rather than in a second query: the surface check
+    // needs both halves of the same section, and `profile` is required by
+    // `QualitySection` — a null here means storage holds something older than
+    // the schema, which earns no warnings and no error.
+    const profile = snapshots[0]?.profile ?? undefined;
 
     const { rows: decided } = await query<{ finding_id: string }>(
       `select event->>'finding_id' as finding_id from graph_events
@@ -239,6 +333,7 @@ const loadProjectQualityState: ReadProjectQualityState = async (event) => {
     states.push({
       projectId,
       findings,
+      profile,
       decidedFindingIds: new Set(decided.map((row) => row.finding_id).filter((id): id is string => typeof id === "string")),
       append: async (events) => {
         const ownerIds = await ownerIdsFor(projectId);
