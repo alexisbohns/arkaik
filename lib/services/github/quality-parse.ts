@@ -309,11 +309,11 @@ export function scanFindings(event: Pick<PullRequestEvent, "title" | "body">): F
  *
  * GitHub does not honour a closing keyword in a pull request's TITLE — only
  * in its description, or in a commit message the merge later carries in.
- * (See {@link mentionedFindings} above for why ITS scan still covers both —
- * a different grammar, not the same rule applied inconsistently.) Scanning
- * the title here would let arkaik mark a finding resolved while the GitHub
- * issue it names stays open, which is exactly the over-claim this loop
- * exists to avoid.
+ * {@link scanFindings} draws the same line for the same reason: its `closed`
+ * channel is body-only too, and only its `mentioned` one — which closes
+ * nothing — reads a title at all. Scanning the title here would let arkaik
+ * mark a finding resolved while the GitHub issue it names stays open, which
+ * is exactly the over-claim this loop exists to avoid.
  *
  * A bare `#12` takes the PR's own repository, because that is what GitHub
  * does with it; `owner/repo#12` keeps the one it names, and so does a full
