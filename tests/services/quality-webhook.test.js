@@ -17,7 +17,7 @@ const { loadQualityParse, BUILD_DIR } = require("./load-quality-parse");
 // BUILD_DIR, so calling it twice would pull the directory out from under the
 // modules the first call already required.
 const kritik = loadQualityParse();
-const { mentionedFindings, closedIssues, parseIssueRef, isFindingId } = kritik;
+const { scanFindings, closedIssues, parseIssueRef, isFindingId } = kritik;
 
 let failures = 0;
 function check(name, cond, detail) {
@@ -30,37 +30,72 @@ const ev = (title, body) => ({ title, body, repoFullName: REPO });
 
 // --- finding ids -------------------------------------------------------------
 
-const found = mentionedFindings(ev("Fix F-2026-08-SEC-web-01", "Also closes F-2026-08-PRV-ios-02."));
-check("ids found in title and body", found.length === 2 && found.includes("F-2026-08-SEC-web-01") && found.includes("F-2026-08-PRV-ios-02"), JSON.stringify(found));
+// A CLOSING VERB CLOSES. A bare id refers. This is the whole of issue #440:
+// pbbls#832 listed five findings in a follow-up table and closed all five.
+const verbed = scanFindings(ev("", "Closes F-2026-08-SEC-web-01."));
+check("a verb in the body closes", verbed.closed.length === 1 && verbed.closed[0] === "F-2026-08-SEC-web-01", JSON.stringify(verbed));
+check("a closed id is not also reported as mentioned", verbed.mentioned.length === 0, JSON.stringify(verbed));
 
-const hyphenated = mentionedFindings(ev("", "F-2026-08-A11Y-cross-surface-03 is gone."));
-check("a hyphenated surface and domain survive", hyphenated[0] === "F-2026-08-A11Y-cross-surface-03", JSON.stringify(hyphenated));
+for (const keyword of ["close", "closes", "closed", "fix", "fixes", "fixed", "resolve", "resolves", "resolved", "CLOSES", "Fixes"]) {
+  const scan = scanFindings(ev("", `${keyword} F-2026-08-SEC-web-01`));
+  check(`"${keyword} F-…" closes`, scan.closed.length === 1, JSON.stringify(scan));
+}
 
-const deduped = mentionedFindings(ev("F-2026-08-SEC-web-01", "F-2026-08-SEC-web-01 again"));
-check("deduped", deduped.length === 1, JSON.stringify(deduped));
+const bare = scanFindings(ev("", "Adjacent to F-2026-08-PLT-ios-02, not fixed here."));
+check("a bare id closes nothing", bare.closed.length === 0, JSON.stringify(bare));
+check("a bare id is reported as mentioned", bare.mentioned.length === 1 && bare.mentioned[0] === "F-2026-08-PLT-ios-02", JSON.stringify(bare));
 
-const nearMisses = mentionedFindings(ev("", "F-nope, F-2026-08-SEC-web-, F-2026-08-SEC-web-1 and Format-99"));
-check("near misses rejected", nearMisses.length === 0, JSON.stringify(nearMisses));
+// GitHub does not honour a closing keyword in a pull request TITLE, and this
+// grammar is GitHub's. A title that names one is reported, never acted on.
+const inTitle = scanFindings(ev("Closes F-2026-08-SEC-web-01", ""));
+check("a closing verb in the title closes nothing", inTitle.closed.length === 0, JSON.stringify(inTitle));
+check("a closing verb in the title is reported as mentioned", inTitle.mentioned.length === 1 && inTitle.mentioned[0] === "F-2026-08-SEC-web-01", JSON.stringify(inTitle));
+
+// One keyword, one id — exactly as GitHub requires a keyword before each issue
+// it closes. The rest are reported so the mistake is loud at merge.
+const commaList = scanFindings(ev("", "Closes F-2026-08-SEC-web-01, F-2026-08-SEC-web-02, F-2026-08-SEC-web-03"));
+check("a comma list closes only the id the verb names", commaList.closed.length === 1 && commaList.closed[0] === "F-2026-08-SEC-web-01", JSON.stringify(commaList));
+check("the rest of a comma list is reported as mentioned", commaList.mentioned.length === 2, JSON.stringify(commaList));
+
+// [\s:]{1,20} is why the repo's own colon convention and a wrapped line both
+// still separate a keyword from the id it closes.
+const colonFinding = scanFindings(ev("", "Closes: F-2026-08-SEC-web-01"));
+check("a colon between verb and id is recognised", colonFinding.closed.length === 1, JSON.stringify(colonFinding));
+
+const wrappedFinding = scanFindings(ev("", "Closes\nF-2026-08-SEC-web-01"));
+check("a line-wrapped verb and id are recognised", wrappedFinding.closed.length === 1, JSON.stringify(wrappedFinding));
+
+// An id named under a verb AND bare elsewhere is closed once, not both.
+const both = scanFindings(ev("F-2026-08-SEC-web-01", "Closes F-2026-08-SEC-web-01 — see F-2026-08-SEC-web-01 above."));
+check("an id both closed and mentioned counts only as closed", both.closed.length === 1 && both.mentioned.length === 0, JSON.stringify(both));
+
+const hyphenated = scanFindings(ev("", "Fixes F-2026-08-A11Y-cross-surface-03."));
+check("a hyphenated surface and domain survive", hyphenated.closed[0] === "F-2026-08-A11Y-cross-surface-03", JSON.stringify(hyphenated));
+
+const deduped = scanFindings(ev("", "Closes F-2026-08-SEC-web-01 and closes F-2026-08-SEC-web-01 again"));
+check("deduped", deduped.closed.length === 1, JSON.stringify(deduped));
+
+const nearMisses = scanFindings(ev("", "Closes F-nope, closes F-2026-08-SEC-web-, closes F-2026-08-SEC-web-1 and Format-99"));
+check("near misses rejected in both channels", nearMisses.closed.length === 0 && nearMisses.mentioned.length === 0, JSON.stringify(nearMisses));
 
 check("isFindingId accepts the minted shape", isFindingId("F-2026-08-SEC-web-01"));
 check("isFindingId rejects a one-digit counter", !isFindingId("F-2026-08-SEC-web-1"));
 check("isFindingId rejects too few segments", !isFindingId("F-2026-SEC-01"));
 check("isFindingId rejects empty segments", !isFindingId("F-----01"));
 
-// The {3,80} cap on FINDING_TOKEN is headroom, not a real limit — but past it
-// a token is dropped whole rather than truncated and re-checked. 90
-// characters after "F-" cannot be matched at all: the `\b` the token needs
-// can never land within the first 80 of them.
-const overlong = mentionedFindings(ev("", `F-${"a".repeat(90)} trailing text`));
-check("a token past the 80-char cap vanishes rather than truncating", overlong.length === 0, JSON.stringify(overlong));
+// The {3,80} cap on the token is headroom, not a real limit — but past it a
+// token is dropped whole rather than truncated and re-checked. 90 characters
+// after "F-" cannot be matched at all: the `\b` the token needs can never
+// land within the first 80 of them.
+const overlong = scanFindings(ev("", `Closes F-${"a".repeat(90)} trailing text`));
+check("a token past the 80-char cap vanishes rather than truncating", overlong.closed.length === 0 && overlong.mentioned.length === 0, JSON.stringify(overlong));
 
 // Attacker-influenced input: a PR body is anyone-can-open-a-fork input, and
-// GitHub allows up to 65,536 characters of it. The grammar must be linear, so
-// a body of pathological `F-` repetitions has to finish in well under a
-// second regardless.
-const hostile = "F-".repeat(200000);
+// GitHub allows up to 65,536 characters of it. Both channels must be linear,
+// so a body of pathological repetitions has to finish well under a second.
+const hostile = "Closes F-".repeat(100000);
 const start = Date.now();
-mentionedFindings(ev("", hostile));
+scanFindings(ev("", hostile));
 const elapsed = Date.now() - start;
 check("a pathological body parses in bounded time", elapsed < 1000, `${elapsed}ms`);
 
@@ -119,11 +154,19 @@ const fencedBody = [
   "But F-2026-08-SEC-web-02 and Closes #100 outside the fence still works.",
 ].join("\n");
 
-const findingsPastFence = mentionedFindings(ev("", fencedBody));
+const findingsPastFence = scanFindings(ev("", fencedBody));
 check(
   "a finding id inside a fence is invisible, the one outside still resolves",
-  findingsPastFence.length === 1 && findingsPastFence[0] === "F-2026-08-SEC-web-02",
+  findingsPastFence.mentioned.length === 1 && findingsPastFence.mentioned[0] === "F-2026-08-SEC-web-02",
   JSON.stringify(findingsPastFence),
+);
+
+// The same for the closing channel: a fenced example of THIS grammar is inert.
+const closingFinding = scanFindings(ev("", ["```", "Closes F-2026-08-SEC-web-01", "```", "Closes F-2026-08-SEC-web-02"].join("\n")));
+check(
+  "a fenced `Closes F-…` closes nothing, the one outside still does",
+  closingFinding.closed.length === 1 && closingFinding.closed[0] === "F-2026-08-SEC-web-02",
+  JSON.stringify(closingFinding),
 );
 
 const closuresPastFence = closedIssues(ev("", fencedBody));
@@ -133,10 +176,10 @@ check(
   JSON.stringify(closuresPastFence),
 );
 
-const tildeFence = mentionedFindings(ev("", ["Before.", "~~~", "F-2026-08-SEC-web-09 is only in the fence.", "~~~", "F-2026-08-SEC-web-10 is outside."].join("\n")));
+const tildeFence = scanFindings(ev("", ["Before.", "~~~", "F-2026-08-SEC-web-09 is only in the fence.", "~~~", "F-2026-08-SEC-web-10 is outside."].join("\n")));
 check(
   "a ~~~ fence hides content the same way a ``` fence does",
-  tildeFence.length === 1 && tildeFence[0] === "F-2026-08-SEC-web-10",
+  tildeFence.mentioned.length === 1 && tildeFence.mentioned[0] === "F-2026-08-SEC-web-10",
   JSON.stringify(tildeFence),
 );
 

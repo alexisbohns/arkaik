@@ -4,10 +4,16 @@
 // bare transpile.
 //
 // TWO CHANNELS, because two kinds of author write these PRs. An agent working
-// from `arkaik kritik issue` quotes the finding id, which is exactly why
-// `mintFindingId` made it quotable. A person working from the filed GitHub
-// issue writes `Closes #123` and never sees a finding id at all. Reading only
-// one channel would leave half the loop silent.
+// from `arkaik kritik issue` writes `Closes F-2026-08-SEC-web-01`, which is
+// exactly why `mintFindingId` made the id quotable. A person working from the
+// filed GitHub issue writes `Closes #123` and never sees a finding id at all.
+// Reading only one channel would leave half the loop silent.
+//
+// BOTH CHANNELS NEED A VERB (issue #440). A bare id used to close the finding
+// it named, so a PR that listed five findings in a "Follow-ups" table closed
+// all five. Naming a finding and closing one are different acts; the verb is
+// what tells them apart, and it is GitHub's own convention rather than a new
+// one to learn.
 //
 // LINEAR BY CONSTRUCTION, because a PR body is attacker-influenced input —
 // anyone can open a PR from a fork — and GitHub itself allows up to 65,536
@@ -88,6 +94,37 @@ const FINDING_TOKEN = /\bF-[A-Za-z0-9-]{3,80}\b/g;
  */
 const CLOSING_REFERENCE =
   /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)[\s:]{1,20}(?:https?:\/\/(?:www\.)?github\.com\/([A-Za-z0-9._-]{1,100})\/([A-Za-z0-9._-]{1,100})\/issues\/|([A-Za-z0-9._-]{1,100})\/([A-Za-z0-9._-]{1,100})#|#)(\d{1,9})\b/gi;
+
+/**
+ * arkaik's own closing grammar: one of GitHub's nine keywords, then a finding
+ * id. `Closes F-2026-08-SEC-web-01` closes; a bare id does not.
+ *
+ * ISSUE #440 IS WHY THIS EXISTS. A bare id used to close, so pbbls#832 —
+ * which shipped one finding and named five more in a "Follow-ups" table —
+ * resolved all six, and the matrix went on to answer "done" for a pillar
+ * whose clients shipped none of it. A reference and a closure are different
+ * acts, GitHub already distinguishes them with exactly these keywords, and
+ * requiring the verb is the smallest thing that makes the distinction real.
+ *
+ * The keyword prefix and the `[\s:]{1,20}` separator are
+ * {@link CLOSING_REFERENCE}'s, character for character — the two grammars
+ * differ in what follows the verb, never in what counts as one, so an author
+ * who knows `Closes: #12` already knows `Closes: F-…`. The colon is in the
+ * class because this repo's own convention writes one.
+ *
+ * ONE VERB, ONE ID, like GitHub's own rule that a keyword closes the single
+ * reference after it. `Closes F-a-01, F-b-02` closes the first and reports
+ * the rest through {@link FindingScan.mentioned}, which is the loud failure
+ * mode: the author is told at merge, in the delivery response, rather than
+ * discovering it in the matrix months later.
+ *
+ * Linear like everything else here: the alternation's branches are
+ * prefix-distinct, `[\s:]{1,20}` and `[A-Za-z0-9-]{3,80}` are both bounded,
+ * and the trailing `\b` is the same non-backtracking terminator
+ * {@link FINDING_TOKEN} uses.
+ */
+const CLOSING_FINDING =
+  /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)[\s:]{1,20}(F-[A-Za-z0-9-]{3,80})\b/gi;
 
 /** A full issue URL, tolerant of scheme, `www.`, and anything after the number. */
 const ISSUE_URL =
@@ -215,31 +252,56 @@ function splitOnFencedCode(text: string): string[] {
 }
 
 /**
- * Finding ids named in a PR's title or body, deduped, in the order they
- * appear.
+ * What a pull request says about findings: the ones it CLOSES, and the ones it
+ * merely names.
  *
- * Scans BOTH title and body — unlike {@link closedIssues} below, which reads
- * GitHub's own grammar and is body-only for that reason. This grammar is
- * arkaik's own: `F-2026-08-SEC-web-01` means the same thing wherever an
- * author puts it, the way `AC-x` does for `mentionedAcceptances` in
- * pull-request.ts, which also reads both title and body. The two functions'
- * scopes differ because the GRAMMARS they read differ, not by oversight.
- * (One further divergence from `mentionedAcceptances`: this function strips
- * fenced code first and that one does not, because `AC-x@platform` carries no
- * "someone is quoting the syntax" failure mode the way a closing keyword or a
- * finding id does — an intentional difference, not an oversight either.)
+ * TWO SETS, NOT ONE LIST, because they are two different speech acts and the
+ * App must not confuse them (issue #440). `closed` is acted on; `mentioned` is
+ * reported and nothing more — `applyQualityResolutions` turns it into a
+ * `mentioned` outcome so an author who expected the old behaviour is told, at
+ * merge, in the one diagnostic surface the docs point them at.
+ *
+ * `closed` IS BODY-ONLY, matching {@link closedIssues} and GitHub itself,
+ * which honours a closing keyword in a description and never in a title.
+ * `mentioned` still reads BOTH, because naming a finding is arkaik's own
+ * grammar and means the same thing wherever an author puts it — the same
+ * split, for the same reason, that `mentionedAcceptances` and `closedIssues`
+ * already have between them.
+ *
+ * An id under a verb AND named bare elsewhere is CLOSED, once. Reporting it in
+ * both would tell an author their own closure was also a loose reference.
+ *
+ * Both channels strip fenced code first: a fence creates no reference on
+ * GitHub's side, and this repo's own task-plan PRs quote this very syntax.
  */
-export function mentionedFindings(event: Pick<PullRequestEvent, "title" | "body">): string[] {
-  const found = new Set<string>();
+export interface FindingScan {
+  /** Ids a closing keyword names in the BODY. These resolve. */
+  closed: string[];
+  /** Ids named with no closing keyword, title or body. Reported, never acted on. */
+  mentioned: string[];
+}
+
+export function scanFindings(event: Pick<PullRequestEvent, "title" | "body">): FindingScan {
+  const closed = new Set<string>();
+  if (event.body) {
+    for (const run of splitOnFencedCode(event.body)) {
+      for (const match of run.matchAll(CLOSING_FINDING)) {
+        if (isFindingId(match[1])) closed.add(match[1]);
+      }
+    }
+  }
+
+  const mentioned = new Set<string>();
   for (const text of [event.title, event.body]) {
     if (!text) continue;
     for (const run of splitOnFencedCode(text)) {
       for (const match of run.matchAll(FINDING_TOKEN)) {
-        if (isFindingId(match[0])) found.add(match[0]);
+        if (isFindingId(match[0]) && !closed.has(match[0])) mentioned.add(match[0]);
       }
     }
   }
-  return [...found];
+
+  return { closed: [...closed], mentioned: [...mentioned] };
 }
 
 /**
