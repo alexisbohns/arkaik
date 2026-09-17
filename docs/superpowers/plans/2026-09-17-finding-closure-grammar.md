@@ -296,7 +296,6 @@ separately, for the resolution pass to report rather than act on.
 The keyword and separator are `CLOSING_REFERENCE`'s exactly, so
 `Closes: #12` and `Closes: F-…` are one convention, not two.
 
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -347,7 +346,6 @@ wrong besides: `scanFindings` closes from the body only, exactly like
 `closedIssues`. It is the `mentioned` channel, which closes nothing,
 that reads a title.
 
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -633,7 +631,6 @@ closed-or-mentioned-never-both invariant; and four comments asserted
 things the code does not do, including a worked example that parses
 to nothing.
 
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -825,7 +822,6 @@ into a `mentioned` outcome carrying the verb to write instead. Only
 for a finding the project holds and that is still open — prose that
 looks id-shaped, and findings somebody already decided, stay silent.
 
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -1173,7 +1169,6 @@ test(github): pin issue #440 against the body that caused it
 pbbls#832's real shape — one `Closes F-…` and a five-row follow-up
 table — asserting one append and five reports.
 
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -1281,7 +1276,6 @@ SKILL.md's two-channel section, and the warning callout it no longer
 needs — the callout existed to tell authors not to name a finding they
 were not closing, which is now simply how the grammar reads.
 
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -1354,6 +1348,11 @@ The advisory Lab Note reminder comments at PR-open time. If it reports a problem
 
 # PART B — `finding-closure-2-surface-warning`
 
+> **Commit trailers are not pinned here.** Each implementer adds the
+> `Co-Authored-By` line its own session's attribution guidance gives it. An
+> earlier draft spelled one out, and an agent that also added its own produced a
+> commit carrying two.
+>
 > **Part B's text was written before Tasks 1c and 2c.** Two things it predates:
 > the grammar's separator is now same-line (`[ \t:]{1,20}`), and
 > `QualityResolutionOutcome` has gained a `nothing_to_do` variant plus an
@@ -1545,7 +1544,6 @@ Kritik half can want the same list the delivery half wants without a
 second request — and a rejection is shared rather than retried, which
 is what keeps the claim-release-and-redeliver path honest.
 
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -1775,7 +1773,6 @@ pull request touched no file under that path gets told so — and every
 case where the evidence cannot support the claim, an incomplete list
 above all, stays silent instead of accusing.
 
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -2102,7 +2099,6 @@ findings, and asks for the pull request's changed files only when a
 finding it is about to resolve has a surface with a path to check.
 The event is appended either way; the warning rides on the outcome.
 
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -2173,7 +2169,6 @@ feat(github): both halves of a delivery share one changed-files fetcher (#440)
 The route builds the memo and hands it to the delivery half and the
 Kritik half, so the surface check costs no second request.
 
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -2238,7 +2233,6 @@ git add -A
 git commit -m "$(cat <<'EOF'
 docs: the surface warning on a resolved finding (#440)
 
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
 )"
 ```
