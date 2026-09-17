@@ -1,6 +1,6 @@
 ---
 name: kritik
-version: 0.3.0
+version: 0.4.0
 description: >
   Audit this product's quality with the Kritik framework — score each criterion
   on each surface against observable maturity anchors, record findings with
