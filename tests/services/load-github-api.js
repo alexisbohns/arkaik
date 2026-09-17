@@ -84,6 +84,7 @@ function loadGithubApi() {
     ["@/lib/services/github/lab-note", "./lab-note.js"],
     // Phase E: the Kritik half, the third thing the route runs on a merge.
     ["@/lib/services/github/quality-parse", "./quality-parse.js"],
+    ["@/lib/services/github/quality-surface", "./quality-surface.js"],
     ["@/lib/services/github/quality", "./quality.js"],
     ["@/auth", "./auth-module-stub.js"],
   ];
@@ -113,6 +114,7 @@ function loadGithubApi() {
   write("lab-note-parse.js", transpile(src("lib", "services", "github", "lab-note-parse.ts"), "lab-note-parse.ts", COMMON));
   write("lab-note.js", transpile(src("lib", "services", "github", "lab-note.ts"), "lab-note.ts", COMMON));
   write("quality-parse.js", transpile(src("lib", "services", "github", "quality-parse.ts"), "quality-parse.ts", COMMON));
+  write("quality-surface.js", transpile(src("lib", "services", "github", "quality-surface.ts"), "quality-surface.ts", COMMON));
   write("quality.js", transpile(src("lib", "services", "github", "quality.ts"), "quality.ts", COMMON));
   write("webhook-route.js", transpile(src("app", "api", "github", "webhook", "route.ts"), "route.ts", COMMON));
 
