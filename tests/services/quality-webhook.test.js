@@ -512,6 +512,50 @@ const merged = (over = {}) => ({
   const titledOut = await applyQualityResolutions(merged({ title: "Closes F-2026-08-SEC-web-01", body: "Nothing here." }), { readState: titled.readState });
   check("a title-only closure reports, and says the body is where it belongs", titledOut[0]?.hint?.includes("in the PR body"), JSON.stringify(titledOut));
 
+  // --- issue #440, as it actually happened -----------------------------------
+  //
+  // pbbls#832 shipped the `content_reports` database primitive. Its diff
+  // touched packages/supabase, docs and .github — no client file — and its
+  // body carried a "Follow-ups — mostly already-filed findings" table naming
+  // the five client-side findings still to do. All six were resolved. Five
+  // launch-gating findings were marked fixed against a PR that could not have
+  // fixed them, and criterion PLT-04 began answering "done" on every surface.
+  const SURFACES = ["ios", "android", "web", "admin"];
+  const pbblsFindings = [
+    FINDING({ id: "F-2026-08-PLT-supabase-01", surface: "supabase", criterion_id: "PLT-04" }),
+    FINDING({ id: "F-2026-08-PLT-ios-02", surface: "ios", criterion_id: "PLT-04" }),
+    FINDING({ id: "F-2026-08-PLT-android-01", surface: "android", criterion_id: "PLT-04" }),
+    FINDING({ id: "F-2026-08-PLT-web-01", surface: "web", criterion_id: "PLT-04" }),
+    FINDING({ id: "F-2026-08-PLT-admin-01", surface: "admin", criterion_id: "PLT-04" }),
+    FINDING({ id: "F-2026-08-PLT-cross-surface-01", surface: "cross-surface", criterion_id: "PLT-04" }),
+  ];
+  const pbblsBody = [
+    "Ships the `content_reports` primitive.",
+    "",
+    "Closes F-2026-08-PLT-supabase-01",
+    "",
+    "## Follow-ups — mostly already-filed findings",
+    "",
+    "| Finding | Surface | What it needs |",
+    "|---|---|---|",
+    ...SURFACES.map((s, i) => `| F-2026-08-PLT-${s}-0${i === 0 ? 2 : 1} | ${s} | report affordance |`),
+    "| F-2026-08-PLT-cross-surface-01 | all | payload symmetry |",
+  ].join("\n");
+
+  const pbbls = state({ findings: pbblsFindings });
+  const pbblsOutcomes = await applyQualityResolutions(merged({ body: pbblsBody }), { readState: pbbls.readState });
+  check(
+    "pbbls#832: exactly one event is appended, for the finding the PR actually shipped",
+    pbbls.appended.length === 1 && pbbls.appended[0].finding_id === "F-2026-08-PLT-supabase-01",
+    JSON.stringify(pbbls.appended.map((e) => e.finding_id)),
+  );
+  check(
+    "pbbls#832: the five follow-ups are reported, not resolved",
+    pbblsOutcomes.filter((o) => o.status === "mentioned").length === 5 &&
+      pbblsOutcomes.every((o) => o.status !== "resolved" || o.findingId === "F-2026-08-PLT-supabase-01"),
+    JSON.stringify(pbblsOutcomes),
+  );
+
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
   process.exit(failures ? 1 : 0);
 })();
