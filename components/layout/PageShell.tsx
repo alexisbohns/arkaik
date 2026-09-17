@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { PageHeader, type PageAction } from "@/components/layout/PageHeader";
 import { ProjectPanels } from "@/components/panels/ProjectPanels";
-import type { KritikLibrary, QualitySection } from "@arkaik/schema";
+import type { KritikLibrary, QualitySection, QualityTrend } from "@arkaik/schema";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { Edge, Node } from "@/lib/data/types";
 import type { ProductScope } from "@/lib/utils/product-scope";
@@ -51,6 +51,7 @@ interface PageShellProps {
   /** Kritik state for criterion panels — see `ProjectPanels`. Quality only. */
   qualitySection?: QualitySection;
   qualityLibrary?: KritikLibrary;
+  qualityTrend?: QualityTrend;
 }
 
 /**

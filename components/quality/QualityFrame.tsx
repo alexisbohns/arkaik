@@ -70,6 +70,7 @@ export function QualityFrame({ title, meta, data, scope, toolbar, children }: Qu
          one's matrix and findings from them itself, once per stack. */
       qualitySection={data.section}
       qualityLibrary={data.library}
+      qualityTrend={data.trend}
     >
       <PageSurface
         /* `fill` puts the toolbar outside the scrolling box, which is what
