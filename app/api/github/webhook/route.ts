@@ -8,9 +8,11 @@ import {
 import { applyLabNote } from "@/lib/services/github/lab-note";
 import { extractLabNoteYaml, parseLabNote } from "@/lib/services/github/lab-note-parse";
 import { applyQualityResolutions } from "@/lib/services/github/quality";
+import { githubApp } from "@/lib/services/github/app";
 import {
   applyPullRequestEvent,
   claimDelivery,
+  onceChangedFiles,
   releaseDelivery,
   type PullRequestEvent,
 } from "@/lib/services/github/pull-request";
@@ -141,7 +143,14 @@ export async function POST(req: Request): Promise<Response> {
   const declaredNodes = parsedNote?.ok ? parsedNote.note.nodes : undefined;
 
   try {
-    const outcomes = await applyPullRequestEvent(prEvent, { scopesADeliverable, declaredNodes });
+    // ONE fetcher for the whole delivery. Both halves below can want the
+    // pull request's changed files — the delivery half to resolve a
+    // path-scoped platform, the Kritik half to check a resolved finding
+    // against its surface (issue #440) — and the standing rule is that one
+    // delivery makes at most one changed-files request. The memo is what
+    // keeps that true now that the rule has two owners instead of one.
+    const fetchFiles = onceChangedFiles((pr) => githubApp().listPullRequestFiles(pr));
+    const outcomes = await applyPullRequestEvent(prEvent, { scopesADeliverable, declaredNodes, fetchFiles });
     // The touched nodes and the platform each project resolved, keyed by
     // project — the two fields the changelog renders that a Lab Note cannot
     // carry. Handed over rather than recomputed: resolving it can cost a
@@ -158,8 +167,9 @@ export async function POST(req: Request): Promise<Response> {
     // what covers a PR reopened and re-merged rather than merely redelivered).
     // Parse refusals are outcomes, never throws.
     const labNotes = isMerge ? await applyLabNote(prEvent, deliverableScopes) : [];
-    // A merged PR that names a finding — by id, or by the issue it closes.
-    const quality = isMerge ? await applyQualityResolutions(prEvent) : [];
+    // A merged PR that CLOSES a finding — by `Closes F-…`, or by the issue it
+    // closes. A finding merely named is reported, never resolved (issue #440).
+    const quality = isMerge ? await applyQualityResolutions(prEvent, { fetchFiles }) : [];
     // A typo'd repo link — or no link at all — is the commonest reason "nothing
     // happened", and `{status:"ok", outcomes:[]}` names nothing at all: the one
     // page docs/hosted-projects.md tells people to read would show a green 200
