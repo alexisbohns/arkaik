@@ -369,6 +369,34 @@ where an unknown platform suffix is quoted back to you, where an unscoped
 promotion tells you which platforms it is about to mark shipped, and where a
 refused scope names what it refused and why.
 
+The same response carries a `quality` array, one entry per finding the pull
+request said something about. `resolved` means an event was appended;
+`unchanged` means the finding was already decided; `unknown` means a
+`Closes F-…` named an id no linked project holds; and `mentioned` means the
+pull request named a still-open finding without closing it — no verb at all, a
+verb that landed on a different line than the id, or a `Closes F-…` written in
+the title rather than the body. Nothing was written for it:
+
+```json
+{ "status": "mentioned", "findingId": "F-2026-08-PLT-ios-02",
+  "hint": "named but not closed — write `Closes F-2026-08-PLT-ios-02` in the PR body, verb and id on one line with nothing but spaces or a colon between them" }
+```
+
+A finding closes only on `Closes`/`Fixes`/`Resolves` before its id, in the
+body, on the same line, with nothing but spaces or a colon between them — a
+wrapped verb or one left in the title reports instead of closing. That is
+deliberate: naming a finding in a follow-up table used to close it, and a PR
+that shipped one of six closed all six.
+
+When nothing above applies to any linked project, `quality` holds a single
+entry naming which of three silences it was, and they are not interchangeable:
+`no_mentions` means the pull request named no finding at all, decided before
+any project is read; `nothing_to_do` means a linked project holds what it
+named, and every one was already resolved, accepted or refuted; and
+`no_quality_data` means no linked project holds what the PR named, at all —
+narrower than it sounds, and not the answer for a project that holds the
+finding and simply had nothing left to do about it.
+
 A refusal plans no **promotion** for that acceptance, and attaches no new ref.
 It is not always zero ops: if the acceptance already carries a ref for that pull
 request, the mirror refresh is still planned, so `applied` can be non-zero for a

@@ -495,27 +495,39 @@ own proves nothing about the App. If you cannot confirm the second, treat the
 project as repo-only. The repo command is required in both cases anyway, and
 running it on a hosted project costs nothing.
 
-The App reads two channels:
+The App reads two channels, and **both need a closing verb**:
 
-- **the finding id** — `F-2026-08-SEC-web-01`, anywhere in the PR's title *or*
-  body, with no keyword needed. This is the channel an agent working from
-  `arkaik kritik issue` uses.
-- **a closing keyword in the body** — `Closes #123`, `Fixes owner/repo#123`, or
-  the full issue URL. Body only, because GitHub does not honour a keyword in a
-  title either. It reaches a finding through that finding's own `issue_url`, so
-  it does nothing unless the issue you filed in step 8 is recorded there
+- **`Closes F-2026-08-SEC-web-01`** — one of GitHub's nine closing keywords
+  (`close`/`closes`/`closed`, `fix`/`fixes`/`fixed`,
+  `resolve`/`resolves`/`resolved`), then the finding id, in the PR's **body**.
+  This is the channel an agent working from `arkaik kritik issue` uses. Body
+  only, because GitHub does not honour a closing keyword in a title either —
+  and the verb and the id have to sit on the **same line**, with nothing but
+  spaces or a colon between them (`Closes: F-…` works; a line-wrapped `Closes`
+  does not, and neither does markdown between the two — `**Closes** F-…` or
+  `Closes [F-…](url)` both break the pair).
+- **`Closes #123`** — the same keywords against the filed GitHub issue, also
+  body only. It reaches a finding through that finding's own `issue_url`, so it
+  does nothing unless the issue you filed in step 8 is recorded there
   (`--issue-url` on `finding open`).
 
 Both scans skip fenced code blocks, and only an **open** finding is closed this
 way: `refuted` and `accepted-risk` are decisions somebody recorded, and a merge
 does not overturn them.
 
-> **Name a finding id in a PR only when that PR fixes it.** The id alone closes
-> it — no keyword, and the title counts — so one mentioned in passing ("adjacent
-> to F-2026-08-SEC-web-01", "not to be confused with…") resolves a defect that is
-> still there. To refer to one without closing it, put it inside a fenced code
-> block — a fence, not inline backticks; only fenced blocks are skipped. That is
-> exactly what makes a PR *about* this syntax safe.
+**A finding id with no verb beside it is a reference, not a closure.** Write one
+freely — in a follow-up table, in a "related work" note, in the sentence
+explaining what this PR is *not* — and the App will leave it open. It does not
+stay silent about it: the delivery response reports each one it recognised as
+
+```json
+{ "status": "mentioned", "findingId": "F-2026-08-PLT-ios-02",
+  "hint": "named but not closed — write `Closes F-2026-08-PLT-ios-02` in the PR body, verb and id on one line with nothing but spaces or a colon between them" }
+```
+
+so a PR that meant to close one and got the grammar wrong — a wrapped verb, or
+a `Closes` left in the title — says so at merge, in **Advanced → Recent
+Deliveries**, rather than months later in the matrix.
 
 ## Adding a criterion of your own
 
