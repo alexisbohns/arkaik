@@ -39,6 +39,7 @@ import {
   acceptedDetail,
   auditCompletedInput,
   deriveQualityMatrix,
+  deriveQualityTrend,
   detectRegressions,
   findingOpenedInput,
   findingResolvedInput,
@@ -52,6 +53,7 @@ import {
   severityOf,
   signalRunSheet,
   signalTrippedInput,
+  trendRows,
   upsertAssessment,
   upsertFinding,
   type AuditState,
@@ -608,6 +610,48 @@ export function buildKritikCatalog(ctx: KritikContext): {
       }
 
       return { from, to, total: regressions.length, regressions, events };
+    },
+  );
+
+  tool(
+    {
+      name: "kritik_trend",
+      description:
+        "Where the product stood at each recorded audit, oldest first: one row per quality.audit.completed in the journal, the overall score per surface (or one domain's score with domain), and how each moved against the row above. The score, not the findings — 'from where we started to where we are now'. Rows are ordered by when they were recorded, a re-recorded audit id keeps only its latest reading, and a framework major bump between two audits marks the later row comparable=false with no delta across it. Works in both modes: repo reads the journal sidecar, hosted reads the hosted journal.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          surface: { type: "string", description: "One column only." },
+          domain: { type: "string", description: "Domain code, e.g. SEC — that domain's score per surface instead of the roll-up." },
+        },
+        additionalProperties: false,
+      },
+    },
+    async (args) => {
+      const graph = await load();
+      // The weights that roll each snapshot up, from wherever this mode keeps
+      // the profile: the folded section when hosted, docs/quality/ in a repo.
+      // Neither is required — a journal with audits but no profile still has
+      // a trend, with every domain weighing 1 as the matrix would weigh it.
+      const profile =
+        ctx.qualityRoot === undefined
+          ? (graph.loaded.bundle as { quality?: QualitySection }).quality?.profile
+          : (loadProfile(ctx.qualityRoot) ?? undefined);
+      const trend = deriveQualityTrend(graph.journal, profile);
+      const filter = {
+        ...(typeof args.surface === "string" && args.surface !== "" ? { surface: args.surface } : {}),
+        ...(typeof args.domain === "string" && args.domain !== "" ? { domain: args.domain } : {}),
+      };
+      const { surfaces, rows } = trendRows(trend, filter);
+      return {
+        total: trend.snapshots.length,
+        surfaces,
+        rows,
+        snapshots: trend.snapshots,
+        ...(trend.snapshots.length === 0
+          ? { note: "No recorded audits yet — `kritik_matrix` with record=true writes one." }
+          : {}),
+      };
     },
   );
 

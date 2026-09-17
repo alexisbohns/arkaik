@@ -154,6 +154,7 @@ arkaik kritik score   <criterion> <surface> <level> --evidence <text|file>
 arkaik kritik finding open|resolve|accept ...
 arkaik kritik matrix  [--json]          # derived matrix, CI-friendly
 arkaik kritik signals [--surface s]     # run the library's signal pack, exit code
+arkaik kritik trend   [--surface s] [--domain CODE]   # every recorded audit's scores, arrows against the row above
 arkaik kritik issue   <criterion> --surface s   # emit prefilled issue markdown
 arkaik kritik criterion add             # scaffold a custom criterion + issue skeleton
 ```
