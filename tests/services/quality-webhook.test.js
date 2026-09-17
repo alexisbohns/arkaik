@@ -378,8 +378,9 @@ const merged = (over = {}) => ({
     JSON.stringify(mentions),
   );
   check(
-    "the mentioned hint names the verb to write",
-    mentions.find((o) => o.status === "mentioned")?.hint === "named without a closing verb — write `Closes F-2026-08-SEC-web-01` to resolve it",
+    "the mentioned hint pins the exact wording, and stays true for a wrapped verb",
+    mentions.find((o) => o.status === "mentioned")?.hint ===
+      "named but not closed — write `Closes F-2026-08-SEC-web-01` in the PR body, verb and id on one line with nothing but spaces or a colon between them",
     JSON.stringify(mentions),
   );
 
@@ -395,17 +396,40 @@ const merged = (over = {}) => ({
   const assertedOutcomes = await applyQualityResolutions(merged({ body: "Closes F-2026-08-SEC-web-99." }), { readState: assertedTypo.readState });
   check("an id under a verb that matches nothing is still unknown", assertedOutcomes.some((o) => o.status === "unknown" && o.findingId === "F-2026-08-SEC-web-99"), JSON.stringify(assertedOutcomes));
 
-  // A finding already decided earns no mention either — it is not outstanding,
-  // so there is nothing for the author to do about it.
+  // A finding already decided earns no mention — it is not outstanding, so
+  // there is nothing for the author to do about it. The WHOLE array is
+  // asserted rather than the absence of one status: `every(o => o.status !==
+  // "mentioned")` is satisfied by an empty result too, and cannot tell
+  // "correctly skipped" from "the pass produced nothing at all".
   for (const status of ["resolved", "accepted-risk", "refuted"]) {
     const settled = state({ findings: [FINDING({ status })] });
     const settledOutcomes = await applyQualityResolutions(merged({ body: "See F-2026-08-SEC-web-01." }), { readState: settled.readState });
-    check(`a bare id naming a ${status} finding is not reported`, settledOutcomes.every((o) => o.status !== "mentioned"), JSON.stringify(settledOutcomes));
+    check(
+      `a bare id naming a ${status} finding falls through to nothing_to_do`,
+      JSON.stringify(settledOutcomes) === JSON.stringify([{ status: "nothing_to_do" }]),
+      JSON.stringify(settledOutcomes),
+    );
   }
 
   const decidedByEvent = state({ decidedIds: ["F-2026-08-SEC-web-01"] });
   const decidedOutcomes = await applyQualityResolutions(merged({ body: "See F-2026-08-SEC-web-01." }), { readState: decidedByEvent.readState });
-  check("a bare id naming an event-decided finding is not reported", decidedOutcomes.every((o) => o.status !== "mentioned"), JSON.stringify(decidedOutcomes));
+  check(
+    "a bare id naming an event-decided finding falls through to nothing_to_do",
+    JSON.stringify(decidedOutcomes) === JSON.stringify([{ status: "nothing_to_do" }]),
+    JSON.stringify(decidedOutcomes),
+  );
+
+  // `no_quality_data` keeps its narrow meaning: NO linked project holds what
+  // the PR named. A project that holds the finding and simply had nothing to
+  // do about it is a different answer, and conflating the two told an author
+  // "no quality data" about a project whose quality data we had just read.
+  const heldButQuiet = state({ findings: [FINDING({ status: "refuted" })] });
+  const quiet = await applyQualityResolutions(merged({ body: "See F-2026-08-SEC-web-01." }), { readState: heldButQuiet.readState });
+  check("a project that holds the finding does not report no_quality_data", quiet[0]?.status !== "no_quality_data", JSON.stringify(quiet));
+
+  const holdsNothing = state({ findings: [FINDING({ id: "F-2026-08-SEC-web-77" })] });
+  const stranger = await applyQualityResolutions(merged({ body: "See F-2026-08-SEC-web-01." }), { readState: holdsNothing.readState });
+  check("a project holding no named finding still reports no_quality_data", JSON.stringify(stranger) === JSON.stringify([{ status: "no_quality_data" }]), JSON.stringify(stranger));
 
   // A body that closes one finding and names another does both, in one pass.
   const mixed = state({ findings: [FINDING(), FINDING({ id: "F-2026-08-PLT-ios-02", surface: "ios" })] });
@@ -440,6 +464,53 @@ const merged = (over = {}) => ({
   const silent = state();
   const none = await applyQualityResolutions(merged({ body: "Just a refactor." }), { readState: silent.readState });
   check("a PR naming nothing reads no project at all", none.length === 1 && none[0].status === "no_mentions", JSON.stringify(none));
+
+  // THE DEDUP GUARD, pinned. `scanFindings` already keeps a verb-closed id out
+  // of `mentioned`, so the verb channel cannot collide — but a finding reached
+  // through its own `issue_url` is matched by a path the parser never sees. A
+  // mutation test proved this: deleting `matched.has(finding.id)` from the
+  // skip left every other check green.
+  const issueAndBare = state({ findings: [FINDING({ issue_url: `https://github.com/${REPO}/issues/44` })] });
+  const issueAndBareOutcomes = await applyQualityResolutions(
+    merged({ body: "Closes #44 — tracked as F-2026-08-SEC-web-01." }),
+    { readState: issueAndBare.readState },
+  );
+  check(
+    "a finding closed through its issue is not ALSO reported as mentioned",
+    issueAndBareOutcomes.length === 1 && issueAndBareOutcomes[0].status === "resolved",
+    JSON.stringify(issueAndBareOutcomes),
+  );
+
+  // Mentions must survive a refused append — which is the whole reason the
+  // reporting loop sits ABOVE the `events.length === 0` bail. A refactor that
+  // moved it below would pass every other check in this file.
+  const refusedWithMention = {
+    readState: async () => [{
+      projectId: "prj_1",
+      findings: [FINDING(), FINDING({ id: "F-2026-08-PLT-ios-02", surface: "ios" })],
+      decidedFindingIds: new Set(),
+      append: async () => [],
+    }],
+  };
+  const refusedOutcomes = await applyQualityResolutions(
+    merged({ body: "Closes F-2026-08-SEC-web-01. Follow-up: F-2026-08-PLT-ios-02." }),
+    refusedWithMention,
+  );
+  check(
+    "a mention is still reported when the append is refused",
+    refusedOutcomes.some((o) => o.status === "refused") && refusedOutcomes.some((o) => o.status === "mentioned" && o.findingId === "F-2026-08-PLT-ios-02"),
+    JSON.stringify(refusedOutcomes),
+  );
+
+  // The hint has to be true for every way an author can land here, not just
+  // the bare-id one. Task 1's same-line rule created two more.
+  const wrapped = state();
+  const wrappedOut = await applyQualityResolutions(merged({ body: "Closes\nF-2026-08-SEC-web-01" }), { readState: wrapped.readState });
+  check("a wrapped verb reports, and does not claim the verb was missing", wrappedOut[0]?.hint?.includes("verb and id on one line"), JSON.stringify(wrappedOut));
+
+  const titled = state();
+  const titledOut = await applyQualityResolutions(merged({ title: "Closes F-2026-08-SEC-web-01", body: "Nothing here." }), { readState: titled.readState });
+  check("a title-only closure reports, and says the body is where it belongs", titledOut[0]?.hint?.includes("in the PR body"), JSON.stringify(titledOut));
 
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
   process.exit(failures ? 1 : 0);
