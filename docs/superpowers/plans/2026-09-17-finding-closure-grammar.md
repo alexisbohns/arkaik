@@ -301,6 +301,57 @@ EOF
 )"
 ```
 
+- [ ] **Step 6: Fix the cross-reference the rename orphaned**
+
+`closedIssues`'s JSDoc points at `mentionedFindings`, which no longer exists — and the sentence it makes is now half wrong, because `scanFindings`'s `closed` channel is body-only exactly like `closedIssues`. In `lib/services/github/quality-parse.ts`, replace this paragraph:
+
+```ts
+ * GitHub does not honour a closing keyword in a pull request's TITLE — only
+ * in its description, or in a commit message the merge later carries in.
+ * (See {@link mentionedFindings} above for why ITS scan still covers both —
+ * a different grammar, not the same rule applied inconsistently.) Scanning
+ * the title here would let arkaik mark a finding resolved while the GitHub
+ * issue it names stays open, which is exactly the over-claim this loop
+ * exists to avoid.
+```
+
+with:
+
+```ts
+ * GitHub does not honour a closing keyword in a pull request's TITLE — only
+ * in its description, or in a commit message the merge later carries in.
+ * {@link scanFindings} draws the same line for the same reason: its `closed`
+ * channel is body-only too, and only its `mentioned` one — which closes
+ * nothing — reads a title at all. Scanning the title here would let arkaik
+ * mark a finding resolved while the GitHub issue it names stays open, which
+ * is exactly the over-claim this loop exists to avoid.
+```
+
+Then check nothing else in the file still names the old symbol:
+
+```bash
+grep -n "mentionedFindings" lib/services/github/quality-parse.ts
+```
+
+Expected: no output.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add lib/services/github/quality-parse.ts
+git commit -m "$(cat <<'EOF'
+docs(github): closedIssues no longer points at a function that is gone
+
+The rename orphaned the cross-reference, and made its sentence half
+wrong besides: `scanFindings` closes from the body only, exactly like
+`closedIssues`. It is the `mentioned` channel, which closes nothing,
+that reads a title.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+EOF
+)"
+```
+
 ---
 
 ## Task 2: the `mentioned` outcome
@@ -854,6 +905,16 @@ Add the script to `package.json`, beside `test:quality-webhook`:
 "test:once-changed-files": "node tests/services/once-changed-files.test.js",
 ```
 
+And add the scratch directory it builds to `.gitignore`, beside the other
+`tests/services/.test-build-*` entries (around line 33):
+
+```
+/tests/services/.test-build-once-changed-files/
+```
+
+Every other suite's scratch directory is listed there; a new one that is not
+shows up as an untracked entry in `git status` forever after.
+
 - [ ] **Step 2: Run it to verify it fails**
 
 ```bash
@@ -913,7 +974,7 @@ Expected: every line `PASS:`, exit code 0.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add lib/services/github/pull-request.ts tests/services/once-changed-files.test.js package.json
+git add lib/services/github/pull-request.ts tests/services/once-changed-files.test.js package.json .gitignore
 git commit -m "$(cat <<'EOF'
 feat(github): one delivery asks for changed files once, whoever asks (#440)
 
