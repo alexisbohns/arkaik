@@ -62,8 +62,51 @@ check("the rest of a comma list is reported as mentioned", commaList.mentioned.l
 const colonFinding = scanFindings(ev("", "Closes: F-2026-08-SEC-web-01"));
 check("a colon between verb and id is recognised", colonFinding.closed.length === 1, JSON.stringify(colonFinding));
 
+// SAME LINE, deliberately unlike `closedIssues`. `[\s:]{1,20}` would match a
+// newline, and a heading that DECLINES a finding ends in a verb: "Findings we
+// did NOT fix:" reached the id on the line below and closed it. A `Closes`
+// wrapped away from its id now reports instead, which is the recoverable way
+// round.
 const wrappedFinding = scanFindings(ev("", "Closes\nF-2026-08-SEC-web-01"));
-check("a line-wrapped verb and id are recognised", wrappedFinding.closed.length === 1, JSON.stringify(wrappedFinding));
+check("a verb cannot reach an id on the next line", wrappedFinding.closed.length === 0, JSON.stringify(wrappedFinding));
+check("the id it could not reach is reported instead", wrappedFinding.mentioned.length === 1, JSON.stringify(wrappedFinding));
+
+// The shape that made this a Critical finding: prose declining a list of
+// findings, where the heading's last word is a closing keyword.
+const declinedList = scanFindings(ev("", "Findings we did NOT fix:\n\nF-2026-08-SEC-web-01\nF-2026-08-SEC-web-02"));
+check("a heading that declines findings closes none of them", declinedList.closed.length === 0, JSON.stringify(declinedList));
+check("the declined findings are reported", declinedList.mentioned.length === 2, JSON.stringify(declinedList));
+
+const declinedTight = scanFindings(ev("", "Findings we did NOT fix:\nF-2026-08-SEC-web-01"));
+check("not even across a single newline", declinedTight.closed.length === 0, JSON.stringify(declinedTight));
+
+// THE RESIDUAL, pinned on purpose rather than left to be discovered. A verb
+// beside an id on one line closes it, negated or not — exactly what GitHub
+// does with `won't fix #12`. Bounding the separator cannot see intent, and a
+// list of negation words is a heuristic this grammar deliberately does not
+// carry. Part B's surface check is the second opinion on this case.
+const negatedSameLine = scanFindings(ev("", "Won't fix: F-2026-08-SEC-web-01"));
+check("a negated verb on the SAME line still closes — known, accepted", negatedSameLine.closed.length === 1, JSON.stringify(negatedSameLine));
+
+// The `i` flag is for the KEYWORD. `FINDING_TOKEN` has no `i`, so a lowercase
+// `f-` is a token the other channel can never produce; admitting it here made
+// the two channels disagree about what a finding id is.
+const lowercased = scanFindings(ev("", "Closes f-2026-08-sec-web-01"));
+check("a lowercase f- closes nothing", lowercased.closed.length === 0, JSON.stringify(lowercased));
+check("a lowercase f- is not reported either — it is not an id", lowercased.mentioned.length === 0, JSON.stringify(lowercased));
+
+// `splitOnFencedCode` returns RUNS rather than one joined string, and the
+// closing channel depends on that as much as `closedIssues` does: a verb
+// before a fence must not reach an id after it. Pinned so a future refactor
+// that rejoins the runs cannot pass.
+const findingFenceBleed = scanFindings(ev("", ["The crash is fixed", "```", "stack trace", "```", "F-2026-08-SEC-web-01 tracked this."].join("\n")));
+check("a verb before a fence cannot reach an id after it", findingFenceBleed.closed.length === 0, JSON.stringify(findingFenceBleed));
+
+const quotedFence = scanFindings(ev("", ["> ```", "> Closes F-2026-08-SEC-web-01", "> ```", "Closes F-2026-08-SEC-web-02"].join("\n")));
+check("a blockquoted fence hides a closure the same way a bare one does", quotedFence.closed.length === 1 && quotedFence.closed[0] === "F-2026-08-SEC-web-02", JSON.stringify(quotedFence));
+
+const unclosedFindingFence = scanFindings(ev("", ["Before the fence.", "```", "Closes F-2026-08-SEC-web-01"].join("\n")));
+check("an unclosed fence swallows a closure after it", unclosedFindingFence.closed.length === 0, JSON.stringify(unclosedFindingFence));
 
 // An id named under a verb AND bare elsewhere is closed once, not both.
 const both = scanFindings(ev("F-2026-08-SEC-web-01", "Closes F-2026-08-SEC-web-01 — see F-2026-08-SEC-web-01 above."));
@@ -91,13 +134,20 @@ const overlong = scanFindings(ev("", `Closes F-${"a".repeat(90)} trailing text`)
 check("a token past the 80-char cap vanishes rather than truncating", overlong.closed.length === 0 && overlong.mentioned.length === 0, JSON.stringify(overlong));
 
 // Attacker-influenced input: a PR body is anyone-can-open-a-fork input, and
-// GitHub allows up to 65,536 characters of it. Both channels must be linear,
-// so a body of pathological repetitions has to finish well under a second.
-const hostile = "Closes F-".repeat(100000);
-const start = Date.now();
-scanFindings(ev("", hostile));
-const elapsed = Date.now() - start;
-check("a pathological body parses in bounded time", elapsed < 1000, `${elapsed}ms`);
+// GitHub allows up to 65,536 characters of it. Both channels must be linear.
+// TWO SHAPES, because they stress different halves: a run of bare keywords
+// exercises the match path, while a keyword followed by 90 id-shaped
+// characters forces `[A-Za-z0-9-]{3,80}\b` to walk its whole range and fail
+// at every start position — which is the claim the bound is really about.
+for (const [name, hostile] of [
+  ["a run of keywords", "Closes F-".repeat(100000)],
+  ["a run of unterminable tokens", `Closes F-${"a".repeat(90)} `.repeat(20000)],
+]) {
+  const start = Date.now();
+  scanFindings(ev("", hostile));
+  const elapsed = Date.now() - start;
+  check(`${name} parses in bounded time`, elapsed < 1000, `${elapsed}ms`);
+}
 
 // --- closing references ------------------------------------------------------
 

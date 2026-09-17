@@ -10,8 +10,9 @@
 // Reading only one channel would leave half the loop silent.
 //
 // BOTH CHANNELS NEED A VERB (issue #440). A bare id used to close the finding
-// it named, so a PR that listed five findings in a "Follow-ups" table closed
-// all five. Naming a finding and closing one are different acts; the verb is
+// it named, so a PR that shipped one finding and named five more in a
+// "Follow-ups" table resolved all six. Naming a finding and closing one are
+// different acts; the verb is
 // what tells them apart, and it is GitHub's own convention rather than a new
 // one to learn.
 //
@@ -54,10 +55,12 @@ export interface IssueRef {
  *
  * Two ids written back-to-back with nothing separating them
  * (`...-01F-2026-...`) fuse into a single token, because `\b` cannot cut
- * between two word characters (`1` and `F`). The fused token almost always
- * fails {@link isFindingId}'s shape check and is simply dropped — the same
- * "stays one unrecognised token rather than becomes a wrong confident answer"
- * trade `ACCEPTANCE_MENTION` makes for the identical adjacency case in
+ * between two word characters (`1` and `F`). The fused token often PASSES
+ * {@link isFindingId} — segment counts and a two-digit tail survive
+ * concatenation — and becomes one id that names nothing. Downstream that is a
+ * plain lookup miss, reported unknown, while both real ids go unreported: an
+ * under-claim, which is the safe direction and the same trade
+ * `ACCEPTANCE_MENTION` makes for the identical adjacency case in
  * pull-request.ts.
  */
 const FINDING_TOKEN = /\bF-[A-Za-z0-9-]{3,80}\b/g;
@@ -106,25 +109,42 @@ const CLOSING_REFERENCE =
  * acts, GitHub already distinguishes them with exactly these keywords, and
  * requiring the verb is the smallest thing that makes the distinction real.
  *
- * The keyword prefix and the `[\s:]{1,20}` separator are
- * {@link CLOSING_REFERENCE}'s, character for character — the two grammars
- * differ in what follows the verb, never in what counts as one, so an author
- * who knows `Closes: #12` already knows `Closes: F-…`. The colon is in the
- * class because this repo's own convention writes one.
+ * THE KEYWORD IS {@link CLOSING_REFERENCE}'s, character for character. THE
+ * SEPARATOR IS NOT, and the difference is the point: that one spells
+ * `[\s:]{1,20}`, which matches a newline, and a heading that DECLINES a
+ * finding ends in a closing keyword — `Findings we did NOT fix:` followed by
+ * the ids on the lines below. Reaching across the break closed the first of
+ * them. So this one is `[ \t:]{1,20}`: spaces, tabs and the colon this repo's
+ * own convention writes, and no line break. The verb and the id must sit on
+ * one line.
+ *
+ * A `Closes` wrapped away from its id therefore closes nothing and is
+ * reported through {@link FindingScan.mentioned} instead — an under-claim the
+ * author is told about, rather than an over-claim nobody sees. Markdown
+ * between the two breaks the pair for the same reason and with the same
+ * result: `**Closes** F-…` and `Closes [F-…](url)` report rather than close.
+ *
+ * WHAT THIS STILL CANNOT SEE is intent on a single line. `Won't fix:
+ * F-2026-08-SEC-web-01` closes it, exactly as `won't fix #12` closes an issue
+ * on GitHub. Bounding a separator cannot read a sentence, and the alternative
+ * — a list of negation words — is the kind of heuristic that looks like a
+ * rule until the day someone writes "unable to". Accepted, deliberately: the
+ * surface check in quality-surface.ts is the second opinion on this case.
  *
  * ONE VERB, ONE ID, like GitHub's own rule that a keyword closes the single
- * reference after it. `Closes F-a-01, F-b-02` closes the first and reports
- * the rest through {@link FindingScan.mentioned}, which is the loud failure
- * mode: the author is told at merge, in the delivery response, rather than
- * discovering it in the matrix months later.
+ * reference after it. `Closes F-2026-08-SEC-web-01, F-2026-08-SEC-web-02`
+ * closes the first and reports the second through
+ * {@link FindingScan.mentioned}, which is the loud failure mode: the author
+ * is told at merge, in the delivery response, rather than discovering it in
+ * the matrix months later.
  *
  * Linear like everything else here: the alternation's branches are
- * prefix-distinct, `[\s:]{1,20}` and `[A-Za-z0-9-]{3,80}` are both bounded,
+ * prefix-distinct, `[ \t:]{1,20}` and `[A-Za-z0-9-]{3,80}` are both bounded,
  * and the trailing `\b` is the same non-backtracking terminator
  * {@link FINDING_TOKEN} uses.
  */
 const CLOSING_FINDING =
-  /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)[\s:]{1,20}(F-[A-Za-z0-9-]{3,80})\b/gi;
+  /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)[ \t:]{1,20}(F-[A-Za-z0-9-]{3,80})\b/gi;
 
 /** A full issue URL, tolerant of scheme, `www.`, and anything after the number. */
 const ISSUE_URL =
@@ -277,27 +297,38 @@ function splitOnFencedCode(text: string): string[] {
 export interface FindingScan {
   /** Ids a closing keyword names in the BODY. These resolve. */
   closed: string[];
-  /** Ids named with no closing keyword, title or body. Reported, never acted on. */
+  /**
+   * Ids this PR names but does not close — including a title's `Closes F-…`,
+   * which GitHub would not honour either. Reported, never acted on.
+   */
   mentioned: string[];
 }
 
 export function scanFindings(event: Pick<PullRequestEvent, "title" | "body">): FindingScan {
+  // Split ONCE per text, so "both channels see the same runs of the same
+  // body" is a fact about the code rather than about two call sites agreeing.
+  const bodyRuns = event.body ? splitOnFencedCode(event.body) : [];
+  const titleRuns = event.title ? splitOnFencedCode(event.title) : [];
+
   const closed = new Set<string>();
-  if (event.body) {
-    for (const run of splitOnFencedCode(event.body)) {
-      for (const match of run.matchAll(CLOSING_FINDING)) {
-        if (isFindingId(match[1])) closed.add(match[1]);
-      }
+  for (const run of bodyRuns) {
+    for (const match of run.matchAll(CLOSING_FINDING)) {
+      const token = match[1];
+      // The `i` flag exists for the KEYWORD — `CLOSES`, `Fixes` — and also
+      // reaches the id, where {@link FINDING_TOKEN} (no `i`) would never
+      // match a lowercase `f-`. Without this the two channels disagree about
+      // what a finding id even is, and the same finding could land in
+      // `closed` AND `mentioned` at once, which the contract above says
+      // cannot happen.
+      if (!token.startsWith("F-")) continue;
+      if (isFindingId(token)) closed.add(token);
     }
   }
 
   const mentioned = new Set<string>();
-  for (const text of [event.title, event.body]) {
-    if (!text) continue;
-    for (const run of splitOnFencedCode(text)) {
-      for (const match of run.matchAll(FINDING_TOKEN)) {
-        if (isFindingId(match[0]) && !closed.has(match[0])) mentioned.add(match[0]);
-      }
+  for (const run of [...titleRuns, ...bodyRuns]) {
+    for (const match of run.matchAll(FINDING_TOKEN)) {
+      if (isFindingId(match[0]) && !closed.has(match[0])) mentioned.add(match[0]);
     }
   }
 
