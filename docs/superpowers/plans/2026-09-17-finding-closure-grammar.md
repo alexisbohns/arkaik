@@ -354,6 +354,292 @@ EOF
 
 ---
 
+## Task 1c: what the code-quality review found
+
+Three defects, all in `lib/services/github/quality-parse.ts`, all verified against the real code before being written down here.
+
+**The verb was unqualified.** `[\s:]{1,20}` matches a newline, so a keyword at the end of one line reached an id at the start of the next — and a heading that *declines* a finding ends in a verb: `Findings we did NOT fix:` ⏎⏎ `F-2026-08-SEC-web-01` closed it. Bullets and table rows were already safe (`-` and `|` break the pair), which is why pbbls#832's own table survived, but the prose form of the same list did not. The separator becomes **same-line**: spaces, tabs and colons, no line break. A `Closes` wrapped away from its id stops closing and becomes a `mentioned` report instead, which is the loud, recoverable direction.
+
+**The `i` flag leaked onto the id.** It is there for `CLOSES` and `Fixes`, but it also reached `(F-…)`, where `FINDING_TOKEN` — which has no `i` — would never match a lowercase `f-`. `Closes f-2026-08-sec-web-01` put a token in `closed` that the other channel cannot produce, so the file's own stated invariant ("an id under a verb AND named bare elsewhere is CLOSED, once") was false.
+
+**Four comments asserted things the code does not do.** Including the `CLOSING_FINDING` JSDoc's own worked example, which produces nothing.
+
+**Files:**
+- Modify: `lib/services/github/quality-parse.ts`
+- Test: `tests/services/quality-webhook.test.js`
+
+- [ ] **Step 1: Write the failing tests**
+
+In `tests/services/quality-webhook.test.js`, replace the `wrappedFinding` block — the separator no longer spans a line break, so this case inverts:
+
+```js
+// SAME LINE, deliberately unlike `closedIssues`. `[\s:]{1,20}` would match a
+// newline, and a heading that DECLINES a finding ends in a verb: "Findings we
+// did NOT fix:" reached the id on the line below and closed it. A `Closes`
+// wrapped away from its id now reports instead, which is the recoverable way
+// round.
+const wrappedFinding = scanFindings(ev("", "Closes\nF-2026-08-SEC-web-01"));
+check("a verb cannot reach an id on the next line", wrappedFinding.closed.length === 0, JSON.stringify(wrappedFinding));
+check("the id it could not reach is reported instead", wrappedFinding.mentioned.length === 1, JSON.stringify(wrappedFinding));
+```
+
+Then add, immediately after it:
+
+```js
+// The shape that made this a Critical finding: prose declining a list of
+// findings, where the heading's last word is a closing keyword.
+const declinedList = scanFindings(ev("", "Findings we did NOT fix:\n\nF-2026-08-SEC-web-01\nF-2026-08-SEC-web-02"));
+check("a heading that declines findings closes none of them", declinedList.closed.length === 0, JSON.stringify(declinedList));
+check("the declined findings are reported", declinedList.mentioned.length === 2, JSON.stringify(declinedList));
+
+const declinedTight = scanFindings(ev("", "Findings we did NOT fix:\nF-2026-08-SEC-web-01"));
+check("not even across a single newline", declinedTight.closed.length === 0, JSON.stringify(declinedTight));
+
+// THE RESIDUAL, pinned on purpose rather than left to be discovered. A verb
+// beside an id on one line closes it, negated or not — exactly what GitHub
+// does with `won't fix #12`. Bounding the separator cannot see intent, and a
+// list of negation words is a heuristic this grammar deliberately does not
+// carry. Part B's surface check is the second opinion on this case.
+const negatedSameLine = scanFindings(ev("", "Won't fix: F-2026-08-SEC-web-01"));
+check("a negated verb on the SAME line still closes — known, accepted", negatedSameLine.closed.length === 1, JSON.stringify(negatedSameLine));
+
+// The `i` flag is for the KEYWORD. `FINDING_TOKEN` has no `i`, so a lowercase
+// `f-` is a token the other channel can never produce; admitting it here made
+// the two channels disagree about what a finding id is.
+const lowercased = scanFindings(ev("", "Closes f-2026-08-sec-web-01"));
+check("a lowercase f- closes nothing", lowercased.closed.length === 0, JSON.stringify(lowercased));
+check("a lowercase f- is not reported either — it is not an id", lowercased.mentioned.length === 0, JSON.stringify(lowercased));
+
+// `splitOnFencedCode` returns RUNS rather than one joined string, and the
+// closing channel depends on that as much as `closedIssues` does: a verb
+// before a fence must not reach an id after it. Pinned so a future refactor
+// that rejoins the runs cannot pass.
+const findingFenceBleed = scanFindings(ev("", ["The crash is fixed", "```", "stack trace", "```", "F-2026-08-SEC-web-01 tracked this."].join("\n")));
+check("a verb before a fence cannot reach an id after it", findingFenceBleed.closed.length === 0, JSON.stringify(findingFenceBleed));
+
+const quotedFence = scanFindings(ev("", ["> ```", "> Closes F-2026-08-SEC-web-01", "> ```", "Closes F-2026-08-SEC-web-02"].join("\n")));
+check("a blockquoted fence hides a closure the same way a bare one does", quotedFence.closed.length === 1 && quotedFence.closed[0] === "F-2026-08-SEC-web-02", JSON.stringify(quotedFence));
+
+const unclosedFindingFence = scanFindings(ev("", ["Before the fence.", "```", "Closes F-2026-08-SEC-web-01"].join("\n")));
+check("an unclosed fence swallows a closure after it", unclosedFindingFence.closed.length === 0, JSON.stringify(unclosedFindingFence));
+```
+
+Finally, strengthen the hostile-input case. `"Closes F-"` repeated exercises the MATCHING path, which is the cheap one; the shape that actually walks the bounded backtrack is a long run of id-shaped characters that never terminates in a `\b`. Replace the `hostile` block with:
+
+```js
+// Attacker-influenced input: a PR body is anyone-can-open-a-fork input, and
+// GitHub allows up to 65,536 characters of it. Both channels must be linear.
+// TWO SHAPES, because they stress different halves: a run of bare keywords
+// exercises the match path, while a keyword followed by 90 id-shaped
+// characters forces `[A-Za-z0-9-]{3,80}\b` to walk its whole range and fail
+// at every start position — which is the claim the bound is really about.
+for (const [name, hostile] of [
+  ["a run of keywords", "Closes F-".repeat(100000)],
+  ["a run of unterminable tokens", `Closes F-${"a".repeat(90)} `.repeat(20000)],
+]) {
+  const start = Date.now();
+  scanFindings(ev("", hostile));
+  const elapsed = Date.now() - start;
+  check(`${name} parses in bounded time`, elapsed < 1000, `${elapsed}ms`);
+}
+```
+
+(Delete the old `const hostile = …` / `const start = …` / `const elapsed = …` / `check("a pathological body parses in bounded time", …)` four-line block it replaces.)
+
+- [ ] **Step 2: Run the suite to verify the new cases fail**
+
+```bash
+npm run test:quality-webhook
+```
+
+Expected: `FAIL:` on `a verb cannot reach an id on the next line`, `a heading that declines findings closes none of them`, `not even across a single newline`, and `a lowercase f- closes nothing`. The others pass already. Read the output and confirm those four are the failures.
+
+- [ ] **Step 3: Bound the separator to one line**
+
+Replace the `CLOSING_FINDING` regex:
+
+```ts
+const CLOSING_FINDING =
+  /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)[ \t:]{1,20}(F-[A-Za-z0-9-]{3,80})\b/gi;
+```
+
+and replace the two paragraphs of its JSDoc that describe the separator and the worked example — the one beginning `The keyword prefix and the ` and the one beginning `ONE VERB, ONE ID` — with:
+
+```ts
+ * THE KEYWORD IS {@link CLOSING_REFERENCE}'s, character for character. THE
+ * SEPARATOR IS NOT, and the difference is the point: that one spells
+ * `[\s:]{1,20}`, which matches a newline, and a heading that DECLINES a
+ * finding ends in a closing keyword — `Findings we did NOT fix:` followed by
+ * the ids on the lines below. Reaching across the break closed the first of
+ * them. So this one is `[ \t:]{1,20}`: spaces, tabs and the colon this repo's
+ * own convention writes, and no line break. The verb and the id must sit on
+ * one line.
+ *
+ * A `Closes` wrapped away from its id therefore closes nothing and is
+ * reported through {@link FindingScan.mentioned} instead — an under-claim the
+ * author is told about, rather than an over-claim nobody sees. Markdown
+ * between the two breaks the pair for the same reason and with the same
+ * result: `**Closes** F-…` and `Closes [F-…](url)` report rather than close.
+ *
+ * WHAT THIS STILL CANNOT SEE is intent on a single line. `Won't fix:
+ * F-2026-08-SEC-web-01` closes it, exactly as `won't fix #12` closes an issue
+ * on GitHub. Bounding a separator cannot read a sentence, and the alternative
+ * — a list of negation words — is the kind of heuristic that looks like a
+ * rule until the day someone writes "unable to". Accepted, deliberately: the
+ * surface check in quality-surface.ts is the second opinion on this case.
+ *
+ * ONE VERB, ONE ID, like GitHub's own rule that a keyword closes the single
+ * reference after it. `Closes F-2026-08-SEC-web-01, F-2026-08-SEC-web-02`
+ * closes the first and reports the second through
+ * {@link FindingScan.mentioned}, which is the loud failure mode: the author
+ * is told at merge, in the delivery response, rather than discovering it in
+ * the matrix months later.
+```
+
+- [ ] **Step 4: Stop the `i` flag from reaching the id**
+
+In `scanFindings`, replace the body of the `closed` loop:
+
+```ts
+      for (const match of run.matchAll(CLOSING_FINDING)) {
+        const token = match[1];
+        // The `i` flag exists for the KEYWORD — `CLOSES`, `Fixes` — and also
+        // reaches the id, where {@link FINDING_TOKEN} (no `i`) would never
+        // match a lowercase `f-`. Without this the two channels disagree
+        // about what a finding id even is, and the same finding could land in
+        // `closed` AND `mentioned` at once, which the contract above says
+        // cannot happen.
+        if (!token.startsWith("F-")) continue;
+        if (isFindingId(token)) closed.add(token);
+      }
+```
+
+- [ ] **Step 5: Hoist the fenced-code split**
+
+Both channels split the same body. Two call sites make "both see the same runs" something a reader has to establish by comparison; one makes it structural. Replace `scanFindings`'s body scaffolding so the runs are computed once:
+
+```ts
+export function scanFindings(event: Pick<PullRequestEvent, "title" | "body">): FindingScan {
+  // Split ONCE per text, so "both channels see the same runs of the same
+  // body" is a fact about the code rather than about two call sites agreeing.
+  const bodyRuns = event.body ? splitOnFencedCode(event.body) : [];
+  const titleRuns = event.title ? splitOnFencedCode(event.title) : [];
+
+  const closed = new Set<string>();
+  for (const run of bodyRuns) {
+    for (const match of run.matchAll(CLOSING_FINDING)) {
+      const token = match[1];
+      // The `i` flag exists for the KEYWORD — `CLOSES`, `Fixes` — and also
+      // reaches the id, where {@link FINDING_TOKEN} (no `i`) would never
+      // match a lowercase `f-`. Without this the two channels disagree about
+      // what a finding id even is, and the same finding could land in
+      // `closed` AND `mentioned` at once, which the contract above says
+      // cannot happen.
+      if (!token.startsWith("F-")) continue;
+      if (isFindingId(token)) closed.add(token);
+    }
+  }
+
+  const mentioned = new Set<string>();
+  for (const run of [...titleRuns, ...bodyRuns]) {
+    for (const match of run.matchAll(FINDING_TOKEN)) {
+      if (isFindingId(match[0]) && !closed.has(match[0])) mentioned.add(match[0]);
+    }
+  }
+
+  return { closed: [...closed], mentioned: [...mentioned] };
+}
+```
+
+- [ ] **Step 6: Correct the three remaining untrue comments**
+
+(a) `FindingScan.mentioned`'s field doc claims these ids carry no closing keyword, but a keyword in the TITLE lands here. Replace:
+
+```ts
+  /** Ids named with no closing keyword, title or body. Reported, never acted on. */
+```
+
+with:
+
+```ts
+  /**
+   * Ids this PR names but does not close — including a title's `Closes F-…`,
+   * which GitHub would not honour either. Reported, never acted on.
+   */
+```
+
+(b) The file header and the `CLOSING_FINDING` JSDoc tell the same anecdote with different numbers ("closed all five" vs "resolved all six"). Make the header match the fuller one. Replace:
+
+```ts
+// BOTH CHANNELS NEED A VERB (issue #440). A bare id used to close the finding
+// it named, so a PR that listed five findings in a "Follow-ups" table closed
+// all five. Naming a finding and closing one are different acts; the verb is
+```
+
+with:
+
+```ts
+// BOTH CHANNELS NEED A VERB (issue #440). A bare id used to close the finding
+// it named, so a PR that shipped one finding and named five more in a
+// "Follow-ups" table resolved all six. Naming a finding and closing one are
+// different acts; the verb is
+```
+
+(c) `FINDING_TOKEN`'s JSDoc says a fused adjacency "almost always fails {@link isFindingId}'s shape check" — and then gives an example that PASSES it (`isFindingId("F-2026-08-SEC-web-01F-2026-08-SEC-web-02")` is `true`: eleven segments, none empty, counter `02`). Replace that paragraph with:
+
+```ts
+ * Two ids written back-to-back with nothing separating them
+ * (`...-01F-2026-...`) fuse into a single token, because `\b` cannot cut
+ * between two word characters (`1` and `F`). The fused token often PASSES
+ * {@link isFindingId} — segment counts and a two-digit tail survive
+ * concatenation — and becomes one id that names nothing. Downstream that is a
+ * plain lookup miss, reported unknown, while both real ids go unreported: an
+ * under-claim, which is the safe direction and the same trade
+ * `ACCEPTANCE_MENTION` makes for the identical adjacency case in
+ * pull-request.ts.
+```
+
+- [ ] **Step 7: Run the suite**
+
+```bash
+npm run test:quality-webhook
+```
+
+Expected: every grammar/fence/parseIssueRef check prints `PASS:`, none prints `FAIL:`, then the run throws the expected `mentionedFindings is not a function` from `quality.ts` (still Task 2's).
+
+- [ ] **Step 8: Typecheck**
+
+```bash
+npx tsc --noEmit -p tsconfig.json
+```
+
+Expected: exactly one error, `quality.ts(7,24): ... has no exported member 'mentionedFindings'`. Anything else is yours.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add lib/services/github/quality-parse.ts tests/services/quality-webhook.test.js
+git commit -m "$(cat <<'EOF'
+fix(github): a closing verb cannot reach an id on the next line (#440)
+
+`[\s:]{1,20}` matched a newline, so a heading that DECLINES a finding
+— "Findings we did NOT fix:" — reached the id below it and closed it.
+The separator is same-line now. A wrapped `Closes` reports instead of
+closing, which is the direction an author can recover from.
+
+Also: the `i` flag was reaching the id, admitting a lowercase `f-`
+that `FINDING_TOKEN` can never produce and breaking the stated
+closed-or-mentioned-never-both invariant; and four comments asserted
+things the code does not do, including a worked example that parses
+to nothing.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+EOF
+)"
+```
+
+---
+
 ## Task 2: the `mentioned` outcome
 
 **Files:**
