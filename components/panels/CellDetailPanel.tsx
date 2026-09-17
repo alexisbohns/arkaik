@@ -2,10 +2,11 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import type { KritikLibrary, QualityMatrixCell, QualitySection } from "@arkaik/schema";
+import type { KritikLibrary, QualityMatrixCell, QualitySection, QualityTrend } from "@arkaik/schema";
 import { FindingsBoard } from "@/components/quality/FindingsBoard";
 import { CriteriaList } from "@/components/quality/CriteriaList";
 import { GradeScale } from "@/components/quality/GradeScale";
+import { DeltaArrow } from "@/components/quality/SurfaceScoreCard";
 import { GRADE_BORDER } from "@/components/quality/quality-styles";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FIELD_LABEL_CLASS } from "@/components/ui/field";
@@ -14,8 +15,10 @@ import { cn } from "@/lib/utils";
 import {
   EMPTY_QUALITY_FILTERS,
   buildCellCriteria,
+  buildCellHistory,
   buildSurfaceTitles,
   cellKey,
+  describeDelta,
   filterFindings,
   type FindingRow,
 } from "@/lib/utils/quality";
@@ -33,6 +36,12 @@ interface CellDetailPanelProps {
    * `null` when this domain was not scored on this surface.
    */
   cell: QualityMatrixCell | null;
+  /**
+   * The recorded audits (`deriveQualityTrend`), for the arrow beside the
+   * restated score and the History section below. Absent on a page that read
+   * no journal, and then the panel is the panel it was.
+   */
+  trend?: QualityTrend;
   /**
    * Every finding in the section, denormalized once by `ProjectPanels` — not
    * this cell's. The panel narrows and groups them itself, through the very
@@ -100,6 +109,7 @@ export function CellDetailPanel({
   library,
   section,
   cell,
+  trend,
   findings,
   nodesById,
   projectId,
@@ -109,6 +119,8 @@ export function CellDetailPanel({
   const key = cellKey(domain, surface);
   const domainName = domainNameOf(domain, library);
   const surfaceTitle = surfaceTitleOf(surface, section);
+  const delta = trend && cell ? trend.deltaCell(domain, surface) : undefined;
+  const movement = describeDelta(delta);
 
   // Split for the reason every quality surface splits its memos:
   // `react-hooks/preserve-manual-memoization` accepts an opaque imported call
@@ -122,6 +134,7 @@ export function CellDetailPanel({
     [findings, key],
   );
   const surfaceTitles = useMemo(() => buildSurfaceTitles(section), [section]);
+  const history = useMemo(() => buildCellHistory(trend, domain, surface), [trend, domain, surface]);
 
   const openFindings = narrowed.filter((row) => row.open).length;
 
@@ -140,6 +153,7 @@ export function CellDetailPanel({
           >
             <span className="text-2xl font-semibold leading-none tabular-nums">{cell.score}</span>
             <GradeScale grade={cell.grade} capped={cell.capped} size="md" />
+            <DeltaArrow delta={delta} />
           </span>
         )}
         <span className="flex min-w-0 flex-col gap-0.5">
@@ -157,6 +171,13 @@ export function CellDetailPanel({
               An open Critical or High capped this grade below the band its score earned.
             </span>
           )}
+          {movement && (
+            // The arrow, in words — the same sentence the card's label carries,
+            // here where a reader can actually see it.
+            <span className="text-xs text-muted-foreground">
+              {movement.charAt(0).toUpperCase() + movement.slice(1)}.
+            </span>
+          )}
         </span>
       </div>
 
@@ -164,6 +185,39 @@ export function CellDetailPanel({
         <span className={cn(FIELD_LABEL_CLASS, "px-4")}>Criteria</span>
         <CriteriaList criteria={criteria} surface={surface} onOpenCriterion={onOpenCriterion} />
       </section>
+
+      {history.length > 0 && (
+        // The cell's journal section, by analogy with the node panel's History
+        // (#433): every recorded audit's reading of this cell, oldest first,
+        // so the panel answers "from where we started" and not only "where we
+        // are". Absent until an audit has been recorded — a list of nothing
+        // would be a heading over the advice to run `matrix --record`.
+        <section className="flex flex-col gap-2 border-t py-4">
+          <span className={cn(FIELD_LABEL_CLASS, "px-4")}>History</span>
+          <ol className="flex flex-col gap-1 px-4">
+            {history.map((row, index) => {
+              const before = index > 0 ? history[index - 1] : null;
+              const step =
+                row.comparable && row.score !== null && before?.score != null
+                  ? { previous: before.score, delta: row.score - before.score }
+                  : undefined;
+              return (
+                <li key={`${row.auditId}-${row.ts}`} className="flex items-baseline gap-2 text-xs">
+                  <span className="w-12 shrink-0 text-right font-semibold tabular-nums">
+                    {row.score === null ? <span className="font-normal text-muted-foreground">—</span> : row.score}
+                  </span>
+                  <DeltaArrow delta={step} className="w-12 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground" title={row.commit}>
+                    {row.auditId}
+                    {row.commit ? ` · ${row.commit.slice(0, 7)}` : ""}
+                  </span>
+                  <span className="shrink-0 text-muted-foreground">{row.ts.slice(0, 10)}</span>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+      )}
 
       <section className="flex flex-col gap-2 border-t py-4">
         <span className={cn(FIELD_LABEL_CLASS, "px-4")}>Findings</span>

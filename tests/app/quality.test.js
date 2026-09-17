@@ -720,5 +720,77 @@ assert(
   "a domain the pack does not define falls back to its own code",
 );
 
+// =========================== the trend arrow (#442) ==========================
+
+const { buildCellHistory, describeDelta, deriveQualityTrend } = loadQuality();
+
+const auditEvent = (auditId, ts, scores, over = {}) => ({
+  id: `01T${ts.replace(/\D/g, "")}`,
+  ts,
+  type: "quality.audit.completed",
+  audit_id: auditId,
+  framework_version: "0.1.0",
+  scores,
+  counts: {},
+  ...over,
+});
+
+// Two recorded audits below the live pilot matrix: the newest differs from the
+// live cells (SEC on web moved up 6), so it is the baseline.
+const liveSecWeb = matrix.matrix.SEC.web.score;
+const webOverall = matrix.overall.web;
+const trend = deriveQualityTrend(
+  [
+    auditEvent("2026-07", "2026-07-01T00:00:00.000Z", { web: { SEC: liveSecWeb - 10 } }, { commit: "aaaaaaa1" }),
+    auditEvent("2026-08", "2026-08-01T00:00:00.000Z", { web: { SEC: liveSecWeb - 6, PRF: 40 } }, { commit: "bbbbbbb2" }),
+  ],
+  section.profile,
+  matrix,
+);
+const withTrend = buildDomainSections(matrix, section, pack, trend);
+const secWithTrend = withTrend.find((row) => row.domain === "SEC");
+const liveSecWebCard = secWithTrend.cards.find((card) => card.surface === "web");
+assert(
+  liveSecWebCard.delta && liveSecWebCard.delta.previous === liveSecWeb - 6 && liveSecWebCard.delta.delta === 6 && liveSecWebCard.delta.audit_id === "2026-08",
+  "a card carries its cell's delta against the newest recorded audit",
+);
+assert(describeDelta(liveSecWebCard.delta) === `up 6 from ${liveSecWeb - 6} at the 2026-08 audit`, "the label spells the previous score and the audit it came from");
+const secIosCard = secWithTrend.cards.find((card) => card.surface === "ios");
+assert(
+  secIosCard.cell !== null && secIosCard.delta && secIosCard.delta.previous === null && secIosCard.delta.delta === null,
+  "a scored cell the audits never recorded has an empty reading",
+);
+assert(describeDelta(secIosCard.delta) === null, "an empty reading describes nothing — a first audit is not 'unchanged'");
+assert(
+  withTrend.every((row) => row.cards.every((card) => card.cell !== null || card.delta === undefined)),
+  "an unscored cell carries no delta at all",
+);
+assert(
+  buildDomainSections(matrix, section, pack).every((row) => row.cards.every((card) => card.delta === undefined)),
+  "without a trend the sections are exactly what they were",
+);
+
+const gaugesWithTrend = buildSurfaceGauges(matrix, section, pack, trend);
+const webGauge = gaugesWithTrend.find((gauge) => gauge.surface === "web");
+// The 2026-08 snapshot rolls up SEC and PRF with the profile's weights; the
+// delta is the live roll-up minus that, whatever the number.
+assert(
+  webGauge.delta && typeof webGauge.delta.previous === "number" && webGauge.delta.delta === webOverall - webGauge.delta.previous,
+  "the roll-up gauge carries the surface's delta against the same baseline",
+);
+assert(describeDelta({ previous: 66, delta: 0, audit_id: "2026-08" }) === "unchanged from 66 at the 2026-08 audit", "a zero delta reads as unchanged");
+assert(describeDelta({ previous: 66, delta: -3, audit_id: "2026-08" }) === "down 3 from 66 at the 2026-08 audit", "a drop reads as down");
+assert(describeDelta({ previous: 66, delta: null, audit_id: "2026-08" }).includes("not comparable"), "a reading across a framework major bump says why it has no arrow");
+assert(describeDelta(undefined) === null && describeDelta({ previous: null, delta: null }) === null, "no reading, no sentence");
+
+const history = buildCellHistory(trend, "SEC", "web");
+assert(
+  history.length === 2 && history[0].auditId === "2026-07" && history[1].auditId === "2026-08",
+  "the cell's history lists every recorded audit, oldest first",
+);
+assert(history[0].score === liveSecWeb - 10 && history[1].score === liveSecWeb - 6 && history[1].commit === "bbbbbbb2", "each history row carries that audit's score and commit");
+assert(buildCellHistory(trend, "PRF", "web")[0].score === null, "an audit that did not score the cell is an unscored row, not a zero");
+assert(buildCellHistory(undefined, "SEC", "web").length === 0, "no trend, no history");
+
 console.log(failures === 0 ? "\nAll quality projections OK" : `\n${failures} failure(s)`);
 process.exit(failures === 0 ? 0 : 1);

@@ -159,6 +159,7 @@ async function run() {
       "kritik_accept_finding",
       "kritik_trip_signal",
       "kritik_regressions",
+      "kritik_trend",
     ]) {
       check(`catalog includes ${name}`, names.includes(name));
     }
@@ -276,6 +277,15 @@ async function run() {
     const recorded = await session.call("kritik_matrix", { record: true });
     check("record:true appends quality.audit.completed", recorded.json.events[0]?.type === "quality.audit.completed", recorded.text.slice(0, 200));
     check("the event's scores are the roll-up itself", recorded.json.events[0].scores.web.SEC === recorded.json.matrix.SEC.web.score);
+
+    // --- trend (issue #442) ----------------------------------------------------
+
+    const trend = await session.call("kritik_trend", {});
+    check("kritik_trend replays the recorded audit", !trend.isError && trend.json.total === 1 && trend.json.rows.length === 1, trend.text.slice(0, 300));
+    check("the row's roll-up is the matrix's own", trend.json.rows[0].cells.web.score === recorded.json.overall.web, JSON.stringify(trend.json.rows[0]));
+    check("a first row has no delta", trend.json.rows[0].cells.web.delta === null);
+    const trendDomain = await session.call("kritik_trend", { domain: "SEC", surface: "web" });
+    check("kritik_trend narrows to a domain and a surface", !trendDomain.isError && trendDomain.json.surfaces.length === 1 && trendDomain.json.rows[0].cells.web.score === recorded.json.matrix.SEC.web.score, trendDomain.text.slice(0, 300));
 
     // --- signals ---------------------------------------------------------------
 
@@ -403,7 +413,14 @@ async function run() {
         res.end(JSON.stringify(body));
       };
       if (req.url === "/api/graph/projects/demo" && req.method === "GET") return json(200, { bundle: HOSTED_BUNDLE, version: "v1" });
-      if (req.url === "/api/graph/projects/demo/journal" && req.method === "GET") return json(200, { journal: [] });
+      if (req.url === "/api/graph/projects/demo/journal" && req.method === "GET") {
+        // One recorded audit, so kritik_trend has a hosted row to replay.
+        return json(200, {
+          journal: [
+            { id: "01AUDIT", ts: "2026-08-02T00:00:00.000Z", type: "quality.audit.completed", audit_id: "2026-08", framework_version: "1.0.0", scores: { web: { SEC: 70 } }, counts: { critical: 1 }, actor: "arkaik-cli" },
+          ],
+        });
+      }
       if (req.url === "/api/graph/projects/demo/quality/events" && req.method === "POST") {
         let raw = "";
         req.on("data", (chunk) => (raw += chunk));
@@ -536,6 +553,13 @@ async function run() {
 
     const regressionsRecord = await hosted.call("kritik_regressions", { record: true });
     check("hosted regressions refuses record", regressionsRecord.isError && /audit run/.test(regressionsRecord.json.message), regressionsRecord.text.slice(0, 300));
+
+    const hostedTrend = await hosted.call("kritik_trend", {});
+    check(
+      "kritik_trend reads the hosted journal",
+      !hostedTrend.isError && hostedTrend.json.total === 1 && hostedTrend.json.rows[0].audit_id === "2026-08" && hostedTrend.json.rows[0].cells.web.score === 70,
+      hostedTrend.text.slice(0, 300),
+    );
 
     const issue = await hosted.call("kritik_issue", { criterion_id: "SEC-01", surface: "web", finding_id: "F-A" });
     check(

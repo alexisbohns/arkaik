@@ -216,6 +216,19 @@ export const GRADE_SOLID: Record<QualityGrade, string> = {
 };
 
 /**
+ * A score's movement since the last recorded audit, as the arrow's tint. The
+ * positive and negative tones the resolved tile and the E grade already use —
+ * deliberately not the severity palette, because a delta is not a finding: a
+ * cell that dropped three points has not raised a Critical, and painting it
+ * orange would say it had. Flat is muted, like every other footnote on a card.
+ */
+export const DELTA_TONE: Record<"up" | "down" | "flat", string> = {
+  up: "text-green-700 dark:text-green-400",
+  down: "text-red-700 dark:text-red-400",
+  flat: "text-muted-foreground",
+};
+
+/**
  * Finding statuses in prose. Only `accepted-risk` actually needs the map — it
  * is the one id that is not its own English — but spelling all four out keeps
  * the filter menu from mixing sentence case with a hyphenated slug.

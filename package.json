@@ -25,6 +25,7 @@
     "test:kritik-plugin": "node tests/schema/kritik-plugin.test.js",
     "test:quality-ops": "node tests/schema/quality-ops.test.js",
     "test:quality-regressions": "node tests/schema/quality-regressions.test.js",
+    "test:quality-trend": "node tests/schema/quality-trend.test.js",
     "test:quality-webhook": "node tests/services/quality-webhook.test.js",
     "test:once-changed-files": "node tests/services/once-changed-files.test.js",
     "test:quality-events": "node tests/services/quality-events.test.js",

@@ -482,6 +482,34 @@ export interface QualityMatrix {
 }
 
 /**
+ * One surface's roll-up: the weighted mean of its domain scores under the
+ * profile's `domain_weights`, rounded; a missing weight is 1, and `null` when
+ * no domain scored at all (nothing applies is not a zero).
+ *
+ * Exported because two readers need the same number: `deriveQualityMatrix`
+ * rolls the live cells up through it, and `deriveQualityTrend` rolls a
+ * recorded audit's `scores` up through it. One loop, so the arrow on a card
+ * compares a roll-up to a roll-up computed the same way, never to a second
+ * opinion of one. Iteration follows the insertion order of `scores`, which for
+ * both callers is the matrix's own domain order.
+ */
+export function rollUpSurface(
+  scores: Readonly<Record<string, number | null | undefined>>,
+  weights?: Readonly<Record<string, number>> | null,
+): number | null {
+  let weighted = 0;
+  let total = 0;
+  for (const domain of Object.keys(scores)) {
+    const score = scores[domain];
+    if (typeof score !== "number" || !Number.isFinite(score)) continue;
+    const weight = typeof weights?.[domain] === "number" ? weights[domain] : 1;
+    weighted += score * weight;
+    total += weight;
+  }
+  return total > 0 ? Math.round(weighted / total) : null;
+}
+
+/**
  * The library to score against: an explicit pack (the sidecar case, lane 1),
  * else the one embedded in the section. When neither exists the assessments
  * still have to render, so a minimal library is synthesized from the criterion
@@ -612,19 +640,17 @@ export function deriveQualityMatrix(
 
   // Surface roll-up: the weighted mean of the *scores*, not the grades. Caps
   // shape the cell a reader acts on; folding them in again here would punish
-  // one finding twice.
+  // one finding twice. Through `rollUpSurface` — the same helper the trend
+  // replays a recorded audit's scores through — so the live matrix and a
+  // snapshot of it can never roll a surface up two different ways.
   const overall: Record<string, number | null> = {};
   for (const surface of surfaces) {
-    let weighted = 0;
-    let total = 0;
+    const bySurface: Record<string, number> = {};
     for (const domain of domains) {
       const cell = matrix[domain]?.[surface];
-      if (!cell) continue;
-      const weight = typeof weights?.[domain] === "number" ? weights[domain] : 1;
-      weighted += cell.score * weight;
-      total += weight;
+      if (cell) bySurface[domain] = cell.score;
     }
-    overall[surface] = total > 0 ? Math.round(weighted / total) : null;
+    overall[surface] = rollUpSurface(bySurface, weights);
   }
 
   const finding_counts: Record<FindingSeverity, number> = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };

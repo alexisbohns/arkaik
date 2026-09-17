@@ -1,6 +1,6 @@
 ---
 name: kritik
-version: 0.3.0
+version: 0.4.0
 description: >
   Audit this product's quality with the Kritik framework — score each criterion
   on each surface against observable maturity anchors, record findings with
@@ -75,7 +75,7 @@ Two richer paths exist when they are available, and both write **the same files*
 | Available | Use |
 |---|---|
 | the `arkaik` CLI (`npx arkaik kritik --help`) | the verbs `profile`, `score`, `finding open\|resolve\|accept`, `matrix`, `signals`, `regressions`, `issue`, `criterion add` |
-| `arkaik-mcp` tools in this session | `kritik_score`, `kritik_open_finding`, `kritik_matrix`, `kritik_signals`, `kritik_regressions`, `kritik_issue`, … |
+| `arkaik-mcp` tools in this session | `kritik_score`, `kritik_open_finding`, `kritik_matrix`, `kritik_signals`, `kritik_regressions`, `kritik_trend`, `kritik_issue`, … |
 
 Each verb takes its own `--help` (`arkaik kritik score --help`). What they add
 over the scripts is **step 7 for free**: they append the `quality.*` journal
@@ -446,6 +446,23 @@ Zero dependencies, same exit code, and it **writes nothing** — recording the
 trips is `arkaik kritik regressions --record`. There is no script counterpart for
 the run sheet; read the criteria's `signals[]` straight out of
 `references/library.json`.
+
+### Trend — from where we started to where we are now
+
+```
+arkaik kritik trend [--surface <s>] [--domain <CODE>] [--json]
+```
+
+prints every recorded audit as a row, oldest first: the overall score per
+surface (or one domain's score with `--domain`) and how it moved against the
+row above — `▲ +6`, `▼ −3`, `=`. It reads the journal's
+`quality.audit.completed` events, so an audit only shows once `arkaik kritik
+matrix --record` wrote it, and a re-recorded audit id keeps only its latest
+reading. Rows are ordered by when they were recorded, never by id, so a scoped
+re-audit named `2026-09-scoped` lands where it happened. A framework major bump
+between two audits breaks the comparison there (SPEC § 8): the row prints,
+without an arrow. `kritik_trend` is the same table over MCP, and the Quality
+page's matrix wears the same arrows against the last recorded audit.
 
 ### A tripped signal is not a finding
 

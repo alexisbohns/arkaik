@@ -134,6 +134,13 @@ jobs:
       - name: Kritik regression tests (level drops, new severity, reopens)
         run: npm run test:quality-regressions
 
+      # The score over time — quality.audit.completed replayed into snapshots,
+      # and the live matrix's arrow against the newest. Pure like the two
+      # above; the golden at its end replays the pilot matrix as one event
+      # and pins the surface roll-up as one loop shared with the matrix.
+      - name: Kritik trend tests (snapshots, baseline rule, major-bump boundary)
+        run: npm run test:quality-trend
+
       # The webhook half of the quality loop — the mention grammar and the
       # resolution pass. DB-free on purpose: the grammar imports nothing and
       # the project read is injected, so a Postgres-less runner still gates it.

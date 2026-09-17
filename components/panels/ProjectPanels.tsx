@@ -12,7 +12,7 @@ import {
 import { NodeDetailPanel, NodeDetailPanelHeader } from "@/components/panels/NodeDetailPanel";
 import { RawBundlePanel } from "@/components/panels/RawBundlePanel";
 import { EmptyState } from "@/components/ui/empty-state";
-import { deriveQualityMatrix, type KritikLibrary, type QualitySection } from "@arkaik/schema";
+import { deriveQualityMatrix, type KritikLibrary, type QualitySection, type QualityTrend } from "@arkaik/schema";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { Edge, Node } from "@/lib/data/types";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
@@ -69,6 +69,13 @@ interface ProjectPanelsProps {
    */
   qualitySection?: QualitySection;
   qualityLibrary?: KritikLibrary;
+  /**
+   * The recorded audits, for the cell panel's arrow and History. Read by the
+   * Quality page (`useQualityData`) and handed down rather than fetched here,
+   * for the reason the section is: nine of this component's ten callers never
+   * open a cell panel and should not pay for a journal projection on mount.
+   */
+  qualityTrend?: QualityTrend;
 }
 
 const NO_NODES: Node[] = [];
@@ -108,6 +115,7 @@ export function ProjectPanels({
   onZoomShot,
   qualitySection,
   qualityLibrary,
+  qualityTrend,
 }: ProjectPanelsProps) {
   const { entries, openNode, openCriterion, closeAt, unwindTo, pruneMissingNodes, panelStates } =
     useProjectPanels();
@@ -222,6 +230,7 @@ export function ProjectPanels({
               library={qualityLibrary}
               section={qualitySection}
               cell={qualityMatrix.matrix[domain]?.[surface] ?? null}
+              trend={qualityTrend}
               findings={qualityFindings}
               nodesById={nodesById}
               projectId={projectId}

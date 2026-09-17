@@ -35,7 +35,9 @@ import {
   type QualityMatrix,
   type QualityMatrixCell,
   type QualitySection,
+  type QualityTrend,
   type RemediationCost,
+  type ScoreDelta,
   type SurfaceDef,
 } from "@arkaik/schema";
 
@@ -377,6 +379,12 @@ export interface DomainSurfaceCard {
   title: string;
   /** `null` when this domain was not scored on this surface. */
   cell: QualityMatrixCell | null;
+  /**
+   * The cell against the last recorded audit (`deriveQualityTrend`). Absent
+   * when the page has no trend or the cell is unscored; `previous: null` when
+   * no earlier reading exists, which is a first audit and draws no arrow.
+   */
+  delta?: ScoreDelta;
 }
 
 /** One stacked section on the Matrix page: a domain and its surfaces. */
@@ -413,6 +421,7 @@ export function buildDomainSections(
   matrix: QualityMatrix,
   section: Pick<QualitySection, "profile"> | undefined,
   library?: KritikLibrary,
+  trend?: Pick<QualityTrend, "deltaCell"> | null,
 ): DomainSection[] {
   const titles = buildSurfaceTitles(section);
   const meta = new Map<string, KritikDomain>();
@@ -421,11 +430,17 @@ export function buildDomainSections(
   }
 
   return matrix.domains.map((domain) => {
-    const cards = matrix.surfaces.map((surface) => ({
-      surface,
-      title: titles.get(surface) ?? surface,
-      cell: matrix.matrix[domain]?.[surface] ?? null,
-    }));
+    const cards = matrix.surfaces.map((surface): DomainSurfaceCard => {
+      const cell = matrix.matrix[domain]?.[surface] ?? null;
+      return {
+        surface,
+        title: titles.get(surface) ?? surface,
+        cell,
+        // No delta on an unscored cell: it has no number for the arrow to sit
+        // beside, and "N/A, down from 66" is a sentence about a different cell.
+        ...(trend && cell ? { delta: trend.deltaCell(domain, surface) } : {}),
+      };
+    });
 
     const scores = cards
       .map((card) => card.cell?.score)
@@ -509,6 +524,8 @@ export interface SurfaceGauge {
   score: number | null;
   grade: QualityGrade | null;
   openFindings: number;
+  /** The roll-up against the last recorded audit — see {@link DomainSurfaceCard.delta}. */
+  delta?: ScoreDelta;
 }
 
 /**
@@ -523,6 +540,7 @@ export function buildSurfaceGauges(
   matrix: QualityMatrix,
   section: Pick<QualitySection, "profile" | "findings"> | undefined,
   library?: KritikLibrary,
+  trend?: Pick<QualityTrend, "deltaOverall"> | null,
 ): SurfaceGauge[] {
   const titles = buildSurfaceTitles(section);
 
@@ -532,7 +550,7 @@ export function buildSurfaceGauges(
     openPerSurface.set(finding.surface, (openPerSurface.get(finding.surface) ?? 0) + 1);
   }
 
-  return matrix.surfaces.map((surface) => {
+  return matrix.surfaces.map((surface): SurfaceGauge => {
     const score = matrix.overall[surface] ?? null;
     return {
       surface,
@@ -540,8 +558,58 @@ export function buildSurfaceGauges(
       score,
       grade: score === null ? null : gradeOf(score, library),
       openFindings: openPerSurface.get(surface) ?? 0,
+      ...(trend && score !== null ? { delta: trend.deltaOverall(surface) } : {}),
     };
   });
+}
+
+/**
+ * A delta in words, for a card's accessible name and its `title` — the arrow
+ * spelled out, with the score it was read against and the audit it came from:
+ * "up 6 from 66 at the 2026-08 audit". `null` when there is no earlier reading
+ * at all, so a first audit says nothing rather than "unchanged". A reading
+ * that exists but cannot be compared (a framework major bump since) still
+ * names the previous score, and says why there is no arrow.
+ */
+export function describeDelta(delta: ScoreDelta | undefined): string | null {
+  if (!delta || delta.previous === null) return null;
+  const where = delta.audit_id ? ` at the ${delta.audit_id} audit` : "";
+  if (delta.delta === null) return `${delta.previous}${where}, not comparable since the framework changed`;
+  if (delta.delta > 0) return `up ${delta.delta} from ${delta.previous}${where}`;
+  if (delta.delta < 0) return `down ${Math.abs(delta.delta)} from ${delta.previous}${where}`;
+  return `unchanged from ${delta.previous}${where}`;
+}
+
+/** One recorded audit's reading of a cell, for the cell panel's History. */
+export interface CellHistoryRow {
+  auditId: string;
+  ts: string;
+  commit?: string;
+  /** `null` when that audit did not score the cell — not assessed, not zero. */
+  score: number | null;
+  /** False when a framework major bump sits between this audit and the one before it. */
+  comparable: boolean;
+}
+
+/**
+ * A cell's score at every recorded audit, oldest first — the cell panel's
+ * journal section, by analogy with the node panel's History. Every snapshot is
+ * a row, an audit that skipped the cell reading as unscored: a scoped audit
+ * records the merged picture, so a gap here is a real gap, and hiding it would
+ * make three audits look like two.
+ */
+export function buildCellHistory(
+  trend: Pick<QualityTrend, "snapshots"> | undefined,
+  domain: string,
+  surface: string,
+): CellHistoryRow[] {
+  return (trend?.snapshots ?? []).map((snapshot) => ({
+    auditId: snapshot.audit_id,
+    ts: snapshot.ts,
+    ...(snapshot.commit !== undefined ? { commit: snapshot.commit } : {}),
+    score: snapshot.scores[surface]?.[domain] ?? null,
+    comparable: snapshot.comparable,
+  }));
 }
 
 /**

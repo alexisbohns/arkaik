@@ -21,3 +21,4 @@ export * from "./quality";
 export * from "./quality-schemas";
 export * from "./quality-ops";
 export * from "./quality-regressions";
+export * from "./quality-trend";

@@ -28,8 +28,10 @@ import {
   REMEDIATION_COSTS,
   acceptFinding,
   auditCompletedInput,
+  deriveQualityTrend,
   detectRegressions,
   findingOpenedInput,
+  formatDelta,
   findingResolvedInput,
   isOpenFinding,
   mintFindingId,
@@ -41,6 +43,7 @@ import {
   severityOf,
   signalRunSheet,
   signalTrippedInput,
+  trendRows,
   upsertAssessment,
   upsertFinding,
   type JournalEvent,
@@ -95,6 +98,7 @@ Subcommands:
   matrix [audit-id]     Roll an audit up (writes matrix.json).
   signals               The signal pack, and what has tripped since the last audit.
   regressions           What got worse between two audits.
+  trend                 Every recorded audit's scores, and which way each moved.
   issue <criterion>     Print the prefilled GitHub issue skeleton.
   criterion add ...     Add a project-specific criterion to the overlay.
 
@@ -187,6 +191,22 @@ scheduled routine.
   --to <audit>      The newer reading (default: the newest on disk).
   --record          Append one quality.signal.tripped per regression.
   --json            The full list as JSON.`;
+
+const TREND_USAGE = `arkaik kritik trend [--surface <s>] [--domain <CODE>] [--json]
+
+Where the product stood at each recorded audit, oldest first — one row per
+quality.audit.completed in the journal, the overall score per surface, and
+how each moved against the row above (▲ +6 / ▼ −3 / =). The score, not the
+findings: "from where we started to where we are now".
+
+  --surface <s>     One column only.
+  --domain <CODE>   That domain's score per surface instead of the roll-up.
+  --json            Print the snapshots and rows as JSON.
+
+Reads the journal, so it needs a bundle (--bundle, default docs/arkaik/bundle.json)
+and audits recorded with \`arkaik kritik matrix --record\`. A framework major
+bump between two audits breaks the comparison there (SPEC § 8): the row still
+prints, without an arrow.`;
 
 const ISSUE_USAGE = `arkaik kritik issue <criterion> --surface <s> [--level <n>] [--finding <id>]
 
@@ -924,6 +944,81 @@ function runRegressions(args: string[], common: CommonOptions): void {
   process.exit(regressions.length > 0 ? 1 : 0);
 }
 
+// --- trend -------------------------------------------------------------------
+
+function runTrend(args: string[], common: CommonOptions): void {
+  const { single, flags } = collect(args, [], ["json"]);
+  if (flags.has("help")) {
+    console.log(TREND_USAGE);
+    process.exit(0);
+  }
+
+  const journal = resolveJournal(common.root, common.bundlePath);
+  if (!journal.present) {
+    fail(
+      `kritik: no bundle at ${journal.bundlePath} — the trend is read from the journal's quality.audit.completed events, ` +
+        `and there is no journal without a bundle.`,
+    );
+  }
+  const events = readFullJournalEvents(journal.journalPath);
+  // The profile's weights roll each snapshot up the way the live matrix is
+  // rolled up; without a profile every domain weighs 1, as it does there.
+  const profile = loadProfile(common.root);
+  const trend = deriveQualityTrend(events, profile ?? undefined);
+  const filter = {
+    ...(single.surface !== undefined ? { surface: single.surface } : {}),
+    ...(single.domain !== undefined ? { domain: single.domain } : {}),
+  };
+  const { surfaces, rows } = trendRows(trend, filter);
+
+  if (flags.has("json")) {
+    console.log(JSON.stringify({ total: trend.snapshots.length, surfaces, rows, snapshots: trend.snapshots }, null, 2));
+    process.exit(0);
+  }
+
+  if (rows.length === 0) {
+    console.log(`\n  no recorded audits yet — \`arkaik kritik matrix --record\` writes one.\n`);
+    process.exit(0);
+  }
+  if (surfaces.length === 0) {
+    console.log(
+      `\n  ${rows.length} recorded audit${rows.length === 1 ? "" : "s"}, none scoring ` +
+        (single.surface !== undefined ? `"${single.surface}"` : "any surface") +
+        `.\n`,
+    );
+    process.exit(0);
+  }
+
+  // A plain aligned table: audit, when, then one column per surface reading
+  // `72 ▲ +6`. Deltas are against the row above, so the first row has none.
+  const cellText = (row: (typeof rows)[number], surface: string): string => {
+    const cell = row.cells[surface];
+    if (cell.score === null) return "—";
+    const arrow = formatDelta(cell.delta);
+    return arrow === null ? String(cell.score) : `${cell.score} ${arrow}`;
+  };
+  const header = ["audit", "recorded", ...surfaces];
+  const table = rows.map((row) => [row.audit_id, row.ts.slice(0, 10), ...surfaces.map((surface) => cellText(row, surface))]);
+  const widths = header.map((title, column) => Math.max(title.length, ...table.map((line) => line[column].length)));
+  const line = (cells: string[]) => `  ${cells.map((cell, column) => cell.padEnd(widths[column])).join("   ")}`;
+
+  console.log("");
+  console.log(line(header));
+  for (const [index, cells] of table.entries()) {
+    console.log(line(cells));
+    const row = rows[index];
+    if (!row.comparable) {
+      console.log(`  ${"".padEnd(widths[0])}   framework ${row.framework_version ?? "?"} — not comparable to the audit above`);
+    }
+  }
+  console.log(
+    `\n  ${rows.length} recorded audit${rows.length === 1 ? "" : "s"} · ` +
+      (single.domain !== undefined ? `${single.domain} score per surface` : "overall score per surface") +
+      ` · arrows against the row above\n`,
+  );
+  process.exit(0);
+}
+
 // --- issue -------------------------------------------------------------------
 
 function runIssue(args: string[], common: CommonOptions): void {
@@ -1074,6 +1169,8 @@ export function runKritik(args: string[]): void {
       return runSignals(subArgs, common);
     case "regressions":
       return runRegressions(subArgs, common);
+    case "trend":
+      return runTrend(subArgs, common);
     case "issue":
       return runIssue(subArgs, common);
     case "criterion":

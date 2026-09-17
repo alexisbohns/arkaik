@@ -177,7 +177,7 @@ Each criterion in `library/framework.json` carries:
 
 ## 7. The comparative matrix
 
-Rows = domains, columns = surfaces, cell = `score (grade)` with cap asterisks, plus a trend arrow once two audits exist. The matrix is *generated* from `scores.json` + `findings.json` — see `audits/2026-08/README.md` for the first one. A cell is only comparable to another cell in the same row; comparing SEC-web to PRF-ios is meaningless by construction.
+Rows = domains, columns = surfaces, cell = `score (grade)` with cap asterisks, plus a trend arrow (`▲ +6` / `▼ −3` / `=`) against the previous recorded audit once one exists. The matrix is *generated* from `scores.json` + `findings.json` — see `audits/2026-08/README.md` for the first one. The arrow is generated from the journal: every recorded audit (`quality.audit.completed`) is a snapshot of the matrix's scores, and a cell's arrow is its live score against the newest snapshot it differs from — so a first audit has no arrow, a just-recorded re-audit keeps the movement it recorded, and `arkaik kritik trend` lists the whole series. A cell is only comparable to another cell in the same row; comparing SEC-web to PRF-ios is meaningless by construction, and no arrow is read across a framework major bump (§ 8).
 
 ## 8. Versioning & evolution
 

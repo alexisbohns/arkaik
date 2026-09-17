@@ -1,11 +1,19 @@
 "use client";
 
 import { useMemo } from "react";
-import { deriveQualityMatrix, resolveKritikLibrary } from "@arkaik/schema";
+import { deriveQualityMatrix, deriveQualityTrend, resolveKritikLibrary } from "@arkaik/schema";
 import { useEdges } from "@/lib/hooks/useEdges";
+import { useJournal } from "@/lib/hooks/useJournal";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useProject } from "@/lib/hooks/useProject";
 import { buildFindingRows, buildSurfaceTitles } from "@/lib/utils/quality";
+
+/**
+ * The one event type the trend reads. Module-level so the projection's cache
+ * key is stable across renders (`useJournal` normalizes the list, but a fresh
+ * array per render is still a fresh options object per render).
+ */
+const AUDIT_EVENTS = ["quality.audit.completed"] as const;
 
 /**
  * Everything both Quality pages read.
@@ -24,10 +32,19 @@ export function useQualityData(projectId: string) {
   const { nodes, loading: nodesLoading, error: nodesError, reload: reloadNodes } = useNodes(projectId);
   const { edges, loading: edgesLoading, error: edgesError, reload: reloadEdges } = useEdges(projectId);
   const { project, error: projectError, reload: reloadProject } = useProject(projectId);
+  // Only the audit events, projected: the trend is what the arrows and the
+  // cell panel's History read, and on a hosted project the rest of the journal
+  // never crosses the network for it. Not folded into `loading` — the matrix
+  // renders as soon as the section does, and the arrows arrive with the read.
+  const { journal: audits, reload: reloadJournal } = useJournal(projectId, { types: AUDIT_EVENTS });
 
   const section = project?.quality;
+  const profile = section?.profile;
   const library = useMemo(() => resolveKritikLibrary(section), [section]);
   const matrix = useMemo(() => deriveQualityMatrix({ quality: section }, library), [section, library]);
+  // The live matrix is the baseline, not the last event — see the head of
+  // `quality-trend.ts` for why a just-recorded audit still gets an arrow.
+  const trend = useMemo(() => deriveQualityTrend(audits, profile, matrix), [audits, profile, matrix]);
 
   // Split rather than chained, and the split is the point:
   // `react-hooks/preserve-manual-memoization` is an error here and it refuses a
@@ -52,6 +69,7 @@ export function useQualityData(projectId: string) {
     void reloadNodes();
     void reloadEdges();
     void reloadProject();
+    void reloadJournal();
   };
 
   return {
@@ -59,6 +77,7 @@ export function useQualityData(projectId: string) {
     section,
     library,
     matrix,
+    trend,
     rows,
     nodes,
     edges,
