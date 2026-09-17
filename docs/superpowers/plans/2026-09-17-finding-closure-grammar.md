@@ -832,6 +832,274 @@ EOF
 
 ---
 
+## Task 2c: what the code-quality review found
+
+No Critical — the reviewer tried to construct the over-claim this stack exists to prevent and could not; every new path writes nothing. Three real defects on the two surfaces the change exists *for*, each verified against the running code before being written here.
+
+**The hint misdiagnoses the two cases Task 1 created.** It reads `named without a closing verb — write \`Closes F-…\` to resolve it`. But `Closes` ⏎ `F-2026-08-SEC-web-01` produces that hint, and the author *did* write a closing verb — Task 1's same-line rule is what dropped it. A `Closes F-…` in the TITLE produces it too, and the hint never says *in the body*. So the one user-facing string the new outcome carries points an author at text they already wrote. `**Closes** F-…` is the same story.
+
+**`no_quality_data` now absorbs a case its comment promises it does not cover.** That comment says the status means "the PR claimed something, and no linked project holds a finding it names". Confirmed: a body reading `See F-2026-08-SEC-web-01.` against a project that holds that finding as `refuted` returns `[{"status":"no_quality_data"}]`. The project holds it and has quality data. Before Task 2 the same body produced `unchanged`; the new skip drains the array and falls through to a status that denies a fact the code knows.
+
+**The guard carrying the no-double-outcome invariant is untested.** The reviewer mutation-tested it: delete `matched.has(finding.id)` from the skip and all 104 checks still pass. Every mention case in the suite routes through the verb channel, where `scanFindings` already guarantees disjointness — so the guard is only ever exercised by the `issue_url` channel, and no test combines `Closes #44` with a bare `F-…`.
+
+**Files:**
+- Modify: `lib/services/github/quality.ts`
+- Test: `tests/services/quality-webhook.test.js`
+
+- [ ] **Step 1: Write the failing tests**
+
+In `tests/services/quality-webhook.test.js`, replace the existing hint assertion — the `check("the mentioned hint names the verb to write", …)` block — with:
+
+```js
+  check(
+    "the mentioned hint pins the exact wording, and stays true for a wrapped verb",
+    mentions.find((o) => o.status === "mentioned")?.hint ===
+      "named but not closed — write `Closes F-2026-08-SEC-web-01` in the PR body, verb and id on one line with nothing but spaces or a colon between them",
+    JSON.stringify(mentions),
+  );
+```
+
+Then replace the two already-decided blocks — `for (const status of ["resolved", "accepted-risk", "refuted"]) { … }` and the `decidedByEvent` block — with versions that assert the WHOLE outcome array rather than a negative. The old `every((o) => o.status !== "mentioned")` was satisfied by an array containing nothing useful, which is why it never noticed that `no_quality_data` was the thing coming back:
+
+```js
+  // A finding already decided earns no mention — it is not outstanding, so
+  // there is nothing for the author to do about it. The WHOLE array is
+  // asserted rather than the absence of one status: `every(o => o.status !==
+  // "mentioned")` is satisfied by an empty result too, and cannot tell
+  // "correctly skipped" from "the pass produced nothing at all".
+  for (const status of ["resolved", "accepted-risk", "refuted"]) {
+    const settled = state({ findings: [FINDING({ status })] });
+    const settledOutcomes = await applyQualityResolutions(merged({ body: "See F-2026-08-SEC-web-01." }), { readState: settled.readState });
+    check(
+      `a bare id naming a ${status} finding falls through to nothing_to_do`,
+      JSON.stringify(settledOutcomes) === JSON.stringify([{ status: "nothing_to_do" }]),
+      JSON.stringify(settledOutcomes),
+    );
+  }
+
+  const decidedByEvent = state({ decidedIds: ["F-2026-08-SEC-web-01"] });
+  const decidedOutcomes = await applyQualityResolutions(merged({ body: "See F-2026-08-SEC-web-01." }), { readState: decidedByEvent.readState });
+  check(
+    "a bare id naming an event-decided finding falls through to nothing_to_do",
+    JSON.stringify(decidedOutcomes) === JSON.stringify([{ status: "nothing_to_do" }]),
+    JSON.stringify(decidedOutcomes),
+  );
+
+  // `no_quality_data` keeps its narrow meaning: NO linked project holds what
+  // the PR named. A project that holds the finding and simply had nothing to
+  // do about it is a different answer, and conflating the two told an author
+  // "no quality data" about a project whose quality data we had just read.
+  const heldButQuiet = state({ findings: [FINDING({ status: "refuted" })] });
+  const quiet = await applyQualityResolutions(merged({ body: "See F-2026-08-SEC-web-01." }), { readState: heldButQuiet.readState });
+  check("a project that holds the finding does not report no_quality_data", quiet[0]?.status !== "no_quality_data", JSON.stringify(quiet));
+
+  const holdsNothing = state({ findings: [FINDING({ id: "F-2026-08-SEC-web-77" })] });
+  const stranger = await applyQualityResolutions(merged({ body: "See F-2026-08-SEC-web-01." }), { readState: holdsNothing.readState });
+  check("a project holding no named finding still reports no_quality_data", JSON.stringify(stranger) === JSON.stringify([{ status: "no_quality_data" }]), JSON.stringify(stranger));
+```
+
+Then add these three cases at the end of the async IIFE, before the pbbls#832 block if it already exists, otherwise before the `fs.rmSync` line:
+
+```js
+  // THE DEDUP GUARD, pinned. `scanFindings` already keeps a verb-closed id out
+  // of `mentioned`, so the verb channel cannot collide — but a finding reached
+  // through its own `issue_url` is matched by a path the parser never sees. A
+  // mutation test proved this: deleting `matched.has(finding.id)` from the
+  // skip left every other check green.
+  const issueAndBare = state({ findings: [FINDING({ issue_url: `https://github.com/${REPO}/issues/44` })] });
+  const issueAndBareOutcomes = await applyQualityResolutions(
+    merged({ body: "Closes #44 — tracked as F-2026-08-SEC-web-01." }),
+    { readState: issueAndBare.readState },
+  );
+  check(
+    "a finding closed through its issue is not ALSO reported as mentioned",
+    issueAndBareOutcomes.length === 1 && issueAndBareOutcomes[0].status === "resolved",
+    JSON.stringify(issueAndBareOutcomes),
+  );
+
+  // Mentions must survive a refused append — which is the whole reason the
+  // reporting loop sits ABOVE the `events.length === 0` bail. A refactor that
+  // moved it below would pass every other check in this file.
+  const refusedWithMention = {
+    readState: async () => [{
+      projectId: "prj_1",
+      findings: [FINDING(), FINDING({ id: "F-2026-08-PLT-ios-02", surface: "ios" })],
+      decidedFindingIds: new Set(),
+      append: async () => [],
+    }],
+  };
+  const refusedOutcomes = await applyQualityResolutions(
+    merged({ body: "Closes F-2026-08-SEC-web-01. Follow-up: F-2026-08-PLT-ios-02." }),
+    refusedWithMention,
+  );
+  check(
+    "a mention is still reported when the append is refused",
+    refusedOutcomes.some((o) => o.status === "refused") && refusedOutcomes.some((o) => o.status === "mentioned" && o.findingId === "F-2026-08-PLT-ios-02"),
+    JSON.stringify(refusedOutcomes),
+  );
+
+  // The hint has to be true for every way an author can land here, not just
+  // the bare-id one. Task 1's same-line rule created two more.
+  const wrapped = state();
+  const wrappedOut = await applyQualityResolutions(merged({ body: "Closes\nF-2026-08-SEC-web-01" }), { readState: wrapped.readState });
+  check("a wrapped verb reports, and does not claim the verb was missing", wrappedOut[0]?.hint?.includes("verb and id on one line"), JSON.stringify(wrappedOut));
+
+  const titled = state();
+  const titledOut = await applyQualityResolutions(merged({ title: "Closes F-2026-08-SEC-web-01", body: "Nothing here." }), { readState: titled.readState });
+  check("a title-only closure reports, and says the body is where it belongs", titledOut[0]?.hint?.includes("in the PR body"), JSON.stringify(titledOut));
+```
+
+- [ ] **Step 2: Run the suite to verify the new cases fail**
+
+```bash
+npm run test:quality-webhook
+```
+
+Expected `FAIL:` lines — read them and confirm before continuing: the hint-wording check, the four `nothing_to_do` checks, `a project that holds the finding does not report no_quality_data`, and the two hint-content checks. `a finding closed through its issue is not ALSO reported as mentioned`, `a mention is still reported when the append is refused` and `a project holding no named finding still reports no_quality_data` should already PASS — they pin behaviour that is already correct and untested.
+
+- [ ] **Step 3: Make the hint true in every case that reaches it**
+
+In `lib/services/github/quality.ts`, replace `mentionHint`:
+
+```ts
+/**
+ * What a `mentioned` outcome tells the author to do instead.
+ *
+ * IT DOES NOT DIAGNOSE, because it cannot. Three different bodies land here
+ * and only one of them forgot a verb: a bare id did, a `Closes` wrapped onto
+ * the line above its id did not, and a `Closes F-…` in the TITLE did not
+ * either. The first wording said "named without a closing verb", which told
+ * two of those three authors they had omitted something they had in fact
+ * written — and pointed them back at the text that was already there.
+ *
+ * So it states the outcome ("named but not closed") and then the shape that
+ * works, which is true advice for all three: in the body, on one line, with
+ * nothing but spaces or a colon between the verb and the id. That last clause
+ * also covers `**Closes** F-…` and `Closes [F-…](url)`, which break the pair
+ * the same way and would otherwise be a fourth silent case.
+ */
+const mentionHint = (findingId: string) =>
+  `named but not closed — write \`Closes ${findingId}\` in the PR body, ` +
+  `verb and id on one line with nothing but spaces or a colon between them`;
+```
+
+- [ ] **Step 4: Stop `no_quality_data` covering a case it denies**
+
+The status means "no linked project holds a finding this PR names". A project that holds one and simply had nothing to do about it is a different answer and needs its own. Add the variant to `QualityResolutionOutcome`, immediately before `no_quality_data`:
+
+```ts
+  /**
+   * A linked project DOES hold a finding this pull request names, and there
+   * was nothing to do about it — every one was already resolved, accepted or
+   * refuted. Distinct from `no_quality_data` below, which denies that any
+   * project holds what the PR named: saying that about a project whose
+   * findings we had just read would deny a fact this pass knows.
+   */
+  | { status: "nothing_to_do" }
+```
+
+Then track it. After `const outcomes: QualityResolutionOutcome[] = [];`, add:
+
+```ts
+  // Whether ANY linked project turned out to hold a finding this PR named —
+  // the one fact that separates the two silences below, and knowable only
+  // after the reads.
+  let anyKnown = false;
+```
+
+In the `scan.closed` loop, set it where the finding is found — replace `matched.set(finding.id, finding);` with:
+
+```ts
+      anyKnown = true;
+      matched.set(finding.id, finding);
+```
+
+and in the `scan.mentioned` loop, immediately after the `finding === undefined || matched.has(...)` guard, add:
+
+```ts
+      anyKnown = true;
+```
+
+Finally, replace the closing `return` and the comment above it:
+
+```ts
+  // THREE silences, and they are not interchangeable. `no_mentions` is "the PR
+  // claimed nothing" and is decided before any read. `nothing_to_do` is "a
+  // project holds what it named, and every one was already decided". And this
+  // last one is "the PR claimed something, and no linked project holds a
+  // finding it names" — the shape a hosted project with no `quality` section
+  // in its snapshot produces. Collapsing any pair of them would have the one
+  // diagnostic surface anybody reads deny something this pass knows.
+  if (outcomes.length > 0) return outcomes;
+  return [{ status: anyKnown ? "nothing_to_do" : "no_quality_data" }];
+```
+
+- [ ] **Step 5: Say what actually pins the loop's position**
+
+The comment above the `scan.mentioned` loop explains the placement with a reason that does not hold it: `matched` is complete before the resolution loop too, so any position after that would satisfy it. The real constraint is the one it omits. Replace the three-line lead-in comment with:
+
+```ts
+    // ABOVE the `events.length === 0` bail below, and that is the constraint
+    // that pins it: a project whose PR closes nothing — the pure-mention case
+    // this outcome exists for — never reaches the lines past that bail, and
+    // neither does one whose append is refused. Both would silently report no
+    // mentions at all. (It also has to follow the two loops above, so
+    // `matched` is complete and a finding reached through its own issue is
+    // not reported as a loose end as well.)
+```
+
+- [ ] **Step 6: Stop overstating the read cost**
+
+The early-return comment presents the project read on a bare mention as a newly accepted expense. It is not one: the old `mentionedFindings` scanned title and body for the same tokens, and `scan.closed ∪ scan.mentioned` is exactly that set, so the set of deliveries that trigger a read is unchanged. Replace the four-line `A BARE MENTION COUNTS AS A CLAIM` paragraph with:
+
+```ts
+  // A BARE MENTION COUNTS AS A CLAIM here, even though it resolves nothing:
+  // deciding whether to report it needs the finding — does this project hold
+  // it, is it still open — and only the read has that. This costs no more
+  // deliveries than before, either: `mentionedFindings` scanned the same two
+  // texts for the same tokens, and `closed` ∪ `mentioned` is exactly the set
+  // it returned. What changed is what happens after the read, not how often
+  // one happens.
+```
+
+- [ ] **Step 7: Run the suite, typecheck and lint**
+
+```bash
+npm run test:quality-webhook && npx tsc --noEmit -p tsconfig.json && npm run lint
+```
+
+Expected: every check `PASS:`, zero `FAIL:`, exit 0; `tsc` silent; lint reporting only the 3 pre-existing warnings (`<img>` in `PlatformVariants.tsx` and `ShotPreviewDialog.tsx`, an unused var in `docs/quality/scripts/generate-projections.mjs`) and 0 errors.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add lib/services/github/quality.ts tests/services/quality-webhook.test.js
+git commit -m "$(cat <<'EOF'
+fix(github): the mentioned hint stops diagnosing what it cannot see (#440)
+
+Three bodies reach this outcome and only one of them forgot a verb.
+A wrapped `Closes`, and one in the title, both landed on "named
+without a closing verb" — telling two authors out of three that they
+had omitted something they had written. The hint now states the
+outcome and the shape that works.
+
+`no_quality_data` also stopped being true: a bare id naming a finding
+the project holds but has already decided drained the outcome array
+and fell through to a status that denies the project holds it at all.
+That case gets `nothing_to_do` of its own.
+
+Plus the tests for three properties that made this change safe rather
+than merely working, and which nothing covered: the dedup guard on
+the issue_url channel (a mutation test deleted it and the suite
+stayed green), a mention surviving a refused append, and the
+already-decided skip producing a sensible outcome rather than an
+assertion that passed for the wrong reason.
+EOF
+)"
+```
+
+---
+
 ## Task 3: the pbbls#832 regression
 
 **Files:**
