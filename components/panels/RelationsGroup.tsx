@@ -4,11 +4,11 @@ import { cn } from "@/lib/utils";
 import { PanelGroup } from "@/components/panels/PanelGroup";
 import {
   ConnectionsSection,
+  CoversSection,
   FindingsSection,
   InvocationSection,
   RefsSection,
 } from "@/components/panels/NodeRelationSections";
-import { CoversSection } from "@/components/panels/AcceptanceEditor";
 import { AcceptancesSection } from "@/components/panels/AcceptancesSection";
 import { SEVERITY_CHIP, SEVERITY_LABEL } from "@/components/quality/quality-styles";
 import { worstOpenFindingFor, type FindingRow } from "@/lib/utils/quality";
@@ -32,11 +32,14 @@ interface RelationsGroupProps {
 /**
  * Everything this node is attached to, in one region.
  *
- * Covers, Acceptances, Invocation, References, Findings and Connections were six
+ * Acceptances, Invocation, References, Findings and Connections were five
  * sibling sections in a flat column, indistinguishable in weight from the fields
- * that say what the record *is*. They are all the same kind of thing — the
- * record pointing at other records — and as one named region a reader can shut
- * them all at once and read the record itself.
+ * that say what the record *is* — and Covers was worse off still: a labelled
+ * field buried inside `AcceptanceEditor`, so the one species whose covers list
+ * is its whole point had it filed among its controls rather than among its
+ * cross-references. All six are the same kind of thing — the record pointing at
+ * other records — and as one named region a reader can shut them all at once and
+ * read the record itself.
  *
  * **The bar carries the findings chip.** Moving Findings into a group costs it
  * the position it held on a stated argument — that an open critical finding is
@@ -107,7 +110,14 @@ export function RelationsGroup({
   // narrower test took that line away along with, sometimes, the whole bar. An
   // anchor nothing verifies is a gap in the graph, not an absence of content.
   const hasAcceptances = isAnchor && Boolean(allNodes && allEdges);
-  const hasInvocation = isAnchor && Boolean(allNodes) && findWhereUsed(node.id, allNodes ?? []).length > 0;
+  // `onNavigate` as well as the nodes, matching `hasConnections` below and the
+  // guard the child is actually rendered behind: `InvocationSection` takes it as
+  // required, because a list of flows that cannot be opened is a list of names.
+  // Without it in the flag, a view whose only relation is an invocation would
+  // pass the emptiness test and open a bar onto nothing — the one failure this
+  // whole computation exists to prevent.
+  const hasInvocation =
+    isAnchor && Boolean(allNodes && onNavigate) && findWhereUsed(node.id, allNodes ?? []).length > 0;
   const hasConnections =
     Boolean(allNodes && allEdges && onNavigate) &&
     crossLayerConnections(node, allNodes ?? [], allEdges ?? []).length > 0;
@@ -142,7 +152,7 @@ export function RelationsGroup({
           node={node}
           allNodes={allNodes}
           allEdges={allEdges}
-          scope={scope}
+          hasProducts={scope.productsById.size > 0}
           onNavigate={onNavigate}
           intake={intake}
         />

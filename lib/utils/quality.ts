@@ -741,10 +741,14 @@ export interface OpenFindingSummary {
  * `null`, not a zero-count summary: "no open findings" is the absence of a
  * chip, and a caller handed `{ count: 0 }` would have to know to suppress it.
  *
- * Severity order comes from `FINDING_SEVERITIES` — the schema package's own
- * ordering, worst first — for the reason nothing in this file reimplements a
- * scale: a second ranking here would disagree with the board the first time a
- * pack moved a bucket.
+ * Severity order comes from `SEVERITY_ORDER` — the rank table this file already
+ * builds from `FINDING_SEVERITIES`, the schema package's own worst-first
+ * ordering — for the reason nothing in this file reimplements a scale: a second
+ * ranking here would disagree with the board the first time a pack moved a
+ * bucket. The table rather than `indexOf` over the same array, which is the
+ * comparison the board's own sort makes: a lookup instead of a scan per row,
+ * and no `-1` for a severity the array does not hold — which `indexOf` would
+ * have ranked *above* critical.
  */
 export function worstOpenFindingFor(
   rows: readonly FindingRow[],
@@ -755,7 +759,7 @@ export function worstOpenFindingFor(
 
   let worst = own[0].severity;
   for (const row of own) {
-    if (FINDING_SEVERITIES.indexOf(row.severity) < FINDING_SEVERITIES.indexOf(worst)) {
+    if (SEVERITY_ORDER[row.severity] < SEVERITY_ORDER[worst]) {
       worst = row.severity;
     }
   }
