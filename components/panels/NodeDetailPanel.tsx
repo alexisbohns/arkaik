@@ -247,14 +247,16 @@ interface ProductSectionProps {
  * empty exactly when the project has never heard of the concept, and the whole
  * feature's guarantee is that such a project looks byte-identical to how it did
  * before products existed. The guard lives here rather than inside
- * `ProductPicker` because only the call site knows which layout to omit.
+ * `ProductPicker` because only the call site knows which layout to omit — and it
+ * stays here, not in the `membership` slot that renders this, so that all three
+ * refusals below are read in one place by anyone asking "when is there no
+ * Product field?".
  *
  * **Flows and views only, though `PRODUCT_MEMBERSHIP_SPECIES` also lists
  * acceptances.** An acceptance already gets a picker from
  * `AcceptanceMembershipField`, which is the only place that can say the true
- * thing about it — its membership
- * is derived from its `covers` anchors (§ D5) and this control cannot express
- * that. Testing `PRODUCT_MEMBERSHIP_SPECIES` here, as the plan's sketch did,
+ * thing about it — its membership is derived from its `covers` anchors (§ D5)
+ * and this control cannot express that. Testing `PRODUCT_MEMBERSHIP_SPECIES` here, as the plan's sketch did,
  * would put two pickers on the same acceptance panel disagreeing about the same
  * node. Data models and API endpoints derive membership from their consumers and
  * are excluded for the original reason: a stored key on one is a value every read
@@ -293,21 +295,24 @@ function ProductSection({ node, scope, onUpdate }: ProductSectionProps) {
       ? "Unassigned nodes appear under All products only."
       : `Assigned to "${stored}", which this project no longer declares — it appears under All products only.`;
 
+  // No gutter of its own: this renders into `NodeFields`' `membership` slot,
+  // which is already inside that component's gutter and `gap-5` column. The
+  // `PANEL_GUTTER` wrapper it used to carry — from when it was a standalone
+  // block in the panel body — would double-indent it against every field
+  // around it.
   return (
-    <div className={PANEL_GUTTER}>
-      <ProductPicker
-        products={[...scope.productsById.values()]}
-        value={stored}
-        // Routed through `withProductMembership`, never assembled here: it owns
-        // the "unassigned means *absent*, never `product: \"\"`" rule and it
-        // carries the rest of the metadata (platformStatuses, notes,
-        // screenshots) through untouched — a patch replaces `metadata` wholesale.
-        onChange={(nextProduct) =>
-          void onUpdate(node.id, { metadata: withProductMembership(node.metadata, nextProduct) })
-        }
-        hint={hint}
-      />
-    </div>
+    <ProductPicker
+      products={[...scope.productsById.values()]}
+      value={stored}
+      // Routed through `withProductMembership`, never assembled here: it owns
+      // the "unassigned means *absent*, never `product: \"\"`" rule and it
+      // carries the rest of the metadata (platformStatuses, notes,
+      // screenshots) through untouched — a patch replaces `metadata` wholesale.
+      onChange={(nextProduct) =>
+        void onUpdate(node.id, { metadata: withProductMembership(node.metadata, nextProduct) })
+      }
+      hint={hint}
+    />
   );
 }
 
@@ -572,16 +577,28 @@ export function NodeDetailPanel({
         onUpdate={onUpdate}
         allNodes={allNodes}
         onNavigate={onNavigate}
+        // Whichever membership control this species has — the two are
+        // alternatives, not a fallback chain. An acceptance's product is
+        // derived from the anchors it covers (§ D5), which only
+        // `AcceptanceMembershipField` can say; every other species' is the
+        // stored key itself, which is `ProductSection`'s. Neither is asked
+        // whether it should render: each keeps its own refusals, and
+        // `ProductSection` is the one that answers "not on a data model, not
+        // without products, not without a save path".
         membership={
-          node.species === "acceptance" && allNodes && allEdges && onUpdate ? (
-            <AcceptanceMembershipField
-              node={node}
-              scope={scope}
-              allNodes={allNodes}
-              allEdges={allEdges}
-              onUpdate={onUpdate}
-            />
-          ) : undefined
+          node.species === "acceptance" ? (
+            allNodes && allEdges && onUpdate ? (
+              <AcceptanceMembershipField
+                node={node}
+                scope={scope}
+                allNodes={allNodes}
+                allEdges={allEdges}
+                onUpdate={onUpdate}
+              />
+            ) : undefined
+          ) : (
+            <ProductSection node={node} scope={scope} onUpdate={onUpdate} />
+          )
         }
         authored={
           node.species === "acceptance" && allNodes && allEdges && onUpdate ? (
@@ -595,7 +612,6 @@ export function NodeDetailPanel({
           ) : undefined
         }
       />
-      <ProductSection key={`product-${node.id}`} node={node} scope={scope} onUpdate={onUpdate} />
       {node.species === "decision" && allNodes && allEdges && onUpdate && (
         <DecisionEditor
           key={`decision-${node.id}`}
