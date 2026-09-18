@@ -4,9 +4,9 @@
  * The panel stack's document semantics — the shape a reader navigates by, as
  * opposed to the shape a reader looks at.
  *
- * Three claims are pinned here, because all three are invisible on screen and
- * so all three can be undone by a well-meaning refactor without anyone noticing
- * until a screen reader lands in the stack:
+ * Four claims are pinned here, because every one of them is invisible on screen
+ * and so every one can be undone by a well-meaning refactor without anyone
+ * noticing until a screen reader lands in the stack:
  *
  *   1. A panel cell is a NAMED `<section>` — that, and only that, makes it a
  *      landmark, which is what lets a reader list the open columns and jump
@@ -14,10 +14,14 @@
  *      silently costs the landmark.
  *   2. Inside it, the record is an `<article>` sharing the cell's name, with
  *      its own `h2`. The section is the slot; the article is what occupies it.
- *   3. The outline runs h1 (the page) → h2 (each open record) → h3 (the
- *      record's own sections), with no rung missing. A lone `h3` under nothing
- *      is exactly the state this stack was in before, and it is why
+ *   3. The outline runs h1 (the page) → h2 (each open record) → h3 (a
+ *      `PanelGroup`'s bar, or a section standing on its own) → h4 (a section
+ *      inside a group), with no rung missing. A lone `h3` under nothing is
+ *      exactly the state this stack was in before, and it is why
  *      `PanelSection`'s heading was a `<span>`.
+ *   4. A `PanelGroup`'s bar is a disclosure — one `h3` whose whole content is
+ *      the trigger — so the region is an outline entry and a control at once,
+ *      and it re-applies the panel gutter rather than bleeding past it.
  *
  * Static, over the TypeScript AST rather than a render: `PanelStack` is a
  * client component wired to `useIsMobile`, refs and four effects, and standing
@@ -69,6 +73,48 @@ function elements(node) {
   };
   visit(node);
   return found;
+}
+
+/**
+ * Components declared in this file whose own JSX renders a heading.
+ *
+ * A `<section>` heads itself when a heading is one hop inside it, and one hop
+ * is exactly what factoring a heading into a local component costs. Matching
+ * the component by NAME would be too generous: `components/layout/SectionHeading`
+ * is a different exported component of the same name that heads at `h2`, and a
+ * panel importing it would satisfy a name check while breaking the outline.
+ * Resolving to a local declaration that demonstrably renders a heading closes
+ * that, and couples the allowance to the fact it stands on — gut the component
+ * and it drops out of this set rather than staying blessed by its name.
+ *
+ * One hop is as far as this resolves, so what it proves is that a heading exists
+ * somewhere in the component, not that every path through it renders one: a
+ * component heading on one branch and returning `null` on another still
+ * qualifies. That residual looseness is accepted deliberately — the only way to
+ * close it is to evaluate the component, which is the render this file exists to
+ * avoid.
+ */
+function localHeadingComponents(source) {
+  const names = new Set();
+  const heads = (node) => elements(node).some((el) => HEADINGS.has(el.tag));
+  const visit = (node) => {
+    // Both spellings: this repo writes components as `function Foo()` and as
+    // `const Foo = () => …`, and a set that saw only the first would report a
+    // section whose heading is plainly there as unheaded.
+    if (ts.isFunctionDeclaration(node) && node.name && heads(node)) {
+      names.add(node.name.getText());
+    } else if (
+      ts.isVariableDeclaration(node) &&
+      node.initializer &&
+      (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer)) &&
+      heads(node.initializer)
+    ) {
+      names.add(node.name.getText());
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return names;
 }
 
 /**
@@ -162,15 +208,22 @@ assert(
 
 const panelSection = parse(path.join(PANELS_DIR, "PanelSection.tsx"));
 const panelSectionHeadings = elements(panelSection).filter((element) => HEADINGS.has(element.tag));
+// Exactly one of each, in one ternary: standalone the section is the record's
+// own level-three, nested in a group it is the group's level-four. Written as a
+// pair of literal tags rather than a computed `<Heading>` so that this check can
+// still see which levels exist — a dynamic tag name would make the outline
+// unreadable to everything but a browser.
 assert(
-  panelSectionHeadings.length === 2 && panelSectionHeadings.every((element) => element.tag === "h3"),
-  "PanelSection heads both its variants with h3",
+  panelSectionHeadings.length === 2 &&
+    panelSectionHeadings.some((element) => element.tag === "h3") &&
+    panelSectionHeadings.some((element) => element.tag === "h4"),
+  "PanelSection heads at h3 standalone and h4 inside a group",
   `found ${panelSectionHeadings.map((element) => element.tag).join(", ") || "none"}`,
 );
 
-// Every heading in a panel module is h3, bar the record's own h2 in the stack.
-// h4 is the tell that someone nested a section inside a section without saying
-// so; h2 anywhere else is a second record where there is only one.
+// Every heading in a panel module is h3 or h4, bar the record's own h2 in the
+// stack: h3 for a group bar or a standalone section, h4 for a section inside a
+// group. Anything else is a rung this outline does not have.
 const panelFiles = fs
   .readdirSync(PANELS_DIR)
   .filter((name) => name.endsWith(".tsx") && name !== "PanelStack.tsx");
@@ -179,14 +232,80 @@ const strays = [];
 for (const name of panelFiles) {
   const source = parse(path.join(PANELS_DIR, name));
   for (const element of elements(source)) {
-    // Dialogs are their own documents — they carry a DialogTitle, not a rung of
-    // this outline.
-    if (HEADINGS.has(element.tag) && element.tag !== "h3" && !name.endsWith("Dialog.tsx")) {
+    // h4 is now legal — it is the rung a `PanelSection` takes inside a
+    // `PanelGroup`. h1, h2, h5 and h6 in a panel body still are not: h2 would
+    // be a second record where there is only one, and h5 a level nothing in
+    // this outline reaches. Dialogs are exempt wholesale — they are their own
+    // documents, carrying a DialogTitle rather than a rung of this outline.
+    const legal = element.tag === "h3" || element.tag === "h4";
+    if (HEADINGS.has(element.tag) && !legal && !name.endsWith("Dialog.tsx")) {
       strays.push(`${name}:${element.tag}`);
     }
   }
 }
-assert(strays.length === 0, "panel bodies head their sections at h3", strays.join(", "));
+assert(strays.length === 0, "panel bodies head their sections at h3 or h4", strays.join(", "));
+
+// --- 4: the group bar, and the rung it adds ---------------------------------
+
+const panelGroup = parse(path.join(PANELS_DIR, "PanelGroup.tsx"));
+const groupElements = elements(panelGroup);
+
+// The bar is a disclosure: a heading whose whole content is the button that
+// opens it. Either half alone is a different, worse thing — a heading that
+// cannot be operated, or a button the outline cannot see.
+const groupHeading = groupElements.find((element) => element.tag === "h3");
+assert(groupHeading !== undefined, "PanelGroup heads its bar with an h3");
+
+if (groupHeading) {
+  const trigger = elements(groupHeading.node).find(
+    (element) => element.tag === "CollapsibleTrigger",
+  );
+  assert(
+    trigger !== undefined,
+    "the h3's content is the CollapsibleTrigger — the bar is a disclosure",
+  );
+}
+
+// The panel body has no horizontal padding, so a group is already full width;
+// applying the section bleed on top of that would push the bar out of the
+// panel. This is the assertion that catches someone "fixing" the gutter.
+//
+// Read off the import specifiers, not the source text. Grepping would be wrong
+// twice over: `PANEL_GUTTER_BLEED` contains `PANEL_GUTTER`, so the positive
+// check passes on the very token the negative one forbids; and this repo
+// documents its rejected alternatives in prose, so the docblock explaining why
+// the bleed is deliberately unused would itself trip the negative check.
+const groupImports = new Set();
+for (const statement of panelGroup.statements) {
+  if (!ts.isImportDeclaration(statement)) continue;
+  const bindings = statement.importClause?.namedBindings;
+  if (!bindings || !ts.isNamedImports(bindings)) continue;
+  for (const specifier of bindings.elements) groupImports.add(specifier.name.getText());
+}
+assert(
+  !groupImports.has("PANEL_GUTTER_BLEED"),
+  "PanelGroup does not bleed — it is already flush with the panel's edges",
+);
+assert(
+  groupImports.has("PANEL_GUTTER"),
+  "PanelGroup re-applies the panel gutter inside its bar",
+);
+
+// --- 5: History opens shut --------------------------------------------------
+
+const nodePanel = parse(path.join(PANELS_DIR, "NodeDetailPanel.tsx"));
+const nodePanelGroups = elements(nodePanel).filter((element) => element.tag === "PanelGroup");
+
+const historyGroup = nodePanelGroups.find((element) => attr(element.opening, "title") === "History");
+assert(historyGroup !== undefined, "the node panel wraps History in a PanelGroup");
+
+if (historyGroup) {
+  assert(
+    attr(historyGroup.opening, "defaultOpen") === "false",
+    "the History group opens shut — it fetches the journal to render a feed nobody scrolled to",
+    `defaultOpen=${attr(historyGroup.opening, "defaultOpen")}`,
+  );
+}
 
 // --- the invariant that catches the next one --------------------------------
 
@@ -196,6 +315,14 @@ assert(strays.length === 0, "panel bodies head their sections at h3", strays.joi
 const unnamed = [];
 for (const name of [...panelFiles, "PanelStack.tsx"]) {
   const source = parse(path.join(PANELS_DIR, name));
+  // A heading one hop away still heads the section — factoring the heading into
+  // a local component (`PanelSection`'s `SectionHeading`) does not un-head it.
+  // Resolved to a declaration in this same file that renders a heading, never
+  // matched by name: `components/layout/SectionHeading` is an unrelated
+  // component of that exact name which heads at `h2`, and a name check would
+  // bless a panel importing it while the stray scan — which only reads this
+  // directory — never saw the `h2`.
+  const local = localHeadingComponents(source);
   for (const element of elements(source)) {
     if (element.tag !== "section") continue;
     const named =
@@ -203,7 +330,7 @@ for (const name of [...panelFiles, "PanelStack.tsx"]) {
       attr(element.opening, "aria-labelledby") !== null;
     const headed =
       ts.isJsxElement(element.node) &&
-      elements(element.node).some((child) => HEADINGS.has(child.tag));
+      elements(element.node).some((child) => HEADINGS.has(child.tag) || local.has(child.tag));
     if (!named && !headed) unnamed.push(`${name}:${element.opening.getStart()}`);
   }
 }
