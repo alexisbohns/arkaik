@@ -562,7 +562,13 @@ function platformVariantsProps(source) {
 
 for (const [label, file] of [
   ["the detail panel", ["components", "panels", "NodeDetailPanel.tsx"]],
-  ["the acceptance editor", ["components", "panels", "AcceptanceEditor.tsx"]],
+  // The acceptance's strip moved out of `AcceptanceEditor` into a section of
+  // its own. What this pins is the call site, not the file it used to sit in,
+  // so the path follows the element: `platformVariantsProps` returns "" for a
+  // file with no `<PlatformVariants>` in it, and a stale path here fails as a
+  // shape violation rather than as the "that element is not here any more" it
+  // actually is.
+  ["the acceptance's platforms section", ["components", "panels", "AcceptancePlatformsSection.tsx"]],
 ]) {
   const props = platformVariantsProps(readSource(...file));
   assert(
