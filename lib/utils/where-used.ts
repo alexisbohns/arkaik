@@ -79,8 +79,8 @@ export function crossLayerConnections(
 
 /**
  * The views and flows an acceptance covers, resolved to nodes — the rows
- * `CoversSection` lists, and the anchors `AcceptanceEditor` counts for its
- * Product hint.
+ * `CoversSection` lists, and the anchors `AcceptanceMembershipField` counts for
+ * its Product hint (and `AcceptanceAuthoredFields` for the split dialog's).
  *
  * Shared rather than written twice because those two are the same question
  * asked by two components that no longer render inside one another, and a

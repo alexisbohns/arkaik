@@ -8,9 +8,9 @@
  * `NodeDetailPanel` renders `RelationsGroup`: left where they were, those files
  * would import each other, and a cycle is not something to defend. Covers is
  * here for the same reason and not only for tidiness — it came out of
- * `AcceptanceEditor`, which `NodeDetailPanel` still renders and which Parts 3
- * and 4 go on to dismantle, so an import edge from the group into that file is
- * a cycle waiting for its second half. The failure it would cause is an
+ * `AcceptanceEditor`, which `NodeDetailPanel` rendered then and which Parts 3
+ * and 4 have since dismantled entirely, so an import edge from the group into
+ * that file was a cycle waiting for its second half. The failure it would cause is an
  * undefined component at runtime, with nothing from the compiler.
  *
  * So the rule this module keeps: a section that `RelationsGroup` renders lives
@@ -234,8 +234,8 @@ interface CoversSectionProps {
  */
 export function CoversSection({ node, allNodes, allEdges, hasProducts, onNavigate, intake }: CoversSectionProps) {
   const nodesById = new Map(allNodes.map((n) => [n.id, n]));
-  // `coveredAnchorsOf`, not a walk of its own: `AcceptanceEditor` asks the same
-  // question for its Product hint's anchor count, and the two answers have to be
+  // `coveredAnchorsOf`, not a walk of its own: `AcceptanceMembershipField` asks
+  // the same question for its Product hint's anchor count, and the two answers have to be
   // the same list or the hint counts anchors this section does not show. The
   // map stays because `AttachAnchorRow` resolves the id a combobox returns.
   const coveredAnchors = coveredAnchorsOf(node, allNodes, allEdges);
