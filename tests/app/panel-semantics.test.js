@@ -4,9 +4,9 @@
  * The panel stack's document semantics — the shape a reader navigates by, as
  * opposed to the shape a reader looks at.
  *
- * Three claims are pinned here, because all three are invisible on screen and
- * so all three can be undone by a well-meaning refactor without anyone noticing
- * until a screen reader lands in the stack:
+ * Four claims are pinned here, because every one of them is invisible on screen
+ * and so every one can be undone by a well-meaning refactor without anyone
+ * noticing until a screen reader lands in the stack:
  *
  *   1. A panel cell is a NAMED `<section>` — that, and only that, makes it a
  *      landmark, which is what lets a reader list the open columns and jump
@@ -14,10 +14,14 @@
  *      silently costs the landmark.
  *   2. Inside it, the record is an `<article>` sharing the cell's name, with
  *      its own `h2`. The section is the slot; the article is what occupies it.
- *   3. The outline runs h1 (the page) → h2 (each open record) → h3 (the
- *      record's own sections), with no rung missing. A lone `h3` under nothing
- *      is exactly the state this stack was in before, and it is why
+ *   3. The outline runs h1 (the page) → h2 (each open record) → h3 (a
+ *      `PanelGroup`'s bar, or a section standing on its own) → h4 (a section
+ *      inside a group), with no rung missing. A lone `h3` under nothing is
+ *      exactly the state this stack was in before, and it is why
  *      `PanelSection`'s heading was a `<span>`.
+ *   4. A `PanelGroup`'s bar is a disclosure — one `h3` whose whole content is
+ *      the trigger — so the region is an outline entry and a control at once,
+ *      and it re-applies the panel gutter rather than bleeding past it.
  *
  * Static, over the TypeScript AST rather than a render: `PanelStack` is a
  * client component wired to `useIsMobile`, refs and four effects, and standing
@@ -82,11 +86,29 @@ function elements(node) {
  * Resolving to a local declaration that demonstrably renders a heading closes
  * that, and couples the allowance to the fact it stands on — gut the component
  * and it drops out of this set rather than staying blessed by its name.
+ *
+ * One hop is as far as this resolves, so what it proves is that a heading exists
+ * somewhere in the component, not that every path through it renders one: a
+ * component heading on one branch and returning `null` on another still
+ * qualifies. That residual looseness is accepted deliberately — the only way to
+ * close it is to evaluate the component, which is the render this file exists to
+ * avoid.
  */
 function localHeadingComponents(source) {
   const names = new Set();
+  const heads = (node) => elements(node).some((el) => HEADINGS.has(el.tag));
   const visit = (node) => {
-    if (ts.isFunctionDeclaration(node) && node.name && elements(node).some((el) => HEADINGS.has(el.tag))) {
+    // Both spellings: this repo writes components as `function Foo()` and as
+    // `const Foo = () => …`, and a set that saw only the first would report a
+    // section whose heading is plainly there as unheaded.
+    if (ts.isFunctionDeclaration(node) && node.name && heads(node)) {
+      names.add(node.name.getText());
+    } else if (
+      ts.isVariableDeclaration(node) &&
+      node.initializer &&
+      (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer)) &&
+      heads(node.initializer)
+    ) {
       names.add(node.name.getText());
     }
     ts.forEachChild(node, visit);
@@ -247,13 +269,25 @@ if (groupHeading) {
 // The panel body has no horizontal padding, so a group is already full width;
 // applying the section bleed on top of that would push the bar out of the
 // panel. This is the assertion that catches someone "fixing" the gutter.
-const groupSource = fs.readFileSync(path.join(PANELS_DIR, "PanelGroup.tsx"), "utf8");
+//
+// Read off the import specifiers, not the source text. Grepping would be wrong
+// twice over: `PANEL_GUTTER_BLEED` contains `PANEL_GUTTER`, so the positive
+// check passes on the very token the negative one forbids; and this repo
+// documents its rejected alternatives in prose, so the docblock explaining why
+// the bleed is deliberately unused would itself trip the negative check.
+const groupImports = new Set();
+for (const statement of panelGroup.statements) {
+  if (!ts.isImportDeclaration(statement)) continue;
+  const bindings = statement.importClause?.namedBindings;
+  if (!bindings || !ts.isNamedImports(bindings)) continue;
+  for (const specifier of bindings.elements) groupImports.add(specifier.name.getText());
+}
 assert(
-  !groupSource.includes("PANEL_GUTTER_BLEED"),
+  !groupImports.has("PANEL_GUTTER_BLEED"),
   "PanelGroup does not bleed — it is already flush with the panel's edges",
 );
 assert(
-  groupSource.includes("PANEL_GUTTER"),
+  groupImports.has("PANEL_GUTTER"),
   "PanelGroup re-applies the panel gutter inside its bar",
 );
 
