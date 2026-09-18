@@ -82,6 +82,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-globe { filter: url(#wob-globe); }
 .lucide-grid3x3 { filter: url(#wob-grid3x3); }
 .lucide-handshake { filter: url(#wob-handshake); }
+.lucide-hash { filter: url(#wob-hash); }
 .lucide-heart-handshake { filter: url(#wob-heart-handshake); }
 .lucide-heart-pulse { filter: url(#wob-heart-pulse); }
 .lucide-history { filter: url(#wob-history); }

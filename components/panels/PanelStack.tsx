@@ -5,6 +5,7 @@ import { XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
+import { PANEL_GUTTER } from "@/components/panels/PanelSection";
 import { isEditableElement } from "@/lib/utils/keyboard";
 import { unwindDoomed, visibleWindow, type PanelEntry } from "@/lib/utils/panel-stack";
 
@@ -226,8 +227,24 @@ export function PanelStack<T>({
                 accentOf?.(entry, index) === "editing" && "border-dashed border-destructive",
               )}
             >
-              <header className="flex shrink-0 items-center justify-between gap-2 border-b p-6">
-                <div className="flex flex-col min-w-0 items-start gap-2">{renderHeader(entry, index)}</div>
+              {/* The gutter is the panel's own; the vertical padding is one
+                  step tighter than it at every width, because the header is a
+                  single row of chips and `py-6` gave it the height of a block. */}
+              <header
+                className={cn(
+                  "flex shrink-0 items-center justify-between gap-2 border-b py-4 lg:py-5",
+                  PANEL_GUTTER,
+                )}
+              >
+                {/* One row, not a column. What identifies a panel — the species
+                    badge and the entity id, the domain chip and the criterion id
+                    — is two or three short chips, and stacking them spent three
+                    lines of the panel's first screenful saying what fits on one.
+                    `min-w-0` is what lets the truncating children inside actually
+                    truncate rather than push the close button off the edge. */}
+                <div className="flex min-w-0 flex-1 flex-row items-center gap-2">
+                  {renderHeader(entry, index)}
+                </div>
                 <Button
                   variant="ghost"
                   size="icon"

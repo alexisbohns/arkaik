@@ -15,6 +15,8 @@ import { attachEmptiesMembership } from "@/lib/utils/acceptance-intake";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { productOf } from "@arkaik/schema";
 import { ProductPicker } from "@/components/panels/ProductPicker";
+import { PANEL_GUTTER } from "@/components/panels/PanelSection";
+import { cn } from "@/lib/utils";
 import { NodeSearchCombobox } from "@/components/panels/NodeSearchCombobox";
 import { SplitAcceptanceDialog } from "@/components/panels/SplitAcceptanceDialog";
 import { Button } from "@/components/ui/button";
@@ -140,7 +142,7 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, on
       : null;
 
   return (
-    <div className="px-6 flex flex-col gap-5">
+    <div className={cn(PANEL_GUTTER, "flex flex-col gap-5")}>
       <Field label="Status" htmlFor={`${fieldId}-status`}>
         <Select value={node.status} onValueChange={(v) => onUpdate(node.id, { status: v as StatusId })}>
           <SelectTrigger id={`${fieldId}-status`}><SelectValue /></SelectTrigger>
@@ -206,8 +208,8 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, on
         />
       </Field>
 
-      {/* No `htmlFor` on these three: a chip grid, a tab strip and a list have
-          no single control to name. */}
+      {/* No `htmlFor` on these three: a combobox that names itself, a tab strip
+          and a list have no control a `<label>` here should point at. */}
       <Field label="Values — the Why">
         <ValuePicker selected={node.metadata?.values ?? []} onChange={(values: ValueId[]) => patchMetadata({ values })} />
       </Field>

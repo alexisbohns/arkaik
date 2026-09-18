@@ -9,8 +9,11 @@ import { FIELD_LABEL_CLASS } from "@/components/ui/field";
  * six sections inside `NodeDetailPanel`, plus `AcceptancesSection` and
  * `PlaylistEditor`.
  *
- * Beyond the dedup this is the one place that knows the panel gutter is `px-6`,
- * which matters when the panel-stack layout next moves.
+ * Beyond the dedup this is the one place that knows the panel gutter, which
+ * matters when the panel-stack layout next moves. It is exported as
+ * {@link PANEL_GUTTER} for the handful of blocks that sit in a panel body
+ * without being a section — a node's title block, the raw panel's toolbar — so
+ * a gutter change stays one edit rather than a dozen.
  *
  * The gap drifted between `gap-2` (five sections) and `gap-3` (three) with no
  * discernible intent; `gap-2` wins on count, and the three sections that wrapped
@@ -35,9 +38,23 @@ interface PanelSectionProps {
   className?: string;
 }
 
+/**
+ * The panel gutter. Tighter below `lg`, where a panel is at most half the
+ * window and often the whole of it: six units of chrome on each side of a
+ * narrow column is a measurable bite out of the line length.
+ */
+export const PANEL_GUTTER = "px-5 lg:px-6";
+
+/**
+ * The gutter, negated — for a block that must bleed to the panel's own edges
+ * from inside a gutter'd parent (the criterion panel's findings board). It has
+ * to track {@link PANEL_GUTTER} exactly, which is why it lives beside it.
+ */
+export const PANEL_GUTTER_BLEED = "-mx-5 lg:-mx-6";
+
 export function PanelSection({ title, action, children, className }: PanelSectionProps) {
   return (
-    <section className={cn("px-6 flex flex-col gap-2", className)}>
+    <section className={cn(PANEL_GUTTER, "flex flex-col gap-2", className)}>
       {action ? (
         <div className="flex items-center justify-between">
           <span className={FIELD_LABEL_CLASS}>{title}</span>
