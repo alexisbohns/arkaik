@@ -792,5 +792,39 @@ assert(history[0].score === liveSecWeb - 10 && history[1].score === liveSecWeb -
 assert(buildCellHistory(trend, "PRF", "web")[0].score === null, "an audit that did not score the cell is an unscored row, not a zero");
 assert(buildCellHistory(undefined, "SEC", "web").length === 0, "no trend, no history");
 
+// --- worstOpenFindingFor ----------------------------------------------------
+
+const { worstOpenFindingFor } = loadQuality();
+
+{
+  const rows = [
+    { id: "F-a", nodeIds: ["V-login"], open: true, severity: "low", title: "a" },
+    { id: "F-b", nodeIds: ["V-login"], open: true, severity: "critical", title: "b" },
+    { id: "F-c", nodeIds: ["V-login"], open: false, severity: "critical", title: "c" },
+    { id: "F-d", nodeIds: ["V-other"], open: true, severity: "critical", title: "d" },
+  ];
+
+  const found = worstOpenFindingFor(rows, "V-login");
+  assert(found !== null, "worstOpenFindingFor returns a summary when the node has open findings");
+  assert(found.count === 2, `it counts only this node's OPEN findings (got ${found && found.count})`);
+  assert(
+    found.severity === "critical",
+    `it reports the worst severity among them (got ${found && found.severity})`,
+  );
+
+  assert(
+    worstOpenFindingFor(rows, "V-nothing") === null,
+    "a node with no findings gets null, not a zero",
+  );
+  assert(
+    worstOpenFindingFor(
+      [{ id: "F-e", nodeIds: ["V-x"], open: false, severity: "critical", title: "e" }],
+      "V-x",
+    ) === null,
+    "a node whose every finding is closed gets null \u2014 the bar says nothing",
+  );
+  assert(worstOpenFindingFor([], "V-x") === null, "no rows at all gets null");
+}
+
 console.log(failures === 0 ? "\nAll quality projections OK" : `\n${failures} failure(s)`);
 process.exit(failures === 0 ? 0 : 1);

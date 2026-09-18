@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { SplitIcon, XIcon } from "lucide-react";
+import { SplitIcon } from "lucide-react";
 import { toast } from "sonner";
 import type { Node, Edge, PlatformStatusMap } from "@/lib/data/types";
 import type { PlatformId } from "@/lib/config/platforms";
@@ -11,20 +11,18 @@ import { getEditablePlatformStatuses } from "@/lib/utils/platform-status";
 import type { ProductScope } from "@/lib/utils/product-scope";
 import { productLabels, productsOfAcceptance } from "@/lib/utils/product-scope";
 import { withProductMembership } from "@/lib/utils/product-editing";
-import { attachEmptiesMembership } from "@/lib/utils/acceptance-intake";
+import { coveredAnchorsOf } from "@/lib/utils/where-used";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { productOf } from "@arkaik/schema";
 import { ProductPicker } from "@/components/panels/ProductPicker";
 import { PANEL_GUTTER } from "@/components/panels/PanelSection";
 import { cn } from "@/lib/utils";
-import { NodeSearchCombobox } from "@/components/panels/NodeSearchCombobox";
 import { SplitAcceptanceDialog } from "@/components/panels/SplitAcceptanceDialog";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
-import { SPECIES_ICONS } from "@/components/graph/nodes/node-styles";
 import { PlatformVariants } from "@/components/panels/PlatformVariants";
 import { ValuePicker } from "@/components/values/ValuePicker";
 
@@ -35,7 +33,8 @@ interface AcceptanceEditorProps {
   /** The surface's product scope — decides how many platform tabs this editor has. */
   scope: ProductScope;
   onUpdate: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
-  onNavigate?: (node: Node) => void;
+  // No `onNavigate`: the anchor links that used it moved out with `CoversSection`
+  // below, and this editor has held nothing else to navigate to since.
   /**
    * The decompose gestures — attach, detach, create-and-attach, split.
    *
@@ -46,7 +45,7 @@ interface AcceptanceEditorProps {
   intake?: AcceptanceIntake;
 }
 
-export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, onNavigate, intake }: AcceptanceEditorProps) {
+export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, intake }: AcceptanceEditorProps) {
   // Per-mount: the panel stack keeps hidden panels mounted, so two acceptance
   // editors can share a document and a hand-written id would leave the second
   // one's label pointing at the first one's control.
@@ -69,29 +68,15 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, on
 
   const statuses: PlatformStatusMap = getEditablePlatformStatuses(node);
   const nodesById = new Map(allNodes.map((n) => [n.id, n]));
-  const coveredAnchors = allEdges
-    .filter((e) => e.edge_type === "covers" && e.source_id === node.id)
-    .map((e) => nodesById.get(e.target_id))
-    .filter((n): n is Node => Boolean(n));
+  // The same derivation `CoversSection` lists, from the same shared helper. The
+  // anchors are still needed here — `anchorCount` below is what the Product
+  // hint's sentence counts — but the walk is not this file's to own: the section
+  // moved out, and a private copy of it left behind would be a second answer to
+  // one question, free to drift the day `covers` grows a rule.
+  const coveredAnchors = coveredAnchorsOf(node, allNodes, allEdges);
 
   function patchMetadata(next: Record<string, unknown>) {
     onUpdate(node.id, { metadata: { ...node.metadata, ...next } });
-  }
-
-  /**
-   * Run one intake gesture, reporting a failure instead of swallowing it.
-   *
-   * Every one of them is a write to a store the panel does not own, and a
-   * rejected batch otherwise leaves the list looking unchanged with nothing
-   * saying why — the same treatment `AcceptancesSection` gives its create.
-   */
-  async function run(action: () => Promise<void>, failure: string) {
-    try {
-      await action();
-    } catch (err) {
-      toast.error(failure);
-      console.error(err);
-    }
   }
 
   /* --- Product (§ D5) ------------------------------------------------------
@@ -237,52 +222,6 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, on
         />
       </Field>
 
-      <Field label="Covers">
-        {coveredAnchors.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            {intake
-              ? "Unanchored — an idea in intake. Attach it to a view or a flow below."
-              : "Unanchored (covers nothing)."}
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-1">
-            {coveredAnchors.map((anchor) => {
-              const Icon = SPECIES_ICONS[anchor.species];
-              return (
-                <li key={anchor.id} className="flex items-center gap-1">
-                  <button type="button" className="inline-flex flex-1 items-center gap-2 text-left text-sm hover:underline" onClick={() => onNavigate?.(anchor)}>
-                    <Icon className="size-3.5 text-muted-foreground" /> {anchor.title}
-                  </button>
-                  {intake && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-7 shrink-0"
-                      aria-label={`Stop covering ${anchor.title}`}
-                      onClick={() => void run(() => intake.detach(node, anchor.id), "Couldn't detach that node.")}
-                    >
-                      <XIcon className="size-3.5" />
-                    </Button>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        {intake && (
-          <AttachAnchorRow
-            node={node}
-            allNodes={allNodes}
-            allEdges={allEdges}
-            nodesById={nodesById}
-            hasProducts={scope.productsById.size > 0}
-            intake={intake}
-            run={run}
-          />
-        )}
-      </Field>
-
       {intake && (
         <Field
           label="Decompose"
@@ -317,87 +256,6 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, on
           />
         </Field>
       )}
-    </div>
-  );
-}
-
-interface AttachAnchorRowProps {
-  node: Node;
-  allNodes: Node[];
-  allEdges: Edge[];
-  nodesById: Map<string, Node>;
-  /**
-   * Whether the project declares any product at all. The triage warning below
-   * is gated on it rather than on the membership computation alone: a project
-   * that has never heard of products can still carry a stray `metadata.product`
-   * from an import, and a toast naming "All products" there would introduce a
-   * word the whole feature promises such a project never sees.
-   */
-  hasProducts: boolean;
-  intake: AcceptanceIntake;
-  run: (action: () => Promise<void>, failure: string) => Promise<void>;
-}
-
-/**
- * Attach this acceptance to a view or a flow — one that exists, or one created
- * in the same gesture.
- *
- * The species select plus `NodeSearchCombobox` is the shape the playlist editor
- * and the insert dialog already use for "an existing node, or a new one by that
- * name", and reusing it means the create affordance appears under exactly the
- * same rule everywhere: only once something is typed that no node of that
- * species already answers to.
- *
- * **Attaching an unassigned anchor is allowed and announced.** An acceptance
- * anchored only to unassigned views derives an empty membership, so this gesture
- * can move an idea filed under one app back into the "All products" inbox
- * (§ Decision 5, the interaction the spec left open). Blocking it would be
- * wrong — the anchor is the truth and triage is the honest place for an
- * acceptance whose anchors are themselves in triage — but letting it happen in
- * silence means watching the acceptance vanish from the scope you were standing
- * in. So it is written, and then said. A node created here inherits the
- * acceptance's product precisely so the common path never trips this.
- */
-function AttachAnchorRow({ node, allNodes, allEdges, nodesById, hasProducts, intake, run }: AttachAnchorRowProps) {
-  const [species, setSpecies] = useState<"view" | "flow">("view");
-
-  function announceTriage(anchor: Pick<Node, "id" | "species" | "title" | "metadata">) {
-    if (!hasProducts) return;
-    // Evaluated against the edges as they were BEFORE the write — the predicate
-    // asks what this attach did, and the answer needs the graph it acted on.
-    if (!attachEmptiesMembership(node, anchor, allEdges, nodesById)) return;
-    toast.warning(`"${anchor.title}" has no product, so this acceptance now appears under All products only.`);
-  }
-
-  return (
-    <div className="mt-1 grid gap-2 sm:grid-cols-[7rem_1fr] sm:items-center">
-      <Select value={species} onValueChange={(value) => setSpecies(value as "view" | "flow")}>
-        <SelectTrigger aria-label="Anchor species">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="view">View</SelectItem>
-          <SelectItem value="flow">Flow</SelectItem>
-        </SelectContent>
-      </Select>
-      <NodeSearchCombobox
-        species={species}
-        allNodes={allNodes}
-        onSelect={(anchorId) => {
-          const anchor = nodesById.get(anchorId);
-          if (!anchor) return;
-          void run(async () => {
-            await intake.attach(node, anchor);
-            announceTriage(anchor);
-          }, "Couldn't attach that node.");
-        }}
-        onCreate={(title) =>
-          run(async () => {
-            const created = await intake.createAnchor(node, species, title);
-            if (created) toast.success(`Created "${created.title}" and attached it.`);
-          }, `Couldn't create the ${species}.`)
-        }
-      />
     </div>
   );
 }
