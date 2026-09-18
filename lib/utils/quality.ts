@@ -717,3 +717,48 @@ export function foldFindingEvents(
   if (patched.size === 0) return section;
   return { ...section, findings: findings.map((finding, index) => patched.get(index) ?? finding) };
 }
+
+/** What the Relations bar says about a node's open findings. */
+export interface OpenFindingSummary {
+  severity: FindingSeverity;
+  count: number;
+}
+
+/**
+ * The worst open finding against one node, and how many there are.
+ *
+ * This is what lets the Relations group's bar carry a severity chip, which is
+ * what stops the move into a collapsible group from costing findings their
+ * urgency: the panel used to put them high on the argument that an open critical
+ * finding is the most pressing thing it can tell a reader, and the chip is that
+ * argument surviving the reorganisation. The bar shows it whether the group is
+ * open or shut.
+ *
+ * Open only, and `nodeIds` rather than a single id, matching `FindingsSection`
+ * and the canvas badge exactly — all three ask the same two questions, so a node
+ * wearing a red "3" opens onto a bar reading "3" and onto three rows.
+ *
+ * `null`, not a zero-count summary: "no open findings" is the absence of a
+ * chip, and a caller handed `{ count: 0 }` would have to know to suppress it.
+ *
+ * Severity order comes from `FINDING_SEVERITIES` — the schema package's own
+ * ordering, worst first — for the reason nothing in this file reimplements a
+ * scale: a second ranking here would disagree with the board the first time a
+ * pack moved a bucket.
+ */
+export function worstOpenFindingFor(
+  rows: readonly FindingRow[],
+  nodeId: string,
+): OpenFindingSummary | null {
+  const own = rows.filter((row) => row.open && row.nodeIds.includes(nodeId));
+  if (own.length === 0) return null;
+
+  let worst = own[0].severity;
+  for (const row of own) {
+    if (FINDING_SEVERITIES.indexOf(row.severity) < FINDING_SEVERITIES.indexOf(worst)) {
+      worst = row.severity;
+    }
+  }
+
+  return { severity: worst, count: own.length };
+}
