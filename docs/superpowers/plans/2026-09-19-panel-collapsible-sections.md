@@ -1495,6 +1495,65 @@ git commit -m "feat(panels): an acceptance reads in the order you write one"
 
 ---
 
+### Task 13a: The decision's links join Relations
+
+The spec's Part 2 table lists a decision's four link lists inside Relations.
+Part 2 did not move them — the plan's Task 7 omitted them, so the
+implementation was plan-faithful and spec-incomplete. This is where that is
+paid, and it is the same extraction `CoversSection` already went through.
+
+**Files:**
+- Modify: `components/panels/DecisionEditor.tsx:233` (the `<Field label="Decision links">` block)
+- Modify: `components/panels/NodeRelationSections.tsx`
+- Modify: `components/panels/RelationsGroup.tsx`
+
+- [ ] **Step 1: Extract `DecisionLinksSection`**
+
+Cut the whole `<Field label="Decision links" className="gap-3"> … </Field>`
+block out of `DecisionEditor.tsx` into an exported `DecisionLinksSection` in
+`NodeRelationSections.tsx` — not in `DecisionEditor.tsx`, for the reason Part 2
+learned the hard way: `RelationsGroup` importing from a panel-body editor is a
+cycle waiting for one import, and every relation section now lives in one place.
+
+It becomes a `PanelSection title="Decision links"` rather than a `Field`, because
+inside a group it is a level-four section with a heading, not a labelled control.
+Carry its props (whatever the block reads — the node, `allNodes`, `allEdges`,
+`onNavigate`) and every comment with it.
+
+- [ ] **Step 2: Render it first among a decision's relations**
+
+In `RelationsGroup`, add `hasDecisionLinks` and render `DecisionLinksSection`
+ahead of References, matching the spec's order (its four link lists · References
+· Findings · Connections).
+
+Follow the rule the other flags now follow: if the section always renders
+something — check whether it has an empty-state sentence the way `CoversSection`
+and `AcceptancesSection` do — the flag asks only whether it can render at all.
+If it genuinely returns `null` when there are no links, the flag asks for
+content. Read the block before deciding, and say which it was.
+
+The flag must include every prop the render guard requires. `hasInvocation`
+shipped in Part 2 missing `onNavigate` from its flag while its guard required it,
+which could open an empty bar; do not repeat it.
+
+- [ ] **Step 3: Verify**
+
+`ConnectionsSection` deliberately excludes a decision's own decision-typed edges
+because `DecisionEditor` already listed both directions. That reasoning now lives
+in `crossLayerConnections`' docblock in `lib/utils/where-used.ts` and still
+holds — the lists moved, they did not disappear — but **confirm on screen** that
+a decision panel does not now list the same edge twice, once under Decision links
+and once under Connections.
+
+- [ ] **Step 4: Gates and commit**
+
+`npm run lint`, `npx tsc --noEmit`, `npm run test:panel-semantics`,
+`npm run test:decision-utils`.
+
+Commit: `feat(panels): a decision's links are relations too`
+
+---
+
 ### Task 14: Ship Part 4
 
 - [ ] **Step 1: Full gate** — same command set as Task 11, plus `npm run test:product-editing`.
@@ -1878,6 +1937,7 @@ suggested:
 | Part 2 — Acceptances create action stays on its section | 7 (`AcceptancesSection` unchanged) |
 | Part 3 — one "Platforms" title across three species | 9, 10 |
 | Part 4 — Playlist group | 12 |
+| Part 2 — decision link lists inside Relations | 13a (deferred from Part 2; see the task) |
 | Part 4 — intro block order, Status rule, Product placement | 13 |
 | Part 4 — `AcceptanceEditor` dismantled | 7 (Covers), 9 (Platforms), 13 (the rest) |
 | Part 5 — Duplicate, no edges copied | 15, 16, 17 |
