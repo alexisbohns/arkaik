@@ -5,9 +5,12 @@ import { PanelGroup } from "@/components/panels/PanelGroup";
 import {
   ConnectionsSection,
   CoversSection,
+  DecisionLinksSection,
   FindingsSection,
   InvocationSection,
   RefsSection,
+  decisionConnections,
+  hasDecisionLinkRows,
 } from "@/components/panels/NodeRelationSections";
 import { AcceptancesSection } from "@/components/panels/AcceptancesSection";
 import { SEVERITY_CHIP, SEVERITY_LABEL } from "@/components/quality/quality-styles";
@@ -37,7 +40,8 @@ interface RelationsGroupProps {
  * that say what the record *is* — and Covers was worse off still: a labelled
  * field buried inside `AcceptanceEditor`, so the one species whose covers list
  * is its whole point had it filed among its controls rather than among its
- * cross-references. All six are the same kind of thing — the record pointing at
+ * cross-references. Decision links was the same mistake in `DecisionEditor`,
+ * paid off here. All seven are the same kind of thing — the record pointing at
  * other records — and as one named region a reader can shut them all at once and
  * read the record itself.
  *
@@ -47,7 +51,7 @@ interface RelationsGroupProps {
  * surviving the move. It is on the bar, so it shows whether the group is open or
  * shut.
  *
- * **Renders nothing when every child would.** A bar over six empty sections
+ * **Renders nothing when every child would.** A bar over seven empty sections
  * promises a reader something to open and then opens onto nothing. Most children
  * already return `null` when empty, but a parent cannot see that, so the
  * emptiness test is made here from the same inputs the children use.
@@ -73,7 +77,7 @@ export function RelationsGroup({
 
   // Each child's emptiness, asked here from the inputs the child itself reads.
   // The duplication is deliberate. The alternative is each section reporting its
-  // own count upward — six components that must both render `null` and report
+  // own count upward — seven components that must both render `null` and report
   // zero, and two chances each for the two answers to disagree. Asking the same
   // shared helpers the sections ask (`findWhereUsed`, `crossLayerConnections`,
   // `worstOpenFindingFor`) keeps the two readings of "empty" pinned to one
@@ -84,6 +88,21 @@ export function RelationsGroup({
   // about an empty list — "Unanchored (covers nothing)", "No acceptances cover
   // this view yet." — and both of those are facts about the graph rather than
   // empty states. See each one below.
+  // A content flag, not a can-it-render one: `DecisionLinksSection` returns
+  // `null` when all four of its lists are empty, exactly as the `Field` it was
+  // did behind its condition. A decision that links to nothing has no sentence
+  // to say about it the way an unanchored acceptance does — "Decision links"
+  // over four absent lists would be an empty state, not a fact about the graph.
+  //
+  // `onNavigate` is deliberately NOT in the flag, because the section does not
+  // require it: a linked row without it still shows the title and the id chip,
+  // which is what the read-only decision panel showed before the move. The rule
+  // is that the flag carries every prop the render guard needs, and this guard
+  // needs `allNodes` and `allEdges` only.
+  const hasDecisionLinks =
+    node.species === "decision" &&
+    Boolean(allNodes && allEdges) &&
+    hasDecisionLinkRows(decisionConnections(node, allNodes ?? [], allEdges ?? []));
   const hasRefs = (node.metadata?.refs ?? []).length > 0;
   const hasFindings = openFindings !== null;
   // Every acceptance has a covers story, including "none" — so this asks only
@@ -122,7 +141,15 @@ export function RelationsGroup({
     Boolean(allNodes && allEdges && onNavigate) &&
     crossLayerConnections(node, allNodes ?? [], allEdges ?? []).length > 0;
 
-  if (!hasCovers && !hasAcceptances && !hasInvocation && !hasRefs && !hasFindings && !hasConnections) {
+  if (
+    !hasCovers &&
+    !hasAcceptances &&
+    !hasInvocation &&
+    !hasDecisionLinks &&
+    !hasRefs &&
+    !hasFindings &&
+    !hasConnections
+  ) {
     return null;
   }
 
@@ -169,6 +196,16 @@ export function RelationsGroup({
       )}
       {hasInvocation && allNodes && onNavigate && (
         <InvocationSection node={node} allNodes={allNodes} onNavigate={onNavigate} />
+      )}
+      {/* First among a decision's relations, per the spec's per-species table:
+          its four link lists, then References, Findings and Connections. */}
+      {hasDecisionLinks && allNodes && allEdges && (
+        <DecisionLinksSection
+          node={node}
+          allNodes={allNodes}
+          allEdges={allEdges}
+          onNavigate={onNavigate}
+        />
       )}
       {hasRefs && <RefsSection node={node} />}
       {hasFindings && findings && onOpenCriterion && (

@@ -617,7 +617,6 @@ export function NodeDetailPanel({
           key={`decision-${node.id}`}
           node={node}
           allNodes={allNodes}
-          allEdges={allEdges}
           onUpdate={onUpdate}
           onNavigate={onNavigate}
         />

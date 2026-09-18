@@ -43,15 +43,18 @@ export function findWhereUsed(nodeId: string, allNodes: readonly Node[]): Node[]
  * `composes` is excluded because it is the playlist's own edge — what a flow is
  * made of, which `PlaylistEditor` lists in full — and was never part of this
  * list. A decision's own decision-typed edges are excluded for the
- * reason the section always excluded them: `DecisionEditor` lists both
+ * reason the section always excluded them: `DecisionLinksSection` lists both
  * directions already, and a decision node would otherwise double-list them.
+ * (That section was `DecisionEditor`'s until it moved into the Relations group
+ * beside this one — the lists moved, they did not disappear, so the exclusion
+ * still holds and for the same reason.)
  *
  * That exclusion, as `ConnectionsSection` recorded it when the walk lived inside
  * it — the comment travels with the code rather than being left behind at the
  * call site, so the rule and its reason cannot drift apart:
  *
  * > DecisionEditor owns decision-typed edges (supersedes/generates/impacts) for
- * > a decision node itself — its "Decision links" section already lists both
+ * > a decision node itself — the "Decision links" section already lists both
  * > directions (supersedes/supersededBy/generates/impacts). This section shows
  * > them only from the OTHER endpoint's side, so a non-decision node can see
  * > which decisions impact/generate it ("decided by") without a decision node

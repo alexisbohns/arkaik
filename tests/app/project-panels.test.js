@@ -299,7 +299,7 @@ assert(
 );
 
 // A decision listing its own supersedes/generates/impacts would double-list what
-// DecisionEditor already shows in both directions.
+// DecisionLinksSection already shows in both directions.
 assert(
   crossLayerConnections(DEC, WORLD, [
     graphEdge("D-auth", "DM-user", "impacts"),

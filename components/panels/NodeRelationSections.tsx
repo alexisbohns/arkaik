@@ -1,7 +1,7 @@
 /**
- * Every relation section of a node panel — Covers, Invocation, References,
- * Findings and Connections — plus the row component two of them share and the
- * attach row Covers owns. (Acceptances is the exception, and only because
+ * Every relation section of a node panel — Covers, Invocation, Decision links,
+ * References, Findings and Connections — plus the row component two of them
+ * share and the attach row Covers owns. (Acceptances is the exception, and only because
  * `AcceptancesSection` was already a module of its own.)
  *
  * A module of their own because `RelationsGroup` renders them all and
@@ -195,6 +195,120 @@ function ConnectionItem({
         {speciesConfig?.label ?? node.species}
       </span>
     </EntityRow>
+  );
+}
+
+/**
+ * The decision → node lists the three edge types define (spec §5).
+ *
+ * Exported so `RelationsGroup` can ask whether this section has any rows
+ * without walking the edges a second time — the same arrangement
+ * `crossLayerConnections` has with `ConnectionsSection`, and for the same
+ * reason: two walks are two chances for the bar and the section to disagree
+ * about whether there is anything here.
+ */
+export function decisionConnections(node: Node, allNodes: Node[], allEdges: Edge[]) {
+  const byId = new Map(allNodes.map((n) => [n.id, n]));
+  const resolve = (ids: string[]) => ids.map((id) => byId.get(id)).filter((n): n is Node => !!n);
+  return {
+    supersedes: resolve(
+      allEdges.filter((e) => e.edge_type === "supersedes" && e.source_id === node.id).map((e) => e.target_id),
+    ),
+    supersededBy: resolve(
+      allEdges.filter((e) => e.edge_type === "supersedes" && e.target_id === node.id).map((e) => e.source_id),
+    ),
+    generates: resolve(
+      allEdges.filter((e) => e.edge_type === "generates" && e.source_id === node.id).map((e) => e.target_id),
+    ),
+    impacts: resolve(
+      allEdges.filter((e) => e.edge_type === "impacts" && e.source_id === node.id).map((e) => e.target_id),
+    ),
+  };
+}
+
+/** Whether any of the four lists has a row — the emptiness test this section and
+ *  `RelationsGroup`'s `hasDecisionLinks` flag both run. */
+export function hasDecisionLinkRows(links: ReturnType<typeof decisionConnections>) {
+  return (
+    links.supersedes.length > 0 ||
+    links.supersededBy.length > 0 ||
+    links.generates.length > 0 ||
+    links.impacts.length > 0
+  );
+}
+
+function LinkedNodeList({
+  label,
+  nodes,
+  onNavigate,
+}: {
+  label: string;
+  nodes: Node[];
+  onNavigate?: (node: Node) => void;
+}) {
+  if (nodes.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <div className="flex flex-col gap-0.5">
+        {/* The id is the chip, not a truncated 96px gutter of monospace text —
+            see `EntityChip`. The chip is there whether or not the row navigates:
+            copying an id is useful on a read-only panel too, and the hover card
+            is the only place the full id and title are still readable. */}
+        {nodes.map((n) => (
+          <EntityRow key={n.id} node={n} onOpen={onNavigate && (() => onNavigate(n))}>
+            <span className="min-w-0 flex-1 truncate">{n.title}</span>
+          </EntityRow>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export interface DecisionLinksSectionProps {
+  node: Node;
+  allNodes: Node[];
+  allEdges: Edge[];
+  onNavigate?: (node: Node) => void;
+}
+
+/**
+ * What this decision supersedes, is superseded by, generates and impacts —
+ * spec §5's four link lists.
+ *
+ * Lifted out of `DecisionEditor` for the reason Covers was lifted out of
+ * `AcceptanceEditor`: these are relations, not fields. They say what this record
+ * points at, which is what References, Findings and Connections say too, and the
+ * spec's per-species table puts them first among a decision's relations. Left in
+ * the editor they were the one species' cross-references filed among its
+ * controls; left in that *file* they would have been an import edge from
+ * `RelationsGroup` into a panel-body editor, which is the cycle this module
+ * exists to break.
+ *
+ * A `PanelSection` rather than the `Field` it was: inside a group this is a
+ * level-four section with a heading, not a labelled control, and there is no
+ * single control for a label to point at anyway. `gap-3` is the spacing the four
+ * lists were already given.
+ *
+ * Returns `null` when all four are empty, exactly as the `Field` did behind its
+ * condition — there is no sentence to say about a decision that links to
+ * nothing, so an empty heading here would be an empty state rather than a fact
+ * about the graph.
+ */
+export function DecisionLinksSection({ node, allNodes, allEdges, onNavigate }: DecisionLinksSectionProps) {
+  const connections = decisionConnections(node, allNodes, allEdges);
+
+  if (!hasDecisionLinkRows(connections)) {
+    return null;
+  }
+
+  return (
+    <PanelSection title="Decision links" className="gap-3">
+      <LinkedNodeList label="Supersedes" nodes={connections.supersedes} onNavigate={onNavigate} />
+      <LinkedNodeList label="Superseded by" nodes={connections.supersededBy} onNavigate={onNavigate} />
+      <LinkedNodeList label="Generated acceptances" nodes={connections.generates} onNavigate={onNavigate} />
+      <LinkedNodeList label="Impacts" nodes={connections.impacts} onNavigate={onNavigate} />
+    </PanelSection>
   );
 }
 
