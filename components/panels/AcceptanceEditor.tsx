@@ -15,7 +15,7 @@ import { attachEmptiesMembership } from "@/lib/utils/acceptance-intake";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { productOf } from "@arkaik/schema";
 import { ProductPicker } from "@/components/panels/ProductPicker";
-import { PANEL_GUTTER } from "@/components/panels/PanelSection";
+import { PANEL_GUTTER, PanelSection } from "@/components/panels/PanelSection";
 import { cn } from "@/lib/utils";
 import { NodeSearchCombobox } from "@/components/panels/NodeSearchCombobox";
 import { SplitAcceptanceDialog } from "@/components/panels/SplitAcceptanceDialog";
@@ -35,7 +35,8 @@ interface AcceptanceEditorProps {
   /** The surface's product scope — decides how many platform tabs this editor has. */
   scope: ProductScope;
   onUpdate: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
-  onNavigate?: (node: Node) => void;
+  // No `onNavigate`: the anchor links that used it moved out with `CoversSection`
+  // below, and this editor has held nothing else to navigate to since.
   /**
    * The decompose gestures — attach, detach, create-and-attach, split.
    *
@@ -46,7 +47,7 @@ interface AcceptanceEditorProps {
   intake?: AcceptanceIntake;
 }
 
-export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, onNavigate, intake }: AcceptanceEditorProps) {
+export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, intake }: AcceptanceEditorProps) {
   // Per-mount: the panel stack keeps hidden panels mounted, so two acceptance
   // editors can share a document and a hand-written id would leave the second
   // one's label pointing at the first one's control.
@@ -69,6 +70,10 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, on
 
   const statuses: PlatformStatusMap = getEditablePlatformStatuses(node);
   const nodesById = new Map(allNodes.map((n) => [n.id, n]));
+  // Still computed here although `CoversSection` now lists the same anchors and
+  // computes its own: what this editor needs is `anchorCount`, for the Product
+  // picker's hint, and two cheap filters over the same edges beat threading a
+  // count out of a sibling component that no longer renders inside this one.
   const coveredAnchors = allEdges
     .filter((e) => e.edge_type === "covers" && e.source_id === node.id)
     .map((e) => nodesById.get(e.target_id))
@@ -76,22 +81,6 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, on
 
   function patchMetadata(next: Record<string, unknown>) {
     onUpdate(node.id, { metadata: { ...node.metadata, ...next } });
-  }
-
-  /**
-   * Run one intake gesture, reporting a failure instead of swallowing it.
-   *
-   * Every one of them is a write to a store the panel does not own, and a
-   * rejected batch otherwise leaves the list looking unchanged with nothing
-   * saying why — the same treatment `AcceptancesSection` gives its create.
-   */
-  async function run(action: () => Promise<void>, failure: string) {
-    try {
-      await action();
-    } catch (err) {
-      toast.error(failure);
-      console.error(err);
-    }
   }
 
   /* --- Product (§ D5) ------------------------------------------------------
@@ -237,52 +226,6 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, on
         />
       </Field>
 
-      <Field label="Covers">
-        {coveredAnchors.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            {intake
-              ? "Unanchored — an idea in intake. Attach it to a view or a flow below."
-              : "Unanchored (covers nothing)."}
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-1">
-            {coveredAnchors.map((anchor) => {
-              const Icon = SPECIES_ICONS[anchor.species];
-              return (
-                <li key={anchor.id} className="flex items-center gap-1">
-                  <button type="button" className="inline-flex flex-1 items-center gap-2 text-left text-sm hover:underline" onClick={() => onNavigate?.(anchor)}>
-                    <Icon className="size-3.5 text-muted-foreground" /> {anchor.title}
-                  </button>
-                  {intake && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-7 shrink-0"
-                      aria-label={`Stop covering ${anchor.title}`}
-                      onClick={() => void run(() => intake.detach(node, anchor.id), "Couldn't detach that node.")}
-                    >
-                      <XIcon className="size-3.5" />
-                    </Button>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        {intake && (
-          <AttachAnchorRow
-            node={node}
-            allNodes={allNodes}
-            allEdges={allEdges}
-            nodesById={nodesById}
-            hasProducts={scope.productsById.size > 0}
-            intake={intake}
-            run={run}
-          />
-        )}
-      </Field>
-
       {intake && (
         <Field
           label="Decompose"
@@ -318,6 +261,102 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, on
         </Field>
       )}
     </div>
+  );
+}
+
+interface CoversSectionProps {
+  node: Node;
+  allNodes: Node[];
+  allEdges: Edge[];
+  scope: ProductScope;
+  onNavigate?: (node: Node) => void;
+  intake?: AcceptanceIntake;
+}
+
+/**
+ * The views and flows this acceptance covers — and, where the surface can
+ * write, the gestures that change that list.
+ *
+ * Lifted out of `AcceptanceEditor` because it is a relation, not a field: it
+ * says what this record points at, which is what References, Findings and
+ * Connections say too, and it belongs beside them in the Relations group.
+ * Leaving it in the editor would have made the acceptance the one species whose
+ * covers list sat apart from the rest of its cross-references — under "Per-
+ * platform status", of all things.
+ *
+ * A `PanelSection` rather than the `Field` it was: inside a group this is a
+ * level-four section with a heading, not a labelled control, and there is no
+ * single control for a label to point at anyway.
+ */
+export function CoversSection({ node, allNodes, allEdges, scope, onNavigate, intake }: CoversSectionProps) {
+  const nodesById = new Map(allNodes.map((n) => [n.id, n]));
+  const coveredAnchors = allEdges
+    .filter((e) => e.edge_type === "covers" && e.source_id === node.id)
+    .map((e) => nodesById.get(e.target_id))
+    .filter((n): n is Node => Boolean(n));
+
+  /**
+   * Run one intake gesture, reporting a failure instead of swallowing it.
+   *
+   * Every one of them is a write to a store the panel does not own, and a
+   * rejected batch otherwise leaves the list looking unchanged with nothing
+   * saying why — the same treatment `AcceptancesSection` gives its create.
+   */
+  async function run(action: () => Promise<void>, failure: string) {
+    try {
+      await action();
+    } catch (err) {
+      toast.error(failure);
+      console.error(err);
+    }
+  }
+
+  return (
+    <PanelSection title="Covers">
+      {coveredAnchors.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          {intake
+            ? "Unanchored — an idea in intake. Attach it to a view or a flow below."
+            : "Unanchored (covers nothing)."}
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-1">
+          {coveredAnchors.map((anchor) => {
+            const Icon = SPECIES_ICONS[anchor.species];
+            return (
+              <li key={anchor.id} className="flex items-center gap-1">
+                <button type="button" className="inline-flex flex-1 items-center gap-2 text-left text-sm hover:underline" onClick={() => onNavigate?.(anchor)}>
+                  <Icon className="size-3.5 text-muted-foreground" /> {anchor.title}
+                </button>
+                {intake && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-7 shrink-0"
+                    aria-label={`Stop covering ${anchor.title}`}
+                    onClick={() => void run(() => intake.detach(node, anchor.id), "Couldn't detach that node.")}
+                  >
+                    <XIcon className="size-3.5" />
+                  </Button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {intake && (
+        <AttachAnchorRow
+          node={node}
+          allNodes={allNodes}
+          allEdges={allEdges}
+          nodesById={nodesById}
+          hasProducts={scope.productsById.size > 0}
+          intake={intake}
+          run={run}
+        />
+      )}
+    </PanelSection>
   );
 }
 

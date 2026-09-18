@@ -11,19 +11,17 @@ import { Field } from "@/components/ui/field";
 import { BlockedByField } from "@/components/panels/BlockedByField";
 import { PanelSection, PANEL_GUTTER } from "@/components/panels/PanelSection";
 import { PanelGroup } from "@/components/panels/PanelGroup";
+import { RelationsGroup } from "@/components/panels/RelationsGroup";
 import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
 import type { Node, Edge } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import { SPECIES } from "@/lib/config/species";
 import { SpeciesBadge, PanelHeaderEntityId } from "@/components/graph/nodes/EntityBadges";
-import { EntityRow } from "@/components/graph/nodes/EntityRow";
-import { RefList } from "@/components/graph/nodes/RefBadges";
 import { PlatformVariants } from "@/components/panels/PlatformVariants";
 import { PlatformGaugeList } from "@/components/graph/nodes/PlatformGaugeList";
 import { PlaylistEditor } from "@/components/panels/PlaylistEditor";
 import { AcceptanceEditor } from "@/components/panels/AcceptanceEditor";
-import { AcceptancesSection } from "@/components/panels/AcceptancesSection";
 import { DecisionEditor } from "@/components/panels/DecisionEditor";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { useJournal } from "@/lib/hooks/useJournal";
@@ -37,11 +35,9 @@ import type { ProductScope } from "@/lib/utils/product-scope";
 import { ProductPicker } from "@/components/panels/ProductPicker";
 import { withProductMembership } from "@/lib/utils/product-editing";
 import { productOf } from "@arkaik/schema";
-import { findWhereUsed } from "@/lib/utils/where-used";
 import { computeNodeTimeline } from "@/lib/utils/journal";
 import { FeedRow } from "@/components/journal/FeedRow";
-import { SEVERITY_CHIP, SEVERITY_LABEL } from "@/components/quality/quality-styles";
-import { EMPTY_QUALITY_FILTERS, filterFindings, type FindingRow } from "@/lib/utils/quality";
+import type { FindingRow } from "@/lib/utils/quality";
 import { cn } from "@/lib/utils";
 
 interface NodeDetailPanelProps {
@@ -288,177 +284,6 @@ function ProductSection({ node, scope, onUpdate }: ProductSectionProps) {
   );
 }
 
-interface InvocationSectionProps {
-  node: Node;
-  allNodes: Node[];
-  onNavigate: (node: Node) => void;
-}
-
-function InvocationSection({ node, allNodes, onNavigate }: InvocationSectionProps) {
-  const usages = findWhereUsed(node.id, allNodes);
-
-  if (usages.length === 0) {
-    return null;
-  }
-
-  return (
-    <PanelSection title="Invocation">
-      <div className="flex flex-col gap-0.5">
-        {usages.map((flow) => (
-          <ConnectionItem key={flow.id} node={flow} onNavigate={onNavigate} />
-        ))}
-      </div>
-    </PanelSection>
-  );
-}
-
-function RefsSection({ node }: { node: Node }) {
-  const refs = node.metadata?.refs;
-
-  if (!refs || refs.length === 0) {
-    return null;
-  }
-
-  return (
-    <PanelSection title="References">
-      <RefList refs={refs} />
-    </PanelSection>
-  );
-}
-
-interface FindingsSectionProps {
-  node: Node;
-  findings: FindingRow[];
-  onOpenCriterion: (criterionId: string, surface: string) => void;
-}
-
-/**
- * The audit's open findings against this node, worst first.
- *
- * Open only, matching the canvas badge exactly: both ask `row.open`, so a node
- * wearing a red "3" opens onto three rows and never onto a resolved fourth the
- * reader has to work out is history.
- *
- * The order is `filterFindings`' own — the board's comparator, run with the
- * filter set that narrows nothing. A `sort` written here would be a second
- * opinion on which finding is worse than which, and the two lists would read
- * differently the day a pack moved a bucket.
- */
-function FindingsSection({ node, findings, onOpenCriterion }: FindingsSectionProps) {
-  const own = filterFindings(
-    findings.filter((row) => row.open && row.nodeIds.includes(node.id)),
-    EMPTY_QUALITY_FILTERS,
-  );
-
-  if (own.length === 0) {
-    return null;
-  }
-
-  return (
-    <PanelSection title="Findings">
-      <div className="flex flex-col gap-0.5">
-        {own.map((row) => (
-          // Into the criterion, not into the finding: a finding has no panel of
-          // its own, and the criterion is where its question, its bands and its
-          // siblings on the same surface live.
-          <button
-            key={row.id}
-            type="button"
-            onClick={() => onOpenCriterion(row.criterionId, row.surface)}
-            className="flex items-center gap-2 text-sm text-left rounded-md px-2 py-1.5 hover:bg-muted transition-colors w-full"
-            title={`Open ${row.criterionName}`}
-          >
-            <span
-              className={cn(
-                "shrink-0 rounded border px-1.5 py-0.5 text-[11px] font-medium",
-                SEVERITY_CHIP[row.severity],
-              )}
-            >
-              {SEVERITY_LABEL[row.severity]}
-            </span>
-            <span className="flex-1 truncate">{row.title}</span>
-            <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground">
-              {row.criterionId}
-            </span>
-          </button>
-        ))}
-      </div>
-    </PanelSection>
-  );
-}
-
-interface ConnectionsSectionProps {
-  node: Node;
-  allNodes: Node[];
-  allEdges: Edge[];
-  onNavigate: (node: Node) => void;
-}
-
-function ConnectionsSection({ node, allNodes, allEdges, onNavigate }: ConnectionsSectionProps) {
-  // DecisionEditor owns decision-typed edges (supersedes/generates/impacts) for
-  // a decision node itself — its "Decision links" section already lists both
-  // directions (supersedes/supersededBy/generates/impacts). This section shows
-  // them only from the OTHER endpoint's side, so a non-decision node can see
-  // which decisions impact/generate it ("decided by") without a decision node
-  // double-listing its own edges.
-  const isDecisionEdge = (e: Edge) =>
-    e.edge_type === "supersedes" || e.edge_type === "generates" || e.edge_type === "impacts";
-  const crossLayerNodes = allEdges
-    .filter((e) => e.edge_type !== "composes" && (e.source_id === node.id || e.target_id === node.id))
-    .filter((e) => !(node.species === "decision" && isDecisionEdge(e)))
-    .map((e) => {
-      const otherId = e.source_id === node.id ? e.target_id : e.source_id;
-      return allNodes.find((n) => n.id === otherId);
-    })
-    .filter((n): n is Node => !!n && (n.species === "data-model" || n.species === "api-endpoint" || n.species === "decision"));
-
-  const uniqueCrossLayerNodes = [...new Map(crossLayerNodes.map((n) => [n.id, n])).values()];
-
-  if (uniqueCrossLayerNodes.length === 0) {
-    return null;
-  }
-
-  return (
-    <PanelSection title="Connections">
-      <div className="flex flex-col gap-0.5">
-        {uniqueCrossLayerNodes.map((n) => (
-          <ConnectionItem key={n.id} node={n} onNavigate={onNavigate} />
-        ))}
-      </div>
-    </PanelSection>
-  );
-}
-
-/**
- * One cross-reference row: the entity chip, then the title, then what kind of
- * thing it is.
- *
- * The two-control shape — chip, then a button over the rest — belongs to
- * `EntityRow`; see there for why it cannot be one button.
- *
- * The leading gutter used to hold a `badge` string — the flow's id from
- * Invocation, the species label from Connections, which the trailing span was
- * already saying. The chip replaces both: the id it carried is now in the hover
- * card and one click from the clipboard, and the duplicated label is gone.
- */
-function ConnectionItem({
-  node,
-  onNavigate,
-}: {
-  node: Node;
-  onNavigate: (node: Node) => void;
-}) {
-  const speciesConfig = SPECIES.find((s) => s.id === node.species);
-  return (
-    <EntityRow node={node} onOpen={() => onNavigate(node)}>
-      <span className="min-w-0 flex-1 truncate">{node.title}</span>
-      <span className="shrink-0 text-xs text-muted-foreground">
-        {speciesConfig?.label ?? node.species}
-      </span>
-    </EntityRow>
-  );
-}
-
 interface HistorySectionProps {
   node: Node;
   allNodes: Node[];
@@ -701,31 +526,6 @@ export function NodeDetailPanel({
     <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-4 py-5 lg:py-6">
       <NodeFields key={node.id} node={node} onUpdate={onUpdate} allNodes={allNodes} onNavigate={onNavigate} />
       <ProductSection key={`product-${node.id}`} node={node} scope={scope} onUpdate={onUpdate} />
-      <RefsSection key={`refs-${node.id}`} node={node} />
-      {/* High, with what is *true* about the node rather than down with the
-          read-only cross-references: an open critical finding is the most urgent
-          thing this panel can tell a reader, and the canvas badge sends them
-          here to find it. Under the playlist editor it would be a promise the
-          panel does not keep. */}
-      {findings && onOpenCriterion && (
-        <FindingsSection
-          key={`findings-${node.id}`}
-          node={node}
-          findings={findings}
-          onOpenCriterion={onOpenCriterion}
-        />
-      )}
-      {(node.species === "view" || node.species === "flow") && allNodes && allEdges && (
-        <AcceptancesSection
-          key={`acceptances-${node.id}`}
-          node={node}
-          scope={scope}
-          allNodes={allNodes}
-          allEdges={allEdges}
-          onNavigate={onNavigate}
-          onCreate={onCreateAcceptanceForAnchor}
-        />
-      )}
       {node.species === "acceptance" && allNodes && allEdges && onUpdate && (
         <AcceptanceEditor
           key={`acceptance-${node.id}`}
@@ -734,7 +534,6 @@ export function NodeDetailPanel({
           allNodes={allNodes}
           allEdges={allEdges}
           onUpdate={onUpdate}
-          onNavigate={onNavigate}
           intake={intake}
         />
       )}
@@ -776,29 +575,23 @@ export function NodeDetailPanel({
           onCreateNode={onCreateNode}
         />
       )}
-      {(node.species === "view" || node.species === "flow") && allNodes && onNavigate && (
-        <InvocationSection
-          key={`inv-${node.id}`}
-          node={node}
-          allNodes={allNodes}
-          onNavigate={onNavigate}
-        />
-      )}
-      {allNodes && allEdges && onNavigate && (
-        <ConnectionsSection
-          key={`conn-${node.id}`}
-          node={node}
-          allNodes={allNodes}
-          allEdges={allEdges}
-          onNavigate={onNavigate}
-        />
-      )}
       {/* Groups live in a column of their own. `-space-y-px` overlaps each
           bar's `border-y` with the one above so a run of shut groups reads as
           one ruled list; the body's `gap-4` would open a four-unit trench
-          between every pair. Parts 2–4 fill this column; for now it holds
-          History alone. */}
+          between every pair. Parts 3–4 add the rest. */}
       <div className="flex flex-col -space-y-px">
+        <RelationsGroup
+          key={`relations-${node.id}`}
+          node={node}
+          scope={scope}
+          allNodes={allNodes}
+          allEdges={allEdges}
+          onNavigate={onNavigate}
+          onCreateAcceptanceForAnchor={onCreateAcceptanceForAnchor}
+          intake={intake}
+          findings={findings}
+          onOpenCriterion={onOpenCriterion}
+        />
         {history && (
           <HistorySection
             key={`history-${node.id}`}

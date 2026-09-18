@@ -307,6 +307,18 @@ if (historyGroup) {
   );
 }
 
+// Rendered by RelationsGroup, not inline here — so its absence from this file is
+// expected, and what is pinned instead is that the node panel mounts it.
+const mountsRelations = elements(nodePanel).some((element) => element.tag === "RelationsGroup");
+assert(mountsRelations, "the node panel mounts RelationsGroup");
+const relationsGroup = nodePanelGroups.find(
+  (element) => attr(element.opening, "title") === "Relations",
+);
+assert(
+  relationsGroup === undefined,
+  "Relations is not also opened inline — one component owns that bar",
+);
+
 // --- the invariant that catches the next one --------------------------------
 
 // A `<section>` earns the tag by naming itself or by heading itself. One that
