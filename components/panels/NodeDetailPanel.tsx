@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import {
   Select,
   SelectContent,
@@ -21,7 +22,8 @@ import { SpeciesBadge, PanelHeaderEntityId } from "@/components/graph/nodes/Enti
 import { PlatformVariants } from "@/components/panels/PlatformVariants";
 import { PlatformGaugeList } from "@/components/graph/nodes/PlatformGaugeList";
 import { PlaylistEditor } from "@/components/panels/PlaylistEditor";
-import { AcceptanceEditor } from "@/components/panels/AcceptanceEditor";
+import { AcceptanceMembershipField } from "@/components/panels/AcceptanceMembershipField";
+import { AcceptanceAuthoredFields } from "@/components/panels/AcceptanceAuthoredFields";
 import { AcceptancePlatformsSection } from "@/components/panels/AcceptancePlatformsSection";
 import { DecisionEditor } from "@/components/panels/DecisionEditor";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
@@ -87,9 +89,24 @@ interface NodeFieldsProps {
   /** For resolving `blocked_by` to a node title/link; the panel's own node-link affordance. */
   allNodes?: Node[];
   onNavigate?: (node: Node) => void;
+  /**
+   * Species-specific intro fields, in the two places a species needs one.
+   *
+   * They sit in the intro block rather than in a group because they are what the
+   * record *is*, not what it is attached to; they were only ever in a separate
+   * component because that component also held four sections that have since
+   * moved out to Relations and Platforms.
+   *
+   * Both render straight into this component's gutter and `gap-5` column, so
+   * neither may carry a gutter of its own.
+   */
+  /** Between Status and Blocked by — the Product picker. */
+  membership?: ReactNode;
+  /** After Blocked by — the species' own authored fields (Gherkin, Values). */
+  authored?: ReactNode;
 }
 
-function NodeFields({ node, onUpdate, allNodes, onNavigate }: NodeFieldsProps) {
+function NodeFields({ node, onUpdate, allNodes, onNavigate, membership, authored }: NodeFieldsProps) {
   const AUTOSAVE_DELAY_MS = 350;
   // Per-mount, because the panel stack keeps hidden panels mounted: two nodes
   // open at once means two "Status" fields in one document, and a hand-written
@@ -108,7 +125,13 @@ function NodeFields({ node, onUpdate, allNodes, onNavigate }: NodeFieldsProps) {
     if (descriptionEditRef.current) descriptionEditRef.current.textContent = node.description ?? "";
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const usesSingleStatusField = node.species === "data-model" || node.species === "api-endpoint";
+  // Views and flows are absent on purpose: they have no single status. Theirs is
+  // per-platform and lives in the Platforms group, and a select here would be a
+  // second answer to a question the rollup already answers.
+  const usesSingleStatusField =
+    node.species === "data-model" ||
+    node.species === "api-endpoint" ||
+    node.species === "acceptance";
 
   useEffect(() => {
     if (title === lastSavedTitleRef.current) {
@@ -198,11 +221,13 @@ function NodeFields({ node, onUpdate, allNodes, onNavigate }: NodeFieldsProps) {
           </Select>
         </Field>
       )}
+      {membership}
       {/* Absent on a decision, which renders its own under "Context — why":
           see `BlockedByField`. */}
       {node.species !== "decision" && (
         <BlockedByField node={node} onUpdate={onUpdate} allNodes={allNodes} onNavigate={onNavigate} />
       )}
+      {authored}
     </div>
   );
 }
@@ -225,8 +250,9 @@ interface ProductSectionProps {
  * `ProductPicker` because only the call site knows which layout to omit.
  *
  * **Flows and views only, though `PRODUCT_MEMBERSHIP_SPECIES` also lists
- * acceptances.** An acceptance already gets a picker from `AcceptanceEditor`,
- * which is the only place that can say the true thing about it — its membership
+ * acceptances.** An acceptance already gets a picker from
+ * `AcceptanceMembershipField`, which is the only place that can say the true
+ * thing about it — its membership
  * is derived from its `covers` anchors (§ D5) and this control cannot express
  * that. Testing `PRODUCT_MEMBERSHIP_SPECIES` here, as the plan's sketch did,
  * would put two pickers on the same acceptance panel disagreeing about the same
@@ -540,19 +566,36 @@ export function NodeDetailPanel({
     // clipped rather than as laid out. It tracks the gutter's own step down
     // below `lg`.
     <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-4 py-5 lg:py-6">
-      <NodeFields key={node.id} node={node} onUpdate={onUpdate} allNodes={allNodes} onNavigate={onNavigate} />
+      <NodeFields
+        key={node.id}
+        node={node}
+        onUpdate={onUpdate}
+        allNodes={allNodes}
+        onNavigate={onNavigate}
+        membership={
+          node.species === "acceptance" && allNodes && allEdges && onUpdate ? (
+            <AcceptanceMembershipField
+              node={node}
+              scope={scope}
+              allNodes={allNodes}
+              allEdges={allEdges}
+              onUpdate={onUpdate}
+            />
+          ) : undefined
+        }
+        authored={
+          node.species === "acceptance" && allNodes && allEdges && onUpdate ? (
+            <AcceptanceAuthoredFields
+              node={node}
+              allNodes={allNodes}
+              allEdges={allEdges}
+              onUpdate={onUpdate}
+              intake={intake}
+            />
+          ) : undefined
+        }
+      />
       <ProductSection key={`product-${node.id}`} node={node} scope={scope} onUpdate={onUpdate} />
-      {node.species === "acceptance" && allNodes && allEdges && onUpdate && (
-        <AcceptanceEditor
-          key={`acceptance-${node.id}`}
-          node={node}
-          scope={scope}
-          allNodes={allNodes}
-          allEdges={allEdges}
-          onUpdate={onUpdate}
-          intake={intake}
-        />
-      )}
       {node.species === "decision" && allNodes && allEdges && onUpdate && (
         <DecisionEditor
           key={`decision-${node.id}`}
@@ -570,7 +613,7 @@ export function NodeDetailPanel({
       <div className="flex flex-col -space-y-px">
         {/* The only one of the three platform regions whose bar is opened out
             here rather than by the section itself. `AcceptancePlatformsSection`
-            is the `Field` body lifted verbatim out of `AcceptanceEditor` and
+            is the `Field` body lifted verbatim out of the old `AcceptanceEditor` and
             nothing more — it renders one `PlatformVariants` and holds no state
             — so giving it a group of its own would have been a second change
             smuggled into the move. The two below own their bars because each is
