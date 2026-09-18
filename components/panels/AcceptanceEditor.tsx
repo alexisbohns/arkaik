@@ -153,7 +153,11 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, on
       </Field>
 
       {scope.productsById.size > 0 && (
-        <section>
+        // A `<div>`, not a `<section>`: it heads nothing and names nothing, so
+        // as a section it was a grouping the outline could not see and the
+        // accessibility tree flattened to a generic box anyway. The panel's
+        // real sections all carry an `h3` — see `PanelSection`.
+        <div>
           <ProductPicker
             products={[...scope.productsById.values()]}
             value={productOf(node)}
@@ -191,7 +195,7 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, on
                   : "This acceptance covers nothing, so its product is whatever you set here."
             }
           />
-        </section>
+        </div>
       )}
 
       {/* The `htmlFor` here is audit `shadcn-4`'s headline case: this textarea

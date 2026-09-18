@@ -183,6 +183,9 @@ jobs:
       - name: Panel descriptor union tests
         run: npm run test:project-panels
 
+      - name: Panel document-semantics tests
+        run: npm run test:panel-semantics
+
       - name: Command palette ranking tests
         run: npm run test:command-palette
 

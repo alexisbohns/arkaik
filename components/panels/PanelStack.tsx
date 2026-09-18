@@ -212,14 +212,21 @@ export function PanelStack<T>({
 
         {entries.map((entry, index) => {
           const isTop = index === entries.length - 1;
+          const headingId = `${entry.instanceId}-heading`;
 
           return (
+            // The cell stays a `<section>` — a named one, so it is a landmark,
+            // and the two or three open columns are listable and jumpable as
+            // such. What it holds is an `<article>`, and the pair is not
+            // redundant: the section is a SLOT in the workspace — it owns the
+            // grid geometry, the card skin, the focus target, the `hidden`
+            // state — and the article is the record currently occupying it.
             <section
               key={entry.instanceId}
               ref={isTop ? topPanelRef : undefined}
               hidden={index < firstVisiblePanel}
               tabIndex={-1}
-              aria-label={labelOf(entry)}
+              aria-labelledby={headingId}
               className={cn(
                 cellClassName,
                 cardClassName,
@@ -250,6 +257,12 @@ export function PanelStack<T>({
                   size="icon"
                   className="shrink-0 cursor-pointer"
                   aria-label={`Close ${labelOf(entry)}`}
+                  // The section, not the article: the button sits in the
+                  // header, which is the article's sibling, so `closest` walks
+                  // straight past it to the cell. That cell is what `runClose`
+                  // asks about focus, and it has to be the whole column —
+                  // focus parked in the body must still count as focus inside
+                  // the panel being closed.
                   onClick={(event) =>
                     runClose([index], () => onCloseAt(index), event.currentTarget.closest("section"))
                   }
@@ -257,7 +270,27 @@ export function PanelStack<T>({
                   <XIcon className="size-4" />
                 </Button>
               </header>
-              {renderBody(entry, index)}
+              {/*
+                The record itself — self-contained, and the one part of this
+                column that would still mean something lifted out of it. The
+                close button and the identity chips above stay outside: they
+                belong to the stack, not to the flow or the view being read.
+
+                The heading is `sr-only` because this panel's identity is
+                genuinely on screen as CHIPS — a species badge and an id — not
+                as a title, and for a node the title that `labelOf` returns is
+                visible in the body as an editable field, which cannot also be
+                a heading. So the outline gets the name in the one form the
+                chrome cannot give it, the section and the article are both
+                named by it, and the body's `PanelSection` headings finally
+                have an `h2` to hang off.
+              */}
+              <article aria-labelledby={headingId} className="flex min-h-0 flex-1 flex-col">
+                <h2 id={headingId} className="sr-only">
+                  {labelOf(entry)}
+                </h2>
+                {renderBody(entry, index)}
+              </article>
             </section>
           );
         })}

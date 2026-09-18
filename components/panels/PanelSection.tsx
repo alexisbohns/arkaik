@@ -24,10 +24,16 @@ import { FIELD_LABEL_CLASS } from "@/components/ui/field";
  * right of the heading — hoisted here so the next section that needs one does not
  * re-derive the `justify-between` row.
  *
- * The heading stays a `<span>` rather than becoming an `<h3>`: these are field
- * micro-labels inside a panel that already carries its own header, and promoting
- * them into the document outline is a heading-structure decision for the whole
- * panel stack, not a side effect of extracting a wrapper.
+ * The heading is an `<h3>`. It was a `<span>` while the panel stack had no
+ * outline to join — a lone `h3` under nothing is worse than no heading — and
+ * that decision was deferred here as "a heading-structure decision for the whole
+ * panel stack". The stack has since made it: the page names itself `h1`
+ * (`PageHeader`), every open record names itself `h2` (`PanelStack`), and these
+ * are the record's own sections at level three. Which is what lets a reader walk
+ * a panel by heading instead of by scrolling it.
+ *
+ * `FIELD_LABEL_CLASS` carries the whole look, and Tailwind's preflight strips a
+ * heading's own size and weight, so nothing about these moved on screen.
  */
 
 interface PanelSectionProps {
@@ -57,11 +63,11 @@ export function PanelSection({ title, action, children, className }: PanelSectio
     <section className={cn(PANEL_GUTTER, "flex flex-col gap-2", className)}>
       {action ? (
         <div className="flex items-center justify-between">
-          <span className={FIELD_LABEL_CLASS}>{title}</span>
+          <h3 className={FIELD_LABEL_CLASS}>{title}</h3>
           {action}
         </div>
       ) : (
-        <span className={FIELD_LABEL_CLASS}>{title}</span>
+        <h3 className={FIELD_LABEL_CLASS}>{title}</h3>
       )}
       {children}
     </section>
