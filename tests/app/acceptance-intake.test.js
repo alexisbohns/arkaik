@@ -28,6 +28,7 @@
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const { loadAcceptanceIntake, BUILD_DIR } = require("./load-acceptance-intake");
+const { loadUtil, BUILD_DIR: PANEL_BUILD_DIR } = require("./load-panel-utils");
 
 const {
   isAnchorSpecies,
@@ -41,6 +42,11 @@ const {
   productsOfAcceptance,
   applyOps,
 } = loadAcceptanceIntake();
+
+// `node-duplicate.ts` is type-only at runtime, so the generic loader — which
+// rewrites nothing — can take it as-is. It rides in this suite because what a
+// duplicate carries is the same question the split rules answer for a piece.
+const { duplicateNodeDraft } = loadUtil("node-duplicate");
 
 const PROJECT = "p1";
 
@@ -356,8 +362,61 @@ test("a dangling anchor is not multiplied across the pieces", () => {
   assert.deepEqual(targets, ["V-notes", "V-notes"]);
 });
 
+// ---------------------------------------------------------------------------
+// Duplicate
+// ---------------------------------------------------------------------------
+
+console.log("\nduplicate");
+
+test("the copy takes the id it was given", () => {
+  const original = { ...node("A-export", "acceptance"), title: "Export notes" };
+  assert.equal(duplicateNodeDraft(original, "AC-export-notes-2").id, "AC-export-notes-2");
+});
+
+test("the copy's title is suffixed (copy)", () => {
+  const original = { ...node("A-export", "acceptance"), title: "Export notes" };
+  assert.equal(duplicateNodeDraft(original, "A-x").title, "Export notes (copy)");
+});
+
+test("project, species, status and description carry over", () => {
+  const original = {
+    ...node("V-notes", "view", { status: "live", description: "The notes list." }),
+    title: "Notes",
+  };
+  const copy = duplicateNodeDraft(original, "V-notes-2");
+  assert.equal(copy.project_id, PROJECT);
+  assert.equal(copy.species, "view");
+  assert.equal(copy.status, "live");
+  assert.equal(copy.description, "The notes list.");
+});
+
+test("metadata carries over", () => {
+  const original = node("A-export", "acceptance", {
+    metadata: { gherkin: "When I export, Then …", values: ["speed"] },
+  });
+  const copy = duplicateNodeDraft(original, "A-y");
+  assert.equal(copy.metadata.gherkin, "When I export, Then …");
+  assert.deepEqual(copy.metadata.values, ["speed"]);
+});
+
+test("the copy's metadata is its own", () => {
+  // The panel patches metadata by spreading it and the value editors write
+  // arrays in place, so a shallow copy would let an edit to one node silently
+  // rewrite the other.
+  const original = node("A-export", "acceptance", { metadata: { values: ["speed"] } });
+  const copy = duplicateNodeDraft(original, "A-z");
+  copy.metadata.values.push("trust");
+  assert.deepEqual(original.metadata.values, ["speed"]);
+});
+
+test("an empty title still yields \"(copy)\"", () => {
+  const original = { ...node("A-x", "acceptance"), title: "" };
+  assert.equal(duplicateNodeDraft(original, "A-x2").title, "(copy)");
+});
+
 // The transpiled CommonJS is a build artefact, not a fixture.
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
+fs.rmSync(PANEL_BUILD_DIR, { recursive: true, force: true });
 
 console.log(failures === 0 ? "\nAll acceptance-intake tests passed" : `\n${failures} failing`);
 process.exit(failures === 0 ? 0 : 1);
