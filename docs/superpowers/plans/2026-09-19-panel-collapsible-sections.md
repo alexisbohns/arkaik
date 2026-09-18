@@ -1383,7 +1383,7 @@ That ordering is the spec's and the original request's — Platforms, Relations,
 - [ ] **Step 3: Verify**
 
 Run: `npm run dev`, open a flow.
-Expected: PLATFORMS → PLAYLIST → RELATIONS → HISTORY. Drag-reordering a playlist entry still works inside the open group.
+Expected: PLATFORMS → RELATIONS → PLAYLIST → HISTORY. Drag-reordering a playlist entry still works inside the open group.
 
 - [ ] **Step 4: Commit**
 
