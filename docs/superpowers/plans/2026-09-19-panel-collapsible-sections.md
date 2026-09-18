@@ -1375,7 +1375,9 @@ In `PlaylistEditor.tsx`, replace the `PanelSection` import with `PanelGroup` and
 
 - [ ] **Step 2: Move its render**
 
-In `NodeDetailPanel`'s body, move the `{node.species === "flow" && allNodes && (<PlaylistEditor … />)}` block into the gapless group column, between the Platforms renders and `RelationsGroup`.
+In `NodeDetailPanel`'s body, move the `{node.species === "flow" && allNodes && (<PlaylistEditor … />)}` block into the gapless group column, **between `RelationsGroup` and `HistorySection`**.
+
+That ordering is the spec's and the original request's — Platforms, Relations, Playlist, History. An earlier draft of this plan said "between the Platforms renders and `RelationsGroup`", which is a different order and wrong; the spec's per-species table is the authority. On a flow the finished column therefore reads PLATFORMS → RELATIONS → PLAYLIST → HISTORY.
 
 - [ ] **Step 3: Verify**
 
