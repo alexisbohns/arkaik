@@ -3,11 +3,9 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { SplitIcon } from "lucide-react";
 import { toast } from "sonner";
-import type { Node, Edge, PlatformStatusMap } from "@/lib/data/types";
-import type { PlatformId } from "@/lib/config/platforms";
+import type { Node, Edge } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 import type { ValueId } from "@arkaik/schema";
-import { getEditablePlatformStatuses } from "@/lib/utils/platform-status";
 import type { ProductScope } from "@/lib/utils/product-scope";
 import { productLabels, productsOfAcceptance } from "@/lib/utils/product-scope";
 import { withProductMembership } from "@/lib/utils/product-editing";
@@ -23,14 +21,13 @@ import { Field } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
-import { PlatformVariants } from "@/components/panels/PlatformVariants";
 import { ValuePicker } from "@/components/values/ValuePicker";
 
 interface AcceptanceEditorProps {
   node: Node;
   allNodes: Node[];
   allEdges: Edge[];
-  /** The surface's product scope — decides how many platform tabs this editor has. */
+  /** The surface's product scope — the menu the Product picker offers. */
   scope: ProductScope;
   onUpdate: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
   // No `onNavigate`: the anchor links that used it moved out with `CoversSection`
@@ -66,7 +63,6 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, in
     return () => clearTimeout(t);
   }, [gherkin, onUpdate]);
 
-  const statuses: PlatformStatusMap = getEditablePlatformStatuses(node);
   const nodesById = new Map(allNodes.map((n) => [n.id, n]));
   // The same derivation `CoversSection` lists, from the same shared helper. The
   // anchors are still needed here — `anchorCount` below is what the Product
@@ -197,29 +193,12 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, in
         />
       </Field>
 
-      {/* No `htmlFor` on these three: a combobox that names itself, a tab strip
-          and a list have no control a `<label>` here should point at. */}
+      {/* No `htmlFor` on these two: a combobox that names itself and a button
+          have no control a `<label>` here should point at. (It read "these
+          three" while the platform tab strip sat between them; the strip is now
+          the Platforms group's — see `AcceptancePlatformsSection`.) */}
       <Field label="Values — the Why">
         <ValuePicker selected={node.metadata?.values ?? []} onChange={(values: ValueId[]) => patchMetadata({ values })} />
-      </Field>
-
-      <Field label="Per-platform status">
-        {/* The scope's MENU, not `scopedPlatforms(node, scope)` — see
-            `NodeDetailPanel`'s `PlatformVariantsSection`. Shape decisions read
-            `scope.platforms`; per-node facts read `scopedPlatforms`. */}
-        <PlatformVariants
-          platforms={scope.platforms}
-          statuses={statuses}
-          notes={node.metadata?.platformNotes}
-          screenshots={node.metadata?.platformScreenshots}
-          onStatusChange={(platform: PlatformId, value) => {
-            const next = { ...statuses };
-            if (value) next[platform] = value; else delete next[platform];
-            patchMetadata({ platformStatuses: next });
-          }}
-          onNotesChange={(platform: PlatformId, value) => patchMetadata({ platformNotes: { ...node.metadata?.platformNotes, [platform]: value } })}
-          onScreenshotChange={(platform: PlatformId, value) => patchMetadata({ platformScreenshots: { ...node.metadata?.platformScreenshots, [platform]: value } })}
-        />
       </Field>
 
       {intake && (
