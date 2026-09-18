@@ -182,7 +182,7 @@ export function CellDetailPanel({
       </div>
 
       <section className="flex flex-col gap-2 py-4">
-        <span className={cn(FIELD_LABEL_CLASS, "px-4")}>Criteria</span>
+        <h3 className={cn(FIELD_LABEL_CLASS, "px-4")}>Criteria</h3>
         <CriteriaList criteria={criteria} surface={surface} onOpenCriterion={onOpenCriterion} />
       </section>
 
@@ -193,7 +193,7 @@ export function CellDetailPanel({
         // are". Absent until an audit has been recorded — a list of nothing
         // would be a heading over the advice to run `matrix --record`.
         <section className="flex flex-col gap-2 border-t py-4">
-          <span className={cn(FIELD_LABEL_CLASS, "px-4")}>History</span>
+          <h3 className={cn(FIELD_LABEL_CLASS, "px-4")}>History</h3>
           <ol className="flex flex-col gap-1 px-4">
             {history.map((row, index) => {
               const before = index > 0 ? history[index - 1] : null;
@@ -220,7 +220,7 @@ export function CellDetailPanel({
       )}
 
       <section className="flex flex-col gap-2 border-t py-4">
-        <span className={cn(FIELD_LABEL_CLASS, "px-4")}>Findings</span>
+        <h3 className={cn(FIELD_LABEL_CLASS, "px-4")}>Findings</h3>
         {narrowed.length === 0 ? (
           // The cell's own good news, not a filter that matched nothing: this
           // panel applies exactly one filter and the reader chose it by

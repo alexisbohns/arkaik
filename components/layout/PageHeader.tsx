@@ -79,7 +79,14 @@ export function PageHeader({ title, meta, action, nodes, children }: PageHeaderP
       <SidebarTrigger className="-ml-1 cursor-pointer" />
       <Separator orientation="vertical" className="mx-1 h-4" />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{title}</p>
+        {/* The page's `h1`, not a styled paragraph. Every project surface
+            renders exactly one `PageShell`, so this is the one place the whole
+            view can be named — and the panel stack below hangs its own `h2` per
+            open record off it. Without it those panels would be an outline
+            starting at level two under nothing. Tailwind's preflight strips a
+            heading's own size and weight, so the classes still decide how it
+            looks: this is a semantics change, not a visual one. */}
+        <h1 className="truncate text-sm font-medium">{title}</h1>
         {hasSecondLine && (
           <div className="overflow-hidden text-xs text-muted-foreground">
             {crumbs.length > 0 ? (
