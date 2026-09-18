@@ -12,10 +12,9 @@ import { Field } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
 import { BlockedByField } from "@/components/panels/BlockedByField";
-import { EntityRow } from "@/components/graph/nodes/EntityRow";
 import { PANEL_GUTTER } from "@/components/panels/PanelSection";
 import { cn } from "@/lib/utils";
-import type { Node, Edge, NodeMetadata } from "@/lib/data/types";
+import type { Node, NodeMetadata } from "@/lib/data/types";
 import { type DecisionStatusId } from "@/lib/config/decision-statuses";
 import { decisionStatusOf, decisionUpdatePatch } from "@/lib/utils/decision";
 
@@ -24,7 +23,6 @@ const AUTOSAVE_DELAY_MS = 350;
 interface DecisionEditorProps {
   node: Node;
   allNodes: Node[];
-  allEdges: Edge[];
   onUpdate: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
   onNavigate?: (node: Node) => void;
 }
@@ -70,61 +68,18 @@ function useDebouncedMetadataField(
   return [value, setValue] as const;
 }
 
-/** The decision → node lists the three edge types define (spec §5). */
-function decisionConnections(node: Node, allNodes: Node[], allEdges: Edge[]) {
-  const byId = new Map(allNodes.map((n) => [n.id, n]));
-  const resolve = (ids: string[]) => ids.map((id) => byId.get(id)).filter((n): n is Node => !!n);
-  return {
-    supersedes: resolve(
-      allEdges.filter((e) => e.edge_type === "supersedes" && e.source_id === node.id).map((e) => e.target_id),
-    ),
-    supersededBy: resolve(
-      allEdges.filter((e) => e.edge_type === "supersedes" && e.target_id === node.id).map((e) => e.source_id),
-    ),
-    generates: resolve(
-      allEdges.filter((e) => e.edge_type === "generates" && e.source_id === node.id).map((e) => e.target_id),
-    ),
-    impacts: resolve(
-      allEdges.filter((e) => e.edge_type === "impacts" && e.source_id === node.id).map((e) => e.target_id),
-    ),
-  };
-}
-
-function LinkedNodeList({
-  label,
-  nodes,
-  onNavigate,
-}: {
-  label: string;
-  nodes: Node[];
-  onNavigate?: (node: Node) => void;
-}) {
-  if (nodes.length === 0) return null;
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <div className="flex flex-col gap-0.5">
-        {/* The id is the chip, not a truncated 96px gutter of monospace text —
-            see `EntityChip`. The chip is there whether or not the row navigates:
-            copying an id is useful on a read-only panel too, and the hover card
-            is the only place the full id and title are still readable. */}
-        {nodes.map((n) => (
-          <EntityRow key={n.id} node={n} onOpen={onNavigate && (() => onNavigate(n))}>
-            <span className="min-w-0 flex-1 truncate">{n.title}</span>
-          </EntityRow>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /**
  * The decision species' editor section: decision status (via the synced
  * `decisionUpdatePatch`, never a bare metadata write — see `lib/utils/decision.ts`),
- * context/consequences/decided-on as debounced metadata fields, and the
- * supersedes/generates/impacts links spec §5 defines.
+ * and context/consequences/decided-on as debounced metadata fields.
+ *
+ * The supersedes/generates/impacts links spec §5 defines are no longer here:
+ * they are relations, not fields, so they render as `DecisionLinksSection` in
+ * the Relations group. `allNodes` stays because `BlockedByField` resolves
+ * blockers against it; `allEdges` went with the links, which were the only
+ * thing here that read an edge.
  */
-export function DecisionEditor({ node, allNodes, allEdges, onUpdate, onNavigate }: DecisionEditorProps) {
+export function DecisionEditor({ node, allNodes, onUpdate, onNavigate }: DecisionEditorProps) {
   // Per-mount: the panel stack keeps hidden panels mounted, so two decisions can
   // be open at once and a hand-written id would give both their labels the same
   // target.
@@ -153,7 +108,6 @@ export function DecisionEditor({ node, allNodes, allEdges, onUpdate, onNavigate 
   const [context, setContext] = useDebouncedMetadataField(node, "context", metadataRef, onUpdate);
   const [consequences, setConsequences] = useDebouncedMetadataField(node, "consequences", metadataRef, onUpdate);
   const [decidedAt, setDecidedAt] = useDebouncedMetadataField(node, "decided_at", metadataRef, onUpdate);
-  const connections = decisionConnections(node, allNodes, allEdges);
 
   // One write path for a transition: decisionUpdatePatch bundles the metadata
   // write with the lifecycle sync so diffNodeUpdate derives both events. Its
@@ -224,19 +178,6 @@ export function DecisionEditor({ node, allNodes, allEdges, onUpdate, onNavigate 
           rows={4}
         />
       </Field>
-      {(connections.supersedes.length > 0 ||
-        connections.supersededBy.length > 0 ||
-        connections.generates.length > 0 ||
-        connections.impacts.length > 0) && (
-        // A group of lists rather than a control, so no `htmlFor` — and `gap-3`,
-        // which is the spacing the four lists were already given.
-        <Field label="Decision links" className="gap-3">
-          <LinkedNodeList label="Supersedes" nodes={connections.supersedes} onNavigate={onNavigate} />
-          <LinkedNodeList label="Superseded by" nodes={connections.supersededBy} onNavigate={onNavigate} />
-          <LinkedNodeList label="Generated acceptances" nodes={connections.generates} onNavigate={onNavigate} />
-          <LinkedNodeList label="Impacts" nodes={connections.impacts} onNavigate={onNavigate} />
-        </Field>
-      )}
     </div>
   );
 }

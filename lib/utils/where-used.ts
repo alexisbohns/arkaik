@@ -38,20 +38,26 @@ export function findWhereUsed(nodeId: string, allNodes: readonly Node[]): Node[]
 /**
  * The data models, API endpoints and decisions this node is wired to — the rows
  * `ConnectionsSection` lists, lifted out of it so `RelationsGroup` can ask
- * whether there are any without walking the edges a second time.
+ * whether there are any without a second *implementation* of the walk. Both do
+ * call it on the same render; it is the definition that is shared, not the
+ * walk, and sharing the definition is what keeps the bar and the section from
+ * disagreeing.
  *
  * `composes` is excluded because it is the playlist's own edge — what a flow is
  * made of, which `PlaylistEditor` lists in full — and was never part of this
  * list. A decision's own decision-typed edges are excluded for the
- * reason the section always excluded them: `DecisionEditor` lists both
+ * reason the section always excluded them: `DecisionLinksSection` lists both
  * directions already, and a decision node would otherwise double-list them.
+ * (That section was `DecisionEditor`'s until it moved into the Relations group
+ * beside this one — the lists moved, they did not disappear, so the exclusion
+ * still holds and for the same reason.)
  *
  * That exclusion, as `ConnectionsSection` recorded it when the walk lived inside
  * it — the comment travels with the code rather than being left behind at the
  * call site, so the rule and its reason cannot drift apart:
  *
  * > DecisionEditor owns decision-typed edges (supersedes/generates/impacts) for
- * > a decision node itself — its "Decision links" section already lists both
+ * > a decision node itself — the "Decision links" section already lists both
  * > directions (supersedes/supersededBy/generates/impacts). This section shows
  * > them only from the OTHER endpoint's side, so a non-decision node can see
  * > which decisions impact/generate it ("decided by") without a decision node
@@ -79,12 +85,12 @@ export function crossLayerConnections(
 
 /**
  * The views and flows an acceptance covers, resolved to nodes — the rows
- * `CoversSection` lists, and the anchors `AcceptanceEditor` counts for its
- * Product hint.
+ * `CoversSection` lists, and the anchors `AcceptanceMembershipField` counts for
+ * its Product hint (and `AcceptanceAuthoredFields` for the split dialog's).
  *
- * Shared rather than written twice because those two are the same question
- * asked by two components that no longer render inside one another, and a
- * derivation copied into both is a derivation that drifts. Resolved, not merely
+ * Shared rather than written out again in each because all three are the same
+ * question asked by components that no longer render inside one another, and a
+ * derivation copied into each is a derivation that drifts. Resolved, not merely
  * counted: a `covers` edge pointing at a node this snapshot does not hold is
  * dropped, which is what `productsOfAcceptance` does too — so a hint that says
  * "the 2 nodes it covers" never counts an anchor the panel cannot show.

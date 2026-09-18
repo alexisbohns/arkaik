@@ -21,8 +21,9 @@ Read these before Task 1. Each one has already cost someone a CI round-trip in t
 3. **CI diffs generated artifacts.** Adding a lucide icon that is not already in the registry dirties `lib/wobble/wobble-registry.generated.ts` and `app/wobble.generated.css`. Run `npm run generate` and commit the result before every PR. This plan adds `ChevronRightIcon` (Part 1), `MoreHorizontalIcon`, `CopyPlusIcon` and `Trash2Icon` (Part 5).
 4. **CI gates on lint and `main` lints clean.** `npm run lint` — any error is yours.
 5. **A new test file needs three edits**, not one: the file, a `test:<name>` script in `package.json`, and a step in `.github/workflows/ci.yml`. This plan adds no new test files — it extends `tests/app/panel-semantics.test.js`, `tests/app/quality.test.js` and `tests/app/acceptance-intake.test.js`, all three of which already have scripts and CI steps.
-6. **Every PR here ships something a user sees, so every PR carries a Lab Note** (`CLAUDE.md`). Molecule slug is `arkaik`. Always double-quote titles and summaries.
-7. **`PanelSection.tsx` has no `"use client"` today.** Task 1 adds one, because it starts calling `useContext`. It is only ever imported by client components, so this costs nothing.
+6. **Some suites assert on panel SOURCE TEXT, not on behaviour — moving a JSX element between files breaks them silently.** `tests/app/product-scope.test.js` reads `NodeDetailPanel.tsx` and the acceptance's platform section and asserts the `<PlatformVariants>` element builds its strip from `scope.platforms`; its helper returns `""` for a file with no such element, so a stale path fails as a *shape violation* rather than as the relocation it is. Part 3 hit this in CI because its gate named `acceptance-matrix` and `effective-status` but not `product-scope`. **Every part that moves a component or a JSX element must run `npm run test:product-scope` and `npm run test:project-panels`**, and grep `tests/` for the names of anything it moved. The suites that read panel sources today are `product-scope`, `panel-semantics` and `project-panels`.
+7. **Every PR here ships something a user sees, so every PR carries a Lab Note** (`CLAUDE.md`). Molecule slug is `arkaik`. Always double-quote titles and summaries.
+8. **`PanelSection.tsx` has no `"use client"` today.** Task 1 adds one, because it starts calling `useContext`. It is only ever imported by client components, so this costs nothing.
 
 ---
 
@@ -1382,7 +1383,7 @@ That ordering is the spec's and the original request's — Platforms, Relations,
 - [ ] **Step 3: Verify**
 
 Run: `npm run dev`, open a flow.
-Expected: PLATFORMS → PLAYLIST → RELATIONS → HISTORY. Drag-reordering a playlist entry still works inside the open group.
+Expected: PLATFORMS → RELATIONS → PLAYLIST → HISTORY. Drag-reordering a playlist entry still works inside the open group.
 
 - [ ] **Step 4: Commit**
 

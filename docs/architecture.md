@@ -161,7 +161,8 @@ lib/landing/
     NodeSearchCombobox.tsx  # Search-or-create selector for flow/view references
     PlatformVariants.tsx    # Platform tab switcher with per-platform status and notes
     RawBundlePanel.tsx      # Raw JSON/YAML bundle viewer/editor — a stack column (guarded edit + save-back)
-    AcceptanceEditor.tsx    # An acceptance's body: gherkin, values, per-platform status
+    AcceptanceMembershipField.tsx # An acceptance's Product picker, derived from what it covers (D5)
+    AcceptanceAuthoredFields.tsx  # An acceptance's own fields in the intro block: gherkin, values, decompose
     DecisionEditor.tsx      # A decision's body: context, decision, consequences, decision status
   acceptances/              # AcceptanceMatrix + its filter bar
   decisions/                # DecisionLog

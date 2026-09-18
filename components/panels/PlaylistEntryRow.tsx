@@ -86,8 +86,8 @@ interface LabelDraft {
  * `useNodes` re-set state, typed characters visibly reverted and two in-flight
  * remote writes could land out of order. So the text lives here and the write
  * is debounced at 350ms — the same treatment `NodeFields`
- * (NodeDetailPanel.tsx:95-140) and `AcceptanceEditor` (AcceptanceEditor.tsx:50-60)
- * give the same kind of edit.
+ * (NodeDetailPanel.tsx:95-140) and `AcceptanceAuthoredFields`
+ * (AcceptanceAuthoredFields.tsx, the gherkin debounce) give the same kind of edit.
  */
 function DebouncedLabelInput({
   value,
@@ -107,7 +107,7 @@ function DebouncedLabelInput({
 
   /**
    * The latest draft and the latest `onCommit`, read at fire time — the
-   * `nodeRef` pattern from AcceptanceEditor.tsx:48-60. It matters more here
+   * `nodeRef` pattern from `AcceptanceAuthoredFields`. It matters more here
    * than it does there: `onCommit` rebuilds the whole entries array out of the
    * props of the render that made it, so firing a closure from an older render
    * would write a stale playlist back over a newer one, in the worst case

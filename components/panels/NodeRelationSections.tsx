@@ -1,16 +1,16 @@
 /**
- * Every relation section of a node panel — Covers, Invocation, References,
- * Findings and Connections — plus the row component two of them share and the
- * attach row Covers owns. (Acceptances is the exception, and only because
+ * Every relation section of a node panel — Covers, Invocation, Decision links,
+ * References, Findings and Connections — plus the row component two of them
+ * share and the attach row Covers owns. (Acceptances is the exception, and only because
  * `AcceptancesSection` was already a module of its own.)
  *
  * A module of their own because `RelationsGroup` renders them all and
  * `NodeDetailPanel` renders `RelationsGroup`: left where they were, those files
  * would import each other, and a cycle is not something to defend. Covers is
  * here for the same reason and not only for tidiness — it came out of
- * `AcceptanceEditor`, which `NodeDetailPanel` still renders and which Parts 3
- * and 4 go on to dismantle, so an import edge from the group into that file is
- * a cycle waiting for its second half. The failure it would cause is an
+ * `AcceptanceEditor`, which `NodeDetailPanel` rendered then and which Parts 3
+ * and 4 have since dismantled entirely, so an import edge from the group into
+ * that file was a cycle waiting for its second half. The failure it would cause is an
  * undefined component at runtime, with nothing from the compiler.
  *
  * So the rule this module keeps: a section that `RelationsGroup` renders lives
@@ -198,6 +198,124 @@ function ConnectionItem({
   );
 }
 
+/**
+ * The decision → node lists the three edge types define (spec §5).
+ *
+ * Exported so `RelationsGroup` can ask whether this section has any rows
+ * without a second *implementation* of the walk — the same arrangement
+ * `crossLayerConnections` has with `ConnectionsSection`, and for the same
+ * reason: two implementations are two chances for the bar and the section to
+ * disagree about whether there is anything here. The bar and the section do
+ * each call this on the same render, which is a walk run twice over a handful
+ * of edges; what must not be duplicated is the definition. Passing the rows
+ * down instead would reunite the two at the cost of the flag, which is the
+ * disagreement `hasDecisionLinkRows` exists to prevent.
+ */
+export function decisionConnections(node: Node, allNodes: Node[], allEdges: Edge[]) {
+  const byId = new Map(allNodes.map((n) => [n.id, n]));
+  const resolve = (ids: string[]) => ids.map((id) => byId.get(id)).filter((n): n is Node => !!n);
+  return {
+    supersedes: resolve(
+      allEdges.filter((e) => e.edge_type === "supersedes" && e.source_id === node.id).map((e) => e.target_id),
+    ),
+    supersededBy: resolve(
+      allEdges.filter((e) => e.edge_type === "supersedes" && e.target_id === node.id).map((e) => e.source_id),
+    ),
+    generates: resolve(
+      allEdges.filter((e) => e.edge_type === "generates" && e.source_id === node.id).map((e) => e.target_id),
+    ),
+    impacts: resolve(
+      allEdges.filter((e) => e.edge_type === "impacts" && e.source_id === node.id).map((e) => e.target_id),
+    ),
+  };
+}
+
+/** Whether any of the four lists has a row — the emptiness test this section and
+ *  `RelationsGroup`'s `hasDecisionLinks` flag both run. */
+export function hasDecisionLinkRows(links: ReturnType<typeof decisionConnections>) {
+  return (
+    links.supersedes.length > 0 ||
+    links.supersededBy.length > 0 ||
+    links.generates.length > 0 ||
+    links.impacts.length > 0
+  );
+}
+
+function LinkedNodeList({
+  label,
+  nodes,
+  onNavigate,
+}: {
+  label: string;
+  nodes: Node[];
+  onNavigate?: (node: Node) => void;
+}) {
+  if (nodes.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <div className="flex flex-col gap-0.5">
+        {/* The id is the chip, not a truncated 96px gutter of monospace text —
+            see `EntityChip`. The chip is there whether or not the row navigates:
+            copying an id is useful on a read-only panel too, and the hover card
+            is the only place the full id and title are still readable. */}
+        {nodes.map((n) => (
+          <EntityRow key={n.id} node={n} onOpen={onNavigate && (() => onNavigate(n))}>
+            <span className="min-w-0 flex-1 truncate">{n.title}</span>
+          </EntityRow>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export interface DecisionLinksSectionProps {
+  node: Node;
+  allNodes: Node[];
+  allEdges: Edge[];
+  onNavigate?: (node: Node) => void;
+}
+
+/**
+ * What this decision supersedes, is superseded by, generates and impacts —
+ * spec §5's four link lists.
+ *
+ * Lifted out of `DecisionEditor` for the reason Covers was lifted out of
+ * `AcceptanceEditor`: these are relations, not fields. They say what this record
+ * points at, which is what References, Findings and Connections say too, and the
+ * spec's per-species table puts them first among a decision's relations. Left in
+ * the editor they were the one species' cross-references filed among its
+ * controls; left in that *file* they would have been an import edge from
+ * `RelationsGroup` into a panel-body editor, which is the cycle this module
+ * exists to break.
+ *
+ * A `PanelSection` rather than the `Field` it was: inside a group this is a
+ * level-four section with a heading, not a labelled control, and there is no
+ * single control for a label to point at anyway. `gap-3` is the spacing the four
+ * lists were already given.
+ *
+ * Returns `null` when all four are empty, exactly as the `Field` did behind its
+ * condition — there is no sentence to say about a decision that links to
+ * nothing, so an empty heading here would be an empty state rather than a fact
+ * about the graph.
+ */
+export function DecisionLinksSection({ node, allNodes, allEdges, onNavigate }: DecisionLinksSectionProps) {
+  const connections = decisionConnections(node, allNodes, allEdges);
+
+  if (!hasDecisionLinkRows(connections)) {
+    return null;
+  }
+
+  return (
+    <PanelSection title="Decision links" className="gap-3">
+      <LinkedNodeList label="Supersedes" nodes={connections.supersedes} onNavigate={onNavigate} />
+      <LinkedNodeList label="Superseded by" nodes={connections.supersededBy} onNavigate={onNavigate} />
+      <LinkedNodeList label="Generated acceptances" nodes={connections.generates} onNavigate={onNavigate} />
+      <LinkedNodeList label="Impacts" nodes={connections.impacts} onNavigate={onNavigate} />
+    </PanelSection>
+  );
+}
+
 interface CoversSectionProps {
   node: Node;
   allNodes: Node[];
@@ -234,8 +352,8 @@ interface CoversSectionProps {
  */
 export function CoversSection({ node, allNodes, allEdges, hasProducts, onNavigate, intake }: CoversSectionProps) {
   const nodesById = new Map(allNodes.map((n) => [n.id, n]));
-  // `coveredAnchorsOf`, not a walk of its own: `AcceptanceEditor` asks the same
-  // question for its Product hint's anchor count, and the two answers have to be
+  // `coveredAnchorsOf`, not a walk of its own: `AcceptanceMembershipField` asks
+  // the same question for its Product hint's anchor count, and the two answers have to be
   // the same list or the hint counts anchors this section does not show. The
   // map stays because `AttachAnchorRow` resolves the id a combobox returns.
   const coveredAnchors = coveredAnchorsOf(node, allNodes, allEdges);

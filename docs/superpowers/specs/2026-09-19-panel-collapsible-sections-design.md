@@ -155,9 +155,13 @@ and in this order:
 
 1. title (contenteditable)
 2. description (contenteditable)
-3. Status — only where the species has a single status: acceptance, decision,
-   data-model, api-endpoint. Views and flows have no single status; theirs is
-   per-platform and lives in the Platforms group.
+3. Status — only where the species has a single status *in the shared
+   vocabulary*: acceptance, data-model, api-endpoint. Views and flows have no
+   single status at all; theirs is per-platform and lives in the Platforms
+   group. A decision is the third case: it has one status, but drawn from its
+   own vocabulary and written through its own patch, paired with "Decided on" —
+   so it keeps the field its editor already renders, and a generic status select
+   here would be a second and wrong answer to the same question.
 4. Product — flow, view and acceptance, and only in a project that declares
    products. Directly under Status because membership is an identity fact about
    the record, of a piece with its status, and because on an acceptance the
