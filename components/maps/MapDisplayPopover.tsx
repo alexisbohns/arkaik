@@ -22,6 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SegmentedControl } from "@/components/ui/segmented-control";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 /** Which controls a renderer can honour — System maps draw no flow cards. */
 export interface MapDisplayControls {
@@ -77,12 +78,25 @@ export function MapDisplayPopover({
 
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <Button size="sm" variant="outline" className="cursor-pointer">
-          <SlidersHorizontalIcon className="size-4" />
+      {/* Collapsed to its glyph below `md`, like the layout header's own action
+          (`PageHeader`): this button rides in `headerExtra`, so it shares that
+          one fixed-height row with the map's title and trail. The label lives on
+          as the accessible name, and the popover it opens is headed "Display"
+          anyway — so nothing is lost but the width. */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <Button size="sm" variant="outline" className="cursor-pointer" aria-label="Display">
+              <SlidersHorizontalIcon className="size-4" />
+              <span className="hidden md:inline">Display</span>
+            </Button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        {/* Only where the label is not already on screen. */}
+        <TooltipContent side="bottom" className="md:hidden">
           Display
-        </Button>
-      </PopoverTrigger>
+        </TooltipContent>
+      </Tooltip>
       <PopoverContent className="w-72" align="end">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-0.5">

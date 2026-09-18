@@ -232,6 +232,7 @@ export default function OverviewPage() {
             value={layout}
             onChange={setLayout}
             ariaLabel="Overview display"
+            collapseLabels
           />
         </div>
       }

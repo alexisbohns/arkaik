@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, type ReactNode } from "react";
 import Link from "next/link";
-import { EntityId } from "@/components/graph/nodes/EntityBadges";
+import { PanelHeaderEntityId } from "@/components/graph/nodes/EntityBadges";
 import { PanelStack } from "@/components/panels/PanelStack";
 import { CellDetailPanel, CellDetailPanelHeader } from "@/components/panels/CellDetailPanel";
 import {
@@ -214,7 +214,7 @@ export function ProjectPanels({
           );
 
         const node = nodesById.get(entry.key);
-        return node ? <NodeDetailPanelHeader node={node} /> : <EntityId id={entry.key} />;
+        return node ? <NodeDetailPanelHeader node={node} /> : <PanelHeaderEntityId id={entry.key} />;
       }}
       renderBody={(entry, index) => {
         if (entry.payload.kind === "raw") {
@@ -285,7 +285,7 @@ export function ProjectPanels({
         // loading case a body that flickers in and out.
         if (!node)
           return (
-            <div className="min-h-0 flex-1 overflow-y-auto p-6">
+            <div className="min-h-0 flex-1 overflow-y-auto p-5 lg:p-6">
               <EmptyState
                 message="This page has no node with that id — it may live on another surface, or it may no longer exist."
                 action={

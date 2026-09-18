@@ -7,15 +7,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
-import { PanelSection } from "@/components/panels/PanelSection";
+import { BlockedByField } from "@/components/panels/BlockedByField";
+import { PanelSection, PANEL_GUTTER } from "@/components/panels/PanelSection";
 import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
 import type { Node, Edge } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import { SPECIES } from "@/lib/config/species";
-import { SpeciesBadge, EntityId } from "@/components/graph/nodes/EntityBadges";
+import { SpeciesBadge, PanelHeaderEntityId } from "@/components/graph/nodes/EntityBadges";
+import { EntityRow } from "@/components/graph/nodes/EntityRow";
 import { RefList } from "@/components/graph/nodes/RefBadges";
 import { PlatformVariants } from "@/components/panels/PlatformVariants";
 import { PlatformGaugeList } from "@/components/graph/nodes/PlatformGaugeList";
@@ -34,7 +35,6 @@ import {
 import type { ProductScope } from "@/lib/utils/product-scope";
 import { ProductPicker } from "@/components/panels/ProductPicker";
 import { withProductMembership } from "@/lib/utils/product-editing";
-import { normalizeBlockedBy, withBlockedBy } from "@/lib/utils/blocked";
 import { productOf } from "@arkaik/schema";
 import { findWhereUsed } from "@/lib/utils/where-used";
 import { computeNodeTimeline } from "@/lib/utils/journal";
@@ -100,10 +100,8 @@ function NodeFields({ node, onUpdate, allNodes, onNavigate }: NodeFieldsProps) {
   const [title, setTitle] = useState(node.title);
   const [description, setDescription] = useState(node.description ?? "");
   const [status, setStatus] = useState<StatusId>(node.status);
-  const [blockedBy, setBlockedBy] = useState(node.metadata?.blocked_by ?? "");
   const lastSavedTitleRef = useRef(node.title);
   const lastSavedDescriptionRef = useRef(node.description ?? "");
-  const lastSavedBlockedByRef = useRef(normalizeBlockedBy(node.metadata?.blocked_by) ?? "");
   const titleEditRef = useRef<HTMLDivElement>(null);
   const descriptionEditRef = useRef<HTMLDivElement>(null);
 
@@ -142,29 +140,6 @@ function NodeFields({ node, onUpdate, allNodes, onNavigate }: NodeFieldsProps) {
     return () => clearTimeout(timeout);
   }, [description, node.id, onUpdate]);
 
-  // Same debounced autosave as the description above, compared on the
-  // NORMALIZED value so whitespace-only edits never fire a no-op wholesale
-  // metadata write. `withBlockedBy` owns the "empty means *absent*, never
-  // `blocked_by: \"\"`" rule and carries the rest of the metadata through
-  // untouched — a patch replaces `metadata` wholesale.
-  useEffect(() => {
-    const normalized = normalizeBlockedBy(blockedBy) ?? "";
-    if (normalized === lastSavedBlockedByRef.current) {
-      return;
-    }
-
-    const timeout = setTimeout(() => {
-      lastSavedBlockedByRef.current = normalized;
-      void onUpdate?.(node.id, { metadata: withBlockedBy(node.metadata, normalized || null) });
-    }, AUTOSAVE_DELAY_MS);
-
-    return () => clearTimeout(timeout);
-  }, [blockedBy, node.id, node.metadata, onUpdate]);
-
-  // When the value names a node this panel can see, surface its title — and
-  // navigate through the same affordance every other node link here uses.
-  const blockedNode = allNodes?.find((n) => n.id === normalizeBlockedBy(blockedBy));
-
   function handleStatusChange(value: StatusId) {
     setStatus(value);
     onUpdate?.(node.id, { status: value });
@@ -183,8 +158,13 @@ function NodeFields({ node, onUpdate, allNodes, onNavigate }: NodeFieldsProps) {
   }
 
   return (
-    <div className="px-6 flex flex-col gap-5">
-      <div className="flex flex-col">
+    <div className={cn(PANEL_GUTTER, "flex flex-col gap-5")}>
+      {/* `gap-1.5`, not flush: the title and the description are two different
+          registers, and with no gap the description read as a second line of the
+          title rather than as prose about it. They stay in one block — closer to
+          each other than to anything below — which is what the outer `gap-5`
+          is for. */}
+      <div className="flex flex-col gap-1.5">
         <div
           ref={titleEditRef}
           contentEditable
@@ -220,27 +200,11 @@ function NodeFields({ node, onUpdate, allNodes, onNavigate }: NodeFieldsProps) {
           </Select>
         </Field>
       )}
-      <Field label="Blocked by" htmlFor={`${fieldId}-blocked-by`}>
-        <Input
-          id={`${fieldId}-blocked-by`}
-          value={blockedBy}
-          onChange={(event) => setBlockedBy(event.target.value)}
-          placeholder="Node id or free text — empty means not blocked"
-        />
-        {blockedNode && (
-          onNavigate ? (
-            <button
-              type="button"
-              onClick={() => onNavigate(blockedNode)}
-              className="self-start text-xs text-muted-foreground hover:text-foreground hover:underline text-left"
-            >
-              {blockedNode.title}
-            </button>
-          ) : (
-            <span className="text-xs text-muted-foreground">{blockedNode.title}</span>
-          )
-        )}
-      </Field>
+      {/* Absent on a decision, which renders its own under "Context — why":
+          see `BlockedByField`. */}
+      {node.species !== "decision" && (
+        <BlockedByField node={node} onUpdate={onUpdate} allNodes={allNodes} onNavigate={onNavigate} />
+      )}
     </div>
   );
 }
@@ -306,7 +270,7 @@ function ProductSection({ node, scope, onUpdate }: ProductSectionProps) {
       : `Assigned to "${stored}", which this project no longer declares — it appears under All products only.`;
 
   return (
-    <div className="px-6">
+    <div className={PANEL_GUTTER}>
       <ProductPicker
         products={[...scope.productsById.values()]}
         value={stored}
@@ -340,12 +304,7 @@ function InvocationSection({ node, allNodes, onNavigate }: InvocationSectionProp
     <PanelSection title="Invocation">
       <div className="flex flex-col gap-0.5">
         {usages.map((flow) => (
-          <ConnectionItem
-            key={flow.id}
-            badge={flow.id}
-            node={flow}
-            onNavigate={onNavigate}
-          />
+          <ConnectionItem key={flow.id} node={flow} onNavigate={onNavigate} />
         ))}
       </div>
     </PanelSection>
@@ -462,38 +421,40 @@ function ConnectionsSection({ node, allNodes, allEdges, onNavigate }: Connection
     <PanelSection title="Connections">
       <div className="flex flex-col gap-0.5">
         {uniqueCrossLayerNodes.map((n) => (
-          <ConnectionItem
-            key={n.id}
-            badge={SPECIES.find((s) => s.id === n.species)?.label ?? n.species}
-            node={n}
-            onNavigate={onNavigate}
-          />
+          <ConnectionItem key={n.id} node={n} onNavigate={onNavigate} />
         ))}
       </div>
     </PanelSection>
   );
 }
 
+/**
+ * One cross-reference row: the entity chip, then the title, then what kind of
+ * thing it is.
+ *
+ * The two-control shape — chip, then a button over the rest — belongs to
+ * `EntityRow`; see there for why it cannot be one button.
+ *
+ * The leading gutter used to hold a `badge` string — the flow's id from
+ * Invocation, the species label from Connections, which the trailing span was
+ * already saying. The chip replaces both: the id it carried is now in the hover
+ * card and one click from the clipboard, and the duplicated label is gone.
+ */
 function ConnectionItem({
-  badge,
   node,
   onNavigate,
 }: {
-  badge: string;
   node: Node;
   onNavigate: (node: Node) => void;
 }) {
   const speciesConfig = SPECIES.find((s) => s.id === node.species);
   return (
-    <button
-      type="button"
-      onClick={() => onNavigate(node)}
-      className="flex items-center gap-2 text-sm text-left rounded-md px-2 py-1.5 hover:bg-muted transition-colors w-full"
-    >
-      <span className="text-xs text-muted-foreground shrink-0 w-20 truncate">{badge}</span>
-      <span className="flex-1 truncate">{node.title}</span>
-      <span className="text-xs text-muted-foreground ml-auto shrink-0">{speciesConfig?.label ?? node.species}</span>
-    </button>
+    <EntityRow node={node} onOpen={() => onNavigate(node)}>
+      <span className="min-w-0 flex-1 truncate">{node.title}</span>
+      <span className="shrink-0 text-xs text-muted-foreground">
+        {speciesConfig?.label ?? node.species}
+      </span>
+    </EntityRow>
   );
 }
 
@@ -692,7 +653,7 @@ export function NodeDetailPanelHeader({ node }: { node: Node }) {
         description={speciesConfig?.description}
         showLabel
       />
-      <EntityId id={node.id} />
+      <PanelHeaderEntityId id={node.id} />
     </>
   );
 }
@@ -722,7 +683,11 @@ export function NodeDetailPanel({
   void onDelete;
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-4 pb-6">
+    // The top padding is not decoration: without it the title sat flush against
+    // the header's bottom border, which is the one panel body that read as
+    // clipped rather than as laid out. It tracks the gutter's own step down
+    // below `lg`.
+    <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-4 py-5 lg:py-6">
       <NodeFields key={node.id} node={node} onUpdate={onUpdate} allNodes={allNodes} onNavigate={onNavigate} />
       <ProductSection key={`product-${node.id}`} node={node} scope={scope} onUpdate={onUpdate} />
       <RefsSection key={`refs-${node.id}`} node={node} />

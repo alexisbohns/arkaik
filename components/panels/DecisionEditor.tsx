@@ -11,6 +11,10 @@ import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
+import { BlockedByField } from "@/components/panels/BlockedByField";
+import { EntityRow } from "@/components/graph/nodes/EntityRow";
+import { PANEL_GUTTER } from "@/components/panels/PanelSection";
+import { cn } from "@/lib/utils";
 import type { Node, Edge, NodeMetadata } from "@/lib/data/types";
 import { type DecisionStatusId } from "@/lib/config/decision-statuses";
 import { decisionStatusOf, decisionUpdatePatch } from "@/lib/utils/decision";
@@ -100,23 +104,15 @@ function LinkedNodeList({
     <div className="flex flex-col gap-1">
       <span className="text-xs text-muted-foreground">{label}</span>
       <div className="flex flex-col gap-0.5">
-        {nodes.map((n) =>
-          onNavigate ? (
-            <button
-              key={n.id}
-              type="button"
-              onClick={() => onNavigate(n)}
-              className="flex items-center gap-2 text-sm text-left rounded-md px-2 py-1.5 hover:bg-muted transition-colors w-full"
-            >
-              <span className="text-xs text-muted-foreground shrink-0 w-24 truncate">{n.id}</span>
-              <span className="flex-1 truncate">{n.title}</span>
-            </button>
-          ) : (
-            <span key={n.id} className="px-2 py-1.5 text-sm truncate">
-              {n.title}
-            </span>
-          ),
-        )}
+        {/* The id is the chip, not a truncated 96px gutter of monospace text —
+            see `EntityChip`. The chip is there whether or not the row navigates:
+            copying an id is useful on a read-only panel too, and the hover card
+            is the only place the full id and title are still readable. */}
+        {nodes.map((n) => (
+          <EntityRow key={n.id} node={n} onOpen={onNavigate && (() => onNavigate(n))}>
+            <span className="min-w-0 flex-1 truncate">{n.title}</span>
+          </EntityRow>
+        ))}
       </div>
     </div>
   );
@@ -172,17 +168,34 @@ export function DecisionEditor({ node, allNodes, allEdges, onUpdate, onNavigate 
   }
 
   return (
-    <div className="px-6 flex flex-col gap-5">
-      <Field label="Decision status" htmlFor={`${fieldId}-status`}>
-        <Select value={decisionStatus} onValueChange={(v) => handleStatusChange(v as DecisionStatusId)}>
-          <SelectTrigger id={`${fieldId}-status`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <StatusSelectItems vocabulary="decision-status" />
-          </SelectContent>
-        </Select>
-      </Field>
+    <div className={cn(PANEL_GUTTER, "flex flex-col gap-5")}>
+      {/* Where a decision *stands* and *when* it was taken, on one row at the
+          top. They are the two facts a reader scans a decision for, they are
+          both one control wide, and stacking them pushed "Decided on" below two
+          four-row textareas — past the fold on a narrow panel. Two columns even
+          on mobile: a select and a date input both hold their own at half a
+          panel's width, and splitting them apart at a breakpoint would undo the
+          pairing that is the point. */}
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Decision status" htmlFor={`${fieldId}-status`}>
+          <Select value={decisionStatus} onValueChange={(v) => handleStatusChange(v as DecisionStatusId)}>
+            <SelectTrigger id={`${fieldId}-status`} className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <StatusSelectItems vocabulary="decision-status" />
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Decided on" htmlFor={`${fieldId}-decided-at`}>
+          <Input
+            id={`${fieldId}-decided-at`}
+            type="date"
+            value={decidedAt}
+            onChange={(e) => setDecidedAt(e.target.value)}
+          />
+        </Field>
+      </div>
       <Field label="Context — why" htmlFor={`${fieldId}-context`}>
         <Textarea
           id={`${fieldId}-context`}
@@ -192,6 +205,16 @@ export function DecisionEditor({ node, allNodes, allEdges, onUpdate, onNavigate 
           rows={4}
         />
       </Field>
+      {/* A decision's own, rendered here rather than by `NodeFields` — which
+          omits it for this species. What holds a decision up belongs with the
+          circumstances that produced it, not above the title. */}
+      <BlockedByField
+        node={node}
+        onUpdate={onUpdate}
+        allNodes={allNodes}
+        onNavigate={onNavigate}
+        metadataRef={metadataRef}
+      />
       <Field label="Consequences — how" htmlFor={`${fieldId}-consequences`}>
         <Textarea
           id={`${fieldId}-consequences`}
@@ -199,14 +222,6 @@ export function DecisionEditor({ node, allNodes, allEdges, onUpdate, onNavigate 
           onChange={(e) => setConsequences(e.target.value)}
           placeholder="What follows from it — trade-offs, obligations, follow-ups?"
           rows={4}
-        />
-      </Field>
-      <Field label="Decided on" htmlFor={`${fieldId}-decided-at`}>
-        <Input
-          id={`${fieldId}-decided-at`}
-          type="date"
-          value={decidedAt}
-          onChange={(e) => setDecidedAt(e.target.value)}
         />
       </Field>
       {(connections.supersedes.length > 0 ||

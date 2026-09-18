@@ -8,6 +8,7 @@ import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
 import { PageError } from "@/components/layout/PageError";
 import { PageShell } from "@/components/layout/PageShell";
 import { PageSurface } from "@/components/layout/PageSurface";
+import { DisplayPreferencesPanel } from "@/components/settings/DisplayPreferencesPanel";
 import { FederationPanel } from "@/components/settings/FederationPanel";
 import { ProductManagerPanel } from "@/components/settings/ProductManagerPanel";
 import { RepoLinksPanel } from "@/components/settings/RepoLinksPanel";
@@ -143,6 +144,19 @@ export default function ProjectSettingsPage() {
                 reassignment a deletion offers both need it, and nothing else
                 on this page does. */}
             <ProductManagerPanel projectId={id} project={project} updateProject={updateProject} />
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-lg font-semibold">Display preferences</h2>
+              <p className="text-sm text-muted-foreground">
+                {/* One expression rather than text around `{title}`: the JSX compiler
+                    trims the leading space of a text child that follows an expression,
+                    so the interpolated title ran straight into the next word. */}
+                {`How ${title} is drawn for you. These stay in this browser — they are not part of the project, so nobody else sees them and an export never carries them.`}
+              </p>
+            </div>
+            <DisplayPreferencesPanel projectId={id} />
           </section>
 
           {/* The seed's own archiveProject rejects with an error (the provider

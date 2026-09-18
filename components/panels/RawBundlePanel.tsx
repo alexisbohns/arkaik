@@ -12,6 +12,8 @@ import { invalidateProject, invalidateProjects } from "@/lib/data/project-querie
 import type { ProjectBundle } from "@/lib/data/types";
 import { usePanelSelfState } from "@/lib/hooks/useProjectPanels";
 import { exportProject, importProject, normalizeProjectTimestamps, parseAndValidateBundle } from "@/lib/utils/export";
+import { PANEL_GUTTER } from "@/components/panels/PanelSection";
+import { cn } from "@/lib/utils";
 
 interface RawBundlePanelProps {
   projectId: string;
@@ -265,7 +267,7 @@ export function RawBundlePanel({ projectId, instanceId }: RawBundlePanelProps) {
 
   return (
     <>
-      <div className="flex min-h-0 flex-1 flex-col gap-3 p-6 pt-0">
+      <div className={cn("flex min-h-0 flex-1 flex-col gap-3 pb-5 lg:pb-6", PANEL_GUTTER)}>
         {/*
           The toolbar stays in the body rather than moving to the panel header:
           that slot is one left-aligned row sharing space with a fixed close

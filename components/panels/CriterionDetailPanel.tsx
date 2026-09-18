@@ -2,8 +2,9 @@
 
 import { useMemo } from "react";
 import { ExternalLinkIcon } from "lucide-react";
-import { EntityId } from "@/components/graph/nodes/EntityBadges";
-import { PanelSection } from "@/components/panels/PanelSection";
+import { PanelHeaderEntityId } from "@/components/graph/nodes/EntityBadges";
+import { PanelSection, PANEL_GUTTER, PANEL_GUTTER_BLEED } from "@/components/panels/PanelSection";
+import { cn } from "@/lib/utils";
 import { FindingsBoard } from "@/components/quality/FindingsBoard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Node } from "@/lib/data/types";
@@ -215,23 +216,20 @@ export function CriterionDetailPanelHeader({
 }: Omit<CriterionDetailPanelProps, "onOpenNode" | "findings" | "nodesById">) {
   const criterion = criterionOf(criterionId, library);
   const domainLabel = domainLabelOf(criterion, library);
-  const name = typeof criterion?.name === "string" ? criterion.name : "";
   const surfaceTitle = surfaceTitleOf(surface, section);
 
   return (
     <>
-      {/* Domain and id share a line: two short chips, and the panel's first
-          screenful is worth more to the criterion's own prose than to a
-          three-row stack of labels. */}
-      <div className="flex min-w-0 items-center gap-2">
+      {/* Grouped so the two chips never separate when the header row runs out
+          of room; the row itself is `PanelStack`'s. */}
+      <div className="flex min-w-0 shrink-0 items-center gap-2">
         {domainLabel !== "" && (
           <span className="inline-flex shrink-0 items-center rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground">
             {domainLabel}
           </span>
         )}
-        <EntityId id={criterionId} />
+        <PanelHeaderEntityId id={criterionId} />
       </div>
-      {name !== "" && <span className="truncate text-sm font-medium">{name}</span>}
       {surfaceTitle !== "" && (
         <span className="shrink-0 text-xs text-muted-foreground">{surfaceTitle}</span>
       )}
@@ -266,6 +264,7 @@ export function CriterionDetailPanel({
   onOpenNode,
 }: CriterionDetailPanelProps) {
   const criterion = criterionOf(criterionId, library);
+  const name = typeof criterion?.name === "string" ? criterion.name : "";
   const question = typeof criterion?.question === "string" ? criterion.question : "";
   const definition = typeof criterion?.definition === "string" ? criterion.definition : "";
   const remediation = typeof criterion?.remediation === "string" ? criterion.remediation : "";
@@ -330,16 +329,32 @@ export function CriterionDetailPanel({
     : anchors[0]?.level;
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-6 pb-6 pt-4">
+    <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-6 py-5 lg:py-6">
+      {/* The name is the panel's title, in the body — where a node panel puts
+          its own — rather than a third chip in the header. It was in the header
+          because a criterion has no editable title block to sit in, but that
+          made this the one panel whose subject was named in the chrome and not
+          in the panel, and a long criterion name truncated against the close
+          button. What is left up there is what identifies the panel in a trail:
+          the domain, the id, the surface.
+
+          The question sits under it as the description, in the same block and
+          at the same spacing a node's description gets — it is the one sentence
+          that says what the name means. */}
+      {(name !== "" || question !== "") && (
+        <div className={cn(PANEL_GUTTER, "flex flex-col gap-1.5")}>
+          {name !== "" && <p className="text-lg font-semibold text-foreground">{name}</p>}
+          {question !== "" && (
+            <p className="text-sm leading-relaxed text-foreground">{question}</p>
+          )}
+        </div>
+      )}
+
       {!packEmbedded && (
-        <p className="px-6 text-sm text-muted-foreground">
+        <p className={cn(PANEL_GUTTER, "text-sm text-muted-foreground")}>
           This bundle does not carry the criteria pack, so what this criterion asks is not
           available here — only the score and findings recorded against it.
         </p>
-      )}
-
-      {question !== "" && (
-        <p className="px-6 text-sm leading-relaxed text-foreground">{question}</p>
       )}
 
       {definition !== "" && (
@@ -501,7 +516,7 @@ export function CriterionDetailPanel({
         // criterion is the third place a finding is read and had no business
         // being the one that looked different.
         //
-        // `-mx-6` because `PanelSection` gutters its body at `px-6` and the
+        // `PANEL_GUTTER_BLEED` because `PanelSection` gutters its body and the
         // board carries its own `p-4`; without it the rail sits a gutter and a
         // half in from the prose above it.
         //
@@ -509,7 +524,7 @@ export function CriterionDetailPanel({
         // panel's own header, so the chip would be a button that re-opens the
         // panel it is drawn in. `FindingCard` drops it with the handler.
         <PanelSection title="Findings">
-          <div className="-mx-6">
+          <div className={PANEL_GUTTER_BLEED}>
             <FindingsBoard
               rows={criterionFindings}
               nodesById={nodesById}

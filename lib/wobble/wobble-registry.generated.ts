@@ -85,6 +85,7 @@ export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "globe", seed: 6 },
   { name: "grid3x3", seed: 15 },
   { name: "handshake", seed: 14 },
+  { name: "hash", seed: 1 },
   { name: "heart-handshake", seed: 11 },
   { name: "heart-pulse", seed: 3 },
   { name: "history", seed: 19 },

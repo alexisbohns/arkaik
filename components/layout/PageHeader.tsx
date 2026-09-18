@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Node } from "@/lib/data/types";
 import { usePanelBreadcrumbs } from "@/lib/hooks/usePanelBreadcrumbs";
 
@@ -44,10 +45,18 @@ interface PageHeaderProps {
  * wiring mistake.
  *
  * Breadcrumbs used to mount in a row of their own the moment a panel opened,
- * which pushed the surface down every single time. Here the second line is
- * always present and only its contents change, so opening a panel costs no
- * layout. `min-h-4` is what keeps that true for a page passing no meta at all,
- * whose row would otherwise collapse and re-centre the title on every open.
+ * which pushed the surface down every single time. That is fixed by the header
+ * being `h-12` and staying `h-12`: whatever line two does, nothing below this
+ * header ever moves.
+ *
+ * Line two is reserved only when it has something in it. It used to be reserved
+ * unconditionally, behind a `min-h-4` floor, so the title could not re-centre
+ * when a panel opened on a page carrying no meta. That cost was paid on every
+ * render of such a page — the maps, mainly — where a 36px block of title and
+ * nothing, centred in a 48px row, sat the title eight pixels above the sidebar
+ * trigger and the buttons it stands between, and read as a mistake. A permanent
+ * misalignment is worse than a one-off nudge that happens while a whole column
+ * is appearing beside it, so the floor is gone.
  *
  * The breadcrumb classes defend the same equality. The stock list wraps and
  * sizes itself at `text-sm`, either of which makes the trail taller than the
@@ -58,6 +67,12 @@ interface PageHeaderProps {
 export function PageHeader({ title, meta, action, nodes, children }: PageHeaderProps) {
   const crumbs = usePanelBreadcrumbs(title, nodes);
   const ActionIcon = action?.icon;
+  // Tested on what would actually RENDER, not on whether the prop was passed: a
+  // page that computes its meta (`meta={filter === "all" ? undefined : label}`)
+  // hands this an empty value in some states, and a line reserved for a value
+  // that is not there is the whole fault above.
+  const hasSecondLine =
+    crumbs.length > 0 || (meta !== undefined && meta !== null && meta !== false && meta !== "");
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-3 px-3">
@@ -65,49 +80,79 @@ export function PageHeader({ title, meta, action, nodes, children }: PageHeaderP
       <Separator orientation="vertical" className="mx-1 h-4" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{title}</p>
-        <div className="min-h-4 overflow-hidden text-xs text-muted-foreground">
-          {crumbs.length > 0 ? (
-            <Breadcrumb>
-              <BreadcrumbList className="flex-nowrap gap-1 overflow-x-auto whitespace-nowrap text-xs [scrollbar-width:none] sm:gap-1 [&::-webkit-scrollbar]:hidden">
-                {crumbs.map((crumb, index) => (
-                  <Fragment key={crumb.id}>
-                    {index > 0 && <BreadcrumbSeparator />}
-                    <BreadcrumbItem>
-                      {crumb.onClick ? (
-                        <button
-                          type="button"
-                          className="max-w-48 cursor-pointer truncate transition-colors hover:text-foreground"
-                          onClick={crumb.onClick}
-                        >
-                          {crumb.label}
-                        </button>
-                      ) : (
-                        <BreadcrumbPage className="max-w-48 truncate">{crumb.label}</BreadcrumbPage>
-                      )}
-                    </BreadcrumbItem>
-                  </Fragment>
-                ))}
-              </BreadcrumbList>
-            </Breadcrumb>
-          ) : (
-            <span className="block truncate">{meta}</span>
-          )}
-        </div>
+        {hasSecondLine && (
+          <div className="overflow-hidden text-xs text-muted-foreground">
+            {crumbs.length > 0 ? (
+              <Breadcrumb>
+                <BreadcrumbList className="flex-nowrap gap-1 overflow-x-auto whitespace-nowrap text-xs [scrollbar-width:none] sm:gap-1 [&::-webkit-scrollbar]:hidden">
+                  {crumbs.map((crumb, index) => (
+                    <Fragment key={crumb.id}>
+                      {index > 0 && <BreadcrumbSeparator />}
+                      <BreadcrumbItem>
+                        {crumb.onClick ? (
+                          <button
+                            type="button"
+                            className="max-w-48 cursor-pointer truncate transition-colors hover:text-foreground"
+                            onClick={crumb.onClick}
+                          >
+                            {crumb.label}
+                          </button>
+                        ) : (
+                          <BreadcrumbPage className="max-w-48 truncate">{crumb.label}</BreadcrumbPage>
+                        )}
+                      </BreadcrumbItem>
+                    </Fragment>
+                  ))}
+                </BreadcrumbList>
+              </Breadcrumb>
+            ) : (
+              <span className="block truncate">{meta}</span>
+            )}
+          </div>
+        )}
       </div>
       {(children || action) && (
         <div className="flex shrink-0 items-center gap-3">
           {children}
-          {action && (
-            <Button
-              size="sm"
-              className="cursor-pointer"
-              onClick={action.onClick}
-              disabled={action.disabled}
-            >
-              {ActionIcon && <ActionIcon className="size-4" />}
-              {action.label}
-            </Button>
-          )}
+          {action &&
+            (ActionIcon ? (
+              // Below `md` the action is its icon alone. This header is one
+              // fixed-height row carrying a title, a trail, the display controls
+              // and this button, and on a phone the label is the first of those
+              // that can be spared — the glyph and the tooltip still say what it
+              // does. Only with an icon: label-less and icon-less would be a
+              // blank button.
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    className="cursor-pointer"
+                    onClick={action.onClick}
+                    disabled={action.disabled}
+                    // The label survives as the accessible name at every width,
+                    // so the collapse is visual only.
+                    aria-label={action.label}
+                  >
+                    <ActionIcon className="size-4" />
+                    <span className="hidden md:inline">{action.label}</span>
+                  </Button>
+                </TooltipTrigger>
+                {/* Only where the label is not already on screen — a tooltip
+                    repeating a visible word is noise. */}
+                <TooltipContent side="bottom" className="md:hidden">
+                  {action.label}
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <Button
+                size="sm"
+                className="cursor-pointer"
+                onClick={action.onClick}
+                disabled={action.disabled}
+              >
+                {action.label}
+              </Button>
+            ))}
         </div>
       )}
     </header>
