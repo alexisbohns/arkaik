@@ -29,13 +29,13 @@ import { useInPanelGroup } from "@/components/panels/panel-group-context";
  *
  * The heading is an `<h3>` standing alone and an `<h4>` inside a `PanelGroup`,
  * which takes the `h3` for its bar. See `SectionHeading` below for why the two
- * are written out rather than computed. It was a `<span>` while the panel
- * stack had no outline to join — a lone `h3` under nothing is worse than no heading — and
- * that decision was deferred here as "a heading-structure decision for the whole
- * panel stack". The stack has since made it: the page names itself `h1`
- * (`PageHeader`), every open record names itself `h2` (`PanelStack`), and these
- * are the record's own sections at level three. Which is what lets a reader walk
- * a panel by heading instead of by scrolling it.
+ * are written out rather than computed. It was a `<span>` while the panel stack
+ * had no outline to join — a lone `h3` under nothing is worse than no heading —
+ * and that decision was deferred here as "a heading-structure decision for the
+ * whole panel stack". The stack has since made it: the page names itself `h1`
+ * (`PageHeader`), every open record names itself `h2` (`PanelStack`), and a
+ * section takes the next rung free below whatever encloses it. Which is what
+ * lets a reader walk a panel by heading instead of by scrolling it.
  *
  * `FIELD_LABEL_CLASS` carries the whole look, and Tailwind's preflight strips a
  * heading's own size and weight, so nothing about these moved on screen.

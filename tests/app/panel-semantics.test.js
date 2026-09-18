@@ -72,6 +72,30 @@ function elements(node) {
 }
 
 /**
+ * Components declared in this file whose own JSX renders a heading.
+ *
+ * A `<section>` heads itself when a heading is one hop inside it, and one hop
+ * is exactly what factoring a heading into a local component costs. Matching
+ * the component by NAME would be too generous: `components/layout/SectionHeading`
+ * is a different exported component of the same name that heads at `h2`, and a
+ * panel importing it would satisfy a name check while breaking the outline.
+ * Resolving to a local declaration that demonstrably renders a heading closes
+ * that, and couples the allowance to the fact it stands on — gut the component
+ * and it drops out of this set rather than staying blessed by its name.
+ */
+function localHeadingComponents(source) {
+  const names = new Set();
+  const visit = (node) => {
+    if (ts.isFunctionDeclaration(node) && node.name && elements(node).some((el) => HEADINGS.has(el.tag))) {
+      names.add(node.name.getText());
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return names;
+}
+
+/**
  * An attribute's value as source text — `{expr}` collapses to `expr`, a string
  * literal to its contents. Comparing text is enough for the identity checks
  * below: the three places that must agree are three references to the same
@@ -186,19 +210,18 @@ const strays = [];
 for (const name of panelFiles) {
   const source = parse(path.join(PANELS_DIR, name));
   for (const element of elements(source)) {
-    // Dialogs are their own documents — they carry a DialogTitle, not a rung of
-    // this outline.
     // h4 is now legal — it is the rung a `PanelSection` takes inside a
     // `PanelGroup`. h1, h2, h5 and h6 in a panel body still are not: h2 would
     // be a second record where there is only one, and h5 a level nothing in
-    // this outline reaches.
+    // this outline reaches. Dialogs are exempt wholesale — they are their own
+    // documents, carrying a DialogTitle rather than a rung of this outline.
     const legal = element.tag === "h3" || element.tag === "h4";
     if (HEADINGS.has(element.tag) && !legal && !name.endsWith("Dialog.tsx")) {
       strays.push(`${name}:${element.tag}`);
     }
   }
 }
-assert(strays.length === 0, "panel bodies head their sections at h3", strays.join(", "));
+assert(strays.length === 0, "panel bodies head their sections at h3 or h4", strays.join(", "));
 
 // --- 4: the group bar, and the rung it adds ---------------------------------
 
@@ -242,19 +265,22 @@ assert(
 const unnamed = [];
 for (const name of [...panelFiles, "PanelStack.tsx"]) {
   const source = parse(path.join(PANELS_DIR, name));
+  // A heading one hop away still heads the section — factoring the heading into
+  // a local component (`PanelSection`'s `SectionHeading`) does not un-head it.
+  // Resolved to a declaration in this same file that renders a heading, never
+  // matched by name: `components/layout/SectionHeading` is an unrelated
+  // component of that exact name which heads at `h2`, and a name check would
+  // bless a panel importing it while the stray scan — which only reads this
+  // directory — never saw the `h2`.
+  const local = localHeadingComponents(source);
   for (const element of elements(source)) {
     if (element.tag !== "section") continue;
     const named =
       attr(element.opening, "aria-label") !== null ||
       attr(element.opening, "aria-labelledby") !== null;
-    // `SectionHeading` counts: it is a literal `h3`/`h4` one hop away, and the
-    // assertion above is what keeps it that way. Without this the one component
-    // that factored its heading out would be the only section to look unnamed.
     const headed =
       ts.isJsxElement(element.node) &&
-      elements(element.node).some(
-        (child) => HEADINGS.has(child.tag) || child.tag === "SectionHeading",
-      );
+      elements(element.node).some((child) => HEADINGS.has(child.tag) || local.has(child.tag));
     if (!named && !headed) unnamed.push(`${name}:${element.opening.getStart()}`);
   }
 }
