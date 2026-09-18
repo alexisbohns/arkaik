@@ -5,8 +5,8 @@ icon: sparkles
 # Icon Wobble
 
 A subtle hand-drawn "wobble" applied to every lucide icon: a fixed distortion at
-rest, animating ("boil") while an icon — or the item containing it — is hovered or
-keyboard-focused. Shipped in issue #271 / PR #272.
+rest, animating ("boil") while an icon — or the interactive item containing it — is
+hovered or keyboard-focused. Shipped in issue #271 / PR #272.
 
 This doc is both the reference for arkaik's implementation and a **portable recipe**
 for reproducing the effect in another codebase.
@@ -25,13 +25,18 @@ distracting. Constraints that shaped the design:
 - **Deterministic**: the same icon wobbles identically everywhere; different icons differ.
 - **Per-instance boil**: hovering one icon in a grid must not animate the others.
 - **Accessible**: respect `prefers-reduced-motion`; keyboard focus behaves like hover.
+- **Item-scoped, both signals**: focus boils the focused *item*, never an arbitrary
+  focused element. A container that takes focus on open (a panel, a dialog) holds many
+  icons; resolving focus through the same scope as hover leaves it boiling nothing.
 
 ## What it does (behaviour)
 
 - Every `lucide-react` icon shows a fixed, non-animating wobble at rest.
-- Hovering/focusing an icon **or its enclosing interactive item** (a link, button, or
+- Hovering or focusing an icon **or its enclosing interactive item** (a link, button, or
   menu item) boils that icon — the noise field cycles for as long as it's active, then
   snaps back to the resting shape.
+- Focusing something that is *not* an interactive item — a panel or dialog that autofocuses
+  its container on open — boils nothing, rather than every icon inside it.
 - Only the active icon boils; other icons of the same name stay static.
 - Under `prefers-reduced-motion: reduce`, the static wobble stays and the boil is skipped.
 
