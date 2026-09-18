@@ -291,6 +291,22 @@ assert(
   "PanelGroup re-applies the panel gutter inside its bar",
 );
 
+// --- 5: History opens shut --------------------------------------------------
+
+const nodePanel = parse(path.join(PANELS_DIR, "NodeDetailPanel.tsx"));
+const nodePanelGroups = elements(nodePanel).filter((element) => element.tag === "PanelGroup");
+
+const historyGroup = nodePanelGroups.find((element) => attr(element.opening, "title") === "History");
+assert(historyGroup !== undefined, "the node panel wraps History in a PanelGroup");
+
+if (historyGroup) {
+  assert(
+    attr(historyGroup.opening, "defaultOpen") === "false",
+    "the History group opens shut — it fetches the journal to render a feed nobody scrolled to",
+    `defaultOpen=${attr(historyGroup.opening, "defaultOpen")}`,
+  );
+}
+
 // --- the invariant that catches the next one --------------------------------
 
 // A `<section>` earns the tag by naming itself or by heading itself. One that

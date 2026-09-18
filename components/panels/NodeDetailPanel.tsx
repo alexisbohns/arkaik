@@ -10,6 +10,7 @@ import {
 import { Field } from "@/components/ui/field";
 import { BlockedByField } from "@/components/panels/BlockedByField";
 import { PanelSection, PANEL_GUTTER } from "@/components/panels/PanelSection";
+import { PanelGroup } from "@/components/panels/PanelGroup";
 import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
 import type { Node, Edge } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
@@ -494,19 +495,23 @@ function HistorySection({ node, allNodes }: HistorySectionProps) {
   const timeline = useMemo(() => computeNodeTimeline(journal, node.id), [journal, node.id]);
   const nodesById = useMemo(() => new Map(allNodes.map((n) => [n.id, n])), [allNodes]);
 
+  // The group, not the caller, because emptiness is only knowable after the
+  // journal has arrived — and a bar over nothing is worse than no bar. The two
+  // transient states still draw one: a reader who opened History and saw it
+  // vanish mid-fetch would read that as the panel losing its place.
   if (loading) {
     return (
-      <PanelSection title="History">
-        <p className="text-xs text-muted-foreground">Loading history…</p>
-      </PanelSection>
+      <PanelGroup title="History" defaultOpen={false}>
+        <p className={cn(PANEL_GUTTER, "text-xs text-muted-foreground")}>Loading history…</p>
+      </PanelGroup>
     );
   }
 
   if (error) {
     return (
-      <PanelSection title="History">
-        <p className="text-xs text-muted-foreground">{error}</p>
-      </PanelSection>
+      <PanelGroup title="History" defaultOpen={false}>
+        <p className={cn(PANEL_GUTTER, "text-xs text-muted-foreground")}>{error}</p>
+      </PanelGroup>
     );
   }
 
@@ -515,15 +520,15 @@ function HistorySection({ node, allNodes }: HistorySectionProps) {
   }
 
   return (
-    <PanelSection title="History">
-      <div className="flex flex-col gap-0.5">
+    <PanelGroup title="History" defaultOpen={false}>
+      <div className={cn(PANEL_GUTTER, "flex flex-col gap-0.5")}>
         {[...timeline].reverse().map((event) => (
           // No `onOpen`: this list is already inside the node's own panel, so a
           // row that navigated would navigate to where the reader is standing.
           <FeedRow key={event.id} event={event} nodesById={nodesById} />
         ))}
       </div>
-    </PanelSection>
+    </PanelGroup>
   );
 }
 
@@ -782,13 +787,20 @@ export function NodeDetailPanel({
           onNavigate={onNavigate}
         />
       )}
-      {history && (
-        <HistorySection
-          key={`history-${node.id}`}
-          node={node}
-          allNodes={allNodes ?? NO_NODES}
-        />
-      )}
+      {/* Groups live in a column of their own. `-space-y-px` overlaps each
+          bar's `border-y` with the one above so a run of shut groups reads as
+          one ruled list; the body's `gap-4` would open a four-unit trench
+          between every pair. Parts 2–4 fill this column; for now it holds
+          History alone. */}
+      <div className="flex flex-col -space-y-px">
+        {history && (
+          <HistorySection
+            key={`history-${node.id}`}
+            node={node}
+            allNodes={allNodes ?? NO_NODES}
+          />
+        )}
+      </div>
     </div>
   );
 }
