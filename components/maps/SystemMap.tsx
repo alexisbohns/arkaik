@@ -29,6 +29,7 @@ import { useNodes } from "@/lib/hooks/useNodes";
 import { useProject } from "@/lib/hooks/useProject";
 import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
 import { generateNodeId, edgeId } from "@/lib/utils/id";
+import { duplicateNodeDraft } from "@/lib/utils/node-duplicate";
 import { mapProductId, type ProductGraph } from "@/lib/utils/product-scope";
 import { buildNodeFindingIndex } from "@/lib/utils/quality";
 import type { SystemLayoutMode } from "@/lib/utils/system-layout-options";
@@ -242,6 +243,25 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
     [addNode, nodesById, projectId],
   );
 
+  // Duplicate lands as a fresh record and opens it. The copy carries no edges —
+  // see `duplicateNodeDraft` — so the panel it opens into is where the reader
+  // decides where the copy actually belongs.
+  const handleDuplicateNode = useCallback(
+    async (node: DataNode) => {
+      try {
+        const created = await addNode(
+          duplicateNodeDraft(node, generateNodeId(node.species, node.title, nodesById.keys())),
+        );
+        toast.success(`Duplicated as "${created.title}".`);
+        openNode({ nodeId: created.id });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        toast.error(`Unable to duplicate this node: ${message}`);
+      }
+    },
+    [addNode, nodesById, openNode],
+  );
+
   const handleCreateNode = useCallback(
     async (data: NewNodeFormData) => {
       await addNode({
@@ -319,6 +339,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
         scope={scope}
         history
         onUpdate={handleNodeUpdate}
+        onDuplicate={handleDuplicateNode}
         onCreateNode={handleCreateNodeFromPanel}
         intake={intake}
       >

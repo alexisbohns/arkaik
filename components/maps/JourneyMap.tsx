@@ -32,6 +32,7 @@ import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
 import { generateNodeId, edgeId } from "@/lib/utils/id";
+import { duplicateNodeDraft } from "@/lib/utils/node-duplicate";
 import { wouldCreateCycle } from "@/lib/utils/cycle";
 import { productDisplayTitle, type ProductGraph } from "@/lib/utils/product-scope";
 import type { SpeciesId } from "@/lib/config/species";
@@ -364,6 +365,25 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
       return createdNode;
     },
     [addNode, id, nodesById],
+  );
+
+  // Duplicate lands as a fresh record and opens it. The copy carries no edges —
+  // see `duplicateNodeDraft` — so the panel it opens into is where the reader
+  // decides where the copy actually belongs.
+  const handleDuplicateNode = useCallback(
+    async (node: DataNode) => {
+      try {
+        const created = await addNode(
+          duplicateNodeDraft(node, generateNodeId(node.species, node.title, nodesById.keys())),
+        );
+        toast.success(`Duplicated as "${created.title}".`);
+        openNode({ nodeId: created.id });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        toast.error(`Unable to duplicate this node: ${message}`);
+      }
+    },
+    [addNode, nodesById, openNode],
   );
 
   const handleInsertPlaylistEntry = useCallback(
@@ -764,6 +784,7 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
         history
         onUpdate={handleNodeUpdate}
         onDelete={handleDeleteNodeRequest}
+        onDuplicate={handleDuplicateNode}
         onCreateNode={handleCreateNodeFromPanel}
         intake={intake}
         onZoomShot={(node, platform) => {

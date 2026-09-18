@@ -43,6 +43,12 @@ interface PageShellProps {
   history?: boolean;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
   onDelete?: (nodeId: string) => void;
+  /**
+   * Duplicate this node and open the copy. Absent on read-only surfaces, which
+   * is what hides the menu item — see `duplicateNodeDraft` for what a copy is
+   * and, more to the point, what it is not (it carries no edges).
+   */
+  onDuplicate?: (node: Node) => Promise<void> | void;
   onCreateNode?: (species: "flow" | "view", title: string) => Promise<Node>;
   onCreateAcceptanceForAnchor?: (anchor: Node, title: string) => Promise<Node>;
   /** The acceptance decompose gestures — see `useAcceptanceIntake`. */

@@ -28,6 +28,7 @@ import { useProject } from "@/lib/hooks/useProject";
 import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { findWhereUsed } from "@/lib/utils/where-used";
 import { generateNodeId } from "@/lib/utils/id";
+import { duplicateNodeDraft } from "@/lib/utils/node-duplicate";
 import {
   nodeInScope,
   productDisplayTitle,
@@ -428,6 +429,22 @@ export default function ProjectLibraryPage() {
     });
   }
 
+  // Duplicate lands as a fresh record and opens it. The copy carries no edges —
+  // see `duplicateNodeDraft` — so the panel it opens into is where the reader
+  // decides where the copy actually belongs.
+  async function handleDuplicateNode(node: DataNode) {
+    try {
+      const created = await addNode(
+        duplicateNodeDraft(node, generateNodeId(node.species, node.title, nodesById.keys())),
+      );
+      toast.success(`Duplicated as "${created.title}".`);
+      openNode({ nodeId: created.id });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      toast.error(`Unable to duplicate this node: ${message}`);
+    }
+  }
+
   async function handleCreateNode(data: NewNodeFormData) {
     await addNode({
       id: generateNodeId(data.species, data.title, nodesById.keys()),
@@ -492,6 +509,7 @@ export default function ProjectLibraryPage() {
         scope={scope}
         history
         onUpdate={handleNodeUpdate}
+        onDuplicate={handleDuplicateNode}
         onCreateNode={handleCreateNodeFromPanel}
         intake={intake}
       >
