@@ -186,10 +186,26 @@ items, no button.
 
 - **Duplicate.** Mints an id with `generateNodeId`, copies title (suffixed
   `(copy)`), description, status and metadata, writes through the existing
-  `createNode` path, and opens the copy in a panel above the original. **It
-  copies no edges.** A duplicated acceptance therefore covers nothing and lands
-  unanchored in intake, which is the honest state for a record whose anchors have
-  not been chosen — and the panel it opens into is the one place to choose them.
+  `createNode` path, and opens the copy in a panel above the original.
+
+  **It writes no edges of its own** — but it is not true that a copy has none.
+  `applyOps` folds synthesized `composes` edges on every `create_node`, so a
+  duplicated *flow* arrives composing everything its playlist names. That is
+  correct and not incidental: a flow carrying a playlist with no `composes`
+  edges would fail `playlist-composes-coherence`, and the synthesis is what
+  keeps a copied playlist a real one. It does mean duplicating a flow changes
+  the graph's shape — every view it plays gains a second parent — which is worth
+  knowing before reaching for it on a Journey map.
+
+  A duplicated **acceptance** genuinely covers nothing: `covers` edges are not
+  synthesized from anything, so the copy lands unanchored in intake, which is the
+  honest state for a record whose anchors have not been chosen — and the panel it
+  opens into is the one place to choose them.
+
+  The copy carries the original's `status`, `refs` and `platformScreenshots`
+  along with the rest of its metadata. That is deliberate — a duplicate is a
+  starting point, not a blank — but it is the opposite of what Split does, which
+  starts every piece as an idea.
   Needs a new `onDuplicate` threaded `PageShell` → `ProjectPanels` →
   `NodeDetailPanel` → the header.
 - **Split into several…** — acceptance only, and only with `intake`. The existing
