@@ -38,11 +38,15 @@ already in `components/ui/collapsible.tsx`.
 its own — the gutter is per-section, owned by `PANEL_GUTTER` — so a group placed
 directly in the body already spans the panel's full width, and needs no bleed.
 The bar re-applies `PANEL_GUTTER` inside itself and carries `border-y`.
-Consecutive groups are stacked at `-mt-px` so two adjacent hairlines collapse
-into one, which is what makes a run of collapsed groups read as a table of
-contents rather than as a ladder of double rules. The groups therefore live in a
-gapless flex column of their own: the body's `gap-4` would otherwise open a
-four-unit trench between every pair of bars.
+Consecutive bars must collapse their two adjacent hairlines into one — that is
+what makes a run of shut groups read as a table of contents rather than as a
+ladder of double rules. The overlap belongs to the **container**, which applies
+`flex flex-col -space-y-px`, rather than to each group pulling itself up with
+`-mt-px`. A sibling relationship is the parent's to own: a container cannot be
+given a `gap` and the overlap at once, the first group does not pull itself into
+whatever precedes it, and a group used alone is not one pixel off. The body's
+own `gap-4` would otherwise open a four-unit trench between every pair of bars,
+which is why the groups need a column of their own either way.
 
 **The trigger is the heading.** `<h3><CollapsibleTrigger>…</CollapsibleTrigger></h3>`
 — the disclosure pattern, so the group is both an outline entry and a control.
@@ -52,7 +56,7 @@ that rotates on `data-state="open"`.
 ```tsx
 interface PanelGroupProps {
   title: ReactNode;
-  /** Right of the title, left of the chevron — a count, a chip, a ghost action. */
+  /** Right of the title, left of the chevron. Display only — see below. */
   meta?: ReactNode;
   /** Open on mount. History passes false; everything else takes the default. */
   defaultOpen?: boolean;
@@ -104,10 +108,19 @@ the same vocabulary `FindingsSection` already uses — and the chip is on the ba
 so it is visible whether the group is open or shut. Relations is open by default,
 so the common case is strictly additive: the chip *and* the list.
 
-The same slot carries the Acceptances create action (`+`) on a view or flow,
-which today is `PanelSection`'s `action` prop on that section. It stays there
-too; the group's chip and the section's button do not collide because they are
-on different bars.
+**The slot is display-only — chips and counts, never a control.** The bar's
+whole content is the `CollapsibleTrigger`, which Radix renders as a real
+`<button>`, so anything interactive in `meta` would be a button inside a button:
+invalid HTML, undefined AT behaviour, and an inner control the outer trigger
+swallows the clicks of. The Acceptances create action (`+`) therefore stays
+exactly where it is today, on `PanelSection`'s own `action` prop, one level down
+— the group's chip and the section's button never collide because they are on
+different bars.
+
+Note the consequence for the outline: `meta` sits inside the trigger, so it
+joins the button's accessible name and the `h3`'s text. The Relations entry
+reads "Relations critical 3", which is what we want a reader jumping by heading
+to hear.
 
 ## Part 3 — the Platforms group
 
