@@ -291,6 +291,31 @@ assert(
   "PanelGroup re-applies the panel gutter inside its bar",
 );
 
+// --- 4b: whose actions are whose --------------------------------------------
+
+// The frame's chrome and the record's actions are different things owned by
+// different components, and nothing on screen says which is which: the `⋯` menu
+// and the `✕` sit side by side in one header row. The tempting refactor is to
+// pull the menu down into `PanelStack` beside the close button it looks like —
+// and that would hand the frame a say over what a record can do, which is
+// exactly backwards. `PanelStack` renders raw-bundle, cell and criterion panels
+// too, none of which has a Duplicate.
+//
+// Textual, on the module's imports: this is a claim about which file the menu
+// is built in, and an import is the shortest true statement of that.
+
+const stackSource = fs.readFileSync(path.join(PANELS_DIR, "PanelStack.tsx"), "utf8");
+assert(
+  !/DropdownMenu/.test(stackSource),
+  "PanelStack builds no menu — the frame owns the close button, not the record's actions",
+);
+
+const nodePanelSource = fs.readFileSync(path.join(PANELS_DIR, "NodeDetailPanel.tsx"), "utf8");
+assert(
+  /DropdownMenu/.test(nodePanelSource),
+  "the node panel builds the header menu — the record's actions are the record's",
+);
+
 // --- 5: History opens shut --------------------------------------------------
 
 const nodePanel = parse(path.join(PANELS_DIR, "NodeDetailPanel.tsx"));

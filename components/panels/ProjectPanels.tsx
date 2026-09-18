@@ -203,191 +203,198 @@ export function ProjectPanels({
   const splitNode = splitTarget ? nodesById.get(splitTarget.id) ?? splitTarget : null;
   // What the dialog's sentence about what carries over needs. Its own walk,
   // through the same `coveredAnchorsOf` every other surface uses, so there is
-  // one definition of what "covered" means.
-  const splitAnchorCount = splitNode ? coveredAnchorsOf(splitNode, allNodes, allEdges).length : 0;
+  // one definition of what "covered" means — memoized because it is a walk of
+  // every edge in the project, and without this it re-ran on every render for
+  // as long as the dialog stayed open (a keystroke in it is a render here).
+  const splitAnchorCount = useMemo(
+    () => (splitNode ? coveredAnchorsOf(splitNode, allNodes, allEdges).length : 0),
+    [splitNode, allNodes, allEdges],
+  );
 
   return (
     <>
-    <PanelStack<PanelDescriptor>
-      entries={entries}
-      surfaceLabel={surfaceLabel}
-      surfaceCard={surfaceCard}
-      onLayoutChange={onLayoutChange}
-      labelOf={labelOf}
-      accentOf={(entry) => panelStates[entry.instanceId]?.accent}
-      requestCloseAt={requestCloseAt}
-      renderHeader={(entry) => {
-        if (entry.payload.kind === "raw")
-          return <span className="truncate text-sm font-medium">Raw bundle</span>;
+      <PanelStack<PanelDescriptor>
+        entries={entries}
+        surfaceLabel={surfaceLabel}
+        surfaceCard={surfaceCard}
+        onLayoutChange={onLayoutChange}
+        labelOf={labelOf}
+        accentOf={(entry) => panelStates[entry.instanceId]?.accent}
+        requestCloseAt={requestCloseAt}
+        renderHeader={(entry) => {
+          if (entry.payload.kind === "raw")
+            return <span className="truncate text-sm font-medium">Raw bundle</span>;
 
-        if (entry.payload.kind === "cell")
-          return (
-            <CellDetailPanelHeader
-              domain={entry.payload.domain}
-              surface={entry.payload.surface}
-              library={qualityLibrary}
-              section={qualitySection}
-            />
-          );
+          if (entry.payload.kind === "cell")
+            return (
+              <CellDetailPanelHeader
+                domain={entry.payload.domain}
+                surface={entry.payload.surface}
+                library={qualityLibrary}
+                section={qualitySection}
+              />
+            );
 
-        if (entry.payload.kind === "criterion")
-          return (
-            <CriterionDetailPanelHeader
-              criterionId={entry.payload.criterionId}
-              surface={entry.payload.surface}
-              library={qualityLibrary}
-              section={qualitySection}
-            />
-          );
+          if (entry.payload.kind === "criterion")
+            return (
+              <CriterionDetailPanelHeader
+                criterionId={entry.payload.criterionId}
+                surface={entry.payload.surface}
+                library={qualityLibrary}
+                section={qualitySection}
+              />
+            );
 
-        const node = nodesById.get(entry.key);
-        return node ? (
-          <NodeDetailPanelHeader
-            node={node}
-            onDuplicate={onDuplicate}
-            onDelete={onDelete}
-            // Acceptances only, and only where the decompose gestures exist:
-            // splitting is a write, and a read-only surface passes no `intake`.
-            onSplit={
-              intake && node.species === "acceptance" ? () => setSplitTarget(node) : undefined
-            }
-          />
-        ) : (
-          <PanelHeaderEntityId id={entry.key} />
-        );
-      }}
-      renderBody={(entry, index) => {
-        if (entry.payload.kind === "raw") {
-          return <RawBundlePanel projectId={projectId} instanceId={entry.instanceId} />;
-        }
-
-        if (entry.payload.kind === "cell") {
-          const { domain, surface } = entry.payload;
-          return (
-            <CellDetailPanel
-              domain={domain}
-              surface={surface}
-              library={qualityLibrary}
-              section={qualitySection}
-              cell={qualityMatrix.matrix[domain]?.[surface] ?? null}
-              trend={qualityTrend}
-              findings={qualityFindings}
-              nodesById={nodesById}
-              projectId={projectId}
-              // Above this panel, never in place of it — the rule every other
-              // navigation in the stack follows, and the reason the trail still
-              // reads back to the cell the reader came from.
-              onOpenNode={(nodeId) => openNode({ nodeId }, index + 1)}
-              onOpenCriterion={(criterionId, criterionSurface) =>
-                openCriterion(criterionId, criterionSurface, index + 1)
+          const node = nodesById.get(entry.key);
+          return node ? (
+            <NodeDetailPanelHeader
+              node={node}
+              onDuplicate={onDuplicate}
+              onDelete={onDelete}
+              // Acceptances only, and only where the decompose gestures exist:
+              // splitting is a write, and a read-only surface passes no `intake`.
+              onSplit={
+                intake && node.species === "acceptance" ? () => setSplitTarget(node) : undefined
               }
             />
+          ) : (
+            <PanelHeaderEntityId id={entry.key} />
           );
-        }
+        }}
+        renderBody={(entry, index) => {
+          if (entry.payload.kind === "raw") {
+            return <RawBundlePanel projectId={projectId} instanceId={entry.instanceId} />;
+          }
 
-        if (entry.payload.kind === "criterion") {
-          return (
-            <CriterionDetailPanel
-              criterionId={entry.payload.criterionId}
-              surface={entry.payload.surface}
-              library={qualityLibrary}
-              section={qualitySection}
-              findings={qualityFindings}
-              nodesById={nodesById}
-              // From this panel's own depth, like every other navigation in the
-              // stack: following a finding into the graph opens the node ABOVE
-              // the criterion rather than in place of it, which is what depth 0
-              // would do.
-              //
-              // Sitting above it is not the same as surviving it, and no
-              // comment here should promise that it is. Opening the node
-              // publishes `?node=`; Back — or closing that node panel, which
-              // republishes an empty address — hands `reconcileArrival` a
-              // missing id, and a missing id closes the *whole* stack, this
-              // criterion with it. One address, and a criterion is not it. Raw
-              // has had the identical behaviour since it landed. What brings
-              // the panel back is the Quality page's own `?criterion=` sync,
-              // and it comes back remounted, so the reader loses their scroll
-              // position in it.
-              onOpenNode={(nodeId) => openNode({ nodeId }, index + 1)}
-            />
-          );
-        }
-
-        const node = nodesById.get(entry.key);
-
-        // Say so rather than dropping the entry. Suppression would collapse
-        // three cases nothing here can tell apart — a page that carries no
-        // nodes at all, a page whose nodes have not arrived yet (the same
-        // window the prune above refuses to act in), and an id that names
-        // nothing — and in every one of them the trail and the `?node=` URL
-        // would still promise a panel the user cannot see. It also spares the
-        // loading case a body that flickers in and out.
-        if (!node)
-          return (
-            <div className="min-h-0 flex-1 overflow-y-auto p-5 lg:p-6">
-              <EmptyState
-                message="This page has no node with that id — it may live on another surface, or it may no longer exist."
-                action={
-                  <Link
-                    href={`/project/${projectId}/library`}
-                    className="text-sm underline underline-offset-4"
-                  >
-                    Look for it in the Library
-                  </Link>
+          if (entry.payload.kind === "cell") {
+            const { domain, surface } = entry.payload;
+            return (
+              <CellDetailPanel
+                domain={domain}
+                surface={surface}
+                library={qualityLibrary}
+                section={qualitySection}
+                cell={qualityMatrix.matrix[domain]?.[surface] ?? null}
+                trend={qualityTrend}
+                findings={qualityFindings}
+                nodesById={nodesById}
+                projectId={projectId}
+                // Above this panel, never in place of it — the rule every other
+                // navigation in the stack follows, and the reason the trail still
+                // reads back to the cell the reader came from.
+                onOpenNode={(nodeId) => openNode({ nodeId }, index + 1)}
+                onOpenCriterion={(criterionId, criterionSurface) =>
+                  openCriterion(criterionId, criterionSurface, index + 1)
                 }
               />
-            </div>
-          );
-
-        return (
-          <NodeDetailPanel
-            node={node}
-            scope={scope}
-            initialPlatform={entry.payload.initialPlatform}
-            onUpdate={onUpdate}
-            allNodes={allNodes}
-            allEdges={allEdges}
-            history={history}
-            onNavigate={(target) => openNode({ nodeId: target.id }, index + 1)}
-            onCreateNode={onCreateNode}
-            onCreateAcceptanceForAnchor={onCreateAcceptanceForAnchor}
-            intake={intake}
-            onZoomShot={onZoomShot}
-            findings={qualityFindings}
-            // From this panel's own depth, the rule the criterion panel's
-            // `onOpenNode` above already follows: a criterion opened out of a
-            // node sits ABOVE that node rather than replacing it, so the trail
-            // still reads back to the node the reader came from.
-            onOpenCriterion={(criterionId, surface) => openCriterion(criterionId, surface, index + 1)}
-          />
-        );
-      }}
-      onCloseAt={closeAt}
-      onUnwindTo={unwindTo}
-    >
-      {children}
-    </PanelStack>
-    {intake && splitNode && (
-      <SplitAcceptanceDialog
-        open
-        onOpenChange={(next) => { if (!next) setSplitTarget(null); }}
-        title={splitNode.title}
-        anchorCount={splitAnchorCount}
-        // Not `run`: the dialog has to know whether the write landed, so
-        // that a failure leaves the rows on screen instead of discarding
-        // them. Reported here all the same, then rethrown.
-        onSubmit={async (titles) => {
-          try {
-            await intake.split(splitNode, titles);
-          } catch (err) {
-            toast.error("Couldn't split the acceptance.");
-            console.error(err);
-            throw err;
+            );
           }
+
+          if (entry.payload.kind === "criterion") {
+            return (
+              <CriterionDetailPanel
+                criterionId={entry.payload.criterionId}
+                surface={entry.payload.surface}
+                library={qualityLibrary}
+                section={qualitySection}
+                findings={qualityFindings}
+                nodesById={nodesById}
+                // From this panel's own depth, like every other navigation in the
+                // stack: following a finding into the graph opens the node ABOVE
+                // the criterion rather than in place of it, which is what depth 0
+                // would do.
+                //
+                // Sitting above it is not the same as surviving it, and no
+                // comment here should promise that it is. Opening the node
+                // publishes `?node=`; Back — or closing that node panel, which
+                // republishes an empty address — hands `reconcileArrival` a
+                // missing id, and a missing id closes the *whole* stack, this
+                // criterion with it. One address, and a criterion is not it. Raw
+                // has had the identical behaviour since it landed. What brings
+                // the panel back is the Quality page's own `?criterion=` sync,
+                // and it comes back remounted, so the reader loses their scroll
+                // position in it.
+                onOpenNode={(nodeId) => openNode({ nodeId }, index + 1)}
+              />
+            );
+          }
+
+          const node = nodesById.get(entry.key);
+
+          // Say so rather than dropping the entry. Suppression would collapse
+          // three cases nothing here can tell apart — a page that carries no
+          // nodes at all, a page whose nodes have not arrived yet (the same
+          // window the prune above refuses to act in), and an id that names
+          // nothing — and in every one of them the trail and the `?node=` URL
+          // would still promise a panel the user cannot see. It also spares the
+          // loading case a body that flickers in and out.
+          if (!node)
+            return (
+              <div className="min-h-0 flex-1 overflow-y-auto p-5 lg:p-6">
+                <EmptyState
+                  message="This page has no node with that id — it may live on another surface, or it may no longer exist."
+                  action={
+                    <Link
+                      href={`/project/${projectId}/library`}
+                      className="text-sm underline underline-offset-4"
+                    >
+                      Look for it in the Library
+                    </Link>
+                  }
+                />
+              </div>
+            );
+
+          return (
+            <NodeDetailPanel
+              node={node}
+              scope={scope}
+              initialPlatform={entry.payload.initialPlatform}
+              onUpdate={onUpdate}
+              allNodes={allNodes}
+              allEdges={allEdges}
+              history={history}
+              onNavigate={(target) => openNode({ nodeId: target.id }, index + 1)}
+              onCreateNode={onCreateNode}
+              onCreateAcceptanceForAnchor={onCreateAcceptanceForAnchor}
+              intake={intake}
+              onZoomShot={onZoomShot}
+              findings={qualityFindings}
+              // From this panel's own depth, the rule the criterion panel's
+              // `onOpenNode` above already follows: a criterion opened out of a
+              // node sits ABOVE that node rather than replacing it, so the trail
+              // still reads back to the node the reader came from.
+              onOpenCriterion={(criterionId, surface) => openCriterion(criterionId, surface, index + 1)}
+            />
+          );
         }}
-      />
-    )}
+        onCloseAt={closeAt}
+        onUnwindTo={unwindTo}
+      >
+        {children}
+      </PanelStack>
+      {/* One dialog for the whole stack, a sibling of it rather than a child of
+          any panel — two open acceptance panels used to mount two. */}
+      {intake && splitNode && (
+        <SplitAcceptanceDialog
+          open
+          onOpenChange={(next) => { if (!next) setSplitTarget(null); }}
+          title={splitNode.title}
+          anchorCount={splitAnchorCount}
+          // Not `run`: the dialog has to know whether the write landed, so
+          // that a failure leaves the rows on screen instead of discarding
+          // them. Reported here all the same, then rethrown.
+          onSubmit={async (titles) => {
+            try {
+              await intake.split(splitNode, titles);
+            } catch (err) {
+              toast.error("Couldn't split the acceptance.");
+              console.error(err);
+              throw err;
+            }
+          }}
+        />
+      )}
     </>
   );
 }

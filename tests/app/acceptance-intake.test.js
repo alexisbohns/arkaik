@@ -409,6 +409,15 @@ test("the copy's metadata is its own", () => {
   assert.deepEqual(original.metadata.values, ["speed"]);
 });
 
+test("the copy's platforms array is its own", () => {
+  // The same hazard as the metadata one, one level up: `platforms` is a
+  // top-level array, and a spread would have shared it.
+  const original = node("V-notes", "view", { platforms: ["web"] });
+  const copy = duplicateNodeDraft(original, "V-notes-2");
+  copy.platforms.push("ios");
+  assert.deepEqual(original.platforms, ["web"]);
+});
+
 test("an empty title still yields \"(copy)\"", () => {
   const original = { ...node("A-x", "acceptance"), title: "" };
   assert.equal(duplicateNodeDraft(original, "A-x2").title, "(copy)");

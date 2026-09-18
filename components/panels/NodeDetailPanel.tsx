@@ -599,15 +599,26 @@ export function NodeDetailPanelHeader({
               type="button"
               variant="ghost"
               size="icon"
-              className="ml-auto"
-              aria-label={`Actions for ${node.title}`}
+              // `shrink-0` for the reason the close button beside it carries
+              // one: this sits in a `min-w-0 flex-1` row next to truncating
+              // identity chips, and a long entity id would otherwise squash the
+              // button instead of truncating itself.
+              className="ml-auto shrink-0 cursor-pointer"
+              // The id when there is no title: an untitled record is reachable
+              // — a duplicate of one is titled just "(copy)", and a new one is
+              // titled nothing at all — and "Actions for " names nothing.
+              aria-label={`Actions for ${node.title || node.id}`}
             >
               <MoreHorizontalIcon className="size-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {onDuplicate && (
-              <DropdownMenuItem onSelect={() => void onDuplicate(node)}>
+              // `.catch`, not `void`: the prop may return a promise, and the
+              // hook behind it swallows its own failures — but nothing in the
+              // type stops a caller from handing over one that rejects, and
+              // `void` would drop that on the floor unreported.
+              <DropdownMenuItem onSelect={() => void Promise.resolve(onDuplicate(node)).catch(console.error)}>
                 <CopyPlusIcon /> Duplicate
               </DropdownMenuItem>
             )}
