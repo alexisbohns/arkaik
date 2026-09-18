@@ -78,11 +78,18 @@ export function RelationsGroup({
   // the first anchor or the first acceptance gets made.
   const hasRefs = (node.metadata?.refs ?? []).length > 0;
   const hasFindings = openFindings !== null;
-  const hasCovers =
-    node.species === "acceptance" &&
-    Boolean(allEdges) &&
-    (intake !== undefined ||
-      (allEdges ?? []).some((e) => e.edge_type === "covers" && e.source_id === node.id));
+  // Every acceptance has a covers story, including "none" — so this asks only
+  // whether the section can be rendered at all, never whether it found anything.
+  //
+  // The narrower test (an anchor exists, or `intake` offers the attach row) hid
+  // the whole group on a read-only acceptance that covers nothing and has no
+  // other relation, taking "Unanchored (covers nothing)" with it. That line is
+  // not an empty state, it is a finding: an acceptance anchored to nothing is an
+  // orphan, and a reader who cannot see it said has no way to tell an orphan
+  // from a panel that simply does not list covers. The group's "render nothing
+  // when every child would" rule is about sections with nothing to say, and this
+  // one always has something.
+  const hasCovers = node.species === "acceptance" && Boolean(allEdges);
   const hasAcceptances =
     isAnchor && Boolean(allNodes && allEdges) &&
     (onCreateAcceptanceForAnchor !== undefined ||
