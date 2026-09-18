@@ -202,10 +202,14 @@ function ConnectionItem({
  * The decision → node lists the three edge types define (spec §5).
  *
  * Exported so `RelationsGroup` can ask whether this section has any rows
- * without walking the edges a second time — the same arrangement
+ * without a second *implementation* of the walk — the same arrangement
  * `crossLayerConnections` has with `ConnectionsSection`, and for the same
- * reason: two walks are two chances for the bar and the section to disagree
- * about whether there is anything here.
+ * reason: two implementations are two chances for the bar and the section to
+ * disagree about whether there is anything here. The bar and the section do
+ * each call this on the same render, which is a walk run twice over a handful
+ * of edges; what must not be duplicated is the definition. Passing the rows
+ * down instead would reunite the two at the cost of the flag, which is the
+ * disagreement `hasDecisionLinkRows` exists to prevent.
  */
 export function decisionConnections(node: Node, allNodes: Node[], allEdges: Edge[]) {
   const byId = new Map(allNodes.map((n) => [n.id, n]));

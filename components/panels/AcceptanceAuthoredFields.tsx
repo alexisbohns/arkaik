@@ -19,6 +19,11 @@ interface AcceptanceAuthoredFieldsProps {
    * Only for the split dialog's anchor count — the sentence it writes says how
    * many nodes the copies will cover, and a dialog told nothing would quietly
    * drop a true clause about the reader's own graph.
+   *
+   * **Transitional.** Part 5 moves the split dialog onto the panel header's
+   * menu and `anchorCount` goes with it; nothing else here reads the graph, so
+   * both props should leave this component's surface in that part rather than
+   * linger as two unexplained arrays.
    */
   allNodes: Node[];
   allEdges: Edge[];
@@ -64,6 +69,8 @@ export function AcceptanceAuthoredFields({ node, allNodes, allEdges, onUpdate, i
     return () => clearTimeout(t);
   }, [gherkin, onUpdate]);
 
+  // Transitional, with the two props above: this goes when the split dialog
+  // moves to the header menu in Part 5.
   // Its own walk rather than a count threaded down from
   // `AcceptanceMembershipField`, which derives the same thing for its hint: two
   // cheap filters over the same edges beat a prop two components must keep in

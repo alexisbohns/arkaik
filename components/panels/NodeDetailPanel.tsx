@@ -162,8 +162,14 @@ function NodeFields({ node, onUpdate, allNodes, onNavigate, membership, authored
   }, [description, node.id, onUpdate]);
 
   function handleStatusChange(value: StatusId) {
+    // Nothing at all without a save path, local state included: the select is
+    // disabled on a read-only surface, and this makes that the whole truth
+    // rather than a property of the trigger. A `setStatus` that ran anyway
+    // would let the panel show a status the store has never heard of the
+    // moment anything else reached this handler.
+    if (!onUpdate) return;
     setStatus(value);
-    onUpdate?.(node.id, { status: value });
+    onUpdate(node.id, { status: value });
   }
 
   function handleTitlePaste(e: React.ClipboardEvent<HTMLDivElement>) {
@@ -211,7 +217,23 @@ function NodeFields({ node, onUpdate, allNodes, onNavigate, membership, authored
       </div>
       {usesSingleStatusField && (
         <Field label="Status" htmlFor={`${fieldId}-status`}>
-          <Select value={status} onValueChange={(v) => handleStatusChange(v as StatusId)}>
+          {/* Disabled without `onUpdate`, not hidden — the opposite of
+              `ProductSection`, deliberately. A status is a fact the reader of a
+              read-only surface (Design, Changelog, the quality pages) came here
+              to see, so withdrawing it would trade a false affordance for
+              missing information; a product assignment is only ever an
+              affordance, and one that cannot save is worth nothing on screen.
+              So the value stays and the control stops claiming to be editable.
+
+              This panel showed a live-looking, unsaveable select on read-only
+              data models and API endpoints before the acceptance joined them —
+              the same defect, fixed here for all three rather than left to
+              disagree between species. */}
+          <Select
+            value={status}
+            onValueChange={(v) => handleStatusChange(v as StatusId)}
+            disabled={!onUpdate}
+          >
             <SelectTrigger id={`${fieldId}-status`}>
               <SelectValue />
             </SelectTrigger>
@@ -612,7 +634,7 @@ export function NodeDetailPanel({
           ) : undefined
         }
       />
-      {node.species === "decision" && allNodes && allEdges && onUpdate && (
+      {node.species === "decision" && allNodes && onUpdate && (
         <DecisionEditor
           key={`decision-${node.id}`}
           node={node}

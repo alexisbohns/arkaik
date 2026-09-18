@@ -38,7 +38,10 @@ export function findWhereUsed(nodeId: string, allNodes: readonly Node[]): Node[]
 /**
  * The data models, API endpoints and decisions this node is wired to — the rows
  * `ConnectionsSection` lists, lifted out of it so `RelationsGroup` can ask
- * whether there are any without walking the edges a second time.
+ * whether there are any without a second *implementation* of the walk. Both do
+ * call it on the same render; it is the definition that is shared, not the
+ * walk, and sharing the definition is what keeps the bar and the section from
+ * disagreeing.
  *
  * `composes` is excluded because it is the playlist's own edge — what a flow is
  * made of, which `PlaylistEditor` lists in full — and was never part of this
@@ -85,9 +88,9 @@ export function crossLayerConnections(
  * `CoversSection` lists, and the anchors `AcceptanceMembershipField` counts for
  * its Product hint (and `AcceptanceAuthoredFields` for the split dialog's).
  *
- * Shared rather than written twice because those two are the same question
- * asked by two components that no longer render inside one another, and a
- * derivation copied into both is a derivation that drifts. Resolved, not merely
+ * Shared rather than written out again in each because all three are the same
+ * question asked by components that no longer render inside one another, and a
+ * derivation copied into each is a derivation that drifts. Resolved, not merely
  * counted: a `covers` edge pointing at a node this snapshot does not hold is
  * dropped, which is what `productsOfAcceptance` does too — so a hint that says
  * "the 2 nodes it covers" never counts an anchor the panel cannot show.
