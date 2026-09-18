@@ -1,7 +1,10 @@
+"use client";
+
 import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 import { FIELD_LABEL_CLASS } from "@/components/ui/field";
+import { useInPanelGroup } from "@/components/panels/panel-group-context";
 
 /**
  * The detail-panel section scaffold — panel gutter, micro-label heading, body —
@@ -24,8 +27,10 @@ import { FIELD_LABEL_CLASS } from "@/components/ui/field";
  * right of the heading — hoisted here so the next section that needs one does not
  * re-derive the `justify-between` row.
  *
- * The heading is an `<h3>`. It was a `<span>` while the panel stack had no
- * outline to join — a lone `h3` under nothing is worse than no heading — and
+ * The heading is an `<h3>` standing alone and an `<h4>` inside a `PanelGroup`,
+ * which takes the `h3` for its bar. See `SectionHeading` below for why the two
+ * are written out rather than computed. It was a `<span>` while the panel
+ * stack had no outline to join — a lone `h3` under nothing is worse than no heading — and
  * that decision was deferred here as "a heading-structure decision for the whole
  * panel stack". The stack has since made it: the page names itself `h1`
  * (`PageHeader`), every open record names itself `h2` (`PanelStack`), and these
@@ -58,16 +63,38 @@ export const PANEL_GUTTER = "px-5 lg:px-6";
  */
 export const PANEL_GUTTER_BLEED = "-mx-5 lg:-mx-6";
 
+/**
+ * The section's heading, at whatever rung it is standing on.
+ *
+ * `h3` on its own — the record's own section, which is what every section in
+ * this panel stack was before groups existed and what `CriterionDetailPanel` and
+ * `CellDetailPanel` still are. `h4` inside a `PanelGroup`, whose bar took the
+ * `h3`.
+ *
+ * Two literal tags rather than a computed `<Heading>` variable, because the
+ * outline is checked statically (`tests/app/panel-semantics.test.js`) and a tag
+ * name held in a variable is a level no reader of the source — human or test —
+ * can see. The cost is one ternary; the benefit is that the next person to
+ * change a heading level here trips a test instead of shipping it.
+ */
+function SectionHeading({ title }: { title: ReactNode }) {
+  return useInPanelGroup() ? (
+    <h4 className={FIELD_LABEL_CLASS}>{title}</h4>
+  ) : (
+    <h3 className={FIELD_LABEL_CLASS}>{title}</h3>
+  );
+}
+
 export function PanelSection({ title, action, children, className }: PanelSectionProps) {
   return (
     <section className={cn(PANEL_GUTTER, "flex flex-col gap-2", className)}>
       {action ? (
         <div className="flex items-center justify-between">
-          <h3 className={FIELD_LABEL_CLASS}>{title}</h3>
+          <SectionHeading title={title} />
           {action}
         </div>
       ) : (
-        <h3 className={FIELD_LABEL_CLASS}>{title}</h3>
+        <SectionHeading title={title} />
       )}
       {children}
     </section>

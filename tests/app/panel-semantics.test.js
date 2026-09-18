@@ -162,15 +162,22 @@ assert(
 
 const panelSection = parse(path.join(PANELS_DIR, "PanelSection.tsx"));
 const panelSectionHeadings = elements(panelSection).filter((element) => HEADINGS.has(element.tag));
+// Exactly one of each, in one ternary: standalone the section is the record's
+// own level-three, nested in a group it is the group's level-four. Written as a
+// pair of literal tags rather than a computed `<Heading>` so that this check can
+// still see which levels exist — a dynamic tag name would make the outline
+// unreadable to everything but a browser.
 assert(
-  panelSectionHeadings.length === 2 && panelSectionHeadings.every((element) => element.tag === "h3"),
-  "PanelSection heads both its variants with h3",
+  panelSectionHeadings.length === 2 &&
+    panelSectionHeadings.some((element) => element.tag === "h3") &&
+    panelSectionHeadings.some((element) => element.tag === "h4"),
+  "PanelSection heads at h3 standalone and h4 inside a group",
   `found ${panelSectionHeadings.map((element) => element.tag).join(", ") || "none"}`,
 );
 
-// Every heading in a panel module is h3, bar the record's own h2 in the stack.
-// h4 is the tell that someone nested a section inside a section without saying
-// so; h2 anywhere else is a second record where there is only one.
+// Every heading in a panel module is h3 or h4, bar the record's own h2 in the
+// stack: h3 for a group bar or a standalone section, h4 for a section inside a
+// group. Anything else is a rung this outline does not have.
 const panelFiles = fs
   .readdirSync(PANELS_DIR)
   .filter((name) => name.endsWith(".tsx") && name !== "PanelStack.tsx");
@@ -181,7 +188,12 @@ for (const name of panelFiles) {
   for (const element of elements(source)) {
     // Dialogs are their own documents — they carry a DialogTitle, not a rung of
     // this outline.
-    if (HEADINGS.has(element.tag) && element.tag !== "h3" && !name.endsWith("Dialog.tsx")) {
+    // h4 is now legal — it is the rung a `PanelSection` takes inside a
+    // `PanelGroup`. h1, h2, h5 and h6 in a panel body still are not: h2 would
+    // be a second record where there is only one, and h5 a level nothing in
+    // this outline reaches.
+    const legal = element.tag === "h3" || element.tag === "h4";
+    if (HEADINGS.has(element.tag) && !legal && !name.endsWith("Dialog.tsx")) {
       strays.push(`${name}:${element.tag}`);
     }
   }
@@ -235,9 +247,14 @@ for (const name of [...panelFiles, "PanelStack.tsx"]) {
     const named =
       attr(element.opening, "aria-label") !== null ||
       attr(element.opening, "aria-labelledby") !== null;
+    // `SectionHeading` counts: it is a literal `h3`/`h4` one hop away, and the
+    // assertion above is what keeps it that way. Without this the one component
+    // that factored its heading out would be the only section to look unnamed.
     const headed =
       ts.isJsxElement(element.node) &&
-      elements(element.node).some((child) => HEADINGS.has(child.tag));
+      elements(element.node).some(
+        (child) => HEADINGS.has(child.tag) || child.tag === "SectionHeading",
+      );
     if (!named && !headed) unnamed.push(`${name}:${element.opening.getStart()}`);
   }
 }
