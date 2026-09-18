@@ -188,6 +188,40 @@ for (const name of panelFiles) {
 }
 assert(strays.length === 0, "panel bodies head their sections at h3", strays.join(", "));
 
+// --- 4: the group bar, and the rung it adds ---------------------------------
+
+const panelGroup = parse(path.join(PANELS_DIR, "PanelGroup.tsx"));
+const groupElements = elements(panelGroup);
+
+// The bar is a disclosure: a heading whose whole content is the button that
+// opens it. Either half alone is a different, worse thing — a heading that
+// cannot be operated, or a button the outline cannot see.
+const groupHeading = groupElements.find((element) => element.tag === "h3");
+assert(groupHeading !== undefined, "PanelGroup heads its bar with an h3");
+
+if (groupHeading) {
+  const trigger = elements(groupHeading.node).find(
+    (element) => element.tag === "CollapsibleTrigger",
+  );
+  assert(
+    trigger !== undefined,
+    "the h3's content is the CollapsibleTrigger — the bar is a disclosure",
+  );
+}
+
+// The panel body has no horizontal padding, so a group is already full width;
+// applying the section bleed on top of that would push the bar out of the
+// panel. This is the assertion that catches someone "fixing" the gutter.
+const groupSource = fs.readFileSync(path.join(PANELS_DIR, "PanelGroup.tsx"), "utf8");
+assert(
+  !groupSource.includes("PANEL_GUTTER_BLEED"),
+  "PanelGroup does not bleed — it is already flush with the panel's edges",
+);
+assert(
+  groupSource.includes("PANEL_GUTTER"),
+  "PanelGroup re-applies the panel gutter inside its bar",
+);
+
 // --- the invariant that catches the next one --------------------------------
 
 // A `<section>` earns the tag by naming itself or by heading itself. One that
