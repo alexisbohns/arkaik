@@ -563,19 +563,10 @@ export function NodeDetailPanel({
           onNavigate={onNavigate}
         />
       )}
-      {node.species === "flow" && allNodes && (
-        <PlaylistEditor
-          key={`playlist-${node.id}`}
-          node={node}
-          allNodes={allNodes}
-          onUpdate={onUpdate}
-          onCreateNode={onCreateNode}
-        />
-      )}
       {/* Groups live in a column of their own. `-space-y-px` overlaps each
           bar's `border-y` with the one above so a run of shut groups reads as
           one ruled list; the body's `gap-4` would open a four-unit trench
-          between every pair. Part 4 adds the rest. */}
+          between every pair. */}
       <div className="flex flex-col -space-y-px">
         {/* The only one of the three platform regions whose bar is opened out
             here rather than by the section itself. `AcceptancePlatformsSection`
@@ -625,6 +616,15 @@ export function NodeDetailPanel({
           findings={findings}
           onOpenCriterion={onOpenCriterion}
         />
+        {node.species === "flow" && allNodes && (
+          <PlaylistEditor
+            key={`playlist-${node.id}`}
+            node={node}
+            allNodes={allNodes}
+            onUpdate={onUpdate}
+            onCreateNode={onCreateNode}
+          />
+        )}
         {history && (
           <HistorySection
             key={`history-${node.id}`}

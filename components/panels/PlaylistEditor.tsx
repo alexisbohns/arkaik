@@ -3,7 +3,8 @@
 import { toast } from "sonner";
 import type { Node, PlaylistEntry } from "@/lib/data/types";
 import { PlaylistEntryList } from "@/components/panels/PlaylistEntryRow";
-import { PanelSection } from "@/components/panels/PanelSection";
+import { PanelGroup } from "@/components/panels/PanelGroup";
+import { PANEL_GUTTER } from "@/components/panels/PanelSection";
 
 interface PlaylistEditorProps {
   node: Node;
@@ -40,15 +41,20 @@ export function PlaylistEditor({ node, allNodes, onUpdate, onCreateNode }: Playl
   }
 
   return (
-    <PanelSection title="Playlist">
-      <PlaylistEntryList
-        entries={entries}
-        onChange={persistEntries}
-        flowNodeId={node.id}
-        allNodes={allNodes}
-        onCycleBlocked={handleCycleBlocked}
-        onCreateNode={onCreateNode}
-      />
-    </PanelSection>
+    <PanelGroup title="Playlist">
+      {/* The group does not gutter its children the way `PanelSection` did, so
+          the composer carries its own — otherwise it would sit flush against
+          the panel's edges while every field above it stays indented. */}
+      <div className={PANEL_GUTTER}>
+        <PlaylistEntryList
+          entries={entries}
+          onChange={persistEntries}
+          flowNodeId={node.id}
+          allNodes={allNodes}
+          onCycleBlocked={handleCycleBlocked}
+          onCreateNode={onCreateNode}
+        />
+      </div>
+    </PanelGroup>
   );
 }
