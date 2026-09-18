@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/select";
 import { Field } from "@/components/ui/field";
 import { BlockedByField } from "@/components/panels/BlockedByField";
-import { PanelSection, PANEL_GUTTER } from "@/components/panels/PanelSection";
+import { PANEL_GUTTER } from "@/components/panels/PanelSection";
 import { PanelGroup } from "@/components/panels/PanelGroup";
 import { RelationsGroup } from "@/components/panels/RelationsGroup";
 import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
@@ -22,6 +22,7 @@ import { PlatformVariants } from "@/components/panels/PlatformVariants";
 import { PlatformGaugeList } from "@/components/graph/nodes/PlatformGaugeList";
 import { PlaylistEditor } from "@/components/panels/PlaylistEditor";
 import { AcceptanceEditor } from "@/components/panels/AcceptanceEditor";
+import { AcceptancePlatformsSection } from "@/components/panels/AcceptancePlatformsSection";
 import { DecisionEditor } from "@/components/panels/DecisionEditor";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { useJournal } from "@/lib/hooks/useJournal";
@@ -420,35 +421,47 @@ function PlatformVariantsSection({ node, scope, initialPlatform, onUpdate, onZoo
   }
 
   return (
-    // `gap-3` rather than the section default: this one wraps a whole embedded
-    // editor, not a field.
-    <PanelSection title="Platform Variants" className="gap-3">
-      {/* The scope's MENU, not `scopedPlatforms(node, scope)`. How many platform
-          columns a surface shows is a shape decision, and shape decisions are the
-          scope's — same input the Acceptances matrix and the Pyramid read. Per-node
-          `scopedPlatforms` would answer the node's own array whenever no product is
-          declared, so a web-only view would lose two tabs in a project that has
-          never heard of products (§ Degenerate case guarantee).
+    <PanelGroup title="Platforms">
+      {/* The group does not gutter its children the way `PanelSection` did, so
+          the editor carries its own — otherwise it would sit flush against the
+          panel's edges while the prose above it stays indented. */}
+      <div className={PANEL_GUTTER}>
+        {/* The scope's MENU, not `scopedPlatforms(node, scope)`. How many platform
+            columns a surface shows is a shape decision, and shape decisions are the
+            scope's — same input the Acceptances matrix and the Pyramid read. Per-node
+            `scopedPlatforms` would answer the node's own array whenever no product is
+            declared, so a web-only view would lose two tabs in a project that has
+            never heard of products (§ Degenerate case guarantee).
 
-          A caveat inherited, not introduced: a status written for a platform outside
-          `node.platforms` is invisible everywhere, because `getNodePlatformStatuses`
-          iterates the node's own list. The strip could always do that; it is not
-          this scope's to fix. */}
-      <PlatformVariants
-        platforms={scope.platforms}
-        statuses={statuses}
-        notes={notes}
-        screenshots={screenshots}
-        initialPlatform={initialPlatform}
-        onStatusChange={handleStatusChange}
-        onNotesChange={handleNotesChange}
-        onScreenshotChange={handleScreenshotChange}
-        onZoomShot={onZoomShot}
-      />
-    </PanelSection>
+            A caveat inherited, not introduced: a status written for a platform outside
+            `node.platforms` is invisible everywhere, because `getNodePlatformStatuses`
+            iterates the node's own list. The strip could always do that; it is not
+            this scope's to fix. */}
+        <PlatformVariants
+          platforms={scope.platforms}
+          statuses={statuses}
+          notes={notes}
+          screenshots={screenshots}
+          initialPlatform={initialPlatform}
+          onStatusChange={handleStatusChange}
+          onNotesChange={handleNotesChange}
+          onScreenshotChange={handleScreenshotChange}
+          onZoomShot={onZoomShot}
+        />
+      </div>
+    </PanelGroup>
   );
 }
 
+/**
+ * A flow's platform statuses, rolled up from what it plays.
+ *
+ * Shares the title "Platforms" with the acceptance's and the view's editors,
+ * though this one is read-only. The group is an outline entry, and three names
+ * for one shelf would make a reader walking three panels learn three words for
+ * the same place. That this one is derived is said by its contents — gauges, no
+ * controls — rather than by its heading.
+ */
 function ComputedPlatformStatusSection({
   node,
   scope,
@@ -459,16 +472,19 @@ function ComputedPlatformStatusSection({
   const rollup = computeFlowPlatformRollup(node, nodesById, allNodes, allEdges);
 
   return (
-    <PanelSection title="Computed Platform Statuses" className="gap-3">
-      {/* Clamped, not replaced: a flow's rollup can count a platform the flow
-          never declares (the seed's `F-swap-glyph`), and under All products that
-          bar must survive. See `scopedRollupPlatforms`. */}
-      <PlatformGaugeList
-        rollup={rollup}
-        platforms={scopedRollupPlatforms(node.platforms, rollup, scope.platforms)}
-        showLabels
-      />
-    </PanelSection>
+    <PanelGroup title="Platforms">
+      {/* The gutter is the child's own here — see `PlatformVariantsSection`. */}
+      <div className={PANEL_GUTTER}>
+        {/* Clamped, not replaced: a flow's rollup can count a platform the flow
+            never declares (the seed's `F-swap-glyph`), and under All products that
+            bar must survive. See `scopedRollupPlatforms`. */}
+        <PlatformGaugeList
+          rollup={rollup}
+          platforms={scopedRollupPlatforms(node.platforms, rollup, scope.platforms)}
+          showLabels
+        />
+      </div>
+    </PanelGroup>
   );
 }
 
@@ -547,25 +563,6 @@ export function NodeDetailPanel({
           onNavigate={onNavigate}
         />
       )}
-      {node.species === "view" && (
-        <PlatformVariantsSection
-          key={`pv-${node.id}-${initialPlatform ?? ""}`}
-          node={node}
-          scope={scope}
-          initialPlatform={initialPlatform}
-          onUpdate={onUpdate}
-          onZoomShot={onZoomShot ? (platform) => onZoomShot(node, platform) : undefined}
-        />
-      )}
-      {node.species === "flow" && allNodes && allEdges && (
-        <ComputedPlatformStatusSection
-          key={`computed-${node.id}`}
-          node={node}
-          scope={scope}
-          allNodes={allNodes}
-          allEdges={allEdges}
-        />
-      )}
       {node.species === "flow" && allNodes && (
         <PlaylistEditor
           key={`playlist-${node.id}`}
@@ -578,8 +575,34 @@ export function NodeDetailPanel({
       {/* Groups live in a column of their own. `-space-y-px` overlaps each
           bar's `border-y` with the one above so a run of shut groups reads as
           one ruled list; the body's `gap-4` would open a four-unit trench
-          between every pair. Parts 3–4 add the rest. */}
+          between every pair. Part 4 adds the rest. */}
       <div className="flex flex-col -space-y-px">
+        {node.species === "acceptance" && onUpdate && (
+          <PanelGroup key={`platforms-${node.id}`} title="Platforms">
+            <div className={PANEL_GUTTER}>
+              <AcceptancePlatformsSection node={node} scope={scope} onUpdate={onUpdate} />
+            </div>
+          </PanelGroup>
+        )}
+        {node.species === "view" && (
+          <PlatformVariantsSection
+            key={`pv-${node.id}-${initialPlatform ?? ""}`}
+            node={node}
+            scope={scope}
+            initialPlatform={initialPlatform}
+            onUpdate={onUpdate}
+            onZoomShot={onZoomShot ? (platform) => onZoomShot(node, platform) : undefined}
+          />
+        )}
+        {node.species === "flow" && allNodes && allEdges && (
+          <ComputedPlatformStatusSection
+            key={`computed-${node.id}`}
+            node={node}
+            scope={scope}
+            allNodes={allNodes}
+            allEdges={allEdges}
+          />
+        )}
         <RelationsGroup
           key={`relations-${node.id}`}
           node={node}

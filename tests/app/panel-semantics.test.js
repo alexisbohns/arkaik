@@ -319,6 +319,17 @@ assert(
   "Relations is not also opened inline — one component owns that bar",
 );
 
+// One title across three species: the group is an outline entry, and a reader
+// walking an acceptance, a view and a flow should meet one name for one shelf.
+const platformTitles = nodePanelGroups
+  .map((element) => attr(element.opening, "title"))
+  .filter((title) => title !== null && /platform/i.test(title));
+assert(
+  platformTitles.length > 0 && platformTitles.every((title) => title === "Platforms"),
+  "every platform region is titled Platforms",
+  `found ${platformTitles.join(", ") || "none"}`,
+);
+
 // --- the invariant that catches the next one --------------------------------
 
 // A `<section>` earns the tag by naming itself or by heading itself. One that
