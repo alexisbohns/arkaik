@@ -35,11 +35,14 @@ A new `components/panels/PanelGroup.tsx`, built on the shadcn `Collapsible`
 already in `components/ui/collapsible.tsx`.
 
 **The header is a full-bleed bar.** The panel body has no horizontal padding of
-its own — the gutter is per-section, owned by `PANEL_GUTTER` — so the group takes
-`PANEL_GUTTER_BLEED` and re-applies the gutter inside the bar. The bar carries
-`border-y`. Consecutive groups are stacked at `-mt-px` so two adjacent hairlines
-collapse into one, which is what makes a run of collapsed groups read as a table
-of contents rather than as a ladder of double rules.
+its own — the gutter is per-section, owned by `PANEL_GUTTER` — so a group placed
+directly in the body already spans the panel's full width, and needs no bleed.
+The bar re-applies `PANEL_GUTTER` inside itself and carries `border-y`.
+Consecutive groups are stacked at `-mt-px` so two adjacent hairlines collapse
+into one, which is what makes a run of collapsed groups read as a table of
+contents rather than as a ladder of double rules. The groups therefore live in a
+gapless flex column of their own: the body's `gap-4` would otherwise open a
+four-unit trench between every pair of bars.
 
 **The trigger is the heading.** `<h3><CollapsibleTrigger>…</CollapsibleTrigger></h3>`
 — the disclosure pattern, so the group is both an outline entry and a control.
