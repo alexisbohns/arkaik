@@ -577,6 +577,16 @@ export function NodeDetailPanel({
           one ruled list; the body's `gap-4` would open a four-unit trench
           between every pair. Part 4 adds the rest. */}
       <div className="flex flex-col -space-y-px">
+        {/* The only one of the three platform regions whose bar is opened out
+            here rather than by the section itself. `AcceptancePlatformsSection`
+            is the `Field` body lifted verbatim out of `AcceptanceEditor` and
+            nothing more — it renders one `PlatformVariants` and holds no state
+            — so giving it a group of its own would have been a second change
+            smuggled into the move. The two below own their bars because each is
+            already a whole region: a local component with state, handlers and a
+            condition. Nothing depends on the asymmetry — the semantics test
+            sweeps the whole panels directory, so this bar can move into the
+            section the day the section grows enough to deserve it. */}
         {node.species === "acceptance" && onUpdate && (
           <PanelGroup key={`platforms-${node.id}`} title="Platforms">
             <div className={PANEL_GUTTER}>

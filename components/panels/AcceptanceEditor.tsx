@@ -193,10 +193,12 @@ export function AcceptanceEditor({ node, allNodes, allEdges, scope, onUpdate, in
         />
       </Field>
 
-      {/* No `htmlFor` on these two: a combobox that names itself and a button
-          have no control a `<label>` here should point at. (It read "these
-          three" while the platform tab strip sat between them; the strip is now
-          the Platforms group's — see `AcceptancePlatformsSection`.) */}
+      {/* No `htmlFor` on the Fields below — a combobox that names itself, and
+          a button that is only there with `intake`: neither is a control a
+          `<label>` here should point at. It enumerated "these three" while the
+          platform tab strip sat between them, and the count was already wrong
+          for a read-only surface before that; the strip is now the Platforms
+          group's — see `AcceptancePlatformsSection`. */}
       <Field label="Values — the Why">
         <ValuePicker selected={node.metadata?.values ?? []} onChange={(values: ValueId[]) => patchMetadata({ values })} />
       </Field>
