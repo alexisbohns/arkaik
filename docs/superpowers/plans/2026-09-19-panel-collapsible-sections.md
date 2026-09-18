@@ -507,11 +507,12 @@ function HistorySection({ node, allNodes }: HistorySectionProps) {
 In `NodeDetailPanel`'s returned JSX (`:689`), the outer `div` keeps `gap-4` for the ungrouped sections, and a new gapless `div` holds the groups. For now that column holds only History. Replace the closing of the body — the `{history && (<HistorySection … />)}` block and the outer `</div>` — with:
 
 ```tsx
-      {/* Groups live in a gapless column of their own. Each bar carries
-          `border-y` and pulls itself up a pixel to merge with the one above, and
-          the body's `gap-4` would open a four-unit trench between every pair.
-          Parts 2–4 fill this column; for now it holds History alone. */}
-      <div className="flex flex-col">
+      {/* Groups live in a column of their own. `-space-y-px` overlaps each
+          bar's `border-y` with the one above so a run of shut groups reads as
+          one ruled list; the body's `gap-4` would open a four-unit trench
+          between every pair. Parts 2–4 fill this column; for now it holds
+          History alone. */}
+      <div className="flex flex-col -space-y-px">
         {history && (
           <HistorySection
             key={`history-${node.id}`}
@@ -1038,7 +1039,7 @@ Then replace the whole inline derivation in `ConnectionsSection` (`NodeDetailPan
 In `NodeDetailPanel`'s JSX, delete the standalone `RefsSection`, `FindingsSection`, `AcceptancesSection`, `InvocationSection` and `ConnectionsSection` renders, and add `RelationsGroup` to the gapless group column, above History:
 
 ```tsx
-      <div className="flex flex-col">
+      <div className="flex flex-col -space-y-px">
         <RelationsGroup
           key={`relations-${node.id}`}
           node={node}
