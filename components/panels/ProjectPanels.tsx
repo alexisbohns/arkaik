@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { PanelHeaderEntityId } from "@/components/graph/nodes/EntityBadges";
 import { PanelStack } from "@/components/panels/PanelStack";
@@ -11,6 +11,7 @@ import {
 } from "@/components/panels/CriterionDetailPanel";
 import { NodeDetailPanel, NodeDetailPanelHeader } from "@/components/panels/NodeDetailPanel";
 import { RawBundlePanel } from "@/components/panels/RawBundlePanel";
+import { SplitAcceptanceDialog } from "@/components/panels/SplitAcceptanceDialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { deriveQualityMatrix, type KritikLibrary, type QualitySection, type QualityTrend } from "@arkaik/schema";
 import type { PlatformId } from "@/lib/config/platforms";
@@ -21,6 +22,8 @@ import type { PanelEntry } from "@/lib/utils/panel-stack";
 import type { PanelDescriptor } from "@/lib/utils/project-panels";
 import { buildFindingRows } from "@/lib/utils/quality";
 import { resolveProductScope, type ProductScope } from "@/lib/utils/product-scope";
+import { coveredAnchorsOf } from "@/lib/utils/where-used";
+import { toast } from "sonner";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 
 interface ProjectPanelsProps {
@@ -129,6 +132,13 @@ export function ProjectPanels({
 
   const projectId = useProjectId();
 
+  // The split dialog's state lives here, above both halves of the panel.
+  // Its trigger is a header item and the dialog itself has to be in the
+  // document, and `PanelStack` renders header and body through two separate
+  // render props — so neither half can hold it. One dialog for the whole stack,
+  // not one per open panel: two open acceptance panels used to mount two.
+  const [splitTarget, setSplitTarget] = useState<Node | null>(null);
+
   const nodesById = useMemo(() => new Map(allNodes.map((node) => [node.id, node])), [allNodes]);
 
   // Denormalized here rather than inside the criterion panel, which cannot
@@ -187,7 +197,17 @@ export function ProjectPanels({
     [entries, panelStates],
   );
 
+  // The acceptance the split dialog is standing in, re-resolved by id: the
+  // state holds the node as it was when the menu item fired, and an edit
+  // landing under an open dialog must not leave it seeding a stale title.
+  const splitNode = splitTarget ? nodesById.get(splitTarget.id) ?? splitTarget : null;
+  // What the dialog's sentence about what carries over needs. Its own walk,
+  // through the same `coveredAnchorsOf` every other surface uses, so there is
+  // one definition of what "covered" means.
+  const splitAnchorCount = splitNode ? coveredAnchorsOf(splitNode, allNodes, allEdges).length : 0;
+
   return (
+    <>
     <PanelStack<PanelDescriptor>
       entries={entries}
       surfaceLabel={surfaceLabel}
@@ -221,7 +241,20 @@ export function ProjectPanels({
           );
 
         const node = nodesById.get(entry.key);
-        return node ? <NodeDetailPanelHeader node={node} /> : <PanelHeaderEntityId id={entry.key} />;
+        return node ? (
+          <NodeDetailPanelHeader
+            node={node}
+            onDuplicate={onDuplicate}
+            onDelete={onDelete}
+            // Acceptances only, and only where the decompose gestures exist:
+            // splitting is a write, and a read-only surface passes no `intake`.
+            onSplit={
+              intake && node.species === "acceptance" ? () => setSplitTarget(node) : undefined
+            }
+          />
+        ) : (
+          <PanelHeaderEntityId id={entry.key} />
+        );
       }}
       renderBody={(entry, index) => {
         if (entry.payload.kind === "raw") {
@@ -313,8 +346,6 @@ export function ProjectPanels({
             scope={scope}
             initialPlatform={entry.payload.initialPlatform}
             onUpdate={onUpdate}
-            onDelete={onDelete}
-            onDuplicate={onDuplicate}
             allNodes={allNodes}
             allEdges={allEdges}
             history={history}
@@ -337,5 +368,26 @@ export function ProjectPanels({
     >
       {children}
     </PanelStack>
+    {intake && splitNode && (
+      <SplitAcceptanceDialog
+        open
+        onOpenChange={(next) => { if (!next) setSplitTarget(null); }}
+        title={splitNode.title}
+        anchorCount={splitAnchorCount}
+        // Not `run`: the dialog has to know whether the write landed, so
+        // that a failure leaves the rows on screen instead of discarding
+        // them. Reported here all the same, then rethrown.
+        onSubmit={async (titles) => {
+          try {
+            await intake.split(splitNode, titles);
+          } catch (err) {
+            toast.error("Couldn't split the acceptance.");
+            console.error(err);
+            throw err;
+          }
+        }}
+      />
+    )}
+    </>
   );
 }

@@ -57,6 +57,7 @@ export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "code-xml", seed: 8 },
   { name: "compass", seed: 7 },
   { name: "copy", seed: 4 },
+  { name: "copy-plus", seed: 11 },
   { name: "corner-down-left", seed: 7 },
   { name: "database", seed: 12 },
   { name: "download", seed: 5 },

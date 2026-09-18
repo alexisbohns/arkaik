@@ -54,6 +54,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-code-xml { filter: url(#wob-code-xml); }
 .lucide-compass { filter: url(#wob-compass); }
 .lucide-copy { filter: url(#wob-copy); }
+.lucide-copy-plus { filter: url(#wob-copy-plus); }
 .lucide-corner-down-left { filter: url(#wob-corner-down-left); }
 .lucide-database { filter: url(#wob-database); }
 .lucide-download { filter: url(#wob-download); }
