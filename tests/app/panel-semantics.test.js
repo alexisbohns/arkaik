@@ -319,6 +319,35 @@ assert(
   "Relations is not also opened inline — one component owns that bar",
 );
 
+// One title across three species: the group is an outline entry, and a reader
+// walking an acceptance, a view and a flow should meet one name for one shelf.
+//
+// Swept across the whole panels directory, not read off `nodePanelGroups`. The
+// three regions only happen to share a file today — the acceptance's group is
+// opened by the caller while the other two open their own — and the region is
+// free to move: the moment `AcceptancePlatformsSection` wraps itself, a
+// `NodeDetailPanel`-only check would drop that species from its reach and go on
+// passing on the remaining two, which is a green test that has stopped testing
+// what it names. What must hold is a property of the codebase, so it is asked
+// of the codebase.
+//
+// `length > 0` is the other half: a sweep that matches nothing vacuously
+// satisfies `every`, so without the guard this assertion survives every
+// platform region being deleted.
+const platformTitles = [];
+for (const name of panelFiles) {
+  for (const element of elements(parse(path.join(PANELS_DIR, name)))) {
+    if (element.tag !== "PanelGroup") continue;
+    const title = attr(element.opening, "title");
+    if (title !== null && /platform/i.test(title)) platformTitles.push(`${name}:${title}`);
+  }
+}
+assert(
+  platformTitles.length > 0 && platformTitles.every((entry) => entry.endsWith(":Platforms")),
+  "every platform region is titled Platforms, wherever it is opened",
+  `found ${platformTitles.join(", ") || "none"}`,
+);
+
 // --- the invariant that catches the next one --------------------------------
 
 // A `<section>` earns the tag by naming itself or by heading itself. One that
