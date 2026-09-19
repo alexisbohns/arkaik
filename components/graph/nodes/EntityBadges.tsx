@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckIcon, HashIcon } from "lucide-react";
+import { CheckIcon, CopyIcon, HashIcon } from "lucide-react";
 
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -66,6 +66,33 @@ interface CopyIdChipProps {
 }
 
 /**
+ * The glyph both copy affordances wear: a hash that becomes a copy mark under
+ * the pointer, and a tick once the id is on the clipboard.
+ *
+ * The hash is the resting state because it is a *label* — "there is an id
+ * here" — and the copy mark is the *affordance*, which only needs to exist
+ * once you are pointing at the thing. Showing the copy mark all the time would
+ * label every id in the app as a button; showing nothing until hover leaves a
+ * gap that fills in under the pointer, which is what this replaced.
+ *
+ * Both are stacked in one fixed-size box rather than swapped by a state
+ * variable, so the exchange is pure CSS on the parent's `group` — no hover
+ * state in React, no reflow, and `group-focus-visible` gets it for free on a
+ * keyboard. The tick is the one real branch: it is the only state the DOM
+ * cannot infer from the pointer.
+ */
+function CopyIdGlyph({ copied }: { copied: boolean }) {
+  if (copied) return <CheckIcon className="size-3 shrink-0" aria-hidden="true" />;
+
+  return (
+    <span className="relative inline-flex size-3 shrink-0 items-center justify-center" aria-hidden="true">
+      <HashIcon className="absolute size-3 transition-opacity group-hover:opacity-0 group-focus-visible:opacity-0" />
+      <CopyIcon className="absolute size-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+    </span>
+  );
+}
+
+/**
  * A hash in a box that puts an entity id on the clipboard.
  *
  * "There is an id here", one tap from being pastable — into a commit message, a
@@ -81,7 +108,6 @@ interface CopyIdChipProps {
  */
 export function CopyIdChip({ id, className }: CopyIdChipProps) {
   const { copied, copy } = useCopyId(id);
-  const Icon = copied ? CheckIcon : HashIcon;
 
   return (
     <Tooltip>
@@ -95,12 +121,12 @@ export function CopyIdChip({ id, className }: CopyIdChipProps) {
           onClick={copy}
           className={cn(
             iconChipVariants({ size: "sm", variant: "outline", interactive: true }),
-            "hover:bg-muted hover:text-foreground",
+            "group hover:bg-muted hover:text-foreground",
             copied && "text-green-500",
             className,
           )}
         >
-          <Icon />
+          <CopyIdGlyph copied={copied} />
         </button>
       </TooltipTrigger>
       <TooltipContent side="bottom">
@@ -111,8 +137,55 @@ export function CopyIdChip({ id, className }: CopyIdChipProps) {
 }
 
 /**
+ * The id spelled out, and copyable by clicking it.
+ *
+ * The wide half of {@link PanelHeaderEntityId}. It was a plain `<span>`, which
+ * made the panel header the one place an id was legible but not pastable — you
+ * could copy it by tapping the hash on a narrow window, and had to select it by
+ * hand on a wide one, which is backwards.
+ *
+ * The glyph leads, and is {@link CopyIdGlyph} — the same hash the narrow
+ * variant wears, so one id does not announce itself two ways at two widths. It
+ * sat trailing and invisible-until-hover first, which left a hole on the right
+ * of every id that filled in under the pointer; a slot that is always occupied
+ * and merely changes glyph has no such moment.
+ *
+ * The whole chip is the button, not the glyph: a 12px target inside a row you
+ * are already pointing at is a worse version of the same gesture.
+ */
+function CopyIdText({ id, className }: CopyIdChipProps) {
+  const { copied, copy } = useCopyId(id);
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          // Spelled out for the reason `CopyIdChip`'s is: the tooltip is
+          // visual-only, so this is the only place a screen reader is told the
+          // chip copies rather than navigates.
+          aria-label={`Copy ${id}`}
+          onClick={copy}
+          className={cn(
+            ENTITY_ID_CLASS,
+            "group inline-flex cursor-pointer items-center gap-1 outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50",
+            copied && "text-green-600 dark:text-green-400",
+            className,
+          )}
+        >
+          <CopyIdGlyph copied={copied} />
+          {id}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{copied ? "Copied" : "Copy id"}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/**
  * The entity id in a **panel header**: the id spelled out at `lg` and up, a
- * {@link CopyIdChip} below it.
+ * {@link CopyIdChip} below it. **Copyable either way** — see {@link CopyIdText}
+ * for why the wide one had to stop being a plain span.
  *
  * A panel header is one row that has to hold a species badge, an id and a close
  * button, and below `lg` a panel is at most half the window and often all of it.
@@ -128,7 +201,7 @@ export function CopyIdChip({ id, className }: CopyIdChipProps) {
 export function PanelHeaderEntityId({ id }: EntityIdProps) {
   return (
     <>
-      <span className={cn(ENTITY_ID_CLASS, "hidden lg:inline-block")}>{id}</span>
+      <CopyIdText id={id} className="hidden lg:inline-flex" />
       <CopyIdChip id={id} className="lg:hidden" />
     </>
   );

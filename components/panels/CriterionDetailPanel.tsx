@@ -7,7 +7,6 @@ import { PanelSection, PANEL_GUTTER, PANEL_GUTTER_BLEED } from "@/components/pan
 import { cn } from "@/lib/utils";
 import { FindingsBoard } from "@/components/quality/FindingsBoard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { Node } from "@/lib/data/types";
 import {
   CROSS_SURFACE_ID,
   MATURITY_LEVELS,
@@ -19,6 +18,7 @@ import {
 } from "@arkaik/schema";
 import {
   buildSurfaceTitles,
+  criterionOf,
   filterFindings,
   EMPTY_QUALITY_FILTERS,
   type FindingRow,
@@ -36,13 +36,7 @@ interface CriterionDetailPanelProps {
    * see the memo note in the component for why the building happens up there.
    */
   findings: FindingRow[];
-  /** The graph, so a finding's linked nodes read as titles rather than as ids. */
-  nodesById: ReadonlyMap<string, Node>;
-  onOpenNode: (nodeId: string) => void;
-}
-
-function criterionOf(criterionId: string, library?: KritikLibrary): KritikCriterion | undefined {
-  return library?.criteria?.find((candidate) => candidate?.id === criterionId);
+  onOpenFinding: (findingId: string) => void;
 }
 
 /** The domain's display name, falling back to its code, then to nothing. */
@@ -213,7 +207,7 @@ export function CriterionDetailPanelHeader({
   surface,
   library,
   section,
-}: Omit<CriterionDetailPanelProps, "onOpenNode" | "findings" | "nodesById">) {
+}: Omit<CriterionDetailPanelProps, "onOpenFinding" | "findings">) {
   const criterion = criterionOf(criterionId, library);
   const domainLabel = domainLabelOf(criterion, library);
   const surfaceTitle = surfaceTitleOf(surface, section);
@@ -260,8 +254,7 @@ export function CriterionDetailPanel({
   library,
   section,
   findings,
-  nodesById,
-  onOpenNode,
+  onOpenFinding,
 }: CriterionDetailPanelProps) {
   const criterion = criterionOf(criterionId, library);
   const name = typeof criterion?.name === "string" ? criterion.name : "";
@@ -527,9 +520,8 @@ export function CriterionDetailPanel({
           <div className={PANEL_GUTTER_BLEED}>
             <FindingsBoard
               rows={criterionFindings}
-              nodesById={nodesById}
               surfaceTitles={surfaceTitles}
-              onOpenNode={onOpenNode}
+              onOpenFinding={onOpenFinding}
             />
           </div>
         </PanelSection>

@@ -9,6 +9,10 @@ import {
   CriterionDetailPanel,
   CriterionDetailPanelHeader,
 } from "@/components/panels/CriterionDetailPanel";
+import {
+  FindingDetailPanel,
+  FindingDetailPanelHeader,
+} from "@/components/panels/FindingDetailPanel";
 import { NodeDetailPanel, NodeDetailPanelHeader } from "@/components/panels/NodeDetailPanel";
 import { RawBundlePanel } from "@/components/panels/RawBundlePanel";
 import { SplitAcceptanceDialog } from "@/components/panels/SplitAcceptanceDialog";
@@ -21,7 +25,7 @@ import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useProjectId } from "@/lib/hooks/useProjectId";
 import { useDuplicateNode } from "@/lib/hooks/useDuplicateNode";
 import type { PanelEntry } from "@/lib/utils/panel-stack";
-import type { PanelDescriptor } from "@/lib/utils/project-panels";
+import { panelEntryLabel, type PanelDescriptor } from "@/lib/utils/project-panels";
 import { buildFindingRows } from "@/lib/utils/quality";
 import { resolveProductScope, type ProductScope } from "@/lib/utils/product-scope";
 import { coveredAnchorsOf } from "@/lib/utils/where-used";
@@ -130,7 +134,7 @@ export function ProjectPanels({
   qualityLibrary,
   qualityTrend,
 }: ProjectPanelsProps) {
-  const { entries, openNode, openCriterion, closeAt, unwindTo, pruneMissingNodes, panelStates } =
+  const { entries, openNode, openCriterion, openFinding, closeAt, unwindTo, pruneMissingNodes, panelStates } =
     useProjectPanels();
 
   const projectId = useProjectId();
@@ -194,18 +198,11 @@ export function ProjectPanels({
     pruneMissingNodes(new Set(nodesById.keys()));
   }, [nodesById, pruneMissingNodes]);
 
-  // Branching on `kind` rather than on the key keeps one way to spot a raw
-  // entry: the key/kind equivalence is an invariant the union does not enforce,
-  // so a second test of it is a second thing that can drift. A criterion's key
-  // is namespaced, so it is also the one kind whose key is not something a
-  // reader should ever be shown.
+  // One label function for the crumbs, the close button and the collapsed rail.
+  // See `panelEntryLabel`: only a node entry's key is a node id, which is why
+  // only a node entry is put to the title lookup.
   const labelOf = useCallback(
-    (entry: PanelEntry<PanelDescriptor>) => {
-      if (entry.payload.kind === "raw") return "Raw bundle";
-      if (entry.payload.kind === "criterion") return entry.payload.criterionId;
-      if (entry.payload.kind === "cell") return `${entry.payload.domain} × ${entry.payload.surface}`;
-      return nodesById.get(entry.key)?.title ?? entry.key;
-    },
+    (entry: PanelEntry<PanelDescriptor>) => panelEntryLabel(entry, (id) => nodesById.get(id)?.title),
     [nodesById],
   );
 
@@ -256,6 +253,15 @@ export function ProjectPanels({
               />
             );
 
+          if (entry.payload.kind === "finding")
+            return (
+              <FindingDetailPanelHeader
+                findingId={entry.payload.findingId}
+                findings={qualityFindings}
+                section={qualitySection}
+              />
+            );
+
           if (entry.payload.kind === "criterion")
             return (
               <CriterionDetailPanelHeader
@@ -300,11 +306,46 @@ export function ProjectPanels({
                 cell={qualityMatrix.matrix[domain]?.[surface] ?? null}
                 trend={qualityTrend}
                 findings={qualityFindings}
-                nodesById={nodesById}
                 projectId={projectId}
                 // Above this panel, never in place of it — the rule every other
                 // navigation in the stack follows, and the reason the trail still
                 // reads back to the cell the reader came from.
+                onOpenFinding={(findingId) => openFinding(findingId, index + 1)}
+                onOpenCriterion={(criterionId, criterionSurface) =>
+                  openCriterion(criterionId, criterionSurface, index + 1)
+                }
+              />
+            );
+          }
+
+          if (entry.payload.kind === "finding") {
+            return (
+              <FindingDetailPanel
+                findingId={entry.payload.findingId}
+                findings={qualityFindings}
+                section={qualitySection}
+                library={qualityLibrary}
+                nodesById={nodesById}
+                // Above this panel, never in place of it — the rule every other
+                // navigation in the stack follows, so the trail still reads back
+                // to the finding the reader came from.
+                //
+                // Sitting above it is not the same as surviving it, and no
+                // comment here should promise that it is. Opening the node
+                // publishes `?node=`; Back — or closing that node panel, which
+                // republishes an empty address — hands `reconcileArrival` a
+                // missing id, and a missing id closes the *whole* stack, this
+                // finding with it, and any criterion or cell panel underneath.
+                // One address, and a finding is not it. Raw has had the
+                // identical behaviour since it landed. What brings the panel
+                // back is the Findings page's own `?finding=` sync, and it
+                // comes back remounted, so the reader loses their scroll
+                // position in it.
+                //
+                // This warning used to sit on the criterion panel's own
+                // `onOpenNode`, which is gone: following a finding's linked
+                // node is now only reachable from here. The trap moved; it did
+                // not close, and it is one panel deeper than it was.
                 onOpenNode={(nodeId) => openNode({ nodeId }, index + 1)}
                 onOpenCriterion={(criterionId, criterionSurface) =>
                   openCriterion(criterionId, criterionSurface, index + 1)
@@ -321,23 +362,11 @@ export function ProjectPanels({
                 library={qualityLibrary}
                 section={qualitySection}
                 findings={qualityFindings}
-                nodesById={nodesById}
-                // From this panel's own depth, like every other navigation in the
-                // stack: following a finding into the graph opens the node ABOVE
-                // the criterion rather than in place of it, which is what depth 0
+                // From this panel's own depth, like every other navigation in
+                // the stack: following a finding opens its panel ABOVE the
+                // criterion rather than in place of it, which is what depth 0
                 // would do.
-                //
-                // Sitting above it is not the same as surviving it, and no
-                // comment here should promise that it is. Opening the node
-                // publishes `?node=`; Back — or closing that node panel, which
-                // republishes an empty address — hands `reconcileArrival` a
-                // missing id, and a missing id closes the *whole* stack, this
-                // criterion with it. One address, and a criterion is not it. Raw
-                // has had the identical behaviour since it landed. What brings
-                // the panel back is the Quality page's own `?criterion=` sync,
-                // and it comes back remounted, so the reader loses their scroll
-                // position in it.
-                onOpenNode={(nodeId) => openNode({ nodeId }, index + 1)}
+                onOpenFinding={(findingId) => openFinding(findingId, index + 1)}
               />
             );
           }
@@ -392,11 +421,11 @@ export function ProjectPanels({
               relations={relations}
               onZoomShot={onZoomShot}
               findings={qualityFindings}
-              // From this panel's own depth, the rule the criterion panel's
-              // `onOpenNode` above already follows: a criterion opened out of a
-              // node sits ABOVE that node rather than replacing it, so the trail
-              // still reads back to the node the reader came from.
-              onOpenCriterion={(criterionId, surface) => openCriterion(criterionId, surface, index + 1)}
+              // From this panel's own depth, the rule every navigation in the
+              // stack follows: a finding opened out of a node sits ABOVE that
+              // node rather than replacing it, so the trail still reads back to
+              // the node the reader came from.
+              onOpenFinding={(findingId) => openFinding(findingId, index + 1)}
             />
           );
         }}

@@ -3,6 +3,7 @@ import type {
   RemediationCost,
   FindingSeverity,
   FindingStatus,
+  QualityFinding,
   QualityGrade,
 } from "@arkaik/schema";
 
@@ -264,4 +265,18 @@ export const FINDING_STATUS_GLOSS: Record<Exclude<FindingStatus, "open">, string
   resolved: "Fixed and verified — this one is done.",
   refuted: "Argued down: the audit filed it, the review found no defect.",
   "accepted-risk": "Weighed and kept, on purpose. Not a thing to re-litigate.",
+};
+
+/**
+ * The refutation pass's verdict in prose (SPEC §6.5). `DOWNGRADED` is the one
+ * that has to be spelled out: a finding the pass argued *down* still stands,
+ * and a reader who takes it for a refusal will skip a real defect.
+ *
+ * Here rather than in the card that first needed it, because the finding panel
+ * says the same word — and two tables would be two vocabularies for one verdict.
+ */
+export const VERDICT_LABEL: Record<NonNullable<QualityFinding["verification"]>["verdict"], string> = {
+  CONFIRMED: "Confirmed",
+  REFUTED: "Refuted",
+  DOWNGRADED: "Downgraded",
 };

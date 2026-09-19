@@ -88,6 +88,27 @@ function criteriaById(library?: KritikLibrary): Map<string, KritikCriterion> {
 }
 
 /**
+ * One criterion out of the pack, by id.
+ *
+ * Here rather than in a panel, though both its callers are panels: the
+ * criterion panel had it, and the finding panel's Criterion card — which
+ * previews the same criterion's question — reached across and imported it from
+ * its sibling. A panel is a rendering of an answer, not the place other panels
+ * ask the question, and that import coupled two panels that have no business
+ * knowing about each other. This module already owns every other read of the
+ * pack, including the private `criteriaById` above.
+ *
+ * A linear `find` rather than that index, deliberately: the index pays for
+ * itself over a whole projection pass, and this is one lookup by one panel.
+ */
+export function criterionOf(
+  criterionId: string,
+  library?: KritikLibrary,
+): KritikCriterion | undefined {
+  return library?.criteria?.find((candidate) => candidate?.id === criterionId);
+}
+
+/**
  * `surface id -> title`, as the profile writes it.
  *
  * Built once per page and handed down, rather than derived again by every
