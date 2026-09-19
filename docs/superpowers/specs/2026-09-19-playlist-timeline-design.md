@@ -180,14 +180,23 @@ backdrop so they stay legible over the hairline connector. Because they overlay
 the rail rather than sitting in the flow, **revealing them shifts nothing**,
 which is the whole point of moving them off the row.
 
-Reveal rules:
+Reveal rules — **exactly one row at a time**:
 
-- `opacity-0` at rest, lit by hover, by `focus-within`, and by `data-active`.
-- The buttons stay in the DOM and stay tabbable, so focus reveals them and the
-  keyboard path comes for free.
-- **Touch:** the list holds one `activeIndex` in state; a click anywhere on a
-  row sets it, and that row gets the same reveal. Harmless on desktop, where
-  hover has already done the job.
+- `opacity-0` at rest, lit by hover and by `data-active`. Both are single-valued
+  by construction: the pointer is over one row, and a tap moves the marked row
+  rather than adding one.
+- **Touch:** the list holds one `activeIndex`; a *touch or pen* press on a row
+  sets it. A **mouse** press clears it instead — a mouse already has hover and
+  has never needed the latch, and latching on any click left the row you last
+  clicked lit while you hovered another.
+- **Nothing reveals on focus inside the row.** It is the obvious third trigger
+  and it is the wrong one: the index tile lives in the row, so clicking it and
+  pressing Escape parks Radix's restored focus there and that row stays lit
+  while the pointer lights another. `focus-within` does it; so does
+  `:has(:focus-visible)`, because Chrome reads focus restored after a keypress
+  as keyboard focus.
+- The keyboard keeps its path regardless: the buttons stay in the DOM and stay
+  tabbable, and each reveals *itself* on `focus-visible`.
 
 **The group name is per depth — `group/row0` … `group/row3`, not one
 `group/row`.** `group-hover/row:` compiles to `.group\/row:hover &`, a plain

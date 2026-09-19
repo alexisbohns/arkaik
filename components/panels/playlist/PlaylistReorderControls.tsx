@@ -25,10 +25,10 @@ import { cn } from "@/lib/utils";
 const ROW_GROUPS = ["group/row0", "group/row1", "group/row2", "group/row3"] as const;
 
 const REVEALS = [
-  "group-hover/row0:opacity-100 group-focus-within/row0:opacity-100 group-data-[active=true]/row0:opacity-100",
-  "group-hover/row1:opacity-100 group-focus-within/row1:opacity-100 group-data-[active=true]/row1:opacity-100",
-  "group-hover/row2:opacity-100 group-focus-within/row2:opacity-100 group-data-[active=true]/row2:opacity-100",
-  "group-hover/row3:opacity-100 group-focus-within/row3:opacity-100 group-data-[active=true]/row3:opacity-100",
+  "group-hover/row0:opacity-100 group-data-[active=true]/row0:opacity-100",
+  "group-hover/row1:opacity-100 group-data-[active=true]/row1:opacity-100",
+  "group-hover/row2:opacity-100 group-data-[active=true]/row2:opacity-100",
+  "group-hover/row3:opacity-100 group-data-[active=true]/row3:opacity-100",
 ] as const;
 
 function level(depth: number): number {
@@ -57,11 +57,25 @@ interface PlaylistReorderControlsProps {
  * *inside* a row reflow it the moment the pointer arrives, and the text the
  * reader was aiming at moves out from under the cursor.
  *
- * **Three ways in, one appearance.** Pointer hover and keyboard focus both light
- * them up through the row's group; touch has neither, so the list marks the
- * tapped row `data-active` and that lights them up too. The buttons stay in the
- * DOM and stay tabbable at rest — focus is what reveals them, which is how the
- * keyboard path comes for free rather than needing its own affordance.
+ * **Exactly one row at a time.** A row's arrows light on hover, and — because
+ * touch has no hover — on a tap, which the list records as `data-active`. Both
+ * are single-valued by construction: the pointer is over one row, and a tap
+ * moves the marked row rather than adding one.
+ *
+ * That is why nothing here answers to *focus inside the row*. It is the obvious
+ * third trigger and it was the wrong one: the index tile lives in the row, so
+ * clicking it and pressing Escape leaves Radix's restored focus parked there,
+ * and that row stays lit while the pointer moves on to light another — two rows
+ * offering to move at once, saying nothing about which one would. `focus-within`
+ * did it, and `:has(:focus-visible)` did it too, because Chrome reads a focus
+ * restored after a keypress as keyboard focus. For the same reason a mouse press
+ * *clears* `data-active` instead of setting it (`PlaylistEntryList`): a mouse
+ * already has hover and has never needed the latch.
+ *
+ * The keyboard keeps its path regardless. The buttons stay in the DOM and stay
+ * tabbable at rest, and each reveals *itself* on `focus-visible` — tab to an
+ * arrow and there it is. What is gone is only the courtesy of showing a row's
+ * arrows before you have reached them.
  *
  * The first entry has no up arrow and the last none down — absent, not disabled.
  * A greyed-out button that only appears on hover is chrome announcing its own

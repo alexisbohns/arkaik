@@ -63,7 +63,8 @@ interface PlaylistEntryRowProps {
   onMoveTo: (target: number) => Promise<void> | void;
   depth: number;
   active: boolean;
-  onActivate: () => void;
+  /** Told which kind of pointer started the press — see `PlaylistEntryList`. */
+  onActivate: (pointerType: string) => void;
 }
 
 /** A nested list, set off by a rule down its left rather than by a margin. */
@@ -166,9 +167,10 @@ function PlaylistEntryRow({
     <li
       data-active={active}
       // Touch has no hover, so a tap on the row stands in for it — see
-      // `PlaylistReorderControls`. Harmless on a pointer device, where hover has
-      // already done the job by the time a click lands.
-      onClick={onActivate}
+      // `PlaylistReorderControls`. `onPointerDown` rather than `onClick`
+      // because it is the event that says which kind of pointer this is, and a
+      // mouse must not leave a row latched open behind it.
+      onPointerDown={(event) => onActivate(event.pointerType)}
       className={cn(rowGroupClass(depth), "relative grid grid-cols-[auto_1fr] gap-x-3")}
     >
       {/* The rail. The connector is `flex-1` inside a stretched grid cell, so it
@@ -321,9 +323,18 @@ export function PlaylistEntryList({
   heading,
 }: PlaylistEntryListProps) {
   /**
-   * Which row is showing its reorder arrows on a touch device. Per-list, and
-   * never cleared: the next tap moves it, and the only thing it controls is
-   * whether two small buttons are visible.
+   * Which row is showing its reorder arrows on a touch device. Per-list: a tap
+   * moves it, and the only thing it controls is whether two small buttons are
+   * visible.
+   *
+   * **A mouse clears it instead of claiming it.** Latching on any click meant a
+   * row you had clicked kept its arrows lit while you hovered a different row,
+   * so two rows offered to move at once and neither said which one the arrows
+   * belonged to. A mouse already has hover — it has never needed this — so the
+   * press that sets the row is a touch or a pen, and a mouse press puts the
+   * list back to hover alone, including after a tap on a hybrid device. The
+   * other half of that fix is in `PlaylistReorderControls`: nothing reveals on
+   * focus *within* the row either.
    */
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
@@ -365,7 +376,7 @@ export function PlaylistEntryList({
               onCreateNode={onCreateNode}
               depth={depth}
               active={activeIndex === index}
-              onActivate={() => setActiveIndex(index)}
+              onActivate={(pointerType) => setActiveIndex(pointerType === "mouse" ? null : index)}
               onMove={(delta) => handleMove(index, delta)}
               onMoveTo={(target) => handleMoveTo(index, target)}
               onRemove={() => handleRemove(index)}
