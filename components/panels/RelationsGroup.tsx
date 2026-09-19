@@ -108,7 +108,7 @@ export function RelationsGroup({
   // Every acceptance has a covers story, including "none" — so this asks only
   // whether the section can be rendered at all, never whether it found anything.
   //
-  // The narrower test (an anchor exists, or `intake` offers the attach row) hid
+  // The narrower test (an anchor exists, or `intake` offers the attach gesture) hid
   // the whole group on a read-only acceptance that covers nothing and has no
   // other relation, taking "Unanchored (covers nothing)" with it. That line is
   // not an empty state, it is a finding: an acceptance anchored to nothing is an

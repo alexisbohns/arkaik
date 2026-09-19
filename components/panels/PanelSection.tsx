@@ -9,7 +9,7 @@ import { useInPanelGroup } from "@/components/panels/panel-group-context";
 /**
  * The detail-panel section scaffold — panel gutter, micro-label heading, body —
  * opened by hand ~10 times across the panel modules (audit `factorization-10`):
- * six sections inside `NodeDetailPanel`, plus `AcceptancesSection` and
+ * six sections inside `NodeDetailPanel`, plus the acceptances section and
  * `PlaylistEditor`.
  *
  * Beyond the dedup this is the one place that knows the panel gutter, which
@@ -23,9 +23,11 @@ import { useInPanelGroup } from "@/components/panels/panel-group-context";
  * a large embedded editor can pass `className="gap-3"` if the tighter spacing
  * reads wrong there.
  *
- * `action` is the `AcceptancesSection` variant — a ghost Button pushed to the
- * right of the heading — hoisted here so the next section that needs one does not
- * re-derive the `justify-between` row.
+ * `action` is a ghost Button pushed to the right of the heading, hoisted here
+ * from the one section that had it so the next one to need it does not
+ * re-derive the `justify-between` row. `RelationLine` is now its main user:
+ * every relation's `+` sits in this slot, which is why a relation line and an
+ * ordinary section can never disagree about where a heading's control goes.
  *
  * The heading is an `<h3>` standing alone and an `<h4>` inside a `PanelGroup`,
  * which takes the `h3` for its bar. See `SectionHeading` below for why the two

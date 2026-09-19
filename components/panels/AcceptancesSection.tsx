@@ -1,18 +1,25 @@
 "use client";
 
 import type { Node, Edge } from "@/lib/data/types";
+import type { SpeciesId } from "@arkaik/schema";
 import { acceptancesCovering, hasParityGap } from "@arkaik/schema";
 import { getEditablePlatformStatuses } from "@/lib/utils/platform-status";
 import { scopedPlatforms, type ProductScope } from "@/lib/utils/product-scope";
 import { PlatformList } from "@/components/graph/nodes/PlatformList";
 import { PlatformStatusIcons } from "@/components/graph/nodes/PlatformStatusIcons";
 import { EntityRow } from "@/components/graph/nodes/EntityRow";
-import { Button } from "@/components/ui/button";
-import { PanelSection } from "@/components/panels/PanelSection";
+import { RelationLine } from "@/components/panels/RelationLine";
 import { useDisplayPreferences } from "@/lib/hooks/useDisplayPreferences";
 import { useProjectId } from "@/lib/hooks/useProjectId";
-import { PlusIcon, TriangleAlertIcon } from "lucide-react";
+import { TriangleAlertIcon } from "lucide-react";
 import { toast } from "sonner";
+import { useMemo } from "react";
+
+/**
+ * The only species this line's search may reach. A module constant, not an
+ * inline array: the combobox memoises its candidate list on its identity.
+ */
+const ACCEPTANCE_SPECIES: readonly SpeciesId[] = ["acceptance"];
 
 interface AcceptancesSectionProps {
   node: Node;
@@ -43,29 +50,49 @@ export function AcceptancesSection({ node, allNodes, allEdges, scope, onNavigate
   const projectId = useProjectId();
   const [{ acceptanceDisplay }] = useDisplayPreferences(projectId);
   const covering = acceptancesCovering(node.id, allNodes, allEdges);
+  // SCAFFOLD (part 2 only — part 3 task 3.5 deletes this).
+  // Every acceptance is excluded, so the list can only ever reach its create
+  // row: attaching an *existing* acceptance is a `covers` edge written from the
+  // anchor's side, and that write path arrives with the `relations` capability
+  // in part 3.
+  //
+  // Memoised because the combobox's candidate memo depends on it and that memo
+  // fuzzy-scores every node in the project; a fresh array here would miss it on
+  // every render. Part 3's narrower list keeps the `useMemo`.
+  const excludeIds = useMemo(
+    () => [node.id, ...allNodes.filter((n) => n.species === "acceptance").map((n) => n.id)],
+    [allNodes, node.id],
+  );
   return (
-    <PanelSection
-      title="Acceptances"
-      action={
-        onCreate && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={async () => {
-              const title = window.prompt(`New acceptance for "${node.title}" (the What):`);
-              if (!title || !title.trim() || !onCreate) return;
-              try {
-                await onCreate(node, title.trim());
-              } catch (err) {
-                toast.error("Couldn't add the acceptance.");
-                console.error(err);
-              }
-            }}
-          >
-            <PlusIcon className="size-4" /> Add
-          </Button>
-        )
+    <RelationLine
+      label="Acceptances"
+      add={
+        onCreate && {
+          counterpartSpecies: ACCEPTANCE_SPECIES,
+          allNodes,
+          excludeIds,
+          placeholder: "Search acceptances or name a new one...",
+          onSelect: () => {
+            // Attaching an existing acceptance lands in part 3 with the
+            // `relations` capability; until then `excludeIds` above leaves the
+            // list nothing but its create row, so this is unreachable rather
+            // than a silent failure. `false` all the same: an unreachable
+            // handler that reported success would be the one lie here.
+            return false;
+          },
+          onCreate: async (_species: SpeciesId, title: string) => {
+            try {
+              await onCreate(node, title);
+              return true;
+            } catch (err) {
+              toast.error("Couldn't add the acceptance.");
+              console.error(err);
+              // The line stays open over the title that failed, so the retry
+              // is one Enter away rather than a retype.
+              return false;
+            }
+          },
+        }
       }
     >
       {covering.length === 0 ? (
@@ -118,6 +145,6 @@ export function AcceptancesSection({ node, allNodes, allEdges, scope, onNavigate
           ))}
         </ul>
       )}
-    </PanelSection>
+    </RelationLine>
   );
 }

@@ -1,8 +1,9 @@
 /**
  * Every relation section of a node panel — Covers, Invocation, Decision links,
  * References, Findings and Connections — plus the row component two of them
- * share and the attach row Covers owns. (Acceptances is the exception, and only because
- * `AcceptancesSection` was already a module of its own.)
+ * share and the attach config Covers hands its relation line. (Acceptances is
+ * the exception, and only because `AcceptancesSection` was already a module of
+ * its own.)
  *
  * A module of their own because `RelationsGroup` renders them all and
  * `NodeDetailPanel` renders `RelationsGroup`: left where they were, those files
@@ -19,25 +20,27 @@
 
 "use client";
 
-import { useState } from "react";
-import { XIcon } from "lucide-react";
+import { useMemo } from "react";
 import { toast } from "sonner";
 
 import { PanelSection } from "@/components/panels/PanelSection";
+import {
+  RelationLine,
+  RelationRowItem,
+  removeWithUndo,
+} from "@/components/panels/RelationLine";
 import { EntityRow } from "@/components/graph/nodes/EntityRow";
 import { RefList } from "@/components/graph/nodes/RefBadges";
-import { NodeSearchCombobox } from "@/components/panels/NodeSearchCombobox";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SPECIES } from "@/lib/config/species";
-import { SPECIES_ICONS } from "@/components/graph/nodes/node-styles";
 import { SEVERITY_CHIP, SEVERITY_LABEL } from "@/components/quality/quality-styles";
 import { EMPTY_QUALITY_FILTERS, filterFindings, type FindingRow } from "@/lib/utils/quality";
 import { findWhereUsed, crossLayerConnections, coveredAnchorsOf } from "@/lib/utils/where-used";
 import { attachEmptiesMembership } from "@/lib/utils/acceptance-intake";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
+import { useLatest } from "@/lib/hooks/useLatest";
 import { cn } from "@/lib/utils";
 import type { Node, Edge } from "@/lib/data/types";
+import type { SpeciesId } from "@arkaik/schema";
 
 export interface InvocationSectionProps {
   node: Node;
@@ -323,7 +326,7 @@ interface CoversSectionProps {
   /**
    * Whether the project declares any product at all — the one thing this
    * section ever asked the whole `ProductScope` for, passed through to
-   * `AttachAnchorRow`'s triage warning. A boolean rather than the scope,
+   * the attach combobox's triage warning. A boolean rather than the scope,
    * because a component that takes a scope reads as one that shows products,
    * and this one does not.
    */
@@ -346,17 +349,29 @@ interface CoversSectionProps {
  * importing from an editor that no longer renders it is the import edge this
  * module exists to break.
  *
- * A `PanelSection` rather than the `Field` it was: inside a group this is a
+ * A `RelationLine` rather than the `Field` it was: inside a group this is a
  * level-four section with a heading, not a labelled control, and there is no
- * single control for a label to point at anyway.
+ * single control for a label to point at anyway. The line supplies the rest —
+ * the `+` that reveals the search, and the rule that an empty writable relation
+ * costs one line.
  */
 export function CoversSection({ node, allNodes, allEdges, hasProducts, onNavigate, intake }: CoversSectionProps) {
-  const nodesById = new Map(allNodes.map((n) => [n.id, n]));
+  const nodesById = useMemo(() => new Map(allNodes.map((n) => [n.id, n])), [allNodes]);
   // `coveredAnchorsOf`, not a walk of its own: `AcceptanceMembershipField` asks
   // the same question for its Product hint's anchor count, and the two answers have to be
   // the same list or the hint counts anchors this section does not show. The
-  // map stays because `AttachAnchorRow` resolves the id a combobox returns.
-  const coveredAnchors = coveredAnchorsOf(node, allNodes, allEdges);
+  // map stays because the attach config resolves the id the combobox returns.
+  const coveredAnchors = useMemo(
+    () => coveredAnchorsOf(node, allNodes, allEdges),
+    [node, allNodes, allEdges],
+  );
+  // Memoised because it is a dependency of the combobox's candidate memo, and
+  // that memo fuzzy-scores every node in the project. A fresh array here would
+  // miss it on every render — which is exactly what hoisting `ANCHOR_SPECIES`
+  // out of the render was meant to prevent, cancelled one prop over.
+  const excludeIds = useMemo(() => coveredAnchors.map((anchor) => anchor.id), [coveredAnchors]);
+  // Undo outlives the render that built it; see the `restore` below.
+  const intakeRef = useLatest(intake);
 
   /**
    * Run one intake gesture, reporting a failure instead of swallowing it.
@@ -364,66 +379,96 @@ export function CoversSection({ node, allNodes, allEdges, hasProducts, onNavigat
    * Every one of them is a write to a store the panel does not own, and a
    * rejected batch otherwise leaves the list looking unchanged with nothing
    * saying why — the same treatment `AcceptancesSection` gives its create.
+   *
+   * It answers whether the write landed, not just whether it complained: the
+   * relation line closes on success and stays open on failure, and a toast
+   * over a line that shut and dropped the typed query is a worse account of
+   * what happened than no toast at all.
    */
-  async function run(action: () => Promise<void>, failure: string) {
+  async function run(action: () => Promise<void>, failure: string | null): Promise<boolean> {
     try {
       await action();
+      return true;
     } catch (err) {
-      toast.error(failure);
+      // `null` means the caller speaks for this one — `removeWithUndo` reports
+      // a failed restore itself, and two toasts describing one failure is the
+      // other way to get that wrong.
+      if (failure) toast.error(failure);
       console.error(err);
+      return false;
     }
   }
 
   return (
-    <PanelSection title="Covers">
+    <RelationLine
+      label="Covers"
+      add={
+        intake &&
+        attachAnchorConfig({
+          node,
+          allNodes,
+          allEdges,
+          nodesById,
+          hasProducts,
+          intake,
+          run,
+          excludeIds,
+        })
+      }
+    >
       {coveredAnchors.length === 0 ? (
         <p className="text-xs text-muted-foreground">
           {intake
-            ? "Unanchored — an idea in intake. Attach it to a view or a flow below."
+            ? "Unanchored — an idea in intake. Attach it to a view or a flow above."
             : "Unanchored (covers nothing)."}
         </p>
       ) : (
         <ul className="flex flex-col gap-1">
-          {coveredAnchors.map((anchor) => {
-            const Icon = SPECIES_ICONS[anchor.species];
-            return (
-              <li key={anchor.id} className="flex items-center gap-1">
-                <button type="button" className="inline-flex flex-1 items-center gap-2 text-left text-sm hover:underline" onClick={() => onNavigate?.(anchor)}>
-                  <Icon className="size-3.5 text-muted-foreground" /> {anchor.title}
-                </button>
-                {intake && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="size-7 shrink-0"
-                    aria-label={`Stop covering ${anchor.title}`}
-                    onClick={() => void run(() => intake.detach(node, anchor.id), "Couldn't detach that node.")}
-                  >
-                    <XIcon className="size-3.5" />
-                  </Button>
-                )}
-              </li>
-            );
-          })}
+          {coveredAnchors.map((anchor) => (
+            <RelationRowItem
+              key={anchor.id}
+              node={anchor}
+              onNavigate={onNavigate}
+              onRemove={
+                intake &&
+                (() =>
+                  void removeWithUndo({
+                    label: anchor.title,
+                    remove: () =>
+                      run(() => intake.detach(node, anchor.id), "Couldn't detach that node."),
+                    // `intake.attach`, not `relations.link`: covers edges stay
+                    // on the intake path, and `node-relations.ts` refuses them
+                    // at runtime rather than only in prose.
+                    //
+                    // Through the ref, not this render's `intake`: by the time
+                    // Undo is clicked the detach has landed, and the captured
+                    // object plans against the edge list from before it —
+                    // where the edge still exists, so `planAcceptanceAttach`
+                    // plans nothing and Undo does nothing, silently. See
+                    // {@link useLatest}.
+                    restore: () => run(() => intakeRef.current!.attach(node, anchor), null),
+                  }))
+              }
+              removeLabel={`Stop covering ${anchor.title}`}
+              removeQuestion={`Stop covering "${anchor.title}"?`}
+            />
+          ))}
         </ul>
       )}
-      {intake && (
-        <AttachAnchorRow
-          node={node}
-          allNodes={allNodes}
-          allEdges={allEdges}
-          nodesById={nodesById}
-          hasProducts={hasProducts}
-          intake={intake}
-          run={run}
-        />
-      )}
-    </PanelSection>
+    </RelationLine>
   );
 }
 
-interface AttachAnchorRowProps {
+/**
+ * The species a `covers` edge may anchor to, as a module constant.
+ *
+ * Not an inline `["view", "flow"]`: the combobox memoises its candidate list on
+ * this array's identity, and a fresh array on every render would make that
+ * memo dead weight.
+ */
+const ANCHOR_SPECIES: readonly SpeciesId[] = ["view", "flow"];
+
+interface AttachAnchorConfigArgs {
   node: Node;
   allNodes: Node[];
   allEdges: Edge[];
@@ -437,20 +482,27 @@ interface AttachAnchorRowProps {
    */
   hasProducts: boolean;
   intake: AcceptanceIntake;
-  run: (action: () => Promise<void>, failure: string) => Promise<void>;
+  /** Runs one write, reporting `false` when it failed. */
+  run: (action: () => Promise<void>, failure: string | null) => Promise<boolean>;
+  /**
+   * The ids of the anchors already covered — what the list must not offer
+   * again. Memoised by the caller; see the note where it is built.
+   */
+  excludeIds: readonly string[];
 }
 
 /**
  * Attach this acceptance to a view or a flow — one that exists, or one created
- * in the same gesture.
+ * in the same gesture. Not a component: the `add` config its relation line
+ * takes, because the `+` on the line now owns when the search appears.
  *
- * The species select plus `NodeSearchCombobox` is the shape the insert dialog
- * already uses for "an existing node, or a new one by that name", and reusing it
- * means the create affordance appears under exactly the same rule in both: only
- * once something is typed that no node of that species already answers to. (The
- * playlist editor used to be the third; its Add step popover searches both
- * species at once, because a playlist plays both and the select was asking a
- * question the search result already answers.)
+ * One `NodeSearchCombobox` over both anchor species, with no select in front of
+ * it. It keeps the rule the insert dialog states for "an existing node, or a new
+ * one by that name" — the create row appears only once something is typed that
+ * no node of an admissible species already answers to — but asks for one
+ * decision instead of two, since the search result already says which species
+ * was picked. The playlist editor's Add step popover reached that conclusion
+ * first, for a list that plays both; Covers has now joined it.
  *
  * **Attaching an unassigned anchor is allowed and announced.** An acceptance
  * anchored only to unassigned views derives an empty membership, so this gesture
@@ -462,9 +514,16 @@ interface AttachAnchorRowProps {
  * in. So it is written, and then said. A node created here inherits the
  * acceptance's product precisely so the common path never trips this.
  */
-function AttachAnchorRow({ node, allNodes, allEdges, nodesById, hasProducts, intake, run }: AttachAnchorRowProps) {
-  const [species, setSpecies] = useState<"view" | "flow">("view");
-
+function attachAnchorConfig({
+  node,
+  allNodes,
+  allEdges,
+  nodesById,
+  hasProducts,
+  intake,
+  run,
+  excludeIds,
+}: AttachAnchorConfigArgs) {
   function announceTriage(anchor: Pick<Node, "id" | "species" | "title" | "metadata">) {
     if (!hasProducts) return;
     // Evaluated against the edges as they were BEFORE the write — the predicate
@@ -473,35 +532,30 @@ function AttachAnchorRow({ node, allNodes, allEdges, nodesById, hasProducts, int
     toast.warning(`"${anchor.title}" has no product, so this acceptance now appears under All products only.`);
   }
 
-  return (
-    <div className="mt-1 grid gap-2 sm:grid-cols-[7rem_1fr] sm:items-center">
-      <Select value={species} onValueChange={(value) => setSpecies(value as "view" | "flow")}>
-        <SelectTrigger aria-label="Anchor species">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="view">View</SelectItem>
-          <SelectItem value="flow">Flow</SelectItem>
-        </SelectContent>
-      </Select>
-      <NodeSearchCombobox
-        species={species}
-        allNodes={allNodes}
-        onSelect={(anchorId) => {
-          const anchor = nodesById.get(anchorId);
-          if (!anchor) return;
-          void run(async () => {
-            await intake.attach(node, anchor);
-            announceTriage(anchor);
-          }, "Couldn't attach that node.");
-        }}
-        onCreate={(title) =>
-          run(async () => {
-            const created = await intake.createAnchor(node, species, title);
-            if (created) toast.success(`Created "${created.title}" and attached it.`);
-          }, `Couldn't create the ${species}.`)
-        }
-      />
-    </div>
-  );
+  return {
+    counterpartSpecies: ANCHOR_SPECIES,
+    allNodes,
+    excludeIds,
+    onSelect: async (anchorId: string) => {
+      const anchor = nodesById.get(anchorId);
+      // Nothing to attach to, so nothing happened: `false` keeps the line open
+      // rather than closing it over a gesture that did not land.
+      if (!anchor) return false;
+      // Awaited, not fired and forgotten: `run`'s answer is what tells the
+      // line whether to close, and an attach that the store rejects has to
+      // leave the line standing for the same reason a create does.
+      return run(async () => {
+        await intake.attach(node, anchor);
+        announceTriage(anchor);
+      }, "Couldn't attach that node.");
+    },
+    onCreate: (species: SpeciesId, title: string) =>
+      run(async () => {
+        // `intake.createAnchor` takes the narrow anchor species; the grammar
+        // admits nothing else on this line, so the cast is the type system
+        // catching up with `ANCHOR_SPECIES` above.
+        const created = await intake.createAnchor(node, species as "view" | "flow", title);
+        if (created) toast.success(`Created "${created.title}" and attached it.`);
+      }, `Couldn't create the ${species}.`),
+  };
 }
