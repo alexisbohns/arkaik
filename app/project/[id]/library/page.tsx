@@ -174,6 +174,7 @@ export default function ProjectLibraryPage() {
   const speciesFilter = parseSpeciesFilter(searchParams.get("species"));
 
   const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes, updateNode, addNode, applyMutations } = useNodes(id);
+
   const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges, syncEdges } = useEdges(id);
   const intake = useAcceptanceIntake({
     projectId: id,

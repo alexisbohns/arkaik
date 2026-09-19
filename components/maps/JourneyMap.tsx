@@ -88,6 +88,7 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   const [playlistError, setPlaylistError] = useState<string | null>(null);
 
   const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes, updateNode, addNode, removeNode, removeNodes, applyMutations } = useNodes(id);
+
   const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges, addEdge, removeEdge, syncEdges } = useEdges(id);
   const intake = useAcceptanceIntake({
     projectId: id,

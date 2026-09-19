@@ -61,6 +61,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
   const [deleteEdgeDialogOpen, setDeleteEdgeDialogOpen] = useState(false);
 
   const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes, updateNode, addNode, applyMutations } = useNodes(projectId);
+
   const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges, addEdge, removeEdge, syncEdges } = useEdges(projectId);
   const intake = useAcceptanceIntake({
     projectId: projectId,

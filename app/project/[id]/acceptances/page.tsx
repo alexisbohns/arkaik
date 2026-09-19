@@ -28,6 +28,7 @@ export default function ProjectAcceptancesPage() {
   const { openNode } = useProjectPanels();
 
   const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes, updateNode, addNode, applyMutations } = useNodes(id);
+
   const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges, syncEdges } = useEdges(id);
   const { project: projectBundle, error: projectError, reload: reloadProject } = useProject(id);
   const intake = useAcceptanceIntake({

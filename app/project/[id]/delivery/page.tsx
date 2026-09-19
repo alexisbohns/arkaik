@@ -61,6 +61,7 @@ export default function ProjectDeliveryPage() {
   const { openNode } = useProjectPanels();
 
   const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes, updateNode, addNode, applyMutations } = useNodes(id);
+
   const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges, syncEdges } = useEdges(id);
   const intake = useAcceptanceIntake({
     projectId: id,

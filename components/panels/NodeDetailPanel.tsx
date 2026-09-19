@@ -42,6 +42,14 @@ import { computeNodeTimeline } from "@/lib/utils/journal";
 import { FeedRow } from "@/components/journal/FeedRow";
 import type { FindingRow } from "@/lib/utils/quality";
 import { cn } from "@/lib/utils";
+import { CopyPlusIcon, MoreHorizontalIcon, SplitIcon, Trash2Icon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface NodeDetailPanelProps {
   node: Node;
@@ -55,7 +63,10 @@ interface NodeDetailPanelProps {
   /** Platform tab the variants section opens on (e.g. the clicked Delivery item's platform). */
   initialPlatform?: PlatformId;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
-  onDelete?: (nodeId: string) => void;
+  // No `onDelete` / `onDuplicate` here: the record's own actions render in
+  // `NodeDetailPanelHeader`, which takes them directly. The body accepted
+  // `onDelete` and discarded it with `void onDelete;` for as long as there was
+  // nowhere to put it; there is now.
   allNodes?: Node[];
   allEdges?: Edge[];
   /**
@@ -542,13 +553,41 @@ function ComputedPlatformStatusSection({
 }
 
 /**
- * What identifies the panel, for the stack's per-panel header — species badge
- * and entity id, the chrome the `SheetHeader` used to carry. The close button
- * belongs to `PanelStack`, which owns every panel's frame.
+ * What identifies the panel, for the stack's per-panel header — species badge,
+ * entity id, and the record's own actions. The close button is NOT here: it
+ * belongs to `PanelStack`, which owns every panel's frame, and this menu sits
+ * to its left because these actions belong to the record rather than the frame.
+ *
+ * **Every item is conditional, and with none there is no button at all.** A
+ * menu that opens onto nothing — or onto three disabled rows — is chrome
+ * advertising capabilities the surface does not have; a read-only surface
+ * passes no handlers and gets no `⋯`.
+ *
+ * `onDuplicate` and `onSplit` are both callbacks rather than the dialogs
+ * themselves. The triggers live here and the dialogs have to live in the
+ * document, and `PanelStack` renders header and body through two separate
+ * render props — so the open state can only be held above both, by
+ * `ProjectPanels`, which mounts one of each for the whole stack.
  */
-export function NodeDetailPanelHeader({ node }: { node: Node }) {
+export function NodeDetailPanelHeader({
+  node,
+  onDuplicate,
+  onDelete,
+  onSplit,
+}: {
+  node: Node;
+  /**
+   * Open the duplicate dialog for this node. It writes nothing on its own —
+   * naming the copy happens in `DuplicateNodeDialog`, which `ProjectPanels`
+   * owns — so this is a plain `() => void` and not a write path.
+   */
+  onDuplicate?: () => void;
+  onDelete?: (nodeId: string) => void;
+  onSplit?: () => void;
+}) {
   const speciesConfig = SPECIES.find((s) => s.id === node.species);
   const speciesLabel = speciesConfig?.label ?? node.species;
+  const hasMenu = Boolean(onDuplicate || onDelete || onSplit);
 
   return (
     <>
@@ -559,6 +598,53 @@ export function NodeDetailPanelHeader({ node }: { node: Node }) {
         showLabel
       />
       <PanelHeaderEntityId id={node.id} />
+      {hasMenu && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              // `shrink-0` for the reason the close button beside it carries
+              // one: this sits in a `min-w-0 flex-1` row next to truncating
+              // identity chips, and a long entity id would otherwise squash the
+              // button instead of truncating itself.
+              className="ml-auto shrink-0 cursor-pointer"
+              // The id when there is no title: an untitled record is reachable
+              // — a duplicate of one is titled just "(copy)", and a new one is
+              // titled nothing at all — and "Actions for " names nothing.
+              aria-label={`Actions for ${node.title || node.id}`}
+            >
+              <MoreHorizontalIcon className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {onDuplicate && (
+              <DropdownMenuItem onSelect={onDuplicate}>
+                <CopyPlusIcon /> Duplicate
+              </DropdownMenuItem>
+            )}
+            {onSplit && (
+              <DropdownMenuItem onSelect={onSplit}>
+                <SplitIcon /> Split into several…
+              </DropdownMenuItem>
+            )}
+            {onDelete && (
+              // No confirmation of its own: `onDelete` is the surface's existing
+              // delete request, which opens that surface's confirm dialog. A
+              // second one here would either double-prompt or, worse, replace a
+              // prompt that knows what else the deletion takes with one that
+              // does not.
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onSelect={() => onDelete(node.id)}
+              >
+                <Trash2Icon /> Delete
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </>
   );
 }
@@ -573,7 +659,6 @@ export function NodeDetailPanel({
   scope,
   initialPlatform,
   onUpdate,
-  onDelete,
   allNodes,
   allEdges,
   history,
@@ -585,8 +670,6 @@ export function NodeDetailPanel({
   findings,
   onOpenCriterion,
 }: NodeDetailPanelProps) {
-  void onDelete;
-
   return (
     // The top padding is not decoration: without it the title sat flush against
     // the header's bottom border, which is the one panel body that read as
@@ -623,14 +706,8 @@ export function NodeDetailPanel({
           )
         }
         authored={
-          node.species === "acceptance" && allNodes && allEdges && onUpdate ? (
-            <AcceptanceAuthoredFields
-              node={node}
-              allNodes={allNodes}
-              allEdges={allEdges}
-              onUpdate={onUpdate}
-              intake={intake}
-            />
+          node.species === "acceptance" && onUpdate ? (
+            <AcceptanceAuthoredFields node={node} onUpdate={onUpdate} />
           ) : undefined
         }
       />
