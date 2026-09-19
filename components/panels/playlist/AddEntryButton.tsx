@@ -3,9 +3,9 @@
 import { useMemo, useState } from "react";
 import { GitBranchIcon, PlusIcon, SplitIcon } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ICON_TILE } from "@/components/journal/DeliverableHoverCard";
 import { SPECIES_GRAPH_ICONS } from "@/lib/config/species-icons";
 import { wouldCreateCycle } from "@/lib/utils/cycle";
 import { fuzzyScore } from "@/lib/utils/search";
@@ -184,10 +184,29 @@ export function AddEntryButton({
       }}
     >
       <PopoverTrigger asChild>
-        <Button type="button" variant="ghost" size="sm" className="cursor-pointer self-start text-muted-foreground">
-          <PlusIcon className="size-4" />
-          Add step
-        </Button>
+        {/*
+          * The last mark on the rail, not a button beside it.
+          *
+          * It was a ghost `+ Add step` under the list, which floated: a control
+          * belonging to the playlist but standing outside the one structure that
+          * says what the playlist is. On the rail it reads as the next position —
+          * the place the step you are about to add will land — and the dashes
+          * are the whole difference between it and the numbered tiles above:
+          * same box, same column, not filled in yet.
+          */}
+        <button
+          type="button"
+          aria-label="Add step"
+          title="Add step"
+          className={cn(
+            ICON_TILE,
+            "cursor-pointer border border-dashed border-border text-muted-foreground transition-colors",
+            "hover:border-solid hover:bg-muted hover:text-foreground",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          )}
+        >
+          <PlusIcon className="size-3.5" aria-hidden="true" />
+        </button>
       </PopoverTrigger>
 
       <PopoverContent align="start" className="w-80 p-2">

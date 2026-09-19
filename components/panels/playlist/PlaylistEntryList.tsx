@@ -81,13 +81,6 @@ interface PlaylistEntryRowProps {
 /** A nested list, set off by a rule down its left rather than by a margin. */
 const NESTED = "border-l border-border pl-3";
 
-/**
- * Where a row's text starts, measured from the list's left edge: the 24px index
- * tile plus the grid's 12px `gap-x-3`. The composer and the empty state take it
- * so that "No entries yet." and the thing that fixes it both sit under the
- * titles rather than under the rail.
- */
-const CONTENT_COLUMN = "pl-9";
 
 /**
  * The bar of a condition or junction row: the editable label, a disclosure
@@ -177,7 +170,6 @@ function PlaylistEntryRow({
 
   const refId = entry.type === "flow" ? entry.flow_id : entry.type === "view" ? entry.view_id : undefined;
   const refNode = refId ? nodesById.get(refId) : undefined;
-  const last = index === total - 1;
 
   return (
     <li
@@ -194,7 +186,17 @@ function PlaylistEntryRow({
           on the last one, which would otherwise trail into nothing. */}
       <div className="relative flex flex-col items-center">
         <PlaylistIndexMenu index={index} total={total} onMoveTo={onMoveTo} onRemove={onRemove} />
-        {!last && <span className="w-px flex-1 bg-border" aria-hidden="true" />}
+        {/* Every entry has a connector now, because every list ends in the add
+            tile — the rail runs from the first step to the place the next one
+            will go.
+
+            Solid all the way down, including the last segment. Dashing that one
+            to match the tile was tried and is worse: a connector spans its
+            entry's whole height, so on a junction holding four cases it became
+            300px of dashes running past everything nested inside — loud, and
+            easily read as a nesting rule rather than as a rail. The dashes mean
+            one thing, on one 24px box: this position is not filled in yet. */}
+        <span className="w-px flex-1 bg-border" aria-hidden="true" />
         <PlaylistReorderControls index={index} total={total} depth={depth} onMove={onMove} />
       </div>
 
@@ -202,7 +204,7 @@ function PlaylistEntryRow({
           never to the `<li>`: a grid child stretches to its content box, so
           padding on the row would end the connector above the gap and leave the
           marks unlinked. */}
-      <div className={cn("flex min-w-0 flex-col", !last && "pb-4")}>
+      <div className="flex min-w-0 flex-col pb-4">
         {(entry.type === "view" || entry.type === "flow") && refId && (
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
@@ -414,7 +416,6 @@ export function PlaylistEntryList({
 
   const body = (
     <>
-      {entries.length === 0 && <p className={cn(CONTENT_COLUMN, "text-xs text-muted-foreground")}>No entries yet.</p>}
       {entries.length > 0 && (
         <ol className="flex flex-col">
           {entries.map((entry, index) => (
@@ -439,7 +440,12 @@ export function PlaylistEntryList({
           ))}
         </ol>
       )}
-      <div className={CONTENT_COLUMN}>
+      {/* On the `<ol>`'s grid but outside it: the add tile is where the next
+          step will go, not a step, and an `<li>` that is not an entry would put
+          it in the list a screen reader reads out. No gap above it either — the
+          column is `flex flex-col` with none — so the dashed connector coming
+          down from the last entry meets it. */}
+      <div className="grid grid-cols-[auto_1fr] gap-x-3">
         <AddEntryButton
           flowNodeId={flowNodeId}
           allNodes={allNodes}
@@ -448,18 +454,24 @@ export function PlaylistEntryList({
           onCycleBlocked={onCycleBlocked}
           onCreateNode={onCreateNode}
         />
+        {entries.length === 0 && (
+          <p className="self-center text-xs text-muted-foreground">No entries yet.</p>
+        )}
       </div>
     </>
   );
 
+  // No `gap` on either column: the rail is one continuous line from the first
+  // entry to the add tile, and a gap between the `<ol>` and the tile would cut
+  // the dashed segment short and leave the tile floating again.
   if (!heading) {
-    return <div className="flex flex-col gap-2">{body}</div>;
+    return <div className="flex flex-col">{body}</div>;
   }
 
   return (
     <div className="flex flex-col gap-2">
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{heading}</p>
-      <div className={cn(NESTED, "flex flex-col gap-2")}>{body}</div>
+      <div className={cn(NESTED, "flex flex-col")}>{body}</div>
     </div>
   );
 }

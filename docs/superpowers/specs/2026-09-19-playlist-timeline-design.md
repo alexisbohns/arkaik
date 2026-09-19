@@ -102,10 +102,24 @@ grid whose first column is the rail would push the nested rail away from the
 rule that should be carrying it; the helper goes away with the cards it was
 built for.
 
-The Add step button (§2b) and the empty state sit in the content column (`pl-9`
-— the 24px tile plus the grid's 12px gap) at the foot of each list, so that "No
-entries yet." and the thing that fixes it both sit under the titles rather than
-under the rail.
+**Every list ends in an add tile, on the rail.** A 24px dashed box carrying a
+`+`, in the same column as the numbered tiles and reached by the same connector:
+it reads as the next position — where the step you are about to add will land.
+The affordance it replaces was a ghost `+ Add step` under the list, which
+floated, belonging to the playlist but standing outside the one structure that
+says what a playlist is.
+
+It sits on the `<ol>`'s grid but outside the `<ol>`: it is not an entry, and an
+`<li>` that is not one would put it in the list a screen reader reads out.
+Neither column carries a `gap`, so the connector from the last entry meets it.
+An empty list is then the tile and the message on one line — `⟦+⟧ No entries
+yet.` — rather than a message with a composer somewhere beneath it.
+
+The connector stays **solid** all the way down, including the last segment.
+Dashing that one to match the tile was tried and is worse: a connector spans its
+entry's whole height, so on a junction holding four cases it became 300px of
+dashes running past everything nested inside — loud, and easily read as a
+nesting rule rather than as a rail. The dashes mean one thing, on one 24px box.
 
 ## 2. The index menu
 
@@ -139,8 +153,7 @@ node search or a label field — three controls, permanently open at the foot of
 **every** list, including every branch of every branch. In a flow with one
 junction and four cases that is five open composers for a playlist of six steps.
 
-It collapses to one small ghost `+ Add step` button opening a popover with one
-`Combobox`:
+It collapses to the rail's add tile (§1) opening a popover with one `Combobox`:
 
 ```
 ┌────────────────────────────────┐
