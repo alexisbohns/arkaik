@@ -42,9 +42,18 @@ interface NodeRelationsParams {
   projectId: string;
   nodes: readonly Node[];
   edges: readonly Edge[];
-  /** `useNodes`'s atomic batch — `linkNew` is more than one write. */
+  /** `useNodes`' atomic batch — `linkNew` is more than one write. */
   applyMutations: (ops: MutationOp[]) => Promise<{ nodes: Node[]; edges: Edge[]; version?: string }>;
-  /** `useEdges`'s adopt-the-batch-result, since `applyMutations` owns only nodes. */
+  /**
+   * `useEdges`' adopt-the-batch-result.
+   *
+   * Not what makes the edges land: `applyMutations` routes through
+   * `writeBackGraph`, which writes nodes AND edges into the shared bundle
+   * entry, so a created or cascaded edge has already reached `useEdges` by the
+   * time this runs. It is the belt to that write-back's braces — idempotent on
+   * the same result, and guarded by the same version — kept because the two
+   * hooks are the seam where an edge would otherwise go missing for a render.
+   */
   syncEdges: (edges: Edge[], version?: string) => void;
 }
 
@@ -59,9 +68,11 @@ export function useNodeRelations({
 
   return useMemo(() => {
     async function commit(ops: MutationOp[]): Promise<void> {
-      // A plan with no ops is not written at all — every gesture here has a
-      // legitimate no-op case, and an empty batch would still be a round trip
-      // and a journal read.
+      // A plan with no ops is not written at all. Not to save a round trip —
+      // `applyMutations` already answers an empty batch from the cache without
+      // one — but to skip the `syncEdges` it would otherwise be followed by,
+      // which is a `writeBackEdges` and a cache write on every click that
+      // changed nothing. Every gesture here has a legitimate no-op case.
       if (ops.length === 0) return;
       const result = await applyMutations(ops);
       syncEdges(result.edges, result.version);

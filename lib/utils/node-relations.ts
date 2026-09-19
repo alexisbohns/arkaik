@@ -25,6 +25,7 @@ import {
   deriveNodeId,
   edgeId,
   isValidEdgeSemantic,
+  type EdgeTypeId,
   type MutationOp,
   type SpeciesId,
 } from "@arkaik/schema";
@@ -33,6 +34,40 @@ import { relationRows, type RelationLineSpec } from "@/lib/utils/relation-lines"
 
 /** The minimum shape these rules need of a node — never the whole thing. */
 type NodeLike = Pick<Node, "id" | "species">;
+
+/**
+ * Edge types this module refuses to write.
+ *
+ * The boundary above, enforced rather than only argued. `covers` is intake's
+ * (`useAcceptanceIntake`) because attaching one can empty an acceptance's
+ * derived product membership and a node created in that gesture inherits the
+ * acceptance's product; `composes` is `PlaylistEditor`'s, because it is half of
+ * a relationship whose other half is `metadata.playlist.entries`.
+ *
+ * Both would otherwise be writable straight through here — `relationLinesFor`
+ * still emits both covers lines, and the one thing keeping them out today is a
+ * single unguarded `edgeType !== "covers"` filter in `RelationsGroup`. A
+ * paragraph is not a guard: a caller that gets this wrong would not fail here,
+ * it would fail months later as an acceptance that quietly left its product, or
+ * as a flow whose playlist and edges disagree.
+ */
+const NOT_OURS: readonly EdgeTypeId[] = ["covers", "composes"];
+
+/**
+ * Refuse a line this module does not write.
+ *
+ * A throw, for the reason the grammar check throws: it cannot come from the
+ * user. Every surface that reaches these functions has already filtered these
+ * edge types out, so one arriving here is a bug in the caller — and the whole
+ * point is that the caller trips on it immediately.
+ */
+function assertOurs(line: RelationLineSpec): void {
+  if (NOT_OURS.includes(line.edgeType)) {
+    throw new Error(
+      `node-relations: ${line.edgeType} edges are not written through this module — see the boundary in its docblock`,
+    );
+  }
+}
 
 /**
  * Which way round the edge goes.
@@ -76,6 +111,7 @@ export function planRelationLink(
   projectId: string,
   edges: readonly Edge[],
 ): MutationOp[] {
+  assertOurs(line);
   if (counterpart.id === node.id) return [];
 
   const { source, target } = relationEndpoints(node, counterpart, line);
@@ -124,6 +160,7 @@ export function planRelationUnlink(
   line: RelationLineSpec,
   edges: readonly Edge[],
 ): MutationOp[] {
+  assertOurs(line);
   return edges
     .filter((edge) => edge.edge_type === line.edgeType)
     .filter((edge) => {
@@ -168,6 +205,7 @@ export function planRelationNew(
   edges: readonly Edge[],
   nodesById: ReadonlyMap<string, Node>,
 ): RelationCreationPlan | null {
+  assertOurs(line);
   const trimmed = title.trim();
   if (!trimmed) return null;
   if (!line.counterpartSpecies.includes(species)) {

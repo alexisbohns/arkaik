@@ -356,6 +356,74 @@ assert.equal(plan.ops[1].op, "create_edge");
 // A whitespace title is a mis-click, not an intent to mint a hash-suffixed id.
 assert.equal(planRelationNew(V, calls, "api-endpoint", "   ", PROJECT, [], new Map()), null);
 
+// A species the LINE does not admit is refused. The combobox only offers
+// `line.counterpartSpecies`, so this is a caller bug rather than a user one —
+// and minting the node before finding out would leave an orphan behind.
+assert.throws(
+  () => planRelationNew(V, calls, "data-model", "Orders", PROJECT, [], new Map()),
+  /does not admit/i,
+  "a counterpart species the line does not admit is refused",
+);
+
+// Inbound linkNew: the node and the edge compose, and the edge runs
+// counterpart → node. This is the one thing the module does end to end —
+// `planRelationNew` delegating the endpoints to `planRelationLink` — so the
+// composition is asserted on the op itself rather than inferred from the two
+// halves passing separately.
+{
+  const inbound = planRelationNew(V, calledBy, "api-endpoint", "GET /pings", PROJECT, [], new Map());
+  assert.equal(inbound.ops.length, 2);
+  assert.equal(inbound.ops[1].edge.source_id, inbound.node.id, "the new endpoint is the source");
+  assert.equal(inbound.ops[1].edge.target_id, "V-home", "and the panel's node is the target");
+  assert.equal(inbound.ops[1].edge.edge_type, "calls");
+}
+
+// --- 8b: the covers/composes boundary is enforced, not just documented ------
+
+// `covers` is intake's (attaching one can empty an acceptance's derived product
+// membership, which the surface has to announce) and `composes` is
+// PlaylistEditor's (its other half is `metadata.playlist.entries`). Both are
+// still reachable — `relationLinesFor` emits both covers lines, and
+// `EdgeRelationLine` is exported and takes whatever line it is handed — so the
+// only thing keeping them out of this module is one filter in one component.
+// These assertions are what makes a wrong call site fail here instead of
+// months later as an acceptance that quietly left its product.
+const ACC = n("AC-signs-in", "acceptance");
+const coversOut = relationLinesFor("acceptance").find((line) => line.id === "covers:out");
+assert(coversOut, "an acceptance still has a covers line — that is why the guard is needed");
+
+// Hand-built: `composes` is in PANEL_EXCLUDED_EDGE_TYPES, so `relationLinesFor`
+// never produces this spec. A caller that built one anyway is exactly the case
+// the guard defends against.
+const composesOut = {
+  id: "composes:out",
+  edgeType: "composes",
+  direction: "out",
+  label: "Composes",
+  counterpartSpecies: ["view"],
+};
+
+for (const [line, name] of [
+  [coversOut, "covers"],
+  [composesOut, "composes"],
+]) {
+  assert.throws(
+    () => planRelationLink(ACC, V, line, PROJECT, []),
+    /not written through this module/i,
+    `planRelationLink refuses ${name}`,
+  );
+  assert.throws(
+    () => planRelationUnlink("AC-signs-in", "V-home", line, [edge("AC-signs-in", "V-home", name)]),
+    /not written through this module/i,
+    `planRelationUnlink refuses ${name}`,
+  );
+  assert.throws(
+    () => planRelationNew(ACC, line, "view", "Checkout", PROJECT, [], new Map()),
+    /not written through this module/i,
+    `planRelationNew refuses ${name}`,
+  );
+}
+
 // The plan is judged by the graph it produces, through the real interpreter.
 {
   const applied = applyOps({ nodes: [V], edges: [] }, plan.ops);

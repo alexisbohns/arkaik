@@ -318,6 +318,7 @@ export function RelationRowItem({
   onRemove,
   removeLabel,
   removeQuestion,
+  removeDisabled,
   children,
 }: {
   node: Node;
@@ -327,6 +328,14 @@ export function RelationRowItem({
   removeLabel?: string;
   /** The confirm's question. Defaults to the label with a question mark. */
   removeQuestion?: string;
+  /**
+   * A write is in flight on this line. Disabled rather than hidden: the row is
+   * still on screen for the length of the round trip, and a second gesture
+   * would plan a `delete_edge` against edges that already lost it — which the
+   * store refuses as `edge_not_found`, so the user would be told the removal
+   * failed about one that worked.
+   */
+  removeDisabled?: boolean;
   children?: ReactNode;
 }) {
   return (
@@ -339,6 +348,7 @@ export function RelationRowItem({
         <RemoveButton
           label={removeLabel ?? `Remove ${node.title}`}
           question={removeQuestion ?? `${removeLabel ?? `Remove ${node.title}`}?`}
+          disabled={removeDisabled}
           onConfirm={onRemove}
         />
       )}

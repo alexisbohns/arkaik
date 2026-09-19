@@ -244,6 +244,38 @@ assert(
   "NodeDetailPanel imports useProjectId from the shared route-param hook",
 );
 
+// --- the Relations group's edge lines come from the grammar, minus covers ----
+//
+// Pinned at the source, the same way and for the same reason as the journal
+// key above: `RelationsGroup` is a client component and this repo has no
+// component rig, so the alternative is no coverage at all. Deleting the
+// `crossLayerConnections` assertions was right — the walk is gone — but it
+// left the group's *use* of `relationRows` and its one structural rule
+// covered by nothing.
+//
+// The rule: the list of lines is `relationLinesFor(node.species)`, never a
+// hand-written one, and the covers lines are matched out of it because a
+// covers edge is intake's to write (product membership) rather than the
+// generic edge path's. `node-relations.ts` now refuses a covers line outright,
+// so losing this filter is a throw rather than a silent membership bug — but
+// a throw on every acceptance panel is still a regression worth naming here.
+const relationsGroupSource = fs.readFileSync(
+  path.join(__dirname, "..", "..", "components", "panels", "RelationsGroup.tsx"),
+  "utf8",
+);
+assert(
+  relationsGroupSource.includes("relationLinesFor(node.species)"),
+  "RelationsGroup derives its lines from the grammar, per species",
+);
+assert(
+  relationsGroupSource.includes('line.edgeType !== "covers"'),
+  "the covers lines are matched out of the generic edge list — they have their own components",
+);
+assert(
+  /relationRows\(node\.id, line, allEdges\)\.some\(/.test(relationsGroupSource),
+  "the emptiness test resolves each row, as the line it stands in for does",
+);
+
 // --- where-used: the covers walk RelationsGroup and its children share -------
 //
 // `coveredAnchorsOf` was lifted out of a section so the group could ask "is

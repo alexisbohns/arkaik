@@ -24,6 +24,12 @@ const ACCEPTANCE_SPECIES: readonly SpeciesId[] = ["acceptance"];
 
 interface AcceptancesSectionProps {
   node: Node;
+  /**
+   * The project's nodes by id, built once by `RelationsGroup` for every line on
+   * the panel rather than once here — see `EdgeRelationLine`'s copy of this
+   * prop.
+   */
+  nodesById: ReadonlyMap<string, Node>;
   allNodes: Node[];
   allEdges: Edge[];
   /** The surface's product scope — the chips show each acceptance's effective platforms. */
@@ -57,7 +63,7 @@ interface AcceptancesSectionProps {
  * property of the reader, not of the surface, and every panel showing this
  * section must switch together.
  */
-export function AcceptancesSection({ node, allNodes, allEdges, scope, onNavigate, onCreate, intake }: AcceptancesSectionProps) {
+export function AcceptancesSection({ node, nodesById, allNodes, allEdges, scope, onNavigate, onCreate, intake }: AcceptancesSectionProps) {
   const projectId = useProjectId();
   const [{ acceptanceDisplay }] = useDisplayPreferences(projectId);
   // Memoised, and not only for its own sake: `excludeIds` below is a
@@ -68,10 +74,6 @@ export function AcceptancesSection({ node, allNodes, allEdges, scope, onNavigate
     () => acceptancesCovering(node.id, allNodes, allEdges),
     [node.id, allNodes, allEdges],
   );
-  // The picked id resolved back to a node, for `intake.attach`. A map rather
-  // than a `find` per pick, and memoised on `allNodes` so it is not rebuilt on
-  // every render of every open panel.
-  const nodesById = useMemo(() => new Map(allNodes.map((n) => [n.id, n])), [allNodes]);
   // The anchor itself and the acceptances already covering it — what the list
   // must not offer again. Memoised because the combobox's candidate memo
   // depends on it and that memo fuzzy-scores every node in the project; a fresh

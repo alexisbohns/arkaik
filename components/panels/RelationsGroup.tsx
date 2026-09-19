@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo } from "react";
+
 import { cn } from "@/lib/utils";
 import { PanelGroup } from "@/components/panels/PanelGroup";
 import {
@@ -93,7 +95,21 @@ export function RelationsGroup({
   findings,
   onOpenCriterion,
 }: RelationsGroupProps) {
+  // Only a view or a flow appears in a playlist, so only one can be invoked.
+  // The species test is redundant with what `findWhereUsed` can return and is
+  // kept anyway, as its neighbours are: the flag states the condition the
+  // section is rendered under rather than relying on a second function's range.
+  const isAnchor = node.species === "view" || node.species === "flow";
   const openFindings = findings && onOpenCriterion ? worstOpenFindingFor(findings, node.id) : null;
+  // One map for the whole group. Every relation line resolves a counterpart id
+  // to a node — a decision panel has four of them — and a map per line is four
+  // identical project-wide maps per render for one answer. It is also what lets
+  // the emptiness test below resolve exactly the rows the lines will render,
+  // rather than counting raw ids the children may then drop.
+  const nodesById = useMemo(
+    () => new Map((allNodes ?? []).map((candidate) => [candidate.id, candidate])),
+    [allNodes],
+  );
 
   // Each child's emptiness, asked here from the inputs the child itself reads.
   // The duplication is deliberate. The alternative is each section reporting its
@@ -118,15 +134,24 @@ export function RelationsGroup({
   const coversOut = lines.find((line) => line.id === "covers:out");
   const coversIn = lines.find((line) => line.id === "covers:in");
 
-  // A line survives when it has rows, or when this surface can write one —
-  // `RelationLine`'s rule, applied where the decision to render is made. The
-  // `allNodes && allEdges` guard is the one `EdgeRelationLine` needs: it
-  // resolves each row's id to a node to name it, so with edges in hand and
-  // nodes absent every lookup would miss and the line would render empty about
-  // a node that is linked.
+  // A line survives when it has a row it can actually render, or when this
+  // surface can write one — `RelationLine`'s rule, applied where the decision
+  // to render is made.
+  //
+  // `nodesById.has(...)`, not just a row count: `EdgeRelationLine` drops a row
+  // whose counterpart it cannot resolve and returns `null` when none survive,
+  // so counting raw ids here would let an edge pointing at an absent node keep
+  // a line in the list — and open the bar onto nothing, the one failure this
+  // whole computation exists to prevent. Unreachable while every surface
+  // passes the full node list, but the two readings of "empty" are supposed to
+  // be one, and sharing the map is what makes that true rather than claimed.
   const resolvedEdgeLines =
     allNodes && allEdges
-      ? edgeLines.filter((line) => relations || relationRows(node.id, line, allEdges).length > 0)
+      ? edgeLines.filter(
+          (line) =>
+            relations ||
+            relationRows(node.id, line, allEdges).some((row) => nodesById.has(row.counterpartId)),
+        )
       : [];
 
   const hasRefs = (node.metadata?.refs ?? []).length > 0;
@@ -166,7 +191,7 @@ export function RelationsGroup({
   // open a bar onto nothing — the one failure this whole computation exists to
   // prevent.
   const hasInvocation =
-    Boolean(allNodes && onNavigate) && findWhereUsed(node.id, allNodes ?? []).length > 0;
+    isAnchor && Boolean(allNodes && onNavigate) && findWhereUsed(node.id, allNodes ?? []).length > 0;
 
   // Blocked by is not here yet: it is still a field inside `DecisionEditor`,
   // and part 4 moves it in as the group's first line. Its flag belongs in this
@@ -209,6 +234,7 @@ export function RelationsGroup({
       {hasCovers && allNodes && allEdges && (
         <CoversSection
           node={node}
+          nodesById={nodesById}
           allNodes={allNodes}
           allEdges={allEdges}
           hasProducts={scope.productsById.size > 0}
@@ -219,6 +245,7 @@ export function RelationsGroup({
       {hasAcceptances && allNodes && allEdges && (
         <AcceptancesSection
           node={node}
+          nodesById={nodesById}
           scope={scope}
           allNodes={allNodes}
           allEdges={allEdges}
@@ -241,6 +268,7 @@ export function RelationsGroup({
             key={line.id}
             node={node}
             line={line}
+            nodesById={nodesById}
             allNodes={allNodes}
             allEdges={allEdges}
             onNavigate={onNavigate}
