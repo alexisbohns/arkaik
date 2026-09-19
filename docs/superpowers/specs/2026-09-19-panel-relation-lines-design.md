@@ -295,9 +295,11 @@ only what exists.
 The per-child `has*` flags are replaced by one pass over `relationLinesFor(node.species)`
 that resolves each line's rows, plus the four flags the non-edge children still
 need (`hasRefs`, `hasFindings`, `hasInvocation`, blocked-by). `decisionConnections`
-and `crossLayerConnections` are subsumed by that pass: the first disappears, and
-the second stays only as the map/canvas helper it also is — checked, not assumed,
-before removing anything from it.
+and `crossLayerConnections` are both subsumed by that pass and both deleted.
+Checked rather than assumed: `crossLayerConnections` has exactly two callers,
+`ConnectionsSection` and `RelationsGroup`'s emptiness flag, and no canvas or map
+reads it — so its assertions in `tests/app/project-panels.test.js` go with it,
+and what replaces them is the line-resolution suite in part 1.
 
 ## 6. Testing
 
