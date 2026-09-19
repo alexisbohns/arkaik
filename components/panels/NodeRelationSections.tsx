@@ -1,8 +1,9 @@
 /**
  * Every relation section of a node panel — Covers, Invocation, Decision links,
  * References, Findings and Connections — plus the row component two of them
- * share and the attach row Covers owns. (Acceptances is the exception, and only because
- * `AcceptancesSection` was already a module of its own.)
+ * share and the attach config Covers hands its relation line. (Acceptances is
+ * the exception, and only because `AcceptancesSection` was already a module of
+ * its own.)
  *
  * A module of their own because `RelationsGroup` renders them all and
  * `NodeDetailPanel` renders `RelationsGroup`: left where they were, those files
@@ -19,6 +20,7 @@
 
 "use client";
 
+import { useMemo } from "react";
 import { toast } from "sonner";
 
 import { PanelSection } from "@/components/panels/PanelSection";
@@ -342,17 +344,27 @@ interface CoversSectionProps {
  * importing from an editor that no longer renders it is the import edge this
  * module exists to break.
  *
- * A `PanelSection` rather than the `Field` it was: inside a group this is a
+ * A `RelationLine` rather than the `Field` it was: inside a group this is a
  * level-four section with a heading, not a labelled control, and there is no
- * single control for a label to point at anyway.
+ * single control for a label to point at anyway. The line supplies the rest —
+ * the `+` that reveals the search, and the rule that an empty writable relation
+ * costs one line.
  */
 export function CoversSection({ node, allNodes, allEdges, hasProducts, onNavigate, intake }: CoversSectionProps) {
-  const nodesById = new Map(allNodes.map((n) => [n.id, n]));
+  const nodesById = useMemo(() => new Map(allNodes.map((n) => [n.id, n])), [allNodes]);
   // `coveredAnchorsOf`, not a walk of its own: `AcceptanceMembershipField` asks
   // the same question for its Product hint's anchor count, and the two answers have to be
   // the same list or the hint counts anchors this section does not show. The
   // map stays because the attach config resolves the id the combobox returns.
-  const coveredAnchors = coveredAnchorsOf(node, allNodes, allEdges);
+  const coveredAnchors = useMemo(
+    () => coveredAnchorsOf(node, allNodes, allEdges),
+    [node, allNodes, allEdges],
+  );
+  // Memoised because it is a dependency of the combobox's candidate memo, and
+  // that memo fuzzy-scores every node in the project. A fresh array here would
+  // miss it on every render — which is exactly what hoisting `ANCHOR_SPECIES`
+  // out of the render was meant to prevent, cancelled one prop over.
+  const excludeIds = useMemo(() => coveredAnchors.map((anchor) => anchor.id), [coveredAnchors]);
 
   /**
    * Run one intake gesture, reporting a failure instead of swallowing it.
@@ -360,13 +372,20 @@ export function CoversSection({ node, allNodes, allEdges, hasProducts, onNavigat
    * Every one of them is a write to a store the panel does not own, and a
    * rejected batch otherwise leaves the list looking unchanged with nothing
    * saying why — the same treatment `AcceptancesSection` gives its create.
+   *
+   * It answers whether the write landed, not just whether it complained: the
+   * relation line closes on success and stays open on failure, and a toast
+   * over a line that shut and dropped the typed query is a worse account of
+   * what happened than no toast at all.
    */
-  async function run(action: () => Promise<void>, failure: string) {
+  async function run(action: () => Promise<void>, failure: string): Promise<boolean> {
     try {
       await action();
+      return true;
     } catch (err) {
       toast.error(failure);
       console.error(err);
+      return false;
     }
   }
 
@@ -375,7 +394,16 @@ export function CoversSection({ node, allNodes, allEdges, hasProducts, onNavigat
       label="Covers"
       add={
         intake &&
-        attachAnchorConfig({ node, allNodes, allEdges, nodesById, hasProducts, intake, run, coveredAnchors })
+        attachAnchorConfig({
+          node,
+          allNodes,
+          allEdges,
+          nodesById,
+          hasProducts,
+          intake,
+          run,
+          excludeIds,
+        })
       }
     >
       {coveredAnchors.length === 0 ? (
@@ -427,22 +455,27 @@ interface AttachAnchorConfigArgs {
    */
   hasProducts: boolean;
   intake: AcceptanceIntake;
-  run: (action: () => Promise<void>, failure: string) => Promise<void>;
-  /** The anchors already covered — the ids the list must not offer again. */
-  coveredAnchors: Node[];
+  /** Runs one write, reporting `false` when it failed. */
+  run: (action: () => Promise<void>, failure: string) => Promise<boolean>;
+  /**
+   * The ids of the anchors already covered — what the list must not offer
+   * again. Memoised by the caller; see the note where it is built.
+   */
+  excludeIds: readonly string[];
 }
 
 /**
  * Attach this acceptance to a view or a flow — one that exists, or one created
- * in the same gesture.
+ * in the same gesture. Not a component: the `add` config its relation line
+ * takes, because the `+` on the line now owns when the search appears.
  *
- * The species select plus `NodeSearchCombobox` is the shape the insert dialog
- * already uses for "an existing node, or a new one by that name", and reusing it
- * means the create affordance appears under exactly the same rule in both: only
- * once something is typed that no node of that species already answers to. (The
- * playlist editor used to be the third; its Add step popover searches both
- * species at once, because a playlist plays both and the select was asking a
- * question the search result already answers.)
+ * One `NodeSearchCombobox` over both anchor species, with no select in front of
+ * it. It keeps the rule the insert dialog states for "an existing node, or a new
+ * one by that name" — the create row appears only once something is typed that
+ * no node of an admissible species already answers to — but asks for one
+ * decision instead of two, since the search result already says which species
+ * was picked. The playlist editor's Add step popover reached that conclusion
+ * first, for a list that plays both; Covers has now joined it.
  *
  * **Attaching an unassigned anchor is allowed and announced.** An acceptance
  * anchored only to unassigned views derives an empty membership, so this gesture
@@ -462,13 +495,8 @@ function attachAnchorConfig({
   hasProducts,
   intake,
   run,
-  coveredAnchors,
+  excludeIds,
 }: AttachAnchorConfigArgs) {
-  // The View/Flow `Select` is gone. It existed only because the combobox could
-  // search one species at a time; with both in one list it is a control asking
-  // a question the search result already answers — the conclusion the playlist
-  // editor's Add-step popover reached first. What is left is no longer a row of
-  // its own but the line's `add` config: the `+` owns when the search appears.
   function announceTriage(anchor: Pick<Node, "id" | "species" | "title" | "metadata">) {
     if (!hasProducts) return;
     // Evaluated against the edges as they were BEFORE the write — the predicate
@@ -480,10 +508,12 @@ function attachAnchorConfig({
   return {
     counterpartSpecies: ANCHOR_SPECIES,
     allNodes,
-    excludeIds: coveredAnchors.map((anchor) => anchor.id),
+    excludeIds,
     onSelect: (anchorId: string) => {
       const anchor = nodesById.get(anchorId);
-      if (!anchor) return;
+      // Nothing to attach to, so nothing happened: `false` keeps the line open
+      // rather than closing it over a gesture that did not land.
+      if (!anchor) return false;
       void run(async () => {
         await intake.attach(node, anchor);
         announceTriage(anchor);

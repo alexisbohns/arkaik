@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { buttonVariants } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
 import { SPECIES } from "@/lib/config/species";
@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import type { Node as DataNode } from "@/lib/data/types";
 import type { SpeciesId } from "@arkaik/schema";
 
-interface NodeSearchComboboxProps {
+export interface NodeSearchComboboxProps {
   /** The species this list may offer, from the grammar. One or several. */
   species: readonly SpeciesId[];
   allNodes: DataNode[];
@@ -22,14 +22,21 @@ interface NodeSearchComboboxProps {
    * The species is a parameter because a line may admit more than one (an api
    * endpoint's `calls` reaches both endpoints and views), and the list then
    * offers one create row apiece — the caller cannot infer which was chosen.
+   *
+   * **Returning `false` means the write failed.** The typed query is then kept
+   * rather than cleared: a caller that reports its own failure with a toast
+   * still leaves the reader looking at a field they have to retype, and the
+   * one thing they certainly still want is the words they just wrote.
    */
-  onCreate?: (species: SpeciesId, title: string) => Promise<void> | void;
+  onCreate?: (species: SpeciesId, title: string) => Promise<boolean | void> | boolean | void;
   /**
    * An extra last row for a value that is not a node at all — Blocked by's free
    * text. `render` draws it, `onCommit` takes the trimmed query.
    */
   freeText?: { render: (query: string) => React.ReactNode; onCommit: (text: string) => void };
   placeholder?: string;
+  /** Focus the field on mount — for a list a gesture reveals. */
+  autoFocus?: boolean;
   /**
    * `popover` (the default) floats the list over what follows; `inline` pushes
    * it down. A relation line passes `inline`: the panel body scrolls, and a
@@ -95,6 +102,7 @@ export function NodeSearchCombobox({
   onCreate,
   freeText,
   placeholder,
+  autoFocus,
   placement,
   disabled,
 }: NodeSearchComboboxProps) {
@@ -115,18 +123,36 @@ export function NodeSearchCombobox({
       .filter((candidate) => candidate.score >= 0)
       .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title));
 
+    // One cap over the whole list, not one per species. On a line admitting
+    // several, a query matching nine api endpoints therefore hides every view
+    // that also matched. Capping per species instead would change what "the
+    // eight best answers" means — it would promote a weak match of a rare
+    // species over a strong one of a common one — so the ranking stays global
+    // until multi-species lines are common enough to show whether this reads
+    // badly in practice.
     return scoped.slice(0, 8);
   }, [allNodes, excludeIds, query, species]);
 
   const trimmed = query.trim();
+  // The two callbacks are read for their presence, never called, by everything
+  // below. Depending on the booleans rather than on the functions is what keeps
+  // the memo alive: a caller that builds its handlers inline — every
+  // `RelationLine` does — hands this component a new function identity on every
+  // render, and a memo keyed on those would rebuild on all of them.
+  const canCreate = Boolean(onCreate);
+  const hasFreeText = Boolean(freeText);
+
   // Per species, not across the list: "Login" existing as a view must not
   // suppress the offer to create a flow by that name.
-  const canCreateIn = (candidate: SpeciesId) =>
-    Boolean(trimmed) &&
-    Boolean(onCreate) &&
-    !allNodes.some(
-      (node) => node.species === candidate && node.title.toLowerCase() === trimmed.toLowerCase(),
-    );
+  const canCreateIn = useCallback(
+    (candidate: SpeciesId) =>
+      Boolean(trimmed) &&
+      canCreate &&
+      !allNodes.some(
+        (node) => node.species === candidate && node.title.toLowerCase() === trimmed.toLowerCase(),
+      ),
+    [allNodes, canCreate, trimmed],
+  );
 
   const rows = useMemo<Row[]>(() => {
     const matches: Row[] = candidates.map((candidate) => ({
@@ -137,10 +163,9 @@ export function NodeSearchCombobox({
     const creates: Row[] = species
       .filter(canCreateIn)
       .map((candidate) => ({ kind: "create", species: candidate, title: trimmed }));
-    const free: Row[] = freeText && trimmed ? [{ kind: "free-text", title: trimmed }] : [];
+    const free: Row[] = hasFreeText && trimmed ? [{ kind: "free-text", title: trimmed }] : [];
     return [...matches, ...creates, ...free];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candidates, species, trimmed, onCreate, allNodes, freeText]);
+  }, [candidates, canCreateIn, hasFreeText, species, trimmed]);
 
   const firstActionIndex = rows.findIndex((row) => row.kind !== "node");
 
@@ -148,14 +173,20 @@ export function NodeSearchCombobox({
     if (!onCreate || !trimmed || busy) return;
     setBusy(true);
     try {
-      await onCreate(candidate, trimmed);
-      setQuery("");
+      // Cleared only on success. A failed write leaves the query where it was
+      // so the retry is one Enter away rather than a retype.
+      if ((await onCreate(candidate, trimmed)) !== false) setQuery("");
     } finally {
       setBusy(false);
     }
   }
 
   function handleSelect(nodeId: string) {
+    // The field goes disabled mid-create but the list stays mounted and
+    // clickable, so without this a row click lands a second gesture on top of
+    // an in-flight write — and, for a `RelationLine`, closes the line out from
+    // under it.
+    if (busy) return;
     onSelect(nodeId);
     setQuery("");
   }
@@ -173,6 +204,7 @@ export function NodeSearchCombobox({
       onSelect={(row) => {
         if (row.kind === "create") void handleCreate(row.species);
         else if (row.kind === "free-text") {
+          if (busy) return;
           freeText?.onCommit(row.title);
           setQuery("");
         } else handleSelect(row.id);
@@ -202,7 +234,12 @@ export function NodeSearchCombobox({
       }
       empty={<p className="px-2 py-2 text-xs text-muted-foreground">No matches.</p>}
       placeholder={placeholder ?? `Search ${speciesPhrase}...`}
-      aria-label={`Search existing ${speciesPhrase} or create one`}
+      // The create clause is conditional: a read-only line searches what
+      // already exists and has no create row to announce.
+      aria-label={
+        canCreate ? `Search existing ${speciesPhrase} or create one` : `Search ${speciesPhrase}`
+      }
+      autoFocus={autoFocus}
       placement={placement}
       disabled={disabled || busy}
     />

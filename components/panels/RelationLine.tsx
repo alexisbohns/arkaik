@@ -1,10 +1,13 @@
 "use client";
 
-import { useId, useState, type ReactNode } from "react";
+import { useCallback, useId, useRef, useState, type ReactNode } from "react";
 import { PlusIcon, XIcon } from "lucide-react";
 
 import { PanelSection } from "@/components/panels/PanelSection";
-import { NodeSearchCombobox } from "@/components/panels/NodeSearchCombobox";
+import {
+  NodeSearchCombobox,
+  type NodeSearchComboboxProps,
+} from "@/components/panels/NodeSearchCombobox";
 import { EntityRow } from "@/components/graph/nodes/EntityRow";
 import { Button } from "@/components/ui/button";
 import type { Node } from "@/lib/data/types";
@@ -30,6 +33,13 @@ import type { SpeciesId } from "@arkaik/schema";
  * The combobox is `inline`, not a popover: the panel body scrolls, and a
  * floated list inside it needs portalling to escape the scroll container —
  * a second problem to solve for no gain in a column this narrow.
+ *
+ * **Focus makes the round trip.** Opening focuses the field, because revealing
+ * a search box and leaving focus on the `+` makes the reveal inert until a
+ * second click. Closing hands focus back to the `+`, because both close paths
+ * unmount the field from under it and focus would otherwise fall to `<body>` —
+ * which turns attaching three anchors into three Tab traversals back to where
+ * you were.
  */
 interface RelationLineProps {
   label: string;
@@ -39,12 +49,35 @@ interface RelationLineProps {
   add?: {
     counterpartSpecies: readonly SpeciesId[];
     allNodes: Node[];
-    /** Ids already on this line, plus the record itself. Never offered. */
+    /**
+     * Ids already on this line, plus the record itself. Never offered.
+     *
+     * Memoise it at the call site: it is a dependency of the combobox's
+     * candidate memo, which fuzzy-scores every node in the project.
+     */
     excludeIds: readonly string[];
-    onSelect: (nodeId: string) => void;
-    onCreate?: (species: SpeciesId, title: string) => Promise<void> | void;
-    freeText?: { render: (query: string) => ReactNode; onCommit: (text: string) => void };
+    /**
+     * Attach an existing node. Returning `false` means the write failed and
+     * the line stays open, as with {@link onCreate}.
+     */
+    onSelect: (nodeId: string) => boolean | void;
+    /** Create and relate. Returning `false` means the write failed. */
+    onCreate?: (species: SpeciesId, title: string) => Promise<boolean | void> | boolean | void;
+    /**
+     * The member type, not a second copy of it: the two declarations had
+     * already been written out twice and nothing would have caught them
+     * drifting apart.
+     */
+    freeText?: NodeSearchComboboxProps["freeText"];
     placeholder?: string;
+    /** A write is in flight — the field says so and refuses another. */
+    disabled?: boolean;
+    /**
+     * Whether a successful pick closes the line. Default `true`. A line whose
+     * common gesture is "attach three things" sets it `false` and lets the `+`
+     * — now an `×` — say when it is done.
+     */
+    closeOnSelect?: boolean;
   };
 }
 
@@ -53,6 +86,14 @@ export function RelationLine({ label, children, add }: RelationLineProps) {
   // mean two "Calls" lines in one document.
   const controlsId = useId();
   const [open, setOpen] = useState(false);
+  const addButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Not used by the toggle's own `onClick` — the button already holds focus
+  // there, and re-focusing it would be a no-op that reads as if it were not.
+  const close = useCallback(() => {
+    setOpen(false);
+    addButtonRef.current?.focus();
+  }, []);
 
   return (
     <PanelSection
@@ -60,13 +101,16 @@ export function RelationLine({ label, children, add }: RelationLineProps) {
       action={
         add && (
           <Button
+            ref={addButtonRef}
             type="button"
             variant="ghost"
             size="icon"
             className="size-6 shrink-0"
             aria-label={open ? `Close ${label} search` : `Add to ${label}`}
             aria-expanded={open}
-            aria-controls={controlsId}
+            // Only while the target exists: `aria-controls` pointing at an id
+            // nothing answers to is a broken reference, not an empty one.
+            aria-controls={open ? controlsId : undefined}
             onClick={() => setOpen((wasOpen) => !wasOpen)}
           >
             {open ? <XIcon className="size-3.5" /> : <PlusIcon className="size-3.5" />}
@@ -82,16 +126,20 @@ export function RelationLine({ label, children, add }: RelationLineProps) {
             excludeIds={add.excludeIds}
             placeholder={add.placeholder}
             freeText={add.freeText}
+            disabled={add.disabled}
+            autoFocus
             placement="inline"
             onSelect={(nodeId) => {
-              add.onSelect(nodeId);
-              setOpen(false);
+              // `false` is the handler saying the write failed; the line then
+              // stays open over the query that produced it.
+              if (add.onSelect(nodeId) === false) return;
+              if (add.closeOnSelect !== false) close();
             }}
             onCreate={
               add.onCreate &&
               (async (species, title) => {
-                await add.onCreate?.(species, title);
-                setOpen(false);
+                if ((await add.onCreate?.(species, title)) === false) return false;
+                close();
               })
             }
           />

@@ -13,6 +13,7 @@ import { useDisplayPreferences } from "@/lib/hooks/useDisplayPreferences";
 import { useProjectId } from "@/lib/hooks/useProjectId";
 import { TriangleAlertIcon } from "lucide-react";
 import { toast } from "sonner";
+import { useMemo } from "react";
 
 /**
  * The only species this line's search may reach. A module constant, not an
@@ -49,6 +50,19 @@ export function AcceptancesSection({ node, allNodes, allEdges, scope, onNavigate
   const projectId = useProjectId();
   const [{ acceptanceDisplay }] = useDisplayPreferences(projectId);
   const covering = acceptancesCovering(node.id, allNodes, allEdges);
+  // SCAFFOLD (part 2 only — part 3 task 3.5 deletes this).
+  // Every acceptance is excluded, so the list can only ever reach its create
+  // row: attaching an *existing* acceptance is a `covers` edge written from the
+  // anchor's side, and that write path arrives with the `relations` capability
+  // in part 3.
+  //
+  // Memoised because the combobox's candidate memo depends on it and that memo
+  // fuzzy-scores every node in the project; a fresh array here would miss it on
+  // every render. Part 3's narrower list keeps the `useMemo`.
+  const excludeIds = useMemo(
+    () => [node.id, ...allNodes.filter((n) => n.species === "acceptance").map((n) => n.id)],
+    [allNodes, node.id],
+  );
   return (
     <RelationLine
       label="Acceptances"
@@ -56,24 +70,26 @@ export function AcceptancesSection({ node, allNodes, allEdges, scope, onNavigate
         onCreate && {
           counterpartSpecies: ACCEPTANCE_SPECIES,
           allNodes,
-          // SCAFFOLD (part 2 only — part 3 task 3.5 deletes this line).
-          // Every acceptance is excluded, so the list can only ever reach its
-          // create row: attaching an *existing* acceptance is a `covers` edge
-          // written from the anchor's side, and that write path arrives with
-          // the `relations` capability in part 3.
-          excludeIds: [node.id, ...allNodes.filter((n) => n.species === "acceptance").map((n) => n.id)],
+          excludeIds,
           placeholder: "Search acceptances or name a new one...",
           onSelect: () => {
             // Attaching an existing acceptance lands in part 3 with the
-            // `relations` capability; until then the list offers only the
-            // create row, so this is unreachable rather than a silent failure.
+            // `relations` capability; until then `excludeIds` above leaves the
+            // list nothing but its create row, so this is unreachable rather
+            // than a silent failure. `false` all the same: an unreachable
+            // handler that reported success would be the one lie here.
+            return false;
           },
           onCreate: async (_species: SpeciesId, title: string) => {
             try {
               await onCreate(node, title);
+              return true;
             } catch (err) {
               toast.error("Couldn't add the acceptance.");
               console.error(err);
+              // The line stays open over the title that failed, so the retry
+              // is one Enter away rather than a retype.
+              return false;
             }
           },
         }

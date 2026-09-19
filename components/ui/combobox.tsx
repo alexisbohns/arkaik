@@ -50,10 +50,20 @@ interface ComboboxProps<T> {
    */
   empty?: React.ReactNode;
   placeholder?: string;
-  /** Names the field: it has no visible label at either call site. */
+  /** Names the field: it has no visible label at any call site. */
   "aria-label": string;
   /** `id` of the text field, so a `<Field htmlFor>` can point at it. */
   id?: string;
+  /**
+   * Focus the field on mount — and so, through `onFocus`, open the list.
+   *
+   * For a combobox that a gesture *reveals* rather than one standing in a form:
+   * revealing a search field and leaving focus where it was makes the reveal
+   * inert until a second click, when the gesture was already "find me
+   * something". A field that is simply part of a form must not steal focus, so
+   * this is off by default.
+   */
+  autoFocus?: boolean;
   disabled?: boolean;
   /** Render the field as the shared `SearchInput` — magnifier inside the box. */
   search?: boolean;
@@ -77,6 +87,7 @@ export function Combobox<T>({
   placeholder,
   "aria-label": ariaLabel,
   id,
+  autoFocus = false,
   disabled,
   search = false,
   placement = "popover",
@@ -204,6 +215,7 @@ export function Combobox<T>({
   const fieldProps = {
     ref: inputRef,
     id,
+    autoFocus,
     value,
     placeholder,
     disabled,
