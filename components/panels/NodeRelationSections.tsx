@@ -148,13 +148,6 @@ export function FindingsSection({ node, findings, onOpenCriterion }: FindingsSec
   );
 }
 
-/**
- * The busy key for a write with no counterpart id yet — a node being created
- * and linked in one gesture. Not `""`, which is a plausible id and would make
- * a row's `×` disable itself by accident.
- */
-const ADDING = "\u0000adding";
-
 export interface EdgeRelationLineProps {
   node: Node;
   line: RelationLineSpec;
@@ -206,8 +199,12 @@ export function EdgeRelationLine({ node, line, nodesById, allNodes, allEdges, on
     () => [node.id, ...rows.map((entry) => entry.counterpart.id)],
     [node.id, rows],
   );
-  const [pending, setPending] = useState<string | null>(null);
-  const inFlight = useRef<string | null>(null);
+  // A boolean, not the id of what is being written: every comparison either
+  // side of this is "is anything in flight", so a key would be threaded
+  // through each call site and never discriminate — and a parameter that
+  // implies a distinction it does not make is how a docblock goes wrong.
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
 
   /**
    * Run one write, reporting a failure instead of swallowing it, and answering
@@ -218,27 +215,37 @@ export function EdgeRelationLine({ node, line, nodesById, allNodes, allEdges, on
    * shut and dropped the typed text is a worse account of what happened than no
    * toast at all. Same shape, same reason, as `CoversSection`'s.
    *
-   * `key` is what this write is about — a counterpart's id, or {@link ADDING}
-   * while the search is committing — and it marks the line busy for the length
-   * of the round trip. Without it, a second click on a `×` plans a
-   * `delete_edge` against edges the first click has already removed, which the
-   * store refuses as `edge_not_found`: the batch aborts and the user is told
-   * the removal failed about one that worked. The row stays on screen for that
-   * whole window, so the second click is not a hypothetical — it reproduces.
+   * The line is busy for the length of the round trip. Without that, a second
+   * click on a `×` plans a `delete_edge` against edges the first click has
+   * already removed, which the store refuses as `edge_not_found`: the batch
+   * aborts and the user is told the removal failed about one that worked. The
+   * row stays on screen for that whole window, so the second click is not a
+   * hypothetical — it reproduces.
    *
-   * **The guard is the ref, not the state.** `disabled` only reaches the DOM on
+   * **One write at a time, and every control on the line says so.** The gate
+   * below is line-wide, so while one is open a second gesture cannot land —
+   * and a control that cannot land its gesture must look that way, or the
+   * user clicks a live-looking `×` on another row and nothing at all happens:
+   * no write, no toast, no change. A silently inert control is a worse trade
+   * than the wrong toast this guard was added to remove, and "remove these
+   * three rows" is at least as common as the double-click. So `busy` drives
+   * the `×` on EVERY row and the search field alike, not just the row being
+   * written.
+   *
+   * **The gate is the ref, not the state.** `disabled` only reaches the DOM on
    * the next render, and two clicks can land in the same task before React has
-   * re-rendered — a real double-click does exactly that. The ref is set
-   * synchronously, so the second call returns before it can plan anything.
-   * `pending` exists alongside it to *show* the state; it does not enforce it.
+   * re-rendered — a real double-click does exactly that, and it reproduces.
+   * The ref is set synchronously, so the second call returns before it can
+   * plan anything. `busy` exists alongside it to *show* the state; it does not
+   * enforce it.
    *
    * A suppressed duplicate answers `false` and says nothing: it is the same
    * gesture, not a failed one, so a toast would be the second lie.
    */
-  async function run(key: string, action: () => Promise<void>, failure: string): Promise<boolean> {
-    if (inFlight.current !== null) return false;
-    inFlight.current = key;
-    setPending(key);
+  async function run(action: () => Promise<void>, failure: string): Promise<boolean> {
+    if (inFlight.current) return false;
+    inFlight.current = true;
+    setBusy(true);
     try {
       await action();
       return true;
@@ -247,8 +254,8 @@ export function EdgeRelationLine({ node, line, nodesById, allNodes, allEdges, on
       console.error(err);
       return false;
     } finally {
-      inFlight.current = null;
-      setPending(null);
+      inFlight.current = false;
+      setBusy(false);
     }
   }
 
@@ -268,7 +275,7 @@ export function EdgeRelationLine({ node, line, nodesById, allNodes, allEdges, on
           // Any write in flight, not just this line's add: the field refuses a
           // second gesture while one is committing, for the reason `run`
           // gives.
-          disabled: pending !== null,
+          disabled: busy,
           onSelect: (counterpartId: string) => {
             const counterpart = nodesById.get(counterpartId);
             // Nothing to link to, so nothing happened: `false` keeps the line
@@ -276,14 +283,10 @@ export function EdgeRelationLine({ node, line, nodesById, allNodes, allEdges, on
             if (!counterpart) return false;
             // Returned, not fired and forgotten: the line closes on this
             // answer, and a write the store rejects has to leave it standing.
-            return run(
-              counterpartId,
-              () => relations.link(node, counterpart, line),
-              "Couldn't link that node.",
-            );
+            return run(() => relations.link(node, counterpart, line), "Couldn't link that node.");
           },
           onCreate: (species: SpeciesId, title: string) =>
-            run(ADDING, async () => {
+            run(async () => {
               const created = await relations.linkNew(node, line, species, title);
               if (created) toast.success(`Created "${created.title}" and linked it.`);
             }, "Couldn't create that node."),
@@ -301,12 +304,11 @@ export function EdgeRelationLine({ node, line, nodesById, allNodes, allEdges, on
                 relations &&
                 (() =>
                   void run(
-                    counterpart.id,
                     () => relations.unlink(node, counterpart.id, line),
                     "Couldn't unlink that node.",
                   ))
               }
-              removeDisabled={pending === counterpart.id}
+              removeDisabled={busy}
               removeLabel={`Remove ${counterpart.title} from ${line.label}`}
             />
           ))}
@@ -372,8 +374,9 @@ export function CoversSection({ node, nodesById, allNodes, allEdges, hasProducts
   // Undo outlives the render that built it; see the `restore` below.
   const intakeRef = useLatest(intake);
 
-  const [pending, setPending] = useState<string | null>(null);
-  const inFlight = useRef<string | null>(null);
+  // A boolean, for the reason `EdgeRelationLine`'s copy gives.
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
 
   /**
    * Run one intake gesture, reporting a failure instead of swallowing it.
@@ -387,29 +390,35 @@ export function CoversSection({ node, nodesById, allNodes, allEdges, hasProducts
    * over a line that shut and dropped the typed query is a worse account of
    * what happened than no toast at all.
    *
-   * `key` marks the line busy for the length of the round trip — the anchor's
-   * id, or {@link ADDING} while the search is committing. Without it a second
+   * The line is busy for the length of the round trip. Without that a second
    * click on a `×` plans a detach against edges the first click already
    * removed, which the store refuses as `edge_not_found`, and the user is told
    * the detach failed about one that worked.
    *
-   * **The guard is the ref, not the state.** `disabled` only reaches the DOM on
-   * the next render, and two clicks can land in the same task before React has
-   * re-rendered — a real double-click does exactly that. The ref is set
-   * synchronously, so the second call returns before it can plan anything.
-   * `pending` exists alongside it to *show* the state; it does not enforce it.
+   * **One write at a time, and every control on the line says so.** The gate
+   * below is line-wide, so while one is open a second gesture cannot land —
+   * and a control that cannot land its gesture must look that way, or the
+   * user clicks a live-looking `×` on another row and nothing at all happens:
+   * no write, no toast, no change. A silently inert control is a worse trade
+   * than the wrong toast this guard was added to remove, and "remove these
+   * three rows" is at least as common as the double-click. So `busy` drives
+   * the `×` on EVERY row and the search field alike, not just the row being
+   * written.
    *
-   * See `EdgeRelationLine`'s `run`, which is the same guard for the same
-   * reason.
+   * **The gate is the ref, not the state.** `disabled` only reaches the DOM on
+   * the next render, and two clicks can land in the same task before React has
+   * re-rendered — a real double-click does exactly that, and it reproduces.
+   * The ref is set synchronously, so the second call returns before it can
+   * plan anything. `busy` exists alongside it to *show* the state; it does not
+   * enforce it.
+   *
+   * A suppressed duplicate answers `false` and says nothing: it is the same
+   * gesture, not a failed one, so a toast would be the second lie.
    */
-  async function run(
-    key: string,
-    action: () => Promise<void>,
-    failure: string | null,
-  ): Promise<boolean> {
-    if (inFlight.current !== null) return false;
-    inFlight.current = key;
-    setPending(key);
+  async function run(action: () => Promise<void>, failure: string | null): Promise<boolean> {
+    if (inFlight.current) return false;
+    inFlight.current = true;
+    setBusy(true);
     try {
       await action();
       return true;
@@ -421,8 +430,8 @@ export function CoversSection({ node, nodesById, allNodes, allEdges, hasProducts
       console.error(err);
       return false;
     } finally {
-      inFlight.current = null;
-      setPending(null);
+      inFlight.current = false;
+      setBusy(false);
     }
   }
 
@@ -440,7 +449,7 @@ export function CoversSection({ node, nodesById, allNodes, allEdges, hasProducts
           intake,
           run,
           excludeIds,
-          busy: pending !== null,
+          busy,
         })
       }
     >
@@ -463,11 +472,7 @@ export function CoversSection({ node, nodesById, allNodes, allEdges, hasProducts
                   void removeWithUndo({
                     label: anchor.title,
                     remove: () =>
-                      run(
-                        anchor.id,
-                        () => intake.detach(node, anchor.id),
-                        "Couldn't detach that node.",
-                      ),
+                      run(() => intake.detach(node, anchor.id), "Couldn't detach that node."),
                     // `intake.attach`, not `relations.link`: covers edges stay
                     // on the intake path, and `node-relations.ts` refuses them
                     // at runtime rather than only in prose.
@@ -478,11 +483,10 @@ export function CoversSection({ node, nodesById, allNodes, allEdges, hasProducts
                     // where the edge still exists, so `planAcceptanceAttach`
                     // plans nothing and Undo does nothing, silently. See
                     // {@link useLatest}.
-                    restore: () =>
-                      run(anchor.id, () => intakeRef.current!.attach(node, anchor), null),
+                    restore: () => run(() => intakeRef.current!.attach(node, anchor), null),
                   }))
               }
-              removeDisabled={pending === anchor.id}
+              removeDisabled={busy}
               removeLabel={`Stop covering ${anchor.title}`}
               removeQuestion={`Stop covering "${anchor.title}"?`}
             />
@@ -517,11 +521,11 @@ interface AttachAnchorConfigArgs {
   hasProducts: boolean;
   intake: AcceptanceIntake;
   /**
-   * Runs one write under a busy key, reporting `false` when it failed. See the
-   * declaration in `CoversSection` for what the key is for, and for what a
-   * `null` failure means.
+   * Runs one write, reporting `false` when it failed — or when the line was
+   * already busy. A `null` failure says nothing on the way out; see the
+   * declaration in `CoversSection`.
    */
-  run: (key: string, action: () => Promise<void>, failure: string | null) => Promise<boolean>;
+  run: (action: () => Promise<void>, failure: string | null) => Promise<boolean>;
   /**
    * The ids of the anchors already covered — what the list must not offer
    * again. Memoised by the caller; see the note where it is built.
@@ -586,17 +590,13 @@ function attachAnchorConfig({
       // Awaited, not fired and forgotten: `run`'s answer is what tells the
       // line whether to close, and an attach that the store rejects has to
       // leave the line standing for the same reason a create does.
-      return run(
-        anchorId,
-        async () => {
-          await intake.attach(node, anchor);
-          announceTriage(anchor);
-        },
-        "Couldn't attach that node.",
-      );
+      return run(async () => {
+        await intake.attach(node, anchor);
+        announceTriage(anchor);
+      }, "Couldn't attach that node.");
     },
     onCreate: (species: SpeciesId, title: string) =>
-      run(ADDING, async () => {
+      run(async () => {
         // `intake.createAnchor` takes the narrow anchor species; the grammar
         // admits nothing else on this line, so the cast is the type system
         // catching up with `ANCHOR_SPECIES` above.

@@ -271,8 +271,13 @@ assert(
   relationsGroupSource.includes('line.edgeType !== "covers"'),
   "the covers lines are matched out of the generic edge list — they have their own components",
 );
+// Deliberately loose about the arguments and the wrapping: what this pins is
+// `.some(` rather than `.length > 0`, which is the regression. Spelling the
+// three identifiers and their spacing out would fail on a rename or a
+// reformat as a shape violation rather than a behaviour one — the trap this
+// repo's source-asserting suites have hit before.
 assert(
-  /relationRows\(node\.id, line, allEdges\)\.some\(/.test(relationsGroupSource),
+  /relationRows\([^)]*\)\s*\.some\(/.test(relationsGroupSource),
   "the emptiness test resolves each row, as the line it stands in for does",
 );
 
