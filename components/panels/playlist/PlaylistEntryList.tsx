@@ -15,7 +15,7 @@ import { PlaylistIndexMenu } from "@/components/panels/playlist/PlaylistIndexMen
 import { PlaylistReorderControls, rowGroupClass, rowRevealClass } from "@/components/panels/playlist/PlaylistReorderControls";
 import { CopyIdChip, EntityId } from "@/components/graph/nodes/EntityBadges";
 import { PlatformStatusIcons } from "@/components/graph/nodes/PlatformStatusIcons";
-import { ICON_TILE } from "@/components/journal/DeliverableHoverCard";
+import { iconChipVariants } from "@/components/layout/IconChip";
 import { getNodePlatformStatuses } from "@/lib/utils/platform-status";
 import { scopedPlatforms, type ProductScope } from "@/lib/utils/product-scope";
 import { describeBranchCount, describeEntryCount, moveEntry } from "@/lib/utils/playlist";
@@ -374,7 +374,7 @@ function PlaylistEntryRow({
                       /* A span, not a button: a condition's branches cannot be
                          added, removed or reordered, so the mark has no menu to
                          open and must not look as though it has. */
-                      <span className={cn(ICON_TILE, tile)} aria-hidden="true">
+                      <span className={cn(iconChipVariants({ variant: "bare" }), tile)} aria-hidden="true">
                         <Icon className="size-3" />
                       </span>
                     }
@@ -503,10 +503,9 @@ function PlaylistEntryRow({
                     cases: [...entry.cases, { label: `Case ${entry.cases.length + 1}`, entries: [] }],
                   })}
                   className={cn(
-                    ICON_TILE,
-                    "cursor-pointer border border-dashed border-blue-500/40 text-blue-600/70 transition-colors dark:text-blue-400/70",
+                    iconChipVariants({ variant: "dashed", interactive: true }),
+                    "border-blue-500/40 text-blue-600/70 dark:text-blue-400/70",
                     "hover:border-solid hover:bg-blue-500/10 hover:text-blue-600 dark:hover:text-blue-400",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   )}
                 >
                   <PlusIcon className="size-3.5" aria-hidden="true" />

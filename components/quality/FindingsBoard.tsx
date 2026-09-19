@@ -16,13 +16,20 @@ import {
   PRIORITY_TERM,
   PRIORITY_TILE,
 } from "@/components/quality/quality-styles";
+import { iconChipVariants } from "@/components/layout/IconChip";
 import { cn } from "@/lib/utils";
 
 /** Every status other than `open` — the ones that get a verdict mark. */
 type DecidedStatus = Exclude<FindingStatus, "open">;
 
-/** The rail's 24px square, shared by both marks so they sit on the same axis. */
-const MARK_CLASS = "inline-flex size-6 shrink-0 items-center justify-center rounded-md";
+/**
+ * The rail's square, shared by both marks so they sit on the same axis.
+ *
+ * This used to be a verbatim copy of the Changelog's tile, declared here
+ * because the constant lived in a changelog component. Both are the one chip
+ * now. `bare` because each mark brings its own lane or verdict colour.
+ */
+const MARK_CLASS = iconChipVariants({ variant: "bare" });
 
 /**
  * The verdict, as a glyph. A tick for the fix, a cross for the defect that was

@@ -12,7 +12,7 @@ import { StatusBadge } from "@/components/layout/StatusBadge";
 import { CopyIdChip } from "@/components/graph/nodes/EntityBadges";
 import { EntityRow } from "@/components/graph/nodes/EntityRow";
 import { formatEventDate } from "@/components/journal/describe-event";
-import { ICON_TILE, MARK_ROW } from "@/components/journal/DeliverableHoverCard";
+import { ICON_CHIP_ROW, iconChipVariants } from "@/components/layout/IconChip";
 import { cn } from "@/lib/utils";
 
 interface DecisionLogProps {
@@ -93,7 +93,7 @@ function formatDecidedInstant(instant: string): string {
  * and pushed the next decision off the screen, which is exactly what the
  * Changelog's `DeliverableChips` learned and fixed.
  *
- * So it is drawn as that same mark: {@link MARK_ROW}'s tile with the count
+ * So it is drawn as that same mark: {@link ICON_CHIP_ROW}'s tile with the count
  * *beside* it, not a number crammed into a bordered plate. The label is a word
  * as well as a number — "3 surfaces", not "3" — because two glyphs on one line
  * cannot both be self-evident, and the room is there once the count is outside
@@ -136,12 +136,12 @@ function RelatedNodesChip({
           // be unambiguous read out on its own.
           aria-label={`${label} (${nodes.length})`}
           className={cn(
-            MARK_ROW,
+            ICON_CHIP_ROW,
             "cursor-pointer text-muted-foreground hover:text-foreground",
             "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
           )}
         >
-          <span className={cn(ICON_TILE, "bg-muted text-muted-foreground group-hover:bg-accent")}>{icon}</span>
+          <span className={cn(iconChipVariants(), "group-hover:bg-accent")}>{icon}</span>
           {nodes.length} {unit}
           {nodes.length === 1 ? "" : "s"}
         </button>
@@ -233,11 +233,9 @@ function DecisionRow({
           the row would end the connector above the gap and leave the marks
           unlinked. */}
       <div className="flex flex-col items-center">
-        {/* Nudged up 2px, exactly as the Changelog's ship mark is: the tile is
-            24px and the `text-sm` title beside it is a 20px line, so a tile
-            left at the top of its column centres 2px below the words it
-            leads. */}
-        <DecisionStatusBadge status={decisionStatusOf(node)} variant="tile" className="-mt-0.5" />
+        {/* `lead`, because the title beside it is a `text-sm` line — the chip
+            owns what that means; see `iconChipVariants`. */}
+        <DecisionStatusBadge status={decisionStatusOf(node)} variant="tile" lead />
         {connector && <span className="w-px flex-1 bg-border" aria-hidden="true" />}
       </div>
 

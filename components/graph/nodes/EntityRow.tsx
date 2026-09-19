@@ -7,6 +7,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/h
 import { SPECIES } from "@/lib/config/species";
 import { SPECIES_GRAPH_ICONS } from "@/lib/config/species-icons";
 import type { Node } from "@/lib/data/types";
+import { iconChipVariants } from "@/components/layout/IconChip";
 import { useCopyId } from "@/lib/hooks/useCopyId";
 import { cn } from "@/lib/utils";
 
@@ -77,14 +78,13 @@ export function EntityChip({ node, className }: EntityChipProps) {
           onFocus={() => setChipActive(true)}
           onBlur={() => setChipActive(false)}
           className={cn(
-            "inline-flex shrink-0 cursor-pointer items-center rounded border border-border bg-muted/50 p-1 text-muted-foreground transition-colors",
+            iconChipVariants({ size: "sm", variant: "outline", interactive: true }),
             "hover:bg-muted hover:text-foreground",
-            "outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
             copied && "text-green-500",
             className,
           )}
         >
-          <Icon className="size-3" />
+          <Icon />
         </button>
       </HoverCardTrigger>
       <HoverCardContent className="w-72 p-3" side="top" align="start">
