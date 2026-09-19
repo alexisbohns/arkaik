@@ -130,8 +130,10 @@ export interface FindingPanelDescriptor {
    *
    * The one piece of denormalized display data in this union, against the
    * stack's usual rule of resolving by id so an edit reaches every panel. It is
-   * safe here on two counts: findings are read-only in this app — they are
-   * written by the CLI and the MCP server — and `openFrom` refreshes an entry's
+   * safe here on two counts: a finding's *text* is read-only in this app — the
+   * CLI and the MCP server write it, and the only thing this app can change is
+   * a finding's status, through `quality.finding.resolved` and
+   * `.accepted` — and `openFrom` refreshes an entry's
    * payload whenever the same key lands back in the same slot, so re-opening a
    * finding picks up a new title. The alternative was threading every page's
    * findings through `PageHeader` and `usePanelBreadcrumbs` for the three pages
@@ -205,10 +207,16 @@ export interface PanelCrumbSpec {
  * announces, and the collapsed rail prints.
  *
  * One function because those are one question, and they were answered in two
- * places that had already drifted — `buildPanelCrumbs` spotted a raw entry by
- * its key while `ProjectPanels` spotted it by its kind. Branching on `kind`
+ * places that had already drifted — this one spotted a raw entry by its key
+ * while `ProjectPanels.labelOf` spotted it by its kind. Branching on `kind`
  * throughout is the honest test: the key/kind equivalence is an invariant the
  * union does not enforce, so a second test of it is a second thing that can rot.
+ *
+ * `ProjectPanels.labelOf` is the copy still standing, and until it is replaced
+ * by this it has no `finding` branch at all: a finding falls through to its
+ * node lookup, so the close button and the collapsed rail print the namespaced
+ * key while the crumb prints the title. Closing that is the wiring task's job,
+ * and it is the reason this is exported rather than local.
  *
  * Only a node entry's key is a node id, which is why only a node entry is put
  * to `titleOf` — a criterion falling through to it would read as its whole

@@ -257,7 +257,12 @@ assert(
   "a node prune never evicts a finding panel",
 );
 
-const findingCrumbs = buildPanelCrumbs([findingEntry], "Findings", () => undefined);
+// `titleOf` answers for these keys too, the way the Raw crumb's does: an inert
+// lookup would let the finding branch pass by coinciding with the fallback
+// instead of by beating it.
+const findingTitleOf = () => "never wins";
+
+const findingCrumbs = buildPanelCrumbs([findingEntry], "Findings", findingTitleOf);
 assert(
   findingCrumbs[findingCrumbs.length - 1].label === "Session cookie is readable from JS",
   "a finding crumb reads as its title, not as its id or its namespaced key",
@@ -269,8 +274,8 @@ const untitledFinding = {
   payload: { kind: "finding", findingId: "F-x", title: "" },
 };
 assert(
-  buildPanelCrumbs([untitledFinding], "Findings", () => undefined)[1].label === "F-x",
-  "a finding with no title falls back to its id — a crumb is never blank",
+  buildPanelCrumbs([untitledFinding], "Findings", findingTitleOf)[1].label === "F-x",
+  "a finding with no title falls back to its id, never to titleOf — a crumb is never blank",
 );
 
 // --- the History section reads the journal by the route id, never the node's ---
