@@ -73,8 +73,11 @@ the connect dialog (`EdgeTypeDialog`) already reads that table, and a
 hand-written second list of what may attach to what is a second chance for the
 panel and the canvas to disagree about the graph model.
 
+The type is `RelationLineSpec`, not `RelationLine`: the component in §2 owns
+that name, and this is the *descriptor* — what a line is, not the line itself.
+
 ```ts
-export interface RelationLine {
+export interface RelationLineSpec {
   /** `${edgeType}:${direction}` — "calls:out", "covers:in". Stable, sortable. */
   id: RelationLineId;
   edgeType: EdgeTypeId;
@@ -85,7 +88,7 @@ export interface RelationLine {
   counterpartSpecies: SpeciesId[];
 }
 
-export function relationLinesFor(species: SpeciesId): RelationLine[];
+export function relationLinesFor(species: SpeciesId): RelationLineSpec[];
 ```
 
 **Labels** are one `Record<EdgeTypeId, { out: string; in: string }>`:
@@ -218,7 +221,7 @@ export interface NodeRelations {
    * Create the counterpart *and* link it, as one write. Resolves to the new
    * node, or `null` when the title was blank.
    */
-  linkNew(node: Node, line: RelationLine, species: SpeciesId, title: string): Promise<Node | null>;
+  linkNew(node: Node, line: RelationLineSpec, species: SpeciesId, title: string): Promise<Node | null>;
 }
 ```
 
