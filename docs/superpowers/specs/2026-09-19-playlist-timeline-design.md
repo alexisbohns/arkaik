@@ -138,48 +138,35 @@ you opened one.
   line beside them, and a `border-l` between the two would be a third. `NESTED`
   is gone.
 
-A **condition's two branches** do not. They are headed instead:
+A **condition's two branches** are a rail too — the case rail's twin, and for
+the same reason:
 
 ```
-🎟️ YES                    ← ticket-check, blue-500
-   ⟦1⟧ Record Success
-   ⟦+⟧
-🎟️ NO                     ← ticket-x, yellow-600 / dark:yellow-400
-   ⟦1⟧ Pebble Drafts
-   ⟦+⟧
+⟦4⟧ Publish, or keep it as a draft?        ⌄
+    2 branches · 1 entry
+    ◈ YES                       ← ticket-check on a blue tile
+    ┊   ⟦+⟧ No entries yet.
+    ◈ NO                        ← ticket-x on a yellow tile
+        ⟦1⟧ Pebble Drafts          ▤  
+        ⟦+⟧
 ```
 
-The entries under a heading are already a rail, so a `border-l` beside one was a
-second vertical line saying what the first says — while the heading itself was
-the quietest text on screen despite being the thing that tells you which half of
-the branch you are reading. The rule goes and the heading takes the weight:
-`font-semibold`, system foreground, and a mark. A ticket stamped or refused —
-the branch a condition takes, and the one it does not.
+Dashed like the cases and unlike the steps: Yes and No are alternatives, and a
+solid line down them would claim an order. **Only the first carries a
+connector** — there is no third mark and no add tile, because a condition has
+exactly two branches, always, so there is nothing here to grow. For the same
+reason the mark is a `<span>` and not a `<button>`: it has no menu to open and
+must not look as though it has.
 
-Colour rides on the **glyph only**; the word stays foreground. That is the rule
-`DeliverableHoverCard` already states for its own marks, and the reason is that
-a blue word beside a blue icon says it twice and reads worse doing it. `No`
-needs two shades (`yellow-600` light, `yellow-400` dark) because yellow is the
-one hue in this palette whose mid shades wash out on white.
+Colour rides on the **tile**; the word beside it stays foreground. That is the
+rule `DeliverableHoverCard` already states for its own marks — a blue word
+beside a blue mark says it twice and reads worse doing it. `No` needs two shades
+of yellow, light and dark, because yellow is the one hue in this palette whose
+mid shades wash out on white.
 
-**Every list ends in an add tile, on the rail.** A 24px dashed box carrying a
-`+`, in the same column as the numbered tiles and reached by the same connector:
-it reads as the next position — where the step you are about to add will land.
-The affordance it replaces was a ghost `+ Add step` under the list, which
-floated, belonging to the playlist but standing outside the one structure that
-says what a playlist is.
-
-It sits on the `<ol>`'s grid but outside the `<ol>`: it is not an entry, and an
-`<li>` that is not one would put it in the list a screen reader reads out.
-Neither column carries a `gap`, so the connector from the last entry meets it.
-An empty list is then the tile and the message on one line — `⟦+⟧ No entries
-yet.` — rather than a message with a composer somewhere beneath it.
-
-The connector stays **solid** all the way down, including the last segment.
-Dashing that one to match the tile was tried and is worse: a connector spans its
-entry's whole height, so on a junction holding four cases it became 300px of
-dashes running past everything nested inside — loud, and easily read as a
-nesting rule rather than as a rail. The dashes mean one thing, on one 24px box.
+The three rails are therefore one idea with three settings: **steps** numbered
+and solid, **cases** blue and dashed, **branches** blue/yellow and dashed. What
+changes between them is what the line claims — a sequence, or a set of ways out.
 
 ## 2. The index menu
 

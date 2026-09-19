@@ -51,8 +51,6 @@ interface PlaylistEntryListProps {
   onCycleBlocked: (candidateFlowId: string) => void;
   onCreateNode?: (species: "flow" | "view", title: string) => Promise<Node>;
   depth?: number;
-  /** Marks this list as one side of a condition, and heads it accordingly. */
-  branch?: BranchKey;
   /**
    * The surface's product scope, for the per-platform marks on a step. Optional
    * because it reaches here from the panel four levels up, and a playlist that
@@ -81,29 +79,27 @@ interface PlaylistEntryRowProps {
 }
 
 /**
- * A condition's two outcomes.
+ * A condition's two outcomes, as marks on a rail.
  *
- * **They gain a mark and lose their rule.** Each branch used to be headed by a
- * muted "YES"/"NO" over entries wrapped in a `border-l` — but those entries are
- * already a rail, so the rule was a second vertical line saying what the first
- * one says, and the heading above it was the quietest text on screen while being
- * the thing that tells you which half of the branch you are reading. The rule
- * goes; the heading takes the weight.
+ * A condition holds two branches the way a junction holds cases and a playlist
+ * holds steps, so it is drawn the same way: a tile, a connector, content beside
+ * them. Each outcome used to be a muted "YES"/"NO" over entries wrapped in a
+ * `border-l` — the quietest text on screen doing the job of telling you which
+ * half you were reading, over a rule that was a second vertical line saying what
+ * the entries' own rail already said.
  *
  * A ticket stamped or refused: the branch a condition takes, and the one it does
- * not. Colour rides on the **glyph only** and the word stays system foreground —
- * the rule `DeliverableHoverCard` states for its own marks, because a blue word
- * beside a blue icon says it twice and reads worse doing it.
+ * not. Colour rides on the **tile** and the word beside it stays system
+ * foreground — the rule `DeliverableHoverCard` states for its own marks, because
+ * a blue word beside a blue mark says it twice and reads worse doing it.
+ *
+ * `no` needs two shades of yellow, light and dark: it is the one hue in this
+ * palette whose mid shades wash out on white.
  */
 const BRANCH = {
-  yes: { label: "Yes", Icon: TicketCheckIcon, tone: "text-blue-500" },
-  // `yellow-600` on the light theme, `yellow-400` on the dark one: a single
-  // shade that holds on both does not exist for this hue — it is the one colour
-  // in the palette whose mid shades wash out on white.
-  no: { label: "No", Icon: TicketXIcon, tone: "text-yellow-600 dark:text-yellow-400" },
+  yes: { label: "Yes", Icon: TicketCheckIcon, tile: "bg-blue-500/10 text-blue-600 dark:text-blue-400" },
+  no: { label: "No", Icon: TicketXIcon, tile: "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400" },
 } as const;
-
-type BranchKey = keyof typeof BRANCH;
 
 
 /**
@@ -275,28 +271,65 @@ function PlaylistEntryRow({
 
         {entry.type === "condition" && (
           <BranchBar entry={entry} ariaLabel="Condition label" placeholder="Condition" onChangeEntry={onChangeEntry}>
-            <PlaylistEntryList
-              branch="yes"
-              entries={entry.if_true}
-              depth={depth + 1}
-              flowNodeId={flowNodeId}
-              allNodes={allNodes}
-              onCycleBlocked={onCycleBlocked}
-              onCreateNode={onCreateNode}
-              scope={scope}
-              onChange={(next) => onChangeEntry({ ...entry, if_true: next })}
-            />
-            <PlaylistEntryList
-              branch="no"
-              entries={entry.if_false}
-              depth={depth + 1}
-              flowNodeId={flowNodeId}
-              allNodes={allNodes}
-              onCycleBlocked={onCycleBlocked}
-              onCreateNode={onCreateNode}
-              scope={scope}
-              onChange={(next) => onChangeEntry({ ...entry, if_false: next })}
-            />
+            {/*
+              * The branch rail — the junction case rail's twin, and for the same
+              * reason: two outcomes a condition holds, drawn the way everything
+              * else this panel holds is drawn.
+              *
+              * Dashed, like the cases and unlike the steps: Yes and No are
+              * alternatives, and a solid line down them would claim an order.
+              * Only the first carries a connector, because there is no third
+              * mark and no add tile — a condition has exactly two branches,
+              * always, so there is nothing here to grow.
+              *
+              * No `gap` on the column: the connector is `flex-1` in a stretched
+              * cell and a gap would cut it short.
+              */}
+            <div className="flex flex-col">
+              {[
+                {
+                  key: "yes" as const,
+                  entries: entry.if_true,
+                  onChange: (next: PlaylistEntry[]) => onChangeEntry({ ...entry, if_true: next }),
+                },
+                {
+                  key: "no" as const,
+                  entries: entry.if_false,
+                  onChange: (next: PlaylistEntry[]) => onChangeEntry({ ...entry, if_false: next }),
+                },
+              ].map((side, sideIndex) => {
+                const { label, Icon, tile } = BRANCH[side.key];
+                return (
+                  <div key={side.key} className="grid grid-cols-[auto_1fr] gap-x-3">
+                    <div className="flex flex-col items-center">
+                      {/* A span, not a button: a condition's branches cannot be
+                          added, removed or reordered, so the mark has no menu to
+                          open and must not look as though it has. */}
+                      <span className={cn(ICON_TILE, tile)} aria-hidden="true">
+                        <Icon className="size-3" />
+                      </span>
+                      {sideIndex === 0 && (
+                        <span className="w-0 flex-1 border-l border-dashed border-border" aria-hidden="true" />
+                      )}
+                    </div>
+
+                    <div className={cn("flex min-w-0 flex-col gap-1.5", sideIndex === 0 && "pb-4")}>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-foreground">{label}</p>
+                      <PlaylistEntryList
+                        entries={side.entries}
+                        depth={depth + 1}
+                        flowNodeId={flowNodeId}
+                        allNodes={allNodes}
+                        onCycleBlocked={onCycleBlocked}
+                        onCreateNode={onCreateNode}
+                        scope={scope}
+                        onChange={side.onChange}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </BranchBar>
         )}
 
@@ -427,7 +460,6 @@ export function PlaylistEntryList({
   onCycleBlocked,
   onCreateNode,
   depth = 0,
-  branch,
   scope,
 }: PlaylistEntryListProps) {
   /**
@@ -514,22 +546,8 @@ export function PlaylistEntryList({
     </>
   );
 
-  // No `gap` on the column holding the entries: the rail is one continuous line
-  // from the first entry to the add tile, and a gap between the `<ol>` and the
-  // tile would break it and leave the tile floating again.
-  if (!branch) {
-    return <div className="flex flex-col">{body}</div>;
-  }
-
-  const { label, Icon, tone } = BRANCH[branch];
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-foreground">
-        <Icon className={cn("size-4 shrink-0", tone)} aria-hidden="true" />
-        {label}
-      </p>
-      <div className="flex flex-col">{body}</div>
-    </div>
-  );
+  // No `gap`: the rail is one continuous line from the first entry to the add
+  // tile, and a gap between the `<ol>` and the tile would break it and leave the
+  // tile floating again.
+  return <div className="flex flex-col">{body}</div>;
 }
