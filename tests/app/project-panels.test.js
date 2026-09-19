@@ -20,8 +20,10 @@ const {
   RAW_PANEL_KEY,
   cellPanelKey,
   criterionPanelKey,
+  findingPanelKey,
   isCellEntry,
   isCriterionEntry,
+  isFindingEntry,
   isNodeEntry,
   topNodeKey,
   pruneNodeEntries,
@@ -219,6 +221,56 @@ const cellCrumbs = buildPanelCrumbs([cellEntry], "Matrix", () => undefined);
 assert(
   cellCrumbs[cellCrumbs.length - 1].label === "SEC × web",
   "a cell crumb reads as its domain and surface, not its namespaced key",
+);
+
+// --- finding entries: the fifth kind, addressless for the same reason -------
+const findingEntry = {
+  key: findingPanelKey("F-2026-08-SEC-web-01"),
+  instanceId: "i-find",
+  payload: {
+    kind: "finding",
+    findingId: "F-2026-08-SEC-web-01",
+    title: "Session cookie is readable from JS",
+  },
+};
+
+assert(
+  findingPanelKey("F-2026-08-SEC-web-01") === "finding:F-2026-08-SEC-web-01",
+  "a finding key is namespaced — a finding id is a word the project picks freely",
+);
+assert(
+  isFindingEntry(findingEntry) &&
+    !isFindingEntry(cellEntry) &&
+    !isFindingEntry(criterionEntry) &&
+    !isFindingEntry(rawEntry) &&
+    !isNodeEntry(findingEntry),
+  "the four non-node kinds are told apart by kind, never by key",
+);
+assert(
+  topNodeKey([homeEntry, findingEntry]) === "V-home",
+  "a finding panel above a node does not displace what ?node= names",
+);
+
+const findingPruned = pruneNodeEntries([homeEntry, findingEntry], new Set());
+assert(
+  findingPruned.length === 1 && isFindingEntry(findingPruned[0]),
+  "a node prune never evicts a finding panel",
+);
+
+const findingCrumbs = buildPanelCrumbs([findingEntry], "Findings", () => undefined);
+assert(
+  findingCrumbs[findingCrumbs.length - 1].label === "Session cookie is readable from JS",
+  "a finding crumb reads as its title, not as its id or its namespaced key",
+);
+
+const untitledFinding = {
+  key: findingPanelKey("F-x"),
+  instanceId: "i-untitled",
+  payload: { kind: "finding", findingId: "F-x", title: "" },
+};
+assert(
+  buildPanelCrumbs([untitledFinding], "Findings", () => undefined)[1].label === "F-x",
+  "a finding with no title falls back to its id — a crumb is never blank",
 );
 
 // --- the History section reads the journal by the route id, never the node's ---
