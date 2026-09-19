@@ -20,8 +20,11 @@ import { cn } from "@/lib/utils";
 type DecidedStatus = Exclude<FindingStatus, "open">;
 
 /**
- * The mark's square. `bare` because the mark brings its own lane or verdict
- * colour, which is the whole point of it.
+ * The rail's square, shared by both marks so they sit on the same axis.
+ *
+ * This used to be a verbatim copy of the Changelog's tile, declared here
+ * because the constant lived in a changelog component. Both are the one chip
+ * now. `bare` because each mark brings its own lane or verdict colour.
  */
 const MARK_CLASS = iconChipVariants({ variant: "bare" });
 
@@ -41,7 +44,8 @@ const STATUS_ICON: Record<DecidedStatus, ReactNode> = {
  *
  * On an open finding it is the priority and nothing else: the digit alone,
  * because `P` repeated down a column of squares is a letter nobody reads twice.
- * The chip's own gloss says what the lane means.
+ * The chip's own gloss says what the lane means, which is what the section
+ * heading used to say.
  *
  * On a decided one the priority gives way to the verdict — a green tick reads
  * down the rail as "answered" at the same glance the red squares read as
@@ -70,6 +74,11 @@ export function FindingMark({ row, className }: { row: FindingRow; className?: s
     );
   }
 
+  // Safe, and load-bearing now that this is exported rather than inlined in
+  // the board: `buildFindingRows` derives both fields from the one stored
+  // status — `open` is `isOpenFinding`, which is `(status ?? "open") ===
+  // "open"` — so `!row.open` means the status is not `open`. A hand-built row
+  // that breaks that renders an undefined term, no tile and no glyph, silently.
   const status = row.status as DecidedStatus;
 
   return (
