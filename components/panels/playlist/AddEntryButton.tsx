@@ -4,8 +4,7 @@ import { useMemo, useState } from "react";
 import { GitBranchIcon, PlusIcon, SplitIcon } from "lucide-react";
 
 import { Combobox } from "@/components/ui/combobox";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { iconChipVariants } from "@/components/layout/IconChip";
+import { AddPopover, ADD_POPOVER_COMBOBOX } from "@/components/panels/AddPopover";
 import { SPECIES_GRAPH_ICONS } from "@/lib/config/species-icons";
 import { wouldCreateCycle } from "@/lib/utils/cycle";
 import { fuzzyScore } from "@/lib/utils/search";
@@ -176,112 +175,97 @@ export function AddEntryButton({
   }
 
   return (
-    <Popover
+    /*
+     * The trigger's look and the card's geometry live in `AddPopover`, lifted
+     * out of this component when the relation line needed the same affordance.
+     * Everything below the shell — the rows, the cycle rule, the "nothing until
+     * you type" rest state — is this list's own.
+     *
+     * What the shell carries for this call site: the last mark on the rail, not
+     * a button beside it. It was a ghost `+ Add step` under the list, which
+     * floated — a control belonging to the playlist but standing outside the one
+     * structure that says what the playlist is. On the rail it reads as the next
+     * position, the place the step you are about to add will land, and the
+     * dashes are the whole difference between it and the numbered tiles above:
+     * same box, same column, not filled in yet.
+     */
+    <AddPopover
+      label="Add step"
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
         if (!next) setQuery("");
       }}
     >
-      <PopoverTrigger asChild>
-        {/*
-          * The last mark on the rail, not a button beside it.
-          *
-          * It was a ghost `+ Add step` under the list, which floated: a control
-          * belonging to the playlist but standing outside the one structure that
-          * says what the playlist is. On the rail it reads as the next position —
-          * the place the step you are about to add will land — and the dashes
-          * are the whole difference between it and the numbered tiles above:
-          * same box, same column, not filled in yet.
-          */}
-        <button
-          type="button"
-          aria-label="Add step"
-          title="Add step"
-          className={cn(
-            iconChipVariants({ variant: "dashed", interactive: true }),
-            "border-border text-muted-foreground",
-            "hover:border-solid hover:bg-muted hover:text-foreground",
-          )}
-        >
-          <PlusIcon className="size-3.5" aria-hidden="true" />
-        </button>
-      </PopoverTrigger>
-
-      <PopoverContent align="start" className="w-80 p-2">
-        <Combobox<AddRow>
-          value={query}
-          onValueChange={setQuery}
-          items={rows}
-          placement="inline"
-          search
-          // Structure rows are constant, so their keys are too; a node and the
-          // row that would create a node of the same name never collide because
-          // the create row is keyed by species as well.
-          itemKey={(row) =>
-            row.kind === "node" ? row.id
-              : row.kind === "create" ? `create-${row.species}`
-                : `structure-${row.structure}`
-          }
-          onSelect={(row) => void handleSelect(row)}
-          renderItem={(row) => {
-            if (row.kind === "structure") {
-              const { label, hint, Icon } = STRUCTURE[row.structure];
-              return (
-                <span className="flex min-w-0 items-center gap-2">
-                  <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                  <span className="font-medium">{label}</span>
-                  <span className="truncate text-xs text-muted-foreground">{hint}</span>
-                </span>
-              );
-            }
-
-            if (row.kind === "create") {
-              const Icon = SPECIES_GRAPH_ICONS[row.species];
-              return (
-                <span className="flex min-w-0 items-center gap-2">
-                  <PlusIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                  <span className="truncate">
-                    Create {row.species} <span className="font-medium">&ldquo;{row.title}&rdquo;</span>
-                  </span>
-                  <Icon className="ml-auto size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                </span>
-              );
-            }
-
-            const Icon = SPECIES_GRAPH_ICONS[row.species];
+      <Combobox<AddRow>
+        {...ADD_POPOVER_COMBOBOX}
+        value={query}
+        onValueChange={setQuery}
+        items={rows}
+        // Structure rows are constant, so their keys are too; a node and the
+        // row that would create a node of the same name never collide because
+        // the create row is keyed by species as well.
+        itemKey={(row) =>
+          row.kind === "node" ? row.id
+            : row.kind === "create" ? `create-${row.species}`
+              : `structure-${row.structure}`
+        }
+        onSelect={(row) => void handleSelect(row)}
+        renderItem={(row) => {
+          if (row.kind === "structure") {
+            const { label, hint, Icon } = STRUCTURE[row.structure];
             return (
               <span className="flex min-w-0 items-center gap-2">
                 <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                <span className="truncate font-medium">{row.title}</span>
-                <span className="ml-auto shrink-0 text-xs text-muted-foreground">{row.id}</span>
+                <span className="font-medium">{label}</span>
+                <span className="truncate text-xs text-muted-foreground">{hint}</span>
               </span>
             );
-          }}
-          itemClassName={(row, active) =>
-            cn(
-              "w-full rounded-sm px-2 py-1.5 text-left text-sm",
-              // The two structure rows are the tail of the list, not more
-              // matches, so the first of them carries the rule that says so,
-              // and only while there is something above for it to separate:
-              // at rest the list IS the two rows, and a rule under nothing is
-              // a line drawn for its own sake —
-              // a pseudo-element, because a wrapping div cannot survive a row
-              // being a single `role="option"` box (the trick
-              // `NodeSearchCombobox` uses for its own create row).
-              hasRowsAbove && row.kind === "structure" && row.structure === "condition" &&
-                "relative mt-2 before:absolute before:inset-x-0 before:-top-1 before:border-t before:border-border",
-              active && "bg-muted",
-            )
           }
-          empty={<p className="px-2 py-2 text-xs text-muted-foreground">No matches.</p>}
-          placeholder="Search views and flows…"
-          aria-label="Search a view or flow to play, or add a branch"
-          disabled={busy}
-          className="flex flex-col gap-2"
-          listClassName="max-h-72 overflow-y-auto"
-        />
-      </PopoverContent>
-    </Popover>
+
+          if (row.kind === "create") {
+            const Icon = SPECIES_GRAPH_ICONS[row.species];
+            return (
+              <span className="flex min-w-0 items-center gap-2">
+                <PlusIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <span className="truncate">
+                  Create {row.species} <span className="font-medium">&ldquo;{row.title}&rdquo;</span>
+                </span>
+                <Icon className="ml-auto size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+              </span>
+            );
+          }
+
+          const Icon = SPECIES_GRAPH_ICONS[row.species];
+          return (
+            <span className="flex min-w-0 items-center gap-2">
+              <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span className="truncate font-medium">{row.title}</span>
+              <span className="ml-auto shrink-0 text-xs text-muted-foreground">{row.id}</span>
+            </span>
+          );
+        }}
+        itemClassName={(row, active) =>
+          cn(
+            "w-full rounded-sm px-2 py-1.5 text-left text-sm",
+            // The two structure rows are the tail of the list, not more
+            // matches, so the first of them carries the rule that says so,
+            // and only while there is something above for it to separate:
+            // at rest the list IS the two rows, and a rule under nothing is
+            // a line drawn for its own sake —
+            // a pseudo-element, because a wrapping div cannot survive a row
+            // being a single `role="option"` box (the trick
+            // `NodeSearchCombobox` uses for its own create row).
+            hasRowsAbove && row.kind === "structure" && row.structure === "condition" &&
+              "relative mt-2 before:absolute before:inset-x-0 before:-top-1 before:border-t before:border-border",
+            active && "bg-muted",
+          )
+        }
+        empty={<p className="px-2 py-2 text-xs text-muted-foreground">No matches.</p>}
+        placeholder="Search views and flows…"
+        aria-label="Search a view or flow to play, or add a branch"
+        disabled={busy}
+      />
+    </AddPopover>
   );
 }

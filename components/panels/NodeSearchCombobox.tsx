@@ -45,6 +45,14 @@ export interface NodeSearchComboboxProps {
   /** Focus the field on mount — for a list a gesture reveals. */
   autoFocus?: boolean;
   /**
+   * Presentation, passed straight through to `Combobox`. A caller that puts
+   * this list inside an `AddPopover` spreads `ADD_POPOVER_COMBOBOX` rather
+   * than picking these one at a time.
+   */
+  search?: boolean;
+  className?: string;
+  listClassName?: string;
+  /**
    * `popover` (the default) floats the list over what follows; `inline` pushes
    * it down. A relation line passes `inline`: the panel body scrolls, and a
    * floated list inside it would need portalling to escape the scroll
@@ -110,6 +118,9 @@ export function NodeSearchCombobox({
   freeText,
   placeholder,
   autoFocus,
+  search,
+  className,
+  listClassName,
   placement,
   disabled,
 }: NodeSearchComboboxProps) {
@@ -261,6 +272,9 @@ export function NodeSearchCombobox({
         canCreate ? `Search existing ${speciesPhrase} or create one` : `Search ${speciesPhrase}`
       }
       autoFocus={autoFocus}
+      search={search}
+      className={className}
+      listClassName={listClassName}
       placement={placement}
       disabled={disabled || busy}
     />
