@@ -10,7 +10,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { AddEntryButton } from "@/components/panels/playlist/AddEntryButton";
-import { DebouncedLabelInput } from "@/components/panels/playlist/DebouncedLabelInput";
+import { EditableLabel } from "@/components/panels/playlist/EditableLabel";
 import { PlaylistIndexMenu } from "@/components/panels/playlist/PlaylistIndexMenu";
 import { PlaylistReorderControls, rowGroupClass, rowRevealClass } from "@/components/panels/playlist/PlaylistReorderControls";
 import { CopyIdChip, EntityId } from "@/components/graph/nodes/EntityBadges";
@@ -118,11 +118,14 @@ const CONTENT_COLUMN = "pl-9";
 function BranchBar({
   entry,
   ariaLabel,
+  placeholder,
   onChangeEntry,
   children,
 }: {
   entry: Extract<PlaylistEntry, { type: "condition" | "junction" }>;
   ariaLabel: string;
+  /** The default name, shown while the label is empty. */
+  placeholder: string;
   onChangeEntry: (entry: PlaylistEntry) => Promise<void> | void;
   children: ReactNode;
 }) {
@@ -131,10 +134,11 @@ function BranchBar({
   return (
     <Collapsible defaultOpen className="group/branch flex flex-col">
       <div className="flex items-center gap-2">
-        <DebouncedLabelInput
+        <EditableLabel
           value={entry.label}
           onCommit={(label) => void onChangeEntry({ ...entry, label })}
           ariaLabel={ariaLabel}
+          placeholder={placeholder}
         />
         <CollapsibleTrigger
           aria-label={`Toggle ${entry.label || ariaLabel}`}
@@ -244,7 +248,7 @@ function PlaylistEntryRow({
         )}
 
         {entry.type === "condition" && (
-          <BranchBar entry={entry} ariaLabel="Condition label" onChangeEntry={onChangeEntry}>
+          <BranchBar entry={entry} ariaLabel="Condition label" placeholder="Condition" onChangeEntry={onChangeEntry}>
             <PlaylistEntryList
               heading="Yes"
               entries={entry.if_true}
@@ -271,7 +275,7 @@ function PlaylistEntryRow({
         )}
 
         {entry.type === "junction" && (
-          <BranchBar entry={entry} ariaLabel="Junction label" onChangeEntry={onChangeEntry}>
+          <BranchBar entry={entry} ariaLabel="Junction label" placeholder="Junction" onChangeEntry={onChangeEntry}>
             {/*
               * Keyed by index, never by `playlistCase.label`: the label is
               * edited by the Input inside this row, so a label key made every
@@ -290,7 +294,7 @@ function PlaylistEntryRow({
             {entry.cases.map((playlistCase, caseIndex) => (
               <div key={caseIndex} className="flex flex-col gap-2">
                 <div className="flex items-center gap-2">
-                  <DebouncedLabelInput
+                  <EditableLabel
                     value={playlistCase.label}
                     onCommit={(label) => {
                       const nextCases = entry.cases.map((item, idx) => {
@@ -300,6 +304,7 @@ function PlaylistEntryRow({
                       void onChangeEntry({ ...entry, cases: nextCases });
                     }}
                     ariaLabel={`Junction case ${caseIndex + 1} label`}
+                    placeholder={`Case ${caseIndex + 1}`}
                   />
                   {/* The case keeps its own delete. A case is not an entry on
                       the rail — it has no index tile, so it has nowhere else to

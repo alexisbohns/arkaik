@@ -231,12 +231,48 @@ Condition and junction rows wrap their nested lists in `Collapsible`
 (`components/ui/collapsible.tsx`, the same primitive `PanelGroup` uses),
 `defaultOpen` true — nothing that is visible today disappears on first paint.
 
-**The trigger is the chevron alone, not the whole bar.** The label is an
-`Input`, and a control inside a `CollapsibleTrigger` is exactly the
-button-inside-a-button that `PanelGroup`'s own doc comment rules out: invalid
-HTML, undefined AT behaviour, and an inner control whose clicks the outer
-trigger swallows. Keeping the trigger narrow is what lets inline label editing
-survive the change.
+**The label is a `contentEditable` span, not an `Input`.** A bordered 36px field
+made every branch row a head taller than the steps above and below it, with its
+text starting a border and a padding to the right of theirs — the rail's whole
+job is that a playlist reads as one column of steps, and a control announcing
+"form field" on three of them broke the column into kinds. So all three labels
+(condition, junction, and a junction case) are the same `text-sm font-medium` as
+a step's title, lit on hover and focus rather than boxed all the time: the
+editable-in-place pattern `NodeFields` already uses for the node title and
+description, down to the `execCommand` paste.
+
+`EditableLabel` keeps every line of the old debounce: the `draft` /`anchor` /
+`committed` / `pending` machine, the adopt-from-outside rule that runs during
+render, the commit-on-unmount. What changes is only that **React no longer owns
+the text node** — a controlled `contentEditable` rewrites its child on every
+keystroke and drops the caret to the start, so the DOM holds the text, `draft`
+mirrors it, and the single effect that writes back fires only when `value`
+forces a change from outside.
+
+Two things this shape gets wrong if written the obvious way, both found in the
+browser and both commented at the site:
+
+- **Escape must update `draftRef` synchronously.** `blur()` fires `onBlur` in
+  the same tick and `flush` reads the ref, which the mirroring effect has not
+  run yet. Through `setDraft` alone, Escape reverted the text on screen and
+  committed the abandoned edit anyway.
+- **`:empty` never matches.** Chrome leaves a `<br>` in an emptied
+  `contentEditable`, so the placeholder is driven by a `data-empty` attribute
+  off the mirror rather than by `empty:before:`. (`NodeFields` carries the same
+  `empty:before:` rule and the same silence — unfixed here, out of scope.)
+
+**The trigger is the chevron alone, not the whole bar.** A control inside a
+`CollapsibleTrigger` is exactly the button-inside-a-button that `PanelGroup`'s
+own doc comment rules out: invalid HTML, undefined AT behaviour, and an inner
+control whose clicks the outer trigger swallows. Keeping the trigger narrow is
+what lets inline label editing survive at all.
+
+**One caveat, on coarse pointers only.** `app/globals.css` bumps every
+`contentEditable` to 16px below `pointer: coarse` so Safari does not zoom on
+focus, and the label is `text-sm`. On a phone a branch label therefore sits 2px
+larger than a step title beside it. Opting out with `.arkaik-keep-font-size`
+would buy back the alignment and reintroduce the zoom; every other field in the
+app takes the bump, and so does this one.
 
 **The chevron sits at the END of the row**, where every other disclosure in the
 app puts it — `PanelGroup`'s bars, the panel's own regions — and in the same
@@ -271,7 +307,7 @@ concerns. Split into `components/panels/playlist/`:
 | `PlaylistEntryList.tsx` | the `<ol>` rail, the row bodies, ordering, `activeIndex` |
 | `PlaylistIndexMenu.tsx` | the tile and its popover |
 | `PlaylistReorderControls.tsx` | the two absolute arrows and the depth group names |
-| `DebouncedLabelInput.tsx` | moved verbatim, comments included |
+| `EditableLabel.tsx` | the inline-edited label: the debounce machine, now over a `contentEditable` |
 | `AddEntryButton.tsx` | the Add step button and its one-list popover (§2b) |
 
 The list and the row stay in **one** file: they are mutually recursive — a
@@ -279,9 +315,10 @@ condition holds two lists, a junction case holds one, and each holds rows — so
 splitting them would buy nothing but an import cycle. The files that got their
 own module are the ones that are *not* recursive.
 
-`DebouncedLabelInput`'s commit/anchor/pending dance travels **intact**. Its
-comments document a bug that was fixed once (characters reverting mid-type,
-out-of-order remote writes) and they are the reason it will not come back.
+`EditableLabel`'s commit/anchor/pending dance is the old `DebouncedLabelInput`'s,
+**intact**. Its comments document a bug that was fixed once (characters
+reverting mid-type, out-of-order remote writes) and they are the reason it will
+not come back.
 
 ### Not doing
 
