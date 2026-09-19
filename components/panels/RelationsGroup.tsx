@@ -224,6 +224,7 @@ export function RelationsGroup({
           allEdges={allEdges}
           onNavigate={onNavigate}
           onCreate={onCreateAcceptanceForAnchor}
+          intake={intake}
         />
       )}
       {hasInvocation && allNodes && onNavigate && (
