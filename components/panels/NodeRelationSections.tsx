@@ -24,7 +24,11 @@ import { useMemo } from "react";
 import { toast } from "sonner";
 
 import { PanelSection } from "@/components/panels/PanelSection";
-import { RelationLine, RelationRowItem } from "@/components/panels/RelationLine";
+import {
+  RelationLine,
+  RelationRowItem,
+  removeWithUndo,
+} from "@/components/panels/RelationLine";
 import { EntityRow } from "@/components/graph/nodes/EntityRow";
 import { RefList } from "@/components/graph/nodes/RefBadges";
 import { SPECIES } from "@/lib/config/species";
@@ -33,6 +37,7 @@ import { EMPTY_QUALITY_FILTERS, filterFindings, type FindingRow } from "@/lib/ut
 import { findWhereUsed, crossLayerConnections, coveredAnchorsOf } from "@/lib/utils/where-used";
 import { attachEmptiesMembership } from "@/lib/utils/acceptance-intake";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
+import { useLatest } from "@/lib/hooks/useLatest";
 import { cn } from "@/lib/utils";
 import type { Node, Edge } from "@/lib/data/types";
 import type { SpeciesId } from "@arkaik/schema";
@@ -365,6 +370,8 @@ export function CoversSection({ node, allNodes, allEdges, hasProducts, onNavigat
   // miss it on every render — which is exactly what hoisting `ANCHOR_SPECIES`
   // out of the render was meant to prevent, cancelled one prop over.
   const excludeIds = useMemo(() => coveredAnchors.map((anchor) => anchor.id), [coveredAnchors]);
+  // Undo outlives the render that built it; see the `restore` below.
+  const intakeRef = useLatest(intake);
 
   /**
    * Run one intake gesture, reporting a failure instead of swallowing it.
@@ -378,12 +385,15 @@ export function CoversSection({ node, allNodes, allEdges, hasProducts, onNavigat
    * over a line that shut and dropped the typed query is a worse account of
    * what happened than no toast at all.
    */
-  async function run(action: () => Promise<void>, failure: string): Promise<boolean> {
+  async function run(action: () => Promise<void>, failure: string | null): Promise<boolean> {
     try {
       await action();
       return true;
     } catch (err) {
-      toast.error(failure);
+      // `null` means the caller speaks for this one — `removeWithUndo` reports
+      // a failed restore itself, and two toasts describing one failure is the
+      // other way to get that wrong.
+      if (failure) toast.error(failure);
       console.error(err);
       return false;
     }
@@ -421,9 +431,26 @@ export function CoversSection({ node, allNodes, allEdges, hasProducts, onNavigat
               onNavigate={onNavigate}
               onRemove={
                 intake &&
-                (() => void run(() => intake.detach(node, anchor.id), "Couldn't detach that node."))
+                (() =>
+                  void removeWithUndo({
+                    label: anchor.title,
+                    remove: () =>
+                      run(() => intake.detach(node, anchor.id), "Couldn't detach that node."),
+                    // `intake.attach`, not `relations.link`: covers edges stay
+                    // on the intake path, and `node-relations.ts` refuses them
+                    // at runtime rather than only in prose.
+                    //
+                    // Through the ref, not this render's `intake`: by the time
+                    // Undo is clicked the detach has landed, and the captured
+                    // object plans against the edge list from before it —
+                    // where the edge still exists, so `planAcceptanceAttach`
+                    // plans nothing and Undo does nothing, silently. See
+                    // {@link useLatest}.
+                    restore: () => run(() => intakeRef.current!.attach(node, anchor), null),
+                  }))
               }
               removeLabel={`Stop covering ${anchor.title}`}
+              removeQuestion={`Stop covering "${anchor.title}"?`}
             />
           ))}
         </ul>
@@ -456,7 +483,7 @@ interface AttachAnchorConfigArgs {
   hasProducts: boolean;
   intake: AcceptanceIntake;
   /** Runs one write, reporting `false` when it failed. */
-  run: (action: () => Promise<void>, failure: string) => Promise<boolean>;
+  run: (action: () => Promise<void>, failure: string | null) => Promise<boolean>;
   /**
    * The ids of the anchors already covered — what the list must not offer
    * again. Memoised by the caller; see the note where it is built.

@@ -2,6 +2,7 @@
 
 import { useCallback, useState, type ReactNode } from "react";
 import { XIcon } from "lucide-react";
+import { toast } from "sonner";
 
 import { PanelSection } from "@/components/panels/PanelSection";
 import { AddPopover, ADD_POPOVER_COMBOBOX } from "@/components/panels/AddPopover";
@@ -11,6 +12,7 @@ import {
 } from "@/components/panels/NodeSearchCombobox";
 import { EntityRow } from "@/components/graph/nodes/EntityRow";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import type { Node } from "@/lib/data/types";
 import type { SpeciesId } from "@arkaik/schema";
@@ -142,21 +144,156 @@ export function RelationLine({ label, children, add }: RelationLineProps) {
 export const RELATION_ROW_GROUP = "group/relation-row";
 
 /**
- * The `×`'s reveal, as one string because two components wear it: the entity
- * row below and `BlockedByField`'s plain-text row, which is not an entity and
- * so cannot use {@link RelationRowItem} but must fade identically.
+ * The `×`'s reveal.
  *
- * `disabled:opacity-100` keeps it on screen while its own write commits. A
- * control that vanishes mid-gesture is worse than one that greys out: the
- * round trip is exactly when the reader wants to see that something is
- * happening to the thing they clicked, and the pointer may well have drifted
- * off the row by then.
+ * Three states keep it on screen once the reader has committed to it, beyond
+ * the hover and focus that summon it:
+ *
+ * - `disabled:` — its own write is committing. A control that vanishes
+ *   mid-gesture is worse than one that greys out: the round trip is exactly
+ *   when the reader wants to see something happening to the thing they
+ *   clicked, and the pointer may well have drifted off the row by then.
+ * - `data-[state=open]:` — its confirm is open. Radix puts that attribute on
+ *   the trigger, and without this the `×` would fade out from under its own
+ *   question the moment the pointer moved to answer it.
+ *
+ * Verified in the browser rather than reasoned about: `opacity-0` and these
+ * have equal specificity, so which wins is Tailwind's variant ordering, not
+ * anything this file states.
  */
-export const REMOVE_ON_ROW_HOVER = cn(
+const REMOVE_ON_ROW_HOVER = cn(
   "opacity-0 transition-opacity",
   "group-hover/relation-row:opacity-100 group-focus-within/relation-row:opacity-100",
-  "focus-visible:opacity-100 disabled:opacity-100",
+  "focus-visible:opacity-100 disabled:opacity-100 data-[state=open]:opacity-100",
 );
+
+/**
+ * The `×` that removes a relation — and the question it asks first.
+ *
+ * **Nothing is written until Confirm.** The canvas already stops before
+ * deleting an edge, with a modal that says it cannot be undone; this panel
+ * removed silently. Two surfaces disagreeing about how dangerous the same
+ * write is, is worse than either answer, and this is the panel's.
+ *
+ * A popover, not the canvas's `DeleteConfirmDialog`. Neither shell fit and
+ * neither was bent to: a modal over the whole app is a heavy answer for one
+ * row in a list, and `AddPopover` is an *add* — a dashed chip trigger, a wide
+ * card, a search field — so forcing one shell over both would be exactly the
+ * drift extracting it was meant to prevent. What is shared with `AddPopover`
+ * is the Radix primitive under both and nothing else.
+ *
+ * Own component rather than markup inside the row, because
+ * `BlockedByField`'s free text is not an entity and cannot be a
+ * {@link RelationRowItem}, yet a `×` that asked on one row and not the other
+ * would be the graph leaking into the interaction.
+ */
+export function RemoveButton({
+  label,
+  question,
+  disabled,
+  onConfirm,
+}: {
+  /** Names the gesture for a screen reader — "Stop covering Checkout". */
+  label: string;
+  /** The question, asked in the caller's own words — "Stop covering Checkout?" */
+  question: string;
+  /** A write is in flight on this line. The `×` stays visible and goes inert. */
+  disabled?: boolean;
+  onConfirm: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={cn("size-7 shrink-0", REMOVE_ON_ROW_HOVER)}
+          aria-label={label}
+          disabled={disabled}
+        >
+          <XIcon className="size-3.5" />
+        </Button>
+      </PopoverTrigger>
+      {/* `align="end"`: the `×` is the last thing on the row, so a card
+          starting at its left edge would hang off the panel. */}
+      <PopoverContent align="end" className="flex w-64 flex-col gap-3 p-3">
+        <p className="text-sm">{question}</p>
+        <Button
+          type="button"
+          variant="destructive"
+          size="sm"
+          onClick={() => {
+            // Closed first, so the row is back to its resting state by the
+            // time the write starts and the toast arrives.
+            setOpen(false);
+            onConfirm();
+          }}
+        >
+          Remove
+        </Button>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * Remove something, then offer to put it back.
+ *
+ * One helper rather than three copies of the toast, because the behaviour is
+ * one behaviour — only the inverse differs, and each caller knows its own:
+ * `EdgeRelationLine` re-links, `CoversSection` re-attaches through intake
+ * (covers edges are intake's, enforced in `node-relations.ts`), and
+ * `BlockedByField` writes back the value it captured before clearing.
+ *
+ * **Undo is not a perfect inverse, and the word promises more than it does.**
+ * `planRelationUnlink` deletes EVERY edge matching the pair, because a
+ * hand-edited or half-synced bundle can carry several with the same endpoints;
+ * `relations.link` puts back the one canonical `e-{source}-{target}`. On such a
+ * bundle, undo restores the relation and silently normalises its duplicates.
+ * That is the behaviour worth having — the alternative is re-minting edges
+ * whose ids nothing else in the app can produce — but it is not what a reader
+ * hears in "Undo", so it is written down here rather than left to be
+ * discovered.
+ *
+ * **Undo is a write and can fail.** `restore` answers `false` when it did not
+ * land, and this says so: an Undo that quietly does nothing is the one outcome
+ * worse than no Undo at all. The message is this helper's, not the caller's,
+ * which is why callers pass `null` as their `run`'s failure string for the
+ * restore — two toasts describing one failure is the other way to get it
+ * wrong. It also covers the case no caller can report: a restore suppressed by
+ * the `inFlight` gate because another write is in flight answers `false`
+ * without ever reaching the store, and the row stays gone either way.
+ */
+export async function removeWithUndo({
+  label,
+  remove,
+  restore,
+}: {
+  /** What went, named for the toast: "Removed Checkout". */
+  label: string;
+  /** The removal. Answers `false` when it failed — the caller reports that one. */
+  remove: () => Promise<boolean>;
+  /** The inverse. Answers `false` when IT failed; see above. */
+  restore: () => Promise<boolean>;
+}): Promise<void> {
+  if (!(await remove())) return;
+
+  toast.success(`Removed ${label}`, {
+    action: {
+      label: "Undo",
+      onClick: () => {
+        void (async () => {
+          if (!(await restore())) {
+            toast.error(`Couldn't undo — ${label} is still removed.`);
+          }
+        })();
+      },
+    },
+  });
+}
 
 /**
  * One row of a relation line: the entity, and — where the surface can write —
@@ -170,15 +307,17 @@ export const REMOVE_ON_ROW_HOVER = cn(
  * **The `×` is quiet until you reach for it.** A column of them down a list
  * reads as a column of buttons rather than a list of relations, and removal is
  * the rare gesture here. So it fades in on row hover — and on keyboard focus
- * too, via {@link REMOVE_ON_ROW_HOVER}, because hover alone would be a mouse-only
- * control. Opacity, never `hidden`: the box keeps its space, so nothing under
- * the pointer moves when the pointer arrives.
+ * too, because hover alone would be a mouse-only control. Opacity, never
+ * `hidden`: the box keeps its space, so nothing under the pointer moves when
+ * the pointer arrives. See {@link RemoveButton}, which owns that and the
+ * confirm, so no caller can render a row that removes without asking.
  */
 export function RelationRowItem({
   node,
   onNavigate,
   onRemove,
   removeLabel,
+  removeQuestion,
   children,
 }: {
   node: Node;
@@ -186,6 +325,8 @@ export function RelationRowItem({
   onRemove?: () => void;
   /** Names the gesture for a screen reader — "Stop covering Checkout". */
   removeLabel?: string;
+  /** The confirm's question. Defaults to the label with a question mark. */
+  removeQuestion?: string;
   children?: ReactNode;
 }) {
   return (
@@ -195,16 +336,11 @@ export function RelationRowItem({
         {children}
       </EntityRow>
       {onRemove && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={cn("size-7 shrink-0", REMOVE_ON_ROW_HOVER)}
-          aria-label={removeLabel ?? `Remove ${node.title}`}
-          onClick={onRemove}
-        >
-          <XIcon className="size-3.5" />
-        </Button>
+        <RemoveButton
+          label={removeLabel ?? `Remove ${node.title}`}
+          question={removeQuestion ?? `${removeLabel ?? `Remove ${node.title}`}?`}
+          onConfirm={onRemove}
+        />
       )}
     </li>
   );
