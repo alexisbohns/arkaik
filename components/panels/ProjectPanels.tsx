@@ -257,7 +257,6 @@ export function ProjectPanels({
             return (
               <FindingDetailPanelHeader
                 findingId={entry.payload.findingId}
-                title={entry.payload.title}
                 findings={qualityFindings}
                 section={qualitySection}
               />

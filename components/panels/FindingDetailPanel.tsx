@@ -1,7 +1,8 @@
 "use client";
 
-import { ExternalLinkIcon } from "lucide-react";
+import { ExternalLinkIcon, ListChecksIcon } from "lucide-react";
 import { CROSS_SURFACE_ID, type QualitySection } from "@arkaik/schema";
+import { PanelHeaderEntityId } from "@/components/graph/nodes/EntityBadges";
 import { PanelSection, PANEL_GUTTER } from "@/components/panels/PanelSection";
 import { AcceptedRiskCallout } from "@/components/quality/AcceptedRiskCallout";
 import { FindingMark } from "@/components/quality/FindingMark";
@@ -48,25 +49,42 @@ function surfaceTitleOf(surface: string, section?: QualitySection): string {
 }
 
 /**
- * What identifies the panel in the stack's header: the finding's own mark, its
- * title, and the surface it was filed on. The close button belongs to
- * `PanelStack`, which owns every panel's frame.
+ * What identifies the panel in the stack's header: what kind of thing this is,
+ * which one it is, and the surface it was filed on. The close button belongs
+ * to `PanelStack`, which owns every panel's frame.
  *
- * The mark is the same component the board draws down its rail, which is how
- * the panel says it is the row the reader just clicked.
+ * **A panel header in this app never carries a title.** A node's header is its
+ * species badge and its id; a criterion's is its domain and its id. The title
+ * is body content — on a node it is an editable field down there, which is
+ * exactly why it cannot also be the identity up here — and the stack's own
+ * `h2` is `sr-only` for the same reason. This header had the title and no id
+ * at all, which read fine and was the one panel out of step with every other.
+ *
+ * The rail's mark is gone from it too. It is a status, and no header in the
+ * stack carries one: a decision panel's header does not wear its
+ * `DecisionStatusBadge` either. Recognition is the id's job, and the mark is
+ * still the first thing in the body.
  */
 export function FindingDetailPanelHeader({
   findingId,
-  title,
   findings,
   section,
-}: Pick<FindingDetailPanelProps, "findingId" | "title" | "findings" | "section">) {
+}: Pick<FindingDetailPanelProps, "findingId" | "findings" | "section">) {
   const row = findings.find((candidate) => candidate.id === findingId);
 
   return (
     <>
-      {row && <FindingMark row={row} />}
-      <span className="truncate text-sm font-medium">{row?.title ?? title}</span>
+      {/* Grouped so the two chips never separate when the header row runs out
+          of room; the row itself is `PanelStack`'s. The idiom, and this
+          comment, are `CriterionDetailPanelHeader`'s — the neighbouring panel
+          whose subject is also not a graph node. */}
+      <div className="flex min-w-0 shrink-0 items-center gap-2">
+        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground">
+          <ListChecksIcon className="size-3.5" aria-hidden="true" />
+          Finding
+        </span>
+        <PanelHeaderEntityId id={findingId} />
+      </div>
       {row && (
         <span className="shrink-0 text-xs text-muted-foreground">
           {surfaceTitleOf(row.surface, section)}
@@ -163,7 +181,14 @@ export function FindingDetailPanel({
           truncating row; here the title gets to wrap, and the parameters a
           reader triages from get a line each. */}
       <div className={cn(PANEL_GUTTER, "flex flex-col gap-2")}>
-        <p className="text-sm font-medium leading-relaxed">{row.title}</p>
+        {/* The mark leads the title, the way it leads the row on the board's
+            rail — it is the same component, so the panel opens looking like
+            the thing that was clicked. It sits here rather than in the header
+            because it is a status, and the header carries identity only. */}
+        <div className="flex items-start gap-2">
+          <FindingMark row={row} className="mt-0.5" />
+          <p className="flex-1 text-sm font-medium leading-relaxed">{row.title}</p>
+        </div>
 
         {/* Which criterion this answers to, and on which surface — what
             somebody quotes when they argue it. Its own line rather than
