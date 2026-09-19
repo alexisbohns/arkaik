@@ -37,7 +37,7 @@ function loadPlaylist() {
   return require(outPath);
 }
 
-const { moveEntry, countBranchChildren, describeBranchCount } = loadPlaylist();
+const { moveEntry, countBranchChildren, describeBranchCount, describeEntryCount } = loadPlaylist();
 
 const view = (id) => ({ type: "view", view_id: id });
 const titles = (entries) => entries.map((entry) => entry.view_id);
@@ -162,6 +162,23 @@ test("plurals are not built by appending s", () => {
 
 test("a view entry has nothing to say", () => {
   assert.equal(describeBranchCount(view("a")), null);
+});
+
+console.log("describeEntryCount");
+
+test("counts a branch's own entries", () => {
+  assert.equal(describeEntryCount([view("a"), view("b"), view("c")]), "3 entries");
+});
+
+test("one entry is singular", () => {
+  assert.equal(describeEntryCount([view("a")]), "1 entry");
+});
+
+// Words, not "0 entries": a shut row saying nothing is what the count exists to
+// prevent, and a zero reads as a number someone forgot to fill in.
+test("an empty branch says so in words", () => {
+  assert.equal(describeEntryCount([]), "No entries");
+  assert.equal(describeEntryCount(undefined), "No entries");
 });
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });

@@ -107,3 +107,17 @@ export function describeBranchCount(entry: PlaylistEntry): string | null {
 
   return `${groups} · ${plural(count.entries, "entry", "entries")}`;
 }
+
+/**
+ * How much sits inside one branch of a condition or one case of a junction —
+ * "3 entries", "1 entry", "No entries".
+ *
+ * Its whole job is to give a *shut* rail row something to say. A disclosure that
+ * says nothing about what it hides makes you open it to find out, which is the
+ * one thing collapsing it was meant to save.
+ */
+export function describeEntryCount(entries: PlaylistEntry[] | undefined): string {
+  const count = entries?.length ?? 0;
+  if (count === 0) return "No entries";
+  return plural(count, "entry", "entries");
+}

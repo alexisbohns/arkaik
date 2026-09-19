@@ -137,6 +137,8 @@ you opened one.
 - **No rule around a case's entries.** They are a rail, the case rail is a second
   line beside them, and a `border-l` between the two would be a third. `NESTED`
   is gone.
+- **A case folds**, like the junction that holds it, and says how much it hides
+  while shut ("2 entries").
 
 A **condition's two branches** are a rail too — the case rail's twin, and for
 the same reason:
@@ -156,7 +158,20 @@ solid line down them would claim an order. **Only the first carries a
 connector** — there is no third mark and no add tile, because a condition has
 exactly two branches, always, so there is nothing here to grow. For the same
 reason the mark is a `<span>` and not a `<button>`: it has no menu to open and
-must not look as though it has.
+must not look as though it has. A branch folds, and says how much it hides.
+
+Both rails are one component, `RailRow`: mark, label, count, chevron, and what
+it holds folded underneath. Its bar is an explicit **24px line** (`h-6`), which
+is what puts a 24px tile and a 12px word on one centre — left to the content
+column's own height they sat 4px apart, the tile riding low against a label
+pinned to the top of the cell.
+
+`DisclosureChevron` carries the group name on the **trigger**, not on the
+`Collapsible` root. `group-data-…/x` compiles to a plain descendant selector, so
+a name on the root matches from every ancestor carrying it — and these nest three
+deep (a condition inside a junction case inside a condition), so an open outer
+row spun a shut inner row's chevron. Triggers never nest inside triggers. It is
+the same trap the reorder arrows hit, and `BranchBar` had it latent too.
 
 Colour rides on the **tile**; the word beside it stays foreground. That is the
 rule `DeliverableHoverCard` already states for its own marks — a blue word

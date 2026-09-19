@@ -18,7 +18,7 @@ import { PlatformStatusIcons } from "@/components/graph/nodes/PlatformStatusIcon
 import { ICON_TILE } from "@/components/journal/DeliverableHoverCard";
 import { getNodePlatformStatuses } from "@/lib/utils/platform-status";
 import { scopedPlatforms, type ProductScope } from "@/lib/utils/product-scope";
-import { describeBranchCount, moveEntry } from "@/lib/utils/playlist";
+import { describeBranchCount, describeEntryCount, moveEntry } from "@/lib/utils/playlist";
 import { cn } from "@/lib/utils";
 import type { Node, PlaylistEntry } from "@/lib/data/types";
 
@@ -128,6 +128,79 @@ const BRANCH = {
  * there too; the nesting is carried by the rule down each nested list, not by a
  * step that would now align with nothing.
  */
+/**
+ * The disclosure chevron every collapsible row in this panel wears: at the end
+ * of its row, pointing right when shut and down when open.
+ *
+ * **The group lives on the trigger, not on the `Collapsible`.** `group-data-…/x`
+ * compiles to a plain descendant selector, so a name put on the root matches
+ * from every ancestor carrying it — and these nest three deep (a condition
+ * inside a junction case inside a condition). An open outer row would then spin
+ * a shut inner row's chevron. Triggers never nest inside triggers, so naming the
+ * group there makes the match exact. This is the same trap the reorder arrows
+ * hit; see `PlaylistReorderControls`.
+ */
+function DisclosureChevron({ label }: { label: string }) {
+  return (
+    <CollapsibleTrigger
+      aria-label={label}
+      className="group/disclosure flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+    >
+      <ChevronRightIcon
+        className="size-3.5 transition-transform group-data-[state=open]/disclosure:rotate-90"
+        aria-hidden="true"
+      />
+    </CollapsibleTrigger>
+  );
+}
+
+/**
+ * One row of a branch rail — a condition's Yes/No, a junction's case — with what
+ * it holds folded underneath.
+ *
+ * The mark, the label, the count and the chevron sit on a **24px line**, which
+ * is what puts a 24px tile and a 12px word on the same centre. Left to the
+ * flow-column's own height they were 4px apart, the tile riding low against a
+ * label pinned to the top of the cell.
+ */
+function RailRow({
+  mark,
+  label,
+  count,
+  toggleLabel,
+  connector,
+  children,
+}: {
+  /** The tile on the rail: a plain span, or a button that opens a menu. */
+  mark: ReactNode;
+  label: ReactNode;
+  count: string;
+  toggleLabel: string;
+  /** Whether anything follows on this rail, and so whether a line runs down to it. */
+  connector: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <Collapsible defaultOpen className="grid grid-cols-[auto_1fr] gap-x-3">
+      <div className="flex flex-col items-center">
+        {mark}
+        {connector && (
+          <span className="w-0 flex-1 border-l border-dashed border-border" aria-hidden="true" />
+        )}
+      </div>
+
+      <div className={cn("flex min-w-0 flex-col", connector && "pb-4")}>
+        <div className="flex h-6 items-center gap-2">
+          {label}
+          <span className="shrink-0 text-xs text-muted-foreground">{count}</span>
+          <DisclosureChevron label={toggleLabel} />
+        </div>
+        <CollapsibleContent className="mt-1.5">{children}</CollapsibleContent>
+      </div>
+    </Collapsible>
+  );
+}
+
 function BranchBar({
   entry,
   ariaLabel,
@@ -145,7 +218,7 @@ function BranchBar({
   const summary = describeBranchCount(entry);
 
   return (
-    <Collapsible defaultOpen className="group/branch flex flex-col">
+    <Collapsible defaultOpen className="flex flex-col">
       <div className="flex items-center gap-2">
         <EditableLabel
           value={entry.label}
@@ -153,15 +226,7 @@ function BranchBar({
           ariaLabel={ariaLabel}
           placeholder={placeholder}
         />
-        <CollapsibleTrigger
-          aria-label={`Toggle ${entry.label || ariaLabel}`}
-          className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <ChevronRightIcon
-            className="size-3.5 transition-transform group-data-[state=open]/branch:rotate-90"
-            aria-hidden="true"
-          />
-        </CollapsibleTrigger>
+        <DisclosureChevron label={`Toggle ${entry.label || ariaLabel}`} />
       </div>
       {summary && <p className="pt-1 text-xs text-muted-foreground">{summary}</p>}
       <CollapsibleContent className="mt-3 flex flex-col gap-3">{children}</CollapsibleContent>
@@ -300,33 +365,36 @@ function PlaylistEntryRow({
               ].map((side, sideIndex) => {
                 const { label, Icon, tile } = BRANCH[side.key];
                 return (
-                  <div key={side.key} className="grid grid-cols-[auto_1fr] gap-x-3">
-                    <div className="flex flex-col items-center">
-                      {/* A span, not a button: a condition's branches cannot be
-                          added, removed or reordered, so the mark has no menu to
-                          open and must not look as though it has. */}
+                  <RailRow
+                    key={side.key}
+                    connector={sideIndex === 0}
+                    count={describeEntryCount(side.entries)}
+                    toggleLabel={`Toggle ${label} branch`}
+                    mark={
+                      /* A span, not a button: a condition's branches cannot be
+                         added, removed or reordered, so the mark has no menu to
+                         open and must not look as though it has. */
                       <span className={cn(ICON_TILE, tile)} aria-hidden="true">
                         <Icon className="size-3" />
                       </span>
-                      {sideIndex === 0 && (
-                        <span className="w-0 flex-1 border-l border-dashed border-border" aria-hidden="true" />
-                      )}
-                    </div>
-
-                    <div className={cn("flex min-w-0 flex-col gap-1.5", sideIndex === 0 && "pb-4")}>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-foreground">{label}</p>
-                      <PlaylistEntryList
-                        entries={side.entries}
-                        depth={depth + 1}
-                        flowNodeId={flowNodeId}
-                        allNodes={allNodes}
-                        onCycleBlocked={onCycleBlocked}
-                        onCreateNode={onCreateNode}
-                        scope={scope}
-                        onChange={side.onChange}
-                      />
-                    </div>
-                  </div>
+                    }
+                    label={
+                      <p className="min-w-0 flex-1 truncate text-xs font-semibold uppercase tracking-wide text-foreground">
+                        {label}
+                      </p>
+                    }
+                  >
+                    <PlaylistEntryList
+                      entries={side.entries}
+                      depth={depth + 1}
+                      flowNodeId={flowNodeId}
+                      allNodes={allNodes}
+                      onCycleBlocked={onCycleBlocked}
+                      onCreateNode={onCreateNode}
+                      scope={scope}
+                      onChange={side.onChange}
+                    />
+                  </RailRow>
                 );
               })}
             </div>
@@ -369,8 +437,12 @@ function PlaylistEntryRow({
                 * handles that by adopting the label that lands in the row.
                 */}
               {entry.cases.map((playlistCase, caseIndex) => (
-                <div key={caseIndex} className="grid grid-cols-[auto_1fr] gap-x-3">
-                  <div className="flex flex-col items-center">
+                <RailRow
+                  key={caseIndex}
+                  connector
+                  count={describeEntryCount(playlistCase.entries)}
+                  toggleLabel={`Toggle case ${caseIndex + 1}`}
+                  mark={
                     <JunctionCaseMenu
                       index={caseIndex}
                       total={entry.cases.length}
@@ -379,13 +451,8 @@ function PlaylistEntryRow({
                         void onChangeEntry({ ...entry, cases: nextCases });
                       }}
                     />
-                    <span
-                      className="w-0 flex-1 border-l border-dashed border-border"
-                      aria-hidden="true"
-                    />
-                  </div>
-
-                  <div className="flex min-w-0 flex-col gap-1.5 pb-4">
+                  }
+                  label={
                     <EditableLabel
                       value={playlistCase.label}
                       onCommit={(label) => {
@@ -398,27 +465,28 @@ function PlaylistEntryRow({
                       ariaLabel={`Junction case ${caseIndex + 1} label`}
                       placeholder={`Case ${caseIndex + 1}`}
                     />
-                    {/* No rule around these entries: they are a rail, the case
-                        rail is a second line beside them, and a `border-l`
-                        between the two would be a third. */}
-                    <PlaylistEntryList
-                      entries={playlistCase.entries}
-                      depth={depth + 1}
-                      flowNodeId={flowNodeId}
-                      allNodes={allNodes}
-                      onCycleBlocked={onCycleBlocked}
-                      onCreateNode={onCreateNode}
-                      scope={scope}
-                      onChange={(nextEntries) => {
-                        const nextCases = entry.cases.map((item, idx) => {
-                          if (idx !== caseIndex) return item;
-                          return { ...item, entries: nextEntries };
-                        });
-                        return onChangeEntry({ ...entry, cases: nextCases });
-                      }}
-                    />
-                  </div>
-                </div>
+                  }
+                >
+                  {/* No rule around these entries: they are a rail, the case
+                      rail is a second line beside them, and a `border-l`
+                      between the two would be a third. */}
+                  <PlaylistEntryList
+                    entries={playlistCase.entries}
+                    depth={depth + 1}
+                    flowNodeId={flowNodeId}
+                    allNodes={allNodes}
+                    onCycleBlocked={onCycleBlocked}
+                    onCreateNode={onCreateNode}
+                    scope={scope}
+                    onChange={(nextEntries) => {
+                      const nextCases = entry.cases.map((item, idx) => {
+                        if (idx !== caseIndex) return item;
+                        return { ...item, entries: nextEntries };
+                      });
+                      return onChangeEntry({ ...entry, cases: nextCases });
+                    }}
+                  />
+                </RailRow>
               ))}
 
               {/* The rail's next position, the way `AddEntryButton` is the entry
