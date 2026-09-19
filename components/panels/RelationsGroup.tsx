@@ -18,7 +18,7 @@ import { worstOpenFindingFor, type FindingRow } from "@/lib/utils/quality";
 import { relationLinesFor, relationRows } from "@/lib/utils/relation-lines";
 import { findWhereUsed } from "@/lib/utils/where-used";
 import { blockedByOf } from "@/lib/utils/blocked";
-import type { Node, Edge } from "@/lib/data/types";
+import type { Node, NodeMetadata, Edge } from "@/lib/data/types";
 import type { ProductScope } from "@/lib/utils/product-scope";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import type { NodeRelations } from "@/lib/hooks/useNodeRelations";
@@ -35,6 +35,15 @@ interface RelationsGroupProps {
    * then a row or nothing.
    */
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
+  /**
+   * The panel's shared latest-metadata write base, passed straight through to
+   * `BlockedByField`. Required rather than optional: the component that renders
+   * this group also renders `DecisionEditor`, whose four metadata writers that
+   * line sits beside on a decision panel, so there is no caller for which
+   * "nothing else on this panel writes metadata" holds. See `NodeDetailPanel`,
+   * which owns it.
+   */
+  metadataRef: React.MutableRefObject<NodeMetadata | undefined>;
   onCreateAcceptanceForAnchor?: (anchor: Node, title: string) => Promise<Node>;
   intake?: AcceptanceIntake;
   /**
@@ -104,6 +113,7 @@ export function RelationsGroup({
   allEdges,
   onNavigate,
   onUpdate,
+  metadataRef,
   onCreateAcceptanceForAnchor,
   intake,
   relations,
@@ -253,7 +263,13 @@ export function RelationsGroup({
           `metadata.blocked_by`, which is why it takes `onUpdate` and not
           `relations`. */}
       {hasBlockedBy && (
-        <BlockedByField node={node} onUpdate={onUpdate} allNodes={allNodes} onNavigate={onNavigate} />
+        <BlockedByField
+          node={node}
+          onUpdate={onUpdate}
+          metadataRef={metadataRef}
+          allNodes={allNodes}
+          onNavigate={onNavigate}
+        />
       )}
       {hasCovers && allNodes && allEdges && (
         <CoversSection

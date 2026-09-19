@@ -370,6 +370,14 @@ export function ProjectPanels({
 
           return (
             <NodeDetailPanel
+              // Per record, not per slot. A slot is refreshed in place onto a
+              // different node, and the panel holds one piece of state that
+              // must not cross that line: its shared latest-metadata write
+              // base. Every child of it that holds state is already remounted
+              // on `node.id`, by its own key or by a keyed ancestor; this is
+              // that same rule reaching the component that now holds state of
+              // its own.
+              key={node.id}
               node={node}
               scope={scope}
               initialPlatform={entry.payload.initialPlatform}

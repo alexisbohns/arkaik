@@ -19,7 +19,7 @@ interface AcceptanceMembershipFieldProps {
 
 /**
  * Which product an acceptance belongs to — the intro block's Product field,
- * between Status and Blocked by.
+ * under Status.
  *
  * Its own component rather than `NodeDetailPanel`'s `ProductSection` because an
  * acceptance's membership is derived from the anchors it covers (§ D5) and that

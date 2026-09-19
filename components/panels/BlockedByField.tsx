@@ -5,7 +5,7 @@ import { XIcon } from "lucide-react";
 
 import { RelationLine, RelationRowItem } from "@/components/panels/RelationLine";
 import { Button } from "@/components/ui/button";
-import type { Node } from "@/lib/data/types";
+import type { Node, NodeMetadata } from "@/lib/data/types";
 import { blockedByOf, withBlockedBy } from "@/lib/utils/blocked";
 import { SPECIES_IDS } from "@arkaik/schema";
 
@@ -25,6 +25,25 @@ const NO_NODES: Node[] = [];
 interface BlockedByFieldProps {
   node: Node;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
+  /**
+   * The panel's shared latest-metadata write base, owned by `NodeDetailPanel`.
+   *
+   * `onUpdate` is not optimistic, so `node.metadata` stays at its pre-write
+   * value for the length of a sibling's round trip, and a patch spread from it
+   * silently drops that sibling's edit. The sibling is not hypothetical: this
+   * line renders on a decision panel, next to `DecisionEditor`, whose Context
+   * field saves 350ms after the last keystroke — a pick or an `×` here inside
+   * that window reproduces the lost edit. So this reads the ref as its base and
+   * writes its result back into it before calling `onUpdate`, the protocol
+   * every writer sharing the ref follows.
+   *
+   * Required, not optional. It was optional once, on the grounds that "this is
+   * the only metadata writer on screen" — which the decision panel now
+   * falsifies outright, and which was already generous elsewhere, where
+   * `ProductSection` and the platform sections patch `metadata` too. Those do
+   * not share this base yet; see `NodeDetailPanel` for what does.
+   */
+  metadataRef: React.MutableRefObject<NodeMetadata | undefined>;
   /** For resolving the value to a node row; the panel's own node-link affordance. */
   allNodes?: Node[];
   onNavigate?: (node: Node) => void;
@@ -42,16 +61,23 @@ interface BlockedByFieldProps {
  *
  * **Single-valued, so the `+` is there only while it is empty.** And it is the
  * only line whose combobox offers something that is not a node: `blocked_by` is
- * a free string, so a query no node answers to can be committed as itself
- * ("waiting on legal"). Nothing a bundle holds today stops being authorable.
+ * a free string, so anything typed can be committed as itself ("waiting on
+ * legal") — offered alongside the matches rather than instead of them, because
+ * the words may be meant as words even where a node answers to them. Nothing a
+ * bundle holds today stops being authorable.
  *
  * A combobox pick is a discrete commit, not typing, so there is nothing to
  * debounce and no last-saved value to compare against — the debounced `<Input>`
- * this replaces needed both. `withBlockedBy` still owns the "empty means
- * *absent*, never `blocked_by: \"\"`" rule and carries the rest of the metadata
- * through untouched — a patch replaces `metadata` wholesale.
+ * this replaces needed both. What it still needs is the panel's shared write
+ * base: a patch replaces `metadata` wholesale, and a discrete commit can land
+ * inside a sibling's round trip too. A narrower window than a keystroke stream
+ * — a few milliseconds after a sibling's debounce fires, rather than any moment
+ * during typing — and one that reproduces. See `metadataRef`.
+ *
+ * `withBlockedBy` owns the "empty means *absent*, never `blocked_by: \"\"`" rule
+ * and carries the rest of the metadata through untouched.
  */
-export function BlockedByField({ node, onUpdate, allNodes, onNavigate }: BlockedByFieldProps) {
+export function BlockedByField({ node, onUpdate, metadataRef, allNodes, onNavigate }: BlockedByFieldProps) {
   const value = blockedByOf(node.metadata);
   const blockedNode = value ? allNodes?.find((candidate) => candidate.id === value) : undefined;
   // Memoised because it is a dependency of the combobox's candidate memo, and
@@ -59,7 +85,9 @@ export function BlockedByField({ node, onUpdate, allNodes, onNavigate }: Blocked
   const excludeIds = useMemo(() => [node.id], [node.id]);
 
   function commit(next: string | null) {
-    void onUpdate?.(node.id, { metadata: withBlockedBy(node.metadata, next) });
+    const metadata = withBlockedBy(metadataRef.current, next);
+    metadataRef.current = metadata;
+    void onUpdate?.(node.id, { metadata });
   }
 
   return (

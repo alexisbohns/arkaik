@@ -13,7 +13,7 @@ import { PANEL_GUTTER } from "@/components/panels/PanelSection";
 import { PanelGroup } from "@/components/panels/PanelGroup";
 import { RelationsGroup } from "@/components/panels/RelationsGroup";
 import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
-import type { Node, Edge } from "@/lib/data/types";
+import type { Node, NodeMetadata, Edge } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import { SPECIES } from "@/lib/config/species";
@@ -669,6 +669,40 @@ export function NodeDetailPanel({
   findings,
   onOpenCriterion,
 }: NodeDetailPanelProps) {
+  // The panel's one latest-metadata write base.
+  //
+  // `onUpdate` is NOT optimistic: it awaits the provider before `node.metadata`
+  // reflects a write. So while writer A's save is in flight, `node.metadata` in
+  // writer B's closure is still the pre-A value, and B — which patches
+  // `metadata` wholesale, as every metadata write here does — spreads it and
+  // silently drops A's edit. Each writer that takes this ref reads it as its
+  // spread base and writes its result back into it before calling `onUpdate`,
+  // so those writers never race each other.
+  //
+  // It lives here rather than in `DecisionEditor`, which owned it until Blocked
+  // by moved out of that editor and into the Relations group: the two are now
+  // mounted on the same decision panel, and a base owned by one of two siblings
+  // is not a shared base at all. This component renders them both, which is why
+  // it is the one that owns it.
+  //
+  // Sharing it today: `DecisionEditor`'s three debounced text fields and its
+  // status transition, and `BlockedByField`. NOT sharing it: `ProductSection`,
+  // `PlatformVariantsSection`, `PlaylistEditor`, `AcceptanceMembershipField`,
+  // `AcceptanceAuthoredFields` and `AcceptancePlatformsSection`, which all still
+  // spread `node.metadata`. Those race each other, and did before this ref moved
+  // up here; widening the protocol to them is a change of its own and not one
+  // this move made necessary.
+  const metadataRef = useRef<NodeMetadata | undefined>(node.metadata);
+  // Per record, because the call site keys this component on `node.id`. That
+  // key is load-bearing for this ref and not decoration: a panel slot is
+  // refreshed in place onto a different record, and without the remount the
+  // first write on the new one would spread the previous one's metadata — a
+  // worse fault than the staleness the ref exists to prevent. The effect alone
+  // cannot cover it, since it runs after the paint the click can land on.
+  useEffect(() => {
+    metadataRef.current = node.metadata;
+  }, [node.metadata]);
+
   return (
     // The top padding is not decoration: without it the title sat flush against
     // the header's bottom border, which is the one panel body that read as
@@ -709,7 +743,12 @@ export function NodeDetailPanel({
         }
       />
       {node.species === "decision" && onUpdate && (
-        <DecisionEditor key={`decision-${node.id}`} node={node} onUpdate={onUpdate} />
+        <DecisionEditor
+          key={`decision-${node.id}`}
+          node={node}
+          onUpdate={onUpdate}
+          metadataRef={metadataRef}
+        />
       )}
       {/* Groups live in a column of their own. `-space-y-px` overlaps each
           bar's `border-y` with the one above so a run of shut groups reads as
@@ -760,6 +799,7 @@ export function NodeDetailPanel({
           allEdges={allEdges}
           onNavigate={onNavigate}
           onUpdate={onUpdate}
+          metadataRef={metadataRef}
           onCreateAcceptanceForAnchor={onCreateAcceptanceForAnchor}
           intake={intake}
           relations={relations}
