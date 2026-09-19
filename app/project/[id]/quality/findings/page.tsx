@@ -14,7 +14,7 @@ import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useQualityData } from "@/lib/hooks/useQualityData";
 import { useQueryWriter } from "@/lib/hooks/useQueryWriter";
 import { criterionPanelKey, isCriterionEntry } from "@/lib/utils/project-panels";
-import { filterFindings } from "@/lib/utils/quality";
+import { filterFindings, type FindingRow } from "@/lib/utils/quality";
 
 /**
  * The criterion panel's address, and the surface it is read on.
@@ -46,7 +46,7 @@ export default function ProjectQualityFindingsPage() {
   // writes through, which is the whole reason two writers can share this URL:
   // it reads the live query at call time rather than a closed-over snapshot.
   const writeQuery = useQueryWriter();
-  const { entries, openNode, openCriterion } = useProjectPanels();
+  const { entries, openCriterion, openFinding } = useProjectPanels();
   const { filters, setFilters } = useQualityFilters();
 
   const data = useQualityData(id);
@@ -103,11 +103,11 @@ export default function ProjectQualityFindingsPage() {
     [openCriterion, writeQuery],
   );
 
-  // Depth 0: a finding card is on the surface, so following its linked node is
-  // a surface click and leaves exactly one panel open — the same rule the
-  // criterion link follows. Deeper links out of the node itself are the node
-  // panel's own business and open above it.
-  const handleOpenNode = useCallback((nodeId: string) => openNode({ nodeId }, 0), [openNode]);
+  // Depth 0: a finding card is on the surface, so opening it is a surface click
+  // and leaves exactly one panel open — the same rule the criterion chip
+  // follows. Anything opened from inside the panel is that panel's business and
+  // opens above it.
+  const handleOpenFinding = useCallback((row: FindingRow) => openFinding(row, 0), [openFinding]);
 
   return (
     <QualityFrame
@@ -135,9 +135,8 @@ export default function ProjectQualityFindingsPage() {
       ) : (
         <FindingsBoard
           rows={filtered}
-          nodesById={data.nodesById}
           surfaceTitles={data.surfaceTitles}
-          onOpenNode={handleOpenNode}
+          onOpenFinding={handleOpenFinding}
           onOpenCriterion={handleOpenCriterion}
         />
       )}

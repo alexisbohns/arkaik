@@ -10,7 +10,6 @@ import { DeltaArrow } from "@/components/quality/SurfaceScoreCard";
 import { GRADE_BORDER } from "@/components/quality/quality-styles";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FIELD_LABEL_CLASS } from "@/components/ui/field";
-import type { Node } from "@/lib/data/types";
 import { cn } from "@/lib/utils";
 import {
   EMPTY_QUALITY_FILTERS,
@@ -49,9 +48,8 @@ interface CellDetailPanelProps {
    * belongs to a cell.
    */
   findings: FindingRow[];
-  nodesById: ReadonlyMap<string, Node>;
   projectId: string;
-  onOpenNode: (nodeId: string) => void;
+  onOpenFinding: (row: FindingRow) => void;
   onOpenCriterion: (criterionId: string, surface: string) => void;
 }
 
@@ -111,9 +109,8 @@ export function CellDetailPanel({
   cell,
   trend,
   findings,
-  nodesById,
   projectId,
-  onOpenNode,
+  onOpenFinding,
   onOpenCriterion,
 }: CellDetailPanelProps) {
   const key = cellKey(domain, surface);
@@ -231,9 +228,8 @@ export function CellDetailPanel({
         ) : (
           <FindingsBoard
             rows={narrowed}
-            nodesById={nodesById}
             surfaceTitles={surfaceTitles}
-            onOpenNode={onOpenNode}
+            onOpenFinding={onOpenFinding}
             onOpenCriterion={onOpenCriterion}
           />
         )}

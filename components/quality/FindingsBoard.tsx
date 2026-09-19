@@ -1,6 +1,5 @@
 "use client";
 
-import type { Node } from "@/lib/data/types";
 import type { FindingRow } from "@/lib/utils/quality";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FindingCard } from "@/components/quality/FindingCard";
@@ -10,10 +9,14 @@ import { cn } from "@/lib/utils";
 interface FindingsBoardProps {
   /** Every finding to show, already filtered and sorted — worst first. */
   rows: FindingRow[];
-  nodesById: ReadonlyMap<string, Node>;
   /** `surface id -> title`, built once on the page and handed to every entry. */
   surfaceTitles: ReadonlyMap<string, string>;
-  onOpenNode: (nodeId: string) => void;
+  /**
+   * Opens one finding's own panel. Required: a board whose rows do nothing is
+   * a list of headlines, which is what this board was before findings had a
+   * panel — and the disclosure it replaced could not be optional either.
+   */
+  onOpenFinding: (row: FindingRow) => void;
   /** Passed straight through; omitted inside the criterion panel — see `FindingCard`. */
   onOpenCriterion?: (criterionId: string, surface: string) => void;
 }
@@ -32,12 +35,16 @@ interface FindingsBoardProps {
  *
  * The order is whatever `filterFindings` sorted, which is the filter bar's
  * Sort. That was true inside a lane before; now it is true of the whole page.
+ *
+ * A row opens the finding's own panel. It used to expand in place, which is
+ * the gesture this rail was built to replace everywhere else on the page —
+ * which is also why the board no longer needs the graph: the linked-node chips
+ * went to the panel with everything else behind the disclosure.
  */
 export function FindingsBoard({
   rows,
-  nodesById,
   surfaceTitles,
-  onOpenNode,
+  onOpenFinding,
   onOpenCriterion,
 }: FindingsBoardProps) {
   if (rows.length === 0) {
@@ -68,9 +75,8 @@ export function FindingsBoard({
             <div className={cn("min-w-0", !last && "pb-4")}>
               <FindingCard
                 row={row}
-                nodesById={nodesById}
                 surfaceTitles={surfaceTitles}
-                onOpenNode={onOpenNode}
+                onOpenFinding={onOpenFinding}
                 onOpenCriterion={onOpenCriterion}
               />
             </div>

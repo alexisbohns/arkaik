@@ -28,7 +28,7 @@ export function FindingsBoardPreview({ bundle }: PreviewProps) {
   return (
     <div className="flex h-full flex-col gap-3 overflow-hidden p-4">
       <div className="min-h-0 flex-1 [overflow:auto]">
-        <ReadOnlyFindingsBoard rows={rows} nodesById={referenced} surfaceTitles={surfaceTitles} />
+        <ReadOnlyFindingsBoard rows={rows} surfaceTitles={surfaceTitles} />
       </div>
       <ul className="divide-y border-t pt-1">
         {events.map((event) => <li key={event.id}><FeedRow event={event} nodesById={referenced} /></li>)}

@@ -307,12 +307,11 @@ export function ProjectPanels({
                 cell={qualityMatrix.matrix[domain]?.[surface] ?? null}
                 trend={qualityTrend}
                 findings={qualityFindings}
-                nodesById={nodesById}
                 projectId={projectId}
                 // Above this panel, never in place of it — the rule every other
                 // navigation in the stack follows, and the reason the trail still
                 // reads back to the cell the reader came from.
-                onOpenNode={(nodeId) => openNode({ nodeId }, index + 1)}
+                onOpenFinding={(row) => openFinding(row, index + 1)}
                 onOpenCriterion={(criterionId, criterionSurface) =>
                   openCriterion(criterionId, criterionSurface, index + 1)
                 }
@@ -347,23 +346,11 @@ export function ProjectPanels({
                 library={qualityLibrary}
                 section={qualitySection}
                 findings={qualityFindings}
-                nodesById={nodesById}
-                // From this panel's own depth, like every other navigation in the
-                // stack: following a finding into the graph opens the node ABOVE
-                // the criterion rather than in place of it, which is what depth 0
+                // From this panel's own depth, like every other navigation in
+                // the stack: following a finding opens its panel ABOVE the
+                // criterion rather than in place of it, which is what depth 0
                 // would do.
-                //
-                // Sitting above it is not the same as surviving it, and no
-                // comment here should promise that it is. Opening the node
-                // publishes `?node=`; Back — or closing that node panel, which
-                // republishes an empty address — hands `reconcileArrival` a
-                // missing id, and a missing id closes the *whole* stack, this
-                // criterion with it. One address, and a criterion is not it. Raw
-                // has had the identical behaviour since it landed. What brings
-                // the panel back is the Quality page's own `?criterion=` sync,
-                // and it comes back remounted, so the reader loses their scroll
-                // position in it.
-                onOpenNode={(nodeId) => openNode({ nodeId }, index + 1)}
+                onOpenFinding={(row) => openFinding(row, index + 1)}
               />
             );
           }
