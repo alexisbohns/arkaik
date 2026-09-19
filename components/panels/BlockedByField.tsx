@@ -1,16 +1,15 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { XIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   RelationLine,
   RelationRowItem,
+  RemoveButton,
+  removeWithUndo,
   RELATION_ROW_GROUP,
-  REMOVE_ON_ROW_HOVER,
 } from "@/components/panels/RelationLine";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Node, NodeMetadata } from "@/lib/data/types";
 import { blockedByOf, withBlockedBy } from "@/lib/utils/blocked";
@@ -122,8 +121,18 @@ export function BlockedByField({ node, onUpdate, metadataRef, allNodes, onNaviga
    * this round trip spreading a base without this edit, which is the lost edit
    * the ref exists to prevent. Rolling back cannot distinguish its own value
    * from a sibling's that landed meanwhile.
+   *
+   * **No `useLatest` here, unlike the two edge lines.** Their undo reaches
+   * through a ref because the object it calls is a `useMemo` over the edge
+   * list, and the render-old one plans against edges from before the write.
+   * This one closes over `metadataRef`, which is already a ref and is read at
+   * call time, so an undo clicked from a toast writes against the base as it
+   * stands then — which is the whole point of that ref.
    */
-  async function commit(next: string | null): Promise<boolean> {
+  async function commit(
+    next: string | null,
+    failure: string | null = "Couldn't save what blocks this.",
+  ): Promise<boolean> {
     if (inFlight.current) return false;
     inFlight.current = true;
     setBusy(true);
@@ -133,7 +142,10 @@ export function BlockedByField({ node, onUpdate, metadataRef, allNodes, onNaviga
       await onUpdate?.(node.id, { metadata });
       return true;
     } catch (err) {
-      toast.error("Couldn't save what blocks this.");
+      // `null` means the caller speaks for this one — `removeWithUndo`
+      // reports a failed undo itself, and two toasts describing one failure is
+      // the other way to get that wrong.
+      if (failure) toast.error(failure);
       console.error(err);
       return false;
     } finally {
@@ -170,32 +182,46 @@ export function BlockedByField({ node, onUpdate, metadataRef, allNodes, onNaviga
             <RelationRowItem
               node={blockedNode}
               onNavigate={onNavigate}
-              onRemove={onUpdate && (() => void commit(null))}
+              onRemove={
+                onUpdate &&
+                (() =>
+                  void removeWithUndo({
+                    label: blockedNode.title,
+                    remove: () => commit(null),
+                    // The value as it was, captured before the clear — this
+                    // line holds one value rather than a list, so its inverse
+                    // is a write-back and not a re-link.
+                    restore: () => commit(value, null),
+                  }))
+              }
               removeDisabled={busy}
               removeLabel={`No longer blocked by ${blockedNode.title}`}
+              removeQuestion={`No longer blocked by "${blockedNode.title}"?`}
             />
           ) : (
             // Free text, or an id this snapshot cannot resolve. Both are the
             // value as written; neither is a node, so neither gets a chip.
-            // The same hover group and the same reveal as `RelationRowItem`,
-            // from the same two constants: this row is not an entity and so
-            // cannot be one, but a `×` that behaves differently depending on
-            // whether the blocker happens to resolve to a node would be the
-            // graph leaking into the interaction.
+            // The same hover group and the same `RemoveButton` as
+            // `RelationRowItem`: this row is not an entity and so cannot be
+            // one, but a `×` that revealed itself differently — or asked on
+            // one row and not the other — depending on whether the blocker
+            // happens to resolve to a node would be the graph leaking into
+            // the interaction.
             <li className={cn(RELATION_ROW_GROUP, "flex items-center gap-1")}>
               <span className="min-w-0 flex-1 truncate px-2 py-1.5 text-sm">{value}</span>
               {onUpdate && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className={cn("size-7 shrink-0", REMOVE_ON_ROW_HOVER)}
-                  aria-label="Clear what blocks this"
+                <RemoveButton
+                  label="Clear what blocks this"
+                  question={`No longer blocked by "${value}"?`}
                   disabled={busy}
-                  onClick={() => void commit(null)}
-                >
-                  <XIcon className="size-3.5" />
-                </Button>
+                  onConfirm={() =>
+                    void removeWithUndo({
+                      label: value,
+                      remove: () => commit(null),
+                      restore: () => commit(value, null),
+                    })
+                  }
+                />
               )}
             </li>
           )}
