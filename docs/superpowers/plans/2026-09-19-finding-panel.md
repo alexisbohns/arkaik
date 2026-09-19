@@ -1483,6 +1483,35 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
+## Task 7b: Stop the card and the panel saying it twice
+
+Added during execution, from the Task 5 review. The panel reproduces two blocks
+of the card verbatim, and the branch has already set the precedent for what to
+do about that: `FindingMark` exists because "two copies would part company the
+first time a status tile changed", and the same sentence applies here.
+
+**Files:**
+- Create: `components/quality/FindingScales.tsx`
+- Create: `components/quality/AcceptedRiskCallout.tsx`
+- Modify: `components/quality/FindingCard.tsx`, `components/panels/FindingDetailPanel.tsx`
+
+**Extract, because they are byte-identical:**
+
+1. **The scales line** — `FindingCard`'s third meta line and the panel's, identical modulo comments: the same wrapper classes, the same `· cost`, the same `COST_TERM`/`COST_HINT`/`COST_CHIP` triple, the same verdict span, the same `ms-auto` status badge with the same green-for-`resolved` tint. Becomes `FindingScales({ row })`.
+2. **The accepted-risk callout** — identical but for its wrapper (`mt-1` on the card, `PANEL_GUTTER` on the panel). Becomes `AcceptedRiskCallout({ note, className })`.
+
+**Do not extract the criterion line.** It looks like a third candidate and is not: the card's chip is optional (`onOpenCriterion?`, and its absence is how the criterion panel says "you are already inside it") and truncates the name at `max-w-[24rem]`; the panel's is mandatory and wraps. That is two components' worth of difference wearing one shape.
+
+**Fix while in there**, all from the same review:
+
+- `FindingDetailPanel`'s `!row` body hardcodes `p-5 lg:p-6` while the file already imports `PANEL_GUTTER` and uses it twice below. `PanelSection` exports that constant so a gutter change stays one edit; use `cn(PANEL_GUTTER, "min-h-0 flex-1 overflow-y-auto py-5 lg:py-6")`.
+- The panel's docblock claims "Every section is conditional on having something to say"; Reference renders unconditionally. True behaviour — `row.id` always exists — but the sentence contradicts the code. Add the clause.
+- `acceptedNote` can still be `""`: the `||` guards an empty verification note, then falls through to `row.detail`, which may also be empty, drawing a bordered callout around nothing. Carried over from the card, so fix it in the shared component — which is the argument for extracting it.
+- The panel drops the card's `opacity-70` dimming of decided findings. Right — a focused single-record read should not be greyed — but nothing says so, in a file that comments smaller decisions. One line.
+- Note at the two `findings.find(...)` calls that the double scan is deliberate: it is how `CriterionDetailPanel` resolves its own subject, over ~250 rows, and the prop docblock already says why the panel takes an id rather than a row. Otherwise the next reader "fixes" it with a context.
+
+---
+
 ## Task 8: The node panel opens findings
 
 **Files:**
