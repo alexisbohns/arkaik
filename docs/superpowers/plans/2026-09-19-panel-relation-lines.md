@@ -1361,6 +1361,12 @@ export function planRelationLink(
  * endpoints. Deleting one leaves the row on screen after the user removed it,
  * with no way to tell why. (The same rule, and the same reason, as
  * `planAcceptanceDetach`.)
+ *
+ * **A self-loop unlinks from both lines at once, and that is correct.** The
+ * grammar admits `api-endpoint → api-endpoint` and `decision → decision`, and
+ * such an edge renders twice — once outbound, once inbound — because it is one
+ * edge read from both directions. Removing it from either line removes the one
+ * edge, so both rows go. It reads like a double delete and is not one.
  */
 export function planRelationUnlink(
   nodeId: string,
