@@ -45,6 +45,9 @@ export default function ProjectDecisionsPage() {
   // Owned here, not in `DecisionLog`: the toolbar and the log are siblings, so
   // the filter they share belongs to the page that mounts both.
   const [statusFilter, setStatusFilter] = useState<DecisionStatusFilter>("all");
+  // Plain state, undebounced: unlike the Acceptances bar this filter never
+  // reaches the URL, so there is no round trip for a keystroke to race.
+  const [search, setSearch] = useState("");
   // Expanded by default, as the Changelog is: a decision's rationale is the
   // reason the record exists, so the fold is for scanning back through a long
   // log rather than the state you arrive in.
@@ -129,6 +132,8 @@ export default function ProjectDecisionsPage() {
           contentClassName="flex flex-col gap-4"
           toolbar={
             <DecisionFilterBar
+              search={search}
+              onSearchChange={setSearch}
               status={statusFilter}
               onStatusChange={setStatusFilter}
               total={decisions.length}
@@ -145,6 +150,7 @@ export default function ProjectDecisionsPage() {
             journal={journal}
             onSelect={handleSelectNode}
             statusFilter={statusFilter}
+            search={search}
             detailed={detailed}
           />
         </PageSurface>

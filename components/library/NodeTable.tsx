@@ -1,11 +1,16 @@
 "use client";
 
-import { ArrowUpDownIcon, BanIcon } from "lucide-react";
-import { PRODUCT_MEMBERSHIP_SPECIES } from "@arkaik/schema";
+import { PRODUCT_MEMBERSHIP_SPECIES, resolvePlatformStatus } from "@arkaik/schema";
 import type { Node } from "@/lib/data/types";
-import { blockedByOf, isBlocked } from "@/lib/utils/blocked";
+import type { StatusId } from "@/lib/config/statuses";
+import { blockedByOf } from "@/lib/utils/blocked";
 import { scopedPlatforms, type ProductScope } from "@/lib/utils/product-scope";
+import { CopyIdChip, SpeciesBadge } from "@/components/graph/nodes/EntityBadges";
+import { StatusMark } from "@/components/graph/nodes/StatusMark";
+import { RelatedNodesPopover } from "@/components/layout/RelatedNodesPopover";
+import { StatusBadge } from "@/components/layout/StatusBadge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { cn } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -15,7 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-export type NodeSortKey = "id" | "title" | "species" | "status" | "usedIn";
+export type NodeSortKey = "title" | "species" | "status" | "usedIn";
 export type SortDirection = "asc" | "desc";
 
 export interface NodeSortState {
@@ -27,8 +32,16 @@ interface NodeTableProps {
   nodes: Node[];
   sort: NodeSortState;
   speciesLabelById: Record<string, string>;
-  statusLabelById: Record<string, string>;
-  usedInByNodeId: Record<string, number>;
+  /** What each species *is*, for the species glyph's hover card. */
+  speciesDescriptionById?: Record<string, string>;
+  /**
+   * `nodeId → the flows whose playlist reaches it`, from `findWhereUsed`.
+   *
+   * The nodes themselves, not a count: the cell shows the number and opens the
+   * list behind it, so a reader who sees "3" can find out which three without
+   * leaving the table.
+   */
+  usedInByNodeId: Record<string, Node[]>;
   /** The surface's product scope — resolved once at the page, never per row. */
   scope: ProductScope;
   /**
@@ -83,19 +96,53 @@ function productCellText(node: Node, labels: string[]): string {
   return PRODUCT_MEMBERSHIP_SPECIES.includes(node.species) ? "-" : "Unattached";
 }
 
-const SORTABLE_COLUMNS: Array<{ key: NodeSortKey; label: string }> = [
-  { key: "id", label: "ID" },
-  { key: "title", label: "Title" },
-  { key: "species", label: "Species" },
-  { key: "status", label: "Status" },
-  { key: "usedIn", label: "Used in" },
-];
+/**
+ * A sortable column label.
+ *
+ * **No sort glyph.** An `ArrowUpDownIcon` after every label is five identical
+ * arrows saying "this is a table", in a header where at most one column is
+ * sorted at a time — and the double-headed arrow does not even say which way.
+ * The column actually in force is the one drawn in the foreground colour, the
+ * direction is in the screen-reader text, and the affordance is that the label
+ * is a button.
+ */
+function SortHeader({
+  column,
+  label,
+  sort,
+  onSortChange,
+  className,
+}: {
+  column: NodeSortKey;
+  label: string;
+  sort: NodeSortState;
+  onSortChange: (key: NodeSortKey) => void;
+  className?: string;
+}) {
+  const active = sort.key === column;
+
+  return (
+    <TableHead className={className}>
+      <button
+        type="button"
+        onClick={() => onSortChange(column)}
+        className={cn(
+          "inline-flex cursor-pointer items-center text-xs font-semibold uppercase tracking-wide",
+          active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        {label}
+        <span className="sr-only">{active ? `sorted ${sort.direction}` : "not sorted"}</span>
+      </button>
+    </TableHead>
+  );
+}
 
 export function NodeTable({
   nodes,
   sort,
   speciesLabelById,
-  statusLabelById,
+  speciesDescriptionById,
   usedInByNodeId,
   scope,
   productLabelsByNodeId,
@@ -139,8 +186,22 @@ export function NodeTable({
       containerClassName={fill ? "h-full overflow-auto" : undefined}
     >
       {/* `bg-card` on the sticky header is load-bearing: a `<thead>` pinned over
-          a transparent background lets the rows read straight through it. */}
-      <TableHeader className={fill ? "sticky top-0 z-10 bg-card" : undefined}>
+          a transparent background lets the rows read straight through it.
+
+          So is the shadow, and it is a *shadow* rather than the `border-b` the
+          header row already carries. The table collapses its borders, so a
+          collapsed border belongs to the table's own border box and not to the
+          `<thead>` that declared it — it stays where the table's first row
+          started and scrolls away with it, leaving rows to slide under an
+          opaque band with no edge to slide under. An inset shadow is painted by
+          the sticky element itself, so it travels with it. */}
+      <TableHeader
+        className={
+          fill
+            ? "sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_0_hsl(var(--border))]"
+            : undefined
+        }
+      >
         <TableRow>
           {selectedIds !== undefined && (
             <TableHead className="w-8">
@@ -152,31 +213,30 @@ export function NodeTable({
               />
             </TableHead>
           )}
-          {SORTABLE_COLUMNS.map((column) => (
-            <TableHead key={column.key}>
-              <button
-                type="button"
-                onClick={() => onSortChange(column.key)}
-                className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-              >
-                {column.label}
-                <ArrowUpDownIcon className="size-3.5" aria-hidden="true" />
-                <span className="sr-only">
-                  {sort.key === column.key ? `sorted ${sort.direction}` : "not sorted"}
-                </span>
-              </button>
-            </TableHead>
-          ))}
-          {productLabelsByNodeId !== undefined && <TableHead>Product</TableHead>}
-          <TableHead>Platforms</TableHead>
+          {/* Species first: it is the one column that says what kind of thing
+              the row is, and a reader scanning a mixed library sorts by shape
+              before they read a single title. Then the title, its status, where
+              it is available, and what uses it. */}
+          {/* Every column but the title shrinks to its own content —
+              `w-px` on a table cell is the "as narrow as it can be" idiom, since
+              a table's own layout raises it to the widest cell in the column.
+              The title takes everything that is left, so a row of four glyphs
+              stays a row of four glyphs instead of being dealt out across the
+              width of the pane with a hand's width of nothing between each. */}
+          <SortHeader className="w-px" column="species" label="Species" sort={sort} onSortChange={onSortChange} />
+          <SortHeader className="w-full" column="title" label="Title" sort={sort} onSortChange={onSortChange} />
+          <SortHeader className="w-px" column="status" label="Status" sort={sort} onSortChange={onSortChange} />
+          <TableHead className="w-px">Platforms</TableHead>
+          <SortHeader className="w-px" column="usedIn" label="Used in" sort={sort} onSortChange={onSortChange} />
+          {productLabelsByNodeId !== undefined && <TableHead className="w-px">Product</TableHead>}
         </TableRow>
       </TableHeader>
       <TableBody>
         {nodes.map((node) => {
-          const usedInCount = usedInByNodeId[node.id] ?? 0;
+          const usedIn = usedInByNodeId[node.id] ?? [];
           const platforms = scopedPlatforms(node, scope);
           return (
-            <TableRow key={node.id} data-wobble-group className="cursor-pointer" onClick={() => onSelectNode(node)}>
+            <TableRow key={node.id} data-wobble-group className="group/row cursor-pointer" onClick={() => onSelectNode(node)}>
               {selectedIds !== undefined && (
                 // The whole row opens the node, so the cell swallows the click
                 // as well as the box: a fat-fingered tap on the padding around
@@ -184,9 +244,10 @@ export function NodeTable({
                 <TableCell className="w-8" onClick={(event) => event.stopPropagation()}>
                   <Checkbox
                     // Titles are not unique in this app — two products' "Home"
-                    // views are ordinary — and the adjacent column already
-                    // renders the id, so the accessible name says both rather
-                    // than reading out three identical "Select Home" boxes.
+                    // views are ordinary — so the accessible name says the id
+                    // too rather than reading out three identical "Select Home"
+                    // boxes. It is the one place the id is always spoken now
+                    // that the chip beside the title only appears on hover.
                     aria-label={`Select ${node.title} (${node.id})`}
                     className="cursor-pointer"
                     checked={selectedIds.has(node.id)}
@@ -194,25 +255,88 @@ export function NodeTable({
                   />
                 </TableCell>
               )}
-              <TableCell className="font-mono text-xs">{node.id}</TableCell>
-              <TableCell className="max-w-[280px] truncate">{node.title}</TableCell>
-              <TableCell>{speciesLabelById[node.species] ?? node.species}</TableCell>
-              <TableCell>
-                <span className="inline-flex items-center gap-1.5">
-                  {statusLabelById[node.status] ?? node.status}
-                  {isBlocked(node) && (
-                    <span title={`Blocked by: ${blockedByOf(node.metadata)}`} className="inline-flex">
-                      <BanIcon className="size-3.5 shrink-0 text-red-500" aria-hidden="true" />
-                      <span className="sr-only">(blocked)</span>
-                    </span>
-                  )}
+              {/* The glyph the canvas uses for this species, with the name and
+                  its definition in the hover card — the badge the panel header
+                  and the cards already carry. A column of repeated words became
+                  a column of shapes you can scan. */}
+              <TableCell className="w-px" onClick={(event) => event.stopPropagation()}>
+                <SpeciesBadge
+                  species={node.species}
+                  label={speciesLabelById[node.species] ?? node.species}
+                  description={speciesDescriptionById?.[node.species]}
+                />
+              </TableCell>
+              {/* The id rides on the title, and only under the pointer: it is
+                  a column of hashes at rest, saying the same nothing in every
+                  row, and the one thing anybody wants from it is the clipboard.
+                  It keeps its slot whether or not it is showing — `opacity`,
+                  not a mount — so a title does not jump sideways as the pointer
+                  crosses the row. Focus reveals it too, since a keyboard reader
+                  tabbing to the chip must be able to see what they are on. */}
+              {/* `w-full max-w-0` is what makes the truncation work: a table
+                  cell is sized by its content, so a long title would widen the
+                  column rather than clip, whatever `min-w-0` the flex child
+                  carries. Zero max-width takes that vote away, and `w-full`
+                  hands the cell every pixel the shrunk columns did not take. */}
+              <TableCell className="w-full max-w-0">
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="min-w-0 truncate">{node.title}</span>
+                  <span
+                    onClick={(event) => event.stopPropagation()}
+                    className="shrink-0 opacity-0 transition-opacity group-hover/row:opacity-100 group-focus-within/row:opacity-100"
+                  >
+                    <CopyIdChip id={node.id} />
+                  </span>
                 </span>
               </TableCell>
-              <TableCell>{usedInCount > 0 ? `${usedInCount} flow${usedInCount === 1 ? "" : "s"}` : "-"}</TableCell>
+              {/* `StatusBadge`, so the status is the same coloured glyph here
+                  as on the canvas, with its name in the tooltip — and so the
+                  blocked overlay comes from the one component that draws it,
+                  rather than from a red `BanIcon` this table pinned on itself. */}
+              <TableCell className="w-px">
+                <StatusBadge status={node.status as StatusId} blockedBy={blockedByOf(node.metadata)} />
+              </TableCell>
+              {/* One {@link StatusMark} per platform: the platform by its
+                  shape, its status on that platform by its colour, both names
+                  in the tooltip. The strip the Acceptances matrix reads with,
+                  in place of "web, ios" repeated down the column. */}
+              <TableCell className="w-px">
+                {platforms.length === 0 ? (
+                  "-"
+                ) : (
+                  <span className="flex items-center gap-1.5">
+                    {platforms.map((platform) => (
+                      <StatusMark key={platform} platform={platform} status={resolvePlatformStatus(node, platform)} />
+                    ))}
+                  </span>
+                )}
+              </TableCell>
+              {/* A number, and the flows themselves one hover away. "3 flows"
+                  spelled the unit out in every row of a column already headed
+                  "Used in"; which three was the part nobody could get to. */}
+              <TableCell className="w-px" onClick={(event) => event.stopPropagation()}>
+                {usedIn.length === 0 ? (
+                  "-"
+                ) : (
+                  <RelatedNodesPopover
+                    label="Used in"
+                    nodes={usedIn}
+                    onSelect={onSelectNode}
+                    trigger={
+                      <button
+                        type="button"
+                        aria-label={`Used in ${usedIn.length} flow${usedIn.length === 1 ? "" : "s"}`}
+                        className="cursor-pointer tabular-nums underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                      >
+                        {usedIn.length}
+                      </button>
+                    }
+                  />
+                )}
+              </TableCell>
               {productLabelsByNodeId !== undefined && (
-                <TableCell>{productCellText(node, productLabelsByNodeId[node.id] ?? [])}</TableCell>
+                <TableCell className="w-px">{productCellText(node, productLabelsByNodeId[node.id] ?? [])}</TableCell>
               )}
-              <TableCell>{platforms.length > 0 ? platforms.join(", ") : "-"}</TableCell>
             </TableRow>
           );
         })}

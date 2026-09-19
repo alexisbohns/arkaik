@@ -18,7 +18,6 @@ export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "arrow-left", seed: 12 },
   { name: "arrow-right-left", seed: 9 },
   { name: "arrow-up", seed: 8 },
-  { name: "arrow-up-down", seed: 7 },
   { name: "badge-check", seed: 5 },
   { name: "ban", seed: 10 },
   { name: "banknote", seed: 3 },

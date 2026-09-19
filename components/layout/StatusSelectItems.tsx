@@ -58,16 +58,33 @@ interface StatusSelectItemsProps {
    * exist yet and so has no state to colour.
    */
   showIcons?: boolean;
+  /**
+   * How many records carry each status, appended to the label as "Enacted · 4".
+   *
+   * For a *filter* menu, where the count is the reason to pick an entry — the
+   * Decision log's band carried these as pills before the menu existed. Omitted
+   * everywhere the menu sets a value rather than narrowing a list, since there
+   * is nothing to count.
+   */
+  counts?: ReadonlyMap<string, number>;
 }
 
-function renderItems<Id extends string>(vocabulary: StatusVocabulary<Id>, showIcons: boolean) {
+function renderItems<Id extends string>(
+  vocabulary: StatusVocabulary<Id>,
+  showIcons: boolean,
+  counts: ReadonlyMap<string, number> | undefined,
+) {
   return (
     <>
       {vocabulary.options.map((option) => {
+        // A missing entry means zero, not "unknown": the map is built from the
+        // records on the surface, and a status nothing carries is absent from it.
+        const label = counts === undefined ? option.label : `${option.label} · ${counts.get(option.id) ?? 0}`;
+
         if (!showIcons) {
           return (
             <SelectItem key={option.id} value={option.id}>
-              {option.label}
+              {label}
             </SelectItem>
           );
         }
@@ -80,7 +97,7 @@ function renderItems<Id extends string>(vocabulary: StatusVocabulary<Id>, showIc
           <SelectItem key={option.id} value={option.id}>
             <span className="inline-flex items-center gap-2">
               <Icon className={`size-3.5 ${vocabulary.styles[option.id].badge}`} />
-              {option.label}
+              {label}
             </span>
           </SelectItem>
         );
@@ -92,8 +109,9 @@ function renderItems<Id extends string>(vocabulary: StatusVocabulary<Id>, showIc
 export function StatusSelectItems({
   vocabulary = "status",
   showIcons = true,
+  counts,
 }: StatusSelectItemsProps) {
   return vocabulary === "decision-status"
-    ? renderItems(DECISION_STATUS_VOCABULARY, showIcons)
-    : renderItems(STATUS_VOCABULARY, showIcons);
+    ? renderItems(DECISION_STATUS_VOCABULARY, showIcons, counts)
+    : renderItems(STATUS_VOCABULARY, showIcons, counts);
 }
