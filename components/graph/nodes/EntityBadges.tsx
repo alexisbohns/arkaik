@@ -66,6 +66,33 @@ interface CopyIdChipProps {
 }
 
 /**
+ * The glyph both copy affordances wear: a hash that becomes a copy mark under
+ * the pointer, and a tick once the id is on the clipboard.
+ *
+ * The hash is the resting state because it is a *label* — "there is an id
+ * here" — and the copy mark is the *affordance*, which only needs to exist
+ * once you are pointing at the thing. Showing the copy mark all the time would
+ * label every id in the app as a button; showing nothing until hover leaves a
+ * gap that fills in under the pointer, which is what this replaced.
+ *
+ * Both are stacked in one fixed-size box rather than swapped by a state
+ * variable, so the exchange is pure CSS on the parent's `group` — no hover
+ * state in React, no reflow, and `group-focus-visible` gets it for free on a
+ * keyboard. The tick is the one real branch: it is the only state the DOM
+ * cannot infer from the pointer.
+ */
+function CopyIdGlyph({ copied }: { copied: boolean }) {
+  if (copied) return <CheckIcon className="size-3 shrink-0" aria-hidden="true" />;
+
+  return (
+    <span className="relative inline-flex size-3 shrink-0 items-center justify-center" aria-hidden="true">
+      <HashIcon className="absolute size-3 transition-opacity group-hover:opacity-0 group-focus-visible:opacity-0" />
+      <CopyIcon className="absolute size-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+    </span>
+  );
+}
+
+/**
  * A hash in a box that puts an entity id on the clipboard.
  *
  * "There is an id here", one tap from being pastable — into a commit message, a
@@ -81,7 +108,6 @@ interface CopyIdChipProps {
  */
 export function CopyIdChip({ id, className }: CopyIdChipProps) {
   const { copied, copy } = useCopyId(id);
-  const Icon = copied ? CheckIcon : HashIcon;
 
   return (
     <Tooltip>
@@ -95,12 +121,12 @@ export function CopyIdChip({ id, className }: CopyIdChipProps) {
           onClick={copy}
           className={cn(
             iconChipVariants({ size: "sm", variant: "outline", interactive: true }),
-            "hover:bg-muted hover:text-foreground",
+            "group hover:bg-muted hover:text-foreground",
             copied && "text-green-500",
             className,
           )}
         >
-          <Icon />
+          <CopyIdGlyph copied={copied} />
         </button>
       </TooltipTrigger>
       <TooltipContent side="bottom">
@@ -118,14 +144,17 @@ export function CopyIdChip({ id, className }: CopyIdChipProps) {
  * could copy it by tapping the hash on a narrow window, and had to select it by
  * hand on a wide one, which is backwards.
  *
- * The copy glyph holds its space always and only appears on hover or focus, so
- * revealing it cannot reflow the header row mid-gesture. The whole chip is the
- * button, not the glyph: a 12px target inside a row you are already pointing at
- * is a worse version of the same gesture.
+ * The glyph leads, and is {@link CopyIdGlyph} — the same hash the narrow
+ * variant wears, so one id does not announce itself two ways at two widths. It
+ * sat trailing and invisible-until-hover first, which left a hole on the right
+ * of every id that filled in under the pointer; a slot that is always occupied
+ * and merely changes glyph has no such moment.
+ *
+ * The whole chip is the button, not the glyph: a 12px target inside a row you
+ * are already pointing at is a worse version of the same gesture.
  */
 function CopyIdText({ id, className }: CopyIdChipProps) {
   const { copied, copy } = useCopyId(id);
-  const Icon = copied ? CheckIcon : CopyIcon;
 
   return (
     <Tooltip>
@@ -144,14 +173,8 @@ function CopyIdText({ id, className }: CopyIdChipProps) {
             className,
           )}
         >
+          <CopyIdGlyph copied={copied} />
           {id}
-          <Icon
-            className={cn(
-              "size-3 shrink-0 transition-opacity",
-              copied ? "opacity-100" : "opacity-0 group-hover:opacity-70 group-focus-visible:opacity-70",
-            )}
-            aria-hidden="true"
-          />
         </button>
       </TooltipTrigger>
       <TooltipContent side="bottom">{copied ? "Copied" : "Copy id"}</TooltipContent>
