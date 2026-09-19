@@ -170,6 +170,39 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
   const [addressed, setAddressed] = useState<string | null>(null);
   const [panelStates, setPanelStates] = useState<Record<string, RegisteredPanelState>>({});
 
+  // A panel is opened *over a surface*, so leaving the surface closes it.
+  //
+  // This provider lives in the project layout precisely so the stack survives a
+  // page segment remounting (see the docblock), and that is right within one
+  // surface — but it also meant a walk to another one carried the panels along.
+  // A node panel got away with it by accident: its `?node=` does not survive the
+  // navigation, so the reconcile below saw a missing id and closed the stack.
+  // The three addressless kinds have no such accident. `?node=` is `null` before
+  // and after, the reconcile never runs, and a finding opened on Findings was
+  // still sitting there on the Changelog — resolving against a page that passes
+  // no audit at all, so it rendered its own "no finding with that id" body.
+  //
+  // Closing on the pathname rather than teaching each kind to notice: the rule
+  // is about the surface going away, and it is one rule for all five kinds
+  // instead of four exceptions to the one that works by chance.
+  //
+  // `addressed` is reset with them so the reconcile below re-runs against the
+  // new route — a link that arrives carrying `?node=` still opens its node.
+  //
+  // State rather than a ref, and adjusted during render: this is the same
+  // derived-state shape the `?node=` reconcile below uses, for the same reason
+  // it gives — React discards the pass and re-renders, so the stack and the
+  // route are never painted out of step. A ref would also trip
+  // `react-hooks/refs`, which is an error in this repo and right to be.
+  const [lastPathname, setLastPathname] = useState(pathname);
+  if (pathname !== lastPathname) {
+    setLastPathname(pathname);
+    if (entries.length > 0) {
+      setEntries(initStack<PanelDescriptor>);
+      setAddressed(null);
+    }
+  }
+
   // An id can arrive without us having published it: a cold load, Back,
   // Forward, a link from elsewhere. Adjusting during render rather than in an
   // effect means the stack and the address are never painted out of step —
