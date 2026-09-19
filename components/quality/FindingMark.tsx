@@ -51,10 +51,17 @@ const STATUS_ICON: Record<DecidedStatus, ReactNode> = {
  * down the rail as "answered" at the same glance the red squares read as
  * "owed", and the lane it was filed in moves into the gloss.
  *
- * A component rather than two blocks inlined in the board, because the finding
- * panel's header wears the identical mark: it is how the panel says it is the
- * thing the reader clicked. Two copies would part company the first time a
- * status tile changed.
+ * `FindingsBoard` is its only caller. It was carved out of that board when the
+ * finding panel was going to wear the identical square, and then the panel
+ * stopped: the priority it showed is a row in the panel's Risk section now,
+ * spelled out with its gloss, and a square saying the same thing smaller was
+ * only ever in the way there. Down a rail of eighty rows it is exactly right,
+ * which is a different job.
+ *
+ * Left a component rather than folded back into the board. It is a self-
+ * contained unit with its own status table, and the board reads better for
+ * having one element in that grid cell than the twenty-line ternary it
+ * replaced.
  */
 export function FindingMark({ row, className }: { row: FindingRow; className?: string }) {
   if (row.open) {

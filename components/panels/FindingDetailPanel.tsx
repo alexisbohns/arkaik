@@ -4,13 +4,8 @@ import type { ReactNode } from "react";
 import { ChevronRightIcon, ExternalLinkIcon, ListChecksIcon } from "lucide-react";
 import { CROSS_SURFACE_ID, type KritikLibrary, type QualitySection } from "@arkaik/schema";
 import { EntityId, PanelHeaderEntityId } from "@/components/graph/nodes/EntityBadges";
-// The one criterion lookup in the panel stack. Imported from the panel that
-// owns it rather than re-written here: a second `library.criteria.find` would
-// be a second answer to "which criterion is this", free to disagree about the
-// missing-pack case the day either one is hardened.
 import { PanelSection, PANEL_GUTTER } from "@/components/panels/PanelSection";
 import { AcceptedRiskCallout } from "@/components/quality/AcceptedRiskCallout";
-import { FindingMark } from "@/components/quality/FindingMark";
 import {
   COST_CHIP,
   COST_HINT,
@@ -77,10 +72,10 @@ function surfaceTitleOf(surface: string, section?: QualitySection): string {
  * `h2` is `sr-only` for the same reason. This header had the title and no id
  * at all, which read fine and was the one panel out of step with every other.
  *
- * The rail's mark is gone from it too. It is a status, and no header in the
+ * The rail's mark is not here either. It is a status, and no header in the
  * stack carries one: a decision panel's header does not wear its
- * `DecisionStatusBadge` either. Recognition is the id's job, and the mark is
- * still the first thing in the body.
+ * `DecisionStatusBadge`. Recognition is the id's job — and the mark is not in
+ * the body now either, since the Risk section states the priority it carried.
  */
 export function FindingDetailPanelHeader({
   findingId,
@@ -208,24 +203,25 @@ export function FindingDetailPanel({
           copy, and put it below its own section headings in the visual
           hierarchy. */}
       <div className={cn(PANEL_GUTTER, "flex flex-col gap-1.5")}>
-        {/* The mark leads the title, the way it leads the row on the board's
-            rail — it is the same component, so the panel opens looking like
-            the thing that was clicked. It sits here rather than in the header
-            because it is a status, and the header carries identity only.
-            `mt-1` rather than the old `mt-0.5`: the square is 24px against a
-            28px line now, and half a unit left it sitting high of the cap. */}
+        {/* No mark before the title. It carried the priority on an open
+            finding, and the Risk section below now states the priority in
+            words with its gloss — a `P0` square beside the title was the same
+            fact, said smaller and worse, and said first. On a decided finding
+            it carried the verdict glyph instead, and that is covered too: the
+            badge on this row names `resolved` and `refuted`, and an accepted
+            risk has its callout. So nothing was lost with it, which is the
+            only reason it could go. */}
         <div className="flex items-start gap-2">
-          <FindingMark row={row} className="mt-1" />
           <p className="flex-1 text-lg font-semibold leading-relaxed text-foreground">
             {row.title}
           </p>
-          {/* The word for the rail's glyph, and the only copy of it a screen
-              reader meets — inherited from `FindingScales` when the scales
-              left this panel. Green for `resolved` alone, the rule the rail
-              follows. An accepted risk is deliberately absent: its callout
-              below states the status in the treatment that says it is a
-              decision, and a badge up here would say it twice and more
-              quietly. */}
+          {/* The status in a word, and the only copy of it a screen reader
+              meets now the rail's glyph is gone from this panel — inherited
+              from `FindingScales` when the scales left. Green for `resolved`
+              alone, the rule the rail follows. An accepted risk is
+              deliberately absent: its callout below states the status in the
+              treatment that says it is a decision, and a badge up here would
+              say it twice and more quietly. */}
           {!row.open && !acceptedRisk && (
             <Badge
               variant="outline"
