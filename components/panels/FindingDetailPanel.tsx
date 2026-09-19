@@ -8,7 +8,6 @@ import { EntityId, PanelHeaderEntityId } from "@/components/graph/nodes/EntityBa
 // owns it rather than re-written here: a second `library.criteria.find` would
 // be a second answer to "which criterion is this", free to disagree about the
 // missing-pack case the day either one is hardened.
-import { criterionOf } from "@/components/panels/CriterionDetailPanel";
 import { PanelSection, PANEL_GUTTER } from "@/components/panels/PanelSection";
 import { AcceptedRiskCallout } from "@/components/quality/AcceptedRiskCallout";
 import { FindingMark } from "@/components/quality/FindingMark";
@@ -27,7 +26,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { Node } from "@/lib/data/types";
-import type { FindingRow } from "@/lib/utils/quality";
+import { criterionOf, type FindingRow } from "@/lib/utils/quality";
 import { cn } from "@/lib/utils";
 
 interface FindingDetailPanelProps {
