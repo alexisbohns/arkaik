@@ -23,8 +23,7 @@ const {
   VALID_EDGE_SEMANTICS,
   applyOps,
   SPECIES_IDS,
-  // Added in part 3 — absent until then, which is fine: § 7 is added in the
-  // same task that creates them.
+  // The write plans (lib/utils/node-relations.ts), asserted in § 8.
   planRelationLink,
   planRelationUnlink,
   planRelationNew,
@@ -269,5 +268,101 @@ assert.deepEqual(
   ["API-a"],
   "and under the inbound line — the same edge, read from the other direction",
 );
+
+// --- 8: the write plans -----------------------------------------------------
+
+// `planRelation*` and `applyOps` come from the destructure at the top of this
+// file — a second `loadRelationLines()` here would wipe and rebuild the build
+// directory under the modules already required from it.
+
+const n = (id, species, extra = {}) => ({
+  id, project_id: PROJECT, species, title: id, status: "idea", platforms: [], ...extra,
+});
+
+const V = n("V-home", "view");
+const API = n("API-orders", "api-endpoint");
+const DEC = n("DEC-vendor", "decision");
+
+// Outbound: the edge leaves the panel's node.
+assert.deepEqual(planRelationLink(V, API, calls, PROJECT, []), [
+  {
+    op: "create_edge",
+    edge: {
+      id: "e-V-home-API-orders",
+      project_id: PROJECT,
+      source_id: "V-home",
+      target_id: "API-orders",
+      edge_type: "calls",
+    },
+  },
+]);
+
+// Inbound: the SAME line kind, the endpoints swapped. Getting this backwards
+// writes an edge the importer rejects, so it is asserted rather than assumed.
+assert.deepEqual(
+  planRelationLink(V, API, calledBy, PROJECT, []).map((op) => [op.edge.source_id, op.edge.target_id]),
+  [["API-orders", "V-home"]],
+);
+
+// The grammar is the authority, here as on the canvas. A decision does not
+// `calls` anything, and a plan that emitted it would be an `edge-semantics`
+// error on the next import.
+assert.throws(
+  () => planRelationLink(V, DEC, calls, PROJECT, []),
+  /edge-semantics|grammar/i,
+  "an edge the grammar forbids is refused, not written",
+);
+
+// Two no-ops that are not errors: already linked, and pointed at itself.
+assert.deepEqual(
+  planRelationLink(V, API, calls, PROJECT, [edge("V-home", "API-orders", "calls")]),
+  [],
+  "already linked is a no-op",
+);
+assert.deepEqual(planRelationLink(V, V, calls, PROJECT, []), [], "a node cannot relate to itself");
+
+// Unlink deletes EVERY matching edge, not the first — a hand-edited bundle can
+// carry two with the same endpoints, and deleting one leaves the row on screen
+// after the user removed it, with no way to tell why.
+assert.deepEqual(
+  planRelationUnlink("V-home", "API-orders", calls, [
+    edge("V-home", "API-orders", "calls"),
+    edge("V-home", "API-orders", "calls", "e-duplicate"),
+    edge("V-home", "DM-user", "displays"),
+  ]).map((op) => op.edge_id),
+  ["e-V-home-API-orders", "e-duplicate"],
+);
+
+// The inbound direction unlinks the same edge read the other way round: the
+// `calls:in` line of API-orders names V-home, and removing that row must
+// delete the V-home → API-orders edge.
+assert.deepEqual(
+  planRelationUnlink("API-orders", "V-home", calledBy, [
+    edge("V-home", "API-orders", "calls"),
+  ]).map((op) => op.edge_id),
+  ["e-V-home-API-orders"],
+);
+
+// linkNew mints the node and the edge as one batch.
+const plan = planRelationNew(V, calls, "api-endpoint", "POST /refunds", PROJECT, [], new Map([["V-home", V]]));
+assert.equal(plan.node.species, "api-endpoint");
+assert.equal(plan.node.title, "POST /refunds");
+assert.equal(plan.node.status, "idea");
+assert.deepEqual(plan.node.platforms, [], "a node minted mid-gesture claims no platform it was not asked about");
+assert.equal(plan.ops.length, 2, "the node and its edge commit together");
+assert.equal(plan.ops[0].op, "create_node");
+assert.equal(plan.ops[1].op, "create_edge");
+
+// A whitespace title is a mis-click, not an intent to mint a hash-suffixed id.
+assert.equal(planRelationNew(V, calls, "api-endpoint", "   ", PROJECT, [], new Map()), null);
+
+// The plan is judged by the graph it produces, through the real interpreter.
+{
+  const applied = applyOps({ nodes: [V], edges: [] }, plan.ops);
+  assert.equal(applied.nodes.length, 2);
+  assert.equal(applied.edges.length, 1);
+  assert.equal(applied.edges[0].source_id, "V-home");
+  assert.equal(applied.edges[0].target_id, plan.node.id);
+}
 
 console.log("relation-lines: ok");

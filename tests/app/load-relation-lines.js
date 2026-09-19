@@ -8,17 +8,15 @@
  * load-panel-utils.js cannot take them — it rewrites nothing, and the require
  * would fail at resolution with an error pointing nowhere near the cause.
  *
- * MODULES is in dependency order. The rewrite table below has one line per
- * *value* `@/` import across those files — today there are none: the only
- * `@/` import (`@/lib/data/types`) is `import type` and is elided by the
+ * MODULES is in dependency order: node-relations.ts imports relation-lines.ts
+ * as a *value* (`relationRows`), so the latter has to be transpiled first and
+ * the require rewritten to the build dir's own copy. The rewrite table below
+ * has one line per *value* `@/` import across those files — that one. The only
+ * other `@/` import (`@/lib/data/types`) is `import type` and is elided by the
  * transpiler. Adding a value import to either module means adding a rewrite
  * line for it; a missing rule is not silently ignored — see the leftover-alias
  * check below, which throws rather than shipping a require that resolves
  * nowhere.
- *
- * node-relations.ts does not exist yet (it lands in Part 3, Task 3.1), so for
- * now MODULES lists only relation-lines and there is no rewrite line for the
- * `@/lib/utils/relation-lines` import node-relations.ts will make.
  *
  * The build dir carries the pid: Part 3 adds a second suite behind this same
  * loader, and a shared path would let one suite's cleanup delete the other's
@@ -36,6 +34,7 @@ const BUILD_DIR = path.join(__dirname, `.test-build-relation-lines-${process.pid
 
 const MODULES = [
   ["lib/utils/relation-lines.ts", "relation-lines"],
+  ["lib/utils/node-relations.ts", "node-relations"],
 ];
 
 // Registered once, here, rather than left for each suite that calls
@@ -72,7 +71,11 @@ function loadRelationLines() {
     // `@/lib/data/types` is imported type-only and is elided by the
     // transpiler.
     const rewritten = outputText
-      .replace(/require\((['"])@arkaik\/schema\1\)/g, `require(${JSON.stringify(schemaIndex)})`);
+      .replace(/require\((['"])@arkaik\/schema\1\)/g, `require(${JSON.stringify(schemaIndex)})`)
+      .replace(
+        /require\((['"])@\/lib\/utils\/relation-lines\1\)/g,
+        () => `require(${JSON.stringify(path.join(BUILD_DIR, "relation-lines.js"))})`,
+      );
 
     // A `@/…` require this table has no rule for would otherwise resolve
     // against nothing and fail inside `require()`, far from the actual cause.
@@ -99,6 +102,7 @@ function loadRelationLines() {
 
   return {
     ...require(path.join(BUILD_DIR, "relation-lines.js")),
+    ...require(path.join(BUILD_DIR, "node-relations.js")),
     // The authority every assertion in the suite is written against. Handed
     // back from here rather than re-loaded in the suite: `loadSchema()` wipes
     // and rebuilds its build dir, so a second call mid-suite re-transpiles the
