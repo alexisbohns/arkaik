@@ -2,7 +2,8 @@
 
 import { toast } from "sonner";
 import type { Node, PlaylistEntry } from "@/lib/data/types";
-import { PlaylistEntryList } from "@/components/panels/PlaylistEntryRow";
+import type { ProductScope } from "@/lib/utils/product-scope";
+import { PlaylistEntryList } from "@/components/panels/playlist/PlaylistEntryList";
 import { PanelGroup } from "@/components/panels/PanelGroup";
 import { PANEL_GUTTER } from "@/components/panels/PanelSection";
 
@@ -11,9 +12,11 @@ interface PlaylistEditorProps {
   allNodes: Node[];
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
   onCreateNode?: (species: "flow" | "view", title: string) => Promise<Node>;
+  /** Passed straight through to the rows, for their per-platform status marks. */
+  scope?: ProductScope;
 }
 
-export function PlaylistEditor({ node, allNodes, onUpdate, onCreateNode }: PlaylistEditorProps) {
+export function PlaylistEditor({ node, allNodes, onUpdate, onCreateNode, scope }: PlaylistEditorProps) {
   const entries = Array.isArray(node.metadata?.playlist?.entries)
     ? node.metadata.playlist.entries
     : [];
@@ -53,6 +56,7 @@ export function PlaylistEditor({ node, allNodes, onUpdate, onCreateNode }: Playl
           allNodes={allNodes}
           onCycleBlocked={handleCycleBlocked}
           onCreateNode={onCreateNode}
+          scope={scope}
         />
       </div>
     </PanelGroup>

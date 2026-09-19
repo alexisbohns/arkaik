@@ -780,6 +780,7 @@ export function NodeDetailPanel({
             allNodes={allNodes}
             onUpdate={onUpdate}
             onCreateNode={onCreateNode}
+            scope={scope}
           />
         )}
         {history && (

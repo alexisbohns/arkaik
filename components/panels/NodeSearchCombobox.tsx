@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { buttonVariants } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
+import { fuzzyScore } from "@/lib/utils/search";
 import { cn } from "@/lib/utils";
 import type { Node as DataNode } from "@/lib/data/types";
 
@@ -31,37 +32,6 @@ interface Candidate {
  * matches and is reached the same way: arrow to it, press Enter.
  */
 type Row = { kind: "node"; id: string; title: string } | { kind: "create"; title: string };
-
-function fuzzyScore(query: string, candidate: string): number {
-  const q = query.trim().toLowerCase();
-  if (!q) return 1;
-
-  const c = candidate.toLowerCase();
-  if (c === q) return 10_000;
-
-  let qIndex = 0;
-  let consecutive = 0;
-  let bestConsecutive = 0;
-  let firstMatchIndex = -1;
-
-  for (let i = 0; i < c.length && qIndex < q.length; i += 1) {
-    if (c[i] === q[qIndex]) {
-      if (firstMatchIndex < 0) firstMatchIndex = i;
-      qIndex += 1;
-      consecutive += 1;
-      bestConsecutive = Math.max(bestConsecutive, consecutive);
-      continue;
-    }
-
-    consecutive = 0;
-  }
-
-  if (qIndex !== q.length) return -1;
-
-  const startBonus = firstMatchIndex === 0 ? 100 : Math.max(0, 25 - firstMatchIndex);
-  const lengthPenalty = Math.max(0, c.length - q.length);
-  return 300 + bestConsecutive * 20 + startBonus - lengthPenalty;
-}
 
 export function NodeSearchCombobox({
   species,

@@ -59,9 +59,60 @@ export function EntityId({ id }: EntityIdProps) {
   return <span className={ENTITY_ID_CLASS}>{id}</span>;
 }
 
+interface CopyIdChipProps {
+  id: string;
+  className?: string;
+}
+
+/**
+ * A hash in a box that puts an entity id on the clipboard.
+ *
+ * "There is an id here", one tap from being pastable — into a commit message, a
+ * Lab Note's `nodes:`, the agent skill. It copies the **id alone**, never the
+ * title, for the same reason {@link EntityChip} does: a clipboard carrying
+ * `V-projects — /projects` is useful nowhere it would be pasted.
+ *
+ * Deliberately a hash rather than the species glyph {@link EntityChip} wears.
+ * This one is used where the species is already said elsewhere on the row — a
+ * panel header carrying a species badge, a playlist row carrying its platform
+ * marks — so a second species glyph would be a word repeated, and the hash says
+ * the one thing that is not otherwise on screen.
+ */
+export function CopyIdChip({ id, className }: CopyIdChipProps) {
+  const { copied, copy } = useCopyId(id);
+  const Icon = copied ? CheckIcon : HashIcon;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          // The id, spelled out: the tooltip is visual-only, so this label is
+          // the only place a screen reader hears what the chip copies — and
+          // where the id is not written out, the only place it exists at all.
+          aria-label={`Copy ${id}`}
+          onClick={copy}
+          className={cn(
+            "inline-flex shrink-0 cursor-pointer items-center rounded border border-border bg-muted/50 p-1 text-muted-foreground transition-colors",
+            "hover:bg-muted hover:text-foreground",
+            "outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
+            copied && "text-green-500",
+            className,
+          )}
+        >
+          <Icon className="size-3" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">
+        <span className="font-mono">{id}</span>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 /**
  * The entity id in a **panel header**: the id spelled out at `lg` and up, a
- * copy-me chip below it.
+ * {@link CopyIdChip} below it.
  *
  * A panel header is one row that has to hold a species badge, an id and a close
  * button, and below `lg` a panel is at most half the window and often all of it.
@@ -73,41 +124,12 @@ export function EntityId({ id }: EntityIdProps) {
  * Both renditions are in the DOM with a breakpoint deciding which shows, rather
  * than a `useIsMobile` branch: the header is server-rendered, and a hook-based
  * switch would hydrate the wrong one for a frame on every panel open.
- *
- * Deliberately NOT {@link EntityChip}: that one identifies a row inside a list
- * and wears the species glyph, which would be redundant here — the header
- * already carries a species badge two chips to the left.
  */
 export function PanelHeaderEntityId({ id }: EntityIdProps) {
-  const { copied, copy } = useCopyId(id);
-  const Icon = copied ? CheckIcon : HashIcon;
-
   return (
     <>
       <span className={cn(ENTITY_ID_CLASS, "hidden lg:inline-block")}>{id}</span>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            // The id, spelled out: the tooltip is visual-only, so this label is
-            // the only place a screen reader hears what the chip copies — and at
-            // this width it is the only place the id exists at all.
-            aria-label={`Copy ${id}`}
-            onClick={copy}
-            className={cn(
-              "inline-flex shrink-0 cursor-pointer items-center rounded border border-border bg-muted/50 p-1 text-muted-foreground transition-colors lg:hidden",
-              "hover:bg-muted hover:text-foreground",
-              "outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
-              copied && "text-green-500",
-            )}
-          >
-            <Icon className="size-3" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          <span className="font-mono">{id}</span>
-        </TooltipContent>
-      </Tooltip>
+      <CopyIdChip id={id} className="lg:hidden" />
     </>
   );
 }
