@@ -4,8 +4,14 @@ import { useMemo, useRef, useState } from "react";
 import { XIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import { RelationLine, RelationRowItem } from "@/components/panels/RelationLine";
+import {
+  RelationLine,
+  RelationRowItem,
+  RELATION_ROW_GROUP,
+  REMOVE_ON_ROW_HOVER,
+} from "@/components/panels/RelationLine";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { Node, NodeMetadata } from "@/lib/data/types";
 import { blockedByOf, withBlockedBy } from "@/lib/utils/blocked";
 import { SPECIES_IDS } from "@arkaik/schema";
@@ -171,14 +177,19 @@ export function BlockedByField({ node, onUpdate, metadataRef, allNodes, onNaviga
           ) : (
             // Free text, or an id this snapshot cannot resolve. Both are the
             // value as written; neither is a node, so neither gets a chip.
-            <li className="flex items-center gap-1">
+            // The same hover group and the same reveal as `RelationRowItem`,
+            // from the same two constants: this row is not an entity and so
+            // cannot be one, but a `×` that behaves differently depending on
+            // whether the blocker happens to resolve to a node would be the
+            // graph leaking into the interaction.
+            <li className={cn(RELATION_ROW_GROUP, "flex items-center gap-1")}>
               <span className="min-w-0 flex-1 truncate px-2 py-1.5 text-sm">{value}</span>
               {onUpdate && (
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="size-7 shrink-0"
+                  className={cn("size-7 shrink-0", REMOVE_ON_ROW_HOVER)}
                   aria-label="Clear what blocks this"
                   disabled={busy}
                   onClick={() => void commit(null)}
