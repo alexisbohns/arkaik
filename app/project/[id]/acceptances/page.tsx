@@ -10,6 +10,7 @@ import { useProjectId } from "@/lib/hooks/useProjectId";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useProject } from "@/lib/hooks/useProject";
 import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
+import { useNodeRelations } from "@/lib/hooks/useNodeRelations";
 import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
 import { useAcceptanceFilters } from "@/components/acceptances/acceptance-filters";
 import { filterAcceptances } from "@/lib/utils/acceptance-matrix";
@@ -32,6 +33,13 @@ export default function ProjectAcceptancesPage() {
   const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges, syncEdges } = useEdges(id);
   const { project: projectBundle, error: projectError, reload: reloadProject } = useProject(id);
   const intake = useAcceptanceIntake({
+    projectId: id,
+    nodes: dataNodes,
+    edges: dataEdges,
+    applyMutations,
+    syncEdges,
+  });
+  const relations = useNodeRelations({
     projectId: id,
     nodes: dataNodes,
     edges: dataEdges,
@@ -197,6 +205,7 @@ export default function ProjectAcceptancesPage() {
         onUpdate={handleNodeUpdate}
         onCreateAcceptanceForAnchor={handleCreateAcceptanceForAnchor}
         intake={intake}
+        relations={relations}
       >
         <PageSurface
           /* The matrix is the surface: flush anchor groups running to the

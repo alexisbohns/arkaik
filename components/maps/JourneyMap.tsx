@@ -29,6 +29,7 @@ import { useEdges } from "@/lib/hooks/useEdges";
 import { useProject } from "@/lib/hooks/useProject";
 import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
 import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
+import { useNodeRelations } from "@/lib/hooks/useNodeRelations";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
 import { generateNodeId, edgeId } from "@/lib/utils/id";
@@ -91,6 +92,13 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
 
   const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges, addEdge, removeEdge, syncEdges } = useEdges(id);
   const intake = useAcceptanceIntake({
+    projectId: id,
+    nodes: dataNodes,
+    edges: dataEdges,
+    applyMutations,
+    syncEdges,
+  });
+  const relations = useNodeRelations({
     projectId: id,
     nodes: dataNodes,
     edges: dataEdges,
@@ -767,6 +775,7 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
         onDelete={handleDeleteNodeRequest}
         onCreateNode={handleCreateNodeFromPanel}
         intake={intake}
+        relations={relations}
         onZoomShot={(node, platform) => {
           setZoomNode(node);
           setZoomPlatform(platform);

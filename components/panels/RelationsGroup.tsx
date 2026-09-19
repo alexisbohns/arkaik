@@ -19,6 +19,7 @@ import { findWhereUsed, crossLayerConnections } from "@/lib/utils/where-used";
 import type { Node, Edge } from "@/lib/data/types";
 import type { ProductScope } from "@/lib/utils/product-scope";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
+import type { NodeRelations } from "@/lib/hooks/useNodeRelations";
 
 interface RelationsGroupProps {
   node: Node;
@@ -28,6 +29,12 @@ interface RelationsGroupProps {
   onNavigate?: (node: Node) => void;
   onCreateAcceptanceForAnchor?: (anchor: Node, title: string) => Promise<Node>;
   intake?: AcceptanceIntake;
+  /**
+   * Writing a node's relations (`useNodeRelations`). Absent on a read-only
+   * surface, which is what makes every line here read-only and drops the empty
+   * ones.
+   */
+  relations?: NodeRelations;
   findings?: FindingRow[];
   onOpenCriterion?: (criterionId: string, surface: string) => void;
 }

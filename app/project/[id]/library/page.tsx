@@ -26,6 +26,7 @@ import { useNodes } from "@/lib/hooks/useNodes";
 import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
 import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
+import { useNodeRelations } from "@/lib/hooks/useNodeRelations";
 import { findWhereUsed } from "@/lib/utils/where-used";
 import { generateNodeId } from "@/lib/utils/id";
 import {
@@ -169,6 +170,13 @@ export default function ProjectLibraryPage() {
 
   const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges, syncEdges } = useEdges(id);
   const intake = useAcceptanceIntake({
+    projectId: id,
+    nodes: dataNodes,
+    edges: dataEdges,
+    applyMutations,
+    syncEdges,
+  });
+  const relations = useNodeRelations({
     projectId: id,
     nodes: dataNodes,
     edges: dataEdges,
@@ -490,6 +498,7 @@ export default function ProjectLibraryPage() {
         onUpdate={handleNodeUpdate}
         onCreateNode={handleCreateNodeFromPanel}
         intake={intake}
+        relations={relations}
       >
         <PageSurface
           fill={fillsPane}

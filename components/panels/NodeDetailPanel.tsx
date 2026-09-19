@@ -27,6 +27,7 @@ import { AcceptanceAuthoredFields } from "@/components/panels/AcceptanceAuthored
 import { AcceptancePlatformsSection } from "@/components/panels/AcceptancePlatformsSection";
 import { DecisionEditor } from "@/components/panels/DecisionEditor";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
+import type { NodeRelations } from "@/lib/hooks/useNodeRelations";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useProjectId } from "@/lib/hooks/useProjectId";
 import {
@@ -80,6 +81,12 @@ interface NodeDetailPanelProps {
   onCreateAcceptanceForAnchor?: (anchor: Node, title: string) => Promise<Node>;
   /** The acceptance decompose gestures, on surfaces whose panels can write. */
   intake?: AcceptanceIntake;
+  /**
+   * Writing a node's relations (`useNodeRelations`), forwarded to the detail
+   * panel's Relations group. Absent on a read-only surface, which is what makes
+   * every line there read-only and drops the empty ones.
+   */
+  relations?: NodeRelations;
   onZoomShot?: (node: Node, platform: PlatformId) => void;
   /**
    * Every finding in the project, denormalized once by `buildFindingRows` — the
@@ -666,6 +673,7 @@ export function NodeDetailPanel({
   onCreateNode,
   onCreateAcceptanceForAnchor,
   intake,
+  relations,
   onZoomShot,
   findings,
   onOpenCriterion,
@@ -770,6 +778,7 @@ export function NodeDetailPanel({
           onNavigate={onNavigate}
           onCreateAcceptanceForAnchor={onCreateAcceptanceForAnchor}
           intake={intake}
+          relations={relations}
           findings={findings}
           onOpenCriterion={onOpenCriterion}
         />
