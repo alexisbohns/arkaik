@@ -183,6 +183,25 @@ export const DECISION_STATUS_STYLES: Record<DecisionStatusId, { badge: string; d
   superseded: { badge: "text-violet-400", dot: "bg-violet-400" },
 };
 
+/**
+ * A decision status as a **boxed mark** — the shared 24px tile's colours, one
+ * row per status.
+ *
+ * The same families {@link DECISION_STATUS_STYLES} paints a badge and a dot in,
+ * turned into the tint-plus-readable-text pair every tile on a timeline rail
+ * wears (the Changelog's shipped mark, the Findings board's verdicts). Whole
+ * literal class strings, never composed from a shade, for the reason stated at
+ * the top of this file.
+ */
+export const DECISION_STATUS_TILE: Record<DecisionStatusId, string> = {
+  proposed:   "bg-gray-400/10 text-gray-600 dark:text-gray-400",
+  approved:   "bg-blue-400/10 text-blue-600 dark:text-blue-400",
+  enacted:    "bg-green-500/10 text-green-600 dark:text-green-400",
+  rejected:   "bg-red-400/10 text-red-600 dark:text-red-400",
+  deprecated: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  superseded: "bg-violet-400/10 text-violet-600 dark:text-violet-400",
+};
+
 export const DECISION_STATUS_ICONS: Record<DecisionStatusId, LucideIcon> = {
   proposed:   CircleDotDashed,
   approved:   ThumbsUp,
