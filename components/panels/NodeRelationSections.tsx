@@ -19,7 +19,6 @@
 
 "use client";
 
-import { useState } from "react";
 import { XIcon } from "lucide-react";
 import { toast } from "sonner";
 
@@ -28,7 +27,6 @@ import { EntityRow } from "@/components/graph/nodes/EntityRow";
 import { RefList } from "@/components/graph/nodes/RefBadges";
 import { NodeSearchCombobox } from "@/components/panels/NodeSearchCombobox";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SPECIES } from "@/lib/config/species";
 import { SPECIES_ICONS } from "@/components/graph/nodes/node-styles";
 import { SEVERITY_CHIP, SEVERITY_LABEL } from "@/components/quality/quality-styles";
@@ -38,6 +36,7 @@ import { attachEmptiesMembership } from "@/lib/utils/acceptance-intake";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { cn } from "@/lib/utils";
 import type { Node, Edge } from "@/lib/data/types";
+import type { SpeciesId } from "@arkaik/schema";
 
 export interface InvocationSectionProps {
   node: Node;
@@ -423,6 +422,15 @@ export function CoversSection({ node, allNodes, allEdges, hasProducts, onNavigat
   );
 }
 
+/**
+ * The species a `covers` edge may anchor to, as a module constant.
+ *
+ * Not an inline `["view", "flow"]`: the combobox memoises its candidate list on
+ * this array's identity, and a fresh array on every render would make that
+ * memo dead weight.
+ */
+const ANCHOR_SPECIES: readonly SpeciesId[] = ["view", "flow"];
+
 interface AttachAnchorRowProps {
   node: Node;
   allNodes: Node[];
@@ -463,8 +471,10 @@ interface AttachAnchorRowProps {
  * acceptance's product precisely so the common path never trips this.
  */
 function AttachAnchorRow({ node, allNodes, allEdges, nodesById, hasProducts, intake, run }: AttachAnchorRowProps) {
-  const [species, setSpecies] = useState<"view" | "flow">("view");
-
+  // The View/Flow `Select` is gone. It existed only because the combobox could
+  // search one species at a time; with both in one list it is a control asking
+  // a question the search result already answers — the conclusion the playlist
+  // editor's Add-step popover reached first.
   function announceTriage(anchor: Pick<Node, "id" | "species" | "title" | "metadata">) {
     if (!hasProducts) return;
     // Evaluated against the edges as they were BEFORE the write — the predicate
@@ -474,34 +484,27 @@ function AttachAnchorRow({ node, allNodes, allEdges, nodesById, hasProducts, int
   }
 
   return (
-    <div className="mt-1 grid gap-2 sm:grid-cols-[7rem_1fr] sm:items-center">
-      <Select value={species} onValueChange={(value) => setSpecies(value as "view" | "flow")}>
-        <SelectTrigger aria-label="Anchor species">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="view">View</SelectItem>
-          <SelectItem value="flow">Flow</SelectItem>
-        </SelectContent>
-      </Select>
-      <NodeSearchCombobox
-        species={species}
-        allNodes={allNodes}
-        onSelect={(anchorId) => {
-          const anchor = nodesById.get(anchorId);
-          if (!anchor) return;
-          void run(async () => {
-            await intake.attach(node, anchor);
-            announceTriage(anchor);
-          }, "Couldn't attach that node.");
-        }}
-        onCreate={(title) =>
-          run(async () => {
-            const created = await intake.createAnchor(node, species, title);
-            if (created) toast.success(`Created "${created.title}" and attached it.`);
-          }, `Couldn't create the ${species}.`)
-        }
-      />
-    </div>
+    <NodeSearchCombobox
+      species={ANCHOR_SPECIES}
+      allNodes={allNodes}
+      excludeIds={coveredAnchorsOf(node, allNodes, allEdges).map((anchor) => anchor.id)}
+      onSelect={(anchorId) => {
+        const anchor = nodesById.get(anchorId);
+        if (!anchor) return;
+        void run(async () => {
+          await intake.attach(node, anchor);
+          announceTriage(anchor);
+        }, "Couldn't attach that node.");
+      }}
+      onCreate={(species, title) =>
+        run(async () => {
+          // `intake.createAnchor` takes the narrow anchor species; the grammar
+          // admits nothing else on this line, so the cast is the type system
+          // catching up with `ANCHOR_SPECIES` above.
+          const created = await intake.createAnchor(node, species as "view" | "flow", title);
+          if (created) toast.success(`Created "${created.title}" and attached it.`);
+        }, `Couldn't create the ${species}.`)
+      }
+    />
   );
 }

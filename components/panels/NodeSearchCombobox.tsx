@@ -3,15 +3,40 @@
 import { useMemo, useState } from "react";
 import { buttonVariants } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
+import { SPECIES } from "@/lib/config/species";
 import { fuzzyScore } from "@/lib/utils/search";
 import { cn } from "@/lib/utils";
 import type { Node as DataNode } from "@/lib/data/types";
+import type { SpeciesId } from "@arkaik/schema";
 
 interface NodeSearchComboboxProps {
-  species: "view" | "flow";
+  /** The species this list may offer, from the grammar. One or several. */
+  species: readonly SpeciesId[];
   allNodes: DataNode[];
+  /** Ids this list must not offer — already related, or the node itself. */
+  excludeIds?: readonly string[];
   onSelect: (nodeId: string) => void;
-  onCreate?: (title: string) => Promise<void> | void;
+  /**
+   * Create a node of this species with this title, and relate it.
+   *
+   * The species is a parameter because a line may admit more than one (an api
+   * endpoint's `calls` reaches both endpoints and views), and the list then
+   * offers one create row apiece — the caller cannot infer which was chosen.
+   */
+  onCreate?: (species: SpeciesId, title: string) => Promise<void> | void;
+  /**
+   * An extra last row for a value that is not a node at all — Blocked by's free
+   * text. `render` draws it, `onCommit` takes the trimmed query.
+   */
+  freeText?: { render: (query: string) => React.ReactNode; onCommit: (text: string) => void };
+  placeholder?: string;
+  /**
+   * `popover` (the default) floats the list over what follows; `inline` pushes
+   * it down. A relation line passes `inline`: the panel body scrolls, and a
+   * floated list inside it would need portalling to escape the scroll
+   * container.
+   */
+  placement?: "popover" | "inline";
   disabled?: boolean;
 }
 
@@ -23,7 +48,8 @@ interface Candidate {
 
 /**
  * What the list offers: the nodes that match, then — once something is typed
- * that no node of this species answers to — the row that creates it.
+ * that no node of an admissible species answers to — the row that creates it,
+ * one per species.
  *
  * The create affordance used to sit *under* the list as a footer `<Button>`,
  * which is precisely where the arrow keys cannot reach it (audit `shadcn-6`).
@@ -31,13 +57,45 @@ interface Candidate {
  * would have had no keyboard route at all, so it rides in the same array as the
  * matches and is reached the same way: arrow to it, press Enter.
  */
-type Row = { kind: "node"; id: string; title: string } | { kind: "create"; title: string };
+type Row =
+  | { kind: "node"; id: string; title: string }
+  | { kind: "create"; species: SpeciesId; title: string }
+  | { kind: "free-text"; title: string };
+
+const speciesLabel = (id: SpeciesId) => SPECIES.find((s) => s.id === id)?.label ?? id;
+
+/**
+ * The ghost-button treatment the create row has always had, now shared by every
+ * row that is an action rather than a match.
+ *
+ * `first` draws the separator rule above it — only above the *first* action row,
+ * or two stacked creates would draw two lines through the list.
+ */
+const actionRowClass = (active: boolean, first: boolean) =>
+  cn(
+    // Still the ghost button it has always looked like, drawn from the
+    // same `cva` rather than from a copy of its classes.
+    buttonVariants({ variant: "ghost", size: "sm" }),
+    "w-full justify-start",
+    // The rule above it used to be a wrapping `<div className="border-t
+    // mt-1 pt-1">`, which cannot survive the row becoming a single
+    // `role="option"` box. A pseudo-element reproduces it exactly —
+    // `mt-2` opens the same 8px, `-top-1` puts the line at its middle —
+    // and leaves the button's own geometry untouched.
+    first &&
+      "relative mt-2 before:absolute before:inset-x-0 before:-top-1 before:border-t before:border-border",
+    active && "bg-accent text-accent-foreground dark:bg-accent/50",
+  );
 
 export function NodeSearchCombobox({
   species,
   allNodes,
+  excludeIds,
   onSelect,
   onCreate,
+  freeText,
+  placeholder,
+  placement,
   disabled,
 }: NodeSearchComboboxProps) {
   const [query, setQuery] = useState("");
@@ -45,26 +103,30 @@ export function NodeSearchCombobox({
 
   const candidates = useMemo(() => {
     const scoped = allNodes
-      .filter((node) => node.species === species)
-      .map((node) => {
-        const searchable = `${node.id} ${node.title}`;
-        return {
+      .filter((node) => species.includes(node.species))
+      .filter((node) => !excludeIds?.includes(node.id))
+      .map((node) =>
+        ({
           id: node.id,
           title: node.title,
-          score: fuzzyScore(query, searchable),
-        } satisfies Candidate;
-      })
+          score: fuzzyScore(query, `${node.id} ${node.title}`),
+        }) satisfies Candidate,
+      )
       .filter((candidate) => candidate.score >= 0)
       .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title));
 
     return scoped.slice(0, 8);
-  }, [allNodes, query, species]);
+  }, [allNodes, excludeIds, query, species]);
 
   const trimmed = query.trim();
-  const hasExactTitle = allNodes.some(
-    (node) => node.species === species && node.title.toLowerCase() === trimmed.toLowerCase(),
-  );
-  const canCreate = Boolean(trimmed) && Boolean(onCreate) && !hasExactTitle;
+  // Per species, not across the list: "Login" existing as a view must not
+  // suppress the offer to create a flow by that name.
+  const canCreateIn = (candidate: SpeciesId) =>
+    Boolean(trimmed) &&
+    Boolean(onCreate) &&
+    !allNodes.some(
+      (node) => node.species === candidate && node.title.toLowerCase() === trimmed.toLowerCase(),
+    );
 
   const rows = useMemo<Row[]>(() => {
     const matches: Row[] = candidates.map((candidate) => ({
@@ -72,14 +134,21 @@ export function NodeSearchCombobox({
       id: candidate.id,
       title: candidate.title,
     }));
-    return canCreate ? [...matches, { kind: "create", title: trimmed }] : matches;
-  }, [candidates, canCreate, trimmed]);
+    const creates: Row[] = species
+      .filter(canCreateIn)
+      .map((candidate) => ({ kind: "create", species: candidate, title: trimmed }));
+    const free: Row[] = freeText && trimmed ? [{ kind: "free-text", title: trimmed }] : [];
+    return [...matches, ...creates, ...free];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidates, species, trimmed, onCreate, allNodes, freeText]);
 
-  async function handleCreate() {
+  const firstActionIndex = rows.findIndex((row) => row.kind !== "node");
+
+  async function handleCreate(candidate: SpeciesId) {
     if (!onCreate || !trimmed || busy) return;
     setBusy(true);
     try {
-      await onCreate(trimmed);
+      await onCreate(candidate, trimmed);
       setQuery("");
     } finally {
       setBusy(false);
@@ -91,19 +160,34 @@ export function NodeSearchCombobox({
     setQuery("");
   }
 
+  const speciesPhrase = species.map((id) => `${speciesLabel(id).toLowerCase()}s`).join(" or ");
+
   return (
     <Combobox<Row>
       value={query}
       onValueChange={setQuery}
       items={rows}
-      itemKey={(row) => (row.kind === "create" ? "create" : row.id)}
+      itemKey={(row) =>
+        row.kind === "node" ? row.id : row.kind === "create" ? `create:${row.species}` : "free-text"
+      }
       onSelect={(row) => {
-        if (row.kind === "create") void handleCreate();
-        else handleSelect(row.id);
+        if (row.kind === "create") void handleCreate(row.species);
+        else if (row.kind === "free-text") {
+          freeText?.onCommit(row.title);
+          setQuery("");
+        } else handleSelect(row.id);
       }}
       renderItem={(row) =>
         row.kind === "create" ? (
-          <>Create &quot;{row.title}&quot;</>
+          species.length > 1 ? (
+            <>
+              Create {speciesLabel(row.species).toLowerCase()} &quot;{row.title}&quot;
+            </>
+          ) : (
+            <>Create &quot;{row.title}&quot;</>
+          )
+        ) : row.kind === "free-text" ? (
+          freeText?.render(row.title)
         ) : (
           <>
             <span className="font-medium">{row.title}</span>
@@ -112,24 +196,14 @@ export function NodeSearchCombobox({
         )
       }
       itemClassName={(row, active) =>
-        row.kind === "create"
-          ? cn(
-              // Still the ghost button it has always looked like, drawn from the
-              // same `cva` rather than from a copy of its classes.
-              buttonVariants({ variant: "ghost", size: "sm" }),
-              // The rule above it used to be a wrapping `<div className="border-t
-              // mt-1 pt-1">`, which cannot survive the row becoming a single
-              // `role="option"` box. A pseudo-element reproduces it exactly —
-              // `mt-2` opens the same 8px, `-top-1` puts the line at its middle —
-              // and leaves the button's own geometry untouched.
-              "relative mt-2 w-full justify-start before:absolute before:inset-x-0 before:-top-1 before:border-t before:border-border",
-              active && "bg-accent text-accent-foreground dark:bg-accent/50",
-            )
-          : cn("w-full rounded-sm px-2 py-1.5 text-left text-sm", active && "bg-muted")
+        row.kind === "node"
+          ? cn("w-full rounded-sm px-2 py-1.5 text-left text-sm", active && "bg-muted")
+          : actionRowClass(active, rows.indexOf(row) === firstActionIndex)
       }
       empty={<p className="px-2 py-2 text-xs text-muted-foreground">No matches.</p>}
-      placeholder={`Search ${species}s...`}
-      aria-label={`Search existing ${species} nodes or create a new one`}
+      placeholder={placeholder ?? `Search ${speciesPhrase}...`}
+      aria-label={`Search existing ${speciesPhrase} or create one`}
+      placement={placement}
       disabled={disabled || busy}
     />
   );
