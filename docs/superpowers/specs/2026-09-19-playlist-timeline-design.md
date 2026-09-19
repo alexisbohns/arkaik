@@ -73,11 +73,26 @@ third size of the same idea. Surface: `bg-muted text-muted-foreground`, plus
 
 ### Row bodies
 
-- **view / flow** — the node's title on line 1 (`text-sm font-medium`), the id
-  muted on line 2, the species word muted and right-aligned on line 1. This
+- **view / flow** — one line: the node's title (`text-sm font-medium`), a
+  copy-id chip beside it, and the step's per-platform status at the right. This
   inverts today's row, which leads with `entry.type` and demotes the title.
-  A reference to a node that no longer exists shows `Missing node` in place of
-  the title and keeps the id, so the dangling reference stays fixable.
+
+  **The id is not written out.** A column of `V-…` slugs under a column of
+  titles is the same fact twice, and the only thing anyone ever did with the id
+  was copy it — so it lives on a `CopyIdChip` (the hash chip extracted out of
+  `PanelHeaderEntityId`, since the two must not drift) revealed by the row on
+  exactly the triggers the reorder arrows use. A reference to a node that is no
+  longer in the graph is the one exception: there the id is the only identity
+  there is, so it is spelled out beside `Missing node`.
+
+  **The trailing slot is status, not species.** The word "view" or "flow"
+  restated what the panel's own heading already implied; `PlatformStatusIcons`
+  puts the platform's glyph in the status colour there instead — the mark the
+  Library card and the acceptance rows already use — so a playlist read top to
+  bottom says how far each step has got, and on which platform. It needs the
+  surface's `ProductScope`, threaded `NodeDetailPanel` → `PlaylistEditor` →
+  list → row, and optional the whole way down: a playlist handed no scope shows
+  titles without marks rather than nothing.
 - **condition / junction** — the collapsible bar (§4), then the nested lists.
 
 Nested lists restart numbering at 1 — a branch is its own sequence — and are set

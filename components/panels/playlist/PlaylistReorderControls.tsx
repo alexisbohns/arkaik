@@ -40,6 +40,19 @@ export function rowGroupClass(depth: number): string {
   return ROW_GROUPS[level(depth)];
 }
 
+/**
+ * The classes that light something up when its row is hovered or tapped: the
+ * arrows below, and the row's copy-id chip.
+ *
+ * Exported so the chip answers to exactly the same two triggers as the arrows.
+ * They are one affordance as far as the reader is concerned — "this row has
+ * controls, here they are" — and two hand-written copies of the rule would
+ * eventually light at two different moments.
+ */
+export function rowRevealClass(depth: number): string {
+  return REVEALS[level(depth)];
+}
+
 interface PlaylistReorderControlsProps {
   index: number;
   total: number;

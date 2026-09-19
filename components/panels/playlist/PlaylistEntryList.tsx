@@ -12,7 +12,11 @@ import {
 import { AddEntryButton } from "@/components/panels/playlist/AddEntryButton";
 import { DebouncedLabelInput } from "@/components/panels/playlist/DebouncedLabelInput";
 import { PlaylistIndexMenu } from "@/components/panels/playlist/PlaylistIndexMenu";
-import { PlaylistReorderControls, rowGroupClass } from "@/components/panels/playlist/PlaylistReorderControls";
+import { PlaylistReorderControls, rowGroupClass, rowRevealClass } from "@/components/panels/playlist/PlaylistReorderControls";
+import { CopyIdChip, EntityId } from "@/components/graph/nodes/EntityBadges";
+import { PlatformStatusIcons } from "@/components/graph/nodes/PlatformStatusIcons";
+import { getNodePlatformStatuses } from "@/lib/utils/platform-status";
+import { scopedPlatforms, type ProductScope } from "@/lib/utils/product-scope";
 import { describeBranchCount, moveEntry } from "@/lib/utils/playlist";
 import { cn } from "@/lib/utils";
 import type { Node, PlaylistEntry } from "@/lib/data/types";
@@ -47,6 +51,12 @@ interface PlaylistEntryListProps {
   onCreateNode?: (species: "flow" | "view", title: string) => Promise<Node>;
   depth?: number;
   heading?: string;
+  /**
+   * The surface's product scope, for the per-platform marks on a step. Optional
+   * because it reaches here from the panel four levels up, and a playlist that
+   * has not been handed one shows titles without marks rather than nothing.
+   */
+  scope?: ProductScope;
 }
 
 interface PlaylistEntryRowProps {
@@ -62,6 +72,7 @@ interface PlaylistEntryRowProps {
   onMove: (delta: -1 | 1) => Promise<void> | void;
   onMoveTo: (target: number) => Promise<void> | void;
   depth: number;
+  scope?: ProductScope;
   active: boolean;
   /** Told which kind of pointer started the press — see `PlaylistEntryList`. */
   onActivate: (pointerType: string) => void;
@@ -154,6 +165,7 @@ function PlaylistEntryRow({
   onMove,
   onMoveTo,
   depth,
+  scope,
   active,
   onActivate,
 }: PlaylistEntryRowProps) {
@@ -187,15 +199,47 @@ function PlaylistEntryRow({
           padding on the row would end the connector above the gap and leave the
           marks unlinked. */}
       <div className={cn("flex min-w-0 flex-col", !last && "pb-4")}>
-        {(entry.type === "view" || entry.type === "flow") && (
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
+        {(entry.type === "view" || entry.type === "flow") && refId && (
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2">
               <p className={cn("truncate text-sm font-medium", !refNode && "text-destructive")}>
                 {refNode?.title ?? "Missing node"}
               </p>
-              <p className="truncate text-xs text-muted-foreground">{refId}</p>
+              {/* The id is no longer written out on the row — the title says
+                  which step this is, and a column of `V-…` slugs under a column
+                  of titles is the same fact twice. It lives on the chip
+                  instead: one click puts it on the clipboard, which is the only
+                  thing anyone did with it anyway.
+
+                  Revealed by the row, exactly as the reorder arrows are, so a
+                  resting playlist is titles and status and nothing else. */}
+              <CopyIdChip
+                id={refId}
+                className={cn(
+                  "opacity-0 transition-opacity focus-visible:opacity-100",
+                  rowRevealClass(depth),
+                )}
+              />
             </div>
-            <span className="shrink-0 pt-0.5 text-xs capitalize text-muted-foreground">{entry.type}</span>
+
+            {/* A reference to a node that is not in the graph is the one case
+                where the id is the only identity there is, so it is spelled out
+                — losing it would leave a row reading "Missing node" and nothing
+                to go and fix. */}
+            {!refNode && <EntityId id={refId} />}
+
+            {/* What used to be the word "view" or "flow" — which the panel's own
+                heading already implied — is now the step's per-platform status:
+                the platform's glyph in the status colour, the mark the Library
+                card and the acceptance rows already use. A playlist read top to
+                bottom says how far each step has got, on which platform. */}
+            {refNode && scope && (
+              <PlatformStatusIcons
+                className="shrink-0"
+                platforms={scopedPlatforms(refNode, scope)}
+                platformStatuses={getNodePlatformStatuses(refNode)}
+              />
+            )}
           </div>
         )}
 
@@ -209,6 +253,7 @@ function PlaylistEntryRow({
               allNodes={allNodes}
               onCycleBlocked={onCycleBlocked}
               onCreateNode={onCreateNode}
+              scope={scope}
               onChange={(next) => onChangeEntry({ ...entry, if_true: next })}
             />
             <PlaylistEntryList
@@ -219,6 +264,7 @@ function PlaylistEntryRow({
               allNodes={allNodes}
               onCycleBlocked={onCycleBlocked}
               onCreateNode={onCreateNode}
+              scope={scope}
               onChange={(next) => onChangeEntry({ ...entry, if_false: next })}
             />
           </BranchBar>
@@ -280,6 +326,7 @@ function PlaylistEntryRow({
                     allNodes={allNodes}
                     onCycleBlocked={onCycleBlocked}
                     onCreateNode={onCreateNode}
+                    scope={scope}
                     onChange={(nextEntries) => {
                       const nextCases = entry.cases.map((item, idx) => {
                         if (idx !== caseIndex) return item;
@@ -321,6 +368,7 @@ export function PlaylistEntryList({
   onCreateNode,
   depth = 0,
   heading,
+  scope,
 }: PlaylistEntryListProps) {
   /**
    * Which row is showing its reorder arrows on a touch device. Per-list: a tap
@@ -375,6 +423,7 @@ export function PlaylistEntryList({
               onCycleBlocked={onCycleBlocked}
               onCreateNode={onCreateNode}
               depth={depth}
+              scope={scope}
               active={activeIndex === index}
               onActivate={(pointerType) => setActiveIndex(pointerType === "mouse" ? null : index)}
               onMove={(delta) => handleMove(index, delta)}
