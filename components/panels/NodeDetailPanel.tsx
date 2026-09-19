@@ -677,7 +677,12 @@ export function NodeDetailPanel({
   // `metadata` wholesale, as every metadata write here does — spreads it and
   // silently drops A's edit. Each writer that takes this ref reads it as its
   // spread base and writes its result back into it before calling `onUpdate`,
-  // so those writers never race each other.
+  // so those writers do not overwrite each other's *completed* edits. Not a
+  // total order: the resync below can still regress the base if writer A's
+  // response lands while writer B is in flight. That mechanism predates this
+  // ref moving up here — the identical effect ran in `DecisionEditor` — and
+  // closing it needs an in-flight count, which is a change with failure modes
+  // of its own.
   //
   // It lives here rather than in `DecisionEditor`, which owned it until Blocked
   // by moved out of that editor and into the Relations group: the two are now
@@ -696,9 +701,15 @@ export function NodeDetailPanel({
   // Per record, because the call site keys this component on `node.id`. That
   // key is load-bearing for this ref and not decoration: a panel slot is
   // refreshed in place onto a different record, and without the remount the
-  // first write on the new one would spread the previous one's metadata — a
-  // worse fault than the staleness the ref exists to prevent. The effect alone
-  // cannot cover it, since it runs after the paint the click can land on.
+  // first write on the new one would spread the previous one's metadata.
+  //
+  // The effect below cannot cover that, and not for a timing reason: its
+  // dependency is `node.metadata`, which a record switch need not change at
+  // all. Swap a slot from a record whose metadata is `undefined` — with a
+  // write in flight, so the ref holds `{ blocked_by: "x" }` — to another whose
+  // metadata is also `undefined`, and the dep is equal, the effect never runs,
+  // and the new record's first write inherits the old one's blocker. Only the
+  // remount covers it.
   useEffect(() => {
     metadataRef.current = node.metadata;
   }, [node.metadata]);

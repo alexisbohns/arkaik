@@ -85,9 +85,11 @@ function useDebouncedMetadataField(
  * four of the grammar-derived relation lines `relationLinesFor("decision")`
  * produces, not as a list this species has written out for it. Blocked by went
  * the same way — it was a field here, under "Context — why", and is now the
- * Relations group's first line on every species alike. With the links and the
- * blocker gone this editor reads nothing but its own node, so `allNodes`,
- * `allEdges` and `onNavigate` all went with them.
+ * Relations group's first line on every species alike.
+ *
+ * What is left reads nothing but its own node: no `allNodes`, no `allEdges`,
+ * no `onNavigate`. The edges went when the links did; the node list and the
+ * navigate callback were the blocker's, and went with it.
  */
 export function DecisionEditor({ node, onUpdate, metadataRef }: DecisionEditorProps) {
   // Per-mount: the panel stack keeps hidden panels mounted, so two decisions can

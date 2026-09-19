@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import { XIcon } from "lucide-react";
+import { toast } from "sonner";
 
 import { RelationLine, RelationRowItem } from "@/components/panels/RelationLine";
 import { Button } from "@/components/ui/button";
@@ -13,9 +14,10 @@ import { SPECIES_IDS } from "@arkaik/schema";
  * Every species, because `blocked_by` may name any node.
  *
  * The grammar's own list rather than six strings written out here: a
- * hand-written one stops being true the day a species is added. Read off the
- * frozen module-level constant, which also keeps the combobox's candidate memo
- * — keyed on this array's identity — alive across renders.
+ * hand-written one stops being true the day a species is added. Aliased at
+ * module level rather than spread at the call site, so the combobox's
+ * candidate memo — keyed on this array's identity — stays alive across
+ * renders.
  */
 const ANY_SPECIES = SPECIES_IDS;
 
@@ -83,11 +85,55 @@ export function BlockedByField({ node, onUpdate, metadataRef, allNodes, onNaviga
   // Memoised because it is a dependency of the combobox's candidate memo, and
   // that memo fuzzy-scores every node in the project.
   const excludeIds = useMemo(() => [node.id], [node.id]);
+  // A boolean, not the value being written: every comparison either side of
+  // this asks only "is anything in flight". The same shape `CoversSection` and
+  // `EdgeRelationLine` use, for the reasons their copies give.
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
 
-  function commit(next: string | null) {
-    const metadata = withBlockedBy(metadataRef.current, next);
-    metadataRef.current = metadata;
-    void onUpdate?.(node.id, { metadata });
+  /**
+   * Write the new value, reporting a failure instead of swallowing it, and
+   * answering whether it landed.
+   *
+   * The answer is what the relation line closes on: `false` keeps it open over
+   * the query that produced it, because a toast over a line that already shut
+   * and dropped the typed text is a worse account of what happened than no
+   * toast at all. The same contract every other line on this panel follows —
+   * this one used to discard its promise, which left a rejected write silent,
+   * the field live through the round trip, and the combobox's own `busy` guard
+   * inert because nothing it awaited ever resolved to `false`.
+   *
+   * **The gate is the ref, not the state.** `disabled` only reaches the DOM on
+   * the next render, and two clicks can land in the same task before React has
+   * re-rendered. A suppressed duplicate answers `false` and says nothing: it is
+   * the same gesture, not a failed one, so a toast would be the second lie.
+   *
+   * **The shared base is written optimistically and never rolled back.** A
+   * failed write leaves `metadataRef` holding a value nothing persisted, which
+   * the next sibling write would carry. That is the protocol every sharer
+   * already follows — none of them roll back — and it is the safe half of the
+   * trade: writing back only on success would leave a sibling firing inside
+   * this round trip spreading a base without this edit, which is the lost edit
+   * the ref exists to prevent. Rolling back cannot distinguish its own value
+   * from a sibling's that landed meanwhile.
+   */
+  async function commit(next: string | null): Promise<boolean> {
+    if (inFlight.current) return false;
+    inFlight.current = true;
+    setBusy(true);
+    try {
+      const metadata = withBlockedBy(metadataRef.current, next);
+      metadataRef.current = metadata;
+      await onUpdate?.(node.id, { metadata });
+      return true;
+    } catch (err) {
+      toast.error("Couldn't save what blocks this.");
+      console.error(err);
+      return false;
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
   }
 
   return (
@@ -102,6 +148,7 @@ export function BlockedByField({ node, onUpdate, metadataRef, allNodes, onNaviga
               // the one pick that could never mean anything.
               excludeIds,
               placeholder: "Search nodes, or type a reason...",
+              disabled: busy,
               onSelect: (nodeId) => commit(nodeId),
               freeText: {
                 render: (query) => <>Blocked by &quot;{query}&quot;</>,
@@ -117,7 +164,8 @@ export function BlockedByField({ node, onUpdate, metadataRef, allNodes, onNaviga
             <RelationRowItem
               node={blockedNode}
               onNavigate={onNavigate}
-              onRemove={onUpdate && (() => commit(null))}
+              onRemove={onUpdate && (() => void commit(null))}
+              removeDisabled={busy}
               removeLabel={`No longer blocked by ${blockedNode.title}`}
             />
           ) : (
@@ -132,7 +180,8 @@ export function BlockedByField({ node, onUpdate, metadataRef, allNodes, onNaviga
                   size="icon"
                   className="size-7 shrink-0"
                   aria-label="Clear what blocks this"
-                  onClick={() => commit(null)}
+                  disabled={busy}
+                  onClick={() => void commit(null)}
                 >
                   <XIcon className="size-3.5" />
                 </Button>
