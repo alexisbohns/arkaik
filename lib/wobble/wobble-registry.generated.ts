@@ -120,6 +120,7 @@ export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "monitor-smartphone", seed: 19 },
   { name: "moon", seed: 16 },
   { name: "mountain", seed: 2 },
+  { name: "mouse-pointer-click", seed: 1 },
   { name: "network", seed: 17 },
   { name: "newspaper", seed: 8 },
   { name: "notebook-pen", seed: 6 },

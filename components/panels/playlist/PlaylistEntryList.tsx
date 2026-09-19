@@ -1,9 +1,8 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import { ChevronRightIcon, PlusIcon, TicketCheckIcon, TicketXIcon, Trash2Icon } from "lucide-react";
+import { ChevronRightIcon, PlusIcon, TicketCheckIcon, TicketXIcon } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import {
   Collapsible,
   CollapsibleContent,
@@ -11,10 +10,12 @@ import {
 } from "@/components/ui/collapsible";
 import { AddEntryButton } from "@/components/panels/playlist/AddEntryButton";
 import { EditableLabel } from "@/components/panels/playlist/EditableLabel";
+import { JunctionCaseMenu } from "@/components/panels/playlist/JunctionCaseMenu";
 import { PlaylistIndexMenu } from "@/components/panels/playlist/PlaylistIndexMenu";
 import { PlaylistReorderControls, rowGroupClass, rowRevealClass } from "@/components/panels/playlist/PlaylistReorderControls";
 import { CopyIdChip, EntityId } from "@/components/graph/nodes/EntityBadges";
 import { PlatformStatusIcons } from "@/components/graph/nodes/PlatformStatusIcons";
+import { ICON_TILE } from "@/components/journal/DeliverableHoverCard";
 import { getNodePlatformStatuses } from "@/lib/utils/platform-status";
 import { scopedPlatforms, type ProductScope } from "@/lib/utils/product-scope";
 import { describeBranchCount, moveEntry } from "@/lib/utils/playlist";
@@ -78,9 +79,6 @@ interface PlaylistEntryRowProps {
   /** Told which kind of pointer started the press — see `PlaylistEntryList`. */
   onActivate: (pointerType: string) => void;
 }
-
-/** A junction case's entries, set off by a rule down their left. */
-const NESTED = "border-l border-border pl-3";
 
 /**
  * A condition's two outcomes.
@@ -305,86 +303,115 @@ function PlaylistEntryRow({
         {entry.type === "junction" && (
           <BranchBar entry={entry} ariaLabel="Junction label" placeholder="Junction" onChangeEntry={onChangeEntry}>
             {/*
-              * Keyed by index, never by `playlistCase.label`: the label is
-              * edited by the Input inside this row, so a label key made every
-              * persisted keystroke remount the row, drop focus, and throw away
-              * whatever was typed during the in-flight write — one click per
-              * character — while also wiping the nested list's own state.
+              * The case rail. Same grid as the entry rail above it — a mark, a
+              * connector, content beside them — because a case is a thing the
+              * junction holds in exactly the way a step is a thing the playlist
+              * holds, and drawing one as a rail and the other as a stack of
+              * boxes made a junction read as a different kind of object every
+              * time you opened one.
               *
-              * Index is the right key because `JunctionCase`
-              * (packages/schema/src/playlist.ts:3-6) carries no id, and cases
-              * are never reordered: this editor only appends (Add case) and
-              * removes, there is no case-level move control (unlike entries),
-              * and nothing else in the repo sorts or splices `cases`. A removal
-              * still shifts every later case up one index; `DebouncedLabelInput`
-              * handles that by adopting the label that lands in the row.
+              * The connector is **dashed**, and here that earns the ink the
+              * entry rail's last segment did not: a playlist is a sequence and a
+              * junction's cases are alternatives, so a solid line down them
+              * would claim an order that does not exist. Dashes say "these are
+              * the ways out", not "first this, then that".
+              *
+              * No `gap` on the column, for the usual reason — the connector is
+              * `flex-1` in a stretched cell and a gap would cut it.
               */}
-            {entry.cases.map((playlistCase, caseIndex) => (
-              <div key={caseIndex} className="flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <EditableLabel
-                    value={playlistCase.label}
-                    onCommit={(label) => {
-                      const nextCases = entry.cases.map((item, idx) => {
-                        if (idx !== caseIndex) return item;
-                        return { ...item, label };
-                      });
-                      void onChangeEntry({ ...entry, cases: nextCases });
-                    }}
-                    ariaLabel={`Junction case ${caseIndex + 1} label`}
-                    placeholder={`Case ${caseIndex + 1}`}
-                  />
-                  {/* The case keeps its own delete. A case is not an entry on
-                      the rail — it has no index tile, so it has nowhere else to
-                      put one. */}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Remove case ${caseIndex + 1}`}
-                    className="shrink-0 cursor-pointer text-destructive"
-                    onClick={() => {
-                      const nextCases = entry.cases.filter((_, idx) => idx !== caseIndex);
-                      void onChangeEntry({ ...entry, cases: nextCases });
-                    }}
-                  >
-                    <Trash2Icon className="size-4" />
-                  </Button>
-                </div>
-                <div className={NESTED}>
-                  <PlaylistEntryList
-                    entries={playlistCase.entries}
-                    depth={depth + 1}
-                    flowNodeId={flowNodeId}
-                    allNodes={allNodes}
-                    onCycleBlocked={onCycleBlocked}
-                    onCreateNode={onCreateNode}
-                    scope={scope}
-                    onChange={(nextEntries) => {
-                      const nextCases = entry.cases.map((item, idx) => {
-                        if (idx !== caseIndex) return item;
-                        return { ...item, entries: nextEntries };
-                      });
-                      return onChangeEntry({ ...entry, cases: nextCases });
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
+            <div className="flex flex-col">
+              {/*
+                * Keyed by index, never by `playlistCase.label`: the label is
+                * edited in place on this row, so a label key made every
+                * persisted keystroke remount the row, drop focus, and throw away
+                * whatever was typed during the in-flight write — one click per
+                * character — while also wiping the nested list's own state.
+                *
+                * Index is the right key because `JunctionCase`
+                * (packages/schema/src/playlist.ts:3-6) carries no id, and cases
+                * are never reordered: this editor only appends and removes,
+                * there is no case-level move control (unlike entries), and
+                * nothing else in the repo sorts or splices `cases`. A removal
+                * still shifts every later case up one index; `EditableLabel`
+                * handles that by adopting the label that lands in the row.
+                */}
+              {entry.cases.map((playlistCase, caseIndex) => (
+                <div key={caseIndex} className="grid grid-cols-[auto_1fr] gap-x-3">
+                  <div className="flex flex-col items-center">
+                    <JunctionCaseMenu
+                      index={caseIndex}
+                      total={entry.cases.length}
+                      onRemove={() => {
+                        const nextCases = entry.cases.filter((_, idx) => idx !== caseIndex);
+                        void onChangeEntry({ ...entry, cases: nextCases });
+                      }}
+                    />
+                    <span
+                      className="w-0 flex-1 border-l border-dashed border-border"
+                      aria-hidden="true"
+                    />
+                  </div>
 
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="cursor-pointer self-start"
-              onClick={() => void onChangeEntry({
-                ...entry,
-                cases: [...entry.cases, { label: `Case ${entry.cases.length + 1}`, entries: [] }],
-              })}
-            >
-              <PlusIcon className="size-4" />
-              Add case
-            </Button>
+                  <div className="flex min-w-0 flex-col gap-1.5 pb-4">
+                    <EditableLabel
+                      value={playlistCase.label}
+                      onCommit={(label) => {
+                        const nextCases = entry.cases.map((item, idx) => {
+                          if (idx !== caseIndex) return item;
+                          return { ...item, label };
+                        });
+                        void onChangeEntry({ ...entry, cases: nextCases });
+                      }}
+                      ariaLabel={`Junction case ${caseIndex + 1} label`}
+                      placeholder={`Case ${caseIndex + 1}`}
+                    />
+                    {/* No rule around these entries: they are a rail, the case
+                        rail is a second line beside them, and a `border-l`
+                        between the two would be a third. */}
+                    <PlaylistEntryList
+                      entries={playlistCase.entries}
+                      depth={depth + 1}
+                      flowNodeId={flowNodeId}
+                      allNodes={allNodes}
+                      onCycleBlocked={onCycleBlocked}
+                      onCreateNode={onCreateNode}
+                      scope={scope}
+                      onChange={(nextEntries) => {
+                        const nextCases = entry.cases.map((item, idx) => {
+                          if (idx !== caseIndex) return item;
+                          return { ...item, entries: nextEntries };
+                        });
+                        return onChangeEntry({ ...entry, cases: nextCases });
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+
+              {/* The rail's next position, the way `AddEntryButton` is the entry
+                  rail's — dashed like it, blue like the case marks above it, so
+                  "add a case" and "add a step" are never the same button in two
+                  places on one screen. */}
+              <div className="grid grid-cols-[auto_1fr] gap-x-3">
+                <button
+                  type="button"
+                  aria-label="Add case"
+                  title="Add case"
+                  onClick={() => void onChangeEntry({
+                    ...entry,
+                    cases: [...entry.cases, { label: `Case ${entry.cases.length + 1}`, entries: [] }],
+                  })}
+                  className={cn(
+                    ICON_TILE,
+                    "cursor-pointer border border-dashed border-blue-500/40 text-blue-600/70 transition-colors dark:text-blue-400/70",
+                    "hover:border-solid hover:bg-blue-500/10 hover:text-blue-600 dark:hover:text-blue-400",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  )}
+                >
+                  <PlusIcon className="size-3.5" aria-hidden="true" />
+                </button>
+              </div>
+            </div>
           </BranchBar>
         )}
       </div>

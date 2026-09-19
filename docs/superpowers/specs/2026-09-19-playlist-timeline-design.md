@@ -100,8 +100,43 @@ Nested lists restart numbering at 1 — a branch is its own sequence.
 margin inside a grid whose first column is the rail pushes the nested rail away
 from whatever should be carrying it.
 
-A **junction case** sets its entries off with a rule down their left
-(`border-l pl-3`), the idiom `FindingCard` already uses.
+A **junction's cases are a rail of their own** — the same grid as the entry
+rail, because a case is a thing the junction holds in exactly the way a step is
+a thing the playlist holds, and drawing one as a rail and the other as a stack
+of bordered boxes made a junction read as a different kind of object every time
+you opened one.
+
+```
+⟦2⟧ Collection action?                    ⌄
+    4 cases · 5 entries
+    ◈ View collection               ← blue tile, mouse-pointer-click
+    ┊   ⟦1⟧ Collection Detail          ▤  
+    ┊   ⟦+⟧
+    ◈ Create collection
+    ┊   ⟦1⟧ Create Collection          ▤  
+    ┊   ⟦+⟧
+    ◈ Add case (dashed, blue)
+```
+
+- **The mark is a pointer clicking**, in blue at a tenth strength behind a
+  full-strength glyph (`CASE_TILE`), the way the Changelog's ship and forge marks
+  are built. Deliberately not the junction's own `SplitIcon`: the junction is the
+  fork, a case is one road out of it, and repeating the fork on every road says
+  "junction" five times and "which road" never.
+- **Delete moved behind the mark.** A case's red trash can was the only
+  destructive control left on the surface once the playlist's own moved into the
+  index menu, and the loudest thing in the region by some distance. A gesture
+  made once in the life of a case should not sit one stray click away for its
+  whole life.
+- **The connector is dashed**, and here that earns the ink the entry rail's last
+  segment did not: a playlist is a sequence, a junction's cases are alternatives,
+  and a solid line down them would claim an order that does not exist.
+- **Add case is the rail's next position**, dashed like the entry rail's add tile
+  and blue like the marks above it, so "add a case" and "add a step" are never
+  the same button twice on one screen.
+- **No rule around a case's entries.** They are a rail, the case rail is a second
+  line beside them, and a `border-l` between the two would be a third. `NESTED`
+  is gone.
 
 A **condition's two branches** do not. They are headed instead:
 
