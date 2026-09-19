@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckIcon, HashIcon } from "lucide-react";
+import { CheckIcon, CopyIcon, HashIcon } from "lucide-react";
 
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -111,8 +111,58 @@ export function CopyIdChip({ id, className }: CopyIdChipProps) {
 }
 
 /**
+ * The id spelled out, and copyable by clicking it.
+ *
+ * The wide half of {@link PanelHeaderEntityId}. It was a plain `<span>`, which
+ * made the panel header the one place an id was legible but not pastable — you
+ * could copy it by tapping the hash on a narrow window, and had to select it by
+ * hand on a wide one, which is backwards.
+ *
+ * The copy glyph holds its space always and only appears on hover or focus, so
+ * revealing it cannot reflow the header row mid-gesture. The whole chip is the
+ * button, not the glyph: a 12px target inside a row you are already pointing at
+ * is a worse version of the same gesture.
+ */
+function CopyIdText({ id, className }: CopyIdChipProps) {
+  const { copied, copy } = useCopyId(id);
+  const Icon = copied ? CheckIcon : CopyIcon;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          // Spelled out for the reason `CopyIdChip`'s is: the tooltip is
+          // visual-only, so this is the only place a screen reader is told the
+          // chip copies rather than navigates.
+          aria-label={`Copy ${id}`}
+          onClick={copy}
+          className={cn(
+            ENTITY_ID_CLASS,
+            "group inline-flex cursor-pointer items-center gap-1 outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50",
+            copied && "text-green-600 dark:text-green-400",
+            className,
+          )}
+        >
+          {id}
+          <Icon
+            className={cn(
+              "size-3 shrink-0 transition-opacity",
+              copied ? "opacity-100" : "opacity-0 group-hover:opacity-70 group-focus-visible:opacity-70",
+            )}
+            aria-hidden="true"
+          />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{copied ? "Copied" : "Copy id"}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/**
  * The entity id in a **panel header**: the id spelled out at `lg` and up, a
- * {@link CopyIdChip} below it.
+ * {@link CopyIdChip} below it. **Copyable either way** — see {@link CopyIdText}
+ * for why the wide one had to stop being a plain span.
  *
  * A panel header is one row that has to hold a species badge, an id and a close
  * button, and below `lg` a panel is at most half the window and often all of it.
@@ -128,7 +178,7 @@ export function CopyIdChip({ id, className }: CopyIdChipProps) {
 export function PanelHeaderEntityId({ id }: EntityIdProps) {
   return (
     <>
-      <span className={cn(ENTITY_ID_CLASS, "hidden lg:inline-block")}>{id}</span>
+      <CopyIdText id={id} className="hidden lg:inline-flex" />
       <CopyIdChip id={id} className="lg:hidden" />
     </>
   );

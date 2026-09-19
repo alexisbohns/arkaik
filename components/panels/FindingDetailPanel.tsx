@@ -127,10 +127,9 @@ export function FindingDetailPanelHeader({
  * Every section carrying prose somebody had to write is conditional on having
  * something to say, the rule `CriterionDetailPanel` states: a heading over
  * nothing reads as a panel that failed to load rather than as a finding nobody
- * wrote evidence for. Risk, Criterion and Reference are the exceptions,
- * because none of them can ever be empty — the projection derives all five
- * scales for every row, every finding answers to a criterion on a surface, and
- * a row that resolved still has the `id` Reference exists to hand over.
+ * wrote evidence for. Risk and Criterion are the two exceptions, because
+ * neither can ever be empty — the projection derives all five scales for every
+ * row, and every finding answers to a criterion on a surface.
  */
 export function FindingDetailPanel({
   findingId,
@@ -411,26 +410,27 @@ export function FindingDetailPanel({
         </PanelSection>
       )}
 
-      <PanelSection title="Reference">
-        <div className="flex flex-col gap-1.5 text-xs text-muted-foreground">
-          {/* What somebody pastes into an issue or hands to `arkaik kritik`. */}
-          <span className="select-all font-mono">{row.id}</span>
-          {row.issueUrl && (
-            // `break-all` on the text and `shrink-0` on the icon: a GitHub
-            // issue URL is long enough to be cut off mid-path rather than
-            // wrapped.
-            <a
-              href={row.issueUrl}
-              target="_blank"
-              rel="nofollow noreferrer"
-              className="inline-flex min-w-0 max-w-full items-start gap-1.5 underline underline-offset-4 hover:text-foreground"
-            >
-              <ExternalLinkIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-              <span className="min-w-0 break-all">{row.issueUrl}</span>
-            </a>
-          )}
-        </div>
-      </PanelSection>
+      {/* No id down here. The header carries it, and clicking it copies —
+          which is the whole reason this section held one, since a `select-all`
+          span was the only pastable copy of the id the panel had. Two of the
+          same identifier, one of them last in the document, is a section that
+          exists to repeat its own header. */}
+      {row.issueUrl && (
+        <PanelSection title="Issue">
+          {/* `break-all` on the text and `shrink-0` on the icon: a GitHub
+              issue URL is long enough to be cut off mid-path rather than
+              wrapped. */}
+          <a
+            href={row.issueUrl}
+            target="_blank"
+            rel="nofollow noreferrer"
+            className="inline-flex min-w-0 max-w-full items-start gap-1.5 text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
+          >
+            <ExternalLinkIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+            <span className="min-w-0 break-all">{row.issueUrl}</span>
+          </a>
+        </PanelSection>
+      )}
     </div>
   );
 }
