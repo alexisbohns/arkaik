@@ -49,7 +49,7 @@ interface CellDetailPanelProps {
    */
   findings: FindingRow[];
   projectId: string;
-  onOpenFinding: (row: FindingRow) => void;
+  onOpenFinding: (findingId: string) => void;
   onOpenCriterion: (criterionId: string, surface: string) => void;
 }
 

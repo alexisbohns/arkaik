@@ -90,7 +90,7 @@ export function RefsSection({ node }: { node: Node }) {
 export interface FindingsSectionProps {
   node: Node;
   findings: FindingRow[];
-  onOpenFinding: (row: FindingRow) => void;
+  onOpenFinding: (findingId: string) => void;
 }
 
 /**
@@ -126,7 +126,7 @@ export function FindingsSection({ node, findings, onOpenFinding }: FindingsSecti
           <button
             key={row.id}
             type="button"
-            onClick={() => onOpenFinding(row)}
+            onClick={() => onOpenFinding(row.id)}
             className="flex items-center gap-2 text-sm text-left rounded-md px-2 py-1.5 hover:bg-muted transition-colors w-full"
             title={row.title}
           >

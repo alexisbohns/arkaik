@@ -53,7 +53,7 @@ interface RelationsGroupProps {
    */
   relations?: NodeRelations;
   findings?: FindingRow[];
-  onOpenFinding?: (row: FindingRow) => void;
+  onOpenFinding?: (findingId: string) => void;
 }
 
 /**

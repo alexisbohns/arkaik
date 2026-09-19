@@ -124,25 +124,6 @@ export interface CellPanelDescriptor {
 export interface FindingPanelDescriptor {
   kind: "finding";
   findingId: string;
-  /**
-   * The finding's title, so the crumb and the close label read as prose rather
-   * than as `F-2026-08-SEC-web-01`.
-   *
-   * The one piece of denormalized display data in this union, against the
-   * stack's usual rule of resolving by id so an edit reaches every panel. It is
-   * safe here on two counts: a finding's *text* is read-only in this app — the
-   * CLI and the MCP server write it, and the only thing this app can change is
-   * a finding's status, through `quality.finding.resolved` and
-   * `.accepted` — and `openFrom` refreshes an entry's
-   * payload whenever the same key lands back in the same slot, so re-opening a
-   * finding picks up a new title. The alternative was threading every page's
-   * findings through `PageHeader` and `usePanelBreadcrumbs` for the three pages
-   * that never open one.
-   *
-   * May be `""` — see `panelEntryLabel`, which falls back to the id rather than
-   * rendering a blank crumb.
-   */
-  title: string;
 }
 
 export type PanelDescriptor =
@@ -214,7 +195,9 @@ export interface PanelCrumbSpec {
  *
  * Only a node entry's key is a node id, which is why only a node entry is put
  * to `titleOf` — a criterion falling through to it would read as its whole
- * namespaced key, `criterion:SEC-03@web`, in a breadcrumb.
+ * namespaced key, `criterion:SEC-03@web`, in a breadcrumb. The criterion and
+ * finding cases are the same answer for the same reason: each returns its own
+ * id out of the payload rather than the namespaced key it is stacked under.
  */
 export function panelEntryLabel(
   entry: ProjectPanelEntry,
@@ -227,10 +210,8 @@ export function panelEntryLabel(
       return entry.payload.criterionId;
     case "cell":
       return `${entry.payload.domain} × ${entry.payload.surface}`;
-    // A finding carries its own title, and falls back to its id when a caller
-    // had none to give: a crumb is never blank.
     case "finding":
-      return entry.payload.title === "" ? entry.payload.findingId : entry.payload.title;
+      return entry.payload.findingId;
     case "node":
       return titleOf(entry.key) ?? entry.key;
   }

@@ -230,7 +230,6 @@ const findingEntry = {
   payload: {
     kind: "finding",
     findingId: "F-2026-08-SEC-web-01",
-    title: "Session cookie is readable from JS",
   },
 };
 
@@ -264,18 +263,8 @@ const findingTitleOf = () => "never wins";
 
 const findingCrumbs = buildPanelCrumbs([findingEntry], "Findings", findingTitleOf);
 assert(
-  findingCrumbs[findingCrumbs.length - 1].label === "Session cookie is readable from JS",
-  "a finding crumb reads as its title, not as its id or its namespaced key",
-);
-
-const untitledFinding = {
-  key: findingPanelKey("F-x"),
-  instanceId: "i-untitled",
-  payload: { kind: "finding", findingId: "F-x", title: "" },
-};
-assert(
-  buildPanelCrumbs([untitledFinding], "Findings", findingTitleOf)[1].label === "F-x",
-  "a finding with no title falls back to its id, never to titleOf — a crumb is never blank",
+  findingCrumbs[findingCrumbs.length - 1].label === "F-2026-08-SEC-web-01",
+  "a finding crumb reads as its id, not its namespaced key",
 );
 
 // --- the History section reads the journal by the route id, never the node's ---

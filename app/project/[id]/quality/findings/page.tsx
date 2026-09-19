@@ -19,7 +19,7 @@ import {
   isCriterionEntry,
   isFindingEntry,
 } from "@/lib/utils/project-panels";
-import { filterFindings, type FindingRow } from "@/lib/utils/quality";
+import { filterFindings } from "@/lib/utils/quality";
 
 /**
  * The two panels this page can open at depth 0, and the surface a criterion is
@@ -106,10 +106,11 @@ export default function ProjectQualityFindingsPage() {
     bottom && (isFindingEntry(bottom) || isCriterionEntry(bottom)) ? bottom.key : null;
 
   /**
-   * The row `?finding=` names. Resolved from the page's own rows rather than
-   * carried in the URL: the address is an id, and the descriptor wants the
-   * title. A `?finding=` naming nothing opens nothing — see the effect below,
-   * which is what stops that being permanent.
+   * The row `?finding=` names — the page's existence check. Resolved from the
+   * page's own rows because the page has to know whether the id names anything
+   * before it opens a panel or clears the param. A `?finding=` naming nothing
+   * opens nothing — see the effect below, which is what stops that being
+   * permanent.
    *
    * `null` on a cold load too, for as long as the project is in flight, and
    * `useAddressedBottomPanel` survives that on its own: its restore branch
@@ -134,9 +135,9 @@ export default function ProjectQualityFindingsPage() {
     // appends — right for Raw, invoked from the header, wrong for a board that
     // lives on this surface. On the default, clicking A then B leaves `[A, B]`
     // and the stack grows with every click.
-    if (addressedRow) openFinding(addressedRow, 0);
+    if (addressedRow && findingParam) openFinding(findingParam, 0);
     else if (effectiveCriterion) openCriterion(effectiveCriterion, surfaceParam ?? undefined, 0);
-  }, [addressedRow, effectiveCriterion, openCriterion, openFinding, surfaceParam]);
+  }, [addressedRow, effectiveCriterion, findingParam, openCriterion, openFinding, surfaceParam]);
 
   useAddressedBottomPanel({
     params: [FINDING_PARAM, CRITERION_PARAM, CRITERION_SURFACE_PARAM],
@@ -198,10 +199,10 @@ export default function ProjectQualityFindingsPage() {
   // and leaves exactly one panel open. Anything opened from inside the panel is
   // that panel's business and opens above it.
   const handleOpenFinding = useCallback(
-    (row: FindingRow) => {
-      openFinding(row, 0);
+    (findingId: string) => {
+      openFinding(findingId, 0);
       writeQuery((params) => {
-        params.set(FINDING_PARAM, row.id);
+        params.set(FINDING_PARAM, findingId);
         params.delete(CRITERION_PARAM);
         params.delete(CRITERION_SURFACE_PARAM);
       });

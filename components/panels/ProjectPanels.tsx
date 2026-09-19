@@ -310,7 +310,7 @@ export function ProjectPanels({
                 // Above this panel, never in place of it — the rule every other
                 // navigation in the stack follows, and the reason the trail still
                 // reads back to the cell the reader came from.
-                onOpenFinding={(row) => openFinding(row, index + 1)}
+                onOpenFinding={(findingId) => openFinding(findingId, index + 1)}
                 onOpenCriterion={(criterionId, criterionSurface) =>
                   openCriterion(criterionId, criterionSurface, index + 1)
                 }
@@ -322,7 +322,6 @@ export function ProjectPanels({
             return (
               <FindingDetailPanel
                 findingId={entry.payload.findingId}
-                title={entry.payload.title}
                 findings={qualityFindings}
                 section={qualitySection}
                 nodesById={nodesById}
@@ -366,7 +365,7 @@ export function ProjectPanels({
                 // the stack: following a finding opens its panel ABOVE the
                 // criterion rather than in place of it, which is what depth 0
                 // would do.
-                onOpenFinding={(row) => openFinding(row, index + 1)}
+                onOpenFinding={(findingId) => openFinding(findingId, index + 1)}
               />
             );
           }
@@ -425,7 +424,7 @@ export function ProjectPanels({
               // stack follows: a finding opened out of a node sits ABOVE that
               // node rather than replacing it, so the trail still reads back to
               // the node the reader came from.
-              onOpenFinding={(row) => openFinding(row, index + 1)}
+              onOpenFinding={(findingId) => openFinding(findingId, index + 1)}
             />
           );
         }}

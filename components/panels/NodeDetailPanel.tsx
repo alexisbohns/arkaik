@@ -97,7 +97,7 @@ interface NodeDetailPanelProps {
    * list of findings nothing can open is a dead end.
    */
   findings?: FindingRow[];
-  onOpenFinding?: (row: FindingRow) => void;
+  onOpenFinding?: (findingId: string) => void;
 }
 
 interface NodeFieldsProps {

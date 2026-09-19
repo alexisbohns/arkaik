@@ -35,7 +35,7 @@ interface CriterionDetailPanelProps {
    * see the memo note in the component for why the building happens up there.
    */
   findings: FindingRow[];
-  onOpenFinding: (row: FindingRow) => void;
+  onOpenFinding: (findingId: string) => void;
 }
 
 function criterionOf(criterionId: string, library?: KritikLibrary): KritikCriterion | undefined {

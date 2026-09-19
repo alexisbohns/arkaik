@@ -17,12 +17,6 @@ import { cn } from "@/lib/utils";
 interface FindingDetailPanelProps {
   findingId: string;
   /**
-   * The title the descriptor carried. Only ever shown when the id resolves to
-   * nothing — a live row's own title is the truth, and it is what the panel
-   * renders.
-   */
-  title: string;
-  /**
    * Every finding in the section, denormalized once by `ProjectPanels`. The
    * panel picks its own out by id rather than being handed a row, so an audit
    * arriving under an open panel reaches it.
@@ -120,7 +114,6 @@ export function FindingDetailPanelHeader({
  */
 export function FindingDetailPanel({
   findingId,
-  title,
   findings,
   section,
   nodesById,
@@ -132,7 +125,7 @@ export function FindingDetailPanel({
   // `criterionOf` is an unmemoized `find` its header and its body each call
   // for themselves. A few hundred rows scanned twice is nothing next to a
   // context threaded through the stack to carry one row, and the panel takes
-  // an id rather than a row for the reason `findingId` documents above.
+  // an id rather than a row for the reason `findings` documents above.
   const row = findings.find((candidate) => candidate.id === findingId);
 
   // Say so rather than rendering nothing: a blank body would read as a bug.
@@ -151,9 +144,8 @@ export function FindingDetailPanel({
           message={
             <>
               This audit carries no finding with the id{" "}
-              <span className="font-mono">{findingId}</span>
-              {title !== "" ? ` (“${title}”)` : ""}. A later import may have dropped it, or the link
-              may be out of date.
+              <span className="font-mono">{findingId}</span>. A later import may have dropped it,
+              or the link may be out of date.
             </>
           }
         />

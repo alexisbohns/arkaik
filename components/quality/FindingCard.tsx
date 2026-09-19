@@ -17,7 +17,7 @@ interface FindingCardProps {
    */
   surfaceTitles: ReadonlyMap<string, string>;
   /** Opens the finding's own panel. The card's whole reason to be a control. */
-  onOpenFinding: (row: FindingRow) => void;
+  onOpenFinding: (findingId: string) => void;
   /**
    * Opens the criterion this finding answers to — and, by its absence, says the
    * reader is already inside it.
@@ -74,7 +74,7 @@ export function FindingCard({ row, surfaceTitles, onOpenFinding, onOpenCriterion
           control that opens the finding. */}
       <button
         type="button"
-        onClick={() => onOpenFinding(row)}
+        onClick={() => onOpenFinding(row.id)}
         className="w-full text-left text-sm font-medium leading-relaxed hover:underline focus-visible:underline hover:underline-offset-4 focus-visible:underline-offset-4"
       >
         {row.title}

@@ -30,7 +30,6 @@ import {
   type PanelDescriptor,
   type ProjectPanelEntry,
 } from "@/lib/utils/project-panels";
-import type { FindingRow } from "@/lib/utils/quality";
 
 /** The search param that addresses the top node panel, on whatever route you're on. */
 export const NODE_PANEL_PARAM = "node";
@@ -111,11 +110,11 @@ interface ProjectPanelsValue {
    * opening a finding from the surface passes `0`** — on the default
    * (`previous.length`) working down a board would leave one panel per card.
    *
-   * Takes the row rather than an id because the descriptor carries the title,
-   * and every caller has the row in hand already: a finding is only ever opened
-   * from something that just rendered it.
+   * Takes an id, the way `openCriterion` and `openNode` beside it do: the
+   * descriptor holds nothing a row could supply, and the panel resolves the
+   * row itself so an audit arriving under it reaches it.
    */
-  openFinding: (row: FindingRow, fromDepth?: number) => void;
+  openFinding: (findingId: string, fromDepth?: number) => void;
   closeAt: (index: number) => void;
   unwindTo: (depth: number) => void;
   /**
@@ -332,12 +331,11 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
   /**
    * Open one finding. Addressless, `fromDepth`-sensitive — see the interface.
    */
-  const openFinding = useCallback((row: FindingRow, fromDepth?: number) => {
+  const openFinding = useCallback((findingId: string, fromDepth?: number) => {
     setEntries((previous) =>
-      openFrom<PanelDescriptor>(previous, fromDepth ?? previous.length, findingPanelKey(row.id), {
+      openFrom<PanelDescriptor>(previous, fromDepth ?? previous.length, findingPanelKey(findingId), {
         kind: "finding",
-        findingId: row.id,
-        title: row.title,
+        findingId,
       }),
     );
   }, []);

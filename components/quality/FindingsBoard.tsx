@@ -16,7 +16,7 @@ interface FindingsBoardProps {
    * a list of headlines, which is what this board was before findings had a
    * panel — and the disclosure it replaced could not be optional either.
    */
-  onOpenFinding: (row: FindingRow) => void;
+  onOpenFinding: (findingId: string) => void;
   /** Passed straight through; omitted inside the criterion panel — see `FindingCard`. */
   onOpenCriterion?: (criterionId: string, surface: string) => void;
 }
