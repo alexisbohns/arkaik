@@ -74,10 +74,11 @@ function useDebouncedMetadataField(
  * and context/consequences/decided-on as debounced metadata fields.
  *
  * The supersedes/generates/impacts links spec §5 defines are no longer here:
- * they are relations, not fields, so they render as `DecisionLinksSection` in
- * the Relations group. `allNodes` stays because `BlockedByField` resolves
- * blockers against it; `allEdges` went with the links, which were the only
- * thing here that read an edge.
+ * they are relations, not fields, so they render in the Relations group — as
+ * four of the grammar-derived relation lines `relationLinesFor("decision")`
+ * produces, not as a list this species has written out for it. `allNodes`
+ * stays because `BlockedByField` resolves blockers against it; `allEdges` went
+ * with the links, which were the only thing here that read an edge.
  */
 export function DecisionEditor({ node, allNodes, onUpdate, onNavigate }: DecisionEditorProps) {
   // Per-mount: the panel stack keeps hidden panels mounted, so two decisions can

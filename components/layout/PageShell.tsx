@@ -8,6 +8,7 @@ import type { PlatformId } from "@/lib/config/platforms";
 import type { Edge, Node } from "@/lib/data/types";
 import type { ProductScope } from "@/lib/utils/product-scope";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
+import type { NodeRelations } from "@/lib/hooks/useNodeRelations";
 
 interface PageShellProps {
   title: string;
@@ -47,6 +48,8 @@ interface PageShellProps {
   onCreateAcceptanceForAnchor?: (anchor: Node, title: string) => Promise<Node>;
   /** The acceptance decompose gestures — see `useAcceptanceIntake`. */
   intake?: AcceptanceIntake;
+  /** Writing a node's relations — see `useNodeRelations`. */
+  relations?: NodeRelations;
   onZoomShot?: (node: Node, platform: PlatformId) => void;
   /** Kritik state for criterion panels — see `ProjectPanels`. Quality only. */
   qualitySection?: QualitySection;

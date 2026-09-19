@@ -24,6 +24,7 @@ import type { EdgeTypeId } from "@/lib/config/edge-types";
 import type { Node as DataNode, Edge as DataEdge } from "@/lib/data/types";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
+import { useNodeRelations } from "@/lib/hooks/useNodeRelations";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useProject } from "@/lib/hooks/useProject";
@@ -64,6 +65,13 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
 
   const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges, addEdge, removeEdge, syncEdges } = useEdges(projectId);
   const intake = useAcceptanceIntake({
+    projectId: projectId,
+    nodes: dataNodes,
+    edges: dataEdges,
+    applyMutations,
+    syncEdges,
+  });
+  const relations = useNodeRelations({
     projectId: projectId,
     nodes: dataNodes,
     edges: dataEdges,
@@ -322,6 +330,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
         onUpdate={handleNodeUpdate}
         onCreateNode={handleCreateNodeFromPanel}
         intake={intake}
+        relations={relations}
       >
         <SystemCanvas
           definition={definition}

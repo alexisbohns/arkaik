@@ -39,7 +39,16 @@ interface AcceptanceIntakeParams {
   edges: readonly Edge[];
   /** `useNodes`'s atomic batch — every gesture here is more than one write. */
   applyMutations: (ops: MutationOp[]) => Promise<{ nodes: Node[]; edges: Edge[]; version?: string }>;
-  /** `useEdges`'s adopt-the-batch-result, since `applyMutations` owns only nodes. */
+  /**
+   * `useEdges`' adopt-the-batch-result.
+   *
+   * Not what makes the edges land: `applyMutations` routes through
+   * `writeBackGraph`, which writes nodes AND edges into the shared bundle
+   * entry, so a created or cascaded edge has already reached `useEdges` by the
+   * time this runs. It is the belt to that write-back's braces — idempotent on
+   * the same result, and guarded by the same version — kept because the two
+   * hooks are the seam where an edge would otherwise go missing for a render.
+   */
   syncEdges: (edges: Edge[], version?: string) => void;
 }
 
@@ -48,10 +57,12 @@ interface AcceptanceIntakeParams {
  *
  * The rules themselves live in `lib/utils/acceptance-intake.ts` and are asserted
  * there; this hook only turns a plan into a write and keeps both halves of the
- * surface's local state in step afterwards. A plan with no ops is not written at
- * all — every one of these gestures has a legitimate no-op case (an anchor
- * already covered, a blank title, a split into one piece), and an empty batch
- * would still be a round-trip and a journal read.
+ * surface's local state in step afterwards. A plan with no ops is not written
+ * at all — every one of these gestures has a legitimate no-op case (an anchor
+ * already covered, a blank title, a split into one piece). Not to save a round
+ * trip: `applyMutations` already answers an empty batch from the cache without
+ * one. What the guard skips is the `syncEdges` that would follow — a
+ * `writeBackEdges` and a cache write on every gesture that changed nothing.
  *
  * Every page that lets a panel *edit* passes one of these; pages whose panels
  * are read-only pass none, and the Covers list renders exactly as it did before.

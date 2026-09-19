@@ -1,7 +1,7 @@
 /**
- * Every relation section of a node panel — Covers, Invocation, Decision links,
- * References, Findings and Connections — plus the row component two of them
- * share and the attach config Covers hands its relation line. (Acceptances is
+ * Every relation section of a node panel — Covers, Invocation, References,
+ * Findings and the one generic relation line that every edge type is rendered
+ * through — plus the attach config Covers hands its own line. (Acceptances is
  * the exception, and only because `AcceptancesSection` was already a module of
  * its own.)
  *
@@ -9,9 +9,9 @@
  * `NodeDetailPanel` renders `RelationsGroup`: left where they were, those files
  * would import each other, and a cycle is not something to defend. Covers is
  * here for the same reason and not only for tidiness — it came out of
- * `AcceptanceEditor`, which `NodeDetailPanel` rendered then and which Parts 3
- * and 4 have since dismantled entirely, so an import edge from the group into
- * that file was a cycle waiting for its second half. The failure it would cause is an
+ * `AcceptanceEditor`, which `NodeDetailPanel` rendered then and which has since
+ * been dismantled entirely, so an import edge from the group into that file was
+ * a cycle waiting for its second half. The failure it would cause is an
  * undefined component at runtime, with nothing from the compiler.
  *
  * So the rule this module keeps: a section that `RelationsGroup` renders lives
@@ -20,7 +20,7 @@
 
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { PanelSection } from "@/components/panels/PanelSection";
@@ -29,15 +29,15 @@ import {
   RelationRowItem,
   removeWithUndo,
 } from "@/components/panels/RelationLine";
-import { EntityRow } from "@/components/graph/nodes/EntityRow";
 import { RefList } from "@/components/graph/nodes/RefBadges";
-import { SPECIES } from "@/lib/config/species";
 import { SEVERITY_CHIP, SEVERITY_LABEL } from "@/components/quality/quality-styles";
 import { EMPTY_QUALITY_FILTERS, filterFindings, type FindingRow } from "@/lib/utils/quality";
-import { findWhereUsed, crossLayerConnections, coveredAnchorsOf } from "@/lib/utils/where-used";
+import { findWhereUsed, coveredAnchorsOf } from "@/lib/utils/where-used";
 import { attachEmptiesMembership } from "@/lib/utils/acceptance-intake";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { useLatest } from "@/lib/hooks/useLatest";
+import type { NodeRelations } from "@/lib/hooks/useNodeRelations";
+import { relationRows, type RelationLineSpec, type RelationRow } from "@/lib/utils/relation-lines";
 import { cn } from "@/lib/utils";
 import type { Node, Edge } from "@/lib/data/types";
 import type { SpeciesId } from "@arkaik/schema";
@@ -57,11 +57,18 @@ export function InvocationSection({ node, allNodes, onNavigate }: InvocationSect
 
   return (
     <PanelSection title="Invocation">
-      <div className="flex flex-col gap-0.5">
+      {/* `RelationRowItem` without an `onRemove`: this list is read-only on
+          every surface, because a flow's playlist is `PlaylistEditor`'s to
+          write and a `composes` edge removed from here would leave
+          `metadata.playlist.entries` still naming the node. The row it renders
+          is the chip-and-title one every other relation row uses, minus the
+          trailing "Flow" label the old row repeated on every line — the chip
+          already says it. */}
+      <ul className="flex flex-col gap-0.5">
         {usages.map((flow) => (
-          <ConnectionItem key={flow.id} node={flow} onNavigate={onNavigate} />
+          <RelationRowItem key={flow.id} node={flow} onNavigate={onNavigate} />
         ))}
-      </div>
+      </ul>
     </PanelSection>
   );
 }
@@ -141,186 +148,198 @@ export function FindingsSection({ node, findings, onOpenCriterion }: FindingsSec
   );
 }
 
-export interface ConnectionsSectionProps {
+export interface EdgeRelationLineProps {
   node: Node;
-  allNodes: Node[];
-  allEdges: Edge[];
-  onNavigate: (node: Node) => void;
-}
-
-export function ConnectionsSection({ node, allNodes, allEdges, onNavigate }: ConnectionsSectionProps) {
-  // `crossLayerConnections` rather than the walk this section used to carry:
-  // `RelationsGroup` has to ask whether there are any rows here to decide
-  // whether its bar exists at all, and a second copy of the walk is a second
-  // chance to disagree. The exclusions and the reason for each are in its
-  // docblock, where the code now lives.
-  const uniqueCrossLayerNodes = crossLayerConnections(node, allNodes, allEdges);
-
-  if (uniqueCrossLayerNodes.length === 0) {
-    return null;
-  }
-
-  return (
-    <PanelSection title="Connections">
-      <div className="flex flex-col gap-0.5">
-        {uniqueCrossLayerNodes.map((n) => (
-          <ConnectionItem key={n.id} node={n} onNavigate={onNavigate} />
-        ))}
-      </div>
-    </PanelSection>
-  );
-}
-
-/**
- * One cross-reference row: the entity chip, then the title, then what kind of
- * thing it is.
- *
- * The two-control shape — chip, then a button over the rest — belongs to
- * `EntityRow`; see there for why it cannot be one button.
- *
- * The leading gutter used to hold a `badge` string — the flow's id from
- * Invocation, the species label from Connections, which the trailing span was
- * already saying. The chip replaces both: the id it carried is now in the hover
- * card and one click from the clipboard, and the duplicated label is gone.
- */
-function ConnectionItem({
-  node,
-  onNavigate,
-}: {
-  node: Node;
-  onNavigate: (node: Node) => void;
-}) {
-  const speciesConfig = SPECIES.find((s) => s.id === node.species);
-  return (
-    <EntityRow node={node} onOpen={() => onNavigate(node)}>
-      <span className="min-w-0 flex-1 truncate">{node.title}</span>
-      <span className="shrink-0 text-xs text-muted-foreground">
-        {speciesConfig?.label ?? node.species}
-      </span>
-    </EntityRow>
-  );
-}
-
-/**
- * The decision → node lists the three edge types define (spec §5).
- *
- * Exported so `RelationsGroup` can ask whether this section has any rows
- * without a second *implementation* of the walk — the same arrangement
- * `crossLayerConnections` has with `ConnectionsSection`, and for the same
- * reason: two implementations are two chances for the bar and the section to
- * disagree about whether there is anything here. The bar and the section do
- * each call this on the same render, which is a walk run twice over a handful
- * of edges; what must not be duplicated is the definition. Passing the rows
- * down instead would reunite the two at the cost of the flag, which is the
- * disagreement `hasDecisionLinkRows` exists to prevent.
- */
-export function decisionConnections(node: Node, allNodes: Node[], allEdges: Edge[]) {
-  const byId = new Map(allNodes.map((n) => [n.id, n]));
-  const resolve = (ids: string[]) => ids.map((id) => byId.get(id)).filter((n): n is Node => !!n);
-  return {
-    supersedes: resolve(
-      allEdges.filter((e) => e.edge_type === "supersedes" && e.source_id === node.id).map((e) => e.target_id),
-    ),
-    supersededBy: resolve(
-      allEdges.filter((e) => e.edge_type === "supersedes" && e.target_id === node.id).map((e) => e.source_id),
-    ),
-    generates: resolve(
-      allEdges.filter((e) => e.edge_type === "generates" && e.source_id === node.id).map((e) => e.target_id),
-    ),
-    impacts: resolve(
-      allEdges.filter((e) => e.edge_type === "impacts" && e.source_id === node.id).map((e) => e.target_id),
-    ),
-  };
-}
-
-/** Whether any of the four lists has a row — the emptiness test this section and
- *  `RelationsGroup`'s `hasDecisionLinks` flag both run. */
-export function hasDecisionLinkRows(links: ReturnType<typeof decisionConnections>) {
-  return (
-    links.supersedes.length > 0 ||
-    links.supersededBy.length > 0 ||
-    links.generates.length > 0 ||
-    links.impacts.length > 0
-  );
-}
-
-function LinkedNodeList({
-  label,
-  nodes,
-  onNavigate,
-}: {
-  label: string;
-  nodes: Node[];
-  onNavigate?: (node: Node) => void;
-}) {
-  if (nodes.length === 0) return null;
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <div className="flex flex-col gap-0.5">
-        {/* The id is the chip, not a truncated 96px gutter of monospace text —
-            see `EntityChip`. The chip is there whether or not the row navigates:
-            copying an id is useful on a read-only panel too, and the hover card
-            is the only place the full id and title are still readable. */}
-        {nodes.map((n) => (
-          <EntityRow key={n.id} node={n} onOpen={onNavigate && (() => onNavigate(n))}>
-            <span className="min-w-0 flex-1 truncate">{n.title}</span>
-          </EntityRow>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-export interface DecisionLinksSectionProps {
-  node: Node;
+  line: RelationLineSpec;
+  /**
+   * The project's nodes by id, built once by `RelationsGroup` rather than once
+   * per line: a decision panel has four lines, and four identical project-wide
+   * maps per render is four times the work for one answer. It is also what lets
+   * the group's emptiness test resolve the same rows this line renders.
+   */
+  nodesById: ReadonlyMap<string, Node>;
   allNodes: Node[];
   allEdges: Edge[];
   onNavigate?: (node: Node) => void;
+  relations?: NodeRelations;
 }
 
 /**
- * What this decision supersedes, is superseded by, generates and impacts —
- * spec §5's four link lists.
+ * One grammar-derived relation line, with its rows resolved.
  *
- * Lifted out of `DecisionEditor` for the reason Covers was lifted out of
- * `AcceptanceEditor`: these are relations, not fields. They say what this record
- * points at, which is what References, Findings and Connections say too, and the
- * spec's per-species table puts them first among a decision's relations. Left in
- * the editor they were the one species' cross-references filed among its
- * controls; left in that *file* they would have been an import edge from
- * `RelationsGroup` into a panel-body editor, which is the cycle this module
- * exists to break.
+ * This is what `ConnectionsSection` and `DecisionLinksSection` both became. The
+ * first flattened `calls`, `displays` and `queries` into one list and named the
+ * counterpart's *species* on the right — which is not the relation, so a view
+ * that calls an endpoint and a view an endpoint calls back read identically.
+ * The second spelled its four lists out by hand. Both are this, given a
+ * different line.
  *
- * A `PanelSection` rather than the `Field` it was: inside a group this is a
- * level-four section with a heading, not a labelled control, and there is no
- * single control for a label to point at anyway. `gap-3` is the spacing the four
- * lists were already given.
+ * Rows resolve through `allNodes` and unresolvable ids are dropped, as
+ * `coveredAnchorsOf` does: a row naming an id the panel cannot show is worse
+ * than no row.
  *
- * Returns `null` when all four are empty, exactly as the `Field` did behind its
- * condition — there is no sentence to say about a decision that links to
- * nothing, so an empty heading here would be an empty state rather than a fact
- * about the graph.
+ * Everything the combobox memoises on is memoised here, and so is everything
+ * those memos read: the candidate list inside `NodeSearchCombobox` fuzzy-scores
+ * every node in the project and is keyed on `excludeIds`' identity, so a fresh
+ * array per render would make it dead weight — on every line of every panel,
+ * which is how this component differs from the one-off it was copied from.
+ * `allNodes` and `allEdges` come from react-query with a module-level `select`
+ * and are referentially stable, and `line` comes out of `relationLinesFor`'s
+ * frozen module-level table, so the chain actually holds.
  */
-export function DecisionLinksSection({ node, allNodes, allEdges, onNavigate }: DecisionLinksSectionProps) {
-  const connections = decisionConnections(node, allNodes, allEdges);
+export function EdgeRelationLine({ node, line, nodesById, allNodes, allEdges, onNavigate, relations }: EdgeRelationLineProps) {
+  const rows = useMemo(
+    () =>
+      relationRows(node.id, line, allEdges)
+        .map((row) => ({ row, counterpart: nodesById.get(row.counterpartId) }))
+        .filter((entry): entry is { row: RelationRow; counterpart: Node } => Boolean(entry.counterpart)),
+    [node.id, line, allEdges, nodesById],
+  );
+  const excludeIds = useMemo(
+    () => [node.id, ...rows.map((entry) => entry.counterpart.id)],
+    [node.id, rows],
+  );
+  // A boolean, not the id of what is being written: every comparison either
+  // side of this is "is anything in flight", so a key would be threaded
+  // through each call site and never discriminate — and a parameter that
+  // implies a distinction it does not make is how a docblock goes wrong.
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+  // Undo outlives the render that built it; see the `restore` below.
+  const relationsRef = useLatest(relations);
 
-  if (!hasDecisionLinkRows(connections)) {
-    return null;
+  /**
+   * Run one write, reporting a failure instead of swallowing it, and answering
+   * whether it landed.
+   *
+   * The answer is what the relation line closes on: `false` keeps the line open
+   * over the query that produced it, because a toast over a line that already
+   * shut and dropped the typed text is a worse account of what happened than no
+   * toast at all. Same shape, same reason, as `CoversSection`'s.
+   *
+   * The line is busy for the length of the round trip. Without that, a second
+   * click on a `×` plans a `delete_edge` against edges the first click has
+   * already removed, which the store refuses as `edge_not_found`: the batch
+   * aborts and the user is told the removal failed about one that worked. The
+   * row stays on screen for that whole window, so the second click is not a
+   * hypothetical — it reproduces.
+   *
+   * **One write at a time, and every control on the line says so.** The gate
+   * below is line-wide, so while one is open a second gesture cannot land —
+   * and a control that cannot land its gesture must look that way, or the
+   * user clicks a live-looking `×` on another row and nothing at all happens:
+   * no write, no toast, no change. A silently inert control is a worse trade
+   * than the wrong toast this guard was added to remove, and "remove these
+   * three rows" is at least as common as the double-click. So `busy` drives
+   * the `×` on EVERY row and the search field alike, not just the row being
+   * written.
+   *
+   * **The gate is the ref, not the state.** `disabled` only reaches the DOM on
+   * the next render, and two clicks can land in the same task before React has
+   * re-rendered — a real double-click does exactly that, and it reproduces.
+   * The ref is set synchronously, so the second call returns before it can
+   * plan anything. `busy` exists alongside it to *show* the state; it does not
+   * enforce it.
+   *
+   * A suppressed duplicate answers `false` and says nothing: it is the same
+   * gesture, not a failed one, so a toast would be the second lie.
+   */
+  async function run(action: () => Promise<void>, failure: string | null): Promise<boolean> {
+    if (inFlight.current) return false;
+    inFlight.current = true;
+    setBusy(true);
+    try {
+      await action();
+      return true;
+    } catch (err) {
+      // `null` means the caller speaks for this one — `removeWithUndo` reports
+      // a failed restore itself, and two toasts describing one failure is the
+      // other way to get that wrong.
+      if (failure) toast.error(failure);
+      console.error(err);
+      return false;
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
   }
 
+  // A read-only line with nothing in it is a bare label over nothing — an empty
+  // state, which is what the group's flags exist to avoid. With a `+` on it, it
+  // is an invitation, so it stays.
+  if (rows.length === 0 && !relations) return null;
+
   return (
-    <PanelSection title="Decision links" className="gap-3">
-      <LinkedNodeList label="Supersedes" nodes={connections.supersedes} onNavigate={onNavigate} />
-      <LinkedNodeList label="Superseded by" nodes={connections.supersededBy} onNavigate={onNavigate} />
-      <LinkedNodeList label="Generated acceptances" nodes={connections.generates} onNavigate={onNavigate} />
-      <LinkedNodeList label="Impacts" nodes={connections.impacts} onNavigate={onNavigate} />
-    </PanelSection>
+    <RelationLine
+      label={line.label}
+      add={
+        relations && {
+          counterpartSpecies: line.counterpartSpecies,
+          allNodes,
+          excludeIds,
+          // Any write in flight, not just this line's add: the field refuses a
+          // second gesture while one is committing, for the reason `run`
+          // gives.
+          disabled: busy,
+          onSelect: (counterpartId: string) => {
+            const counterpart = nodesById.get(counterpartId);
+            // Nothing to link to, so nothing happened: `false` keeps the line
+            // open rather than closing it over a gesture that did not land.
+            if (!counterpart) return false;
+            // Returned, not fired and forgotten: the line closes on this
+            // answer, and a write the store rejects has to leave it standing.
+            return run(() => relations.link(node, counterpart, line), "Couldn't link that node.");
+          },
+          onCreate: (species: SpeciesId, title: string) =>
+            run(async () => {
+              const created = await relations.linkNew(node, line, species, title);
+              if (created) toast.success(`Created "${created.title}" and linked it.`);
+            }, "Couldn't create that node."),
+        }
+      }
+    >
+      {rows.length > 0 && (
+        <ul className="flex flex-col gap-0.5">
+          {rows.map(({ counterpart }) => (
+            <RelationRowItem
+              key={counterpart.id}
+              node={counterpart}
+              onNavigate={onNavigate}
+              onRemove={
+                relations &&
+                (() =>
+                  void removeWithUndo({
+                    label: counterpart.title,
+                    remove: () =>
+                      run(
+                        () => relations.unlink(node, counterpart.id, line),
+                        "Couldn't unlink that node.",
+                      ),
+                    // Through the ref, not this render's `relations`: by the
+                    // time Undo is clicked the unlink has landed, and the
+                    // captured object plans against the edge list from before
+                    // it — where the edge still exists, so `planRelationLink`
+                    // plans nothing and Undo does nothing, silently. See
+                    // {@link useLatest}.
+                    restore: () =>
+                      run(() => relationsRef.current!.link(node, counterpart, line), null),
+                  }))
+              }
+              removeDisabled={busy}
+              removeLabel={`Remove ${counterpart.title} from ${line.label}`}
+              removeQuestion={`Remove "${counterpart.title}" from ${line.label}?`}
+            />
+          ))}
+        </ul>
+      )}
+    </RelationLine>
   );
 }
 
 interface CoversSectionProps {
   node: Node;
+  /** The project's nodes by id — see {@link EdgeRelationLineProps.nodesById}. */
+  nodesById: ReadonlyMap<string, Node>;
   allNodes: Node[];
   allEdges: Edge[];
   /**
@@ -355,12 +374,12 @@ interface CoversSectionProps {
  * the `+` that reveals the search, and the rule that an empty writable relation
  * costs one line.
  */
-export function CoversSection({ node, allNodes, allEdges, hasProducts, onNavigate, intake }: CoversSectionProps) {
-  const nodesById = useMemo(() => new Map(allNodes.map((n) => [n.id, n])), [allNodes]);
+export function CoversSection({ node, nodesById, allNodes, allEdges, hasProducts, onNavigate, intake }: CoversSectionProps) {
   // `coveredAnchorsOf`, not a walk of its own: `AcceptanceMembershipField` asks
   // the same question for its Product hint's anchor count, and the two answers have to be
   // the same list or the hint counts anchors this section does not show. The
-  // map stays because the attach config resolves the id the combobox returns.
+  // The id map the attach config resolves against comes from the group, built
+  // once for every line on the panel rather than once here.
   const coveredAnchors = useMemo(
     () => coveredAnchorsOf(node, allNodes, allEdges),
     [node, allNodes, allEdges],
@@ -373,6 +392,10 @@ export function CoversSection({ node, allNodes, allEdges, hasProducts, onNavigat
   // Undo outlives the render that built it; see the `restore` below.
   const intakeRef = useLatest(intake);
 
+  // A boolean, for the reason `EdgeRelationLine`'s copy gives.
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+
   /**
    * Run one intake gesture, reporting a failure instead of swallowing it.
    *
@@ -384,8 +407,36 @@ export function CoversSection({ node, allNodes, allEdges, hasProducts, onNavigat
    * relation line closes on success and stays open on failure, and a toast
    * over a line that shut and dropped the typed query is a worse account of
    * what happened than no toast at all.
+   *
+   * The line is busy for the length of the round trip. Without that a second
+   * click on a `×` plans a detach against edges the first click already
+   * removed, which the store refuses as `edge_not_found`, and the user is told
+   * the detach failed about one that worked.
+   *
+   * **One write at a time, and every control on the line says so.** The gate
+   * below is line-wide, so while one is open a second gesture cannot land —
+   * and a control that cannot land its gesture must look that way, or the
+   * user clicks a live-looking `×` on another row and nothing at all happens:
+   * no write, no toast, no change. A silently inert control is a worse trade
+   * than the wrong toast this guard was added to remove, and "remove these
+   * three rows" is at least as common as the double-click. So `busy` drives
+   * the `×` on EVERY row and the search field alike, not just the row being
+   * written.
+   *
+   * **The gate is the ref, not the state.** `disabled` only reaches the DOM on
+   * the next render, and two clicks can land in the same task before React has
+   * re-rendered — a real double-click does exactly that, and it reproduces.
+   * The ref is set synchronously, so the second call returns before it can
+   * plan anything. `busy` exists alongside it to *show* the state; it does not
+   * enforce it.
+   *
+   * A suppressed duplicate answers `false` and says nothing: it is the same
+   * gesture, not a failed one, so a toast would be the second lie.
    */
   async function run(action: () => Promise<void>, failure: string | null): Promise<boolean> {
+    if (inFlight.current) return false;
+    inFlight.current = true;
+    setBusy(true);
     try {
       await action();
       return true;
@@ -396,6 +447,9 @@ export function CoversSection({ node, allNodes, allEdges, hasProducts, onNavigat
       if (failure) toast.error(failure);
       console.error(err);
       return false;
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
     }
   }
 
@@ -413,6 +467,7 @@ export function CoversSection({ node, allNodes, allEdges, hasProducts, onNavigat
           intake,
           run,
           excludeIds,
+          busy,
         })
       }
     >
@@ -449,6 +504,7 @@ export function CoversSection({ node, allNodes, allEdges, hasProducts, onNavigat
                     restore: () => run(() => intakeRef.current!.attach(node, anchor), null),
                   }))
               }
+              removeDisabled={busy}
               removeLabel={`Stop covering ${anchor.title}`}
               removeQuestion={`Stop covering "${anchor.title}"?`}
             />
@@ -472,7 +528,7 @@ interface AttachAnchorConfigArgs {
   node: Node;
   allNodes: Node[];
   allEdges: Edge[];
-  nodesById: Map<string, Node>;
+  nodesById: ReadonlyMap<string, Node>;
   /**
    * Whether the project declares any product at all. The triage warning below
    * is gated on it rather than on the membership computation alone: a project
@@ -482,13 +538,19 @@ interface AttachAnchorConfigArgs {
    */
   hasProducts: boolean;
   intake: AcceptanceIntake;
-  /** Runs one write, reporting `false` when it failed. */
+  /**
+   * Runs one write, reporting `false` when it failed — or when the line was
+   * already busy. A `null` failure says nothing on the way out; see the
+   * declaration in `CoversSection`.
+   */
   run: (action: () => Promise<void>, failure: string | null) => Promise<boolean>;
   /**
    * The ids of the anchors already covered — what the list must not offer
    * again. Memoised by the caller; see the note where it is built.
    */
   excludeIds: readonly string[];
+  /** A write is in flight — the search field refuses another. */
+  busy: boolean;
 }
 
 /**
@@ -523,6 +585,7 @@ function attachAnchorConfig({
   intake,
   run,
   excludeIds,
+  busy,
 }: AttachAnchorConfigArgs) {
   function announceTriage(anchor: Pick<Node, "id" | "species" | "title" | "metadata">) {
     if (!hasProducts) return;
@@ -536,6 +599,7 @@ function attachAnchorConfig({
     counterpartSpecies: ANCHOR_SPECIES,
     allNodes,
     excludeIds,
+    disabled: busy,
     onSelect: async (anchorId: string) => {
       const anchor = nodesById.get(anchorId);
       // Nothing to attach to, so nothing happened: `false` keeps the line open

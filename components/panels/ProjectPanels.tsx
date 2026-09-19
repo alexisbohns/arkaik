@@ -27,6 +27,7 @@ import { resolveProductScope, type ProductScope } from "@/lib/utils/product-scop
 import { coveredAnchorsOf } from "@/lib/utils/where-used";
 import { toast } from "sonner";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
+import type { NodeRelations } from "@/lib/hooks/useNodeRelations";
 
 interface ProjectPanelsProps {
   /** The surface — canvas, board, or list. The grid's first cell. */
@@ -62,6 +63,12 @@ interface ProjectPanelsProps {
    * read-only, and then the Covers list is the read-only list it always was.
    */
   intake?: AcceptanceIntake;
+  /**
+   * Writing a node's relations (`useNodeRelations`), forwarded to the detail
+   * panel's Relations group. Absent on a read-only surface, which is what makes
+   * every line there read-only and drops the empty ones.
+   */
+  relations?: NodeRelations;
   onZoomShot?: (node: Node, platform: PlatformId) => void;
   /**
    * The project's Kritik state, for criterion panels.
@@ -117,6 +124,7 @@ export function ProjectPanels({
   onCreateNode,
   onCreateAcceptanceForAnchor,
   intake,
+  relations,
   onZoomShot,
   qualitySection,
   qualityLibrary,
@@ -373,6 +381,7 @@ export function ProjectPanels({
               onCreateNode={onCreateNode}
               onCreateAcceptanceForAnchor={onCreateAcceptanceForAnchor}
               intake={intake}
+              relations={relations}
               onZoomShot={onZoomShot}
               findings={qualityFindings}
               // From this panel's own depth, the rule the criterion panel's

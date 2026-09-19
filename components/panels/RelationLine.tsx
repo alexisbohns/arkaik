@@ -318,6 +318,7 @@ export function RelationRowItem({
   onRemove,
   removeLabel,
   removeQuestion,
+  removeDisabled,
   children,
 }: {
   node: Node;
@@ -327,6 +328,20 @@ export function RelationRowItem({
   removeLabel?: string;
   /** The confirm's question. Defaults to the label with a question mark. */
   removeQuestion?: string;
+  /**
+   * A write is in flight on this line — this row's removal or another gesture
+   * on it. The line commits one write at a time, so every `×` on it goes
+   * disabled together: a row whose gesture cannot land must not look live, or
+   * the click does nothing at all and says nothing about why.
+   *
+   * Disabled rather than hidden, because the row is still on screen for the
+   * length of the round trip and removing the control mid-gesture moves
+   * everything under the pointer. What it prevents: a second click planning a
+   * `delete_edge` against edges that already lost it, which the store refuses
+   * as `edge_not_found` — the user then told the removal failed about one that
+   * worked.
+   */
+  removeDisabled?: boolean;
   children?: ReactNode;
 }) {
   return (
@@ -339,6 +354,7 @@ export function RelationRowItem({
         <RemoveButton
           label={removeLabel ?? `Remove ${node.title}`}
           question={removeQuestion ?? `${removeLabel ?? `Remove ${node.title}`}?`}
+          disabled={removeDisabled}
           onConfirm={onRemove}
         />
       )}

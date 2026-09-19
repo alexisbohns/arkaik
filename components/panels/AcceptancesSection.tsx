@@ -11,6 +11,7 @@ import { EntityRow } from "@/components/graph/nodes/EntityRow";
 import { RelationLine } from "@/components/panels/RelationLine";
 import { useDisplayPreferences } from "@/lib/hooks/useDisplayPreferences";
 import { useProjectId } from "@/lib/hooks/useProjectId";
+import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { TriangleAlertIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useMemo } from "react";
@@ -23,12 +24,28 @@ const ACCEPTANCE_SPECIES: readonly SpeciesId[] = ["acceptance"];
 
 interface AcceptancesSectionProps {
   node: Node;
+  /**
+   * The project's nodes by id, built once by `RelationsGroup` for every line on
+   * the panel rather than once here — see `EdgeRelationLine`'s copy of this
+   * prop.
+   */
+  nodesById: ReadonlyMap<string, Node>;
   allNodes: Node[];
   allEdges: Edge[];
   /** The surface's product scope — the chips show each acceptance's effective platforms. */
   scope: ProductScope;
   onNavigate?: (node: Node) => void;
   onCreate?: (anchor: Node, title: string) => Promise<Node>;
+  /**
+   * The acceptance intake gestures, on surfaces whose panels can write.
+   *
+   * Attaching an *existing* acceptance to this anchor is a `covers` edge, and
+   * covers edges are intake's rather than `useNodeRelations`' — attaching one
+   * can empty the acceptance's derived product membership, which the surface
+   * has to announce. See `node-relations.ts` for where that boundary is drawn
+   * and why.
+   */
+  intake?: AcceptanceIntake;
 }
 
 /**
@@ -46,52 +63,67 @@ interface AcceptancesSectionProps {
  * property of the reader, not of the surface, and every panel showing this
  * section must switch together.
  */
-export function AcceptancesSection({ node, allNodes, allEdges, scope, onNavigate, onCreate }: AcceptancesSectionProps) {
+export function AcceptancesSection({ node, nodesById, allNodes, allEdges, scope, onNavigate, onCreate, intake }: AcceptancesSectionProps) {
   const projectId = useProjectId();
   const [{ acceptanceDisplay }] = useDisplayPreferences(projectId);
-  const covering = acceptancesCovering(node.id, allNodes, allEdges);
-  // SCAFFOLD (part 2 only — part 3 task 3.5 deletes this).
-  // Every acceptance is excluded, so the list can only ever reach its create
-  // row: attaching an *existing* acceptance is a `covers` edge written from the
-  // anchor's side, and that write path arrives with the `relations` capability
-  // in part 3.
-  //
-  // Memoised because the combobox's candidate memo depends on it and that memo
-  // fuzzy-scores every node in the project; a fresh array here would miss it on
-  // every render. Part 3's narrower list keeps the `useMemo`.
-  const excludeIds = useMemo(
-    () => [node.id, ...allNodes.filter((n) => n.species === "acceptance").map((n) => n.id)],
-    [allNodes, node.id],
+  // Memoised, and not only for its own sake: `excludeIds` below is a
+  // dependency of the combobox's candidate memo, and a `covering` rebuilt each
+  // render would rebuild `excludeIds` and make that memo dead weight — the
+  // defect chased one rung out rather than fixed one prop over.
+  const covering = useMemo(
+    () => acceptancesCovering(node.id, allNodes, allEdges),
+    [node.id, allNodes, allEdges],
   );
+  // The anchor itself and the acceptances already covering it — what the list
+  // must not offer again. Memoised because the combobox's candidate memo
+  // depends on it and that memo fuzzy-scores every node in the project; a fresh
+  // array here would miss it on every render.
+  const excludeIds = useMemo(() => [node.id, ...covering.map((acc) => acc.id)], [covering, node.id]);
   return (
     <RelationLine
       label="Acceptances"
       add={
-        onCreate && {
+        (onCreate || intake) && {
           counterpartSpecies: ACCEPTANCE_SPECIES,
           allNodes,
           excludeIds,
           placeholder: "Search acceptances or name a new one...",
-          onSelect: () => {
-            // Attaching an existing acceptance lands in part 3 with the
-            // `relations` capability; until then `excludeIds` above leaves the
-            // list nothing but its create row, so this is unreachable rather
-            // than a silent failure. `false` all the same: an unreachable
-            // handler that reported success would be the one lie here.
-            return false;
-          },
-          onCreate: async (_species: SpeciesId, title: string) => {
-            try {
-              await onCreate(node, title);
-              return true;
-            } catch (err) {
-              toast.error("Couldn't add the acceptance.");
-              console.error(err);
-              // The line stays open over the title that failed, so the retry
-              // is one Enter away rather than a retype.
-              return false;
-            }
-          },
+          // `intake.attach` takes (acceptance, anchor) — this is the inbound
+          // direction of `covers`, so the node whose panel is open is the
+          // ANCHOR and the one picked from the list is the acceptance.
+          //
+          // Without `intake` the search still runs (a surface can have
+          // `onCreate` alone) but picking a result cannot land, so it answers
+          // `false` and the line stays open rather than closing over a gesture
+          // that did nothing.
+          onSelect: intake
+            ? async (acceptanceId: string) => {
+                const acceptance = nodesById.get(acceptanceId);
+                if (!acceptance) return false;
+                try {
+                  await intake.attach(acceptance, node);
+                  return true;
+                } catch (err) {
+                  toast.error("Couldn't attach that acceptance.");
+                  console.error(err);
+                  return false;
+                }
+              }
+            : () => false,
+          onCreate:
+            onCreate &&
+            (async (_species: SpeciesId, title: string) => {
+              try {
+                await onCreate(node, title);
+                return true;
+              } catch (err) {
+                toast.error("Couldn't add the acceptance.");
+                console.error(err);
+                // The line stays open over the title that failed, so the retry
+                // is one Enter away rather than a retype.
+                return false;
+              }
+            }),
         }
       }
     >
@@ -126,7 +158,7 @@ export function AcceptancesSection({ node, allNodes, allEdges, scope, onNavigate
         // No border and no card: rows are a list, and boxing each one drew the
         // reader's eye to the frames rather than to the titles. The hover fill
         // is what says a row is a target, exactly as it does in every other list
-        // in a panel (`ConnectionItem`, `FindingsSection`).
+        // in a panel (`RelationRowItem`, `FindingsSection`).
         <ul className="flex flex-col gap-0.5">
           {covering.map((acc) => (
             <li key={acc.id}>

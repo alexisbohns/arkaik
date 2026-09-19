@@ -244,14 +244,57 @@ assert(
   "NodeDetailPanel imports useProjectId from the shared route-param hook",
 );
 
-// --- where-used: the two walks RelationsGroup and its children share ---------
+// --- the Relations group's edge lines come from the grammar, minus covers ----
 //
-// Both were lifted out of a section so the group could ask "is there anything
-// here?" without walking the edges a second time — which only pays off if the
-// one remaining copy is right. `lib/utils/where-used.ts` is loadable this way
-// because it keeps its imports type-only; a value import there would break this
-// block with a resolution error rather than a failing assertion.
-const { crossLayerConnections, coveredAnchorsOf } = loadUtil("where-used");
+// Pinned at the source, the same way and for the same reason as the journal
+// key above: `RelationsGroup` is a client component and this repo has no
+// component rig, so the alternative is no coverage at all. Deleting the
+// `crossLayerConnections` assertions was right — the walk is gone — but it
+// left the group's *use* of `relationRows` and its one structural rule
+// covered by nothing.
+//
+// The rule: the list of lines is `relationLinesFor(node.species)`, never a
+// hand-written one, and the covers lines are matched out of it because a
+// covers edge is intake's to write (product membership) rather than the
+// generic edge path's. `node-relations.ts` now refuses a covers line outright,
+// so losing this filter is a throw rather than a silent membership bug — but
+// a throw on every acceptance panel is still a regression worth naming here.
+const relationsGroupSource = fs.readFileSync(
+  path.join(__dirname, "..", "..", "components", "panels", "RelationsGroup.tsx"),
+  "utf8",
+);
+assert(
+  relationsGroupSource.includes("relationLinesFor(node.species)"),
+  "RelationsGroup derives its lines from the grammar, per species",
+);
+assert(
+  relationsGroupSource.includes('line.edgeType !== "covers"'),
+  "the covers lines are matched out of the generic edge list — they have their own components",
+);
+// Deliberately loose about the arguments and the wrapping: what this pins is
+// `.some(` rather than `.length > 0`, which is the regression. Spelling the
+// three identifiers and their spacing out would fail on a rename or a
+// reformat as a shape violation rather than a behaviour one — the trap this
+// repo's source-asserting suites have hit before.
+assert(
+  /relationRows\([^)]*\)\s*\.some\(/.test(relationsGroupSource),
+  "the emptiness test resolves each row, as the line it stands in for does",
+);
+
+// --- where-used: the covers walk RelationsGroup and its children share -------
+//
+// `coveredAnchorsOf` was lifted out of a section so the group could ask "is
+// there anything here?" without walking the edges a second time — which only
+// pays off if the one remaining copy is right. `lib/utils/where-used.ts` is
+// loadable this way because it keeps its imports type-only; a value import
+// there would break this block with a resolution error rather than a failing
+// assertion.
+//
+// `crossLayerConnections` used to be asserted here too. It is gone: the flat
+// Connections list it fed is now one `EdgeRelationLine` per grammar line, and
+// what those lines read — `relationRows` — is asserted in
+// tests/app/relation-lines.test.js § 7.
+const { coveredAnchorsOf } = loadUtil("where-used");
 
 const graphNode = (id, species) => ({ id, species, title: id });
 const graphEdge = (source_id, target_id, edge_type) => ({ source_id, target_id, edge_type });
@@ -263,73 +306,6 @@ const DEC = graphNode("D-auth", "decision");
 const OTHER_VIEW = graphNode("V-settings", "view");
 const ACC = graphNode("AC-signs-in", "acceptance");
 const WORLD = [V, DM, API, DEC, OTHER_VIEW, ACC];
-
-const reached = crossLayerConnections(V, WORLD, [
-  graphEdge("V-home", "DM-user", "reads"),
-  graphEdge("API-login", "V-home", "serves"),
-  graphEdge("D-auth", "V-home", "impacts"),
-]);
-assert(
-  reached.map((n) => n.id).sort().join(",") === "API-login,DM-user,D-auth".split(",").sort().join(","),
-  "connections reach data models, API endpoints and decisions, in either direction",
-  reached.map((n) => n.id).join(","),
-);
-
-// The playlist's own edge. A flow composes the views it plays, and that list is
-// the playlist editor's — counting it here would put every view in the flow's
-// Connections and make the bar claim relations the section never lists.
-//
-// The other endpoint is a DATA MODEL on purpose, which no real playlist edge
-// points at: with a view there the species filter drops the row anyway, and the
-// assertion would pass with the `composes` rule deleted. Only an endpoint the
-// filter would otherwise keep can show that the edge TYPE is what excluded it.
-assert(
-  crossLayerConnections(V, WORLD, [graphEdge("V-home", "DM-user", "composes")]).length === 0,
-  "composes is excluded — it is the playlist's edge, not a cross-layer one",
-);
-
-// Only the three cross-layer species: a view linked to another view, or to an
-// acceptance, is not a "Connection" — the acceptance has its own section.
-assert(
-  crossLayerConnections(V, WORLD, [
-    graphEdge("V-home", "V-settings", "navigates"),
-    graphEdge("AC-signs-in", "V-home", "covers"),
-  ]).length === 0,
-  "views and acceptances are not cross-layer connections",
-);
-
-// A decision listing its own supersedes/generates/impacts would double-list what
-// DecisionLinksSection already shows in both directions.
-assert(
-  crossLayerConnections(DEC, WORLD, [
-    graphEdge("D-auth", "DM-user", "impacts"),
-    graphEdge("D-auth", "API-login", "generates"),
-  ]).length === 0,
-  "a decision's own decision-typed edges are excluded from its Connections",
-);
-// …but the OTHER endpoint still sees them, which is the whole point of the
-// exclusion being one-sided ("decided by").
-assert(
-  crossLayerConnections(DM, WORLD, [graphEdge("D-auth", "DM-user", "impacts")])
-    .map((n) => n.id)
-    .join(",") === "D-auth",
-  "a non-decision node still sees the decisions that impact it",
-);
-
-assert(
-  crossLayerConnections(V, WORLD, [
-    graphEdge("V-home", "DM-user", "reads"),
-    graphEdge("DM-user", "V-home", "feeds"),
-  ]).length === 1,
-  "two edges to the same node yield one row",
-);
-
-// A dangling edge — a target this snapshot does not hold — is dropped rather
-// than rendered as a row with no title.
-assert(
-  crossLayerConnections(V, WORLD, [graphEdge("V-home", "DM-ghost", "reads")]).length === 0,
-  "an edge to a node the snapshot does not hold is dropped",
-);
 
 const anchors = coveredAnchorsOf(ACC, WORLD, [
   graphEdge("AC-signs-in", "V-home", "covers"),

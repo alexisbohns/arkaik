@@ -36,54 +36,6 @@ export function findWhereUsed(nodeId: string, allNodes: readonly Node[]): Node[]
 }
 
 /**
- * The data models, API endpoints and decisions this node is wired to — the rows
- * `ConnectionsSection` lists, lifted out of it so `RelationsGroup` can ask
- * whether there are any without a second *implementation* of the walk. Both do
- * call it on the same render; it is the definition that is shared, not the
- * walk, and sharing the definition is what keeps the bar and the section from
- * disagreeing.
- *
- * `composes` is excluded because it is the playlist's own edge — what a flow is
- * made of, which `PlaylistEditor` lists in full — and was never part of this
- * list. A decision's own decision-typed edges are excluded for the
- * reason the section always excluded them: `DecisionLinksSection` lists both
- * directions already, and a decision node would otherwise double-list them.
- * (That section was `DecisionEditor`'s until it moved into the Relations group
- * beside this one — the lists moved, they did not disappear, so the exclusion
- * still holds and for the same reason.)
- *
- * That exclusion, as `ConnectionsSection` recorded it when the walk lived inside
- * it — the comment travels with the code rather than being left behind at the
- * call site, so the rule and its reason cannot drift apart:
- *
- * > DecisionEditor owns decision-typed edges (supersedes/generates/impacts) for
- * > a decision node itself — the "Decision links" section already lists both
- * > directions (supersedes/supersededBy/generates/impacts). This section shows
- * > them only from the OTHER endpoint's side, so a non-decision node can see
- * > which decisions impact/generate it ("decided by") without a decision node
- * > double-listing its own edges.
- */
-export function crossLayerConnections(
-  node: Node,
-  allNodes: readonly Node[],
-  allEdges: readonly Edge[],
-): Node[] {
-  const isDecisionEdge = (e: Edge) =>
-    e.edge_type === "supersedes" || e.edge_type === "generates" || e.edge_type === "impacts";
-
-  const reached = allEdges
-    .filter((e) => e.edge_type !== "composes" && (e.source_id === node.id || e.target_id === node.id))
-    .filter((e) => !(node.species === "decision" && isDecisionEdge(e)))
-    .map((e) => {
-      const otherId = e.source_id === node.id ? e.target_id : e.source_id;
-      return allNodes.find((n) => n.id === otherId);
-    })
-    .filter((n): n is Node => !!n && (n.species === "data-model" || n.species === "api-endpoint" || n.species === "decision"));
-
-  return [...new Map(reached.map((n) => [n.id, n])).values()];
-}
-
-/**
  * The views and flows an acceptance covers, resolved to nodes — the rows
  * `CoversSection` lists, and the anchors `AcceptanceMembershipField` counts for
  * its Product hint (and `AcceptanceAuthoredFields` for the split dialog's).
