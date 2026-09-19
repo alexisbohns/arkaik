@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { FindingsBoard } from "@/components/quality/FindingsBoard";
 import { QualityFilterBar } from "@/components/quality/QualityFilterBar";
@@ -36,8 +36,8 @@ import { filterFindings, type FindingRow } from "@/lib/utils/quality";
  *
  * `?finding=` and `?criterion=` are mutually exclusive: both name the panel at
  * depth 0, so opening either deletes the other. A URL carrying both is
- * hand-typed, and the finding wins — stated once, in `addressed` below, rather
- * than left for two syncs to fight over.
+ * hand-typed, and the finding wins — stated once, in `effectiveCriterion`
+ * below, rather than left for two syncs to fight over.
  */
 const FINDING_PARAM = "finding";
 const CRITERION_PARAM = "criterion";
@@ -71,14 +71,25 @@ export default function ProjectQualityFindingsPage() {
   const surfaceParam = searchParams.get(CRITERION_SURFACE_PARAM);
 
   /**
-   * The panel the URL names, keyed the way the stack keys it. A finding first:
-   * the two params are written mutually exclusive, and this is the one place
-   * that settles a URL carrying both.
+   * The criterion this page will actually honour: none, while a finding is
+   * addressed.
+   *
+   * The precedence lives here, in one value, rather than being re-expressed by
+   * everything that depends on it. It was written twice — once in `addressed`
+   * and once as a `!findingParam` guard in `open` — and both were load-bearing,
+   * which is two things that had to keep agreeing about which param wins.
+   */
+  const effectiveCriterion = findingParam ? null : criterionParam;
+
+  /**
+   * The panel the URL names, keyed the way the stack keys it. A finding first,
+   * via `effectiveCriterion`: the two params are written mutually exclusive, so
+   * a URL carrying both is hand-typed, and this is what settles it.
    */
   const addressed = findingParam
     ? findingPanelKey(findingParam)
-    : criterionParam
-      ? criterionPanelKey(criterionParam, surfaceParam ?? undefined)
+    : effectiveCriterion
+      ? criterionPanelKey(effectiveCriterion, surfaceParam ?? undefined)
       : null;
 
   /**
@@ -97,19 +108,26 @@ export default function ProjectQualityFindingsPage() {
   /**
    * The row `?finding=` names. Resolved from the page's own rows rather than
    * carried in the URL: the address is an id, and the descriptor wants the
-   * title. A `?finding=` naming nothing opens nothing here — the panel's own
-   * "no finding with that id" body is for a finding that disappears *under* an
-   * open panel, not for an address that never resolved.
+   * title. A `?finding=` naming nothing opens nothing — see the effect below,
+   * which is what stops that being permanent.
    *
    * `null` on a cold load too, for as long as the project is in flight, and
    * `useAddressedBottomPanel` survives that on its own: its restore branch
    * re-fires while `seen.current !== addressed`, so the pass on which the rows
    * land is the pass that opens the panel, and the branch that would clear a
    * stale address never runs because nothing was ever seen open.
+   *
+   * Memoized, which the Matrix page achieves by destructuring `parseCellKey`
+   * to primitives and for the same stated reason: `open` closes over this, so
+   * an identity that changed every pass would re-run the sync effect for
+   * nothing. It happens to be stable anyway — `useQualityData` memoizes `rows`,
+   * so `find` returns the same object — but that is an invariant of another
+   * module, and this page should not be the thing that depends on it silently.
    */
-  const addressedRow = findingParam
-    ? data.rows.find((row) => row.id === findingParam) ?? null
-    : null;
+  const addressedRow = useMemo(
+    () => (findingParam ? data.rows.find((row) => row.id === findingParam) ?? null : null),
+    [data.rows, findingParam],
+  );
 
   const open = useCallback(() => {
     // Depth 0, explicitly. Both openers default to `previous.length`, which
@@ -117,8 +135,8 @@ export default function ProjectQualityFindingsPage() {
     // lives on this surface. On the default, clicking A then B leaves `[A, B]`
     // and the stack grows with every click.
     if (addressedRow) openFinding(addressedRow, 0);
-    else if (!findingParam && criterionParam) openCriterion(criterionParam, surfaceParam ?? undefined, 0);
-  }, [addressedRow, criterionParam, findingParam, openCriterion, openFinding, surfaceParam]);
+    else if (effectiveCriterion) openCriterion(effectiveCriterion, surfaceParam ?? undefined, 0);
+  }, [addressedRow, effectiveCriterion, openCriterion, openFinding, surfaceParam]);
 
   useAddressedBottomPanel({
     params: [FINDING_PARAM, CRITERION_PARAM, CRITERION_SURFACE_PARAM],
@@ -126,6 +144,38 @@ export default function ProjectQualityFindingsPage() {
     open,
     openKey,
   });
+
+  // A `?finding=` that names nothing, once the audit has actually arrived.
+  //
+  // Nothing else clears it: `open` is a permanent no-op without a row, so the
+  // hook never sees the panel open, so its own "the reader closed it" branch —
+  // which is gated on having seen it — can never fire. Left alone the dead
+  // param rides along into every later write on this page, and, because it
+  // wins the precedence above, it suppresses a perfectly resolvable
+  // `?criterion=` sitting beside it. A stale link would show the board with no
+  // panel and no explanation, and a shared one would keep doing it.
+  //
+  // Dropping it is deliberate rather than opening the panel onto its own "no
+  // finding with that id" body: that body is for a finding that vanishes under
+  // a panel already open, where the reader is owed an account of something
+  // that was just there. An address that never resolved has nothing to account
+  // for — the honest answer is the board, with a URL that matches it.
+  //
+  // `data.project` rather than `data.loading`, which only covers nodes and
+  // edges: `rows` is derived from `project.quality`, so it is legitimately
+  // empty while `loading` is already false.
+  //
+  // This param and no other, which is why it is not the hook's own `clear`:
+  // that deletes every key it was given, so on `?finding=<gone>&criterion=X`
+  // it would take the resolvable criterion down with the dead finding — the
+  // exact case this effect exists to rescue. Dropping only `?finding=` lets
+  // `effectiveCriterion` see the criterion on the very next pass, and the
+  // hook opens it.
+  useEffect(() => {
+    if (findingParam && data.project && !addressedRow) {
+      writeQuery((params) => params.delete(FINDING_PARAM));
+    }
+  }, [addressedRow, data.project, findingParam, writeQuery]);
 
   const handleOpenCriterion = useCallback(
     (criterionId: string, surface: string) => {

@@ -117,9 +117,15 @@ export function FindingDetailPanel({
   // an id rather than a row for the reason `findingId` documents above.
   const row = findings.find((candidate) => candidate.id === findingId);
 
-  // Say so rather than rendering nothing. This is where a stale `?finding=`
-  // link lands, and where a re-imported bundle that dropped the finding leaves
-  // an open panel — and in both cases a blank body would read as a bug.
+  // Say so rather than rendering nothing: a blank body would read as a bug.
+  //
+  // Not where a stale `?finding=` link lands — the Findings page refuses to
+  // open a panel for an id it cannot resolve, and drops the param instead.
+  // What reaches here is a finding that goes missing *under* a panel already
+  // open: a re-imported bundle that dropped it, or one opened above depth 0
+  // from a node or criterion panel, where no address is watching. In both the
+  // reader was just looking at it, so they are owed an account of where it
+  // went.
   if (!row) {
     return (
       <div className={cn(PANEL_GUTTER, "min-h-0 flex-1 overflow-y-auto py-5 lg:py-6")}>
