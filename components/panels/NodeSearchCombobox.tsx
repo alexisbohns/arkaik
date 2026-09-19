@@ -193,11 +193,14 @@ export function NodeSearchCombobox({
    * duration.
    *
    * Both gestures are one write against a store this component does not own,
-   * so both have the same two hazards: a second gesture landing on top of the
-   * first, and a failure that must not cost the reader their typed query. The
-   * field goes disabled while `busy`, but the list stays mounted and clickable
-   * the whole time, which is what makes the guard load-bearing rather than
-   * belt-and-braces.
+   * so both keep the field disabled until it settles and both keep the typed
+   * query when it fails.
+   *
+   * The `busy` entry guard is defence rather than a live race today:
+   * `Combobox.select()` sets `open` false *before* it calls back, so the list
+   * is already gone by the render that turns `busy` on, and nothing can bring
+   * it back while the field is disabled. It is what keeps that true if a
+   * caller ever reopens the list over a write in flight.
    */
   async function handleSelect(nodeId: string) {
     if (busy) return;
