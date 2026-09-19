@@ -509,12 +509,15 @@ function attachAnchorConfig({
     counterpartSpecies: ANCHOR_SPECIES,
     allNodes,
     excludeIds,
-    onSelect: (anchorId: string) => {
+    onSelect: async (anchorId: string) => {
       const anchor = nodesById.get(anchorId);
       // Nothing to attach to, so nothing happened: `false` keeps the line open
       // rather than closing it over a gesture that did not land.
       if (!anchor) return false;
-      void run(async () => {
+      // Awaited, not fired and forgotten: `run`'s answer is what tells the
+      // line whether to close, and an attach that the store rejects has to
+      // leave the line standing for the same reason a create does.
+      return run(async () => {
         await intake.attach(node, anchor);
         announceTriage(anchor);
       }, "Couldn't attach that node.");

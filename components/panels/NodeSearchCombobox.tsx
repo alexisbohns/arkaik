@@ -15,7 +15,14 @@ export interface NodeSearchComboboxProps {
   allNodes: DataNode[];
   /** Ids this list must not offer — already related, or the node itself. */
   excludeIds?: readonly string[];
-  onSelect: (nodeId: string) => void;
+  /**
+   * Relate the node that was picked.
+   *
+   * Same contract as {@link onCreate}, because a line's two gestures are the
+   * same write with a different subject: returning `false` means it failed,
+   * and the query is then kept rather than cleared.
+   */
+  onSelect: (nodeId: string) => Promise<boolean | void> | boolean | void;
   /**
    * Create a node of this species with this title, and relate it.
    *
@@ -181,14 +188,25 @@ export function NodeSearchCombobox({
     }
   }
 
-  function handleSelect(nodeId: string) {
-    // The field goes disabled mid-create but the list stays mounted and
-    // clickable, so without this a row click lands a second gesture on top of
-    // an in-flight write — and, for a `RelationLine`, closes the line out from
-    // under it.
+  /**
+   * The mirror of {@link handleCreate}, down to holding `busy` for the
+   * duration.
+   *
+   * Both gestures are one write against a store this component does not own,
+   * so both have the same two hazards: a second gesture landing on top of the
+   * first, and a failure that must not cost the reader their typed query. The
+   * field goes disabled while `busy`, but the list stays mounted and clickable
+   * the whole time, which is what makes the guard load-bearing rather than
+   * belt-and-braces.
+   */
+  async function handleSelect(nodeId: string) {
     if (busy) return;
-    onSelect(nodeId);
-    setQuery("");
+    setBusy(true);
+    try {
+      if ((await onSelect(nodeId)) !== false) setQuery("");
+    } finally {
+      setBusy(false);
+    }
   }
 
   const speciesPhrase = species.map((id) => `${speciesLabel(id).toLowerCase()}s`).join(" or ");
@@ -207,7 +225,7 @@ export function NodeSearchCombobox({
           if (busy) return;
           freeText?.onCommit(row.title);
           setQuery("");
-        } else handleSelect(row.id);
+        } else void handleSelect(row.id);
       }}
       renderItem={(row) =>
         row.kind === "create" ? (

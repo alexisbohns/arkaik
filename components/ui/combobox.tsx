@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
  *
  * **The call site owns the look, this owns the behaviour.** `renderItem` fills
  * the row and `itemClassName` styles it — including the highlight, because the
- * two call sites tint their rows differently and converging them would be a
+ * call sites tint their rows differently and converging them would be a
  * restyle, not the accessibility fix this is. What the component keeps for
  * itself is the option element, its `id`, and its selected state, which is
  * exactly the part that was missing.
