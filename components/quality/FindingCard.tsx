@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ChevronDownIcon, ChevronRightIcon, ExternalLinkIcon } from "lucide-react";
-import { CROSS_SURFACE_ID, type QualityFinding } from "@arkaik/schema";
+import { CROSS_SURFACE_ID } from "@arkaik/schema";
 import type { Node } from "@/lib/data/types";
 import type { FindingRow } from "@/lib/utils/quality";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,7 @@ import {
   COST_HINT,
   COST_TERM,
   FINDING_STATUS_LABEL,
+  VERDICT_LABEL,
 } from "@/components/quality/quality-styles";
 import { ScaleChip } from "@/components/quality/ScaleChip";
 import { SeverityPill } from "@/components/quality/SeverityPill";
@@ -39,17 +40,6 @@ interface FindingCardProps {
    */
   onOpenCriterion?: (criterionId: string, surface: string) => void;
 }
-
-/**
- * The refutation pass's verdict in prose (SPEC §6.5). `DOWNGRADED` is the one
- * that has to be spelled out: a finding the pass argued *down* still stands,
- * and a reader who takes it for a refusal will skip a real defect.
- */
-const VERDICT_LABEL: Record<NonNullable<QualityFinding["verification"]>["verdict"], string> = {
-  CONFIRMED: "Confirmed",
-  REFUTED: "Refuted",
-  DOWNGRADED: "Downgraded",
-};
 
 /**
  * One finding, collapsed to a line you can triage from and expanded to
