@@ -205,6 +205,8 @@ export function EdgeRelationLine({ node, line, nodesById, allNodes, allEdges, on
   // implies a distinction it does not make is how a docblock goes wrong.
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
+  // Undo outlives the render that built it; see the `restore` below.
+  const relationsRef = useLatest(relations);
 
   /**
    * Run one write, reporting a failure instead of swallowing it, and answering
@@ -242,7 +244,7 @@ export function EdgeRelationLine({ node, line, nodesById, allNodes, allEdges, on
    * A suppressed duplicate answers `false` and says nothing: it is the same
    * gesture, not a failed one, so a toast would be the second lie.
    */
-  async function run(action: () => Promise<void>, failure: string): Promise<boolean> {
+  async function run(action: () => Promise<void>, failure: string | null): Promise<boolean> {
     if (inFlight.current) return false;
     inFlight.current = true;
     setBusy(true);
@@ -250,7 +252,10 @@ export function EdgeRelationLine({ node, line, nodesById, allNodes, allEdges, on
       await action();
       return true;
     } catch (err) {
-      toast.error(failure);
+      // `null` means the caller speaks for this one — `removeWithUndo` reports
+      // a failed restore itself, and two toasts describing one failure is the
+      // other way to get that wrong.
+      if (failure) toast.error(failure);
       console.error(err);
       return false;
     } finally {
@@ -303,13 +308,26 @@ export function EdgeRelationLine({ node, line, nodesById, allNodes, allEdges, on
               onRemove={
                 relations &&
                 (() =>
-                  void run(
-                    () => relations.unlink(node, counterpart.id, line),
-                    "Couldn't unlink that node.",
-                  ))
+                  void removeWithUndo({
+                    label: counterpart.title,
+                    remove: () =>
+                      run(
+                        () => relations.unlink(node, counterpart.id, line),
+                        "Couldn't unlink that node.",
+                      ),
+                    // Through the ref, not this render's `relations`: by the
+                    // time Undo is clicked the unlink has landed, and the
+                    // captured object plans against the edge list from before
+                    // it — where the edge still exists, so `planRelationLink`
+                    // plans nothing and Undo does nothing, silently. See
+                    // {@link useLatest}.
+                    restore: () =>
+                      run(() => relationsRef.current!.link(node, counterpart, line), null),
+                  }))
               }
               removeDisabled={busy}
               removeLabel={`Remove ${counterpart.title} from ${line.label}`}
+              removeQuestion={`Remove "${counterpart.title}" from ${line.label}?`}
             />
           ))}
         </ul>
