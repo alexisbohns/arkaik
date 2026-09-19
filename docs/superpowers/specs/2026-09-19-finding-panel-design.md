@@ -1,7 +1,32 @@
 # The finding panel
 
 **Date:** 2026-09-19
-**Status:** approved, ready to plan
+**Status:** implemented, with one decision reversed — see below
+
+## Correction: the descriptor carries no title
+
+§1 below designs `FindingPanelDescriptor` with a denormalized `title`, so the
+breadcrumb and the panel header would read as prose. **That was wrong and is
+not what shipped.**
+
+A panel header in Arkaik never carries a title. A node's header is its species
+badge and its id; a criterion's is its domain and its id. The title is body
+content — on a node it is an editable field down there, which is precisely why
+it cannot also be the identity up top, and why the stack's own `h2` is
+`sr-only`. Half the justification for the field was therefore never real, and
+the argument in §1 should not have been written without checking the
+convention first.
+
+What shipped: the header is a `Finding` type chip, the finding's id, and the
+surface. The crumb and the close label read the id too, exactly as the
+criterion's read `SEC-03`. `FindingPanelDescriptor` is `{ kind, findingId }`
+with no display data in it at all, and `openFinding` and every `onOpenFinding`
+take an id, matching `onOpenNode` and `onOpenCriterion` beside them. The rail's
+mark is not in the header either — it is a status, and no header in the stack
+carries one — it leads the title in the body instead.
+
+Read §1's "The title in the descriptor" as a rejected alternative, not as the
+design.
 
 ## The problem
 
