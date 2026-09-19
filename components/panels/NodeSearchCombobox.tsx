@@ -7,7 +7,7 @@ import { SPECIES } from "@/lib/config/species";
 import { fuzzyScore } from "@/lib/utils/search";
 import { cn } from "@/lib/utils";
 import type { Node as DataNode } from "@/lib/data/types";
-import type { SpeciesId } from "@arkaik/schema";
+import { SPECIES_IDS, type SpeciesId } from "@arkaik/schema";
 
 export interface NodeSearchComboboxProps {
   /** The species this list may offer, from the grammar. One or several. */
@@ -223,7 +223,20 @@ export function NodeSearchCombobox({
     }
   }
 
-  const speciesPhrase = species.map((id) => `${speciesLabel(id).toLowerCase()}s`).join(" or ");
+  /**
+   * What this field says it searches, for the placeholder and the label.
+   *
+   * "nodes" once every species is admitted, rather than the six of them joined
+   * with "or". Blocked by may point at anything, so the exhaustive phrase is
+   * *correct* — and a screen reader announcing "search flows or views or data
+   * models or api endpoints or acceptances or decisions" before the user has
+   * typed anything is a sentence nobody listens to the end of. The enumeration
+   * earns its place only while it narrows something.
+   */
+  const speciesPhrase =
+    species.length === SPECIES_IDS.length
+      ? "nodes"
+      : species.map((id) => `${speciesLabel(id).toLowerCase()}s`).join(" or ");
 
   return (
     <Combobox<Row>
