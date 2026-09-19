@@ -3,16 +3,10 @@
 import { ExternalLinkIcon } from "lucide-react";
 import { CROSS_SURFACE_ID, type QualitySection } from "@arkaik/schema";
 import { PanelSection, PANEL_GUTTER } from "@/components/panels/PanelSection";
+import { AcceptedRiskCallout } from "@/components/quality/AcceptedRiskCallout";
 import { FindingMark } from "@/components/quality/FindingMark";
-import { ScaleChip } from "@/components/quality/ScaleChip";
-import { SeverityPill } from "@/components/quality/SeverityPill";
-import {
-  COST_CHIP,
-  COST_HINT,
-  COST_TERM,
-  FINDING_STATUS_LABEL,
-  VERDICT_LABEL,
-} from "@/components/quality/quality-styles";
+import { FindingScales } from "@/components/quality/FindingScales";
+import { VERDICT_LABEL } from "@/components/quality/quality-styles";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { Node } from "@/lib/data/types";
@@ -100,9 +94,11 @@ export function FindingDetailPanelHeader({
  * write path for either, and inventing one here would be inventing it in the
  * wrong place.
  *
- * Every section is conditional on having something to say, the rule
- * `CriterionDetailPanel` states: a heading over nothing reads as a panel that
- * failed to load rather than as a finding nobody wrote evidence for.
+ * Every section but Reference is conditional on having something to say, the
+ * rule `CriterionDetailPanel` states: a heading over nothing reads as a panel
+ * that failed to load rather than as a finding nobody wrote evidence for.
+ * Reference is the exception because it can never be empty — a row that
+ * resolved has an `id`, which is the thing that section exists to hand over.
  */
 export function FindingDetailPanel({
   findingId,
@@ -113,6 +109,12 @@ export function FindingDetailPanel({
   onOpenNode,
   onOpenCriterion,
 }: FindingDetailPanelProps) {
+  // The second linear scan of the same list this render — the header ran the
+  // first. Deliberate, and the shape `CriterionDetailPanel` already uses:
+  // `criterionOf` is an unmemoized `find` its header and its body each call
+  // for themselves. A few hundred rows scanned twice is nothing next to a
+  // context threaded through the stack to carry one row, and the panel takes
+  // an id rather than a row for the reason `findingId` documents above.
   const row = findings.find((candidate) => candidate.id === findingId);
 
   // Say so rather than rendering nothing. This is where a stale `?finding=`
@@ -120,7 +122,7 @@ export function FindingDetailPanel({
   // an open panel — and in both cases a blank body would read as a bug.
   if (!row) {
     return (
-      <div className="min-h-0 flex-1 overflow-y-auto p-5 lg:p-6">
+      <div className={cn(PANEL_GUTTER, "min-h-0 flex-1 overflow-y-auto py-5 lg:py-6")}>
         <EmptyState
           message={
             <>
@@ -146,6 +148,10 @@ export function FindingDetailPanel({
   const acceptedNote = acceptedRisk ? row.verification?.note || row.detail : undefined;
 
   return (
+    // No `opacity-70` on a decided finding, unlike the card: dimming says "this
+    // row is history" to somebody scanning a board, and there is no board here
+    // — the reader asked for this one record, and greying what they asked for
+    // reads as broken rather than as filed away.
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto py-4">
       {/* The identity block. The header states the same three things in one
           truncating row; here the title gets to wrap, and the parameters a
@@ -177,50 +183,14 @@ export function FindingDetailPanel({
 
         {/* The scales. The priority is not repeated: it is the mark in the
             header, the same square the rail carried. */}
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-          <SeverityPill
-            impact={row.impact}
-            likelihood={row.likelihood}
-            risk={row.risk}
-            severity={row.severity}
-          />
-          <span>· cost</span>
-          <ScaleChip
-            term={COST_TERM[row.cost]}
-            hint={COST_HINT[row.cost]}
-            className={cn("rounded border px-1 font-medium", COST_CHIP[row.cost])}
-          >
-            {row.cost}
-          </ScaleChip>
-          {verdict && <span>· {VERDICT_LABEL[verdict]}</span>}
-          {!row.open && !acceptedRisk && (
-            <Badge
-              variant="outline"
-              className={cn(
-                "ms-auto",
-                row.status === "resolved" && "border-green-500/40 text-green-700 dark:text-green-400",
-              )}
-            >
-              {FINDING_STATUS_LABEL[row.status]}
-            </Badge>
-          )}
-        </div>
+        <FindingScales row={row} />
       </div>
 
       {/* An accepted risk is a decision, so it reads as one — the decision
           log's bordered row with its status stated, first thing under the
           identity block. Somebody already weighed this and said "not now", and
           burying that invites the next reader to re-litigate it. */}
-      {acceptedRisk && (
-        <div className={PANEL_GUTTER}>
-          <div className="rounded-lg border bg-muted/30 px-3 py-2.5">
-            <Badge variant="outline" className="mb-1.5">
-              {FINDING_STATUS_LABEL["accepted-risk"]}
-            </Badge>
-            <p className="text-sm leading-relaxed text-muted-foreground">{acceptedNote}</p>
-          </div>
-        </div>
-      )}
+      <AcceptedRiskCallout note={acceptedNote} className={PANEL_GUTTER} />
 
       {row.detail !== "" && row.detail !== acceptedNote && (
         <PanelSection title="Detail">

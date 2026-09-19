@@ -4,15 +4,8 @@ import { CROSS_SURFACE_ID } from "@arkaik/schema";
 import type { FindingRow } from "@/lib/utils/quality";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import {
-  COST_CHIP,
-  COST_HINT,
-  COST_TERM,
-  FINDING_STATUS_LABEL,
-  VERDICT_LABEL,
-} from "@/components/quality/quality-styles";
-import { ScaleChip } from "@/components/quality/ScaleChip";
-import { SeverityPill } from "@/components/quality/SeverityPill";
+import { AcceptedRiskCallout } from "@/components/quality/AcceptedRiskCallout";
+import { FindingScales } from "@/components/quality/FindingScales";
 
 interface FindingCardProps {
   row: FindingRow;
@@ -59,7 +52,6 @@ interface FindingCardProps {
  * Changelog dropped for the same reason.
  */
 export function FindingCard({ row, surfaceTitles, onOpenFinding, onOpenCriterion }: FindingCardProps) {
-  const verdict = row.verification?.verdict;
   const acceptedRisk = row.status === "accepted-risk";
   // What the accepted-risk callout shows: a finding carries no dedicated note
   // field, so the rationale is the refutation pass's note when it wrote one and
@@ -83,11 +75,9 @@ export function FindingCard({ row, surfaceTitles, onOpenFinding, onOpenCriterion
       <button
         type="button"
         onClick={() => onOpenFinding(row)}
-        className="flex w-full items-start text-left"
+        className="w-full text-left text-sm font-medium leading-relaxed hover:underline focus-visible:underline hover:underline-offset-4 focus-visible:underline-offset-4"
       >
-        <span className="flex-1 text-sm font-medium leading-relaxed hover:underline hover:underline-offset-4">
-          {row.title}
-        </span>
+        {row.title}
       </button>
 
       {/* The reference, on its own line: which criterion this finding answers
@@ -138,41 +128,7 @@ export function FindingCard({ row, surfaceTitles, onOpenFinding, onOpenCriterion
           themselves, with the numbers severity is read from between them.
 
           The priority is not repeated here: it is the square on the rail. */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-        <SeverityPill
-          impact={row.impact}
-          likelihood={row.likelihood}
-          risk={row.risk}
-          severity={row.severity}
-        />
-        <span>· cost</span>
-        <ScaleChip
-          term={COST_TERM[row.cost]}
-          hint={COST_HINT[row.cost]}
-          className={cn("rounded border px-1 font-medium", COST_CHIP[row.cost])}
-        >
-          {row.cost}
-        </ScaleChip>
-        {verdict && <span>· {VERDICT_LABEL[verdict]}</span>}
-        {/* The accepted-risk callout below states the status in its own badge,
-            in the treatment that says it is a decision; a second badge up here
-            would say it twice and more quietly. */}
-        {/* The rail's mark is a glyph; this is the word for it, and the only
-            copy of it a screen reader meets. Tinted to match the tick for
-            `resolved` alone — the same rule the rail follows, and the reason
-            the badge did not simply give way to the mark. */}
-        {!row.open && !acceptedRisk && (
-          <Badge
-            variant="outline"
-            className={cn(
-              "ms-auto",
-              row.status === "resolved" && "border-green-500/40 text-green-700 dark:text-green-400",
-            )}
-          >
-            {FINDING_STATUS_LABEL[row.status]}
-          </Badge>
-        )}
-      </div>
+      <FindingScales row={row} />
 
       {/*
         An accepted risk is a decision, so it reads as one — the decision log's
@@ -181,14 +137,7 @@ export function FindingCard({ row, surfaceTitles, onOpenFinding, onOpenCriterion
         is that somebody already weighed this and said "not now", and a reader
         scanning the board must not have to open a panel to learn it.
       */}
-      {acceptedRisk && (
-        <div className="mt-1 rounded-lg border bg-muted/30 px-3 py-2.5">
-          <Badge variant="outline" className="mb-1.5">
-            {FINDING_STATUS_LABEL["accepted-risk"]}
-          </Badge>
-          <p className="text-sm leading-relaxed text-muted-foreground">{acceptedNote}</p>
-        </div>
-      )}
+      <AcceptedRiskCallout note={acceptedNote} className="mt-1" />
     </article>
   );
 }
