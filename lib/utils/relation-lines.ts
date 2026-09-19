@@ -28,13 +28,13 @@ export type RelationDirection = "out" | "in";
 export type RelationLineId = `${EdgeTypeId}:${RelationDirection}`;
 
 export interface RelationLineSpec {
-  id: RelationLineId;
-  edgeType: EdgeTypeId;
-  direction: RelationDirection;
+  readonly id: RelationLineId;
+  readonly edgeType: EdgeTypeId;
+  readonly direction: RelationDirection;
   /** The heading. See {@link RELATION_LINE_LABELS}. */
-  label: string;
+  readonly label: string;
   /** What a new counterpart may be, from the grammar. Never empty. */
-  counterpartSpecies: SpeciesId[];
+  readonly counterpartSpecies: readonly SpeciesId[];
 }
 
 /**
@@ -126,13 +126,19 @@ function buildRelationLines(species: SpeciesId): readonly RelationLineSpec[] {
       ];
       if (counterpartSpecies.length === 0) continue;
 
-      lines.push({
-        id: `${edgeType}:${direction}`,
-        edgeType,
-        direction,
-        label: RELATION_LINE_LABELS[edgeType][direction],
-        counterpartSpecies: Object.freeze(counterpartSpecies) as SpeciesId[],
-      });
+      // The spec itself is frozen, not just its `counterpartSpecies` array:
+      // this object lives in the module-level table below and is handed out
+      // to every caller, so a mutation through one caller must not leak into
+      // the next.
+      lines.push(
+        Object.freeze({
+          id: `${edgeType}:${direction}` as RelationLineId,
+          edgeType,
+          direction,
+          label: RELATION_LINE_LABELS[edgeType][direction],
+          counterpartSpecies: Object.freeze(counterpartSpecies),
+        }),
+      );
     }
   }
 
@@ -145,8 +151,11 @@ function buildRelationLines(species: SpeciesId): readonly RelationLineSpec[] {
  *
  * Parts 2–4 call `relationLinesFor` inside render; a fresh array of fresh
  * objects on every call would make any `useMemo`/`React.memo` keyed on it dead
- * weight. Six species — the whole table is cheap to build once. Frozen so a
- * caller cannot mutate shared state.
+ * weight. Six species — the whole table is cheap to build once. Frozen at
+ * every level — the outer record, each species' line array, each spec object,
+ * and each spec's `counterpartSpecies` array — so a mutation through one
+ * caller cannot leak into the next; a shallow freeze here would have left the
+ * spec objects themselves mutable even though the arrays holding them are not.
  */
 const RELATION_LINES_BY_SPECIES: Readonly<Record<SpeciesId, readonly RelationLineSpec[]>> =
   Object.freeze(
@@ -156,9 +165,15 @@ const RELATION_LINES_BY_SPECIES: Readonly<Record<SpeciesId, readonly RelationLin
     >,
   );
 
+// A shared constant rather than `?? []`, which would mint a fresh array on
+// every call for an unknown species — harmless for what this module does with
+// it, but a needless allocation and a value that is not referentially stable
+// across calls.
+const NO_LINES: readonly RelationLineSpec[] = Object.freeze([]);
+
 /** The relation lines a node of this species has, in {@link RELATION_LINE_ORDER}. */
 export function relationLinesFor(species: SpeciesId): readonly RelationLineSpec[] {
-  return RELATION_LINES_BY_SPECIES[species] ?? [];
+  return RELATION_LINES_BY_SPECIES[species] ?? NO_LINES;
 }
 
 /** One row of a line: the counterpart's id, and the edge that put it there. */

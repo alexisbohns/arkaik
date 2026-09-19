@@ -38,7 +38,22 @@ const MODULES = [
   ["lib/utils/relation-lines.ts", "relation-lines"],
 ];
 
+// Registered once, here, rather than left for each suite that calls
+// `loadRelationLines()` to remember on its own — the same "someone will
+// forget" reasoning that justified the pid suffix above. Part 3's second
+// suite behind this loader gets cleanup by construction instead of by copying
+// a handler.
+let cleanupRegistered = false;
+function registerCleanup() {
+  if (cleanupRegistered) return;
+  cleanupRegistered = true;
+  process.on("exit", () => {
+    fs.rmSync(BUILD_DIR, { recursive: true, force: true });
+  });
+}
+
 function loadRelationLines() {
+  registerCleanup();
   loadSchema();
 
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
@@ -62,8 +77,12 @@ function loadRelationLines() {
     // A `@/…` require this table has no rule for would otherwise resolve
     // against nothing and fail inside `require()`, far from the actual cause.
     // This repo has been bitten by exactly that: a new `@/…` import silently
-    // breaking a hand-maintained loader table.
-    const leftover = rewritten.match(/require\(["']@[^"']+["']\)/g);
+    // breaking a hand-maintained loader table. Scoped to the `@/` alias
+    // specifically (not `@…` generally): this workspace has real scoped
+    // packages, e.g. `@arkaik/kritik-library`, that Node resolves fine from
+    // inside the build dir once the `@arkaik/schema` rewrite above has run —
+    // flagging those as unrewritten would be a false positive.
+    const leftover = rewritten.match(/require\(["']@\/[^"']+["']\)/g);
     if (leftover) {
       throw new Error(
         `${srcRel}: no rewrite rule for ${leftover.join(", ")} — add one to the rewrite table in ${__filename}`,

@@ -12,7 +12,7 @@
  */
 
 const assert = require("node:assert/strict");
-const { loadRelationLines, BUILD_DIR } = require("./load-relation-lines");
+const { loadRelationLines } = require("./load-relation-lines");
 
 const {
   relationLinesFor,
@@ -30,13 +30,9 @@ const {
   planRelationNew,
 } = loadRelationLines();
 
-// Cleaned up on process exit rather than only after the last assertion: an
-// assertion that throws partway through would otherwise leave the build dir
-// behind, and #3's pid-suffixed path means stale dirs now accumulate instead
-// of being overwritten by the next run.
-process.on("exit", () => {
-  require("fs").rmSync(BUILD_DIR, { recursive: true, force: true });
-});
+// Build-dir cleanup is the loader's job now (registered once inside
+// `loadRelationLines()`), not this suite's — Part 3's second suite behind the
+// same loader gets it by construction instead of having to copy a handler.
 
 const labelsOf = (species) => relationLinesFor(species).map((line) => line.label);
 
@@ -137,7 +133,15 @@ for (const edgeType of Object.keys(VALID_EDGE_SEMANTICS)) {
 
 // Sorting by EDGE_TYPE_IDS index would silently reorder every panel the day an
 // edge type is appended to that enum, so the order is its own list — and every
-// line a species can have must be in it.
+// line a species can have must be in it. This is also what guards the "rank
+// unranked ids last, not first" rule: `relationLinesFor` ranks a line id
+// missing from RELATION_LINE_ORDER with `Number.MAX_SAFE_INTEGER` rather than
+// `indexOf`'s -1, so an omission sorts to the bottom of the panel (visible,
+// harmless) instead of the top (a silent regression that reads as the line
+// the panel cares about most). There is no way to construct an unranked id
+// today — every id `relationLinesFor` can produce is checked against the
+// order right here — so that fallback path has no test of its own; this loop
+// is the guard that would need to fail before it could ever run.
 for (const species of SPECIES_IDS) {
   for (const line of relationLinesFor(species)) {
     assert(RELATION_LINE_ORDER.includes(line.id), `${line.id} has a place in the order`);
@@ -146,15 +150,34 @@ for (const species of SPECIES_IDS) {
 assert.equal(new Set(RELATION_LINE_ORDER).size, RELATION_LINE_ORDER.length,
   "no line id appears twice in the order");
 
-// A line id missing from RELATION_LINE_ORDER must not float to the top of the
-// panel: relationLinesFor sorts unranked ids last, not first (indexOf's -1).
-assert.deepEqual(labelsOf("view"), [
-  "Acceptances", "Calls", "Called by", "Displays", "Impacted by",
-], "an unranked id would land last, so today's fully-ranked view is unaffected");
-
 // --- 6: relationLinesFor("nope") --------------------------------------------
 
 assert.deepEqual(relationLinesFor("nope"), [], "an unknown species has no lines, not a throw");
+
+// --- 6b: the table is frozen at every level ---------------------------------
+
+// A shallow freeze on the per-species array would leave the spec objects
+// inside it mutable — and because the table is built once at module load and
+// handed out to every caller, a mutation through one caller would corrupt
+// every other caller's view for the rest of the process, not just its own
+// throwaway array.
+{
+  const [firstLine] = relationLinesFor("view");
+  assert(Object.isFrozen(firstLine), "a line spec is frozen, not just the array holding it");
+  assert(Object.isFrozen(firstLine.counterpartSpecies), "a spec's counterpartSpecies array is frozen");
+
+  const originalLabel = firstLine.label;
+  assert.throws(() => {
+    "use strict";
+    firstLine.label = "PWNED";
+  }, "mutating a frozen spec throws in strict mode");
+  // Non-strict assignment to a frozen object's property is a silent no-op
+  // rather than a throw, so this is the assertion that actually matters: the
+  // mutation attempt above must not have stuck, and the next caller must see
+  // the same object the first caller did.
+  assert.equal(relationLinesFor("view")[0].label, originalLabel,
+    "a mutation attempt does not leak into the next caller");
+}
 
 // --- 7: relationRows reads the edges the line names -------------------------
 
