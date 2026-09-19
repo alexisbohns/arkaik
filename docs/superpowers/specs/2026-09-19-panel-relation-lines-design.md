@@ -213,10 +213,10 @@ appears anywhere.
 
 ```ts
 export interface NodeRelations {
-  /** Write one edge. A no-op if it already exists. */
-  link(source: Node, target: Node, edgeType: EdgeTypeId): Promise<void>;
-  /** Remove one edge by id. */
-  unlink(edgeId: string): Promise<void>;
+  /** Link a counterpart along one line. A no-op if it is already linked. */
+  link(node: Node, counterpart: Node, line: RelationLineSpec): Promise<void>;
+  /** Unlink one counterpart along one line. Removes EVERY matching edge. */
+  unlink(node: Node, counterpartId: string, line: RelationLineSpec): Promise<void>;
   /**
    * Create the counterpart *and* link it, as one write. Resolves to the new
    * node, or `null` when the title was blank.
@@ -231,10 +231,19 @@ plan into a write and keeps the surface's node and edge state in step. That is
 the split `useAcceptanceIntake` and `lib/utils/acceptance-intake.ts` already use,
 and the reason is the same: the rules are testable without a store.
 
+Both take the *line*, not an edge type or an edge id, and the two corrections
+are worth stating because the first draft of this block got both wrong.
+
 `link` resolves direction from the line, not from argument order at the call
 site — a `direction: "in"` line writes `counterpart → node`. The plan asserts
 `isValidEdgeSemantic` before emitting and throws otherwise, so an inbound line
 can never produce an edge the importer would reject.
+
+`unlink` takes the counterpart and the line rather than an edge id, and deletes
+**every** matching edge. A row's `edgeId` is only the *first* of a possibly
+duplicated pair — `relationRows` de-duplicates on the counterpart — so deleting
+by that id would leave the row on screen after the user removed it, which is the
+same failure `planAcceptanceDetach` already guards against.
 
 ### `covers` is the deliberate exception
 
