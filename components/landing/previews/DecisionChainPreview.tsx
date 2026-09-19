@@ -12,7 +12,14 @@ export function DecisionChainPreview({ bundle }: PreviewProps) {
   const slice = sliceBundle(bundle, FIXTURES["decision-chain"].nodeIds!);
   return (
     <div className="h-full overflow-hidden p-3">
-      <ReadOnlyDecisionLog decisions={slice.nodes} allEdges={slice.edges} journal={slice.journal} statusFilter="all" />
+      <ReadOnlyDecisionLog
+        decisions={slice.nodes}
+        allEdges={slice.edges}
+        allNodes={slice.nodes}
+        journal={slice.journal}
+        statusFilter="all"
+        detailed
+      />
     </div>
   );
 }

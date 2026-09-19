@@ -38,8 +38,19 @@ export const ICON_TILE = "inline-flex size-6 shrink-0 items-center justify-cente
  */
 export const FORGE_TILE = "bg-purple-500/10 text-purple-600 dark:text-purple-400";
 
-/** The row a boxed icon and its label form together. */
-const MARK_ROW = "group inline-flex items-center gap-2 rounded-md text-xs transition-colors";
+/**
+ * The row a boxed icon and its label form together: the tile, then the words
+ * *beside* it rather than inside it.
+ *
+ * Exported for the same reason {@link ICON_TILE} is. The Decision log's rows
+ * carry the same kind of mark — a glyph and a count that open a preview — and a
+ * second hand-written copy of this row is a second answer to "what does a
+ * countable mark look like", free to drift the day one of them is restyled.
+ *
+ * The `group` is what lets the tile light up from a hover anywhere on the row,
+ * label included. It is unnamed, and safely so: these marks never nest.
+ */
+export const MARK_ROW = "group inline-flex items-center gap-2 rounded-md text-xs transition-colors";
 
 /**
  * The touched nodes, with their *current* status.

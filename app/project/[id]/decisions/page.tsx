@@ -45,6 +45,10 @@ export default function ProjectDecisionsPage() {
   // Owned here, not in `DecisionLog`: the toolbar and the log are siblings, so
   // the filter they share belongs to the page that mounts both.
   const [statusFilter, setStatusFilter] = useState<DecisionStatusFilter>("all");
+  // Expanded by default, as the Changelog is: a decision's rationale is the
+  // reason the record exists, so the fold is for scanning back through a long
+  // log rather than the state you arrive in.
+  const [detailed, setDetailed] = useState(true);
 
   const decisions = useMemo(
     () => dataNodes.filter((node) => node.species === "decision"),
@@ -129,15 +133,19 @@ export default function ProjectDecisionsPage() {
               onStatusChange={setStatusFilter}
               total={decisions.length}
               counts={statusCounts}
+              detailed={detailed}
+              onDetailedChange={setDetailed}
             />
           }
         >
           <DecisionLog
             decisions={decisions}
             allEdges={dataEdges}
+            allNodes={dataNodes}
             journal={journal}
             onSelect={handleSelectNode}
             statusFilter={statusFilter}
+            detailed={detailed}
           />
         </PageSurface>
       </PageShell>
