@@ -3,14 +3,11 @@
 import { useMemo, type ReactNode } from "react";
 import { DiamondPlusIcon, LoaderIcon } from "lucide-react";
 import type { Node, Edge, JournalEvent } from "@/lib/data/types";
-import type { StatusId } from "@/lib/config/statuses";
 import { decisionStatusOf } from "@/lib/utils/decision";
 import type { DecisionStatusFilter } from "@/components/decisions/DecisionFilterBar";
 import { DecisionStatusBadge } from "@/components/layout/DecisionStatusBadge";
-import { HoverPopover } from "@/components/layout/HoverPopover";
-import { StatusBadge } from "@/components/layout/StatusBadge";
+import { RelatedNodesPopover } from "@/components/layout/RelatedNodesPopover";
 import { CopyIdChip } from "@/components/graph/nodes/EntityBadges";
-import { EntityRow } from "@/components/graph/nodes/EntityRow";
 import { formatEventDate } from "@/components/journal/describe-event";
 import { ICON_CHIP_ROW, iconChipVariants } from "@/components/layout/IconChip";
 import { cn } from "@/lib/utils";
@@ -43,6 +40,16 @@ interface DecisionLogProps {
    * `topLevel`.
    */
   statusFilter: DecisionStatusFilter;
+  /**
+   * Free text matched against title, description and id. Optional — the landing
+   * previews render a fixed log with no toolbar above it to type into.
+   *
+   * A search, like a status filter, flattens the chains: a query that matches a
+   * superseded decision but not its head has nowhere to nest it, and nesting it
+   * under a head the reader did not ask for would answer a question they did
+   * not put. See `topLevel`.
+   */
+  search?: string;
 }
 
 /**
@@ -60,6 +67,22 @@ interface DecisionLogProps {
 function decidedInstant(node: Node, createdTs: Map<string, string>): string {
   const decidedAt = typeof node.metadata?.decided_at === "string" ? node.metadata.decided_at : undefined;
   return decidedAt ?? createdTs.get(node.id) ?? "";
+}
+
+/**
+ * Whether a decision answers the toolbar's search box.
+ *
+ * Title, description and id, because those are the three things anyone knows
+ * about a decision they are trying to find again: what it said, why, or the
+ * `DEC-…` someone pasted at them.
+ */
+function matchesQuery(node: Node, query: string): boolean {
+  if (query === "") return true;
+  return (
+    node.title.toLowerCase().includes(query) ||
+    (node.description ?? "").toLowerCase().includes(query) ||
+    node.id.toLowerCase().includes(query)
+  );
 }
 
 function byNewest(createdTs: Map<string, string>) {
@@ -88,16 +111,14 @@ function formatDecidedInstant(instant: string): string {
  * Both of a decision's outward edges get one of these and they are deliberately
  * the same shape, because they answer the same kind of question about different
  * things: `impacts` names the surfaces a choice landed on, `generates` names the
- * promises it created. Spelling either list out on the row was the option not
- * taken — a decision touching nine views wrapped into three lines of grey text
- * and pushed the next decision off the screen, which is exactly what the
- * Changelog's `DeliverableChips` learned and fixed.
+ * promises it created. The list itself is {@link RelatedNodesPopover}, the same
+ * panel the Library's "Used in" column opens; what lives here is the trigger.
  *
- * So it is drawn as that same mark: {@link ICON_CHIP_ROW}'s tile with the count
- * *beside* it, not a number crammed into a bordered plate. The label is a word
- * as well as a number — "3 surfaces", not "3" — because two glyphs on one line
- * cannot both be self-evident, and the room is there once the count is outside
- * the box.
+ * It is drawn as the Changelog's mark: {@link ICON_CHIP_ROW}'s tile with the
+ * count *beside* it, not a number crammed into a bordered plate. The label is a
+ * word as well as a number — "3 surfaces", not "3" — because two glyphs on one
+ * line cannot both be self-evident, and the room is there once the count is
+ * outside the box.
  *
  * **Both tiles are neutral.** The Changelog paints its forge mark purple
  * because the forge has an identity; these two have none to claim, and the one
@@ -105,10 +126,6 @@ function formatDecidedInstant(instant: string): string {
  * acceptance tile beside a green `enacted` mark would be two greens saying
  * different things at one glance. The glyph tells them apart, and the word
  * under the pointer confirms it.
- *
- * Rendered as an {@link EntityRow} per node, so every entry copies its own id
- * and opens its own panel — a popover that named a view but gave you no way to
- * go to it would just be a list to read and retype.
  */
 function RelatedNodesChip({
   icon,
@@ -128,7 +145,10 @@ function RelatedNodesChip({
   if (nodes.length === 0) return null;
 
   return (
-    <HoverPopover
+    <RelatedNodesPopover
+      label={label}
+      nodes={nodes}
+      onSelect={onSelect}
       trigger={
         <button
           type="button"
@@ -146,28 +166,7 @@ function RelatedNodesChip({
           {nodes.length === 1 ? "" : "s"}
         </button>
       }
-      className="p-1.5"
-    >
-      {/* A menu's geometry, not a card's: the panel keeps a thin padding and
-          each row carries its own, so a row's hover fill is inset from the
-          panel edge by that thin margin and the text still lines up with the
-          heading. The rows used to pull themselves out of a `p-3` panel with a
-          negative margin, which left the fill 4px from the edge under a
-          heading sitting at 12px — two different left edges in a 288px box. */}
-      <div className="flex flex-col gap-0.5">
-        <p className="px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-        {nodes.map((node) => (
-          <EntityRow key={node.id} node={node} onOpen={() => onSelect(node)}>
-            <span className="min-w-0 flex-1 truncate text-xs">{node.title}</span>
-            <StatusBadge
-              status={node.status as StatusId}
-              blockedBy={typeof node.metadata?.blocked_by === "string" ? node.metadata.blocked_by : undefined}
-              className="shrink-0"
-            />
-          </EntityRow>
-        ))}
-      </div>
-    </HoverPopover>
+    />
   );
 }
 
@@ -293,7 +292,7 @@ function DecisionRow({
   );
 }
 
-export function DecisionLog({ decisions, allEdges, allNodes, journal, onSelect, statusFilter, detailed }: DecisionLogProps) {
+export function DecisionLog({ decisions, allEdges, allNodes, journal, onSelect, statusFilter, detailed, search = "" }: DecisionLogProps) {
   const createdTs = useMemo(() => {
     const map = new Map<string, string>();
     for (const event of journal ?? []) {
@@ -399,18 +398,24 @@ export function DecisionLog({ decisions, allEdges, allNodes, journal, onSelect, 
     return { heads: orderedHeads, headIds, chainsByHead, visited };
   }, [decisions, directlySupersedes, hasIncomingSupersedes, createdTs]);
 
+  const query = search.trim().toLowerCase();
+  const flat = statusFilter !== "all" || query !== "";
+
   const topLevel = useMemo(() => {
-    if (statusFilter !== "all") {
-      // A specific-status filter shows flat matching rows — nesting a chain
+    if (flat) {
+      // A filter of either kind shows flat matching rows — nesting a chain
       // under a head that itself may not match the filter would be confusing.
-      return decisions.filter((d) => decisionStatusOf(d) === statusFilter).sort(byNewest(createdTs));
+      return decisions
+        .filter((d) => statusFilter === "all" || decisionStatusOf(d) === statusFilter)
+        .filter((d) => matchesQuery(d, query))
+        .sort(byNewest(createdTs));
     }
     // Heads plus any decision no head's DFS reached — a pure cycle (A
     // supersedes B, B supersedes A) leaves every member with an incoming
     // edge, so neither is a head; without this line both would vanish.
     const orphaned = decisions.filter((d) => !headIds.has(d.id) && !visited.has(d.id));
     return [...heads, ...orphaned].sort(byNewest(createdTs));
-  }, [decisions, statusFilter, heads, headIds, visited, createdTs]);
+  }, [decisions, flat, statusFilter, query, heads, headIds, visited, createdTs]);
 
   // No wrapper of its own now that the pills have moved out: the log is a single
   // block, and the page's content column already supplies the gap it used to add.
@@ -423,7 +428,11 @@ export function DecisionLog({ decisions, allEdges, allNodes, journal, onSelect, 
   }
 
   if (topLevel.length === 0) {
-    return <p className="py-8 text-center text-sm text-muted-foreground">No decisions with this status.</p>;
+    return (
+      <p className="py-8 text-center text-sm text-muted-foreground">
+        {query === "" ? "No decisions with this status." : "No decisions match this search."}
+      </p>
+    );
   }
 
   // The log as one timeline — the Changelog's rail, applied to the choices that
@@ -434,7 +443,7 @@ export function DecisionLog({ decisions, allEdges, allNodes, journal, onSelect, 
   return (
     <ol className="flex flex-col">
       {topLevel.map((node, index) => {
-        const chain = statusFilter === "all" ? (chainsByHead.get(node.id) ?? []) : [];
+        const chain = flat ? [] : (chainsByHead.get(node.id) ?? []);
         return (
           <DecisionRow
             key={node.id}
