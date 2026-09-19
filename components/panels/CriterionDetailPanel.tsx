@@ -38,7 +38,15 @@ interface CriterionDetailPanelProps {
   onOpenFinding: (findingId: string) => void;
 }
 
-function criterionOf(criterionId: string, library?: KritikLibrary): KritikCriterion | undefined {
+/**
+ * The pack's definition of one criterion, or `undefined` when the bundle
+ * travels without its pack — a supported state, see the component's docblock.
+ *
+ * Exported for `FindingDetailPanel`, whose Criterion card previews the same
+ * criterion's question: one lookup, so the two panels can never disagree about
+ * which definition answers to an id.
+ */
+export function criterionOf(criterionId: string, library?: KritikLibrary): KritikCriterion | undefined {
   return library?.criteria?.find((candidate) => candidate?.id === criterionId);
 }
 

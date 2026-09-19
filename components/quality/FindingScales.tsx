@@ -17,23 +17,30 @@ import { cn } from "@/lib/utils";
  * A finding's scales, as one meta line: severity, cost, the verdict when there
  * is one, and the status word pushed to the end.
  *
- * A component rather than a block written out in each place, for the reason
- * `FindingMark` is one: the card's third line and the panel's identity block
- * carried this markup character for character, down to the green tint the
- * `resolved` badge alone gets. Two copies would part company the first time a
- * scale gained a chip or a tint moved, and they would part company quietly —
- * the board and the panel a reader opens from it are never on screen together,
- * so nobody would see them disagree.
+ * The board's line, and only the board's: `FindingCard` is the single caller.
+ * It was shared with the finding panel, which drew this markup character for
+ * character — and the panel has since stopped using it, because the two places
+ * are asking different questions. A card is one row in a list of twenty, where
+ * the figures and their glosses are right to keep behind a `ScaleChip` hover;
+ * a panel is the one finding the reader asked for, where making them hover to
+ * learn why it is a P0 is making them work for the answer they opened it for.
+ * So `FindingDetailPanel` spells the same numbers out as a `Risk` section,
+ * unconditionally and as text, and this stays what it always was on the board.
  *
- * Not merged with the criterion/surface line above it, which looks like the
- * same shape and is not: the card's criterion chip is optional and truncates,
- * the panel's is mandatory and wraps.
+ * Still a component rather than a block inlined in the card. It is a clean
+ * unit — the scales, in order, with the status pushed to the end — and the
+ * next surface that wants a finding's numbers in a row should find one here
+ * rather than write a third.
+ *
+ * Not merged with the criterion/surface line above it on the card, which looks
+ * like the same shape and is not: the card's criterion chip is optional and
+ * truncates.
  *
  * `className` is the caller's line-level spacing and lands last, so a caller
  * can override the wrapper without editing this file.
  *
- * The priority is not in here. It is the square on the rail, and the mark in
- * the panel header — the same square, from `FindingMark`.
+ * The priority is not in here. It is the square on the rail — `FindingMark`,
+ * the same component the finding panel's title block leads with.
  */
 export function FindingScales({ row, className }: { row: FindingRow; className?: string }) {
   const verdict = row.verification?.verdict;

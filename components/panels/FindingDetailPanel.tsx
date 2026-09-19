@@ -1,13 +1,29 @@
 "use client";
 
-import { ExternalLinkIcon, ListChecksIcon } from "lucide-react";
-import { CROSS_SURFACE_ID, type QualitySection } from "@arkaik/schema";
-import { PanelHeaderEntityId } from "@/components/graph/nodes/EntityBadges";
+import type { ReactNode } from "react";
+import { ChevronRightIcon, ExternalLinkIcon, ListChecksIcon } from "lucide-react";
+import { CROSS_SURFACE_ID, type KritikLibrary, type QualitySection } from "@arkaik/schema";
+import { EntityId, PanelHeaderEntityId } from "@/components/graph/nodes/EntityBadges";
+// The one criterion lookup in the panel stack. Imported from the panel that
+// owns it rather than re-written here: a second `library.criteria.find` would
+// be a second answer to "which criterion is this", free to disagree about the
+// missing-pack case the day either one is hardened.
+import { criterionOf } from "@/components/panels/CriterionDetailPanel";
 import { PanelSection, PANEL_GUTTER } from "@/components/panels/PanelSection";
 import { AcceptedRiskCallout } from "@/components/quality/AcceptedRiskCallout";
 import { FindingMark } from "@/components/quality/FindingMark";
-import { FindingScales } from "@/components/quality/FindingScales";
-import { VERDICT_LABEL } from "@/components/quality/quality-styles";
+import {
+  COST_CHIP,
+  COST_HINT,
+  COST_TERM,
+  FINDING_STATUS_LABEL,
+  PRIORITY_CHIP,
+  PRIORITY_GLOSS,
+  SEVERITY_CHIP,
+  SEVERITY_HINT,
+  SEVERITY_LABEL,
+  VERDICT_LABEL,
+} from "@/components/quality/quality-styles";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { Node } from "@/lib/data/types";
@@ -24,6 +40,14 @@ interface FindingDetailPanelProps {
   findings: FindingRow[];
   /** The audit profile, for naming the surface the way the matrix names it. */
   section?: QualitySection;
+  /**
+   * The criteria pack, for the question the Criterion card previews. Optional
+   * the way it is on the criterion and cell panels: a bundle can travel without
+   * its pack, and then there is no question to show and the card shows what the
+   * projection already carries. `FindingDetailPanelHeader` does not take it —
+   * nothing in the header comes from the pack.
+   */
+  library?: KritikLibrary;
   /** The graph, so a linked node reads as a title rather than as an id. */
   nodesById: ReadonlyMap<string, Node>;
   onOpenNode: (nodeId: string) => void;
@@ -106,16 +130,19 @@ export function FindingDetailPanelHeader({
  * write path for either, and inventing one here would be inventing it in the
  * wrong place.
  *
- * Every section but Reference is conditional on having something to say, the
- * rule `CriterionDetailPanel` states: a heading over nothing reads as a panel
- * that failed to load rather than as a finding nobody wrote evidence for.
- * Reference is the exception because it can never be empty — a row that
- * resolved has an `id`, which is the thing that section exists to hand over.
+ * Every section carrying prose somebody had to write is conditional on having
+ * something to say, the rule `CriterionDetailPanel` states: a heading over
+ * nothing reads as a panel that failed to load rather than as a finding nobody
+ * wrote evidence for. Risk, Criterion and Reference are the exceptions,
+ * because none of them can ever be empty — the projection derives all five
+ * scales for every row, every finding answers to a criterion on a surface, and
+ * a row that resolved still has the `id` Reference exists to hand over.
  */
 export function FindingDetailPanel({
   findingId,
   findings,
   section,
+  library,
   nodesById,
   onOpenNode,
   onOpenCriterion,
@@ -163,50 +190,56 @@ export function FindingDetailPanel({
   // `||` rather than `??`, because `""` is not a note somebody wrote.
   const acceptedNote = acceptedRisk ? row.verification?.note || row.detail : undefined;
 
+  // The pack's own prose for the criterion this answers to. `""` whenever the
+  // bundle carries no pack, or carries one that does not define this id — both
+  // are ordinary states here, and the card simply has one line fewer.
+  const criterion = criterionOf(row.criterionId, library);
+  const question = typeof criterion?.question === "string" ? criterion.question : "";
+
   return (
     // No `opacity-70` on a decided finding, unlike the card: dimming says "this
     // row is history" to somebody scanning a board, and there is no board here
     // — the reader asked for this one record, and greying what they asked for
     // reads as broken rather than as filed away.
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto py-4">
-      {/* The identity block. The header states the same three things in one
-          truncating row; here the title gets to wrap, and the parameters a
-          reader triages from get a line each. */}
-      <div className={cn(PANEL_GUTTER, "flex flex-col gap-2")}>
+      {/* The title block. The same shape every other panel's title sits in — a
+          gutter'd `gap-1.5` column at `text-lg font-semibold` (`NodeDetailPanel`,
+          `CriterionDetailPanel`). It used to be `text-sm font-medium`, which
+          made the finding the one record in the stack whose name read as body
+          copy, and put it below its own section headings in the visual
+          hierarchy. */}
+      <div className={cn(PANEL_GUTTER, "flex flex-col gap-1.5")}>
         {/* The mark leads the title, the way it leads the row on the board's
             rail — it is the same component, so the panel opens looking like
             the thing that was clicked. It sits here rather than in the header
-            because it is a status, and the header carries identity only. */}
+            because it is a status, and the header carries identity only.
+            `mt-1` rather than the old `mt-0.5`: the square is 24px against a
+            28px line now, and half a unit left it sitting high of the cap. */}
         <div className="flex items-start gap-2">
-          <FindingMark row={row} className="mt-0.5" />
-          <p className="flex-1 text-sm font-medium leading-relaxed">{row.title}</p>
-        </div>
-
-        {/* Which criterion this answers to, and on which surface — what
-            somebody quotes when they argue it. Its own line rather than
-            fighting five numbers for space. */}
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-          <button
-            type="button"
-            onClick={() => onOpenCriterion(row.criterionId, row.surface)}
-            className="rounded bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] transition-colors hover:bg-muted hover:text-foreground"
-            title={`Open ${row.criterionName}`}
-          >
-            {row.criterionId}
-          </button>
-          {row.criterionName !== row.criterionId && <span>{row.criterionName}</span>}
-          {row.surface === CROSS_SURFACE_ID ? (
-            <Badge variant="outline" className="font-normal">
-              Cross-surface
+          <FindingMark row={row} className="mt-1" />
+          <p className="flex-1 text-lg font-semibold leading-relaxed text-foreground">
+            {row.title}
+          </p>
+          {/* The word for the rail's glyph, and the only copy of it a screen
+              reader meets — inherited from `FindingScales` when the scales
+              left this panel. Green for `resolved` alone, the rule the rail
+              follows. An accepted risk is deliberately absent: its callout
+              below states the status in the treatment that says it is a
+              decision, and a badge up here would say it twice and more
+              quietly. */}
+          {!row.open && !acceptedRisk && (
+            <Badge
+              variant="outline"
+              className={cn(
+                "ms-auto mt-1 shrink-0",
+                row.status === "resolved" &&
+                  "border-green-500/40 text-green-700 dark:text-green-400",
+              )}
+            >
+              {FINDING_STATUS_LABEL[row.status]}
             </Badge>
-          ) : (
-            <span title={row.surface}>· {surfaceTitleOf(row.surface, section)}</span>
           )}
         </div>
-
-        {/* The scales. The priority is not repeated: it is the mark in the
-            header, the same square the rail carried. */}
-        <FindingScales row={row} />
       </div>
 
       {/* An accepted risk is a decision, so it reads as one — the decision
@@ -214,6 +247,120 @@ export function FindingDetailPanel({
           identity block. Somebody already weighed this and said "not now", and
           burying that invites the next reader to re-litigate it. */}
       <AcceptedRiskCallout note={acceptedNote} className={PANEL_GUTTER} />
+
+      {/* The bill, spelled out. On the board these five numbers are
+          `FindingScales`, a compact line whose figures and glosses live behind
+          a hover — right for a row in a list of twenty, wrong here: the reader
+          asked for this one finding, and "why is this a P0" should not require
+          them to find a chip and keep a pointer on it. So the panel renders
+          what the popover held, unconditionally and as text. Nothing in this
+          section needs a hover.
+
+          Unconditional, unlike every other section below: a row always has an
+          impact, a likelihood, a severity, a priority and a cost — the
+          projection derives all five — so there is no empty state to guard. */}
+      <PanelSection title="Risk">
+        <dl className="flex flex-col gap-2 rounded-lg border bg-muted/30 px-3 py-2.5 text-sm">
+          <BillRow label="Impact" value={<span className="tabular-nums">{row.impact}</span>} />
+          <BillRow
+            label="Likelihood"
+            value={<span className="tabular-nums">× {row.likelihood}</span>}
+          />
+          {/* The rule `SeverityPill`'s popover draws in the same place: what is
+              above it is the two factors, what is below it is what they bought.
+              A separator rather than a second heading, because the bill is one
+              table and not two. */}
+          <div className="my-0.5 border-t" aria-hidden="true" />
+          <BillRow
+            label="Risk"
+            value={<span className="font-semibold tabular-nums">{row.risk}</span>}
+            gloss="Impact × likelihood."
+          />
+          <BillRow
+            label="Severity"
+            value={<Chip className={SEVERITY_CHIP[row.severity]}>{SEVERITY_LABEL[row.severity]}</Chip>}
+            gloss={SEVERITY_HINT[row.severity]}
+          />
+          <BillRow
+            label="Priority"
+            value={<Chip className={PRIORITY_CHIP[row.priority]}>{row.priority}</Chip>}
+            gloss={PRIORITY_GLOSS[row.priority]}
+          />
+          <BillRow
+            label="Remediation cost"
+            value={
+              <>
+                <Chip className={COST_CHIP[row.cost]}>{row.cost}</Chip>
+                <span className="text-muted-foreground">{COST_TERM[row.cost]}</span>
+              </>
+            }
+            gloss={COST_HINT[row.cost]}
+          />
+        </dl>
+      </PanelSection>
+
+      {/* The criterion, as a card that previews it rather than a mono chip in
+          a meta line. It is the thing a reader most often follows out of a
+          finding — what somebody quotes when they argue it — and the old line
+          gave it ten pixels of monospace between a domain it did not name and
+          five numbers it had to share a row with.
+
+          The whole card is the button, the way a `CriteriaList` row is: a
+          target this size with one destination should not make the reader aim
+          at the id inside it. */}
+      <PanelSection title="Criterion">
+        <button
+          type="button"
+          onClick={() => onOpenCriterion(row.criterionId, row.surface)}
+          className="group flex w-full flex-col gap-1.5 rounded-lg border bg-muted/30 px-3 py-2.5 text-left transition-colors hover:bg-muted/60"
+        >
+          <div className="flex w-full items-center gap-2">
+            {/* The domain, in the bordered chip `CriterionDetailPanelHeader`
+                wears for the same value, so the card and the panel it opens
+                say it the same way. Absent when the pack does not define the
+                criterion — `buildFindingRows` leaves `domainName` empty then,
+                and an empty chip would read as a domain called nothing. */}
+            {row.domainName !== "" && (
+              <span className="inline-flex shrink-0 items-center rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground">
+                {row.domainName}
+              </span>
+            )}
+            <EntityId id={row.criterionId} />
+            {/* The surface this was filed on, pushed to the end of the row.
+                `cross-surface` is a findings-only lens no profile declares, so
+                it is badged rather than left to print its raw slug — see
+                `surfaceTitleOf`, and the reason a reader scoped to one surface
+                cannot mistake it for theirs. */}
+            {row.surface === CROSS_SURFACE_ID ? (
+              <Badge variant="outline" className="ms-auto shrink-0 font-normal">
+                Cross-surface
+              </Badge>
+            ) : (
+              <span
+                className="ms-auto min-w-0 truncate text-xs text-muted-foreground"
+                title={row.surface}
+              >
+                {surfaceTitleOf(row.surface, section)}
+              </span>
+            )}
+            <ChevronRightIcon
+              className="size-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground"
+              aria-hidden="true"
+            />
+          </div>
+          {/* Wrapping rather than truncating: this is the expansive reading of
+              the criterion, and a name cut mid-word is the board's compromise,
+              not this panel's. Skipped when the projection fell back to the id
+              for want of a pack definition — the id is already in the row
+              above, and printing it twice would look like two facts. */}
+          {row.criterionName !== row.criterionId && (
+            <p className="text-sm font-medium">{row.criterionName}</p>
+          )}
+          {question !== "" && (
+            <p className="text-sm leading-relaxed text-muted-foreground">{question}</p>
+          )}
+        </button>
+      </PanelSection>
 
       {row.detail !== "" && row.detail !== acceptedNote && (
         <PanelSection title="Detail">
@@ -290,5 +437,52 @@ export function FindingDetailPanel({
         </div>
       </PanelSection>
     </div>
+  );
+}
+
+/**
+ * One line of the risk bill: what it is called, what it is, and what that
+ * means in a sentence.
+ *
+ * The gloss lives inside the `<dd>` rather than beside it, because it is part
+ * of the same answer — `SEVERITY_HINT` says what `High` claims, and a reader
+ * who takes the word without it has the label and not the meaning. It is also
+ * why the value column is left-aligned instead of right: a column of
+ * right-aligned prose is a column nobody reads.
+ *
+ * The label column is fixed so the six values line up; `w-28` clears
+ * "Remediation cost", the longest of them, at `text-xs`.
+ */
+function BillRow({ label, value, gloss }: { label: string; value: ReactNode; gloss?: string }) {
+  return (
+    <div className="flex items-baseline gap-3">
+      <dt className="w-28 shrink-0 text-xs text-muted-foreground">{label}</dt>
+      <dd className="flex min-w-0 flex-1 flex-col gap-1">
+        <span className="flex flex-wrap items-center gap-2">{value}</span>
+        {gloss && <span className="text-xs leading-relaxed text-muted-foreground">{gloss}</span>}
+      </dd>
+    </div>
+  );
+}
+
+/**
+ * A scale's chip in the bill — the shared geometry, with the tint passed in
+ * from `quality-styles`.
+ *
+ * Not `ScaleChip`: that component's whole job is to hang a term and a hint off
+ * a hover, and this section exists precisely because nothing in it should
+ * require one. What is left once the popover goes is a border, a radius and
+ * some padding, which is this.
+ */
+function Chip({ className, children }: { className: string; children: ReactNode }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center rounded border px-1.5 py-0.5 text-xs font-medium",
+        className,
+      )}
+    >
+      {children}
+    </span>
   );
 }

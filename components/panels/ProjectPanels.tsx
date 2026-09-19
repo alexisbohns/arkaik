@@ -324,6 +324,7 @@ export function ProjectPanels({
                 findingId={entry.payload.findingId}
                 findings={qualityFindings}
                 section={qualitySection}
+                library={qualityLibrary}
                 nodesById={nodesById}
                 // Above this panel, never in place of it — the rule every other
                 // navigation in the stack follows, so the trail still reads back
