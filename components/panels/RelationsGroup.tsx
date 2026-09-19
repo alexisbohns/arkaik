@@ -53,7 +53,7 @@ interface RelationsGroupProps {
    */
   relations?: NodeRelations;
   findings?: FindingRow[];
-  onOpenCriterion?: (criterionId: string, surface: string) => void;
+  onOpenFinding?: (row: FindingRow) => void;
 }
 
 /**
@@ -118,14 +118,14 @@ export function RelationsGroup({
   intake,
   relations,
   findings,
-  onOpenCriterion,
+  onOpenFinding,
 }: RelationsGroupProps) {
   // Only a view or a flow appears in a playlist, so only one can be invoked.
   // The species test is redundant with what `findWhereUsed` can return and is
   // kept anyway, as its neighbours are: the flag states the condition the
   // section is rendered under rather than relying on a second function's range.
   const isAnchor = node.species === "view" || node.species === "flow";
-  const openFindings = findings && onOpenCriterion ? worstOpenFindingFor(findings, node.id) : null;
+  const openFindings = findings && onOpenFinding ? worstOpenFindingFor(findings, node.id) : null;
   // One map for the whole group. Every relation line resolves a counterpart id
   // to a node — a decision panel has four of them — and a map per line is four
   // identical project-wide maps per render for one answer. It is also what lets
@@ -316,8 +316,8 @@ export function RelationsGroup({
           />
         ))}
       {hasRefs && <RefsSection node={node} />}
-      {hasFindings && findings && onOpenCriterion && (
-        <FindingsSection node={node} findings={findings} onOpenCriterion={onOpenCriterion} />
+      {hasFindings && findings && onOpenFinding && (
+        <FindingsSection node={node} findings={findings} onOpenFinding={onOpenFinding} />
       )}
     </PanelGroup>
   );

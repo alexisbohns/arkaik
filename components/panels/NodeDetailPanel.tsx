@@ -93,11 +93,11 @@ interface NodeDetailPanelProps {
    * pre-filtered one because the caller builds it once for a whole panel stack,
    * and re-filtering it per open panel is what a panel is for.
    *
-   * Optional with `onOpenCriterion`, and the section is absent without both: a
+   * Optional with `onOpenFinding`, and the section is absent without both: a
    * list of findings nothing can open is a dead end.
    */
   findings?: FindingRow[];
-  onOpenCriterion?: (criterionId: string, surface: string) => void;
+  onOpenFinding?: (row: FindingRow) => void;
 }
 
 interface NodeFieldsProps {
@@ -667,7 +667,7 @@ export function NodeDetailPanel({
   relations,
   onZoomShot,
   findings,
-  onOpenCriterion,
+  onOpenFinding,
 }: NodeDetailPanelProps) {
   // The panel's one latest-metadata write base.
   //
@@ -815,7 +815,7 @@ export function NodeDetailPanel({
           intake={intake}
           relations={relations}
           findings={findings}
-          onOpenCriterion={onOpenCriterion}
+          onOpenFinding={onOpenFinding}
         />
         {node.species === "flow" && allNodes && (
           <PlaylistEditor

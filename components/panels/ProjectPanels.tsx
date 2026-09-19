@@ -405,11 +405,11 @@ export function ProjectPanels({
               relations={relations}
               onZoomShot={onZoomShot}
               findings={qualityFindings}
-              // From this panel's own depth, the rule the criterion panel's
-              // `onOpenNode` above already follows: a criterion opened out of a
-              // node sits ABOVE that node rather than replacing it, so the trail
-              // still reads back to the node the reader came from.
-              onOpenCriterion={(criterionId, surface) => openCriterion(criterionId, surface, index + 1)}
+              // From this panel's own depth, the rule every navigation in the
+              // stack follows: a finding opened out of a node sits ABOVE that
+              // node rather than replacing it, so the trail still reads back to
+              // the node the reader came from.
+              onOpenFinding={(row) => openFinding(row, index + 1)}
             />
           );
         }}

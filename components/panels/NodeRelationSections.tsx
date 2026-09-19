@@ -90,7 +90,7 @@ export function RefsSection({ node }: { node: Node }) {
 export interface FindingsSectionProps {
   node: Node;
   findings: FindingRow[];
-  onOpenCriterion: (criterionId: string, surface: string) => void;
+  onOpenFinding: (row: FindingRow) => void;
 }
 
 /**
@@ -105,7 +105,7 @@ export interface FindingsSectionProps {
  * opinion on which finding is worse than which, and the two lists would read
  * differently the day a pack moved a bucket.
  */
-export function FindingsSection({ node, findings, onOpenCriterion }: FindingsSectionProps) {
+export function FindingsSection({ node, findings, onOpenFinding }: FindingsSectionProps) {
   const own = filterFindings(
     findings.filter((row) => row.open && row.nodeIds.includes(node.id)),
     EMPTY_QUALITY_FILTERS,
@@ -119,15 +119,16 @@ export function FindingsSection({ node, findings, onOpenCriterion }: FindingsSec
     <PanelSection title="Findings">
       <div className="flex flex-col gap-0.5">
         {own.map((row) => (
-          // Into the criterion, not into the finding: a finding has no panel of
-          // its own, and the criterion is where its question, its bands and its
-          // siblings on the same surface live.
+          // Into the finding. This used to open the *criterion*, because a
+          // finding had no panel of its own; it has one now, and a reader who
+          // clicked a finding asked about the finding. The criterion is one
+          // more click from inside it.
           <button
             key={row.id}
             type="button"
-            onClick={() => onOpenCriterion(row.criterionId, row.surface)}
+            onClick={() => onOpenFinding(row)}
             className="flex items-center gap-2 text-sm text-left rounded-md px-2 py-1.5 hover:bg-muted transition-colors w-full"
-            title={`Open ${row.criterionName}`}
+            title={row.title}
           >
             <span
               className={cn(
