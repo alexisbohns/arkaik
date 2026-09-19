@@ -45,6 +45,7 @@
     "test:changelog-period": "node tests/app/changelog-period.test.js",
     "test:deliverable-pr": "node tests/app/deliverable-pr.test.js",
     "test:playlist-utils": "node tests/app/playlist-utils.test.js",
+    "test:search-score": "node tests/app/search-score.test.js",
     "test:coverage": "node tests/app/coverage.test.js",
     "test:docs-visibility": "node tests/app/docs-visibility.test.js",
     "test:docs-icons": "node tests/app/docs-icons.test.js",

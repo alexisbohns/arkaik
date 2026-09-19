@@ -444,11 +444,13 @@ interface AttachAnchorRowProps {
  * Attach this acceptance to a view or a flow — one that exists, or one created
  * in the same gesture.
  *
- * The species select plus `NodeSearchCombobox` is the shape the playlist editor
- * and the insert dialog already use for "an existing node, or a new one by that
- * name", and reusing it means the create affordance appears under exactly the
- * same rule everywhere: only once something is typed that no node of that
- * species already answers to.
+ * The species select plus `NodeSearchCombobox` is the shape the insert dialog
+ * already uses for "an existing node, or a new one by that name", and reusing it
+ * means the create affordance appears under exactly the same rule in both: only
+ * once something is typed that no node of that species already answers to. (The
+ * playlist editor used to be the third; its Add step popover searches both
+ * species at once, because a playlist plays both and the select was asking a
+ * question the search result already answers.)
  *
  * **Attaching an unassigned anchor is allowed and announced.** An acceptance
  * anchored only to unassigned views derives an empty membership, so this gesture

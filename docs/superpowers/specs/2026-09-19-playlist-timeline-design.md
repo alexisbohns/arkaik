@@ -87,8 +87,8 @@ grid whose first column is the rail would push the nested rail away from the
 rule that should be carrying it; the helper goes away with the cards it was
 built for.
 
-`AddEntryControls` and the empty state move into the content column (`pl-9` —
-the 24px tile plus the grid's 12px gap) at the foot of each list, so that "No
+The Add step button (§2b) and the empty state sit in the content column (`pl-9`
+— the 24px tile plus the grid's 12px gap) at the foot of each list, so that "No
 entries yet." and the thing that fixes it both sit under the titles rather than
 under the rail.
 
@@ -116,6 +116,61 @@ Move to position  [ 2 ]   (1–5)
 The per-row trash button disappears; this is now the only way to remove an
 entry. Junction *cases* keep their own trash button: a case is not an entry on
 the rail, and its removal has always lived on the case's own bar.
+
+## 2b. Adding a step
+
+The old composer was a dashed box holding a species `Select` beside either a
+node search or a label field — three controls, permanently open at the foot of
+**every** list, including every branch of every branch. In a flow with one
+junction and four cases that is five open composers for a playlist of six steps.
+
+It collapses to one small ghost `+ Add step` button opening a popover with one
+`Combobox`:
+
+```
+┌────────────────────────────────┐
+│ ⌕ check                        │
+│────────────────────────────────│
+│ ▤ Checkout          V-checkout │
+│ ⛬ Checkout flow     F-checkout │
+│ ＋ Create view "check"       ▤ │
+│ ＋ Create flow "check"       ⛬ │
+│────────────────────────────────│
+│ ⑂ Condition   Yes / No branches│
+│ ⑃ Junction  One branch per case│
+└────────────────────────────────┘
+```
+
+**There is no species selector.** It was asking a question the search result
+already answers: a row reading "Checkout · F-checkout" has said which species it
+is. Views and flows are searched together — a playlist plays both — and the
+species rides along as the icon `NodeCard` already uses for it.
+
+**Everything is a row in the one list.** The matches, the create rows (one per
+species, each appearing under `NodeSearchCombobox`'s existing rule: only once
+something is typed that no node of that species answers to), and the two
+branching shapes fixed at the bottom. A footer `<Button>` is precisely where the
+arrow keys cannot reach — audit `shadcn-6`, the same finding that moved
+`NodeSearchCombobox`'s own create affordance into its array — and because the
+combobox wraps, one ArrowUp from the field lands on Junction.
+
+**Nothing is offered until something is typed.** An unfiltered shortlist of six
+out of a graph's several hundred views reads as a menu while behaving like a
+coincidence, so the resting popover is the two branching rows and an invitation
+to search. The rule above them is drawn only while there is something above to
+separate.
+
+**A branch takes the query as its label** when one was typed, and "Condition" /
+"Junction" otherwise — you typed a name for a thing you did not find, and naming
+it is the next thing you would have done. The row stays renameable in place.
+
+A flow that would make the playlist eat itself still reports through
+`onCycleBlocked` rather than vanishing from the list: a step you expected to
+find and cannot is a worse puzzle than one that says why it refused.
+
+`fuzzyScore` moves from `NodeSearchCombobox` to `lib/utils/search.ts`, since two
+pickers now rank the same graph and a second copy would drift into a second idea
+of what "best match" means.
 
 ## 3. Reorder controls
 
@@ -181,7 +236,7 @@ concerns. Split into `components/panels/playlist/`:
 | `PlaylistIndexMenu.tsx` | the tile and its popover |
 | `PlaylistReorderControls.tsx` | the two absolute arrows and the depth group names |
 | `DebouncedLabelInput.tsx` | moved verbatim, comments included |
-| `AddEntryControls.tsx` | moved verbatim |
+| `AddEntryButton.tsx` | the Add step button and its one-list popover (§2b) |
 
 The list and the row stay in **one** file: they are mutually recursive — a
 condition holds two lists, a junction case holds one, and each holds rows — so
@@ -217,6 +272,11 @@ the fast CI job — no database, no DOM:
   (out of range, `from === to`).
 - `countBranchChildren(entry)` — the `{ branches, entries }` / `{ cases, entries }`
   shape behind the collapsed row's count.
+
+And `tests/app/search-score.test.js` for `fuzzyScore`, now that it ranks two
+pickers rather than one: the `-1` miss signal both call sites filter on, order
+sensitivity, and the four weights (exact wins, start beats middle, a consecutive
+run beats scattered letters, a short candidate beats a long one containing it).
 
 Visual verification through the scratchpad Playwright route, importing a bundle
 whose flow has a condition and a junction.

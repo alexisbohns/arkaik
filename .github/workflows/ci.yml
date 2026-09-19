@@ -198,6 +198,9 @@ jobs:
       - name: Playlist ordering tests
         run: npm run test:playlist-utils
 
+      - name: Node-search ranking tests
+        run: npm run test:search-score
+
       - name: Keyboard shortcut catalogue tests
         run: npm run test:keyboard-shortcuts
 

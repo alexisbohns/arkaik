@@ -9,7 +9,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { AddEntryControls } from "@/components/panels/playlist/AddEntryControls";
+import { AddEntryButton } from "@/components/panels/playlist/AddEntryButton";
 import { DebouncedLabelInput } from "@/components/panels/playlist/DebouncedLabelInput";
 import { PlaylistIndexMenu } from "@/components/panels/playlist/PlaylistIndexMenu";
 import { PlaylistReorderControls, rowGroupClass } from "@/components/panels/playlist/PlaylistReorderControls";
@@ -365,7 +365,7 @@ export function PlaylistEntryList({
         </ol>
       )}
       <div className={CONTENT_COLUMN}>
-        <AddEntryControls
+        <AddEntryButton
           flowNodeId={flowNodeId}
           allNodes={allNodes}
           entries={entries}
