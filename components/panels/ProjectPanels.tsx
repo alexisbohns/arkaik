@@ -330,6 +330,23 @@ export function ProjectPanels({
                 // Above this panel, never in place of it — the rule every other
                 // navigation in the stack follows, so the trail still reads back
                 // to the finding the reader came from.
+                //
+                // Sitting above it is not the same as surviving it, and no
+                // comment here should promise that it is. Opening the node
+                // publishes `?node=`; Back — or closing that node panel, which
+                // republishes an empty address — hands `reconcileArrival` a
+                // missing id, and a missing id closes the *whole* stack, this
+                // finding with it, and any criterion or cell panel underneath.
+                // One address, and a finding is not it. Raw has had the
+                // identical behaviour since it landed. What brings the panel
+                // back is the Findings page's own `?finding=` sync, and it
+                // comes back remounted, so the reader loses their scroll
+                // position in it.
+                //
+                // This warning used to sit on the criterion panel's own
+                // `onOpenNode`, which is gone: following a finding's linked
+                // node is now only reachable from here. The trap moved; it did
+                // not close, and it is one panel deeper than it was.
                 onOpenNode={(nodeId) => openNode({ nodeId }, index + 1)}
                 onOpenCriterion={(criterionId, criterionSurface) =>
                   openCriterion(criterionId, criterionSurface, index + 1)
