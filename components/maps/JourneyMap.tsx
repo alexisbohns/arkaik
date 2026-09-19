@@ -25,7 +25,6 @@ import { InsertBetweenDialog, type InsertEntryType } from "@/components/panels/I
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useNodes } from "@/lib/hooks/useNodes";
-import { useDuplicateNode } from "@/lib/hooks/useDuplicateNode";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useProject } from "@/lib/hooks/useProject";
 import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
@@ -90,7 +89,6 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
 
   const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes, updateNode, addNode, removeNode, removeNodes, applyMutations } = useNodes(id);
 
-  const duplicateNode = useDuplicateNode(id);
   const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges, addEdge, removeEdge, syncEdges } = useEdges(id);
   const intake = useAcceptanceIntake({
     projectId: id,
@@ -767,7 +765,6 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
         history
         onUpdate={handleNodeUpdate}
         onDelete={handleDeleteNodeRequest}
-        onDuplicate={duplicateNode}
         onCreateNode={handleCreateNodeFromPanel}
         intake={intake}
         onZoomShot={(node, platform) => {

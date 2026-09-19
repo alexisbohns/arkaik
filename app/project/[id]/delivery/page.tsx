@@ -24,7 +24,6 @@ import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { useProjectId } from "@/lib/hooks/useProjectId";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useNodes } from "@/lib/hooks/useNodes";
-import { useDuplicateNode } from "@/lib/hooks/useDuplicateNode";
 import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
 import { computeDeliveryItems, groupItemsByStatus, type DeliveryItem } from "@/lib/utils/delivery";
@@ -63,7 +62,6 @@ export default function ProjectDeliveryPage() {
 
   const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes, updateNode, addNode, applyMutations } = useNodes(id);
 
-  const duplicateNode = useDuplicateNode(id);
   const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges, syncEdges } = useEdges(id);
   const intake = useAcceptanceIntake({
     projectId: id,
@@ -193,7 +191,6 @@ export default function ProjectDeliveryPage() {
         scope={scope}
         history
         onUpdate={handleNodeUpdate}
-        onDuplicate={duplicateNode}
         onCreateNode={handleCreateNodeFromPanel}
         intake={intake}
       >

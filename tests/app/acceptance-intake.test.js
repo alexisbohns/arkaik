@@ -368,14 +368,13 @@ test("a dangling anchor is not multiplied across the pieces", () => {
 
 console.log("\nduplicate");
 
-test("the copy takes the id it was given", () => {
+test("the copy takes the id and the title it was given", () => {
+  // Neither is derived here any more: `DuplicateNodeDialog` asks for the name
+  // and shows the id it mints, and this function just applies them.
   const original = { ...node("A-export", "acceptance"), title: "Export notes" };
-  assert.equal(duplicateNodeDraft(original, "AC-export-notes-2").id, "AC-export-notes-2");
-});
-
-test("the copy's title is suffixed (copy)", () => {
-  const original = { ...node("A-export", "acceptance"), title: "Export notes" };
-  assert.equal(duplicateNodeDraft(original, "A-x").title, "Export notes (copy)");
+  const copy = duplicateNodeDraft(original, { id: "AC-share-notes", title: "Share notes" });
+  assert.equal(copy.id, "AC-share-notes");
+  assert.equal(copy.title, "Share notes");
 });
 
 test("project, species, status and description carry over", () => {
@@ -383,7 +382,7 @@ test("project, species, status and description carry over", () => {
     ...node("V-notes", "view", { status: "live", description: "The notes list." }),
     title: "Notes",
   };
-  const copy = duplicateNodeDraft(original, "V-notes-2");
+  const copy = duplicateNodeDraft(original, { id: "V-notes-2", title: "Notes again" });
   assert.equal(copy.project_id, PROJECT);
   assert.equal(copy.species, "view");
   assert.equal(copy.status, "live");
@@ -394,7 +393,7 @@ test("metadata carries over", () => {
   const original = node("A-export", "acceptance", {
     metadata: { gherkin: "When I export, Then …", values: ["speed"] },
   });
-  const copy = duplicateNodeDraft(original, "A-y");
+  const copy = duplicateNodeDraft(original, { id: "A-y", title: "Y" });
   assert.equal(copy.metadata.gherkin, "When I export, Then …");
   assert.deepEqual(copy.metadata.values, ["speed"]);
 });
@@ -404,23 +403,29 @@ test("the copy's metadata is its own", () => {
   // arrays in place, so a shallow copy would let an edit to one node silently
   // rewrite the other.
   const original = node("A-export", "acceptance", { metadata: { values: ["speed"] } });
-  const copy = duplicateNodeDraft(original, "A-z");
+  const copy = duplicateNodeDraft(original, { id: "A-z", title: "Z" });
   copy.metadata.values.push("trust");
   assert.deepEqual(original.metadata.values, ["speed"]);
+});
+
+test("the copy's nested metadata is its own, not just its top level", () => {
+  // A spread of `metadata` would have passed the test above only because
+  // `values` sits at its top level; a playlist is two levels down.
+  const original = node("F-edit", "flow", {
+    metadata: { playlist: { entries: [{ type: "view", view_id: "V-a" }] } },
+  });
+  const copy = duplicateNodeDraft(original, { id: "F-edit-2", title: "Edit again" });
+  copy.metadata.playlist.entries.push({ type: "view", view_id: "V-b" });
+  assert.equal(original.metadata.playlist.entries.length, 1);
 });
 
 test("the copy's platforms array is its own", () => {
   // The same hazard as the metadata one, one level up: `platforms` is a
   // top-level array, and a spread would have shared it.
   const original = node("V-notes", "view", { platforms: ["web"] });
-  const copy = duplicateNodeDraft(original, "V-notes-2");
+  const copy = duplicateNodeDraft(original, { id: "V-notes-2", title: "Notes again" });
   copy.platforms.push("ios");
   assert.deepEqual(original.platforms, ["web"]);
-});
-
-test("an empty title still yields \"(copy)\"", () => {
-  const original = { ...node("A-x", "acceptance"), title: "" };
-  assert.equal(duplicateNodeDraft(original, "A-x2").title, "(copy)");
 });
 
 // The transpiled CommonJS is a build artefact, not a fixture.

@@ -563,10 +563,11 @@ function ComputedPlatformStatusSection({
  * advertising capabilities the surface does not have; a read-only surface
  * passes no handlers and gets no `⋯`.
  *
- * `onSplit` is a callback rather than the dialog itself. The trigger lives here
- * and the dialog has to live in the body's document, and `PanelStack` renders
- * those through two separate render props — so the open state can only be held
- * above both, by `ProjectPanels`.
+ * `onDuplicate` and `onSplit` are both callbacks rather than the dialogs
+ * themselves. The triggers live here and the dialogs have to live in the
+ * document, and `PanelStack` renders header and body through two separate
+ * render props — so the open state can only be held above both, by
+ * `ProjectPanels`, which mounts one of each for the whole stack.
  */
 export function NodeDetailPanelHeader({
   node,
@@ -575,7 +576,12 @@ export function NodeDetailPanelHeader({
   onSplit,
 }: {
   node: Node;
-  onDuplicate?: (node: Node) => Promise<void> | void;
+  /**
+   * Open the duplicate dialog for this node. It writes nothing on its own —
+   * naming the copy happens in `DuplicateNodeDialog`, which `ProjectPanels`
+   * owns — so this is a plain `() => void` and not a write path.
+   */
+  onDuplicate?: () => void;
   onDelete?: (nodeId: string) => void;
   onSplit?: () => void;
 }) {
@@ -614,11 +620,7 @@ export function NodeDetailPanelHeader({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {onDuplicate && (
-              // `.catch`, not `void`: the prop may return a promise, and the
-              // hook behind it swallows its own failures — but nothing in the
-              // type stops a caller from handing over one that rejects, and
-              // `void` would drop that on the floor unreported.
-              <DropdownMenuItem onSelect={() => void Promise.resolve(onDuplicate(node)).catch(console.error)}>
+              <DropdownMenuItem onSelect={onDuplicate}>
                 <CopyPlusIcon /> Duplicate
               </DropdownMenuItem>
             )}

@@ -5,7 +5,6 @@ import { PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 import type { Node as DataNode, NodeMetadata } from "@/lib/data/types";
 import { useNodes } from "@/lib/hooks/useNodes";
-import { useDuplicateNode } from "@/lib/hooks/useDuplicateNode";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useProjectId } from "@/lib/hooks/useProjectId";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
@@ -30,7 +29,6 @@ export default function ProjectAcceptancesPage() {
 
   const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes, updateNode, addNode, applyMutations } = useNodes(id);
 
-  const duplicateNode = useDuplicateNode(id);
   const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges, syncEdges } = useEdges(id);
   const { project: projectBundle, error: projectError, reload: reloadProject } = useProject(id);
   const intake = useAcceptanceIntake({
@@ -197,7 +195,6 @@ export default function ProjectAcceptancesPage() {
         scope={scope}
         history
         onUpdate={handleNodeUpdate}
-        onDuplicate={duplicateNode}
         onCreateAcceptanceForAnchor={handleCreateAcceptanceForAnchor}
         intake={intake}
       >

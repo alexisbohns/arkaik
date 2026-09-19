@@ -26,7 +26,6 @@ import { useEdges } from "@/lib/hooks/useEdges";
 import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useNodes } from "@/lib/hooks/useNodes";
-import { useDuplicateNode } from "@/lib/hooks/useDuplicateNode";
 import { useProject } from "@/lib/hooks/useProject";
 import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
 import { generateNodeId, edgeId } from "@/lib/utils/id";
@@ -63,7 +62,6 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
 
   const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes, updateNode, addNode, applyMutations } = useNodes(projectId);
 
-  const duplicateNode = useDuplicateNode(projectId);
   const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges, addEdge, removeEdge, syncEdges } = useEdges(projectId);
   const intake = useAcceptanceIntake({
     projectId: projectId,
@@ -322,7 +320,6 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
         scope={scope}
         history
         onUpdate={handleNodeUpdate}
-        onDuplicate={duplicateNode}
         onCreateNode={handleCreateNodeFromPanel}
         intake={intake}
       >

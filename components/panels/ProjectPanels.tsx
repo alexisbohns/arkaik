@@ -12,12 +12,14 @@ import {
 import { NodeDetailPanel, NodeDetailPanelHeader } from "@/components/panels/NodeDetailPanel";
 import { RawBundlePanel } from "@/components/panels/RawBundlePanel";
 import { SplitAcceptanceDialog } from "@/components/panels/SplitAcceptanceDialog";
+import { DuplicateNodeDialog } from "@/components/panels/DuplicateNodeDialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { deriveQualityMatrix, type KritikLibrary, type QualitySection, type QualityTrend } from "@arkaik/schema";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { Edge, Node } from "@/lib/data/types";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useProjectId } from "@/lib/hooks/useProjectId";
+import { useDuplicateNode } from "@/lib/hooks/useDuplicateNode";
 import type { PanelEntry } from "@/lib/utils/panel-stack";
 import type { PanelDescriptor } from "@/lib/utils/project-panels";
 import { buildFindingRows } from "@/lib/utils/quality";
@@ -52,12 +54,6 @@ interface ProjectPanelsProps {
   history?: boolean;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
   onDelete?: (nodeId: string) => void;
-  /**
-   * Duplicate this node and open the copy. Absent on read-only surfaces, which
-   * is what hides the menu item — see `duplicateNodeDraft` for what a copy is
-   * and, more to the point, what it is not (it carries no edges).
-   */
-  onDuplicate?: (node: Node) => Promise<void> | void;
   onCreateNode?: (species: "flow" | "view", title: string) => Promise<Node>;
   onCreateAcceptanceForAnchor?: (anchor: Node, title: string) => Promise<Node>;
   /**
@@ -118,7 +114,6 @@ export function ProjectPanels({
   history,
   onUpdate,
   onDelete,
-  onDuplicate,
   onCreateNode,
   onCreateAcceptanceForAnchor,
   intake,
@@ -132,6 +127,18 @@ export function ProjectPanels({
 
   const projectId = useProjectId();
 
+  // Duplicate's target, alongside the split dialog's and for the same reasons:
+  // the trigger is a header item, the dialog has to be in the document, and
+  // `PanelStack` renders header and body through two separate render props. One
+  // dialog serves every open panel.
+  //
+  // No `onDuplicate` prop on this component or on `PageShell`: availability
+  // follows `onUpdate`, so a surface whose panels can write can duplicate, and
+  // no page wires anything. Six pages each wiring their own handler is what let
+  // three of them ship without the item at all.
+  const [duplicateTarget, setDuplicateTarget] = useState<Node | null>(null);
+  const duplicateNode = useDuplicateNode(projectId);
+
   // The split dialog's state lives here, above both halves of the panel.
   // Its trigger is a header item and the dialog itself has to be in the
   // document, and `PanelStack` renders header and body through two separate
@@ -140,6 +147,12 @@ export function ProjectPanels({
   const [splitTarget, setSplitTarget] = useState<Node | null>(null);
 
   const nodesById = useMemo(() => new Map(allNodes.map((node) => [node.id, node])), [allNodes]);
+
+  // A set, rebuilt only when the nodes change. `nodesById.keys()` would be a
+  // fresh one-shot iterator per render of THIS component — and the dialog
+  // re-renders on every keystroke without it, so it would read an exhausted
+  // iterator and find no id taken.
+  const nodeIds = useMemo(() => new Set(nodesById.keys()), [nodesById]);
 
   // Denormalized here rather than inside the criterion panel, which cannot
   // memoize it: `react-hooks/preserve-manual-memoization` is an error, and it
@@ -249,7 +262,9 @@ export function ProjectPanels({
           return node ? (
             <NodeDetailPanelHeader
               node={node}
-              onDuplicate={onDuplicate}
+              // Opens the dialog; it does not write. Gated on `onUpdate` — the
+            // same say the surface has over every other edit in the panel.
+            onDuplicate={onUpdate ? () => setDuplicateTarget(node) : undefined}
               onDelete={onDelete}
               // Acceptances only, and only where the decompose gestures exist:
               // splitting is a write, and a read-only surface passes no `intake`.
@@ -373,6 +388,12 @@ export function ProjectPanels({
       >
         {children}
       </PanelStack>
+      <DuplicateNodeDialog
+        node={duplicateTarget}
+        onOpenChange={(next) => { if (!next) setDuplicateTarget(null); }}
+        existingIds={nodeIds}
+        onSubmit={duplicateNode}
+      />
       {/* One dialog for the whole stack, a sibling of it rather than a child of
           any panel — two open acceptance panels used to mount two. */}
       {intake && splitNode && (
