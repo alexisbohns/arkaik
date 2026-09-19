@@ -11,7 +11,6 @@ import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
-import { BlockedByField } from "@/components/panels/BlockedByField";
 import { PANEL_GUTTER } from "@/components/panels/PanelSection";
 import { cn } from "@/lib/utils";
 import type { Node, NodeMetadata } from "@/lib/data/types";
@@ -22,15 +21,13 @@ const AUTOSAVE_DELAY_MS = 350;
 
 interface DecisionEditorProps {
   node: Node;
-  allNodes: Node[];
   onUpdate: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
-  onNavigate?: (node: Node) => void;
 }
 
 /**
  * One debounced metadata text field (context / consequences / decided_at).
  *
- * Mirrors `NodeFields`' description/blocked_by autosave: compare against a
+ * Mirrors `NodeFields`' title/description autosave: compare against a
  * last-saved ref rather than the prop directly, so a concurrent edit to a
  * DIFFERENT field (which also patches `metadata` wholesale) never fires a
  * duplicate save and never clobbers this one's pending save — the reschedule
@@ -76,11 +73,13 @@ function useDebouncedMetadataField(
  * The supersedes/generates/impacts links spec §5 defines are no longer here:
  * they are relations, not fields, so they render in the Relations group — as
  * four of the grammar-derived relation lines `relationLinesFor("decision")`
- * produces, not as a list this species has written out for it. `allNodes`
- * stays because `BlockedByField` resolves blockers against it; `allEdges` went
- * with the links, which were the only thing here that read an edge.
+ * produces, not as a list this species has written out for it. Blocked by went
+ * the same way — it was a field here, under "Context — why", and is now the
+ * Relations group's first line on every species alike. With the links and the
+ * blocker gone this editor reads nothing but its own node, so `allNodes`,
+ * `allEdges` and `onNavigate` all went with them.
  */
-export function DecisionEditor({ node, allNodes, onUpdate, onNavigate }: DecisionEditorProps) {
+export function DecisionEditor({ node, onUpdate }: DecisionEditorProps) {
   // Per-mount: the panel stack keeps hidden panels mounted, so two decisions can
   // be open at once and a hand-written id would give both their labels the same
   // target.
@@ -160,16 +159,6 @@ export function DecisionEditor({ node, allNodes, onUpdate, onNavigate }: Decisio
           rows={4}
         />
       </Field>
-      {/* A decision's own, rendered here rather than by `NodeFields` — which
-          omits it for this species. What holds a decision up belongs with the
-          circumstances that produced it, not above the title. */}
-      <BlockedByField
-        node={node}
-        onUpdate={onUpdate}
-        allNodes={allNodes}
-        onNavigate={onNavigate}
-        metadataRef={metadataRef}
-      />
       <Field label="Consequences — how" htmlFor={`${fieldId}-consequences`}>
         <Textarea
           id={`${fieldId}-consequences`}

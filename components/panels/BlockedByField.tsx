@@ -1,95 +1,118 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useMemo } from "react";
+import { XIcon } from "lucide-react";
 
-import { Field } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import type { Node, NodeMetadata } from "@/lib/data/types";
-import { normalizeBlockedBy, withBlockedBy } from "@/lib/utils/blocked";
+import { RelationLine, RelationRowItem } from "@/components/panels/RelationLine";
+import { Button } from "@/components/ui/button";
+import type { Node } from "@/lib/data/types";
+import { blockedByOf, withBlockedBy } from "@/lib/utils/blocked";
+import { SPECIES_IDS } from "@arkaik/schema";
 
-const AUTOSAVE_DELAY_MS = 350;
+/**
+ * Every species, because `blocked_by` may name any node.
+ *
+ * The grammar's own list rather than six strings written out here: a
+ * hand-written one stops being true the day a species is added. Read off the
+ * frozen module-level constant, which also keeps the combobox's candidate memo
+ * — keyed on this array's identity — alive across renders.
+ */
+const ANY_SPECIES = SPECIES_IDS;
+
+/** No project nodes to search. A module constant, for `ANY_SPECIES`' reason. */
+const NO_NODES: Node[] = [];
 
 interface BlockedByFieldProps {
   node: Node;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
-  /** For resolving the value to a node title/link; the panel's own node-link affordance. */
+  /** For resolving the value to a node row; the panel's own node-link affordance. */
   allNodes?: Node[];
   onNavigate?: (node: Node) => void;
-  /**
-   * The shared latest-metadata base, when the enclosing editor keeps one.
-   *
-   * `DecisionEditor` does, and must: `onUpdate` is not optimistic, so with a
-   * sibling field's save in flight `node.metadata` is stale and a spread from it
-   * would silently drop that edit. Passing the ref makes this field the fourth
-   * participant in that editor's single write base instead of a fifth writer
-   * racing it. Omitted everywhere else, where this is the only metadata writer
-   * on screen and `node.metadata` is the whole truth.
-   */
-  metadataRef?: React.MutableRefObject<NodeMetadata | undefined>;
 }
 
 /**
- * What blocks this node, as a debounced free-text field.
+ * What blocks this node — a relation line like any other, and the group's first.
  *
- * Extracted out of `NodeFields` because a decision's panel wants it in a
- * different place from every other species': under "Context — why", where the
- * reason a decision is stuck reads as part of its story rather than as chrome
- * above it. `NodeFields` therefore omits it for decisions and `DecisionEditor`
- * renders this instead — one field, two positions, one save path.
+ * It is the relation that changes how the rest of the record reads: a status
+ * means something different when something blocks it. It used to sit in
+ * `NodeFields`' intro column among the fields that say what the record *is*,
+ * and on a decision somewhere else again — `DecisionEditor` rendered its own
+ * copy under "Context — why". Both are gone; there is one renderer and one
+ * position.
+ *
+ * **Single-valued, so the `+` is there only while it is empty.** And it is the
+ * only line whose combobox offers something that is not a node: `blocked_by` is
+ * a free string, so a query no node answers to can be committed as itself
+ * ("waiting on legal"). Nothing a bundle holds today stops being authorable.
+ *
+ * A combobox pick is a discrete commit, not typing, so there is nothing to
+ * debounce and no last-saved value to compare against — the debounced `<Input>`
+ * this replaces needed both. `withBlockedBy` still owns the "empty means
+ * *absent*, never `blocked_by: \"\"`" rule and carries the rest of the metadata
+ * through untouched — a patch replaces `metadata` wholesale.
  */
-export function BlockedByField({ node, onUpdate, allNodes, onNavigate, metadataRef }: BlockedByFieldProps) {
-  // Per-mount, because the panel stack keeps hidden panels mounted: two nodes
-  // open at once means two "Blocked by" fields in one document, and a
-  // hand-written id would point both labels at the first one's input.
-  const fieldId = useId();
-  const [blockedBy, setBlockedBy] = useState(node.metadata?.blocked_by ?? "");
-  const lastSavedRef = useRef(normalizeBlockedBy(node.metadata?.blocked_by) ?? "");
+export function BlockedByField({ node, onUpdate, allNodes, onNavigate }: BlockedByFieldProps) {
+  const value = blockedByOf(node.metadata);
+  const blockedNode = value ? allNodes?.find((candidate) => candidate.id === value) : undefined;
+  // Memoised because it is a dependency of the combobox's candidate memo, and
+  // that memo fuzzy-scores every node in the project.
+  const excludeIds = useMemo(() => [node.id], [node.id]);
 
-  // Debounced autosave, compared on the NORMALIZED value so whitespace-only
-  // edits never fire a no-op wholesale metadata write. `withBlockedBy` owns the
-  // "empty means *absent*, never `blocked_by: \"\"`" rule and carries the rest of
-  // the metadata through untouched — a patch replaces `metadata` wholesale.
-  useEffect(() => {
-    const normalized = normalizeBlockedBy(blockedBy) ?? "";
-    if (normalized === lastSavedRef.current) {
-      return;
-    }
-
-    const timeout = setTimeout(() => {
-      lastSavedRef.current = normalized;
-      const base = metadataRef ? metadataRef.current : node.metadata;
-      const next = withBlockedBy(base, normalized || null);
-      if (metadataRef) metadataRef.current = next;
-      void onUpdate?.(node.id, { metadata: next });
-    }, AUTOSAVE_DELAY_MS);
-
-    return () => clearTimeout(timeout);
-  }, [blockedBy, node.id, node.metadata, metadataRef, onUpdate]);
-
-  // When the value names a node this panel can see, surface its title — and
-  // navigate through the same affordance every other node link here uses.
-  const blockedNode = allNodes?.find((n) => n.id === normalizeBlockedBy(blockedBy));
+  function commit(next: string | null) {
+    void onUpdate?.(node.id, { metadata: withBlockedBy(node.metadata, next) });
+  }
 
   return (
-    <Field label="Blocked by" htmlFor={`${fieldId}-blocked-by`}>
-      <Input
-        id={`${fieldId}-blocked-by`}
-        value={blockedBy}
-        onChange={(event) => setBlockedBy(event.target.value)}
-        placeholder="Node id or free text — empty means not blocked"
-      />
-      {blockedNode &&
-        (onNavigate ? (
-          <button
-            type="button"
-            onClick={() => onNavigate(blockedNode)}
-            className="self-start text-xs text-muted-foreground hover:text-foreground hover:underline text-left"
-          >
-            {blockedNode.title}
-          </button>
-        ) : (
-          <span className="text-xs text-muted-foreground">{blockedNode.title}</span>
-        ))}
-    </Field>
+    <RelationLine
+      label="Blocked by"
+      add={
+        onUpdate && !value
+          ? {
+              counterpartSpecies: ANY_SPECIES,
+              allNodes: allNodes ?? NO_NODES,
+              // The node itself: nothing blocks on itself, and offering it is
+              // the one pick that could never mean anything.
+              excludeIds,
+              placeholder: "Search nodes, or type a reason...",
+              onSelect: (nodeId) => commit(nodeId),
+              freeText: {
+                render: (query) => <>Blocked by &quot;{query}&quot;</>,
+                onCommit: (text) => commit(text),
+              },
+            }
+          : undefined
+      }
+    >
+      {value && (
+        <ul className="flex flex-col gap-0.5">
+          {blockedNode ? (
+            <RelationRowItem
+              node={blockedNode}
+              onNavigate={onNavigate}
+              onRemove={onUpdate && (() => commit(null))}
+              removeLabel={`No longer blocked by ${blockedNode.title}`}
+            />
+          ) : (
+            // Free text, or an id this snapshot cannot resolve. Both are the
+            // value as written; neither is a node, so neither gets a chip.
+            <li className="flex items-center gap-1">
+              <span className="min-w-0 flex-1 truncate px-2 py-1.5 text-sm">{value}</span>
+              {onUpdate && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 shrink-0"
+                  aria-label="Clear what blocks this"
+                  onClick={() => commit(null)}
+                >
+                  <XIcon className="size-3.5" />
+                </Button>
+              )}
+            </li>
+          )}
+        </ul>
+      )}
+    </RelationLine>
   );
 }

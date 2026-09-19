@@ -9,7 +9,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Field } from "@/components/ui/field";
-import { BlockedByField } from "@/components/panels/BlockedByField";
 import { PANEL_GUTTER } from "@/components/panels/PanelSection";
 import { PanelGroup } from "@/components/panels/PanelGroup";
 import { RelationsGroup } from "@/components/panels/RelationsGroup";
@@ -104,9 +103,6 @@ interface NodeDetailPanelProps {
 interface NodeFieldsProps {
   node: Node;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
-  /** For resolving `blocked_by` to a node title/link; the panel's own node-link affordance. */
-  allNodes?: Node[];
-  onNavigate?: (node: Node) => void;
   /**
    * Species-specific intro fields, in the two places a species needs one.
    *
@@ -118,13 +114,13 @@ interface NodeFieldsProps {
    * Both render straight into this component's gutter and `gap-5` column, so
    * neither may carry a gutter of its own.
    */
-  /** Between Status and Blocked by — the Product picker. */
+  /** After Status — the Product picker. */
   membership?: ReactNode;
-  /** After Blocked by — the species' own authored fields (Gherkin, Values). */
+  /** Last — the species' own authored fields (Gherkin, Values). */
   authored?: ReactNode;
 }
 
-function NodeFields({ node, onUpdate, allNodes, onNavigate, membership, authored }: NodeFieldsProps) {
+function NodeFields({ node, onUpdate, membership, authored }: NodeFieldsProps) {
   const AUTOSAVE_DELAY_MS = 350;
   // Per-mount, because the panel stack keeps hidden panels mounted: two nodes
   // open at once means two "Status" fields in one document, and a hand-written
@@ -262,11 +258,6 @@ function NodeFields({ node, onUpdate, allNodes, onNavigate, membership, authored
         </Field>
       )}
       {membership}
-      {/* Absent on a decision, which renders its own under "Context — why":
-          see `BlockedByField`. */}
-      {node.species !== "decision" && (
-        <BlockedByField node={node} onUpdate={onUpdate} allNodes={allNodes} onNavigate={onNavigate} />
-      )}
       {authored}
     </div>
   );
@@ -688,8 +679,6 @@ export function NodeDetailPanel({
         key={node.id}
         node={node}
         onUpdate={onUpdate}
-        allNodes={allNodes}
-        onNavigate={onNavigate}
         // Whichever membership control this species has — the two are
         // alternatives, not a fallback chain. An acceptance's product is
         // derived from the anchors it covers (§ D5), which only
@@ -719,14 +708,8 @@ export function NodeDetailPanel({
           ) : undefined
         }
       />
-      {node.species === "decision" && allNodes && onUpdate && (
-        <DecisionEditor
-          key={`decision-${node.id}`}
-          node={node}
-          allNodes={allNodes}
-          onUpdate={onUpdate}
-          onNavigate={onNavigate}
-        />
+      {node.species === "decision" && onUpdate && (
+        <DecisionEditor key={`decision-${node.id}`} node={node} onUpdate={onUpdate} />
       )}
       {/* Groups live in a column of their own. `-space-y-px` overlaps each
           bar's `border-y` with the one above so a run of shut groups reads as
@@ -776,6 +759,7 @@ export function NodeDetailPanel({
           allNodes={allNodes}
           allEdges={allEdges}
           onNavigate={onNavigate}
+          onUpdate={onUpdate}
           onCreateAcceptanceForAnchor={onCreateAcceptanceForAnchor}
           intake={intake}
           relations={relations}
