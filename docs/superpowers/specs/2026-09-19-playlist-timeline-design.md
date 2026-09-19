@@ -95,12 +95,37 @@ third size of the same idea. Surface: `bg-muted text-muted-foreground`, plus
   titles without marks rather than nothing.
 - **condition / junction** — the collapsible bar (§4), then the nested lists.
 
-Nested lists restart numbering at 1 — a branch is its own sequence — and are set
-off by a rule down their left (`border-l pl-3`), the idiom `FindingCard` already
-uses, rather than by the margin steps of `branchIndentClass`. A margin inside a
-grid whose first column is the rail would push the nested rail away from the
-rule that should be carrying it; the helper goes away with the cards it was
-built for.
+Nested lists restart numbering at 1 — a branch is its own sequence.
+`branchIndentClass`'s margin steps go away with the cards they were built for: a
+margin inside a grid whose first column is the rail pushes the nested rail away
+from whatever should be carrying it.
+
+A **junction case** sets its entries off with a rule down their left
+(`border-l pl-3`), the idiom `FindingCard` already uses.
+
+A **condition's two branches** do not. They are headed instead:
+
+```
+🎟️ YES                    ← ticket-check, blue-500
+   ⟦1⟧ Record Success
+   ⟦+⟧
+🎟️ NO                     ← ticket-x, yellow-600 / dark:yellow-400
+   ⟦1⟧ Pebble Drafts
+   ⟦+⟧
+```
+
+The entries under a heading are already a rail, so a `border-l` beside one was a
+second vertical line saying what the first says — while the heading itself was
+the quietest text on screen despite being the thing that tells you which half of
+the branch you are reading. The rule goes and the heading takes the weight:
+`font-semibold`, system foreground, and a mark. A ticket stamped or refused —
+the branch a condition takes, and the one it does not.
+
+Colour rides on the **glyph only**; the word stays foreground. That is the rule
+`DeliverableHoverCard` already states for its own marks, and the reason is that
+a blue word beside a blue icon says it twice and reads worse doing it. `No`
+needs two shades (`yellow-600` light, `yellow-400` dark) because yellow is the
+one hue in this palette whose mid shades wash out on white.
 
 **Every list ends in an add tile, on the rail.** A 24px dashed box carrying a
 `+`, in the same column as the numbered tiles and reached by the same connector:

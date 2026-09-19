@@ -169,6 +169,8 @@ export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "terminal", seed: 9 },
   { name: "thumbs-up", seed: 18 },
   { name: "ticket", seed: 17 },
+  { name: "ticket-check", seed: 0 },
+  { name: "ticket-x", seed: 0 },
   { name: "timer", seed: 2 },
   { name: "trash2", seed: 13 },
   { name: "triangle-alert", seed: 6 },

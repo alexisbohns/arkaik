@@ -166,6 +166,8 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-terminal { filter: url(#wob-terminal); }
 .lucide-thumbs-up { filter: url(#wob-thumbs-up); }
 .lucide-ticket { filter: url(#wob-ticket); }
+.lucide-ticket-check { filter: url(#wob-ticket-check); }
+.lucide-ticket-x { filter: url(#wob-ticket-x); }
 .lucide-timer { filter: url(#wob-timer); }
 .lucide-trash2 { filter: url(#wob-trash2); }
 .lucide-triangle-alert { filter: url(#wob-triangle-alert); }

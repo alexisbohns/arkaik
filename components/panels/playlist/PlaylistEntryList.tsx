@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import { ChevronRightIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { ChevronRightIcon, PlusIcon, TicketCheckIcon, TicketXIcon, Trash2Icon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -50,7 +50,8 @@ interface PlaylistEntryListProps {
   onCycleBlocked: (candidateFlowId: string) => void;
   onCreateNode?: (species: "flow" | "view", title: string) => Promise<Node>;
   depth?: number;
-  heading?: string;
+  /** Marks this list as one side of a condition, and heads it accordingly. */
+  branch?: BranchKey;
   /**
    * The surface's product scope, for the per-platform marks on a step. Optional
    * because it reaches here from the panel four levels up, and a playlist that
@@ -78,8 +79,33 @@ interface PlaylistEntryRowProps {
   onActivate: (pointerType: string) => void;
 }
 
-/** A nested list, set off by a rule down its left rather than by a margin. */
+/** A junction case's entries, set off by a rule down their left. */
 const NESTED = "border-l border-border pl-3";
+
+/**
+ * A condition's two outcomes.
+ *
+ * **They gain a mark and lose their rule.** Each branch used to be headed by a
+ * muted "YES"/"NO" over entries wrapped in a `border-l` — but those entries are
+ * already a rail, so the rule was a second vertical line saying what the first
+ * one says, and the heading above it was the quietest text on screen while being
+ * the thing that tells you which half of the branch you are reading. The rule
+ * goes; the heading takes the weight.
+ *
+ * A ticket stamped or refused: the branch a condition takes, and the one it does
+ * not. Colour rides on the **glyph only** and the word stays system foreground —
+ * the rule `DeliverableHoverCard` states for its own marks, because a blue word
+ * beside a blue icon says it twice and reads worse doing it.
+ */
+const BRANCH = {
+  yes: { label: "Yes", Icon: TicketCheckIcon, tone: "text-blue-500" },
+  // `yellow-600` on the light theme, `yellow-400` on the dark one: a single
+  // shade that holds on both does not exist for this hue — it is the one colour
+  // in the palette whose mid shades wash out on white.
+  no: { label: "No", Icon: TicketXIcon, tone: "text-yellow-600 dark:text-yellow-400" },
+} as const;
+
+type BranchKey = keyof typeof BRANCH;
 
 
 /**
@@ -252,7 +278,7 @@ function PlaylistEntryRow({
         {entry.type === "condition" && (
           <BranchBar entry={entry} ariaLabel="Condition label" placeholder="Condition" onChangeEntry={onChangeEntry}>
             <PlaylistEntryList
-              heading="Yes"
+              branch="yes"
               entries={entry.if_true}
               depth={depth + 1}
               flowNodeId={flowNodeId}
@@ -263,7 +289,7 @@ function PlaylistEntryRow({
               onChange={(next) => onChangeEntry({ ...entry, if_true: next })}
             />
             <PlaylistEntryList
-              heading="No"
+              branch="no"
               entries={entry.if_false}
               depth={depth + 1}
               flowNodeId={flowNodeId}
@@ -374,7 +400,7 @@ export function PlaylistEntryList({
   onCycleBlocked,
   onCreateNode,
   depth = 0,
-  heading,
+  branch,
   scope,
 }: PlaylistEntryListProps) {
   /**
@@ -461,17 +487,22 @@ export function PlaylistEntryList({
     </>
   );
 
-  // No `gap` on either column: the rail is one continuous line from the first
-  // entry to the add tile, and a gap between the `<ol>` and the tile would cut
-  // the dashed segment short and leave the tile floating again.
-  if (!heading) {
+  // No `gap` on the column holding the entries: the rail is one continuous line
+  // from the first entry to the add tile, and a gap between the `<ol>` and the
+  // tile would break it and leave the tile floating again.
+  if (!branch) {
     return <div className="flex flex-col">{body}</div>;
   }
 
+  const { label, Icon, tone } = BRANCH[branch];
+
   return (
-    <div className="flex flex-col gap-2">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{heading}</p>
-      <div className={cn(NESTED, "flex flex-col")}>{body}</div>
+    <div className="flex flex-col gap-1.5">
+      <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-foreground">
+        <Icon className={cn("size-4 shrink-0", tone)} aria-hidden="true" />
+        {label}
+      </p>
+      <div className="flex flex-col">{body}</div>
     </div>
   );
 }
