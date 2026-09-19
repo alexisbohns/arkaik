@@ -282,10 +282,18 @@ Because it is single-valued, the `+` is present only while it is empty.
 
 **Two renderers collapse into one.** `NodeFields` renders `BlockedByField` for
 five species and `DecisionEditor` renders its own for the sixth, under "Context —
-why". Both go. The `metadataRef` prop exists solely because `DecisionEditor`'s
-non-optimistic `onUpdate` made this field a fifth writer racing its siblings over
-`node.metadata`; with the field out of that editor there is no shared write base
-to join, and the prop goes with it.
+why". Both go. The `metadataRef` **prop** goes with it: it existed because
+`DecisionEditor`'s non-optimistic `onUpdate` made this field one more writer
+racing over `node.metadata`, and out of that editor there is no shared base to
+join.
+
+**The ref itself stays.** An earlier draft of this section said to delete it,
+which would have been a bug: `metadataRef` is the shared write base for
+`DecisionEditor`'s *own* four wholesale-metadata writers — `context`,
+`consequences`, `decided_at` and the status transition — and its comment says
+"the four writers", a count that never included this field. Removing it would
+reintroduce precisely the race it was built to prevent. Only the prop and the
+argument at the call site go.
 
 ## 5. What this forces in `RelationsGroup`
 
