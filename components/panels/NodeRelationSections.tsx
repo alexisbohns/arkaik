@@ -19,16 +19,13 @@
 
 "use client";
 
-import { XIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { PanelSection } from "@/components/panels/PanelSection";
+import { RelationLine, RelationRowItem } from "@/components/panels/RelationLine";
 import { EntityRow } from "@/components/graph/nodes/EntityRow";
 import { RefList } from "@/components/graph/nodes/RefBadges";
-import { NodeSearchCombobox } from "@/components/panels/NodeSearchCombobox";
-import { Button } from "@/components/ui/button";
 import { SPECIES } from "@/lib/config/species";
-import { SPECIES_ICONS } from "@/components/graph/nodes/node-styles";
 import { SEVERITY_CHIP, SEVERITY_LABEL } from "@/components/quality/quality-styles";
 import { EMPTY_QUALITY_FILTERS, filterFindings, type FindingRow } from "@/lib/utils/quality";
 import { findWhereUsed, crossLayerConnections, coveredAnchorsOf } from "@/lib/utils/where-used";
@@ -322,7 +319,7 @@ interface CoversSectionProps {
   /**
    * Whether the project declares any product at all — the one thing this
    * section ever asked the whole `ProductScope` for, passed through to
-   * `AttachAnchorRow`'s triage warning. A boolean rather than the scope,
+   * the attach combobox's triage warning. A boolean rather than the scope,
    * because a component that takes a scope reads as one that shows products,
    * and this one does not.
    */
@@ -354,7 +351,7 @@ export function CoversSection({ node, allNodes, allEdges, hasProducts, onNavigat
   // `coveredAnchorsOf`, not a walk of its own: `AcceptanceMembershipField` asks
   // the same question for its Product hint's anchor count, and the two answers have to be
   // the same list or the hint counts anchors this section does not show. The
-  // map stays because `AttachAnchorRow` resolves the id a combobox returns.
+  // map stays because the attach config resolves the id the combobox returns.
   const coveredAnchors = coveredAnchorsOf(node, allNodes, allEdges);
 
   /**
@@ -374,51 +371,36 @@ export function CoversSection({ node, allNodes, allEdges, hasProducts, onNavigat
   }
 
   return (
-    <PanelSection title="Covers">
+    <RelationLine
+      label="Covers"
+      add={
+        intake &&
+        attachAnchorConfig({ node, allNodes, allEdges, nodesById, hasProducts, intake, run, coveredAnchors })
+      }
+    >
       {coveredAnchors.length === 0 ? (
         <p className="text-xs text-muted-foreground">
           {intake
-            ? "Unanchored — an idea in intake. Attach it to a view or a flow below."
+            ? "Unanchored — an idea in intake. Attach it to a view or a flow above."
             : "Unanchored (covers nothing)."}
         </p>
       ) : (
         <ul className="flex flex-col gap-1">
-          {coveredAnchors.map((anchor) => {
-            const Icon = SPECIES_ICONS[anchor.species];
-            return (
-              <li key={anchor.id} className="flex items-center gap-1">
-                <button type="button" className="inline-flex flex-1 items-center gap-2 text-left text-sm hover:underline" onClick={() => onNavigate?.(anchor)}>
-                  <Icon className="size-3.5 text-muted-foreground" /> {anchor.title}
-                </button>
-                {intake && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="size-7 shrink-0"
-                    aria-label={`Stop covering ${anchor.title}`}
-                    onClick={() => void run(() => intake.detach(node, anchor.id), "Couldn't detach that node.")}
-                  >
-                    <XIcon className="size-3.5" />
-                  </Button>
-                )}
-              </li>
-            );
-          })}
+          {coveredAnchors.map((anchor) => (
+            <RelationRowItem
+              key={anchor.id}
+              node={anchor}
+              onNavigate={onNavigate}
+              onRemove={
+                intake &&
+                (() => void run(() => intake.detach(node, anchor.id), "Couldn't detach that node."))
+              }
+              removeLabel={`Stop covering ${anchor.title}`}
+            />
+          ))}
         </ul>
       )}
-      {intake && (
-        <AttachAnchorRow
-          node={node}
-          allNodes={allNodes}
-          allEdges={allEdges}
-          nodesById={nodesById}
-          hasProducts={hasProducts}
-          intake={intake}
-          run={run}
-        />
-      )}
-    </PanelSection>
+    </RelationLine>
   );
 }
 
@@ -431,7 +413,7 @@ export function CoversSection({ node, allNodes, allEdges, hasProducts, onNavigat
  */
 const ANCHOR_SPECIES: readonly SpeciesId[] = ["view", "flow"];
 
-interface AttachAnchorRowProps {
+interface AttachAnchorConfigArgs {
   node: Node;
   allNodes: Node[];
   allEdges: Edge[];
@@ -446,6 +428,8 @@ interface AttachAnchorRowProps {
   hasProducts: boolean;
   intake: AcceptanceIntake;
   run: (action: () => Promise<void>, failure: string) => Promise<void>;
+  /** The anchors already covered — the ids the list must not offer again. */
+  coveredAnchors: Node[];
 }
 
 /**
@@ -470,11 +454,21 @@ interface AttachAnchorRowProps {
  * in. So it is written, and then said. A node created here inherits the
  * acceptance's product precisely so the common path never trips this.
  */
-function AttachAnchorRow({ node, allNodes, allEdges, nodesById, hasProducts, intake, run }: AttachAnchorRowProps) {
+function attachAnchorConfig({
+  node,
+  allNodes,
+  allEdges,
+  nodesById,
+  hasProducts,
+  intake,
+  run,
+  coveredAnchors,
+}: AttachAnchorConfigArgs) {
   // The View/Flow `Select` is gone. It existed only because the combobox could
   // search one species at a time; with both in one list it is a control asking
   // a question the search result already answers — the conclusion the playlist
-  // editor's Add-step popover reached first.
+  // editor's Add-step popover reached first. What is left is no longer a row of
+  // its own but the line's `add` config: the `+` owns when the search appears.
   function announceTriage(anchor: Pick<Node, "id" | "species" | "title" | "metadata">) {
     if (!hasProducts) return;
     // Evaluated against the edges as they were BEFORE the write — the predicate
@@ -483,28 +477,25 @@ function AttachAnchorRow({ node, allNodes, allEdges, nodesById, hasProducts, int
     toast.warning(`"${anchor.title}" has no product, so this acceptance now appears under All products only.`);
   }
 
-  return (
-    <NodeSearchCombobox
-      species={ANCHOR_SPECIES}
-      allNodes={allNodes}
-      excludeIds={coveredAnchorsOf(node, allNodes, allEdges).map((anchor) => anchor.id)}
-      onSelect={(anchorId) => {
-        const anchor = nodesById.get(anchorId);
-        if (!anchor) return;
-        void run(async () => {
-          await intake.attach(node, anchor);
-          announceTriage(anchor);
-        }, "Couldn't attach that node.");
-      }}
-      onCreate={(species, title) =>
-        run(async () => {
-          // `intake.createAnchor` takes the narrow anchor species; the grammar
-          // admits nothing else on this line, so the cast is the type system
-          // catching up with `ANCHOR_SPECIES` above.
-          const created = await intake.createAnchor(node, species as "view" | "flow", title);
-          if (created) toast.success(`Created "${created.title}" and attached it.`);
-        }, `Couldn't create the ${species}.`)
-      }
-    />
-  );
+  return {
+    counterpartSpecies: ANCHOR_SPECIES,
+    allNodes,
+    excludeIds: coveredAnchors.map((anchor) => anchor.id),
+    onSelect: (anchorId: string) => {
+      const anchor = nodesById.get(anchorId);
+      if (!anchor) return;
+      void run(async () => {
+        await intake.attach(node, anchor);
+        announceTriage(anchor);
+      }, "Couldn't attach that node.");
+    },
+    onCreate: (species: SpeciesId, title: string) =>
+      run(async () => {
+        // `intake.createAnchor` takes the narrow anchor species; the grammar
+        // admits nothing else on this line, so the cast is the type system
+        // catching up with `ANCHOR_SPECIES` above.
+        const created = await intake.createAnchor(node, species as "view" | "flow", title);
+        if (created) toast.success(`Created "${created.title}" and attached it.`);
+      }, `Couldn't create the ${species}.`),
+  };
 }
