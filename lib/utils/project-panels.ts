@@ -212,12 +212,6 @@ export interface PanelCrumbSpec {
  * throughout is the honest test: the key/kind equivalence is an invariant the
  * union does not enforce, so a second test of it is a second thing that can rot.
  *
- * `ProjectPanels.labelOf` is the copy still standing, and until it is replaced
- * by this it has no `finding` branch at all: a finding falls through to its
- * node lookup, so the close button and the collapsed rail print the namespaced
- * key while the crumb prints the title. Closing that is the wiring task's job,
- * and it is the reason this is exported rather than local.
- *
  * Only a node entry's key is a node id, which is why only a node entry is put
  * to `titleOf` — a criterion falling through to it would read as its whole
  * namespaced key, `criterion:SEC-03@web`, in a breadcrumb.

@@ -9,6 +9,10 @@ import {
   CriterionDetailPanel,
   CriterionDetailPanelHeader,
 } from "@/components/panels/CriterionDetailPanel";
+import {
+  FindingDetailPanel,
+  FindingDetailPanelHeader,
+} from "@/components/panels/FindingDetailPanel";
 import { NodeDetailPanel, NodeDetailPanelHeader } from "@/components/panels/NodeDetailPanel";
 import { RawBundlePanel } from "@/components/panels/RawBundlePanel";
 import { SplitAcceptanceDialog } from "@/components/panels/SplitAcceptanceDialog";
@@ -21,7 +25,7 @@ import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useProjectId } from "@/lib/hooks/useProjectId";
 import { useDuplicateNode } from "@/lib/hooks/useDuplicateNode";
 import type { PanelEntry } from "@/lib/utils/panel-stack";
-import type { PanelDescriptor } from "@/lib/utils/project-panels";
+import { panelEntryLabel, type PanelDescriptor } from "@/lib/utils/project-panels";
 import { buildFindingRows } from "@/lib/utils/quality";
 import { resolveProductScope, type ProductScope } from "@/lib/utils/product-scope";
 import { coveredAnchorsOf } from "@/lib/utils/where-used";
@@ -130,7 +134,7 @@ export function ProjectPanels({
   qualityLibrary,
   qualityTrend,
 }: ProjectPanelsProps) {
-  const { entries, openNode, openCriterion, closeAt, unwindTo, pruneMissingNodes, panelStates } =
+  const { entries, openNode, openCriterion, openFinding, closeAt, unwindTo, pruneMissingNodes, panelStates } =
     useProjectPanels();
 
   const projectId = useProjectId();
@@ -194,18 +198,11 @@ export function ProjectPanels({
     pruneMissingNodes(new Set(nodesById.keys()));
   }, [nodesById, pruneMissingNodes]);
 
-  // Branching on `kind` rather than on the key keeps one way to spot a raw
-  // entry: the key/kind equivalence is an invariant the union does not enforce,
-  // so a second test of it is a second thing that can drift. A criterion's key
-  // is namespaced, so it is also the one kind whose key is not something a
-  // reader should ever be shown.
+  // One label function for the crumbs, the close button and the collapsed rail.
+  // See `panelEntryLabel`: only a node entry's key is a node id, which is why
+  // only a node entry is put to the title lookup.
   const labelOf = useCallback(
-    (entry: PanelEntry<PanelDescriptor>) => {
-      if (entry.payload.kind === "raw") return "Raw bundle";
-      if (entry.payload.kind === "criterion") return entry.payload.criterionId;
-      if (entry.payload.kind === "cell") return `${entry.payload.domain} × ${entry.payload.surface}`;
-      return nodesById.get(entry.key)?.title ?? entry.key;
-    },
+    (entry: PanelEntry<PanelDescriptor>) => panelEntryLabel(entry, (id) => nodesById.get(id)?.title),
     [nodesById],
   );
 
@@ -252,6 +249,16 @@ export function ProjectPanels({
                 domain={entry.payload.domain}
                 surface={entry.payload.surface}
                 library={qualityLibrary}
+                section={qualitySection}
+              />
+            );
+
+          if (entry.payload.kind === "finding")
+            return (
+              <FindingDetailPanelHeader
+                findingId={entry.payload.findingId}
+                title={entry.payload.title}
+                findings={qualityFindings}
                 section={qualitySection}
               />
             );
@@ -305,6 +312,25 @@ export function ProjectPanels({
                 // Above this panel, never in place of it — the rule every other
                 // navigation in the stack follows, and the reason the trail still
                 // reads back to the cell the reader came from.
+                onOpenNode={(nodeId) => openNode({ nodeId }, index + 1)}
+                onOpenCriterion={(criterionId, criterionSurface) =>
+                  openCriterion(criterionId, criterionSurface, index + 1)
+                }
+              />
+            );
+          }
+
+          if (entry.payload.kind === "finding") {
+            return (
+              <FindingDetailPanel
+                findingId={entry.payload.findingId}
+                title={entry.payload.title}
+                findings={qualityFindings}
+                section={qualitySection}
+                nodesById={nodesById}
+                // Above this panel, never in place of it — the rule every other
+                // navigation in the stack follows, so the trail still reads back
+                // to the finding the reader came from.
                 onOpenNode={(nodeId) => openNode({ nodeId }, index + 1)}
                 onOpenCriterion={(criterionId, criterionSurface) =>
                   openCriterion(criterionId, criterionSurface, index + 1)

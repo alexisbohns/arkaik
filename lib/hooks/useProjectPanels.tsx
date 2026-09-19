@@ -21,6 +21,7 @@ import {
 import {
   cellPanelKey,
   criterionPanelKey,
+  findingPanelKey,
   isNodeEntry,
   pruneNodeEntries,
   topNodeKey,
@@ -29,6 +30,7 @@ import {
   type PanelDescriptor,
   type ProjectPanelEntry,
 } from "@/lib/utils/project-panels";
+import type { FindingRow } from "@/lib/utils/quality";
 
 /** The search param that addresses the top node panel, on whatever route you're on. */
 export const NODE_PANEL_PARAM = "node";
@@ -99,6 +101,21 @@ interface ProjectPanelsValue {
    * passes `0`.
    */
   openCell: (domain: string, surface: string, fromDepth?: number) => void;
+  /**
+   * Open one finding's detail — or refresh the one already in that slot.
+   * Publishes nothing, exactly like `openCriterion` and `openCell` and for the
+   * identical reason: the stack has one address and it is `?node=`. The
+   * Findings page owns `?finding=`.
+   *
+   * `fromDepth` carries the same warning as `openCriterion`'s. **A caller
+   * opening a finding from the surface passes `0`** — on the default
+   * (`previous.length`) working down a board would leave one panel per card.
+   *
+   * Takes the row rather than an id because the descriptor carries the title,
+   * and every caller has the row in hand already: a finding is only ever opened
+   * from something that just rendered it.
+   */
+  openFinding: (row: FindingRow, fromDepth?: number) => void;
   closeAt: (index: number) => void;
   unwindTo: (depth: number) => void;
   /**
@@ -312,6 +329,19 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  /**
+   * Open one finding. Addressless, `fromDepth`-sensitive — see the interface.
+   */
+  const openFinding = useCallback((row: FindingRow, fromDepth?: number) => {
+    setEntries((previous) =>
+      openFrom<PanelDescriptor>(previous, fromDepth ?? previous.length, findingPanelKey(row.id), {
+        kind: "finding",
+        findingId: row.id,
+        title: row.title,
+      }),
+    );
+  }, []);
+
   const pruneMissingNodes = useCallback(
     (existingIds: Set<string>) => {
       const next = pruneNodeEntries(entries, existingIds);
@@ -354,6 +384,7 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
       openRaw,
       openCriterion,
       openCell,
+      openFinding,
       closeAt,
       unwindTo,
       pruneMissingNodes,
@@ -365,6 +396,7 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
     entries,
     openCell,
     openCriterion,
+    openFinding,
     openNode,
     openRaw,
     panelStates,
