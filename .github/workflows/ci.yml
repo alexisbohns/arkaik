@@ -198,6 +198,9 @@ jobs:
       - name: Playlist ordering tests
         run: npm run test:playlist-utils
 
+      - name: Relation-lines grammar tests
+        run: npm run test:relation-lines
+
       - name: Node-search ranking tests
         run: npm run test:search-score
 

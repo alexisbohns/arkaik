@@ -15,6 +15,7 @@
  */
 
 import {
+  SPECIES_IDS,
   VALID_EDGE_SEMANTICS,
   type EdgeTypeId,
   type SpeciesId,
@@ -92,8 +93,21 @@ export const RELATION_LINE_ORDER: readonly RelationLineId[] = [
   "impacts:in",
 ];
 
-/** The relation lines a node of this species has, in {@link RELATION_LINE_ORDER}. */
-export function relationLinesFor(species: SpeciesId): RelationLineSpec[] {
+// `RELATION_LINE_ORDER` is a plain array, not a `Record`, so TypeScript cannot
+// catch an omitted line id the way it catches a missing `RELATION_LINE_LABELS`
+// entry. A rank lookup with a safe fallback keeps that omission from being a
+// silent layout regression: an unordered line ranked last lands at the bottom
+// of the panel, visible and harmless, rather than ranked first (`indexOf`'s
+// -1) at the top, where it would look like the line the panel cares about
+// most.
+const RELATION_LINE_RANK: ReadonlyMap<RelationLineId, number> = new Map(
+  RELATION_LINE_ORDER.map((id, index) => [id, index]),
+);
+function rankOf(id: RelationLineId): number {
+  return RELATION_LINE_RANK.get(id) ?? Number.MAX_SAFE_INTEGER;
+}
+
+function buildRelationLines(species: SpeciesId): readonly RelationLineSpec[] {
   const lines: RelationLineSpec[] = [];
 
   for (const [edgeType, pairs] of Object.entries(VALID_EDGE_SEMANTICS) as [
@@ -117,14 +131,34 @@ export function relationLinesFor(species: SpeciesId): RelationLineSpec[] {
         edgeType,
         direction,
         label: RELATION_LINE_LABELS[edgeType][direction],
-        counterpartSpecies,
+        counterpartSpecies: Object.freeze(counterpartSpecies) as SpeciesId[],
       });
     }
   }
 
-  return lines.sort(
-    (a, b) => RELATION_LINE_ORDER.indexOf(a.id) - RELATION_LINE_ORDER.indexOf(b.id),
+  lines.sort((a, b) => rankOf(a.id) - rankOf(b.id));
+  return Object.freeze(lines);
+}
+
+/**
+ * The per-species table, built once at module load rather than per call.
+ *
+ * Parts 2–4 call `relationLinesFor` inside render; a fresh array of fresh
+ * objects on every call would make any `useMemo`/`React.memo` keyed on it dead
+ * weight. Six species — the whole table is cheap to build once. Frozen so a
+ * caller cannot mutate shared state.
+ */
+const RELATION_LINES_BY_SPECIES: Readonly<Record<SpeciesId, readonly RelationLineSpec[]>> =
+  Object.freeze(
+    Object.fromEntries(SPECIES_IDS.map((species) => [species, buildRelationLines(species)])) as Record<
+      SpeciesId,
+      readonly RelationLineSpec[]
+    >,
   );
+
+/** The relation lines a node of this species has, in {@link RELATION_LINE_ORDER}. */
+export function relationLinesFor(species: SpeciesId): readonly RelationLineSpec[] {
+  return RELATION_LINES_BY_SPECIES[species] ?? [];
 }
 
 /** One row of a line: the counterpart's id, and the edge that put it there. */
@@ -140,11 +174,19 @@ export interface RelationRow {
  * see, the same way `coveredAnchorsOf` does — a row naming an id the panel
  * cannot show is worse than no row.
  *
- * De-duplicated on the counterpart, keeping the first edge. `e-{source}-{target}`
- * makes a duplicate pair impossible to mint through the app, but a hand-edited
- * or half-synced bundle can carry two edges with the same endpoints and
- * different ids, and listing the same node twice is a bug a reader would report
- * as a data-loss scare.
+ * De-duplicated on the counterpart, keeping the FIRST edge — both its position
+ * and its identity. `e-{source}-{target}` makes a duplicate pair impossible to
+ * mint through the app, but a hand-edited or half-synced bundle can carry two
+ * edges with the same endpoints and different ids; the first is the canonical
+ * `e-{source}-{target}` id the rest of the app also names, and a stray from a
+ * hand-edit or a half-sync is the one dropped.
+ *
+ * A self-loop (an endpoint calling itself, a decision superseding itself) is
+ * not filtered: the grammar admits `api-endpoint → api-endpoint` and
+ * `decision → decision` deliberately, and a node this true of is real graph
+ * data the user put there. It renders as one row under the node's outbound
+ * line and one row under its inbound line — the same edge read from both
+ * directions, same as any other edge between two distinct nodes.
  */
 export function relationRows(
   nodeId: string,
@@ -159,5 +201,9 @@ export function relationRows(
       counterpartId: line.direction === "out" ? edge.target_id : edge.source_id,
     }));
 
-  return [...new Map(rows.map((row) => [row.counterpartId, row])).values()];
+  const seen = new Map<string, RelationRow>();
+  for (const row of rows) {
+    if (!seen.has(row.counterpartId)) seen.set(row.counterpartId, row);
+  }
+  return [...seen.values()];
 }

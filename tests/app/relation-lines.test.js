@@ -12,7 +12,6 @@
  */
 
 const assert = require("node:assert/strict");
-const fs = require("fs");
 const { loadRelationLines, BUILD_DIR } = require("./load-relation-lines");
 
 const {
@@ -23,6 +22,7 @@ const {
   PANEL_EXCLUDED_EDGE_TYPES,
   VALID_EDGE_SEMANTICS,
   applyOps,
+  SPECIES_IDS,
   // Added in part 3 — absent until then, which is fine: § 7 is added in the
   // same task that creates them.
   planRelationLink,
@@ -30,9 +30,28 @@ const {
   planRelationNew,
 } = loadRelationLines();
 
+// Cleaned up on process exit rather than only after the last assertion: an
+// assertion that throws partway through would otherwise leave the build dir
+// behind, and #3's pid-suffixed path means stale dirs now accumulate instead
+// of being overwritten by the next run.
+process.on("exit", () => {
+  require("fs").rmSync(BUILD_DIR, { recursive: true, force: true });
+});
+
 const labelsOf = (species) => relationLinesFor(species).map((line) => line.label);
 
 // --- 1: the per-species snapshot -------------------------------------------
+
+const SNAPSHOTTED_SPECIES = ["view", "flow", "data-model", "api-endpoint", "acceptance", "decision"];
+
+// If a species is ever added to SPECIES_IDS without a snapshot here, this
+// suite's per-species checks below would silently shrink to cover fewer
+// species than the grammar has. Catch that here instead.
+assert.deepEqual(
+  [...SNAPSHOTTED_SPECIES].sort(),
+  [...SPECIES_IDS].sort(),
+  "the snapshot list covers every species — add one above when a species is added",
+);
 
 assert.deepEqual(labelsOf("view"), [
   "Acceptances", "Calls", "Called by", "Displays", "Impacted by",
@@ -65,7 +84,7 @@ assert.deepEqual(labelsOf("decision"), [
 // order to journey-graph's "append the missing children" fallback, which is a
 // silent reorder. PlaylistEditor owns that write.
 assert.deepEqual([...PANEL_EXCLUDED_EDGE_TYPES], ["composes"]);
-for (const species of ["view", "flow", "data-model", "api-endpoint", "acceptance", "decision"]) {
+for (const species of SPECIES_IDS) {
   assert(
     relationLinesFor(species).every((line) => line.edgeType !== "composes"),
     `no composes line on a ${species}`,
@@ -74,7 +93,7 @@ for (const species of ["view", "flow", "data-model", "api-endpoint", "acceptance
 
 // --- 3: every line is the grammar's, not a restatement ----------------------
 
-for (const species of ["view", "flow", "data-model", "api-endpoint", "acceptance", "decision"]) {
+for (const species of SPECIES_IDS) {
   for (const line of relationLinesFor(species)) {
     const pairs = VALID_EDGE_SEMANTICS[line.edgeType];
     for (const counterpart of line.counterpartSpecies) {
@@ -119,7 +138,7 @@ for (const edgeType of Object.keys(VALID_EDGE_SEMANTICS)) {
 // Sorting by EDGE_TYPE_IDS index would silently reorder every panel the day an
 // edge type is appended to that enum, so the order is its own list — and every
 // line a species can have must be in it.
-for (const species of ["view", "flow", "data-model", "api-endpoint", "acceptance", "decision"]) {
+for (const species of SPECIES_IDS) {
   for (const line of relationLinesFor(species)) {
     assert(RELATION_LINE_ORDER.includes(line.id), `${line.id} has a place in the order`);
   }
@@ -127,7 +146,17 @@ for (const species of ["view", "flow", "data-model", "api-endpoint", "acceptance
 assert.equal(new Set(RELATION_LINE_ORDER).size, RELATION_LINE_ORDER.length,
   "no line id appears twice in the order");
 
-// --- 6: relationRows reads the edges the line names -------------------------
+// A line id missing from RELATION_LINE_ORDER must not float to the top of the
+// panel: relationLinesFor sorts unranked ids last, not first (indexOf's -1).
+assert.deepEqual(labelsOf("view"), [
+  "Acceptances", "Calls", "Called by", "Displays", "Impacted by",
+], "an unranked id would land last, so today's fully-ranked view is unaffected");
+
+// --- 6: relationLinesFor("nope") --------------------------------------------
+
+assert.deepEqual(relationLinesFor("nope"), [], "an unknown species has no lines, not a throw");
+
+// --- 7: relationRows reads the edges the line names -------------------------
 
 const PROJECT = "p1";
 const edge = (source, target, edge_type, id) => ({
@@ -165,6 +194,17 @@ assert.deepEqual(
   "the row carries its edge id",
 );
 
+// Rows come back in edge order, not sorted or reversed. Every assertion above
+// yields a single row, which a stray `.sort()`/`.reverse()` would still pass.
+assert.deepEqual(
+  relationRows("V-home", calls, [
+    edge("V-home", "API-z", "calls"),
+    edge("V-home", "API-b", "calls"),
+  ]).map((row) => row.counterpartId),
+  ["API-z", "API-b"],
+  "rows come back in edge order, not sorted",
+);
+
 // A hand-edited bundle can hold two edges with the same endpoints and different
 // ids. Listing the counterpart twice would read as data loss to the user.
 assert.equal(
@@ -176,7 +216,35 @@ assert.equal(
   "a duplicated pair is one row",
 );
 
+// The row that survives is the FIRST edge — the canonical id, stable under a
+// re-sync — not whichever one happened to be written last into the Map.
+assert.equal(
+  relationRows("V-home", calls, [
+    edge("V-home", "API-orders", "calls", "e-canonical"),
+    edge("V-home", "API-orders", "calls", "e-stray"),
+  ])[0].edgeId,
+  "e-canonical",
+  "a duplicated pair keeps the first edge — the canonical id, stable under a re-sync",
+);
+
 assert.deepEqual(relationRows("V-home", calls, []), [], "no edges, no rows");
 
+// A self-loop (api-endpoint → api-endpoint, decision → decision) is real graph
+// data, not filtered: it shows up as one row under the node's outbound line
+// and one row under its inbound line, same as any edge between two nodes.
+const apiLines = relationLinesFor("api-endpoint");
+const apiCalls = apiLines.find((line) => line.id === "calls:out");
+const apiCalledBy = apiLines.find((line) => line.id === "calls:in");
+const selfLoop = [edge("API-a", "API-a", "calls")];
+assert.deepEqual(
+  relationRows("API-a", apiCalls, selfLoop).map((row) => row.counterpartId),
+  ["API-a"],
+  "a self-loop renders under the outbound line",
+);
+assert.deepEqual(
+  relationRows("API-a", apiCalledBy, selfLoop).map((row) => row.counterpartId),
+  ["API-a"],
+  "and under the inbound line — the same edge, read from the other direction",
+);
+
 console.log("relation-lines: ok");
-fs.rmSync(BUILD_DIR, { recursive: true, force: true });

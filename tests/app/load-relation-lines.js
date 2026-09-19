@@ -8,13 +8,22 @@
  * load-panel-utils.js cannot take them — it rewrites nothing, and the require
  * would fail at resolution with an error pointing nowhere near the cause.
  *
- * MODULES is in dependency order, and the rewrite table below has one line per
- * `@/` import in those files. Adding an import to either module means adding a
- * line here; there is no resolver doing it for you.
+ * MODULES is in dependency order. The rewrite table below has one line per
+ * *value* `@/` import across those files — today there are none: the only
+ * `@/` import (`@/lib/data/types`) is `import type` and is elided by the
+ * transpiler. Adding a value import to either module means adding a rewrite
+ * line for it; a missing rule is not silently ignored — see the leftover-alias
+ * check below, which throws rather than shipping a require that resolves
+ * nowhere.
  *
  * node-relations.ts does not exist yet (it lands in Part 3, Task 3.1), so for
  * now MODULES lists only relation-lines and there is no rewrite line for the
  * `@/lib/utils/relation-lines` import node-relations.ts will make.
+ *
+ * The build dir carries the pid: Part 3 adds a second suite behind this same
+ * loader, and a shared path would let one suite's cleanup delete the other's
+ * modules mid-run — an ENOENT that reads like a broken loader rather than the
+ * race it is (see load-panel-utils.js, which documents the same hazard).
  */
 
 const fs = require("fs");
@@ -23,7 +32,7 @@ const ts = require("typescript");
 const { loadSchema, BUILD_DIR: SCHEMA_BUILD_DIR } = require("../schema/load-schema");
 
 const ROOT = path.join(__dirname, "..", "..");
-const BUILD_DIR = path.join(__dirname, ".test-build-relation-lines");
+const BUILD_DIR = path.join(__dirname, `.test-build-relation-lines-${process.pid}`);
 
 const MODULES = [
   ["lib/utils/relation-lines.ts", "relation-lines"],
@@ -49,6 +58,17 @@ function loadRelationLines() {
     // transpiler.
     const rewritten = outputText
       .replace(/require\((['"])@arkaik\/schema\1\)/g, `require(${JSON.stringify(schemaIndex)})`);
+
+    // A `@/…` require this table has no rule for would otherwise resolve
+    // against nothing and fail inside `require()`, far from the actual cause.
+    // This repo has been bitten by exactly that: a new `@/…` import silently
+    // breaking a hand-maintained loader table.
+    const leftover = rewritten.match(/require\(["']@[^"']+["']\)/g);
+    if (leftover) {
+      throw new Error(
+        `${srcRel}: no rewrite rule for ${leftover.join(", ")} — add one to the rewrite table in ${__filename}`,
+      );
+    }
     fs.writeFileSync(path.join(BUILD_DIR, `${outName}.js`), rewritten);
   }
 
@@ -69,6 +89,9 @@ function loadRelationLines() {
     // is, and reimplementing "apply these ops" in the suite would hide exactly
     // the mistakes worth catching.
     applyOps: schema.applyOps,
+    // The species list the suite's per-species coverage check is driven from,
+    // rather than a fourth hand-written copy of the six species ids.
+    SPECIES_IDS: schema.SPECIES_IDS,
   };
 }
 
