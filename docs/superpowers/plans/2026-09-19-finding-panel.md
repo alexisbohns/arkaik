@@ -12,6 +12,19 @@
 
 **Branch:** `finding-panel` (already created, already carries the spec commit).
 
+## Correction, found while executing Task 1
+
+The tasks below are numbered in their original order, but **Tasks 2 and 6 are done together, after Task 5.** Extending `PanelDescriptor` with `FindingPanelDescriptor` (Task 1) immediately breaks `components/panels/ProjectPanels.tsx`:
+
+```
+ProjectPanels.tsx(383,46): error TS2339: Property 'initialPlatform' does not exist
+  on type 'NodePanelDescriptor | FindingPanelDescriptor'.
+```
+
+`renderBody` narrows the union by early-returning on `raw`, `cell` and `criterion`, then reads `entry.payload.initialPlatform` from what is left — an assumption that a fifth kind invalidates. Only Task 6's `finding` branch restores the narrowing. Nothing in Tasks 2–5 fixes it, so their `npx tsc --noEmit` steps are expected to report **exactly this one error and no other**; treat a second error as yours.
+
+**Execution order: 1 → 3 → 4 → 5 → (2 + 6 as one commit) → 7 → 8 → 9 → 10.** Tasks 3, 4 and 5 touch none of the affected files, and merging 2 with 6 is what closes the window — `openFinding` has no caller until `ProjectPanels` has one.
+
 ---
 
 ## File Structure
