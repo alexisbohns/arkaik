@@ -207,16 +207,28 @@ Condition and junction rows wrap their nested lists in `Collapsible`
 (`components/ui/collapsible.tsx`, the same primitive `PanelGroup` uses),
 `defaultOpen` true — nothing that is visible today disappears on first paint.
 
-**The trigger is the chevron and the count, not the whole bar.** The label is an
+**The trigger is the chevron alone, not the whole bar.** The label is an
 `Input`, and a control inside a `CollapsibleTrigger` is exactly the
 button-inside-a-button that `PanelGroup`'s own doc comment rules out: invalid
 HTML, undefined AT behaviour, and an inner control whose clicks the outer
 trigger swallows. Keeping the trigger narrow is what lets inline label editing
 survive the change.
 
+**The chevron sits at the END of the row**, where every other disclosure in the
+app puts it — `PanelGroup`'s bars, the panel's own regions — and in the same
+right-hand gutter as a ref row's species word and a case's delete. Leading with
+it pushed the label a step right of every other row's text and left the rail's
+numbers lining up with nothing.
+
 ```
-⟦2⟧ [∨] [ Has account?          ]   2 branches · 4 entries
+⟦2⟧ [ Has account?                    ]  ∨
+    2 branches · 4 entries
 ```
+
+Nothing under the bar is indented past it: the label starts at the row's own
+left edge, so the count and the branches start there too. The nesting is carried
+by the rule down each nested list, not by a step that would now align with
+nothing.
 
 The count summarises direct children, summed across branches or cases:
 

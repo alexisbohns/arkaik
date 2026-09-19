@@ -78,8 +78,13 @@ const NESTED = "border-l border-border pl-3";
 const CONTENT_COLUMN = "pl-9";
 
 /**
- * The bar of a condition or junction row: a disclosure chevron, the editable
- * label, and — under it — what the row holds.
+ * The bar of a condition or junction row: the editable label, a disclosure
+ * chevron at the far end, and — under it — what the row holds.
+ *
+ * **The chevron sits at the end of the row**, where every other disclosure in
+ * the app puts it: `PanelGroup`'s bars, the panel's own regions. Leading with it
+ * pushed the label a step right of every other row's text and made the rail's
+ * numbers line up with nothing.
  *
  * **The trigger is the chevron alone, not the whole bar.** The label is an
  * `Input`, and a control inside a `CollapsibleTrigger` is the button-inside-a-
@@ -92,6 +97,11 @@ const CONTENT_COLUMN = "pl-9";
  * narrow the two would fight for the same row, and the count is the thing a
  * *shut* branch needs to say — "2 branches · 4 entries" answers how much is
  * about to unfold.
+ *
+ * Nothing under the bar is indented past it. With the chevron trailing, the
+ * label starts at the row's own left edge, so the count and the branches start
+ * there too; the nesting is carried by the rule down each nested list, not by a
+ * step that would now align with nothing.
  */
 function BranchBar({
   entry,
@@ -109,6 +119,11 @@ function BranchBar({
   return (
     <Collapsible defaultOpen className="group/branch flex flex-col">
       <div className="flex items-center gap-2">
+        <DebouncedLabelInput
+          value={entry.label}
+          onCommit={(label) => void onChangeEntry({ ...entry, label })}
+          ariaLabel={ariaLabel}
+        />
         <CollapsibleTrigger
           aria-label={`Toggle ${entry.label || ariaLabel}`}
           className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -118,14 +133,9 @@ function BranchBar({
             aria-hidden="true"
           />
         </CollapsibleTrigger>
-        <DebouncedLabelInput
-          value={entry.label}
-          onCommit={(label) => void onChangeEntry({ ...entry, label })}
-          ariaLabel={ariaLabel}
-        />
       </div>
-      {summary && <p className="pl-8 pt-1 text-xs text-muted-foreground">{summary}</p>}
-      <CollapsibleContent className="mt-3 flex flex-col gap-3 pl-8">{children}</CollapsibleContent>
+      {summary && <p className="pt-1 text-xs text-muted-foreground">{summary}</p>}
+      <CollapsibleContent className="mt-3 flex flex-col gap-3">{children}</CollapsibleContent>
     </Collapsible>
   );
 }
