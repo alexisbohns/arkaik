@@ -53,11 +53,13 @@ Relations                                    [crit 2]
   Displays                                         [+]
     ▤ Order                                        [×]
   Impacted by                                      [+]
-  Invocation
-    ◈ Checkout flow
   References
     ↗ figma.com/…
 ```
+
+Invocation is not in `RELATION_LINE_ORDER` — it is read-only and playlist-owned
+— and renders above the edge lines, where `ConnectionsSection` already put it
+before this change.
 
 Three sections stay read-only and keep their present shape: **Invocation**
 (`composes` carries playlist ordering and `PlaylistEditor` owns that write),
@@ -273,10 +275,17 @@ since a node's status means something different when something blocks it.
 - **Set to anything else:** one row of plain text.
 - **`×`** clears the key — `withBlockedBy(base, null)`, which already owns the
   "empty means *absent*, never `blocked_by: ""`" rule.
-- **The combobox** searches every species, and once the query matches no node
-  title a last row commits it as free text ("Blocked by “waiting on leg”"). That
-  is the `freeText` slot in `RelationLineProps`, and it is the only line that
-  uses it: nothing a bundle can hold today stops being authorable.
+- **The combobox** searches every species, and a last row commits the query as
+  free text ("Blocked by “waiting on leg”"). That is the `freeText` slot in
+  `RelationLineProps`, and it is the only line that uses it: nothing a bundle can
+  hold today stops being authorable.
+
+  **Offered on any non-empty query, not only when nothing matches.** An earlier
+  draft said the latter. A query that happens to match a node title may still be
+  meant as prose — a project with a view called Register can be blocked by
+  "Register", the word — and withholding the row would make the offer depend on
+  which nodes happen to exist. It sorts last, after the matches, so a guess never
+  outranks an answer.
 
 Because it is single-valued, the `+` is present only while it is empty.
 
@@ -313,8 +322,10 @@ full grammar, including the lines with nothing in them; read-only panels show
 only what exists.
 
 The per-child `has*` flags are replaced by one pass over `relationLinesFor(node.species)`
-that resolves each line's rows, plus the four flags the non-edge children still
-need (`hasRefs`, `hasFindings`, `hasInvocation`, blocked-by). `decisionConnections`
+that resolves each line's rows, plus the six flags the non-edge children
+still need: `hasRefs`, `hasFindings`, `hasInvocation`, blocked-by, and —
+because §3's covers exception keeps those two lines on their own components and
+`intake`'s write path — `hasCovers` and `hasAcceptances`. `decisionConnections`
 and `crossLayerConnections` are both subsumed by that pass and both deleted.
 Checked rather than assumed: `crossLayerConnections` has exactly two callers,
 `ConnectionsSection` and `RelationsGroup`'s emptiness flag, and no canvas or map
