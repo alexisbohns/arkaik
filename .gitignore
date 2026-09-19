@@ -39,6 +39,7 @@
 /tests/app/.test-build-coverage/
 /tests/app/.test-build-changelog-period/
 /tests/app/.test-build-deliverable-pr/
+/tests/app/.test-build-playlist-*/
 /tests/app/.test-build-pollen/
 /tests/app/.test-build-panels-*/
 /tests/app/.test-build-product-*/

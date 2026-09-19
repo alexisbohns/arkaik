@@ -80,11 +80,17 @@ third size of the same idea. Surface: `bg-muted text-muted-foreground`, plus
   the title and keeps the id, so the dangling reference stays fixable.
 - **condition / junction** — the collapsible bar (§4), then the nested lists.
 
-Nested lists restart numbering at 1 — a branch is its own sequence — and keep
-the existing `branchIndentClass` for depth.
+Nested lists restart numbering at 1 — a branch is its own sequence — and are set
+off by a rule down their left (`border-l pl-3`), the idiom `FindingCard` already
+uses, rather than by the margin steps of `branchIndentClass`. A margin inside a
+grid whose first column is the rail would push the nested rail away from the
+rule that should be carrying it; the helper goes away with the cards it was
+built for.
 
-`AddEntryControls` moves into the content column at the foot of each list, so it
-lines up with the rows' text rather than with the rail.
+`AddEntryControls` and the empty state move into the content column (`pl-9` —
+the 24px tile plus the grid's 12px gap) at the foot of each list, so that "No
+entries yet." and the thing that fixes it both sit under the titles rather than
+under the rail.
 
 ## 2. The index menu
 
@@ -98,8 +104,11 @@ Move to position  [ 2 ]   (1–5)
 ```
 
 - The number field defaults to the entry's current position, clamps to `1..n`,
-  and commits on Enter or on blur, closing the popover. Escape closes without
-  moving. Non-numeric input is ignored.
+  and commits on Enter or on the Move button, closing the popover. Non-numeric
+  input is ignored. **Not on blur:** Radix closes on Escape by unmounting the
+  input, so a blur commit would turn "never mind" into a move — the one outcome
+  Escape exists to prevent. Reopening reads the entry's current position, never
+  the last thing typed.
 - Position is **within the sibling list only**. Moving an entry inside a
   condition's `Yes` branch renumbers that branch, not the flow.
 - `Remove entry` is the destructive item.
@@ -118,12 +127,20 @@ which is the whole point of moving them off the row.
 
 Reveal rules:
 
-- `opacity-0` at rest, `group-hover/row:opacity-100` on pointer hover.
-- `group-focus-within/row:opacity-100` — the buttons stay in the DOM and stay
-  tabbable, so focus reveals them and the keyboard path comes for free.
+- `opacity-0` at rest, lit by hover, by `focus-within`, and by `data-active`.
+- The buttons stay in the DOM and stay tabbable, so focus reveals them and the
+  keyboard path comes for free.
 - **Touch:** the list holds one `activeIndex` in state; a click anywhere on a
   row sets it, and that row gets the same reveal. Harmless on desktop, where
   hover has already done the job.
+
+**The group name is per depth — `group/row0` … `group/row3`, not one
+`group/row`.** `group-hover/row:` compiles to `.group\/row:hover &`, a plain
+descendant selector, so it matches *every* ancestor carrying the name rather
+than the nearest. Rows nest inside rows here, so one shared name lit up the
+arrows on every row inside a hovered one at once. Four names, written out in
+full because Tailwind cannot see an interpolated one, then the name repeats:
+a playlist five branches deep would bleed again, and nothing comes near it.
 
 The `↑` is **absent** on the first entry and the `↓` on the last — not disabled.
 A greyed-out button that only appears on hover is noise announcing its own
@@ -160,12 +177,16 @@ concerns. Split into `components/panels/playlist/`:
 
 | File | Holds |
 | --- | --- |
-| `PlaylistEntryList.tsx` | the `<ol>` rail, ordering handlers, `activeIndex` |
-| `PlaylistEntryRow.tsx` | the per-species row bodies |
+| `PlaylistEntryList.tsx` | the `<ol>` rail, the row bodies, ordering, `activeIndex` |
 | `PlaylistIndexMenu.tsx` | the tile and its popover |
-| `PlaylistReorderControls.tsx` | the two absolute arrows |
+| `PlaylistReorderControls.tsx` | the two absolute arrows and the depth group names |
 | `DebouncedLabelInput.tsx` | moved verbatim, comments included |
 | `AddEntryControls.tsx` | moved verbatim |
+
+The list and the row stay in **one** file: they are mutually recursive — a
+condition holds two lists, a junction case holds one, and each holds rows — so
+splitting them would buy nothing but an import cycle. The files that got their
+own module are the ones that are *not* recursive.
 
 `DebouncedLabelInput`'s commit/anchor/pending dance travels **intact**. Its
 comments document a bug that was fixed once (characters reverting mid-type,

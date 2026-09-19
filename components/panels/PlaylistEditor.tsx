@@ -2,7 +2,7 @@
 
 import { toast } from "sonner";
 import type { Node, PlaylistEntry } from "@/lib/data/types";
-import { PlaylistEntryList } from "@/components/panels/PlaylistEntryRow";
+import { PlaylistEntryList } from "@/components/panels/playlist/PlaylistEntryList";
 import { PanelGroup } from "@/components/panels/PanelGroup";
 import { PANEL_GUTTER } from "@/components/panels/PanelSection";
 

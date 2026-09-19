@@ -195,6 +195,9 @@ jobs:
       - name: Deliverable PR-number tests
         run: npm run test:deliverable-pr
 
+      - name: Playlist ordering tests
+        run: npm run test:playlist-utils
+
       - name: Keyboard shortcut catalogue tests
         run: npm run test:keyboard-shortcuts
 
