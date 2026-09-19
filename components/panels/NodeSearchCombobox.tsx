@@ -39,6 +39,14 @@ export interface NodeSearchComboboxProps {
   /**
    * An extra last row for a value that is not a node at all — Blocked by's free
    * text. `render` draws it, `onCommit` takes the trimmed query.
+   *
+   * **Offered on any non-empty query, not only when nothing matches.** A query
+   * that happens to match a node title may still be meant as prose: a project
+   * with a view called Register can perfectly well be blocked by "Register",
+   * the word. Withholding the row there would make the offer depend on which
+   * nodes happen to exist, which is not something the reader can see. It sorts
+   * last, after the matches and the creates, so the row that is a guess never
+   * outranks the ones that are answers.
    */
   freeText?: { render: (query: string) => React.ReactNode; onCommit: (text: string) => void };
   placeholder?: string;

@@ -53,11 +53,13 @@ Relations                                    [crit 2]
   Displays                                         [+]
     ▤ Order                                        [×]
   Impacted by                                      [+]
-  Invocation
-    ◈ Checkout flow
   References
     ↗ figma.com/…
 ```
+
+Invocation is not in `RELATION_LINE_ORDER` — it is read-only and playlist-owned
+— and renders above the edge lines, where `ConnectionsSection` already put it
+before this change.
 
 Three sections stay read-only and keep their present shape: **Invocation**
 (`composes` carries playlist ordering and `PlaylistEditor` owns that write),
@@ -273,19 +275,34 @@ since a node's status means something different when something blocks it.
 - **Set to anything else:** one row of plain text.
 - **`×`** clears the key — `withBlockedBy(base, null)`, which already owns the
   "empty means *absent*, never `blocked_by: ""`" rule.
-- **The combobox** searches every species, and once the query matches no node
-  title a last row commits it as free text ("Blocked by “waiting on leg”"). That
-  is the `freeText` slot in `RelationLineProps`, and it is the only line that
-  uses it: nothing a bundle can hold today stops being authorable.
+- **The combobox** searches every species, and a last row commits the query as
+  free text ("Blocked by “waiting on leg”"). That is the `freeText` slot in
+  `RelationLineProps`, and it is the only line that uses it: nothing a bundle can
+  hold today stops being authorable.
+
+  **Offered on any non-empty query, not only when nothing matches.** An earlier
+  draft said the latter. A query that happens to match a node title may still be
+  meant as prose — a project with a view called Register can be blocked by
+  "Register", the word — and withholding the row would make the offer depend on
+  which nodes happen to exist. It sorts last, after the matches, so a guess never
+  outranks an answer.
 
 Because it is single-valued, the `+` is present only while it is empty.
 
 **Two renderers collapse into one.** `NodeFields` renders `BlockedByField` for
 five species and `DecisionEditor` renders its own for the sixth, under "Context —
-why". Both go. The `metadataRef` prop exists solely because `DecisionEditor`'s
-non-optimistic `onUpdate` made this field a fifth writer racing its siblings over
-`node.metadata`; with the field out of that editor there is no shared write base
-to join, and the prop goes with it.
+why". Both go. The `metadataRef` **prop** goes with it: it existed because
+`DecisionEditor`'s non-optimistic `onUpdate` made this field one more writer
+racing over `node.metadata`, and out of that editor there is no shared base to
+join.
+
+**The ref itself stays.** An earlier draft of this section said to delete it,
+which would have been a bug: `metadataRef` is the shared write base for
+`DecisionEditor`'s *own* four wholesale-metadata writers — `context`,
+`consequences`, `decided_at` and the status transition — and its comment says
+"the four writers", a count that never included this field. Removing it would
+reintroduce precisely the race it was built to prevent. Only the prop and the
+argument at the call site go.
 
 ## 5. What this forces in `RelationsGroup`
 
@@ -305,8 +322,10 @@ full grammar, including the lines with nothing in them; read-only panels show
 only what exists.
 
 The per-child `has*` flags are replaced by one pass over `relationLinesFor(node.species)`
-that resolves each line's rows, plus the four flags the non-edge children still
-need (`hasRefs`, `hasFindings`, `hasInvocation`, blocked-by). `decisionConnections`
+that resolves each line's rows, plus the six flags the non-edge children
+still need: `hasRefs`, `hasFindings`, `hasInvocation`, blocked-by, and —
+because §3's covers exception keeps those two lines on their own components and
+`intake`'s write path — `hasCovers` and `hasAcceptances`. `decisionConnections`
 and `crossLayerConnections` are both subsumed by that pass and both deleted.
 Checked rather than assumed: `crossLayerConnections` has exactly two callers,
 `ConnectionsSection` and `RelationsGroup`'s emptiness flag, and no canvas or map

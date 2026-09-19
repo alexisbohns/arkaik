@@ -12,11 +12,13 @@ import {
   RefsSection,
 } from "@/components/panels/NodeRelationSections";
 import { AcceptancesSection } from "@/components/panels/AcceptancesSection";
+import { BlockedByField } from "@/components/panels/BlockedByField";
 import { SEVERITY_CHIP, SEVERITY_LABEL } from "@/components/quality/quality-styles";
 import { worstOpenFindingFor, type FindingRow } from "@/lib/utils/quality";
 import { relationLinesFor, relationRows } from "@/lib/utils/relation-lines";
 import { findWhereUsed } from "@/lib/utils/where-used";
-import type { Node, Edge } from "@/lib/data/types";
+import { blockedByOf } from "@/lib/utils/blocked";
+import type { Node, NodeMetadata, Edge } from "@/lib/data/types";
 import type { ProductScope } from "@/lib/utils/product-scope";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import type { NodeRelations } from "@/lib/hooks/useNodeRelations";
@@ -27,6 +29,21 @@ interface RelationsGroupProps {
   allNodes?: Node[];
   allEdges?: Edge[];
   onNavigate?: (node: Node) => void;
+  /**
+   * Writing the node itself, for the one line that is a metadata key rather
+   * than an edge: Blocked by. Absent on a read-only surface, and the line is
+   * then a row or nothing.
+   */
+  onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
+  /**
+   * The panel's shared latest-metadata write base, passed straight through to
+   * `BlockedByField`. Required rather than optional: the component that renders
+   * this group also renders `DecisionEditor`, whose four metadata writers that
+   * line sits beside on a decision panel, so there is no caller for which
+   * "nothing else on this panel writes metadata" holds. See `NodeDetailPanel`,
+   * which owns it.
+   */
+  metadataRef: React.MutableRefObject<NodeMetadata | undefined>;
   onCreateAcceptanceForAnchor?: (anchor: Node, title: string) => Promise<Node>;
   intake?: AcceptanceIntake;
   /**
@@ -82,6 +99,12 @@ interface RelationsGroupProps {
  * for the empty case, and both sentences are facts about the graph rather than
  * empty states ("this acceptance is an orphan", "nothing verifies this view").
  * Their flags therefore ask only whether the section can render at all.
+ *
+ * **Blocked by is the one line that is not an edge.** It is
+ * `metadata.blocked_by` — a single free string that may name a node or say
+ * anything at all — so it writes through `onUpdate` rather than `relations`,
+ * and `BlockedByField` renders whatever `hasBlockedBy` lets through. It is
+ * first because what holds a record up changes how the rest of it reads.
  */
 export function RelationsGroup({
   node,
@@ -89,6 +112,8 @@ export function RelationsGroup({
   allNodes,
   allEdges,
   onNavigate,
+  onUpdate,
+  metadataRef,
   onCreateAcceptanceForAnchor,
   intake,
   relations,
@@ -193,13 +218,15 @@ export function RelationsGroup({
   const hasInvocation =
     isAnchor && Boolean(allNodes && onNavigate) && findWhereUsed(node.id, allNodes ?? []).length > 0;
 
-  // Blocked by is not here yet: it is still a field inside `DecisionEditor`,
-  // and part 4 moves it in as the group's first line. Its flag belongs in this
-  // list on the day it does — a line whenever anything can be said or done
-  // about it, which is a value to show or a way to set one — and not before,
-  // because a flag for a child that does not render would open the bar onto
-  // nothing.
+  // A line whenever anything can be said or done about it: a value to show, or
+  // a way to set one. `blockedByOf` rather than a truthiness test on the raw
+  // key, because the field renders through the same helper — a stored
+  // whitespace-only value is nothing to either of them, and two readings of
+  // "empty" that disagree are how a bar opens onto nothing.
+  const hasBlockedBy = Boolean(onUpdate) || blockedByOf(node.metadata) !== undefined;
+
   if (
+    !hasBlockedBy &&
     !hasCovers &&
     !hasAcceptances &&
     !hasInvocation &&
@@ -231,6 +258,19 @@ export function RelationsGroup({
           than the two lines it saves: read down this list and the render order
           is the emptiness test's order, term for term, so a child that stops
           agreeing with its flag is visible here rather than only on screen. */}
+      {/* First, and on every species: what holds a record up changes how the
+          rest of it reads. It is also the one line here that is not an edge —
+          `metadata.blocked_by`, which is why it takes `onUpdate` and not
+          `relations`. */}
+      {hasBlockedBy && (
+        <BlockedByField
+          node={node}
+          onUpdate={onUpdate}
+          metadataRef={metadataRef}
+          allNodes={allNodes}
+          onNavigate={onNavigate}
+        />
+      )}
       {hasCovers && allNodes && allEdges && (
         <CoversSection
           node={node}

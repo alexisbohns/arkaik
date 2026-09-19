@@ -21,8 +21,8 @@ interface AcceptanceAuthoredFieldsProps {
 }
 
 /**
- * What an acceptance itself says — the How and the Why, in the intro block
- * after Blocked by.
+ * What an acceptance itself says — the How and the Why, last in the intro
+ * block.
  *
  * Passed to `NodeFields` as the `authored` slot, so it renders into that
  * component's gutter and `gap-5` column: the fields below are the column's own

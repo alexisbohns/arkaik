@@ -39,6 +39,15 @@ import type { SpeciesId } from "@arkaik/schema";
  * sitting in the layout, and for what Radix owns: the field takes focus on
  * open, the trigger takes it back on close, and the trigger's `aria-expanded`
  * and `aria-controls` come with it. This component adds only when to close.
+ *
+ * **A single-valued line loses the focus anchor anyway, and this does not fix
+ * it.** Such a line drops its `add` once it has a value, so the trigger Radix
+ * would hand focus back to unmounts in the same render as the card — on the
+ * pick path as much as the free-text one — and focus falls to `<body>` after
+ * all. Parking focus on the new row's `×` would fix it properly and is not a
+ * change this component can make alone, since it is the caller that renders
+ * the row. What closing still buys such a line is an `open` that does not stay
+ * true over a card that no longer exists.
  */
 interface RelationLineProps {
   label: string;
@@ -103,7 +112,26 @@ export function RelationLine({ label, children, add }: RelationLineProps) {
               allNodes={add.allNodes}
               excludeIds={add.excludeIds}
               placeholder={add.placeholder}
-              freeText={add.freeText}
+              // Closed here rather than left to the combobox, which handles
+              // this row itself and returns without telling anyone. Left
+              // alone, a free-text commit leaves `open` true over a card the
+              // caller may be about to unmount. Wrapped in the shared
+              // component so the next line with a free-text row inherits it.
+              //
+              // Not conditional on success: `onCommit` is typed `void` and the
+              // combobox clears the query the moment it returns, so there is
+              // no failure for this to read. That asymmetry with `onSelect` is
+              // the combobox's to fix, and a card that stayed open over a
+              // query the list had already dropped would be the worse half.
+              freeText={
+                add.freeText && {
+                  ...add.freeText,
+                  onCommit: (text) => {
+                    add.freeText?.onCommit(text);
+                    close();
+                  },
+                }
+              }
               disabled={add.disabled}
               onSelect={async (nodeId) => {
                 // `false` is the handler saying the write failed; the card then

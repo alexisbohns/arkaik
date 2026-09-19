@@ -9,12 +9,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Field } from "@/components/ui/field";
-import { BlockedByField } from "@/components/panels/BlockedByField";
 import { PANEL_GUTTER } from "@/components/panels/PanelSection";
 import { PanelGroup } from "@/components/panels/PanelGroup";
 import { RelationsGroup } from "@/components/panels/RelationsGroup";
 import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
-import type { Node, Edge } from "@/lib/data/types";
+import type { Node, NodeMetadata, Edge } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import { SPECIES } from "@/lib/config/species";
@@ -104,9 +103,6 @@ interface NodeDetailPanelProps {
 interface NodeFieldsProps {
   node: Node;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
-  /** For resolving `blocked_by` to a node title/link; the panel's own node-link affordance. */
-  allNodes?: Node[];
-  onNavigate?: (node: Node) => void;
   /**
    * Species-specific intro fields, in the two places a species needs one.
    *
@@ -118,13 +114,13 @@ interface NodeFieldsProps {
    * Both render straight into this component's gutter and `gap-5` column, so
    * neither may carry a gutter of its own.
    */
-  /** Between Status and Blocked by — the Product picker. */
+  /** After Status — the Product picker. */
   membership?: ReactNode;
-  /** After Blocked by — the species' own authored fields (Gherkin, Values). */
+  /** Last — the species' own authored fields (Gherkin, Values). */
   authored?: ReactNode;
 }
 
-function NodeFields({ node, onUpdate, allNodes, onNavigate, membership, authored }: NodeFieldsProps) {
+function NodeFields({ node, onUpdate, membership, authored }: NodeFieldsProps) {
   const AUTOSAVE_DELAY_MS = 350;
   // Per-mount, because the panel stack keeps hidden panels mounted: two nodes
   // open at once means two "Status" fields in one document, and a hand-written
@@ -262,11 +258,6 @@ function NodeFields({ node, onUpdate, allNodes, onNavigate, membership, authored
         </Field>
       )}
       {membership}
-      {/* Absent on a decision, which renders its own under "Context — why":
-          see `BlockedByField`. */}
-      {node.species !== "decision" && (
-        <BlockedByField node={node} onUpdate={onUpdate} allNodes={allNodes} onNavigate={onNavigate} />
-      )}
       {authored}
     </div>
   );
@@ -678,6 +669,51 @@ export function NodeDetailPanel({
   findings,
   onOpenCriterion,
 }: NodeDetailPanelProps) {
+  // The panel's one latest-metadata write base.
+  //
+  // `onUpdate` is NOT optimistic: it awaits the provider before `node.metadata`
+  // reflects a write. So while writer A's save is in flight, `node.metadata` in
+  // writer B's closure is still the pre-A value, and B — which patches
+  // `metadata` wholesale, as every metadata write here does — spreads it and
+  // silently drops A's edit. Each writer that takes this ref reads it as its
+  // spread base and writes its result back into it before calling `onUpdate`,
+  // so those writers do not overwrite each other's *completed* edits. Not a
+  // total order: the resync below can still regress the base if writer A's
+  // response lands while writer B is in flight. That mechanism predates this
+  // ref moving up here — the identical effect ran in `DecisionEditor` — and
+  // closing it needs an in-flight count, which is a change with failure modes
+  // of its own.
+  //
+  // It lives here rather than in `DecisionEditor`, which owned it until Blocked
+  // by moved out of that editor and into the Relations group: the two are now
+  // mounted on the same decision panel, and a base owned by one of two siblings
+  // is not a shared base at all. This component renders them both, which is why
+  // it is the one that owns it.
+  //
+  // Sharing it today: `DecisionEditor`'s three debounced text fields and its
+  // status transition, and `BlockedByField`. NOT sharing it: `ProductSection`,
+  // `PlatformVariantsSection`, `PlaylistEditor`, `AcceptanceMembershipField`,
+  // `AcceptanceAuthoredFields` and `AcceptancePlatformsSection`, which all still
+  // spread `node.metadata`. Those race each other, and did before this ref moved
+  // up here; widening the protocol to them is a change of its own and not one
+  // this move made necessary.
+  const metadataRef = useRef<NodeMetadata | undefined>(node.metadata);
+  // Per record, because the call site keys this component on `node.id`. That
+  // key is load-bearing for this ref and not decoration: a panel slot is
+  // refreshed in place onto a different record, and without the remount the
+  // first write on the new one would spread the previous one's metadata.
+  //
+  // The effect below cannot cover that, and not for a timing reason: its
+  // dependency is `node.metadata`, which a record switch need not change at
+  // all. Swap a slot from a record whose metadata is `undefined` — with a
+  // write in flight, so the ref holds `{ blocked_by: "x" }` — to another whose
+  // metadata is also `undefined`, and the dep is equal, the effect never runs,
+  // and the new record's first write inherits the old one's blocker. Only the
+  // remount covers it.
+  useEffect(() => {
+    metadataRef.current = node.metadata;
+  }, [node.metadata]);
+
   return (
     // The top padding is not decoration: without it the title sat flush against
     // the header's bottom border, which is the one panel body that read as
@@ -688,8 +724,6 @@ export function NodeDetailPanel({
         key={node.id}
         node={node}
         onUpdate={onUpdate}
-        allNodes={allNodes}
-        onNavigate={onNavigate}
         // Whichever membership control this species has — the two are
         // alternatives, not a fallback chain. An acceptance's product is
         // derived from the anchors it covers (§ D5), which only
@@ -719,13 +753,12 @@ export function NodeDetailPanel({
           ) : undefined
         }
       />
-      {node.species === "decision" && allNodes && onUpdate && (
+      {node.species === "decision" && onUpdate && (
         <DecisionEditor
           key={`decision-${node.id}`}
           node={node}
-          allNodes={allNodes}
           onUpdate={onUpdate}
-          onNavigate={onNavigate}
+          metadataRef={metadataRef}
         />
       )}
       {/* Groups live in a column of their own. `-space-y-px` overlaps each
@@ -776,6 +809,8 @@ export function NodeDetailPanel({
           allNodes={allNodes}
           allEdges={allEdges}
           onNavigate={onNavigate}
+          onUpdate={onUpdate}
+          metadataRef={metadataRef}
           onCreateAcceptanceForAnchor={onCreateAcceptanceForAnchor}
           intake={intake}
           relations={relations}

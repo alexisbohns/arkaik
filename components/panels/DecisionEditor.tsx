@@ -11,7 +11,6 @@ import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
-import { BlockedByField } from "@/components/panels/BlockedByField";
 import { PANEL_GUTTER } from "@/components/panels/PanelSection";
 import { cn } from "@/lib/utils";
 import type { Node, NodeMetadata } from "@/lib/data/types";
@@ -22,24 +21,32 @@ const AUTOSAVE_DELAY_MS = 350;
 
 interface DecisionEditorProps {
   node: Node;
-  allNodes: Node[];
   onUpdate: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
-  onNavigate?: (node: Node) => void;
+  /**
+   * The panel's shared latest-metadata write base — see `NodeDetailPanel`,
+   * which owns it.
+   *
+   * This editor owned it until Blocked by became a relation line: that line is
+   * rendered by `RelationsGroup`, a sibling of this component rather than a
+   * child of it, so the base had to rise to the one component that renders
+   * both. All four writers below still read and write it exactly as before.
+   */
+  metadataRef: React.MutableRefObject<NodeMetadata | undefined>;
 }
 
 /**
  * One debounced metadata text field (context / consequences / decided_at).
  *
- * Mirrors `NodeFields`' description/blocked_by autosave: compare against a
+ * Mirrors `NodeFields`' title/description autosave: compare against a
  * last-saved ref rather than the prop directly, so a concurrent edit to a
  * DIFFERENT field (which also patches `metadata` wholesale) never fires a
  * duplicate save and never clobbers this one's pending save — the reschedule
  * on every keystroke is itself load-bearing, not incidental.
  *
- * Spreads `metadataRef.current` — the shared latest-metadata base owned by
- * `DecisionEditor` — rather than `node.metadata` directly. See that ref's own
- * comment for why: `onUpdate` is not optimistic, so `node.metadata` can still
- * be stale while this save is in flight.
+ * Spreads `metadataRef.current` — the panel's shared latest-metadata base —
+ * rather than `node.metadata` directly. See that ref's own comment in
+ * `NodeDetailPanel` for why: `onUpdate` is not optimistic, so `node.metadata`
+ * can still be stale while a sibling's save is in flight.
  */
 function useDebouncedMetadataField(
   node: Node,
@@ -76,11 +83,15 @@ function useDebouncedMetadataField(
  * The supersedes/generates/impacts links spec §5 defines are no longer here:
  * they are relations, not fields, so they render in the Relations group — as
  * four of the grammar-derived relation lines `relationLinesFor("decision")`
- * produces, not as a list this species has written out for it. `allNodes`
- * stays because `BlockedByField` resolves blockers against it; `allEdges` went
- * with the links, which were the only thing here that read an edge.
+ * produces, not as a list this species has written out for it. Blocked by went
+ * the same way — it was a field here, under "Context — why", and is now the
+ * Relations group's first line on every species alike.
+ *
+ * What is left reads nothing but its own node: no `allNodes`, no `allEdges`,
+ * no `onNavigate`. The edges went when the links did; the node list and the
+ * navigate callback were the blocker's, and went with it.
  */
-export function DecisionEditor({ node, allNodes, onUpdate, onNavigate }: DecisionEditorProps) {
+export function DecisionEditor({ node, onUpdate, metadataRef }: DecisionEditorProps) {
   // Per-mount: the panel stack keeps hidden panels mounted, so two decisions can
   // be open at once and a hand-written id would give both their labels the same
   // target.
@@ -92,19 +103,6 @@ export function DecisionEditor({ node, allNodes, onUpdate, onNavigate }: Decisio
   // optimistic display; remounting by key (`decision-${node.id}`) is still
   // what resets it when the panel switches to a different decision.
   const [decisionStatus, setDecisionStatus] = useState<DecisionStatusId>(decisionStatusOf(node));
-
-  // Shared latest-metadata base for every wholesale-metadata writer below —
-  // the three debounced text fields plus the status transition. `onUpdate` is
-  // NOT optimistic, so if field A's save is still in flight when field B's
-  // 350ms timer fires, `node.metadata` in B's closure is stale and a spread
-  // from it would silently drop A's edit. Seeded from the node prop and kept
-  // in sync when it changes (e.g. an external update lands); every writer
-  // reads this ref as its spread base and writes its result back into it
-  // before calling `onUpdate`, so the four writers never race each other.
-  const metadataRef = useRef<NodeMetadata | undefined>(node.metadata);
-  useEffect(() => {
-    metadataRef.current = node.metadata;
-  }, [node.metadata]);
 
   const [context, setContext] = useDebouncedMetadataField(node, "context", metadataRef, onUpdate);
   const [consequences, setConsequences] = useDebouncedMetadataField(node, "consequences", metadataRef, onUpdate);
@@ -160,16 +158,6 @@ export function DecisionEditor({ node, allNodes, onUpdate, onNavigate }: Decisio
           rows={4}
         />
       </Field>
-      {/* A decision's own, rendered here rather than by `NodeFields` — which
-          omits it for this species. What holds a decision up belongs with the
-          circumstances that produced it, not above the title. */}
-      <BlockedByField
-        node={node}
-        onUpdate={onUpdate}
-        allNodes={allNodes}
-        onNavigate={onNavigate}
-        metadataRef={metadataRef}
-      />
       <Field label="Consequences — how" htmlFor={`${fieldId}-consequences`}>
         <Textarea
           id={`${fieldId}-consequences`}
