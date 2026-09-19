@@ -184,9 +184,20 @@ opening a `DropdownMenu`, sitting left of the close button that `PanelStack`
 owns. Each item renders only when its handler is present; with no applicable
 items, no button.
 
-- **Duplicate.** Mints an id with `generateNodeId`, copies title (suffixed
-  `(copy)`), description, status and metadata, writes through the existing
-  `createNode` path, and opens the copy in a panel above the original.
+- **Duplicate.** Opens a dialog that names the copy before anything is written,
+  then creates it and opens its panel.
+
+  **The dialog names the thing.** A node's id is minted from its title and never
+  changes afterwards — it lives in urls, chips, bundles and Lab Notes — so a
+  duplicate that silently inherits a derived name is a permanent decision taken
+  on the reader's behalf at the one moment naming is cheapest. The dialog asks
+  instead. The **name** field starts *empty*, with the original's title as its
+  placeholder, so a copy cannot reach the graph under a name nobody chose; the
+  confirm is disabled until something is typed. The **id** follows the name
+  through `generateNodeId` and is shown as it will be created — the first place
+  in the app an id is visible before the record exists — and can be taken over
+  and typed directly. An overridden id is validated: it must carry its species'
+  prefix and must not already be in use.
 
   **It writes no edges of its own** — but it is not true that a copy has none.
   `applyOps` folds synthesized `composes` edges on every `create_node`, so a
@@ -206,8 +217,13 @@ items, no button.
   along with the rest of its metadata. That is deliberate — a duplicate is a
   starting point, not a blank — but it is the opposite of what Split does, which
   starts every piece as an idea.
-  Needs a new `onDuplicate` threaded `PageShell` → `ProjectPanels` →
-  `NodeDetailPanel` → the header.
+
+  **`ProjectPanels` owns the gesture**, as it owns the split dialog and for the
+  same reason: the trigger is in the header and the dialog is not, and the stack
+  renders those through two separate render props. One dialog serves every open
+  panel. Availability follows `onUpdate` — a surface whose panels can write can
+  duplicate — so no page wires anything, and no page can be forgotten.
+
 - **Split into several…** — acceptance only, and only with `intake`. The existing
   `SplitAcceptanceDialog`, moved out of the body. Decompose is an operation on the
   record, not a field of it, and as a `Field` labelled "Decompose" with a hint
