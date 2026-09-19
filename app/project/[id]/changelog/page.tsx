@@ -9,7 +9,8 @@ import { PageShell } from "@/components/layout/PageShell";
 import { PageSurface } from "@/components/layout/PageSurface";
 import { SectionRow } from "@/components/layout/SectionRow";
 import { ChangelogFilterBar } from "@/components/journal/ChangelogFilterBar";
-import { DeliverableChips, DeliverableHoverCard, ICON_TILE } from "@/components/journal/DeliverableHoverCard";
+import { DeliverableChips, DeliverableHoverCard } from "@/components/journal/DeliverableHoverCard";
+import { iconChipVariants } from "@/components/layout/IconChip";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useNodes } from "@/lib/hooks/useNodes";
@@ -25,11 +26,12 @@ import { productScopeMetaLabel } from "@/lib/utils/product-scope";
 import type { Node, ReleaseTaggedEvent } from "@/lib/data/types";
 
 /**
- * The shipped mark on the rail: the shared boxed-icon tile, nudged up by 2px so
- * the 24px box centres on the 20px first line of the title beside it. Same tile
- * as the marks under the row (`DeliverableChips`) — one box, three placements.
+ * The shipped mark on the rail: the shared chip, told it leads a line of text
+ * so it centres on the 20px title beside it rather than 2px below it. Same box
+ * as the marks under the row (`DeliverableChips`) — one geometry, three
+ * placements.
  */
-const SHIP_MARK = `${ICON_TILE} -mt-0.5`;
+const SHIP_MARK = iconChipVariants({ variant: "bare", lead: true });
 
 /**
  * The deliverables of one milestone, drawn as a timeline: a rail of marks down

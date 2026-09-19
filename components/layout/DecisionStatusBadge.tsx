@@ -6,7 +6,7 @@ import {
   DECISION_STATUS_LABELS,
   DECISION_STATUS_TILE,
 } from "@/components/graph/nodes/node-styles";
-import { ICON_TILE } from "@/components/journal/DeliverableHoverCard";
+import { iconChipVariants } from "@/components/layout/IconChip";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface DecisionStatusBadgeProps {
@@ -23,6 +23,12 @@ interface DecisionStatusBadgeProps {
    * this app plots.
    */
   variant?: "inline" | "tile";
+  /**
+   * Set when the tile **leads a line of `text-sm`** — the Decision log's rail.
+   * Passed straight to the chip, so the 2px nudge stays one definition rather
+   * than a magic number the caller has to know. Ignored by `inline`.
+   */
+  lead?: boolean;
   className?: string;
 }
 
@@ -30,6 +36,7 @@ export function DecisionStatusBadge({
   status,
   showLabel = false,
   variant = "inline",
+  lead = false,
   className,
 }: DecisionStatusBadgeProps) {
   const { badge } = DECISION_STATUS_STYLES[status] ?? DECISION_STATUS_STYLES.proposed;
@@ -46,7 +53,7 @@ export function DecisionStatusBadge({
           // `DeliverableHoverCard`'s `FORGE_TILE`). A label beside a tile stays
           // system foreground for the same reason.
           <span className={cn("inline-flex items-center gap-2", className)}>
-            <span className={cn(ICON_TILE, tile)}>
+            <span className={cn(iconChipVariants({ variant: "bare", lead }), tile)}>
               <Icon className="size-3" aria-hidden="true" />
             </span>
             {showLabel ? <span className="text-xs font-medium">{label}</span> : <span className="sr-only">{label}</span>}

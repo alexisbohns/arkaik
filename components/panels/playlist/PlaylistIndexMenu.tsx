@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
-import { ICON_TILE } from "@/components/journal/DeliverableHoverCard";
+import { iconChipVariants } from "@/components/layout/IconChip";
 import { cn } from "@/lib/utils";
 
 interface PlaylistIndexMenuProps {
@@ -31,9 +31,9 @@ interface PlaylistIndexMenuProps {
  * frequent, incremental ones (nudge up, nudge down) live on hover
  * (`PlaylistReorderControls`). Nothing destructive is ever one stray click away.
  *
- * The tile is `ICON_TILE` — the same 24px box the Changelog's ship mark and the
- * Findings rail's priority square use — so the three rails in this app cannot
- * drift into three sizes of the same idea.
+ * The tile is the shared chip — the same box the Changelog's ship mark and the
+ * Findings rail's priority square use — so the rails in this app cannot drift
+ * into several sizes of the same idea.
  */
 export function PlaylistIndexMenu({ index, total, onMoveTo, onRemove }: PlaylistIndexMenuProps) {
   const [open, setOpen] = useState(false);
@@ -73,10 +73,9 @@ export function PlaylistIndexMenu({ index, total, onMoveTo, onRemove }: Playlist
           type="button"
           aria-label={`Entry ${index + 1} of ${total} — position and remove`}
           className={cn(
-            ICON_TILE,
-            "cursor-pointer bg-muted text-xs font-semibold tabular-nums text-muted-foreground",
-            "transition-colors hover:bg-accent hover:text-accent-foreground",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            iconChipVariants({ interactive: true }),
+            "text-xs font-semibold tabular-nums",
+            "hover:bg-accent hover:text-accent-foreground",
           )}
         >
           {index + 1}

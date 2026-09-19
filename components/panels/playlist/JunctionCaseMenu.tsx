@@ -5,7 +5,7 @@ import { MousePointerClickIcon, Trash2Icon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ICON_TILE } from "@/components/journal/DeliverableHoverCard";
+import { iconChipVariants } from "@/components/layout/IconChip";
 import { cn } from "@/lib/utils";
 
 /**
@@ -54,10 +54,9 @@ export function JunctionCaseMenu({ index, total, onRemove }: JunctionCaseMenuPro
           type="button"
           aria-label={`Case ${index + 1} of ${total} — options`}
           className={cn(
-            ICON_TILE,
+            iconChipVariants({ variant: "bare", interactive: true }),
             CASE_TILE,
-            "cursor-pointer transition-colors hover:bg-blue-500/20",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "hover:bg-blue-500/20",
           )}
         >
           <MousePointerClickIcon className="size-3" aria-hidden="true" />

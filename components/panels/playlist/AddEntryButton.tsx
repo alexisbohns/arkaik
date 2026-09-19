@@ -5,7 +5,7 @@ import { GitBranchIcon, PlusIcon, SplitIcon } from "lucide-react";
 
 import { Combobox } from "@/components/ui/combobox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ICON_TILE } from "@/components/journal/DeliverableHoverCard";
+import { iconChipVariants } from "@/components/layout/IconChip";
 import { SPECIES_GRAPH_ICONS } from "@/lib/config/species-icons";
 import { wouldCreateCycle } from "@/lib/utils/cycle";
 import { fuzzyScore } from "@/lib/utils/search";
@@ -199,10 +199,9 @@ export function AddEntryButton({
           aria-label="Add step"
           title="Add step"
           className={cn(
-            ICON_TILE,
-            "cursor-pointer border border-dashed border-border text-muted-foreground transition-colors",
+            iconChipVariants({ variant: "dashed", interactive: true }),
+            "border-border text-muted-foreground",
             "hover:border-solid hover:bg-muted hover:text-foreground",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           )}
         >
           <PlusIcon className="size-3.5" aria-hidden="true" />

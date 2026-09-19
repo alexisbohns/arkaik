@@ -3,6 +3,8 @@
 import type { ReactNode } from "react";
 import { GitMergeIcon, GithubIcon, MilestoneIcon, NetworkIcon, PackageIcon } from "lucide-react";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { ICON_CHIP_ROW, iconChipVariants } from "@/components/layout/IconChip";
+import { cn } from "@/lib/utils";
 import { StatusBadge } from "@/components/layout/StatusBadge";
 import { formatEventDateTime } from "@/components/journal/describe-event";
 import { SPECIES_NAV_ICONS } from "@/lib/config/species-icons";
@@ -17,16 +19,6 @@ import type { Node } from "@/lib/data/types";
 const MAX_NODES = 6;
 
 /**
- * The boxed-icon tile: a 24px rounded square holding a 12px glyph.
- *
- * Exported because the timeline's merge mark is the same tile — one constant,
- * so the mark on the rail and the mark beside a label cannot drift into two
- * sizes of the same idea. Callers add their own surface colour and, where they
- * need it, their own vertical nudge.
- */
-export const ICON_TILE = "inline-flex size-6 shrink-0 items-center justify-center rounded-md";
-
-/**
  * The merge mark's purple. The same purple the `releasing` status already uses
  * on the canvas — a shipped pull request and a releasing node are the same
  * moment in the product's life, so they share a hue rather than each picking
@@ -37,20 +29,6 @@ export const ICON_TILE = "inline-flex size-6 shrink-0 items-center justify-cente
  * a purple box says it twice while making the text harder to read.
  */
 export const FORGE_TILE = "bg-purple-500/10 text-purple-600 dark:text-purple-400";
-
-/**
- * The row a boxed icon and its label form together: the tile, then the words
- * *beside* it rather than inside it.
- *
- * Exported for the same reason {@link ICON_TILE} is. The Decision log's rows
- * carry the same kind of mark — a glyph and a count that open a preview — and a
- * second hand-written copy of this row is a second answer to "what does a
- * countable mark look like", free to drift the day one of them is restyled.
- *
- * The `group` is what lets the tile light up from a hover anywhere on the row,
- * label included. It is unnamed, and safely so: these marks never nest.
- */
-export const MARK_ROW = "group inline-flex items-center gap-2 rounded-md text-xs transition-colors";
 
 /**
  * The touched nodes, with their *current* status.
@@ -212,9 +190,9 @@ export function DeliverableChips({
                   ? `Open pull request: ${deliverable.title}`
                   : `Open pull request #${prNumber}`
               }
-              className={`${MARK_ROW} text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50`}
+              className={`${ICON_CHIP_ROW} text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50`}
             >
-              <span className={`${ICON_TILE} ${FORGE_TILE} group-hover:bg-purple-500/20`}>
+              <span className={cn(iconChipVariants({ variant: "bare" }), FORGE_TILE, "group-hover:bg-purple-500/20")}>
                 <GitMergeIcon className="size-3" aria-hidden="true" />
               </span>
               {/* The number when there is one; otherwise the word, so the mark
@@ -245,9 +223,9 @@ export function DeliverableChips({
               // Not a link: there is no one node to go to. The button exists so
               // the mark is reachable and the preview is not mouse-only trivia
               // hanging off a `<span>`.
-              className={`${MARK_ROW} cursor-default text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50`}
+              className={`${ICON_CHIP_ROW} cursor-default text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50`}
             >
-              <span className={`${ICON_TILE} bg-muted text-muted-foreground group-hover:bg-accent`}>
+              <span className={cn(iconChipVariants(), "group-hover:bg-accent")}>
                 <NetworkIcon className="size-3" aria-hidden="true" />
               </span>
               {touched.length} node{touched.length === 1 ? "" : "s"}

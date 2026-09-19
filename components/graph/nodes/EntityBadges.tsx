@@ -4,6 +4,7 @@ import { CheckIcon, HashIcon } from "lucide-react";
 
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { iconChipVariants } from "@/components/layout/IconChip";
 import { useCopyId } from "@/lib/hooks/useCopyId";
 import { cn } from "@/lib/utils";
 import { SPECIES_GRAPH_ICONS } from "@/lib/config/species-icons";
@@ -93,14 +94,13 @@ export function CopyIdChip({ id, className }: CopyIdChipProps) {
           aria-label={`Copy ${id}`}
           onClick={copy}
           className={cn(
-            "inline-flex shrink-0 cursor-pointer items-center rounded border border-border bg-muted/50 p-1 text-muted-foreground transition-colors",
+            iconChipVariants({ size: "sm", variant: "outline", interactive: true }),
             "hover:bg-muted hover:text-foreground",
-            "outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
             copied && "text-green-500",
             className,
           )}
         >
-          <Icon className="size-3" />
+          <Icon />
         </button>
       </TooltipTrigger>
       <TooltipContent side="bottom">
