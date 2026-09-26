@@ -223,9 +223,10 @@ comprehensive audit is a lot of audit for twenty fixes. Every finding resolved
 since the last recorded audit names its (criterion x surface) cell; one hop
 over node_ids adds the neighbours a fix in a shared view plausibly moved.
 
-This is a work list, not a score: re-score each cell with evidence
-(\`arkaik kritik score\`), then \`arkaik kritik matrix --record\`. Every other
-cell keeps its last score.
+This is a work list, not a score: re-score each cell with evidence into an
+audit of its own (\`arkaik kritik score … --audit <YYYY-MM>-scoped\`) — never the
+audit the scope is measured from, whose recorded reading is history — then
+\`arkaik kritik matrix --record\`. Every other cell keeps its last score.
 
   --since <audit>   Measure from this recorded audit (default: the newest
                     quality.audit.completed in the journal).
@@ -1133,10 +1134,20 @@ function runScope(args: string[], common: CommonOptions): void {
     for (const id of scope.unknown) console.log(`      ${id}`);
   }
 
+  if (scope.unscorable.length > 0) {
+    console.log(
+      `\n  ! ${scope.unscorable.length} resolved finding${scope.unscorable.length === 1 ? " sits" : "s sit"} on a cell nothing can re-score ` +
+        `(a retired criterion, or a surface no longer in the profile) — the fix still counts, but there is no score to move:`,
+    );
+    for (const id of scope.unscorable) console.log(`      ${id}`);
+  }
+
   if (scope.cells.length > 0) {
     console.log(
-      `\n  re-score each with evidence — \`arkaik kritik score <criterion> <surface> <level> --evidence …\` — ` +
-        `then \`arkaik kritik matrix --record\`. Every other cell keeps its last score.`,
+      `\n  re-score each with evidence into an audit of its own — ` +
+        `\`arkaik kritik score <criterion> <surface> <level> --evidence … --audit <YYYY-MM>-scoped\` — ` +
+        `then \`arkaik kritik matrix --record\`. Never re-score inside ${scope.since}: its recorded reading is history. ` +
+        `Every other cell keeps its last score.`,
     );
   }
   console.log("");

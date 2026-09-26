@@ -167,7 +167,12 @@ try {
     sheet.stdout.includes("1 resolved id names no finding") && lines.includes("F-2026-08-NOPE-web-01"),
     sheet.stdout,
   );
-  check("and it points at what to do next", sheet.stdout.includes("arkaik kritik matrix --record"), sheet.stdout);
+  check(
+    "and it points at what to do next — into an audit of its own, never the measured one",
+    sheet.stdout.includes("--audit <YYYY-MM>-scoped") && sheet.stdout.includes("Never re-score inside 2026-08") && sheet.stdout.includes("arkaik kritik matrix --record"),
+    sheet.stdout,
+  );
+  check("no unscorable block when every fix has a cell", !sheet.stdout.includes("nothing can re-score"), sheet.stdout);
 
   const json = run(["scope", "--json"]);
   let parsed = {};
@@ -184,6 +189,7 @@ try {
     json.stdout.slice(0, 600),
   );
   check("--json carries the unknown ids", (parsed.unknown ?? []).join() === "F-2026-08-NOPE-web-01");
+  check("--json carries an (empty) unscorable list", Array.isArray(parsed.unscorable) && parsed.unscorable.length === 0, JSON.stringify(parsed.unscorable));
   check("--json carries the summary an agent can quote", parsed.summary === "3 cells to re-score (2 direct, 1 widened) from 2 resolved findings since 2026-08", parsed.summary);
 
   const exact = run(["scope", "--no-widen", "--json"]);

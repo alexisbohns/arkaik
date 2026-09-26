@@ -75,6 +75,14 @@ export interface AuditScope {
    * that does not exist), and the scope is where it will be noticed.
    */
   unknown: string[];
+  /**
+   * Resolved findings whose cell nothing can re-score: a retired criterion, a
+   * surface the profile no longer declares, or a criterion that does not apply
+   * there. `score` refuses every one of those, so listing them as cells would
+   * be a work item nobody can close — and dropping them silently would hide
+   * that the fix happened. They come back here instead.
+   */
+  unscorable: string[];
   /** How many of `cells` the node-neighbour hop added. */
   widened: number;
 }
@@ -117,7 +125,9 @@ export function recordedAuditIds(events: readonly JournalEvent[]): string[] {
  *   after the `since` audit's recording. A re-recorded audit id is measured
  *   from its latest recording, the reading the trend keeps too.
  * - **Direct cells.** Each resolved finding's own `(criterion_id, surface)`,
- *   read from `section.findings` — the event does not carry them. A
+ *   read from `section.findings` — the event does not carry them — when
+ *   `score` could re-score it; a finding whose cell it could not (a retired
+ *   criterion, an undeclared surface) is reported in `unscorable`. A
  *   `cross-surface` finding scopes every surface its criterion applies to: the
  *   contract lens has no column of its own, so the fix lands in the columns
  *   either side of it.
@@ -157,6 +167,7 @@ export function deriveAuditScope(
     findings: [],
     resolved_by: {},
     unknown: [],
+    unscorable: [],
     widened: 0,
   };
   if (sinceIndex === -1) return empty;
@@ -219,6 +230,17 @@ export function deriveAuditScope(
   const appliesTo = (criterion: KritikCriterion | undefined, surface: string): boolean =>
     criterion === undefined || !Array.isArray(criterion.applies_to) || criterion.applies_to.includes(surface);
 
+  // Whether `score` would accept this cell — the same three refusals it makes.
+  // An unknown criterion stays lenient: a hosted section with no embedded pack
+  // synthesizes one with nothing but ids, and refusing every cell there would
+  // blank the scope for a missing vocabulary rather than a real reason.
+  const scorable = (criterionId: string, surface: string): boolean => {
+    const criterion = criterionById.get(criterionId);
+    if (criterion !== undefined && isString(criterion.superseded_by)) return false;
+    if (declared.length > 0 && !surfaces.includes(surface)) return false;
+    return appliesTo(criterion, surface);
+  };
+
   const cells = new Map<string, ScopeCell>();
   const addDirect = (criterionId: string, surface: string, findingId: string) => {
     const key = cellKey(criterionId, surface);
@@ -229,6 +251,7 @@ export function deriveAuditScope(
 
   const drivers: string[] = [];
   const unknown: string[] = [];
+  const unscorable: string[] = [];
   const resolvedBy: Record<string, string> = {};
   const resolvedNodes = new Set<string>();
 
@@ -240,22 +263,24 @@ export function deriveAuditScope(
     }
     if (finding.status === "accepted-risk" || finding.status === "refuted") continue;
 
-    drivers.push(findingId);
-    if (resolution.resolved_by !== undefined) resolvedBy[findingId] = resolution.resolved_by;
+    // A contract finding lands in every column its criterion reaches. An
+    // unknown criterion reads as applying everywhere, as `applicableCells`
+    // reads a custom criterion that forgot its `applies_to`.
+    const targets = (finding.surface === CROSS_SURFACE_ID ? surfaces : [finding.surface]).filter((surface) =>
+      scorable(finding.criterion_id, surface),
+    );
+    // The fix still happened, and still touched its nodes — so it widens even
+    // when its own cell is one nothing can re-score.
     for (const node of stringsOf(finding.node_ids)) resolvedNodes.add(node);
     for (const node of resolution.node_ids) resolvedNodes.add(node);
-
-    if (finding.surface === CROSS_SURFACE_ID) {
-      // An unknown criterion reads as applying everywhere, as `applicableCells`
-      // reads a custom criterion that forgot its `applies_to`: widen rather
-      // than silently drop the fix.
-      const criterion = criterionById.get(finding.criterion_id);
-      for (const surface of surfaces) {
-        if (appliesTo(criterion, surface)) addDirect(finding.criterion_id, surface, findingId);
-      }
-    } else {
-      addDirect(finding.criterion_id, finding.surface, findingId);
+    if (targets.length === 0) {
+      unscorable.push(findingId);
+      continue;
     }
+
+    drivers.push(findingId);
+    if (resolution.resolved_by !== undefined) resolvedBy[findingId] = resolution.resolved_by;
+    for (const surface of targets) addDirect(finding.criterion_id, surface, findingId);
   }
 
   let widened = 0;
@@ -282,12 +307,12 @@ export function deriveAuditScope(
 
     for (const [key, assessment] of assessmentByCell) {
       if (cells.has(key)) continue;
-      // Only cells an auditor can actually re-score: a live criterion, a
-      // declared surface, and one the criterion applies to. `score` refuses
-      // the rest, so pointing at them would be a work item nobody can close.
-      const criterion = criterionById.get(assessment.criterion_id);
-      if (criterion === undefined || isString(criterion.superseded_by)) continue;
-      if (!surfaces.includes(assessment.surface) || !appliesTo(criterion, assessment.surface)) continue;
+      // Only cells an auditor can actually re-score (see `scorable`), and —
+      // stricter than a direct cell — only criteria the pack actually names:
+      // a guess is fair for a cell a fix certainly touched, not for one it
+      // merely might have.
+      if (!criterionById.has(assessment.criterion_id)) continue;
+      if (!surfaces.includes(assessment.surface) || !scorable(assessment.criterion_id, assessment.surface)) continue;
       const shared = [...(nodesByCell.get(key) ?? [])].filter((node) => resolvedNodes.has(node)).sort();
       if (shared.length === 0) continue;
       cells.set(key, { criterion_id: assessment.criterion_id, surface: assessment.surface, kind: "widened", because: shared });
@@ -313,7 +338,7 @@ export function deriveAuditScope(
       (a.criterion_id < b.criterion_id ? -1 : a.criterion_id > b.criterion_id ? 1 : 0),
   );
 
-  return { since, since_ts: sinceTs, cells: sorted, findings: drivers, resolved_by: resolvedBy, unknown, widened };
+  return { since, since_ts: sinceTs, cells: sorted, findings: drivers, resolved_by: resolvedBy, unknown, unscorable, widened };
 }
 
 /**

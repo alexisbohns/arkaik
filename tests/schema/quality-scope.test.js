@@ -187,6 +187,11 @@ const cellIds = (scope) => scope.cells.map((cell) => `${cell.surface}:${cell.cri
     resolved("F-5", "2026-09-02T00:00:00.000Z"),
     resolved("F-404", "2026-09-03T00:00:00.000Z"),
   ];
+  // Precondition, so the next check cannot pass vacuously: F-3 IS scopable —
+  // resolving it puts its cell in scope. Only the accepted event must not.
+  const ifResolved = deriveAuditScope([events[0], resolved("F-3", "2026-09-01T00:00:00.000Z")], SECTION, LIBRARY, { widen: false });
+  check("(precondition) resolving F-3 would scope its cell", cellIds(ifResolved).join() === "ios:A11Y-01:direct", cellIds(ifResolved).join());
+
   const scope = deriveAuditScope(events, SECTION, LIBRARY);
   check("an accepted event scopes nothing — the code did not change", !cellIds(scope).some((id) => id.includes("A11Y-01")), cellIds(scope).join());
   check("a finding the section holds as accepted-risk is not a fix either", !scope.findings.includes("F-5"), scope.findings.join());
@@ -274,6 +279,45 @@ const cellIds = (scope) => scope.cells.map((cell) => `${cell.surface}:${cell.cri
     LIBRARY,
   );
   check("a cell whose criterion does not apply to its surface is not widened into", !notApplicable.cells.some((cell) => cell.criterion_id === "SEC-02"), cellIds(notApplicable).join());
+}
+
+// --- unscorable: cells score would refuse ----------------------------------------
+
+{
+  const section = {
+    ...SECTION,
+    findings: [
+      ...SECTION.findings,
+      find("F-9", "SEC-01", "android"),
+      find("F-10", "SEC-02", "cross-surface", { status: "open" }),
+    ],
+  };
+  const events = [
+    audit("2026-08", "2026-08-31T00:00:00.000Z"),
+    resolved("F-4", "2026-09-01T00:00:00.000Z"), // SEC-09 is retired
+    resolved("F-9", "2026-09-02T00:00:00.000Z"), // android is not declared
+    resolved("F-10", "2026-09-03T00:00:00.000Z"), // SEC-02 applies to supabase only…
+  ];
+  const narrowProfile = { ...section, profile: { surfaces: [{ id: "web", title: "Web" }, { id: "ios", title: "iOS" }] } };
+  const scope = deriveAuditScope(events, narrowProfile, LIBRARY);
+  check(
+    "a resolved finding on a retired criterion is not a cell — score would refuse it",
+    !scope.cells.some((cell) => cell.criterion_id === "SEC-09" && cell.kind === "direct") && scope.unscorable.includes("F-4"),
+    JSON.stringify({ cells: cellIds(scope), unscorable: scope.unscorable }),
+  );
+  check("nor is one on a surface the profile does not declare", scope.unscorable.includes("F-9") && !cellIds(scope).some((id) => id.startsWith("android")));
+  check(
+    "nor a contract finding whose criterion reaches none of the declared surfaces",
+    scope.unscorable.includes("F-10") && !cellIds(scope).some((id) => id.includes("SEC-02")),
+    JSON.stringify(scope.unscorable),
+  );
+  check("an unscorable finding is not counted as a driver", !scope.findings.some((id) => ["F-4", "F-9", "F-10"].includes(id)), scope.findings.join());
+  check(
+    "but its fix still widens: the retired finding's V-home reaches SEC-03 x web",
+    scope.cells.some((cell) => cell.criterion_id === "SEC-03" && cell.surface === "web" && cell.kind === "widened"),
+    cellIds(scope).join(),
+  );
+  check("the empty scope carries an empty unscorable list", Array.isArray(deriveAuditScope([], SECTION, LIBRARY).unscorable));
 }
 
 // --- resolution details -----------------------------------------------------------
