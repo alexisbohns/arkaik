@@ -35,6 +35,7 @@ import { STATUSES } from "@/lib/config/statuses";
 import { EDGE_TYPES } from "@/lib/config/edge-types";
 import { DECISION_STATUSES } from "@/lib/config/decision-statuses";
 import { PLATFORM_LABELS } from "@/components/graph/nodes/node-styles";
+import { describeAuditCompleted } from "@/lib/utils/quality";
 
 const SPECIES_LABEL: Record<string, string> = Object.fromEntries(SPECIES.map((s) => [s.id, s.label]));
 const STATUS_LABEL: Record<string, string> = Object.fromEntries(STATUSES.map((s) => [s.id, s.label]));
@@ -183,11 +184,8 @@ export function describeJournalEvent(
         text: `${resolveTitle(event.node_id, nodesById)}: reference ${from ? `${from} → ${to}` : to}`,
       };
     }
-    case "quality.audit.completed": {
-      const audit = str(event.audit_id) ?? "?";
-      const framework = str(event.framework_version);
-      return { icon, text: `Audit ${audit} completed`, meta: framework ? `Kritik ${framework}` : undefined };
-    }
+    case "quality.audit.completed":
+      return { icon, ...describeAuditCompleted(event) };
     case "quality.finding.opened": {
       const severity = str(event.severity);
       const where = `${str(event.criterion_id) ?? "?"} on ${str(event.surface) ?? "?"}`;
