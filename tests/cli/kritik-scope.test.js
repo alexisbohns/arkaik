@@ -13,7 +13,7 @@
  */
 
 const { spawnSync } = require("child_process");
-const { appendFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } = require("fs");
+const { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require("fs");
 const { tmpdir } = require("os");
 const path = require("path");
 
@@ -54,6 +54,10 @@ function repo({ bundle = true } = {}) {
 }
 
 const AUDIT = "2026-08";
+// The scoped audits are named for the month they run in (`<YYYY-MM>-scoped`),
+// which is what the CLI defaults to — computed the way the CLI computes it.
+const now = new Date();
+const MONTH = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
 try {
   // --- no journal -------------------------------------------------------------
@@ -203,14 +207,112 @@ try {
     missing.stderr,
   );
 
-  // --- the cycle closes -----------------------------------------------------------
+  // --- score --scope (part 2) ---------------------------------------------------
 
-  ok(["matrix", AUDIT, "--record"]);
-  const after = run(["scope"]);
+  const readJson = (...parts) => JSON.parse(readFileSync(path.join(dir, ...parts), "utf8"));
+  const auditEvents = () =>
+    readFileSync(path.join(dir, "docs", "arkaik", "journal.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line))
+      .filter((event) => event.type === "quality.audit.completed");
+
+  const outOfScope = run(["score", "PRV-01", "web", "3", "--evidence", "x.ts:1", "--scope"]);
   check(
-    "recording the re-audit starts a fresh window",
-    after.stdout.includes("0 cells to re-score from 0 resolved findings since 2026-08") && !after.stdout.includes("NOPE"),
-    after.stdout,
+    "--scope refuses a cell the scope does not list, and names the verb that does",
+    outOfScope.status === 1 && outOfScope.stderr.includes("not in the current scope") && outOfScope.stderr.includes("arkaik kritik scope"),
+    outOfScope.stderr,
+  );
+
+  const intoMeasured = run(["score", "SEC-01", "web", "3", "--evidence", "x.ts:1", "--scope", "--audit", AUDIT]);
+  check(
+    "--scope refuses to re-score inside the audit it is measured from",
+    intoMeasured.status === 1 && intoMeasured.stderr.includes("measured from"),
+    intoMeasured.stderr,
+  );
+
+  const sortsEarly = run(["score", "SEC-01", "web", "3", "--evidence", "x.ts:1", "--scope", "--audit", "2026-01-fix"]);
+  check(
+    "--scope refuses an audit that would lose the latest-wins merge",
+    sortsEarly.status === 1 && sortsEarly.stderr.includes("sorts before"),
+    sortsEarly.stderr,
+  );
+
+  const scoped1 = `${MONTH}-scoped`;
+  const first = run(["score", "SEC-01", "web", "3", "--evidence", "auth.ts:40 rotates the session", "--scope"]);
+  check("an in-scope cell is re-scored", first.status === 0, first.stderr);
+  check(`it lands in a scoped audit of its own (${scoped1})`, existsSync(path.join(dir, "docs", "quality", "audits", scoped1, "scores.json")), first.stdout);
+  check("and says it is a scoped re-audit", first.stdout.includes(`scoped re-audit since ${AUDIT}`), first.stdout);
+
+  ok(["score", "SEC-04", "web", "3", "--evidence", "csp.ts:2", "--scope"]);
+  const scopedScores = readJson("docs", "quality", "audits", scoped1, "scores.json");
+  check("the second in-scope score continues the same scoped audit", scopedScores.assessments.length === 2, JSON.stringify(scopedScores.assessments.map((a) => a.criterion_id)));
+  check("the scoped audit is stamped with what it was measured from", scopedScores.scope?.since === AUDIT, JSON.stringify(scopedScores.scope));
+  check("the measured audit was not touched", readJson("docs", "quality", "audits", AUDIT, "scores.json").assessments.find((a) => a.criterion_id === "SEC-01" && a.surface === "web").level === 2);
+
+  // --- the scoped matrix and its record -------------------------------------------
+
+  const sparse = run(["matrix", scoped1]);
+  check(
+    "matrix on a scoped audit says what the table is and what a record carries",
+    sparse.status === 0 && sparse.stdout.includes(`scoped re-audit: 2 cells re-scored since ${AUDIT}`) && sparse.stdout.includes("--record records the merged matrix"),
+    sparse.stdout,
+  );
+  const perAudit = readJson("docs", "quality", "audits", scoped1, "matrix.json");
+  check("matrix.json keeps this audit alone — supabase was not re-scored, so it is N/A there", perAudit.matrix.SEC.supabase === null, JSON.stringify(perAudit.matrix.SEC));
+
+  ok(["matrix", scoped1, "--record"]);
+  const recorded = auditEvents().pop();
+  check(
+    "the recorded event is marked as a scoped re-audit",
+    recorded.audit_id === scoped1 && JSON.stringify(recorded.scope) === JSON.stringify({ partial: true, cells: 2, since: AUDIT }),
+    JSON.stringify(recorded),
+  );
+  check(
+    "its scores are the merged picture — the columns this audit never touched keep their last score",
+    typeof recorded.scores.supabase.SEC === "number" && typeof recorded.scores.web.PRV === "number",
+    JSON.stringify(recorded.scores),
+  );
+  check(
+    "and the cells it did re-score moved",
+    recorded.scores.web.SEC > auditEvents()[0].scores.web.SEC,
+    `${auditEvents()[0].scores.web.SEC} -> ${recorded.scores.web.SEC}`,
+  );
+
+  const fresh = run(["scope"]);
+  check(
+    "recording the scoped audit starts a fresh window, measured from it",
+    fresh.stdout.includes(`0 cells to re-score from 0 resolved findings since ${scoped1}`) && !fresh.stdout.includes("NOPE"),
+    fresh.stdout,
+  );
+
+  const trend = run(["trend", "--json"]);
+  const rows = JSON.parse(trend.stdout).rows ?? [];
+  check(
+    "the trend reads the scoped audit as a full row, not a mostly-empty one",
+    rows.length === 2 && rows[1].cells.supabase.score !== null && rows[1].cells.supabase.score === rows[0].cells.supabase.score,
+    trend.stdout.slice(0, 600),
+  );
+
+  // --- a second scoped pass, and a regression only the merge can see --------------
+
+  ok(["finding", "resolve", "F-2026-08-SEC-web-02", "--by", "https://github.com/o/r/pull/8"]);
+  const scoped2 = `${MONTH}-scoped-02`;
+  const second = run(["score", "SEC-04", "web", "1", "--evidence", "csp.ts:2 was reverted", "--scope"]);
+  check(`a new window opens a new scoped audit (${scoped2}), never the recorded one`, second.status === 0 && existsSync(path.join(dir, "docs", "quality", "audits", scoped2, "scores.json")), second.stdout + second.stderr);
+
+  // SEC-04 x web was 2 in 2026-08, 3 in the first scoped pass, 1 now. Compare
+  // a scoped audit that did not touch it with one that did: sparse-against-
+  // sparse would call the cell "scored in only one" and miss the drop.
+  const merged = run(["matrix", scoped2, "--record"]);
+  check("the second scoped audit records", merged.status === 0, merged.stderr);
+  ok(["score", "PRV-01", "web", "3", "--evidence", "x.ts:1", "--audit", `${MONTH}-scoped-03`], "a deliberate out-of-scope re-score without --scope");
+  const regressions = run(["regressions", "--from", scoped1, "--to", `${MONTH}-scoped-03`, "--json"]);
+  const found = JSON.parse(regressions.stdout || "{}").regressions ?? [];
+  check(
+    "regressions compares merged-through readings, so a cell the newer audit did not re-score is still compared",
+    found.some((r) => r.kind === "level-drop" && r.criterion_id === "SEC-04" && r.surface === "web" && r.detail.includes("3 → 1")),
+    regressions.stdout.slice(0, 600),
   );
 } finally {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
