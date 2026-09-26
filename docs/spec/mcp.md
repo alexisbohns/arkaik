@@ -107,7 +107,7 @@ precisely how two surfaces come to disagree about the same node.
 
 ### Quality tools (Kritik)
 
-Eleven `kritik_*` tools mirror the `arkaik kritik` verbs ([kritik.md](../rfcs/kritik.md) § 4.4), which
+Twelve `kritik_*` tools mirror the `arkaik kritik` verbs ([kritik.md](../rfcs/kritik.md) § 4.4), which
 is what makes a **scheduled agent audit** a first-class monitoring loop: a routine wakes, reads the
 signal pack, audits what changed since the last audited commit, scores through these tools, and the
 journal accumulates the quality history the UI renders as trends.
@@ -119,6 +119,7 @@ journal accumulates the quality history the UI renders as trends.
 | `kritik_signals` | `surface?`, `criterion_id?`, `domain?` | the signal run sheet, plus `tripped_since_last_audit`. Repo sessions only — the pack and its run sheet live with the code | — |
 | `kritik_regressions` | `from?`, `to?`, `record?` | what got worse between two audits: a dropped maturity level, a cell that gained an open Critical or High, a finding resolved and open again. Hosted comparisons are read-only and cover assessment-level drops only — hosted findings are a living pool, not a per-audit snapshot, so the other two regression kinds don't apply there | `quality.signal.tripped`, one per regression (only with `record: true`, repo mode only) |
 | `kritik_trend` | `surface?`, `domain?` | where the product stood at each recorded audit: one row per `quality.audit.completed`, oldest first, the overall score per surface (or one domain's with `domain`) and its delta against the row above. A re-recorded audit id keeps its latest reading; a framework major bump marks the later row `comparable: false` with no delta across it. Both modes — hosted reads the hosted journal | — |
+| `kritik_scope` | `since?`, `widen?` | the scoped re-audit's work list: every (criterion × surface) cell a `quality.finding.resolved` since the `since` audit (default: the newest `quality.audit.completed`) made stale — `kind: direct`, `because` the finding ids — plus, with `widen` (default on), assessed cells one `node_ids` hop away — `kind: widened`, `because` the shared node ids. Each cell carries the score a re-score would replace; `unknown` lists resolved ids that name no finding; `summary` is the CLI's totals line. Accepted risks never scope anything. It plans an audit and scores nothing. Both modes — hosted reads the hosted journal and quality section | — |
 | `kritik_issue` | `criterion_id`, `surface`, `level?`, `finding_id?` | the prefilled GitHub issue skeleton | — |
 | `kritik_score` | `criterion_id`, `surface`, `level`, `evidence`, `audit_id?`, `commit?` | the assessment, latest-per-cell. Repo sessions only — scoring reads the code, so a hosted session refuses | — |
 | `kritik_open_finding` | `criterion_id`, `surface`, `title`, `evidence`, `impact`, `likelihood`, `cost`, `detail?`, `remediation?`, `node_ids?`, `issue_url?`, `verification?`, `audit_id?`, `finding_id?` | the finding + its derived severity/priority. Repo sessions only — a new finding cites code, so a hosted session refuses | `quality.finding.opened` (none when `verification.verdict` is `REFUTED`) |
@@ -140,7 +141,7 @@ where the other order would leave a finding on disk that no event ever announced
 `docs/quality/` directory — instead the server folds the account's own journal events into the
 stored bundle's quality section, and `kritik_matrix`, `kritik_findings`, `kritik_regressions` and
 `kritik_issue` read that folded section directly, no checkout required (`kritik_trend` reads the
-hosted journal the same way). Transitions
+hosted journal the same way, and `kritik_scope` reads both). Transitions
 (`kritik_resolve_finding`, `kritik_accept_finding`) go the same way in reverse: the tool posts a
 whitelisted event — `quality.finding.resolved` or `quality.finding.accepted` — to
 `POST /api/graph/projects/{id}/quality/events` under the `graph:write` scope, and the snapshot's

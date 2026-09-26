@@ -38,6 +38,7 @@ import {
   acceptFinding,
   acceptedDetail,
   auditCompletedInput,
+  deriveAuditScope,
   deriveQualityMatrix,
   deriveQualityTrend,
   detectRegressions,
@@ -47,9 +48,11 @@ import {
   mintFindingId,
   orderEvents,
   priorityOf,
+  recordedAuditIds,
   renderIssue,
   resolveFinding,
   resolveKritikLibrary,
+  scopeSummary,
   severityOf,
   signalRunSheet,
   signalTrippedInput,
@@ -72,6 +75,7 @@ import {
 import {
   computeAuditMatrix,
   listAuditIds,
+  loadCurrentQualitySection,
   loadFindings,
   loadQualitySection,
   loadScoresOrEmpty,
@@ -650,6 +654,68 @@ export function buildKritikCatalog(ctx: KritikContext): {
         snapshots: trend.snapshots,
         ...(trend.snapshots.length === 0
           ? { note: "No recorded audits yet — `kritik_matrix` with record=true writes one." }
+          : {}),
+      };
+    },
+  );
+
+  tool(
+    {
+      name: "kritik_scope",
+      description:
+        "The cells a batch of fixes made stale — the work list for a scoped re-audit. A score only moves when its cell is re-scored, so after closing findings this lists exactly which (criterion x surface) cells to re-score instead of running a comprehensive audit: every quality.finding.resolved since the last recorded audit names its cell (`kind: direct`, `because` = finding ids), and one hop over node_ids adds neighbouring assessed cells a shared fix plausibly moved (`kind: widened`, `because` = node ids). Accepted risks are not fixes and never scope anything. `unknown` lists resolved ids that name no finding — report those, something closed an id that does not exist. It plans an audit and scores nothing: re-score each cell with kritik_score and evidence, then kritik_matrix with record=true. Works in both modes — hosted reads the hosted journal and quality section.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          since: { type: "string", description: "The recorded audit to measure from. Default: the newest quality.audit.completed." },
+          widen: { type: "boolean", description: "Add the one-hop node neighbours. Default: true." },
+        },
+        additionalProperties: false,
+      },
+    },
+    async (args) => {
+      const graph = await load();
+      const since = typeof args.since === "string" && args.since !== "" ? args.since : undefined;
+      if (since !== undefined) {
+        const recorded = recordedAuditIds(graph.journal);
+        if (!recorded.includes(since)) {
+          throw new ToolError(
+            `No recorded audit "${since}" in this journal (recorded: ${recorded.join(", ") || "none"}). ` +
+              `A scope is measured from a recorded reading — kritik_matrix with record=true writes one.`,
+          );
+        }
+      }
+
+      // Both modes read the CURRENT state — the merge across every audit —
+      // because a finding resolved this week was routinely opened two audits
+      // ago, and its cell's standing score may come from any of them.
+      let section: Pick<QualitySection, "profile" | "assessments" | "findings">;
+      let library: Pick<KritikLibrary, "criteria">;
+      if (ctx.qualityRoot === undefined) {
+        const hosted = hostedSection(graph);
+        section = hosted.section;
+        library = hosted.library ?? { criteria: [] };
+      } else {
+        const root = ctx.qualityRoot;
+        const full = libraryOf(root);
+        const profile = profileOf(root);
+        try {
+          section = loadCurrentQualitySection(root, full) ?? { profile, assessments: [], findings: [] };
+        } catch (error) {
+          throw new ToolError((error as Error).message);
+        }
+        library = full;
+      }
+
+      const scope = deriveAuditScope(graph.journal, section, library, {
+        ...(since !== undefined ? { since } : {}),
+        ...(args.widen === false ? { widen: false } : {}),
+      });
+      return {
+        ...scope,
+        summary: scopeSummary(scope),
+        ...(scope.since === null
+          ? { note: "No recorded audit yet — a scope is measured from one. `kritik_matrix` with record=true writes it." }
           : {}),
       };
     },
