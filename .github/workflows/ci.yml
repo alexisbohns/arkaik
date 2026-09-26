@@ -141,6 +141,13 @@ jobs:
       - name: Kritik trend tests (snapshots, baseline rule, major-bump boundary)
         run: npm run test:quality-trend
 
+      # The scoped re-audit's work list — which cells a batch of fixes made
+      # stale since the last recorded audit. Pure like the three above; its
+      # pack's applies_to lists are narrower than its profile, so fan-out and
+      # widening assertions cannot pass against code that ignores them.
+      - name: Kritik scope tests (direct cells, widening, since window)
+        run: npm run test:quality-scope
+
       # The webhook half of the quality loop — the mention grammar and the
       # resolution pass. DB-free on purpose: the grammar imports nothing and
       # the project read is injected, so a Postgres-less runner still gates it.
