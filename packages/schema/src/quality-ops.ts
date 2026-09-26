@@ -398,6 +398,16 @@ export function signalRunSheet(
 // --- Journal event inputs ----------------------------------------------------
 
 /**
+ * What a scoped re-audit adds to its `quality.audit.completed` (issue #443):
+ * that it re-scored only `cells` cells, measured from the `since` audit.
+ */
+export interface AuditCompletedScope {
+  partial: true;
+  cells: number;
+  since: string;
+}
+
+/**
  * `quality.audit.completed` for a finished run.
  *
  * The payload is the roll-up, so the matrix is the only honest source for it —
@@ -406,10 +416,18 @@ export function signalRunSheet(
  * contradict. Cells that were never scored are omitted rather than sent as
  * zero: "not assessed" and "assessed at nothing" are different claims, and
  * only one of them is a regression.
+ *
+ * A **scoped** re-audit passes `scope`, and the caller passes the MERGED
+ * matrix — every audit through this one, latest-wins — not the scoped audit's
+ * own sparse roll-up. The event answers "where does the product stand", which
+ * is what the trend replays; handed twelve cells, the trend would read the
+ * other 188 as having dropped to N/A. `matrix.json` keeps the per-audit
+ * answer ("how did this audit go"); `scope` is what tells a reader the two
+ * differ, and why.
  */
 export function auditCompletedInput(
   matrix: QualityMatrix,
-  meta: { audit_id: string; framework_version: string; commit?: string },
+  meta: { audit_id: string; framework_version: string; commit?: string; scope?: AuditCompletedScope },
 ): EventInput {
   const scores: Record<string, Record<string, number>> = {};
   for (const surface of matrix.surfaces) {
@@ -428,6 +446,7 @@ export function auditCompletedInput(
       ...(meta.commit !== undefined ? { commit: meta.commit } : {}),
       scores,
       counts: matrix.finding_counts,
+      ...(meta.scope !== undefined ? { scope: meta.scope } : {}),
     },
   };
 }

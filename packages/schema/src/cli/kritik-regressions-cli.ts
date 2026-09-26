@@ -13,7 +13,7 @@
 
 import { dirname, resolve } from "node:path";
 import { detectRegressions, type Regression } from "../quality-regressions";
-import { listAuditIds, loadQualitySection } from "./kritik-audit";
+import { listAuditIds, loadQualitySectionThrough } from "./kritik-audit";
 import { die, loadEffectiveLibrary } from "./kritik-paths";
 
 const USAGE = `detect-regressions.js — what got worse between two Kritik audits
@@ -87,9 +87,11 @@ function main(): void {
   const library = loadEffectiveLibrary(scriptDir, root);
   let regressions: Regression[];
   try {
+    // Merged through each audit, as the CLI verb reads them: a scoped re-audit
+    // holds only the cells it re-scored, compared with their last reading.
     regressions = detectRegressions(
-      loadQualitySection(root, from, library),
-      loadQualitySection(root, to, library),
+      loadQualitySectionThrough(root, from, library),
+      loadQualitySectionThrough(root, to, library),
       library,
     );
   } catch (error) {

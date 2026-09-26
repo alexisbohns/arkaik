@@ -31,7 +31,7 @@ Examples:
   node init-profile.js --surface web:Web app:web
   node init-profile.js --surface web:Web:web --surface ios:iOS:ios \\
                        --surface supabase:Database contract --weight SEC=2`;function R(e){try{return h(e)}catch(i){return a(`init-profile: ${i.message}`)}}function E(e){let i=e.indexOf("=");i<=0&&a(`init-profile: --weight wants CODE=number (got "${e}")`);let n=e.slice(0,i).trim(),s=Number(e.slice(i+1));return(!Number.isFinite(s)||s<=0)&&a(`init-profile: weight for "${n}" must be a positive number (got "${e}")`),[n,s]}function I(){let e=process.argv.slice(2);(e.length===0||e.includes("--help")||e.includes("-h"))&&(process.stdout.write(`${g}
-`),process.exit(e.length===0?1:0));let i=[],n={},s=process.cwd(),r,y=!1;for(let t=0;t<e.length;t++){let o=e[t];if(o==="--surface")i.push(R(e[++t]??""));else if(o==="--weight"){let[w,x]=E(e[++t]??"");n[w]=x}else o==="--config"?r=e[++t]:o==="--root"?s=e[++t]??s:o==="--force"?y=!0:a(`init-profile: unknown option ${o}
+`),process.exit(e.length===0?1:0));let i=[],n={},s=process.cwd(),r,y=!1;for(let t=0;t<e.length;t++){let o=e[t];if(o==="--surface")i.push(R(e[++t]??""));else if(o==="--weight"){let[x,w]=E(e[++t]??"");n[x]=w}else o==="--config"?r=e[++t]:o==="--root"?s=e[++t]??s:o==="--force"?y=!0:a(`init-profile: unknown option ${o}
 
 ${g}`)}let c;if(r!==void 0){(0,m.existsSync)(r)||a(`init-profile: no config at ${r}`);let t=b(r);(!Array.isArray(t?.surfaces)||t.surfaces.length===0)&&a(`init-profile: ${r} declares no surfaces`),c=t}else{i.length===0&&a(`init-profile: at least one --surface is required
 
