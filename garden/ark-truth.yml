@@ -1,0 +1,250 @@
+pod:
+  slug: ark-truth
+  plant: arkaik
+  name: { en: "Track truth, not fields", fr: "Suis la vérité, pas les champs" }
+  description:
+    en: "How do you know what is really shipped? Statuses, acceptances, value, decisions and a journal that keep the graph honest."
+    fr: "Comment savoir ce qui est vraiment livré ? Statuts, critères d'acceptation, valeur, décisions et un journal qui gardent le graphe honnête."
+  content:
+    en: |
+      A product map is only useful if you can trust it. A screen marked "done" that half the platforms never got is worse than no map at all. Arkaik tracks truth in layers, each one answering the question the previous one couldn't.
+
+      It starts with a shared vocabulary for where things stand, per platform.
+
+      ::entity{ref=bean:ark-statuses}
+
+      A status is a claim. Acceptances are the proof: testable promises, checked platform by platform, moved forward by the pull requests that fulfil them.
+
+      ::entity{ref=bean:ark-acceptances}
+
+      Shipped isn't the same as valuable. The value pyramid tells you which kinds of value your product actually delivers today.
+
+      ::entity{ref=bean:ark-value-pyramid}
+
+      Behind every "why is it like this?" there's a choice. Decisions live in the graph too, wired to what they changed.
+
+      ::entity{ref=bean:ark-decisions}
+
+      And underneath it all, a journal that never forgets. Every change is an event; the changelog, the history and the deliverables are just ways of reading it.
+
+      ::entity{ref=bean:ark-journal}
+    fr: |
+      Une carte produit ne sert que si tu peux lui faire confiance. Un écran marqué « fini » que la moitié des plateformes n'a jamais reçu, c'est pire que pas de carte du tout. Arkaik suit la vérité par couches, chacune répondant à la question que la précédente laissait ouverte.
+
+      Tout commence par un vocabulaire commun pour dire où en sont les choses, plateforme par plateforme.
+
+      ::entity{ref=bean:ark-statuses}
+
+      Un statut, c'est une affirmation. Les critères d'acceptation, c'est la preuve : des promesses testables, vérifiées plateforme par plateforme, et qui avancent au rythme des pull requests qui les tiennent.
+
+      ::entity{ref=bean:ark-acceptances}
+
+      Livré ne veut pas dire utile. La pyramide de valeur te montre quels types de valeur ton produit apporte vraiment aujourd'hui.
+
+      ::entity{ref=bean:ark-value-pyramid}
+
+      Derrière chaque « pourquoi c'est comme ça ? », il y a un choix. Les décisions vivent aussi dans le graphe, reliées à ce qu'elles ont changé.
+
+      ::entity{ref=bean:ark-decisions}
+
+      Et en dessous de tout ça, un journal qui n'oublie rien. Chaque changement est un événement ; le changelog, l'historique et les livrables ne sont que des façons de le lire.
+
+      ::entity{ref=bean:ark-journal}
+beans:
+  - slug: ark-statuses
+    cover: shots/ark-statuses.png
+    name: { en: "Seven honest statuses", fr: "Sept statuts honnêtes" }
+    description:
+      en: "Where is this thing, really, on each platform? One lifecycle, a blocked flag and a stage axis."
+      fr: "Où en est vraiment ce truc, sur chaque plateforme ? Un cycle de vie, un drapeau bloqué et un axe de stade."
+    sprouts:
+      - slug: ark-statuses-note
+        type: note
+        date: 2026-09-26
+        name: { en: "From idea to live, per platform", fr: "De l'idée au live, plateforme par plateforme" }
+        description:
+          en: "Seven lifecycle statuses, tracked per platform, with blocked as a flag and exposure as a separate axis."
+          fr: "Sept statuts de cycle de vie, suivis par plateforme, avec le blocage en drapeau et l'exposition sur un axe à part."
+        content:
+          en: |
+            Every node in Arkaik walks the same seven-step lifecycle: **idea** (the inbox), **discovery** (being made ready through design or spec), **backlog** (ready, waiting to start), **development**, **releasing** (built, awaiting QA or distribution), **live**, and **archived**.
+
+            The trick is that a status isn't one value. Your checkout screen can be live on web, in development on iOS and still an idea on Android. Arkaik tracks each platform separately, so the map never averages away the gap.
+
+            Blocked is not a status. Something stalled by a dependency keeps its real status and carries a *blocked by* flag instead. "Blocked in development" and "blocked in discovery" are very different conversations, and now you can tell them apart.
+
+            Exposure lives on its own axis: a **stage** of beta, monitoring or deprecated qualifies something already built without pretending it's a lifecycle step.
+          fr: |
+            Chaque nœud d'Arkaik suit le même cycle en sept étapes : **idea** (la boîte de réception), **discovery** (on le prépare, par le design ou la spec), **backlog** (prêt, en attente), **development**, **releasing** (construit, en attente de QA ou de diffusion), **live** et **archived**.
+
+            L'astuce, c'est qu'un statut n'est pas une seule valeur. Ton écran de paiement peut être live sur le web, en développement sur iOS et encore une idée sur Android. Arkaik suit chaque plateforme séparément, pour que la carte ne gomme jamais l'écart.
+
+            Bloqué n'est pas un statut. Un élément coincé par une dépendance garde son vrai statut et porte un drapeau *bloqué par*. « Bloqué en développement » et « bloqué en discovery », ce sont deux conversations très différentes, et maintenant tu vois la différence.
+
+            L'exposition a son propre axe : un **stade** beta, monitoring ou deprecated qualifie ce qui est déjà construit, sans se faire passer pour une étape du cycle.
+  - slug: ark-acceptances
+    cover: shots/ark-acceptances.png
+    name: { en: "Acceptances as proof", fr: "L'acceptation comme preuve" }
+    description:
+      en: "Given, When, Then, checked on every platform. The promise behind each screen, and the gaps between platforms."
+      fr: "Given, When, Then, vérifié sur chaque plateforme. La promesse derrière chaque écran, et les écarts entre plateformes."
+    sprouts:
+      - slug: ark-acceptances-note
+        type: note
+        date: 2026-09-26
+        name: { en: "Promises you can check", fr: "Des promesses vérifiables" }
+        description:
+          en: "Acceptances turn a status into evidence, one platform column at a time, and pull requests move them forward."
+          fr: "Les critères d'acceptation transforment un statut en preuve, une colonne de plateforme à la fois, et les pull requests les font avancer."
+        content:
+          en: |
+            An acceptance is a testable promise written the classic way: *Given* a context, *When* something happens, *Then* this is true. It hangs off the screens and flows it covers, so every view carries the promises that define "done" for it.
+
+            Each acceptance has a column per platform. That's where the truth shows up: the matrix lines up every promise against web, iOS, Android and friends, and the parity gaps jump out. No more "it's shipped" when it's shipped on one platform out of three.
+
+            Once a view is covered by acceptances, its delivery is read from them, not from a hand-set field. Rollups become acceptance-aware: a flow is only as live as the promises inside it.
+
+            And you don't have to tick boxes by hand. When a pull request fulfils an acceptance, it can move that acceptance forward on the right platform, so the graph keeps pace with the code.
+          fr: |
+            Un critère d'acceptation, c'est une promesse testable écrite à l'ancienne : *Given* un contexte, *When* quelque chose se passe, *Then* ceci est vrai. Il s'accroche aux écrans et parcours qu'il couvre, donc chaque écran porte les promesses qui définissent ce que « fini » veut dire pour lui.
+
+            Chaque critère a une colonne par plateforme. C'est là que la vérité apparaît : la matrice aligne chaque promesse face au web, à iOS, à Android et compagnie, et les écarts de parité sautent aux yeux. Fini le « c'est livré » quand c'est livré sur une plateforme sur trois.
+
+            Dès qu'un écran est couvert par des critères, sa livraison se lit dans ces critères, pas dans un champ rempli à la main. Les agrégats en tiennent compte : un parcours n'est pas plus live que les promesses qu'il contient.
+
+            Et tu n'as pas à cocher les cases toi-même. Quand une pull request tient une promesse, elle peut faire avancer le critère sur la bonne plateforme, pour que le graphe suive le rythme du code.
+      - slug: ark-acceptances-pr-transitions
+        type: milestone
+        date: 2026-07-28
+        name: { en: "Pull requests move acceptances", fr: "Les pull requests font avancer les critères" }
+        description:
+          en: "Merged work can now advance acceptances on the platform it shipped to."
+          fr: "Le travail mergé peut désormais faire avancer les critères sur la plateforme où il est livré."
+  - slug: ark-value-pyramid
+    cover: shots/ark-value-pyramid.png
+    name: { en: "The value pyramid", fr: "La pyramide de valeur" }
+    description:
+      en: "Thirty elements of value in four tiers, each with a gauge of how much you actually deliver."
+      fr: "Trente éléments de valeur en quatre étages, chacun avec une jauge de ce que tu livres vraiment."
+    sprouts:
+      - slug: ark-value-pyramid-note
+        type: note
+        date: 2026-09-26
+        name: { en: "Shipped is not the same as valuable", fr: "Livré, ce n'est pas forcément utile" }
+        description:
+          en: "Tag acceptances with the value they create and watch a gauge fill up, tier by tier, platform by platform."
+          fr: "Étiquette tes critères avec la valeur qu'ils créent et regarde une jauge se remplir, étage par étage, plateforme par plateforme."
+        content:
+          en: |
+            Features are a means. What users feel is value: saving time, reducing anxiety, a sense of belonging. Arkaik borrows the classic value pyramid, thirty elements of value stacked in four tiers: functional, emotional, life-changing and social impact.
+
+            You link acceptances to the value elements they serve. Since acceptances already know their per-platform status, each element gets a delivery gauge for free: how much of the promised "saves time" is actually live, and where.
+
+            The pyramid page lays it all out as a grid of cards, one tier per section, each with its icon, its gauge and its acceptance count. Filter to one platform to see what Android users really get, or click an element to jump to the matching acceptances.
+
+            It's a gentle reality check: a roadmap heavy in functional work and empty at the top tells you something, and now you can see it.
+          fr: |
+            Les fonctionnalités sont un moyen. Ce que les gens ressentent, c'est de la valeur : gagner du temps, être rassuré, se sentir appartenir à quelque chose. Arkaik reprend la pyramide de valeur classique, trente éléments répartis sur quatre étages : fonctionnel, émotionnel, qui change la vie, et impact social.
+
+            Tu relies tes critères d'acceptation aux éléments de valeur qu'ils servent. Comme les critères connaissent déjà leur statut par plateforme, chaque élément gagne une jauge de livraison gratuitement : quelle part du « fait gagner du temps » promis est vraiment live, et où.
+
+            La page pyramide affiche tout en grille de cartes, un étage par section, chacune avec son icône, sa jauge et son nombre de critères. Filtre sur une plateforme pour voir ce que les utilisateurs Android reçoivent vraiment, ou clique sur un élément pour sauter aux critères correspondants.
+
+            C'est un petit retour au réel : une roadmap chargée en fonctionnel et vide en haut de la pyramide, ça dit quelque chose, et maintenant tu le vois.
+      - slug: ark-value-pyramid-lands
+        type: milestone
+        date: 2026-07-19
+        name: { en: "The value pyramid lands", fr: "La pyramide de valeur arrive" }
+        description:
+          en: "Thirty value elements in four tiers, and rollups that finally listen to acceptances."
+          fr: "Trente éléments de valeur en quatre étages, et des agrégats qui écoutent enfin les critères d'acceptation."
+  - slug: ark-decisions
+    cover: shots/ark-decisions.png
+    name: { en: "Decisions in the graph", fr: "Les décisions dans le graphe" }
+    description:
+      en: "Why is it built this way? ADR-style decisions wired to what they replaced, produced and touched."
+      fr: "Pourquoi c'est construit comme ça ? Des décisions façon ADR reliées à ce qu'elles remplacent, produisent et touchent."
+    sprouts:
+      - slug: ark-decisions-note
+        type: note
+        date: 2026-09-26
+        name: { en: "The why, next to the what", fr: "Le pourquoi, à côté du quoi" }
+        description:
+          en: "Decisions are nodes with their own status, linked by supersedes, generates and impacts."
+          fr: "Les décisions sont des nœuds avec leur propre statut, reliés par supersedes, generates et impacts."
+        content:
+          en: |
+            Architecture decision records usually rot in a folder nobody opens. In Arkaik, a decision is a node in the same graph as your screens and endpoints, so the "why" sits right next to the "what".
+
+            Each decision has its own status (proposed, approved, enacted, and the endings: rejected, deprecated, superseded) plus the date it was actually decided. Its lifecycle status follows along, so an enacted decision reads as live and a superseded one as archived.
+
+            Three connections do the heavy lifting. **Supersedes** links a decision to the one it replaces, and flips the old one to superseded. **Generates** links a decision to the acceptances it produced. **Impacts** links it to the flows, views, data models or endpoints it changed.
+
+            So when someone asks "why does onboarding skip the email step?", you don't dig through chat history. You click the screen and follow the edge.
+          fr: |
+            Les ADR finissent souvent par pourrir dans un dossier que personne n'ouvre. Dans Arkaik, une décision est un nœud du même graphe que tes écrans et tes endpoints, donc le « pourquoi » se trouve juste à côté du « quoi ».
+
+            Chaque décision a son propre statut (proposée, approuvée, appliquée, et les fins possibles : rejetée, dépréciée, remplacée) plus la date à laquelle elle a vraiment été prise. Son statut de cycle de vie suit : une décision appliquée se lit comme live, une décision remplacée comme archivée.
+
+            Trois liens font le gros du travail. **Supersedes** relie une décision à celle qu'elle remplace, et bascule l'ancienne en remplacée. **Generates** la relie aux critères d'acceptation qu'elle a fait naître. **Impacts** la relie aux parcours, écrans, modèles de données ou endpoints qu'elle a changés.
+
+            Alors quand quelqu'un demande « pourquoi l'onboarding saute l'étape email ? », tu ne fouilles pas l'historique du chat. Tu cliques sur l'écran et tu suis le lien.
+  - slug: ark-journal
+    cover: shots/ark-journal.png
+    name: { en: "The journal remembers", fr: "Le journal se souvient" }
+    description:
+      en: "An append-only log of every change. The changelog, the history and the deliverables are all read from it."
+      fr: "Un journal en ajout seul de chaque changement. Le changelog, l'historique et les livrables en sont tous tirés."
+    sprouts:
+      - slug: ark-journal-note
+        type: note
+        date: 2026-09-26
+        name: { en: "Nothing is overwritten", fr: "Rien n'est écrasé" }
+        description:
+          en: "Every change becomes an event. Views of the past are derived, never hand-maintained."
+          fr: "Chaque changement devient un événement. Les vues du passé sont dérivées, jamais entretenues à la main."
+        content:
+          en: |
+            Fields tell you what is true now. They can't tell you when it became true, or what it used to be. So Arkaik keeps a journal: an append-only log where every change to the graph lands as an event, and nothing is ever rewritten.
+
+            From that single log, everything historical is derived. The changelog, split into **Design** (what you decided and drew) and **Delivery** (what actually shipped). The history page, to scroll back through a project's life. Milestones, drawn as timelines of the events they gathered.
+
+            Pull requests leave a trace too: a deliverable records what a PR touched and where it shipped, so a changelog card can say "this screen, on iOS, via that merge" instead of a bare line.
+
+            Because the past is derived rather than typed in, it can't drift. If the journal says it happened, it happened, and that's what makes the rest of the graph trustworthy.
+          fr: |
+            Les champs te disent ce qui est vrai maintenant. Ils ne te disent pas depuis quand, ni ce que c'était avant. Alors Arkaik tient un journal : un registre en ajout seul où chaque changement du graphe arrive sous forme d'événement, et où rien n'est jamais réécrit.
+
+            De ce seul registre, tout l'historique est dérivé. Le changelog, séparé en **Design** (ce que tu as décidé et dessiné) et **Delivery** (ce qui a vraiment été livré). La page d'historique, pour remonter la vie d'un projet. Les jalons, dessinés comme des frises des événements qu'ils rassemblent.
+
+            Les pull requests laissent une trace aussi : un livrable note ce qu'une PR a touché et où elle a été livrée, pour qu'une carte du changelog dise « cet écran, sur iOS, via ce merge » plutôt qu'une ligne nue.
+
+            Comme le passé est dérivé et pas saisi à la main, il ne peut pas dériver. Si le journal dit que c'est arrivé, c'est arrivé, et c'est ce qui rend le reste du graphe digne de confiance.
+      - slug: ark-journal-lands
+        type: milestone
+        date: 2026-07-11
+        name: { en: "The journal lands", fr: "Le journal arrive" }
+        description:
+          en: "An append-only event log arrives, and the changelog, timeline and backlog start being derived from it."
+          fr: "Un journal d'événements en ajout seul arrive, et le changelog, la frise et le backlog commencent à en être dérivés."
+      - slug: ark-journal-design-delivery
+        type: milestone
+        date: 2026-08-04
+        name: { en: "Design and Delivery split", fr: "Design et Delivery se séparent" }
+        description:
+          en: "The changelog splits into Design and Delivery, deliverables appear, and a History page opens."
+          fr: "Le changelog se sépare en Design et Delivery, les livrables apparaissent et une page Historique ouvre."
+      - slug: ark-journal-milestone-timelines
+        type: milestone
+        date: 2026-08-08
+        name: { en: "Milestones as timelines", fr: "Des jalons en frise" }
+        description:
+          en: "Milestones are drawn as timelines of their events, alongside a dedicated Design page."
+          fr: "Les jalons se dessinent en frise de leurs événements, avec une page Design dédiée."
+      - slug: ark-journal-pr-deliverables
+        type: milestone
+        date: 2026-09-04
+        name: { en: "Pull request deliverables", fr: "Les livrables de pull request" }
+        description:
+          en: "Deliverables now record what a pull request touched and where it shipped."
+          fr: "Les livrables notent désormais ce qu'une pull request a touché et où elle a été livrée."

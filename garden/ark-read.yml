@@ -1,0 +1,237 @@
+pod:
+  slug: ark-read
+  plant: arkaik
+  name: { en: "One graph, four maps", fr: "Un graphe, quatre cartes" }
+  description:
+    en: "How do I read my product? Put everything in one graph, then look at it from the angle your question needs."
+    fr: "Comment je lis mon produit ? Tout dans un seul graphe, puis tu le regardes sous l'angle que ta question demande."
+  content:
+    en: |
+      Most product knowledge lives in five tools that never agree: the flows in a design file, the endpoints in an API doc, the tables in a schema, the status in a tracker. Arkaik starts from the opposite bet. There is one graph, and everything else is a way of reading it.
+
+      So the first thing to understand is what goes into that graph, and how its pieces hold hands.
+
+      ::entity{ref=bean:ark-graph}
+
+      Navigation is how people experience a product, so it is the first reading. Follow a user from the top-level flow down to the screen they tap.
+
+      ::entity{ref=bean:ark-journey-map}
+
+      Then flip the map over. Every backend change starts with the same question: which screens show this, and what does this endpoint feed?
+
+      ::entity{ref=bean:ark-system-map}
+
+      Screens are not tasks, so a task tracker cannot tell you what is in flight on Android. The delivery board can, because it reads the same graph per platform.
+
+      ::entity{ref=bean:ark-delivery-board}
+
+      And when you just need to know where the product stands, one screen deep, there is the overview.
+
+      ::entity{ref=bean:ark-overview}
+
+      A strategist zooms out, an operator zooms in, an agent queries. Same data, four maps, no copy to keep in sync.
+    fr: |
+      La plupart du savoir produit vit dans cinq outils qui ne sont jamais d'accord : les parcours dans un fichier de design, les endpoints dans une doc d'API, les tables dans un schéma, le statut dans un tracker. Arkaik parie sur l'inverse. Il y a un seul graphe, et tout le reste n'est qu'une façon de le lire.
+
+      Commence donc par voir ce qu'on met dans ce graphe, et comment ses morceaux se tiennent la main.
+
+      ::entity{ref=bean:ark-graph}
+
+      La navigation, c'est la façon dont les gens vivent ton produit : c'est donc la première lecture. Suis un utilisateur du parcours principal jusqu'à l'écran qu'il touche.
+
+      ::entity{ref=bean:ark-journey-map}
+
+      Puis retourne la carte. Tout changement côté backend commence par la même question : quels écrans affichent ça, et qu'est-ce que cet endpoint alimente ?
+
+      ::entity{ref=bean:ark-system-map}
+
+      Un écran n'est pas un ticket, alors ton gestionnaire de tâches ne sait pas ce qui est en cours sur Android. Le tableau de livraison, lui, le sait, parce qu'il lit le même graphe plateforme par plateforme.
+
+      ::entity{ref=bean:ark-delivery-board}
+
+      Et quand tu veux juste savoir où en est le produit, en un seul écran, il y a la vue d'ensemble.
+
+      ::entity{ref=bean:ark-overview}
+
+      La stratège prend de la hauteur, l'opérateur zoome, l'agent interroge. Mêmes données, quatre cartes, aucune copie à synchroniser.
+beans:
+  - slug: ark-graph
+    cover: shots/ark-graph.png
+    name: { en: "The product graph", fr: "Le graphe produit" }
+    description:
+      en: "Six kinds of things and eight kinds of links: the whole product in one place."
+      fr: "Six sortes de choses et huit sortes de liens : tout le produit au même endroit."
+    sprouts:
+      - slug: ark-graph-note
+        type: note
+        date: 2026-09-26
+        name: { en: "Six species, eight links", fr: "Six espèces, huit liens" }
+        description:
+          en: "Flows, views, data models, API endpoints, acceptances and decisions, tied together by edges that each mean one thing."
+          fr: "Parcours, écrans, modèles de données, endpoints, acceptances et décisions, reliés par des liens qui veulent chacun dire une seule chose."
+        content:
+          en: |
+            An Arkaik project is one graph. Every node belongs to one of six species. **Flows** are journeys, like onboarding or checkout. **Views** are the screens inside them. **Data models** are the things your product stores. **API endpoints** are how the screens talk to the backend. **Acceptances** are testable promises ("a guest can pay without an account"), and **decisions** are the choices you made along the way, with their own status.
+
+            The links matter as much as the nodes, and each one says exactly one thing. A flow **composes** its screens and sub-flows, in order. A view or endpoint **calls** an API, and the direction tells you who starts the conversation. A view **displays** a data model; an endpoint **queries** one.
+
+            The last four keep the map honest. An acceptance **covers** the screens or flows it promises something about, which is where their per-platform status comes from. A decision **supersedes** an older decision, **generates** an acceptance, and **impacts** the screens, flows, models or endpoints it touched.
+
+            Because it is all one graph, nothing gets copied. The journey map, the system map, the delivery board and the overview are four readings of the same data, and an agent asking questions over MCP gets the same answers you see.
+
+            The graph is saved as a plain bundle you can keep in your repo, and every save is validated against the grammar, so a link that makes no sense (a decision "impacting" an acceptance, say) simply cannot be written.
+          fr: |
+            Un projet Arkaik, c'est un seul graphe. Chaque nœud appartient à une des six espèces. Les **parcours** sont des trajets, comme l'onboarding ou le paiement. Les **écrans** sont ce qu'on trouve dedans. Les **modèles de données** sont ce que ton produit stocke. Les **endpoints d'API** sont la façon dont les écrans parlent au backend. Les **acceptances** sont des promesses testables (« un invité peut payer sans compte »), et les **décisions** sont les choix faits en route, avec leur propre statut.
+
+            Les liens comptent autant que les nœuds, et chacun dit exactement une chose. Un parcours **compose** ses écrans et sous-parcours, dans l'ordre. Un écran ou un endpoint **appelle** une API, et le sens te dit qui lance la conversation. Un écran **affiche** un modèle de données ; un endpoint en **interroge** un.
+
+            Les quatre derniers gardent la carte honnête. Une acceptance **couvre** les écrans ou parcours sur lesquels elle promet quelque chose, et c'est de là que vient leur statut par plateforme. Une décision en **remplace** une plus ancienne, **génère** une acceptance, et **impacte** les écrans, parcours, modèles ou endpoints qu'elle a touchés.
+
+            Comme tout tient dans un seul graphe, rien n'est recopié. La carte des parcours, la carte système, le tableau de livraison et la vue d'ensemble sont quatre lectures des mêmes données, et un agent qui pose ses questions via MCP obtient les mêmes réponses que toi.
+
+            Le graphe est enregistré dans un simple bundle que tu peux garder dans ton repo, et chaque sauvegarde est validée contre la grammaire : un lien absurde (une décision qui « impacte » une acceptance, par exemple) ne peut tout simplement pas s'écrire.
+      - slug: ark-graph-bundle-v2
+        type: milestone
+        date: 2026-07-11
+        name: { en: "Bundle v2 and validation", fr: "Bundle v2 et validation" }
+        description:
+          en: "The bundle format reaches v2 and every save is checked against the graph's grammar."
+          fr: "Le format de bundle passe en v2 et chaque sauvegarde est vérifiée contre la grammaire du graphe."
+  - slug: ark-journey-map
+    cover: shots/ark-journey-map.png
+    name: { en: "The journey map", fr: "La carte des parcours" }
+    description:
+      en: "Your flows as playlists of screens, with the forks and conditions drawn in."
+      fr: "Tes parcours comme des playlists d'écrans, avec les bifurcations dessinées."
+    sprouts:
+      - slug: ark-journey-map-note
+        type: note
+        date: 2026-09-26
+        name: { en: "Follow the user, not the ticket", fr: "Suis l'utilisateur, pas le ticket" }
+        description:
+          en: "A flow is an ordered list of views and sub-flows. Collapse it to a chapter, expand it to a screen."
+          fr: "Un parcours, c'est une suite ordonnée d'écrans et de sous-parcours. Replie-le en chapitre, déplie-le en écran."
+        content:
+          en: |
+            Navigation is how people experience a product, so it is the first reading of the map. The journey map starts from a top-level flow and lets you drill all the way down to a single screen.
+
+            Each flow is a playlist: an ordered list of views and sub-flows, with conditions and junctions where the path forks. Sub-flows show up as collapsed cards you can expand, so a big product reads like chapters until you want the pages.
+
+            The composition links are generated from the playlist itself. That means a flow cannot lie about its own screens: reorder the playlist and the map follows.
+
+            Screens also carry what they talk to. API calls appear right on the view card, with an arrow telling you whether the screen sends the request or the server pushes to it, and the detail panel lists the data it displays.
+          fr: |
+            La navigation, c'est la façon dont les gens vivent un produit : c'est donc la première lecture de la carte. La carte des parcours part d'un parcours principal et te laisse descendre jusqu'à un seul écran.
+
+            Chaque parcours est une playlist : une suite ordonnée d'écrans et de sous-parcours, avec des conditions et des embranchements là où le chemin bifurque. Les sous-parcours apparaissent comme des cartes repliées que tu peux ouvrir : un gros produit se lit par chapitres, jusqu'à ce que tu veuilles les pages.
+
+            Les liens de composition sont générés depuis la playlist elle-même. Un parcours ne peut donc pas mentir sur ses propres écrans : réordonne la playlist et la carte suit.
+
+            Les écrans montrent aussi à qui ils parlent. Les appels d'API s'affichent directement sur la carte de l'écran, avec une flèche qui dit si c'est l'écran qui envoie la requête ou le serveur qui pousse vers lui, et le panneau de détail liste les données affichées.
+      - slug: ark-journey-map-lands
+        type: milestone
+        date: 2026-07-13
+        name: { en: "Maps land", fr: "Les cartes arrivent" }
+        description:
+          en: "Maps become saved definitions over one graph, and the journey map is the first of them."
+          fr: "Les cartes deviennent des définitions enregistrées sur un seul graphe, et la carte des parcours ouvre le bal."
+  - slug: ark-system-map
+    cover: shots/ark-system-map.png
+    name: { en: "The system map", fr: "La carte système" }
+    description:
+      en: "Screens, endpoints and data models in tiers, with the wires between them drawn in."
+      fr: "Écrans, endpoints et modèles de données par étages, avec les fils entre eux bien visibles."
+    sprouts:
+      - slug: ark-system-map-note
+        type: note
+        date: 2026-09-26
+        name: { en: "Which screens break if I touch this?", fr: "Quels écrans cassent si je touche à ça ?" }
+        description:
+          en: "The same graph, flipped to show what calls what and what reads which data."
+          fr: "Le même graphe, retourné pour montrer qui appelle quoi et qui lit quelles données."
+        content:
+          en: |
+            Every backend change starts with the same question: which screens render this, and what does this endpoint feed? The system map answers it by laying out views, API endpoints and data models as tiers, with the links between layers drawn in.
+
+            You pick a starting point and the map scopes itself around it. Endpoints that fan out to other APIs, internal or external, show up here too, wired card to card, since they have no screen to hang on.
+
+            Nothing on this map is a separate diagram you have to keep up to date. It is the same graph as the journey map, read from underneath.
+
+            And if neither built-in reading fits your question, a custom map is just a saved definition: a scope, a selection of species, a rendering mode. Not a new feature, a new angle.
+          fr: |
+            Tout changement côté backend commence par la même question : quels écrans affichent ça, et qu'est-ce que cet endpoint alimente ? La carte système y répond en rangeant écrans, endpoints d'API et modèles de données par étages, avec les liens entre couches bien dessinés.
+
+            Tu choisis un point de départ et la carte se cadre autour. Les endpoints qui appellent d'autres API, internes ou externes, apparaissent aussi ici, reliés carte à carte, puisqu'ils n'ont pas d'écran où s'accrocher.
+
+            Rien sur cette carte n'est un schéma à part qu'il faudrait tenir à jour. C'est le même graphe que la carte des parcours, lu par en dessous.
+
+            Et si aucune lecture fournie ne colle à ta question, une carte perso n'est qu'une définition enregistrée : un périmètre, une sélection d'espèces, un mode de rendu. Pas une nouvelle fonctionnalité, un nouvel angle.
+      - slug: ark-system-map-lands
+        type: milestone
+        date: 2026-07-13
+        name: { en: "The system map lands", fr: "La carte système arrive" }
+        description:
+          en: "Alongside the journey map, the system map ships and \"one graph, many maps\" becomes the rule."
+          fr: "Avec la carte des parcours, la carte système sort et « un graphe, plusieurs cartes » devient la règle."
+  - slug: ark-delivery-board
+    cover: shots/ark-delivery-board.png
+    name: { en: "The delivery board", fr: "Le tableau de livraison" }
+    description:
+      en: "What is in flight on each platform, screen by screen, not task by task."
+      fr: "Ce qui est en cours sur chaque plateforme, écran par écran, pas ticket par ticket."
+    sprouts:
+      - slug: ark-delivery-board-note
+        type: note
+        date: 2026-09-26
+        name: { en: "What's in flight on Android?", fr: "Qu'est-ce qui est en cours sur Android ?" }
+        description:
+          en: "A board of screen-and-platform pairs grouped by status, so one screen can be live on iOS and waiting on Android."
+          fr: "Un tableau de paires écran-plateforme rangées par statut : un même écran peut être en prod sur iOS et en attente sur Android."
+        content:
+          en: |
+            "What is in flight on Android?" has no answer in a task tracker, because tasks are not screens. The delivery board answers it by reading the graph platform by platform.
+
+            Each card is a pair: one node on one platform. Cards are grouped into columns by status, so a view that is live on iOS and still in backlog on Android sits in both columns. That is not a bug, it is the point.
+
+            The statuses come from the acceptances covering each screen, so the board shows what has actually been promised and checked, not what someone typed into a dropdown.
+
+            The rows are the exact same projection an agent gets over MCP, so the board and the agent never disagree.
+          fr: |
+            « Qu'est-ce qui est en cours sur Android ? » n'a pas de réponse dans un gestionnaire de tâches, parce qu'un ticket n'est pas un écran. Le tableau de livraison y répond en lisant le graphe plateforme par plateforme.
+
+            Chaque carte est une paire : un nœud sur une plateforme. Les cartes sont rangées en colonnes par statut, donc un écran en prod sur iOS et encore en backlog sur Android se retrouve dans les deux colonnes. Ce n'est pas un bug, c'est tout l'intérêt.
+
+            Les statuts viennent des acceptances qui couvrent chaque écran : le tableau montre ce qui a vraiment été promis et vérifié, pas ce que quelqu'un a choisi dans un menu déroulant.
+
+            Les lignes sont exactement la même projection que celle qu'un agent reçoit via MCP : le tableau et l'agent ne se contredisent jamais.
+  - slug: ark-overview
+    cover: shots/ark-overview.png
+    name: { en: "The overview", fr: "La vue d'ensemble" }
+    description:
+      en: "One screen that says where the product stands, and links you to where the detail lives."
+      fr: "Un seul écran qui dit où en est le produit, et t'envoie là où vit le détail."
+    sprouts:
+      - slug: ark-overview-note
+        type: note
+        date: 2026-09-26
+        name: { en: "Where does the product stand?", fr: "Où en est le produit ?" }
+        description:
+          en: "Delivery gauges, release pulse, backlog, inventory, parity and quality grade, all computed from the same graph."
+          fr: "Jauges de livraison, pouls des releases, backlog, inventaire, parité et note qualité, tous calculés depuis le même graphe."
+        content:
+          en: |
+            A strategist wants one screen that says where the product stands. The overview is that screen, and it is where a project opens.
+
+            It shows per-platform delivery gauges, the release pulse, the backlog, the inventory of what exists, platform parity and a quality grade. Each card links into the surface that owns the detail: the maps, the board, the changelog, the library.
+
+            No card computes its own numbers. Every one is a straight reading of the graph and its journal, so the overview can never drift from the maps it summarizes.
+
+            It is read-only on purpose: you get the global picture one screen deep, then jump somewhere else to act. And every number on it is something an agent can ask for too.
+          fr: |
+            Une stratège veut un seul écran qui dit où en est le produit. La vue d'ensemble est cet écran, et c'est là qu'un projet s'ouvre.
+
+            On y trouve les jauges de livraison par plateforme, le pouls des releases, le backlog, l'inventaire de ce qui existe, la parité entre plateformes et une note qualité. Chaque carte t'emmène vers l'endroit qui détient le détail : les cartes, le tableau, le changelog, la bibliothèque.
+
+            Aucune carte ne calcule ses propres chiffres. Chacune est une lecture directe du graphe et de son journal : la vue d'ensemble ne peut pas s'écarter des cartes qu'elle résume.
+
+            Elle est en lecture seule exprès : tu as la vue globale en un écran, puis tu files ailleurs pour agir. Et chaque chiffre affiché, un agent peut le demander aussi.

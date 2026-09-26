@@ -1,0 +1,134 @@
+pod:
+  slug: ark-honest
+  plant: arkaik
+  name: { en: "Keep it honest", fr: "Reste honnête" }
+  description:
+    en: "How good is your product, really, and what should you fix first? Kritik answers both, with evidence."
+    fr: "Ton produit est-il vraiment bon, et par quoi commencer ? Kritik répond aux deux, preuves à l'appui."
+  content:
+    en: |
+      A product graph tells you what exists. It does not tell you whether what exists is any good. That is Kritik's job: a quality audit built to be run again and again, on every surface of your product, so the answer to "how good is it?" becomes a table you can compare rather than a feeling you defend.
+
+      It starts with the matrix. Each criterion gets a maturity score from 0 to 4 on each surface, backed by evidence, and the scores roll up into weighted domain grades. One rule keeps it truthful: an open critical finding caps the grade, so one real hole can't hide behind nine healthy checks.
+
+      ::entity{ref=bean:ark-kritik-matrix}
+
+      Then come the findings, the part you actually fix. Each one weighs impact against likelihood and states what it costs to fix. It lives through a lifecycle (open, resolved, refuted, accepted risk), and between audits, cheap automated signals flag regressions before the next big review.
+
+      ::entity{ref=bean:ark-kritik-findings}
+    fr: |
+      Un graphe produit te dit ce qui existe. Il ne te dit pas si c'est bon. C'est le rôle de Kritik : un audit qualité fait pour être relancé encore et encore, sur chaque surface de ton produit, pour que « est-ce que c'est bon ? » devienne un tableau qu'on compare plutôt qu'une impression qu'on défend.
+
+      Tout part de la matrice. Chaque critère reçoit une note de maturité de 0 à 4 par surface, preuves à l'appui, et les notes remontent en notes de domaine pondérées. Une règle garde le tout honnête : un constat critique ouvert plafonne la note. Un seul vrai trou ne peut pas se cacher derrière neuf vérifications au vert.
+
+      ::entity{ref=bean:ark-kritik-matrix}
+
+      Viennent ensuite les constats, la partie que tu corriges pour de vrai. Chacun croise impact et probabilité, et dit combien coûte la correction. Il suit un cycle de vie (ouvert, résolu, réfuté, risque accepté), et entre deux audits, des signaux automatiques peu coûteux repèrent les régressions avant la prochaine grande revue.
+
+      ::entity{ref=bean:ark-kritik-findings}
+beans:
+  - slug: ark-kritik-matrix
+    cover: shots/ark-kritik-matrix.png
+    name: { en: "The quality matrix", fr: "La matrice qualité" }
+    description:
+      en: "Every criterion scored 0 to 4 on every surface, rolled up into domain grades you can compare side by side."
+      fr: "Chaque critère noté de 0 à 4 sur chaque surface, remonté en notes de domaine à comparer côte à côte."
+    sprouts:
+      - slug: ark-kritik-matrix-note
+        type: note
+        date: 2026-09-26
+        name: { en: "Scores you can't average away", fr: "Des notes qu'on ne noie pas dans la moyenne" }
+        description:
+          en: "Maturity per criterion, weighted into domain grades, with a cap that keeps a critical hole visible."
+          fr: "Une maturité par critère, pondérée en notes de domaine, avec un plafond qui garde un trou critique bien visible."
+        content:
+          en: |
+            Kritik audits **surfaces**: the independently assessable parts of your product. That might be a web app, an iOS app, an admin back-office, a database contract. You pick them when you install Kritik, and the same criteria are then scored the same way on each one. That's what makes it a matrix and not five unrelated reports.
+
+            Each criterion gets a **maturity score from 0 to 4**. It measures how *systematically* a concern is handled, not whether the code happens to be fine today. The top score means automation or CI makes regressing impossible. And no score without evidence: every assessment points at something real in the code, pinned to a commit.
+
+            Criteria roll up into **domains** (security, privacy, accessibility, performance, architecture, agent-readiness and more), weighted so the load-bearing criteria count more. Each domain lands on a 0–100 score and a **grade** from A to E. Your profile also weights the domains themselves, so the overall grade reflects what matters for *your* product.
+
+            The rule that keeps it honest: **an open critical finding caps the grade** (and an open high one caps it too, a little higher). A domain can score well on maturity and still show a capped grade with an asterisk, because one exploitable hole shouldn't disappear behind a pile of good habits.
+
+            Read a cell against the others in its row. Same domain, different surfaces: that's where the matrix earns its keep, showing you which part of the product lags and whether a weakness repeats everywhere or lives in one place.
+          fr: |
+            Kritik audite des **surfaces** : les morceaux de ton produit qu'on peut évaluer séparément. Une app web, une app iOS, un back-office, un contrat de base de données. Tu les choisis à l'installation, et les mêmes critères sont notés de la même façon sur chacune. C'est ce qui en fait une matrice, et pas cinq rapports sans lien.
+
+            Chaque critère reçoit une **note de maturité de 0 à 4**. Elle mesure à quel point un sujet est traité *systématiquement*, pas si le code a l'air correct aujourd'hui. La note maximale veut dire qu'un automatisme ou la CI rend la régression impossible. Et pas de note sans preuve : chaque évaluation pointe vers quelque chose de concret dans le code, ancré sur un commit.
+
+            Les critères remontent en **domaines** (sécurité, vie privée, accessibilité, performance, architecture, préparation aux agents, etc.), pondérés pour que les critères porteurs pèsent plus. Chaque domaine obtient un score sur 100 et une **note** de A à E. Ton profil pondère aussi les domaines entre eux, pour que la note globale reflète ce qui compte pour *ton* produit.
+
+            La règle qui garde le tout honnête : **un constat critique ouvert plafonne la note** (un constat élevé aussi, un cran plus haut). Un domaine peut afficher une bonne maturité et une note plafonnée avec un astérisque, parce qu'un trou exploitable ne doit pas disparaître derrière une pile de bonnes habitudes.
+
+            Lis une case par rapport aux autres de sa ligne. Même domaine, surfaces différentes : c'est là que la matrice paie, en montrant quelle partie du produit traîne, et si une faiblesse se répète partout ou vit à un seul endroit.
+      - slug: ark-kritik-matrix-pilot
+        type: essay
+        date: 2026-08-28
+        name: { en: "What auditing Pebbles taught us", fr: "Ce qu'auditer Pebbles nous a appris" }
+        description:
+          en: "Kritik's first real run, on a five-surface product: strong craft, missing launch-hardening, and a cap that earned its place."
+          fr: "Le premier vrai passage de Kritik, sur un produit à cinq surfaces : un bel artisanat, un blindage de lancement absent, et un plafond qui a mérité sa place."
+        content:
+          en: |
+            A framework is just a nice document until it meets a real product. So before proposing Kritik as part of Arkaik, it ran on Pebbles: five surfaces (web, iOS, Android, an admin back-office, and the database they all share), eleven domains, 88 criteria, every score backed by evidence from the code.
+
+            The first lesson was about shape. The matrix told one story at a glance: **strong craft, missing launch-hardening.** Architecture and agent-readiness sat in the B band on most surfaces; safety, store compliance and GDPR sat at the bottom. And because four clients share one database contract, the weak spots repeated identically across columns. That's not five bugs, it's one gap seen five times, and only a per-surface matrix makes that obvious.
+
+            The second lesson was the cap. The database surface scored respectably on security maturity, yet showed a D with an asterisk: one open critical finding. An average would have hidden the single exploitable hole behind a row of healthy criteria. The cap refused to, and that's exactly the behavior you want from a quality score you're going to show people.
+
+            The third was about trust. Every critical and high finding went through an independent attempt to disprove it before it was kept. All 41 survived. That's the step that turns an agent-generated audit from "interesting" into "actionable": findings that argue with themselves before they reach you.
+
+            The last lesson was about who does the work. The whole audit was run by a small army of agents, one per cell, plus cross-surface and verification passes. Which settled the design question: Kritik has to be built to be run by agents, repeatedly, with the results landing in the same journal everything else in Arkaik grows from.
+          fr: |
+            Un framework reste un joli document tant qu'il n'a pas rencontré un vrai produit. Alors avant de proposer Kritik dans Arkaik, on l'a fait tourner sur Pebbles : cinq surfaces (web, iOS, Android, un back-office admin et la base de données qu'ils partagent), onze domaines, 88 critères, chaque note appuyée sur des preuves tirées du code.
+
+            Première leçon, la forme. La matrice racontait une histoire d'un seul coup d'œil : **un bel artisanat, mais pas de blindage pour le lancement.** Architecture et préparation aux agents tenaient la bande B sur la plupart des surfaces ; sécurité des personnes, conformité aux stores et RGPD traînaient en bas. Et comme quatre clients partagent un même contrat de base, les points faibles se répétaient à l'identique d'une colonne à l'autre. Pas cinq bugs, un seul trou vu cinq fois, et seule une matrice par surface le rend évident.
+
+            Deuxième leçon, le plafond. La surface base de données avait une maturité sécurité honorable, et pourtant un D avec astérisque : un constat critique ouvert. Une moyenne aurait caché ce trou exploitable derrière une rangée de critères en bonne santé. Le plafond a refusé, et c'est exactement ce qu'on attend d'une note qualité qu'on va montrer à d'autres.
+
+            Troisième leçon, la confiance. Chaque constat critique ou élevé a subi une tentative indépendante de réfutation avant d'être retenu. Les 41 ont tenu. C'est l'étape qui fait passer un audit généré par des agents de « intéressant » à « actionnable » : des constats qui se contredisent eux-mêmes avant d'arriver jusqu'à toi.
+
+            Dernière leçon, qui fait le travail. L'audit entier a été mené par une petite armée d'agents, un par case, plus des passes transverses et de vérification. Ça a tranché la question de design : Kritik doit être pensé pour être lancé par des agents, encore et encore, avec des résultats qui atterrissent dans le même journal que tout le reste d'Arkaik.
+      - slug: ark-kritik-matrix-audit
+        type: milestone
+        date: 2026-08-06
+        name: { en: "The audit before Kritik", fr: "L'audit d'avant Kritik" }
+        description:
+          en: "A one-off codebase quality audit, run by hand, that showed quality deserved a repeatable framework of its own."
+          fr: "Un audit qualité du code, fait une fois à la main, qui a montré que la qualité méritait son propre cadre, rejouable."
+  - slug: ark-kritik-findings
+    cover: shots/ark-kritik-findings.png
+    name: { en: "Findings you can act on", fr: "Des constats actionnables" }
+    description:
+      en: "Every defect weighed by impact, likelihood and cost, tracked from open to closed, and watched between audits."
+      fr: "Chaque défaut pesé en impact, probabilité et coût, suivi de l'ouverture à la clôture, et surveillé entre deux audits."
+    sprouts:
+      - slug: ark-kritik-findings-note
+        type: note
+        date: 2026-09-26
+        name: { en: "From alarm to to-do list", fr: "De l'alarme à la to-do" }
+        description:
+          en: "Risk sets the priority, cost sets the plan, and a lifecycle keeps every finding accounted for."
+          fr: "Le risque fixe la priorité, le coût fixe le plan, et un cycle de vie garde chaque constat en vue."
+        content:
+          en: |
+            A score tells you where you stand. A **finding** tells you what to do. Each one is a concrete defect on a concrete surface, tied to the criterion it breaks, with evidence you can open and check.
+
+            Findings carry their own weight, separate from maturity. **Impact** (how bad if it happens) times **likelihood** (how likely it is) gives the risk, and the severity and priority lanes are derived from it, not typed by hand. A **cost** estimate, from a half-day fix to a cross-surface migration, sits beside it. Together they answer "what first?": high risk, low cost goes to the top.
+
+            Every finding lives through a lifecycle. It's **open** until a fix merges and it's **resolved**. It can be **refuted** when verification shows it wasn't real. Or it can be an **accepted risk**, which needs a written note, like a decision. Nothing just quietly disappears.
+
+            And quality doesn't wait for the next big audit. Each criterion comes with mechanical **signals**: searches that must find nothing, CI jobs that must exist. Run them on a schedule and a regression shows up as a **tripped signal** the day it happens, not three months later.
+
+            Findings can point at the nodes of your product graph, so a security gap shows up next to the flow it affects. All of it is recorded as journal events, so the quality history is as append-only and trustworthy as the rest of Arkaik.
+          fr: |
+            Une note te dit où tu en es. Un **constat** te dit quoi faire. Chacun est un défaut précis sur une surface précise, lié au critère qu'il enfreint, avec une preuve que tu peux ouvrir et vérifier.
+
+            Les constats ont leur propre poids, distinct de la maturité. L'**impact** (à quel point c'est grave) multiplié par la **probabilité** (à quel point ça risque d'arriver) donne le risque, et la sévérité comme la priorité en découlent, pas de saisie à la main. Une estimation de **coût**, du correctif d'une demi-journée à la migration multi-surfaces, vient à côté. Ensemble, ils répondent à « par quoi je commence ? » : gros risque, petit coût, en haut de la pile.
+
+            Chaque constat suit un cycle de vie. Il reste **ouvert** jusqu'à ce qu'un correctif soit fusionné et qu'il passe **résolu**. Il peut être **réfuté** quand la vérification montre qu'il n'était pas réel. Ou devenir un **risque accepté**, qui exige une note écrite, comme une décision. Rien ne disparaît en douce.
+
+            Et la qualité n'attend pas le prochain grand audit. Chaque critère vient avec des **signaux** mécaniques : des recherches qui ne doivent rien trouver, des jobs CI qui doivent exister. Lance-les à intervalle régulier et une régression apparaît comme un **signal déclenché** le jour même, pas trois mois plus tard.
+
+            Les constats peuvent pointer vers les nœuds de ton graphe produit : une faille de sécurité s'affiche à côté du parcours qu'elle touche. Tout est enregistré comme événements du journal, donc l'historique qualité est aussi immuable et fiable que le reste d'Arkaik.

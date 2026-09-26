@@ -1,0 +1,250 @@
+pod:
+  slug: ark-atelier
+  plant: arkaik
+  name: { en: "The making of", fr: "Dans l'atelier" }
+  description:
+    en: "Why Arkaik is built the way it is: one graph, many products, a map of itself, and a stack you can read in an afternoon."
+    fr: "Pourquoi Arkaik est construit comme ça : un graphe, plusieurs produits, une carte de lui-même, et une stack qui se lit en un après-midi."
+  content:
+    en: |
+      Every tool is a stack of choices. This pod opens the workshop door and walks through the four that shape Arkaik the most.
+
+      It starts with the refusal at the heart of it: not another tracker, wiki or design tool, but one graph where your product's layers finally meet.
+
+      ::entity{ref=bean:ark-vision}
+
+      Then the moment the model had to grow up: one project can hold several products, and "which app?" is not the same question as "which platform?".
+
+      ::entity{ref=bean:ark-products}
+
+      Arkaik keeps itself honest by eating its own cooking. Its own anatomy lives in the same format you use.
+
+      ::entity{ref=bean:ark-self-map}
+
+      And finally, what it all runs on, and why the stack stays deliberately approachable.
+
+      ::entity{ref=bean:ark-stack}
+    fr: |
+      Chaque outil est une pile de choix. Ce pod t'ouvre la porte de l'atelier et te montre les quatre qui façonnent le plus Arkaik.
+
+      On commence par le refus fondateur : pas un énième tracker, wiki ou outil de design, mais un graphe où les couches de ton produit se rencontrent enfin.
+
+      ::entity{ref=bean:ark-vision}
+
+      Puis le moment où le modèle a dû grandir : un projet peut contenir plusieurs produits, et « quelle app ? » n'est pas la même question que « quelle plateforme ? ».
+
+      ::entity{ref=bean:ark-products}
+
+      Arkaik reste honnête en goûtant sa propre cuisine : sa propre anatomie vit dans le même format que le tien.
+
+      ::entity{ref=bean:ark-self-map}
+
+      Et pour finir, ce sur quoi tout ça tourne, et pourquoi la stack reste volontairement abordable.
+
+      ::entity{ref=bean:ark-stack}
+beans:
+  - slug: ark-vision
+    cover: shots/ark-vision.png
+    name: { en: "Why one graph", fr: "Pourquoi un seul graphe" }
+    description:
+      en: "Why not just Jira, Figma, Notion and Swagger? Because your product lives between them."
+      fr: "Pourquoi pas juste Jira, Figma, Notion et Swagger ? Parce que ton produit vit entre eux."
+    sprouts:
+      - slug: ark-vision-note
+        type: note
+        date: 2026-09-26
+        name: { en: "The product lives in the gaps", fr: "Le produit vit dans les interstices" }
+        description:
+          en: "Tickets, mockups, docs and API specs each hold a slice. Arkaik holds the connections."
+          fr: "Tickets, maquettes, docs et specs d'API ont chacun une tranche. Arkaik garde les liens."
+        content:
+          en: |
+            Product knowledge is usually scattered: tasks in Jira, screens in Figma, decisions in Notion, the data model in dbdiagram, endpoints in Swagger. Each tool is good at its slice. None of them can tell you which screens render a given data model, or which API payload a user flow ends up touching.
+
+            Arkaik is built around that missing question. Flows, screens, data models and API endpoints live as nodes in one graph, so you can travel from a user journey down to the payload it hits, or from a data model back up to every screen that shows it, across platforms.
+
+            It is just as clear about what it is not. It is not a task tracker: it links to your issues and PRs, it never becomes the place you manage them. It is not a wiki, and it is not a design tool. It is a navigable map of your product's full anatomy.
+
+            One graph, many maps: the same data is read through a journey map, a system map, a delivery board and an overview. Every human view has an agent-readable twin, so nothing is drawn that cannot be queried.
+          fr: |
+            Le savoir produit est souvent éparpillé : les tâches dans Jira, les écrans dans Figma, les décisions dans Notion, le modèle de données dans dbdiagram, les endpoints dans Swagger. Chaque outil gère bien sa tranche. Aucun ne sait te dire quels écrans affichent tel modèle de données, ni quel payload d'API un parcours finit par toucher.
+
+            Arkaik est construit autour de cette question manquante. Parcours, écrans, modèles de données et endpoints sont des nœuds d'un même graphe : tu descends d'un parcours utilisateur jusqu'au payload qu'il touche, ou tu remontes d'un modèle de données vers tous les écrans qui l'affichent, toutes plateformes confondues.
+
+            Il est tout aussi clair sur ce qu'il n'est pas. Pas un tracker de tâches : il pointe vers tes issues et tes PR, sans jamais devenir l'endroit où tu les gères. Pas un wiki, pas un outil de design. Une carte navigable de toute l'anatomie de ton produit.
+
+            Un graphe, plusieurs cartes : les mêmes données se lisent en carte des parcours, carte système, tableau de livraison et vue d'ensemble. Chaque vue humaine a son jumeau lisible par un agent : rien n'est dessiné qui ne puisse être interrogé.
+      - slug: ark-vision-born
+        type: milestone
+        date: 2026-03-19
+        name: { en: "Arkaik is born", fr: "Arkaik voit le jour" }
+        description:
+          en: "The first commit: a product graph browser, local-first from day one."
+          fr: "Le premier commit : un navigateur de graphe produit, local-first dès le premier jour."
+      - slug: ark-vision-many-maps
+        type: milestone
+        date: 2026-07-13
+        name: { en: "One graph, many maps", fr: "Un graphe, plusieurs cartes" }
+        description:
+          en: "Maps become named projections over the graph: journey and system maps land, and custom maps are just data."
+          fr: "Les cartes deviennent des projections nommées du graphe : cartes des parcours et système arrivent, et les cartes perso ne sont que des données."
+  - slug: ark-products
+    cover: shots/ark-products.png
+    name: { en: "One graph, many products", fr: "Un graphe, plusieurs produits" }
+    description:
+      en: "An app and its back office share one graph, without the admin screens looking 'missing on iOS'."
+      fr: "Une app et son back-office partagent un graphe, sans que les écrans d'admin aient l'air « absents sur iOS »."
+    sprouts:
+      - slug: ark-products-note
+        type: note
+        date: 2026-09-26
+        name: { en: "Which app, then which platform", fr: "Quelle app, puis quelle plateforme" }
+        description:
+          en: "Products are a separate axis from platforms: a product offers a menu of platforms, each screen picks from it."
+          fr: "Les produits sont un axe distinct des plateformes : un produit propose un menu de plateformes, chaque écran pioche dedans."
+        content:
+          en: |
+            Real projects rarely ship one product. There is the app and its back office, the end-user side and the author side, or a web app plus a CLI plus an agent plugin. They share data models and endpoints, so they belong in one graph, but they do not ship to the same places.
+
+            So Arkaik lets a project declare its products, each with its own list of platforms. Your diary app can run on web, iOS and Android while its admin lives on the web only. Flows and screens say which product they belong to; the platforms a screen can target are limited to what its product ships on.
+
+            Data models and endpoints never have to pick a side. Their product is worked out from the screens that use them, which means an endpoint card can tell you it is used by both the app and the admin.
+
+            The payoff is honest numbers. The delivery board stops counting admin screens against an Android column they will never join, and the acceptance matrix only shows the columns that can actually fill up.
+          fr: |
+            Les vrais projets livrent rarement un seul produit. Il y a l'app et son back-office, le côté utilisateur et le côté auteur, ou une web app plus une CLI plus un plugin d'agent. Ils partagent modèles de données et endpoints, donc ils vont dans un même graphe, mais ils ne sortent pas aux mêmes endroits.
+
+            Arkaik laisse donc un projet déclarer ses produits, chacun avec sa liste de plateformes. Ton app de journal tourne sur web, iOS et Android pendant que son admin reste sur le web. Parcours et écrans disent à quel produit ils appartiennent ; les plateformes d'un écran se limitent à celles de son produit.
+
+            Modèles de données et endpoints n'ont jamais à choisir leur camp. Leur produit se déduit des écrans qui les utilisent : une carte d'endpoint peut te dire qu'il sert à la fois l'app et l'admin.
+
+            Résultat : des chiffres honnêtes. Le tableau de livraison arrête de compter les écrans d'admin contre une colonne Android qu'ils ne rejoindront jamais, et la matrice d'acceptation n'affiche que les colonnes qui peuvent vraiment se remplir.
+      - slug: ark-products-essay
+        type: essay
+        date: 2026-08-02
+        name: { en: "The screen missing on iOS", fr: "L'écran absent sur iOS" }
+        description:
+          en: "How one platform axis quietly answered two questions, and the small fix that split them."
+          fr: "Comment un seul axe plateforme répondait en douce à deux questions, et le petit correctif qui les a séparées."
+        content:
+          en: |
+            Pebbles is a diary app on web, iOS and Android, with a back office that only runs in a browser. In the map, every admin screen carried an iOS status and an Android status, both empty. And an empty status reads as work not done yet. The delivery board counted them against Android; the acceptance matrix gave them two columns that would stay blank forever.
+
+            Nothing was broken. Every number was correct for the data it was given. The data said "this screen has no iOS status", and the only sentence the model could build from that was "missing on iOS". Two other projects hit the same wall, and so did Arkaik itself, an app plus a CLI plus an agent plugin. Three unrelated projects hitting one wall is not a bug, it is a shape problem.
+
+            The platform field was answering two questions at once: which app is this screen part of, and which runtime does that app ship on? While a project meant one product, the first question had one answer, so nobody asked it. A conflated dimension stays invisible while the second one has only one value. You find it when the second value arrives.
+
+            Two tempting fixes were set aside. Flattening everything into per-project "targets" (app-web, admin-web...) multiplies names and loses the clean "is this live on iOS?" axis the acceptance matrix stands on. Making products a node species, linked by edges, turns a configuration question into a graph traversal and hangs every screen off a pseudo-node that is not part of the product.
+
+            What shipped is the boring option. Products are project-level definitions with their own platform list, flows and screens name their product, and data models and endpoints derive theirs from who uses them. The key move is the smallest: a node's own platforms stay the source of truth, and the product only offers a menu to intersect with. No existing view had to be rewired.
+          fr: |
+            Pebbles est une app de journal sur web, iOS et Android, avec un back-office qui ne tourne que dans un navigateur. Dans la carte, chaque écran d'admin portait un statut iOS et un statut Android, tous deux vides. Et un statut vide se lit comme du travail pas encore fait. Le tableau de livraison les comptait contre Android ; la matrice d'acceptation leur donnait deux colonnes condamnées à rester blanches.
+
+            Rien n'était cassé. Chaque chiffre était juste vis-à-vis des données reçues. Les données disaient « cet écran n'a pas de statut iOS », et la seule phrase que le modèle savait en tirer était « absent sur iOS ». Deux autres projets ont buté sur le même mur, et Arkaik lui-même aussi, une app plus une CLI plus un plugin d'agent. Trois projets sans lien qui butent sur le même mur, ce n'est pas un bug, c'est un problème de forme.
+
+            Le champ plateforme répondait à deux questions à la fois : de quelle app cet écran fait-il partie, et sur quel runtime cette app sort-elle ? Tant qu'un projet voulait dire un produit, la première question n'avait qu'une réponse, donc personne ne la posait. Une dimension confondue reste invisible tant que l'autre n'a qu'une valeur. Tu la découvres quand la deuxième valeur débarque.
+
+            Deux correctifs séduisants ont été écartés. Tout aplatir en « cibles » par projet (app-web, admin-web...) multiplie les noms et perd l'axe net « est-ce live sur iOS ? » sur lequel repose la matrice d'acceptation. Faire des produits une espèce de nœud reliée par des arêtes transforme une question de config en parcours de graphe, et accroche chaque écran à un pseudo-nœud qui ne fait pas partie du produit.
+
+            Ce qui a été livré, c'est l'option ennuyeuse. Les produits sont des définitions au niveau du projet avec leur propre liste de plateformes, parcours et écrans nomment leur produit, et modèles de données et endpoints déduisent le leur de qui les utilise. Le geste clé est le plus petit : les plateformes d'un nœud restent la source de vérité, le produit propose seulement un menu avec lequel faire l'intersection. Aucune vue existante n'a dû être recâblée.
+      - slug: ark-products-decision
+        type: decision
+        date: 2026-08-03
+        name: { en: "Products as project definitions", fr: "Les produits, définis au niveau du projet" }
+        description:
+          en: "Decided and shipped: products live in project metadata, and nodes keep their own platforms."
+          fr: "Décidé et livré : les produits vivent dans les métadonnées du projet, et les nœuds gardent leurs plateformes."
+        content:
+          en: |
+            The Products RFC settled on products as project-level definitions: each product has an id, a title and the platforms it ships on. Flows and screens carry their product; acceptances derive it from what they cover; data models and endpoints derive it from the screens that reach them. A node may only target platforms its product ships on.
+
+            It shipped right after the decision. Per-target flattening and product-as-node were both rejected, and a per-surface product override stays deferred until someone actually needs it.
+          fr: |
+            La RFC Produits a tranché : les produits sont des définitions au niveau du projet, chacun avec un id, un titre et ses plateformes. Parcours et écrans portent leur produit ; les acceptations le déduisent de ce qu'elles couvrent ; modèles de données et endpoints le déduisent des écrans qui les atteignent. Un nœud ne peut cibler que les plateformes de son produit.
+
+            C'est sorti juste après la décision. L'aplatissement en cibles et le produit-comme-nœud ont été écartés, et une surcharge de produit par surface reste en attente jusqu'à ce que quelqu'un en ait vraiment besoin.
+  - slug: ark-self-map
+    cover: shots/ark-self-map.png
+    name: { en: "Arkaik maps itself", fr: "Arkaik se cartographie" }
+    description:
+      en: "The best proof of a map format is the tool's own anatomy, kept in it and open for you to explore."
+      fr: "La meilleure preuve d'un format de carte, c'est l'anatomie de l'outil lui-même, rangée dedans et ouverte à l'exploration."
+    sprouts:
+      - slug: ark-self-map-note
+        type: note
+        date: 2026-09-26
+        name: { en: "Eating its own cooking", fr: "Goûter sa propre cuisine" }
+        description:
+          en: "Arkaik's flows, screens, data models and endpoints live in an Arkaik bundle, shipped as a public seed project."
+          fr: "Parcours, écrans, modèles et endpoints d'Arkaik vivent dans un bundle Arkaik, livré comme projet exemple public."
+        content:
+          en: |
+            A mapping tool that cannot map itself would be a bit suspicious. So Arkaik keeps its own anatomy in its own format: the self-map, a real bundle of Arkaik's flows, screens, data models and endpoints.
+
+            It ships as a built-in public seed project, so you can open it and wander around a product you are already using. It doubles as a tour: the journey map shows how you move through Arkaik, the system map shows what each screen stands on.
+
+            It is also a test. The validator runs against the self-map on every change, next to the other seeds, so a format change that would break a real project breaks here first.
+
+            And because Arkaik is an app plus a CLI plus an agent plugin, the self-map is where the tool meets its own edge cases, like several products sharing one graph. When the map feels awkward to keep, that is usually a sign the model needs to grow.
+          fr: |
+            Un outil de cartographie incapable de se cartographier, ce serait un peu louche. Arkaik garde donc sa propre anatomie dans son propre format : la self-map, un vrai bundle des parcours, écrans, modèles de données et endpoints d'Arkaik.
+
+            Elle est livrée comme projet exemple public intégré : tu peux l'ouvrir et te balader dans un produit que tu utilises déjà. Elle fait aussi office de visite guidée : la carte des parcours montre comment tu circules dans Arkaik, la carte système montre sur quoi repose chaque écran.
+
+            C'est aussi un test. Le validateur tourne sur la self-map à chaque changement, à côté des autres exemples : un changement de format qui casserait un vrai projet casse ici en premier.
+
+            Et comme Arkaik, c'est une app plus une CLI plus un plugin d'agent, la self-map est l'endroit où l'outil rencontre ses propres cas limites, comme plusieurs produits dans un graphe. Quand la carte devient pénible à tenir, c'est souvent le signe que le modèle doit grandir.
+  - slug: ark-stack
+    cover: shots/ark-stack.png
+    name: { en: "What it runs on", fr: "Ce qui tourne dessous" }
+    description:
+      en: "Next.js, React Flow, ELK, IndexedDB, and one shared schema, kept plain enough to read and fork."
+      fr: "Next.js, React Flow, ELK, IndexedDB et un schéma partagé, gardés assez simples pour être lus et forkés."
+    sprouts:
+      - slug: ark-stack-note
+        type: note
+        date: 2026-09-26
+        name: { en: "A stack you can read", fr: "Une stack qui se lit" }
+        description:
+          en: "Mainstream pieces, local-first storage, and one schema that the app, CLI and agents all share."
+          fr: "Des briques connues, un stockage local-first, et un schéma que l'app, la CLI et les agents partagent."
+        content:
+          en: |
+            Arkaik is a Next.js app. The canvas is React Flow, and the layouts are computed by ELK, which lays out your journeys and system layers so you never drag boxes around by hand.
+
+            Your data stays with you by default. Projects live in your browser's IndexedDB (through Dexie), so Lokal works with no account and no server. Postgres only enters the picture for the optional services: publishing, syncing and hosted projects.
+
+            The backbone is one shared schema. The same model, validation and projections power the app, the command line and the MCP server your agents talk to. What the canvas draws, the CLI can print and an agent can query, from the very same functions.
+
+            The choices are deliberately unexotic. Mainstream, well-documented pieces mean you can read the code, self-host it, or fork it without first learning a private framework.
+          fr: |
+            Arkaik est une app Next.js. Le canevas, c'est React Flow, et les mises en page sont calculées par ELK, qui range tes parcours et tes couches système pour que tu n'aies jamais à déplacer des boîtes à la main.
+
+            Tes données restent chez toi par défaut. Les projets vivent dans l'IndexedDB de ton navigateur (via Dexie) : Lokal marche sans compte ni serveur. Postgres n'entre en jeu que pour les services optionnels : publication, synchronisation et projets hébergés.
+
+            La colonne vertébrale, c'est un schéma partagé. Le même modèle, la même validation et les mêmes projections font tourner l'app, la ligne de commande et le serveur MCP auquel parlent tes agents. Ce que le canevas dessine, la CLI peut l'imprimer et un agent peut l'interroger, avec exactement les mêmes fonctions.
+
+            Les choix sont volontairement peu exotiques. Des briques connues et bien documentées : tu peux lire le code, l'auto-héberger ou le forker sans apprendre d'abord un framework maison.
+      - slug: ark-stack-bundle-v2
+        type: milestone
+        date: 2026-07-11
+        name: { en: "Bundle format v2", fr: "Format de bundle v2" }
+        description:
+          en: "The bundle grows up: typed references, an append-only journal and semantic validation."
+          fr: "Le bundle grandit : références typées, journal en ajout seul et validation sémantique."
+      - slug: ark-stack-dev-viewer
+        type: decision
+        date: 2026-07-12
+        name: { en: "Local viewer, deferred", fr: "Le visualiseur local, reporté" }
+        description:
+          en: "A local viewer over your repo's bundle is a good idea, just not yet."
+          fr: "Un visualiseur local sur le bundle de ton repo, bonne idée, mais pas tout de suite."
+        content:
+          en: |
+            The RFC looked at a local viewer that would open your repo's bundle straight in the app. It is feasible, but not cheap: the project pages would need to become static-export friendly, and the real work, a read-only data source fed by the repo bundle, is tangled with the move to IndexedDB and is best done once, after it.
+
+            Meanwhile, the existing "open in the app" path (validate, pack, hand off to arkaik.app) already covers the need. So the build was deferred, not dropped: small enabling refactors can land along the way, keeping the door open.
+          fr: |
+            La RFC a étudié un visualiseur local qui ouvrirait le bundle de ton repo directement dans l'app. C'est faisable, mais pas gratuit : les pages projet devraient devenir compatibles export statique, et le vrai boulot, une source de données en lecture seule alimentée par le bundle du repo, est emmêlé avec la migration vers IndexedDB et mieux fait une seule fois, après elle.
+
+            En attendant, le chemin « ouvrir dans l'app » (valider, packer, passer la main à arkaik.app) couvre déjà le besoin. Le chantier est donc reporté, pas abandonné : de petits refactors préparatoires peuvent atterrir en route pour garder la porte ouverte.

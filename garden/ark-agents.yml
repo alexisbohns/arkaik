@@ -1,0 +1,190 @@
+pod:
+  slug: ark-agents
+  plant: arkaik
+  name: { en: "Maintained by agents", fr: "Entretenu par des agents" }
+  description:
+    en: "Who keeps the map alive? The agents already writing your code, patching the graph as they go."
+    fr: "Qui garde la carte vivante ? Les agents qui écrivent déjà ton code, en retouchant le graphe au passage."
+  content:
+    en: |
+      A product map dies the day nobody updates it. Arkaik's bet is simple: the people least likely to forget are the agents already touching your code. So the map gets four helpers, each with a different moment in the project's life.
+
+      The everyday one rides along with your coding agent. Rename a screen, add an endpoint, ship a flow, and the map moves with it, history included.
+
+      ::entity{ref=bean:ark-skill}
+
+      When an agent wants to ask the map a question, or change it safely, it talks to a server that knows the rules and refuses to break them.
+
+      ::entity{ref=bean:ark-mcp}
+
+      Coming to Arkaik with a repo that already has years of history? A one-time onboarding run reads your merged pull requests and builds the map from what actually shipped.
+
+      ::entity{ref=bean:ark-bootstrap}
+
+      And if all you have is a pitch, the prompt builder turns a paragraph into a first map to argue with.
+
+      ::entity{ref=bean:ark-generate}
+    fr: |
+      Une carte produit meurt le jour où plus personne ne la met à jour. Le pari d'Arkaik est simple : ceux qui risquent le moins d'oublier, ce sont les agents qui touchent déjà ton code. La carte a donc quatre assistants, chacun pour un moment différent de la vie du projet.
+
+      Celui du quotidien voyage avec ton agent de code. Renomme un écran, ajoute un endpoint, livre un parcours, et la carte suit, historique compris.
+
+      ::entity{ref=bean:ark-skill}
+
+      Quand un agent veut interroger la carte, ou la modifier sans risque, il parle à un serveur qui connaît les règles et refuse de les enfreindre.
+
+      ::entity{ref=bean:ark-mcp}
+
+      Tu arrives sur Arkaik avec un repo qui a déjà des années d'histoire ? Un onboarding unique lit tes pull requests fusionnées et construit la carte à partir de ce qui a vraiment été livré.
+
+      ::entity{ref=bean:ark-bootstrap}
+
+      Et si tu n'as qu'un pitch, le générateur de prompt transforme un paragraphe en une première carte à discuter.
+
+      ::entity{ref=bean:ark-generate}
+beans:
+  - slug: ark-skill
+    cover: shots/ark-skill.png
+    name: { en: "The map-keeping skill", fr: "Le skill qui tient la carte" }
+    description:
+      en: "A Claude Code skill that updates the map as a side effect of changing the code."
+      fr: "Un skill Claude Code qui met la carte à jour comme effet de bord de tes changements de code."
+    sprouts:
+      - slug: ark-skill-note
+        type: note
+        date: 2026-09-26
+        name: { en: "Surgical, never regenerated", fr: "Chirurgical, jamais régénéré" }
+        description:
+          en: "Change the code, and the agent patches the nodes you touched and logs what happened. No big rewrites."
+          fr: "Change le code, et l'agent retouche les nœuds concernés et note ce qui s'est passé. Pas de grande réécriture."
+        content:
+          en: |
+            The skill is a set of instructions your coding agent picks up whenever a change touches product architecture: a new screen, a renamed route, a data model that grew a field, a feature moving from idea to live. Nobody has to ask. If the code changed the product's shape, the map changes too.
+
+            It works surgically. The agent patches the exact nodes and edges involved and leaves everything else alone. It never regenerates the map from scratch, so your hand-written descriptions, decisions and acceptances survive every commit.
+
+            Every patch writes twice: the snapshot gets updated, and a typed event is appended to the journal. That's what lets Arkaik show a changelog, a timeline and a backlog later on. The map doesn't just say where things are, it remembers how they got there.
+
+            Setup is one command. `arkaik init` renders the skill for your project, and it also ships as a Claude Code plugin. When the skill evolves, an update upgrades it cleanly instead of trampling your local tweaks.
+          fr: |
+            Le skill, c'est un ensemble d'instructions que ton agent de code applique dès qu'un changement touche l'architecture produit : un nouvel écran, une route renommée, un modèle de données qui gagne un champ, une fonctionnalité qui passe d'idée à live. Personne n'a besoin de le demander. Si le code change la forme du produit, la carte suit.
+
+            Il travaille au scalpel. L'agent retouche exactement les nœuds et les liens concernés, et ne touche à rien d'autre. Il ne régénère jamais la carte de zéro : tes descriptions, décisions et acceptances écrites à la main survivent à chaque commit.
+
+            Chaque retouche s'écrit deux fois : l'instantané est mis à jour, et un événement typé s'ajoute au journal. C'est ce qui permet ensuite à Arkaik d'afficher un changelog, une frise et un backlog. La carte ne dit pas seulement où sont les choses, elle se souvient comment elles sont arrivées là.
+
+            L'installation tient en une commande. `arkaik init` génère le skill pour ton projet, et il existe aussi en plugin Claude Code. Quand le skill évolue, une mise à jour le remplace proprement sans écraser tes retouches locales.
+      - slug: ark-skill-lands
+        type: milestone
+        date: 2026-07-12
+        name: { en: "One command to start", fr: "Une commande pour démarrer" }
+        description:
+          en: "`arkaik init` scaffolds the skill in your repo, and the skill ships as a Claude Code plugin."
+          fr: "`arkaik init` installe le skill dans ton repo, et le skill sort en plugin Claude Code."
+  - slug: ark-mcp
+    cover: shots/ark-mcp.png
+    name: { en: "The agent plane", fr: "Le plan des agents" }
+    description:
+      en: "An MCP server that lets any agent read the map, change it safely, and run quality audits."
+      fr: "Un serveur MCP qui permet à n'importe quel agent de lire la carte, de la modifier sans casse et de lancer des audits qualité."
+    sprouts:
+      - slug: ark-mcp-note
+        type: note
+        date: 2026-09-26
+        name: { en: "Ask the map, don't parse it", fr: "Interroge la carte, ne la décortique pas" }
+        description:
+          en: "Read tools, validator-gated write tools and Kritik tools, over a local bundle or a hosted project."
+          fr: "Des outils de lecture, d'écriture gardés par le validateur et de Kritik, sur un bundle local ou un projet hébergé."
+        content:
+          en: |
+            An agent asked "what's blocked on iOS?" shouldn't have to swallow a four-thousand-line JSON file. The MCP server exposes the map as tools instead: list and filter nodes, open one with its neighbors and history, fetch a map, the changelog or the backlog. Every screen a human sees has an agent-shaped twin, built from the same functions.
+
+            Writing goes through a gate. Create a node, patch it, add an edge: the change is applied in memory, the matching journal events are derived, and the whole thing is validated. Any error, and nothing is written. The agent gets the exact problems back instead of a broken map.
+
+            Quality lives here too. A family of Kritik tools lets an agent read the audit matrix, list findings, check signals and spot regressions between two audits, so "is this screen getting better?" becomes a question an agent can answer.
+
+            It runs wherever your map does. Point it at the bundle in your repo, or at a hosted Arkaik project with an agent token. Same catalog, same rules. Setup is a single `npx` line.
+          fr: |
+            Un agent à qui on demande « qu'est-ce qui bloque sur iOS ? » ne devrait pas avoir à avaler un fichier JSON de quatre mille lignes. Le serveur MCP expose plutôt la carte sous forme d'outils : lister et filtrer les nœuds, en ouvrir un avec ses voisins et son historique, récupérer une carte, le changelog ou le backlog. Chaque écran humain a son jumeau pour agents, construit avec les mêmes fonctions.
+
+            L'écriture passe par un portique. Crée un nœud, modifie-le, ajoute un lien : le changement est appliqué en mémoire, les événements du journal sont dérivés, et le tout est validé. À la moindre erreur, rien n'est écrit. L'agent récupère les problèmes précis au lieu d'une carte cassée.
+
+            La qualité vit ici aussi. Une famille d'outils Kritik permet à un agent de lire la matrice d'audit, lister les constats, vérifier les signaux et repérer les régressions entre deux audits. « Est-ce que cet écran s'améliore ? » devient une question à laquelle un agent sait répondre.
+
+            Il tourne là où vit ta carte. Pointe-le vers le bundle de ton repo, ou vers un projet Arkaik hébergé avec un jeton d'agent. Même catalogue, mêmes règles. L'installation tient en une ligne `npx`.
+      - slug: ark-mcp-lands
+        type: milestone
+        date: 2026-07-14
+        name: { en: "The agent plane opens", fr: "Le plan des agents ouvre" }
+        description:
+          en: "The MCP server ships: agents can read and edit the map in your repo through validated tools."
+          fr: "Le serveur MCP sort : les agents lisent et modifient la carte de ton repo via des outils validés."
+      - slug: ark-mcp-hosted
+        type: milestone
+        date: 2026-07-28
+        name: { en: "MCP over hosted projects", fr: "Le MCP sur les projets hébergés" }
+        description:
+          en: "With an agent token, the same tools now work against a project hosted in your Arkaik account."
+          fr: "Avec un jeton d'agent, les mêmes outils marchent désormais sur un projet hébergé dans ton compte Arkaik."
+  - slug: ark-bootstrap
+    cover: shots/ark-bootstrap.png
+    name: { en: "Bootstrap from history", fr: "Démarrer depuis l'historique" }
+    description:
+      en: "A one-time onboarding run that builds the whole map from your repo's merged PRs."
+      fr: "Un onboarding unique qui construit toute la carte à partir des PR fusionnées de ton repo."
+    sprouts:
+      - slug: ark-bootstrap-note
+        type: note
+        date: 2026-09-26
+        name: { en: "Code for rigor, agents for judgment", fr: "Le code pour la rigueur, les agents pour le jugement" }
+        description:
+          en: "The CLI mines, plans, merges and validates. The agent decides what things are and what really shipped."
+          fr: "La CLI fouille, planifie, fusionne et valide. L'agent décide de ce que sont les choses et de ce qui a vraiment été livré."
+        content:
+          en: |
+            Most products don't start on Arkaik. They arrive with a repo, a pile of merged pull requests and design docs nobody reread. Bootstrap turns that history into a complete map in one run: screens, flows, models and endpoints, acceptances and values, platform scoping, and the product's whole past as journal events.
+
+            The work is split in two on purpose. The `arkaik bootstrap` CLI owns everything deterministic: mining the corpus, planning work units, slicing what each agent reads, merging what they write, validating the result. The agent owns what code can't decide: is this a screen or a flow, what did that PR actually ship, which value does this acceptance genuinely earn.
+
+            It works greenfield, from nothing, or brownfield, reconciling an existing map against the code. Agents work in waves, and each wave is checked against a reviewer's list before the next starts.
+
+            Then it gets out of the way. Bootstrap is onboarding, not upkeep: once the run lands, its skill is removed and the everyday map-keeping skill takes over.
+          fr: |
+            La plupart des produits ne naissent pas sur Arkaik. Ils arrivent avec un repo, une pile de pull requests fusionnées et des docs de conception que personne n'a relues. Le bootstrap transforme cet historique en carte complète en un seul passage : écrans, parcours, modèles et endpoints, acceptances et valeurs, plateformes, et tout le passé du produit sous forme d'événements de journal.
+
+            Le travail est coupé en deux, exprès. La CLI `arkaik bootstrap` gère tout ce qui est déterministe : fouiller le corpus, planifier les unités de travail, découper ce que chaque agent lit, fusionner ce qu'il écrit, valider le résultat. L'agent gère ce que le code ne peut pas trancher : écran ou parcours, ce qu'une PR a vraiment livré, quelle valeur une acceptance mérite vraiment.
+
+            Ça marche en terrain vierge, sans rien, ou sur l'existant, en réconciliant une carte déjà là avec le code. Les agents avancent par vagues, et chaque vague passe une checklist de relecture avant la suivante.
+
+            Puis il s'efface. Le bootstrap, c'est l'onboarding, pas l'entretien : une fois le passage terminé, son skill est retiré et le skill du quotidien prend le relais.
+  - slug: ark-generate
+    cover: shots/ark-generate.png
+    name: { en: "From pitch to first map", fr: "Du pitch à la première carte" }
+    description:
+      en: "A prompt builder that turns a product pitch into a first bundle any LLM can draft."
+      fr: "Un générateur de prompt qui transforme un pitch produit en premier bundle, rédigeable par n'importe quel LLM."
+    sprouts:
+      - slug: ark-generate-note
+        type: note
+        date: 2026-09-26
+        name: { en: "A paragraph in, a graph out", fr: "Un paragraphe en entrée, un graphe en sortie" }
+        description:
+          en: "Describe the product, pick platforms and depth, and get a prompt that yields a valid starting map."
+          fr: "Décris le produit, choisis plateformes et profondeur, et récupère un prompt qui produit une carte de départ valide."
+        content:
+          en: |
+            Sometimes there's no code yet, just an idea you can explain in a paragraph. The generate page is for that moment. It doesn't call a model itself; it builds the prompt you hand to one.
+
+            You give it a title and a pitch, choose the platforms, a default status and how detailed you want it. It can fold in the bundle schema and a worked example, and tune the wording for the model you plan to use. It even estimates how many tokens the prompt will cost.
+
+            Paste the answer back and you have a first bundle: flows, screens, data and endpoints to react to. It won't be right, and that's the point. A wrong map on the table beats a perfect one in your head.
+
+            The page tells you where the result will land, in your account, in this browser backed by Synk, or in this browser only, so there are no surprises about who can see your idea.
+          fr: |
+            Parfois, il n'y a pas encore de code, juste une idée qui tient en un paragraphe. La page de génération est faite pour ce moment-là. Elle n'appelle pas de modèle elle-même : elle construit le prompt que tu vas lui donner.
+
+            Tu lui donnes un titre et un pitch, tu choisis les plateformes, un statut par défaut et le niveau de détail. Elle peut embarquer le schéma du bundle et un exemple complet, et adapter la formulation au modèle que tu comptes utiliser. Elle estime même combien de tokens le prompt va coûter.
+
+            Recolle la réponse et tu as un premier bundle : parcours, écrans, données et endpoints sur lesquels réagir. Il ne sera pas juste, et c'est tout l'intérêt. Une carte fausse sur la table vaut mieux qu'une carte parfaite dans ta tête.
+
+            La page te dit où atterrira le résultat, dans ton compte, dans ce navigateur sauvegardé sur Synk, ou dans ce navigateur seulement. Pas de surprise sur qui peut voir ton idée.

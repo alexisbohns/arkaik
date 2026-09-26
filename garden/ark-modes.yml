@@ -1,0 +1,131 @@
+pod:
+  slug: ark-modes
+  plant: arkaik
+  name: { en: "Run it your way", fr: "Fais-le tourner à ta façon" }
+  description:
+    en: "Where does my data live? Wherever you decide. Four ways to run Arkaik, one bundle format under all of them."
+    fr: "Où vivent mes données ? Là où tu le décides. Quatre façons de faire tourner Arkaik, un seul format de bundle pour toutes."
+  content:
+    en: |
+      A tool for your product's anatomy should not decide where that anatomy lives. Arkaik needs no account to start and holds no lock-in to stay: every project is one bundle, and that bundle moves freely between four ways of running it.
+
+      The first two keep things light. Lokal is the default: your map lives in your browser, works offline, and leaves as a single JSON file whenever you want. Publik is how you show it off: a snapshot at a link anyone can open and import.
+
+      ::entity{ref=bean:ark-lokal-publik}
+
+      The other two are for when the map becomes shared infrastructure. Synk puts a project in your account so the app, your coding agents and your pull requests can all write to the same copy. Inkognito is the same stack on your own Postgres, for when nobody else's database is the whole point.
+
+      ::entity{ref=bean:ark-synk-inkognito}
+
+      Whichever you pick, export from one and import into another. The format is the promise; the modes are just addresses.
+    fr: |
+      Un outil qui décrit l'anatomie de ton produit n'a pas à décider où cette anatomie habite. Arkaik ne demande aucun compte pour démarrer et ne t'enferme nulle part : chaque projet est un bundle, et ce bundle circule librement entre quatre façons de le faire tourner.
+
+      Les deux premières restent légères. Lokal, c'est le mode par défaut : ta carte vit dans ton navigateur, marche hors ligne et part en un seul fichier JSON quand tu veux. Publik, c'est pour la montrer : un instantané derrière un lien que n'importe qui peut ouvrir et importer.
+
+      ::entity{ref=bean:ark-lokal-publik}
+
+      Les deux autres servent quand la carte devient une infrastructure partagée. Synk range un projet dans ton compte pour que l'app, tes agents de code et tes pull requests écrivent tous dans la même copie. Inkognito, c'est la même pile sur ton propre Postgres, quand le but est justement de n'utiliser la base de personne d'autre.
+
+      ::entity{ref=bean:ark-synk-inkognito}
+
+      Quel que soit ton choix, exporte d'un côté, importe de l'autre. Le format, c'est la promesse ; les modes ne sont que des adresses.
+beans:
+  - slug: ark-lokal-publik
+    cover: shots/ark-lokal-publik.png
+    name: { en: "Lokal and Publik", fr: "Lokal et Publik" }
+    description:
+      en: "Your map in your browser, no account needed, and a shareable snapshot when you want an audience."
+      fr: "Ta carte dans ton navigateur, sans compte, et un instantané à partager quand tu veux un public."
+    sprouts:
+      - slug: ark-lokal-publik-note
+        type: note
+        date: 2026-09-26
+        name: { en: "Yours first, shared on purpose", fr: "À toi d'abord, partagé exprès" }
+        description:
+          en: "Lokal keeps the whole project in your browser. Publik hands out a snapshot at a link, with your history left at home."
+          fr: "Lokal garde tout le projet dans ton navigateur. Publik distribue un instantané via un lien, en laissant ton historique à la maison."
+        content:
+          en: |
+            Open arkaik.app, create a project, and you are already running Lokal. There is no sign-up screen in the way. Your graph lives in your browser's own storage, so it keeps working on a train with no signal, and nothing about it touches a server.
+
+            Leaving is as easy as arriving. Export writes the whole project as one JSON file: every node, edge, status and journal entry. Import it into another browser, check it into a repo, or hand it to an agent. The file is the project.
+
+            When you want an audience, Publik publishes a snapshot and gives you a link at arkaik.app/p/{id}. Anyone with the link sees a preview (title, description, size of the graph) and can import their own copy to explore and edit locally. Think of it as a gist for product graphs.
+
+            Publik is careful about what leaves. Your journal is stripped by default, on the server side, so a forgotten flag never leaks your history. Snapshots are immutable: publishing again creates a new link. You get an owner key exactly once, and it is the only way to delete the snapshot later, so keep it somewhere safe.
+
+            No account is needed for either. Publishing works from the app or from the command line with `arkaik push`.
+          fr: |
+            Ouvre arkaik.app, crée un projet, et tu es déjà en Lokal. Aucun écran d'inscription sur ton chemin. Ton graphe vit dans le stockage de ton navigateur : il continue de marcher dans un train sans réseau, et rien ne passe par un serveur.
+
+            Partir est aussi simple qu'arriver. L'export écrit tout le projet dans un seul fichier JSON : chaque nœud, chaque lien, chaque statut, chaque entrée du journal. Importe-le dans un autre navigateur, range-le dans un repo ou confie-le à un agent. Le fichier, c'est le projet.
+
+            Quand tu veux un public, Publik publie un instantané et te donne un lien sur arkaik.app/p/{id}. Qui a le lien voit un aperçu (titre, description, taille du graphe) et peut importer sa propre copie pour l'explorer et la modifier en local. Un gist, mais pour les graphes produit.
+
+            Publik fait attention à ce qui sort. Ton journal est retiré par défaut, côté serveur, pour qu'un oubli d'option ne fasse jamais fuiter ton historique. Les instantanés sont immuables : republier crée un nouveau lien. Tu reçois une clé de propriétaire une seule fois, et c'est le seul moyen de supprimer l'instantané plus tard, alors garde-la bien.
+
+            Aucun compte n'est nécessaire, ni pour l'un ni pour l'autre. Tu publies depuis l'app ou en ligne de commande avec `arkaik push`.
+      - slug: ark-lokal-publik-publik-lands
+        type: milestone
+        date: 2026-07-12
+        name: { en: "Publik goes live", fr: "Publik est en ligne" }
+        description:
+          en: "Share a snapshot at a link, no account needed, journal stripped by default."
+          fr: "Partage un instantané via un lien, sans compte, journal retiré par défaut."
+  - slug: ark-synk-inkognito
+    cover: shots/ark-synk-inkognito.png
+    name: { en: "Synk and Inkognito", fr: "Synk et Inkognito" }
+    description:
+      en: "One hosted copy that your app, agents and pull requests all write to, on our servers or on yours."
+      fr: "Une seule copie hébergée où ton app, tes agents et tes pull requests écrivent tous, sur nos serveurs ou sur les tiens."
+    sprouts:
+      - slug: ark-synk-inkognito-note
+        type: note
+        date: 2026-09-26
+        name: { en: "One copy, many writers", fr: "Une copie, plein d'auteurs" }
+        description:
+          en: "Synk gives you backups and hosted projects behind a GitHub sign-in. Inkognito runs the very same services on your own infrastructure."
+          fr: "Synk t'offre sauvegardes et projets hébergés derrière une connexion GitHub. Inkognito fait tourner exactement les mêmes services sur ton infra."
+        content:
+          en: |
+            Sign in with GitHub and you get Synk, free. It started as a backup service: your local projects are copied to your account on an interval, with a week of versions to restore from, journal included.
+
+            Then came hosted projects. A hosted project lives in your account rather than in one browser, so the app and a coding agent in any repository can both read and write the same graph. Create an agent token, run `arkaik link` in a repo, and the agent edits the map through the MCP as it writes the code.
+
+            Connect a repo, or one folder of it, through the GitHub App and pull requests start moving your acceptances as work ships. Every change lands as an ordinary journal event with a real actor, and every write passes the same validation the command line uses. The trade-off, stated plainly: hosted projects need a connection. Lokal projects still work offline and stay the default.
+
+            Inkognito is for when the data must never sit on someone else's server. The app and services are open source, so you deploy them yourself on any Node host with any Postgres, even a Supabase one. Same code, same features, your keys, nobody else's database.
+
+            And because it is all one format, a hosted project can be exported and re-imported as a local one at any time.
+          fr: |
+            Connecte-toi avec GitHub et tu as Synk, gratuitement. Au départ, c'est un service de sauvegarde : tes projets locaux sont copiés sur ton compte à intervalle régulier, avec une semaine de versions à restaurer, journal compris.
+
+            Puis sont arrivés les projets hébergés. Un projet hébergé vit dans ton compte plutôt que dans un seul navigateur : l'app et un agent de code dans n'importe quel repo peuvent lire et écrire le même graphe. Crée un jeton d'agent, lance `arkaik link` dans un repo, et l'agent modifie la carte via le MCP pendant qu'il écrit le code.
+
+            Branche un repo, ou un seul dossier, via l'app GitHub, et les pull requests font avancer tes acceptations au rythme des livraisons. Chaque changement devient un événement de journal ordinaire avec un vrai auteur, et chaque écriture passe par la même validation que la ligne de commande. Le compromis, sans détour : un projet hébergé a besoin de réseau. Les projets Lokal marchent toujours hors ligne et restent le choix par défaut.
+
+            Inkognito, c'est pour quand tes données ne doivent jamais dormir sur le serveur de quelqu'un d'autre. L'app et les services sont open source : tu les déploies toi-même sur n'importe quel hébergeur Node avec n'importe quel Postgres, même celui de Supabase. Même code, mêmes fonctionnalités, tes clés, la base de personne d'autre.
+
+            Et comme tout partage un seul format, un projet hébergé peut être exporté puis réimporté en local quand tu veux.
+      - slug: ark-synk-inkognito-synk-lands
+        type: milestone
+        date: 2026-07-12
+        name: { en: "Synk goes live", fr: "Synk est en ligne" }
+        description:
+          en: "Sign in with GitHub and your local projects get backed up, with a week of versions to restore."
+          fr: "Connecte-toi avec GitHub et tes projets locaux sont sauvegardés, avec une semaine de versions à restaurer."
+      - slug: ark-synk-inkognito-hosted-projects
+        type: milestone
+        date: 2026-07-28
+        name: { en: "Hosted projects arrive", fr: "Les projets hébergés arrivent" }
+        description:
+          en: "Agent tokens, a hosted graph store, the MCP over hosted projects, and pull requests that move acceptances."
+          fr: "Jetons d'agent, stockage de graphe hébergé, MCP sur les projets hébergés, et des pull requests qui font avancer les acceptations."
+      - slug: ark-synk-inkognito-projects-sections
+        type: milestone
+        date: 2026-08-01
+        name: { en: "Hosted, Synked, Lokal", fr: "Hébergé, Synké, Lokal" }
+        description:
+          en: "The projects page sorts your work into Hosted, Synked and Lokal sections, so you always know where each map lives."
+          fr: "La page des projets range ton travail en sections Hébergé, Synké et Lokal : tu sais toujours où vit chaque carte."
