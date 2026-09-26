@@ -173,6 +173,8 @@ Each criterion in `library/framework.json` carries:
 
 **Cadence:** full audit at milestone boundaries (folded into the monorepo-audit grooming pass); *signals* (each criterion's mechanical checks) are the between-audits monitoring layer and can run in CI or on a schedule.
 
+**Between milestones, the scoped re-audit.** A score only moves when its cell is re-scored, so closed findings leave the matrix where it was until someone looks again. After a batch of fixes, `arkaik kritik scope` lists the cells worth looking at: every finding resolved since the last recorded audit names its (criterion × surface) cell, and one hop over `node_ids` adds the neighbouring cells a shared fix plausibly moved. Accepted risks never scope anything, since the code did not change. Re-score those cells with evidence (`arkaik kritik score … --scope`, which refuses a cell the scope does not list), then `arkaik kritik matrix --record`. Every other cell keeps its last score. A scoped re-audit is its own directory, named `YYYY-MM-scoped` (`YYYY-MM-scoped-02`, `-03`… for several in a month), never the audit it re-scores. Audits merge latest-wins in lexical id order, so the scoped id sorts after the audit it follows. Its `matrix.json` shows only the cells it re-scored ("how did this audit go"). Its `quality.audit.completed` carries the merged matrix through it, marked `scope: { partial: true, cells, since }` ("where does the product stand"), so the trend never reads the cells it skipped as dropped. A scoped re-audit follows the same discipline as a full one (evidence, adversarial verification of anything Critical or High), just over fewer cells.
+
 **Scoring discipline:** an auditor scores what the code *is*, not what an open PR promises. Improvements land, then the score moves — that is what makes trends meaningful.
 
 ## 7. The comparative matrix
@@ -196,5 +198,7 @@ docs/quality/
   criteria/                 ← human-readable criteria reference, one file per domain
   audits/2026-08/           ← first audit: README (exec summary + matrix), per-surface
                               reports, scores.json, findings.json
+  audits/2026-09-scoped/    ← a scoped re-audit (§ 6): only the cells a batch of fixes
+                              made stale, scores.json stamped with the audit it follows
   templates/                ← generated per-criterion issue templates + the generic form
 ```

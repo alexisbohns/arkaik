@@ -1,6 +1,6 @@
 ---
 name: kritik
-version: 0.4.0
+version: 0.5.0
 description: >
   Audit this product's quality with the Kritik framework — score each criterion
   on each surface against observable maturity anchors, record findings with
@@ -9,8 +9,9 @@ description: >
   security, privacy, accessibility, performance, reliability, or test coverage
   of a codebase; when asked "how good is this product", "what should we fix
   first", or "where are we weakest"; when preparing a milestone quality gate;
-  and when a previous audit needs re-running, extending to a new surface, or
-  checking for regressions between audits.
+  when a previous audit needs re-running, extending to a new surface, or
+  checking for regressions between audits; and after a batch of fixes, when the
+  matrix should catch up with them without a full audit.
 ---
 
 # Kritik — quality auditing
@@ -74,8 +75,8 @@ Two richer paths exist when they are available, and both write **the same files*
 
 | Available | Use |
 |---|---|
-| the `arkaik` CLI (`npx arkaik kritik --help`) | the verbs `profile`, `score`, `finding open\|resolve\|accept`, `matrix`, `signals`, `regressions`, `issue`, `criterion add` |
-| `arkaik-mcp` tools in this session | `kritik_score`, `kritik_open_finding`, `kritik_matrix`, `kritik_signals`, `kritik_regressions`, `kritik_trend`, `kritik_issue`, … |
+| the `arkaik` CLI (`npx arkaik kritik --help`) | the verbs `profile`, `score`, `finding open\|resolve\|accept`, `matrix`, `signals`, `regressions`, `trend`, `scope`, `issue`, `criterion add` |
+| `arkaik-mcp` tools in this session | `kritik_score`, `kritik_open_finding`, `kritik_matrix`, `kritik_signals`, `kritik_regressions`, `kritik_trend`, `kritik_scope`, `kritik_issue`, … |
 
 Each verb takes its own `--help` (`arkaik kritik score --help`). What they add
 over the scripts is **step 7 for free**: they append the `quality.*` journal
@@ -424,8 +425,10 @@ arkaik kritik regressions [--from <audit>] [--to <audit>]
 compares two audits and says what got worse, with nobody checking anything: a
 cell whose maturity level dropped, a cell that gained an open Critical or High
 finding, a finding that was resolved and is open again. It defaults to the
-newest audit and the one before it. A cell scored in only one of the two is not
-compared — a half-finished audit is not a regression. `--record` appends one
+newest audit and the one before it. Each side is every audit up to it, merged
+latest-wins, so a scoped re-audit's cells are compared with their last reading
+wherever it was taken. A cell with no reading on one side is not compared: a
+half-finished audit is not a regression. `--record` appends one
 `quality.signal.tripped` per regression; `--json` prints the list. It needs two
 audits under `docs/quality/audits/` and says so plainly when there is one: a
 single reading is a baseline, not a trend.
@@ -463,6 +466,70 @@ re-audit named `2026-09-scoped` lands where it happened. A framework major bump
 between two audits breaks the comparison there (SPEC § 8): the row prints,
 without an arrow. `kritik_trend` is the same table over MCP, and the Quality
 page's matrix wears the same arrows against the last recorded audit.
+
+### Scope — re-score only what your fixes touched
+
+A score is an assessment, and only a re-score moves it. Close twenty findings and
+the matrix stays exactly where it was until someone re-scores the cells they
+lived on. Doing that does not mean running a full audit.
+
+```
+arkaik kritik scope [--since <audit>] [--no-widen] [--json]
+```
+
+lists those cells, grouped by surface, with the score each re-score would replace:
+
+```
+web · SEC-04 · at 2 (2026-08) · because F-2026-08-SEC-web-03 (resolved by https://github.com/o/r/pull/7)
+web · A11Y-02 · at 3 (2026-08) · widened via V-settings
+
+12 cells to re-score (9 direct, 3 widened) from 20 resolved findings since 2026-08
+```
+
+- A **direct** cell is where a finding resolved since the last recorded audit
+  lived. It almost certainly moved. A `cross-surface` finding scopes every
+  surface its criterion applies to.
+- A **widened** cell is an assessed neighbour whose findings share a node id with
+  a fix. It *may* have moved: look, and if it did not, say so in two seconds and
+  move on. `--no-widen` drops these.
+- An **accepted risk is not a fix** and scopes nothing: the code did not change.
+- A warning block lists resolved ids that **name no finding**. Something closed an
+  id that does not exist (a typo'd `Closes F-…` in a PR body, usually). Report it,
+  do not ignore it.
+
+Then re-score each cell, with evidence, the same way as in step 3:
+
+```
+arkaik kritik score <criterion> <surface> <level> --evidence <cite> --scope
+```
+
+`--scope` refuses a cell the scope does not list. That is what keeps a
+twelve-cell pass from drifting into a comprehensive audit by accident. Leave it
+off to re-score something else on purpose. It also writes into a **scoped audit of
+its own**: `<YYYY-MM>-scoped` by default (`-scoped-02` for a second one that
+month), never the audit the scope was measured from. It refuses an `--audit` that
+would sort before the newest one on disk, because audits merge latest-wins in id
+order and an earlier-sorting audit's fresh scores would lose to the stale ones.
+Anything Critical or High you find still goes through step 5.
+
+Finish with step 6 and 7 as usual:
+
+```
+arkaik kritik matrix --record
+```
+
+The table it prints is this audit alone, just the cells you re-scored. The event it
+records carries the **merged** matrix, with every other cell at its last score,
+marked `scope: { partial: true, cells, since }`. So the trend gains a real row and
+does not read 188 unscored cells as having dropped to N/A. Recording it closes the
+window: the next `scope` measures from this audit. If you scored the cells without
+`--scope`, pass `matrix --record --scope` so the audit is still recorded as scoped.
+
+The scope reads the journal, so it needs one, plus a recorded audit to measure
+from. It is a work list, never a score: you still cite evidence for every cell.
+Over MCP it is `kritik_scope` (it works on a hosted project too, since it plans an
+audit rather than running one), with `kritik_score` `scope: true` and
+`kritik_matrix` `scope: true` for the other two steps.
 
 ### A tripped signal is not a finding
 
@@ -588,6 +655,10 @@ You will not always audit everything, and you should not pretend otherwise.
   milestone activity — for a large monorepo, fan out one auditor per
   (surface × domain cluster), add a pass dedicated to the `cross-surface`
   contract, then verify Critical/High adversarially before rolling up.
+- **A scoped re-audit** re-scores the cells a batch of fixes made stale, and
+  nothing else. `arkaik kritik scope` lists them (see "Scope" under *Between
+  audits*). It is the between-milestone way to make the matrix catch up with
+  fixes.
 - **A partial audit** is legitimate and common: one surface, one domain, or the
   criteria touched by a release. Score only what you actually checked. **A cell
   you did not look at gets no row** — leaving it out reads as "not assessed",
