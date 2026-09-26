@@ -445,6 +445,11 @@ async function run() {
       scopedMatrix.text.slice(0, 300),
     );
     check("matrix.json stays this audit alone — supabase is N/A there", scopedMatrix.json.matrix.SEC.supabase === null, JSON.stringify(scopedMatrix.json.matrix.SEC));
+    check(
+      "the reply names the scoped cell left unscored as the window closes",
+      JSON.stringify(scopedMatrix.json.left_unscored) === JSON.stringify([{ criterion_id: "SEC-02", surface: "supabase", kind: "widened" }]),
+      JSON.stringify(scopedMatrix.json.left_unscored),
+    );
     const scopedEvent = scopedMatrix.json.events[0] ?? {};
     check("the recorded event carries the scope marker", scopedEvent.scope?.partial === true && scopedEvent.scope?.since === auditA, JSON.stringify(scopedEvent));
     check(
@@ -456,11 +461,28 @@ async function run() {
     const afterScoped = await session.call("kritik_scope", {});
     check("recording the scoped audit opens a fresh window from it", afterScoped.json.since === scopedAudit && afterScoped.json.cells.length === 0, afterScoped.text.slice(0, 300));
 
+    // auditB (`<month>-2`) sorts BEFORE the scoped audit, so what it was
+    // measured from is the newest recorded audit sorting before it — auditA —
+    // never the later scoped one.
     const declared = await session.call("kritik_matrix", { audit_id: auditB, scope: true });
     check(
-      "scope=true declares an unstamped audit scoped, measured from the newest other recorded audit",
-      !declared.isError && declared.json.scope?.since === scopedAudit,
+      "scope=true declares an unstamped audit scoped, measured from the newest recorded audit sorting before it",
+      !declared.isError && declared.json.scope?.since === auditA,
       declared.text.slice(0, 300),
+    );
+    const declaredRecorded = await session.call("kritik_matrix", { audit_id: auditA, scope: true, record: true });
+    check(
+      "scope=true refuses an audit already recorded",
+      declaredRecorded.isError && declaredRecorded.json.message.includes("already recorded"),
+      declaredRecorded.text.slice(0, 300),
+    );
+
+    const plainIntoRecorded = await session.call("kritik_score", { criterion_id: "SEC-01", surface: "web", level: 3, evidence: "unchanged", audit_id: auditA });
+    const notes = plainIntoRecorded.json.notes ?? [];
+    check(
+      "a plain score into a recorded audit that sorts early carries both notes",
+      !plainIntoRecorded.isError && notes.some((n) => n.includes("already recorded")) && notes.some((n) => n.includes("sorts before")),
+      JSON.stringify(notes),
     );
 
     // --- the whole journal -----------------------------------------------------

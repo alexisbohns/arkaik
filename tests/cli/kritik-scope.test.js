@@ -173,7 +173,7 @@ try {
   );
   check(
     "and it points at what to do next — into an audit of its own, never the measured one",
-    sheet.stdout.includes("--audit <YYYY-MM>-scoped") && sheet.stdout.includes("Never re-score inside 2026-08") && sheet.stdout.includes("arkaik kritik matrix --record"),
+    sheet.stdout.includes("--evidence … --scope") && sheet.stdout.includes("never 2026-08") && sheet.stdout.includes("arkaik kritik matrix --record"),
     sheet.stdout,
   );
   check("no unscorable block when every fix has a cell", !sheet.stdout.includes("nothing can re-score"), sheet.stdout);
@@ -258,10 +258,20 @@ try {
     sparse.status === 0 && sparse.stdout.includes(`scoped re-audit: 2 cells re-scored since ${AUDIT}`) && sparse.stdout.includes("--record records the merged matrix"),
     sparse.stdout,
   );
+  check(
+    "and it lists the scoped cell not re-scored yet — supabase got the contract fix too",
+    sparse.stdout.includes("1 cell in the scope not re-scored yet") && sparse.stdout.includes("supabase · SEC-01 (direct)"),
+    sparse.stdout,
+  );
   const perAudit = readJson("docs", "quality", "audits", scoped1, "matrix.json");
   check("matrix.json keeps this audit alone — supabase was not re-scored, so it is N/A there", perAudit.matrix.SEC.supabase === null, JSON.stringify(perAudit.matrix.SEC));
 
-  ok(["matrix", scoped1, "--record"]);
+  const closing = ok(["matrix", scoped1, "--record"]);
+  check(
+    "recording with a scoped cell left over says the window is closing on it",
+    closing.stdout.includes("1 cell in the scope was left unscored — recording closes the window") && closing.stdout.includes("supabase · SEC-01 (direct)"),
+    closing.stdout,
+  );
   const recorded = auditEvents().pop();
   check(
     "the recorded event is marked as a scoped re-audit",
@@ -313,6 +323,42 @@ try {
     "regressions compares merged-through readings, so a cell the newer audit did not re-score is still compared",
     found.some((r) => r.kind === "level-drop" && r.criterion_id === "SEC-04" && r.surface === "web" && r.detail.includes("3 → 1")),
     regressions.stdout.slice(0, 600),
+  );
+
+  // --- the declared path, and the traps it must not fall into ---------------------
+
+  const declared = run(["matrix", `${MONTH}-scoped-03`, "--scope"]);
+  check(
+    "matrix --scope records an unstamped audit as scoped, from the newest recorded audit sorting before it",
+    declared.status === 0 && declared.stdout.includes(`scoped re-audit: 1 cell re-scored since ${scoped2}`),
+    declared.stdout + declared.stderr,
+  );
+  const recordedBefore = auditEvents().length;
+  const measured = run(["matrix", AUDIT, "--scope", "--record"]);
+  check(
+    "matrix --scope refuses an audit already recorded — it would re-record the measured reading as partial",
+    measured.status === 1 && measured.stderr.includes("already recorded"),
+    measured.stderr,
+  );
+  check("and nothing was recorded", auditEvents().length === recordedBefore, `${recordedBefore} -> ${auditEvents().length}`);
+
+  const plain = run(["score", "PRV-01", "web", "3", "--evidence", "x.ts:1", "--audit", AUDIT]);
+  check(
+    "a plain score into a recorded audit says it rewrites that reading, and points at --scope",
+    plain.status === 0 && plain.stdout.includes(`note: ${AUDIT} is already recorded`) && plain.stdout.includes("--scope"),
+    plain.stdout,
+  );
+  check("and says the audit sorts before later ones, which win the merge", plain.stdout.includes(`"${AUDIT}" sorts before`), plain.stdout);
+
+  // A directory from a clock that ran ahead: the scoped default would sort
+  // before it and lose the merge, so --scope refuses rather than guess.
+  ok(["finding", "resolve", "F-2026-08-PRV-web-01"]);
+  mkdirSync(path.join(dir, "docs", "quality", "audits", "2099-01"));
+  const early = run(["score", "PRV-01", "web", "2", "--evidence", "x.ts:1", "--scope"]);
+  check(
+    "--scope refuses a default scoped audit that would sort before the newest on disk",
+    early.status === 1 && early.stderr.includes("would sort before") && early.stderr.includes("2099-01"),
+    early.stderr,
   );
 } finally {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });

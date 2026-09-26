@@ -428,7 +428,9 @@ finding, a finding that was resolved and is open again. It defaults to the
 newest audit and the one before it. Each side is every audit up to it, merged
 latest-wins, so a scoped re-audit's cells are compared with their last reading
 wherever it was taken. A cell with no reading on one side is not compared: a
-half-finished audit is not a regression. `--record` appends one
+half-finished audit is not a regression. A new Critical or High finding still
+trips on a cell the newer audit has not re-scored, because the finding is real
+whatever the score says. `--record` appends one
 `quality.signal.tripped` per regression; `--json` prints the list. It needs two
 audits under `docs/quality/audits/` and says so plainly when there is one: a
 single reading is a baseline, not a trend.
@@ -490,12 +492,16 @@ web · A11Y-02 · at 3 (2026-08) · widened via V-settings
   lived. It almost certainly moved. A `cross-surface` finding scopes every
   surface its criterion applies to.
 - A **widened** cell is an assessed neighbour whose findings share a node id with
-  a fix. It *may* have moved: look, and if it did not, say so in two seconds and
-  move on. `--no-widen` drops these.
+  a fix. It *may* have moved: look, and if it did not, re-score it at its current
+  level with evidence saying so. That takes two seconds, and it is what keeps the
+  cell from silently dropping out of the window (below). `--no-widen` drops these.
 - An **accepted risk is not a fix** and scopes nothing: the code did not change.
 - A warning block lists resolved ids that **name no finding**. Something closed an
   id that does not exist (a typo'd `Closes F-…` in a PR body, usually). Report it,
   do not ignore it.
+- A second block lists resolved findings whose cell **nothing can re-score**: a
+  retired criterion, or a surface no longer in the profile. The fix counts, but
+  there is no score to move. Their nodes still widen.
 
 Then re-score each cell, with evidence, the same way as in step 3:
 
@@ -503,14 +509,26 @@ Then re-score each cell, with evidence, the same way as in step 3:
 arkaik kritik score <criterion> <surface> <level> --evidence <cite> --scope
 ```
 
-`--scope` refuses a cell the scope does not list. That is what keeps a
-twelve-cell pass from drifting into a comprehensive audit by accident. Leave it
-off to re-score something else on purpose. It also writes into a **scoped audit of
-its own**: `<YYYY-MM>-scoped` by default (`-scoped-02` for a second one that
-month), never the audit the scope was measured from. It refuses an `--audit` that
-would sort before the newest one on disk, because audits merge latest-wins in id
-order and an earlier-sorting audit's fresh scores would lose to the stale ones.
-Anything Critical or High you find still goes through step 5.
+**Never leave `--scope` off by accident.** Without it, `score` writes into the
+newest audit on disk, which right after a record is the audit your scope is
+measured from. That rewrites a recorded reading instead of adding a new one. It
+prints a `note:` when it does this; treat that note as a stop sign.
+
+`--scope` refuses a cell the scope does not list. It checks against the scope as
+`arkaik kritik scope` prints it by default: measured from the newest recorded
+audit. That is what keeps a twelve-cell pass from drifting into a comprehensive
+audit by accident. Leave it off to re-score something else on purpose, into an
+audit you name with `--audit`.
+
+`--scope` also writes into a **scoped audit of its own**: `<YYYY-MM>-scoped` by
+default (`-scoped-02` for a second one that month), never the audit the scope was
+measured from and never one already recorded. It refuses an `--audit` that would
+sort before the newest one on disk. Audits merge latest-wins in id order, so an
+earlier-sorting audit's fresh scores would lose to the stale ones. The same holds
+for any later audit, scoped or not: a second full audit in the same month named
+`2026-09-2` sorts before `2026-09-scoped` and loses to it on every cell both
+hold. `score` prints a note when you write into an audit that sorts before
+another. Anything Critical or High you find still goes through step 5.
 
 Finish with step 6 and 7 as usual:
 
@@ -521,9 +539,19 @@ arkaik kritik matrix --record
 The table it prints is this audit alone, just the cells you re-scored. The event it
 records carries the **merged** matrix, with every other cell at its last score,
 marked `scope: { partial: true, cells, since }`. So the trend gains a real row and
-does not read 188 unscored cells as having dropped to N/A. Recording it closes the
-window: the next `scope` measures from this audit. If you scored the cells without
-`--scope`, pass `matrix --record --scope` so the audit is still recorded as scoped.
+does not read 188 unscored cells as having dropped to N/A.
+
+**Recording closes the window.** The next `scope` measures from this audit, so any
+scoped cell you did not re-score drops out of it for good. `matrix` lists those
+cells before you record, and again as it records. Re-score them first, or accept
+on purpose that they fall out. This matters most for a pass spread over two
+sessions: do not record until the list is empty.
+
+If you re-scored into an audit of your own with `--audit` but without `--scope`,
+`matrix --record --scope` still records it as scoped, measured from the newest
+recorded audit that sorts before it. It refuses an audit that is already recorded,
+so it cannot turn the audit you measured from into a partial reading. If you
+re-scored *inside* that audit, move those scores into a new one first.
 
 The scope reads the journal, so it needs one, plus a recorded audit to measure
 from. It is a work list, never a score: you still cite evidence for every cell.

@@ -424,6 +424,14 @@ export interface AuditCompletedScope {
  * other 188 as having dropped to N/A. `matrix.json` keeps the per-audit
  * answer ("how did this audit go"); `scope` is what tells a reader the two
  * differ, and why.
+ *
+ * A comprehensive audit still records its own roll-up, as it always has. The
+ * two agree on every cell a full audit re-scored, but
+ * not necessarily on `counts`: the merge pools findings across audits, so an
+ * open finding from an older audit that a full one never re-listed counts in
+ * a scoped row and not in the full row before it. Known and deliberate for
+ * now (issue #443 scoped the merge to partial audits); the trend reads scores,
+ * which is where the two cannot disagree.
  */
 export function auditCompletedInput(
   matrix: QualityMatrix,

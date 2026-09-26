@@ -17,7 +17,7 @@ v0.1.0, authored on the Pebbles audit (see the pilot).
 
 ## Cadence
 
-A full audit belongs at a milestone boundary. Between milestones, the pack is used two cheaper ways: its **signals** are checks to run in CI or on a schedule, and a **scoped re-audit** lets the matrix catch up with fixes. After a batch of fixes, `arkaik kritik scope` lists exactly the cells the resolved findings made stale; re-score those with evidence, then `matrix --record`, and everything else keeps its last score. [`SPEC.md` § 6](./SPEC.md#6-audit-process) has the rules, including the `YYYY-MM-scoped` directory convention.
+A full audit belongs at a milestone boundary. Between milestones, the pack is used two cheaper ways: its **signals** are checks to run in CI or on a schedule, and a **scoped re-audit** lets the matrix catch up with fixes. After a batch of fixes, `arkaik kritik scope` lists exactly the cells the resolved findings made stale. Re-score those with evidence (`arkaik kritik score … --scope`, which writes into a scoped audit of its own), then `matrix --record`. Everything else keeps its last score. [`SPEC.md` § 6](./SPEC.md#6-audit-process) has the rules, including the `YYYY-MM-scoped` directory convention.
 
 ## Stability
 

@@ -318,10 +318,17 @@ function mergeAudits(
  * outvoted by the stale ones it was meant to replace.
  *
  * Unrequested, it continues the scoped audit already in progress (the newest
- * directory, stamped with this same `since`), else opens `<month>-scoped`,
- * then `<month>-scoped-02` and on, the convention SPEC § 6 names.
+ * directory, stamped with this same `since`, and not yet recorded — a recorded
+ * one is a closed reading), else opens `<month>-scoped`, then
+ * `<month>-scoped-02` and on, the convention SPEC § 6 names.
  */
-export function scopedAuditTarget(root: string, since: string, month: string, requested?: string): string {
+export function scopedAuditTarget(
+  root: string,
+  since: string,
+  month: string,
+  requested?: string,
+  recorded: readonly string[] = [],
+): string {
   const existing = listAuditIds(root);
   const newest = existing[existing.length - 1];
 
@@ -341,7 +348,14 @@ export function scopedAuditTarget(root: string, since: string, month: string, re
     return requested;
   }
 
-  if (newest !== undefined && newest !== since && loadScoresOrEmpty(root, newest).scope?.since === since) return newest;
+  if (
+    newest !== undefined &&
+    newest !== since &&
+    !recorded.includes(newest) &&
+    loadScoresOrEmpty(root, newest).scope?.since === since
+  ) {
+    return newest;
+  }
 
   for (let n = 1; n < 100; n++) {
     const candidate = n === 1 ? `${month}-scoped` : `${month}-scoped-${String(n).padStart(2, "0")}`;
@@ -355,6 +369,53 @@ export function scopedAuditTarget(root: string, since: string, month: string, re
     return candidate;
   }
   throw new Error(`99 scoped audits in ${month} — name the next one with --audit.`);
+}
+
+/**
+ * What an audit declared scoped by hand (`matrix --scope`, scored without
+ * `score --scope`) was measured from: the newest RECORDED audit that sorts
+ * before it — the merge order, so the reading it actually re-scored over.
+ *
+ * It refuses an audit that is already recorded. That is the trap this guards:
+ * scores written into the audit a scope was measured from, then declared
+ * scoped, would re-record a comprehensive reading as "a scoped re-audit of 200
+ * cells". The repair for a genuinely scoped audit recorded without its marker
+ * is named in the refusal, because it is a deliberate act rather than a flag.
+ */
+export function declaredScopeSince(auditId: string, recorded: readonly string[]): string {
+  if (recorded.includes(auditId)) {
+    throw new Error(
+      `"${auditId}" is already recorded, so declaring it scoped would re-record that reading as a partial one. ` +
+        `If you re-scored inside the audit a scope was measured from, move those scores into an audit of their own. ` +
+        `If "${auditId}" really is a scoped re-audit recorded without its marker, add "scope": { "since": "<the audit it followed>" } ` +
+        `to its scores.json and record it again.`,
+    );
+  }
+  const before = recorded.filter((id) => id < auditId).sort();
+  const since = before[before.length - 1];
+  if (since === undefined) {
+    throw new Error(
+      `no recorded audit sorts before "${auditId}" — a scoped re-audit is measured from one, and audits merge latest-wins in id order.`,
+    );
+  }
+  return since;
+}
+
+/**
+ * A warning for a score written into an audit that sorts before another on
+ * disk, or `undefined`. Audits merge latest-wins in lexical id order, so any
+ * cell the later audit also holds keeps the later audit's score — a same-month
+ * re-audit named `2026-09-2` loses to `2026-09-scoped` that way, silently.
+ * A warning, not a refusal: correcting an old audit's score is legitimate.
+ */
+export function auditOrderNote(root: string, auditId: string): string | undefined {
+  const later = listAuditIds(root).filter((id) => id > auditId);
+  if (later.length === 0) return undefined;
+  return (
+    `"${auditId}" sorts before ${later.map((id) => `"${id}"`).join(", ")} — audits merge latest-wins in id order, ` +
+    `so for any cell ${later.length === 1 ? "that audit" : "those audits"} also hold${later.length === 1 ? "s" : ""}, the later score wins. ` +
+    `Name a new audit so it sorts last.`
+  );
 }
 
 /**
