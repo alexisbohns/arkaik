@@ -1,10 +1,24 @@
 import {
+  assessmentScoredInput,
+  auditCompletedInput,
+  baselineEventPayload,
+  CROSS_SURFACE_ID,
+  deriveAuditScope,
+  deriveQualityMatrix,
   findingAcceptedInput,
   findingResolvedInput,
+  implicitAuditBaseline,
   isOpenFinding,
   makeEvent,
+  recordedAuditIds,
+  resolveKritikLibrary,
+  scopedAuditId,
+  scopeSummary,
   signalTrippedInput,
+  withImplicitBaseline,
   type JournalEvent,
+  type KritikLibrary,
+  type MaturityLevel,
   type QualityFinding,
   type QualitySection,
 } from "@arkaik/schema";
@@ -76,10 +90,26 @@ export type QualityEventInput =
     }
   | { type: "quality.audit.completed"; scope: true; audit_id: string; commit?: string };
 
-/** Why one finding in a batch was refused. */
+/**
+ * Why one entry in a batch was refused. `index` is the entry's position in
+ * the request's `events` array — the one field every refusal carries, since a
+ * score or a completion names no finding. `finding_id` is there for the two
+ * decision reasons; `detail` says what to do instead, worded the way the MCP
+ * words the same refusal in repo mode.
+ */
 export type QualityEventRefusal = {
-  finding_id: string;
-  reason: "unknown_finding" | "not_open";
+  index: number;
+  reason:
+    | "unknown_finding"
+    | "not_open"
+    | "invalid_assessment"
+    | "out_of_scope"
+    | "no_baseline"
+    | "not_scored"
+    | "already_recorded"
+    | "scope_mismatch";
+  finding_id?: string;
+  detail?: string;
 };
 
 const MAX_EVENTS = 50;
@@ -247,21 +277,52 @@ export function parseQualityEventInputs(body: unknown): QualityEventInput[] | { 
  * Plan the journal events one batch of {@link QualityEventInput}s would
  * produce, or refuse the whole batch.
  *
- * `priorEvents` is folded over `section` first (`foldQualityEvents`) so
- * "open" is judged post-fold: a finding a prior `quality.finding.resolved`
- * or `quality.finding.accepted` event already decided reads as not-open here
- * exactly the way it would on the next `GET`, even though `section` itself —
- * the stored snapshot — was never touched. A finding decided earlier in the
- * SAME batch is refused the same way, via `decidedInBatch`, so two entries
- * naming the same finding cannot both succeed.
+ * `priorEvents` is the project's quality journal as far as this path cares:
+ * the finding decisions, the hosted scores (`quality.assessment.scored`) and
+ * every recorded `quality.audit.completed`. It is folded over `section` first
+ * (`foldQualityEvents`) so every check reads the state the next `GET` would
+ * show — "open" is judged post-fold, and a hosted score already sits in its
+ * cell — even though `section` itself, the stored snapshot, was never
+ * touched. The fold then moves forward entry by entry: each planned decision
+ * or score is folded in and appended to a working copy of the journal, so a
+ * later entry in the SAME batch sees it. That is what refuses a finding
+ * decided twice in one batch, what lets a resolution widen the scope of a
+ * score sent after it, and what lets a batch score cells and complete the
+ * re-audit in one request.
  *
  * A `quality.signal.tripped` entry skips all of that: it decides nothing, so
  * it consults no finding and can produce no refusal. It is still bound by the
- * batch's fate — a trip sent alongside a finding decision that is refused is
- * refused with it.
+ * batch's fate — a trip sent alongside an entry that is refused is refused
+ * with it.
  *
- * All-or-nothing, mirroring `persistMutation`: any refusal — one unknown id,
- * one not-open finding, anywhere in the batch — refuses every entry. No
+ * **A score (issue #473)** is checked against the pack and the profile the
+ * way `kritik_score` checks it in repo mode, then against the scope: hosted
+ * scoring is scoped-only, so a cell `deriveAuditScope` does not list is
+ * `out_of_scope`, and no recorded reading at all is `no_baseline`. The scope
+ * is measured over `withImplicitBaseline` of the STORED section, never the
+ * folded one — the baseline is the restored audit's reading, and the stored
+ * snapshot is the one copy of it no hosted score has overwritten. The score
+ * lands in the scoped audit `scopedAuditId` names (the caller's, else the one
+ * already open from the same `since`, else `<YYYY-MM>-scoped[-NN]`, the month
+ * read off `now` in UTC).
+ *
+ * **The baseline is written here, once.** Before the first hosted score folds
+ * into `section.assessments`, the implicit reading is still exact; after it,
+ * no reader can rebuild the level a re-scored cell had at the audit. So the
+ * batch that holds the first accepted score also records that reading for
+ * real — backdated to the baseline's own `ts`, flagged `baseline: true`, and
+ * put first in the plan. Once it is in the journal the synthesis switches
+ * itself off (a recording exists), which is what makes this happen once.
+ *
+ * **A scoped completion** records the reading of a re-audit already in
+ * progress: it must have at least one score (earlier or in this batch), must
+ * not already be recorded, and every score in it must share one `since` —
+ * the current scope's. The caller never supplies the reading: it is
+ * `deriveQualityMatrix` over the section folded through everything, the same
+ * numbers the matrix will show.
+ *
+ * All-or-nothing, mirroring `persistMutation`: any refusal anywhere in the
+ * batch refuses every entry, each refusal naming the entry's `index`. No
  * event is planned for a batch that will not fully succeed, so a caller
  * retrying a corrected batch never has to reason about a partial write.
  */
@@ -270,61 +331,237 @@ export function planQualityEvents(
   priorEvents: readonly JournalEvent[],
   inputs: readonly QualityEventInput[],
   actor: string,
+  now: Date = new Date(),
 ): { ok: true; events: JournalEvent[] } | { ok: false; refusals: QualityEventRefusal[] } {
-  const folded = foldQualityEvents(section, priorEvents);
-  // Guarded entry-by-entry for the same reason the fold is: this is section
-  // content nobody has re-validated since it left storage, and a malformed
-  // entry must fall out as `unknown_finding`, not surface as a 500.
-  const findings = new Map<string, QualityFinding>();
-  for (const finding of Array.isArray(folded?.findings) ? folded.findings : []) {
-    const id = (finding as { id?: unknown } | null)?.id;
-    if (typeof id === "string" && id !== "" && !findings.has(id)) findings.set(id, finding);
-  }
+  const library = resolveKritikLibrary(section);
+  const criteria: Pick<KritikLibrary, "criteria"> = library ?? { criteria: [] };
+  let working = foldQualityEvents(section, priorEvents);
+  // The journal as it will read once this batch lands — grows as entries are
+  // planned, so each check sees every entry before it.
+  const journal: JournalEvent[] = [...priorEvents];
+  const month = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+  // Over the STORED section: the one copy of the restored audit's levels no
+  // hosted score has overwritten, so the synthesized reading is exact.
+  const withBaseline = () => withImplicitBaseline(journal, section, library);
 
   const refusals: QualityEventRefusal[] = [];
   const events: JournalEvent[] = [];
-  const decidedInBatch = new Set<string>();
 
-  for (const input of inputs) {
+  const plan = (event: JournalEvent) => {
+    events.push(event);
+    journal.push(event);
+    working = foldQualityEvents(working, [event]);
+  };
+
+  for (const [index, input] of inputs.entries()) {
     // A trip is handled before the finding lookup because it has no finding to
-    // look up: it decides nothing, so `unknown_finding`, `not_open` and
-    // `decidedInBatch` all have nothing to say about it.
+    // look up: it decides nothing, so there is nothing here to refuse it for.
     if (input.type === "quality.signal.tripped") {
       const trip = signalTrippedInput(input);
-      events.push(makeEvent(trip.type, trip.payload, { actor }));
+      plan(makeEvent(trip.type, trip.payload, { actor }));
       continue;
     }
 
-    // `quality.assessment.scored` and a scoped `quality.audit.completed` are
-    // parsed (Task 9, issue #473) but not yet planned — that is Task 10's
-    // job, once `priorEvents` carries scores and audits to check a scoped
-    // re-audit against. Refusing loudly here, rather than falling through to
-    // `input.finding_id` (which neither new type has), is what keeps this
-    // function's narrowing sound in the meantime.
-    if (input.type === "quality.assessment.scored" || input.type === "quality.audit.completed") {
-      throw new Error("not planned yet");
+    if (input.type === "quality.assessment.scored") {
+      const invalid = invalidAssessment(section, library, input.criterion_id, input.surface);
+      if (invalid !== null) {
+        refusals.push({ index, reason: "invalid_assessment", detail: invalid });
+        continue;
+      }
+
+      const scope = deriveAuditScope(withBaseline(), working ?? { findings: [], assessments: [] }, criteria);
+      if (scope.since === null) {
+        refusals.push({
+          index,
+          reason: "no_baseline",
+          detail: "No recorded audit and no restored assessments to measure a re-score from — there is nothing for it to be a re-score of.",
+        });
+        continue;
+      }
+      const inScope = scope.cells.some((cell) => cell.criterion_id === input.criterion_id && cell.surface === input.surface);
+      if (!inScope) {
+        refusals.push({
+          index,
+          reason: "out_of_scope",
+          detail:
+            `${input.criterion_id} on "${input.surface}" is not in the scoped re-audit (${scopeSummary(scope)}). ` +
+            `Hosted scoring only re-scores the cells a fix since the last audit made stale.`,
+        });
+        continue;
+      }
+
+      const since = scope.since;
+      const recorded = recordedAuditIds(withBaseline());
+      const scored = journal.filter((event) => event?.type === "quality.assessment.scored");
+      const known = new Set<string>(recorded);
+      for (const assessment of Array.isArray(working?.assessments) ? working.assessments : []) {
+        const id = (assessment as { audit_id?: unknown } | null)?.audit_id;
+        if (typeof id === "string" && id !== "") known.add(id);
+      }
+      let open: string | undefined;
+      for (const event of scored) {
+        const id = (event as { audit_id?: unknown }).audit_id;
+        if (typeof id !== "string" || id === "") continue;
+        known.add(id);
+        if (sinceOf(event) === since && !recorded.includes(id)) open = id;
+      }
+
+      let auditId: string;
+      try {
+        auditId = scopedAuditId({ since, month, requested: input.audit_id, known: [...known], recorded, open });
+      } catch (error) {
+        refusals.push({ index, reason: "invalid_assessment", detail: (error as Error).message });
+        continue;
+      }
+
+      // The first hosted score of a restored audit: record its reading for
+      // real before this score overwrites a level it is computed from. After
+      // the push the journal holds a recording, so this never fires twice.
+      const baseline = implicitAuditBaseline(journal, section, library);
+      if (baseline !== null) {
+        const event = makeEvent("quality.audit.completed", baselineEventPayload(baseline), { ts: baseline.ts, actor });
+        events.unshift(event);
+        journal.push(event);
+      }
+
+      const score = assessmentScoredInput(
+        {
+          criterion_id: input.criterion_id,
+          surface: input.surface,
+          level: input.level as MaturityLevel,
+          evidence: input.evidence,
+          audit_id: auditId,
+          ...(input.commit !== undefined ? { commit: input.commit } : {}),
+        },
+        since,
+      );
+      plan(makeEvent(score.type, score.payload, { actor }));
+      continue;
     }
 
-    const finding = findings.get(input.finding_id);
+    if (input.type === "quality.audit.completed") {
+      const auditId = input.audit_id;
+      if (recordedAuditIds(withBaseline()).includes(auditId)) {
+        refusals.push({ index, reason: "already_recorded", detail: `"${auditId}" is already recorded — its reading is history.` });
+        continue;
+      }
+      const scored = journal.filter(
+        (event) => event?.type === "quality.assessment.scored" && (event as { audit_id?: unknown }).audit_id === auditId,
+      );
+      if (scored.length === 0) {
+        refusals.push({ index, reason: "not_scored", detail: `No hosted score belongs to "${auditId}" — score a cell in it before recording it.` });
+        continue;
+      }
+      const sinces = new Set(scored.map(sinceOf));
+      const current = deriveAuditScope(withBaseline(), working ?? { findings: [], assessments: [] }, criteria).since;
+      const [since] = sinces;
+      if (sinces.size !== 1 || typeof since !== "string" || since !== current) {
+        refusals.push({
+          index,
+          reason: "scope_mismatch",
+          detail:
+            `"${auditId}" was scored from ${[...sinces].map((s) => (typeof s === "string" ? `"${s}"` : "no scope")).join(", ")}, ` +
+            `but the current scope is measured from ${current === null ? "no recorded audit" : `"${current}"`}.`,
+        });
+        continue;
+      }
+
+      const matrix = deriveQualityMatrix({ quality: working }, library);
+      const cells = new Set(
+        scored.map((event) => {
+          const { criterion_id: criterionId, surface } = event as { criterion_id?: unknown; surface?: unknown };
+          return `${String(criterionId)}::${String(surface)}`;
+        }),
+      ).size;
+      const frameworkVersion = matrix.framework_version ?? section?.framework_version ?? library?.version ?? "unknown";
+      const reading = auditCompletedInput(matrix, {
+        audit_id: auditId,
+        framework_version: frameworkVersion,
+        ...(input.commit !== undefined ? { commit: input.commit } : {}),
+        scope: { partial: true, cells, since },
+      });
+      plan(makeEvent(reading.type, reading.payload, { actor }));
+      continue;
+    }
+
+    // Guarded for the same reason the fold is: this is section content nobody
+    // has re-validated since it left storage, and a malformed entry must fall
+    // out as `unknown_finding`, not surface as a 500.
+    const finding = findingOf(working, input.finding_id);
     if (finding === undefined) {
-      refusals.push({ finding_id: input.finding_id, reason: "unknown_finding" });
+      refusals.push({ index, finding_id: input.finding_id, reason: "unknown_finding" });
       continue;
     }
-    if (!isOpenFinding(finding) || decidedInBatch.has(finding.id)) {
-      refusals.push({ finding_id: input.finding_id, reason: "not_open" });
+    // `working` already holds any decision planned earlier in this batch, so
+    // a second entry naming the same finding reads as not-open here.
+    if (!isOpenFinding(finding)) {
+      refusals.push({ index, finding_id: input.finding_id, reason: "not_open" });
       continue;
     }
-    decidedInBatch.add(finding.id);
 
     const eventInput =
       input.type === "quality.finding.resolved"
         ? findingResolvedInput(finding, input.resolved_by)
         : findingAcceptedInput(finding, input.reason);
-    events.push(makeEvent(eventInput.type, eventInput.payload, { actor }));
+    plan(makeEvent(eventInput.type, eventInput.payload, { actor }));
   }
 
   if (refusals.length > 0) return { ok: false, refusals };
   return { ok: true, events };
+}
+
+/** The first finding in `section` with this id — first wins, the fold's own tie-break for a malformed duplicate. */
+function findingOf(section: QualitySection | undefined, id: string): QualityFinding | undefined {
+  for (const finding of Array.isArray(section?.findings) ? section.findings : []) {
+    if ((finding as { id?: unknown } | null)?.id === id) return finding;
+  }
+  return undefined;
+}
+
+/** The `scope.since` a hosted score was measured from, or `undefined` for a malformed row. */
+function sinceOf(event: JournalEvent): string | undefined {
+  const since = (event as { scope?: { since?: unknown } }).scope?.since;
+  return typeof since === "string" && since !== "" ? since : undefined;
+}
+
+/**
+ * Why a hosted score can't land in `criterionId` × `surface`, or `null` when
+ * it can: the same four refusals `kritik_score` makes in repo mode, worded
+ * the same way, checked against the STORED section's pack and profile.
+ */
+function invalidAssessment(
+  section: QualitySection | undefined,
+  library: KritikLibrary | undefined,
+  criterionId: string,
+  surface: string,
+): string | null {
+  const criterion = (library?.criteria ?? []).find((candidate) => candidate?.id === criterionId);
+  if (criterion === undefined) {
+    return `unknown criterion "${criterionId}" — no criterion by that id in this project's pack.`;
+  }
+  if (typeof criterion.superseded_by === "string") {
+    return (
+      `Criterion "${criterionId}" is retired — superseded by "${criterion.superseded_by}". Score that one instead; ` +
+      `the old id is kept only so past audits still mean what they meant.`
+    );
+  }
+  if (surface === CROSS_SURFACE_ID) {
+    return `"${CROSS_SURFACE_ID}" is a findings-only lens — it carries no matrix column, so a score there would render nowhere.`;
+  }
+  const declared = (Array.isArray(section?.profile?.surfaces) ? section.profile.surfaces : [])
+    .map((candidate) => (candidate as { id?: unknown } | null)?.id)
+    .filter((id): id is string => typeof id === "string" && id !== "");
+  if (declared.length > 0 && !declared.includes(surface)) {
+    return `Surface "${surface}" is not declared in this project's profile. Declared: ${declared.join(", ")}.`;
+  }
+  const appliesTo = criterion.applies_to;
+  if (Array.isArray(appliesTo) && !appliesTo.includes(surface)) {
+    return (
+      `${criterionId} does not apply to "${surface}" (applies to: ${appliesTo.join(", ")}). ` +
+      `Scoring it there would produce a cell nothing rolls up.`
+    );
+  }
+  return null;
 }
 
 /**
