@@ -186,7 +186,11 @@ export function createRemoteStore(options: RemoteStoreOptions): Store {
     // the server holds that journal. Sending an "open" guess from here could
     // only be stale the moment two sessions race, so this method does no
     // checking of its own — it forwards the inputs and lets the server's
-    // verdict (post-fold, under its row lock) be the only one that counts.
+    // post-fold verdict be the only one that counts. This route is
+    // deliberately UNLOCKED, unlike `/mutations` — no row lock serializes two
+    // posts — which is exactly why a dropped response is ambiguous and a
+    // caller (`kritik_matrix record=true`) needs a retry path rather than a
+    // guarantee that a refusal here means nothing was written.
     async appendQualityEvents(inputs: readonly HostedQualityInput[]): Promise<JournalEvent[]> {
       try {
         const result = await request<{ events: JournalEvent[] }>("/quality/events", {

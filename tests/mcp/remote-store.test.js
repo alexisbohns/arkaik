@@ -462,6 +462,34 @@ async function main() {
       String(scopeRefusalError),
     );
     state.refuseQuality = null;
+
+    // A batch is all-or-nothing (mirrors persistMutation) — a two-entry
+    // refusal must read as two, joined by "; ", not run together or dropped
+    // down to one.
+    state.refuseQuality = {
+      error: "refused",
+      refusals: [
+        { index: 0, finding_id: "F-1", reason: "not_open" },
+        { index: 1, reason: "no_baseline", detail: "restore the audit first" },
+      ],
+    };
+    let twoRefusalError;
+    try {
+      await directStore.appendQualityEvents([
+        { type: "quality.finding.resolved", finding_id: "F-1" },
+        { type: "quality.assessment.scored", criterion_id: "SEC-01", surface: "web", level: 1, evidence: "x" },
+      ]);
+    } catch (err) {
+      twoRefusalError = err;
+    }
+    check(
+      "a two-entry refusal is joined with '; ', not run together or dropped",
+      twoRefusalError instanceof Error &&
+        twoRefusalError.message ===
+          "Quality events refused — F-1: not_open; entry 1: no_baseline — restore the audit first",
+      String(twoRefusalError),
+    );
+    state.refuseQuality = null;
   } finally {
     server.close();
     fs.rmSync(tmp, { recursive: true, force: true });
