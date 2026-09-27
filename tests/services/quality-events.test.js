@@ -211,11 +211,13 @@ for (const field of ["criterion_id", "surface", "signal", "commit"]) {
 }
 {
   const parsed = parseQualityEventInputs({ events: [{ type: "node.created", id: "V-x" }] });
-  check("unknown type names all three legal values",
+  check("unknown type names all five legal values",
     !Array.isArray(parsed) &&
     parsed.error.includes("quality.signal.tripped") &&
     parsed.error.includes("quality.finding.resolved") &&
-    parsed.error.includes("quality.finding.accepted"), JSON.stringify(parsed));
+    parsed.error.includes("quality.finding.accepted") &&
+    parsed.error.includes("quality.assessment.scored") &&
+    parsed.error.includes("quality.audit.completed"), JSON.stringify(parsed));
 }
 {
   // No section, no prior events, no findings anywhere — a trip still plans.
@@ -249,6 +251,101 @@ for (const field of ["criterion_id", "surface", "signal", "commit"]) {
     plan.ok === false && plan.refusals.length === 1 && plan.refusals[0].finding_id === "F-nope", JSON.stringify(plan));
 }
 
+// --- #473: quality.assessment.scored + scoped quality.audit.completed ------
+
+const SCORED = {
+  type: "quality.assessment.scored",
+  criterion_id: "SEC-01",
+  surface: "web",
+  level: 3,
+  evidence: "Verified via curl against a fresh instance.",
+  audit_id: "2026-09-27",
+  commit: "0123456789abcdef0123456789abcdef01234567",
+};
+
+{
+  const parsed = parseQualityEventInputs({ events: [SCORED] });
+  check("a valid scored entry parses", Array.isArray(parsed) && parsed.length === 1, JSON.stringify(parsed));
+  check("the parsed scored entry equals the input", Array.isArray(parsed) && JSON.stringify(parsed[0]) === JSON.stringify(SCORED), JSON.stringify(parsed));
+}
+{
+  const minimal = { type: "quality.assessment.scored", criterion_id: "SEC-01", surface: "web", level: 0, evidence: "e" };
+  const parsed = parseQualityEventInputs({ events: [minimal] });
+  check("a minimal scored entry (no audit_id/commit) parses", Array.isArray(parsed) && !("audit_id" in parsed[0]) && !("commit" in parsed[0]), JSON.stringify(parsed));
+}
+for (const level of [5, 2.5, "3", -1]) {
+  const parsed = parseQualityEventInputs({ events: [{ ...SCORED, level }] });
+  check(`a scored level of ${JSON.stringify(level)} is refused`, !Array.isArray(parsed) && parsed.error.includes("level"), JSON.stringify(parsed));
+}
+{
+  const missingEvidence = { ...SCORED, evidence: undefined };
+  const parsed = parseQualityEventInputs({ events: [missingEvidence] });
+  check("scored without evidence is refused", !Array.isArray(parsed) && parsed.error.includes("evidence"), JSON.stringify(parsed));
+}
+{
+  const emptyCriterion = { ...SCORED, criterion_id: "" };
+  const parsed = parseQualityEventInputs({ events: [emptyCriterion] });
+  check("scored with an empty criterion_id is refused", !Array.isArray(parsed) && parsed.error.includes("criterion_id"), JSON.stringify(parsed));
+}
+{
+  const emptyAuditId = { ...SCORED, audit_id: "" };
+  const parsed = parseQualityEventInputs({ events: [emptyAuditId] });
+  check("scored with an empty audit_id is refused", !Array.isArray(parsed) && parsed.error.includes("audit_id"), JSON.stringify(parsed));
+}
+{
+  const emptyCommit = { ...SCORED, commit: "" };
+  const parsed = parseQualityEventInputs({ events: [emptyCommit] });
+  check("scored with an empty commit is refused", !Array.isArray(parsed) && parsed.error.includes("commit"), JSON.stringify(parsed));
+}
+
+const AUDIT_COMPLETED = {
+  type: "quality.audit.completed",
+  scope: true,
+  audit_id: "2026-09-27",
+  commit: "0123456789abcdef0123456789abcdef01234567",
+};
+
+{
+  const parsed = parseQualityEventInputs({ events: [AUDIT_COMPLETED] });
+  check("a valid scoped audit.completed parses", Array.isArray(parsed) && parsed.length === 1, JSON.stringify(parsed));
+  check("the parsed audit.completed entry equals the input", Array.isArray(parsed) && JSON.stringify(parsed[0]) === JSON.stringify(AUDIT_COMPLETED), JSON.stringify(parsed));
+}
+{
+  const minimal = { type: "quality.audit.completed", scope: true, audit_id: "2026-09-27" };
+  const parsed = parseQualityEventInputs({ events: [minimal] });
+  check("a minimal scoped audit.completed (no commit) parses", Array.isArray(parsed) && !("commit" in parsed[0]), JSON.stringify(parsed));
+}
+{
+  const missingScope = { type: "quality.audit.completed", audit_id: "2026-09-27" };
+  const parsed = parseQualityEventInputs({ events: [missingScope] });
+  check("audit.completed without scope is refused", !Array.isArray(parsed) && parsed.error.includes("scope"), JSON.stringify(parsed));
+}
+{
+  const falseScope = { ...AUDIT_COMPLETED, scope: false };
+  const parsed = parseQualityEventInputs({ events: [falseScope] });
+  check("audit.completed with scope: false is refused", !Array.isArray(parsed) && parsed.error.includes("scope"), JSON.stringify(parsed));
+}
+{
+  const withScores = { ...AUDIT_COMPLETED, scores: { web: { SEC: 3 } } };
+  const parsed = parseQualityEventInputs({ events: [withScores] });
+  check("audit.completed with scores present is refused", !Array.isArray(parsed) && parsed.error.includes("computed by the server"), JSON.stringify(parsed));
+}
+{
+  const withCounts = { ...AUDIT_COMPLETED, counts: { open: 1 } };
+  const parsed = parseQualityEventInputs({ events: [withCounts] });
+  check("audit.completed with counts present is refused", !Array.isArray(parsed) && parsed.error.includes("computed by the server"), JSON.stringify(parsed));
+}
+{
+  const emptyAuditId = { ...AUDIT_COMPLETED, audit_id: "" };
+  const parsed = parseQualityEventInputs({ events: [emptyAuditId] });
+  check("audit.completed with an empty audit_id is refused", !Array.isArray(parsed) && parsed.error.includes("audit_id"), JSON.stringify(parsed));
+}
+{
+  const emptyCommit = { ...AUDIT_COMPLETED, commit: "" };
+  const parsed = parseQualityEventInputs({ events: [emptyCommit] });
+  check("audit.completed with an empty commit is refused", !Array.isArray(parsed) && parsed.error.includes("commit"), JSON.stringify(parsed));
+}
+
 // --- requiredScopeFor --------------------------------------------------------
 
 {
@@ -257,6 +354,9 @@ for (const field of ["criterion_id", "surface", "signal", "commit"]) {
 
   const resolution = parseQualityEventInputs({ events: [{ type: "quality.finding.resolved", finding_id: "F-1" }] });
   check("a finding decision requires graph:write", requiredScopeFor(resolution) === "graph:write");
+
+  const scored = parseQualityEventInputs({ events: [SCORED] });
+  check("a batch holding a scored entry requires graph:write", requiredScopeFor(scored) === "graph:write");
 
   const mixed = parseQualityEventInputs({
     events: [TRIP, { type: "quality.finding.accepted", finding_id: "F-1", reason: "tracked" }],
