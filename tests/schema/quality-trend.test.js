@@ -259,5 +259,21 @@ check("a live matrix that IS the only recorded audit has no baseline", golden.pr
 const goldenMoved = deriveQualityTrend([event], section.profile, { ...matrix, matrix: { ...matrix.matrix, SEC: { ...matrix.matrix.SEC, web: { ...matrix.matrix.SEC.web, score: matrix.matrix.SEC.web.score + 4 } } } });
 check("one cell moving makes the recorded audit the baseline again", goldenMoved.previous?.audit_id === "2026-08" && goldenMoved.deltaCell("SEC", "web").delta === 4);
 
+// --- baseline and scoped rows (issues #472, #473) ----------------------------
+{
+  const events = [
+    { id: "01B", ts: "2026-08-05T00:00:00.000Z", type: "quality.audit.completed", audit_id: "2026-08", framework_version: "1.0.0", scores: { web: { SEC: 50 } }, baseline: true },
+    { id: "01S", ts: "2026-09-10T00:00:00.000Z", type: "quality.audit.completed", audit_id: "2026-09-scoped", framework_version: "1.0.0", scores: { web: { SEC: 75 } }, scope: { partial: true, cells: 3, since: "2026-08" } },
+  ];
+  const trend = deriveQualityTrend(events);
+  check("a baseline event reads as a baseline snapshot", trend.snapshots[0].baseline === true && trend.snapshots[0].scope === undefined, JSON.stringify(trend.snapshots[0]));
+  check("a scoped event carries its scope", JSON.stringify(trend.snapshots[1].scope) === JSON.stringify({ since: "2026-08", cells: 3 }) && trend.snapshots[1].baseline === undefined, JSON.stringify(trend.snapshots[1]));
+  const { rows } = trendRows(trend);
+  check("trend rows carry both flags", rows[0].baseline === true && rows[1].scope.since === "2026-08", JSON.stringify(rows));
+  check("the scoped row has a real delta against the baseline", rows[1].cells.web.delta === 25, JSON.stringify(rows[1].cells));
+  const plain = trendRows(deriveQualityTrend([{ id: "01P", ts: "2026-08-05T00:00:00.000Z", type: "quality.audit.completed", audit_id: "2026-08", framework_version: "1.0.0", scores: { web: { SEC: 50 } } }]));
+  check("an ordinary row carries neither key", !("baseline" in plain.rows[0]) && !("scope" in plain.rows[0]), JSON.stringify(plain.rows[0]));
+}
+
 console.log(failures === 0 ? "\nAll quality-trend tests OK" : `\n${failures} failure(s)`);
 process.exit(failures === 0 ? 0 : 1);

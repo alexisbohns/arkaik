@@ -47,6 +47,10 @@ export interface AuditSnapshot {
   overall: Record<string, number | null>;
   /** Open findings by severity at the time of the audit; a missing bucket is 0. */
   counts: Record<FindingSeverity, number>;
+  /** Present when the event was synthesized from a stored audit that arrived without a recorded reading. */
+  baseline?: true;
+  /** Present when the event is a scoped re-audit's merged reading: the audit it followed, and how many cells it re-scored. */
+  scope?: { since: string; cells: number | null };
 }
 
 /**
@@ -101,6 +105,12 @@ export function sameFrameworkMajor(a: unknown, b: unknown): boolean {
   const left = frameworkMajor(a);
   const right = frameworkMajor(b);
   return left === null || right === null || left === right;
+}
+
+/** The event's scope marker, kept to what a row can show: the audit it followed, and how many cells it re-scored. */
+function scopeOf(raw: unknown): { scope: { since: string; cells: number | null } } | undefined {
+  if (!isRecord(raw) || typeof raw.since !== "string" || raw.since === "") return undefined;
+  return { scope: { since: raw.since, cells: typeof raw.cells === "number" && Number.isFinite(raw.cells) ? raw.cells : null } };
 }
 
 /** The event's `scores`, kept to what is actually a `surface → domain → number` map. */
@@ -214,6 +224,8 @@ export function deriveQualityTrend(
       scores,
       overall,
       counts: cleanCounts(event.counts),
+      ...(event.baseline === true ? { baseline: true as const } : {}),
+      ...(scopeOf(event.scope) ?? {}),
     };
     byAudit.delete(auditId);
     byAudit.set(auditId, snapshot);
@@ -258,6 +270,10 @@ export interface TrendRow {
   comparable: boolean;
   /** Keyed by surface. `score: null` is not scored; `delta: null` is nothing comparable above it. */
   cells: Record<string, { score: number | null; delta: number | null }>;
+  /** Present when the row is synthesized from a stored audit that arrived without a recorded reading. */
+  baseline?: true;
+  /** Present when the row is a scoped re-audit's merged reading: the audit it followed, and how many cells it re-scored. */
+  scope?: { since: string; cells: number | null };
 }
 
 /**
@@ -305,6 +321,8 @@ export function trendRows(
       ...(snapshot.framework_version !== undefined ? { framework_version: snapshot.framework_version } : {}),
       comparable: snapshot.comparable,
       cells,
+      ...(snapshot.baseline ? { baseline: true as const } : {}),
+      ...(snapshot.scope !== undefined ? { scope: snapshot.scope } : {}),
     });
   });
 
