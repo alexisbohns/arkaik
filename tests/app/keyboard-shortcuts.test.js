@@ -127,6 +127,14 @@ async function main() {
     fires("shortcuts", { key: "/", ctrlKey: true, shiftKey: true }, "windows"),
     "Ctrl+Shift+/ counts too — same physical keys, different report",
   );
+  assert(
+    fires("shortcuts", { key: "?", code: "KeyM", metaKey: true, shiftKey: true }),
+    "⌘? on a French AZERTY Mac (? is Shift+, there) opens the sheet",
+  );
+  assert(
+    fires("shortcuts", { key: "?", code: "Minus", ctrlKey: true, shiftKey: true }, "windows"),
+    "Ctrl+? on a German layout opens the sheet",
+  );
   assert(!fires("shortcuts", { shiftKey: true }), "a bare ? never opens the sheet");
   assert(!fires("shortcuts", { key: "/", metaKey: true }), "⌘/ without Shift is not the chord");
   assert(

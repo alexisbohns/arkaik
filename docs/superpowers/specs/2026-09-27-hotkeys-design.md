@@ -1,6 +1,6 @@
 # Hotkeys on TanStack — design
 
-**Status:** draft 2026-09-27, pending review. Ships as a three-part stack.
+**Status:** approved 2026-09-27; amended after review. Ships as a three-part stack.
 
 ## Problem
 
@@ -68,8 +68,13 @@ Checked against `@tanstack/hotkeys` 0.10.0 / `@tanstack/react-hotkeys` 0.12.0:
   matcher falls back to `event.code` when Alt is held, so `"Alt+D"` matches.
 - **ESM-only.** The Node test scripts are CommonJS and CI runs Node 20, so
   tests load it with `await import("@tanstack/hotkeys")`, never `require`.
-- `requireReset: true` fires once per press. It replaces the old
-  `event.repeat` guards.
+- `requireReset: true` would fire once per press, but guarded callbacks keep
+  the literal `if (event.repeat) return;` instead — identical behaviour, no
+  keyup-reset reasoning.
+- **The matcher's `event.code` fallback assumes US key positions.** With
+  Option held a Mac types `æ`/`µ`, so on AZERTY `"Alt+A"` would match the key
+  labelled Q. Letter chords are therefore resolved against the active layout
+  at runtime (part 2), and `?` is registered by character too (`"Mod+?"`).
 
 ## Part 1 — migrate the existing shortcuts (no behaviour change)
 
@@ -92,9 +97,9 @@ They stay in the cheat sheet as documentation only.
 | layout ⌘E | guarded: `preventDefault: false`; the callback returns early on `isEditableElement(event.target)`, otherwise prevents and exports. |
 | `components/docs/DocsSearch.tsx` ⌘K, ⌘? | same as the layout's. The two never mount together. |
 | `components/ui/sidebar.tsx` ⌘B | `useHotkey("Mod+B", toggleSidebar)` — keeps its current live-in-inputs behaviour. |
-| `components/panels/PanelStack.tsx` Escape | guarded, `enabled: entries.length > 0`, `requireReset: true`, `ignoreInputs: false` with the callback checking `isEditableElement` and `OPEN_OVERLAY_SELECTOR` (unchanged guards). |
+| `components/panels/PanelStack.tsx` Escape | guarded, `enabled: entries.length > 0`, an `event.repeat` bail-out, `ignoreInputs: false` with the callback checking `isEditableElement` and `OPEN_OVERLAY_SELECTOR` (unchanged guards). |
 | `components/panels/ShotPreviewDialog.tsx` ←/→ | guarded, `enabled: open`; the callback keeps the `[data-slot="tabs-list"]` bail-out. |
-| `lib/hooks/useKeyboardShortcuts.ts` Delete/Backspace | `useHotkeys` over both keys, `requireReset: true`; the callback keeps the editable-target guard. The unused `onEscape` option is removed (its only caller, `JourneyMap`, never passes it). |
+| `lib/hooks/useKeyboardShortcuts.ts` Delete/Backspace | `useHotkeys` over both keys with an `event.repeat` bail-out; the callback keeps the editable-target guard. The unused `onEscape` option is removed (its only caller, `JourneyMap`, never passes it). |
 
 **⌘? both readings.** The old predicate accepts `key === "?"` or
 Shift+`/`. The test pins, through `matchesKeyboardEvent`, which one or two

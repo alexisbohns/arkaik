@@ -55,7 +55,9 @@ const GROUPS: readonly ShortcutGroup[] = [
         id: "shortcuts",
         description: "Show keyboard shortcuts",
         keys: [MOD_KEY_TOKEN, "?"],
-        hotkeys: ["Mod+Shift+/"],
+        // Both readings: `Mod+?` is the character on any layout (AZERTY types ?
+        // as Shift+,), `Mod+Shift+/` the US physical keys when a browser reports "/".
+        hotkeys: ["Mod+?", "Mod+Shift+/"],
         scope: "everywhere",
       },
       {
