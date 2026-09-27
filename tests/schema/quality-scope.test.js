@@ -395,6 +395,12 @@ const cellIds = (scope) => scope.cells.map((cell) => `${cell.surface}:${cell.cri
     ),
   );
   check(
+    "known need not arrive sorted — the newest is found regardless of order",
+    /sorts before "2026-10"/.test(
+      throws(() => scopedAuditId({ since: "2026-08", month: "2026-09", requested: "2026-09-x", known: ["2026-10", "2026-08"], recorded: ["2026-08", "2026-10"] })),
+    ),
+  );
+  check(
     "a requested id is otherwise returned",
     scopedAuditId({ since: "2026-08", month: "2026-09", requested: "2026-09-custom", known: ["2026-08"], recorded: ["2026-08"] }) === "2026-09-custom",
   );

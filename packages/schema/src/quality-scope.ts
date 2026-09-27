@@ -178,7 +178,7 @@ export function deriveAuditScope(
   const sinceTs = isString(anchor.ts) ? anchor.ts : null;
 
   // Resolutions in order, one entry per finding. A later NAMED `resolved_by`
-  // wins over an earlier one — the rule `foldFindingEvents` applies, so the
+  // wins over an earlier one — the rule `foldQualityEvents` applies, so the
   // run sheet and the findings board name the same PR.
   const resolutions = new Map<string, { resolved_by?: string; node_ids: Set<string> }>();
   for (const event of ordered.slice(sinceIndex + 1)) {
@@ -358,7 +358,12 @@ export interface ScopedAuditIdInput {
   /** `YYYY-MM`, the month a new scoped audit is named for. */
   month: string;
   requested?: string;
-  /** Every audit id that exists: on disk in a repo, in the section and journal when hosted. */
+  /**
+   * Every audit id that exists: on disk in a repo, in the section and
+   * journal when hosted. Order does not matter — the newest is found by
+   * sorting, not by position, since the hosted caller builds this from a
+   * union of several sources with no inherent order.
+   */
   known: readonly string[];
   recorded: readonly string[];
   /** A scoped audit in progress from the same `since`, not yet recorded — continued rather than forked. */
@@ -383,7 +388,7 @@ export interface ScopedAuditIdInput {
  */
 export function scopedAuditId(input: ScopedAuditIdInput): string {
   const { since, month, requested, known, recorded, open } = input;
-  const newest = known[known.length - 1];
+  const newest = [...known].sort().at(-1);
 
   if (requested !== undefined) {
     if (requested === since) {

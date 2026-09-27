@@ -539,7 +539,7 @@ export function findingResolvedInput(
  * patches the file) and no event is written. This event exists for writes
  * made AWAY from the checkout: a hosted project has no findings file, so the
  * journal is the only place the decision can live, and the read derives the
- * status from it (`foldFindingEvents`).
+ * status from it (`foldQualityEvents`).
  */
 export function findingAcceptedInput(
   finding: Pick<QualityFinding, "id" | "node_ids">,
