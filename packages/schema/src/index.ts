@@ -23,4 +23,5 @@ export * from "./quality-ops";
 export * from "./quality-regressions";
 export * from "./quality-trend";
 export * from "./quality-scope";
+export * from "./quality-burndown";
 export * from "./quality-baseline";
