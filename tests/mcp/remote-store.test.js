@@ -438,6 +438,30 @@ async function main() {
       String(refusalError),
     );
     state.refuseQuality = null;
+
+    // --- widened inputs and richer refusals (Task 12) -----------------------
+    // A score or a scoped completion names no finding — the refusal falls
+    // back to "entry <index>", and a detail (when the server sends one) is
+    // appended after an em dash.
+    state.refuseQuality = {
+      error: "refused",
+      refusals: [{ index: 0, reason: "out_of_scope", detail: "1 cell to re-score…" }],
+    };
+    let scopeRefusalError;
+    try {
+      await directStore.appendQualityEvents([
+        { type: "quality.assessment.scored", criterion_id: "SEC-01", surface: "web", level: 3, evidence: "x" },
+      ]);
+    } catch (err) {
+      scopeRefusalError = err;
+    }
+    check(
+      "a finding-less refusal names the entry index and carries the server's detail",
+      scopeRefusalError instanceof Error &&
+        scopeRefusalError.message.includes("entry 0: out_of_scope — 1 cell to re-score"),
+      String(scopeRefusalError),
+    );
+    state.refuseQuality = null;
   } finally {
     server.close();
     fs.rmSync(tmp, { recursive: true, force: true });

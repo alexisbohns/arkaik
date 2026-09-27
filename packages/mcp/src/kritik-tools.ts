@@ -94,7 +94,7 @@ import {
 import { loadProfile } from "@arkaik/schema/src/cli/kritik-paths";
 import { loadKritikLibrary, readFullJournalEvents, resolveJournal } from "arkaik/io";
 import { ToolError, type ToolDefinition, type ToolHandler } from "./protocol";
-import type { LoadedGraph, Store } from "./store";
+import type { HostedQualityInput, LoadedGraph, Store } from "./store";
 
 export interface KritikContext {
   store: Store;
@@ -125,10 +125,7 @@ const REPO_MODE_ONLY = "Repo-mode reads come from docs/quality/ files.";
  * verdict (post-fold) — so this does no client-side pre-checking beyond the
  * resolve idempotency case, and surfaces the server's refusal verbatim.
  */
-async function appendHosted(
-  store: Store,
-  inputs: readonly { type: string; finding_id: string; resolved_by?: string; reason?: string }[],
-): Promise<JournalEvent[]> {
+async function appendHosted(store: Store, inputs: readonly HostedQualityInput[]): Promise<JournalEvent[]> {
   if (store.appendQualityEvents === undefined) {
     throw new ToolError(`${store.describe()} cannot append quality events.`);
   }

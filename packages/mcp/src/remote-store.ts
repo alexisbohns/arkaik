@@ -30,7 +30,7 @@ import {
   type ValidationResult,
 } from "@arkaik/schema";
 
-import type { LoadedGraph, Store, WriteResult } from "./store";
+import type { HostedQualityInput, LoadedGraph, Store, WriteResult } from "./store";
 
 /** Events written through this store are attributed to the agent plane. */
 export const REMOTE_ACTOR = "arkaik-agent";
@@ -187,7 +187,7 @@ export function createRemoteStore(options: RemoteStoreOptions): Store {
     // only be stale the moment two sessions race, so this method does no
     // checking of its own — it forwards the inputs and lets the server's
     // verdict (post-fold, under its row lock) be the only one that counts.
-    async appendQualityEvents(inputs): Promise<JournalEvent[]> {
+    async appendQualityEvents(inputs: readonly HostedQualityInput[]): Promise<JournalEvent[]> {
       try {
         const result = await request<{ events: JournalEvent[] }>("/quality/events", {
           method: "POST",
@@ -197,11 +197,16 @@ export function createRemoteStore(options: RemoteStoreOptions): Store {
       } catch (err) {
         const e = err as Error & {
           status?: number;
-          body?: { error?: string; reason?: string; refusals?: { finding_id: string; reason: string }[] };
+          body?: { error?: string; reason?: string; refusals?: { index: number; finding_id?: string; reason: string; detail?: string }[] };
         };
         if (e.status === 422 && e.body?.error === "refused") {
+          // A score or a scoped completion names no finding — fall back to
+          // the entry's position, and append the server's `detail` (the
+          // "what to do instead" half of the refusal) after an em dash.
           const detail = e.body.refusals
-            ? e.body.refusals.map((r) => `${r.finding_id}: ${r.reason}`).join(", ")
+            ? e.body.refusals
+                .map((r) => `${r.finding_id ?? `entry ${r.index}`}: ${r.reason}${r.detail ? ` — ${r.detail}` : ""}`)
+                .join("; ")
             : (e.body.reason ?? "refused");
           throw new Error(`Quality events refused — ${detail}`);
         }
