@@ -147,7 +147,12 @@ hand to read, at the commit that holds the fixes, not a repo-mode session.
 
 1. `kritik_scope` lists the cells the resolved findings made stale. Its
    `open_audit` names a scoped re-audit already in progress (or is `null`),
-   and a cell that audit has scored reads `rescored: true`.
+   and a cell that audit has scored reads `rescored: true`. It is picked the
+   way the server picks the audit an id-less score continues: the last
+   unrecorded audit, in journal order, scored from the current `since`. The
+   server checks every score against the default scope (measured from the
+   newest recorded audit, widened), so `kritik_scope`'s `since` and
+   `widen=false` change what the read shows, not what `kritik_score` accepts.
 2. `kritik_score` with `scope=true` and `commit=<sha>` re-scores each listed
    cell, with evidence, including a widened cell that didn't move: score it
    at its current level, and say so in the evidence. Leave `audit_id` off:

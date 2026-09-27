@@ -471,8 +471,9 @@ matrix --record` wrote it, and a re-recorded audit id keeps only its latest
 reading. Rows are ordered by when they were recorded, never by id, so a scoped
 re-audit named `2026-09-scoped` lands where it happened. A framework major bump
 between two audits breaks the comparison there (SPEC § 8): the row prints,
-without an arrow. A row marked `baseline` is a restored audit's reading,
-rebuilt from its stored scores rather than recorded. A scoped re-audit's row
+without an arrow. A row marked `baseline` is a restored audit's reading:
+rebuilt from its stored scores until the first hosted score records it for
+real, recorded after that. A scoped re-audit's row
 says how many cells it re-scored and which audit it measured from.
 `kritik_trend` is the same table over MCP, and the Quality page's matrix wears
 the same arrows against the last recorded audit. On a hosted project that was
@@ -583,6 +584,14 @@ never commits a list of the product's defects. The
 `arkaik kritik scope|score|matrix` verbs from the section above work on
 `docs/quality/` and a journal sidecar, so don't use them for this pass.
 
+Those hosted scores and recordings live only in the hosted journal. A later
+`arkaik restore` replaces that journal wholesale with the repo's, so it loses
+every hosted score and recording the repo's journal doesn't carry, and its
+history-loss guard only counts events, so it won't always stop it. **Never
+run `arkaik restore` over a hosted re-audit in progress** (`kritik_scope`
+shows an `open_audit`), and before any restore, tell the human it drops the
+hosted scores and recordings the repo's journal doesn't carry.
+
 You are still reading code, so you need the product's code at hand, at the
 commit that holds the fixes (usually the up-to-date default branch). That does not
 mean switching to a repo-mode session: stay connected to the hosted project,
@@ -641,6 +650,14 @@ cites.
      the scope. **Never resolve a finding to bring its cell into scope.** Only
      a merged fix resolves a finding. A cell you believe moved but isn't
      listed goes into your report, and into the next comprehensive audit.
+   - **`audit_id_conflict`** means the audit the score would land in can't
+     take it (already recorded, the scope's `since`, or an id that sorts
+     before a newer audit). If you passed `audit_id`, score again without it
+     so the server names the audit. If you didn't, the refusal suggests an id
+     (`e.g. …`): score again with that id as `audit_id`. That id is now the
+     pass's audit (`kritik_scope`'s `open_audit` names it from then on): pass
+     it on every score left and on the recording. Step 3's check shows which
+     cells still need a score under it.
    - **A new defect can't be opened here.** `kritik_open_finding` is
      repo-only. Report it to the human with its evidence, and don't bend a
      score to stand in for it.

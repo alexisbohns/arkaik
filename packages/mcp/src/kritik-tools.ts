@@ -147,6 +147,15 @@ async function appendHosted(store: Store, inputs: readonly HostedQualityInput[])
 }
 
 /** Hosted quality state: the stored section, already folded by the server. */
+/**
+ * The hint a hosted session gives when there is nothing to measure from. Repo
+ * mode points at `kritik_matrix record=true`; a hosted one would refuse (it
+ * records a scoped re-audit, which needs an audit to measure from), so a
+ * hosted agent is sent to the repository instead of round in a loop.
+ */
+const NO_HOSTED_AUDIT =
+  "This hosted project has no audit to measure from. One must be run in the repository and restored (`arkaik restore`) first — a hosted session cannot write one.";
+
 function hostedSection(graph: LoadedGraph): { section: QualitySection; library: KritikLibrary | undefined } {
   const section = (graph.loaded.bundle as { quality?: QualitySection }).quality;
   // Both arrays are required by the section schema; checking both here means
@@ -421,10 +430,15 @@ export function buildKritikCatalog(ctx: KritikContext): {
     if (options.since !== undefined) {
       const recorded = recordedAuditIds(events);
       if (!recorded.includes(options.since)) {
-        throw new ToolError(
-          `No recorded audit "${options.since}" in this journal (recorded: ${recorded.join(", ") || "none"}). ` +
-            `A scope is measured from a recorded reading — kritik_matrix with record=true writes one.`,
-        );
+        // A hosted record=true records a scoped re-audit, which itself needs
+        // an audit to measure from — pointing a hosted agent at it would loop.
+        const hint =
+          ctx.qualityRoot !== undefined
+            ? "A scope is measured from a recorded reading — kritik_matrix with record=true writes one."
+            : recorded.length > 0
+              ? "Pass one of the recorded audits, or leave since off to measure from the newest."
+              : NO_HOSTED_AUDIT;
+        throw new ToolError(`No recorded audit "${options.since}" in this journal (recorded: ${recorded.join(", ") || "none"}). ${hint}`);
       }
     }
 
@@ -650,6 +664,13 @@ export function buildKritikCatalog(ctx: KritikContext): {
         ]);
       }
 
+      // Named, not silently dropped: an agent that passed commit believes it
+      // lands somewhere.
+      const notes =
+        typeof args.commit === "string" && args.commit !== ""
+          ? ["commit is only used when recording in a hosted session — repo mode reads it from the audit's scores.json"]
+          : undefined;
+
       return {
         ...file,
         ...(scope !== undefined ? { scope, left_unscored: leftUnscored } : {}),
@@ -658,6 +679,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
         lanes,
         p0,
         events,
+        ...(notes !== undefined ? { notes } : {}),
       };
     },
   );
@@ -890,10 +912,17 @@ export function buildKritikCatalog(ctx: KritikContext): {
         rows,
         snapshots: trend.snapshots,
         ...(trend.snapshots.length === 0
-          ? { note: "No recorded audits yet — `kritik_matrix` with record=true writes one." }
+          ? { note: ctx.qualityRoot === undefined ? NO_HOSTED_AUDIT : "No recorded audits yet — `kritik_matrix` with record=true writes one." }
           : rows[0]?.baseline === true
             ? {
-                note: "The first row is the restored audit's reading, rebuilt from its stored scores — no reading was recorded for it.",
+                // Synthesized only until the first hosted score writes the
+                // baseline for real (flagged `baseline: true`); after that the
+                // row IS a recorded reading, and saying otherwise is false.
+                note: graph.journal.some(
+                  (event) => event.type === "quality.audit.completed" && (event as { baseline?: unknown }).baseline === true,
+                )
+                  ? "The first row is the restored audit's reading, recorded when the first hosted score landed."
+                  : "The first row is the restored audit's reading, rebuilt from its stored scores — no reading was recorded for it.",
               }
             : {}),
       };
@@ -904,7 +933,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
     {
       name: "kritik_scope",
       description:
-        "The cells a batch of fixes made stale — the work list for a scoped re-audit. A score only moves when its cell is re-scored, so after closing findings this lists exactly which (criterion x surface) cells to re-score instead of running a comprehensive audit: every quality.finding.resolved since the last recorded audit names its cell (`kind: direct`, `because` = finding ids), and one hop over node_ids adds neighbouring assessed cells a shared fix plausibly moved (`kind: widened`, `because` = node ids). Accepted risks are not fixes and never scope anything. `unknown` lists resolved ids that name no finding — report those, something closed an id that does not exist; `unscorable` lists resolved findings whose cell nothing can re-score (a retired criterion, a surface no longer in the profile). It plans an audit and scores nothing: re-score each cell with kritik_score, evidence and scope=true (which writes into an audit of its own, `<YYYY-MM>-scoped`, never the `since` audit whose recorded reading is history), then kritik_matrix with that audit_id and record=true. Recording closes the window: a cell left unscored drops out of the next scope, so re-score a widened cell that did not move at its current level, saying so in the evidence. Works in both modes — hosted reads the hosted journal and quality section. In a hosted project whose audit arrived by restore with no recorded reading, the scope measures from that audit, dated where it was taken. In a hosted session, open_audit and rescored show what the scoped re-audit in progress has already covered — record only when every cell is rescored.",
+        "The cells a batch of fixes made stale — the work list for a scoped re-audit. A score only moves when its cell is re-scored, so after closing findings this lists exactly which (criterion x surface) cells to re-score instead of running a comprehensive audit: every quality.finding.resolved since the last recorded audit names its cell (`kind: direct`, `because` = finding ids), and one hop over node_ids adds neighbouring assessed cells a shared fix plausibly moved (`kind: widened`, `because` = node ids). Accepted risks are not fixes and never scope anything. `unknown` lists resolved ids that name no finding — report those, something closed an id that does not exist; `unscorable` lists resolved findings whose cell nothing can re-score (a retired criterion, a surface no longer in the profile). It plans an audit and scores nothing: re-score each cell with kritik_score, evidence and scope=true (which writes into an audit of its own, `<YYYY-MM>-scoped`, never the `since` audit whose recorded reading is history), then kritik_matrix with that audit_id and record=true. Recording closes the window: a cell left unscored drops out of the next scope, so re-score a widened cell that did not move at its current level, saying so in the evidence. Works in both modes — hosted reads the hosted journal and quality section. In a hosted project whose audit arrived by restore with no recorded reading, the scope measures from that audit, dated where it was taken. In a hosted session, open_audit and rescored show what the scoped re-audit in progress has already covered — record only when every cell is rescored. In a hosted session the server checks each kritik_score against the default scope (measured from the newest recorded audit, widened), so since and widen=false only change what this read shows, not which cells kritik_score accepts.",
       inputSchema: {
         type: "object",
         properties: {
@@ -922,32 +951,45 @@ export function buildKritikCatalog(ctx: KritikContext): {
         ...(args.widen === false ? { widen: false } : {}),
       });
 
-      // Hosted only: the scoped re-audit already in progress, if any — the
-      // newest audit_id that is not yet RECORDED but has hosted scores
-      // measured from this same scope. An agent mid-re-audit can then see
-      // how much of this list kritik_score has already covered without
-      // replaying every kritik_score reply to reconstruct it.
+      // Hosted only: the scoped re-audit already in progress, if any. An
+      // agent mid-re-audit can then see how much of this list kritik_score
+      // has already covered without replaying every kritik_score reply.
+      //
+      // The rule mirrors the server planner's (`planQualityEvents` in
+      // lib/services/graph/quality-events.ts), which names the audit an
+      // id-less score lands in: the LAST `quality.assessment.scored`, in
+      // journal order, whose `scope.since` is the current since and whose
+      // audit_id is not recorded (the implicit baseline counting as
+      // recorded). Journal order, never lexical order — the two disagree
+      // once a month holds `-scoped` and `-scoped-02`.
       let openAudit: { audit_id: string; scored: { criterion_id: string; surface: string }[] } | null = null;
       let cells: (ScopeCell & { rescored?: true })[] = scope.cells;
       if (ctx.qualityRoot === undefined && scope.since !== null) {
-        const recorded = new Set(recordedAuditIds(graph.journal));
-        const scoredByAudit = new Map<string, { criterion_id: string; surface: string }[]>();
-        for (const event of graph.journal as JournalEvent[]) {
-          if (event.type !== "quality.assessment.scored") continue;
-          const auditId = (event as { audit_id?: unknown }).audit_id;
-          if (typeof auditId !== "string" || auditId === "" || recorded.has(auditId)) continue;
-          if ((event as { scope?: { since?: unknown } }).scope?.since !== scope.since) continue;
-          const criterionId = (event as { criterion_id?: unknown }).criterion_id;
-          const surface = (event as { surface?: unknown }).surface;
-          if (typeof criterionId !== "string" || typeof surface !== "string") continue;
-          const bucket = scoredByAudit.get(auditId) ?? [];
-          bucket.push({ criterion_id: criterionId, surface });
-          scoredByAudit.set(auditId, bucket);
+        const { section, library } = hostedSection(graph);
+        const recorded = new Set(recordedAuditIds(withImplicitBaseline(graph.journal, section, library)));
+        const scoredEvents = (graph.journal as JournalEvent[]).filter((event) => event.type === "quality.assessment.scored");
+        const auditIdOf = (event: JournalEvent): string | undefined => {
+          const id = (event as { audit_id?: unknown }).audit_id;
+          return typeof id === "string" && id !== "" ? id : undefined;
+        };
+        const sinceOf = (event: JournalEvent): string | undefined => {
+          const since = (event as { scope?: { since?: unknown } }).scope?.since;
+          return typeof since === "string" && since !== "" ? since : undefined;
+        };
+        let open: string | undefined;
+        for (const event of scoredEvents) {
+          const id = auditIdOf(event);
+          if (id !== undefined && sinceOf(event) === scope.since && !recorded.has(id)) open = id;
         }
-        const newestOpen = [...scoredByAudit.keys()].sort().at(-1);
-        if (newestOpen !== undefined) {
-          const scored = scoredByAudit.get(newestOpen) ?? [];
-          openAudit = { audit_id: newestOpen, scored };
+        if (open !== undefined) {
+          const scored: { criterion_id: string; surface: string }[] = [];
+          for (const event of scoredEvents) {
+            if (auditIdOf(event) !== open || sinceOf(event) !== scope.since) continue;
+            const criterionId = (event as { criterion_id?: unknown }).criterion_id;
+            const surface = (event as { surface?: unknown }).surface;
+            if (typeof criterionId === "string" && typeof surface === "string") scored.push({ criterion_id: criterionId, surface });
+          }
+          openAudit = { audit_id: open, scored };
           const done = new Set(scored.map((cell) => `${cell.criterion_id}::${cell.surface}`));
           cells = scope.cells.map((cell) =>
             done.has(`${cell.criterion_id}::${cell.surface}`) ? { ...cell, rescored: true } : cell,
@@ -961,7 +1003,12 @@ export function buildKritikCatalog(ctx: KritikContext): {
         summary: scopeSummary(scope),
         ...(ctx.qualityRoot === undefined ? { open_audit: openAudit } : {}),
         ...(scope.since === null
-          ? { note: "No recorded audit yet — a scope is measured from one. `kritik_matrix` with record=true writes it." }
+          ? {
+              note:
+                ctx.qualityRoot === undefined
+                  ? NO_HOSTED_AUDIT
+                  : "No recorded audit yet — a scope is measured from one. `kritik_matrix` with record=true writes it.",
+            }
           : {}),
       };
     },
