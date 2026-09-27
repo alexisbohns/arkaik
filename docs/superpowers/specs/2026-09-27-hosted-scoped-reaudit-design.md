@@ -50,9 +50,9 @@ withImplicitBaseline(events, section, library): JournalEvent[]  // events, plus 
   It is capped to 1 ms before the first `quality.finding.resolved`/`accepted`
   in `orderEvents` order, so no resolution is ever pushed out of the window
   (that's the #472 trap). With no assessment `ts`, it's 1 ms before the first
-  decision. With neither, it takes the newest journal event's `ts`, else the
-  Unix epoch. An unparsable `ts` falls back to that string, with the event id
-  breaking the tie.
+  decision. With neither, it is the Unix epoch. An unparsable decision `ts`
+  also gives the epoch, since a baseline that sorts first can't push a
+  resolution out of the window.
 - **The scores at the time of the audit:** start from the section, then set
   every finding that a decision event ordered after the baseline's `ts` names
   back to `open`. That undoes both the server's fold and a sidecar resolution
