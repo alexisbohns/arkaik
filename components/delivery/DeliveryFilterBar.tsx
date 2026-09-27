@@ -9,6 +9,8 @@ import type { SpeciesId } from "@/lib/config/species";
 import { SPECIES_PLURALS } from "@/lib/config/species-icons";
 import type { ProjectBundle } from "@/lib/data/types";
 import { usePlatformFilterControl } from "@/lib/hooks/usePlatformFilterControl";
+import { usePlatformHotkeys } from "@/lib/hooks/usePlatformHotkeys";
+import { useShortcut } from "@/lib/hooks/useShortcut";
 
 export type DeliveryPlatformFilter = "all" | PlatformId;
 
@@ -24,6 +26,10 @@ interface DeliveryFilterBarProps {
   projectId: string;
   /** The bundle products live on. `undefined` until `useProject` resolves. */
   project: ProjectBundle | undefined;
+  /** The page's filters differ from its resting lens — `c` has something to clear. */
+  isFiltered: boolean;
+  /** Back to the resting lens. Keyboard-only for now (`c`); the bar has no Clear button. */
+  onClearFilters: () => void;
 }
 
 // Flows are not deliverables (their status is a rollup of their views), so the
@@ -44,6 +50,8 @@ export function DeliveryFilterBar({
   onSearchChange,
   projectId,
   project,
+  isFiltered,
+  onClearFilters,
 }: DeliveryFilterBarProps) {
   // Same arity rule and same stale-filter reset as the Acceptances bar; only
   // the rendering below (toggle buttons, not a Select) is this bar's own.
@@ -53,6 +61,13 @@ export function DeliveryFilterBar({
     platform,
     () => onPlatformChange("all"),
   );
+  usePlatformHotkeys({
+    enabled: showPlatformFilter,
+    available: platformOptions,
+    current: platform,
+    onSelect: onPlatformChange,
+  });
+  useShortcut("clear-filters", onClearFilters, { enabled: isFiltered });
 
   return (
     <Toolbar>
