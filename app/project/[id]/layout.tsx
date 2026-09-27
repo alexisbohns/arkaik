@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useTheme } from "next-themes";
 import { CommandPalette } from "@/components/layout/CommandPalette";
@@ -19,12 +19,8 @@ import { useProject } from "@/lib/hooks/useProject";
 import { useProjectId } from "@/lib/hooks/useProjectId";
 import { useProjectExport } from "@/lib/hooks/useProjectExport";
 import { buildProjectCommands, type CommandActionId } from "@/lib/utils/command-palette";
-import {
-  isCommandPaletteShortcut,
-  isEditableElement,
-  isExportShortcut,
-  isShortcutsDialogShortcut,
-} from "@/lib/utils/keyboard";
+import { GUARDED_HOTKEY, useShortcut } from "@/lib/hooks/useShortcut";
+import { isEditableElement } from "@/lib/utils/keyboard";
 
 // The panel stack lives here, not in a page: a page segment remounts whenever
 // its dynamic params change, which would reset the stack on every click.
@@ -100,46 +96,28 @@ function ProjectChrome({ children }: { children: React.ReactNode }) {
     [id, customMaps],
   );
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || !isCommandPaletteShortcut(event)) return;
-      event.preventDefault();
-      setPaletteOpen((open) => !open);
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
-  // ⌘? — the cheat sheet, registered next to ⌘K for the same reason: it is a
-  // property of the app, not of the page you happen to be on.
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || !isShortcutsDialogShortcut(event)) return;
-      event.preventDefault();
-      setShortcutsOpen((open) => !open);
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  // ⌘K and ⌘? live in fields too (TanStack's default for a Mod chord): a chord
+  // never competes with typing, and a palette or help you must click out of a
+  // field to reach is one nobody uses. Both are properties of the app, not of
+  // the page you happen to be on, so they register here.
+  useShortcut("command-palette", () => setPaletteOpen((open) => !open));
+  useShortcut("shortcuts", () => setShortcutsOpen((open) => !open));
 
   // Registered here rather than on the Journey map, now that the button that
   // starts an export is in the switcher: a shortcut that only fired on one of
   // seven pages would contradict the menu item sitting on all of them. Still
   // inert inside a field — ⌘E is a text-editing chord on macOS, and the raw
-  // bundle editor is a textarea.
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || !isExportShortcut(event)) return;
-      if (isEditableElement(event.target)) return;
+  // bundle editor is a textarea — which is why it is guarded: declining must
+  // leave the key to the field.
+  useShortcut(
+    "export",
+    (event) => {
+      if (event.defaultPrevented || isEditableElement(event.target)) return;
       event.preventDefault();
       void exportBundle();
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [exportBundle]);
+    },
+    GUARDED_HOTKEY,
+  );
 
   const handleCommandAction = useCallback(
     (action: CommandActionId) => {
