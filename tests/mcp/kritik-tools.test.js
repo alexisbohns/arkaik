@@ -549,9 +549,17 @@ async function run() {
 
   // Recorded POST bodies to /quality/events, and a mode switch for the 422
   // "refused" response the server sends when a status transition targets a
-  // finding that is not open post-fold.
+  // finding that is not open post-fold (`true` for the plain not_open case;
+  // a whole body for a specific refusal a test wants to see surfaced).
   const eventsReceived = [];
   let refuseEvents = false;
+  // The restored project's journal, mutable so a test can simulate the
+  // server having already recorded a completion (Task 14's retry-safety
+  // check) without a real write path in this stub.
+  const demoJournalExtra = [];
+  // The real server records a restored audit's baseline once, on its first
+  // hosted score — this mirrors that by firing only the first time.
+  let restoredBaselineWritten = false;
 
   function startHostedStub() {
     return http.createServer((req, res) => {
@@ -569,6 +577,7 @@ async function run() {
             // one real, one naming a finding the section does not hold.
             { id: "01RESOLVED", ts: "2026-08-20T00:00:00.000Z", type: "quality.finding.resolved", finding_id: "F-B", resolved_by: "https://pr/3", actor: "github-app" },
             { id: "01RESOLVEDGONE", ts: "2026-08-21T00:00:00.000Z", type: "quality.finding.resolved", finding_id: "F-GONE", actor: "github-app" },
+            ...demoJournalExtra,
           ],
         });
       }
@@ -576,27 +585,75 @@ async function run() {
       if (req.url === "/api/graph/projects/restored/journal" && req.method === "GET") {
         return json(200, { journal: RESTORED_JOURNAL });
       }
-      if (req.url === "/api/graph/projects/demo/quality/events" && req.method === "POST") {
+      const qualityMatch = req.url.match(/^\/api\/graph\/projects\/([^/]+)\/quality\/events$/);
+      if (qualityMatch && req.method === "POST") {
+        const projectId = qualityMatch[1];
         let raw = "";
         req.on("data", (chunk) => (raw += chunk));
         req.on("end", () => {
           const body = JSON.parse(raw);
           eventsReceived.push(body);
           if (refuseEvents) {
-            return json(422, { error: "refused", refusals: [{ finding_id: "F-B", reason: "not_open" }] });
+            const failure =
+              refuseEvents === true
+                ? { error: "refused", refusals: [{ finding_id: "F-B", reason: "not_open" }] }
+                : refuseEvents;
+            return json(422, failure);
           }
-          return json(
-            200,
-            {
-              events: body.events.map((input) => ({
+          const events = [];
+          for (const input of body.events) {
+            if (input.type === "quality.assessment.scored") {
+              // A restored project's FIRST hosted score records the
+              // implicit baseline for real before the score itself — the
+              // way `planQualityEvents` puts the baseline first in its plan.
+              if (projectId === "restored" && !restoredBaselineWritten) {
+                restoredBaselineWritten = true;
+                events.push({
+                  id: "01BL",
+                  ts: "2026-08-01T00:00:00.000Z",
+                  type: "quality.audit.completed",
+                  audit_id: "2026-08",
+                  baseline: true,
+                  framework_version: "1.0.0",
+                  scores: { web: { SEC: 70 } },
+                  counts: {},
+                  actor: "arkaik-agent",
+                });
+              }
+              events.push({
+                id: "01SC",
+                ts: "2026-09-15T00:00:00.000Z",
+                type: input.type,
+                audit_id: input.audit_id ?? "2026-09-scoped",
+                criterion_id: input.criterion_id,
+                surface: input.surface,
+                level: input.level,
+                evidence: input.evidence,
+                scope: { since: "2026-08" },
+                actor: "arkaik-agent",
+              });
+            } else if (input.type === "quality.audit.completed") {
+              events.push({
+                id: "01REC",
+                ts: "2026-09-16T00:00:00.000Z",
+                type: input.type,
+                audit_id: input.audit_id,
+                framework_version: "1.0.0",
+                scores: { web: { SEC: 80 } },
+                scope: { partial: true, cells: 1, since: "2026-08" },
+                actor: "arkaik-agent",
+              });
+            } else {
+              events.push({
                 id: "01X",
                 ts: "2026-09-02T00:00:00.000Z",
                 type: input.type,
                 finding_id: input.finding_id,
                 actor: "arkaik-agent",
-              })),
-            },
-          );
+              });
+            }
+          }
+          return json(200, { events });
         });
         return;
       }
@@ -619,16 +676,51 @@ async function run() {
       clientInfo: { name: "kritik-test", version: "0" },
     });
 
-    // The repo-only four refuse with a reason specific to why THEY need a
-    // checkout — not the old blanket "point the server at the checkout" text.
-    const scoreRefused = await hosted.call("kritik_score", { criterion_id: "SEC-01", surface: "web", level: 2, evidence: "x" });
-    check("kritik_score still refuses in hosted mode", scoreRefused.isError, scoreRefused.text.slice(0, 200));
-    check("kritik_score's refusal says why: reads the code", /reads the code/.test(scoreRefused.text), scoreRefused.text.slice(0, 300));
+    // kritik_score joins the hosted tools, scoped-only (issue #473) — the
+    // repo-only three still refuse with a reason specific to why THEY need a
+    // checkout.
+    eventsReceived.length = 0;
+    const scoreNoScope = await hosted.call("kritik_score", { criterion_id: "SEC-01", surface: "web", level: 2, evidence: "x" });
     check(
-      "kritik_score's refusal is not the old blanket text",
-      !/Point the server at the checkout/.test(scoreRefused.text),
-      scoreRefused.text.slice(0, 300),
+      "kritik_score without scope=true refuses, pointing at a scoped re-audit",
+      scoreNoScope.isError && /scoped re-audit/.test(scoreNoScope.text),
+      scoreNoScope.text.slice(0, 300),
     );
+    check("and nothing was posted", eventsReceived.length === 0, JSON.stringify(eventsReceived));
+
+    eventsReceived.length = 0;
+    const scoreScoped = await hosted.call("kritik_score", {
+      criterion_id: "SEC-01",
+      surface: "web",
+      level: 3,
+      evidence: "src/a.ts:3",
+      commit: "abc",
+      scope: true,
+    });
+    check(
+      "kritik_score scope=true posts exactly the scored entry",
+      eventsReceived.length === 1 &&
+        JSON.stringify(eventsReceived[0]) ===
+          JSON.stringify({
+            events: [{ type: "quality.assessment.scored", criterion_id: "SEC-01", surface: "web", level: 3, evidence: "src/a.ts:3", commit: "abc" }],
+          }),
+      JSON.stringify(eventsReceived),
+    );
+    check(
+      "the reply carries the audit_id the server named and where it scoped from",
+      !scoreScoped.isError && scoreScoped.json.audit_id === "2026-09-scoped" && scoreScoped.json.scoped_from === "2026-08",
+      scoreScoped.text.slice(0, 300),
+    );
+    check("an already-audited project's first hosted score carries no notes", scoreScoped.json.notes === undefined, scoreScoped.text.slice(0, 300));
+
+    refuseEvents = { error: "refused", refusals: [{ index: 0, reason: "out_of_scope", detail: "not in the current scope" }] };
+    const scoreOutOfScope = await hosted.call("kritik_score", { criterion_id: "SEC-04", surface: "web", level: 2, evidence: "x", scope: true });
+    check(
+      "a server out_of_scope refusal surfaces as the tool error text",
+      scoreOutOfScope.isError && /out_of_scope/.test(scoreOutOfScope.text),
+      scoreOutOfScope.text.slice(0, 300),
+    );
+    refuseEvents = false;
 
     const openFindingRefused = await hosted.call("kritik_open_finding", {
       criterion_id: "SEC-01",
@@ -835,6 +927,30 @@ async function run() {
         restoredTrend.json.rows[0].baseline === true &&
         /rebuilt/.test(restoredTrend.json.note),
       restoredTrend.text.slice(0, 400),
+    );
+
+    // The first hosted score of a restored project's audit: the server
+    // records that implicit reading for real before this score can overwrite
+    // the level it was computed from, and says so.
+    eventsReceived.length = 0;
+    const restoredScored = await restored.call("kritik_score", {
+      criterion_id: "SEC-01",
+      surface: "web",
+      level: 3,
+      evidence: "auth.ts:9",
+      scope: true,
+    });
+    check(
+      "scoring a restored project with no recorded reading notes the baseline and the missing commit",
+      !restoredScored.isError &&
+        (restoredScored.json.notes ?? []).some((n) => /baseline/.test(n)) &&
+        (restoredScored.json.notes ?? []).some((n) => /commit/.test(n)),
+      restoredScored.text.slice(0, 400),
+    );
+    check(
+      "the baseline event is returned first, by flag rather than position",
+      restoredScored.json.events?.[0]?.type === "quality.audit.completed" && restoredScored.json.events[0].baseline === true,
+      JSON.stringify(restoredScored.json.events),
     );
   } finally {
     restored.stop();

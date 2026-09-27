@@ -14,12 +14,15 @@
  * `docs/quality/` sidecars, canonical in a repository the way `journal.jsonl`
  * is. A hosted project has no such directory — instead it reads the quality
  * section the server folds from the journal, and transitions findings by
- * posting journal events to the host (issue #400). What stays repo-only is the
- * audit RUN itself — `kritik_score`, `kritik_signals`, `kritik_trip_signal`,
- * `kritik_open_finding` — because scoring and opening a finding read the code,
- * and an agent auditing a hosted map has no checkout to read it against. Those
- * four say so plainly rather than half-working; every other tool works in
- * both modes.
+ * posting journal events to the host (issue #400). What stays repo-only is
+ * `kritik_signals`, `kritik_trip_signal` and `kritik_open_finding` — a signal
+ * is checked against the repo, and a new finding cites code an agent auditing
+ * a hosted map has no checkout to read against. `kritik_score` joins the
+ * hosted tools, scoped-only (issue #473): a hosted session can score the cells
+ * a fix made stale — `kritik_scope`'s list — because that is still reading
+ * code, just not writing a sidecar, but it refuses a comprehensive audit,
+ * which only a checkout can run end to end. Those three say so plainly rather
+ * than half-working; every other tool works in both modes.
  *
  * **Journal first, sidecar second.** In repo mode, the journal write is the
  * gated one — it runs through `store.persist`, which folds the events into
@@ -871,7 +874,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
     {
       name: "kritik_score",
       description:
-        "Record one (criterion x surface) maturity level with the evidence behind it. A cell holds exactly one level, so re-scoring replaces in place. Evidence is required: a score without a citation is an opinion, not an assessment. Score what the code IS, never what an open PR promises — that is what makes a trend real. For a scoped re-audit pass scope=true: a cell kritik_scope does not list is refused (so a between-milestone re-audit cannot drift into a comprehensive one), and the score lands in a scoped audit of its own (default <YYYY-MM>-scoped). Repo sessions only: scoring reads the code, so a hosted session refuses.",
+        "Record one (criterion x surface) maturity level with the evidence behind it. A cell holds exactly one level, so re-scoring replaces in place. Evidence is required: a score without a citation is an opinion, not an assessment. Score what the code IS, never what an open PR promises — that is what makes a trend real. For a scoped re-audit pass scope=true: a cell kritik_scope does not list is refused (so a between-milestone re-audit cannot drift into a comprehensive one), and the score lands in a scoped audit of its own (default <YYYY-MM>-scoped). In a hosted session scoring is scoped-only (scope=true is required) and nothing is written to disk. The server checks the cell against the scope, names the audit (default <YYYY-MM>-scoped), and, for a restored audit with no recorded reading, records that baseline first. You are still reading code: run this where the product's checkout is, and pass commit so the evidence can be checked against it.",
       inputSchema: {
         type: "object",
         properties: {
@@ -898,6 +901,64 @@ export function buildKritikCatalog(ctx: KritikContext): {
       },
     },
     async (args) => {
+      if (ctx.qualityRoot === undefined) {
+        if (args.scope !== true) {
+          throw new ToolError(
+            "A hosted session scores only a scoped re-audit: pass scope=true and score the cells kritik_scope lists. " +
+              "A comprehensive audit runs where the checkout is — `arkaik-mcp --bundle <path>`.",
+          );
+        }
+        const graph = await load();
+        const { library } = hostedSection(graph); // refuses a project with no quality section
+        const criterionId = requireString(args, "criterion_id");
+        const surface = requireString(args, "surface");
+        const level = requireInt(args, "level", 0, 4) as MaturityLevel;
+        const evidence = requireString(args, "evidence");
+        const commit = typeof args.commit === "string" && args.commit !== "" ? args.commit : undefined;
+        const events = await appendHosted(ctx.store, [
+          {
+            type: "quality.assessment.scored",
+            criterion_id: criterionId,
+            surface,
+            level,
+            evidence,
+            ...(typeof args.audit_id === "string" && args.audit_id !== "" ? { audit_id: args.audit_id } : {}),
+            ...(commit !== undefined ? { commit } : {}),
+          },
+        ]);
+        const scored = events.find((e) => e.type === "quality.assessment.scored") as
+          | (JournalEvent & { audit_id: string; scope?: { since?: string } })
+          | undefined;
+        const baseline = events.find(
+          (e) => e.type === "quality.audit.completed" && (e as { baseline?: unknown }).baseline === true,
+        ); // by flag, never by position
+        const notes: string[] = [];
+        if (baseline !== undefined) {
+          notes.push(
+            `Recorded the baseline reading of ${(baseline as { audit_id?: string }).audit_id} first, dated where that audit was taken — the scope and the trend now measure from a real event.`,
+          );
+        }
+        if (commit === undefined) {
+          notes.push("No commit given — it is the only thing that lets a hosted reader check this evidence against the tree it cites.");
+        }
+        return {
+          assessment: {
+            criterion_id: criterionId,
+            surface,
+            level,
+            evidence,
+            audit_id: scored?.audit_id,
+            ...(commit !== undefined ? { commit } : {}),
+            ts: scored?.ts,
+          },
+          audit_id: scored?.audit_id,
+          ...(scored?.scope?.since !== undefined ? { scoped_from: scored.scope.since } : {}),
+          anchor: library?.criteria?.find((c) => c.id === criterionId)?.level_anchors?.[`l${level}`],
+          events,
+          ...(notes.length > 0 ? { notes } : {}),
+        };
+      }
+
       const root = repoRootOf(ctx, "Scoring reads the code — evidence is file:line against a working tree.");
       const library = libraryOf(root);
       const profile = profileOf(root);
