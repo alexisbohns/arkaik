@@ -196,6 +196,34 @@ check("no journal at all is the same empty burndown", eq(deriveFindingsBurndown(
   check("seeded findings are not counted as opened", api.opened === 0);
 }
 
+// --- the seed never stands in for an event that exists ------------------------
+
+{
+  // The ordinary repo lifecycle: an audit, then a finding opened after it. The
+  // section holds both findings; only the one with no opened event of its own
+  // may be seeded — the other exists from its own event, not before it.
+  const findings = [
+    { id: "F-1", criterion_id: "SEC-01", surface: "web", impact: 4, likelihood: 4, cost: "S", status: "open" },
+    { id: "F-2", criterion_id: "SEC-01", surface: "web", impact: 4, likelihood: 4, cost: "S", status: "open" },
+  ];
+  const events = [opened(1, "F-1", "high"), audit(2, "2026-09", { high: 1 }), opened(3, "F-2", "high")];
+  const b = deriveFindingsBurndown(events, { findings });
+  check("a finding opened after the audit is counted from its own event", b.opened === 2 && b.since.opened === 1 && b.points[2].cause.id === "F-2", JSON.stringify(b.points.map((p) => p.cause)));
+  check("and the line holds both", b.points[2].open.high === 2, JSON.stringify(b.points[2].open));
+  const web = deriveFindingsBurndown(events, { findings, surface: "web" });
+  check("a filtered view does not draw it open before it existed", web.points.find((p) => p.cause.type === "audit").open.high === 1, JSON.stringify(web.points));
+  const closed = deriveFindingsBurndown([...events, resolved(4, "F-2")], { findings });
+  check("its close returns the line to the other finding, not below it", closed.points[3].open.high === 1, JSON.stringify(closed.points[3].open));
+
+  // Closed in the section with no decision anywhere in the journal (a hand
+  // edit, or closed before the journal began): nothing will ever close it in
+  // the replay, so seeding it open would hold it open forever in a filtered
+  // view, which is never re-baselined.
+  const handClosed = [{ id: "F-h", criterion_id: "SEC-01", surface: "web", impact: 4, likelihood: 4, cost: "S", status: "resolved" }];
+  const hand = deriveFindingsBurndown([audit(1, "2026-09", {})], { findings: handClosed, surface: "web" });
+  check("a finding closed with no decision event is not seeded open", openTotal(hand.points[0].open) === 0, JSON.stringify(hand.points[0].open));
+}
+
 // --- noise -------------------------------------------------------------------
 
 {

@@ -31,10 +31,17 @@
  *
  * **Findings no event opened.** A restored audit's findings arrive in the
  * section with no `opened` event behind them. Handed the section's `findings`,
- * the replay takes each one it never saw opened or closed to have been open
- * since the first recorded audit, at its severity under the current pack (the
- * best available — no event recorded one). That is what lets a close of such a
- * finding move its bucket, and what gives a filtered view a starting level.
+ * the replay takes each one **no event anywhere in the journal opens** to have
+ * been open since the first recorded audit, at its severity under the current
+ * pack (the best available — no event recorded one). That is what lets a
+ * close of such a finding move its bucket, and what gives a filtered view a
+ * starting level. Not seeded: a finding closed before that first audit, a
+ * refuted one, and one the section holds as closed that no decision event
+ * ever names — nothing would take it back off the line.
+ *
+ * **An audit recorded twice** (a re-run `--record`) re-baselines twice, and
+ * `since` restarts at the later recording — the scope measures from an
+ * audit's latest recording too (`quality-scope.ts`), so the two agree.
  *
  * **Filters.** `surface` and `domain` narrow to findings on that surface and in
  * that domain (`SEC-01` → `SEC`, via the library when a criterion names its
@@ -165,6 +172,24 @@ export function deriveFindingsBurndown(
     (event): event is JournalEvent => isRecord(event) && typeof event.type === "string" && event.type in EVENT_CAUSE,
   );
 
+  // What the journal says anywhere, not just before a given point: the seed
+  // must never stand in for a finding that has an opened event of its own
+  // (it exists from that event, not from the first audit), and a finding the
+  // section holds as closed is only worth seeding if a decision closes it —
+  // otherwise nothing ever takes it back off a filtered view's line.
+  const openedIds = new Set<string>();
+  const decidedIds = new Set<string>();
+  for (const event of relevant) {
+    if (!isString(event.finding_id)) continue;
+    if (event.type === "quality.finding.opened") openedIds.add(event.finding_id);
+    else if (event.type !== "quality.audit.completed") decidedIds.add(event.finding_id);
+  }
+  const seedable = (id: string, finding: QualityFinding): boolean => {
+    if (openedIds.has(id) || !inView(finding)) return false;
+    if (finding.status === "open") return true;
+    return (finding.status === "resolved" || finding.status === "accepted-risk") && decidedIds.has(id);
+  };
+
   const tracked = new Map<string, Tracked>();
   const open = emptyCounts();
   const points: BurndownPoint[] = [];
@@ -190,7 +215,7 @@ export function deriveFindingsBurndown(
       if (!seeded) {
         seeded = true;
         for (const [id, finding] of sectionById) {
-          if (tracked.has(id) || finding.status === "refuted" || !inView(finding)) continue;
+          if (tracked.has(id) || !seedable(id, finding)) continue;
           const severity = severityOf(finding, library);
           tracked.set(id, { severity, open: true, surface: finding.surface, criterion_id: finding.criterion_id });
           bump(severity, 1);
