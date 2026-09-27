@@ -96,6 +96,11 @@ export type QualityEventInput =
  * score or a completion names no finding. `finding_id` is there for the two
  * decision reasons; `detail` says what to do instead, worded the way the MCP
  * words the same refusal in repo mode.
+ *
+ * `audit_id_conflict` is kept apart from `invalid_assessment` on purpose:
+ * nothing is wrong with the score itself, only with the audit it was asked
+ * to land in, and an agent retries the two differently — drop or rename the
+ * `audit_id`, versus fix the criterion or the surface.
  */
 export type QualityEventRefusal = {
   index: number;
@@ -107,7 +112,8 @@ export type QualityEventRefusal = {
     | "no_baseline"
     | "not_scored"
     | "already_recorded"
-    | "scope_mismatch";
+    | "scope_mismatch"
+    | "audit_id_conflict";
   finding_id?: string;
   detail?: string;
 };
@@ -321,10 +327,23 @@ export function parseQualityEventInputs(body: unknown): QualityEventInput[] | { 
  * `deriveQualityMatrix` over the section folded through everything, the same
  * numbers the matrix will show.
  *
+ * **The scope is a workflow guard, not an authority boundary.** It keeps a
+ * hosted re-audit to the cells a fix made stale; it does not stop anyone from
+ * reaching a cell. Any `graph:write` caller may resolve an open finding
+ * earlier in the same batch and then score its cell — the resolution widens
+ * the scope for the entries after it. That is consistent with `graph:write`
+ * already being allowed to resolve findings: the credential that can decide
+ * a finding's fate is the one trusted to re-score what it touched.
+ *
  * All-or-nothing, mirroring `persistMutation`: any refusal anywhere in the
  * batch refuses every entry, each refusal naming the entry's `index`. No
  * event is planned for a batch that will not fully succeed, so a caller
  * retrying a corrected batch never has to reason about a partial write.
+ *
+ * **The planned `events` do not line up with `inputs` index for index.** The
+ * baseline, when this batch writes it, goes first and answers to no input;
+ * every other event follows in input order. A caller looking for it reads
+ * `baseline === true`, never a position.
  */
 export function planQualityEvents(
   section: QualitySection | undefined,
@@ -363,6 +382,16 @@ export function planQualityEvents(
     }
 
     if (input.type === "quality.assessment.scored") {
+      // No section, or one with nothing a pack could be read from: there is no
+      // audit here at all, which is a different problem from a wrong criterion.
+      if (section === undefined || library === undefined) {
+        refusals.push({
+          index,
+          reason: "no_baseline",
+          detail: "this project has no Kritik audit yet — hosted scoring re-scores a restored one. Restore the audit first.",
+        });
+        continue;
+      }
       const invalid = invalidAssessment(section, library, input.criterion_id, input.surface);
       if (invalid !== null) {
         refusals.push({ index, reason: "invalid_assessment", detail: invalid });
@@ -374,7 +403,9 @@ export function planQualityEvents(
         refusals.push({
           index,
           reason: "no_baseline",
-          detail: "No recorded audit and no restored assessments to measure a re-score from — there is nothing for it to be a re-score of.",
+          detail:
+            "no restored audit with an audit_id to measure from, and no recorded one — a hosted score is a re-score, " +
+            "so the project needs an audit (restored or recorded) first.",
         });
         continue;
       }
@@ -385,7 +416,7 @@ export function planQualityEvents(
           reason: "out_of_scope",
           detail:
             `${input.criterion_id} on "${input.surface}" is not in the scoped re-audit (${scopeSummary(scope)}). ` +
-            `Hosted scoring only re-scores the cells a fix since the last audit made stale.`,
+            `Hosted scoring only re-scores the cells a fix since the last audit made stale; kritik_scope lists the cells.`,
         });
         continue;
       }
@@ -410,7 +441,7 @@ export function planQualityEvents(
       try {
         auditId = scopedAuditId({ since, month, requested: input.audit_id, known: [...known], recorded, open });
       } catch (error) {
-        refusals.push({ index, reason: "invalid_assessment", detail: (error as Error).message });
+        refusals.push({ index, reason: "audit_id_conflict", detail: (error as Error).message });
         continue;
       }
 
@@ -461,7 +492,8 @@ export function planQualityEvents(
           reason: "scope_mismatch",
           detail:
             `"${auditId}" was scored from ${[...sinces].map((s) => (typeof s === "string" ? `"${s}"` : "no scope")).join(", ")}, ` +
-            `but the current scope is measured from ${current === null ? "no recorded audit" : `"${current}"`}.`,
+            `but the current scope is measured from ${current === null ? "no recorded audit" : `"${current}"`} — ` +
+            `that audit can no longer be recorded; score without audit_id to open a new one.`,
         });
         continue;
       }

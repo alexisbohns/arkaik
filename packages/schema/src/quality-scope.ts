@@ -396,7 +396,7 @@ export function scopedAuditId(input: ScopedAuditIdInput): string {
     if (requested === since) {
       throw new Error(
         `"${requested}" is the audit this scope is measured from — its recorded reading is history. ` +
-          `Name a new audit (e.g. \`${month}-scoped\`); every other cell keeps its score through the merge.`,
+          `Name a new audit (e.g. \`${suggestedAuditId(input)}\`); every other cell keeps its score through the merge.`,
       );
     }
     if (recorded.includes(requested)) {
@@ -405,7 +405,7 @@ export function scopedAuditId(input: ScopedAuditIdInput): string {
     if (newest !== undefined && requested < newest) {
       throw new Error(
         `"${requested}" sorts before "${newest}", and audits merge latest-wins in lexical order — ` +
-          `its scores would be outvoted by the older ones they replace. Name one that sorts last (e.g. \`${month}-scoped\`).`,
+          `its scores would be outvoted by the older ones they replace. Name one that sorts last (e.g. \`${suggestedAuditId(input)}\`).`,
       );
     }
     return requested;
@@ -413,18 +413,44 @@ export function scopedAuditId(input: ScopedAuditIdInput): string {
 
   if (open !== undefined && (newest === undefined || open >= newest)) return open;
 
-  for (let n = 1; n < 100; n++) {
-    const candidate = n === 1 ? `${month}-scoped` : `${month}-scoped-${String(n).padStart(2, "0")}`;
+  for (const candidate of scopedCandidates(month)) {
     if (known.includes(candidate)) continue;
     if (newest !== undefined && candidate < newest) {
       throw new Error(
         `"${candidate}" would sort before "${newest}", so its scores would lose the latest-wins merge. ` +
-          `Name the scoped audit yourself, one that sorts after "${newest}".`,
+          `Name the scoped audit yourself, one that sorts after "${newest}" (e.g. \`${suggestedAuditId(input)}\`).`,
       );
     }
     return candidate;
   }
   throw new Error(`99 scoped audits in ${month} — name the next one yourself.`);
+}
+
+/** `<month>-scoped`, then `<month>-scoped-02` … `-99` — the convention SPEC § 6 names, in the order a new audit takes them. */
+function* scopedCandidates(month: string): Generator<string> {
+  for (let n = 1; n < 100; n++) yield n === 1 ? `${month}-scoped` : `${month}-scoped-${String(n).padStart(2, "0")}`;
+}
+
+/**
+ * The example id a refusal suggests — one the caller could send back and have
+ * accepted. Suggesting `<month>-scoped` blindly could name the very id just
+ * refused (a scope measured from this month's own scoped audit) or one that
+ * already exists, and an agent follows the example literally: it would loop.
+ *
+ * So it walks the same candidates the unrequested path does and takes the
+ * first that is taken by nothing (known, recorded, the scope's own `since`,
+ * the requested id) and sorts after every one of them. When no candidate this
+ * month can — a later month is already known — it names one that sorts after
+ * the newest taken id by extending it, which by construction nothing else is.
+ */
+function suggestedAuditId({ since, month, requested, known, recorded }: ScopedAuditIdInput): string {
+  const taken = new Set<string>([...known, ...recorded, since, ...(requested !== undefined ? [requested] : [])]);
+  const floor = [...taken].sort().at(-1);
+  for (const candidate of scopedCandidates(month)) {
+    if (taken.has(candidate)) continue;
+    if (floor === undefined || candidate > floor) return candidate;
+  }
+  return `${floor}-scoped`;
 }
 
 /**
