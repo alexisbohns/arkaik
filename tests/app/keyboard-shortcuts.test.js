@@ -300,6 +300,44 @@ async function main() {
     "French Mac: ⌥ + the key labelled M goes to Maps",
   );
 
+  const qwerty = new Map(
+    "abcdefghijklmnopqrstuvwxyz".split("").map((letter) => [`Key${letter.toUpperCase()}`, letter]),
+  );
+  const resolvedQwertyA = layoutAwareHotkey("Alt+A", qwerty);
+  assert(resolvedQwertyA === "Alt+[KeyA]", "QWERTY: ⌥A binds to KeyA");
+  assert(
+    hotkeys.matchesKeyboardEvent(event({ key: "å", code: "KeyA", altKey: true }), resolvedQwertyA, "mac"),
+    "QWERTY Mac: ⌥A (types å) still goes to Acceptances",
+  );
+  assert(
+    hotkeys.matchesKeyboardEvent(event({ key: "a", code: "KeyA", altKey: true }), resolvedQwertyA, "windows"),
+    "QWERTY Windows: Alt+A still goes to Acceptances",
+  );
+
+  // --- learning a layout from typing (Safari, Firefox) ---
+  const { learnLetter } = registry;
+  let learned = new Map();
+  assert(!learnLetter(learned, "KeyQ", "a", true) && learned.size === 0, "learner: nothing learned with ⌘/Ctrl/⌥ held");
+  for (const [code, key, label] of [
+    ["KeyE", "Dead", "a dead key"],
+    ["KeyA", "Process", "an IME keystroke"],
+    ["Digit2", "é", "an accented letter"],
+    ["", "a", "an empty code"],
+    ["Numpad1", "a", "a non-typing code"],
+  ]) {
+    assert(!learnLetter(learned, code, key, false) && learned.size === 0, `learner: ${label} teaches nothing`);
+  }
+  assert(learnLetter(learned, "Semicolon", "M", false), "learner: a Shift-typed letter is learned…");
+  assert(learned.get("Semicolon") === "m", "…stored lowercase");
+  assert(!learnLetter(learned, "Semicolon", "m", false), "learner: re-learning what it knows reports no change");
+
+  learned = new Map();
+  learnLetter(learned, "KeyA", "a", false);
+  assert(
+    learnLetter(learned, "KeyQ", "a", false) && learned.get("KeyQ") === "a" && !learned.has("KeyA"),
+    "learner: switching QWERTY → AZERTY moves a to KeyQ and forgets KeyA",
+  );
+
   for (const platform of ["mac", "windows"]) {
     const seen = new Map();
     for (const { id, hotkey } of strings) {

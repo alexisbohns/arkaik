@@ -218,6 +218,12 @@ export const NAV_HOTKEY_ROUTES: Readonly<Record<string, string>> = {
  * (`useKeyboardLayout`). Only `Alt+<letter>` is touched — Mod chords and bare
  * keys report their character fine. With no layout, or no key that types the
  * letter, the chord is returned as written (TanStack's own fallback).
+ *
+ * Known transient in Safari/Firefox, where the layout is learned from typing:
+ * on a partially learned layout (Dvorak with "o" learned but not "s", say) a
+ * chord still written as-is falls back to its US position, which may be the
+ * key another chord now owns by code — the code binding wins, so the as-is
+ * chord goes quiet there until the user types its letter once.
  */
 export function layoutAwareHotkey(hotkey: string, layout: ReadonlyMap<string, string> | null): string {
   if (!layout) return hotkey;
@@ -233,6 +239,37 @@ export function layoutAwareHotkey(hotkey: string, layout: ReadonlyMap<string, st
     if (char.toLowerCase() === letter) return `Alt+[${code}]`;
   }
   return hotkey;
+}
+
+// The writing-system keys of the UI Events `code` spec. Letters live on more
+// than `Key*` codes — AZERTY puts M on `Semicolon` — so all of them can teach.
+const WRITING_CODE =
+  /^(Key[A-Z]|Digit[0-9]|Backquote|Backslash|BracketLeft|BracketRight|Comma|Equal|IntlBackslash|IntlRo|IntlYen|Minus|Period|Quote|Semicolon|Slash)$/;
+
+/**
+ * One keystroke's lesson for a learned layout (`useKeyboardLayout`, where the
+ * browser has no `getLayoutMap`): a typing key that produced a single ASCII
+ * letter with no ⌘/Ctrl/⌥ held means `code` types that letter. Shift is fine
+ * — the letter is stored lowercase. A letter lives on one key per layout, so
+ * after an input-source switch the letter's old key is forgotten.
+ *
+ * Mutates `learned`; returns whether it changed.
+ */
+export function learnLetter(
+  learned: Map<string, string>,
+  code: string,
+  key: string,
+  modifiersHeld: boolean,
+): boolean {
+  // ⌘/Ctrl/⌥ can swap or garble the layout (Dvorak–QWERTY ⌘, Option glyphs).
+  if (modifiersHeld || !/^[A-Za-z]$/.test(key) || !WRITING_CODE.test(code)) return false;
+  const char = key.toLowerCase();
+  if (learned.get(code) === char) return false;
+  for (const [other, otherChar] of learned) {
+    if (otherChar === char) learned.delete(other);
+  }
+  learned.set(code, char);
+  return true;
 }
 
 /**

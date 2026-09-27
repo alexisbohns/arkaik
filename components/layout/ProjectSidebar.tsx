@@ -84,11 +84,16 @@ interface ProjectSidebarProps {
 const LIBRARY_SPECIES = ["view", "flow", "data-model", "api-endpoint"] as const satisfies readonly SpeciesId[];
 
 // An open modal owns the keyboard: ⌥D inside Delivery's new-node dialog must
-// not navigate away and drop the draft. The mobile sidebar is itself a Radix
-// sheet — `role="dialog"` and `data-mobile="true"` on the same content
-// element — and it hosts these very links, so it does not count.
+// not navigate away and drop the draft. Matched by `data-slot`, not by
+// `role="dialog"`: Radix popovers carry that role too, and a hovered chip's
+// popover in the Library table must not silently disable navigation. Every
+// Dialog (the ⌘K palette and the ⌘? sheet included) renders `dialog-content`.
+// The mobile sidebar is a sheet — `data-mobile="true"` sits on that same
+// `sheet-content` element — and it hosts these very links, so it does not
+// count. No alert-dialog primitive exists yet; the role covers one if added.
 const OPEN_MODAL_SELECTOR = [
-  "[role='dialog'][data-state='open']:not([data-mobile='true'])",
+  "[data-slot='dialog-content'][data-state='open']",
+  "[data-slot='sheet-content'][data-state='open']:not([data-mobile='true'])",
   "[role='alertdialog'][data-state='open']",
 ].join(", ");
 

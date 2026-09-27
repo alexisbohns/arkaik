@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { getKeyStateTracker } from "@tanstack/react-hotkeys";
+import { learnLetter } from "@/lib/utils/keyboard-shortcuts";
 
 /**
  * What key types what: `event.code` → the lowercase character it produces on
@@ -14,12 +15,14 @@ import { getKeyStateTracker } from "@tanstack/react-hotkeys";
  * Two sources, merged into one map shared by every consumer:
  * 1. `navigator.keyboard.getLayoutMap()` (Chromium: Chrome, Edge, the
  *    installed PWA) — authoritative, re-read on window focus since the user
- *    may have switched input source while away.
+ *    may have switched input source while away. A switch made while the
+ *    window keeps focus is picked up on the next focus, not before.
  * 2. Learned from typing, for Safari and Firefox, which lack that API: every
  *    unmodified keystroke that types a single letter teaches `code → letter`.
  *    It reads TanStack's key-state tracker rather than adding a keydown
  *    listener of its own — the tracker already watches every keydown at
- *    document capture. Learned entries only fill codes the layout map lacks.
+ *    document capture. Learned entries only fill codes the layout map lacks;
+ *    each step is `learnLetter`, pure and tested beside the registry.
  *
  * Until either source knows anything the snapshot is `null` and chords stay
  * as written. The snapshot is the same Map instance until something actually
@@ -33,10 +36,6 @@ interface NavigatorKeyboard {
   getLayoutMap?: () => Promise<KeyboardLayoutMap>;
 }
 
-// The writing-system keys of the UI Events `code` spec. Letters live on more
-// than `Key*` codes — AZERTY puts M on `Semicolon` — so all of them can teach.
-const WRITING_CODE = /^(Key[A-Z]|Digit[0-9]|Backquote|Backslash|BracketLeft|BracketRight|Comma|Equal|IntlBackslash|IntlRo|IntlYen|Minus|Period|Quote|Semicolon|Slash)$/;
-const LETTER = /^[A-Za-z]$/;
 const CHORD_MODIFIERS = ["Meta", "Control", "Alt", "AltGraph"];
 
 let fromBrowser: ReadonlyMap<string, string> | null = null;
@@ -81,16 +80,11 @@ function readLayoutMap(): void {
 
 function learnFromTracker(): void {
   const { heldKeys, heldCodes } = getKeyStateTracker().store.state;
-  // ⌘/Ctrl/⌥ can swap or garble the layout (Dvorak–QWERTY ⌘, Option glyphs).
-  if (heldKeys.some((key) => CHORD_MODIFIERS.includes(key))) return;
+  const modifiersHeld = heldKeys.some((key) => CHORD_MODIFIERS.includes(key));
   let changed = false;
   for (const [key, code] of Object.entries(heldCodes)) {
-    if (!LETTER.test(key) || !code || !WRITING_CODE.test(code)) continue;
-    if (fromBrowser?.has(code)) continue;
-    const char = key.toLowerCase();
-    if (learned.get(code) === char) continue;
-    learned.set(code, char);
-    changed = true;
+    if (!code || fromBrowser?.has(code)) continue;
+    if (learnLetter(learned, code, key, modifiersHeld)) changed = true;
   }
   if (changed) publish();
 }
