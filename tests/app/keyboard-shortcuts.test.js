@@ -85,7 +85,10 @@ async function main() {
     MOD_KEY_TOKEN,
     ALT_KEY_TOKEN,
     NAV_HOTKEY_ROUTES,
+    PLATFORM_HOTKEYS,
   } = registry;
+  const { nextPlatformFilter, OPEN_OVERLAY_SELECTOR } = loadModule("lib/utils/keyboard.ts", "keyboard.js");
+  const { PLATFORM_IDS } = loadModule("packages/schema/src/ids.ts", "ids.js");
 
   /** Does any of the entry's registered strings match this event? */
   function fires(id, overrides, platform = "mac") {
@@ -347,6 +350,31 @@ async function main() {
       seen.set(canonical, id);
     }
   }
+
+  // --- toolbar keys ---
+  const platformKeys = Object.keys(PLATFORM_HOTKEYS);
+  assert(
+    platformKeys.length === PLATFORM_IDS.length && PLATFORM_IDS.every((p) => platformKeys.includes(p)),
+    "every platform has exactly one filter key",
+  );
+  assert(fires("filter-ios", { key: "i", code: "KeyI" }), "i filters to iOS");
+  assert(fires("filter-web", { key: "w", code: "KeyW" }), "w filters to Web");
+  assert(fires("filter-android", { key: "a", code: "KeyA" }), "a filters to Android");
+  assert(!fires("filter-android", { key: "å", code: "KeyA", altKey: true }), "⌥A is Acceptances, not Android");
+  assert(!fires("clear-filters", { key: "c", code: "KeyC", metaKey: true }), "⌘C is still copy");
+  assert(fires("clear-filters", { key: "c", code: "KeyC" }), "c clears");
+  assert(fires("toggle-expand", { key: "Dead", code: "KeyE", altKey: true }), "⌥E toggles (a dead key on a Mac)");
+
+  assert(nextPlatformFilter("all", "ios") === "ios", "i from all → iOS");
+  assert(nextPlatformFilter("ios", "ios") === "all", "i again → back to all");
+  assert(nextPlatformFilter("ios", "web") === "web", "w from iOS → Web");
+
+  assert(
+    typeof OPEN_OVERLAY_SELECTOR === "string" &&
+      OPEN_OVERLAY_SELECTOR.length > 0 &&
+      OPEN_OVERLAY_SELECTOR.includes("[role='listbox'][data-state='open']"),
+    "OPEN_OVERLAY_SELECTOR still catches an open Radix Select/Combobox listbox",
+  );
 
   // --- the sheet ---
   const projectGroups = getShortcutGroups(true);

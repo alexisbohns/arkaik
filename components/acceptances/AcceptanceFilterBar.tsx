@@ -17,6 +17,8 @@ import { EMPTY_FILTERS, UNANCHORED_FILTER } from "@/lib/utils/acceptance-matrix"
 import { VALUES } from "@/lib/config/values";
 import { STATUSES } from "@/lib/config/statuses";
 import { usePlatformFilterControl } from "@/lib/hooks/usePlatformFilterControl";
+import { usePlatformHotkeys } from "@/lib/hooks/usePlatformHotkeys";
+import { GUARDED_HOTKEY, toolbarKey, useShortcut } from "@/lib/hooks/useShortcut";
 import { SearchInput } from "@/components/ui/search-input";
 import { ProductOverrideSelector } from "@/components/layout/ProductOverrideSelector";
 import { Toolbar, ToolbarGroup } from "@/components/layout/Toolbar";
@@ -71,6 +73,19 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectI
     filters.value !== "all" || filters.anchor !== "all" || filters.parityGap;
 
   const [searchDraft, setSearchDraft] = useState(filters.search);
+  usePlatformHotkeys({
+    enabled: showPlatformFilter,
+    available: platformOptions,
+    current: filters.platform,
+    onSelect: (platform) => onChange({ ...filters, platform }),
+  });
+  // The Clear button's own handler, so the key and the button cannot disagree.
+  const clearFilters = () => {
+    setSearchDraft("");
+    onChange(EMPTY_FILTERS);
+  };
+  useShortcut("clear-filters", toolbarKey(clearFilters), { ...GUARDED_HOTKEY, enabled: isFiltered });
+  useShortcut("toggle-expand", toolbarKey(onToggleExpandAll), GUARDED_HOTKEY);
   const [syncedSearch, setSyncedSearch] = useState(filters.search);
   // What we last wrote ourselves via the debounced onChange below. Tracked as
   // state (not a ref) because it must be *read* during the render-time draft
@@ -258,7 +273,7 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectI
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => { setSearchDraft(""); onChange(EMPTY_FILTERS); }}
+            onClick={clearFilters}
             aria-label="Clear filters"
           >
             <XIcon className="size-4" /> Clear

@@ -8,6 +8,7 @@ import {
   type UseHotkeyOptions,
 } from "@tanstack/react-hotkeys";
 import { useKeyboardLayout } from "@/lib/hooks/useKeyboardLayout";
+import { isEditableElement, OPEN_OVERLAY_SELECTOR } from "@/lib/utils/keyboard";
 import { getShortcut, layoutAwareHotkey } from "@/lib/utils/keyboard-shortcuts";
 
 /**
@@ -20,6 +21,28 @@ export const GUARDED_HOTKEY = {
   preventDefault: false,
   stopPropagation: false,
 } as const satisfies UseHotkeyOptions;
+
+/**
+ * Wraps a toolbar bare-letter action (`i`/`w`/`a`/`c`, ⌥E) so it yields to
+ * whatever should own the keypress instead of the bar. TanStack's default
+ * `ignoreInputs` only recognises actual `<input>`/`<textarea>` elements, not a
+ * Radix `Select` trigger or `Combobox` field (`role="combobox"`) or its open
+ * listbox — and Radix's own typeahead does not stop propagation — so a bare
+ * key would otherwise fire straight through an open menu and act on the
+ * surface behind it. It also declines under any open Radix overlay
+ * (`OPEN_OVERLAY_SELECTOR`) for the same reason, and ignores key-repeat so
+ * holding the key down cannot autorepeat a toggle like Clear or Expand.
+ */
+export function toolbarKey(action: () => void): HotkeyCallback {
+  return (event) => {
+    if (event.repeat || event.defaultPrevented) return;
+    if (isEditableElement(event.target)) return;
+    if (document.querySelector(OPEN_OVERLAY_SELECTOR)) return;
+
+    event.preventDefault();
+    action();
+  };
+}
 
 export interface ShortcutBinding {
   /** A row id in `lib/utils/keyboard-shortcuts.ts`. */
