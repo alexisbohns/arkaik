@@ -562,7 +562,13 @@ function platformVariantsProps(source) {
 
 for (const [label, file] of [
   ["the detail panel", ["components", "panels", "NodeDetailPanel.tsx"]],
-  ["the acceptance editor", ["components", "panels", "AcceptanceEditor.tsx"]],
+  // The acceptance's strip moved out of `AcceptanceEditor` into a section of
+  // its own, and `AcceptanceEditor` is gone entirely. What this pins is the call
+  // site, not the file it once sat in, so the path follows the element:
+  // `platformVariantsProps` returns "" for a file with no `<PlatformVariants>`
+  // in it, so a stale path here fails as a shape violation — "does not build its
+  // strip from the scope's menu" — rather than as the relocation it actually is.
+  ["the acceptance's platforms section", ["components", "panels", "AcceptancePlatformsSection.tsx"]],
 ]) {
   const props = platformVariantsProps(readSource(...file));
   assert(

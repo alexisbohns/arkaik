@@ -168,6 +168,15 @@ const finding = (over = {}) => ({
   check("an unscored domain is absent, never a zero", event.payload.scores.web.PRV === undefined);
   check("an unscored surface still gets its (empty) entry", eq(event.payload.scores.ios, {}));
   check("audit.completed is a valid event", makeEvent(event.type, event.payload, { actor: "t" }).type === "quality.audit.completed");
+  check("a comprehensive audit carries no scope marker", !("scope" in event.payload));
+
+  // A scoped re-audit (#443) says so on the event, and nothing else changes
+  // shape: the scores are whatever matrix the caller passed — the merged one.
+  const scope = { partial: true, cells: 12, since: "2026-07" };
+  const scoped = auditCompletedInput(matrix, { audit_id: "2026-08-scoped", framework_version: pack.version, scope });
+  check("a scoped audit carries its scope marker", eq(scoped.payload.scope, scope), JSON.stringify(scoped.payload.scope));
+  check("its scores are still the roll-up it was handed", eq(scoped.payload.scores, event.payload.scores));
+  check("a scoped audit.completed is a valid event", makeEvent(scoped.type, scoped.payload, { actor: "t" }).scope.cells === 12);
 }
 
 // --- issue skeletons ---------------------------------------------------------

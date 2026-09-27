@@ -98,6 +98,16 @@ function severeByCell(state: AuditState, library?: KritikLibrary): Map<string, Q
  * matters and is not inferred: an audit id is a convention, not a guarantee,
  * and guessing which reading came first would silently invert every verdict.
  *
+ * Every repo-mode caller passes each side **merged through** its audit
+ * (`loadQualitySectionThrough`, issue #443), not the audit alone: a scoped
+ * re-audit holds only the cells it re-scored, and each has to be compared
+ * with its last reading wherever that was taken. So "scored in both" below
+ * means "has a reading at both points", and findings are pooled up to each —
+ * a new severe finding opened by a half-finished audit on a cell it has not
+ * re-scored yet still trips, because the finding is real whatever the
+ * cell's score says. The hosted caller has no per-audit history to merge and
+ * passes the single living pool of findings to both sides instead.
+ *
  * **The guard.** `level-drop` and `new-severe-finding` each compare a cell to
  * itself, so both require the cell to be scored in BOTH audits. Without it a
  * half-finished audit fires a trip for every cell it has not reached yet —

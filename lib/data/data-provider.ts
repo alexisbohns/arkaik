@@ -21,6 +21,67 @@ export interface ProjectSummary {
   seed?: boolean;
 }
 
+/**
+ * What `applyMutations` hands back once the batch has committed.
+ *
+ * `nodes`/`edges` are the whole graph after the write — the shape every backend
+ * already produced. The two optional fields exist for the query cache
+ * (`lib/data/project-queries.ts`), which writes this result straight into its
+ * project entry instead of re-reading the project:
+ *
+ * - `version` — the server's strong version after the write. Only the hosted
+ *   backend has one; the cache uses it to drop a write-back that belongs to an
+ *   older request than the one already applied (two hosted POSTs are routinely
+ *   in flight together). Local and seed leave it out: Dexie transactions and
+ *   the in-memory sandbox serialize, so their results resolve in commit order.
+ * - `events` — exactly the journal events this write appended, in the order
+ *   they were appended, so the cache can extend its journal entries without
+ *   re-downloading the whole journal. A backend that cannot say what it
+ *   appended leaves it out and the cache marks its journal entries stale.
+ */
+export interface MutationResult {
+  nodes: Node[];
+  edges: Edge[];
+  version?: string;
+  events?: JournalEvent[];
+}
+
+/**
+ * What a conditional read answers (docs/data-layer.md § Providers).
+ *
+ * - `fresh` — the backend produced a body; `etag` is the validator to send
+ *   next time (`null` when the backend has none), `version` the server's
+ *   strong version when it reports one.
+ * - `not-modified` — the validator the caller sent still matches, so the
+ *   caller's previous value is the current one. No value travels: the query
+ *   cache already holds it, and a provider-side memo would only duplicate
+ *   every bundle the tab has visited.
+ * - `missing` — the project is not there or not the caller's (the same
+ *   `undefined` `getProject` answers).
+ */
+export type ReadResult<T> =
+  | { status: "fresh"; value: T; etag: string | null; version?: string }
+  | { status: "not-modified" }
+  | { status: "missing" };
+
+export interface ReadProjectOptions {
+  /** The validator from the previous read, or `null` for an unconditional one. */
+  etag: string | null;
+  signal?: AbortSignal;
+}
+
+export interface JournalProjection {
+  /**
+   * The event types to read, or `null`/absent for the whole journal. Every
+   * backend honours it: the remote one as `?types=`, the local and seed ones
+   * as an in-memory filter. Order is always server order, never the order the
+   * types were asked in.
+   */
+  types?: readonly string[] | null;
+}
+
+export interface ReadJournalOptions extends ReadProjectOptions, JournalProjection {}
+
 export interface DataProvider {
   getProject(id: string): Promise<ProjectBundle | undefined>;
   listProjects(): Promise<ProjectSummary[]>;
@@ -35,7 +96,7 @@ export interface DataProvider {
    * only the embedded journal; repo `.jsonl` sidecar loading is a CLI/M3
    * concern (docs/spec/journal.md § Storage Shapes).
    */
-  getJournal(projectId: string): Promise<JournalEvent[]>;
+  getJournal(projectId: string, options?: JournalProjection): Promise<JournalEvent[]>;
 
   /**
    * Mutators all take `projectId` explicitly, including the ones whose subject
@@ -63,9 +124,30 @@ export interface DataProvider {
    * hand-rolled rollback when the second half fails. A batch removes that whole
    * class of half-written state. A remote provider sends one request; the local
    * one runs a single IndexedDB transaction.
+   *
+   * The result carries the whole graph after the write plus, when the backend
+   * knows them, the server `version` and the journal `events` it appended —
+   * see {@link MutationResult} for what each is for.
    */
-  applyMutations(projectId: string, ops: MutationOp[]): Promise<{ nodes: Node[]; edges: Edge[] }>;
+  applyMutations(projectId: string, ops: MutationOp[]): Promise<MutationResult>;
 
   exportProject(id: string): Promise<ProjectBundle>;
   importProject(bundle: ProjectBundle): Promise<Project>;
+
+  /**
+   * Conditional reads — OPTIONAL, because only a backend with a server
+   * validator has a reason to implement them (the remote provider sends
+   * `If-None-Match` and understands a 304). The query cache reads through
+   * these, passing the validator it stored, and keeps its previous entry on
+   * `not-modified`.
+   *
+   * THE ROUTING PROVIDER OWNS THE FALLBACK. `getProvider()` always answers
+   * with the router, and the router implements both methods for every
+   * project: it forwards to a backend that has them and otherwise wraps that
+   * backend's `getProject`/`getJournal` as a `fresh` read with `etag: null`.
+   * So a caller reading through `getProvider()` may call these
+   * unconditionally; only a bare local or seed provider lacks them.
+   */
+  readProject?(id: string, options: ReadProjectOptions): Promise<ReadResult<ProjectBundle>>;
+  readJournal?(projectId: string, options: ReadJournalOptions): Promise<ReadResult<JournalEvent[]>>;
 }

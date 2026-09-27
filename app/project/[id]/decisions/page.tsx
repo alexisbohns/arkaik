@@ -24,6 +24,12 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { lifecycleStatusForDecision } from "@arkaik/schema";
 
+/**
+ * Only `node.created`: the log reads it for each decision's "recorded on" date
+ * (`DecisionLog`'s `createdTs`) and nothing else from the journal.
+ */
+const DECISION_EVENT_TYPES = ["node.created"] as const;
+
 export default function ProjectDecisionsPage() {
   const id = useProjectId();
 
@@ -31,7 +37,7 @@ export default function ProjectDecisionsPage() {
   const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes, updateNode, addNode } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges } = useEdges(id);
   const { project: projectBundle, error: projectError, reload: reloadProject } = useProject(id);
-  const { journal, error: journalError, reload: reloadJournal } = useJournal(id);
+  const { journal, error: journalError, reload: reloadJournal } = useJournal(id, { types: DECISION_EVENT_TYPES });
   const scope = useEffectiveProduct(id, projectBundle);
 
   const [newOpen, setNewOpen] = useState(false);
@@ -39,6 +45,13 @@ export default function ProjectDecisionsPage() {
   // Owned here, not in `DecisionLog`: the toolbar and the log are siblings, so
   // the filter they share belongs to the page that mounts both.
   const [statusFilter, setStatusFilter] = useState<DecisionStatusFilter>("all");
+  // Plain state, undebounced: unlike the Acceptances bar this filter never
+  // reaches the URL, so there is no round trip for a keystroke to race.
+  const [search, setSearch] = useState("");
+  // Expanded by default, as the Changelog is: a decision's rationale is the
+  // reason the record exists, so the fold is for scanning back through a long
+  // log rather than the state you arrive in.
+  const [detailed, setDetailed] = useState(true);
 
   const decisions = useMemo(
     () => dataNodes.filter((node) => node.species === "decision"),
@@ -112,26 +125,33 @@ export default function ProjectDecisionsPage() {
         allNodes={dataNodes}
         allEdges={dataEdges}
         scope={scope}
-        journal={journal}
+        history
         onUpdate={handleNodeUpdate}
       >
         <PageSurface
           contentClassName="flex flex-col gap-4"
           toolbar={
             <DecisionFilterBar
+              search={search}
+              onSearchChange={setSearch}
               status={statusFilter}
               onStatusChange={setStatusFilter}
               total={decisions.length}
               counts={statusCounts}
+              detailed={detailed}
+              onDetailedChange={setDetailed}
             />
           }
         >
           <DecisionLog
             decisions={decisions}
             allEdges={dataEdges}
+            allNodes={dataNodes}
             journal={journal}
             onSelect={handleSelectNode}
             statusFilter={statusFilter}
+            search={search}
+            detailed={detailed}
           />
         </PageSurface>
       </PageShell>

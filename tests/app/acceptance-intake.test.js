@@ -28,6 +28,7 @@
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const { loadAcceptanceIntake, BUILD_DIR } = require("./load-acceptance-intake");
+const { loadUtil, BUILD_DIR: PANEL_BUILD_DIR } = require("./load-panel-utils");
 
 const {
   isAnchorSpecies,
@@ -41,6 +42,11 @@ const {
   productsOfAcceptance,
   applyOps,
 } = loadAcceptanceIntake();
+
+// `node-duplicate.ts` is type-only at runtime, so the generic loader — which
+// rewrites nothing — can take it as-is. It rides in this suite because what a
+// duplicate carries is the same question the split rules answer for a piece.
+const { duplicateNodeDraft } = loadUtil("node-duplicate");
 
 const PROJECT = "p1";
 
@@ -356,8 +362,75 @@ test("a dangling anchor is not multiplied across the pieces", () => {
   assert.deepEqual(targets, ["V-notes", "V-notes"]);
 });
 
+// ---------------------------------------------------------------------------
+// Duplicate
+// ---------------------------------------------------------------------------
+
+console.log("\nduplicate");
+
+test("the copy takes the id and the title it was given", () => {
+  // Neither is derived here any more: `DuplicateNodeDialog` asks for the name
+  // and shows the id it mints, and this function just applies them.
+  const original = { ...node("A-export", "acceptance"), title: "Export notes" };
+  const copy = duplicateNodeDraft(original, { id: "AC-share-notes", title: "Share notes" });
+  assert.equal(copy.id, "AC-share-notes");
+  assert.equal(copy.title, "Share notes");
+});
+
+test("project, species, status and description carry over", () => {
+  const original = {
+    ...node("V-notes", "view", { status: "live", description: "The notes list." }),
+    title: "Notes",
+  };
+  const copy = duplicateNodeDraft(original, { id: "V-notes-2", title: "Notes again" });
+  assert.equal(copy.project_id, PROJECT);
+  assert.equal(copy.species, "view");
+  assert.equal(copy.status, "live");
+  assert.equal(copy.description, "The notes list.");
+});
+
+test("metadata carries over", () => {
+  const original = node("A-export", "acceptance", {
+    metadata: { gherkin: "When I export, Then …", values: ["speed"] },
+  });
+  const copy = duplicateNodeDraft(original, { id: "A-y", title: "Y" });
+  assert.equal(copy.metadata.gherkin, "When I export, Then …");
+  assert.deepEqual(copy.metadata.values, ["speed"]);
+});
+
+test("the copy's metadata is its own", () => {
+  // The panel patches metadata by spreading it and the value editors write
+  // arrays in place, so a shallow copy would let an edit to one node silently
+  // rewrite the other.
+  const original = node("A-export", "acceptance", { metadata: { values: ["speed"] } });
+  const copy = duplicateNodeDraft(original, { id: "A-z", title: "Z" });
+  copy.metadata.values.push("trust");
+  assert.deepEqual(original.metadata.values, ["speed"]);
+});
+
+test("the copy's nested metadata is its own, not just its top level", () => {
+  // A spread of `metadata` would have passed the test above only because
+  // `values` sits at its top level; a playlist is two levels down.
+  const original = node("F-edit", "flow", {
+    metadata: { playlist: { entries: [{ type: "view", view_id: "V-a" }] } },
+  });
+  const copy = duplicateNodeDraft(original, { id: "F-edit-2", title: "Edit again" });
+  copy.metadata.playlist.entries.push({ type: "view", view_id: "V-b" });
+  assert.equal(original.metadata.playlist.entries.length, 1);
+});
+
+test("the copy's platforms array is its own", () => {
+  // The same hazard as the metadata one, one level up: `platforms` is a
+  // top-level array, and a spread would have shared it.
+  const original = node("V-notes", "view", { platforms: ["web"] });
+  const copy = duplicateNodeDraft(original, { id: "V-notes-2", title: "Notes again" });
+  copy.platforms.push("ios");
+  assert.deepEqual(original.platforms, ["web"]);
+});
+
 // The transpiled CommonJS is a build artefact, not a fixture.
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
+fs.rmSync(PANEL_BUILD_DIR, { recursive: true, force: true });
 
 console.log(failures === 0 ? "\nAll acceptance-intake tests passed" : `\n${failures} failing`);
 process.exit(failures === 0 ? 0 : 1);

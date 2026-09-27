@@ -28,8 +28,8 @@ import { useNodes } from "@/lib/hooks/useNodes";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useProject } from "@/lib/hooks/useProject";
 import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
-import { useJournal } from "@/lib/hooks/useJournal";
 import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
+import { useNodeRelations } from "@/lib/hooks/useNodeRelations";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
 import { generateNodeId, edgeId } from "@/lib/utils/id";
@@ -89,8 +89,16 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   const [playlistError, setPlaylistError] = useState<string | null>(null);
 
   const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes, updateNode, addNode, removeNode, removeNodes, applyMutations } = useNodes(id);
+
   const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges, addEdge, removeEdge, syncEdges } = useEdges(id);
   const intake = useAcceptanceIntake({
+    projectId: id,
+    nodes: dataNodes,
+    edges: dataEdges,
+    applyMutations,
+    syncEdges,
+  });
+  const relations = useNodeRelations({
     projectId: id,
     nodes: dataNodes,
     edges: dataEdges,
@@ -104,7 +112,6 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   // anchor chain below.
   const scope = useEffectiveProduct(id, projectBundle);
   const productList = useProductList(scope);
-  const { journal, error: journalError, reload: reloadJournal } = useJournal(id);
 
   // Built-in maps have no stored definition to carry a `display`, so the id is
   // what the override record is keyed by — the anonymous mount is the Journey.
@@ -718,7 +725,7 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   // produce. Worse here than on the System map: with no bundle there is no root
   // node either, so the journey would blame a missing anchor for a read that
   // never landed.
-  const loadError = nodesError ?? edgesError ?? projectError ?? journalError;
+  const loadError = nodesError ?? edgesError ?? projectError;
   if (loadError) {
     return (
       <PageError
@@ -728,7 +735,6 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
           void reloadNodes();
           void reloadEdges();
           void reloadProject();
-          void reloadJournal();
         }}
       />
     );
@@ -764,11 +770,12 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
         allNodes={dataNodes}
         allEdges={dataEdges}
         scope={scope}
-        journal={journal}
+        history
         onUpdate={handleNodeUpdate}
         onDelete={handleDeleteNodeRequest}
         onCreateNode={handleCreateNodeFromPanel}
         intake={intake}
+        relations={relations}
         onZoomShot={(node, platform) => {
           setZoomNode(node);
           setZoomPlatform(platform);

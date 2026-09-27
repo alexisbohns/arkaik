@@ -49,7 +49,10 @@ export async function GET(
       return Response.json({ error: "not_found" }, { status: 404 });
     }
 
-    const events = (await getJournal(projectId, caller.ownerIds)) ?? [];
+    // `getJournal` now returns its read validators beside the rows (the read
+    // routes stamp ETags from them); this feed is its own paginator and only
+    // wants the events.
+    const events = (await getJournal(projectId, caller.ownerIds))?.journal ?? [];
     const { pollen, skipped } = journalToPollen(events, found.bundle.nodes, { plant });
     for (const s of skipped) {
       console.warn(`[pollen] ${projectId}: skipped event ${s.id}: ${s.reason}`);

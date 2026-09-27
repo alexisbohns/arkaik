@@ -12,15 +12,18 @@
  */
 
 const fs = require("fs");
-const { loadPanelStack, loadProjectPanels, BUILD_DIR } = require("./load-panel-utils");
+const path = require("path");
+const { loadPanelStack, loadProjectPanels, loadUtil, BUILD_DIR } = require("./load-panel-utils");
 
 const { openFrom, initStack } = loadPanelStack();
 const {
   RAW_PANEL_KEY,
   cellPanelKey,
   criterionPanelKey,
+  findingPanelKey,
   isCellEntry,
   isCriterionEntry,
+  isFindingEntry,
   isNodeEntry,
   topNodeKey,
   pruneNodeEntries,
@@ -218,6 +221,148 @@ const cellCrumbs = buildPanelCrumbs([cellEntry], "Matrix", () => undefined);
 assert(
   cellCrumbs[cellCrumbs.length - 1].label === "SEC × web",
   "a cell crumb reads as its domain and surface, not its namespaced key",
+);
+
+// --- finding entries: the fifth kind, addressless for the same reason -------
+const findingEntry = {
+  key: findingPanelKey("F-2026-08-SEC-web-01"),
+  instanceId: "i-find",
+  payload: {
+    kind: "finding",
+    findingId: "F-2026-08-SEC-web-01",
+  },
+};
+
+assert(
+  findingPanelKey("F-2026-08-SEC-web-01") === "finding:F-2026-08-SEC-web-01",
+  "a finding key is namespaced — a finding id is a word the project picks freely",
+);
+assert(
+  isFindingEntry(findingEntry) &&
+    !isFindingEntry(cellEntry) &&
+    !isFindingEntry(criterionEntry) &&
+    !isFindingEntry(rawEntry) &&
+    !isNodeEntry(findingEntry),
+  "the four non-node kinds are told apart by kind, never by key",
+);
+assert(
+  topNodeKey([homeEntry, findingEntry]) === "V-home",
+  "a finding panel above a node does not displace what ?node= names",
+);
+
+const findingPruned = pruneNodeEntries([homeEntry, findingEntry], new Set());
+assert(
+  findingPruned.length === 1 && isFindingEntry(findingPruned[0]),
+  "a node prune never evicts a finding panel",
+);
+
+// `titleOf` answers for these keys too, the way the Raw crumb's does: an inert
+// lookup would let the finding branch pass by coinciding with the fallback
+// instead of by beating it.
+const findingTitleOf = () => "never wins";
+
+const findingCrumbs = buildPanelCrumbs([findingEntry], "Findings", findingTitleOf);
+assert(
+  findingCrumbs[findingCrumbs.length - 1].label === "F-2026-08-SEC-web-01",
+  "a finding crumb reads as its id, not its namespaced key",
+);
+
+// --- the History section reads the journal by the route id, never the node's ---
+// A hosted project stores the imported bundle verbatim under a server-minted
+// `prj_…` id, so its nodes keep the bundle's own `project_id`; a section keyed
+// on that would route to the local provider and read an empty (or a colliding
+// local project's) journal. Pinned at the source because the panel is a
+// client component with no bundler-free load path.
+const panelSource = fs.readFileSync(
+  path.join(__dirname, "..", "..", "components", "panels", "NodeDetailPanel.tsx"),
+  "utf8",
+);
+assert(
+  !panelSource.includes("useJournal(node.project_id)"),
+  "HistorySection never keys the journal on node.project_id",
+);
+assert(
+  /const projectId = useProjectId\(\);\s*\n\s*const \{[^}]*\} = useJournal\(projectId\);/.test(panelSource),
+  "HistorySection reads the journal by the route id from useProjectId()",
+);
+assert(
+  panelSource.includes('import { useProjectId } from "@/lib/hooks/useProjectId";'),
+  "NodeDetailPanel imports useProjectId from the shared route-param hook",
+);
+
+// --- the Relations group's edge lines come from the grammar, minus covers ----
+//
+// Pinned at the source, the same way and for the same reason as the journal
+// key above: `RelationsGroup` is a client component and this repo has no
+// component rig, so the alternative is no coverage at all. Deleting the
+// `crossLayerConnections` assertions was right — the walk is gone — but it
+// left the group's *use* of `relationRows` and its one structural rule
+// covered by nothing.
+//
+// The rule: the list of lines is `relationLinesFor(node.species)`, never a
+// hand-written one, and the covers lines are matched out of it because a
+// covers edge is intake's to write (product membership) rather than the
+// generic edge path's. `node-relations.ts` now refuses a covers line outright,
+// so losing this filter is a throw rather than a silent membership bug — but
+// a throw on every acceptance panel is still a regression worth naming here.
+const relationsGroupSource = fs.readFileSync(
+  path.join(__dirname, "..", "..", "components", "panels", "RelationsGroup.tsx"),
+  "utf8",
+);
+assert(
+  relationsGroupSource.includes("relationLinesFor(node.species)"),
+  "RelationsGroup derives its lines from the grammar, per species",
+);
+assert(
+  relationsGroupSource.includes('line.edgeType !== "covers"'),
+  "the covers lines are matched out of the generic edge list — they have their own components",
+);
+// Deliberately loose about the arguments and the wrapping: what this pins is
+// `.some(` rather than `.length > 0`, which is the regression. Spelling the
+// three identifiers and their spacing out would fail on a rename or a
+// reformat as a shape violation rather than a behaviour one — the trap this
+// repo's source-asserting suites have hit before.
+assert(
+  /relationRows\([^)]*\)\s*\.some\(/.test(relationsGroupSource),
+  "the emptiness test resolves each row, as the line it stands in for does",
+);
+
+// --- where-used: the covers walk RelationsGroup and its children share -------
+//
+// `coveredAnchorsOf` was lifted out of a section so the group could ask "is
+// there anything here?" without walking the edges a second time — which only
+// pays off if the one remaining copy is right. `lib/utils/where-used.ts` is
+// loadable this way because it keeps its imports type-only; a value import
+// there would break this block with a resolution error rather than a failing
+// assertion.
+//
+// `crossLayerConnections` used to be asserted here too. It is gone: the flat
+// Connections list it fed is now one `EdgeRelationLine` per grammar line, and
+// what those lines read — `relationRows` — is asserted in
+// tests/app/relation-lines.test.js § 7.
+const { coveredAnchorsOf } = loadUtil("where-used");
+
+const graphNode = (id, species) => ({ id, species, title: id });
+const graphEdge = (source_id, target_id, edge_type) => ({ source_id, target_id, edge_type });
+
+const V = graphNode("V-home", "view");
+const DM = graphNode("DM-user", "data-model");
+const API = graphNode("API-login", "api-endpoint");
+const DEC = graphNode("D-auth", "decision");
+const OTHER_VIEW = graphNode("V-settings", "view");
+const ACC = graphNode("AC-signs-in", "acceptance");
+const WORLD = [V, DM, API, DEC, OTHER_VIEW, ACC];
+
+const anchors = coveredAnchorsOf(ACC, WORLD, [
+  graphEdge("AC-signs-in", "V-home", "covers"),
+  graphEdge("AC-signs-in", "DM-ghost", "covers"),
+  graphEdge("AC-other", "V-settings", "covers"),
+  graphEdge("V-home", "AC-signs-in", "covers"),
+]);
+assert(
+  anchors.map((n) => n.id).join(",") === "V-home",
+  "covered anchors are this acceptance's own resolvable covers targets, and only those",
+  anchors.map((n) => n.id).join(","),
 );
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });

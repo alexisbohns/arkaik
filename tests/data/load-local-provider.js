@@ -166,6 +166,13 @@ function loadLocalProvider() {
   // they're pointed at the siblings written above; every other import is a
   // real relative path ("./migrate", "./db", "./emit-events") that resolves
   // naturally since all these files live in the same BUILD_DIR).
+  // journal-projection.js — the shared in-memory `?types=` filter, a plain
+  // relative sibling of local-provider.ts with no imports of its own.
+  fs.writeFileSync(
+    path.join(BUILD_DIR, "journal-projection.js"),
+    transpile(path.join(ROOT, "lib", "data", "journal-projection.ts"), "journal-projection.ts"),
+  );
+
   let localProviderOut = transpile(path.join(ROOT, "lib", "data", "local-provider.ts"), "local-provider.ts");
   localProviderOut = rewriteSchemaRequire(localProviderOut);
   localProviderOut = localProviderOut.replace(
@@ -179,7 +186,7 @@ function loadLocalProvider() {
   const outFile = path.join(BUILD_DIR, "local-provider.js");
   fs.writeFileSync(outFile, localProviderOut);
 
-  for (const name of ["db", "cycle", "quality", "emit-events", "migrate", "local-provider"]) {
+  for (const name of ["db", "cycle", "quality", "emit-events", "migrate", "journal-projection", "local-provider"]) {
     delete require.cache[path.join(BUILD_DIR, `${name}.js`)];
   }
 

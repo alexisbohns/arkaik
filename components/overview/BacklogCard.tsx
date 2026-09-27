@@ -9,11 +9,22 @@ const MAX_ROWS = 5;
 interface BacklogCardProps {
   backlog: Backlog;
   projectId: string;
+  /**
+   * The journal has not been read yet. The card keeps its empty layout with a
+   * placeholder subtitle rather than claiming the backlog is clear.
+   */
+  pending?: boolean;
+  /**
+   * The journal read failed. The message takes the placeholder's slot so the
+   * card never claims the backlog is clear over a journal it could not read.
+   */
+  error?: string | null;
 }
 
 /** Open ideas and requests — journal items not yet realized as nodes. */
-export function BacklogCard({ backlog, projectId }: BacklogCardProps) {
+export function BacklogCard({ backlog, projectId, pending = false, error = null }: BacklogCardProps) {
   const overflow = backlog.items.length - MAX_ROWS;
+  const unavailable = pending || error !== null;
 
   return (
     <OverviewSection
@@ -21,14 +32,18 @@ export function BacklogCard({ backlog, projectId }: BacklogCardProps) {
       icon={InboxIcon}
       description="What the journal has recorded as wanted but not yet drawn into the graph."
       subtitle={
-        backlog.items.length === 0
-          ? "No open ideas or requests."
-          : `${backlog.items.length} open — ${backlog.ideas.length} idea${backlog.ideas.length === 1 ? "" : "s"}, ${backlog.requests.length} request${backlog.requests.length === 1 ? "" : "s"}`
+        pending
+          ? "…"
+          : error !== null
+            ? error
+            : backlog.items.length === 0
+              ? "No open ideas or requests."
+              : `${backlog.items.length} open — ${backlog.ideas.length} idea${backlog.ideas.length === 1 ? "" : "s"}, ${backlog.requests.length} request${backlog.requests.length === 1 ? "" : "s"}`
       }
       href={`/project/${projectId}/design`}
       linkLabel="Design"
     >
-      {backlog.items.length > 0 && (
+      {!unavailable && backlog.items.length > 0 && (
         <>
           <div className="flex flex-col gap-0.5">
             {backlog.items.slice(0, MAX_ROWS).map((item) => {

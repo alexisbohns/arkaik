@@ -1,30 +1,46 @@
+"use client";
+
 import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 import { FIELD_LABEL_CLASS } from "@/components/ui/field";
+import { useInPanelGroup } from "@/components/panels/panel-group-context";
 
 /**
  * The detail-panel section scaffold — panel gutter, micro-label heading, body —
  * opened by hand ~10 times across the panel modules (audit `factorization-10`):
- * six sections inside `NodeDetailPanel`, plus `AcceptancesSection` and
+ * six sections inside `NodeDetailPanel`, plus the acceptances section and
  * `PlaylistEditor`.
  *
- * Beyond the dedup this is the one place that knows the panel gutter is `px-6`,
- * which matters when the panel-stack layout next moves.
+ * Beyond the dedup this is the one place that knows the panel gutter, which
+ * matters when the panel-stack layout next moves. It is exported as
+ * {@link PANEL_GUTTER} for the handful of blocks that sit in a panel body
+ * without being a section — a node's title block, the raw panel's toolbar — so
+ * a gutter change stays one edit rather than a dozen.
  *
  * The gap drifted between `gap-2` (five sections) and `gap-3` (three) with no
  * discernible intent; `gap-2` wins on count, and the three sections that wrapped
  * a large embedded editor can pass `className="gap-3"` if the tighter spacing
  * reads wrong there.
  *
- * `action` is the `AcceptancesSection` variant — a ghost Button pushed to the
- * right of the heading — hoisted here so the next section that needs one does not
- * re-derive the `justify-between` row.
+ * `action` is a ghost Button pushed to the right of the heading, hoisted here
+ * from the one section that had it so the next one to need it does not
+ * re-derive the `justify-between` row. `RelationLine` is now its main user:
+ * every relation's `+` sits in this slot, which is why a relation line and an
+ * ordinary section can never disagree about where a heading's control goes.
  *
- * The heading stays a `<span>` rather than becoming an `<h3>`: these are field
- * micro-labels inside a panel that already carries its own header, and promoting
- * them into the document outline is a heading-structure decision for the whole
- * panel stack, not a side effect of extracting a wrapper.
+ * The heading is an `<h3>` standing alone and an `<h4>` inside a `PanelGroup`,
+ * which takes the `h3` for its bar. See `SectionHeading` below for why the two
+ * are written out rather than computed. It was a `<span>` while the panel stack
+ * had no outline to join — a lone `h3` under nothing is worse than no heading —
+ * and that decision was deferred here as "a heading-structure decision for the
+ * whole panel stack". The stack has since made it: the page names itself `h1`
+ * (`PageHeader`), every open record names itself `h2` (`PanelStack`), and a
+ * section takes the next rung free below whatever encloses it. Which is what
+ * lets a reader walk a panel by heading instead of by scrolling it.
+ *
+ * `FIELD_LABEL_CLASS` carries the whole look, and Tailwind's preflight strips a
+ * heading's own size and weight, so nothing about these moved on screen.
  */
 
 interface PanelSectionProps {
@@ -35,16 +51,52 @@ interface PanelSectionProps {
   className?: string;
 }
 
+/**
+ * The panel gutter. Tighter below `lg`, where a panel is at most half the
+ * window and often the whole of it: six units of chrome on each side of a
+ * narrow column is a measurable bite out of the line length.
+ */
+export const PANEL_GUTTER = "px-5 lg:px-6";
+
+/**
+ * The gutter, negated — for a block that must bleed to the panel's own edges
+ * from inside a gutter'd parent (the criterion panel's findings board). It has
+ * to track {@link PANEL_GUTTER} exactly, which is why it lives beside it.
+ */
+export const PANEL_GUTTER_BLEED = "-mx-5 lg:-mx-6";
+
+/**
+ * The section's heading, at whatever rung it is standing on.
+ *
+ * `h3` on its own — the record's own section, which is what every section in
+ * this panel stack was before groups existed and what `CriterionDetailPanel` and
+ * `CellDetailPanel` still are. `h4` inside a `PanelGroup`, whose bar took the
+ * `h3`.
+ *
+ * Two literal tags rather than a computed `<Heading>` variable, because the
+ * outline is checked statically (`tests/app/panel-semantics.test.js`) and a tag
+ * name held in a variable is a level no reader of the source — human or test —
+ * can see. The cost is one ternary; the benefit is that the next person to
+ * change a heading level here trips a test instead of shipping it.
+ */
+function SectionHeading({ title }: { title: ReactNode }) {
+  return useInPanelGroup() ? (
+    <h4 className={FIELD_LABEL_CLASS}>{title}</h4>
+  ) : (
+    <h3 className={FIELD_LABEL_CLASS}>{title}</h3>
+  );
+}
+
 export function PanelSection({ title, action, children, className }: PanelSectionProps) {
   return (
-    <section className={cn("px-6 flex flex-col gap-2", className)}>
+    <section className={cn(PANEL_GUTTER, "flex flex-col gap-2", className)}>
       {action ? (
         <div className="flex items-center justify-between">
-          <span className={FIELD_LABEL_CLASS}>{title}</span>
+          <SectionHeading title={title} />
           {action}
         </div>
       ) : (
-        <span className={FIELD_LABEL_CLASS}>{title}</span>
+        <SectionHeading title={title} />
       )}
       {children}
     </section>

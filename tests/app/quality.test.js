@@ -720,5 +720,144 @@ assert(
   "a domain the pack does not define falls back to its own code",
 );
 
+// =========================== the trend arrow (#442) ==========================
+
+const { buildCellHistory, describeDelta, deriveQualityTrend } = loadQuality();
+
+const auditEvent = (auditId, ts, scores, over = {}) => ({
+  id: `01T${ts.replace(/\D/g, "")}`,
+  ts,
+  type: "quality.audit.completed",
+  audit_id: auditId,
+  framework_version: "0.1.0",
+  scores,
+  counts: {},
+  ...over,
+});
+
+// Two recorded audits below the live pilot matrix: the newest differs from the
+// live cells (SEC on web moved up 6), so it is the baseline.
+const liveSecWeb = matrix.matrix.SEC.web.score;
+const webOverall = matrix.overall.web;
+const trend = deriveQualityTrend(
+  [
+    auditEvent("2026-07", "2026-07-01T00:00:00.000Z", { web: { SEC: liveSecWeb - 10 } }, { commit: "aaaaaaa1" }),
+    auditEvent("2026-08", "2026-08-01T00:00:00.000Z", { web: { SEC: liveSecWeb - 6, PRF: 40 } }, { commit: "bbbbbbb2" }),
+  ],
+  section.profile,
+  matrix,
+);
+const withTrend = buildDomainSections(matrix, section, pack, trend);
+const secWithTrend = withTrend.find((row) => row.domain === "SEC");
+const liveSecWebCard = secWithTrend.cards.find((card) => card.surface === "web");
+assert(
+  liveSecWebCard.delta && liveSecWebCard.delta.previous === liveSecWeb - 6 && liveSecWebCard.delta.delta === 6 && liveSecWebCard.delta.audit_id === "2026-08",
+  "a card carries its cell's delta against the newest recorded audit",
+);
+assert(describeDelta(liveSecWebCard.delta) === `up 6 from ${liveSecWeb - 6} at the 2026-08 audit`, "the label spells the previous score and the audit it came from");
+const secIosCard = secWithTrend.cards.find((card) => card.surface === "ios");
+assert(
+  secIosCard.cell !== null && secIosCard.delta && secIosCard.delta.previous === null && secIosCard.delta.delta === null,
+  "a scored cell the audits never recorded has an empty reading",
+);
+assert(describeDelta(secIosCard.delta) === null, "an empty reading describes nothing — a first audit is not 'unchanged'");
+assert(
+  withTrend.every((row) => row.cards.every((card) => card.cell !== null || card.delta === undefined)),
+  "an unscored cell carries no delta at all",
+);
+assert(
+  buildDomainSections(matrix, section, pack).every((row) => row.cards.every((card) => card.delta === undefined)),
+  "without a trend the sections are exactly what they were",
+);
+
+const gaugesWithTrend = buildSurfaceGauges(matrix, section, pack, trend);
+const webGauge = gaugesWithTrend.find((gauge) => gauge.surface === "web");
+// The 2026-08 snapshot rolls up SEC and PRF with the profile's weights; the
+// delta is the live roll-up minus that, whatever the number.
+assert(
+  webGauge.delta && typeof webGauge.delta.previous === "number" && webGauge.delta.delta === webOverall - webGauge.delta.previous,
+  "the roll-up gauge carries the surface's delta against the same baseline",
+);
+assert(describeDelta({ previous: 66, delta: 0, audit_id: "2026-08" }) === "unchanged from 66 at the 2026-08 audit", "a zero delta reads as unchanged");
+assert(describeDelta({ previous: 66, delta: -3, audit_id: "2026-08" }) === "down 3 from 66 at the 2026-08 audit", "a drop reads as down");
+assert(describeDelta({ previous: 66, delta: null, audit_id: "2026-08" }).includes("not comparable"), "a reading across a framework major bump says why it has no arrow");
+assert(describeDelta(undefined) === null && describeDelta({ previous: null, delta: null }) === null, "no reading, no sentence");
+
+const history = buildCellHistory(trend, "SEC", "web");
+assert(
+  history.length === 2 && history[0].auditId === "2026-07" && history[1].auditId === "2026-08",
+  "the cell's history lists every recorded audit, oldest first",
+);
+assert(history[0].score === liveSecWeb - 10 && history[1].score === liveSecWeb - 6 && history[1].commit === "bbbbbbb2", "each history row carries that audit's score and commit");
+assert(buildCellHistory(trend, "PRF", "web")[0].score === null, "an audit that did not score the cell is an unscored row, not a zero");
+assert(buildCellHistory(undefined, "SEC", "web").length === 0, "no trend, no history");
+
+// --- worstOpenFindingFor ----------------------------------------------------
+
+const { worstOpenFindingFor } = loadQuality();
+
+{
+  const rows = [
+    { id: "F-a", nodeIds: ["V-login"], open: true, severity: "low", title: "a" },
+    { id: "F-b", nodeIds: ["V-login"], open: true, severity: "critical", title: "b" },
+    { id: "F-c", nodeIds: ["V-login"], open: false, severity: "critical", title: "c" },
+    { id: "F-d", nodeIds: ["V-other"], open: true, severity: "critical", title: "d" },
+  ];
+
+  const found = worstOpenFindingFor(rows, "V-login");
+  assert(found !== null, "worstOpenFindingFor returns a summary when the node has open findings");
+  assert(found.count === 2, `it counts only this node's OPEN findings (got ${found && found.count})`);
+  assert(
+    found.severity === "critical",
+    `it reports the worst severity among them (got ${found && found.severity})`,
+  );
+
+  assert(
+    worstOpenFindingFor(rows, "V-nothing") === null,
+    "a node with no findings gets null, not a zero",
+  );
+  assert(
+    worstOpenFindingFor(
+      [{ id: "F-e", nodeIds: ["V-x"], open: false, severity: "critical", title: "e" }],
+      "V-x",
+    ) === null,
+    "a node whose every finding is closed gets null \u2014 the bar says nothing",
+  );
+  assert(worstOpenFindingFor([], "V-x") === null, "no rows at all gets null");
+}
+
+// --- describeAuditCompleted (issue #443) -----------------------------------
+
+{
+  const { describeAuditCompleted } = loadQuality();
+  const full = describeAuditCompleted({ type: "quality.audit.completed", audit_id: "2026-08", framework_version: "1.0.0" });
+  assert(full.text === "Audit 2026-08 completed" && full.meta === "Kritik 1.0.0", `a comprehensive audit reads as before (got ${JSON.stringify(full)})`);
+
+  const scoped = describeAuditCompleted({
+    type: "quality.audit.completed",
+    audit_id: "2026-09-scoped",
+    framework_version: "1.0.0",
+    scope: { partial: true, cells: 12, since: "2026-08" },
+  });
+  assert(scoped.text === "Scoped re-audit of 12 cells", `a scoped audit leads with how much it looked at (got ${scoped.text})`);
+  assert(
+    scoped.meta === "2026-09-scoped · since 2026-08 · Kritik 1.0.0",
+    `its meta names the audit, what it was measured from, and the pack (got ${scoped.meta})`,
+  );
+
+  const one = describeAuditCompleted({ audit_id: "2026-09-scoped", scope: { partial: true, cells: 1, since: "2026-08" } });
+  assert(one.text === "Scoped re-audit of 1 cell" && one.meta === "2026-09-scoped · since 2026-08", `one cell is singular (got ${JSON.stringify(one)})`);
+
+  const uncounted = describeAuditCompleted({ audit_id: "2026-09-scoped", scope: { partial: true, cells: "twelve" } });
+  assert(
+    uncounted.text === "Scoped re-audit 2026-09-scoped" && uncounted.meta === undefined,
+    `a malformed count falls back to the audit id, never "of undefined cells" (got ${JSON.stringify(uncounted)})`,
+  );
+
+  const notPartial = describeAuditCompleted({ audit_id: "2026-08", scope: { partial: false, cells: 3 } });
+  assert(notPartial.text === "Audit 2026-08 completed", `a scope that is not partial reads as a whole audit (got ${notPartial.text})`);
+  assert(describeAuditCompleted({}).text === "Audit ? completed", "an event with nothing on it still renders");
+}
+
 console.log(failures === 0 ? "\nAll quality projections OK" : `\n${failures} failure(s)`);
 process.exit(failures === 0 ? 0 : 1);

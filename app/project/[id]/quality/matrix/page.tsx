@@ -106,6 +106,7 @@ export default function ProjectQualityMatrixPage() {
         matrix={data.matrix}
         section={data.section}
         library={data.library}
+        trend={data.trend}
         activeCell={cell ? cellParam : null}
         onSelectCell={handleSelectCell}
       />

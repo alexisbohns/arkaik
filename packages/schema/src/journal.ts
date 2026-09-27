@@ -235,6 +235,12 @@ export interface QualityAuditCompletedEvent extends JournalEvent {
   /** `scores[surface][domain]` as a 0–100 domain score. */
   scores?: Record<string, Record<string, number>>;
   counts?: { critical?: number; high?: number; medium?: number; low?: number; info?: number };
+  /**
+   * Present on a scoped re-audit (issue #443): it re-scored `cells` cells,
+   * measured from the `since` audit. `scores` and `counts` are then the merged
+   * picture through this audit, not the scoped audit's own sparse one.
+   */
+  scope?: { partial?: boolean; cells?: number; since?: string };
 }
 
 /** A finding retained after the adversarial verification pass. */

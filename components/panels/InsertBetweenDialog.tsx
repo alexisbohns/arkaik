@@ -20,8 +20,20 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import type { Node as DataNode } from "@/lib/data/types";
 import { NodeSearchCombobox } from "@/components/panels/NodeSearchCombobox";
+import type { SpeciesId } from "@arkaik/schema";
 
 export type InsertEntryType = "view" | "flow" | "condition" | "junction";
+
+/**
+ * The one-species list this dialog hands the combobox, keyed by entry type.
+ *
+ * Module constants rather than a `[entryType]` minted in the render: the
+ * combobox memoises its candidate list on that array's identity.
+ */
+const SPECIES_FOR_ENTRY: Record<"view" | "flow", readonly SpeciesId[]> = {
+  view: ["view"],
+  flow: ["flow"],
+};
 
 interface InsertBetweenDialogProps {
   open: boolean;
@@ -87,10 +99,12 @@ export function InsertBetweenDialog({
             // `id`, so the label would point at nothing. It keeps its own name.
             <Field label="Search or create">
               <NodeSearchCombobox
-                species={entryType}
+                species={SPECIES_FOR_ENTRY[entryType]}
                 allNodes={allNodes}
                 onSelect={onSelectNode}
-                onCreate={onCreateNode}
+                // The list offers one species, so the species it reports back
+                // is `entryType` and the dialog's own callers never needed it.
+                onCreate={(_species, title) => onCreateNode(title)}
                 disabled={disabled}
               />
             </Field>

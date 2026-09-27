@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { setHostedAvailable } from "@/lib/data/hosted-availability";
+import { invalidateProjects } from "@/lib/data/project-queries";
 
 /**
  * Shared client-side view of `GET /api/auth/status` (docs/spec/services.md
@@ -46,6 +47,9 @@ export function useAuthStatus(): AuthStatus {
           setStatus({ state: "unconfigured" });
         } else if (data.user) {
           setStatus({ state: "signed-in", user: data.user });
+          // A listing cached before the account was known lacks its hosted
+          // half; mark it stale so the next mount asks again.
+          void invalidateProjects();
         } else {
           setStatus({ state: "signed-out" });
         }

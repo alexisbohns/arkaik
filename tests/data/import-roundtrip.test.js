@@ -80,6 +80,10 @@ function loadExportModule() {
   Module._load = function (request, parent, isMain) {
     if (request === "@arkaik/schema") return schemaExports;
     if (request.includes("provider-registry")) return stubProviderRegistry;
+    // export.ts tells the query cache its listing is stale after an import or
+    // an archive (lib/data/project-queries.ts). The cache is not under test
+    // here, so the seam is a resolved no-op.
+    if (request.includes("project-queries")) return { invalidateProjects: async () => {} };
     // export.ts reserves the hosted id namespace on import, so it now reads the
     // prefix constant from remote-provider. Only the constant is needed here —
     // that module has no runtime deps of its own.

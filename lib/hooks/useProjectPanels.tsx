@@ -21,6 +21,7 @@ import {
 import {
   cellPanelKey,
   criterionPanelKey,
+  findingPanelKey,
   isNodeEntry,
   pruneNodeEntries,
   topNodeKey,
@@ -99,6 +100,21 @@ interface ProjectPanelsValue {
    * passes `0`.
    */
   openCell: (domain: string, surface: string, fromDepth?: number) => void;
+  /**
+   * Open one finding's detail — or refresh the one already in that slot.
+   * Publishes nothing, exactly like `openCriterion` and `openCell` and for the
+   * identical reason: the stack has one address and it is `?node=`. The
+   * Findings page owns `?finding=`.
+   *
+   * `fromDepth` carries the same warning as `openCriterion`'s. **A caller
+   * opening a finding from the surface passes `0`** — on the default
+   * (`previous.length`) working down a board would leave one panel per card.
+   *
+   * Takes an id, the way `openCriterion` and `openNode` beside it do: the
+   * descriptor holds nothing a row could supply, and the panel resolves the
+   * row itself so an audit arriving under it reaches it.
+   */
+  openFinding: (findingId: string, fromDepth?: number) => void;
   closeAt: (index: number) => void;
   unwindTo: (depth: number) => void;
   /**
@@ -153,6 +169,39 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
   const [entries, setEntries] = useState<ProjectPanelEntry[]>(initStack<PanelDescriptor>);
   const [addressed, setAddressed] = useState<string | null>(null);
   const [panelStates, setPanelStates] = useState<Record<string, RegisteredPanelState>>({});
+
+  // A panel is opened *over a surface*, so leaving the surface closes it.
+  //
+  // This provider lives in the project layout precisely so the stack survives a
+  // page segment remounting (see the docblock), and that is right within one
+  // surface — but it also meant a walk to another one carried the panels along.
+  // A node panel got away with it by accident: its `?node=` does not survive the
+  // navigation, so the reconcile below saw a missing id and closed the stack.
+  // The three addressless kinds have no such accident. `?node=` is `null` before
+  // and after, the reconcile never runs, and a finding opened on Findings was
+  // still sitting there on the Changelog — resolving against a page that passes
+  // no audit at all, so it rendered its own "no finding with that id" body.
+  //
+  // Closing on the pathname rather than teaching each kind to notice: the rule
+  // is about the surface going away, and it is one rule for all five kinds
+  // instead of four exceptions to the one that works by chance.
+  //
+  // `addressed` is reset with them so the reconcile below re-runs against the
+  // new route — a link that arrives carrying `?node=` still opens its node.
+  //
+  // State rather than a ref, and adjusted during render: this is the same
+  // derived-state shape the `?node=` reconcile below uses, for the same reason
+  // it gives — React discards the pass and re-renders, so the stack and the
+  // route are never painted out of step. A ref would also trip
+  // `react-hooks/refs`, which is an error in this repo and right to be.
+  const [lastPathname, setLastPathname] = useState(pathname);
+  if (pathname !== lastPathname) {
+    setLastPathname(pathname);
+    if (entries.length > 0) {
+      setEntries(initStack<PanelDescriptor>);
+      setAddressed(null);
+    }
+  }
 
   // An id can arrive without us having published it: a cold load, Back,
   // Forward, a link from elsewhere. Adjusting during render rather than in an
@@ -312,6 +361,18 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  /**
+   * Open one finding. Addressless, `fromDepth`-sensitive — see the interface.
+   */
+  const openFinding = useCallback((findingId: string, fromDepth?: number) => {
+    setEntries((previous) =>
+      openFrom<PanelDescriptor>(previous, fromDepth ?? previous.length, findingPanelKey(findingId), {
+        kind: "finding",
+        findingId,
+      }),
+    );
+  }, []);
+
   const pruneMissingNodes = useCallback(
     (existingIds: Set<string>) => {
       const next = pruneNodeEntries(entries, existingIds);
@@ -354,6 +415,7 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
       openRaw,
       openCriterion,
       openCell,
+      openFinding,
       closeAt,
       unwindTo,
       pruneMissingNodes,
@@ -365,6 +427,7 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
     entries,
     openCell,
     openCriterion,
+    openFinding,
     openNode,
     openRaw,
     panelStates,

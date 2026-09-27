@@ -17,7 +17,7 @@ import { PageSurface } from "@/components/layout/PageSurface";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SPECIES, type SpeciesId } from "@/lib/config/species";
-import { STATUSES, STATUS_ORDER } from "@/lib/config/statuses";
+import { STATUS_ORDER } from "@/lib/config/statuses";
 import type { Node as DataNode } from "@/lib/data/types";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useProjectId } from "@/lib/hooks/useProjectId";
@@ -25,8 +25,8 @@ import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
-import { useJournal } from "@/lib/hooks/useJournal";
 import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
+import { useNodeRelations } from "@/lib/hooks/useNodeRelations";
 import { findWhereUsed } from "@/lib/utils/where-used";
 import { generateNodeId } from "@/lib/utils/id";
 import {
@@ -75,10 +75,6 @@ const SPECIES_DESCRIPTION_BY_ID = Object.fromEntries(
   SPECIES.map((species) => [species.id, species.description]),
 ) as Record<SpeciesId, string>;
 
-const STATUS_LABEL_BY_ID = Object.fromEntries(
-  STATUSES.map((status) => [status.id, status.label]),
-) as Record<(typeof STATUSES)[number]["id"], string>;
-
 function parseSpeciesFilter(value: string | null): LibrarySpeciesFilter {
   if (value === "all") return "all";
   if (SPECIES.some((species) => species.id === value)) {
@@ -119,16 +115,12 @@ function playlistPreviewForNode(node: DataNode, allNodesById: Map<string, DataNo
 function sortNodes(
   nodes: DataNode[],
   sort: NodeSortState,
-  usedInByNodeId: Record<string, number>,
+  usedInByNodeId: Record<string, DataNode[]>,
 ): DataNode[] {
   const direction = sort.direction === "asc" ? 1 : -1;
 
   return [...nodes].sort((a, b) => {
     let comparison = 0;
-
-    if (sort.key === "id") {
-      comparison = a.id.localeCompare(b.id);
-    }
 
     if (sort.key === "title") {
       comparison = a.title.localeCompare(b.title);
@@ -143,7 +135,7 @@ function sortNodes(
     }
 
     if (sort.key === "usedIn") {
-      comparison = (usedInByNodeId[a.id] ?? 0) - (usedInByNodeId[b.id] ?? 0);
+      comparison = (usedInByNodeId[a.id]?.length ?? 0) - (usedInByNodeId[b.id]?.length ?? 0);
     }
 
     if (comparison === 0) {
@@ -175,6 +167,7 @@ export default function ProjectLibraryPage() {
   const speciesFilter = parseSpeciesFilter(searchParams.get("species"));
 
   const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes, updateNode, addNode, applyMutations } = useNodes(id);
+
   const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges, syncEdges } = useEdges(id);
   const intake = useAcceptanceIntake({
     projectId: id,
@@ -183,8 +176,14 @@ export default function ProjectLibraryPage() {
     applyMutations,
     syncEdges,
   });
+  const relations = useNodeRelations({
+    projectId: id,
+    nodes: dataNodes,
+    edges: dataEdges,
+    applyMutations,
+    syncEdges,
+  });
   const { project: projectBundle, error: projectError, reload: reloadProject, updateProject } = useProject(id);
-  const { journal, error: journalError, reload: reloadJournal } = useJournal(id);
   // The shell's scope, narrowed by this surface's own `?product=` when it has
   // one (#315). With no products declared it resolves to every platform and
   // every node, so a project that has never heard of products gets exactly
@@ -207,8 +206,11 @@ export default function ProjectLibraryPage() {
     [dataEdges, nodesById, usageIndex],
   );
 
+  // The flows themselves, not a count: the table's "Used in" cell opens them in
+  // a popover, and the number it shows is this list's length. One walk per node
+  // either way — `findWhereUsed` was always returning the nodes.
   const usedInByNodeId = useMemo(
-    () => Object.fromEntries(dataNodes.map((node) => [node.id, findWhereUsed(node.id, dataNodes).length])) as Record<string, number>,
+    () => Object.fromEntries(dataNodes.map((node) => [node.id, findWhereUsed(node.id, dataNodes)])) as Record<string, DataNode[]>,
     [dataNodes],
   );
 
@@ -456,14 +458,15 @@ export default function ProjectLibraryPage() {
    * to get started." over a library that may hold forty of them, and the Create
    * button invites the reader to type them all back in.
    *
-   * All four hooks are folded in because any one of them failing makes this
-   * page a half-truth, not just the node list: no journal is a blank History
-   * section in every panel, and no bundle is a product scope resolved from
-   * nothing — i.e. every platform and every node, silently. Retry re-runs all
-   * four rather than only the one that failed: a read is idempotent, and
-   * remembering which of four failed to re-run just that one buys nothing.
+   * All three hooks are folded in because any one of them failing makes this
+   * page a half-truth, not just the node list: no bundle is a product scope
+   * resolved from nothing — i.e. every platform and every node, silently. The
+   * journal is not among them: the panels' History section reads it itself and
+   * reports its own failure in place. Retry re-runs all three rather than only
+   * the one that failed: a read is idempotent, and remembering which of three
+   * failed to re-run just that one buys nothing.
    */
-  const loadError = nodesError ?? edgesError ?? projectError ?? journalError;
+  const loadError = nodesError ?? edgesError ?? projectError;
   if (loadError) {
     return (
       <PageError
@@ -473,7 +476,6 @@ export default function ProjectLibraryPage() {
           void reloadNodes();
           void reloadEdges();
           void reloadProject();
-          void reloadJournal();
         }}
       />
     );
@@ -492,10 +494,11 @@ export default function ProjectLibraryPage() {
         allNodes={dataNodes}
         allEdges={dataEdges}
         scope={scope}
-        journal={journal}
+        history
         onUpdate={handleNodeUpdate}
         onCreateNode={handleCreateNodeFromPanel}
         intake={intake}
+        relations={relations}
       >
         <PageSurface
           fill={fillsPane}
@@ -557,7 +560,7 @@ export default function ProjectLibraryPage() {
                     viewPlatformStatuses={node.species === "view" ? getEffectivePlatformStatuses(node, dataNodes, dataEdges) : undefined}
                     flowRollup={node.species === "flow" ? flowRollupByNodeId[node.id] : undefined}
                     playlistPreview={playlistPreviewForNode(node, nodesById)}
-                    usedInCount={usedInByNodeId[node.id] ?? 0}
+                    usedInCount={usedInByNodeId[node.id]?.length ?? 0}
                     scope={scope}
                     productLabels={productLabelsByNodeId?.[node.id]}
                     selected={selectionEnabled ? selectedIds.has(node.id) : undefined}
@@ -578,7 +581,7 @@ export default function ProjectLibraryPage() {
               nodes={visibleNodes}
               sort={sort}
               speciesLabelById={SPECIES_LABEL_BY_ID}
-              statusLabelById={STATUS_LABEL_BY_ID}
+              speciesDescriptionById={SPECIES_DESCRIPTION_BY_ID}
               usedInByNodeId={usedInByNodeId}
               scope={scope}
               productLabelsByNodeId={productLabelsByNodeId}

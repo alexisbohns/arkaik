@@ -161,7 +161,8 @@ lib/landing/
     NodeSearchCombobox.tsx  # Search-or-create selector for flow/view references
     PlatformVariants.tsx    # Platform tab switcher with per-platform status and notes
     RawBundlePanel.tsx      # Raw JSON/YAML bundle viewer/editor — a stack column (guarded edit + save-back)
-    AcceptanceEditor.tsx    # An acceptance's body: gherkin, values, per-platform status
+    AcceptanceMembershipField.tsx # An acceptance's Product picker, derived from what it covers (D5)
+    AcceptanceAuthoredFields.tsx  # An acceptance's own fields in the intro block: gherkin, values, decompose
     DecisionEditor.tsx      # A decision's body: context, decision, consequences, decision status
   acceptances/              # AcceptanceMatrix + its filter bar
   decisions/                # DecisionLog
@@ -185,7 +186,13 @@ IndexedDB (Dexie) | hosted graph API (app/api/graph) | in-memory seed
 localProvider / remoteProvider / seedProvider
     ↕ (routed by project id)
 routingProvider (implements DataProvider, the default behind getProvider())
-    ↕ (async calls)
+    ↕ (async calls — reads are conditional where the backend has a validator)
+Query cache (TanStack Query; one client per browser)
+  · lib/data/project-queries.ts is its ONLY writer: keys, entry shapes,
+    reducers, write-backs, and the invalidateProject/invalidateProjects
+    seams the writers that bypass the hooks call (raw-bundle save,
+    import, archive, the projects page)
+    ↕ (observers)
 Hooks: useNodes, useEdges, useProject, useProjects, useJournal
     ↕ (state)
 app/project/[id]/layout.tsx (sidebar shell + route-aware navigation)

@@ -952,6 +952,40 @@ export function resolveRepoScope(
 export type FetchChangedFiles = (pr: PullRequestRef) => Promise<ChangedFilesResult>;
 
 /**
+ * One delivery asks for a pull request's changed files ONCE, however many
+ * halves want them.
+ *
+ * The delivery half has always made at most one call (`resolveDeliveryScopes`
+ * fetches before any project is loaded, and hands one evidence value to all of
+ * them). Issue #440's surface check gives the Kritik half a reason to want the
+ * same list, and two halves sharing a rule that neither of them owns is how a
+ * delivery quietly starts making two requests. So the rule gets an object: the
+ * route builds one of these per delivery and hands it to both.
+ *
+ * THE PROMISE IS MEMOIZED, NOT THE RESOLVED VALUE. A fetch that rejects
+ * rejects once, for everyone. `listPullRequestFiles` throws a
+ * `GithubTransientError` on a 5xx, a rate limit or a socket error precisely so
+ * the route can release the delivery claim and let GitHub redeliver the whole
+ * thing; a memo that re-fetched after a rejection would have one delivery
+ * issue the request this function exists to issue once.
+ *
+ * Keyed by the pull request even though a delivery concerns exactly one: the
+ * key is what makes the memo a statement about a question rather than about a
+ * call count, and it costs a template literal.
+ */
+export function onceChangedFiles(fetch: FetchChangedFiles): FetchChangedFiles {
+  const asked = new Map<string, Promise<ChangedFilesResult>>();
+  return (pr) => {
+    const key = `${pr.repoFullName}#${pr.number}`;
+    const pending = asked.get(key);
+    if (pending !== undefined) return pending;
+    const promise = fetch(pr);
+    asked.set(key, promise);
+    return promise;
+  };
+}
+
+/**
  * Every project's scope for one delivery, with AT MOST ONE fetch.
  *
  * The fetch decision is per DELIVERY (the file list is a property of the pull

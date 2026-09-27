@@ -1,10 +1,11 @@
 "use client";
 
-import type { QualityGrade, QualityMatrixCell } from "@arkaik/schema";
+import { formatDelta, type QualityGrade, type QualityMatrixCell, type ScoreDelta } from "@arkaik/schema";
 import { FindingDots, CELL_SEVERITIES } from "@/components/quality/FindingDots";
 import { GradeScale } from "@/components/quality/GradeScale";
-import { GRADE_BORDER, SEVERITY_LABEL } from "@/components/quality/quality-styles";
+import { DELTA_TONE, GRADE_BORDER, SEVERITY_LABEL } from "@/components/quality/quality-styles";
 import { cn } from "@/lib/utils";
+import { describeDelta } from "@/lib/utils/quality";
 
 interface SurfaceScoreCardProps {
   /** The surface's title, named under the score. */
@@ -16,6 +17,12 @@ interface SurfaceScoreCardProps {
   capped?: boolean;
   /** Open findings by severity, as dots. Omitted on the roll-up cards. */
   findings?: QualityMatrixCell["findings"];
+  /**
+   * The score against the last recorded audit. Draws `▲ +6`, `▼ −3` or `=`
+   * after the grade; nothing at all when there is no earlier reading, so a
+   * first audit does not render as "unchanged".
+   */
+  delta?: ScoreDelta;
   /** A line under the title — the roll-up's open-finding count. */
   meta?: string;
   /** The card's accessible name; see {@link cellLabel}. */
@@ -31,17 +38,46 @@ interface SurfaceScoreCardProps {
  * does not, so a cell with nine open Criticals still reports nine to anyone who
  * hovers or listens.
  */
-export function cellLabel(domainName: string, surfaceTitle: string, cell: QualityMatrixCell): string {
+export function cellLabel(
+  domainName: string,
+  surfaceTitle: string,
+  cell: QualityMatrixCell,
+  delta?: ScoreDelta,
+): string {
   const findings = CELL_SEVERITIES.filter((severity) => cell.findings[severity] > 0)
     .map((severity) => `${cell.findings[severity]} ${SEVERITY_LABEL[severity].toLowerCase()}`)
     .join(", ");
+  // The arrow spelled out, with the score it was read against — the glyph
+  // alone says "up", the label says "up 6 from 66 at the 2026-08 audit".
+  const movement = describeDelta(delta);
 
   return [
     `${domainName} on ${surfaceTitle}`,
-    `${cell.score} out of 100, grade ${cell.grade}${cell.capped ? ", capped by an open finding" : ""}`,
+    `${cell.score} out of 100, grade ${cell.grade}${cell.capped ? ", capped by an open finding" : ""}` +
+      (movement ? `, ${movement}` : ""),
     `${cell.criteria} criteria scored`,
     findings === "" ? "no open findings" : `open findings: ${findings}`,
   ].join(" — ");
+}
+
+/**
+ * The arrow after the grade: which way the score moved since the last
+ * recorded audit, and by how much. Muted and small — it is a footnote to the
+ * number, not a second number — and tinted by direction with the positive and
+ * negative tones, never the severity palette, since a delta is not a finding.
+ * Renders nothing when there is no delta to draw: a first audit is a first
+ * audit, and a reading across a framework major bump is not comparable.
+ */
+export function DeltaArrow({ delta, className }: { delta?: ScoreDelta; className?: string }) {
+  const amount = delta?.delta ?? null;
+  const text = formatDelta(amount);
+  if (text === null || amount === null) return null;
+  const tone = amount > 0 ? "up" : amount < 0 ? "down" : "flat";
+  return (
+    <span className={cn("text-[11px] font-medium leading-none tabular-nums", DELTA_TONE[tone], className)} aria-hidden="true">
+      {text}
+    </span>
+  );
 }
 
 /**
@@ -64,6 +100,7 @@ export function SurfaceScoreCard({
   grade,
   capped = false,
   findings,
+  delta,
   meta,
   label,
   active = false,
@@ -85,6 +122,11 @@ export function SurfaceScoreCard({
         <>
           <span className="text-3xl font-semibold leading-none tabular-nums">{score}</span>
           <GradeScale grade={grade ?? "C"} capped={capped} />
+          {/* After the grade, so the card reads score, grade, movement — the
+              verdict first, then which way it is heading. `aria-hidden`: the
+              label already spells the movement out, and a glyph read aloud
+              as "black up-pointing triangle" helps nobody. */}
+          <DeltaArrow delta={delta} />
         </>
       )}
       {findings && <FindingDots findings={findings} />}

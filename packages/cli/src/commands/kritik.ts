@@ -28,21 +28,30 @@ import {
   REMEDIATION_COSTS,
   acceptFinding,
   auditCompletedInput,
+  deriveAuditScope,
+  deriveQualityMatrix,
+  deriveQualityTrend,
   detectRegressions,
   findingOpenedInput,
+  formatDelta,
   findingResolvedInput,
   isOpenFinding,
   mintFindingId,
   orderEvents,
   parseSurfaceSpec,
   priorityOf,
+  recordedAuditIds,
   renderIssue,
   resolveFinding,
+  scopeSummary,
   severityOf,
   signalRunSheet,
   signalTrippedInput,
+  trendRows,
   upsertAssessment,
   upsertFinding,
+  type AuditCompletedScope,
+  type AuditScope,
   type JournalEvent,
   type KritikCriterion,
   type KritikLibrary,
@@ -50,15 +59,18 @@ import {
   type QualityAssessment,
   type QualityFinding,
   type QualityProfile,
+  type QualitySection,
   type Regression,
   type RemediationCost,
+  type ScopeCell,
   type SurfaceDef,
 } from "@arkaik/schema";
 import {
   computeAuditMatrix,
   listAuditIds,
+  loadCurrentQualitySection,
   loadFindings,
-  loadQualitySection,
+  loadQualitySectionThrough,
   loadScoresOrEmpty,
   locateFinding,
   matrixPath,
@@ -66,7 +78,10 @@ import {
   renderMatrixMarkdown,
   requireProfile,
   saveFindings,
+  auditOrderNote,
+  declaredScopeSince,
   saveScores,
+  scopedAuditTarget,
   scoresPath,
 } from "@arkaik/schema/src/cli/kritik-audit";
 import {
@@ -95,6 +110,8 @@ Subcommands:
   matrix [audit-id]     Roll an audit up (writes matrix.json).
   signals               The signal pack, and what has tripped since the last audit.
   regressions           What got worse between two audits.
+  trend                 Every recorded audit's scores, and which way each moved.
+  scope                 The cells your resolved findings made stale since the last audit.
   issue <criterion>     Print the prefilled GitHub issue skeleton.
   criterion add ...     Add a project-specific criterion to the overlay.
 
@@ -123,6 +140,10 @@ Options:
                     Required: a score without a citation is an opinion.
   --audit <id>      The audit run (default: the newest, or the current YYYY-MM).
   --commit <sha>    The commit the evidence is pinned to.
+  --scope           This is a scoped re-audit: refuse a cell \`arkaik kritik scope\`
+                    does not list, and write into a scoped audit of its own
+                    (default <YYYY-MM>-scoped, never the audit it was scoped
+                    from). Leave it off to re-score an out-of-scope cell on purpose.
 
 Writes docs/quality/audits/<id>/scores.json`;
 
@@ -148,7 +169,7 @@ const FINDING_USAGE = `arkaik kritik finding <open|resolve|accept> [options]
     decision and reads like one. No journal event: acceptance is a state of the
     finding, not something that happened to the product.`;
 
-const MATRIX_USAGE = `arkaik kritik matrix [audit-id] [--json] [--record]
+const MATRIX_USAGE = `arkaik kritik matrix [audit-id] [--json] [--record] [--scope]
 
 Roll one audit up into its comparative matrix and write matrix.json — the only
 thing that may write that file.
@@ -156,7 +177,14 @@ thing that may write that file.
   audit-id          The audit under docs/quality/audits/ (default: the newest).
   --json            Print matrix.json instead of the markdown table.
   --record          Also append quality.audit.completed, carrying these scores
-                    and counts. Do this once per finished audit.`;
+                    and counts. Do this once per finished audit.
+  --scope           Treat the audit as a scoped re-audit even though it was
+                    scored without \`score --scope\` (which marks it for you).
+
+A scoped re-audit holds only the cells it re-scored, so matrix.json shows just
+those ("how did this audit go"), while --record carries the merged matrix
+through this audit ("where does the product stand") — the reading the trend
+replays. Everything else keeps its last score.`;
 
 const SIGNALS_USAGE = `arkaik kritik signals [--surface <s>] [--criterion <c>] [--domain <CODE>] [--json]
 arkaik kritik signals --trip <criterion> --surface <s> --signal <index|text> [--detail <d>]
@@ -177,8 +205,10 @@ const REGRESSIONS_USAGE = `arkaik kritik regressions [--from <audit>] [--to <aud
 
 What got worse between two audits: a cell whose maturity dropped, a cell that
 gained an open Critical or High finding, a finding that was resolved and is open
-again. Cells scored in only one of the two audits are not compared — a
-half-finished audit is not a regression.
+again. Each side is every audit through it, merged latest-wins — so a scoped
+re-audit's cells are compared with their last reading, wherever it was taken.
+Cells with no reading on one side are not compared — a half-finished audit is
+not a regression.
 
 Exits 1 when anything regressed, which is what makes it usable as a CI step or a
 scheduled routine.
@@ -187,6 +217,44 @@ scheduled routine.
   --to <audit>      The newer reading (default: the newest on disk).
   --record          Append one quality.signal.tripped per regression.
   --json            The full list as JSON.`;
+
+const TREND_USAGE = `arkaik kritik trend [--surface <s>] [--domain <CODE>] [--json]
+
+Where the product stood at each recorded audit, oldest first — one row per
+quality.audit.completed in the journal, the overall score per surface, and
+how each moved against the row above (▲ +6 / ▼ −3 / =). The score, not the
+findings: "from where we started to where we are now".
+
+  --surface <s>     One column only.
+  --domain <CODE>   That domain's score per surface instead of the roll-up.
+  --json            Print the snapshots and rows as JSON.
+
+Reads the journal, so it needs a bundle (--bundle, default docs/arkaik/bundle.json)
+and audits recorded with \`arkaik kritik matrix --record\`. A framework major
+bump between two audits breaks the comparison there (SPEC § 8): the row still
+prints, without an arrow.`;
+
+const SCOPE_USAGE = `arkaik kritik scope [--since <audit>] [--no-widen] [--json]
+
+The cells a batch of fixes made stale. A score is an assessment, so closing
+findings moves nothing until the cells they lived on are re-scored — and a
+comprehensive audit is a lot of audit for twenty fixes. Every finding resolved
+since the last recorded audit names its (criterion x surface) cell; one hop
+over node_ids adds the neighbours a fix in a shared view plausibly moved.
+
+This is a work list, not a score: re-score each cell with evidence
+(\`arkaik kritik score … --scope\`, which writes into an audit of its own,
+<YYYY-MM>-scoped, and refuses a cell this list does not hold), then
+\`arkaik kritik matrix --record\`. Every other cell keeps its last score.
+Recording closes the window: a cell left unscored drops out of the next scope.
+
+  --since <audit>   Measure from this recorded audit (default: the newest
+                    quality.audit.completed in the journal).
+  --no-widen        Only the resolved findings' own cells, no neighbours.
+  --json            The scope as JSON (what an agent should read).
+
+Reads the journal, so it needs a bundle (--bundle, default docs/arkaik/bundle.json)
+and an audit recorded with \`arkaik kritik matrix --record\` to measure from.`;
 
 const ISSUE_USAGE = `arkaik kritik issue <criterion> --surface <s> [--level <n>] [--finding <id>]
 
@@ -464,7 +532,7 @@ function runProfile(args: string[], common: CommonOptions): void {
 // --- score -------------------------------------------------------------------
 
 function runScore(args: string[], common: CommonOptions): void {
-  const { single, flags, positionals } = collect(args);
+  const { single, flags, positionals } = collect(args, [], ["scope"]);
   if (flags.has("help")) {
     console.log(SCORE_USAGE);
     process.exit(0);
@@ -496,7 +564,46 @@ function runScore(args: string[], common: CommonOptions): void {
   }
   const evidence = textOrFile(single.evidence);
 
-  const auditId = auditForWrite(common.root, single.audit);
+  // A scoped re-audit (#443) is opt-in: the point is to stop an agent drifting
+  // into a comprehensive audit by accident, not to make a deliberate
+  // out-of-scope re-score impossible — leaving --scope off still allows it.
+  let scopedFrom: string | undefined;
+  let auditId: string;
+  if (flags.has("scope")) {
+    const { scope, recorded } = currentScope(common, library, profile);
+    if (scope.since === null) {
+      fail(`kritik: --scope needs a recorded audit to measure from — \`arkaik kritik matrix --record\` writes one.`);
+    }
+    if (!scope.cells.some((cell) => cell.criterion_id === criterionId && cell.surface === surface)) {
+      fail(
+        `kritik: ${criterionId} x ${surface} is not in the current scope (${scopeSummary(scope)}).\n` +
+          `\`arkaik kritik scope\` lists the cells; drop --scope to re-score this one on purpose.`,
+      );
+    }
+    try {
+      auditId = scopedAuditTarget(common.root, scope.since, currentAuditId(), single.audit, recorded);
+    } catch (error) {
+      return fail(`kritik: ${(error as Error).message}`);
+    }
+    scopedFrom = scope.since;
+  } else {
+    auditId = auditForWrite(common.root, single.audit);
+  }
+  // Two quiet ways a plain score goes wrong, said out loud rather than refused
+  // — each has a legitimate use (correcting a recorded audit, fixing an old
+  // one), and each is the #443 review's trap when it was not meant.
+  const notes: string[] = [];
+  if (scopedFrom === undefined) {
+    const journal = resolveJournal(common.root, common.bundlePath);
+    if (journal.present && recordedAuditIds(readFullJournalEvents(journal.journalPath)).includes(auditId)) {
+      notes.push(
+        `${auditId} is already recorded — a re-score here rewrites that reading. ` +
+          `For a re-audit after fixes, \`arkaik kritik score … --scope\` writes into an audit of its own.`,
+      );
+    }
+    const order = auditOrderNote(common.root, auditId);
+    if (order !== undefined) notes.push(order);
+  }
   const file = loadScoresOrEmpty(common.root, auditId);
   const assessment: QualityAssessment = {
     criterion_id: criterionId,
@@ -513,6 +620,7 @@ function runScore(args: string[], common: CommonOptions): void {
     audit_id: auditId,
     framework_version: file.framework_version ?? library.version,
     ...(single.commit !== undefined ? { commit: single.commit } : {}),
+    ...(scopedFrom !== undefined ? { scope: { since: scopedFrom } } : {}),
     assessments,
   });
 
@@ -520,8 +628,10 @@ function runScore(args: string[], common: CommonOptions): void {
   console.log(
     `\n  ${replaced ? `re-scored ${criterionId} x ${surface}: ${replaced.level} -> ${level}` : `scored ${criterionId} x ${surface} at ${level}`}` +
       `${anchor ? ` — ${anchor}` : ""}\n` +
-      `  ${assessments.length} assessment${assessments.length === 1 ? "" : "s"} in ${auditId} -> ${scoresPath(common.root, auditId)}`,
+      `  ${assessments.length} assessment${assessments.length === 1 ? "" : "s"} in ${auditId} -> ${scoresPath(common.root, auditId)}` +
+      (scopedFrom !== undefined ? `\n  scoped re-audit since ${scopedFrom} — every cell it does not re-score keeps its last score` : ""),
   );
+  for (const note of notes) console.log(`  note: ${note}`);
   if (level < DEFAULT_TARGET_LEVEL) {
     console.log(
       `  below the level-${DEFAULT_TARGET_LEVEL} target — open a finding, or say in the evidence why this surface should not reach it.`,
@@ -685,8 +795,49 @@ function runFindingAccept(args: string[], common: CommonOptions): void {
 
 // --- matrix ------------------------------------------------------------------
 
+/**
+ * What a scoped audit was measured from: its \`score --scope\` stamp, else —
+ * when \`--scope\` declares it by hand — the newest recorded audit that is
+ * not this one. \`undefined\` for a comprehensive audit.
+ */
+function scopedSince(common: CommonOptions, auditId: string, stamped: string | undefined, declared: boolean): string | undefined {
+  if (stamped !== undefined) return stamped;
+  if (!declared) return undefined;
+  const journal = resolveJournal(common.root, common.bundlePath);
+  if (!journal.present) {
+    fail(`kritik: --scope needs the audit this one was scoped from, and there is no journal at ${journal.bundlePath}.`);
+  }
+  try {
+    return declaredScopeSince(auditId, recordedAuditIds(readFullJournalEvents(journal.journalPath)));
+  } catch (error) {
+    return fail(`kritik: --scope refused — ${(error as Error).message}`);
+  }
+}
+
+/**
+ * The cells the scope still lists that this scoped audit has not re-scored —
+ * when the scope is still measured from the audit this one follows. Recording
+ * closes that window, and those cells drop out of the next \`scope\` with it,
+ * so the matrix says so before and as it happens. Empty without a journal.
+ */
+function unscoredScopeCells(
+  common: CommonOptions,
+  library: KritikLibrary,
+  since: string,
+  assessed: readonly QualityAssessment[],
+): ScopeCell[] {
+  const journal = resolveJournal(common.root, common.bundlePath);
+  const profile = loadProfile(common.root);
+  if (!journal.present || !profile) return [];
+  const section = loadCurrentQualitySection(common.root, library) ?? { profile, assessments: [], findings: [] };
+  const scope = deriveAuditScope(readFullJournalEvents(journal.journalPath), section, library);
+  if (scope.since !== since) return [];
+  const done = new Set(assessed.map((a) => `${a.criterion_id}::${a.surface}`));
+  return scope.cells.filter((cell) => !done.has(`${cell.criterion_id}::${cell.surface}`));
+}
+
 function runMatrix(args: string[], common: CommonOptions): void {
-  const { flags, positionals } = collect(args, [], ["json", "record"]);
+  const { flags, positionals } = collect(args, [], ["json", "record", "scope"]);
   if (flags.has("help")) {
     console.log(MATRIX_USAGE);
     process.exit(0);
@@ -708,8 +859,25 @@ function runMatrix(args: string[], common: CommonOptions): void {
   }
   const { section, matrix, file } = computed;
 
+  const since = scopedSince(common, auditId, loadScoresOrEmpty(common.root, auditId).scope?.since, flags.has("scope"));
+  const scope: AuditCompletedScope | undefined =
+    since !== undefined ? { partial: true, cells: section.assessments.length, since } : undefined;
+  const unscored = scope !== undefined ? unscoredScopeCells(common, library, scope.since, section.assessments) : [];
+  const reportUnscored = (log: (line: string) => void) => {
+    if (unscored.length === 0) return;
+    log(
+      flags.has("record")
+        ? `\n! ${unscored.length} cell${unscored.length === 1 ? "" : "s"} in the scope ${unscored.length === 1 ? "was" : "were"} left unscored — ` +
+            `recording closes the window, so ${unscored.length === 1 ? "it drops" : "they drop"} out of the next \`scope\`:`
+        : `\n${unscored.length} cell${unscored.length === 1 ? "" : "s"} in the scope not re-scored yet ` +
+            `(a widened cell that did not move is re-scored at its current level, saying so):`,
+    );
+    for (const cell of unscored) log(`    ${cell.surface} · ${cell.criterion_id} (${cell.kind})`);
+  };
+
   if (flags.has("json")) {
     console.log(JSON.stringify(file, null, 2));
+    reportUnscored((line) => console.error(line));
   } else {
     const domainNames = new Map((library.domains ?? []).map((d) => [d.code, d.name]));
     console.log(`\n${renderMatrixMarkdown(matrix, domainNames)}\n`);
@@ -732,12 +900,37 @@ function runMatrix(args: string[], common: CommonOptions): void {
       }
     }
     console.log(`\nwrote ${matrixPath(common.root, auditId)}`);
+    if (scope !== undefined) {
+      reportUnscored((line) => console.log(line));
+      console.log(
+        `\nscoped re-audit: ${scope.cells} cell${scope.cells === 1 ? "" : "s"} re-scored since ${scope.since}. ` +
+          `The table is this audit alone; ${flags.has("record") ? "the recorded event carries" : "--record records"} ` +
+          `the merged matrix through it — every other cell at its last score.`,
+      );
+    }
   }
 
   if (flags.has("record")) {
+    // A scoped audit records where the product stands — every audit through
+    // this one merged — not its own dozen cells; see \`auditCompletedInput\`.
+    let recorded = matrix;
+    if (scope !== undefined) {
+      try {
+        recorded = deriveQualityMatrix({ quality: loadQualitySectionThrough(common.root, auditId, library) }, library);
+      } catch (error) {
+        return fail(`kritik: ${(error as Error).message}`);
+      }
+    }
     reportJournal(
       common.root,
-      [auditCompletedInput(matrix, { audit_id: auditId, framework_version: file.framework_version, ...(file.commit !== undefined ? { commit: file.commit } : {}) })],
+      [
+        auditCompletedInput(recorded, {
+          audit_id: auditId,
+          framework_version: file.framework_version,
+          ...(file.commit !== undefined ? { commit: file.commit } : {}),
+          ...(scope !== undefined ? { scope } : {}),
+        }),
+      ],
       common,
     );
   }
@@ -882,9 +1075,12 @@ function runRegressions(args: string[], common: CommonOptions): void {
 
   let regressions: Regression[];
   try {
+    // Merged through each audit, not each audit alone: a scoped \`to\` holds only
+    // the cells it re-scored, and each must be compared with the last reading
+    // before it — which may live in an audit older than \`from\`.
     regressions = detectRegressions(
-      loadQualitySection(common.root, from, library),
-      loadQualitySection(common.root, to, library),
+      loadQualitySectionThrough(common.root, from, library),
+      loadQualitySectionThrough(common.root, to, library),
       library,
     );
   } catch (error) {
@@ -922,6 +1118,200 @@ function runRegressions(args: string[], common: CommonOptions): void {
 
   // Exit 1 on regressions, the same CI contract `signals` already offers.
   process.exit(regressions.length > 0 ? 1 : 0);
+}
+
+// --- trend -------------------------------------------------------------------
+
+function runTrend(args: string[], common: CommonOptions): void {
+  const { single, flags } = collect(args, [], ["json"]);
+  if (flags.has("help")) {
+    console.log(TREND_USAGE);
+    process.exit(0);
+  }
+
+  const journal = resolveJournal(common.root, common.bundlePath);
+  if (!journal.present) {
+    fail(
+      `kritik: no bundle at ${journal.bundlePath} — the trend is read from the journal's quality.audit.completed events, ` +
+        `and there is no journal without a bundle.`,
+    );
+  }
+  const events = readFullJournalEvents(journal.journalPath);
+  // The profile's weights roll each snapshot up the way the live matrix is
+  // rolled up; without a profile every domain weighs 1, as it does there.
+  const profile = loadProfile(common.root);
+  const trend = deriveQualityTrend(events, profile ?? undefined);
+  const filter = {
+    ...(single.surface !== undefined ? { surface: single.surface } : {}),
+    ...(single.domain !== undefined ? { domain: single.domain } : {}),
+  };
+  const { surfaces, rows } = trendRows(trend, filter);
+
+  if (flags.has("json")) {
+    console.log(JSON.stringify({ total: trend.snapshots.length, surfaces, rows, snapshots: trend.snapshots }, null, 2));
+    process.exit(0);
+  }
+
+  if (rows.length === 0) {
+    console.log(`\n  no recorded audits yet — \`arkaik kritik matrix --record\` writes one.\n`);
+    process.exit(0);
+  }
+  if (surfaces.length === 0) {
+    console.log(
+      `\n  ${rows.length} recorded audit${rows.length === 1 ? "" : "s"}, none scoring ` +
+        (single.surface !== undefined ? `"${single.surface}"` : "any surface") +
+        `.\n`,
+    );
+    process.exit(0);
+  }
+
+  // A plain aligned table: audit, when, then one column per surface reading
+  // `72 ▲ +6`. Deltas are against the row above, so the first row has none.
+  const cellText = (row: (typeof rows)[number], surface: string): string => {
+    const cell = row.cells[surface];
+    if (cell.score === null) return "—";
+    const arrow = formatDelta(cell.delta);
+    return arrow === null ? String(cell.score) : `${cell.score} ${arrow}`;
+  };
+  const header = ["audit", "recorded", ...surfaces];
+  const table = rows.map((row) => [row.audit_id, row.ts.slice(0, 10), ...surfaces.map((surface) => cellText(row, surface))]);
+  const widths = header.map((title, column) => Math.max(title.length, ...table.map((line) => line[column].length)));
+  const line = (cells: string[]) => `  ${cells.map((cell, column) => cell.padEnd(widths[column])).join("   ")}`;
+
+  console.log("");
+  console.log(line(header));
+  for (const [index, cells] of table.entries()) {
+    console.log(line(cells));
+    const row = rows[index];
+    if (!row.comparable) {
+      console.log(`  ${"".padEnd(widths[0])}   framework ${row.framework_version ?? "?"} — not comparable to the audit above`);
+    }
+  }
+  console.log(
+    `\n  ${rows.length} recorded audit${rows.length === 1 ? "" : "s"} · ` +
+      (single.domain !== undefined ? `${single.domain} score per surface` : "overall score per surface") +
+      ` · arrows against the row above\n`,
+  );
+  process.exit(0);
+}
+
+// --- scope -------------------------------------------------------------------
+
+/** One run-sheet line's reason: which findings (and the PR that closed each), or which shared nodes. */
+function scopeReason(cell: ScopeCell, resolvedBy: Readonly<Record<string, string>>): string {
+  if (cell.kind === "widened") return `widened via ${cell.because.join(", ")}`;
+  const findings = cell.because.map((id) => (resolvedBy[id] !== undefined ? `${id} (resolved by ${resolvedBy[id]})` : id));
+  return `because ${findings.join(", ")}`;
+}
+
+/**
+ * The scope as it stands: the journal's resolutions against the merged
+ * section. Shared by \`scope\` (which prints it) and \`score --scope\` (which
+ * refuses what it does not list), so the two can never disagree about a cell.
+ *
+ * The merged section, not the newest audit's: a finding opened two audits ago
+ * and resolved last week lives in an older findings.json, and its cell's
+ * current score may come from any audit on disk.
+ */
+function currentScope(
+  common: CommonOptions,
+  library: KritikLibrary,
+  profile: QualityProfile,
+  options: { since?: string; widen?: boolean } = {},
+): { scope: AuditScope; journalPath: string; recorded: string[] } {
+  const journal = resolveJournal(common.root, common.bundlePath);
+  if (!journal.present) {
+    fail(
+      `kritik: no bundle at ${journal.bundlePath} — the scope is measured from the journal's quality.audit.completed ` +
+        `and quality.finding.resolved events, and there is no journal without a bundle.`,
+    );
+  }
+  const events = readFullJournalEvents(journal.journalPath);
+  const recorded = recordedAuditIds(events);
+
+  if (options.since !== undefined) {
+    if (!recorded.includes(options.since)) {
+      fail(
+        `kritik: no recorded audit "${options.since}" in ${journal.journalPath} ` +
+          `(recorded: ${recorded.join(", ") || "none — `arkaik kritik matrix --record` writes one"}).\n` +
+          `A scope is measured from a recorded reading; an audit directory that was never recorded is not one.`,
+      );
+    }
+  }
+
+  let section: Pick<QualitySection, "profile" | "assessments" | "findings">;
+  try {
+    section = loadCurrentQualitySection(common.root, library) ?? { profile, assessments: [], findings: [] };
+  } catch (error) {
+    return fail(`kritik: ${(error as Error).message}`);
+  }
+  return { scope: deriveAuditScope(events, section, library, options), journalPath: journal.journalPath, recorded };
+}
+
+function runScope(args: string[], common: CommonOptions): void {
+  const { single, flags } = collect(args, [], ["json", "no-widen"]);
+  if (flags.has("help")) {
+    console.log(SCOPE_USAGE);
+    process.exit(0);
+  }
+
+  const library = loadLibraryOrFail(common.root);
+  const profile = profileOrFail(common.root);
+  const { scope } = currentScope(common, library, profile, {
+    ...(single.since !== undefined ? { since: single.since } : {}),
+    widen: !flags.has("no-widen"),
+  });
+
+  if (flags.has("json")) {
+    console.log(JSON.stringify({ ...scope, summary: scopeSummary(scope) }, null, 2));
+    process.exit(0);
+  }
+
+  if (scope.since === null) {
+    console.log(
+      `\n  no recorded audit yet — a scope is measured from one. \`arkaik kritik matrix --record\` writes it.\n`,
+    );
+    process.exit(0);
+  }
+
+  console.log("");
+  let surface = "";
+  for (const cell of scope.cells) {
+    if (cell.surface !== surface) {
+      if (surface !== "") console.log("");
+      surface = cell.surface;
+    }
+    const current = cell.current !== undefined ? `at ${cell.current.level} (${cell.current.audit_id})` : "unscored";
+    console.log(`  ${cell.surface} · ${cell.criterion_id} · ${current} · ${scopeReason(cell, scope.resolved_by)}`);
+  }
+  if (scope.cells.length > 0) console.log("");
+  console.log(`  ${scopeSummary(scope)}`);
+
+  if (scope.unknown.length > 0) {
+    console.log(
+      `\n  ! ${scope.unknown.length} resolved id${scope.unknown.length === 1 ? " names" : "s name"} no finding in any audit — ` +
+        `something closed an id that does not exist:`,
+    );
+    for (const id of scope.unknown) console.log(`      ${id}`);
+  }
+
+  if (scope.unscorable.length > 0) {
+    console.log(
+      `\n  ! ${scope.unscorable.length} resolved finding${scope.unscorable.length === 1 ? " sits" : "s sit"} on a cell nothing can re-score ` +
+        `(a retired criterion, or a surface no longer in the profile) — the fix still counts, but there is no score to move:`,
+    );
+    for (const id of scope.unscorable) console.log(`      ${id}`);
+  }
+
+  if (scope.cells.length > 0) {
+    console.log(
+      `\n  re-score each with evidence — \`arkaik kritik score <criterion> <surface> <level> --evidence … --scope\` — ` +
+        `then \`arkaik kritik matrix --record\`. --scope writes into an audit of its own, never ${scope.since}, ` +
+        `whose recorded reading is history. Every other cell keeps its last score.`,
+    );
+  }
+  console.log("");
+  process.exit(0);
 }
 
 // --- issue -------------------------------------------------------------------
@@ -1074,6 +1464,10 @@ export function runKritik(args: string[]): void {
       return runSignals(subArgs, common);
     case "regressions":
       return runRegressions(subArgs, common);
+    case "trend":
+      return runTrend(subArgs, common);
+    case "scope":
+      return runScope(subArgs, common);
     case "issue":
       return runIssue(subArgs, common);
     case "criterion":

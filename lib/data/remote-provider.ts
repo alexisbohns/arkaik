@@ -1,6 +1,14 @@
 import type { MutationOp } from "@arkaik/schema";
 
-import type { DataProvider, ProjectSummary } from "./data-provider";
+import type {
+  DataProvider,
+  JournalProjection,
+  MutationResult,
+  ProjectSummary,
+  ReadJournalOptions,
+  ReadProjectOptions,
+  ReadResult,
+} from "./data-provider";
 import type { Edge, JournalEvent, Node, Project, ProjectBundle } from "./types";
 
 /**
@@ -16,11 +24,23 @@ import type { Edge, JournalEvent, Node, Project, ProjectBundle } from "./types";
  * atomicity guarantee — there is no second way to write, and therefore no way
  * for the two to drift.
  *
- * NO LOCAL CACHE, deliberately. A hosted project is online-only (the tradeoff
- * recorded in the plan): the alternative is a replay queue against a
- * validator-gated server, where a queued mutation can become invalid before it
- * is sent, which reintroduces exactly the conflict handling this architecture
- * was chosen to avoid. Local-first remains its own mode, fully intact.
+ * WRITES ARE ONLINE-ONLY, deliberately. This provider holds no replay queue:
+ * a queued mutation against a validator-gated server can become invalid
+ * before it is sent, which reintroduces exactly the conflict handling this
+ * architecture was chosen to avoid. What sits above it is a different thing —
+ * a READ cache (`lib/data/project-queries.ts`, TanStack Query) that remembers
+ * what this provider already answered and revalidates it against the server.
+ * It never stores a write for later: every mutation still goes to the server
+ * right away and fails loudly when the network is down. Local-first remains
+ * its own mode, fully intact.
+ *
+ * READS CAN BE CONDITIONAL. `readProject`/`readJournal` send the validator the
+ * cache stored as `If-None-Match` and turn the server's 304 into
+ * `not-modified` — no body, no value: the cache keeps what it has. Nothing is
+ * memoized here for the same reason there is no replay queue: this provider
+ * is a transport, and the one copy of a read lives in the cache above it.
+ * `cache: "no-store"` stays on every call — the browser's own HTTP cache
+ * would only double-store what the query cache already validates.
  */
 
 /** Server-owned project ids carry this prefix (lib/services/graph/store.ts). */
@@ -71,22 +91,88 @@ export function createRemoteProvider(options: RemoteProviderOptions = {}): DataP
   const doFetch = options.fetchImpl ?? ((...args: Parameters<typeof fetch>) => fetch(...args));
   const base = options.baseUrl ?? "";
 
-  async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  /** The one answer a conditional read can get that has no body. */
+  const NOT_MODIFIED = Symbol("not-modified");
+
+  interface SendOptions {
+    signal?: AbortSignal;
+    /** Sent as `If-None-Match` when present — only a conditional read sets it. */
+    ifNoneMatch?: string | null;
+  }
+
+  /**
+   * The single choke point every call goes through. A 304 is recognized
+   * BEFORE the `ok` check: it is not ok (2xx) and has no body, so the generic
+   * error path would try to parse nothing and throw — and only a request that
+   * sent `If-None-Match` can ever receive one.
+   */
+  async function send(path: string, init: RequestInit | undefined, options: SendOptions): Promise<Response | typeof NOT_MODIFIED> {
     const res = await doFetch(`${base}/api/graph${path}`, {
       ...init,
-      headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
+      headers: {
+        "content-type": "application/json",
+        ...(options.ifNoneMatch ? { "if-none-match": options.ifNoneMatch } : {}),
+        ...(init?.headers ?? {}),
+      },
       cache: "no-store",
+      ...(options.signal ? { signal: options.signal } : {}),
     });
+    if (res.status === 304) return NOT_MODIFIED;
     if (!res.ok) {
       const body = await res.json().catch(() => null);
       throw new RemoteProviderError(res.status, body, messageFor(res.status, body));
     }
+    return res;
+  }
+
+  async function request<T>(path: string, init?: RequestInit, options: SendOptions = {}): Promise<T> {
+    const res = await send(path, init, { signal: options.signal });
+    // Unreachable for an unconditional request — the server answers 304 only
+    // to `If-None-Match` — but the type has to say so somewhere.
+    if (res === NOT_MODIFIED) throw new RemoteProviderError(304, null, "Unexpected 304 on an unconditional read.");
     return (await res.json()) as T;
   }
 
-  /** The one write path — every mutator below is a batch of ops through here. */
+  /**
+   * The journal route with its projection, if any. Comma-joined and encoded
+   * once — the server splits on commas and accepts the repeated-parameter
+   * form too, but one parameter keeps the URL (and the cache key it becomes
+   * in a proxy log) short. An empty list is not a projection: it means the
+   * caller has nothing to ask for, and the whole journal is the honest answer,
+   * matching `normalizeJournalTypes` in the query cache.
+   */
+  function journalPath(projectId: string, types: readonly string[] | null | undefined): string {
+    const base = `/projects/${encodeURIComponent(projectId)}/journal`;
+    if (!types || types.length === 0) return base;
+    return `${base}?types=${encodeURIComponent(types.join(","))}`;
+  }
+
+  /**
+   * A GET that revalidates: `etag` (when given) travels as `If-None-Match`,
+   * and the answer is either the fresh body with the validator the server
+   * put on it, or the bodiless `not-modified`. A 404 still throws here; each
+   * caller maps it to `missing` so a 401 or a 500 keeps surfacing as an error
+   * rather than being mistaken for "no such project".
+   */
+  async function conditionalGet<T>(
+    path: string,
+    { etag, signal }: ReadProjectOptions,
+  ): Promise<{ status: "not-modified" } | { status: "fresh"; body: T; etag: string | null }> {
+    const res = await send(path, undefined, { signal, ifNoneMatch: etag });
+    if (res === NOT_MODIFIED) return { status: "not-modified" };
+    return { status: "fresh", body: (await res.json()) as T, etag: res.headers.get("etag") };
+  }
+
+  /**
+   * The one write path — every mutator below is a batch of ops through here.
+   *
+   * The route answers with the strong version after the write and the journal
+   * events it appended (app/api/graph/projects/[projectId]/mutations/route.ts);
+   * `applyMutations` forwards both so the query cache can write the result
+   * back without re-reading the project.
+   */
   async function mutate(projectId: string, ops: MutationOp[]) {
-    return request<{ version: string; nodes: Node[]; edges: Edge[] }>(
+    return request<{ version: string; nodes: Node[]; edges: Edge[]; events?: JournalEvent[] }>(
       `/projects/${encodeURIComponent(projectId)}/mutations`,
       { method: "POST", body: JSON.stringify({ ops }) },
     );
@@ -151,10 +237,8 @@ export function createRemoteProvider(options: RemoteProviderOptions = {}): DataP
       return edges;
     },
 
-    async getJournal(projectId: string): Promise<JournalEvent[]> {
-      const { journal } = await request<{ journal: JournalEvent[] }>(
-        `/projects/${encodeURIComponent(projectId)}/journal`,
-      );
+    async getJournal(projectId: string, options?: JournalProjection): Promise<JournalEvent[]> {
+      const { journal } = await request<{ journal: JournalEvent[] }>(journalPath(projectId, options?.types));
       return journal;
     },
 
@@ -193,9 +277,9 @@ export function createRemoteProvider(options: RemoteProviderOptions = {}): DataP
       await mutate(projectId, [{ op: "delete_edge", edge_id: id }]);
     },
 
-    async applyMutations(projectId: string, ops: MutationOp[]) {
+    async applyMutations(projectId: string, ops: MutationOp[]): Promise<MutationResult> {
       const result = await mutate(projectId, ops);
-      return { nodes: result.nodes, edges: result.edges };
+      return { nodes: result.nodes, edges: result.edges, version: result.version, events: result.events };
     },
 
     async exportProject(id: string): Promise<ProjectBundle> {
@@ -213,6 +297,34 @@ export function createRemoteProvider(options: RemoteProviderOptions = {}): DataP
       // The hosted project gets a server-owned id, so the returned project is
       // NOT the one that was sent — callers must navigate to the id from here.
       return { ...bundle.project, id };
+    },
+
+    async readProject(id: string, options: ReadProjectOptions): Promise<ReadResult<ProjectBundle>> {
+      try {
+        const got = await conditionalGet<{ bundle: ProjectBundle; version: string }>(
+          `/projects/${encodeURIComponent(id)}`,
+          options,
+        );
+        if (got.status === "not-modified") return { status: "not-modified" };
+        return { status: "fresh", value: got.body.bundle, etag: got.etag, version: got.body.version };
+      } catch (err) {
+        if (err instanceof RemoteProviderError && err.status === 404) return { status: "missing" };
+        throw err;
+      }
+    },
+
+    async readJournal(projectId: string, options: ReadJournalOptions): Promise<ReadResult<JournalEvent[]>> {
+      try {
+        const got = await conditionalGet<{ journal: JournalEvent[] }>(
+          journalPath(projectId, options.types),
+          { etag: options.etag, signal: options.signal },
+        );
+        if (got.status === "not-modified") return { status: "not-modified" };
+        return { status: "fresh", value: got.body.journal, etag: got.etag };
+      } catch (err) {
+        if (err instanceof RemoteProviderError && err.status === 404) return { status: "missing" };
+        throw err;
+      }
     },
   };
 }

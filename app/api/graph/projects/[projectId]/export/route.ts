@@ -1,5 +1,6 @@
-import { exportProject } from "@/lib/services/graph/store";
+import { journalEtag } from "@/lib/services/graph/etag";
 import { graphReadRoute } from "@/lib/services/graph/read-route";
+import { exportProject } from "@/lib/services/graph/store";
 
 /**
  * GET /api/graph/projects/{projectId}/export — the full interchange bundle with
@@ -9,4 +10,4 @@ import { graphReadRoute } from "@/lib/services/graph/read-route";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export const GET = graphReadRoute("export", "bundle", exportProject);
+export const GET = graphReadRoute("export", "bundle", exportProject, journalEtag);

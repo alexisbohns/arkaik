@@ -88,6 +88,36 @@ async function main() {
       journal.length === (SEED.journal ?? []).length,
       `expected ${(SEED.journal ?? []).length}, got ${journal.length}`,
     );
+
+    // The `?types=` projection is a contract every backend keeps, so a page
+    // asking for three event types gets three whether the project lives on the
+    // server, in Dexie or here. In memory it is a filter; the shapes match.
+    const seedTypes = [...new Set(journal.map((event) => event.type))].sort();
+    const wanted = seedTypes.slice(0, 2);
+    const projected = await provider.getJournal(PROJECT_ID, { types: wanted });
+    check(
+      "getJournal({ types }) returns only those types",
+      projected.length > 0 && projected.every((event) => wanted.includes(event.type)),
+      `${wanted.join(",")} -> ${[...new Set(projected.map((e) => e.type))].join(",")}`,
+    );
+    check(
+      "…and keeps the journal's own order",
+      JSON.stringify(projected.map((e) => e.id)) ===
+        JSON.stringify(journal.filter((e) => wanted.includes(e.type)).map((e) => e.id)),
+    );
+    check(
+      "an unknown type projects to nothing, rather than everything",
+      (await provider.getJournal(PROJECT_ID, { types: ["nothing.writes.this"] })).length === 0,
+    );
+    check(
+      "an empty projection is the whole journal, like no projection at all",
+      (await provider.getJournal(PROJECT_ID, { types: [] })).length === journal.length &&
+        (await provider.getJournal(PROJECT_ID, { types: null })).length === journal.length,
+    );
+    check(
+      "a projection of another project's id is still empty",
+      (await provider.getJournal("not-the-seed", { types: wanted })).length === 0,
+    );
   }
 
   // --- createNode ----------------------------------------------------------
@@ -295,6 +325,16 @@ async function main() {
       "applyMutations with one create_node op returns the graph",
       Array.isArray(outcome.nodes) && Array.isArray(outcome.edges) && outcome.nodes.some((n) => n.id === "V-batch"),
     );
+    // The events it hands back are exactly the ones the sandbox journal
+    // gained — what the query cache appends instead of re-reading the journal.
+    const journalAfterBatch = await provider.getJournal(PROJECT_ID);
+    const lastEvent = journalAfterBatch[journalAfterBatch.length - 1];
+    check(
+      "applyMutations returns the events it appended",
+      Array.isArray(outcome.events) && outcome.events.length === 1 && outcome.events[0].type === "node.created" && outcome.events[0].id === lastEvent.id,
+      JSON.stringify(outcome.events),
+    );
+    check("applyMutations reports no server version", outcome.version === undefined);
     // Clean up so later "current state" assertions aren't polluted.
     await provider.deleteNode(PROJECT_ID, "V-batch");
   }

@@ -2,18 +2,24 @@
 
 import { useMemo } from "react";
 import { LayersIcon } from "lucide-react";
-import type { KritikLibrary, QualityMatrix, QualitySection } from "@arkaik/schema";
+import type { KritikLibrary, QualityMatrix, QualitySection, QualityTrend } from "@arkaik/schema";
 import { SectionHeading } from "@/components/layout/SectionHeading";
 import { QualityGallery } from "@/components/quality/QualityGallery";
 import { QualityLegend } from "@/components/quality/QualityLegend";
 import { SurfaceScoreCard, cellLabel } from "@/components/quality/SurfaceScoreCard";
 import { domainIcon } from "@/lib/config/quality-domain-icons";
-import { buildDomainSections, buildSurfaceGauges, cellKey } from "@/lib/utils/quality";
+import { buildDomainSections, buildSurfaceGauges, cellKey, describeDelta } from "@/lib/utils/quality";
 
 interface QualityMatrixSectionsProps {
   matrix: QualityMatrix;
   section?: QualitySection;
   library?: KritikLibrary;
+  /**
+   * The recorded audits, for the arrow on every card. Optional so the landing
+   * preview and a page whose journal has not arrived render the matrix as it
+   * always did — without a trend there is no arrow, not a broken one.
+   */
+  trend?: QualityTrend;
   /** The open cell as `cellKey` encodes it, or `null`. Owned by the URL. */
   activeCell: string | null;
   onSelectCell: (domain: string, surface: string) => void;
@@ -32,6 +38,7 @@ export function QualityMatrixSections({
   matrix,
   section,
   library,
+  trend,
   activeCell,
   onSelectCell,
 }: QualityMatrixSectionsProps) {
@@ -39,8 +46,8 @@ export function QualityMatrixSections({
   // walk the whole of it. Split rather than chained for the reason the pages
   // state: `react-hooks/preserve-manual-memoization` accepts an opaque imported
   // call over its own deps and refuses a chain wrapped in one memo.
-  const sections = useMemo(() => buildDomainSections(matrix, section, library), [matrix, section, library]);
-  const gauges = useMemo(() => buildSurfaceGauges(matrix, section, library), [matrix, section, library]);
+  const sections = useMemo(() => buildDomainSections(matrix, section, library, trend), [matrix, section, library, trend]);
+  const gauges = useMemo(() => buildSurfaceGauges(matrix, section, library, trend), [matrix, section, library, trend]);
 
   return (
     <div className="flex flex-col">
@@ -66,11 +73,14 @@ export function QualityMatrixSections({
               title={gauge.title}
               score={gauge.score}
               grade={gauge.grade}
+              delta={gauge.delta}
               meta={`${gauge.openFindings} open`}
               label={
                 gauge.score === null
                   ? `${gauge.title} — nothing scored`
-                  : `${gauge.title} — ${gauge.score} out of 100, grade ${gauge.grade} — ${gauge.openFindings} open findings`
+                  : `${gauge.title} — ${gauge.score} out of 100, grade ${gauge.grade}` +
+                    (describeDelta(gauge.delta) ? `, ${describeDelta(gauge.delta)}` : "") +
+                    ` — ${gauge.openFindings} open findings`
               }
             />
           ))}
@@ -107,6 +117,7 @@ export function QualityMatrixSections({
                   grade={card.cell?.grade ?? null}
                   capped={card.cell?.capped}
                   findings={card.cell?.findings}
+                  delta={card.delta}
                   meta={
                     card.cell
                       ? `${card.cell.criteria} criteri${card.cell.criteria === 1 ? "on" : "a"}`
@@ -114,7 +125,7 @@ export function QualityMatrixSections({
                   }
                   label={
                     card.cell
-                      ? cellLabel(domain.name, card.title, card.cell)
+                      ? cellLabel(domain.name, card.title, card.cell, card.delta)
                       : `${domain.name} on ${card.title} — nothing scored`
                   }
                   active={activeCell === key}

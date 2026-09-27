@@ -3,6 +3,7 @@ import type {
   RemediationCost,
   FindingSeverity,
   FindingStatus,
+  QualityFinding,
   QualityGrade,
 } from "@arkaik/schema";
 
@@ -216,6 +217,19 @@ export const GRADE_SOLID: Record<QualityGrade, string> = {
 };
 
 /**
+ * A score's movement since the last recorded audit, as the arrow's tint. The
+ * positive and negative tones the resolved tile and the E grade already use —
+ * deliberately not the severity palette, because a delta is not a finding: a
+ * cell that dropped three points has not raised a Critical, and painting it
+ * orange would say it had. Flat is muted, like every other footnote on a card.
+ */
+export const DELTA_TONE: Record<"up" | "down" | "flat", string> = {
+  up: "text-green-700 dark:text-green-400",
+  down: "text-red-700 dark:text-red-400",
+  flat: "text-muted-foreground",
+};
+
+/**
  * Finding statuses in prose. Only `accepted-risk` actually needs the map — it
  * is the one id that is not its own English — but spelling all four out keeps
  * the filter menu from mixing sentence case with a hyphenated slug.
@@ -251,4 +265,18 @@ export const FINDING_STATUS_GLOSS: Record<Exclude<FindingStatus, "open">, string
   resolved: "Fixed and verified — this one is done.",
   refuted: "Argued down: the audit filed it, the review found no defect.",
   "accepted-risk": "Weighed and kept, on purpose. Not a thing to re-litigate.",
+};
+
+/**
+ * The refutation pass's verdict in prose (SPEC §6.5). `DOWNGRADED` is the one
+ * that has to be spelled out: a finding the pass argued *down* still stands,
+ * and a reader who takes it for a refusal will skip a real defect.
+ *
+ * Here rather than in the card that first needed it, because the finding panel
+ * says the same word — and two tables would be two vocabularies for one verdict.
+ */
+export const VERDICT_LABEL: Record<NonNullable<QualityFinding["verification"]>["verdict"], string> = {
+  CONFIRMED: "Confirmed",
+  REFUTED: "Refuted",
+  DOWNGRADED: "Downgraded",
 };

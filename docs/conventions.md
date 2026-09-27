@@ -17,6 +17,7 @@ components/
   acceptances/ decisions/ pyramid/ values/   # The acceptance + decision + value surfaces
   library/ journal/     # Node browser; one event's human sentence
   projects/             # The project-list surfaces (create, import, seed, restore)
+  query/                # QueryProvider: hands the one QueryClient to React, wires the local bus + focus listener
   generate/             # Prompt builder form/output components for /generate
   publik/ sync/ auth/   # Share, Synk backup, sign-in surfaces
   settings/             # Product manager, repo links, token manager
@@ -30,6 +31,8 @@ components/
 lib/
   config/               # Labels + display order for the ids in @arkaik/schema (§ Config / Taxonomies)
   data/                 # DataProvider interface + local, remote, seed and routing implementations
+    project-queries.ts  # The query cache's keys, entry shapes, selectors, write-back reducers and seams — its only writer
+    query-client.ts     # The one QueryClient per browser (fresh per call on the server)
   hooks/                # React hooks for state management
     useProjectPanels.tsx # Panel-stack provider + the `?node=` contract
   services/             # Server-only: hosted graph store, publik, synk, auth, GitHub App
@@ -54,13 +57,14 @@ docs/                   # This documentation
 ## State Management
 
 - **No global store for domain data.** No Zustand, Redux, or Context-based state for nodes, edges, projects, or the journal — those flow through hooks and props.
+- **A query cache is not a store.** The hooks read through a TanStack Query cache (`lib/data/project-queries.ts`, [data-layer.md](data-layer.md) § "The query cache") that only deduplicates and remembers reads; domain data still flows through the same hooks and props. `lib/data/project-queries.ts` is the cache's **only writer**: components never call `useQueryClient()` — a write that bypasses the hooks calls one of its invalidation seams instead.
 - **Route-shell UI state may use a scoped provider**, mounted in the project layout alongside `SidebarProvider`. The panel stack (`ProjectPanelsProvider`) is the one that exists; the bar for adding another is that a page segment cannot own the state, because it remounts when its dynamic params change.
 - Reusable state logic lives in hooks: `useNodes`, `useEdges`, `useProject`, `useProjects`, `useJournal`.
 - Hook intent:
   - `useNodes` and `useEdges` handle project graph CRUD.
   - `useProject` handles project-level metadata (including `root_node_id` and card preferences).
   - `useProjects` powers project lists/switching in route shell UI.
-  - `useJournal` exposes the read-only event log for timelines and the changelog.
+  - `useJournal` exposes the read-only event log for timelines and the changelog, projected to the event types the caller renders (`useJournal(id, { types })`).
 - The Journey map (`components/maps/JourneyMap.tsx`) uses `useNodes` and `useEdges` for data, and manages flow expansion as local `useState` (`expandedFlows`); graph construction is the pure `buildJourneyGraph` (`lib/utils/journey-graph.ts`).
 - Data flows via props from the project page down to canvas components.
 - Route-shell concerns such as the project switcher and persistent sidebar should stay in the project layout and use route state plus lightweight hooks instead of introducing shared global state.
@@ -243,7 +247,7 @@ Non-interactive but focusable elements (e.g. branch nodes, static cards) use `cu
 ## Naming
 
 - **Files:** kebab-case for config and utils (`edge-types.ts`), PascalCase for components (`FlowNode.tsx`)
-  - Current graph node components include `FlowNode.tsx`, `ViewNode.tsx`, `DataModelNode.tsx`, `ApiEndpointNode.tsx`
+  - Current graph node components are `FlowNode.tsx`, `ViewNode.tsx` and `SystemLayerNode.tsx` (`components/graph/nodes/`)
 - **Types:** PascalCase (`SpeciesId`, `ProjectBundle`)
 - **Config arrays:** UPPER_SNAKE_CASE (`SPECIES`, `STATUSES`, `EDGE_TYPES`)
 - **Hooks:** camelCase with `use` prefix (`useNodes`, `useJournal`)

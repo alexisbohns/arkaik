@@ -256,6 +256,16 @@ for (const type of ["quality.audit.completed", "quality.finding.opened", "qualit
 }
 const auditEvent = { id: "01J", ts: "2026-08-26T00:00:00.000Z", actor: "claude-code", type: "quality.audit.completed", audit_id: "2026-08", framework_version: "0.1.0", commit: "abc", scores: { web: { SEC: 44 } }, counts: { critical: 0, high: 21 } };
 check("a quality.audit.completed event validates strictly", KnownJournalEventSchema.safeParse(auditEvent).success);
+const scopedAuditEvent = { ...auditEvent, audit_id: "2026-09-scoped", scope: { partial: true, cells: 12, since: "2026-08", future: 1 } };
+const scopedParsed = KnownJournalEventSchema.safeParse(scopedAuditEvent);
+check(
+  "a scoped audit.completed validates strictly and keeps unknown scope keys",
+  scopedParsed.success && scopedParsed.data.scope.cells === 12 && scopedParsed.data.scope.future === 1,
+);
+check(
+  "a scope whose cells is not a number is refused by the strict shape",
+  !KnownJournalEventSchema.safeParse({ ...auditEvent, scope: { partial: true, cells: "12" } }).success,
+);
 const openedEvent = { id: "01K", ts: "2026-08-26T00:00:00.000Z", actor: "ci", type: "quality.finding.opened", finding_id: "F-1", criterion_id: "SEC-03", surface: "supabase", severity: "critical", priority: "P0", title: "t", node_ids: ["V-x"] };
 check("a quality.finding.opened event validates strictly", KnownJournalEventSchema.safeParse(openedEvent).success);
 const acceptedEvent = { id: "01L", ts: "2026-08-26T00:00:00.000Z", actor: "arkaik-agent", type: "quality.finding.accepted", finding_id: "F-1", reason: "owned" };

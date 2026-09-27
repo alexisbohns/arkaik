@@ -1,6 +1,13 @@
 import { getCaller, hasScope } from "@/lib/services/auth";
 import { MAX_BUNDLE_BYTES, servicesConfigured, servicesUnavailable } from "@/lib/services/db";
-import { archiveProject, getProject, qualityFindingEvents, updateProjectFields } from "@/lib/services/graph/store";
+import { bundleEtag, ifNoneMatchSatisfied, readResponseHeaders } from "@/lib/services/graph/etag";
+import {
+  archiveProject,
+  getProject,
+  loadValidators,
+  qualityFindingEvents,
+  updateProjectFields,
+} from "@/lib/services/graph/store";
 import { foldFindingEvents } from "@/lib/utils/quality";
 import type { Project, QualitySection } from "@arkaik/schema";
 
@@ -14,9 +21,14 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * GET — snapshot + version. The version is also returned as an `ETag`, which is
- * what a client passes back as `If-Match` on a mutation to say "only if nothing
- * moved since I read this".
+ * GET — snapshot + version, with the quality decisions folded in.
+ *
+ * The JSON `version` is what a client passes back as `If-Match` on a mutation
+ * to say "only if nothing moved since I read this". The `ETag` header is NOT
+ * that: it is the weak read validator `W/"<version>.<quality event count>"`
+ * for `If-None-Match` (lib/services/graph/etag.ts says why weak, and why the
+ * quality count rather than the whole journal's). A client that echoes it
+ * into `If-Match` is refused loudly by the write routes, never applied.
  */
 export async function GET(
   req: Request,
@@ -33,6 +45,26 @@ export async function GET(
   const { projectId } = await params;
 
   try {
+    // The conditional path first, on the validators alone: a matching
+    // `If-None-Match` answers 304 without the snapshot ever leaving Postgres.
+    // Owner-scoped like the load below, so a non-owner still gets 404 and an
+    // archived project still answers its owner (lib/services/graph/read-route.ts
+    // walks through the same flow for the other four reads).
+    const ifNoneMatch = req.headers.get("if-none-match");
+    if (ifNoneMatch !== null) {
+      const validators = await loadValidators(projectId, caller.ownerIds);
+      if (!validators) return Response.json({ error: "not_found" }, { status: 404 });
+      const etag = bundleEtag(validators);
+      if (ifNoneMatchSatisfied(ifNoneMatch, etag)) {
+        return new Response(null, { status: 304, headers: readResponseHeaders(etag) });
+      }
+    }
+
+    // One snapshot load. `qualityFindingEvents` authorizes with a one-row
+    // check rather than a second load, and runs AFTER the snapshot statement
+    // the 200's validators come from — so the ETag can only be older than
+    // the fold it stamps, which is the safe direction (an extra 200 later,
+    // never a 304 over stale decisions).
     const found = await getProject(projectId, caller.ownerIds);
     if (!found) return Response.json({ error: "not_found" }, { status: 404 });
     // The app's read, and the only one that folds. `store.getProject` keeps
@@ -50,7 +82,7 @@ export async function GET(
     const bundle = quality === storedQuality ? found.bundle : { ...found.bundle, quality };
     return Response.json(
       { bundle, version: found.version },
-      { status: 200, headers: { ETag: `"${found.version}"` } },
+      { status: 200, headers: readResponseHeaders(bundleEtag(found.validators)) },
     );
   } catch (err) {
     console.error("[graph] GET project failed:", err instanceof Error ? err.message : "unknown error");

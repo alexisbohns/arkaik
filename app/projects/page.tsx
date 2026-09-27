@@ -11,6 +11,7 @@ import { PageError } from "@/components/layout/PageError";
 import { ArkaikLogo } from "@/components/branding/ArkaikLogo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { AuthButton } from "@/components/auth/AuthButton";
+import { invalidateProjects } from "@/lib/data/project-queries";
 import { getProvider } from "@/lib/data/provider-registry";
 import type { Project, ProjectBundle } from "@/lib/data/types";
 import type { ProjectSummary } from "@/lib/data/data-provider";
@@ -195,6 +196,9 @@ function ProjectsPageBody() {
       const bundle = await exportProjectBundle(summary.project.id);
       const created = await createRemoteProvider().importProject(bundle);
       toast.success(`"${bundle.project.title}" is now in your account.`);
+      // This page keeps its own loader; the shell's cached listing
+      // (lib/data/project-queries.ts) still has to learn it is stale.
+      void invalidateProjects();
       await loadProjects();
       router.push(`/project/${created.id}`);
     } catch (err) {
@@ -371,6 +375,7 @@ function ProjectsPageBody() {
     try {
       const { id, backupError } = await createInTarget(createTarget, bundle, targetDeps);
       if (backupError) toast.error(`Created, but the backup failed: ${backupError}`);
+      void invalidateProjects();
       await loadProjects();
       await loadBackedUpIds();
       router.push(`/project/${id}`);
@@ -407,6 +412,7 @@ function ProjectsPageBody() {
 
       if (backupError) toast.error(`Imported, but the backup failed: ${backupError}`);
       setImportPrompt(null);
+      void invalidateProjects();
       await loadProjects();
       await loadBackedUpIds();
       router.push(`/project/${id}`);

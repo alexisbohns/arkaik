@@ -235,7 +235,15 @@ async function main() {
     const got = await api.GET_PROJECT(new Request(ORIGIN), ctx(projectId));
     const gotBody = await got.json();
     check("GET project returns the bundle", got.status === 200 && gotBody.bundle.nodes.length === 1);
-    check("GET project sets an ETag from the version", got.headers.get("etag") === `"${gotBody.version}"`);
+    // NOT `"${version}"` any more: the read routes carry a WEAK composite
+    // validator for If-None-Match, and the write routes keep the strong
+    // `"<version>"` one for If-Match (lib/services/graph/etag.ts says why the
+    // two must not be confusable). Here: version 1, no quality decisions yet.
+    check(
+      "GET project sets a weak read validator, version first",
+      /^W\/"1\.\d+"$/.test(got.headers.get("etag") ?? ""),
+      got.headers.get("etag") ?? "(none)",
+    );
     check("initial version is 1", gotBody.version === "1", gotBody.version);
 
     // --- Scope enforcement --------------------------------------------------
@@ -404,6 +412,240 @@ async function main() {
     const exported = await (await api.EXPORT(new Request(ORIGIN, { headers: bearer(readOnly.plaintext) }), ctx(projectId))).json();
     check("export embeds the journal", Array.isArray(exported.bundle.journal) && exported.bundle.journal.length > 0);
     check("export carries the graph", exported.bundle.nodes.length >= 3);
+
+    // --- Conditional reads (If-None-Match / 304) ----------------------------
+    // Every read route emits a weak validator and answers a matching
+    // If-None-Match with a bodiless 304 (lib/services/graph/etag.ts,
+    // docs/spec/services.md § Hosted Graph Projects → Read contract). What
+    // makes each route's validator the RIGHT one is which writes move it,
+    // which is what the three append/mutate blocks below pin.
+    setSession(sessionFor(userA));
+    const etagOf = (res) => res.headers.get("etag") ?? "(none)";
+    const cond = (etag) => new Request(ORIGIN, { headers: { "if-none-match": etag } });
+    const cacheHeadersOk = (res) =>
+      res.headers.get("cache-control") === "private, no-cache" && res.headers.get("vary") === "Authorization";
+    const READS = [
+      ["GET project", api.GET_PROJECT],
+      ["GET nodes", api.GET_NODES],
+      ["GET edges", api.GET_EDGES],
+      ["GET journal", api.GET_JOURNAL],
+      ["GET export", api.EXPORT],
+    ];
+
+    const validatorOf = {};
+    for (const [label, route] of READS) {
+      const full = await route(new Request(ORIGIN), ctx(projectId));
+      const etag = etagOf(full);
+      validatorOf[label] = etag;
+      check(`${label}: the 200 carries a weak read validator`, /^W\/"\d+(\.\d+)?"$/.test(etag), etag);
+      check(`${label}: the 200 carries private, no-cache and Vary: Authorization`, cacheHeadersOk(full));
+
+      const revalidated = await route(cond(etag), ctx(projectId));
+      const body = await revalidated.text();
+      check(`${label}: a matching If-None-Match answers 304`, revalidated.status === 304, String(revalidated.status));
+      check(`${label}: the 304 has no body at all`, body === "", `${body.length} bytes`);
+      check(
+        `${label}: the 304 repeats the validator and the cache headers`,
+        etagOf(revalidated) === etag && cacheHeadersOk(revalidated),
+        etagOf(revalidated),
+      );
+
+      const stale = await route(cond('W/"0.0"'), ctx(projectId));
+      check(`${label}: a stale If-None-Match still gets the body`, stale.status === 200, String(stale.status));
+    }
+
+    // A journal-only append with no version bump — what a merged PR's Lab Note
+    // does. The journal and the export change; the snapshot reads and the
+    // folded bundle must NOT, or every map revalidation would turn into a
+    // multi-megabyte 200 each time a PR merges.
+    const shipped = {
+      id: "01etagshipped00000000000001",
+      ts: "2026-09-10T12:00:00Z",
+      actor: "graphtest",
+      type: "deliverable.shipped",
+      deliverable_id: "pr-etag",
+      title: "A shipped grain",
+      summary: "Shipped, and journalled without touching the snapshot.",
+    };
+    const appendShipped = await store.appendJournalEvents(projectId, [ownerA], [shipped], "graphtest");
+    check("a journal-only append succeeds", appendShipped.ok === true, JSON.stringify(appendShipped));
+    const afterShipped = {};
+    for (const [label, route] of READS) {
+      afterShipped[label] = etagOf(await route(new Request(ORIGIN), ctx(projectId)));
+    }
+    check(
+      "a deliverable.shipped append moves the journal validator",
+      afterShipped["GET journal"] !== validatorOf["GET journal"],
+      `${validatorOf["GET journal"]} -> ${afterShipped["GET journal"]}`,
+    );
+    check(
+      "…and the export's, which embeds the same events",
+      afterShipped["GET export"] !== validatorOf["GET export"],
+      `${validatorOf["GET export"]} -> ${afterShipped["GET export"]}`,
+    );
+    check(
+      "…and leaves the bundle GET's alone — the fold reads no deliverables",
+      afterShipped["GET project"] === validatorOf["GET project"],
+      `${validatorOf["GET project"]} -> ${afterShipped["GET project"]}`,
+    );
+    check(
+      "…and leaves /nodes and /edges alone — the snapshot did not move",
+      afterShipped["GET nodes"] === validatorOf["GET nodes"] &&
+        afterShipped["GET edges"] === validatorOf["GET edges"],
+      `${afterShipped["GET nodes"]} / ${afterShipped["GET edges"]}`,
+    );
+    const shippedRevalidate = await api.GET_PROJECT(cond(validatorOf["GET project"]), ctx(projectId));
+    check(
+      "the client's stored bundle validator still answers 304 after that append",
+      shippedRevalidate.status === 304,
+      String(shippedRevalidate.status),
+    );
+
+    // A quality decision, also journal-only and also without a version bump —
+    // but this one IS folded into the bundle the app reads, so the bundle
+    // validator has to move or a map would sit on stale finding statuses.
+    const resolved = {
+      id: "01etagresolved0000000000001",
+      ts: "2026-09-10T12:05:00Z",
+      actor: "graphtest",
+      type: "quality.finding.resolved",
+      finding_id: "f-etag",
+      resolved_by: "abcdef1",
+    };
+    const appendResolved = await store.appendJournalEvents(projectId, [ownerA], [resolved], "graphtest");
+    check("a quality decision append succeeds", appendResolved.ok === true, JSON.stringify(appendResolved));
+    const afterResolved = {};
+    for (const [label, route] of READS) {
+      afterResolved[label] = etagOf(await route(new Request(ORIGIN), ctx(projectId)));
+    }
+    check(
+      "a quality.finding.resolved append moves the bundle GET's validator without a version bump",
+      afterResolved["GET project"] !== afterShipped["GET project"] &&
+        afterResolved["GET project"].startsWith(afterShipped["GET project"].split(".")[0]),
+      `${afterShipped["GET project"]} -> ${afterResolved["GET project"]}`,
+    );
+    check(
+      "…and the journal's",
+      afterResolved["GET journal"] !== afterShipped["GET journal"],
+      `${afterShipped["GET journal"]} -> ${afterResolved["GET journal"]}`,
+    );
+    check(
+      "…and still not /nodes or /edges",
+      afterResolved["GET nodes"] === afterShipped["GET nodes"] &&
+        afterResolved["GET edges"] === afterShipped["GET edges"],
+      `${afterResolved["GET nodes"]} / ${afterResolved["GET edges"]}`,
+    );
+
+    // A snapshot write bumps the version, so every read validator moves.
+    const etagMutation = await api.MUTATE(
+      jsonReq(ORIGIN, "POST", { ops: [{ op: "create_node", node: node("V-etag", "view") }] }),
+      ctx(projectId),
+    );
+    check("a mutation for the validator check applies", etagMutation.status === 200, String(etagMutation.status));
+    const afterMutation = {};
+    for (const [label, route] of READS) {
+      afterMutation[label] = etagOf(await route(new Request(ORIGIN), ctx(projectId)));
+    }
+    check(
+      "a mutation moves every read validator, /nodes and /edges included",
+      READS.every(([label]) => afterMutation[label] !== afterResolved[label]),
+      READS.map(([label]) => `${label}: ${afterResolved[label]} -> ${afterMutation[label]}`).join(" | "),
+    );
+    const staleAfterMutation = await api.GET_NODES(cond(afterResolved["GET nodes"]), ctx(projectId));
+    check(
+      "a validator from before the mutation no longer earns a 304",
+      staleAfterMutation.status === 200,
+      String(staleAfterMutation.status),
+    );
+
+    // A 304 must never become an existence oracle: another owner is 404 for
+    // any If-None-Match, including `*` (which matches any representation that
+    // exists) and the real owner's current validator.
+    setSession(sessionFor(userB));
+    for (const [label, route] of READS) {
+      const wildcard = await route(cond("*"), ctx(projectId));
+      const stolen = await route(cond(afterMutation[label]), ctx(projectId));
+      check(
+        `${label}: another owner gets 404 for If-None-Match: * and for the owner's own validator`,
+        wildcard.status === 404 && stolen.status === 404,
+        `${wildcard.status} / ${stolen.status}`,
+      );
+    }
+    setSession(sessionFor(userA));
+
+    // --- The ?types= journal projection -------------------------------------
+    // The pages that read a handful of event types ask for those, and the rows
+    // they do not need never leave Postgres.
+    const journalUrl = (query) => new Request(`${ORIGIN}/api/graph/projects/${projectId}/journal${query}`);
+    const typed = await api.GET_JOURNAL(journalUrl("?types=deliverable.shipped,quality.finding.resolved"), ctx(projectId));
+    const typedBody = await typed.json();
+    check(
+      "a projection returns only the types asked for, in server order",
+      typed.status === 200 &&
+        typedBody.journal.length === 2 &&
+        typedBody.journal[0].type === "deliverable.shipped" &&
+        typedBody.journal[1].type === "quality.finding.resolved",
+      JSON.stringify(typedBody.journal.map((e) => e.type)),
+    );
+    const repeated = await api.GET_JOURNAL(
+      journalUrl("?types=quality.finding.resolved&types=deliverable.shipped"),
+      ctx(projectId),
+    );
+    check(
+      "the repeated-parameter form is the same projection, still in server order",
+      JSON.stringify((await repeated.json()).journal.map((e) => e.type)) ===
+        JSON.stringify(typedBody.journal.map((e) => e.type)),
+    );
+    const unknown = await api.GET_JOURNAL(journalUrl("?types=nothing.writes.this"), ctx(projectId));
+    const unknownBody = await unknown.json();
+    check(
+      "an unknown type is an empty projection, not an error",
+      unknown.status === 200 && Array.isArray(unknownBody.journal) && unknownBody.journal.length === 0,
+      `${unknown.status} ${JSON.stringify(unknownBody).slice(0, 120)}`,
+    );
+    const whole = await (await api.GET_JOURNAL(journalUrl(""), ctx(projectId))).json();
+    check(
+      "…and the whole journal is still the default",
+      whole.journal.length > typedBody.journal.length,
+      `${whole.journal.length} vs ${typedBody.journal.length}`,
+    );
+    check(
+      "a projection carries the WHOLE journal's validator — one aggregate, not one per projection",
+      typed.headers.get("etag") === (await api.GET_JOURNAL(journalUrl(""), ctx(projectId))).headers.get("etag"),
+      typed.headers.get("etag") ?? "(none)",
+    );
+    const tooMany = await api.GET_JOURNAL(
+      journalUrl(`?types=${Array.from({ length: 33 }, (_, i) => `t${i}`).join(",")}`),
+      ctx(projectId),
+    );
+    check(
+      "more than 32 types is refused, fail-closed",
+      tooMany.status === 400 && (await tooMany.json()).error === "invalid_types",
+      String(tooMany.status),
+    );
+
+    // The projection belongs to the journal route alone. /export builds an
+    // interchange bundle, and a bundle missing most of its history because a
+    // stray query string survived a copy-paste would restore as data loss.
+    const exportedTyped = await api.EXPORT(
+      new Request(`${ORIGIN}/api/graph/projects/${projectId}/export?types=deliverable.shipped`),
+      ctx(projectId),
+    );
+    check(
+      "/export ignores ?types= and still embeds every event",
+      (await exportedTyped.json()).bundle.journal.length === whole.journal.length,
+      `${(await (await api.EXPORT(new Request(ORIGIN), ctx(projectId))).json()).bundle.journal.length}`,
+    );
+    const nodesTyped = await api.GET_NODES(
+      new Request(`${ORIGIN}/api/graph/projects/${projectId}/nodes?types=deliverable.shipped`),
+      ctx(projectId),
+    );
+    const nodesPlain = await api.GET_NODES(new Request(ORIGIN), ctx(projectId));
+    check(
+      "/nodes ignores ?types= too — same body, same validator",
+      JSON.stringify((await nodesTyped.json()).nodes) === JSON.stringify((await nodesPlain.json()).nodes) &&
+        nodesTyped.headers.get("etag") === nodesPlain.headers.get("etag"),
+    );
 
     // --- Bad requests -------------------------------------------------------
     setSession(sessionFor(userA));

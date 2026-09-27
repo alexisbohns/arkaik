@@ -11,16 +11,31 @@ import { OverviewSection } from "./OverviewSection";
 interface InventoryCardProps {
   inventory: Inventory;
   projectId: string;
+  /** The journal has not been read yet — its count is unknown, not zero. */
+  journalPending?: boolean;
+  /** The journal read failed — its count is unknown too, and the message says why. */
+  journalError?: string | null;
 }
 
 /** The census: what the graph holds, by species and status. */
-export function InventoryCard({ inventory, projectId }: InventoryCardProps) {
+export function InventoryCard({
+  inventory,
+  projectId,
+  journalPending = false,
+  journalError = null,
+}: InventoryCardProps) {
+  const journalCount = journalPending
+    ? "…"
+    : journalError !== null
+      ? journalError
+      : `${inventory.journalEventCount} journal events`;
+
   return (
     <OverviewSection
       title="Inventory"
       icon={BookOpenIcon}
       description="How much product there is to read at all, by species."
-      subtitle={`${inventory.nodeCount} nodes · ${inventory.edgeCount} edges · ${inventory.journalEventCount} journal events`}
+      subtitle={`${inventory.nodeCount} nodes · ${inventory.edgeCount} edges · ${journalCount}`}
       href={`/project/${projectId}/library`}
       linkLabel="Library"
     >

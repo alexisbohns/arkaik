@@ -15,6 +15,19 @@ interface SegmentedControlProps<T extends string> {
   onChange: (value: T) => void;
   /** Accessible name for the group, e.g. "Display mode". */
   ariaLabel: string;
+  /**
+   * Below `md`, show each option as its icon alone.
+   *
+   * Opt-in, and only ever honoured for an option that HAS an icon — collapsing a
+   * text-only option would leave a blank button, which is worse than a wide one.
+   * The label survives as the button's accessible name either way, so the
+   * collapse is purely visual.
+   *
+   * For the strips in a page's own toolbar this is off: they sit in a bar that
+   * is allowed to wrap. It is on in the layout header, which is one fixed-height
+   * row that also holds a title, a trail and a primary action.
+   */
+  collapseLabels?: boolean;
   className?: string;
 }
 
@@ -24,6 +37,7 @@ export function SegmentedControl<T extends string>({
   value,
   onChange,
   ariaLabel,
+  collapseLabels = false,
   className,
 }: SegmentedControlProps<T>) {
   return (
@@ -41,6 +55,8 @@ export function SegmentedControl<T extends string>({
             key={option.id}
             type="button"
             aria-pressed={active}
+            // Explicit, because a collapsed option has no text left to name it.
+            aria-label={option.label}
             onClick={() => onChange(option.id)}
             className={cn(
               "inline-flex cursor-pointer items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors",
@@ -50,7 +66,11 @@ export function SegmentedControl<T extends string>({
             )}
           >
             {Icon && <Icon className="size-3.5" />}
-            {option.label}
+            {collapseLabels && Icon ? (
+              <span className="hidden md:inline">{option.label}</span>
+            ) : (
+              option.label
+            )}
           </button>
         );
       })}

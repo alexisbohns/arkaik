@@ -65,6 +65,8 @@ function loadGraphApi() {
     ["@/lib/services/owners", "./owners.js"],
     ["@/lib/services/tokens", "./tokens.js"],
     ["@/lib/services/auth", "./auth.js"],
+    ["@/lib/services/graph/etag", "./etag.js"],
+    ["@/lib/services/graph/quality-events", "./quality-events.js"],
     ["@/lib/services/graph/restore", "./restore.js"],
     ["@/lib/services/graph/store", "./store.js"],
     ["@/lib/services/graph/read-route", "./read-route.js"],
@@ -91,6 +93,16 @@ function loadGraphApi() {
   // (import "server-only" and a table lookup in limits.ts, both already
   // loaded for real here), so stubbing it would only hide bugs, mirroring
   // how limits.ts/owners.ts are already treated in this same COMMON table.
+  // The read validators' format and the weak If-None-Match comparison. Pure,
+  // no `server-only`, no database — and required by store.ts, read-route.ts
+  // and the project GET route, so it is written before any of them.
+  write("etag.js", transpile(src("lib", "services", "graph", "etag.ts"), "etag.ts", COMMON));
+  // The quality/events POST route's planner — pure, over @arkaik/schema and
+  // the real `foldFindingEvents` above.
+  write(
+    "quality-events.js",
+    transpile(src("lib", "services", "graph", "quality-events.ts"), "quality-events.ts", COMMON),
+  );
   write("restore.js", transpile(src("lib", "services", "graph", "restore.ts"), "restore.ts", COMMON));
   write("store.js", transpile(src("lib", "services", "graph", "store.ts"), "store.ts", COMMON));
   write("read-route.js", transpile(src("lib", "services", "graph", "read-route.ts"), "read-route.ts", COMMON));
@@ -118,6 +130,7 @@ function loadGraphApi() {
     "journal-route.js": src("app", "api", "graph", "projects", "[projectId]", "journal", "route.ts"),
     "export-route.js": src("app", "api", "graph", "projects", "[projectId]", "export", "route.ts"),
     "pollen-route.js": src("app", "api", "graph", "projects", "[projectId]", "pollen", "route.ts"),
+    "quality-events-route.js": src("app", "api", "graph", "projects", "[projectId]", "quality", "events", "route.ts"),
   };
   for (const [out, from] of Object.entries(routes)) {
     write(out, transpile(from, "route.ts", COMMON));
@@ -147,6 +160,7 @@ function loadGraphApi() {
     GET_JOURNAL: req("journal-route.js").GET,
     EXPORT: req("export-route.js").GET,
     GET_POLLEN: req("pollen-route.js").GET,
+    QUALITY_EVENTS: req("quality-events-route.js").POST,
   };
 }
 

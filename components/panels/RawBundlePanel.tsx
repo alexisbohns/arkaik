@@ -8,9 +8,12 @@ import { serializeBundle } from "@arkaik/schema";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { invalidateProject, invalidateProjects } from "@/lib/data/project-queries";
 import type { ProjectBundle } from "@/lib/data/types";
 import { usePanelSelfState } from "@/lib/hooks/useProjectPanels";
 import { exportProject, importProject, normalizeProjectTimestamps, parseAndValidateBundle } from "@/lib/utils/export";
+import { PANEL_GUTTER } from "@/components/panels/PanelSection";
+import { cn } from "@/lib/utils";
 
 interface RawBundlePanelProps {
   projectId: string;
@@ -242,6 +245,11 @@ export function RawBundlePanel({ projectId, instanceId }: RawBundlePanelProps) {
       const parsedBundle = parseDraftToBundle(draftText, format);
       const scopedBundle = scopeBundleToCurrentProject(parsedBundle);
       await importProject(scopedBundle);
+      // The save bypassed the hooks, so the page behind this panel would keep
+      // showing the previous graph: refetch its project entry now, and let the
+      // listing pick up the new counts on its next mount.
+      await invalidateProject(projectId);
+      void invalidateProjects();
       const refreshedBundle = await exportProject(projectId);
       setBundle(refreshedBundle);
       syncDrafts(refreshedBundle);
@@ -259,7 +267,7 @@ export function RawBundlePanel({ projectId, instanceId }: RawBundlePanelProps) {
 
   return (
     <>
-      <div className="flex min-h-0 flex-1 flex-col gap-3 p-6 pt-0">
+      <div className={cn("flex min-h-0 flex-1 flex-col gap-3 pb-5 lg:pb-6", PANEL_GUTTER)}>
         {/*
           The toolbar stays in the body rather than moving to the panel header:
           that slot is one left-aligned row sharing space with a fixed close

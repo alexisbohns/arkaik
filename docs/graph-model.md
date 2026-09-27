@@ -301,6 +301,15 @@ from its endpoints.
 
 Config source: [lib/config/edge-types.ts](../lib/config/edge-types.ts)
 
+Edges are authored from a node's panel as well as from the maps: the Relations
+group derives one **relation line** per admissible direction of each edge type
+from this same grammar ([lib/utils/relation-lines.ts](../lib/utils/relation-lines.ts)),
+and the `+` on a line may only reach the species the grammar admits there.
+`composes` has no line — it is the playlist's edge, and `PlaylistEditor` owns
+that write — and `covers` is written through acceptance intake rather than the
+generic edge path, because attaching one changes an acceptance's derived
+product membership.
+
 Rendering mapping source: [lib/utils/journey-graph.ts](../lib/utils/journey-graph.ts), [lib/utils/system-graph.ts](../lib/utils/system-graph.ts)
 
 `calls` edges between a view and API endpoint are projected into View card UI.

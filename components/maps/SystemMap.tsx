@@ -23,8 +23,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { EdgeTypeId } from "@/lib/config/edge-types";
 import type { Node as DataNode, Edge as DataEdge } from "@/lib/data/types";
 import { useEdges } from "@/lib/hooks/useEdges";
-import { useJournal } from "@/lib/hooks/useJournal";
 import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
+import { useNodeRelations } from "@/lib/hooks/useNodeRelations";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useProject } from "@/lib/hooks/useProject";
@@ -62,8 +62,16 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
   const [deleteEdgeDialogOpen, setDeleteEdgeDialogOpen] = useState(false);
 
   const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes, updateNode, addNode, applyMutations } = useNodes(projectId);
+
   const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges, addEdge, removeEdge, syncEdges } = useEdges(projectId);
   const intake = useAcceptanceIntake({
+    projectId: projectId,
+    nodes: dataNodes,
+    edges: dataEdges,
+    applyMutations,
+    syncEdges,
+  });
+  const relations = useNodeRelations({
     projectId: projectId,
     nodes: dataNodes,
     edges: dataEdges,
@@ -81,7 +89,6 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
   // card draws whatever it was given.
   const scope = useEffectiveProduct(projectId, projectBundle);
   const productList = useProductList(scope);
-  const { journal, error: journalError, reload: reloadJournal } = useJournal(projectId);
 
   const nodesById = useMemo(() => new Map(dataNodes.map((node) => [node.id, node])), [dataNodes]);
 
@@ -269,7 +276,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
   // node button: the most convincing "your product is gone" this app can
   // produce, and the one place where the reader's instinct is to start
   // redrawing it.
-  const loadError = nodesError ?? edgesError ?? projectError ?? journalError;
+  const loadError = nodesError ?? edgesError ?? projectError;
   if (loadError) {
     return (
       <PageError
@@ -279,7 +286,6 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
           void reloadNodes();
           void reloadEdges();
           void reloadProject();
-          void reloadJournal();
         }}
       />
     );
@@ -320,10 +326,11 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
         allNodes={dataNodes}
         allEdges={dataEdges}
         scope={scope}
-        journal={journal}
+        history
         onUpdate={handleNodeUpdate}
         onCreateNode={handleCreateNodeFromPanel}
         intake={intake}
+        relations={relations}
       >
         <SystemCanvas
           definition={definition}

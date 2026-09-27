@@ -2,11 +2,13 @@
  * Loads lib/services/github/quality-parse.ts and quality.ts into a plain Node
  * process — the tests/services/load-lab-note-parse.js idiom.
  *
- * `quality-parse.ts` has NO value imports (its only import is a type), so it
- * transpiles straight through. `quality.ts` imports `server-only` (a Next.js
- * build-time guard with no Node implementation) and two `@/lib/...` modules it
- * only reaches through its INJECTED seam, so both are stubbed away here: the
- * suite never exercises the production reader.
+ * `quality-parse.ts` has NO value imports (its only import is a type) and
+ * `paths.ts` has no imports at all, so both transpile straight through;
+ * `quality-surface.ts` imports only `paths.ts` and types, and is rewritten to
+ * the compiled copy. `quality.ts` imports `server-only` (a Next.js build-time
+ * guard with no Node implementation) and two `@/lib/...` modules it only
+ * reaches through its INJECTED seam, so both are stubbed away here: the suite
+ * never exercises the production reader.
  */
 
 const fs = require("fs");
@@ -53,6 +55,8 @@ function loadQualityParse() {
       .replace(/require\((['"])@\/lib\/services\/db\1\)/g, `require(${JSON.stringify(dbStub)})`)
       .replace(/require\((['"])@\/lib\/services\/graph\/store\1\)/g, `require(${JSON.stringify(storeStub)})`)
       .replace(/require\((['"])@\/lib\/services\/github\/quality-parse\1\)/g, `require(${JSON.stringify(path.join(BUILD_DIR, "quality-parse.js"))})`)
+      .replace(/require\((['"])@\/lib\/services\/github\/paths\1\)/g, `require(${JSON.stringify(path.join(BUILD_DIR, "paths.js"))})`)
+      .replace(/require\((['"])@\/lib\/services\/github\/quality-surface\1\)/g, `require(${JSON.stringify(path.join(BUILD_DIR, "quality-surface.js"))})`)
       .replace(/require\((['"])@\/lib\/services\/github\/pull-request\1\)/g, `require(${JSON.stringify(pullRequestStub)})`);
     const outFile = path.join(BUILD_DIR, outName);
     fs.writeFileSync(outFile, rewritten);
@@ -61,12 +65,17 @@ function loadQualityParse() {
   };
 
   const parseFile = compile("lib/services/github/quality-parse.ts", "quality-parse.js");
+  // paths.ts has no imports at all and quality-surface.ts imports only it and
+  // types, so both transpile straight through — the same reason quality-parse.ts
+  // does. Compiled BEFORE quality.ts so the rewrite below can point at them.
+  compile("lib/services/github/paths.ts", "paths.js");
+  const surfaceFile = compile("lib/services/github/quality-surface.ts", "quality-surface.js");
   // Task 2 creates quality.ts. Guarded so THIS task's suite runs on its own.
   const serviceSrc = path.join(ROOT, "lib/services/github/quality.ts");
   const serviceFile = fs.existsSync(serviceSrc)
     ? compile("lib/services/github/quality.ts", "quality.js")
     : undefined;
-  return { ...require(parseFile), ...(serviceFile ? require(serviceFile) : {}) };
+  return { ...require(parseFile), ...require(surfaceFile), ...(serviceFile ? require(serviceFile) : {}) };
 }
 
 module.exports = { loadQualityParse, BUILD_DIR };

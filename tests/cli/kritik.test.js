@@ -463,6 +463,45 @@ try {
     signalsPointer.stdout,
   );
 
+  // --- trend (issue #442) -----------------------------------------------------
+
+  // Two records of `baseAudit` sit in the journal by now (the matrix block and
+  // the signals block each ran `--record`), so the first row proves the
+  // latest-wins rule before the second audit is recorded at all.
+  const trendOne = run(["trend", "--json"]);
+  check("trend reads the journal", trendOne.status === 0, trendOne.stderr);
+  const trendOneParsed = JSON.parse(trendOne.stdout);
+  check("an audit recorded twice is one row", trendOneParsed.total === 1 && trendOneParsed.rows.length === 1, trendOne.stdout.slice(0, 200));
+  check("the row's overall is the matrix's own roll-up", trendOneParsed.rows[0].cells.web.score === parsed.overall.web, JSON.stringify(trendOneParsed.rows[0]));
+  check("the first row has nothing to move against", trendOneParsed.rows[0].cells.web.delta === null);
+
+  const recordedLater = run(["matrix", laterAudit, "--record"]);
+  check("the later audit records", recordedLater.status === 0, recordedLater.stderr);
+
+  const trendTwo = run(["trend"]);
+  check("trend prints one row per recorded audit", trendTwo.status === 0 && trendTwo.stdout.includes(baseAudit) && trendTwo.stdout.includes(laterAudit), trendTwo.stdout);
+  check("the columns are the surfaces the audits scored", trendTwo.stdout.includes("web") && trendTwo.stdout.includes("supabase"), trendTwo.stdout);
+  check("the second row carries an arrow against the first", /[▲▼=]/.test(trendTwo.stdout), trendTwo.stdout);
+
+  const trendTwoJson = JSON.parse(run(["trend", "--json"]).stdout);
+  const [rowA, rowB] = trendTwoJson.rows;
+  check("rows are oldest first", rowA.audit_id === baseAudit && rowB.audit_id === laterAudit, JSON.stringify(trendTwoJson.rows.map((r) => r.audit_id)));
+  check("the delta is the row minus the row above", rowB.cells.web.delta === rowB.cells.web.score - rowA.cells.web.score, JSON.stringify(rowB.cells));
+  check("a surface the later audit did not score is an unscored cell, not a zero", rowB.cells.supabase.score === null && rowB.cells.supabase.delta === null, JSON.stringify(rowB.cells));
+  check("the snapshots ride along, with the commit-less event's fields", trendTwoJson.snapshots.length === 2 && trendTwoJson.snapshots[1].framework_version === parsed.framework_version);
+
+  const trendDomain = JSON.parse(run(["trend", "--domain", "SEC", "--surface", "web", "--json"]).stdout);
+  check("--domain reads that domain's score instead of the roll-up", trendDomain.rows[1].cells.web.score === 25, JSON.stringify(trendDomain.rows[1]));
+  check("--surface keeps one column", trendDomain.surfaces.length === 1 && trendDomain.surfaces[0] === "web");
+
+  const noBundleDir = mkdtempSync(path.join(tmpdir(), "arkaik-kritik-nobundle-"));
+  try {
+    const noBundle = spawnSync(process.execPath, [CLI, "kritik", "trend"], { encoding: "utf8", cwd: noBundleDir });
+    check("trend without a bundle says where the journal would have been", noBundle.status === 1 && noBundle.stderr.includes("no bundle"), noBundle.stderr);
+  } finally {
+    rmSync(noBundleDir, { recursive: true, force: true });
+  }
+
   // --- the journal is the only thing this touched ---------------------------
 
   const kinds = new Set(journal().map((e) => e.type));

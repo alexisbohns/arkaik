@@ -22,13 +22,16 @@
 /tests/data/.test-build-local-provider/
 /tests/data/.test-build-provider-registry/
 /tests/data/.test-build-project-sections/
+/tests/data/.test-build-project-queries/
 /tests/services/.test-build-publik/
 /tests/services/.test-build-graph/
+/tests/services/.test-build-graph-etag/
 /tests/services/.test-build-github/
 /tests/services/.test-build-pr-plan/
 /tests/services/.test-build-github-app/
 /tests/services/.test-build-graph-restore/
 /tests/services/.test-build-lab-note-parse/
+/tests/services/.test-build-once-changed-files/
 /tests/mcp/.test-build-remote-store/
 /tests/app/.test-build-delivery/
 /tests/app/.test-build-journey-graph/
@@ -36,9 +39,12 @@
 /tests/app/.test-build-coverage/
 /tests/app/.test-build-changelog-period/
 /tests/app/.test-build-deliverable-pr/
+/tests/app/.test-build-playlist-*/
+/tests/app/.test-build-search-*/
 /tests/app/.test-build-pollen/
 /tests/app/.test-build-panels-*/
 /tests/app/.test-build-product-*/
+/tests/app/.test-build-relation-lines-*/
 /tests/app/.test-build-quality/
 /packages/cli/.test-build/
 # transient CJS build emitted by the bootstrap-lib direct-require tests

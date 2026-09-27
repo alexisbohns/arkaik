@@ -1,29 +1,34 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import {
   Select,
   SelectContent,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
-import { PanelSection } from "@/components/panels/PanelSection";
+import { PANEL_GUTTER } from "@/components/panels/PanelSection";
+import { PanelGroup } from "@/components/panels/PanelGroup";
+import { RelationsGroup } from "@/components/panels/RelationsGroup";
 import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
-import type { Node, Edge, JournalEvent } from "@/lib/data/types";
+import type { Node, NodeMetadata, Edge } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import { SPECIES } from "@/lib/config/species";
-import { SpeciesBadge, EntityId } from "@/components/graph/nodes/EntityBadges";
-import { RefList } from "@/components/graph/nodes/RefBadges";
+import { SpeciesBadge, PanelHeaderEntityId } from "@/components/graph/nodes/EntityBadges";
 import { PlatformVariants } from "@/components/panels/PlatformVariants";
 import { PlatformGaugeList } from "@/components/graph/nodes/PlatformGaugeList";
 import { PlaylistEditor } from "@/components/panels/PlaylistEditor";
-import { AcceptanceEditor } from "@/components/panels/AcceptanceEditor";
-import { AcceptancesSection } from "@/components/panels/AcceptancesSection";
+import { AcceptanceMembershipField } from "@/components/panels/AcceptanceMembershipField";
+import { AcceptanceAuthoredFields } from "@/components/panels/AcceptanceAuthoredFields";
+import { AcceptancePlatformsSection } from "@/components/panels/AcceptancePlatformsSection";
 import { DecisionEditor } from "@/components/panels/DecisionEditor";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
+import type { NodeRelations } from "@/lib/hooks/useNodeRelations";
+import { useJournal } from "@/lib/hooks/useJournal";
+import { useProjectId } from "@/lib/hooks/useProjectId";
 import {
   computeFlowPlatformRollup,
   getEditablePlatformStatuses,
@@ -32,14 +37,19 @@ import {
 import type { ProductScope } from "@/lib/utils/product-scope";
 import { ProductPicker } from "@/components/panels/ProductPicker";
 import { withProductMembership } from "@/lib/utils/product-editing";
-import { normalizeBlockedBy, withBlockedBy } from "@/lib/utils/blocked";
 import { productOf } from "@arkaik/schema";
-import { findWhereUsed } from "@/lib/utils/where-used";
 import { computeNodeTimeline } from "@/lib/utils/journal";
 import { FeedRow } from "@/components/journal/FeedRow";
-import { SEVERITY_CHIP, SEVERITY_LABEL } from "@/components/quality/quality-styles";
-import { EMPTY_QUALITY_FILTERS, filterFindings, type FindingRow } from "@/lib/utils/quality";
+import type { FindingRow } from "@/lib/utils/quality";
 import { cn } from "@/lib/utils";
+import { CopyPlusIcon, MoreHorizontalIcon, SplitIcon, Trash2Icon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface NodeDetailPanelProps {
   node: Node;
@@ -53,15 +63,29 @@ interface NodeDetailPanelProps {
   /** Platform tab the variants section opens on (e.g. the clicked Delivery item's platform). */
   initialPlatform?: PlatformId;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
-  onDelete?: (nodeId: string) => void;
+  // No `onDelete` / `onDuplicate` here: the record's own actions render in
+  // `NodeDetailPanelHeader`, which takes them directly. The body accepted
+  // `onDelete` and discarded it with `void onDelete;` for as long as there was
+  // nowhere to put it; there is now.
   allNodes?: Node[];
   allEdges?: Edge[];
-  journal?: JournalEvent[];
+  /**
+   * Mount the History section. The section fetches the journal itself (one
+   * cached read shared by every open panel), so this is only the surface's say
+   * on whether the panel has a history to show at all.
+   */
+  history?: boolean;
   onNavigate?: (node: Node) => void;
   onCreateNode?: (species: "flow" | "view", title: string) => Promise<Node>;
   onCreateAcceptanceForAnchor?: (anchor: Node, title: string) => Promise<Node>;
   /** The acceptance decompose gestures, on surfaces whose panels can write. */
   intake?: AcceptanceIntake;
+  /**
+   * Writing a node's relations (`useNodeRelations`), forwarded to the detail
+   * panel's Relations group. Absent on a read-only surface, which is what makes
+   * every line there read-only and drops the empty ones.
+   */
+  relations?: NodeRelations;
   onZoomShot?: (node: Node, platform: PlatformId) => void;
   /**
    * Every finding in the project, denormalized once by `buildFindingRows` — the
@@ -69,22 +93,34 @@ interface NodeDetailPanelProps {
    * pre-filtered one because the caller builds it once for a whole panel stack,
    * and re-filtering it per open panel is what a panel is for.
    *
-   * Optional with `onOpenCriterion`, and the section is absent without both: a
+   * Optional with `onOpenFinding`, and the section is absent without both: a
    * list of findings nothing can open is a dead end.
    */
   findings?: FindingRow[];
-  onOpenCriterion?: (criterionId: string, surface: string) => void;
+  onOpenFinding?: (findingId: string) => void;
 }
 
 interface NodeFieldsProps {
   node: Node;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
-  /** For resolving `blocked_by` to a node title/link; the panel's own node-link affordance. */
-  allNodes?: Node[];
-  onNavigate?: (node: Node) => void;
+  /**
+   * Species-specific intro fields, in the two places a species needs one.
+   *
+   * They sit in the intro block rather than in a group because they are what the
+   * record *is*, not what it is attached to; they were only ever in a separate
+   * component because that component also held four sections that have since
+   * moved out to Relations and Platforms.
+   *
+   * Both render straight into this component's gutter and `gap-5` column, so
+   * neither may carry a gutter of its own.
+   */
+  /** After Status — the Product picker. */
+  membership?: ReactNode;
+  /** Last — the species' own authored fields (Gherkin, Values). */
+  authored?: ReactNode;
 }
 
-function NodeFields({ node, onUpdate, allNodes, onNavigate }: NodeFieldsProps) {
+function NodeFields({ node, onUpdate, membership, authored }: NodeFieldsProps) {
   const AUTOSAVE_DELAY_MS = 350;
   // Per-mount, because the panel stack keeps hidden panels mounted: two nodes
   // open at once means two "Status" fields in one document, and a hand-written
@@ -93,10 +129,8 @@ function NodeFields({ node, onUpdate, allNodes, onNavigate }: NodeFieldsProps) {
   const [title, setTitle] = useState(node.title);
   const [description, setDescription] = useState(node.description ?? "");
   const [status, setStatus] = useState<StatusId>(node.status);
-  const [blockedBy, setBlockedBy] = useState(node.metadata?.blocked_by ?? "");
   const lastSavedTitleRef = useRef(node.title);
   const lastSavedDescriptionRef = useRef(node.description ?? "");
-  const lastSavedBlockedByRef = useRef(normalizeBlockedBy(node.metadata?.blocked_by) ?? "");
   const titleEditRef = useRef<HTMLDivElement>(null);
   const descriptionEditRef = useRef<HTMLDivElement>(null);
 
@@ -105,7 +139,13 @@ function NodeFields({ node, onUpdate, allNodes, onNavigate }: NodeFieldsProps) {
     if (descriptionEditRef.current) descriptionEditRef.current.textContent = node.description ?? "";
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const usesSingleStatusField = node.species === "data-model" || node.species === "api-endpoint";
+  // Views and flows are absent on purpose: they have no single status. Theirs is
+  // per-platform and lives in the Platforms group, and a select here would be a
+  // second answer to a question the rollup already answers.
+  const usesSingleStatusField =
+    node.species === "data-model" ||
+    node.species === "api-endpoint" ||
+    node.species === "acceptance";
 
   useEffect(() => {
     if (title === lastSavedTitleRef.current) {
@@ -135,32 +175,15 @@ function NodeFields({ node, onUpdate, allNodes, onNavigate }: NodeFieldsProps) {
     return () => clearTimeout(timeout);
   }, [description, node.id, onUpdate]);
 
-  // Same debounced autosave as the description above, compared on the
-  // NORMALIZED value so whitespace-only edits never fire a no-op wholesale
-  // metadata write. `withBlockedBy` owns the "empty means *absent*, never
-  // `blocked_by: \"\"`" rule and carries the rest of the metadata through
-  // untouched — a patch replaces `metadata` wholesale.
-  useEffect(() => {
-    const normalized = normalizeBlockedBy(blockedBy) ?? "";
-    if (normalized === lastSavedBlockedByRef.current) {
-      return;
-    }
-
-    const timeout = setTimeout(() => {
-      lastSavedBlockedByRef.current = normalized;
-      void onUpdate?.(node.id, { metadata: withBlockedBy(node.metadata, normalized || null) });
-    }, AUTOSAVE_DELAY_MS);
-
-    return () => clearTimeout(timeout);
-  }, [blockedBy, node.id, node.metadata, onUpdate]);
-
-  // When the value names a node this panel can see, surface its title — and
-  // navigate through the same affordance every other node link here uses.
-  const blockedNode = allNodes?.find((n) => n.id === normalizeBlockedBy(blockedBy));
-
   function handleStatusChange(value: StatusId) {
+    // Nothing at all without a save path, local state included: the select is
+    // disabled on a read-only surface, and this makes that the whole truth
+    // rather than a property of the trigger. A `setStatus` that ran anyway
+    // would let the panel show a status the store has never heard of the
+    // moment anything else reached this handler.
+    if (!onUpdate) return;
     setStatus(value);
-    onUpdate?.(node.id, { status: value });
+    onUpdate(node.id, { status: value });
   }
 
   function handleTitlePaste(e: React.ClipboardEvent<HTMLDivElement>) {
@@ -176,8 +199,13 @@ function NodeFields({ node, onUpdate, allNodes, onNavigate }: NodeFieldsProps) {
   }
 
   return (
-    <div className="px-6 flex flex-col gap-5">
-      <div className="flex flex-col">
+    <div className={cn(PANEL_GUTTER, "flex flex-col gap-5")}>
+      {/* `gap-1.5`, not flush: the title and the description are two different
+          registers, and with no gap the description read as a second line of the
+          title rather than as prose about it. They stay in one block — closer to
+          each other than to anything below — which is what the outer `gap-5`
+          is for. */}
+      <div className="flex flex-col gap-1.5">
         <div
           ref={titleEditRef}
           contentEditable
@@ -203,7 +231,23 @@ function NodeFields({ node, onUpdate, allNodes, onNavigate }: NodeFieldsProps) {
       </div>
       {usesSingleStatusField && (
         <Field label="Status" htmlFor={`${fieldId}-status`}>
-          <Select value={status} onValueChange={(v) => handleStatusChange(v as StatusId)}>
+          {/* Disabled without `onUpdate`, not hidden — the opposite of
+              `ProductSection`, deliberately. A status is a fact the reader of a
+              read-only surface (Design, Changelog, the quality pages) came here
+              to see, so withdrawing it would trade a false affordance for
+              missing information; a product assignment is only ever an
+              affordance, and one that cannot save is worth nothing on screen.
+              So the value stays and the control stops claiming to be editable.
+
+              This panel showed a live-looking, unsaveable select on read-only
+              data models and API endpoints before the acceptance joined them —
+              the same defect, fixed here for all three rather than left to
+              disagree between species. */}
+          <Select
+            value={status}
+            onValueChange={(v) => handleStatusChange(v as StatusId)}
+            disabled={!onUpdate}
+          >
             <SelectTrigger id={`${fieldId}-status`}>
               <SelectValue />
             </SelectTrigger>
@@ -213,27 +257,8 @@ function NodeFields({ node, onUpdate, allNodes, onNavigate }: NodeFieldsProps) {
           </Select>
         </Field>
       )}
-      <Field label="Blocked by" htmlFor={`${fieldId}-blocked-by`}>
-        <Input
-          id={`${fieldId}-blocked-by`}
-          value={blockedBy}
-          onChange={(event) => setBlockedBy(event.target.value)}
-          placeholder="Node id or free text — empty means not blocked"
-        />
-        {blockedNode && (
-          onNavigate ? (
-            <button
-              type="button"
-              onClick={() => onNavigate(blockedNode)}
-              className="self-start text-xs text-muted-foreground hover:text-foreground hover:underline text-left"
-            >
-              {blockedNode.title}
-            </button>
-          ) : (
-            <span className="text-xs text-muted-foreground">{blockedNode.title}</span>
-          )
-        )}
-      </Field>
+      {membership}
+      {authored}
     </div>
   );
 }
@@ -253,13 +278,16 @@ interface ProductSectionProps {
  * empty exactly when the project has never heard of the concept, and the whole
  * feature's guarantee is that such a project looks byte-identical to how it did
  * before products existed. The guard lives here rather than inside
- * `ProductPicker` because only the call site knows which layout to omit.
+ * `ProductPicker` because only the call site knows which layout to omit — and it
+ * stays here, not in the `membership` slot that renders this, so that all three
+ * refusals below are read in one place by anyone asking "when is there no
+ * Product field?".
  *
  * **Flows and views only, though `PRODUCT_MEMBERSHIP_SPECIES` also lists
- * acceptances.** An acceptance already gets a picker from `AcceptanceEditor`,
- * which is the only place that can say the true thing about it — its membership
- * is derived from its `covers` anchors (§ D5) and this control cannot express
- * that. Testing `PRODUCT_MEMBERSHIP_SPECIES` here, as the plan's sketch did,
+ * acceptances.** An acceptance already gets a picker from
+ * `AcceptanceMembershipField`, which is the only place that can say the true
+ * thing about it — its membership is derived from its `covers` anchors (§ D5)
+ * and this control cannot express that. Testing `PRODUCT_MEMBERSHIP_SPECIES` here, as the plan's sketch did,
  * would put two pickers on the same acceptance panel disagreeing about the same
  * node. Data models and API endpoints derive membership from their consumers and
  * are excluded for the original reason: a stored key on one is a value every read
@@ -298,223 +326,103 @@ function ProductSection({ node, scope, onUpdate }: ProductSectionProps) {
       ? "Unassigned nodes appear under All products only."
       : `Assigned to "${stored}", which this project no longer declares — it appears under All products only.`;
 
+  // No gutter of its own: this renders into `NodeFields`' `membership` slot,
+  // which is already inside that component's gutter and `gap-5` column. The
+  // `PANEL_GUTTER` wrapper it used to carry — from when it was a standalone
+  // block in the panel body — would double-indent it against every field
+  // around it.
   return (
-    <div className="px-6">
-      <ProductPicker
-        products={[...scope.productsById.values()]}
-        value={stored}
-        // Routed through `withProductMembership`, never assembled here: it owns
-        // the "unassigned means *absent*, never `product: \"\"`" rule and it
-        // carries the rest of the metadata (platformStatuses, notes,
-        // screenshots) through untouched — a patch replaces `metadata` wholesale.
-        onChange={(nextProduct) =>
-          void onUpdate(node.id, { metadata: withProductMembership(node.metadata, nextProduct) })
-        }
-        hint={hint}
-      />
-    </div>
-  );
-}
-
-interface InvocationSectionProps {
-  node: Node;
-  allNodes: Node[];
-  onNavigate: (node: Node) => void;
-}
-
-function InvocationSection({ node, allNodes, onNavigate }: InvocationSectionProps) {
-  const usages = findWhereUsed(node.id, allNodes);
-
-  if (usages.length === 0) {
-    return null;
-  }
-
-  return (
-    <PanelSection title="Invocation">
-      <div className="flex flex-col gap-0.5">
-        {usages.map((flow) => (
-          <ConnectionItem
-            key={flow.id}
-            badge={flow.id}
-            node={flow}
-            onNavigate={onNavigate}
-          />
-        ))}
-      </div>
-    </PanelSection>
-  );
-}
-
-function RefsSection({ node }: { node: Node }) {
-  const refs = node.metadata?.refs;
-
-  if (!refs || refs.length === 0) {
-    return null;
-  }
-
-  return (
-    <PanelSection title="References">
-      <RefList refs={refs} />
-    </PanelSection>
-  );
-}
-
-interface FindingsSectionProps {
-  node: Node;
-  findings: FindingRow[];
-  onOpenCriterion: (criterionId: string, surface: string) => void;
-}
-
-/**
- * The audit's open findings against this node, worst first.
- *
- * Open only, matching the canvas badge exactly: both ask `row.open`, so a node
- * wearing a red "3" opens onto three rows and never onto a resolved fourth the
- * reader has to work out is history.
- *
- * The order is `filterFindings`' own — the board's comparator, run with the
- * filter set that narrows nothing. A `sort` written here would be a second
- * opinion on which finding is worse than which, and the two lists would read
- * differently the day a pack moved a bucket.
- */
-function FindingsSection({ node, findings, onOpenCriterion }: FindingsSectionProps) {
-  const own = filterFindings(
-    findings.filter((row) => row.open && row.nodeIds.includes(node.id)),
-    EMPTY_QUALITY_FILTERS,
-  );
-
-  if (own.length === 0) {
-    return null;
-  }
-
-  return (
-    <PanelSection title="Findings">
-      <div className="flex flex-col gap-0.5">
-        {own.map((row) => (
-          // Into the criterion, not into the finding: a finding has no panel of
-          // its own, and the criterion is where its question, its bands and its
-          // siblings on the same surface live.
-          <button
-            key={row.id}
-            type="button"
-            onClick={() => onOpenCriterion(row.criterionId, row.surface)}
-            className="flex items-center gap-2 text-sm text-left rounded-md px-2 py-1.5 hover:bg-muted transition-colors w-full"
-            title={`Open ${row.criterionName}`}
-          >
-            <span
-              className={cn(
-                "shrink-0 rounded border px-1.5 py-0.5 text-[11px] font-medium",
-                SEVERITY_CHIP[row.severity],
-              )}
-            >
-              {SEVERITY_LABEL[row.severity]}
-            </span>
-            <span className="flex-1 truncate">{row.title}</span>
-            <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground">
-              {row.criterionId}
-            </span>
-          </button>
-        ))}
-      </div>
-    </PanelSection>
-  );
-}
-
-interface ConnectionsSectionProps {
-  node: Node;
-  allNodes: Node[];
-  allEdges: Edge[];
-  onNavigate: (node: Node) => void;
-}
-
-function ConnectionsSection({ node, allNodes, allEdges, onNavigate }: ConnectionsSectionProps) {
-  // DecisionEditor owns decision-typed edges (supersedes/generates/impacts) for
-  // a decision node itself — its "Decision links" section already lists both
-  // directions (supersedes/supersededBy/generates/impacts). This section shows
-  // them only from the OTHER endpoint's side, so a non-decision node can see
-  // which decisions impact/generate it ("decided by") without a decision node
-  // double-listing its own edges.
-  const isDecisionEdge = (e: Edge) =>
-    e.edge_type === "supersedes" || e.edge_type === "generates" || e.edge_type === "impacts";
-  const crossLayerNodes = allEdges
-    .filter((e) => e.edge_type !== "composes" && (e.source_id === node.id || e.target_id === node.id))
-    .filter((e) => !(node.species === "decision" && isDecisionEdge(e)))
-    .map((e) => {
-      const otherId = e.source_id === node.id ? e.target_id : e.source_id;
-      return allNodes.find((n) => n.id === otherId);
-    })
-    .filter((n): n is Node => !!n && (n.species === "data-model" || n.species === "api-endpoint" || n.species === "decision"));
-
-  const uniqueCrossLayerNodes = [...new Map(crossLayerNodes.map((n) => [n.id, n])).values()];
-
-  if (uniqueCrossLayerNodes.length === 0) {
-    return null;
-  }
-
-  return (
-    <PanelSection title="Connections">
-      <div className="flex flex-col gap-0.5">
-        {uniqueCrossLayerNodes.map((n) => (
-          <ConnectionItem
-            key={n.id}
-            badge={SPECIES.find((s) => s.id === n.species)?.label ?? n.species}
-            node={n}
-            onNavigate={onNavigate}
-          />
-        ))}
-      </div>
-    </PanelSection>
-  );
-}
-
-function ConnectionItem({
-  badge,
-  node,
-  onNavigate,
-}: {
-  badge: string;
-  node: Node;
-  onNavigate: (node: Node) => void;
-}) {
-  const speciesConfig = SPECIES.find((s) => s.id === node.species);
-  return (
-    <button
-      type="button"
-      onClick={() => onNavigate(node)}
-      className="flex items-center gap-2 text-sm text-left rounded-md px-2 py-1.5 hover:bg-muted transition-colors w-full"
-    >
-      <span className="text-xs text-muted-foreground shrink-0 w-20 truncate">{badge}</span>
-      <span className="flex-1 truncate">{node.title}</span>
-      <span className="text-xs text-muted-foreground ml-auto shrink-0">{speciesConfig?.label ?? node.species}</span>
-    </button>
+    <ProductPicker
+      products={[...scope.productsById.values()]}
+      value={stored}
+      // Routed through `withProductMembership`, never assembled here: it owns
+      // the "unassigned means *absent*, never `product: \"\"`" rule and it
+      // carries the rest of the metadata (platformStatuses, notes,
+      // screenshots) through untouched — a patch replaces `metadata` wholesale.
+      onChange={(nextProduct) =>
+        void onUpdate(node.id, { metadata: withProductMembership(node.metadata, nextProduct) })
+      }
+      hint={hint}
+    />
   );
 }
 
 interface HistorySectionProps {
   node: Node;
-  journal: JournalEvent[];
   allNodes: Node[];
 }
 
-function HistorySection({ node, journal, allNodes }: HistorySectionProps) {
-  const timeline = computeNodeTimeline(journal, node.id);
+// Module-level so a panel with no node list hands the section the same empty
+// array every render, and the `nodesById` memo keyed on it stays quiet.
+const NO_NODES: Node[] = [];
+
+/**
+ * The node's own timeline, read from the journal by the section itself rather
+ * than handed down from the page. Most pages that open node panels (the maps,
+ * Library, Delivery, Acceptances) read nothing else from the journal, so
+ * fetching it up there meant paying for the whole journal on every navigation
+ * for a section that only shows once a panel opens. Reading here defers that
+ * request to the first panel, and because every mount observes the same
+ * cached query, a stack of open panels still costs one read.
+ *
+ * Absent only when the journal has been read and says nothing about this
+ * node: while the read is in flight the section stays mounted with a one-line
+ * pending state, so a panel does not grow a History section a moment after it
+ * opened.
+ *
+ * The journal is read by the route's id, never `node.project_id`. A hosted
+ * project stores the imported bundle verbatim under a server-minted `prj_…`
+ * row, so its nodes keep the bundle's own project id ("pebbles", "gp"); that
+ * id would route to the local provider and read an empty — or, worse, some
+ * other local project's — journal. The panel only ever mounts under
+ * `app/project/[id]/`, the same assumption `ProjectPanels` makes.
+ */
+function HistorySection({ node, allNodes }: HistorySectionProps) {
+  const projectId = useProjectId();
+  const { journal, loading, error } = useJournal(projectId);
+  const timeline = useMemo(() => computeNodeTimeline(journal, node.id), [journal, node.id]);
+  const nodesById = useMemo(() => new Map(allNodes.map((n) => [n.id, n])), [allNodes]);
+
+  // The group is the section's own, not the caller's, because emptiness is only
+  // knowable once the journal has arrived and a bar over nothing is worse than
+  // no bar.
+  //
+  // Nothing at all while it loads. Drawing a bar here was the obvious reading of
+  // "don't let the panel jump", and it is backwards: the group opens shut, so
+  // "Loading history…" is never on screen anyway, and the branch's only visible
+  // effect is the bar itself — which then VANISHES on a node whose timeline
+  // resolves empty. That is the jump, and it is the worse direction. A bar
+  // arriving late at the foot of a panel is something appearing; a bar
+  // disappearing from under a reader is something breaking.
+  if (loading) {
+    return null;
+  }
+
+  // An error keeps its bar, unlike loading: it is terminal rather than
+  // transient, so nothing will pull it back out from under the reader, and it
+  // is the one state with something to say that is worth opening the group for.
+  if (error) {
+    return (
+      <PanelGroup title="History" defaultOpen={false}>
+        <p className={cn(PANEL_GUTTER, "text-xs text-muted-foreground")}>{error}</p>
+      </PanelGroup>
+    );
+  }
 
   if (timeline.length === 0) {
     return null;
   }
 
-  const nodesById = new Map(allNodes.map((n) => [n.id, n]));
-
   return (
-    <PanelSection title="History">
-      <div className="flex flex-col gap-0.5">
+    <PanelGroup title="History" defaultOpen={false}>
+      <div className={cn(PANEL_GUTTER, "flex flex-col gap-0.5")}>
         {[...timeline].reverse().map((event) => (
           // No `onOpen`: this list is already inside the node's own panel, so a
           // row that navigated would navigate to where the reader is standing.
           <FeedRow key={event.id} event={event} nodesById={nodesById} />
         ))}
       </div>
-    </PanelSection>
+    </PanelGroup>
   );
 }
 
@@ -575,35 +483,47 @@ function PlatformVariantsSection({ node, scope, initialPlatform, onUpdate, onZoo
   }
 
   return (
-    // `gap-3` rather than the section default: this one wraps a whole embedded
-    // editor, not a field.
-    <PanelSection title="Platform Variants" className="gap-3">
-      {/* The scope's MENU, not `scopedPlatforms(node, scope)`. How many platform
-          columns a surface shows is a shape decision, and shape decisions are the
-          scope's — same input the Acceptances matrix and the Pyramid read. Per-node
-          `scopedPlatforms` would answer the node's own array whenever no product is
-          declared, so a web-only view would lose two tabs in a project that has
-          never heard of products (§ Degenerate case guarantee).
+    <PanelGroup title="Platforms">
+      {/* The group does not gutter its children the way `PanelSection` did, so
+          the editor carries its own — otherwise it would sit flush against the
+          panel's edges while the prose above it stays indented. */}
+      <div className={PANEL_GUTTER}>
+        {/* The scope's MENU, not `scopedPlatforms(node, scope)`. How many platform
+            columns a surface shows is a shape decision, and shape decisions are the
+            scope's — same input the Acceptances matrix and the Pyramid read. Per-node
+            `scopedPlatforms` would answer the node's own array whenever no product is
+            declared, so a web-only view would lose two tabs in a project that has
+            never heard of products (§ Degenerate case guarantee).
 
-          A caveat inherited, not introduced: a status written for a platform outside
-          `node.platforms` is invisible everywhere, because `getNodePlatformStatuses`
-          iterates the node's own list. The strip could always do that; it is not
-          this scope's to fix. */}
-      <PlatformVariants
-        platforms={scope.platforms}
-        statuses={statuses}
-        notes={notes}
-        screenshots={screenshots}
-        initialPlatform={initialPlatform}
-        onStatusChange={handleStatusChange}
-        onNotesChange={handleNotesChange}
-        onScreenshotChange={handleScreenshotChange}
-        onZoomShot={onZoomShot}
-      />
-    </PanelSection>
+            A caveat inherited, not introduced: a status written for a platform outside
+            `node.platforms` is invisible everywhere, because `getNodePlatformStatuses`
+            iterates the node's own list. The strip could always do that; it is not
+            this scope's to fix. */}
+        <PlatformVariants
+          platforms={scope.platforms}
+          statuses={statuses}
+          notes={notes}
+          screenshots={screenshots}
+          initialPlatform={initialPlatform}
+          onStatusChange={handleStatusChange}
+          onNotesChange={handleNotesChange}
+          onScreenshotChange={handleScreenshotChange}
+          onZoomShot={onZoomShot}
+        />
+      </div>
+    </PanelGroup>
   );
 }
 
+/**
+ * A flow's platform statuses, rolled up from what it plays.
+ *
+ * Shares the title "Platforms" with the acceptance's and the view's editors,
+ * though this one is read-only. The group is an outline entry, and three names
+ * for one shelf would make a reader walking three panels learn three words for
+ * the same place. That this one is derived is said by its contents — gauges, no
+ * controls — rather than by its heading.
+ */
 function ComputedPlatformStatusSection({
   node,
   scope,
@@ -614,27 +534,58 @@ function ComputedPlatformStatusSection({
   const rollup = computeFlowPlatformRollup(node, nodesById, allNodes, allEdges);
 
   return (
-    <PanelSection title="Computed Platform Statuses" className="gap-3">
-      {/* Clamped, not replaced: a flow's rollup can count a platform the flow
-          never declares (the seed's `F-swap-glyph`), and under All products that
-          bar must survive. See `scopedRollupPlatforms`. */}
-      <PlatformGaugeList
-        rollup={rollup}
-        platforms={scopedRollupPlatforms(node.platforms, rollup, scope.platforms)}
-        showLabels
-      />
-    </PanelSection>
+    <PanelGroup title="Platforms">
+      {/* The gutter is the child's own here — see `PlatformVariantsSection`. */}
+      <div className={PANEL_GUTTER}>
+        {/* Clamped, not replaced: a flow's rollup can count a platform the flow
+            never declares (the seed's `F-swap-glyph`), and under All products that
+            bar must survive. See `scopedRollupPlatforms`. */}
+        <PlatformGaugeList
+          rollup={rollup}
+          platforms={scopedRollupPlatforms(node.platforms, rollup, scope.platforms)}
+          showLabels
+        />
+      </div>
+    </PanelGroup>
   );
 }
 
 /**
- * What identifies the panel, for the stack's per-panel header — species badge
- * and entity id, the chrome the `SheetHeader` used to carry. The close button
- * belongs to `PanelStack`, which owns every panel's frame.
+ * What identifies the panel, for the stack's per-panel header — species badge,
+ * entity id, and the record's own actions. The close button is NOT here: it
+ * belongs to `PanelStack`, which owns every panel's frame, and this menu sits
+ * to its left because these actions belong to the record rather than the frame.
+ *
+ * **Every item is conditional, and with none there is no button at all.** A
+ * menu that opens onto nothing — or onto three disabled rows — is chrome
+ * advertising capabilities the surface does not have; a read-only surface
+ * passes no handlers and gets no `⋯`.
+ *
+ * `onDuplicate` and `onSplit` are both callbacks rather than the dialogs
+ * themselves. The triggers live here and the dialogs have to live in the
+ * document, and `PanelStack` renders header and body through two separate
+ * render props — so the open state can only be held above both, by
+ * `ProjectPanels`, which mounts one of each for the whole stack.
  */
-export function NodeDetailPanelHeader({ node }: { node: Node }) {
+export function NodeDetailPanelHeader({
+  node,
+  onDuplicate,
+  onDelete,
+  onSplit,
+}: {
+  node: Node;
+  /**
+   * Open the duplicate dialog for this node. It writes nothing on its own —
+   * naming the copy happens in `DuplicateNodeDialog`, which `ProjectPanels`
+   * owns — so this is a plain `() => void` and not a write path.
+   */
+  onDuplicate?: () => void;
+  onDelete?: (nodeId: string) => void;
+  onSplit?: () => void;
+}) {
   const speciesConfig = SPECIES.find((s) => s.id === node.species);
   const speciesLabel = speciesConfig?.label ?? node.species;
+  const hasMenu = Boolean(onDuplicate || onDelete || onSplit);
 
   return (
     <>
@@ -644,7 +595,54 @@ export function NodeDetailPanelHeader({ node }: { node: Node }) {
         description={speciesConfig?.description}
         showLabel
       />
-      <EntityId id={node.id} />
+      <PanelHeaderEntityId id={node.id} />
+      {hasMenu && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              // `shrink-0` for the reason the close button beside it carries
+              // one: this sits in a `min-w-0 flex-1` row next to truncating
+              // identity chips, and a long entity id would otherwise squash the
+              // button instead of truncating itself.
+              className="ml-auto shrink-0 cursor-pointer"
+              // The id when there is no title: an untitled record is reachable
+              // — a duplicate of one is titled just "(copy)", and a new one is
+              // titled nothing at all — and "Actions for " names nothing.
+              aria-label={`Actions for ${node.title || node.id}`}
+            >
+              <MoreHorizontalIcon className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {onDuplicate && (
+              <DropdownMenuItem onSelect={onDuplicate}>
+                <CopyPlusIcon /> Duplicate
+              </DropdownMenuItem>
+            )}
+            {onSplit && (
+              <DropdownMenuItem onSelect={onSplit}>
+                <SplitIcon /> Split into several…
+              </DropdownMenuItem>
+            )}
+            {onDelete && (
+              // No confirmation of its own: `onDelete` is the surface's existing
+              // delete request, which opens that surface's confirm dialog. A
+              // second one here would either double-prompt or, worse, replace a
+              // prompt that knows what else the deletion takes with one that
+              // does not.
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onSelect={() => onDelete(node.id)}
+              >
+                <Trash2Icon /> Delete
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </>
   );
 }
@@ -659,124 +657,184 @@ export function NodeDetailPanel({
   scope,
   initialPlatform,
   onUpdate,
-  onDelete,
   allNodes,
   allEdges,
-  journal,
+  history,
   onNavigate,
   onCreateNode,
   onCreateAcceptanceForAnchor,
   intake,
+  relations,
   onZoomShot,
   findings,
-  onOpenCriterion,
+  onOpenFinding,
 }: NodeDetailPanelProps) {
-  void onDelete;
+  // The panel's one latest-metadata write base.
+  //
+  // `onUpdate` is NOT optimistic: it awaits the provider before `node.metadata`
+  // reflects a write. So while writer A's save is in flight, `node.metadata` in
+  // writer B's closure is still the pre-A value, and B — which patches
+  // `metadata` wholesale, as every metadata write here does — spreads it and
+  // silently drops A's edit. Each writer that takes this ref reads it as its
+  // spread base and writes its result back into it before calling `onUpdate`,
+  // so those writers do not overwrite each other's *completed* edits. Not a
+  // total order: the resync below can still regress the base if writer A's
+  // response lands while writer B is in flight. That mechanism predates this
+  // ref moving up here — the identical effect ran in `DecisionEditor` — and
+  // closing it needs an in-flight count, which is a change with failure modes
+  // of its own.
+  //
+  // It lives here rather than in `DecisionEditor`, which owned it until Blocked
+  // by moved out of that editor and into the Relations group: the two are now
+  // mounted on the same decision panel, and a base owned by one of two siblings
+  // is not a shared base at all. This component renders them both, which is why
+  // it is the one that owns it.
+  //
+  // Sharing it today: `DecisionEditor`'s three debounced text fields and its
+  // status transition, and `BlockedByField`. NOT sharing it: `ProductSection`,
+  // `PlatformVariantsSection`, `PlaylistEditor`, `AcceptanceMembershipField`,
+  // `AcceptanceAuthoredFields` and `AcceptancePlatformsSection`, which all still
+  // spread `node.metadata`. Those race each other, and did before this ref moved
+  // up here; widening the protocol to them is a change of its own and not one
+  // this move made necessary.
+  const metadataRef = useRef<NodeMetadata | undefined>(node.metadata);
+  // Per record, because the call site keys this component on `node.id`. That
+  // key is load-bearing for this ref and not decoration: a panel slot is
+  // refreshed in place onto a different record, and without the remount the
+  // first write on the new one would spread the previous one's metadata.
+  //
+  // The effect below cannot cover that, and not for a timing reason: its
+  // dependency is `node.metadata`, which a record switch need not change at
+  // all. Swap a slot from a record whose metadata is `undefined` — with a
+  // write in flight, so the ref holds `{ blocked_by: "x" }` — to another whose
+  // metadata is also `undefined`, and the dep is equal, the effect never runs,
+  // and the new record's first write inherits the old one's blocker. Only the
+  // remount covers it.
+  useEffect(() => {
+    metadataRef.current = node.metadata;
+  }, [node.metadata]);
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-4 pb-6">
-      <NodeFields key={node.id} node={node} onUpdate={onUpdate} allNodes={allNodes} onNavigate={onNavigate} />
-      <ProductSection key={`product-${node.id}`} node={node} scope={scope} onUpdate={onUpdate} />
-      <RefsSection key={`refs-${node.id}`} node={node} />
-      {/* High, with what is *true* about the node rather than down with the
-          read-only cross-references: an open critical finding is the most urgent
-          thing this panel can tell a reader, and the canvas badge sends them
-          here to find it. Under the playlist editor it would be a promise the
-          panel does not keep. */}
-      {findings && onOpenCriterion && (
-        <FindingsSection
-          key={`findings-${node.id}`}
-          node={node}
-          findings={findings}
-          onOpenCriterion={onOpenCriterion}
-        />
-      )}
-      {(node.species === "view" || node.species === "flow") && allNodes && allEdges && (
-        <AcceptancesSection
-          key={`acceptances-${node.id}`}
-          node={node}
-          scope={scope}
-          allNodes={allNodes}
-          allEdges={allEdges}
-          onNavigate={onNavigate}
-          onCreate={onCreateAcceptanceForAnchor}
-        />
-      )}
-      {node.species === "acceptance" && allNodes && allEdges && onUpdate && (
-        <AcceptanceEditor
-          key={`acceptance-${node.id}`}
-          node={node}
-          scope={scope}
-          allNodes={allNodes}
-          allEdges={allEdges}
-          onUpdate={onUpdate}
-          onNavigate={onNavigate}
-          intake={intake}
-        />
-      )}
-      {node.species === "decision" && allNodes && allEdges && onUpdate && (
+    // The top padding is not decoration: without it the title sat flush against
+    // the header's bottom border, which is the one panel body that read as
+    // clipped rather than as laid out. It tracks the gutter's own step down
+    // below `lg`.
+    <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-4 py-5 lg:py-6">
+      <NodeFields
+        key={node.id}
+        node={node}
+        onUpdate={onUpdate}
+        // Whichever membership control this species has — the two are
+        // alternatives, not a fallback chain. An acceptance's product is
+        // derived from the anchors it covers (§ D5), which only
+        // `AcceptanceMembershipField` can say; every other species' is the
+        // stored key itself, which is `ProductSection`'s. Neither is asked
+        // whether it should render: each keeps its own refusals, and
+        // `ProductSection` is the one that answers "not on a data model, not
+        // without products, not without a save path".
+        membership={
+          node.species === "acceptance" ? (
+            allNodes && allEdges && onUpdate ? (
+              <AcceptanceMembershipField
+                node={node}
+                scope={scope}
+                allNodes={allNodes}
+                allEdges={allEdges}
+                onUpdate={onUpdate}
+              />
+            ) : undefined
+          ) : (
+            <ProductSection node={node} scope={scope} onUpdate={onUpdate} />
+          )
+        }
+        authored={
+          node.species === "acceptance" && onUpdate ? (
+            <AcceptanceAuthoredFields node={node} onUpdate={onUpdate} />
+          ) : undefined
+        }
+      />
+      {node.species === "decision" && onUpdate && (
         <DecisionEditor
           key={`decision-${node.id}`}
           node={node}
-          allNodes={allNodes}
-          allEdges={allEdges}
           onUpdate={onUpdate}
-          onNavigate={onNavigate}
+          metadataRef={metadataRef}
         />
       )}
-      {node.species === "view" && (
-        <PlatformVariantsSection
-          key={`pv-${node.id}-${initialPlatform ?? ""}`}
+      {/* Groups live in a column of their own. `-space-y-px` overlaps each
+          bar's `border-y` with the one above so a run of shut groups reads as
+          one ruled list; the body's `gap-4` would open a four-unit trench
+          between every pair. */}
+      <div className="flex flex-col -space-y-px">
+        {/* The only one of the three platform regions whose bar is opened out
+            here rather than by the section itself. `AcceptancePlatformsSection`
+            is the `Field` body lifted verbatim out of the old `AcceptanceEditor` and
+            nothing more — it renders one `PlatformVariants` and holds no state
+            — so giving it a group of its own would have been a second change
+            smuggled into the move. The two below own their bars because each is
+            already a whole region: a local component with state, handlers and a
+            condition. Nothing depends on the asymmetry — the semantics test
+            sweeps the whole panels directory, so this bar can move into the
+            section the day the section grows enough to deserve it. */}
+        {node.species === "acceptance" && onUpdate && (
+          <PanelGroup key={`platforms-${node.id}`} title="Platforms">
+            <div className={PANEL_GUTTER}>
+              <AcceptancePlatformsSection node={node} scope={scope} onUpdate={onUpdate} />
+            </div>
+          </PanelGroup>
+        )}
+        {node.species === "view" && (
+          <PlatformVariantsSection
+            key={`pv-${node.id}-${initialPlatform ?? ""}`}
+            node={node}
+            scope={scope}
+            initialPlatform={initialPlatform}
+            onUpdate={onUpdate}
+            onZoomShot={onZoomShot ? (platform) => onZoomShot(node, platform) : undefined}
+          />
+        )}
+        {node.species === "flow" && allNodes && allEdges && (
+          <ComputedPlatformStatusSection
+            key={`computed-${node.id}`}
+            node={node}
+            scope={scope}
+            allNodes={allNodes}
+            allEdges={allEdges}
+          />
+        )}
+        <RelationsGroup
+          key={`relations-${node.id}`}
           node={node}
           scope={scope}
-          initialPlatform={initialPlatform}
-          onUpdate={onUpdate}
-          onZoomShot={onZoomShot ? (platform) => onZoomShot(node, platform) : undefined}
-        />
-      )}
-      {node.species === "flow" && allNodes && allEdges && (
-        <ComputedPlatformStatusSection
-          key={`computed-${node.id}`}
-          node={node}
-          scope={scope}
-          allNodes={allNodes}
-          allEdges={allEdges}
-        />
-      )}
-      {node.species === "flow" && allNodes && (
-        <PlaylistEditor
-          key={`playlist-${node.id}`}
-          node={node}
-          allNodes={allNodes}
-          onUpdate={onUpdate}
-          onCreateNode={onCreateNode}
-        />
-      )}
-      {(node.species === "view" || node.species === "flow") && allNodes && onNavigate && (
-        <InvocationSection
-          key={`inv-${node.id}`}
-          node={node}
-          allNodes={allNodes}
-          onNavigate={onNavigate}
-        />
-      )}
-      {allNodes && allEdges && onNavigate && (
-        <ConnectionsSection
-          key={`conn-${node.id}`}
-          node={node}
           allNodes={allNodes}
           allEdges={allEdges}
           onNavigate={onNavigate}
+          onUpdate={onUpdate}
+          metadataRef={metadataRef}
+          onCreateAcceptanceForAnchor={onCreateAcceptanceForAnchor}
+          intake={intake}
+          relations={relations}
+          findings={findings}
+          onOpenFinding={onOpenFinding}
         />
-      )}
-      {journal && (
-        <HistorySection
-          key={`history-${node.id}`}
-          node={node}
-          journal={journal}
-          allNodes={allNodes ?? []}
-        />
-      )}
+        {node.species === "flow" && allNodes && (
+          <PlaylistEditor
+            key={`playlist-${node.id}`}
+            node={node}
+            allNodes={allNodes}
+            onUpdate={onUpdate}
+            onCreateNode={onCreateNode}
+            scope={scope}
+          />
+        )}
+        {history && (
+          <HistorySection
+            key={`history-${node.id}`}
+            node={node}
+            allNodes={allNodes ?? NO_NODES}
+          />
+        )}
+      </div>
     </div>
   );
 }

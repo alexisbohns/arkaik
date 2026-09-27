@@ -35,7 +35,9 @@ import {
   type QualityMatrix,
   type QualityMatrixCell,
   type QualitySection,
+  type QualityTrend,
   type RemediationCost,
+  type ScoreDelta,
   type SurfaceDef,
 } from "@arkaik/schema";
 
@@ -83,6 +85,27 @@ function criteriaById(library?: KritikLibrary): Map<string, KritikCriterion> {
     if (typeof criterion?.id === "string") index.set(criterion.id, criterion);
   }
   return index;
+}
+
+/**
+ * One criterion out of the pack, by id.
+ *
+ * Here rather than in a panel, though both its callers are panels: the
+ * criterion panel had it, and the finding panel's Criterion card — which
+ * previews the same criterion's question — reached across and imported it from
+ * its sibling. A panel is a rendering of an answer, not the place other panels
+ * ask the question, and that import coupled two panels that have no business
+ * knowing about each other. This module already owns every other read of the
+ * pack, including the private `criteriaById` above.
+ *
+ * A linear `find` rather than that index, deliberately: the index pays for
+ * itself over a whole projection pass, and this is one lookup by one panel.
+ */
+export function criterionOf(
+  criterionId: string,
+  library?: KritikLibrary,
+): KritikCriterion | undefined {
+  return library?.criteria?.find((candidate) => candidate?.id === criterionId);
 }
 
 /**
@@ -377,6 +400,12 @@ export interface DomainSurfaceCard {
   title: string;
   /** `null` when this domain was not scored on this surface. */
   cell: QualityMatrixCell | null;
+  /**
+   * The cell against the last recorded audit (`deriveQualityTrend`). Absent
+   * when the page has no trend or the cell is unscored; `previous: null` when
+   * no earlier reading exists, which is a first audit and draws no arrow.
+   */
+  delta?: ScoreDelta;
 }
 
 /** One stacked section on the Matrix page: a domain and its surfaces. */
@@ -413,6 +442,7 @@ export function buildDomainSections(
   matrix: QualityMatrix,
   section: Pick<QualitySection, "profile"> | undefined,
   library?: KritikLibrary,
+  trend?: Pick<QualityTrend, "deltaCell"> | null,
 ): DomainSection[] {
   const titles = buildSurfaceTitles(section);
   const meta = new Map<string, KritikDomain>();
@@ -421,11 +451,17 @@ export function buildDomainSections(
   }
 
   return matrix.domains.map((domain) => {
-    const cards = matrix.surfaces.map((surface) => ({
-      surface,
-      title: titles.get(surface) ?? surface,
-      cell: matrix.matrix[domain]?.[surface] ?? null,
-    }));
+    const cards = matrix.surfaces.map((surface): DomainSurfaceCard => {
+      const cell = matrix.matrix[domain]?.[surface] ?? null;
+      return {
+        surface,
+        title: titles.get(surface) ?? surface,
+        cell,
+        // No delta on an unscored cell: it has no number for the arrow to sit
+        // beside, and "N/A, down from 66" is a sentence about a different cell.
+        ...(trend && cell ? { delta: trend.deltaCell(domain, surface) } : {}),
+      };
+    });
 
     const scores = cards
       .map((card) => card.cell?.score)
@@ -509,6 +545,8 @@ export interface SurfaceGauge {
   score: number | null;
   grade: QualityGrade | null;
   openFindings: number;
+  /** The roll-up against the last recorded audit — see {@link DomainSurfaceCard.delta}. */
+  delta?: ScoreDelta;
 }
 
 /**
@@ -523,6 +561,7 @@ export function buildSurfaceGauges(
   matrix: QualityMatrix,
   section: Pick<QualitySection, "profile" | "findings"> | undefined,
   library?: KritikLibrary,
+  trend?: Pick<QualityTrend, "deltaOverall"> | null,
 ): SurfaceGauge[] {
   const titles = buildSurfaceTitles(section);
 
@@ -532,7 +571,7 @@ export function buildSurfaceGauges(
     openPerSurface.set(finding.surface, (openPerSurface.get(finding.surface) ?? 0) + 1);
   }
 
-  return matrix.surfaces.map((surface) => {
+  return matrix.surfaces.map((surface): SurfaceGauge => {
     const score = matrix.overall[surface] ?? null;
     return {
       surface,
@@ -540,8 +579,91 @@ export function buildSurfaceGauges(
       score,
       grade: score === null ? null : gradeOf(score, library),
       openFindings: openPerSurface.get(surface) ?? 0,
+      ...(trend && score !== null ? { delta: trend.deltaOverall(surface) } : {}),
     };
   });
+}
+
+/**
+ * A delta in words, for a card's accessible name and its `title` — the arrow
+ * spelled out, with the score it was read against and the audit it came from:
+ * "up 6 from 66 at the 2026-08 audit". `null` when there is no earlier reading
+ * at all, so a first audit says nothing rather than "unchanged". A reading
+ * that exists but cannot be compared (a framework major bump since) still
+ * names the previous score, and says why there is no arrow.
+ */
+export function describeDelta(delta: ScoreDelta | undefined): string | null {
+  if (!delta || delta.previous === null) return null;
+  const where = delta.audit_id ? ` at the ${delta.audit_id} audit` : "";
+  if (delta.delta === null) return `${delta.previous}${where}, not comparable since the framework changed`;
+  if (delta.delta > 0) return `up ${delta.delta} from ${delta.previous}${where}`;
+  if (delta.delta < 0) return `down ${Math.abs(delta.delta)} from ${delta.previous}${where}`;
+  return `unchanged from ${delta.previous}${where}`;
+}
+
+/**
+ * A `quality.audit.completed` in words, for the journal feed.
+ *
+ * A scoped re-audit (issue #443) says so — "Scoped re-audit of 12 cells" — so
+ * nobody reads a between-milestone pass over a dozen cells as the whole audit
+ * it is not. Its scores are the merged picture either way; what differs is how
+ * much was actually looked at, and that is the thing a reader of the feed needs.
+ * Lenient like every reader of stored events: a malformed `scope` falls back to
+ * the plain wording rather than rendering "of undefined cells".
+ */
+export function describeAuditCompleted(event: Readonly<Record<string, unknown>>): { text: string; meta?: string } {
+  const str = (value: unknown) => (typeof value === "string" && value !== "" ? value : undefined);
+  const audit = str(event.audit_id);
+  const framework = str(event.framework_version);
+  const kritik = framework ? `Kritik ${framework}` : undefined;
+
+  const scope = event.scope as { partial?: unknown; cells?: unknown; since?: unknown } | null | undefined;
+  if (typeof scope !== "object" || scope === null || scope.partial !== true) {
+    const text = `Audit ${audit ?? "?"} completed`;
+    return kritik ? { text, meta: kritik } : { text };
+  }
+
+  // The count leads when there is one, and the audit id moves to the meta;
+  // without a count the id is all the headline has to say which pass it was.
+  const cells = typeof scope.cells === "number" && Number.isFinite(scope.cells) ? scope.cells : undefined;
+  const since = str(scope.since);
+  const text = cells !== undefined ? `Scoped re-audit of ${cells} cell${cells === 1 ? "" : "s"}` : `Scoped re-audit ${audit ?? "?"}`;
+  const meta = [cells !== undefined ? audit : undefined, since ? `since ${since}` : undefined, kritik]
+    .filter((part): part is string => part !== undefined)
+    .join(" · ");
+  return meta === "" ? { text } : { text, meta };
+}
+
+/** One recorded audit's reading of a cell, for the cell panel's History. */
+export interface CellHistoryRow {
+  auditId: string;
+  ts: string;
+  commit?: string;
+  /** `null` when that audit did not score the cell — not assessed, not zero. */
+  score: number | null;
+  /** False when a framework major bump sits between this audit and the one before it. */
+  comparable: boolean;
+}
+
+/**
+ * A cell's score at every recorded audit, oldest first — the cell panel's
+ * journal section, by analogy with the node panel's History. Every snapshot is
+ * a row, an audit that skipped the cell reading as unscored: a scoped audit
+ * records the merged picture, so a gap here is a real gap, and hiding it would
+ * make three audits look like two.
+ */
+export function buildCellHistory(
+  trend: Pick<QualityTrend, "snapshots"> | undefined,
+  domain: string,
+  surface: string,
+): CellHistoryRow[] {
+  return (trend?.snapshots ?? []).map((snapshot) => ({
+    auditId: snapshot.audit_id,
+    ts: snapshot.ts,
+    ...(snapshot.commit !== undefined ? { commit: snapshot.commit } : {}),
+    score: snapshot.scores[surface]?.[domain] ?? null,
+    comparable: snapshot.comparable,
+  }));
 }
 
 /**
@@ -648,4 +770,53 @@ export function foldFindingEvents(
 
   if (patched.size === 0) return section;
   return { ...section, findings: findings.map((finding, index) => patched.get(index) ?? finding) };
+}
+
+/** What the Relations bar says about a node's open findings. */
+export interface OpenFindingSummary {
+  severity: FindingSeverity;
+  count: number;
+}
+
+/**
+ * The worst open finding against one node, and how many there are.
+ *
+ * This is what lets the Relations group's bar carry a severity chip, which is
+ * what stops the move into a collapsible group from costing findings their
+ * urgency: the panel used to put them high on the argument that an open critical
+ * finding is the most pressing thing it can tell a reader, and the chip is that
+ * argument surviving the reorganisation. The bar shows it whether the group is
+ * open or shut.
+ *
+ * Open only, and `nodeIds` rather than a single id, matching `FindingsSection`
+ * and the canvas badge exactly — all three ask the same two questions, so a node
+ * wearing a red "3" opens onto a bar reading "3" and onto three rows.
+ *
+ * `null`, not a zero-count summary: "no open findings" is the absence of a
+ * chip, and a caller handed `{ count: 0 }` would have to know to suppress it.
+ *
+ * Severity order comes from `SEVERITY_ORDER` — the rank table this file already
+ * builds from `FINDING_SEVERITIES`, the schema package's own worst-first
+ * ordering — for the reason nothing in this file reimplements a scale: a second
+ * ranking here would disagree with the board the first time a pack moved a
+ * bucket. The table rather than `indexOf` over the same array, which is the
+ * comparison the board's own sort makes: a lookup instead of a scan per row,
+ * and no `-1` for a severity the array does not hold — which `indexOf` would
+ * have ranked *above* critical.
+ */
+export function worstOpenFindingFor(
+  rows: readonly FindingRow[],
+  nodeId: string,
+): OpenFindingSummary | null {
+  const own = rows.filter((row) => row.open && row.nodeIds.includes(nodeId));
+  if (own.length === 0) return null;
+
+  let worst = own[0].severity;
+  for (const row of own) {
+    if (SEVERITY_ORDER[row.severity] < SEVERITY_ORDER[worst]) {
+      worst = row.severity;
+    }
+  }
+
+  return { severity: worst, count: own.length };
 }

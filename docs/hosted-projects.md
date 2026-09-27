@@ -369,6 +369,51 @@ where an unknown platform suffix is quoted back to you, where an unscoped
 promotion tells you which platforms it is about to mark shipped, and where a
 refused scope names what it refused and why.
 
+The same response carries a `quality` array, one entry per finding the pull
+request said something about. `resolved` means an event was appended;
+`unchanged` means the finding was already decided; `unknown` means a
+`Closes F-…` named an id no linked project holds; and `mentioned` means the
+pull request named a still-open finding without closing it — no verb at all, a
+verb that landed on a different line than the id, or a `Closes F-…` written in
+the title rather than the body. Nothing was written for it:
+
+```json
+{ "status": "mentioned", "findingId": "F-2026-08-PLT-ios-02",
+  "hint": "named but not closed — write `Closes F-2026-08-PLT-ios-02` in the PR body, verb and id on one line with nothing but spaces or a colon between them" }
+```
+
+A `resolved` entry may also carry a `warning`. A surface can declare where it
+lives in the repo — `path` in the profile, `apps/ios` and the like — and a
+resolution whose pull request touched no file under that path says so:
+
+```json
+{ "status": "resolved", "findingId": "F-2026-08-PLT-ios-02", "eventId": "…",
+  "warning": "resolved F-2026-08-PLT-ios-02, but this pull request changed no file under `apps/ios` (surface `ios`)" }
+```
+
+It is a second opinion, never a refusal: the finding is resolved either way.
+`path` is optional, and a real fix can legitimately live in a shared package,
+so gating the closure on this would fail in the opposite direction — findings
+that were genuinely fixed would silently stay open. It is also only ever
+raised against a **complete** file list: when the changed-file list came back
+incomplete or unreadable, there is no warning at all, because a missing file
+could invent a mismatch that was never really there.
+
+A finding closes only on `Closes`/`Fixes`/`Resolves` before its id, in the
+body, on the same line, with nothing but spaces or a colon between them — a
+wrapped verb or one left in the title reports instead of closing. That is
+deliberate: naming a finding in a follow-up table used to close it, and a PR
+that shipped one of six closed all six.
+
+When nothing above applies to any linked project, `quality` holds a single
+entry naming which of three silences it was, and they are not interchangeable:
+`no_mentions` means the pull request named no finding at all, decided before
+any project is read; `nothing_to_do` means a linked project holds what it
+named, and every one was already resolved, accepted or refuted; and
+`no_quality_data` means no linked project holds what the PR named, at all —
+narrower than it sounds, and not the answer for a project that holds the
+finding and simply had nothing left to do about it.
+
 A refusal plans no **promotion** for that acceptance, and attaches no new ref.
 It is not always zero ops: if the acceptance already carries a ref for that pull
 request, the mirror refresh is still planned, so `applied` can be non-zero for a
@@ -615,8 +660,22 @@ then on.
 - **`ref_policy` has no UI** — step 6 requires the raw bundle editor.
 - **The refs editor is read-only** — a human links a PR by mentioning the
   acceptance id; attaching a ref by hand in the app is not possible yet.
-- **Hosted projects are online-only** — local-first projects still work offline;
-  hosted ones do not. Export is always available.
+- **Hosted projects are online-only for writes** — every mutation goes to the
+  server as it happens and fails loudly when the network is down; nothing is
+  queued for later. Reads are gentler than that: what a tab has already read is
+  cached in the browser for the session, so moving between a project's surfaces
+  costs no request, and a background revalidation sends the read validator as
+  `If-None-Match` and gets a bodiless `304` while nothing has changed. The cache
+  does not survive a reload — a return visit reads the project again (see
+  below). Local-first projects still work fully offline, and export is always
+  available.
+- **The read cache is not persisted** — deliberately, for now. Keeping it in
+  IndexedDB would let a return visit paint from cache and revalidate by ETag,
+  but the straightforward implementation costs a multi-megabyte rewrite per
+  cache event and gates every query behind a restore. The design, and the
+  three correctness hazards it has to answer, are recorded in
+  [superpowers/plans/2026-09-10-reactive-data-layer.md](superpowers/plans/2026-09-10-reactive-data-layer.md)
+  § Deferred.
 - **`propose_idea` / `file_request` do not work against hosted projects** — the
   hosted write path has no journal-only operation yet. They are refused with an
   explicit message rather than silently dropped.

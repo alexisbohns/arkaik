@@ -8,6 +8,6 @@
  * `validateBundle` catching the cycle after the fact.
  *
  * This module stays as the app-side import path — `@/lib/utils/cycle` is used by
- * JourneyMap and PlaylistEntryRow — so the move is invisible to call sites.
+ * JourneyMap and the playlist editor — so the move is invisible to call sites.
  */
 export { wouldCreateCycle } from "@arkaik/schema";

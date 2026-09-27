@@ -1,6 +1,6 @@
 ---
 name: kritik
-version: 0.3.0
+version: 0.5.0
 description: >
   Audit this product's quality with the Kritik framework — score each criterion
   on each surface against observable maturity anchors, record findings with
@@ -9,8 +9,9 @@ description: >
   security, privacy, accessibility, performance, reliability, or test coverage
   of a codebase; when asked "how good is this product", "what should we fix
   first", or "where are we weakest"; when preparing a milestone quality gate;
-  and when a previous audit needs re-running, extending to a new surface, or
-  checking for regressions between audits.
+  when a previous audit needs re-running, extending to a new surface, or
+  checking for regressions between audits; and after a batch of fixes, when the
+  matrix should catch up with them without a full audit.
 ---
 
 # Kritik — quality auditing
@@ -74,8 +75,8 @@ Two richer paths exist when they are available, and both write **the same files*
 
 | Available | Use |
 |---|---|
-| the `arkaik` CLI (`npx arkaik kritik --help`) | the verbs `profile`, `score`, `finding open\|resolve\|accept`, `matrix`, `signals`, `regressions`, `issue`, `criterion add` |
-| `arkaik-mcp` tools in this session | `kritik_score`, `kritik_open_finding`, `kritik_matrix`, `kritik_signals`, `kritik_regressions`, `kritik_issue`, … |
+| the `arkaik` CLI (`npx arkaik kritik --help`) | the verbs `profile`, `score`, `finding open\|resolve\|accept`, `matrix`, `signals`, `regressions`, `trend`, `scope`, `issue`, `criterion add` |
+| `arkaik-mcp` tools in this session | `kritik_score`, `kritik_open_finding`, `kritik_matrix`, `kritik_signals`, `kritik_regressions`, `kritik_trend`, `kritik_scope`, `kritik_issue`, … |
 
 Each verb takes its own `--help` (`arkaik kritik score --help`). What they add
 over the scripts is **step 7 for free**: they append the `quality.*` journal
@@ -424,8 +425,12 @@ arkaik kritik regressions [--from <audit>] [--to <audit>]
 compares two audits and says what got worse, with nobody checking anything: a
 cell whose maturity level dropped, a cell that gained an open Critical or High
 finding, a finding that was resolved and is open again. It defaults to the
-newest audit and the one before it. A cell scored in only one of the two is not
-compared — a half-finished audit is not a regression. `--record` appends one
+newest audit and the one before it. Each side is every audit up to it, merged
+latest-wins, so a scoped re-audit's cells are compared with their last reading
+wherever it was taken. A cell with no reading on one side is not compared: a
+half-finished audit is not a regression. A new Critical or High finding still
+trips on a cell the newer audit has not re-scored, because the finding is real
+whatever the score says. `--record` appends one
 `quality.signal.tripped` per regression; `--json` prints the list. It needs two
 audits under `docs/quality/audits/` and says so plainly when there is one: a
 single reading is a baseline, not a trend.
@@ -446,6 +451,113 @@ Zero dependencies, same exit code, and it **writes nothing** — recording the
 trips is `arkaik kritik regressions --record`. There is no script counterpart for
 the run sheet; read the criteria's `signals[]` straight out of
 `references/library.json`.
+
+### Trend — from where we started to where we are now
+
+```
+arkaik kritik trend [--surface <s>] [--domain <CODE>] [--json]
+```
+
+prints every recorded audit as a row, oldest first: the overall score per
+surface (or one domain's score with `--domain`) and how it moved against the
+row above — `▲ +6`, `▼ −3`, `=`. It reads the journal's
+`quality.audit.completed` events, so an audit only shows once `arkaik kritik
+matrix --record` wrote it, and a re-recorded audit id keeps only its latest
+reading. Rows are ordered by when they were recorded, never by id, so a scoped
+re-audit named `2026-09-scoped` lands where it happened. A framework major bump
+between two audits breaks the comparison there (SPEC § 8): the row prints,
+without an arrow. `kritik_trend` is the same table over MCP, and the Quality
+page's matrix wears the same arrows against the last recorded audit.
+
+### Scope — re-score only what your fixes touched
+
+A score is an assessment, and only a re-score moves it. Close twenty findings and
+the matrix stays exactly where it was until someone re-scores the cells they
+lived on. Doing that does not mean running a full audit.
+
+```
+arkaik kritik scope [--since <audit>] [--no-widen] [--json]
+```
+
+lists those cells, grouped by surface, with the score each re-score would replace:
+
+```
+web · SEC-04 · at 2 (2026-08) · because F-2026-08-SEC-web-03 (resolved by https://github.com/o/r/pull/7)
+web · A11Y-02 · at 3 (2026-08) · widened via V-settings
+
+12 cells to re-score (9 direct, 3 widened) from 20 resolved findings since 2026-08
+```
+
+- A **direct** cell is where a finding resolved since the last recorded audit
+  lived. It almost certainly moved. A `cross-surface` finding scopes every
+  surface its criterion applies to.
+- A **widened** cell is an assessed neighbour whose findings share a node id with
+  a fix. It *may* have moved: look, and if it did not, re-score it at its current
+  level with evidence saying so. That takes two seconds, and it is what keeps the
+  cell from silently dropping out of the window (below). `--no-widen` drops these.
+- An **accepted risk is not a fix** and scopes nothing: the code did not change.
+- A warning block lists resolved ids that **name no finding**. Something closed an
+  id that does not exist (a typo'd `Closes F-…` in a PR body, usually). Report it,
+  do not ignore it.
+- A second block lists resolved findings whose cell **nothing can re-score**: a
+  retired criterion, or a surface no longer in the profile. The fix counts, but
+  there is no score to move. Their nodes still widen.
+
+Then re-score each cell, with evidence, the same way as in step 3:
+
+```
+arkaik kritik score <criterion> <surface> <level> --evidence <cite> --scope
+```
+
+**Never leave `--scope` off by accident.** Without it, `score` writes into the
+newest audit on disk, which right after a record is the audit your scope is
+measured from. That rewrites a recorded reading instead of adding a new one. It
+prints a `note:` when it does this; treat that note as a stop sign.
+
+`--scope` refuses a cell the scope does not list. It checks against the scope as
+`arkaik kritik scope` prints it by default: measured from the newest recorded
+audit. That is what keeps a twelve-cell pass from drifting into a comprehensive
+audit by accident. Leave it off to re-score something else on purpose, into an
+audit you name with `--audit`.
+
+`--scope` also writes into a **scoped audit of its own**: `<YYYY-MM>-scoped` by
+default (`-scoped-02` for a second one that month), never the audit the scope was
+measured from and never one already recorded. It refuses an `--audit` that would
+sort before the newest one on disk. Audits merge latest-wins in id order, so an
+earlier-sorting audit's fresh scores would lose to the stale ones. The same holds
+for any later audit, scoped or not: a second full audit in the same month named
+`2026-09-2` sorts before `2026-09-scoped` and loses to it on every cell both
+hold. `score` prints a note when you write into an audit that sorts before
+another. Anything Critical or High you find still goes through step 5.
+
+Finish with step 6 and 7 as usual:
+
+```
+arkaik kritik matrix --record
+```
+
+The table it prints is this audit alone, just the cells you re-scored. The event it
+records carries the **merged** matrix, with every other cell at its last score,
+marked `scope: { partial: true, cells, since }`. So the trend gains a real row and
+does not read 188 unscored cells as having dropped to N/A.
+
+**Recording closes the window.** The next `scope` measures from this audit, so any
+scoped cell you did not re-score drops out of it for good. `matrix` lists those
+cells before you record, and again as it records. Re-score them first, or accept
+on purpose that they fall out. This matters most for a pass spread over two
+sessions: do not record until the list is empty.
+
+If you re-scored into an audit of your own with `--audit` but without `--scope`,
+`matrix --record --scope` still records it as scoped, measured from the newest
+recorded audit that sorts before it. It refuses an audit that is already recorded,
+so it cannot turn the audit you measured from into a partial reading. If you
+re-scored *inside* that audit, move those scores into a new one first.
+
+The scope reads the journal, so it needs one, plus a recorded audit to measure
+from. It is a work list, never a score: you still cite evidence for every cell.
+Over MCP it is `kritik_scope` (it works on a hosted project too, since it plans an
+audit rather than running one), with `kritik_score` `scope: true` and
+`kritik_matrix` `scope: true` for the other two steps.
 
 ### A tripped signal is not a finding
 
@@ -495,27 +607,51 @@ own proves nothing about the App. If you cannot confirm the second, treat the
 project as repo-only. The repo command is required in both cases anyway, and
 running it on a hosted project costs nothing.
 
-The App reads two channels:
+The App reads two channels, and **both need a closing verb**:
 
-- **the finding id** — `F-2026-08-SEC-web-01`, anywhere in the PR's title *or*
-  body, with no keyword needed. This is the channel an agent working from
-  `arkaik kritik issue` uses.
-- **a closing keyword in the body** — `Closes #123`, `Fixes owner/repo#123`, or
-  the full issue URL. Body only, because GitHub does not honour a keyword in a
-  title either. It reaches a finding through that finding's own `issue_url`, so
-  it does nothing unless the issue you filed in step 8 is recorded there
+- **`Closes F-2026-08-SEC-web-01`** — one of GitHub's nine closing keywords
+  (`close`/`closes`/`closed`, `fix`/`fixes`/`fixed`,
+  `resolve`/`resolves`/`resolved`), then the finding id, in the PR's **body**.
+  This is the channel an agent working from `arkaik kritik issue` uses. Body
+  only, because GitHub does not honour a closing keyword in a title either —
+  and the verb and the id have to sit on the **same line**, with nothing but
+  spaces or a colon between them (`Closes: F-…` works; a line-wrapped `Closes`
+  does not, and neither does markdown between the two — `**Closes** F-…` or
+  `Closes [F-…](url)` both break the pair).
+- **`Closes #123`** — the same keywords against the filed GitHub issue, also
+  body only. It reaches a finding through that finding's own `issue_url`, so it
+  does nothing unless the issue you filed in step 8 is recorded there
   (`--issue-url` on `finding open`).
 
 Both scans skip fenced code blocks, and only an **open** finding is closed this
 way: `refuted` and `accepted-risk` are decisions somebody recorded, and a merge
 does not overturn them.
 
-> **Name a finding id in a PR only when that PR fixes it.** The id alone closes
-> it — no keyword, and the title counts — so one mentioned in passing ("adjacent
-> to F-2026-08-SEC-web-01", "not to be confused with…") resolves a defect that is
-> still there. To refer to one without closing it, put it inside a fenced code
-> block — a fence, not inline backticks; only fenced blocks are skipped. That is
-> exactly what makes a PR *about* this syntax safe.
+**A finding id with no verb beside it is a reference, not a closure.** Write one
+freely — in a follow-up table, in a "related work" note, in the sentence
+explaining what this PR is *not* — and the App will leave it open. It does not
+stay silent about it: the delivery response reports each one it recognised as
+
+```json
+{ "status": "mentioned", "findingId": "F-2026-08-PLT-ios-02",
+  "hint": "named but not closed — write `Closes F-2026-08-PLT-ios-02` in the PR body, verb and id on one line with nothing but spaces or a colon between them" }
+```
+
+so a PR that meant to close one and got the grammar wrong — a wrapped verb, or
+a `Closes` left in the title — says so at merge, in **Advanced → Recent
+Deliveries**, rather than months later in the matrix.
+
+**The App also checks a closure against the map you gave it.** A surface in
+your profile can declare where it lives in the repo (`path` — `apps/ios`,
+`packages/supabase`), and when a merged pull request closes a finding on that
+surface without touching a single file under its path, the `resolved` outcome
+carries a `warning` saying so. The finding still closes — this is a second
+opinion, not a gate. `path` is optional, and a real fix can legitimately live
+in a shared package, so refusing the closure over this would fail the other,
+worse way: a genuinely fixed finding left open. And it only ever fires against
+a file list the App is sure is complete — an incomplete or unreadable one
+raises nothing, because a missing file could manufacture a mismatch that was
+never there.
 
 ## Adding a criterion of your own
 
@@ -547,6 +683,10 @@ You will not always audit everything, and you should not pretend otherwise.
   milestone activity — for a large monorepo, fan out one auditor per
   (surface × domain cluster), add a pass dedicated to the `cross-surface`
   contract, then verify Critical/High adversarially before rolling up.
+- **A scoped re-audit** re-scores the cells a batch of fixes made stale, and
+  nothing else. `arkaik kritik scope` lists them (see "Scope" under *Between
+  audits*). It is the between-milestone way to make the matrix catch up with
+  fixes.
 - **A partial audit** is legitimate and common: one surface, one domain, or the
   criteria touched by a release. Score only what you actually checked. **A cell
   you did not look at gets no row** — leaving it out reads as "not assessed",

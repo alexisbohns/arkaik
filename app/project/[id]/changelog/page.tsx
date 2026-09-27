@@ -9,7 +9,8 @@ import { PageShell } from "@/components/layout/PageShell";
 import { PageSurface } from "@/components/layout/PageSurface";
 import { SectionRow } from "@/components/layout/SectionRow";
 import { ChangelogFilterBar } from "@/components/journal/ChangelogFilterBar";
-import { DeliverableChips, DeliverableHoverCard, ICON_TILE } from "@/components/journal/DeliverableHoverCard";
+import { DeliverableChips, DeliverableHoverCard } from "@/components/journal/DeliverableHoverCard";
+import { iconChipVariants } from "@/components/layout/IconChip";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useNodes } from "@/lib/hooks/useNodes";
@@ -25,11 +26,12 @@ import { productScopeMetaLabel } from "@/lib/utils/product-scope";
 import type { Node, ReleaseTaggedEvent } from "@/lib/data/types";
 
 /**
- * The shipped mark on the rail: the shared boxed-icon tile, nudged up by 2px so
- * the 24px box centres on the 20px first line of the title beside it. Same tile
- * as the marks under the row (`DeliverableChips`) — one box, three placements.
+ * The shipped mark on the rail: the shared chip, told it leads a line of text
+ * so it centres on the 20px title beside it rather than 2px below it. Same box
+ * as the marks under the row (`DeliverableChips`) — one geometry, three
+ * placements.
  */
-const SHIP_MARK = `${ICON_TILE} -mt-0.5`;
+const SHIP_MARK = iconChipVariants({ variant: "bare", lead: true });
 
 /**
  * The deliverables of one milestone, drawn as a timeline: a rail of marks down
@@ -111,13 +113,30 @@ function countLabel(count: number): string {
  * used to share this screen (backlog, commitments, decisions) has its own page;
  * none of it had shipped, which is the one thing a changelog is about.
  */
+/**
+ * What this page reads. A projection, so it must stay in step with what the
+ * page renders — and with its empty state, which now says "no releases, nothing
+ * shipped" rather than "no journal": the events that would contradict a
+ * broader claim are no longer read.
+ */
+const CHANGELOG_EVENT_TYPES = ["deliverable.shipped", "release.tagged"] as const;
+
 export default function ChangelogPage() {
   const id = useProjectId();
 
   const { project: projectBundle, loading: projectLoading, error: projectError, reload: reloadProject } = useProject(id);
   const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes } = useNodes(id);
   const { edges: dataEdges, error: edgesError, reload: reloadEdges } = useEdges(id);
-  const { journal, loading: journalLoading, error: journalError, reload: reloadJournal } = useJournal(id);
+  // The page renders shipped work and the releases it falls under, and nothing
+  // else: on a hosted project the rest of the journal never crosses the wire
+  // (`computeDeliverables` reads exactly these two types, and the release
+  // filter below reads one of them).
+  const {
+    journal,
+    loading: journalLoading,
+    error: journalError,
+    reload: reloadJournal,
+  } = useJournal(id, { types: CHANGELOG_EVENT_TYPES });
   // Display only — the changelog itself stays unscoped; this just fills the
   // header's meta line with the same scope name every other surface shows.
   const scope = useEffectiveProduct(id, projectBundle);
@@ -207,7 +226,7 @@ export default function ChangelogPage() {
       allNodes={dataNodes}
       allEdges={dataEdges}
       scope={scope}
-      journal={journal}
+      history
       headerExtra={
         projectBundle?.project.version ? (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -236,7 +255,7 @@ export default function ChangelogPage() {
         }
       >
         {isEmpty ? (
-          <EmptyState message="No journal yet. Releases and updates will appear here once history is recorded." />
+          <EmptyState message="No releases tagged yet, and nothing shipped since." />
         ) : nothingInPeriod ? (
           <EmptyState
             message={

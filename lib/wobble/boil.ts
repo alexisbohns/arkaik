@@ -16,10 +16,16 @@
  * animates. So hovering one card in a grid boils only that card's icon, not
  * every other card that happens to use the same icon name.
  *
- * Hover/focus is resolved to a "scope": the nearest interactive *item* (a link,
- * button, menu/option, or a `[data-wobble-group]` wrapper), falling back to the
- * icon itself. So hovering anywhere on a sidebar row or Overview card row boils
- * the icon inside it — not just a direct hover of the glyph.
+ * Hover *and* focus are resolved through the same "scope": the nearest
+ * interactive *item* (a link, button, menu/option, or a `[data-wobble-group]`
+ * wrapper), falling back to the icon itself. So hovering anywhere on a sidebar
+ * row or Overview card row boils the icon inside it — not just a direct hover
+ * of the glyph — and tabbing to a button boils that button's icon.
+ *
+ * Going through the scope is what keeps focus honest: a container that takes
+ * focus on open (a panel, a dialog) is not an interactive item, so it resolves
+ * to no scope and boils nothing. Focusing the raw target instead would boil
+ * every icon the container holds.
  */
 
 import { BOIL_FPS, BOIL_SEED_STEPS, NO_WOBBLE_CLASS, WOBBLE_GROUP_ATTR } from "./constants";
@@ -127,12 +133,12 @@ function leave(icon: Element, reason: Reason): void {
   const reasons = active.get(icon);
   if (!reasons) return;
   reasons.delete(reason);
+  if (reasons.size > 0) return; // still held by the other signal
+  active.delete(icon);
   const name = iconName(icon);
-  if (reasons.size === 0) {
-    active.delete(icon);
-    if (name) setBoilFilter(icon, name, false); // back to the shared static filter
-  }
-  if (name && !anyActiveForName(name)) stopBoil(name);
+  if (!name) return;
+  setBoilFilter(icon, name, false); // back to the shared static filter
+  if (!anyActiveForName(name)) stopBoil(name);
 }
 
 /** Icons at or within an element (a focusable/hoverable item may contain them). */
@@ -145,8 +151,8 @@ function iconsWithin(el: Element): Element[] {
 
 /**
  * The hover/focus scope for a target: the nearest interactive item, or the icon
- * itself for a standalone glyph with no interactive ancestor (unchanged
- * direct-hover behaviour — no regression).
+ * itself for a standalone glyph with no interactive ancestor. Anything else —
+ * a focusable panel, a scroll container — resolves to null and boils nothing.
  */
 function resolveScope(target: Element): Element | null {
   return target.closest(GROUP_SELECTOR) ?? target.closest(ICON_SELECTOR);
@@ -170,15 +176,20 @@ function onMouseOut(event: MouseEvent): void {
 }
 
 function onFocusIn(event: FocusEvent): void {
-  const el = event.target as Element | null;
-  if (!el?.querySelectorAll) return;
-  for (const icon of iconsWithin(el)) enter(icon, "focus");
+  const target = event.target as Element | null;
+  const scope = target?.closest ? resolveScope(target) : null;
+  if (!scope) return;
+  for (const icon of iconsWithin(scope)) enter(icon, "focus");
 }
 
 function onFocusOut(event: FocusEvent): void {
-  const el = event.target as Element | null;
-  if (!el?.querySelectorAll) return;
-  for (const icon of iconsWithin(el)) leave(icon, "focus");
+  const target = event.target as Element | null;
+  const scope = target?.closest ? resolveScope(target) : null;
+  if (!scope) return;
+  const related = event.relatedTarget as Node | null;
+  // Ignore focus moving between the scope's own descendants.
+  if (related && scope.contains(related)) return;
+  for (const icon of iconsWithin(scope)) leave(icon, "focus");
 }
 
 // Live handle so newly-hovered icons respect a mid-session reduced-motion
