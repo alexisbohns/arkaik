@@ -704,9 +704,11 @@ product, and what it names is where to look next.
 
 ## When a fix merges
 
-Two things close a finding, and they are not alternatives.
+Where a finding is closed depends on where its audit lives. Look before you act:
+**does this checkout have `docs/quality/`?**
 
-**Always, in the repo:**
+**Yes — the audit lives in the repo.** Two things close a finding, and they are
+not alternatives. Always, in the repo:
 
 ```
 arkaik kritik finding resolve <id> --by <pr-url>
@@ -717,29 +719,42 @@ it. It appends `quality.finding.resolved` to the journal sidecar when there is
 one and says so when there is not, exactly as step 7 describes. Re-running is
 safe: a finding already resolved is left alone and no second event is written.
 
-**And, on a project the Arkaik GitHub App delivers to, the App may do it too.**
-Merging the PR appends `quality.finding.resolved` to the **hosted** project's
+And, on a project the Arkaik GitHub App delivers to, the App **may** do it too:
+merging the PR appends `quality.finding.resolved` to the **hosted** project's
 journal. Nothing reaches this checkout, which is why the command above is still
-yours to run.
-
-*May*, because the App can only close a finding the hosted project already
-carries in its own `quality` section, and it carries one only once somebody has
-put it there — `arkaik restore` folds `docs/quality/` in as it lands the bundle
-(step 9 above). Until a restore has run, the hosted project knows none of this
-repo's findings, so the App matches nothing and says so; after one, it knows
-whatever that restore sent, which is not necessarily what `findings.json` says
+yours to run. *May*, because the App can only close a finding the hosted project
+already carries in its own `quality` section, and it carries one only once
+`arkaik restore` has folded `docs/quality/` in (step 9 above) — and then only
+what that restore sent, which is not necessarily what `findings.json` says
 today. Treat the App as a convenience that might fire, never as the thing that
-closed the finding. The repo command above is what makes `findings.json` true,
-and it is not optional.
+closed the finding.
 
-*Which case am I in?* Two facts, and only the first is visible from here:
-`docs/arkaik/arkaik.json` exists — what `arkaik link` writes, so there is a
-hosted project at all — **and** this repository is linked to that project under
-its **Repos** button in the app, which is what the webhook actually reads. Those
-two links are independent; either exists without the other, so the file on its
-own proves nothing about the App. If you cannot confirm the second, treat the
-project as repo-only. The repo command is required in both cases anyway, and
-running it on a hosted project costs nothing.
+**No — the audit lives only in the hosted project.** This is the setup for a
+public repository that keeps its findings off the repo (committing
+`docs/quality/` there publishes every open finding with its `file:line`
+evidence). The hosted journal is the record, and there is no repo command to
+run. **Never create `docs/quality/` to resolve a finding** — that is exactly the
+publication the setup exists to avoid. Close it one of two ways:
+
+- Put the closing verb in the PR body (below), and let the Arkaik GitHub App
+  append `quality.finding.resolved` when the PR merges. This needs the
+  repository linked to the hosted project under its **Repos** button in the app.
+- Or, from a hosted session, call `kritik_resolve_finding` with the finding id
+  and `resolved_by` set to the merged PR's URL — after the merge, never before,
+  and only when the App did not already close it (`kritik_findings` shows the
+  status; resolving twice is a no-op anyway).
+
+Either way, the fix now shows up in `kritik_scope`, which is how the next
+[hosted scoped re-audit](#hosted-scoped-re-audit) finds the cells it moved.
+
+*Is the App delivering here?* Two facts, and only the first is visible from a
+checkout: `docs/arkaik/arkaik.json` exists — what `arkaik link` writes, so there
+is a hosted project at all — **and** this repository is linked to that project
+under its **Repos** button, which is what the webhook actually reads. Those two
+links are independent; either exists without the other, so the file on its own
+proves nothing about the App. If you cannot confirm the second, don't count on
+the App: in the repo case run the command anyway; in the hosted-only case use
+`kritik_resolve_finding` after the merge.
 
 The App reads two channels, and **both need a closing verb**:
 
