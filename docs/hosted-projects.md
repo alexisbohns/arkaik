@@ -113,6 +113,99 @@ wins; otherwise `--project` → `$ARKAIK_PROJECT` → the link file.
 > A linked repo with no token **exits non-zero** rather than quietly serving a
 > stale local bundle — a silent fallback is the failure an agent cannot notice.
 
+### Kritik on a hosted project
+
+A hosted project has no `docs/quality/` directory. Its Kritik state is the
+`quality` section that `arkaik restore` stored, plus the journal events that
+arrived since. The server folds those events in on every read. Over MCP,
+`kritik_matrix`, `kritik_findings`, `kritik_regressions`, `kritik_issue`,
+`kritik_trend` and `kritik_scope` read it. `kritik_resolve_finding` and
+`kritik_accept_finding` decide a finding. `kritik_score` and
+`kritik_matrix record=true` run a **scoped re-audit**.
+`kritik_open_finding`, `kritik_signals` and `kritik_trip_signal` stay
+repo-only, and so does a comprehensive audit.
+
+Every hosted write goes to one route,
+`POST /api/graph/projects/{id}/quality/events`, and it takes exactly five
+event types:
+
+| Type | Scope | Written by |
+|---|---|---|
+| `quality.finding.resolved` | `graph:write` | `kritik_resolve_finding`, and the GitHub App on merge |
+| `quality.finding.accepted` | `graph:write` | `kritik_accept_finding` |
+| `quality.signal.tripped` | `quality:append` or `graph:write` | a CI job (above) |
+| `quality.assessment.scored` | `graph:write` | hosted `kritik_score` |
+| `quality.audit.completed`, scoped | `graph:write` | hosted `kritik_matrix record=true` |
+
+A batch is all-or-nothing. A refused batch writes nothing, and each refusal
+names the entry's `index`, a `reason`, and usually a `detail` saying what to do
+instead.
+
+**The scoped re-audit loop.** Closing findings doesn't move a score; only a
+re-score does. The session stays hosted: the agent needs the product's code at
+hand to read, at the commit that holds the fixes, not a repo-mode session.
+
+1. `kritik_scope` lists the cells the resolved findings made stale. Its
+   `open_audit` names a scoped re-audit already in progress (or is `null`),
+   and a cell that audit has scored reads `rescored: true`. It is picked the
+   way the server picks the audit an id-less score continues: the last
+   unrecorded audit, in journal order, scored from the current `since`. The
+   server checks every score against the default scope (measured from the
+   newest recorded audit, widened), so `kritik_scope`'s `since` and
+   `widen=false` change what the read shows, not what `kritik_score` accepts.
+2. `kritik_score` with `scope=true` and `commit=<sha>` re-scores each listed
+   cell, with evidence, including a widened cell that didn't move: score it
+   at its current level, and say so in the evidence. Leave `audit_id` off:
+   the server names the audit (`<YYYY-MM>-scoped`, continuing the open one)
+   and returns it.
+3. `kritik_scope` again: every cell should read `rescored: true`.
+4. `kritik_matrix` with `record=true`, `audit_id=<open_audit.audit_id>` (the
+   id `kritik_score` returned, never the scope's `since`) and `commit=<sha>`
+   records it. The server computes the merged scores and counts itself; a
+   caller-supplied `scores` or `counts` is refused.
+
+Hosted scoring is scoped-only. A cell the scope doesn't list is refused
+(`out_of_scope`), and there is no flag to score it anyway. That is a workflow
+guard that keeps a re-audit from drifting into a full one. It is not an access
+control: any `graph:write` caller can resolve a finding, and that widens the
+scope. A comprehensive audit still runs in the repo and lands through
+`arkaik restore`.
+
+Nothing lands in `docs/quality/`. The journal events are the whole record, so a
+**public** repository can re-audit without committing a list of its own
+defects.
+
+**The one-time baseline.** A project whose audit arrived by `arkaik restore`
+has the audit but no recorded reading of it, and a scope is measured from a
+recorded reading. So until one exists, the reads build an implicit baseline
+from the stored section (`packages/schema/src/quality-baseline.ts`):
+
+- It is dated where the audit was taken, and never later than just before the
+  first finding decision. So every fix since the audit stays in the window.
+- It is scored the way the audit saw it: a finding decided since then counts
+  as open again.
+
+`kritik_scope`, `kritik_trend` and the app's Quality page use this baseline.
+The trend shows it as a first row flagged `baseline`. (`arkaik kritik trend`
+marks baseline and scoped rows the same way, in the journal sidecar it reads.)
+The first hosted score writes that same reading
+into the journal for real: a `quality.audit.completed` backdated to the
+baseline's time and flagged `baseline: true`. `kritik_score` returns it and
+says so. After that the synthesis switches off.
+
+Other refusal reasons: `no_baseline` (nothing to re-score from),
+`invalid_assessment` (an unknown or retired criterion, a surface the profile
+doesn't declare, `cross-surface`, or a criterion that doesn't apply there),
+`audit_id_conflict` (the audit named can't take the score), `not_scored`
+(recording an audit with no scores), `already_recorded`, and `scope_mismatch` (the audit was scored against a scope that has since
+moved; score without `audit_id` to open a new one). A malformed entry never
+gets that far: a level outside 0–4, empty evidence, a completion without
+`scope: true`, or one carrying `scores`/`counts` is a plain `400`. If a
+recording's response is lost and you retry it with the same `audit_id`,
+`kritik_matrix` finds that scoped re-audit's reading and returns it as a
+success. `already_recorded` on any other audit, such as the scope's `since`,
+is a real error.
+
 This is the whole agent setup. The rest of this page is the PR automation, which
 is optional.
 

@@ -438,6 +438,58 @@ async function main() {
       String(refusalError),
     );
     state.refuseQuality = null;
+
+    // --- widened inputs and richer refusals (Task 12) -----------------------
+    // A score or a scoped completion names no finding — the refusal falls
+    // back to "entry <index>", and a detail (when the server sends one) is
+    // appended after an em dash.
+    state.refuseQuality = {
+      error: "refused",
+      refusals: [{ index: 0, reason: "out_of_scope", detail: "1 cell to re-score…" }],
+    };
+    let scopeRefusalError;
+    try {
+      await directStore.appendQualityEvents([
+        { type: "quality.assessment.scored", criterion_id: "SEC-01", surface: "web", level: 3, evidence: "x" },
+      ]);
+    } catch (err) {
+      scopeRefusalError = err;
+    }
+    check(
+      "a finding-less refusal names the entry index and carries the server's detail",
+      scopeRefusalError instanceof Error &&
+        scopeRefusalError.message.includes("entry 0: out_of_scope — 1 cell to re-score"),
+      String(scopeRefusalError),
+    );
+    state.refuseQuality = null;
+
+    // A batch is all-or-nothing (mirrors persistMutation) — a two-entry
+    // refusal must read as two, joined by "; ", not run together or dropped
+    // down to one.
+    state.refuseQuality = {
+      error: "refused",
+      refusals: [
+        { index: 0, finding_id: "F-1", reason: "not_open" },
+        { index: 1, reason: "no_baseline", detail: "restore the audit first" },
+      ],
+    };
+    let twoRefusalError;
+    try {
+      await directStore.appendQualityEvents([
+        { type: "quality.finding.resolved", finding_id: "F-1" },
+        { type: "quality.assessment.scored", criterion_id: "SEC-01", surface: "web", level: 1, evidence: "x" },
+      ]);
+    } catch (err) {
+      twoRefusalError = err;
+    }
+    check(
+      "a two-entry refusal is joined with '; ', not run together or dropped",
+      twoRefusalError instanceof Error &&
+        twoRefusalError.message ===
+          "Quality events refused — F-1: not_open; entry 1: no_baseline — restore the audit first",
+      String(twoRefusalError),
+    );
+    state.refuseQuality = null;
   } finally {
     server.close();
     fs.rmSync(tmp, { recursive: true, force: true });

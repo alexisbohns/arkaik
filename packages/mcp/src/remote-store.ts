@@ -30,7 +30,7 @@ import {
   type ValidationResult,
 } from "@arkaik/schema";
 
-import type { LoadedGraph, Store, WriteResult } from "./store";
+import type { HostedQualityInput, LoadedGraph, QualityEventRefusal, Store, WriteResult } from "./store";
 
 /** Events written through this store are attributed to the agent plane. */
 export const REMOTE_ACTOR = "arkaik-agent";
@@ -186,8 +186,12 @@ export function createRemoteStore(options: RemoteStoreOptions): Store {
     // the server holds that journal. Sending an "open" guess from here could
     // only be stale the moment two sessions race, so this method does no
     // checking of its own — it forwards the inputs and lets the server's
-    // verdict (post-fold, under its row lock) be the only one that counts.
-    async appendQualityEvents(inputs): Promise<JournalEvent[]> {
+    // post-fold verdict be the only one that counts. This route is
+    // deliberately UNLOCKED, unlike `/mutations` — no row lock serializes two
+    // posts — which is exactly why a dropped response is ambiguous and a
+    // caller (`kritik_matrix record=true`) needs a retry path rather than a
+    // guarantee that a refusal here means nothing was written.
+    async appendQualityEvents(inputs: readonly HostedQualityInput[]): Promise<JournalEvent[]> {
       try {
         const result = await request<{ events: JournalEvent[] }>("/quality/events", {
           method: "POST",
@@ -197,13 +201,24 @@ export function createRemoteStore(options: RemoteStoreOptions): Store {
       } catch (err) {
         const e = err as Error & {
           status?: number;
-          body?: { error?: string; reason?: string; refusals?: { finding_id: string; reason: string }[] };
+          body?: { error?: string; reason?: string; refusals?: QualityEventRefusal[] };
         };
         if (e.status === 422 && e.body?.error === "refused") {
-          const detail = e.body.refusals
-            ? e.body.refusals.map((r) => `${r.finding_id}: ${r.reason}`).join(", ")
+          const refusals = e.body.refusals;
+          // A score or a scoped completion names no finding — fall back to
+          // the entry's position, and append the server's `detail` (the
+          // "what to do instead" half of the refusal) after an em dash.
+          const detail = refusals
+            ? refusals.map((r) => `${r.finding_id ?? `entry ${r.index}`}: ${r.reason}${r.detail ? ` — ${r.detail}` : ""}`).join("; ")
             : (e.body.reason ?? "refused");
-          throw new Error(`Quality events refused — ${detail}`);
+          const rejection = new Error(`Quality events refused — ${detail}`) as Error & { refusals?: QualityEventRefusal[] };
+          // Carried structured, not just baked into the message: a retry
+          // (kritik_matrix record=true) needs to tell "already recorded — the
+          // earlier attempt landed" apart from every other refusal by reason
+          // code, which a formatted string can't be pattern-matched as
+          // reliably as.
+          if (refusals) rejection.refusals = refusals;
+          throw rejection;
         }
         throw err;
       }

@@ -1,6 +1,6 @@
 ---
 name: kritik
-version: 0.5.0
+version: 0.6.0
 description: >
   Audit this product's quality with the Kritik framework — score each criterion
   on each surface against observable maturity anchors, record findings with
@@ -286,9 +286,14 @@ finding. If there is no journal, skip this step; Kritik does not need one, and
 starting one just to hold quality events is not your call to make.
 
 > **If `docs/arkaik/arkaik.json` exists, the map is hosted** — it lives in an
-> arkaik account, not in a file here, and there is no sidecar to append to. Use
-> the `arkaik-mcp` tools if they are available, and if they are not, say so and
-> skip the step rather than writing a file nothing reads.
+> arkaik account, not in a file here, and there is no sidecar to append to.
+> For a full audit like this one, skip this step and say so: the audit reaches
+> the hosted project through step 9, and the hosted `arkaik-mcp` tools cannot
+> record it (`kritik_matrix record=true` in a hosted session records only a
+> scoped re-audit, and refuses without that re-audit's `audit_id`). Don't
+> write a file nothing reads. Re-scoring after fixes on a hosted project is a
+> different loop, with nothing to append by hand: see *Hosted scoped
+> re-audit* under *Between audits*.
 
 **Always set `actor`** — a trend is only filterable by assessor kind if every
 writer says who it was, and an audit nobody can attribute is an audit nobody can
@@ -466,8 +471,13 @@ matrix --record` wrote it, and a re-recorded audit id keeps only its latest
 reading. Rows are ordered by when they were recorded, never by id, so a scoped
 re-audit named `2026-09-scoped` lands where it happened. A framework major bump
 between two audits breaks the comparison there (SPEC § 8): the row prints,
-without an arrow. `kritik_trend` is the same table over MCP, and the Quality
-page's matrix wears the same arrows against the last recorded audit.
+without an arrow. A row marked `baseline` is a restored audit's reading:
+rebuilt from its stored scores until the first hosted score records it for
+real, recorded after that. A scoped re-audit's row
+says how many cells it re-scored and which audit it measured from.
+`kritik_trend` is the same table over MCP, and the Quality page's matrix wears
+the same arrows against the last recorded audit. On a hosted project that was
+restored but never recorded, both start from that baseline row.
 
 ### Scope — re-score only what your fixes touched
 
@@ -555,9 +565,133 @@ re-scored *inside* that audit, move those scores into a new one first.
 
 The scope reads the journal, so it needs one, plus a recorded audit to measure
 from. It is a work list, never a score: you still cite evidence for every cell.
-Over MCP it is `kritik_scope` (it works on a hosted project too, since it plans an
-audit rather than running one), with `kritik_score` `scope: true` and
-`kritik_matrix` `scope: true` for the other two steps.
+Over MCP in a repo session it is `kritik_scope`, with `kritik_score` `scope: true`
+and `kritik_matrix` `scope: true` for the other two steps. A hosted project runs
+the same pass differently. See the next section.
+
+### Hosted scoped re-audit
+
+This is the same pass for a project whose map is **hosted**:
+`docs/arkaik/arkaik.json` exists, and this session's `arkaik-mcp` was started
+without `--bundle`, so it reads and writes the hosted project. Not sure which
+one you have? Call `kritik_signals` with `domain: "SEC"`. It only reads, and in
+a hosted session it refuses, saying the session is connected to a hosted
+project. The whole pass runs through three MCP tools and writes **nothing to
+disk**. No `docs/quality/` file is created, changed or committed, and nothing
+needs a restore afterwards. The scores and the recording go straight to the
+hosted journal. That's the point for a **public** repository: the re-audit
+never commits a list of the product's defects. The
+`arkaik kritik scope|score|matrix` verbs from the section above work on
+`docs/quality/` and a journal sidecar, so don't use them for this pass.
+
+Those hosted scores and recordings live only in the hosted journal. A later
+`arkaik restore` replaces that journal wholesale with the repo's, so it loses
+every hosted score and recording the repo's journal doesn't carry, and its
+history-loss guard only counts events, so it won't always stop it. **Never
+run `arkaik restore` over a hosted re-audit in progress** (`kritik_scope`
+shows an `open_audit`), and before any restore, tell the human it drops the
+hosted scores and recordings the repo's journal doesn't carry.
+
+You are still reading code, so you need the product's code at hand, at the
+commit that holds the fixes (usually the up-to-date default branch). That does not
+mean switching to a repo-mode session: stay connected to the hosted project,
+and read the files from the checkout beside it. Take the sha with
+`git rev-parse HEAD`, and pass it as `commit` on every `kritik_score` and on
+the `kritik_matrix` recording (`kritik_scope` takes none). The commit is the
+only thing that lets a hosted reader check your evidence against the tree it
+cites.
+
+1. **`kritik_scope`.** Its cells are your checklist: for every cell, note
+   `criterion_id`, `surface`, `kind`, and `current.level` and
+   `current.audit_id` when it has them. Report `unknown` and `unscorable`
+   exactly as above. If `since` is `null`, or the call refuses because the
+   project has no quality section, stop and tell the human. There is no audit
+   to re-score from, and hosted scoring refuses every cell (`no_baseline`).
+   The project needs a comprehensive audit in the repo, landed with
+   `arkaik restore`, before this pass means anything. If `cells` is empty,
+   there is nothing to re-score and nothing to record.
+
+   `open_audit` is the scoped re-audit already in progress and not yet
+   recorded, or `null`. When it is set, you are continuing it (an earlier
+   session started it): a cell marked `rescored: true` is already done, and
+   you score only the rest.
+
+   On a project whose audit arrived by `arkaik restore` and was never
+   recorded, the scope measures from an **implicit baseline**: the restored
+   audit's reading, dated where it was taken. That's expected, and
+   `kritik_trend` shows it as a first row flagged `baseline`.
+
+2. **`kritik_score` for every cell not yet `rescored`**, with `criterion_id`,
+   `surface`, `level`, `evidence`, **`scope: true`** and **`commit: <sha>`**.
+   Leave `audit_id` off. The server names the scoped audit
+   (`<YYYY-MM>-scoped`), continues the open one if there is one, and returns
+   it as `audit_id`. Every score in the pass should return the same id, and
+   it should match `open_audit.audit_id` when that was set. If a reply names a
+   different one, stop before scoring more and tell the human: someone
+   recorded or restored an audit since, and the scope moved.
+
+   - Without `scope: true` a hosted score is refused. Hosted scoring is
+     scoped-only.
+   - **A widened cell is not optional.** Look at it. If it didn't move,
+     re-score it at the `current.level` step 1 noted, with evidence that says
+     so ("Unchanged since `<current.audit_id>`: …" plus the citations you
+     checked). Skipping it drops the cell out of the window for good once you
+     record.
+   - The first hosted score on a restored project also returns a
+     `quality.audit.completed` with `baseline: true` in `events`, plus a note.
+     The server has recorded the restored audit's reading, backdated, so the
+     trend has a real first row. It happens once. Nothing for you to do.
+   - A note saying no commit was given means you forgot `commit`. Score the
+     cell again with it; the new score replaces the old one.
+   - **`out_of_scope`** means the cell isn't on the list, and there is no
+     hosted way to score it: a hosted re-audit re-scores only what a fix made
+     stale. That guard keeps the pass scoped. It is not an access control:
+     anyone with `graph:write` can resolve findings, and a resolution widens
+     the scope. **Never resolve a finding to bring its cell into scope.** Only
+     a merged fix resolves a finding. A cell you believe moved but isn't
+     listed goes into your report, and into the next comprehensive audit.
+   - **`audit_id_conflict`** means the audit the score would land in can't
+     take it (already recorded, the scope's `since`, or an id that sorts
+     before a newer audit). If you passed `audit_id`, score again without it
+     so the server names the audit. If you didn't, the refusal suggests an id
+     (`e.g. …`): score again with that id as `audit_id`. That id is now the
+     pass's audit (`kritik_scope`'s `open_audit` names it from then on): pass
+     it on every score left and on the recording. Step 3's check shows which
+     cells still need a score under it.
+   - **A new defect can't be opened here.** `kritik_open_finding` is
+     repo-only. Report it to the human with its evidence, and don't bend a
+     score to stand in for it.
+
+3. **`kritik_scope` again, before recording.** Every cell must read
+   `rescored: true`. Score any that doesn't, then check again. A finding
+   resolved while you worked can add a cell, and that one needs a score too.
+   A pass spread over two sessions ends here the same way: record only when
+   no cell is left.
+
+4. **`kritik_matrix` with `record: true`, `audit_id: <open_audit.audit_id>`
+   and `commit: <sha>`.** That id is the one every `kritik_score` returned.
+   **Never pass the scope's `since`**, or any other audit: recording one of
+   those is refused, and it is a real error, not a retry. Without `audit_id`
+   the call is refused too. Don't pass `scope`; it is implied. You send no
+   scores and no counts. The server computes the merged matrix, with every
+   cell you didn't re-score at its last reading, marked
+   `scope: { partial, cells, since }`. The reply returns that `scope` and
+   `left_unscored`. `left_unscored` should be empty. If it isn't, those cells
+   have dropped out of the next scope. Name them in your report.
+
+   If the call fails on the network and you retry it with the same
+   `audit_id`, a recording of that re-audit that already landed comes back as
+   a success, not a duplicate.
+
+   Recording closes the window, as in repo mode. A `scope_mismatch` refusal
+   means the scope moved after you scored, and that audit can no longer be
+   recorded. Start again at step 1 and re-score every cell it lists, still
+   without `audit_id`. The server opens a new scoped audit and returns its
+   id.
+
+Report back as for any audit (*Reporting back*). Say it was a hosted scoped
+re-audit, and name its `audit_id` and the commit it read. List any cell you
+left unscored, anything `out_of_scope`, and any new defect you couldn't open.
 
 ### A tripped signal is not a finding
 
@@ -570,9 +704,11 @@ product, and what it names is where to look next.
 
 ## When a fix merges
 
-Two things close a finding, and they are not alternatives.
+Where a finding is closed depends on where its audit lives. Look before you act:
+**does this checkout have `docs/quality/`?**
 
-**Always, in the repo:**
+**Yes — the audit lives in the repo.** Two things close a finding, and they are
+not alternatives. Always, in the repo:
 
 ```
 arkaik kritik finding resolve <id> --by <pr-url>
@@ -583,29 +719,42 @@ it. It appends `quality.finding.resolved` to the journal sidecar when there is
 one and says so when there is not, exactly as step 7 describes. Re-running is
 safe: a finding already resolved is left alone and no second event is written.
 
-**And, on a project the Arkaik GitHub App delivers to, the App may do it too.**
-Merging the PR appends `quality.finding.resolved` to the **hosted** project's
+And, on a project the Arkaik GitHub App delivers to, the App **may** do it too:
+merging the PR appends `quality.finding.resolved` to the **hosted** project's
 journal. Nothing reaches this checkout, which is why the command above is still
-yours to run.
-
-*May*, because the App can only close a finding the hosted project already
-carries in its own `quality` section, and it carries one only once somebody has
-put it there — `arkaik restore` folds `docs/quality/` in as it lands the bundle
-(step 9 above). Until a restore has run, the hosted project knows none of this
-repo's findings, so the App matches nothing and says so; after one, it knows
-whatever that restore sent, which is not necessarily what `findings.json` says
+yours to run. *May*, because the App can only close a finding the hosted project
+already carries in its own `quality` section, and it carries one only once
+`arkaik restore` has folded `docs/quality/` in (step 9 above) — and then only
+what that restore sent, which is not necessarily what `findings.json` says
 today. Treat the App as a convenience that might fire, never as the thing that
-closed the finding. The repo command above is what makes `findings.json` true,
-and it is not optional.
+closed the finding.
 
-*Which case am I in?* Two facts, and only the first is visible from here:
-`docs/arkaik/arkaik.json` exists — what `arkaik link` writes, so there is a
-hosted project at all — **and** this repository is linked to that project under
-its **Repos** button in the app, which is what the webhook actually reads. Those
-two links are independent; either exists without the other, so the file on its
-own proves nothing about the App. If you cannot confirm the second, treat the
-project as repo-only. The repo command is required in both cases anyway, and
-running it on a hosted project costs nothing.
+**No — the audit lives only in the hosted project.** This is the setup for a
+public repository that keeps its findings off the repo (committing
+`docs/quality/` there publishes every open finding with its `file:line`
+evidence). The hosted journal is the record, and there is no repo command to
+run. **Never create `docs/quality/` to resolve a finding** — that is exactly the
+publication the setup exists to avoid. Close it one of two ways:
+
+- Put the closing verb in the PR body (below), and let the Arkaik GitHub App
+  append `quality.finding.resolved` when the PR merges. This needs the
+  repository linked to the hosted project under its **Repos** button in the app.
+- Or, from a hosted session, call `kritik_resolve_finding` with the finding id
+  and `resolved_by` set to the merged PR's URL — after the merge, never before,
+  and only when the App did not already close it (`kritik_findings` shows the
+  status; resolving twice is a no-op anyway).
+
+Either way, the fix now shows up in `kritik_scope`, which is how the next
+[hosted scoped re-audit](#hosted-scoped-re-audit) finds the cells it moved.
+
+*Is the App delivering here?* Two facts, and only the first is visible from a
+checkout: `docs/arkaik/arkaik.json` exists — what `arkaik link` writes, so there
+is a hosted project at all — **and** this repository is linked to that project
+under its **Repos** button, which is what the webhook actually reads. Those two
+links are independent; either exists without the other, so the file on its own
+proves nothing about the App. If you cannot confirm the second, don't count on
+the App: in the repo case run the command anyway; in the hosted-only case use
+`kritik_resolve_finding` after the merge.
 
 The App reads two channels, and **both need a closing verb**:
 
@@ -685,8 +834,9 @@ You will not always audit everything, and you should not pretend otherwise.
   contract, then verify Critical/High adversarially before rolling up.
 - **A scoped re-audit** re-scores the cells a batch of fixes made stale, and
   nothing else. `arkaik kritik scope` lists them (see "Scope" under *Between
-  audits*). It is the between-milestone way to make the matrix catch up with
-  fixes.
+  audits*). On a hosted project it runs over MCP instead, with nothing written
+  to disk (see "Hosted scoped re-audit"). It is the between-milestone way to
+  make the matrix catch up with fixes.
 - **A partial audit** is legitimate and common: one surface, one domain, or the
   criteria touched by a release. Score only what you actually checked. **A cell
   you did not look at gets no row** — leaving it out reads as "not assessed",

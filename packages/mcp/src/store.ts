@@ -102,16 +102,67 @@ export interface Store {
   /** For the startup banner. */
   describe(): string;
   /**
-   * Hosted-only: append whitelisted quality finding events (resolved/accepted)
-   * via `POST …/quality/events`. `undefined` on the file store — in a repo the
-   * kritik tools write the findings file and journal themselves, which is the
-   * dual-write the CLI performs; only a session with no checkout needs the
-   * server to hold the pen.
+   * Hosted-only: append whitelisted quality events via
+   * `POST …/quality/events`. `undefined` on the file store — in a repo the
+   * kritik tools write the findings file, the audit sidecars and the journal
+   * themselves, which is the dual-write the CLI performs; only a session with
+   * no checkout needs the server to hold the pen.
    */
-  appendQualityEvents?(
-    inputs: readonly { type: string; finding_id: string; resolved_by?: string; reason?: string }[],
-  ): Promise<JournalEvent[]>;
+  appendQualityEvents?(inputs: readonly HostedQualityInput[]): Promise<JournalEvent[]>;
 }
+
+/**
+ * A structural copy of `lib/services/graph/quality-events.ts`'s
+ * `QualityEventInput` — the five event types `POST …/quality/events`
+ * accepts. Copied rather than imported: `packages/mcp` cannot depend on
+ * `lib/`, the Next.js app, so this is kept in lockstep by hand whenever that
+ * union changes (issue #473).
+ */
+export type HostedQualityInput =
+  | { type: "quality.finding.resolved"; finding_id: string; resolved_by?: string }
+  | { type: "quality.finding.accepted"; finding_id: string; reason: string }
+  | {
+      type: "quality.signal.tripped";
+      criterion_id: string;
+      surface: string;
+      signal: string;
+      commit: string;
+      detail?: string;
+    }
+  | {
+      type: "quality.assessment.scored";
+      criterion_id: string;
+      surface: string;
+      level: number;
+      evidence: string;
+      audit_id?: string;
+      commit?: string;
+    }
+  | { type: "quality.audit.completed"; scope: true; audit_id: string; commit?: string };
+
+/**
+ * A structural copy of `quality-events.ts`'s `QualityEventRefusal` — why one
+ * entry of a `POST …/quality/events` batch was refused. `index` is the one
+ * field every reason carries; `finding_id` only the two decision reasons.
+ * `already_recorded` is the reason `kritik_matrix record=true` pattern-matches
+ * for its retry safety (issue #473) — a POST with no idempotency key whose
+ * response was dropped looks, on retry, exactly like this refusal.
+ */
+export type QualityEventRefusal = {
+  index: number;
+  reason:
+    | "unknown_finding"
+    | "not_open"
+    | "invalid_assessment"
+    | "out_of_scope"
+    | "no_baseline"
+    | "not_scored"
+    | "already_recorded"
+    | "scope_mismatch"
+    | "audit_id_conflict";
+  finding_id?: string;
+  detail?: string;
+};
 
 /** The snapshot's node ids, in order — the input side of the provenance check. */
 function nodeIdsOf(nodes: readonly unknown[]): string[] {
