@@ -37,7 +37,7 @@ import { isSeedProjectId } from "@/lib/data/seed-project-id";
 import type { ProjectBundle } from "@/lib/data/types";
 import { useModKeyLabel } from "@/lib/hooks/useModKeyLabel";
 import { useOptionHeld } from "@/lib/hooks/useOptionHeld";
-import { useShortcuts } from "@/lib/hooks/useShortcut";
+import { GUARDED_HOTKEY, useShortcuts } from "@/lib/hooks/useShortcut";
 import { NAV_HOTKEY_ROUTES, formatChord, getShortcut } from "@/lib/utils/keyboard-shortcuts";
 
 interface ProjectSidebarProps {
@@ -83,6 +83,15 @@ interface ProjectSidebarProps {
 // same map below.
 const LIBRARY_SPECIES = ["view", "flow", "data-model", "api-endpoint"] as const satisfies readonly SpeciesId[];
 
+// An open modal owns the keyboard: ⌥D inside Delivery's new-node dialog must
+// not navigate away and drop the draft. The mobile sidebar is itself a Radix
+// sheet — `role="dialog"` and `data-mobile="true"` on the same content
+// element — and it hosts these very links, so it does not count.
+const OPEN_MODAL_SELECTOR = [
+  "[role='dialog'][data-state='open']:not([data-mobile='true'])",
+  "[role='alertdialog'][data-state='open']",
+].join(", ");
+
 // The Search chip's skin, shared so the ⌘K chip and the ⌥ chips are one family.
 const SIDEBAR_KBD_CLASS =
   "ml-auto inline-flex items-center rounded border bg-sidebar-accent px-1.5 py-0.5 font-sans text-[10px] font-medium group-data-[collapsible=icon]:hidden";
@@ -116,10 +125,17 @@ export function ProjectSidebar({
   const optionHeld = useOptionHeld();
   // Registered here because the sidebar already owns every destination and is
   // mounted on every project page (in a sheet on mobile, but mounted).
+  // Guarded, so a declined chord (a modal is open, or the key is auto-
+  // repeating) leaves the keystroke untouched rather than swallowing it.
   useShortcuts(
     Object.entries(NAV_HOTKEY_ROUTES).map(([shortcutId, route]) => ({
       id: shortcutId,
-      callback: () => router.push(`/project/${projectId}/${route}`),
+      callback: (event: KeyboardEvent) => {
+        if (event.repeat || document.querySelector(OPEN_MODAL_SELECTOR)) return;
+        event.preventDefault();
+        router.push(`/project/${projectId}/${route}`);
+      },
+      options: GUARDED_HOTKEY,
     })),
   );
   // Next's <Link> treats an Option-held click as a "modified click" and lets
