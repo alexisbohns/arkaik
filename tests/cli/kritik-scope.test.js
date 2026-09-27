@@ -230,6 +230,11 @@ try {
     intoMeasured.status === 1 && intoMeasured.stderr.includes("measured from"),
     intoMeasured.stderr,
   );
+  check(
+    "and names the flag to name a new audit with",
+    intoMeasured.stderr.includes("--audit"),
+    intoMeasured.stderr,
+  );
 
   const sortsEarly = run(["score", "SEC-01", "web", "3", "--evidence", "x.ts:1", "--scope", "--audit", "2026-01-fix"]);
   check(
@@ -358,6 +363,11 @@ try {
   check(
     "--scope refuses a default scoped audit that would sort before the newest on disk",
     early.status === 1 && early.stderr.includes("would sort before") && early.stderr.includes("2099-01"),
+    early.stderr,
+  );
+  check(
+    "and names the flag to name it with, since the CLI naming rule is mode-neutral now",
+    early.stderr.includes("--audit"),
     early.stderr,
   );
 } finally {

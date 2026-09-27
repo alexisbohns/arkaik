@@ -460,6 +460,38 @@ export function auditCompletedInput(
 }
 
 /**
+ * `quality.assessment.scored` for one hosted score (issue #473) — the hosted
+ * twin of a row a repo checkout writes into an audit's `scores.json`. Where
+ * `auditCompletedInput` is the roll-up a *finished* audit reports,
+ * this is one cell of it, written as it happens: a hosted session has no
+ * `scores.json` to accumulate into, so each score is its own event, and the
+ * read folds them latest-wins per `(criterion × surface)` (`foldQualityEvents`)
+ * the way `upsertAssessment` folds a repo's rows in memory.
+ *
+ * `since` is the recorded audit the scoped re-audit was measured from —
+ * always present, because a hosted score only happens through the scoped
+ * re-audit loop (`kritik_scope` → `kritik_score scope=true`); there is no
+ * hosted equivalent of a comprehensive audit's ad hoc `score`.
+ */
+export function assessmentScoredInput(
+  assessment: Pick<QualityAssessment, "criterion_id" | "surface" | "level" | "evidence" | "audit_id" | "commit">,
+  since: string,
+): EventInput {
+  return {
+    type: "quality.assessment.scored",
+    payload: {
+      audit_id: assessment.audit_id,
+      criterion_id: assessment.criterion_id,
+      surface: assessment.surface,
+      level: assessment.level,
+      evidence: assessment.evidence,
+      ...(assessment.commit !== undefined ? { commit: assessment.commit } : {}),
+      scope: { since },
+    },
+  };
+}
+
+/**
  * `quality.finding.opened` for a retained finding.
  *
  * `severity` and `priority` are stored on the EVENT while being forbidden on
@@ -507,7 +539,7 @@ export function findingResolvedInput(
  * patches the file) and no event is written. This event exists for writes
  * made AWAY from the checkout: a hosted project has no findings file, so the
  * journal is the only place the decision can live, and the read derives the
- * status from it (`foldFindingEvents`).
+ * status from it (`foldQualityEvents`).
  */
 export function findingAcceptedInput(
   finding: Pick<QualityFinding, "id" | "node_ids">,

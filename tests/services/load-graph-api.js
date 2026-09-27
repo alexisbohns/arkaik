@@ -77,7 +77,7 @@ function loadGraphApi() {
 
   const src = (...parts) => path.join(ROOT, ...parts);
 
-  // The REAL module: `foldFindingEvents`, which the project GET route calls
+  // The REAL module: `foldQualityEvents`, which the project GET route calls
   // to fold quality.finding.resolved events over a bundle's stored findings on
   // read (issue #382 phase E). Pure, and its only runtime import is
   // @arkaik/schema, so COMMON covers it.
@@ -98,7 +98,7 @@ function loadGraphApi() {
   // and the project GET route, so it is written before any of them.
   write("etag.js", transpile(src("lib", "services", "graph", "etag.ts"), "etag.ts", COMMON));
   // The quality/events POST route's planner — pure, over @arkaik/schema and
-  // the real `foldFindingEvents` above.
+  // the real `foldQualityEvents` above.
   write(
     "quality-events.js",
     transpile(src("lib", "services", "graph", "quality-events.ts"), "quality-events.ts", COMMON),

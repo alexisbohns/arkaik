@@ -178,7 +178,7 @@ export function deriveAuditScope(
   const sinceTs = isString(anchor.ts) ? anchor.ts : null;
 
   // Resolutions in order, one entry per finding. A later NAMED `resolved_by`
-  // wins over an earlier one — the rule `foldFindingEvents` applies, so the
+  // wins over an earlier one — the rule `foldQualityEvents` applies, so the
   // run sheet and the findings board name the same PR.
   const resolutions = new Map<string, { resolved_by?: string; node_ids: Set<string> }>();
   for (const event of ordered.slice(sinceIndex + 1)) {
@@ -339,6 +339,118 @@ export function deriveAuditScope(
   );
 
   return { since, since_ts: sinceTs, cells: sorted, findings: drivers, resolved_by: resolvedBy, unknown, unscorable, widened };
+}
+
+/**
+ * The pure naming core of a scoped re-audit's target id (issue #473).
+ *
+ * Repo mode and the hosted server agree on one meaning for "which audit does
+ * this score land in" and disagree only on where the inputs come from: a repo
+ * checkout's `scopedAuditTarget` (`cli/kritik-audit.ts`) reads `known` off
+ * disk with `listAuditIds` and finds `open` by checking the newest directory's
+ * `scores.json`; the hosted server reads both from the restored section and
+ * journal instead. Neither touches fs from here, so this is what actually
+ * decides, and the fs-based caller is a thin adapter over it.
+ */
+export interface ScopedAuditIdInput {
+  /** The recorded audit the scope is measured from. */
+  since: string;
+  /** `YYYY-MM`, the month a new scoped audit is named for. */
+  month: string;
+  requested?: string;
+  /**
+   * Every audit id that exists: on disk in a repo, in the section and
+   * journal when hosted. Order does not matter — the newest is found by
+   * sorting, not by position, since the hosted caller builds this from a
+   * union of several sources with no inherent order.
+   */
+  known: readonly string[];
+  recorded: readonly string[];
+  /** A scoped audit in progress from the same `since`, not yet recorded — continued rather than forked. */
+  open?: string;
+}
+
+/**
+ * The audit id a scoped re-score writes into, or a refusal saying why none
+ * fits.
+ *
+ * A scoped re-audit is its own audit, never the one it was scoped from: that
+ * audit's recorded reading is history, and re-scoring inside it would rewrite
+ * what the journal says was measured — the same is true of any OTHER recorded
+ * audit, which is just as much history. And it must sort **after every known
+ * audit id**, because the merge is latest-wins in lexical id order — a scoped
+ * audit that sorts earlier has its fresh scores silently outvoted by the stale
+ * ones it was meant to replace.
+ *
+ * Unrequested, it continues the scoped audit already in progress (`open`,
+ * when the caller found one and no known id sorts after it — an `open` a
+ * newer audit already outsorts is stale and falls through to naming a fresh
+ * candidate instead), else opens `<month>-scoped`, then `<month>-scoped-02`
+ * and on, the convention SPEC § 6 names.
+ */
+export function scopedAuditId(input: ScopedAuditIdInput): string {
+  const { since, month, requested, known, recorded, open } = input;
+  const newest = [...known].sort().at(-1);
+
+  if (requested !== undefined) {
+    if (requested === since) {
+      throw new Error(
+        `"${requested}" is the audit this scope is measured from — its recorded reading is history. ` +
+          `Name a new audit (e.g. \`${suggestedAuditId(input)}\`); every other cell keeps its score through the merge.`,
+      );
+    }
+    if (recorded.includes(requested)) {
+      throw new Error(`"${requested}" is already recorded — its reading is history. Name a new audit.`);
+    }
+    if (newest !== undefined && requested < newest) {
+      throw new Error(
+        `"${requested}" sorts before "${newest}", and audits merge latest-wins in lexical order — ` +
+          `its scores would be outvoted by the older ones they replace. Name one that sorts last (e.g. \`${suggestedAuditId(input)}\`).`,
+      );
+    }
+    return requested;
+  }
+
+  if (open !== undefined && (newest === undefined || open >= newest)) return open;
+
+  for (const candidate of scopedCandidates(month)) {
+    if (known.includes(candidate)) continue;
+    if (newest !== undefined && candidate < newest) {
+      throw new Error(
+        `"${candidate}" would sort before "${newest}", so its scores would lose the latest-wins merge. ` +
+          `Name the scoped audit yourself, one that sorts after "${newest}" (e.g. \`${suggestedAuditId(input)}\`).`,
+      );
+    }
+    return candidate;
+  }
+  throw new Error(`99 scoped audits in ${month} — name the next one yourself.`);
+}
+
+/** `<month>-scoped`, then `<month>-scoped-02` … `-99` — the convention SPEC § 6 names, in the order a new audit takes them. */
+function* scopedCandidates(month: string): Generator<string> {
+  for (let n = 1; n < 100; n++) yield n === 1 ? `${month}-scoped` : `${month}-scoped-${String(n).padStart(2, "0")}`;
+}
+
+/**
+ * The example id a refusal suggests — one the caller could send back and have
+ * accepted. Suggesting `<month>-scoped` blindly could name the very id just
+ * refused (a scope measured from this month's own scoped audit) or one that
+ * already exists, and an agent follows the example literally: it would loop.
+ *
+ * So it walks the same candidates the unrequested path does and takes the
+ * first that is taken by nothing (known, recorded, the scope's own `since`,
+ * the requested id) and sorts after every one of them. When no candidate this
+ * month can — a later month is already known — it names one that sorts after
+ * the newest taken id by extending it, which by construction nothing else is.
+ */
+function suggestedAuditId({ since, month, requested, known, recorded }: ScopedAuditIdInput): string {
+  const taken = new Set<string>([...known, ...recorded, since, ...(requested !== undefined ? [requested] : [])]);
+  const floor = [...taken].sort().at(-1);
+  for (const candidate of scopedCandidates(month)) {
+    if (taken.has(candidate)) continue;
+    if (floor === undefined || candidate > floor) return candidate;
+  }
+  return `${floor}-scoped`;
 }
 
 /**

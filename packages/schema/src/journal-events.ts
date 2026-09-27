@@ -231,6 +231,27 @@ export const QualityAuditCompletedEventSchema = z
   })
   .catchall(z.unknown());
 
+/**
+ * One (criterion × surface) score written by a hosted session (issue #473) —
+ * the hosted twin of a row in an audit's `scores.json`. The read folds these
+ * latest-wins per cell over `snapshot.quality.assessments`, the rule
+ * `loadCurrentQualitySection` applies across audit dirs. `scope.since` is the
+ * recorded audit the scoped re-audit was measured from.
+ */
+export const QualityAssessmentScoredEventSchema = z
+  .object({
+    ...envelope,
+    type: z.literal("quality.assessment.scored"),
+    audit_id: z.string(),
+    criterion_id: z.string(),
+    surface: z.string(),
+    level: z.number().int().min(0).max(4),
+    evidence: z.string(),
+    commit: z.string().optional(),
+    scope: z.object({ since: z.string().optional() }).catchall(z.unknown()).optional(),
+  })
+  .catchall(z.unknown());
+
 export const QualityFindingOpenedEventSchema = z
   .object({
     ...envelope,
@@ -296,6 +317,7 @@ export const JOURNAL_EVENT_SCHEMAS = {
   "ref.status_changed": RefStatusChangedEventSchema,
   "journal.baseline": JournalBaselineEventSchema,
   "quality.audit.completed": QualityAuditCompletedEventSchema,
+  "quality.assessment.scored": QualityAssessmentScoredEventSchema,
   "quality.finding.opened": QualityFindingOpenedEventSchema,
   "quality.finding.resolved": QualityFindingResolvedEventSchema,
   "quality.finding.accepted": QualityFindingAcceptedEventSchema,
@@ -324,6 +346,7 @@ export const KnownJournalEventSchema = z.union([
   RefStatusChangedEventSchema,
   JournalBaselineEventSchema,
   QualityAuditCompletedEventSchema,
+  QualityAssessmentScoredEventSchema,
   QualityFindingOpenedEventSchema,
   QualityFindingResolvedEventSchema,
   QualityFindingAcceptedEventSchema,

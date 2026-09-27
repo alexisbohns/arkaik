@@ -211,11 +211,13 @@ for (const field of ["criterion_id", "surface", "signal", "commit"]) {
 }
 {
   const parsed = parseQualityEventInputs({ events: [{ type: "node.created", id: "V-x" }] });
-  check("unknown type names all three legal values",
+  check("unknown type names all five legal values",
     !Array.isArray(parsed) &&
     parsed.error.includes("quality.signal.tripped") &&
     parsed.error.includes("quality.finding.resolved") &&
-    parsed.error.includes("quality.finding.accepted"), JSON.stringify(parsed));
+    parsed.error.includes("quality.finding.accepted") &&
+    parsed.error.includes("quality.assessment.scored") &&
+    parsed.error.includes("quality.audit.completed"), JSON.stringify(parsed));
 }
 {
   // No section, no prior events, no findings anywhere — a trip still plans.
@@ -249,6 +251,389 @@ for (const field of ["criterion_id", "surface", "signal", "commit"]) {
     plan.ok === false && plan.refusals.length === 1 && plan.refusals[0].finding_id === "F-nope", JSON.stringify(plan));
 }
 
+// --- #473: quality.assessment.scored + scoped quality.audit.completed ------
+
+const SCORED = {
+  type: "quality.assessment.scored",
+  criterion_id: "SEC-01",
+  surface: "web",
+  level: 3,
+  evidence: "Verified via curl against a fresh instance.",
+  audit_id: "2026-09-27",
+  commit: "0123456789abcdef0123456789abcdef01234567",
+};
+
+{
+  const parsed = parseQualityEventInputs({ events: [SCORED] });
+  check("a valid scored entry parses", Array.isArray(parsed) && parsed.length === 1, JSON.stringify(parsed));
+  check("the parsed scored entry equals the input", Array.isArray(parsed) && JSON.stringify(parsed[0]) === JSON.stringify(SCORED), JSON.stringify(parsed));
+}
+{
+  const minimal = { type: "quality.assessment.scored", criterion_id: "SEC-01", surface: "web", level: 0, evidence: "e" };
+  const parsed = parseQualityEventInputs({ events: [minimal] });
+  check("a minimal scored entry (no audit_id/commit) parses", Array.isArray(parsed) && !("audit_id" in parsed[0]) && !("commit" in parsed[0]), JSON.stringify(parsed));
+}
+for (const level of [5, 2.5, "3", -1]) {
+  const parsed = parseQualityEventInputs({ events: [{ ...SCORED, level }] });
+  check(`a scored level of ${JSON.stringify(level)} is refused`, !Array.isArray(parsed) && parsed.error.includes("level"), JSON.stringify(parsed));
+}
+{
+  const missingEvidence = { ...SCORED, evidence: undefined };
+  const parsed = parseQualityEventInputs({ events: [missingEvidence] });
+  check("scored without evidence is refused", !Array.isArray(parsed) && parsed.error.includes("evidence"), JSON.stringify(parsed));
+}
+{
+  const emptyCriterion = { ...SCORED, criterion_id: "" };
+  const parsed = parseQualityEventInputs({ events: [emptyCriterion] });
+  check("scored with an empty criterion_id is refused", !Array.isArray(parsed) && parsed.error.includes("criterion_id"), JSON.stringify(parsed));
+}
+{
+  const emptyAuditId = { ...SCORED, audit_id: "" };
+  const parsed = parseQualityEventInputs({ events: [emptyAuditId] });
+  check("scored with an empty audit_id is refused", !Array.isArray(parsed) && parsed.error.includes("audit_id"), JSON.stringify(parsed));
+}
+{
+  const emptyCommit = { ...SCORED, commit: "" };
+  const parsed = parseQualityEventInputs({ events: [emptyCommit] });
+  check("scored with an empty commit is refused", !Array.isArray(parsed) && parsed.error.includes("commit"), JSON.stringify(parsed));
+}
+
+const AUDIT_COMPLETED = {
+  type: "quality.audit.completed",
+  scope: true,
+  audit_id: "2026-09-27",
+  commit: "0123456789abcdef0123456789abcdef01234567",
+};
+
+{
+  const parsed = parseQualityEventInputs({ events: [AUDIT_COMPLETED] });
+  check("a valid scoped audit.completed parses", Array.isArray(parsed) && parsed.length === 1, JSON.stringify(parsed));
+  check("the parsed audit.completed entry equals the input", Array.isArray(parsed) && JSON.stringify(parsed[0]) === JSON.stringify(AUDIT_COMPLETED), JSON.stringify(parsed));
+}
+{
+  const minimal = { type: "quality.audit.completed", scope: true, audit_id: "2026-09-27" };
+  const parsed = parseQualityEventInputs({ events: [minimal] });
+  check("a minimal scoped audit.completed (no commit) parses", Array.isArray(parsed) && !("commit" in parsed[0]), JSON.stringify(parsed));
+}
+{
+  const missingScope = { type: "quality.audit.completed", audit_id: "2026-09-27" };
+  const parsed = parseQualityEventInputs({ events: [missingScope] });
+  check("audit.completed without scope is refused", !Array.isArray(parsed) && parsed.error.includes("scope"), JSON.stringify(parsed));
+}
+{
+  const falseScope = { ...AUDIT_COMPLETED, scope: false };
+  const parsed = parseQualityEventInputs({ events: [falseScope] });
+  check("audit.completed with scope: false is refused", !Array.isArray(parsed) && parsed.error.includes("scope"), JSON.stringify(parsed));
+}
+{
+  const withScores = { ...AUDIT_COMPLETED, scores: { web: { SEC: 3 } } };
+  const parsed = parseQualityEventInputs({ events: [withScores] });
+  check("audit.completed with scores present is refused", !Array.isArray(parsed) && parsed.error.includes("computed by the server"), JSON.stringify(parsed));
+}
+{
+  const withCounts = { ...AUDIT_COMPLETED, counts: { open: 1 } };
+  const parsed = parseQualityEventInputs({ events: [withCounts] });
+  check("audit.completed with counts present is refused", !Array.isArray(parsed) && parsed.error.includes("computed by the server"), JSON.stringify(parsed));
+}
+{
+  const emptyAuditId = { ...AUDIT_COMPLETED, audit_id: "" };
+  const parsed = parseQualityEventInputs({ events: [emptyAuditId] });
+  check("audit.completed with an empty audit_id is refused", !Array.isArray(parsed) && parsed.error.includes("audit_id"), JSON.stringify(parsed));
+}
+{
+  const emptyCommit = { ...AUDIT_COMPLETED, commit: "" };
+  const parsed = parseQualityEventInputs({ events: [emptyCommit] });
+  check("audit.completed with an empty commit is refused", !Array.isArray(parsed) && parsed.error.includes("commit"), JSON.stringify(parsed));
+}
+
+// --- #473: planning scores, scoped recordings and the baseline write --------
+
+// A restored project: one `2026-08` audit in the snapshot, no recorded reading
+// of it in the journal, and one hosted resolution since. The shape Pebbles was
+// in when #472/#473 were filed.
+const { BUILD_DIR: SCHEMA_BUILD_DIR } = require("../schema/load-schema");
+const schema = require(require("path").join(SCHEMA_BUILD_DIR, "index.js"));
+const { foldQualityEvents } = require(require("path").join(BUILD_DIR, "quality-utils.js"));
+const { deriveQualityMatrix, deriveQualityTrend, trendRows } = schema;
+
+const LIB = {
+  version: "1.0.0",
+  domains: [{ code: "SEC", name: "Security" }],
+  criteria: [
+    { id: "SEC-01", domain: "SEC", weight: 1, applies_to: ["web"] },
+    { id: "SEC-02", domain: "SEC", weight: 1, applies_to: ["web"] },
+  ],
+};
+const RESTORED = (over = {}) => ({
+  framework_version: "1.0.0",
+  library: LIB,
+  profile: { surfaces: [{ id: "web", title: "Web" }] },
+  assessments: [
+    { criterion_id: "SEC-01", surface: "web", level: 1, evidence: "e1", audit_id: "2026-08", ts: "2026-08-10T00:00:00.000Z" },
+    { criterion_id: "SEC-02", surface: "web", level: 2, evidence: "e2", audit_id: "2026-08", ts: "2026-08-10T00:00:00.000Z" },
+  ],
+  findings: [FINDING({ id: "F-1", criterion_id: "SEC-01" }), FINDING({ id: "F-2", criterion_id: "SEC-02" })],
+  ...over,
+});
+const RESOLUTION = { id: "01K0000000000000000000RES1", ts: "2026-08-20T00:00:00.000Z", type: "quality.finding.resolved", finding_id: "F-1" };
+const PRIOR = [RESOLUTION];
+const NOW = new Date("2026-09-15T00:00:00Z");
+const SCORE = (over = {}) => ({ type: "quality.assessment.scored", criterion_id: "SEC-01", surface: "web", level: 4, evidence: "fixed in #7", ...over });
+const COMPLETE = (audit_id) => ({ type: "quality.audit.completed", scope: true, audit_id });
+const typesOf = (plan) => (plan.ok ? plan.events.map((e) => e.type).join(",") : `refused:${JSON.stringify(plan.refusals)}`);
+
+// 1. The first hosted score writes the baseline, backdated, then the score.
+const plan1 = planQualityEvents(RESTORED(), PRIOR, [SCORE()], "arkaik-agent", NOW);
+check("#473.1 the first scored entry plans the baseline, then the score",
+  typesOf(plan1) === "quality.audit.completed,quality.assessment.scored", typesOf(plan1));
+if (plan1.ok) {
+  const [baseline, scored] = plan1.events;
+  check("#473.1 the baseline is flagged, names the restored audit, and sorts before the resolution",
+    baseline.baseline === true && baseline.audit_id === "2026-08" && baseline.ts < RESOLUTION.ts, JSON.stringify(baseline));
+  check("#473.1 the score lands in a new scoped audit measured from 2026-08",
+    scored.audit_id === "2026-09-scoped" && scored.scope && scored.scope.since === "2026-08", JSON.stringify(scored));
+}
+const after1 = plan1.ok ? [...PRIOR, ...plan1.events] : PRIOR;
+
+// 2. The baseline is written once; the open scoped audit is continued.
+{
+  const plan = planQualityEvents(RESTORED(), after1, [SCORE({ level: 3 })], "arkaik-agent", NOW);
+  check("#473.2 a second score plans exactly one scored event and no baseline",
+    typesOf(plan) === "quality.assessment.scored", typesOf(plan));
+  check("#473.2 it continues the open scoped audit", plan.ok && plan.events[0].audit_id === "2026-09-scoped", JSON.stringify(plan));
+}
+
+// 3. A cell no resolution touched is out of scope.
+{
+  const plan = planQualityEvents(RESTORED(), PRIOR, [SCORE({ criterion_id: "SEC-02" })], "arkaik-agent", NOW);
+  check("#473.3 a cell outside the scope refuses out_of_scope with no events",
+    plan.ok === false && plan.refusals.map((r) => r.reason).join() === "out_of_scope" && !("events" in plan), JSON.stringify(plan));
+}
+
+// 4. Validation against the pack and the profile.
+{
+  const unknown = planQualityEvents(RESTORED(), PRIOR, [SCORE({ criterion_id: "SEC-99" })], "arkaik-agent", NOW);
+  check("#473.4 an unknown criterion refuses invalid_assessment",
+    unknown.ok === false && unknown.refusals[0].reason === "invalid_assessment" && unknown.refusals[0].detail.includes("SEC-99"), JSON.stringify(unknown));
+  const cross = planQualityEvents(RESTORED(), PRIOR, [SCORE({ surface: "cross-surface" })], "arkaik-agent", NOW);
+  check("#473.4 a cross-surface score refuses invalid_assessment",
+    cross.ok === false && cross.refusals[0].reason === "invalid_assessment", JSON.stringify(cross));
+  const retiredLib = { ...LIB, criteria: [...LIB.criteria, { id: "SEC-00", domain: "SEC", weight: 1, superseded_by: "SEC-01" }] };
+  const retired = planQualityEvents(RESTORED({ library: retiredLib }), PRIOR, [SCORE({ criterion_id: "SEC-00" })], "arkaik-agent", NOW);
+  check("#473.4 a retired criterion refuses invalid_assessment",
+    retired.ok === false && retired.refusals[0].reason === "invalid_assessment" && retired.refusals[0].detail.includes("SEC-01"), JSON.stringify(retired));
+  const undeclared = planQualityEvents(RESTORED(), PRIOR, [SCORE({ surface: "ios" })], "arkaik-agent", NOW);
+  check("#473.4 an undeclared surface refuses invalid_assessment",
+    undeclared.ok === false && undeclared.refusals[0].reason === "invalid_assessment", JSON.stringify(undeclared));
+  const twoSurfaces = RESTORED({ profile: { surfaces: [{ id: "web", title: "Web" }, { id: "ios", title: "iOS" }] } });
+  const excluded = planQualityEvents(twoSurfaces, PRIOR, [SCORE({ surface: "ios" })], "arkaik-agent", NOW);
+  check("#473.4 a surface the criterion does not apply to refuses invalid_assessment",
+    excluded.ok === false && excluded.refusals[0].reason === "invalid_assessment", JSON.stringify(excluded));
+}
+
+// 5. Nothing to measure from.
+{
+  const plan = planQualityEvents(RESTORED({ assessments: [] }), PRIOR, [SCORE()], "arkaik-agent", NOW);
+  check("#473.5 no assessments and no recording refuses no_baseline",
+    plan.ok === false && plan.refusals.map((r) => r.reason).join() === "no_baseline", JSON.stringify(plan));
+}
+
+// 6. The scoped completion: the server computes the reading.
+const completion = planQualityEvents(RESTORED(), after1, [COMPLETE("2026-09-scoped")], "arkaik-agent", NOW);
+{
+  check("#473.6 a scoped completion plans exactly one audit.completed", typesOf(completion) === "quality.audit.completed", typesOf(completion));
+  const expected = deriveQualityMatrix({ quality: foldQualityEvents(RESTORED(), after1) }, LIB).matrix.SEC.web.score;
+  const baselineScore = plan1.ok ? plan1.events[0].scores.web.SEC : undefined;
+  check("#473.6 precondition: the re-score moved the cell off the baseline's score",
+    typeof expected === "number" && typeof baselineScore === "number" && expected !== baselineScore, `${expected} vs ${baselineScore}`);
+  if (completion.ok) {
+    const [event] = completion.events;
+    check("#473.6 the completion is scoped: partial, one cell, since 2026-08",
+      JSON.stringify(event.scope) === JSON.stringify({ partial: true, cells: 1, since: "2026-08" }), JSON.stringify(event.scope));
+    check("#473.6 its score is the folded matrix's", event.scores.web.SEC === expected, `${event.scores.web.SEC} vs ${expected}`);
+    check("#473.6 it is not a baseline", event.baseline === undefined && event.audit_id === "2026-09-scoped", JSON.stringify(event));
+  }
+}
+
+// 7. Completion refusals.
+{
+  const unscored = planQualityEvents(RESTORED(), after1, [COMPLETE("2026-09-other")], "arkaik-agent", NOW);
+  check("#473.7 completing an audit with no scores refuses not_scored",
+    unscored.ok === false && unscored.refusals.map((r) => r.reason).join() === "not_scored", JSON.stringify(unscored));
+  const recorded = completion.ok ? [...after1, ...completion.events] : after1;
+  const twice = planQualityEvents(RESTORED(), recorded, [COMPLETE("2026-09-scoped")], "arkaik-agent", NOW);
+  check("#473.7 completing a recorded audit again refuses already_recorded",
+    twice.ok === false && twice.refusals.map((r) => r.reason).join() === "already_recorded", JSON.stringify(twice));
+}
+
+// 8. Score and complete in one batch.
+{
+  const plan = planQualityEvents(RESTORED(), PRIOR, [SCORE(), COMPLETE("2026-09-scoped")], "arkaik-agent", NOW);
+  check("#473.8 score + complete in one batch plans baseline, score, completion",
+    typesOf(plan) === "quality.audit.completed,quality.assessment.scored,quality.audit.completed", typesOf(plan));
+  check("#473.8 the first is the baseline and the last the scoped reading",
+    plan.ok && plan.events[0].baseline === true && plan.events[2].audit_id === "2026-09-scoped" && plan.events[2].scope?.since === "2026-08",
+    JSON.stringify(plan));
+}
+
+// 9. All-or-nothing, with the refused entry's index.
+{
+  const plan = planQualityEvents(RESTORED(), PRIOR, [SCORE(), SCORE({ criterion_id: "SEC-02" })], "arkaik-agent", NOW);
+  check("#473.9 a good score batched with an out-of-scope one refuses the whole batch", plan.ok === false && !("events" in plan), JSON.stringify(plan));
+  check("#473.9 the refusal names index 1",
+    plan.ok === false && plan.refusals.length === 1 && plan.refusals[0].index === 1 && plan.refusals[0].reason === "out_of_scope", JSON.stringify(plan));
+}
+
+// 10. #473's trend acceptance, end to end in pure code.
+{
+  const all = completion.ok ? [...after1, ...completion.events] : after1;
+  const { rows } = trendRows(deriveQualityTrend(all, RESTORED().profile));
+  check("#473.10 the trend has the baseline row, then the scoped row",
+    rows.map((r) => r.audit_id).join() === "2026-08,2026-09-scoped", JSON.stringify(rows));
+  check("#473.10 the first row is the baseline", rows[0]?.baseline === true, JSON.stringify(rows[0]));
+  check("#473.10 the second row is scoped from 2026-08 and moved",
+    rows[1]?.scope?.since === "2026-08" && rows[1]?.cells?.web?.delta !== null && rows[1]?.cells?.web?.delta !== undefined, JSON.stringify(rows[1]));
+}
+
+// Beyond the ten: a recording newer than the scores' `since` moves the scope,
+// so completing the older re-audit would record a reading of the wrong window.
+{
+  const newer = {
+    id: "01K0000000000000000000NEW1", ts: "2026-09-20T00:00:00.000Z", type: "quality.audit.completed",
+    audit_id: "2026-09-zz", framework_version: "1.0.0", scores: {}, counts: {},
+  };
+  const plan = planQualityEvents(RESTORED(), [...after1, newer], [COMPLETE("2026-09-scoped")], "arkaik-agent", NOW);
+  check("#473 completing a re-audit scored from an older scope refuses scope_mismatch",
+    plan.ok === false && plan.refusals.map((r) => r.reason).join() === "scope_mismatch" && plan.refusals[0].detail.includes("2026-09-zz"),
+    JSON.stringify(plan));
+}
+// And a resolution earlier in the SAME batch puts its cell in scope for a score after it.
+{
+  const plan = planQualityEvents(
+    RESTORED(), PRIOR,
+    [{ type: "quality.finding.resolved", finding_id: "F-2" }, SCORE({ criterion_id: "SEC-02" })],
+    "arkaik-agent", NOW,
+  );
+  check("#473 a resolution in the batch widens the scope for a later score",
+    typesOf(plan) === "quality.audit.completed,quality.finding.resolved,quality.assessment.scored", typesOf(plan));
+}
+
+// --- #473 review: the naming, scope and baseline rules, pinned --------------
+
+const reasonsOf = (plan) => (plan.ok ? "ok" : plan.refusals.map((r) => r.reason).join());
+const detailOf = (plan) => (plan.ok ? "" : String(plan.refusals[0].detail));
+// Both cells in scope: F-1 and F-2 resolved after the restored audit.
+const RESOLUTION_2 = { id: "01K0000000000000000000RES2", ts: "2026-08-21T00:00:00.000Z", type: "quality.finding.resolved", finding_id: "F-2" };
+const PRIOR_BOTH = [RESOLUTION, RESOLUTION_2];
+
+// The caller's audit id: used when it fits, refused when it can't be.
+{
+  const used = planQualityEvents(RESTORED(), PRIOR, [SCORE({ audit_id: "2026-09-mine" })], "arkaik-agent", NOW);
+  check("a requested audit_id is the one the score lands in",
+    used.ok && used.events.find((e) => e.type === "quality.assessment.scored")?.audit_id === "2026-09-mine", JSON.stringify(used));
+  const since = planQualityEvents(RESTORED(), PRIOR, [SCORE({ audit_id: "2026-08" })], "arkaik-agent", NOW);
+  check("requesting the since audit refuses audit_id_conflict", reasonsOf(since) === "audit_id_conflict", JSON.stringify(since));
+  const before = planQualityEvents(RESTORED(), PRIOR, [SCORE({ audit_id: "2026-07-late" })], "arkaik-agent", NOW);
+  check("requesting an id that sorts before the newest known refuses audit_id_conflict",
+    reasonsOf(before) === "audit_id_conflict" && detailOf(before).includes("sorts before"), JSON.stringify(before));
+}
+
+// Two accepted scores in ONE batch write exactly one baseline.
+{
+  const plan = planQualityEvents(RESTORED(), PRIOR_BOTH, [SCORE(), SCORE({ criterion_id: "SEC-02" })], "arkaik-agent", NOW);
+  check("two scores in one batch write exactly one baseline, first",
+    typesOf(plan) === "quality.audit.completed,quality.assessment.scored,quality.assessment.scored" &&
+    plan.events.filter((e) => e.baseline === true).map((e) => e.audit_id).join() === "2026-08",
+    typesOf(plan));
+  check("both scores in that batch land in the same scoped audit",
+    plan.ok && plan.events.slice(1).map((e) => e.audit_id).join() === "2026-09-scoped,2026-09-scoped", JSON.stringify(plan));
+}
+
+// A recording moves the scope: the next score is measured from it, in a new audit.
+{
+  const recorded = completion.ok ? completion.events : [];
+  const later = new Date(Date.parse(recorded[0]?.ts ?? NOW.toISOString()) + 1000).toISOString();
+  const resolvedLater = { id: "01K0000000000000000000RES3", ts: later, type: "quality.finding.resolved", finding_id: "F-2" };
+  const plan = planQualityEvents(RESTORED(), [...after1, ...recorded, resolvedLater], [SCORE({ criterion_id: "SEC-02" })], "arkaik-agent", NOW);
+  check("after a scoped recording, a score is measured from it and opens -02",
+    typesOf(plan) === "quality.assessment.scored" &&
+    plan.events[0].scope?.since === "2026-09-scoped" && plan.events[0].audit_id === "2026-09-scoped-02",
+    JSON.stringify(plan));
+}
+
+// Scoring the same cell twice is still one cell.
+{
+  const second = planQualityEvents(RESTORED(), after1, [SCORE({ level: 3 })], "arkaik-agent", NOW);
+  const journal = second.ok ? [...after1, ...second.events] : after1;
+  const plan = planQualityEvents(RESTORED(), journal, [COMPLETE("2026-09-scoped")], "arkaik-agent", NOW);
+  check("the same cell scored twice then completed records cells: 1",
+    second.ok && plan.ok && plan.events[0].scope?.cells === 1, JSON.stringify(plan));
+}
+
+// An open audit left behind by an older scope is not continued.
+{
+  // A recording that sorts BEFORE the open `2026-09-scoped` but lands after it
+  // in time — the scope moves, and the open audit's `since` no longer matches.
+  const moved = {
+    id: "01K0000000000000000000REC1", ts: "2026-09-20T00:00:00.000Z", type: "quality.audit.completed",
+    audit_id: "2026-09-rec", framework_version: "1.0.0", scores: {}, counts: {},
+  };
+  const resolvedAfter = { id: "01K0000000000000000000RES4", ts: "2026-09-21T00:00:00.000Z", type: "quality.finding.resolved", finding_id: "F-2" };
+  const journal = [...after1, moved, resolvedAfter];
+  const plan = planQualityEvents(RESTORED(), journal, [SCORE({ criterion_id: "SEC-02" })], "arkaik-agent", NOW);
+  check("an open audit from an older scope is not continued — a new id is named",
+    plan.ok && plan.events[0].audit_id === "2026-09-scoped-02" && plan.events[0].scope?.since === "2026-09-rec", JSON.stringify(plan));
+  const stale = planQualityEvents(RESTORED(), journal, [COMPLETE("2026-09-scoped")], "arkaik-agent", NOW);
+  check("completing the audit left behind refuses scope_mismatch", reasonsOf(stale) === "scope_mismatch", JSON.stringify(stale));
+  check("the scope_mismatch detail says what to do instead",
+    detailOf(stale).endsWith("that audit can no longer be recorded; score without audit_id to open a new one."), detailOf(stale));
+}
+
+// An undeclared surface, isolated from applies_to.
+{
+  const lib = { ...LIB, criteria: [...LIB.criteria, { id: "SEC-03", domain: "SEC", weight: 1 }] };
+  const plan = planQualityEvents(RESTORED({ library: lib }), PRIOR, [SCORE({ criterion_id: "SEC-03", surface: "ios" })], "arkaik-agent", NOW);
+  check("an undeclared surface is refused even for a criterion that applies everywhere",
+    reasonsOf(plan) === "invalid_assessment" && detailOf(plan).includes("not declared"), JSON.stringify(plan));
+}
+
+// `commit` rides along on both new event types.
+{
+  const COMMIT = "fedcba9876543210fedcba9876543210fedcba98";
+  const plan = planQualityEvents(RESTORED(), PRIOR, [SCORE({ commit: COMMIT }), { ...COMPLETE("2026-09-scoped"), commit: COMMIT }], "arkaik-agent", NOW);
+  check("commit is passed through on the score and the completion",
+    plan.ok && plan.events.slice(1).map((e) => e.commit).join() === `${COMMIT},${COMMIT}` && plan.events[0].commit === undefined,
+    JSON.stringify(plan));
+}
+
+// The month is read in UTC, whatever the server's zone.
+{
+  const zone = process.env.TZ;
+  process.env.TZ = "Pacific/Kiritimati"; // UTC+14: local September while UTC is still August
+  try {
+    const plan = planQualityEvents(RESTORED(), PRIOR, [SCORE()], "arkaik-agent", new Date("2026-08-31T23:30:00Z"));
+    check("at 2026-08-31T23:30Z the scoped audit is named for 2026-08",
+      plan.ok && plan.events[1].audit_id === "2026-08-scoped", JSON.stringify(plan));
+  } finally {
+    if (zone === undefined) delete process.env.TZ;
+    else process.env.TZ = zone;
+  }
+}
+
+// Refusal details an agent can act on.
+{
+  const noSection = planQualityEvents(undefined, [], [SCORE()], "arkaik-agent", NOW);
+  check("with no quality section, a score says there is no audit yet (not an unknown criterion)",
+    !noSection.ok && detailOf(noSection).includes("this project has no Kritik audit yet — hosted scoring re-scores a restored one"),
+    JSON.stringify(noSection));
+  const noBaseline = planQualityEvents(RESTORED({ assessments: [] }), PRIOR, [SCORE()], "arkaik-agent", NOW);
+  check("the no_baseline detail names the missing restored audit",
+    reasonsOf(noBaseline) === "no_baseline" && detailOf(noBaseline).includes("no restored audit with an audit_id to measure from"),
+    JSON.stringify(noBaseline));
+  const outside = planQualityEvents(RESTORED(), PRIOR, [SCORE({ criterion_id: "SEC-02" })], "arkaik-agent", NOW);
+  check("the out_of_scope detail points at kritik_scope", detailOf(outside).endsWith("kritik_scope lists the cells."), detailOf(outside));
+}
+
 // --- requiredScopeFor --------------------------------------------------------
 
 {
@@ -257,6 +642,9 @@ for (const field of ["criterion_id", "surface", "signal", "commit"]) {
 
   const resolution = parseQualityEventInputs({ events: [{ type: "quality.finding.resolved", finding_id: "F-1" }] });
   check("a finding decision requires graph:write", requiredScopeFor(resolution) === "graph:write");
+
+  const scored = parseQualityEventInputs({ events: [SCORED] });
+  check("a batch holding a scored entry requires graph:write", requiredScopeFor(scored) === "graph:write");
 
   const mixed = parseQualityEventInputs({
     events: [TRIP, { type: "quality.finding.accepted", finding_id: "F-1", reason: "tracked" }],

@@ -15,7 +15,7 @@
  */
 
 const { loadSchema } = require("./load-schema");
-const { deriveAuditScope, recordedAuditIds, scopeSummary } = loadSchema();
+const { deriveAuditScope, recordedAuditIds, scopeSummary, scopedAuditId } = loadSchema();
 
 let failures = 0;
 function check(name, cond, detail) {
@@ -349,6 +349,126 @@ const cellIds = (scope) => scope.cells.map((cell) => `${cell.surface}:${cell.cri
   check(
     "a summary with no widening says nothing about it",
     scopeSummary(deriveAuditScope(events.slice(0, 2), SECTION, LIBRARY, { widen: false })) === "1 cell to re-score from 1 resolved finding since 2026-08",
+  );
+}
+
+// --- scopedAuditId (issue #473): the shared naming rule ----------------------
+
+{
+  const throws = (fn) => {
+    try {
+      fn();
+      return undefined;
+    } catch (error) {
+      return error.message;
+    }
+  };
+
+  check(
+    "with nothing requested and nothing open, the default is <month>-scoped",
+    scopedAuditId({ since: "2026-08", month: "2026-09", known: ["2026-08"], recorded: ["2026-08"] }) === "2026-09-scoped",
+  );
+  check(
+    "a taken default rolls to -02",
+    scopedAuditId({ since: "2026-08", month: "2026-09", known: ["2026-08", "2026-09-scoped"], recorded: ["2026-08"] }) === "2026-09-scoped-02",
+  );
+  check(
+    "an open scoped audit is continued rather than forked",
+    scopedAuditId({ since: "2026-08", month: "2026-09", known: ["2026-08", "2026-09-scoped"], recorded: ["2026-08"], open: "2026-09-scoped" }) === "2026-09-scoped",
+  );
+  check(
+    "an open audit a newer known id already outsorts is not continued",
+    scopedAuditId({
+      since: "2026-08",
+      month: "2026-10",
+      known: ["2026-08", "2026-09-scoped", "2026-10"],
+      recorded: ["2026-08", "2026-09-scoped", "2026-10"],
+      open: "2026-09-scoped",
+    }) === "2026-10-scoped",
+  );
+  check(
+    "an open audit equal to the newest known id is still continued",
+    scopedAuditId({
+      since: "2026-08",
+      month: "2026-10",
+      known: ["2026-08", "2026-10"],
+      recorded: ["2026-08", "2026-10"],
+      open: "2026-10",
+    }) === "2026-10",
+  );
+  check(
+    "a requested id measured from itself throws",
+    /is the audit this scope is measured from/.test(
+      throws(() => scopedAuditId({ since: "2026-08", month: "2026-09", requested: "2026-08", known: ["2026-08"], recorded: ["2026-08"] })),
+    ),
+  );
+  check(
+    "a requested id already recorded throws — its reading is history",
+    throws(() =>
+      scopedAuditId({ since: "2026-08", month: "2026-09", requested: "2026-08-scoped", known: ["2026-08", "2026-08-scoped"], recorded: ["2026-08", "2026-08-scoped"] }),
+    ) === `"2026-08-scoped" is already recorded — its reading is history. Name a new audit.`,
+  );
+  check(
+    "a requested id sorting before the newest known id throws",
+    /sorts before/.test(
+      throws(() => scopedAuditId({ since: "2026-08", month: "2026-09", requested: "2026-09-01", known: ["2026-08", "2026-09-scoped"], recorded: ["2026-08"] })),
+    ),
+  );
+  check(
+    "known need not arrive sorted — the newest is found regardless of order",
+    /sorts before "2026-10"/.test(
+      throws(() => scopedAuditId({ since: "2026-08", month: "2026-09", requested: "2026-09-x", known: ["2026-10", "2026-08"], recorded: ["2026-08", "2026-10"] })),
+    ),
+  );
+  check(
+    "a requested id is otherwise returned",
+    scopedAuditId({ since: "2026-08", month: "2026-09", requested: "2026-09-custom", known: ["2026-08"], recorded: ["2026-08"] }) === "2026-09-custom",
+  );
+  // The example id a refusal suggests must be one the agent can actually use:
+  // never the id it just asked for, never one that already exists, and one that
+  // would itself pass. A suggestion that loops the agent back is worse than none.
+  const suggested = (message) => (/e\.g\. `([^`]+)`/.exec(message ?? "") ?? [])[1];
+  const usable = (message, input) => {
+    const id = suggested(message);
+    if (id === undefined || id === input.requested || input.known.includes(id) || input.recorded.includes(id)) return false;
+    try {
+      return scopedAuditId({ ...input, requested: id }) === id;
+    } catch {
+      return false;
+    }
+  };
+  {
+    // The since audit is itself a scoped one from this month: `${month}-scoped`
+    // IS the refused id.
+    const input = { since: "2026-09-scoped", month: "2026-09", requested: "2026-09-scoped", known: ["2026-08", "2026-09-scoped"], recorded: ["2026-08", "2026-09-scoped"] };
+    const message = throws(() => scopedAuditId(input));
+    check("the since refusal suggests an id that is neither the requested one nor a known one", usable(message, input), message);
+  }
+  {
+    // Requested `${month}-scoped` sorts before a known `-02`: suggesting
+    // `${month}-scoped` again would loop.
+    const input = { since: "2026-08", month: "2026-09", requested: "2026-09-scoped", known: ["2026-08", "2026-09-scoped-02"], recorded: ["2026-08"] };
+    const message = throws(() => scopedAuditId(input));
+    check("the sorts-before refusal never suggests the id it just refused", /sorts before/.test(message) && usable(message, input), message);
+  }
+  {
+    // `${month}-scoped` is already known, and the requested id sorts before it.
+    const input = { since: "2026-08", month: "2026-09", requested: "2026-09-a", known: ["2026-08", "2026-09-scoped"], recorded: ["2026-08"] };
+    const message = throws(() => scopedAuditId(input));
+    check("the sorts-before refusal never suggests a known id", /sorts before/.test(message) && usable(message, input), message);
+  }
+  {
+    // No `${month}-scoped[-NN]` can sort after a later month: the suggestion
+    // falls back to one that sorts after the newest known id.
+    const input = { since: "2026-08", month: "2026-09", requested: "2026-09-x", known: ["2026-08", "2026-10"], recorded: ["2026-08", "2026-10"] };
+    const message = throws(() => scopedAuditId(input));
+    check("with no month candidate left, the suggestion sorts after the newest known id", usable(message, input), message);
+  }
+  check(
+    "a candidate sorting before a known later audit throws",
+    /would sort before "2026-10"/.test(
+      throws(() => scopedAuditId({ since: "2026-08", month: "2026-09", known: ["2026-08", "2026-10"], recorded: ["2026-08", "2026-10"] })),
+    ),
   );
 }
 

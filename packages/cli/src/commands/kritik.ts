@@ -583,7 +583,12 @@ function runScore(args: string[], common: CommonOptions): void {
     try {
       auditId = scopedAuditTarget(common.root, scope.since, currentAuditId(), single.audit, recorded);
     } catch (error) {
-      return fail(`kritik: ${(error as Error).message}`);
+      // scopedAuditTarget's naming rule (packages/schema/src/quality-scope.ts)
+      // is mode-neutral — the hosted server shares it and has no --audit flag
+      // to name. The CLI is the one caller with a flag, so it appends the hint
+      // here rather than in the shared rule, where it would also reach the MCP
+      // repo-mode kritik_score, which calls scopedAuditTarget directly too.
+      return fail(`kritik: ${(error as Error).message} Pass it with --audit <id>.`);
     }
     scopedFrom = scope.since;
   } else {

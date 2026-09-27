@@ -803,7 +803,7 @@ if (ctx.qualityRoot === undefined) {
     ...(commit !== undefined ? { commit } : {}),
   }]);
   const scored = events.find((e) => e.type === "quality.assessment.scored") as (JournalEvent & { audit_id: string; scope?: { since?: string } }) | undefined;
-  const baseline = events.find((e) => e.type === "quality.audit.completed");
+  const baseline = events.find((e) => e.type === "quality.audit.completed" && (e as { baseline?: unknown }).baseline === true); // by flag, never by position
   const notes: string[] = [];
   if (baseline !== undefined) notes.push(`Recorded the baseline reading of ${(baseline as { audit_id?: string }).audit_id} first, dated where that audit was taken — the scope and the trend now measure from a real event.`);
   if (commit === undefined) notes.push("No commit given — it is the only thing that lets a hosted reader check this evidence against the tree it cites.");
@@ -838,6 +838,7 @@ Description: replace "Repo sessions only: scoring reads the code, so a hosted se
 
 Hosted branch, in this order:
 1. **`record === true`:** `audit_id` is required. Without it: `ToolError("record=true in a hosted session records a scoped re-audit: pass the audit_id kritik_score returned (e.g. 2026-09-scoped).")`. `scope` may be true or absent, since it's implied. Load the graph. Compute `left_unscored` = `scopeOf(graph).cells` minus the cells of the journal's `quality.assessment.scored` events with that `audit_id` (only when `scopeOf(graph).since` equals those events' `scope.since`, mirroring repo mode). POST `[{ type: "quality.audit.completed", scope: true, audit_id, ...(commit) }]`. Then reload the graph and return the same flat read shape as the plain hosted read, plus `audit_id`, `scope` (from the returned event), `left_unscored` and `events`.
+   **Retry safety (from the Task 10 review):** there is no idempotency key. If the POST is refused and every refusal is `already_recorded` for this `audit_id`, the earlier attempt landed: reload the graph, find the journal's `quality.audit.completed` for that `audit_id`, and return it as success with `note: "Already recorded — returning the reading that landed."`. Test it with a stub 422 `{error:"refused", refusals:[{index:0, reason:"already_recorded"}]}` whose journal already holds the recording. The remote store must expose the parsed refusals (e.g. on the thrown error) for this, so extend Task 12's error to carry `refusals`.
 2. **`scope === true` without `record`:** keep refusing, with an updated message: "In a hosted session a scoped re-audit is recorded with record=true and its audit_id; the read is always the current state."
 3. **`audit_id` without `record`:** refused as today.
 4. Otherwise: the plain read, unchanged.
@@ -856,7 +857,7 @@ Add `commit: { type: "string", description: "Hosted record only: the commit the 
 **Files:**
 - Modify: `docs/hosted-projects.md` (the Kritik section: the hosted scoped re-audit loop, the five whitelisted types, the `graph:write` requirement, the one-time baseline)
 - Modify: `docs/spec/mcp.md` (the `kritik_score` / `kritik_matrix` hosted rows)
-- Modify: `docs/kritik-skill/skill.md` and `plugin-kritik/skills/kritik/SKILL.md` (a "Hosted scoped re-audit" subsection: `kritik_scope` → `kritik_score scope=true commit=<sha>` per cell, including widened cells that didn't move, scored at their current level and saying so → `kritik_matrix audit_id=<returned> record=true commit=<sha>`. State that hosted scoring refuses out-of-scope cells, and that nothing lands in `docs/quality/`, which is the point for a public repo.)
+- Modify: `docs/kritik-skill/skill.md` and `plugin-kritik/skills/kritik/SKILL.md` (a "Hosted scoped re-audit" subsection: `kritik_scope` → `kritik_score scope=true commit=<sha>` per cell, including widened cells that didn't move, scored at their current level and saying so → `kritik_matrix audit_id=<returned> record=true commit=<sha>`. State that hosted scoring refuses out-of-scope cells (a workflow guard that keeps a hosted re-audit scoped, not an access control — any `graph:write` caller can resolve findings), and that nothing lands in `docs/quality/`, which is the point for a public repo.)
 - Modify: `docs/rfcs/kritik.md` only if it states that hosted scoring is refused (grep `repo-only`/`hosted`). Add a dated note there rather than rewriting history.
 
 Then run `npm run generate` (the skill docs are generated into `plugin/skills/…`) and commit the result.

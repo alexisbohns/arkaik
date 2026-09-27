@@ -667,26 +667,30 @@ export function buildCellHistory(
 }
 
 /**
- * Fold `quality.finding.resolved` and `quality.finding.accepted` over a stored
- * section (issue #382 phase E; accepted events added for #400 hosted Kritik).
+ * Fold hosted-write journal events over a stored section: `quality.finding.resolved`
+ * and `quality.finding.accepted` (issue #382 phase E; accepted events added for
+ * #400 hosted Kritik), and `quality.assessment.scored` (issue #473, hosted
+ * write path part 2).
  *
- * The webhook — and, for accepted, the hosted write route — appends, and
- * appends only: a merged PR that fixes a finding, or a person accepting a
- * risk, writes a journal fact, and the finding's stored `status` stays exactly
- * as the last audit left it. This is the projection that makes the fact
- * visible, and it is the reading RFC § 3.2 declared from the start — current
- * state is the latest audit plus open-minus-decided.
+ * The webhook — and, for accepted and scored, the hosted write route —
+ * appends, and appends only: a merged PR that fixes a finding, a person
+ * accepting a risk, or a re-audit scoring a cell, writes a journal fact, and
+ * `snapshot.quality` is never rewritten to match it. This is the projection
+ * that makes the fact visible, and it is the reading RFC § 3.2 declared from
+ * the start — current state is the latest audit plus open-minus-decided, plus
+ * whatever a later scored event has since said about a cell.
  *
- * Events are walked in journal order, and the FIRST decision on an open
- * finding wins: once an event has moved a finding out of `open`, every later
- * event naming that finding is ignored, with one exception (below). This
- * mirrors the write route: it refuses to accept a `quality.finding.accepted`
- * or `quality.finding.resolved` event against a finding that is not currently
- * `open`, so an event that would have been refused at write time must never
- * take effect here at read time either — the journal cannot literally contain
- * two decisions on the same finding once the write path enforces this, but the
- * fold has to be safe against a journal from before that enforcement existed
- * (or one written by a client that skipped it) all the same.
+ * **Findings: first decision wins.** Events are walked in journal order, and
+ * the FIRST decision on an open finding wins: once an event has moved a
+ * finding out of `open`, every later event naming that finding is ignored,
+ * with one exception (below). This mirrors the write route: it refuses to
+ * accept a `quality.finding.accepted` or `quality.finding.resolved` event
+ * against a finding that is not currently `open`, so an event that would have
+ * been refused at write time must never take effect here at read time either
+ * — the journal cannot literally contain two decisions on the same finding
+ * once the write path enforces this, but the fold has to be safe against a
+ * journal from before that enforcement existed (or one written by a client
+ * that skipped it) all the same.
  *
  * The one exception, preserving phase E's original behavior: for `resolved_by`
  * specifically, the LATEST `resolved` event that NAMES one wins, not the
@@ -699,24 +703,64 @@ export function buildCellHistory(
  * `patched.has`); a `resolved` status that was already in the snapshot is
  * left untouched, same as `refuted` and `accepted-risk`.
  *
- * Returns the section BY REFERENCE when nothing matches. That is the
- * overwhelmingly common case — every project with no decision since its last
- * audit — and returning the same object means no allocation, no changed memo
- * identity, and no re-render for the reader who gained nothing.
+ * **Scores: latest wins.** A finding decision is a verdict the write route
+ * refuses to let a second event overwrite, which is why first wins above. A
+ * score is the opposite kind of fact: it is a re-measurement, and the write
+ * route welcomes a new `quality.assessment.scored` against a cell that
+ * already carries one — that is what a re-audit IS. So here the LATEST scored
+ * event for a `(criterion_id, surface)` cell wins outright, upserted by the
+ * key `${criterion_id}::${surface}` — the same axes `deriveQualityMatrix`
+ * scores a cell by — and a cell the stored section never held (a first-ever
+ * score) is appended rather than dropped for having nothing to replace.
+ *
+ * Returns the section BY REFERENCE when neither findings nor assessments
+ * changed. That is the overwhelmingly common case — every project with no
+ * decision or score since its last read — and returning the same object
+ * means no allocation, no changed memo identity, and no re-render for the
+ * reader who gained nothing.
  *
  * `refuted` and `accepted-risk` already in the snapshot are left alone, for
  * the reason the write path refuses to touch them: they are decisions
  * somebody recorded. An event naming a finding the section does not hold is
  * ignored — `validateBundle` already warns about that class, and a read
- * projection is not the place to raise it a second time.
+ * projection is not the place to raise it a second time. A malformed
+ * `quality.assessment.scored` event — a non-string `criterion_id`, `surface`,
+ * `audit_id` or `ts`, non-string `evidence`, or a `level` that is not an
+ * integer 0–4 — is skipped the same way: this is a journal nobody has
+ * re-validated since it left storage, not a payload the schema package
+ * already parsed. `ts` is required, matching the type and the zod schema:
+ * every real event carries one, and a row this fold produced without one
+ * would be a row the cell panel's History cannot place in time.
+ *
+ * A stored row with no string `criterion_id`/`surface` to key by is never a
+ * fold target — it survives untouched, at its original position, the same as
+ * a finding a decision event does not name. A duplicate stored row for one
+ * cell (`validateBundle` already warns about that class too) is folded onto
+ * only its LAST occurrence, the one a latest-wins reader would honor; an
+ * earlier duplicate for the same cell is left exactly as stored.
+ *
+ * **The restore guard.** A scored event is also checked against the STORED
+ * row at its cell — never against a value an earlier event in this same walk
+ * already produced — and skipped outright if its `audit_id` sorts lexically
+ * before the stored row's. A hosted scoped audit id always sorts after every
+ * known audit (`scopedAuditId` enforces it), so this never fires on an
+ * ordinary write. It exists for the case a normal write can't produce: a
+ * snapshot restored to a NEWER audit sitting next to a journal that still
+ * carries older hosted scores. `loadCurrentQualitySection` merges those
+ * latest-wins in lexical order, and this fold must not invert that merge on
+ * every subsequent read. Comparing against the stored row rather than a
+ * running value keeps two scored events for the same cell resolving
+ * latest-wins in journal order exactly as before — each is checked against
+ * the same stored floor, not against each other.
  */
-export function foldFindingEvents(
+export function foldQualityEvents(
   section: QualitySection | undefined,
   events: readonly JournalEvent[],
 ): QualitySection | undefined {
   if (section === undefined) return undefined;
+  if (events.length === 0) return section;
   const findings = Array.isArray(section.findings) ? section.findings : [];
-  if (findings.length === 0 || events.length === 0) return section;
+  const assessments = asArray<QualityAssessment>(section.assessments);
 
   // Ids are unique by contract — `validateBundle` warns on a collision — so
   // first-occurrence-wins below is only a tie-break for malformed data, not a
@@ -733,8 +777,77 @@ export function foldFindingEvents(
   const patched = new Map<number, QualityFinding>();
   const current = (index: number) => patched.get(index) ?? findings[index];
 
+  // `criterion_id::surface` -> the ARRAY INDEX of the LAST stored row at that
+  // cell. Keyed by index rather than by the row itself so a re-score can be
+  // spliced back into the exact position it came from, and a row this map
+  // has no key for (unkeyable, or an earlier duplicate for a keyed cell)
+  // never becomes a fold target.
+  const cellIndex = new Map<string, number>();
+  assessments.forEach((assessment, index) => {
+    const criterionId = (assessment as { criterion_id?: unknown } | null)?.criterion_id;
+    const surface = (assessment as { surface?: unknown } | null)?.surface;
+    if (typeof criterionId !== "string" || typeof surface !== "string") return;
+    cellIndex.set(`${criterionId}::${surface}`, index);
+  });
+  // index -> replacement, for a cell `cellIndex` already has a position for.
+  const assessmentPatches = new Map<number, QualityAssessment>();
+  // key -> row, for a cell the section never held at all — appended, never
+  // spliced, since there is no stored position to replace.
+  const newAssessments = new Map<string, QualityAssessment>();
+
   for (const event of events) {
     const type = event?.type;
+
+    if (type === "quality.assessment.scored") {
+      const criterionId = (event as { criterion_id?: unknown }).criterion_id;
+      const surface = (event as { surface?: unknown }).surface;
+      const auditId = (event as { audit_id?: unknown }).audit_id;
+      const evidence = (event as { evidence?: unknown }).evidence;
+      const level = (event as { level?: unknown }).level;
+      const commit = (event as { commit?: unknown }).commit;
+      const ts = (event as { ts?: unknown }).ts;
+      if (
+        typeof criterionId !== "string" ||
+        criterionId === "" ||
+        typeof surface !== "string" ||
+        surface === "" ||
+        typeof auditId !== "string" ||
+        auditId === "" ||
+        typeof evidence !== "string" ||
+        typeof ts !== "string" ||
+        ts === "" ||
+        !Number.isInteger(level) ||
+        (level as number) < 0 ||
+        (level as number) > 4
+      ) {
+        continue;
+      }
+
+      const key = `${criterionId}::${surface}`;
+      const index = cellIndex.get(key);
+      // The restore guard — see the docblock above. Checked against
+      // `assessments[index]`, the untouched stored row, never against
+      // `assessmentPatches`, so a second scored event for the same cell in
+      // this same walk is judged against the same floor as the first.
+      if (index !== undefined) {
+        const storedAuditId = (assessments[index] as { audit_id?: unknown } | null)?.audit_id;
+        if (typeof storedAuditId === "string" && auditId < storedAuditId) continue;
+      }
+
+      const row: QualityAssessment = {
+        criterion_id: criterionId,
+        surface,
+        level: level as MaturityLevel,
+        evidence,
+        audit_id: auditId,
+        ts,
+        ...(typeof commit === "string" ? { commit } : {}),
+      };
+      if (index !== undefined) assessmentPatches.set(index, row);
+      else newAssessments.set(key, row);
+      continue;
+    }
+
     if (type !== "quality.finding.resolved" && type !== "quality.finding.accepted") continue;
     const findingId = (event as { finding_id?: unknown }).finding_id;
     if (typeof findingId !== "string" || findingId === "") continue;
@@ -768,8 +881,21 @@ export function foldFindingEvents(
     });
   }
 
-  if (patched.size === 0) return section;
-  return { ...section, findings: findings.map((finding, index) => patched.get(index) ?? finding) };
+  if (patched.size === 0 && assessmentPatches.size === 0 && newAssessments.size === 0) return section;
+  return {
+    ...section,
+    ...(patched.size > 0
+      ? { findings: findings.map((finding, index) => patched.get(index) ?? finding) }
+      : {}),
+    ...(assessmentPatches.size > 0 || newAssessments.size > 0
+      ? {
+          assessments: [
+            ...assessments.map((assessment, index) => assessmentPatches.get(index) ?? assessment),
+            ...newAssessments.values(),
+          ],
+        }
+      : {}),
+  };
 }
 
 /** What the Relations bar says about a node's open findings. */
