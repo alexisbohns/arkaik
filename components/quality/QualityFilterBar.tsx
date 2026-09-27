@@ -32,6 +32,7 @@ import {
   SEVERITY_DOT,
   SEVERITY_LABEL,
 } from "@/components/quality/quality-styles";
+import { useShortcut } from "@/lib/hooks/useShortcut";
 
 interface QualityFilterBarProps {
   filters: QualityFilters;
@@ -108,6 +109,12 @@ export function QualityFilterBar({ filters, onChange, surfaces, domains }: Quali
   // for the same reason: a URL write per keystroke round-trips through the App
   // Router and drops characters typed during the gap.
   const [searchDraft, setSearchDraft] = useState(filters.search);
+  // The Clear button's own handler, so the key and the button cannot disagree.
+  const clearFilters = () => {
+    setSearchDraft("");
+    onChange(DEFAULT_QUALITY_FILTERS);
+  };
+  useShortcut("clear-filters", clearFilters, { enabled: isFiltered });
   const [syncedSearch, setSyncedSearch] = useState(filters.search);
   // What we last wrote ourselves. State, not a ref, because it is *read* during
   // the render-time draft adjustment below, and react-hooks/refs forbids
@@ -332,10 +339,7 @@ export function QualityFilterBar({ filters, onChange, surfaces, domains }: Quali
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => {
-              setSearchDraft("");
-              onChange(DEFAULT_QUALITY_FILTERS);
-            }}
+            onClick={clearFilters}
             aria-label="Clear filters"
           >
             <XIcon className="size-4" /> Clear
