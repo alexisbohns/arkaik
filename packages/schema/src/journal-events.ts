@@ -226,6 +226,8 @@ export const QualityAuditCompletedEventSchema = z
       })
       .catchall(z.unknown())
       .optional(),
+    // A reading synthesized from a stored audit that arrived without one (issue #472).
+    baseline: z.boolean().optional(),
   })
   .catchall(z.unknown());
 

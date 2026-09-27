@@ -27,6 +27,7 @@
     "test:quality-regressions": "node tests/schema/quality-regressions.test.js",
     "test:quality-trend": "node tests/schema/quality-trend.test.js",
     "test:quality-scope": "node tests/schema/quality-scope.test.js",
+    "test:quality-baseline": "node tests/schema/quality-baseline.test.js",
     "test:quality-webhook": "node tests/services/quality-webhook.test.js",
     "test:once-changed-files": "node tests/services/once-changed-files.test.js",
     "test:quality-events": "node tests/services/quality-events.test.js",
