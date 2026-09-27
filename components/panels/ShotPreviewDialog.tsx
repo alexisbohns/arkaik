@@ -23,6 +23,7 @@ import { ChevronLeft, ChevronRight, X } from "lucide-react";
 // so they take the micro-label style without claiming to label a control.
 import { FIELD_LABEL_CLASS } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
+import { GUARDED_HOTKEY, useShortcut } from "@/lib/hooks/useShortcut";
 
 export interface ShotPreviewDialogProps {
   open: boolean;
@@ -80,26 +81,33 @@ export function ShotPreviewDialog({
    *
    * Inside the strip, arrows belong to the WAI-ARIA tabs contract and Radix
    * already handles them (roving tabindex over every platform, shot or not).
-   * This listener is on `window`, so without the guard both would fire on one
+   * These chords listen on `document`, so without the guard both would fire on one
    * keypress and the selection would jump two places at once. Everywhere else in
    * the dialog — the image, the close button, the dots — arrows still mean
    * "next screenshot", which is what they have always meant here.
    */
-  useEffect(() => {
-    if (!open) return;
+  const inTabStrip = (event: KeyboardEvent) =>
+    (event.target as Element | null)?.closest?.('[data-slot="tabs-list"]') != null;
+  const arrowOptions = { ...GUARDED_HOTKEY, ignoreInputs: false, enabled: open };
 
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-      const target = e.target as Element | null;
-      if (target?.closest?.('[data-slot="tabs-list"]')) return;
-      e.preventDefault();
-      if (e.key === "ArrowLeft") goToPrev();
-      else goToNext();
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, goToPrev, goToNext]);
+  useShortcut(
+    "shot-prev",
+    (event) => {
+      if (inTabStrip(event)) return;
+      event.preventDefault();
+      goToPrev();
+    },
+    arrowOptions,
+  );
+  useShortcut(
+    "shot-next",
+    (event) => {
+      if (inTabStrip(event)) return;
+      event.preventDefault();
+      goToNext();
+    },
+    arrowOptions,
+  );
 
   const currentScreenshot = screenshots[activeTab];
   const currentStatus = platformStatuses[activeTab] ?? node?.status ?? ("idea" as StatusId);

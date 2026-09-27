@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { SearchIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 
@@ -12,7 +12,7 @@ import {
   type DocsPage,
 } from "@/lib/utils/command-palette";
 import { KeyboardShortcutsDialog } from "@/components/layout/KeyboardShortcutsDialog";
-import { isCommandPaletteShortcut, isShortcutsDialogShortcut } from "@/lib/utils/keyboard";
+import { useShortcut } from "@/lib/hooks/useShortcut";
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -43,27 +43,8 @@ export function DocsSearch({ pages }: DocsSearchProps) {
 
   const commands = useMemo(() => buildDocsCommands({ pages }), [pages]);
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || !isCommandPaletteShortcut(event)) return;
-      event.preventDefault();
-      setOpen((current) => !current);
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || !isShortcutsDialogShortcut(event)) return;
-      event.preventDefault();
-      setShortcutsOpen((current) => !current);
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  useShortcut("command-palette", () => setOpen((current) => !current));
+  useShortcut("shortcuts", () => setShortcutsOpen((current) => !current));
 
   // Publish is a project action and has no meaning here, so the docs catalogue
   // never offers it — the theme is the only action to dispatch.

@@ -7,9 +7,13 @@
  * label the running platform deserves — the same split `useModKeyLabel`
  * already makes for the palette hint.
  *
- * The handlers themselves stay where they fire (the layout, the sidebar, the
- * panel stack). What this file guarantees is that a shortcut nobody can
- * discover does not exist: adding a chord means adding a row here.
+ * The handlers stay where they fire (the layout, the sidebar, the panel
+ * stack), but they register through `useShortcut(id, …)`, which reads the
+ * chord from here — so a binding with no row cannot exist, and a row's chord
+ * and the chord the app answers to cannot drift. `hotkeys` holds the TanStack
+ * strings; `keys` is only how the sheet draws them.
+ *
+ * Keep this file import-free: its test transpiles it standalone.
  */
 
 /** Where a shortcut is live. `everywhere` also shows inside a project. */
@@ -23,6 +27,13 @@ export interface ShortcutEntry {
   keys: readonly string[];
   /** Alternative chord for the same action, e.g. Delete / Backspace. */
   altKeys?: readonly string[];
+  /**
+   * The TanStack hotkey strings `useShortcut` registers for this row, e.g.
+   * `["Mod+K"]`. Absent on rows that document a widget's own keys (the
+   * palette's arrows, Enter on a focused node) — those are handled by the
+   * widget, not registered as shortcuts.
+   */
+  hotkeys?: readonly string[];
   scope: ShortcutScope;
 }
 
@@ -44,24 +55,30 @@ const GROUPS: readonly ShortcutGroup[] = [
         id: "shortcuts",
         description: "Show keyboard shortcuts",
         keys: [MOD_KEY_TOKEN, "?"],
+        // Both readings: `Mod+?` is the character on any layout (AZERTY types ?
+        // as Shift+,), `Mod+Shift+/` the US physical keys when a browser reports "/".
+        hotkeys: ["Mod+?", "Mod+Shift+/"],
         scope: "everywhere",
       },
       {
         id: "command-palette",
         description: "Open the command palette",
         keys: [MOD_KEY_TOKEN, "K"],
+        hotkeys: ["Mod+K"],
         scope: "everywhere",
       },
       {
         id: "toggle-sidebar",
         description: "Show or hide the sidebar",
         keys: [MOD_KEY_TOKEN, "B"],
+        hotkeys: ["Mod+B"],
         scope: "project",
       },
       {
         id: "close",
         description: "Close the panel, dialog or overlay on top",
         keys: ["Esc"],
+        hotkeys: ["Escape"],
         scope: "everywhere",
       },
     ],
@@ -98,6 +115,7 @@ const GROUPS: readonly ShortcutGroup[] = [
         id: "export",
         description: "Export the project bundle",
         keys: [MOD_KEY_TOKEN, "E"],
+        hotkeys: ["Mod+E"],
         scope: "project",
       },
     ],
@@ -111,6 +129,7 @@ const GROUPS: readonly ShortcutGroup[] = [
         description: "Delete the node in the open panel",
         keys: ["Delete"],
         altKeys: ["Backspace"],
+        hotkeys: ["Delete", "Backspace"],
         scope: "map",
       },
       {
@@ -130,12 +149,14 @@ const GROUPS: readonly ShortcutGroup[] = [
         id: "shot-prev",
         description: "Previous platform",
         keys: ["←"],
+        hotkeys: ["ArrowLeft"],
         scope: "project",
       },
       {
         id: "shot-next",
         description: "Next platform",
         keys: ["→"],
+        hotkeys: ["ArrowRight"],
         scope: "project",
       },
     ],
@@ -154,6 +175,27 @@ export function getShortcutGroups(inProject: boolean): readonly ShortcutGroup[] 
     ...group,
     shortcuts: group.shortcuts.filter((shortcut) => shortcut.scope === "everywhere"),
   })).filter((group) => group.shortcuts.length > 0);
+}
+
+/** Every row, in sheet order. */
+export function allShortcuts(): readonly ShortcutEntry[] {
+  return GROUPS.flatMap((group) => group.shortcuts);
+}
+
+/**
+ * The row `useShortcut` registers. Throws on an unknown id or a
+ * documentation-only row: both are a typo that would otherwise register
+ * nothing and fail silently on the first keypress.
+ */
+export function getShortcut(id: string): ShortcutEntry & { hotkeys: readonly string[] } {
+  const entry = allShortcuts().find((shortcut) => shortcut.id === id);
+  if (!entry) {
+    throw new Error(`Unknown shortcut "${id}" — add a row to lib/utils/keyboard-shortcuts.ts`);
+  }
+  if (!entry.hotkeys || entry.hotkeys.length === 0) {
+    throw new Error(`Shortcut "${id}" documents a widget's keys and has nothing to register`);
+  }
+  return entry as ShortcutEntry & { hotkeys: readonly string[] };
 }
 
 /**

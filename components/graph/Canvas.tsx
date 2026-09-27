@@ -211,6 +211,11 @@ export function Canvas({
           // Panning by drag stays.
           zoomOnScroll={!readOnly}
           preventScrolling={!readOnly}
+          // Delete/Backspace belong to the app's "delete-node" shortcut (with its
+          // confirmation), not to React Flow: nodes are controlled here, so its
+          // own delete removed nothing — it only swallowed Backspace, and whether
+          // it got there first depended on listener attach order.
+          deleteKeyCode={null}
           onInit={handleInit}
           onNodesChange={handleNodesChange}
           onNodeClick={handleNodeClick}
