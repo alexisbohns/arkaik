@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   BookOpenIcon,
   GemIcon,
@@ -35,6 +36,9 @@ import type { SpeciesId } from "@/lib/config/species";
 import { isSeedProjectId } from "@/lib/data/seed-project-id";
 import type { ProjectBundle } from "@/lib/data/types";
 import { useModKeyLabel } from "@/lib/hooks/useModKeyLabel";
+import { useOptionHeld } from "@/lib/hooks/useOptionHeld";
+import { useShortcuts } from "@/lib/hooks/useShortcut";
+import { NAV_HOTKEY_ROUTES, formatChord, getShortcut } from "@/lib/utils/keyboard-shortcuts";
 
 interface ProjectSidebarProps {
   projectId: string;
@@ -79,6 +83,20 @@ interface ProjectSidebarProps {
 // same map below.
 const LIBRARY_SPECIES = ["view", "flow", "data-model", "api-endpoint"] as const satisfies readonly SpeciesId[];
 
+// The Search chip's skin, shared so the ⌘K chip and the ⌥ chips are one family.
+const SIDEBAR_KBD_CLASS =
+  "ml-auto inline-flex items-center rounded border bg-sidebar-accent px-1.5 py-0.5 font-sans text-[10px] font-medium group-data-[collapsible=icon]:hidden";
+
+/**
+ * A registry row's chord, drawn only while Option is held. It renders nothing
+ * otherwise, so the sidebar does not reflow until someone asks. Hidden in icon
+ * mode like the Search chip: a collapsed rail has no room for it.
+ */
+function ShortcutHint({ id, visible, modKey }: { id: string; visible: boolean; modKey: string | null }) {
+  if (!visible || !modKey) return null;
+  return <kbd className={SIDEBAR_KBD_CLASS}>{formatChord(getShortcut(id).keys, modKey)}</kbd>;
+}
+
 export function ProjectSidebar({
   projectId,
   project,
@@ -94,6 +112,16 @@ export function ProjectSidebar({
   onOpenRaw,
 }: ProjectSidebarProps) {
   const modKey = useModKeyLabel();
+  const router = useRouter();
+  const optionHeld = useOptionHeld();
+  // Registered here because the sidebar already owns every destination and is
+  // mounted on every project page (in a sheet on mobile, but mounted).
+  useShortcuts(
+    Object.entries(NAV_HOTKEY_ROUTES).map(([shortcutId, route]) => ({
+      id: shortcutId,
+      callback: () => router.push(`/project/${projectId}/${route}`),
+    })),
+  );
   const overviewHref = `/project/${projectId}/overview`;
   const mapsHref = `/project/${projectId}/maps`;
   const libraryHref = `/project/${projectId}/library`;
@@ -129,9 +157,7 @@ export function ProjectSidebar({
               <SearchIcon />
               <span>Search</span>
               {modKey ? (
-                <kbd className="ml-auto inline-flex items-center rounded border bg-sidebar-accent px-1.5 py-0.5 font-sans text-[10px] font-medium group-data-[collapsible=icon]:hidden">
-                  {modKey === "⌘" ? "⌘K" : "Ctrl+K"}
-                </kbd>
+                <kbd className={SIDEBAR_KBD_CLASS}>{formatChord(getShortcut("command-palette").keys, modKey)}</kbd>
               ) : null}
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -148,6 +174,7 @@ export function ProjectSidebar({
                 <Link href={overviewHref}>
                   <LayoutDashboardIcon />
                   <span>Overview</span>
+                  <ShortcutHint id="nav-overview" visible={optionHeld} modKey={modKey} />
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -156,6 +183,7 @@ export function ProjectSidebar({
                 <Link href={pyramidHref}>
                   <PyramidIcon />
                   <span>Pyramid</span>
+                  <ShortcutHint id="nav-pyramid" visible={optionHeld} modKey={modKey} />
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -164,6 +192,7 @@ export function ProjectSidebar({
                 <Link href={deliveryHref}>
                   <SquareKanbanIcon />
                   <span>Delivery</span>
+                  <ShortcutHint id="nav-delivery" visible={optionHeld} modKey={modKey} />
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -180,6 +209,7 @@ export function ProjectSidebar({
                 <Link href={changelogHref}>
                   <ScrollTextIcon />
                   <span>Changelog</span>
+                  <ShortcutHint id="nav-changelog" visible={optionHeld} modKey={modKey} />
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -201,6 +231,7 @@ export function ProjectSidebar({
                 <Link href={`${qualityHref}/matrix`}>
                   <GemIcon />
                   <span>Matrix</span>
+                  <ShortcutHint id="nav-matrix" visible={optionHeld} modKey={modKey} />
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -213,6 +244,7 @@ export function ProjectSidebar({
                 <Link href={`${qualityHref}/findings`}>
                   <ListChecksIcon />
                   <span>Findings</span>
+                  <ShortcutHint id="nav-findings" visible={optionHeld} modKey={modKey} />
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -231,6 +263,7 @@ export function ProjectSidebar({
                 <Link href={mapsHref}>
                   <MapIcon />
                   <span>All maps</span>
+                  <ShortcutHint id="nav-maps" visible={optionHeld} modKey={modKey} />
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -243,6 +276,7 @@ export function ProjectSidebar({
                 <Link href={`${mapsHref}/journey`}>
                   <RouteIcon />
                   <span>Journey</span>
+                  <ShortcutHint id="nav-journey" visible={optionHeld} modKey={modKey} />
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -287,6 +321,7 @@ export function ProjectSidebar({
                 <Link href={libraryHref}>
                   <BookOpenIcon />
                   <span>All nodes</span>
+                  <ShortcutHint id="nav-library" visible={optionHeld} modKey={modKey} />
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -295,6 +330,7 @@ export function ProjectSidebar({
                 <Link href={`/project/${projectId}/acceptances`}>
                   <AcceptanceIcon />
                   <span>Acceptances</span>
+                  <ShortcutHint id="nav-acceptances" visible={optionHeld} modKey={modKey} />
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
