@@ -23,7 +23,7 @@ const FULL = { width: 600, height: 72 } as const;
  * Open findings over time, as one quiet line — the Overall cards' footnote.
  *
  * One series, muted, never the severity colours: a card is 160px wide, and
- * four stacked bands at that size are a smudge. The card's count already
+ * five stacked bands at that size are a smudge. The card's count already
  * says what is open *now*; this says which way it has been going, fitted to
  * its own range so a handful of closes is visible at all. Audits are the
  * faint ticks. Renders nothing without history, so a card whose surface no

@@ -1273,10 +1273,14 @@ const { worstOpenFindingFor } = loadQuality();
   ];
   assert(countOpenFindings(openRows) === 3, "the open count reads only open rows");
   assert(countOpenFindings(openRows, { surface: "web", domain: "SEC" }) === 1, "and narrows by surface and domain");
+  assert(
+    countOpenFindings([{ open: true, surface: "web", domain: "", criterionId: "ZZZ-01" }], { domain: "ZZZ" }) === 1,
+    "a criterion the pack does not define is placed by its prefix, as the replay places it",
+  );
 
   // --- geometry ----------------------------------------------------------------
   const geo = burndownGeometry(many.points, 100, 10);
-  assert(geo.bands.map((b) => b.severity).join() === "critical,high,medium,low", "four bands, worst at the baseline, no info");
+  assert(geo.bands.map((b) => b.severity).join() === "critical,high,medium,low,info", "a band per severity, worst at the baseline, info on top");
   assert(geo.xs.length === many.points.length && geo.xs[0] === 0, "one x per point, starting at the left edge");
   assert(geo.xs.every((x, i) => i === 0 || x >= geo.xs[i - 1]), "x never runs backwards");
   assert(geo.xs[geo.xs.length - 1] < 100, "the newest reading keeps a visible stub at the right edge");
@@ -1286,6 +1290,14 @@ const { worstOpenFindingFor } = loadQuality();
 
   const undated = burndownGeometry([{ ...many.points[0], ts: "" }, many.points[1], many.points[2]], 100, 10);
   assert(undated.xs.join() === "0,47,94", `an unparseable ts falls back to even spacing (got ${undated.xs.join()})`);
+  const skewed = burndownGeometry(
+    // In journal order, but the middle one is later in time than the last —
+    // what two offsets in a hand-edited journal produce under string order.
+    [{ ...many.points[0], ts: "2026-09-01T00:00:00Z" }, { ...many.points[1], ts: "2026-09-03T00:00:00Z" }, { ...many.points[2], ts: "2026-09-02T00:00:00Z" }],
+    100,
+    10,
+  );
+  assert(skewed.xs.every((x) => x >= 0 && x <= 100), `offsets that sort against time fall back to even spacing (got ${skewed.xs.join()})`);
   const single = burndownGeometry([many.points[0]], 100, 10);
   assert(single.line === "M0,0L100,0", `a single reading holds across the whole width (got ${single.line})`);
   assert(burndownGeometry([], 100, 10).bands.length === 0, "no points, no shapes");

@@ -22,6 +22,7 @@ import {
   priorityOf,
   severityOf,
   deriveFindingsBurndown,
+  domainCodeOf,
   type BurndownPoint,
   type FindingPriority,
   type FindingSeverity,
@@ -980,12 +981,16 @@ export function burndownFilterOf(filters: Pick<QualityFilters, "surface" | "doma
  * the rows are what the section says *is*, and the headline's "180 open" is
  * the latter, the same number the cards' own "180 open" reads.
  */
-export function countOpenFindings(rows: readonly FindingRow[], filter: BurndownFilter = {}): number {
+export function countOpenFindings(
+  rows: readonly Pick<FindingRow, "open" | "surface" | "domain" | "criterionId">[],
+  filter: BurndownFilter = {}): number {
   return rows.filter(
     (row) =>
       row.open &&
       (filter.surface === undefined || row.surface === filter.surface) &&
-      (filter.domain === undefined || row.domain === filter.domain),
+      // The replay's fallback: a criterion the pack does not define has no
+      // `row.domain`, and `domainCodeOf` places it by its id's prefix.
+      (filter.domain === undefined || (row.domain || domainCodeOf(row.criterionId)) === filter.domain),
   ).length;
 }
 
@@ -1020,8 +1025,13 @@ export function describeBurndownDetail(burndown: FindingsBurndown): string | nul
   return `${parts.join(", ")} ${burndown.since ? `since the ${burndown.since.audit_id} audit` : "so far"}`;
 }
 
-/** The severities the chart stacks, worst at the baseline — `info` is a note, not a defect, as on the cells' dots. */
-export const BURNDOWN_SEVERITIES: readonly FindingSeverity[] = FINDING_SEVERITIES.filter((severity) => severity !== "info");
+/**
+ * The severities the chart stacks, worst at the baseline — all five, `info`
+ * included and on top. The cells' dots leave `info` out, but the burndown's
+ * legend has to add up to the sentence beside it and to the cards' "N open",
+ * which both count every open finding.
+ */
+export const BURNDOWN_SEVERITIES: readonly FindingSeverity[] = FINDING_SEVERITIES;
 
 export interface BurndownGeometry {
   /** One stacked step-area per severity, worst first (the bottom band). */
@@ -1069,7 +1079,10 @@ export function burndownGeometry(
   const times = points.map((point) => Date.parse(point.ts));
   const first = times[0];
   const last = times[times.length - 1];
-  const timed = times.every(Number.isFinite) && last > first;
+  // Non-decreasing, not just finite: points arrive in `orderEvents` order,
+  // which compares raw strings, and two offsets in a hand-edited journal can
+  // sort one way as text and the other as time.
+  const timed = times.every((time, index) => Number.isFinite(time) && (index === 0 || time >= times[index - 1])) && last > first;
   const span = points.length === 1 ? width : width * (1 - LAST_STEP);
   const xs = points.map((_, index) =>
     points.length === 1 ? 0 : timed ? ((times[index] - first) / (last - first)) * span : (index / (points.length - 1)) * span,
