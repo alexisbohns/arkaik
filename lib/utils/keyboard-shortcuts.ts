@@ -46,6 +46,9 @@ export interface ShortcutGroup {
 /** The token every mod-key chord is written with. */
 export const MOD_KEY_TOKEN = "Mod";
 
+/** The token every Option/Alt chord is written with. ⌥ on a Mac, Alt elsewhere. */
+export const ALT_KEY_TOKEN = "Alt";
+
 const GROUPS: readonly ShortcutGroup[] = [
   {
     id: "general",
@@ -71,7 +74,8 @@ const GROUPS: readonly ShortcutGroup[] = [
         id: "toggle-sidebar",
         description: "Show or hide the sidebar",
         keys: [MOD_KEY_TOKEN, "B"],
-        hotkeys: ["Mod+B"],
+        altKeys: [ALT_KEY_TOKEN, "S"],
+        hotkeys: ["Mod+B", "Alt+S"],
         scope: "project",
       },
       {
@@ -81,6 +85,25 @@ const GROUPS: readonly ShortcutGroup[] = [
         hotkeys: ["Escape"],
         scope: "everywhere",
       },
+    ],
+  },
+  {
+    // One chord per sidebar destination, mnemonic where the letter is free:
+    // M is Maps, so the matrix takes X. Held Option paints each chord beside
+    // its sidebar item (ProjectSidebar), so these are discoverable in place.
+    id: "navigation",
+    label: "Go to",
+    shortcuts: [
+      { id: "nav-overview", description: "Overview", keys: [ALT_KEY_TOKEN, "O"], hotkeys: ["Alt+O"], scope: "project" },
+      { id: "nav-pyramid", description: "Pyramid", keys: [ALT_KEY_TOKEN, "P"], hotkeys: ["Alt+P"], scope: "project" },
+      { id: "nav-delivery", description: "Delivery", keys: [ALT_KEY_TOKEN, "D"], hotkeys: ["Alt+D"], scope: "project" },
+      { id: "nav-changelog", description: "Changelog", keys: [ALT_KEY_TOKEN, "C"], hotkeys: ["Alt+C"], scope: "project" },
+      { id: "nav-matrix", description: "Quality matrix", keys: [ALT_KEY_TOKEN, "X"], hotkeys: ["Alt+X"], scope: "project" },
+      { id: "nav-findings", description: "Findings", keys: [ALT_KEY_TOKEN, "F"], hotkeys: ["Alt+F"], scope: "project" },
+      { id: "nav-maps", description: "All maps", keys: [ALT_KEY_TOKEN, "M"], hotkeys: ["Alt+M"], scope: "project" },
+      { id: "nav-journey", description: "Journey map", keys: [ALT_KEY_TOKEN, "J"], hotkeys: ["Alt+J"], scope: "project" },
+      { id: "nav-library", description: "Library", keys: [ALT_KEY_TOKEN, "L"], hotkeys: ["Alt+L"], scope: "project" },
+      { id: "nav-acceptances", description: "Acceptances", keys: [ALT_KEY_TOKEN, "A"], hotkeys: ["Alt+A"], scope: "project" },
     ],
   },
   {
@@ -164,6 +187,24 @@ const GROUPS: readonly ShortcutGroup[] = [
 ];
 
 /**
+ * Where each navigation row goes, relative to `/project/<id>/`. Kept beside
+ * the rows so the test can hold them one-to-one; ProjectSidebar registers
+ * from this table.
+ */
+export const NAV_HOTKEY_ROUTES: Readonly<Record<string, string>> = {
+  "nav-overview": "overview",
+  "nav-pyramid": "pyramid",
+  "nav-delivery": "delivery",
+  "nav-changelog": "changelog",
+  "nav-matrix": "quality/matrix",
+  "nav-findings": "quality/findings",
+  "nav-maps": "maps",
+  "nav-journey": "maps/journey",
+  "nav-library": "library",
+  "nav-acceptances": "acceptances",
+};
+
+/**
  * The groups worth showing on a given surface. Outside a project (the docs
  * shell, say) the map and project chords are not just unused — they are dead
  * keys, and listing them would be a lie the dialog tells on every open.
@@ -201,8 +242,20 @@ export function getShortcut(id: string): ShortcutEntry & { hotkeys: readonly str
 /**
  * Render one key for display. `modLabel` is what `useModKeyLabel` reports —
  * null while the platform is still unknown (SSR), where "Ctrl" is the safer
- * guess than a ⌘ shown to someone who has no ⌘ key.
+ * guess than a ⌘ shown to someone who has no ⌘ key. It also decides Alt's
+ * glyph.
  */
 export function formatShortcutKey(key: string, modLabel: string | null): string {
-  return key === MOD_KEY_TOKEN ? modLabel ?? "Ctrl" : key;
+  if (key === MOD_KEY_TOKEN) return modLabel ?? "Ctrl";
+  if (key === ALT_KEY_TOKEN) return modLabel === "⌘" ? "⌥" : "Alt";
+  return key;
+}
+
+/**
+ * A whole chord as one chip's text: glued on a Mac (`⌥O`, `⌘K`), joined with
+ * `+` elsewhere (`Alt+O`, `Ctrl+K`) — the convention the Search chip set.
+ */
+export function formatChord(keys: readonly string[], modLabel: string | null): string {
+  const parts = keys.map((key) => formatShortcutKey(key, modLabel));
+  return modLabel === "⌘" ? parts.join("") : parts.join("+");
 }

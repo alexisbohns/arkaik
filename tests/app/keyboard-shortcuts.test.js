@@ -76,7 +76,16 @@ async function main() {
 
   const hotkeys = await import("@tanstack/hotkeys");
   const registry = loadModule("lib/utils/keyboard-shortcuts.ts", "keyboard-shortcuts.js");
-  const { getShortcutGroups, getShortcut, allShortcuts, formatShortcutKey, MOD_KEY_TOKEN } = registry;
+  const {
+    getShortcutGroups,
+    getShortcut,
+    allShortcuts,
+    formatShortcutKey,
+    formatChord,
+    MOD_KEY_TOKEN,
+    ALT_KEY_TOKEN,
+    NAV_HOTKEY_ROUTES,
+  } = registry;
 
   /** Does any of the entry's registered strings match this event? */
   function fires(id, overrides, platform = "mac") {
@@ -203,6 +212,31 @@ async function main() {
     }
   }
 
+  // --- navigation chords ---
+  const navGroup = getShortcutGroups(true).find((group) => group.id === "navigation");
+  assert(Boolean(navGroup), "the sheet has a Navigation group");
+  const navIds = navGroup ? navGroup.shortcuts.map((s) => s.id) : [];
+  const routeIds = Object.keys(NAV_HOTKEY_ROUTES);
+  assert(
+    navIds.length === routeIds.length && navIds.every((id) => routeIds.includes(id)),
+    "every navigation row has exactly one route, and every route a row",
+  );
+  for (const [id, route] of Object.entries(NAV_HOTKEY_ROUTES)) {
+    const segment = route.split("/")[0];
+    assert(
+      fs.existsSync(path.join(ROOT, "app", "project", "[id]", segment)),
+      `${id} → ${route} lands on a real project page`,
+    );
+  }
+
+  assert(
+    fires("nav-overview", { key: "ø", code: "KeyO", altKey: true }),
+    "⌥O on a Mac (which types ø) still goes to Overview",
+  );
+  assert(fires("nav-delivery", { key: "d", code: "KeyD", altKey: true }, "windows"), "Alt+D off-Mac too");
+  assert(!fires("nav-acceptances", { key: "a", code: "KeyA" }), "a bare a is not ⌥A");
+  assert(fires("toggle-sidebar", { key: "ß", code: "KeyS", altKey: true }), "⌥S also toggles the sidebar");
+
   // --- the sheet ---
   const projectGroups = getShortcutGroups(true);
   const docsGroups = getShortcutGroups(false);
@@ -237,6 +271,13 @@ async function main() {
   assert(formatShortcutKey(MOD_KEY_TOKEN, "Ctrl") === "Ctrl", "…and as Ctrl elsewhere");
   assert(formatShortcutKey(MOD_KEY_TOKEN, null) === "Ctrl", "unknown platform falls back to Ctrl");
   assert(formatShortcutKey("K", "⌘") === "K", "plain keys render as themselves");
+  assert(formatShortcutKey(ALT_KEY_TOKEN, "⌘") === "⌥", "Alt renders as ⌥ on Apple keyboards");
+  assert(formatShortcutKey(ALT_KEY_TOKEN, "Ctrl") === "Alt", "…and as Alt elsewhere");
+  assert(formatShortcutKey(ALT_KEY_TOKEN, null) === "Alt", "unknown platform falls back to Alt");
+  assert(formatChord([ALT_KEY_TOKEN, "O"], "⌘") === "⌥O", "a Mac chord chip reads ⌥O");
+  assert(formatChord([ALT_KEY_TOKEN, "O"], "Ctrl") === "Alt+O", "…and Alt+O elsewhere");
+  assert(formatChord([MOD_KEY_TOKEN, "K"], "⌘") === "⌘K", "the Search chip's ⌘K comes out the same way");
+  assert(formatChord([MOD_KEY_TOKEN, "K"], "Ctrl") === "Ctrl+K", "…and Ctrl+K");
 
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 
