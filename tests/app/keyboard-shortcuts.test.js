@@ -221,12 +221,27 @@ async function main() {
     navIds.length === routeIds.length && navIds.every((id) => routeIds.includes(id)),
     "every navigation row has exactly one route, and every route a row",
   );
+  // Built-in maps are served by the dynamic `maps/[mapId]` route, not a
+  // literal directory per map — so a route under `maps/` is checked against
+  // the id, not the filesystem, and only these two ids are wired up there.
+  const BUILT_IN_MAP_IDS = ["journey", "system"];
+  assert(
+    fs.existsSync(path.join(ROOT, "app", "project", "[id]", "maps", "[mapId]")),
+    "the dynamic maps/[mapId] route exists to serve the built-in maps",
+  );
   for (const [id, route] of Object.entries(NAV_HOTKEY_ROUTES)) {
-    const segment = route.split("/")[0];
-    assert(
-      fs.existsSync(path.join(ROOT, "app", "project", "[id]", segment)),
-      `${id} → ${route} lands on a real project page`,
-    );
+    const segments = route.split("/");
+    if (segments[0] === "maps" && segments.length > 1) {
+      assert(
+        segments.length === 2 && BUILT_IN_MAP_IDS.includes(segments[1]),
+        `${id} → ${route} names a built-in map (journey or system) on the dynamic maps/[mapId] route`,
+      );
+    } else {
+      assert(
+        fs.existsSync(path.join(ROOT, "app", "project", "[id]", ...segments)),
+        `${id} → ${route} lands on a real project page`,
+      );
+    }
   }
 
   assert(
