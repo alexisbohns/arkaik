@@ -17,6 +17,8 @@ const { loadSchema } = require("./load-schema");
 const ROOT = path.join(__dirname, "..", "..");
 const {
   deriveFindingsBurndown,
+  burndownRows,
+  burndownSummary,
   openTotal,
   findingOpenedInput,
   findingResolvedInput,
@@ -279,6 +281,31 @@ check("no journal at all is the same empty burndown", eq(deriveFindingsBurndown(
   expected[severityOf(b2, library)]--;
   check("each out of its own severity", eq(last.open, expected), JSON.stringify({ first: first.open, last: last.open }));
   check("both count as closed since the restored audit", burn.since?.resolved === 2);
+}
+
+// --- the table and the summary the CLI and MCP print ---------------------------
+
+{
+  const b = deriveFindingsBurndown([
+    opened(1, "F-1", "high"),
+    audit(2, "2026-08", { high: 1, low: 2 }),
+    resolved(3, "F-1"),
+    opened(4, "F-2", "critical"),
+    audit(5, "2026-09", { critical: 1, low: 2 }),
+    accepted(6, "F-2"),
+  ]);
+  const { reference, rows } = burndownRows(b);
+  check("the table is read from the newest audit", reference.kind === "audit" && reference.id === "2026-09", JSON.stringify(reference));
+  check("one row per severity, info last", rows.map((r) => r.severity).join() === "critical,high,medium,low,info");
+  check("each row reads reference, now and change", eq(rows[0], { severity: "critical", at_reference: 1, now: 0, change: -1 }), JSON.stringify(rows[0]));
+  check("the summary counts since the newest audit", burndownSummary(b) === "1 closed since the 2026-09 audit (0 resolved, 1 accepted) · 0 opened · 2 open", burndownSummary(b));
+  check("a live open count wins over the replay's", burndownSummary(b, 7).endsWith("· 7 open"));
+
+  const noAudit = deriveFindingsBurndown([opened(1, "F-1", "high"), resolved(2, "F-1")]);
+  const table = burndownRows(noAudit);
+  check("with no audit the table reads from the first point", table.reference.kind === "start" && table.reference.id === "F-1" && table.rows[1].at_reference === 1 && table.rows[1].now === 0, JSON.stringify(table));
+  check("and the summary counts every close", burndownSummary(noAudit) === "1 closed (1 resolved, 0 accepted) · 1 opened · 0 open", burndownSummary(noAudit));
+  check("no history: no table, no summary", burndownRows(deriveFindingsBurndown([])).reference === null && burndownSummary(deriveFindingsBurndown([])) === null);
 }
 
 console.log(failures === 0 ? "\nAll quality-burndown tests OK" : `\n${failures} failure(s)`);

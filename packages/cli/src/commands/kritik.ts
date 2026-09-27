@@ -30,6 +30,7 @@ import {
   auditCompletedInput,
   deriveAuditScope,
   deriveQualityMatrix,
+  deriveFindingsBurndown,
   deriveQualityTrend,
   detectRegressions,
   findingOpenedInput,
@@ -48,6 +49,9 @@ import {
   signalRunSheet,
   signalTrippedInput,
   trendRows,
+  burndownRows,
+  burndownSummary,
+  domainCodeOf,
   upsertAssessment,
   upsertFinding,
   type AuditCompletedScope,
@@ -111,6 +115,7 @@ Subcommands:
   signals               The signal pack, and what has tripped since the last audit.
   regressions           What got worse between two audits.
   trend                 Every recorded audit's scores, and which way each moved.
+  burndown              Open findings over time, and what closed since the last audit.
   scope                 The cells your resolved findings made stale since the last audit.
   issue <criterion>     Print the prefilled GitHub issue skeleton.
   criterion add ...     Add a project-specific criterion to the overlay.
@@ -233,6 +238,22 @@ Reads the journal, so it needs a bundle (--bundle, default docs/arkaik/bundle.js
 and audits recorded with \`arkaik kritik matrix --record\`. A framework major
 bump between two audits breaks the comparison there (SPEC § 8): the row still
 prints, without an arrow.`;
+
+const BURNDOWN_USAGE = `arkaik kritik burndown [--surface <s>] [--domain <CODE>] [--json]
+
+How many findings closed since the last recorded audit, and how many are open
+by severity then and now. The findings, not the score: a score only moves when
+its cell is re-scored, and this moves the day a finding closes.
+
+  --surface <s>     Only findings on that surface.
+  --domain <CODE>   Only findings in that domain (SEC, PRF, …).
+  --json            Print the totals, the table and every point as JSON.
+
+Replays quality.finding.opened / resolved / accepted from the journal, so it
+needs a bundle (--bundle, default docs/arkaik/bundle.json). Each recorded audit
+(\`arkaik kritik matrix --record\`) re-baselines the counts to what it counted,
+which corrects a finding closed by hand. A narrowed view is never re-baselined:
+an audit's counts are project-wide.`;
 
 const SCOPE_USAGE = `arkaik kritik scope [--since <audit>] [--no-widen] [--json]
 
@@ -1206,6 +1227,100 @@ function runTrend(args: string[], common: CommonOptions): void {
   process.exit(0);
 }
 
+// --- burndown ----------------------------------------------------------------
+
+function runBurndown(args: string[], common: CommonOptions): void {
+  const { single, flags } = collect(args, [], ["json"]);
+  if (flags.has("help")) {
+    console.log(BURNDOWN_USAGE);
+    process.exit(0);
+  }
+
+  const journal = resolveJournal(common.root, common.bundlePath);
+  if (!journal.present) {
+    fail(
+      `kritik: no bundle at ${journal.bundlePath} — the burndown is read from the journal's quality.finding.* events, ` +
+        `and there is no journal without a bundle.`,
+    );
+  }
+  const events = readFullJournalEvents(journal.journalPath);
+  // Neither is required. The library places a criterion in its domain (an
+  // overlay criterion may name its own); the section's findings stand in for
+  // any finding no event ever opened, and give the live open count.
+  let library: KritikLibrary | undefined;
+  let section: QualitySection | undefined;
+  try {
+    library = loadKritikLibrary(common.root).library;
+    section = loadCurrentQualitySection(common.root, library);
+  } catch {
+    // No pack or no audit on disk — the journal alone still has a burndown.
+  }
+  const filter = {
+    ...(single.surface !== undefined ? { surface: single.surface } : {}),
+    ...(single.domain !== undefined ? { domain: single.domain } : {}),
+  };
+  const burndown = deriveFindingsBurndown(events, { ...filter, library, findings: section?.findings });
+  const openNow = section
+    ? section.findings.filter(
+        (finding) =>
+          isOpenFinding(finding) &&
+          (filter.surface === undefined || finding.surface === filter.surface) &&
+          (filter.domain === undefined || domainCodeOf(finding.criterion_id, library) === filter.domain),
+      ).length
+    : undefined;
+  const { reference, rows } = burndownRows(burndown);
+  const summary = burndownSummary(burndown, openNow);
+
+  if (flags.has("json")) {
+    console.log(
+      JSON.stringify(
+        {
+          summary,
+          opened: burndown.opened,
+          resolved: burndown.resolved,
+          accepted: burndown.accepted,
+          since: burndown.since,
+          ...(openNow !== undefined ? { open: openNow } : {}),
+          reference,
+          rows,
+          points: burndown.points,
+        },
+        null,
+        2,
+      ),
+    );
+    process.exit(0);
+  }
+
+  if (summary === null || reference === null) {
+    console.log(
+      `\n  no finding history yet — \`arkaik kritik finding open\` and \`finding resolve\` write it, ` +
+        `and \`arkaik kritik matrix --record\` records an audit to measure from.\n`,
+    );
+    process.exit(0);
+  }
+
+  const referenceTitle = reference.kind === "audit" ? `at ${reference.id}` : "at start";
+  const header = ["severity", referenceTitle, "now", "change"];
+  const table = rows.map((row) => [
+    row.severity,
+    String(row.at_reference),
+    String(row.now),
+    row.change === 0 ? "=" : row.change > 0 ? `+${row.change}` : `−${Math.abs(row.change)}`,
+  ]);
+  const widths = header.map((title, column) => Math.max(title.length, ...table.map((line) => line[column].length)));
+  const line = (cells: string[]) => `  ${cells.map((cell, column) => cell.padEnd(widths[column])).join("   ")}`.trimEnd();
+
+  console.log(`\n  ${summary}\n`);
+  console.log(line(header));
+  for (const cells of table) console.log(line(cells));
+  if (reference.kind === "start") {
+    console.log(`\n  no recorded audit — read from the first event (${reference.ts.slice(0, 10)}).`);
+  }
+  console.log("");
+  process.exit(0);
+}
+
 // --- scope -------------------------------------------------------------------
 
 /** One run-sheet line's reason: which findings (and the PR that closed each), or which shared nodes. */
@@ -1477,6 +1592,8 @@ export function runKritik(args: string[]): void {
       return runRegressions(subArgs, common);
     case "trend":
       return runTrend(subArgs, common);
+    case "burndown":
+      return runBurndown(subArgs, common);
     case "scope":
       return runScope(subArgs, common);
     case "issue":

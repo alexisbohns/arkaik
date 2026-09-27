@@ -494,6 +494,33 @@ try {
   check("--domain reads that domain's score instead of the roll-up", trendDomain.rows[1].cells.web.score === 25, JSON.stringify(trendDomain.rows[1]));
   check("--surface keeps one column", trendDomain.surfaces.length === 1 && trendDomain.surfaces[0] === "web");
 
+  // --- burndown (issue #441) --------------------------------------------------
+  // Replayed from the events this suite's own `finding open` / `resolve` wrote,
+  // so the expectations are read off the journal rather than restated.
+
+  const burnJournal = journal();
+  const openedIds = new Set(burnJournal.filter((e) => e.type === "quality.finding.opened").map((e) => e.finding_id));
+  const newestAudit = burnJournal.filter((e) => e.type === "quality.audit.completed").pop();
+  check("burndown precondition: this suite opened findings and recorded an audit", openedIds.size > 0 && newestAudit !== undefined);
+
+  const burnJson = run(["burndown", "--json"]);
+  check("burndown reads the journal", burnJson.status === 0, burnJson.stderr);
+  const burn = JSON.parse(burnJson.stdout);
+  check("every opened finding is counted once", burn.opened === openedIds.size, `${burn.opened} vs ${openedIds.size}`);
+  check("the reference is the newest recorded audit", burn.since.audit_id === newestAudit.audit_id && burn.reference.kind === "audit", JSON.stringify(burn.reference));
+  check("one point per replayed event, ending on the replay's own counts", burn.points.length > 0 && burn.rows.every((row) => row.now === burn.points[burn.points.length - 1].open[row.severity]));
+  check("the live open count comes from the findings on disk", typeof burn.open === "number" && burn.summary.endsWith(`· ${burn.open} open`), burn.summary);
+
+  const burnText = run(["burndown"]);
+  check("burndown prints the totals line and the severity table", burnText.status === 0 && burnText.stdout.includes(burn.summary) && /severity\s+at /.test(burnText.stdout), burnText.stdout);
+
+  const burnWeb = JSON.parse(run(["burndown", "--surface", "web", "--json"]).stdout);
+  const webOpened = new Set(burnJournal.filter((e) => e.type === "quality.finding.opened" && e.surface === "web").map((e) => e.finding_id));
+  check("--surface narrows to that surface's findings", burnWeb.opened === webOpened.size && burnWeb.opened < burn.opened, `${burnWeb.opened} vs ${webOpened.size}`);
+  const burnSec = JSON.parse(run(["burndown", "--domain", "SEC", "--json"]).stdout);
+  const secOpened = new Set(burnJournal.filter((e) => e.type === "quality.finding.opened" && String(e.criterion_id).startsWith("SEC-")).map((e) => e.finding_id));
+  check("--domain narrows to that domain's findings", burnSec.opened === secOpened.size, `${burnSec.opened} vs ${secOpened.size}`);
+
   // A baseline row (a restored audit's synthesized reading, #472) and a scoped
   // re-audit row (#443) each print a note under themselves, the same way an
   // incomparable row does. A dedicated journal, not `dir`'s, so this fixture's
@@ -541,6 +568,8 @@ try {
   try {
     const noBundle = spawnSync(process.execPath, [CLI, "kritik", "trend"], { encoding: "utf8", cwd: noBundleDir });
     check("trend without a bundle says where the journal would have been", noBundle.status === 1 && noBundle.stderr.includes("no bundle"), noBundle.stderr);
+    const noBundleBurn = spawnSync(process.execPath, [CLI, "kritik", "burndown"], { encoding: "utf8", cwd: noBundleDir });
+    check("burndown without a bundle says so too", noBundleBurn.status === 1 && noBundleBurn.stderr.includes("no bundle"), noBundleBurn.stderr);
   } finally {
     rmSync(noBundleDir, { recursive: true, force: true });
   }
