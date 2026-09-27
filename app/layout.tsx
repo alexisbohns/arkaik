@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import "highlight.js/styles/github.css";
@@ -35,6 +35,19 @@ export const metadata: Metadata = {
   alternates: {
     canonical: "https://arkaik.app",
   },
+  appleWebApp: {
+    capable: true,
+    title: "arkaik",
+    statusBarStyle: "default",
+  },
+};
+
+// The installed app's title bar (app/manifest.ts) follows the system theme.
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f7f7f7" },
+    { media: "(prefers-color-scheme: dark)", color: "#09090b" },
+  ],
 };
 
 const jsonLd = {
