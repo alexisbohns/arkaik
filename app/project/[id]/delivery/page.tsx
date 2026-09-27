@@ -51,14 +51,16 @@ const ALL_STATUS_COLUMNS: StatusId[] = [...STATUSES]
   .map((status) => status.id);
 
 // The board's resting lens. "Clear" (the c key) returns here — not to "no
-// species", which would be an empty board.
-const DEFAULT_SPECIES: SpeciesId[] = ["view"];
+// species", which would be an empty board. `readonly`, and every use below
+// copies it, so aliasing `speciesFilter` to this constant is safe by
+// construction rather than by nobody mutating it in place.
+const DEFAULT_SPECIES: readonly SpeciesId[] = ["view"];
 
 export default function ProjectDeliveryPage() {
   const id = useProjectId();
 
   const [platformFilter, setPlatformFilter] = useState<DeliveryPlatformFilter>("all");
-  const [speciesFilter, setSpeciesFilter] = useState<SpeciesId[]>(DEFAULT_SPECIES);
+  const [speciesFilter, setSpeciesFilter] = useState<SpeciesId[]>(() => [...DEFAULT_SPECIES]);
   const [showAllStatuses, setShowAllStatuses] = useState(false);
   const [search, setSearch] = useState("");
   const [newNodeOpen, setNewNodeOpen] = useState(false);
@@ -71,7 +73,7 @@ export default function ProjectDeliveryPage() {
     speciesFilter.some((species) => !DEFAULT_SPECIES.includes(species));
   const clearFilters = () => {
     setPlatformFilter("all");
-    setSpeciesFilter(DEFAULT_SPECIES);
+    setSpeciesFilter([...DEFAULT_SPECIES]);
     setShowAllStatuses(false);
     setSearch("");
   };
