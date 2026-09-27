@@ -724,19 +724,43 @@ export function buildCellHistory(
  * somebody recorded. An event naming a finding the section does not hold is
  * ignored — `validateBundle` already warns about that class, and a read
  * projection is not the place to raise it a second time. A malformed
- * `quality.assessment.scored` event — a non-string `criterion_id`, `surface`
- * or `audit_id`, non-string `evidence`, or a `level` that is not an integer
- * 0–4 — is skipped the same way: this is a journal nobody has re-validated
- * since it left storage, not a payload the schema package already parsed.
+ * `quality.assessment.scored` event — a non-string `criterion_id`, `surface`,
+ * `audit_id` or `ts`, non-string `evidence`, or a `level` that is not an
+ * integer 0–4 — is skipped the same way: this is a journal nobody has
+ * re-validated since it left storage, not a payload the schema package
+ * already parsed. `ts` is required, matching the type and the zod schema:
+ * every real event carries one, and a row this fold produced without one
+ * would be a row the cell panel's History cannot place in time.
+ *
+ * A stored row with no string `criterion_id`/`surface` to key by is never a
+ * fold target — it survives untouched, at its original position, the same as
+ * a finding a decision event does not name. A duplicate stored row for one
+ * cell (`validateBundle` already warns about that class too) is folded onto
+ * only its LAST occurrence, the one a latest-wins reader would honor; an
+ * earlier duplicate for the same cell is left exactly as stored.
+ *
+ * **The restore guard.** A scored event is also checked against the STORED
+ * row at its cell — never against a value an earlier event in this same walk
+ * already produced — and skipped outright if its `audit_id` sorts lexically
+ * before the stored row's. A hosted scoped audit id always sorts after every
+ * known audit (`scopedAuditId` enforces it), so this never fires on an
+ * ordinary write. It exists for the case a normal write can't produce: a
+ * snapshot restored to a NEWER audit sitting next to a journal that still
+ * carries older hosted scores. `loadCurrentQualitySection` merges those
+ * latest-wins in lexical order, and this fold must not invert that merge on
+ * every subsequent read. Comparing against the stored row rather than a
+ * running value keeps two scored events for the same cell resolving
+ * latest-wins in journal order exactly as before — each is checked against
+ * the same stored floor, not against each other.
  */
 export function foldQualityEvents(
   section: QualitySection | undefined,
   events: readonly JournalEvent[],
 ): QualitySection | undefined {
   if (section === undefined) return undefined;
+  if (events.length === 0) return section;
   const findings = Array.isArray(section.findings) ? section.findings : [];
   const assessments = asArray<QualityAssessment>(section.assessments);
-  if ((findings.length === 0 && assessments.length === 0) || events.length === 0) return section;
 
   // Ids are unique by contract — `validateBundle` warns on a collision — so
   // first-occurrence-wins below is only a tie-break for malformed data, not a
@@ -753,17 +777,23 @@ export function foldQualityEvents(
   const patched = new Map<number, QualityFinding>();
   const current = (index: number) => patched.get(index) ?? findings[index];
 
-  // `criterion_id::surface` -> the assessment currently at that cell, seeded
-  // from storage and then overwritten as `quality.assessment.scored` events
-  // are walked below — latest wins, the opposite of the findings rule above.
-  const assessmentsByCell = new Map<string, QualityAssessment>();
-  for (const assessment of assessments) {
+  // `criterion_id::surface` -> the ARRAY INDEX of the LAST stored row at that
+  // cell. Keyed by index rather than by the row itself so a re-score can be
+  // spliced back into the exact position it came from, and a row this map
+  // has no key for (unkeyable, or an earlier duplicate for a keyed cell)
+  // never becomes a fold target.
+  const cellIndex = new Map<string, number>();
+  assessments.forEach((assessment, index) => {
     const criterionId = (assessment as { criterion_id?: unknown } | null)?.criterion_id;
     const surface = (assessment as { surface?: unknown } | null)?.surface;
-    if (typeof criterionId !== "string" || typeof surface !== "string") continue;
-    assessmentsByCell.set(`${criterionId}::${surface}`, assessment);
-  }
-  let assessmentsChanged = false;
+    if (typeof criterionId !== "string" || typeof surface !== "string") return;
+    cellIndex.set(`${criterionId}::${surface}`, index);
+  });
+  // index -> replacement, for a cell `cellIndex` already has a position for.
+  const assessmentPatches = new Map<number, QualityAssessment>();
+  // key -> row, for a cell the section never held at all — appended, never
+  // spliced, since there is no stored position to replace.
+  const newAssessments = new Map<string, QualityAssessment>();
 
   for (const event of events) {
     const type = event?.type;
@@ -784,22 +814,37 @@ export function foldQualityEvents(
         typeof auditId !== "string" ||
         auditId === "" ||
         typeof evidence !== "string" ||
+        typeof ts !== "string" ||
+        ts === "" ||
         !Number.isInteger(level) ||
         (level as number) < 0 ||
         (level as number) > 4
       ) {
         continue;
       }
-      assessmentsChanged = true;
-      assessmentsByCell.set(`${criterionId}::${surface}`, {
+
+      const key = `${criterionId}::${surface}`;
+      const index = cellIndex.get(key);
+      // The restore guard — see the docblock above. Checked against
+      // `assessments[index]`, the untouched stored row, never against
+      // `assessmentPatches`, so a second scored event for the same cell in
+      // this same walk is judged against the same floor as the first.
+      if (index !== undefined) {
+        const storedAuditId = (assessments[index] as { audit_id?: unknown } | null)?.audit_id;
+        if (typeof storedAuditId === "string" && auditId < storedAuditId) continue;
+      }
+
+      const row: QualityAssessment = {
         criterion_id: criterionId,
         surface,
         level: level as MaturityLevel,
         evidence,
         audit_id: auditId,
+        ts,
         ...(typeof commit === "string" ? { commit } : {}),
-        ...(typeof ts === "string" ? { ts } : {}),
-      } as QualityAssessment);
+      };
+      if (index !== undefined) assessmentPatches.set(index, row);
+      else newAssessments.set(key, row);
       continue;
     }
 
@@ -836,13 +881,20 @@ export function foldQualityEvents(
     });
   }
 
-  if (patched.size === 0 && !assessmentsChanged) return section;
+  if (patched.size === 0 && assessmentPatches.size === 0 && newAssessments.size === 0) return section;
   return {
     ...section,
     ...(patched.size > 0
       ? { findings: findings.map((finding, index) => patched.get(index) ?? finding) }
       : {}),
-    ...(assessmentsChanged ? { assessments: Array.from(assessmentsByCell.values()) } : {}),
+    ...(assessmentPatches.size > 0 || newAssessments.size > 0
+      ? {
+          assessments: [
+            ...assessments.map((assessment, index) => assessmentPatches.get(index) ?? assessment),
+            ...newAssessments.values(),
+          ],
+        }
+      : {}),
   };
 }
 

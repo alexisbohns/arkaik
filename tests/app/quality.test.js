@@ -702,6 +702,309 @@ assert(
   assert(foldQualityEvents(section, []) === section, "nothing to fold returns the section by reference");
 }
 
+// --- the early return must not swallow a score on an empty section (fix, #473) --
+//
+// The identity contract for "nothing to fold" is that nothing got patched,
+// not that the section already had findings or assessments to patch. A
+// section with neither must still take its first score.
+{
+  const scoreEvent = {
+    id: "E1",
+    ts: "2026-09-01T00:00:00.000Z",
+    type: "quality.assessment.scored",
+    audit_id: "2026-09-scoped",
+    criterion_id: "SEC-01",
+    surface: "web",
+    level: 2,
+    evidence: "e",
+  };
+
+  const emptySection = { profile: { surfaces: [{ id: "web", title: "Web" }] }, assessments: [], findings: [] };
+  const folded = foldQualityEvents(emptySection, [scoreEvent]);
+  assert(
+    Array.isArray(folded.assessments) && folded.assessments.length === 1 && folded.assessments[0].level === 2,
+    `a section with empty findings/assessments still folds a score (got ${JSON.stringify(folded.assessments)})`,
+  );
+
+  const bareSection = { profile: { surfaces: [{ id: "web", title: "Web" }] } };
+  const foldedBare = foldQualityEvents(bareSection, [scoreEvent]);
+  assert(
+    Array.isArray(foldedBare.assessments) && foldedBare.assessments.length === 1 && foldedBare.assessments[0].level === 2,
+    `a section with no findings/assessments keys at all still folds a score (got ${JSON.stringify(foldedBare.assessments)})`,
+  );
+}
+
+// --- ts is required on a scored event, commit rides along when present (fix, #473) --
+{
+  const section = { profile: { surfaces: [{ id: "web", title: "Web" }] }, assessments: [], findings: [] };
+  const withCommit = {
+    id: "E2",
+    ts: "2026-09-05T00:00:00.000Z",
+    type: "quality.assessment.scored",
+    audit_id: "2026-09-scoped",
+    criterion_id: "SEC-01",
+    surface: "web",
+    level: 3,
+    evidence: "e",
+    commit: "abc123",
+  };
+  const folded = foldQualityEvents(section, [withCommit]);
+  assert(folded.assessments[0].ts === "2026-09-05T00:00:00.000Z", "ts is carried onto the folded row");
+  assert(folded.assessments[0].commit === "abc123", "commit is carried onto the folded row when present");
+
+  const { ts: _omit, ...noTs } = withCommit;
+  assert(foldQualityEvents(section, [noTs]) === section, "a scored event with no ts is skipped");
+}
+
+// --- the restore guard: a scored event never undoes a newer stored audit (fix, #473) --
+//
+// A hosted scoped audit id always sorts after every known audit
+// (`scopedAuditId` enforces it), so this never fires on an ordinary write —
+// it protects a snapshot restored to a NEWER audit sitting next to a journal
+// that still carries older hosted scores.
+{
+  const section = {
+    profile: { surfaces: [{ id: "web", title: "Web" }] },
+    assessments: [{ criterion_id: "SEC-01", surface: "web", level: 4, evidence: "newer", audit_id: "2026-10", ts: "2026-10-01T00:00:00.000Z" }],
+    findings: [],
+  };
+  const olderScore = {
+    id: "E4",
+    ts: "2026-09-15T00:00:00.000Z",
+    type: "quality.assessment.scored",
+    audit_id: "2026-09-scoped",
+    criterion_id: "SEC-01",
+    surface: "web",
+    level: 1,
+    evidence: "stale",
+    scope: { since: "2026-08" },
+  };
+  assert(
+    foldQualityEvents(section, [olderScore]) === section,
+    "a scored event whose audit_id sorts lexically before the stored row's is skipped — the stored row survives",
+  );
+}
+
+// --- unkeyable and duplicate stored rows survive a fold untouched, in place (fix, #473) --
+{
+  const unkeyable = { surface: "web", level: 2, evidence: "no criterion_id", audit_id: "2026-08", ts: "2026-08-01T00:00:00.000Z" };
+  const keyed = { criterion_id: "SEC-02", surface: "web", level: 1, evidence: "e", audit_id: "2026-08", ts: "2026-08-01T00:00:00.000Z" };
+  const section = { profile: { surfaces: [{ id: "web", title: "Web" }] }, assessments: [unkeyable, keyed], findings: [] };
+  const score = {
+    id: "E5",
+    ts: "2026-09-01T00:00:00.000Z",
+    type: "quality.assessment.scored",
+    audit_id: "2026-09-scoped",
+    criterion_id: "SEC-02",
+    surface: "web",
+    level: 4,
+    evidence: "rescored",
+  };
+  const folded = foldQualityEvents(section, [score]);
+  assert(
+    folded.assessments[0] === unkeyable,
+    "a stored row with no string criterion_id/surface survives a fold untouched, at its original position",
+  );
+  assert(folded.assessments[1].level === 4, "the keyed cell is re-scored at its original position");
+  assert(folded.assessments.length === 2, "no row is dropped or duplicated");
+}
+{
+  const old1 = { criterion_id: "SEC-01", surface: "web", level: 1, evidence: "old1", audit_id: "2026-08a", ts: "2026-08-01T00:00:00.000Z" };
+  const old2 = { criterion_id: "SEC-01", surface: "web", level: 2, evidence: "old2", audit_id: "2026-08b", ts: "2026-08-02T00:00:00.000Z" };
+  const cellB = { criterion_id: "SEC-02", surface: "web", level: 1, evidence: "b", audit_id: "2026-08", ts: "2026-08-01T00:00:00.000Z" };
+  const section = { profile: { surfaces: [{ id: "web", title: "Web" }] }, assessments: [old1, old2, cellB], findings: [] };
+
+  const scoreB = {
+    id: "E6",
+    ts: "2026-09-01T00:00:00.000Z",
+    type: "quality.assessment.scored",
+    audit_id: "2026-09-scoped",
+    criterion_id: "SEC-02",
+    surface: "web",
+    level: 3,
+    evidence: "rescored b",
+  };
+  const foldedB = foldQualityEvents(section, [scoreB]);
+  assert(
+    foldedB.assessments[0] === old1 && foldedB.assessments[1] === old2,
+    "scoring cell B leaves an unrelated cell A's duplicate stored rows untouched",
+  );
+  assert(foldedB.assessments[2].level === 3, "cell B itself is re-scored");
+
+  const scoreA = {
+    id: "E7",
+    ts: "2026-09-02T00:00:00.000Z",
+    type: "quality.assessment.scored",
+    audit_id: "2026-09-scoped",
+    criterion_id: "SEC-01",
+    surface: "web",
+    level: 4,
+    evidence: "rescored a",
+  };
+  const foldedA = foldQualityEvents(section, [scoreA]);
+  assert(foldedA.assessments[0] === old1, "the earlier duplicate for the rescored cell is left exactly as stored");
+  assert(foldedA.assessments[1].level === 4, "only the LAST stored occurrence for the cell is replaced");
+  assert(foldedA.assessments[2] === cellB, "an unrelated cell is untouched by the rescore");
+}
+
+// --- surface is part of the fold key (#473) -----------------------------------
+{
+  const web = { criterion_id: "SEC-01", surface: "web", level: 1, evidence: "web-old", audit_id: "2026-08", ts: "2026-08-01T00:00:00.000Z" };
+  const ios = { criterion_id: "SEC-01", surface: "ios", level: 2, evidence: "ios-old", audit_id: "2026-08", ts: "2026-08-01T00:00:00.000Z" };
+  const section = {
+    profile: { surfaces: [{ id: "web", title: "Web" }, { id: "ios", title: "iOS" }] },
+    assessments: [web, ios],
+    findings: [],
+  };
+
+  const scoreIos = {
+    id: "E8",
+    ts: "2026-09-01T00:00:00.000Z",
+    type: "quality.assessment.scored",
+    audit_id: "2026-09-scoped",
+    criterion_id: "SEC-01",
+    surface: "ios",
+    level: 4,
+    evidence: "ios-new",
+  };
+  const foldedIos = foldQualityEvents(section, [scoreIos]);
+  assert(foldedIos.assessments[0] === web, "scoring one surface leaves the other surface's row untouched");
+  assert(
+    foldedIos.assessments[1].level === 4 && foldedIos.assessments[1].surface === "ios",
+    "the scored surface is updated",
+  );
+
+  const scoreWeb = {
+    id: "E9",
+    ts: "2026-09-01T00:00:00.000Z",
+    type: "quality.assessment.scored",
+    audit_id: "2026-09-scoped",
+    criterion_id: "SEC-01",
+    surface: "web",
+    level: 3,
+    evidence: "web-new",
+  };
+  const foldedWeb = foldQualityEvents(section, [scoreWeb]);
+  assert(foldedWeb.assessments[1] === ios, "scoring the other surface leaves ios untouched");
+  assert(
+    foldedWeb.assessments[0].level === 3 && foldedWeb.assessments[0].surface === "web",
+    "the scored surface is updated",
+  );
+}
+
+// --- malformed quality.assessment.scored events are skipped (#473) -----------
+{
+  const section = {
+    profile: { surfaces: [{ id: "web", title: "Web" }] },
+    assessments: [{ criterion_id: "SEC-01", surface: "web", level: 1, evidence: "e", audit_id: "2026-08", ts: "2026-08-01T00:00:00.000Z" }],
+    findings: [],
+  };
+  const base = {
+    id: "E10",
+    ts: "2026-09-01T00:00:00.000Z",
+    type: "quality.assessment.scored",
+    audit_id: "2026-09-scoped",
+    criterion_id: "SEC-01",
+    surface: "web",
+    level: 3,
+    evidence: "e",
+  };
+  const malformed = [
+    ["level -1", { ...base, level: -1 }],
+    ["level 2.5", { ...base, level: 2.5 }],
+    ["level as a string", { ...base, level: "3" }],
+    ["missing audit_id", { ...base, audit_id: undefined }],
+    ["non-string evidence", { ...base, evidence: 7 }],
+    ["missing criterion_id", { ...base, criterion_id: undefined }],
+  ];
+  for (const [label, event] of malformed) {
+    assert(foldQualityEvents(section, [event]) === section, `a scored event with ${label} is skipped`);
+  }
+}
+
+// --- a decision and a score in the same walk both land, independently (#473) --
+{
+  const openCritical2 = {
+    id: "F-9",
+    criterion_id: "SEC-01",
+    surface: "web",
+    title: "t",
+    detail: "d",
+    evidence: "e",
+    impact: 5,
+    likelihood: 5,
+    cost: "M",
+    status: "open",
+  };
+  const section = {
+    profile: { surfaces: [{ id: "web", title: "Web" }] },
+    assessments: [{ criterion_id: "SEC-01", surface: "web", level: 1, evidence: "e", audit_id: "2026-08", ts: "2026-08-01T00:00:00.000Z" }],
+    findings: [openCritical2],
+  };
+  const decision = { id: "01Z", ts: "2026-09-01T00:00:00.000Z", type: "quality.finding.resolved", finding_id: "F-9", resolved_by: "https://pr/1" };
+  const score = {
+    id: "E11",
+    ts: "2026-09-01T00:00:00.000Z",
+    type: "quality.assessment.scored",
+    audit_id: "2026-09-scoped",
+    criterion_id: "SEC-01",
+    surface: "web",
+    level: 3,
+    evidence: "e2",
+  };
+  const folded = foldQualityEvents(section, [decision, score]);
+  assert(folded.findings[0].status === "resolved", "the decision in a mixed walk still lands");
+  assert(folded.assessments[0].level === 3, "the score in a mixed walk still lands");
+
+  const scoreOnly = foldQualityEvents(section, [score]);
+  assert(scoreOnly.findings === section.findings, "a score-only fold does not touch or copy findings");
+}
+
+// --- position: a re-scored cell keeps its index in `assessments` (#473) ------
+{
+  const first = { criterion_id: "SEC-01", surface: "web", level: 1, evidence: "e1", audit_id: "2026-08", ts: "2026-08-01T00:00:00.000Z" };
+  const second = { criterion_id: "SEC-02", surface: "web", level: 2, evidence: "e2", audit_id: "2026-08", ts: "2026-08-01T00:00:00.000Z" };
+  const section = { profile: { surfaces: [{ id: "web", title: "Web" }] }, assessments: [first, second], findings: [] };
+  const score = {
+    id: "E12",
+    ts: "2026-09-01T00:00:00.000Z",
+    type: "quality.assessment.scored",
+    audit_id: "2026-09-scoped",
+    criterion_id: "SEC-02",
+    surface: "web",
+    level: 4,
+    evidence: "e2-new",
+  };
+  const folded = foldQualityEvents(section, [score]);
+  assert(folded.assessments[0] === first, "an unscored row keeps its position");
+  assert(
+    folded.assessments[1].criterion_id === "SEC-02" && folded.assessments[1].level === 4,
+    "the re-scored cell keeps its own index rather than moving to the end",
+  );
+  assert(folded.assessments.length === 2, "no row is appended for a cell that already existed");
+}
+
+// --- consumer: deriveQualityMatrix reflects a re-scored cell (#473) ----------
+{
+  const rescoreSection = foldSection([]);
+  const scoreDown = {
+    id: "E13",
+    ts: "2026-09-01T00:00:00.000Z",
+    type: "quality.assessment.scored",
+    audit_id: "2026-09-scoped",
+    criterion_id: "SEC-01",
+    surface: "web",
+    level: 0,
+    evidence: "regressed",
+  };
+  const beforeMatrix = deriveQualityMatrix({ quality: rescoreSection }, pack);
+  const afterMatrix = deriveQualityMatrix({ quality: foldQualityEvents(rescoreSection, [scoreDown]) }, pack);
+  assert(
+    beforeMatrix.matrix.SEC.web.score !== afterMatrix.matrix.SEC.web.score,
+    `a re-scored cell changes deriveQualityMatrix's reading of it (before ${beforeMatrix.matrix.SEC.web.score}, after ${afterMatrix.matrix.SEC.web.score})`,
+  );
+}
+
 // ========================== buildDomainSections ==============================
 //
 // The Matrix page's stacked sections. What matters is that they are a *view* of
