@@ -507,12 +507,12 @@ assert(
 // =========================== the fold (phase E) ===============================
 //
 // The webhook appends a `quality.finding.resolved` event and never rewrites the
-// stored finding (RFC §3.2). `foldFindingEvents` is the projection that
+// stored finding (RFC §3.2). `foldQualityEvents` is the projection that
 // makes the appended fact visible without a rewrite — pinned here against the
 // two consumers a stale `open` status actually breaks: the matrix's
 // anti-averaging cap, and the node badge.
 
-const { foldFindingEvents } = loadQuality();
+const { foldQualityEvents } = loadQuality();
 
 const RESOLVED_EVENT = (findingId, over = {}) => ({
   id: `01J${findingId}`,
@@ -534,16 +534,16 @@ const openCritical = { id: "F-1", criterion_id: "SEC-01", surface: "web", title:
 
 const untouched = foldSection([openCritical]);
 assert(
-  foldFindingEvents(untouched, [RESOLVED_EVENT("F-other")]) === untouched,
+  foldQualityEvents(untouched, [RESOLVED_EVENT("F-other")]) === untouched,
   "no matching event returns the SAME object",
 );
-assert(foldFindingEvents(untouched, []) === untouched, "an empty journal returns the same object");
+assert(foldQualityEvents(untouched, []) === untouched, "an empty journal returns the same object");
 assert(
-  foldFindingEvents(undefined, [RESOLVED_EVENT("F-1")]) === undefined,
+  foldQualityEvents(undefined, [RESOLVED_EVENT("F-1")]) === undefined,
   "an undefined section stays undefined",
 );
 
-const folded = foldFindingEvents(foldSection([openCritical]), [RESOLVED_EVENT("F-1")]);
+const folded = foldQualityEvents(foldSection([openCritical]), [RESOLVED_EVENT("F-1")]);
 assert(
   folded.findings[0].status === "resolved",
   `a matched finding reads resolved (${JSON.stringify(folded.findings[0])})`,
@@ -552,18 +552,18 @@ assert(folded.findings[0].resolved_by === "https://github.com/acme/app/pull/7", 
 assert(openCritical.status === "open", "the input was not mutated");
 
 for (const status of ["refuted", "accepted-risk"]) {
-  const decided = foldFindingEvents(foldSection([{ ...openCritical, status }]), [RESOLVED_EVENT("F-1")]);
+  const decided = foldQualityEvents(foldSection([{ ...openCritical, status }]), [RESOLVED_EVENT("F-1")]);
   assert(decided.findings[0].status === status, `a ${status} finding survives the fold`);
 }
 
-const noUrl = foldFindingEvents(foldSection([openCritical]), [RESOLVED_EVENT("F-1", { resolved_by: undefined })]);
+const noUrl = foldQualityEvents(foldSection([openCritical]), [RESOLVED_EVENT("F-1", { resolved_by: undefined })]);
 assert(noUrl.findings[0].resolved_by === undefined, "no resolved_by on the event leaves none on the finding");
 
 
 // A later url-less resolution must not erase the url an earlier one carried.
 // `findingResolvedInput` omits `resolved_by` when it has none, so this shape
 // is what `arkaik kritik finding resolve` produces without `--by`.
-const keptUrl = foldFindingEvents(foldSection([openCritical]), [
+const keptUrl = foldQualityEvents(foldSection([openCritical]), [
   RESOLVED_EVENT("F-1"),
   RESOLVED_EVENT("F-1", { resolved_by: undefined }),
 ]);
@@ -571,7 +571,7 @@ assert(
   keptUrl.findings[0].resolved_by === "https://github.com/acme/app/pull/7",
   `a url-less re-resolution keeps the known PR (got ${keptUrl.findings[0].resolved_by})`,
 );
-const laterUrl = foldFindingEvents(foldSection([openCritical]), [
+const laterUrl = foldQualityEvents(foldSection([openCritical]), [
   RESOLVED_EVENT("F-1", { resolved_by: undefined }),
   RESOLVED_EVENT("F-1", { resolved_by: "https://github.com/acme/app/pull/9" }),
 ]);
@@ -582,7 +582,7 @@ assert(
 // A later NAMED resolution overwrites an earlier NAMED one too — the latest
 // event that names a PR wins outright, not just the latest that upgrades an
 // unnamed one.
-const namedThenNamed = foldFindingEvents(foldSection([openCritical]), [
+const namedThenNamed = foldQualityEvents(foldSection([openCritical]), [
   RESOLVED_EVENT("F-1", { resolved_by: "https://github.com/acme/app/pull/1" }),
   RESOLVED_EVENT("F-1", { resolved_by: "https://github.com/acme/app/pull/2" }),
 ]);
@@ -594,14 +594,14 @@ assert(
 // badge clears, once the Critical behind them is folded resolved.
 const badged = { ...openCritical, node_ids: ["V-home"] };
 const before = deriveQualityMatrix({ quality: foldSection([badged]) });
-const after = deriveQualityMatrix({ quality: foldFindingEvents(foldSection([badged]), [RESOLVED_EVENT("F-1")]) });
+const after = deriveQualityMatrix({ quality: foldQualityEvents(foldSection([badged]), [RESOLVED_EVENT("F-1")]) });
 assert(
   before.matrix.SEC.web.capped === true && after.matrix.SEC.web.capped === false,
   `the cap lifts once the Critical resolves (${JSON.stringify(before.matrix.SEC.web)} -> ${JSON.stringify(after.matrix.SEC.web)})`,
 );
 assert(
   buildNodeFindingIndex(foldSection([badged])).size === 1 &&
-    buildNodeFindingIndex(foldFindingEvents(foldSection([badged]), [RESOLVED_EVENT("F-1")])).size === 0,
+    buildNodeFindingIndex(foldQualityEvents(foldSection([badged]), [RESOLVED_EVENT("F-1")])).size === 0,
   "the node badge clears",
 );
 
@@ -623,16 +623,16 @@ assert(
     ],
   };
   const accepted = { id: "01B", ts: "2026-09-01T00:00:00.000Z", type: "quality.finding.accepted", finding_id: "F-1", reason: "owned risk" };
-  const folded = foldFindingEvents(section, [accepted]);
+  const folded = foldQualityEvents(section, [accepted]);
   assert(folded.findings[0].status === "accepted-risk", "accepted event folds open finding to accepted-risk");
   assert(folded.findings[0].detail === "d\n\nAccepted risk: owned risk", "acceptance reason appended to detail");
   assert(
-    foldFindingEvents(section, [{ ...accepted, finding_id: "F-2" }]) === section,
+    foldQualityEvents(section, [{ ...accepted, finding_id: "F-2" }]) === section,
     "decided finding untouched by accepted event",
   );
   const resolvedAfter = { id: "01C", ts: "2026-09-02T00:00:00.000Z", type: "quality.finding.resolved", finding_id: "F-1", resolved_by: "https://pr/1" };
   assert(
-    foldFindingEvents(section, [accepted, resolvedAfter]).findings[0].status === "accepted-risk",
+    foldQualityEvents(section, [accepted, resolvedAfter]).findings[0].status === "accepted-risk",
     "first decision wins — resolve after accept is ignored",
   );
 }
@@ -652,9 +652,54 @@ assert(
   };
   const unrelated = { id: "01D", ts: "2026-09-01T00:00:00.000Z", type: "quality.finding.resolved", finding_id: "F-nonexistent", resolved_by: "https://pr/1" };
   assert(
-    foldFindingEvents(malformed, [unrelated]) === malformed,
+    foldQualityEvents(malformed, [unrelated]) === malformed,
     "a null/id-less findings entry does not crash the fold, and an unrelated event returns the same object",
   );
+}
+
+// --- scores fold latest-wins (issue #473) ------------------------------------
+//
+// `quality.assessment.scored` is the other hosted write the fold makes
+// visible, and it resolves conflicts the opposite way from a finding
+// decision: a re-score is meant to replace what is there, so the LATEST
+// event for a `(criterion_id, surface)` cell wins, not the first.
+{
+  const section = {
+    profile: { surfaces: [{ id: "web", title: "Web" }] },
+    assessments: [{ criterion_id: "SEC-01", surface: "web", level: 1, evidence: "old", audit_id: "2026-08" }],
+    findings: [],
+  };
+  const scored = (id, criterion, level, audit = "2026-09-scoped") => ({
+    id,
+    ts: `2026-09-0${id.slice(-1)}T00:00:00.000Z`,
+    type: "quality.assessment.scored",
+    audit_id: audit,
+    criterion_id: criterion,
+    surface: "web",
+    level,
+    evidence: `ev ${id}`,
+    scope: { since: "2026-08" },
+  });
+  const folded = foldQualityEvents(section, [
+    scored("S1", "SEC-01", 2),
+    scored("S2", "SEC-01", 3),
+    scored("S3", "SEC-02", 4),
+  ]);
+  const byCell = Object.fromEntries(folded.assessments.map((a) => [a.criterion_id, a]));
+  assert(
+    byCell["SEC-01"].level === 3 && byCell["SEC-01"].evidence === "ev S2" && byCell["SEC-01"].audit_id === "2026-09-scoped",
+    `a re-score replaces the stored level, latest wins (got ${JSON.stringify(byCell["SEC-01"])})`,
+  );
+  assert(byCell["SEC-02"].level === 4, `a cell the section never held is appended (got ${JSON.stringify(byCell["SEC-02"])})`);
+  assert(
+    section.assessments[0].level === 1 && section.assessments.length === 1,
+    "the stored section is not mutated",
+  );
+  assert(
+    foldQualityEvents(section, [{ ...scored("S4", "SEC-01", 9) }]) === section,
+    "a malformed score is skipped",
+  );
+  assert(foldQualityEvents(section, []) === section, "nothing to fold returns the section by reference");
 }
 
 // ========================== buildDomainSections ==============================

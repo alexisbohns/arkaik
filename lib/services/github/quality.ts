@@ -24,7 +24,7 @@ import {
  * them — and the already-resolved check below makes that retry safe.
  *
  * **This appends, and appends only.** The finding's stored `status` stays as
- * the last audit left it; `foldFindingEvents` (lib/utils/quality.ts) is what
+ * the last audit left it; `foldQualityEvents` (lib/utils/quality.ts) is what
  * makes the resolution visible on every read. RFC § 3.2 said so first: current
  * state is a projection, latest audit plus open-minus-resolved.
  */

@@ -221,7 +221,7 @@ export interface ProjectValidators {
   version: string;
   /** Every `graph_events` row of the project — `/journal` and `/export` depend on all of them. */
   eventCount: string;
-  /** Only the `quality.finding.*` decisions — the ones `foldFindingEvents` reads into the bundle. */
+  /** Only the `quality.finding.*` decisions — the ones `foldQualityEvents` reads into the bundle. */
   qualityEventCount: string;
 }
 
@@ -381,7 +381,7 @@ export async function getJournal(
  * events, and nothing else.
  *
  * The Quality surfaces need these to fold both kinds of decision over the
- * stored findings (`foldFindingEvents` in lib/utils/quality.ts), and a
+ * stored findings (`foldQualityEvents` in lib/utils/quality.ts), and a
  * project's full history is the wrong price for a handful of events — the
  * Pebbles journal alone runs to thousands of rows.
  *

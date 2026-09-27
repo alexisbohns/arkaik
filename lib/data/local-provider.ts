@@ -11,7 +11,7 @@ import {
   type ProjectRecord,
 } from "./db";
 import { toJournalEvents } from "./emit-events";
-import { foldFindingEvents } from "@/lib/utils/quality";
+import { foldQualityEvents } from "@/lib/utils/quality";
 
 /**
  * The app's `DataProvider`, backed by IndexedDB (Dexie — see `./db.ts`).
@@ -167,7 +167,7 @@ export const localProvider: DataProvider = {
     // receives no webhook, but it does receive imported bundles whose journals
     // carry resolutions — and the two providers must not disagree about what a
     // bundle says.
-    const quality = foldFindingEvents(bundle.quality, journalRow?.events ?? []);
+    const quality = foldQualityEvents(bundle.quality, journalRow?.events ?? []);
     return quality === bundle.quality ? bundle : { ...bundle, quality };
   },
 

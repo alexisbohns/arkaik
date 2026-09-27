@@ -8,7 +8,7 @@ import {
   qualityFindingEvents,
   updateProjectFields,
 } from "@/lib/services/graph/store";
-import { foldFindingEvents } from "@/lib/utils/quality";
+import { foldQualityEvents } from "@/lib/utils/quality";
 import type { Project, QualitySection } from "@arkaik/schema";
 
 /**
@@ -75,7 +75,7 @@ export async function GET(
     // as though it had been stored. So the fold happens here instead, on the
     // one caller that is a read all the way out to the client.
     const storedQuality = (found.bundle as { quality?: QualitySection }).quality;
-    const quality = foldFindingEvents(
+    const quality = foldQualityEvents(
       storedQuality,
       await qualityFindingEvents(projectId, caller.ownerIds),
     );

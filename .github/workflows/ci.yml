@@ -280,7 +280,7 @@ jobs:
       - name: Query cache tests (write-back, version guard, load-state mapping)
         run: npm run test:project-queries
 
-      # Pins foldFindingEvents (lib/utils/quality.ts) to its real consumer —
+      # Pins foldQualityEvents (lib/utils/quality.ts) to its real consumer —
       # lib/data/local-provider.ts getProject — since the pure function is
       # already covered exhaustively in tests/app/quality.test.js but its call
       # site was not (issue #382 phase E, commit 519b9b6).

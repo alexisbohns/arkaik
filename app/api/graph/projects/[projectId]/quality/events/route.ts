@@ -36,7 +36,7 @@ export const dynamic = "force-dynamic";
  * `snapshot.quality` is NEVER mutated here — same doctrine as the GitHub
  * App's resolution pass in `lib/services/github/quality.ts`. A finding's
  * stored `status` stays exactly as the last audit left it; what changes is
- * the journal, and `foldFindingEvents` is what makes the decision visible on
+ * the journal, and `foldQualityEvents` is what makes the decision visible on
  * the next `GET`. Refusals are per-finding (`unknown_finding`, `not_open`,
  * both checked post-fold by `planQualityEvents`) but the batch is
  * all-or-nothing, mirroring `persistMutation`: one refusal anywhere refuses
@@ -117,7 +117,7 @@ export async function POST(
     const section = (found.bundle as { quality?: QualitySection }).quality;
     const priorEvents = await qualityFindingEvents(projectId, caller.ownerIds);
     // Deliberately unlocked. The journal is append-only and `snapshot.quality`
-    // is never touched here, and `foldFindingEvents` folds events in seq
+    // is never touched here, and `foldQualityEvents` folds events in seq
     // order, first-decision-wins: if two concurrent batches both decide the
     // same finding, whichever event lands first in the journal is the one
     // every later read honors, and the later batch's event — though it does

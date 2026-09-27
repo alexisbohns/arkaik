@@ -9,7 +9,7 @@ import {
   type QualitySection,
 } from "@arkaik/schema";
 
-import { foldFindingEvents } from "@/lib/utils/quality";
+import { foldQualityEvents } from "@/lib/utils/quality";
 
 /**
  * The hosted, events-only write path behind
@@ -29,7 +29,7 @@ import { foldFindingEvents } from "@/lib/utils/quality";
  * **Events-only, always.** Neither export ever produces or accepts a mutated
  * `QualitySection` — `snapshot.quality` is never rewritten. A finding's
  * stored `status` stays exactly as the last audit left it; what changes is
- * the journal, and `foldFindingEvents` (lib/utils/quality.ts) is what turns
+ * the journal, and `foldQualityEvents` (lib/utils/quality.ts) is what turns
  * an appended event into a finding that reads as resolved or accepted-risk.
  * Same doctrine as the webhook's resolution pass, applied to a second writer.
  *
@@ -168,7 +168,7 @@ export function parseQualityEventInputs(body: unknown): QualityEventInput[] | { 
  * Plan the journal events one batch of {@link QualityEventInput}s would
  * produce, or refuse the whole batch.
  *
- * `priorEvents` is folded over `section` first (`foldFindingEvents`) so
+ * `priorEvents` is folded over `section` first (`foldQualityEvents`) so
  * "open" is judged post-fold: a finding a prior `quality.finding.resolved`
  * or `quality.finding.accepted` event already decided reads as not-open here
  * exactly the way it would on the next `GET`, even though `section` itself —
@@ -192,7 +192,7 @@ export function planQualityEvents(
   inputs: readonly QualityEventInput[],
   actor: string,
 ): { ok: true; events: JournalEvent[] } | { ok: false; refusals: QualityEventRefusal[] } {
-  const folded = foldFindingEvents(section, priorEvents);
+  const folded = foldQualityEvents(section, priorEvents);
   // Guarded entry-by-entry for the same reason the fold is: this is section
   // content nobody has re-validated since it left storage, and a malformed
   // entry must fall out as `unknown_finding`, not surface as a 500.
