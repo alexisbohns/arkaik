@@ -148,6 +148,13 @@ jobs:
       - name: Kritik scope tests (direct cells, widening, since window)
         run: npm run test:quality-scope
 
+      # The findings burndown (issue #441) — the finding stream replayed into
+      # open counts over time, re-baselined at each recorded audit. Pure like
+      # the scope above; its golden restores the pilot with no opened events
+      # and pins that two closes move the line by exactly their severities.
+      - name: Kritik burndown tests (replay, re-baseline, filters, restored findings)
+        run: npm run test:quality-burndown
+
       # The implicit baseline (issue #472) — the reading synthesized for a
       # restored audit that never got one, so the scope and trend have
       # something to measure from. Pure like the four above.
