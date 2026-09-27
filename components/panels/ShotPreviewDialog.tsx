@@ -81,7 +81,7 @@ export function ShotPreviewDialog({
    *
    * Inside the strip, arrows belong to the WAI-ARIA tabs contract and Radix
    * already handles them (roving tabindex over every platform, shot or not).
-   * This listener is on `window`, so without the guard both would fire on one
+   * These chords listen on `document`, so without the guard both would fire on one
    * keypress and the selection would jump two places at once. Everywhere else in
    * the dialog — the image, the close button, the dots — arrows still mean
    * "next screenshot", which is what they have always meant here.
