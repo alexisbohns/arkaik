@@ -205,6 +205,37 @@ export const NAV_HOTKEY_ROUTES: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Rebinds an Option letter chord to the physical key that is *labelled* with
+ * that letter on the user's layout, e.g. `Alt+A` → `Alt+[KeyQ]` on AZERTY.
+ *
+ * Why: on macOS Option garbles the character (⌥A types `æ`), so TanStack
+ * falls back to `event.code` — assuming US positions. On a French Mac that
+ * put ⌥A on the key labelled Q and left ⌥M (on `Semicolon` there) dead. A
+ * `[Code]` binding matches `event.code` directly, so resolving the letter
+ * through the layout makes the chord follow the label on any layout and OS.
+ *
+ * `layout` maps `event.code` → the lowercase character that key types
+ * (`useKeyboardLayout`). Only `Alt+<letter>` is touched — Mod chords and bare
+ * keys report their character fine. With no layout, or no key that types the
+ * letter, the chord is returned as written (TanStack's own fallback).
+ */
+export function layoutAwareHotkey(hotkey: string, layout: ReadonlyMap<string, string> | null): string {
+  if (!layout) return hotkey;
+  const match = /^Alt\+([A-Z])$/.exec(hotkey);
+  if (!match) return hotkey;
+  const letter = match[1].toLowerCase();
+
+  // Prefer the letter's own key when the layout agrees, so a QWERTY-shaped
+  // map resolves predictably even if some other key also types the letter.
+  const ownCode = `Key${match[1]}`;
+  if (layout.get(ownCode)?.toLowerCase() === letter) return `Alt+[${ownCode}]`;
+  for (const [code, char] of layout) {
+    if (char.toLowerCase() === letter) return `Alt+[${code}]`;
+  }
+  return hotkey;
+}
+
+/**
  * The groups worth showing on a given surface. Outside a project (the docs
  * shell, say) the map and project chords are not just unused — they are dead
  * keys, and listing them would be a lie the dialog tells on every open.

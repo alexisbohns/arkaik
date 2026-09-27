@@ -252,6 +252,64 @@ async function main() {
   assert(!fires("nav-acceptances", { key: "a", code: "KeyA" }), "a bare a is not ⌥A");
   assert(fires("toggle-sidebar", { key: "ß", code: "KeyS", altKey: true }), "⌥S also toggles the sidebar");
 
+  // --- Option chords follow the layout ---
+  // TanStack's fallback for a garbled Option character assumes US positions;
+  // layoutAwareHotkey rebinds Alt+<letter> to the key labelled with it.
+  const { layoutAwareHotkey } = registry;
+  const azerty = new Map(
+    "abcdefghijklmnopqrstuvwxyz".split("").map((letter) => [`Key${letter.toUpperCase()}`, letter]),
+  );
+  for (const [code, char] of [
+    ["KeyQ", "a"],
+    ["KeyA", "q"],
+    ["KeyW", "z"],
+    ["KeyZ", "w"],
+    ["Semicolon", "m"],
+    ["KeyM", ","],
+  ]) {
+    azerty.set(code, char);
+  }
+
+  assert(layoutAwareHotkey("Alt+A", azerty) === "Alt+[KeyQ]", "AZERTY: ⌥A binds to the key labelled A (KeyQ)");
+  assert(layoutAwareHotkey("Alt+M", azerty) === "Alt+[Semicolon]", "AZERTY: ⌥M binds to Semicolon, where M lives");
+  assert(layoutAwareHotkey("Alt+O", azerty) === "Alt+[KeyO]", "AZERTY: ⌥O stays on KeyO, now by code");
+  assert(layoutAwareHotkey("Mod+K", azerty) === "Mod+K", "Mod chords are left alone");
+  assert(layoutAwareHotkey("A", azerty) === "A", "bare keys are left alone");
+  assert(layoutAwareHotkey("Alt+A", null) === "Alt+A", "no layout known yet → the chord as written");
+  assert(
+    layoutAwareHotkey("Alt+A", new Map([["KeyA", "ф"]])) === "Alt+A",
+    "no key types the letter → the chord as written",
+  );
+
+  const resolvedA = layoutAwareHotkey("Alt+A", azerty);
+  assert(hotkeys.validateHotkey(resolvedA).valid, `"${resolvedA}" is a valid TanStack hotkey`);
+  assert(
+    hotkeys.matchesKeyboardEvent(event({ key: "æ", code: "KeyQ", altKey: true }), resolvedA, "mac"),
+    "French Mac: ⌥ + the key labelled A (types æ) goes to Acceptances",
+  );
+  assert(
+    !hotkeys.matchesKeyboardEvent(event({ key: "‡", code: "KeyA", altKey: true }), resolvedA, "mac"),
+    "French Mac: ⌥ + the key labelled Q does not",
+  );
+  assert(
+    hotkeys.matchesKeyboardEvent(
+      event({ key: "µ", code: "Semicolon", altKey: true }),
+      layoutAwareHotkey("Alt+M", azerty),
+      "mac",
+    ),
+    "French Mac: ⌥ + the key labelled M goes to Maps",
+  );
+
+  for (const platform of ["mac", "windows"]) {
+    const seen = new Map();
+    for (const { id, hotkey } of strings) {
+      const canonical = hotkeys.normalizeHotkey(layoutAwareHotkey(hotkey, azerty), platform);
+      const clash = seen.get(canonical);
+      assert(!clash, `${id}: "${hotkey}" still claims its chord alone on AZERTY/${platform}${clash ? ` (also ${clash})` : ""}`);
+      seen.set(canonical, id);
+    }
+  }
+
   // --- the sheet ---
   const projectGroups = getShortcutGroups(true);
   const docsGroups = getShortcutGroups(false);
