@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { getKeyStateTracker } from "@tanstack/react-hotkeys";
+import { isEditableElement } from "@/lib/utils/keyboard";
 
 // The tracker is a singleton (`KeyStateTracker.getInstance()` under the
 // hood), so these can live at module scope: stable `subscribe`/`getSnapshot`
@@ -17,8 +18,12 @@ function subscribe(onStoreChange: () => void): () => void {
   return tracker.store.subscribe(onStoreChange).unsubscribe;
 }
 
+function typingInAField(): boolean {
+  return typeof document !== "undefined" && isEditableElement(document.activeElement);
+}
+
 function getSnapshot(): boolean {
-  return onlyOptionHeld(tracker.store.state.heldKeys);
+  return onlyOptionHeld(tracker.store.state.heldKeys) && !typingInAField();
 }
 
 function getServerSnapshot(): boolean {
@@ -29,6 +34,12 @@ function getServerSnapshot(): boolean {
  * True while Option/Alt — and nothing else — is held. ⌥⇧ or ⌥⌘ is someone
  * typing a chord, not asking what the chords are. TanStack's key tracker
  * clears on window blur, so ⌘-Tab away mid-hold leaves nothing painted.
+ *
+ * Also false while focus is in an editable field: on AZERTY `{ } [ ] | ~`
+ * are typed with Option, and the chips flashing on every brace would be
+ * noise (the chords themselves are ignored in fields anyway). Focus moves
+ * don't notify the tracker's store, so Option held *while* focus moves keeps
+ * its old answer until the next key event — rare enough to accept.
  *
  * Selects just this boolean via `useSyncExternalStore` rather than reading
  * `useHeldKeys()` and deriving it: that hook hands back a fresh array on
