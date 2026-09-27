@@ -122,6 +122,18 @@ export function ProjectSidebar({
       callback: () => router.push(`/project/${projectId}/${route}`),
     })),
   );
+  // Next's <Link> treats an Option-held click as a "modified click" and lets
+  // the browser handle it — which on macOS downloads the link, exactly what
+  // holding Option to reveal a chord invites someone to do. Preventing
+  // default (only for a bare Option click — Cmd/Ctrl/Shift-click still open
+  // in a new tab as usual) and navigating ourselves keeps it a normal
+  // in-app jump.
+  const followOptionClick = (href: string) => (event: React.MouseEvent) => {
+    if (event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
+      event.preventDefault();
+      router.push(href);
+    }
+  };
   const overviewHref = `/project/${projectId}/overview`;
   const mapsHref = `/project/${projectId}/maps`;
   const libraryHref = `/project/${projectId}/library`;
@@ -171,7 +183,7 @@ export function ProjectSidebar({
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={currentView === "overview"} tooltip="Overview">
-                <Link href={overviewHref}>
+                <Link href={overviewHref} onClick={followOptionClick(overviewHref)}>
                   <LayoutDashboardIcon />
                   <span>Overview</span>
                   <ShortcutHint id="nav-overview" visible={optionHeld} modKey={modKey} />
@@ -180,7 +192,7 @@ export function ProjectSidebar({
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={currentView === "pyramid"} tooltip="Value pyramid">
-                <Link href={pyramidHref}>
+                <Link href={pyramidHref} onClick={followOptionClick(pyramidHref)}>
                   <PyramidIcon />
                   <span>Pyramid</span>
                   <ShortcutHint id="nav-pyramid" visible={optionHeld} modKey={modKey} />
@@ -189,7 +201,7 @@ export function ProjectSidebar({
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={currentView === "delivery"} tooltip="Delivery board">
-                <Link href={deliveryHref}>
+                <Link href={deliveryHref} onClick={followOptionClick(deliveryHref)}>
                   <SquareKanbanIcon />
                   <span>Delivery</span>
                   <ShortcutHint id="nav-delivery" visible={optionHeld} modKey={modKey} />
@@ -206,7 +218,7 @@ export function ProjectSidebar({
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={currentView === "changelog"} tooltip="Changelog">
-                <Link href={changelogHref}>
+                <Link href={changelogHref} onClick={followOptionClick(changelogHref)}>
                   <ScrollTextIcon />
                   <span>Changelog</span>
                   <ShortcutHint id="nav-changelog" visible={optionHeld} modKey={modKey} />
@@ -228,7 +240,7 @@ export function ProjectSidebar({
                 isActive={currentView === "quality" && currentQualityView !== "findings"}
                 tooltip="Audit matrix"
               >
-                <Link href={`${qualityHref}/matrix`}>
+                <Link href={`${qualityHref}/matrix`} onClick={followOptionClick(`${qualityHref}/matrix`)}>
                   <GemIcon />
                   <span>Matrix</span>
                   <ShortcutHint id="nav-matrix" visible={optionHeld} modKey={modKey} />
@@ -241,7 +253,7 @@ export function ProjectSidebar({
                 isActive={currentView === "quality" && currentQualityView === "findings"}
                 tooltip="Findings"
               >
-                <Link href={`${qualityHref}/findings`}>
+                <Link href={`${qualityHref}/findings`} onClick={followOptionClick(`${qualityHref}/findings`)}>
                   <ListChecksIcon />
                   <span>Findings</span>
                   <ShortcutHint id="nav-findings" visible={optionHeld} modKey={modKey} />
@@ -260,7 +272,7 @@ export function ProjectSidebar({
                 isActive={currentView === "maps" && currentMapId === null}
                 tooltip="All maps"
               >
-                <Link href={mapsHref}>
+                <Link href={mapsHref} onClick={followOptionClick(mapsHref)}>
                   <MapIcon />
                   <span>All maps</span>
                   <ShortcutHint id="nav-maps" visible={optionHeld} modKey={modKey} />
@@ -273,7 +285,7 @@ export function ProjectSidebar({
                 isActive={currentView === "maps" && currentMapId === "journey"}
                 tooltip="Journey map"
               >
-                <Link href={`${mapsHref}/journey`}>
+                <Link href={`${mapsHref}/journey`} onClick={followOptionClick(`${mapsHref}/journey`)}>
                   <RouteIcon />
                   <span>Journey</span>
                   <ShortcutHint id="nav-journey" visible={optionHeld} modKey={modKey} />
@@ -318,7 +330,7 @@ export function ProjectSidebar({
                 isActive={currentView === "library" && currentSpecies === null}
                 tooltip="All nodes"
               >
-                <Link href={libraryHref}>
+                <Link href={libraryHref} onClick={followOptionClick(libraryHref)}>
                   <BookOpenIcon />
                   <span>All nodes</span>
                   <ShortcutHint id="nav-library" visible={optionHeld} modKey={modKey} />
@@ -327,7 +339,10 @@ export function ProjectSidebar({
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={currentView === "acceptances"} tooltip="Acceptances">
-                <Link href={`/project/${projectId}/acceptances`}>
+                <Link
+                  href={`/project/${projectId}/acceptances`}
+                  onClick={followOptionClick(`/project/${projectId}/acceptances`)}
+                >
                   <AcceptanceIcon />
                   <span>Acceptances</span>
                   <ShortcutHint id="nav-acceptances" visible={optionHeld} modKey={modKey} />
