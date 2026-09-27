@@ -271,3 +271,70 @@ export function deriveFindingsBurndown(
 
   return { points, ...totals, since };
 }
+
+/** One severity's line in the burndown table: open at the reference point, open now, and the change. */
+export interface BurndownRow {
+  severity: FindingSeverity;
+  at_reference: number;
+  now: number;
+  change: number;
+}
+
+/**
+ * The burndown as a table — what `arkaik kritik burndown` prints and
+ * `kritik_burndown` returns, built once here so the two cannot disagree.
+ *
+ * The reference is the newest audit's reading when one is recorded (the
+ * point the "closed since" count is measured from), else the first point.
+ * `now` is the newest point. Every severity has a row, `info` included and
+ * last, so a table never silently drops a bucket.
+ */
+export function burndownRows(burndown: Pick<FindingsBurndown, "points" | "since">): {
+  reference: { kind: "audit" | "start"; id: string; ts: string } | null;
+  rows: BurndownRow[];
+} {
+  const { points, since } = burndown;
+  if (points.length === 0) return { reference: null, rows: [] };
+  let referenceIndex = 0;
+  if (since !== null) {
+    for (let index = points.length - 1; index >= 0; index--) {
+      if (points[index].cause.type === "audit") {
+        referenceIndex = index;
+        break;
+      }
+    }
+  }
+  const reference = points[referenceIndex];
+  const last = points[points.length - 1];
+  return {
+    reference: {
+      kind: since !== null ? "audit" : "start",
+      id: reference.cause.id,
+      ts: reference.ts,
+    },
+    rows: FINDING_SEVERITIES.map((severity) => ({
+      severity,
+      at_reference: reference.open[severity],
+      now: last.open[severity],
+      change: last.open[severity] - reference.open[severity],
+    })),
+  };
+}
+
+/**
+ * The totals line: `24 closed since the 2026-08 audit (22 resolved, 2
+ * accepted) · 3 opened · 222 open`. `openNow` is the live count when the
+ * caller has one (the section's open findings); otherwise the newest point's
+ * total stands in. `null` when there is no history at all.
+ */
+export function burndownSummary(burndown: FindingsBurndown, openNow?: number): string | null {
+  if (burndown.points.length === 0) return null;
+  const tally = burndown.since ?? burndown;
+  const closed = tally.resolved + tally.accepted;
+  const where = burndown.since ? ` since the ${burndown.since.audit_id} audit` : "";
+  const open = openNow ?? openTotal(burndown.points[burndown.points.length - 1].open);
+  return (
+    `${closed} closed${where} (${tally.resolved} resolved, ${tally.accepted} accepted)` +
+    ` · ${tally.opened} opened · ${open} open`
+  );
+}

@@ -49,11 +49,15 @@ import {
   auditCompletedInput,
   deriveAuditScope,
   deriveQualityMatrix,
+  deriveFindingsBurndown,
   deriveQualityTrend,
+  burndownRows,
+  burndownSummary,
   detectRegressions,
   findingOpenedInput,
   findingResolvedInput,
   isOpenFinding,
+  domainCodeOf,
   mintFindingId,
   orderEvents,
   priorityOf,
@@ -925,6 +929,76 @@ export function buildKritikCatalog(ctx: KritikContext): {
                   : "The first row is the restored audit's reading, rebuilt from its stored scores — no reading was recorded for it.",
               }
             : {}),
+      };
+    },
+  );
+
+  tool(
+    {
+      name: "kritik_burndown",
+      description:
+        "What was done since the last audit, not what the code is: how many findings closed (resolved or accepted) since the newest recorded audit, how many opened, and the open count by severity then and now — plus every point of the burndown. A score only moves when its cell is re-scored; this moves the day a finding closes. Replays quality.finding.opened / resolved / accepted in journal order; each quality.audit.completed re-baselines the open counts to what that audit counted, so a finding closed by hand is corrected at the next audit. An opened finding counts at the severity stored on its event; a close of a finding no event opened still counts as closed. surface and domain narrow the replay (never re-baselined, since an audit's counts are project-wide). Works in both modes: repo reads the journal sidecar, hosted reads the hosted journal — and there a restored audit with no recorded reading is the first point.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          surface: { type: "string", description: "Only findings on this surface." },
+          domain: { type: "string", description: "Domain code, e.g. SEC — only findings in this domain." },
+        },
+        additionalProperties: false,
+      },
+    },
+    async (args) => {
+      const graph = await load();
+      // The section, from wherever this mode keeps it — neither is required.
+      // Its findings stand in for any finding no event ever opened (a restored
+      // audit's), and give the live open count; its library places a
+      // criterion in its domain.
+      let section: QualitySection | undefined;
+      let library: KritikLibrary | undefined;
+      if (ctx.qualityRoot === undefined) {
+        const hosted = (graph.loaded.bundle as { quality?: QualitySection }).quality;
+        if (hosted !== undefined && Array.isArray(hosted.findings) && Array.isArray(hosted.assessments)) {
+          section = hosted;
+          library = resolveKritikLibrary(hosted);
+        }
+      } else {
+        try {
+          library = libraryOf(ctx.qualityRoot);
+          section = loadCurrentQualitySection(ctx.qualityRoot, library);
+        } catch {
+          // No pack or no audit on disk: the journal alone still has a burndown.
+        }
+      }
+      const events = ctx.qualityRoot === undefined && section !== undefined
+        ? withImplicitBaseline(graph.journal, section, library)
+        : graph.journal;
+      const filter = {
+        ...(typeof args.surface === "string" && args.surface !== "" ? { surface: args.surface } : {}),
+        ...(typeof args.domain === "string" && args.domain !== "" ? { domain: args.domain } : {}),
+      };
+      const burndown = deriveFindingsBurndown(events, { ...filter, library, findings: section?.findings });
+      const open = section
+        ? section.findings.filter(
+            (finding) =>
+              isOpenFinding(finding) &&
+              (filter.surface === undefined || finding.surface === filter.surface) &&
+              (filter.domain === undefined || domainCodeOf(finding.criterion_id, library) === filter.domain),
+          ).length
+        : undefined;
+      const { reference, rows } = burndownRows(burndown);
+      return {
+        summary: burndownSummary(burndown, open),
+        opened: burndown.opened,
+        resolved: burndown.resolved,
+        accepted: burndown.accepted,
+        since: burndown.since,
+        ...(open !== undefined ? { open } : {}),
+        reference,
+        rows,
+        points: burndown.points,
+        ...(burndown.points.length === 0
+          ? { note: "No finding history yet — kritik_open_finding and kritik_resolve_finding write it, and kritik_matrix with record=true records an audit to measure from." }
+          : {}),
       };
     },
   );

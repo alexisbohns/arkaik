@@ -160,6 +160,7 @@ async function run() {
       "kritik_trip_signal",
       "kritik_regressions",
       "kritik_trend",
+      "kritik_burndown",
       "kritik_scope",
     ]) {
       check(`catalog includes ${name}`, names.includes(name));
@@ -299,6 +300,25 @@ async function run() {
     check("a first row has no delta", trend.json.rows[0].cells.web.delta === null);
     const trendDomain = await session.call("kritik_trend", { domain: "SEC", surface: "web" });
     check("kritik_trend narrows to a domain and a surface", !trendDomain.isError && trendDomain.json.surfaces.length === 1 && trendDomain.json.rows[0].cells.web.score === recorded.json.matrix.SEC.web.score, trendDomain.text.slice(0, 300));
+
+    // --- burndown (issue #441) --------------------------------------------------
+
+    // This session opened one Critical and resolved it before recording the
+    // audit — so the whole journal saw one open and one close, and nothing has
+    // moved since the audit.
+    const burn = await session.call("kritik_burndown", {});
+    check(
+      "kritik_burndown replays this session's open and close",
+      !burn.isError && burn.json.opened === 1 && burn.json.resolved === 1 && burn.json.points[0].cause.id === opened.json.finding.id && burn.json.points[0].open.critical === 1,
+      burn.text.slice(0, 400),
+    );
+    check(
+      "and measures from the audit it recorded",
+      burn.json.since?.audit_id === recorded.json.events[0].audit_id && burn.json.since.resolved === 0 && /^0 closed since the /.test(burn.json.summary),
+      JSON.stringify(burn.json.since),
+    );
+    const burnElsewhere = await session.call("kritik_burndown", { surface: "no-such-surface" });
+    check("a surface nothing was found on has no opens", !burnElsewhere.isError && burnElsewhere.json.opened === 0 && burnElsewhere.json.resolved === 0, burnElsewhere.text.slice(0, 300));
 
     // --- scope (issue #443) -----------------------------------------------------
 
@@ -1123,6 +1143,22 @@ async function run() {
     );
     const restoredSince = await restored.call("kritik_scope", { since: "2026-08" });
     check("since=<the stored audit> resolves", !restoredSince.isError && restoredSince.json.since === "2026-08", restoredSince.text.slice(0, 300));
+    // F-B has no opened event — the restored audit's findings never had one.
+    // The synthesized baseline counts it open (it was, when the audit ran),
+    // and its close after the audit takes it back off the line.
+    const restoredBurn = await restored.call("kritik_burndown", {});
+    check(
+      "the restored audit is the burndown's first point, and F-B's close moves it",
+      !restoredBurn.isError &&
+        restoredBurn.json.points[0].cause.type === "audit" &&
+        restoredBurn.json.since?.audit_id === "2026-08" &&
+        restoredBurn.json.since.resolved === 1 &&
+        restoredBurn.json.open === 1 &&
+        restoredBurn.json.rows.find((row) => row.severity === "critical").now === 1 &&
+        restoredBurn.json.rows.reduce((sum, row) => sum + row.now, 0) === 1 &&
+        restoredBurn.json.rows.reduce((sum, row) => sum + row.at_reference, 0) === 2,
+      restoredBurn.text.slice(0, 500),
+    );
     const restoredTrend = await restored.call("kritik_trend", {});
     check(
       "the trend's first row is the restored audit, flagged baseline",

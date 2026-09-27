@@ -1,6 +1,6 @@
 ---
 name: kritik
-version: 0.6.0
+version: 0.7.0
 description: >
   Audit this product's quality with the Kritik framework — score each criterion
   on each surface against observable maturity anchors, record findings with
@@ -76,7 +76,7 @@ Two richer paths exist when they are available, and both write **the same files*
 | Available | Use |
 |---|---|
 | the `arkaik` CLI (`npx arkaik kritik --help`) | the verbs `profile`, `score`, `finding open\|resolve\|accept`, `matrix`, `signals`, `regressions`, `trend`, `scope`, `issue`, `criterion add` |
-| `arkaik-mcp` tools in this session | `kritik_score`, `kritik_open_finding`, `kritik_matrix`, `kritik_signals`, `kritik_regressions`, `kritik_trend`, `kritik_scope`, `kritik_issue`, … |
+| `arkaik-mcp` tools in this session | `kritik_score`, `kritik_open_finding`, `kritik_matrix`, `kritik_signals`, `kritik_regressions`, `kritik_trend`, `kritik_burndown`, `kritik_scope`, `kritik_issue`, … |
 
 Each verb takes its own `--help` (`arkaik kritik score --help`). What they add
 over the scripts is **step 7 for free**: they append the `quality.*` journal
@@ -478,6 +478,27 @@ says how many cells it re-scored and which audit it measured from.
 `kritik_trend` is the same table over MCP, and the Quality page's matrix wears
 the same arrows against the last recorded audit. On a hosted project that was
 restored but never recorded, both start from that baseline row.
+
+### Burndown — what was done since the audit
+
+```
+arkaik kritik burndown [--surface <s>] [--domain <CODE>] [--json]
+```
+
+prints what the trend cannot: how many findings closed since the last recorded
+audit — fixes and accepted risks — how many opened, and the open count by
+severity at that audit and now. The trend reads scores, which only move when a
+cell is re-scored; this reads the finding stream, and moves the day a finding
+closes. Use it to report progress between audits instead of implying the
+matrix moved.
+
+It replays `quality.finding.opened` / `resolved` / `accepted` in journal order.
+An opened finding counts at the severity stored on its event, never re-derived.
+Each recorded audit re-baselines the open counts to what it counted, so a
+finding closed by hand is corrected at the next audit. A narrowed view
+(`--surface`, `--domain`) is never re-baselined, because an audit's counts are
+project-wide. `kritik_burndown` is the same numbers over MCP, and the Quality
+page draws them: a "closed since the audit" line and a burndown chart.
 
 ### Scope — re-score only what your fixes touched
 
