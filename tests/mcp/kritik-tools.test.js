@@ -429,6 +429,13 @@ async function run() {
       outOfScope.text.slice(0, 300),
     );
 
+    const intoMeasured = await session.call("kritik_score", { criterion_id: "SEC-01", surface: "web", level: 4, evidence: "auth.ts:3 rotates on login", scope: true, audit_id: auditA });
+    check(
+      "scope=true refuses to re-score inside the audit it is measured from, and stays mode-neutral — no --audit flag, this is MCP",
+      intoMeasured.isError && intoMeasured.json.message.includes("measured from") && !intoMeasured.json.message.includes("--audit"),
+      intoMeasured.text.slice(0, 300),
+    );
+
     const inScope = await session.call("kritik_score", { criterion_id: "SEC-01", surface: "web", level: 4, evidence: "auth.ts:3 rotates on login", scope: true });
     const scopedAudit = `${auditA}-scoped`;
     check(
