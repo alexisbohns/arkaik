@@ -1,6 +1,6 @@
 import { getCaller, hasScope } from "@/lib/services/auth";
 import { MAX_BUNDLE_BYTES, servicesConfigured, servicesUnavailable } from "@/lib/services/db";
-import { appendJournalEvents, getProject, qualityFindingEvents } from "@/lib/services/graph/store";
+import { appendJournalEvents, getProject, qualityFoldEvents } from "@/lib/services/graph/store";
 import {
   callerMaySendQualityEvents,
   parseQualityEventInputs,
@@ -115,7 +115,7 @@ export async function POST(
     const actor = caller.via === "token" ? "arkaik-agent" : "arkaik-app";
 
     const section = (found.bundle as { quality?: QualitySection }).quality;
-    const priorEvents = await qualityFindingEvents(projectId, caller.ownerIds);
+    const priorEvents = await qualityFoldEvents(projectId, caller.ownerIds);
     // Deliberately unlocked. The journal is append-only and `snapshot.quality`
     // is never touched here, and `foldQualityEvents` folds events in seq
     // order, first-decision-wins: if two concurrent batches both decide the

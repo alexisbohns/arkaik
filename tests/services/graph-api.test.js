@@ -536,6 +536,48 @@ async function main() {
       `${afterResolved["GET nodes"]} / ${afterResolved["GET edges"]}`,
     );
 
+    // A hosted score (quality.assessment.scored, #473) is also journal-only
+    // and also folded into the bundle (foldQualityEvents reads it latest-wins
+    // per cell), so it has to move the bundle GET's ETag and its
+    // qualityEventCount exactly as a finding decision does — this is the
+    // check Task 8 (issue #473) adds to pin `QUALITY_FOLD_TYPES` growing to
+    // include it in both the SQL `in (...)` list and the read path.
+    const beforeScoredValidators = await store.loadValidators(projectId, [ownerA]);
+    const scored = {
+      id: "01etagscored000000000000001",
+      ts: "2026-09-10T12:10:00Z",
+      actor: "graphtest",
+      type: "quality.assessment.scored",
+      criterion_id: "c-etag",
+      surface: "web",
+      audit_id: "a-etag",
+      evidence: "scored for the etag test",
+      level: 2,
+    };
+    const appendScored = await store.appendJournalEvents(projectId, [ownerA], [scored], "graphtest");
+    check("a quality.assessment.scored append succeeds", appendScored.ok === true, JSON.stringify(appendScored));
+    const afterScoredValidators = await store.loadValidators(projectId, [ownerA]);
+    check(
+      "qualityEventCount rises by one for a quality.assessment.scored append",
+      BigInt(afterScoredValidators.qualityEventCount) === BigInt(beforeScoredValidators.qualityEventCount) + BigInt(1),
+      `${beforeScoredValidators.qualityEventCount} -> ${afterScoredValidators.qualityEventCount}`,
+    );
+    const afterScored = {};
+    for (const [label, route] of READS) {
+      afterScored[label] = etagOf(await route(new Request(ORIGIN), ctx(projectId)));
+    }
+    check(
+      "a quality.assessment.scored append moves the bundle GET's validator",
+      afterScored["GET project"] !== afterResolved["GET project"],
+      `${afterResolved["GET project"]} -> ${afterScored["GET project"]}`,
+    );
+    check(
+      "…and still not /nodes or /edges",
+      afterScored["GET nodes"] === afterResolved["GET nodes"] &&
+        afterScored["GET edges"] === afterResolved["GET edges"],
+      `${afterScored["GET nodes"]} / ${afterScored["GET edges"]}`,
+    );
+
     // A snapshot write bumps the version, so every read validator moves.
     const etagMutation = await api.MUTATE(
       jsonReq(ORIGIN, "POST", { ops: [{ op: "create_node", node: node("V-etag", "view") }] }),

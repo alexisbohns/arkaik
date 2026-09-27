@@ -221,7 +221,7 @@ export interface ProjectValidators {
   version: string;
   /** Every `graph_events` row of the project — `/journal` and `/export` depend on all of them. */
   eventCount: string;
-  /** Only the `quality.finding.*` decisions — the ones `foldQualityEvents` reads into the bundle. */
+  /** Only the event types `foldQualityEvents` reads into the bundle — see `QUALITY_FOLD_TYPES`. */
   qualityEventCount: string;
 }
 
@@ -232,19 +232,35 @@ interface ValidatorColumns {
 }
 
 /**
+ * The event types `foldQualityEvents` (lib/utils/quality.ts) reads into the
+ * bundle on the way out: the two finding decisions (issue #382 phase E,
+ * `accepted` added for #400), plus the hosted score (`quality.assessment.scored`,
+ * issue #473, folded latest-wins per cell). The bundle GET's ETag has to move
+ * on every one of them, so `VALIDATOR_COLUMNS`' `quality_event_count` is built
+ * from this same list below — one list, read by both the fold and the count,
+ * so a new fold type cannot silently ship without the ETag learning about it.
+ */
+export const QUALITY_FOLD_TYPES = ["quality.finding.resolved", "quality.finding.accepted", "quality.assessment.scored"] as const;
+
+/**
  * The validator columns, selected off `graph_projects p` in the SAME
  * statement as whatever body a read returns, so ETag and body come from one
  * snapshot-consistent read. `count(*)`, not `max(seq)`: `appendJournalEvents`
  * inserts outside a transaction, so two concurrent appends can commit out of
  * `seq` order and a max taken between them would never learn about the
  * earlier row; a count moves on every commit whatever the order.
+ *
+ * The `in (...)` list is string-built from `QUALITY_FOLD_TYPES` rather than
+ * `$`-parameterized: those are source-code constants, never request input, so
+ * there is nothing here for the "values go through `$`-params" rule (see
+ * `replaceProjectBundle`'s own doc comment) to be protecting against.
  */
 const VALIDATOR_COLUMNS = `
             p.version::text as version,
             (select count(*) from graph_events e where e.project_id = p.id)::text as event_count,
             (select count(*) from graph_events e
               where e.project_id = p.id
-                and e.event->>'type' in ('quality.finding.resolved', 'quality.finding.accepted'))::text as quality_event_count`;
+                and e.event->>'type' in (${QUALITY_FOLD_TYPES.map((t) => `'${t}'`).join(", ")}))::text as quality_event_count`;
 
 /**
  * The owner scope every read shares — and deliberately NO `archived_at`
@@ -377,23 +393,18 @@ export async function getJournal(
 }
 
 /**
- * A project's `quality.finding.resolved` and `quality.finding.accepted`
- * events, and nothing else.
- *
- * The Quality surfaces need these to fold both kinds of decision over the
- * stored findings (`foldQualityEvents` in lib/utils/quality.ts), and a
- * project's full history is the wrong price for a handful of events — the
- * Pebbles journal alone runs to thousands of rows.
+ * A project's journal events of exactly the given types, and nothing else.
  *
  * Owner-scoped with the same `READ_SCOPE` clause every read uses, as a
- * one-row existence check rather than a snapshot load: both callers (the
- * project GET and the quality-events POST) have already loaded the snapshot
- * through `getProject`, and loading it a second time here purely to
- * authorize was the bundle GET's second multi-megabyte read.
+ * one-row existence check rather than a snapshot load: every caller of
+ * `qualityFoldEvents` below has already loaded the snapshot through
+ * `getProject`, and loading it a second time here purely to authorize was the
+ * bundle GET's second multi-megabyte read.
  */
-export async function qualityFindingEvents(
+export async function qualityEventsOfTypes(
   projectId: string,
   ownerIds: readonly string[],
+  types: readonly string[],
 ): Promise<JournalEvent[]> {
   const owned = await query<{ owned: number }>(
     `select 1 as owned from graph_projects p where ${READ_SCOPE}`,
@@ -403,12 +414,22 @@ export async function qualityFindingEvents(
   const { rows } = await query<{ event: JournalEvent }>(
     `select event from graph_events
       where project_id = $1
-        and event->>'type' in ('quality.finding.resolved', 'quality.finding.accepted')
+        and event->>'type' = any($2::text[])
       order by seq asc`,
-    [projectId],
+    [projectId, types],
   );
   return rows.map((row) => row.event);
 }
+
+/**
+ * The `QUALITY_FOLD_TYPES` events, and nothing else — what the Quality
+ * surfaces need to fold every kind of hosted decision over the stored section
+ * (`foldQualityEvents` in lib/utils/quality.ts), and a project's full history
+ * is the wrong price for a handful of events — the Pebbles journal alone runs
+ * to thousands of rows.
+ */
+export const qualityFoldEvents = (projectId: string, ownerIds: readonly string[]): Promise<JournalEvent[]> =>
+  qualityEventsOfTypes(projectId, ownerIds, QUALITY_FOLD_TYPES);
 
 /**
  * Append pre-stamped journal events WITHOUT touching the snapshot — the

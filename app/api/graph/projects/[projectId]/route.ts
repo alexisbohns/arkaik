@@ -5,7 +5,7 @@ import {
   archiveProject,
   getProject,
   loadValidators,
-  qualityFindingEvents,
+  qualityFoldEvents,
   updateProjectFields,
 } from "@/lib/services/graph/store";
 import { foldQualityEvents } from "@/lib/utils/quality";
@@ -60,7 +60,7 @@ export async function GET(
       }
     }
 
-    // One snapshot load. `qualityFindingEvents` authorizes with a one-row
+    // One snapshot load. `qualityFoldEvents` authorizes with a one-row
     // check rather than a second load, and runs AFTER the snapshot statement
     // the 200's validators come from — so the ETag can only be older than
     // the fold it stamps, which is the safe direction (an extra 200 later,
@@ -77,7 +77,7 @@ export async function GET(
     const storedQuality = (found.bundle as { quality?: QualitySection }).quality;
     const quality = foldQualityEvents(
       storedQuality,
-      await qualityFindingEvents(projectId, caller.ownerIds),
+      await qualityFoldEvents(projectId, caller.ownerIds),
     );
     const bundle = quality === storedQuality ? found.bundle : { ...found.bundle, quality };
     return Response.json(
