@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { PANEL_GUTTER } from "@/components/panels/PanelSection";
+import { GUARDED_HOTKEY, useShortcut } from "@/lib/hooks/useShortcut";
 import { isEditableElement } from "@/lib/utils/keyboard";
 import { unwindDoomed, visibleWindow, type PanelEntry } from "@/lib/utils/panel-stack";
 
@@ -150,11 +151,15 @@ export function PanelStack<T>({
     onLayoutChange?.();
   }, [layoutKey, onLayoutChange]);
 
-  useEffect(() => {
-    if (entries.length === 0) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented || event.repeat) return;
+  // Guarded, and live in fields (Escape's TanStack default) so the guard below
+  // — the app's broader `isEditableElement`, which also knows role=textbox and
+  // role=combobox — is the one that decides. Escape inside an open Radix
+  // overlay is that overlay's; the combobox and value picker swallow theirs at
+  // window capture, before this document listener ever sees it.
+  useShortcut(
+    "close",
+    (event) => {
+      if (event.defaultPrevented || event.repeat) return;
       if (isEditableElement(event.target)) return;
       if (document.querySelector(OPEN_OVERLAY_SELECTOR)) return;
 
@@ -164,11 +169,9 @@ export function PanelStack<T>({
         () => onUnwindTo(entries.length - 1),
         topPanelRef.current,
       );
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [entries.length, onUnwindTo, runClose]);
+    },
+    { ...GUARDED_HOTKEY, ignoreInputs: false, enabled: entries.length > 0 },
+  );
 
   // The radius and the clip belong to every cell — they define the column's
   // shape, and the clip is what keeps a canvas or a long trail inside it. Only
