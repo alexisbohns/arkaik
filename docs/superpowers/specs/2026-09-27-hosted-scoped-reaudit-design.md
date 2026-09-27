@@ -45,25 +45,45 @@ withImplicitBaseline(events, section, library): JournalEvent[]  // events, plus 
 - **When:** the journal holds no `quality.audit.completed` at all, **and** the
   section holds at least one assessment with an `audit_id`. Otherwise `null`.
 - **Which audit:** the lexically newest `audit_id` among the assessments (the
-  latest-wins order the merge uses).
+  latest-wins order the merge uses), **skipping scoped ids** (matching
+  `/-scoped(-\d+)?$/`: `<month>-scoped`, `<month>-scoped-02`, …). When only
+  scoped ids are left, `null`. Why: a hosted read fetches the section and the
+  journal separately, so a hosted score that lands between the two reads can
+  put `<month>-scoped` rows in the folded section while the journal read
+  predates their recorded baseline. The synthesis would then mislabel the
+  scoped audit as the baseline. A restored scoped audit with no recording
+  isn't a real case, so skipping them costs nothing.
+- **Its window:** let `auditStart` be the earliest parseable assessment `ts`
+  of the chosen audit. When it exists, only the decisions
+  (`quality.finding.resolved`/`accepted`) ordered at or after `auditStart`
+  count, for the date and for the revert below. The comparison is on the raw
+  `ts` string, the order `orderEvents` and every downstream reader uses, so a
+  decision left out also sorts before the baseline downstream. Why: a repo
+  restored with an earlier audit cycle's CLI resolution history would
+  otherwise get a baseline dated months before its audit, with old findings
+  counted open. With no parseable assessment `ts`, every decision counts.
 - **When it's dated (`ts`):** the newest `ts` among that audit's assessments.
-  It is capped to 1 ms before the first `quality.finding.resolved`/`accepted`
-  in `orderEvents` order, so no resolution is ever pushed out of the window
+  It is capped to 1 ms before the first decision in the window, in
+  `orderEvents` order, so no resolution is ever pushed out of the window
   (that's the #472 trap). With no assessment `ts`, it's 1 ms before the first
   decision. With neither, it is the Unix epoch. An unparsable decision `ts`
   also gives the epoch, since a baseline that sorts first can't push a
-  resolution out of the window.
+  resolution out of the window. So does a capped `ts` that doesn't sort before
+  the decision's raw `ts` (a non-UTC offset).
 - **The counts at the time of the audit:** start from the section, then set
-  every finding that a decision event ordered after the baseline's `ts` names
-  back to `open`. That undoes both the server's fold and a sidecar resolution
-  that came later. `auditCompletedInput` records each cell's pre-cap `score`
-  already — caps only move the *grade* — so the revert is observable only
-  through `counts` and the anti-averaging caps, never through `scores`; without
-  this step the baseline's counts and caps would read lighter than the audit
-  really found. It also makes the stored section and the folded one produce
-  the same baseline. Then `deriveQualityMatrix` → `auditCompletedInput(matrix,
-  {audit_id, framework_version: matrix.framework_version ?? library.version ??
-  "unknown"})`.
+  every `resolved` or `accepted-risk` finding that a decision in the window
+  names back to `open`. A `refuted` finding (or any other status) is never
+  reopened, even when a stray event names it. That undoes both the server's
+  fold and a sidecar resolution that came later. `auditCompletedInput` records
+  each cell's pre-cap `score` already — caps only move the *grade* — so the
+  revert is observable only through `counts` and the anti-averaging caps,
+  never through `scores`; without this step the baseline's counts and caps
+  would read lighter than the audit really found. It also makes the stored
+  section and the folded one produce the same baseline (pinned by a test).
+  Then `deriveQualityMatrix` over every assessment row except the scoped ones
+  → `auditCompletedInput(matrix, {audit_id, framework_version:
+  matrix.framework_version ?? library.version ?? "unknown"})`. The matrix
+  still reads every non-scoped row, older audits included, as it always has.
 - **Event:** `id: "implicit-baseline:<audit_id>"`, no actor, payload
   `baseline: true`.
 
@@ -80,7 +100,11 @@ recorded it but never surfaced it, and #473 needs the row flagged as scoped.
   audit and decision types, and the trend is derived over
   `withImplicitBaseline`. The Quality page's arrows then read "since the
   restored audit" as soon as anything is re-scored.
-- CLI trend printing marks `baseline` and `scoped` rows.
+- CLI trend printing marks `baseline` and `scoped` rows. The CLI trend (repo
+  mode) doesn't synthesize (decision 3).
+- The app's Quality page also synthesizes for browser-local projects
+  (imported bundles). That's deliberate and harmless: the page is read-only,
+  and a local project is never scored hosted.
 
 ## Part 2 — the hosted write path (#473, server)
 

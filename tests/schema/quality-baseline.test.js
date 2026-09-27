@@ -166,13 +166,139 @@ check(
 );
 
 // A decision ts at the very edge of what `Date` can represent: one ms earlier
-// falls outside the representable range, and `toISOString()` would throw.
+// falls outside the representable range, and `toISOString()` would throw. The
+// section carries no assessment ts, so the decision counts however early it is
+// (a dated audit would leave a decision this old out of its window entirely).
 const MIN_DATE = new Date(-8640000000000000).toISOString();
-const extremeDecision = implicitAuditBaseline([resolved("01MIN", "F-1", MIN_DATE)], SECTION, LIBRARY);
+const NO_TS_SECTION = { ...SECTION, assessments: SECTION.assessments.map(({ ts, ...rest }) => rest) };
+const extremeDecision = implicitAuditBaseline([resolved("01MIN", "F-1", MIN_DATE)], NO_TS_SECTION, LIBRARY);
 check(
   "a decision ts at the edge of the representable range never throws computing 1 ms before it",
   extremeDecision !== null && extremeDecision.ts === EPOCH,
   extremeDecision && extremeDecision.ts,
+);
+
+// --- the audit's own window ----------------------------------------------------
+//
+// A repo restored with an earlier audit cycle's resolution history carries
+// decisions older than the audit it restored. Those decisions were already
+// folded into what that audit saw: they neither date the baseline nor reopen
+// their finding. Only decisions ordered at or after the audit's earliest
+// assessment count.
+
+const WINDOW_SECTION = {
+  ...SECTION,
+  findings: [
+    ...SECTION.findings,
+    // Resolved in an earlier audit cycle, before the 2026-08 audit was taken.
+    finding("F-5", "SEC-02", { status: "resolved", resolved_by: "https://pr/5", impact: 4, likelihood: 4 }),
+  ],
+};
+const oldDecision = implicitAuditBaseline([resolved("01OLD", "F-5", "2026-07-15T00:00:00.000Z")], WINDOW_SECTION, LIBRARY);
+check(
+  "a decision dated before the audit's assessments neither caps the date nor reopens its finding",
+  oldDecision.ts === "2026-08-05T10:00:00.000Z" && oldDecision.counts.high === 0,
+  JSON.stringify({ ts: oldDecision.ts, counts: oldDecision.counts }),
+);
+const mixedDecisions = implicitAuditBaseline(
+  [resolved("01OLD", "F-5", "2026-07-15T00:00:00.000Z"), resolved("01NEW", "F-1", "2026-08-05T00:00:00.000Z")],
+  WINDOW_SECTION,
+  LIBRARY,
+);
+check(
+  "a decision after the audit still caps the date and reopens its finding, beside an older one that does neither",
+  mixedDecisions.ts === "2026-08-04T23:59:59.999Z" && mixedDecisions.counts.critical === 1 && mixedDecisions.counts.high === 0,
+  JSON.stringify({ ts: mixedDecisions.ts, counts: mixedDecisions.counts }),
+);
+const undatedAudit = implicitAuditBaseline([resolved("01OLD", "F-5", "2026-07-15T00:00:00.000Z")], { ...WINDOW_SECTION, assessments: NO_TS_SECTION.assessments }, LIBRARY);
+check(
+  "with no assessment ts, a pre-existing decision still caps the date (every decision counts)",
+  undatedAudit.ts === "2026-07-14T23:59:59.999Z" && undatedAudit.counts.high === 1,
+  JSON.stringify({ ts: undatedAudit.ts, counts: undatedAudit.counts }),
+);
+
+// --- only decided statuses revert ------------------------------------------------
+
+const REFUTED_SECTION = { ...SECTION, findings: [...SECTION.findings, finding("F-6", "SEC-02", { status: "refuted" })] };
+const refutedBaseline = implicitAuditBaseline([resolved("01STRAY", "F-6", "2026-08-20T00:00:00.000Z")], REFUTED_SECTION, LIBRARY);
+check(
+  "a refuted finding named by a resolved event is never reopened",
+  refutedBaseline.counts.critical === 0,
+  JSON.stringify(refutedBaseline.counts),
+);
+
+// --- scoped audit ids are never the baseline ---------------------------------------
+//
+// A hosted read fetches the section and the journal separately, so a score
+// landing between the two can put `<month>-scoped` rows in the section while
+// the journal read predates their baseline's recording.
+
+const SCOPED_SECTION = {
+  profile: SECTION.profile,
+  assessments: [
+    assess("SEC-01", 3, "2026-08", "2026-08-04T10:00:00.000Z"),
+    assess("SEC-02", 3, "2026-08", "2026-08-05T10:00:00.000Z"),
+    assess("SEC-01", 1, "2026-09-scoped", "2026-09-10T00:00:00.000Z"),
+    assess("SEC-02", 1, "2026-09-scoped-02", "2026-09-12T00:00:00.000Z"),
+  ],
+  findings: [],
+};
+const scopedBaseline = implicitAuditBaseline([], SCOPED_SECTION, LIBRARY);
+const auditOnlyScore = deriveQualityMatrix(
+  { quality: { ...SCOPED_SECTION, assessments: SCOPED_SECTION.assessments.filter((a) => a.audit_id === "2026-08") } },
+  LIBRARY,
+).matrix.SEC.web.score;
+const wholeSectionScore = deriveQualityMatrix({ quality: SCOPED_SECTION }, LIBRARY).matrix.SEC.web.score;
+check("precondition: the scoped rows move the section's score", auditOnlyScore !== wholeSectionScore, JSON.stringify({ auditOnlyScore, wholeSectionScore }));
+check(
+  "scoped audit ids are skipped: the baseline is the newest unscoped audit, dated and scored from it alone",
+  scopedBaseline !== null &&
+    scopedBaseline.audit_id === "2026-08" &&
+    scopedBaseline.id === "implicit-baseline:2026-08" &&
+    scopedBaseline.ts === "2026-08-05T10:00:00.000Z" &&
+    scopedBaseline.scores.web.SEC === auditOnlyScore,
+  JSON.stringify(scopedBaseline),
+);
+check(
+  "a section holding only scoped audits → no baseline",
+  implicitAuditBaseline([], { ...SCOPED_SECTION, assessments: SCOPED_SECTION.assessments.filter((a) => a.audit_id !== "2026-08") }, LIBRARY) === null,
+);
+
+// --- stored and folded sections give the same baseline -----------------------------
+//
+// The server folds each decision into the section it serves; the snapshot a
+// restore stored does not. Both must rebuild the same reading.
+
+const STORED_SECTION = {
+  ...SECTION,
+  findings: [
+    finding("F-1", "SEC-01"),
+    finding("F-2", "SEC-02", { impact: 1, likelihood: 1 }),
+    finding("F-4", "SEC-01", { impact: 4, likelihood: 4 }),
+    finding("F-6", "SEC-02", { status: "refuted" }),
+  ],
+};
+const DECISIONS = [
+  { ...resolved("01RES", "F-1", "2026-08-20T00:00:00.000Z"), resolved_by: "https://pr/1" },
+  { ...accepted("01ACC", "F-4", "2026-08-21T00:00:00.000Z"), note: "Low exposure, tracked." },
+];
+const FOLDED_SECTION = {
+  ...STORED_SECTION,
+  findings: STORED_SECTION.findings.map((f) => {
+    if (f.id === "F-1") return { ...f, status: "resolved", resolved_by: "https://pr/1" };
+    if (f.id === "F-4") return { ...f, status: "accepted-risk", detail: `${f.detail}\n\nAccepted risk: Low exposure, tracked.` };
+    return f;
+  }),
+};
+const fromStored = implicitAuditBaseline(DECISIONS, STORED_SECTION, LIBRARY);
+const fromFolded = implicitAuditBaseline(DECISIONS, FOLDED_SECTION, LIBRARY);
+check(
+  "the stored section and the section folded with its decisions give the same baseline (ts, scores, counts)",
+  fromStored.ts === fromFolded.ts &&
+    JSON.stringify(fromStored.scores) === JSON.stringify(fromFolded.scores) &&
+    JSON.stringify(fromStored.counts) === JSON.stringify(fromFolded.counts) &&
+    fromStored.counts.critical === 1 && fromStored.counts.high === 1,
+  JSON.stringify({ stored: [fromStored.ts, fromStored.scores, fromStored.counts], folded: [fromFolded.ts, fromFolded.scores, fromFolded.counts] }),
 );
 
 // --- the revert shows up in counts, not scores ----------------------------------
