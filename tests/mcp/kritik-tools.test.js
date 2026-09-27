@@ -779,13 +779,38 @@ async function run() {
       matrix.text.slice(0, 300),
     );
 
-    const matrixRecord = await hosted.call("kritik_matrix", { record: true });
-    check("hosted matrix refuses record", matrixRecord.isError && /audit run/.test(matrixRecord.json.message), matrixRecord.text.slice(0, 300));
+    eventsReceived.length = 0;
+    const matrixRecordNoId = await hosted.call("kritik_matrix", { record: true });
+    check(
+      "hosted matrix record=true without audit_id refuses, naming what to pass",
+      matrixRecordNoId.isError && /audit_id/.test(matrixRecordNoId.json.message),
+      matrixRecordNoId.text.slice(0, 300),
+    );
+    check("and nothing was posted", eventsReceived.length === 0, JSON.stringify(eventsReceived));
+
+    eventsReceived.length = 0;
+    const matrixRecord = await hosted.call("kritik_matrix", { record: true, audit_id: "2026-09-scoped", commit: "abc" });
+    check(
+      "hosted matrix record=true posts exactly the scoped completion",
+      eventsReceived.length === 1 &&
+        JSON.stringify(eventsReceived[0]) ===
+          JSON.stringify({ events: [{ type: "quality.audit.completed", scope: true, audit_id: "2026-09-scoped", commit: "abc" }] }),
+      JSON.stringify(eventsReceived),
+    );
+    check(
+      "the reply carries the recorded scope and the merged read",
+      !matrixRecord.isError && matrixRecord.json.scope?.since === "2026-08" && typeof matrixRecord.json.matrix === "object",
+      matrixRecord.text.slice(0, 300),
+    );
 
     // Refused, not silently ignored — an agent that asked for one audit's
     // matrix must not be handed the whole pool as though it were scoped.
     const hostedScopeMatrix = await hosted.call("kritik_matrix", { scope: true });
-    check("hosted matrix refuses scope — a scoped re-audit is an audit run", hostedScopeMatrix.isError && /audit run/.test(hostedScopeMatrix.json.message), hostedScopeMatrix.text.slice(0, 300));
+    check(
+      "hosted matrix refuses scope — a scoped re-audit is recorded with record=true",
+      hostedScopeMatrix.isError && /record=true/.test(hostedScopeMatrix.json.message),
+      hostedScopeMatrix.text.slice(0, 300),
+    );
 
     const matrixScoped = await hosted.call("kritik_matrix", { audit_id: "2026-08" });
     check(
@@ -889,6 +914,32 @@ async function run() {
       resolveMissing.isError && /No finding "F-NOPE"/.test(resolveMissing.json.message),
       resolveMissing.text.slice(0, 300),
     );
+
+    // Last in this session: a retry after a dropped response. The server
+    // refuses the same audit_id as already_recorded, and the earlier
+    // attempt's reading already sits in the journal — this must come back as
+    // success, not as a failure. Mutates the stub's journal, so it runs after
+    // every other check that reads this session's scope/trend.
+    demoJournalExtra.push({
+      id: "01ALREADY",
+      ts: "2026-09-17T00:00:00.000Z",
+      type: "quality.audit.completed",
+      audit_id: "2026-09-scoped",
+      framework_version: "1.0.0",
+      scores: { web: { SEC: 80 } },
+      scope: { partial: true, cells: 1, since: "2026-08" },
+      actor: "arkaik-agent",
+    });
+    refuseEvents = { error: "refused", refusals: [{ index: 0, reason: "already_recorded" }] };
+    const retriedRecord = await hosted.call("kritik_matrix", { record: true, audit_id: "2026-09-scoped" });
+    check(
+      "a retried record whose journal already holds the recording returns it as success",
+      !retriedRecord.isError &&
+        retriedRecord.json.audit_id === "2026-09-scoped" &&
+        /Already recorded/.test(retriedRecord.json.note ?? ""),
+      retriedRecord.text.slice(0, 400),
+    );
+    refuseEvents = false;
   } finally {
     hosted.stop();
   }

@@ -30,7 +30,7 @@ import {
   type ValidationResult,
 } from "@arkaik/schema";
 
-import type { HostedQualityInput, LoadedGraph, Store, WriteResult } from "./store";
+import type { HostedQualityInput, LoadedGraph, QualityEventRefusal, Store, WriteResult } from "./store";
 
 /** Events written through this store are attributed to the agent plane. */
 export const REMOTE_ACTOR = "arkaik-agent";
@@ -197,18 +197,24 @@ export function createRemoteStore(options: RemoteStoreOptions): Store {
       } catch (err) {
         const e = err as Error & {
           status?: number;
-          body?: { error?: string; reason?: string; refusals?: { index: number; finding_id?: string; reason: string; detail?: string }[] };
+          body?: { error?: string; reason?: string; refusals?: QualityEventRefusal[] };
         };
         if (e.status === 422 && e.body?.error === "refused") {
+          const refusals = e.body.refusals;
           // A score or a scoped completion names no finding — fall back to
           // the entry's position, and append the server's `detail` (the
           // "what to do instead" half of the refusal) after an em dash.
-          const detail = e.body.refusals
-            ? e.body.refusals
-                .map((r) => `${r.finding_id ?? `entry ${r.index}`}: ${r.reason}${r.detail ? ` — ${r.detail}` : ""}`)
-                .join("; ")
+          const detail = refusals
+            ? refusals.map((r) => `${r.finding_id ?? `entry ${r.index}`}: ${r.reason}${r.detail ? ` — ${r.detail}` : ""}`).join("; ")
             : (e.body.reason ?? "refused");
-          throw new Error(`Quality events refused — ${detail}`);
+          const rejection = new Error(`Quality events refused — ${detail}`) as Error & { refusals?: QualityEventRefusal[] };
+          // Carried structured, not just baked into the message: a retry
+          // (kritik_matrix record=true) needs to tell "already recorded — the
+          // earlier attempt landed" apart from every other refusal by reason
+          // code, which a formatted string can't be pattern-matched as
+          // reliably as.
+          if (refusals) rejection.refusals = refusals;
+          throw rejection;
         }
         throw err;
       }

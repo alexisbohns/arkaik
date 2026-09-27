@@ -140,6 +140,30 @@ export type HostedQualityInput =
     }
   | { type: "quality.audit.completed"; scope: true; audit_id: string; commit?: string };
 
+/**
+ * A structural copy of `quality-events.ts`'s `QualityEventRefusal` — why one
+ * entry of a `POST …/quality/events` batch was refused. `index` is the one
+ * field every reason carries; `finding_id` only the two decision reasons.
+ * `already_recorded` is the reason `kritik_matrix record=true` pattern-matches
+ * for its retry safety (issue #473) — a POST with no idempotency key whose
+ * response was dropped looks, on retry, exactly like this refusal.
+ */
+export type QualityEventRefusal = {
+  index: number;
+  reason:
+    | "unknown_finding"
+    | "not_open"
+    | "invalid_assessment"
+    | "out_of_scope"
+    | "no_baseline"
+    | "not_scored"
+    | "already_recorded"
+    | "scope_mismatch"
+    | "audit_id_conflict";
+  finding_id?: string;
+  detail?: string;
+};
+
 /** The snapshot's node ids, in order — the input side of the provenance check. */
 function nodeIdsOf(nodes: readonly unknown[]): string[] {
   return nodes
