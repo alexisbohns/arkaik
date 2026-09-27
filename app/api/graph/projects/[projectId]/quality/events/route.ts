@@ -1,6 +1,6 @@
 import { getCaller, hasScope } from "@/lib/services/auth";
 import { MAX_BUNDLE_BYTES, servicesConfigured, servicesUnavailable } from "@/lib/services/db";
-import { appendJournalEvents, getProject, qualityFoldEvents } from "@/lib/services/graph/store";
+import { QUALITY_FOLD_TYPES, appendJournalEvents, getProject, qualityEventsOfTypes } from "@/lib/services/graph/store";
 import {
   callerMaySendQualityEvents,
   parseQualityEventInputs,
@@ -13,34 +13,54 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * `POST` — the hosted, events-only write path for Kritik findings (issue
- * #400, part 2 of the stack).
+ * `POST` — the hosted, events-only write path for Kritik findings and hosted
+ * scores (issue #400, part 2 of the stack; scoring added by issue #473).
  *
- * A batch of typed entries, each one of exactly three whitelisted types —
- * `quality.finding.resolved`, `quality.finding.accepted`, or
- * `quality.signal.tripped` (issue #406) — and nothing else. That whitelist is
- * the point: this route is not a general event-append surface (the journal
- * `GET` stays read-only), it is the one place a caller can record a Kritik
- * decision, or a Kritik observation, on a project that has no checkout for
- * `arkaik kritik finding resolve`, `accept` or `trip-signal` to run against.
+ * A batch of typed entries, each one of exactly five whitelisted types —
+ * `quality.finding.resolved`, `quality.finding.accepted`,
+ * `quality.signal.tripped` (issue #406), `quality.assessment.scored` and a
+ * scoped `quality.audit.completed` (issue #473) — and nothing else. That
+ * whitelist is the point: this route is not a general event-append surface
+ * (the journal `GET` stays read-only), it is the one place a caller can
+ * record a Kritik decision, a Kritik observation, or hosted assessment
+ * progress, on a project that has no checkout for `arkaik kritik finding
+ * resolve`, `accept`, `trip-signal` or `score` to run against. The first
+ * three are decisions or observations, unchanged from #400/#406; the last two
+ * are assessment state — a hosted re-score of one cell, and the scoped
+ * re-audit's completion — and both are checked against the scope the server
+ * itself derives from the journal, never trusted from the caller: a hosted
+ * score can only land in a cell a resolved finding made stale, and a
+ * completion's `scores`/`counts` are computed here (`planQualityEvents`,
+ * `deriveQualityMatrix`), never accepted on the wire.
  *
- * **The scope guard is asymmetric.** `graph:write` may send all three.
+ * **The scope guard is asymmetric.** `graph:write` may send all five.
  * `quality:append` alone may send only a trip: a trip decides nothing, so it
  * can overwrite no verdict, which is exactly why a narrower credential can be
  * trusted with it. A `quality:append`-only caller that sends a finding
- * decision gets a 403 naming `graph:write`. That asymmetry is the whole
- * feature — it is what lets a nightly workflow in a PUBLIC repository hold a
- * token that can append an observation and do nothing else: no graph reads,
- * no graph writes, no finding decisions.
+ * decision, a score, or a completion gets a 403 naming `graph:write`. That
+ * asymmetry is the whole feature — it is what lets a nightly workflow in a
+ * PUBLIC repository hold a token that can append an observation and do
+ * nothing else: no graph reads, no graph writes, no finding decisions, no
+ * scores.
  *
  * `snapshot.quality` is NEVER mutated here — same doctrine as the GitHub
  * App's resolution pass in `lib/services/github/quality.ts`. A finding's
- * stored `status` stays exactly as the last audit left it; what changes is
- * the journal, and `foldQualityEvents` is what makes the decision visible on
- * the next `GET`. Refusals are per-finding (`unknown_finding`, `not_open`,
- * both checked post-fold by `planQualityEvents`) but the batch is
- * all-or-nothing, mirroring `persistMutation`: one refusal anywhere refuses
- * every entry, so a caller never has to reason about a partial write.
+ * stored `status` stays exactly as the last audit left it, and a cell's
+ * stored `level` stays exactly what the last audit scored it; what changes is
+ * the journal, and `foldQualityEvents` is what makes a decision or a hosted
+ * score visible on the next `GET`. Refusals are per-entry (`index`, plus
+ * `finding_id` for the two decision reasons — see
+ * `QualityEventRefusal`) but the batch is all-or-nothing, mirroring
+ * `persistMutation`: one refusal anywhere refuses every entry, so a caller
+ * never has to reason about a partial write.
+ *
+ * **The baseline is written once, here, on the fly.** A restored project
+ * carries an audit's assessments and findings but no recorded
+ * `quality.audit.completed` for it (issue #472) — until the first hosted
+ * score would otherwise overwrite a level nothing has read yet. That score's
+ * batch also plans a backdated baseline recording (`planQualityEvents`,
+ * `implicitAuditBaseline`), first in the plan, so every reader from then on
+ * has a real reading to measure the scope and the trend from.
  *
  * Issue #392's bundle-shape concern does not apply here: this route never
  * accepts a bundle or a `PUT`, only a small typed events array, so there is
@@ -115,7 +135,16 @@ export async function POST(
     const actor = caller.via === "token" ? "arkaik-agent" : "arkaik-app";
 
     const section = (found.bundle as { quality?: QualitySection }).quality;
-    const priorEvents = await qualityFoldEvents(projectId, caller.ownerIds);
+    // `planQualityEvents` needs more than the fold types now: a hosted score
+    // is checked against the scope `deriveAuditScope` measures from the
+    // newest recorded `quality.audit.completed`, so that type has to be in
+    // `priorEvents` too, alongside `QUALITY_FOLD_TYPES` — `foldQualityEvents`
+    // does not fold `quality.audit.completed` into `section.assessments` at
+    // all, so without it here the scope would always read as "no baseline".
+    const priorEvents = await qualityEventsOfTypes(projectId, caller.ownerIds, [
+      ...QUALITY_FOLD_TYPES,
+      "quality.audit.completed",
+    ]);
     // Deliberately unlocked. The journal is append-only and `snapshot.quality`
     // is never touched here, and `foldQualityEvents` folds events in seq
     // order, first-decision-wins: if two concurrent batches both decide the
@@ -124,6 +153,46 @@ export async function POST(
     // get appended — is inert from then on, the same outcome a lock would
     // have produced by refusing it outright. No row lock buys anything a
     // lock-free append-and-fold doesn't already give for free.
+    //
+    // A hosted score adds one more race to that story, and it is inert in the
+    // COMMON case only — not in every case.
+    //
+    // Common case, inert: two concurrent FIRST scores measured from the same
+    // prior journal (in particular, the same already-recorded decisions) each
+    // find no baseline yet and each plan one. Both synthesize
+    // `implicitAuditBaseline` from the same untouched stored section and the
+    // same prior decisions, so the two rows differ only in their own envelope
+    // id — same `audit_id`, same `ts`, same `scores`/`counts`. Every reader
+    // that matters keys on `audit_id`, not on how many rows carry it:
+    // `recordedAuditIds` (packages/schema/src/quality-scope.ts) dedupes by
+    // `audit_id`, and `deriveQualityTrend` (quality-trend.ts) replays into a
+    // `Map` keyed by `audit_id` — "the same `audit_id` recorded twice … the
+    // latest wins and the earlier snapshot is dropped." Since the two rows
+    // agree on everything but their id, whichever one "wins" is indistinguishable
+    // from the other, and `deriveAuditScope`'s `since_ts` is the same either way.
+    //
+    // Exception, not inert: `implicitAuditBaseline`'s `ts` is backdated to the
+    // audit's own newest assessment when that resolves, else to just before
+    // the FIRST decision each caller's own view of the journal knows about.
+    // Two concurrent batches that each bring their own first-ever resolution
+    // (no prior decision, and an assessment whose `ts` doesn't resolve) each
+    // see only their own resolution as "first" and stamp their baseline from
+    // it — two different `ts`, and two different `scores`/`counts` (each
+    // reopens only the finding IT resolved). `deriveQualityTrend`'s
+    // latest-wins keeps whichever row sorts later, discarding the other's
+    // reading outright — and because the surviving baseline is dated after
+    // its own resolution but possibly after the OTHER batch's resolution too,
+    // the scope measured from it can read that other fix as pre-baseline and
+    // drop it from the re-audit window.
+    //
+    // Also not locked: a score racing a scoped completion (or two concurrent
+    // completions of the same audit) can record a `quality.audit.completed`
+    // reading computed from a `working` snapshot that does not yet include
+    // the other request's write, so the recorded history undercounts. The
+    // damage is bounded to that recorded snapshot, not to what the product
+    // reads live: every `GET` still folds the full journal on the way out
+    // (`foldQualityEvents`), so the missing score is never invisible, only
+    // absent from that one historical row.
     const plan = planQualityEvents(section, priorEvents, inputs, actor);
     if (!plan.ok) {
       return Response.json({ error: "refused", refusals: plan.refusals }, { status: 422 });

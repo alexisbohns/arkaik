@@ -1041,6 +1041,202 @@ async function main() {
     const afterOverCap = await (await api.GET_PROJECT(new Request(ORIGIN), ctx(restoreId))).json();
     check("the over-cap attempt wrote nothing — version is still 2", afterOverCap.version === "2", afterOverCap.version);
 
+    // --- POST .../quality/events: a hosted scoped re-audit (Task 11, #473) --
+    // A fresh owner rather than reusing userA: userA's tier was just bumped to
+    // `synk` (project cap 3) for the entity-limit check above, and it already
+    // sits at that cap between `created`/`firstImport`/`restoreCreated` — see
+    // the "project-count boundary" note on the restore fixture above for why
+    // sharing that owner here would be one more fragile coincidence rather
+    // than a real dependency.
+    const userQ = await seedUser(client, "quality-events");
+    const ownerQ = (await owners.resolveOwnerIds(userQ))[0];
+    const qualityWriteToken = await tokens.mintToken({
+      ownerId: ownerQ,
+      userId: userQ,
+      name: "quality-write",
+      scopes: ["graph:read", "graph:write"],
+    });
+    const qualityAppendToken = await tokens.mintToken({
+      ownerId: ownerQ,
+      userId: userQ,
+      name: "quality-append-only",
+      scopes: ["quality:append"],
+    });
+
+    // The same restored-audit shape planQualityEvents' own suite fixtures as
+    // RESTORED() (tests/services/quality-events.test.js, Task 10, #473): a
+    // `2026-08` audit whose assessments and findings are in the snapshot but
+    // whose reading was never recorded — a restore-imported project (issue
+    // #472) — plus one hosted resolution of F-1 already in the journal.
+    const QE_LIB = {
+      version: "1.0.0",
+      domains: [{ code: "SEC", name: "Security" }],
+      criteria: [
+        { id: "SEC-01", domain: "SEC", weight: 1, applies_to: ["web"] },
+        { id: "SEC-02", domain: "SEC", weight: 1, applies_to: ["web"] },
+      ],
+    };
+    const qeFinding = (over = {}) => ({
+      criterion_id: "SEC-01",
+      surface: "web",
+      title: "Anonymous read on the profiles table",
+      detail: "d",
+      evidence: "e",
+      impact: 5,
+      likelihood: 4,
+      cost: "M",
+      status: "open",
+      ...over,
+    });
+    const qeSeed = bundle([]);
+    qeSeed.quality = {
+      framework_version: "1.0.0",
+      library: QE_LIB,
+      profile: { surfaces: [{ id: "web", title: "Web" }] },
+      assessments: [
+        { criterion_id: "SEC-01", surface: "web", level: 1, evidence: "e1", audit_id: "2026-08", ts: "2026-08-10T00:00:00.000Z" },
+        { criterion_id: "SEC-02", surface: "web", level: 2, evidence: "e2", audit_id: "2026-08", ts: "2026-08-10T00:00:00.000Z" },
+      ],
+      findings: [qeFinding({ id: "F-1" }), qeFinding({ id: "F-2", criterion_id: "SEC-02" })],
+    };
+    qeSeed.journal = [
+      {
+        id: "01QEVENTSRESOLVEDF1000000001",
+        ts: "2026-08-20T00:00:00.000Z",
+        actor: "seed",
+        type: "quality.finding.resolved",
+        finding_id: "F-1",
+      },
+    ];
+    setSession(sessionFor(userQ));
+    const qeCreated = await api.CREATE_PROJECT(jsonReq(`${ORIGIN}/api/graph/projects`, "POST", qeSeed));
+    const qeCreatedBody = await qeCreated.json();
+    check(
+      "quality/events fixture project imports with its restored section and F-1 resolution",
+      qeCreated.status === 201,
+      `${qeCreated.status} ${JSON.stringify(qeCreatedBody)}`,
+    );
+    const qeProjectId = qeCreatedBody.id;
+
+    const qePost = (events, token) =>
+      api.QUALITY_EVENTS(
+        jsonReq(`${ORIGIN}/api/graph/projects/${qeProjectId}/quality/events`, "POST", { events }, bearer(token)),
+        ctx(qeProjectId),
+      );
+
+    // The route defaults `now` to the real clock, so the scoped audit id is
+    // read off today's UTC month exactly as `planQualityEvents` computes it —
+    // not hardcoded to the pure suite's fixed `now`.
+    const qeNow = new Date();
+    const qeMonth = `${qeNow.getUTCFullYear()}-${String(qeNow.getUTCMonth() + 1).padStart(2, "0")}`;
+    const qeScopedAuditId = `${qeMonth}-scoped`;
+
+    // 1. The first hosted score writes the baseline, then the score.
+    const scoreRes = await qePost(
+      [{ type: "quality.assessment.scored", criterion_id: "SEC-01", surface: "web", level: 4, evidence: "fixed in #7" }],
+      qualityWriteToken.plaintext,
+    );
+    const scoreBody = await scoreRes.json();
+    check("a hosted score against an in-scope cell posts 200", scoreRes.status === 200, `${scoreRes.status} ${JSON.stringify(scoreBody)}`);
+    check(
+      "it plans exactly two events, in order: the backdated baseline, then the score",
+      Array.isArray(scoreBody.events) &&
+        scoreBody.events.length === 2 &&
+        scoreBody.events[0].type === "quality.audit.completed" &&
+        scoreBody.events[0].baseline === true &&
+        scoreBody.events[0].audit_id === "2026-08" &&
+        scoreBody.events[1].type === "quality.assessment.scored" &&
+        scoreBody.events[1].audit_id === qeScopedAuditId &&
+        scoreBody.events[1].scope?.since === "2026-08",
+      JSON.stringify(scoreBody.events),
+    );
+
+    const afterScore = await (await api.GET_PROJECT(new Request(ORIGIN), ctx(qeProjectId))).json();
+    const sec01Web = (afterScore.bundle.quality?.assessments ?? []).find(
+      (a) => a.criterion_id === "SEC-01" && a.surface === "web",
+    );
+    check("GET .../projects shows SEC-01/web at the new hosted level", sec01Web?.level === 4, JSON.stringify(sec01Web));
+
+    const afterScoreJournal = await (await api.GET_JOURNAL(new Request(ORIGIN), ctx(qeProjectId))).json();
+    check(
+      "GET .../journal holds both the recorded baseline and the hosted score",
+      afterScoreJournal.journal.filter((e) => e.type === "quality.audit.completed" && e.baseline === true).length === 1 &&
+        afterScoreJournal.journal.filter((e) => e.type === "quality.assessment.scored").length === 1,
+      JSON.stringify(afterScoreJournal.journal.map((e) => e.type)),
+    );
+
+    // 1b. A SECOND score, on the SAME scoped audit, must NOT re-plan the
+    // baseline: this is the case that actually distinguishes this task's fix
+    // from the pre-Task-11 route. The old `priorEvents` (qualityFoldEvents
+    // alone, no `quality.audit.completed`) never fed the just-recorded
+    // baseline back to the planner, so `implicitAuditBaseline` kept finding
+    // "no completed audit in view" and re-synthesized a duplicate baseline
+    // event on every subsequent score — this call is what would have caught
+    // that regression.
+    const secondScoreRes = await qePost(
+      [{ type: "quality.assessment.scored", criterion_id: "SEC-01", surface: "web", level: 3, evidence: "re-checked" }],
+      qualityWriteToken.plaintext,
+    );
+    const secondScoreBody = await secondScoreRes.json();
+    check("a second score against the same cell posts 200", secondScoreRes.status === 200, `${secondScoreRes.status} ${JSON.stringify(secondScoreBody)}`);
+    check(
+      "the baseline is written once — the second score plans exactly one event, no baseline, continuing the open scoped audit",
+      Array.isArray(secondScoreBody.events) &&
+        secondScoreBody.events.length === 1 &&
+        secondScoreBody.events[0].type === "quality.assessment.scored" &&
+        secondScoreBody.events[0].audit_id === qeScopedAuditId,
+      JSON.stringify(secondScoreBody.events),
+    );
+    const afterSecondScoreJournal = await (await api.GET_JOURNAL(new Request(ORIGIN), ctx(qeProjectId))).json();
+    check(
+      "the journal still holds exactly one recorded baseline after a second score",
+      afterSecondScoreJournal.journal.filter((e) => e.type === "quality.audit.completed" && e.baseline === true).length === 1,
+      JSON.stringify(afterSecondScoreJournal.journal.map((e) => e.type)),
+    );
+
+    // 2. The scoped completion records the server-computed reading.
+    const completeRes = await qePost(
+      [{ type: "quality.audit.completed", scope: true, audit_id: qeScopedAuditId }],
+      qualityWriteToken.plaintext,
+    );
+    const completeBody = await completeRes.json();
+    check("the scoped completion posts 200", completeRes.status === 200, `${completeRes.status} ${JSON.stringify(completeBody)}`);
+    check(
+      "it plans one audit.completed event carrying a partial scope",
+      Array.isArray(completeBody.events) &&
+        completeBody.events.length === 1 &&
+        completeBody.events[0].type === "quality.audit.completed" &&
+        completeBody.events[0].scope?.partial === true &&
+        completeBody.events[0].scope?.since === "2026-08",
+      JSON.stringify(completeBody.events),
+    );
+
+    // 3. A cell no resolution touched is out of scope.
+    const outOfScopeRes = await qePost(
+      [{ type: "quality.assessment.scored", criterion_id: "SEC-02", surface: "web", level: 3, evidence: "not part of this fix" }],
+      qualityWriteToken.plaintext,
+    );
+    const outOfScopeBody = await outOfScopeRes.json();
+    check(
+      "a cell outside the scoped re-audit is refused 422 with out_of_scope",
+      outOfScopeRes.status === 422 && outOfScopeBody.refusals?.[0]?.reason === "out_of_scope",
+      `${outOfScopeRes.status} ${JSON.stringify(outOfScopeBody)}`,
+    );
+
+    // 4. A quality:append-only token cannot post a score — a score is a
+    // verdict on assessment state, not an append-only trip.
+    const scopeDeniedRes = await qePost(
+      [{ type: "quality.assessment.scored", criterion_id: "SEC-01", surface: "web", level: 4, evidence: "should not land" }],
+      qualityAppendToken.plaintext,
+    );
+    const scopeDeniedBody = await scopeDeniedRes.json();
+    check(
+      "a quality:append-only token posting a score is refused 403 naming graph:write",
+      scopeDeniedRes.status === 403 && scopeDeniedBody.required === "graph:write",
+      `${scopeDeniedRes.status} ${JSON.stringify(scopeDeniedBody)}`,
+    );
+    setSession(sessionFor(userA));
+
     // --- Archive ------------------------------------------------------------
     const archived = await api.DELETE_PROJECT(new Request(ORIGIN), ctx(projectId));
     check("DELETE archives the project", archived.status === 204, String(archived.status));
