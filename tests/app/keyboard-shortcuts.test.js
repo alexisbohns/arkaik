@@ -94,12 +94,14 @@ async function main() {
     assert(result.valid && result.warnings.length === 0, `${id}: "${hotkey}" is a valid TanStack hotkey`);
   }
 
-  const seen = new Map();
-  for (const { id, hotkey } of strings) {
-    const canonical = hotkeys.normalizeHotkey(hotkey, "mac");
-    const clash = seen.get(canonical);
-    assert(!clash, `${id}: "${hotkey}" is claimed once${clash ? ` (also by ${clash})` : ""}`);
-    seen.set(canonical, id);
+  for (const platform of ["mac", "windows"]) {
+    const seen = new Map();
+    for (const { id, hotkey } of strings) {
+      const canonical = hotkeys.normalizeHotkey(hotkey, platform);
+      const clash = seen.get(canonical);
+      assert(!clash, `${id}: "${hotkey}" is claimed once on ${platform}${clash ? ` (also by ${clash})` : ""}`);
+      seen.set(canonical, id);
+    }
   }
 
   let threw = false;
@@ -159,6 +161,39 @@ async function main() {
 
   assert(fires("shot-prev", { key: "ArrowLeft", code: "ArrowLeft" }), "← pages back");
   assert(fires("shot-next", { key: "ArrowRight", code: "ArrowRight" }), "→ pages forward");
+
+  // --- nothing hand-rolls a window shortcut any more ---
+  // The two capture-phase Escape interceptors stay: they stop propagation at
+  // window capture so an open dropdown's Escape never reaches the panel stack's
+  // document listener. Moving them onto TanStack would break exactly that.
+  const CAPTURE_INTERCEPTORS = ["components/ui/combobox.tsx", "components/values/ValuePicker.tsx"];
+  const sources = ["app", "components", "lib", "hooks"]
+    .filter((dir) => fs.existsSync(path.join(ROOT, dir)))
+    .flatMap((dir) => walk(path.join(ROOT, dir), [".ts", ".tsx"]));
+
+  for (const file of sources) {
+    const relative = path.relative(ROOT, file);
+    if (CAPTURE_INTERCEPTORS.includes(relative)) continue;
+    const text = fs.readFileSync(file, "utf8");
+    assert(
+      !/(window|document)\.addEventListener\(\s*["']keydown["']/.test(text),
+      `${relative} registers no hand-rolled keydown listener`,
+    );
+  }
+
+  // Every literal `useShortcut("id"` names a registry row with something to register.
+  for (const file of sources) {
+    const text = fs.readFileSync(file, "utf8");
+    for (const match of text.matchAll(/useShortcut\(\s*["']([^"']+)["']/g)) {
+      let ok = true;
+      try {
+        getShortcut(match[1]);
+      } catch {
+        ok = false;
+      }
+      assert(ok, `${path.relative(ROOT, file)}: useShortcut("${match[1]}") names a registered row`);
+    }
+  }
 
   // --- the sheet ---
   const projectGroups = getShortcutGroups(true);

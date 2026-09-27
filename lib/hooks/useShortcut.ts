@@ -41,6 +41,10 @@ export function useShortcuts(bindings: readonly ShortcutBinding[], commonOptions
 /**
  * Registers one registry row. The callback and options are re-synced on every
  * render, so a callback may close over current state without a ref.
+ *
+ * Pass every option on every render: TanStack merges options into the live
+ * registration, so a key dropped on a later render keeps its old value rather
+ * than resetting.
  */
 export function useShortcut(id: string, callback: HotkeyCallback, options?: UseHotkeyOptions): void {
   useShortcuts([{ id, callback, options }]);
