@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
+import { deriveFindingsBurndown } from "@arkaik/schema";
+import { BurndownChart, ClosedSinceLine } from "@/components/quality/BurndownChart";
 import { FindingsBoard } from "@/components/quality/FindingsBoard";
 import { QualityFilterBar } from "@/components/quality/QualityFilterBar";
 import { QualityFrame } from "@/components/quality/QualityFrame";
@@ -19,7 +21,7 @@ import {
   isCriterionEntry,
   isFindingEntry,
 } from "@/lib/utils/project-panels";
-import { filterFindings } from "@/lib/utils/quality";
+import { burndownFilterOf, countOpenFindings, filterFindings } from "@/lib/utils/quality";
 
 /**
  * The two panels this page can open at depth 0, and the surface a criterion is
@@ -65,6 +67,29 @@ export default function ProjectQualityFindingsPage() {
   const scope = useEffectiveProduct(id, data.project);
 
   const filtered = useMemo(() => filterFindings(data.rows, filters), [data.rows, filters]);
+
+  // The burndown under the filter bar's surface and domain (or its cell) —
+  // the one narrowing a count over time can honour; see `burndownFilterOf`.
+  // Split into primitives so a search keystroke does not replay the journal.
+  const { surface: burnSurface, domain: burnDomain } = burndownFilterOf(filters);
+  const findings = data.section?.findings;
+  const burndown = useMemo(
+    () =>
+      deriveFindingsBurndown(data.events, {
+        ...(burnSurface !== undefined ? { surface: burnSurface } : {}),
+        ...(burnDomain !== undefined ? { domain: burnDomain } : {}),
+        findings,
+        library: data.library,
+      }),
+    [data.events, burnSurface, burnDomain, findings, data.library],
+  );
+  const openNow = useMemo(
+    () => countOpenFindings(data.rows, { surface: burnSurface, domain: burnDomain }),
+    [data.rows, burnSurface, burnDomain],
+  );
+  const burnCaption = [burnSurface && `on ${data.surfaceTitles.get(burnSurface) ?? burnSurface}`, burnDomain]
+    .filter(Boolean)
+    .join(" · ");
 
   const findingParam = searchParams.get(FINDING_PARAM);
   const criterionParam = searchParams.get(CRITERION_PARAM);
@@ -234,12 +259,23 @@ export default function ProjectQualityFindingsPage() {
           <EmptyState message="Nothing to fix. This audit scored every surface and raised no findings at all." />
         </div>
       ) : (
-        <FindingsBoard
-          rows={filtered}
-          surfaceTitles={data.surfaceTitles}
-          onOpenFinding={handleOpenFinding}
-          onOpenCriterion={handleOpenCriterion}
-        />
+        <>
+          {burndown.points.length > 0 && (
+            // Above the board and scrolled away with it: the board's sticky
+            // priority headings pin to the scrollport's top, and this is the
+            // context read once on arrival, not a header to keep in view.
+            <div className="flex flex-col gap-1 border-b p-4">
+              <ClosedSinceLine burndown={burndown} openNow={openNow} className="text-xs font-medium text-foreground/80" />
+              <BurndownChart burndown={burndown} caption={burnCaption || undefined} className="max-w-3xl" />
+            </div>
+          )}
+          <FindingsBoard
+            rows={filtered}
+            surfaceTitles={data.surfaceTitles}
+            onOpenFinding={handleOpenFinding}
+            onOpenCriterion={handleOpenCriterion}
+          />
+        </>
       )}
     </QualityFrame>
   );

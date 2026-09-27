@@ -49,6 +49,7 @@ function loadQuality() {
     priorityOf: require(schemaIndex).priorityOf,
     deriveQualityMatrix: require(schemaIndex).deriveQualityMatrix,
     deriveQualityTrend: require(schemaIndex).deriveQualityTrend,
+    deriveFindingsBurndown: require(schemaIndex).deriveFindingsBurndown,
     resolveKritikLibrary: require(schemaIndex).resolveKritikLibrary,
   };
 }

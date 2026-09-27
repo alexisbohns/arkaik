@@ -2,13 +2,28 @@
 
 import { useMemo } from "react";
 import { LayersIcon } from "lucide-react";
-import type { KritikLibrary, QualityMatrix, QualitySection, QualityTrend } from "@arkaik/schema";
+import {
+  isOpenFinding,
+  type FindingsBurndown,
+  type JournalEvent,
+  type KritikLibrary,
+  type QualityMatrix,
+  type QualitySection,
+  type QualityTrend,
+} from "@arkaik/schema";
 import { SectionHeading } from "@/components/layout/SectionHeading";
+import { BurndownChart, BurndownSparkline, ClosedSinceLine } from "@/components/quality/BurndownChart";
 import { QualityGallery } from "@/components/quality/QualityGallery";
 import { QualityLegend } from "@/components/quality/QualityLegend";
 import { SurfaceScoreCard, cellLabel } from "@/components/quality/SurfaceScoreCard";
 import { domainIcon } from "@/lib/config/quality-domain-icons";
-import { buildDomainSections, buildSurfaceGauges, cellKey, describeDelta } from "@/lib/utils/quality";
+import {
+  buildDomainSections,
+  buildSurfaceBurndowns,
+  buildSurfaceGauges,
+  cellKey,
+  describeDelta,
+} from "@/lib/utils/quality";
 
 interface QualityMatrixSectionsProps {
   matrix: QualityMatrix;
@@ -20,6 +35,13 @@ interface QualityMatrixSectionsProps {
    * always did — without a trend there is no arrow, not a broken one.
    */
   trend?: QualityTrend;
+  /**
+   * The project-wide findings burndown, and the events it was replayed from —
+   * the second so each surface card can replay its own slice. Optional for the
+   * reason `trend` is: without them the Overall section is what it was.
+   */
+  burndown?: FindingsBurndown;
+  burndownEvents?: readonly JournalEvent[];
   /** The open cell as `cellKey` encodes it, or `null`. Owned by the URL. */
   activeCell: string | null;
   onSelectCell: (domain: string, surface: string) => void;
@@ -39,6 +61,8 @@ export function QualityMatrixSections({
   section,
   library,
   trend,
+  burndown,
+  burndownEvents,
   activeCell,
   onSelectCell,
 }: QualityMatrixSectionsProps) {
@@ -48,6 +72,15 @@ export function QualityMatrixSections({
   // call over its own deps and refuses a chain wrapped in one memo.
   const sections = useMemo(() => buildDomainSections(matrix, section, library, trend), [matrix, section, library, trend]);
   const gauges = useMemo(() => buildSurfaceGauges(matrix, section, library, trend), [matrix, section, library, trend]);
+  const findings = section?.findings;
+  const surfaceBurndowns = useMemo(
+    () => (burndownEvents ? buildSurfaceBurndowns(burndownEvents, matrix.surfaces, { findings, library }) : null),
+    [burndownEvents, matrix.surfaces, findings, library],
+  );
+  // Every open finding in the section, not the cards' sum: a finding on a
+  // surface the profile no longer lists is on no card, but it is on the line
+  // the burndown draws, and the sentence must close on the chart's number.
+  const openNow = useMemo(() => (findings ?? []).filter(isOpenFinding).length, [findings]);
 
   return (
     <div className="flex flex-col">
@@ -64,27 +97,40 @@ export function QualityMatrixSections({
           title="Overall"
           icon={LayersIcon}
           description="Every domain weighed together, surface by surface."
-          subtitle={`${matrix.surfaces.length} surface${matrix.surfaces.length === 1 ? "" : "s"}`}
+          subtitle={
+            <>
+              {`${matrix.surfaces.length} surface${matrix.surfaces.length === 1 ? "" : "s"}`}
+              {/* What was *done* since the audit, beside what the code *is*:
+                  the scores above only move on a re-audit, and without this
+                  a week of closed findings reads as nothing (issue #441). */}
+              {burndown && <ClosedSinceLine burndown={burndown} openNow={openNow} className="before:content-['_·_']" />}
+            </>
+          }
         />
         <QualityGallery className="-mx-4 px-4">
-          {gauges.map((gauge) => (
-            <SurfaceScoreCard
-              key={gauge.surface}
-              title={gauge.title}
-              score={gauge.score}
-              grade={gauge.grade}
-              delta={gauge.delta}
-              meta={`${gauge.openFindings} open`}
-              label={
-                gauge.score === null
-                  ? `${gauge.title} — nothing scored`
-                  : `${gauge.title} — ${gauge.score} out of 100, grade ${gauge.grade}` +
-                    (describeDelta(gauge.delta) ? `, ${describeDelta(gauge.delta)}` : "") +
-                    ` — ${gauge.openFindings} open findings`
-              }
-            />
-          ))}
+          {gauges.map((gauge) => {
+            const surfaceBurndown = surfaceBurndowns?.get(gauge.surface);
+            return (
+              <SurfaceScoreCard
+                key={gauge.surface}
+                title={gauge.title}
+                score={gauge.score}
+                grade={gauge.grade}
+                delta={gauge.delta}
+                meta={`${gauge.openFindings} open`}
+                footer={surfaceBurndown && <BurndownSparkline burndown={surfaceBurndown} />}
+                label={
+                  gauge.score === null
+                    ? `${gauge.title} — nothing scored`
+                    : `${gauge.title} — ${gauge.score} out of 100, grade ${gauge.grade}` +
+                      (describeDelta(gauge.delta) ? `, ${describeDelta(gauge.delta)}` : "") +
+                      ` — ${gauge.openFindings} open findings`
+                }
+              />
+            );
+          })}
         </QualityGallery>
+        {burndown && <BurndownChart burndown={burndown} className="max-w-3xl" />}
       </section>
 
       {sections.map((domain) => (
