@@ -12,6 +12,12 @@ import type { MetadataRoute } from "next";
  * The colors mirror the light theme's `--background` in globals.css; the title
  * bar follows the system theme through `viewport.themeColor` in the root
  * layout, which overrides `theme_color` once a page is loaded.
+ *
+ * The maskable icon (what macOS turns into the Dock icon) and app/apple-icon.png
+ * are the mark inverted on a dark tile, on purpose. A web app cannot ship
+ * dark/clear icon variants, so macOS derives them by darkening the tile — a
+ * white tile went near-black and swallowed the black mark. A dark tile with a
+ * light shape survives that in every icon style.
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
