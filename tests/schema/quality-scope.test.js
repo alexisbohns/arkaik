@@ -377,6 +377,26 @@ const cellIds = (scope) => scope.cells.map((cell) => `${cell.surface}:${cell.cri
     scopedAuditId({ since: "2026-08", month: "2026-09", known: ["2026-08", "2026-09-scoped"], recorded: ["2026-08"], open: "2026-09-scoped" }) === "2026-09-scoped",
   );
   check(
+    "an open audit a newer known id already outsorts is not continued",
+    scopedAuditId({
+      since: "2026-08",
+      month: "2026-10",
+      known: ["2026-08", "2026-09-scoped", "2026-10"],
+      recorded: ["2026-08", "2026-09-scoped", "2026-10"],
+      open: "2026-09-scoped",
+    }) === "2026-10-scoped",
+  );
+  check(
+    "an open audit equal to the newest known id is still continued",
+    scopedAuditId({
+      since: "2026-08",
+      month: "2026-10",
+      known: ["2026-08", "2026-10"],
+      recorded: ["2026-08", "2026-10"],
+      open: "2026-10",
+    }) === "2026-10",
+  );
+  check(
     "a requested id measured from itself throws",
     /is the audit this scope is measured from/.test(
       throws(() => scopedAuditId({ since: "2026-08", month: "2026-09", requested: "2026-08", known: ["2026-08"], recorded: ["2026-08"] })),

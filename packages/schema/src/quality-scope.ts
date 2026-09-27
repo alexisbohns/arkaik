@@ -383,8 +383,10 @@ export interface ScopedAuditIdInput {
  * ones it was meant to replace.
  *
  * Unrequested, it continues the scoped audit already in progress (`open`,
- * when the caller found one), else opens `<month>-scoped`, then
- * `<month>-scoped-02` and on, the convention SPEC § 6 names.
+ * when the caller found one and no known id sorts after it — an `open` a
+ * newer audit already outsorts is stale and falls through to naming a fresh
+ * candidate instead), else opens `<month>-scoped`, then `<month>-scoped-02`
+ * and on, the convention SPEC § 6 names.
  */
 export function scopedAuditId(input: ScopedAuditIdInput): string {
   const { since, month, requested, known, recorded, open } = input;
@@ -409,7 +411,7 @@ export function scopedAuditId(input: ScopedAuditIdInput): string {
     return requested;
   }
 
-  if (open !== undefined) return open;
+  if (open !== undefined && (newest === undefined || open >= newest)) return open;
 
   for (let n = 1; n < 100; n++) {
     const candidate = n === 1 ? `${month}-scoped` : `${month}-scoped-${String(n).padStart(2, "0")}`;
