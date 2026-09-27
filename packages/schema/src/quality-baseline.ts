@@ -13,7 +13,11 @@
  * and never later than 1 ms before the first finding decision — and scored the
  * way the audit scored it: every finding a decision event names is read as
  * open again, because every decision is ordered after the reading, and the
- * anti-averaging caps must see the defects the audit saw.
+ * anti-averaging caps and the counts must see the defects the audit saw. A
+ * finding *opened* after the audit (a later `quality.finding.opened`) is left
+ * exactly as the section reads it and so still counts in the baseline's
+ * `counts` — accepted, since a restored project has no hosted open path yet
+ * for that event to arrive through.
  *
  * Nothing is written here. The hosted write path (issue #473) writes this same
  * event for real the first time a hosted score would otherwise overwrite the
@@ -33,7 +37,18 @@ const DECISIONS = new Set(["quality.finding.resolved", "quality.finding.accepted
 
 const rowsOf = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
 const isString = (value: unknown): value is string => typeof value === "string" && value !== "";
-const isEvent = (value: unknown): value is JournalEvent => typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** A plain object, never `null` and never an array — what every reader below (and `deriveQualityMatrix`) can safely dereference fields of. */
+const isRow = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * `value` as an array of object rows, dropping `null`/non-object entries a
+ * hand-edited section or journal can carry. `deriveQualityMatrix` and this
+ * module both dereference `.surface`/`.status`/`.type` unguarded, so a stray
+ * `null` inside an otherwise-valid array must never reach either — the
+ * "never throws" promise covers the array's *contents*, not just its shape.
+ */
+const objectRowsOf = <T>(value: unknown): T[] => rowsOf<unknown>(value).filter(isRow) as T[];
 
 /** A shallow copy of `obj` without `keys` — used instead of destructure-and-discard so an omitted field never trips `no-unused-vars`. */
 function omit<T extends Record<string, unknown>>(obj: T, keys: readonly string[]): Record<string, unknown> {
@@ -49,6 +64,19 @@ function isoOf(value: unknown): string | undefined {
   return Number.isFinite(at) ? new Date(at).toISOString() : undefined;
 }
 
+/**
+ * `iso`, one millisecond earlier, or the epoch when that would fall outside
+ * the range `Date` can represent (`iso` at or near `-271821-04-20`, the
+ * minimum). `new Date(ms).toISOString()` throws on an out-of-range `ms`
+ * rather than clamping, and a decision timestamped at the dawn of time is a
+ * malformed row, not a real one — the epoch is the correct "never after it"
+ * answer either way.
+ */
+function oneMsBefore(iso: string): string {
+  const before = new Date(Date.parse(iso) - 1);
+  return Number.isNaN(before.getTime()) ? EPOCH : before.toISOString();
+}
+
 type BaselineSection = Pick<QualitySection, "assessments" | "findings"> & Partial<Pick<QualitySection, "profile" | "framework_version" | "library">>;
 
 /**
@@ -61,18 +89,22 @@ export function implicitAuditBaseline(
   section: BaselineSection | null | undefined,
   library?: KritikLibrary,
 ): JournalEvent | null {
-  const rows = rowsOf<unknown>(events).filter(isEvent);
+  const rows = objectRowsOf<JournalEvent>(events);
   if (rows.some((event) => event.type === "quality.audit.completed")) return null;
 
-  const assessments = rowsOf<QualityAssessment>(section?.assessments).filter((row) => isString(row?.audit_id));
-  if (assessments.length === 0) return null;
-  const auditId = assessments.map((row) => row.audit_id as string).sort().at(-1) as string;
+  // All valid assessment rows feed the matrix below; only the ones tagged with
+  // an `audit_id` say anything about *which* audit to read or when it was
+  // taken.
+  const assessmentRows = objectRowsOf<QualityAssessment>(section?.assessments);
+  const taggedAssessments = assessmentRows.filter((row) => isString(row.audit_id));
+  if (taggedAssessments.length === 0) return null;
+  const auditId = taggedAssessments.map((row) => row.audit_id as string).sort().at(-1) as string;
 
   // When: the audit's own newest score, capped to just before the first
   // decision — whichever is earlier — so the window keeps every fix.
   const ordered = orderEvents(rows);
   const firstDecision = ordered.find((event) => DECISIONS.has(event.type));
-  const assessedAt = assessments
+  const assessedAt = taggedAssessments
     .filter((row) => row.audit_id === auditId)
     .map((row) => isoOf(row.ts))
     .filter((at): at is string => at !== undefined)
@@ -86,9 +118,21 @@ export function implicitAuditBaseline(
     if (decidedAt === undefined) {
       ts = EPOCH;
     } else {
-      const justBefore = new Date(Date.parse(decidedAt) - 1).toISOString();
+      const justBefore = oneMsBefore(decidedAt);
       ts = assessedAt !== undefined && assessedAt < justBefore ? assessedAt : justBefore;
     }
+    // `orderEvents` (and every downstream reader — the scope, the trend) sorts
+    // by the RAW `ts` string, not a parsed instant. A decision whose `ts`
+    // carries a non-UTC offset (`"2026-08-04T23:00:00-02:00"`) can normalize
+    // to an instant after this reading yet still sort lexically BEFORE it once
+    // this event is merged into the journal — breaking the one invariant the
+    // whole design leans on, that every decision sorts after its baseline.
+    // Re-check on the same raw-string comparison `orderEvents` uses, and fall
+    // back to the epoch — which nothing sorts before — when it doesn't hold.
+    // An empty or non-string decision `ts` (sort key `""`) can never be beaten
+    // this way either; that's accepted, the same as an unparsable one above.
+    const decisionSortKey = typeof firstDecision.ts === "string" ? firstDecision.ts : "";
+    if (!(ts < decisionSortKey)) ts = EPOCH;
   }
 
   // What: the audit's scores, with every decided finding open again.
@@ -98,12 +142,16 @@ export function implicitAuditBaseline(
     const id = (event as { finding_id?: unknown }).finding_id;
     if (isString(id)) decided.add(id);
   }
-  const findings = rowsOf<QualityFinding>(section?.findings).map((finding) => {
-    if (!isString(finding?.id) || !decided.has(finding.id)) return finding;
+  const findings = objectRowsOf<QualityFinding>(section?.findings).map((finding) => {
+    if (!isString(finding.id) || !decided.has(finding.id)) return finding as QualityFinding;
     return { ...omit(finding, ["resolved_by"]), status: "open" } as QualityFinding;
   });
-  const matrix = deriveQualityMatrix({ quality: { ...(section as QualitySection), findings } }, library);
-  const frameworkVersion = matrix.framework_version ?? section?.framework_version ?? library?.version ?? "unknown";
+  const matrix = deriveQualityMatrix({ quality: { ...(section as QualitySection), assessments: assessmentRows, findings } }, library);
+  // `matrix.framework_version` is already `section.framework_version` — the
+  // one thing `deriveQualityMatrix` reads verbatim rather than resolving
+  // against `library` — so falling further back to `section?.framework_version`
+  // here would only ever repeat it.
+  const frameworkVersion = matrix.framework_version ?? library?.version ?? "unknown";
   const input = auditCompletedInput(matrix, { audit_id: auditId, framework_version: frameworkVersion });
 
   return { id: `implicit-baseline:${auditId}`, ts, type: input.type, ...input.payload, baseline: true } as JournalEvent;

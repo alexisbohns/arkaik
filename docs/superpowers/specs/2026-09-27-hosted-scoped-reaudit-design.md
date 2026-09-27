@@ -53,14 +53,17 @@ withImplicitBaseline(events, section, library): JournalEvent[]  // events, plus 
   decision. With neither, it is the Unix epoch. An unparsable decision `ts`
   also gives the epoch, since a baseline that sorts first can't push a
   resolution out of the window.
-- **The scores at the time of the audit:** start from the section, then set
+- **The counts at the time of the audit:** start from the section, then set
   every finding that a decision event ordered after the baseline's `ts` names
   back to `open`. That undoes both the server's fold and a sidecar resolution
-  that came later. Anti-averaging caps depend on finding status, so without
-  this step the baseline would read higher than the audit really scored. It
-  also makes the stored section and the folded one produce the same baseline.
-  Then `deriveQualityMatrix` → `auditCompletedInput(matrix, {audit_id,
-  framework_version: matrix.framework_version ?? library.version ?? "unknown"})`.
+  that came later. `auditCompletedInput` records each cell's pre-cap `score`
+  already — caps only move the *grade* — so the revert is observable only
+  through `counts` and the anti-averaging caps, never through `scores`; without
+  this step the baseline's counts and caps would read lighter than the audit
+  really found. It also makes the stored section and the folded one produce
+  the same baseline. Then `deriveQualityMatrix` → `auditCompletedInput(matrix,
+  {audit_id, framework_version: matrix.framework_version ?? library.version ??
+  "unknown"})`.
 - **Event:** `id: "implicit-baseline:<audit_id>"`, no actor, payload
   `baseline: true`.
 
