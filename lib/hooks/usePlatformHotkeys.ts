@@ -1,7 +1,7 @@
 "use client";
 
 import type { PlatformId } from "@/lib/config/platforms";
-import { useShortcuts } from "@/lib/hooks/useShortcut";
+import { GUARDED_HOTKEY, toolbarKey, useShortcuts } from "@/lib/hooks/useShortcut";
 import { nextPlatformFilter } from "@/lib/utils/keyboard";
 import { PLATFORM_HOTKEYS } from "@/lib/utils/keyboard-shortcuts";
 
@@ -23,8 +23,8 @@ export function usePlatformHotkeys({ enabled, available, current, onSelect }: Pl
   useShortcuts(
     (Object.entries(PLATFORM_HOTKEYS) as [PlatformId, string][]).map(([platform, id]) => ({
       id,
-      callback: () => onSelect(nextPlatformFilter(current, platform)),
-      options: { enabled: enabled && available.some((option) => option.id === platform) },
+      callback: toolbarKey(() => onSelect(nextPlatformFilter(current, platform))),
+      options: { ...GUARDED_HOTKEY, enabled: enabled && available.some((option) => option.id === platform) },
     })),
   );
 }

@@ -32,7 +32,7 @@ import {
   SEVERITY_DOT,
   SEVERITY_LABEL,
 } from "@/components/quality/quality-styles";
-import { useShortcut } from "@/lib/hooks/useShortcut";
+import { GUARDED_HOTKEY, toolbarKey, useShortcut } from "@/lib/hooks/useShortcut";
 
 interface QualityFilterBarProps {
   filters: QualityFilters;
@@ -114,7 +114,7 @@ export function QualityFilterBar({ filters, onChange, surfaces, domains }: Quali
     setSearchDraft("");
     onChange(DEFAULT_QUALITY_FILTERS);
   };
-  useShortcut("clear-filters", clearFilters, { enabled: isFiltered });
+  useShortcut("clear-filters", toolbarKey(clearFilters), { ...GUARDED_HOTKEY, enabled: isFiltered });
   const [syncedSearch, setSyncedSearch] = useState(filters.search);
   // What we last wrote ourselves. State, not a ref, because it is *read* during
   // the render-time draft adjustment below, and react-hooks/refs forbids

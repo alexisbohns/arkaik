@@ -87,7 +87,7 @@ async function main() {
     NAV_HOTKEY_ROUTES,
     PLATFORM_HOTKEYS,
   } = registry;
-  const { nextPlatformFilter } = loadModule("lib/utils/keyboard.ts", "keyboard.js");
+  const { nextPlatformFilter, OPEN_OVERLAY_SELECTOR } = loadModule("lib/utils/keyboard.ts", "keyboard.js");
   const { PLATFORM_IDS } = loadModule("packages/schema/src/ids.ts", "ids.js");
 
   /** Does any of the entry's registered strings match this event? */
@@ -368,6 +368,13 @@ async function main() {
   assert(nextPlatformFilter("all", "ios") === "ios", "i from all → iOS");
   assert(nextPlatformFilter("ios", "ios") === "all", "i again → back to all");
   assert(nextPlatformFilter("ios", "web") === "web", "w from iOS → Web");
+
+  assert(
+    typeof OPEN_OVERLAY_SELECTOR === "string" &&
+      OPEN_OVERLAY_SELECTOR.length > 0 &&
+      OPEN_OVERLAY_SELECTOR.includes("[role='listbox'][data-state='open']"),
+    "OPEN_OVERLAY_SELECTOR still catches an open Radix Select/Combobox listbox",
+  );
 
   // --- the sheet ---
   const projectGroups = getShortcutGroups(true);

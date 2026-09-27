@@ -18,7 +18,7 @@ import { VALUES } from "@/lib/config/values";
 import { STATUSES } from "@/lib/config/statuses";
 import { usePlatformFilterControl } from "@/lib/hooks/usePlatformFilterControl";
 import { usePlatformHotkeys } from "@/lib/hooks/usePlatformHotkeys";
-import { useShortcut } from "@/lib/hooks/useShortcut";
+import { GUARDED_HOTKEY, toolbarKey, useShortcut } from "@/lib/hooks/useShortcut";
 import { SearchInput } from "@/components/ui/search-input";
 import { ProductOverrideSelector } from "@/components/layout/ProductOverrideSelector";
 import { Toolbar, ToolbarGroup } from "@/components/layout/Toolbar";
@@ -84,8 +84,8 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectI
     setSearchDraft("");
     onChange(EMPTY_FILTERS);
   };
-  useShortcut("clear-filters", clearFilters, { enabled: isFiltered });
-  useShortcut("toggle-expand", onToggleExpandAll);
+  useShortcut("clear-filters", toolbarKey(clearFilters), { ...GUARDED_HOTKEY, enabled: isFiltered });
+  useShortcut("toggle-expand", toolbarKey(onToggleExpandAll), GUARDED_HOTKEY);
   const [syncedSearch, setSyncedSearch] = useState(filters.search);
   // What we last wrote ourselves via the debounced onChange below. Tracked as
   // state (not a ref) because it must be *read* during the render-time draft

@@ -9,7 +9,7 @@ import { SearchInput } from "@/components/ui/search-input";
 import { Select, SelectContent, SelectItem } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { DECISION_STATUSES, type DecisionStatusId } from "@/lib/config/decision-statuses";
-import { useShortcut } from "@/lib/hooks/useShortcut";
+import { GUARDED_HOTKEY, toolbarKey, useShortcut } from "@/lib/hooks/useShortcut";
 
 export type DecisionStatusFilter = DecisionStatusId | "all";
 
@@ -61,7 +61,7 @@ export function DecisionFilterBar({
   onDetailedChange,
 }: DecisionFilterBarProps) {
   const toggleLabel = detailed ? "Collapse decision details" : "Expand decision details";
-  useShortcut("toggle-expand", () => onDetailedChange(!detailed));
+  useShortcut("toggle-expand", toolbarKey(() => onDetailedChange(!detailed)), GUARDED_HOTKEY);
 
   return (
     <Toolbar>

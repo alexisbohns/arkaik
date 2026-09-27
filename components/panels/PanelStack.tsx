@@ -7,20 +7,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { PANEL_GUTTER } from "@/components/panels/PanelSection";
 import { GUARDED_HOTKEY, useShortcut } from "@/lib/hooks/useShortcut";
-import { isEditableElement } from "@/lib/utils/keyboard";
+import { isEditableElement, OPEN_OVERLAY_SELECTOR } from "@/lib/utils/keyboard";
 import { unwindDoomed, visibleWindow, type PanelEntry } from "@/lib/utils/panel-stack";
-
-/**
- * Escape belongs to whatever layer is on top, and Radix marks its open layers
- * in the DOM. With a dialog, popover, or select open over a panel, Escape is
- * theirs — the stack stays put.
- */
-const OPEN_OVERLAY_SELECTOR = [
-  "[role='dialog'][data-state='open']",
-  "[role='alertdialog'][data-state='open']",
-  "[role='listbox'][data-state='open']",
-  "[role='menu'][data-state='open']",
-].join(", ");
 
 interface PanelStackProps<T> {
   entries: PanelEntry<T>[];

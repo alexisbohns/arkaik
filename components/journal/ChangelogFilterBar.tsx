@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { FilterSelectTrigger } from "@/components/layout/FilterSelectTrigger";
 import { Toolbar, ToolbarGroup } from "@/components/layout/Toolbar";
-import { useShortcut } from "@/lib/hooks/useShortcut";
+import { GUARDED_HOTKEY, toolbarKey, useShortcut } from "@/lib/hooks/useShortcut";
 import { MONTH_LABELS } from "@/lib/utils/changelog-period";
 
 /** The "no filter" sentinel — Radix's Select cannot hold an empty string value. */
@@ -44,7 +44,7 @@ export function ChangelogFilterBar({
   onMonthChange,
   onDetailedChange,
 }: ChangelogFilterBarProps) {
-  useShortcut("toggle-expand", () => onDetailedChange(!detailed));
+  useShortcut("toggle-expand", toolbarKey(() => onDetailedChange(!detailed)), GUARDED_HOTKEY);
 
   return (
     <Toolbar>

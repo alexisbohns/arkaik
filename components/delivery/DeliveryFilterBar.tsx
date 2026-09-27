@@ -10,7 +10,7 @@ import { SPECIES_PLURALS } from "@/lib/config/species-icons";
 import type { ProjectBundle } from "@/lib/data/types";
 import { usePlatformFilterControl } from "@/lib/hooks/usePlatformFilterControl";
 import { usePlatformHotkeys } from "@/lib/hooks/usePlatformHotkeys";
-import { useShortcut } from "@/lib/hooks/useShortcut";
+import { GUARDED_HOTKEY, toolbarKey, useShortcut } from "@/lib/hooks/useShortcut";
 
 export type DeliveryPlatformFilter = "all" | PlatformId;
 
@@ -67,7 +67,7 @@ export function DeliveryFilterBar({
     current: platform,
     onSelect: onPlatformChange,
   });
-  useShortcut("clear-filters", onClearFilters, { enabled: isFiltered });
+  useShortcut("clear-filters", toolbarKey(onClearFilters), { ...GUARDED_HOTKEY, enabled: isFiltered });
 
   return (
     <Toolbar>
