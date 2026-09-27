@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   BookOpenIcon,
   GemIcon,
@@ -35,6 +36,9 @@ import type { SpeciesId } from "@/lib/config/species";
 import { isSeedProjectId } from "@/lib/data/seed-project-id";
 import type { ProjectBundle } from "@/lib/data/types";
 import { useModKeyLabel } from "@/lib/hooks/useModKeyLabel";
+import { useOptionHeld } from "@/lib/hooks/useOptionHeld";
+import { GUARDED_HOTKEY, useShortcuts } from "@/lib/hooks/useShortcut";
+import { NAV_HOTKEY_ROUTES, formatChord, getShortcut } from "@/lib/utils/keyboard-shortcuts";
 
 interface ProjectSidebarProps {
   projectId: string;
@@ -79,6 +83,34 @@ interface ProjectSidebarProps {
 // same map below.
 const LIBRARY_SPECIES = ["view", "flow", "data-model", "api-endpoint"] as const satisfies readonly SpeciesId[];
 
+// An open modal owns the keyboard: ⌥D inside Delivery's new-node dialog must
+// not navigate away and drop the draft. Matched by `data-slot`, not by
+// `role="dialog"`: Radix popovers carry that role too, and a hovered chip's
+// popover in the Library table must not silently disable navigation. Every
+// Dialog (the ⌘K palette and the ⌘? sheet included) renders `dialog-content`.
+// The mobile sidebar is a sheet — `data-mobile="true"` sits on that same
+// `sheet-content` element — and it hosts these very links, so it does not
+// count. No alert-dialog primitive exists yet; the role covers one if added.
+const OPEN_MODAL_SELECTOR = [
+  "[data-slot='dialog-content'][data-state='open']",
+  "[data-slot='sheet-content'][data-state='open']:not([data-mobile='true'])",
+  "[role='alertdialog'][data-state='open']",
+].join(", ");
+
+// The Search chip's skin, shared so the ⌘K chip and the ⌥ chips are one family.
+const SIDEBAR_KBD_CLASS =
+  "ml-auto inline-flex items-center rounded border bg-sidebar-accent px-1.5 py-0.5 font-sans text-[10px] font-medium group-data-[collapsible=icon]:hidden";
+
+/**
+ * A registry row's chord, drawn only while Option is held. It renders nothing
+ * otherwise, so the sidebar does not reflow until someone asks. Hidden in icon
+ * mode like the Search chip: a collapsed rail has no room for it.
+ */
+function ShortcutHint({ id, visible, modKey }: { id: string; visible: boolean; modKey: string | null }) {
+  if (!visible || !modKey) return null;
+  return <kbd className={SIDEBAR_KBD_CLASS}>{formatChord(getShortcut(id).keys, modKey)}</kbd>;
+}
+
 export function ProjectSidebar({
   projectId,
   project,
@@ -94,6 +126,35 @@ export function ProjectSidebar({
   onOpenRaw,
 }: ProjectSidebarProps) {
   const modKey = useModKeyLabel();
+  const router = useRouter();
+  const optionHeld = useOptionHeld();
+  // Registered here because the sidebar already owns every destination and is
+  // mounted on every project page (in a sheet on mobile, but mounted).
+  // Guarded, so a declined chord (a modal is open, or the key is auto-
+  // repeating) leaves the keystroke untouched rather than swallowing it.
+  useShortcuts(
+    Object.entries(NAV_HOTKEY_ROUTES).map(([shortcutId, route]) => ({
+      id: shortcutId,
+      callback: (event: KeyboardEvent) => {
+        if (event.repeat || document.querySelector(OPEN_MODAL_SELECTOR)) return;
+        event.preventDefault();
+        router.push(`/project/${projectId}/${route}`);
+      },
+      options: GUARDED_HOTKEY,
+    })),
+  );
+  // Next's <Link> treats an Option-held click as a "modified click" and lets
+  // the browser handle it — which on macOS downloads the link, exactly what
+  // holding Option to reveal a chord invites someone to do. Preventing
+  // default (only for a bare Option click — Cmd/Ctrl/Shift-click still open
+  // in a new tab as usual) and navigating ourselves keeps it a normal
+  // in-app jump.
+  const followOptionClick = (href: string) => (event: React.MouseEvent) => {
+    if (event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
+      event.preventDefault();
+      router.push(href);
+    }
+  };
   const overviewHref = `/project/${projectId}/overview`;
   const mapsHref = `/project/${projectId}/maps`;
   const libraryHref = `/project/${projectId}/library`;
@@ -129,9 +190,7 @@ export function ProjectSidebar({
               <SearchIcon />
               <span>Search</span>
               {modKey ? (
-                <kbd className="ml-auto inline-flex items-center rounded border bg-sidebar-accent px-1.5 py-0.5 font-sans text-[10px] font-medium group-data-[collapsible=icon]:hidden">
-                  {modKey === "⌘" ? "⌘K" : "Ctrl+K"}
-                </kbd>
+                <kbd className={SIDEBAR_KBD_CLASS}>{formatChord(getShortcut("command-palette").keys, modKey)}</kbd>
               ) : null}
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -145,25 +204,28 @@ export function ProjectSidebar({
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={currentView === "overview"} tooltip="Overview">
-                <Link href={overviewHref}>
+                <Link href={overviewHref} onClick={followOptionClick(overviewHref)}>
                   <LayoutDashboardIcon />
                   <span>Overview</span>
+                  <ShortcutHint id="nav-overview" visible={optionHeld} modKey={modKey} />
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={currentView === "pyramid"} tooltip="Value pyramid">
-                <Link href={pyramidHref}>
+                <Link href={pyramidHref} onClick={followOptionClick(pyramidHref)}>
                   <PyramidIcon />
                   <span>Pyramid</span>
+                  <ShortcutHint id="nav-pyramid" visible={optionHeld} modKey={modKey} />
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={currentView === "delivery"} tooltip="Delivery board">
-                <Link href={deliveryHref}>
+                <Link href={deliveryHref} onClick={followOptionClick(deliveryHref)}>
                   <SquareKanbanIcon />
                   <span>Delivery</span>
+                  <ShortcutHint id="nav-delivery" visible={optionHeld} modKey={modKey} />
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -177,9 +239,10 @@ export function ProjectSidebar({
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={currentView === "changelog"} tooltip="Changelog">
-                <Link href={changelogHref}>
+                <Link href={changelogHref} onClick={followOptionClick(changelogHref)}>
                   <ScrollTextIcon />
                   <span>Changelog</span>
+                  <ShortcutHint id="nav-changelog" visible={optionHeld} modKey={modKey} />
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -198,9 +261,10 @@ export function ProjectSidebar({
                 isActive={currentView === "quality" && currentQualityView !== "findings"}
                 tooltip="Audit matrix"
               >
-                <Link href={`${qualityHref}/matrix`}>
+                <Link href={`${qualityHref}/matrix`} onClick={followOptionClick(`${qualityHref}/matrix`)}>
                   <GemIcon />
                   <span>Matrix</span>
+                  <ShortcutHint id="nav-matrix" visible={optionHeld} modKey={modKey} />
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -210,9 +274,10 @@ export function ProjectSidebar({
                 isActive={currentView === "quality" && currentQualityView === "findings"}
                 tooltip="Findings"
               >
-                <Link href={`${qualityHref}/findings`}>
+                <Link href={`${qualityHref}/findings`} onClick={followOptionClick(`${qualityHref}/findings`)}>
                   <ListChecksIcon />
                   <span>Findings</span>
+                  <ShortcutHint id="nav-findings" visible={optionHeld} modKey={modKey} />
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -228,9 +293,10 @@ export function ProjectSidebar({
                 isActive={currentView === "maps" && currentMapId === null}
                 tooltip="All maps"
               >
-                <Link href={mapsHref}>
+                <Link href={mapsHref} onClick={followOptionClick(mapsHref)}>
                   <MapIcon />
                   <span>All maps</span>
+                  <ShortcutHint id="nav-maps" visible={optionHeld} modKey={modKey} />
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -240,9 +306,10 @@ export function ProjectSidebar({
                 isActive={currentView === "maps" && currentMapId === "journey"}
                 tooltip="Journey map"
               >
-                <Link href={`${mapsHref}/journey`}>
+                <Link href={`${mapsHref}/journey`} onClick={followOptionClick(`${mapsHref}/journey`)}>
                   <RouteIcon />
                   <span>Journey</span>
+                  <ShortcutHint id="nav-journey" visible={optionHeld} modKey={modKey} />
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -284,17 +351,22 @@ export function ProjectSidebar({
                 isActive={currentView === "library" && currentSpecies === null}
                 tooltip="All nodes"
               >
-                <Link href={libraryHref}>
+                <Link href={libraryHref} onClick={followOptionClick(libraryHref)}>
                   <BookOpenIcon />
                   <span>All nodes</span>
+                  <ShortcutHint id="nav-library" visible={optionHeld} modKey={modKey} />
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={currentView === "acceptances"} tooltip="Acceptances">
-                <Link href={`/project/${projectId}/acceptances`}>
+                <Link
+                  href={`/project/${projectId}/acceptances`}
+                  onClick={followOptionClick(`/project/${projectId}/acceptances`)}
+                >
                   <AcceptanceIcon />
                   <span>Acceptances</span>
+                  <ShortcutHint id="nav-acceptances" visible={optionHeld} modKey={modKey} />
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

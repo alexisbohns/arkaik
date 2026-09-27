@@ -76,7 +76,16 @@ async function main() {
 
   const hotkeys = await import("@tanstack/hotkeys");
   const registry = loadModule("lib/utils/keyboard-shortcuts.ts", "keyboard-shortcuts.js");
-  const { getShortcutGroups, getShortcut, allShortcuts, formatShortcutKey, MOD_KEY_TOKEN } = registry;
+  const {
+    getShortcutGroups,
+    getShortcut,
+    allShortcuts,
+    formatShortcutKey,
+    formatChord,
+    MOD_KEY_TOKEN,
+    ALT_KEY_TOKEN,
+    NAV_HOTKEY_ROUTES,
+  } = registry;
 
   /** Does any of the entry's registered strings match this event? */
   function fires(id, overrides, platform = "mac") {
@@ -203,6 +212,142 @@ async function main() {
     }
   }
 
+  // --- navigation chords ---
+  const navGroup = getShortcutGroups(true).find((group) => group.id === "navigation");
+  assert(Boolean(navGroup), "the sheet has a Navigation group");
+  const navIds = navGroup ? navGroup.shortcuts.map((s) => s.id) : [];
+  const routeIds = Object.keys(NAV_HOTKEY_ROUTES);
+  assert(
+    navIds.length === routeIds.length && navIds.every((id) => routeIds.includes(id)),
+    "every navigation row has exactly one route, and every route a row",
+  );
+  // Built-in maps are served by the dynamic `maps/[mapId]` route, not a
+  // literal directory per map — so a route under `maps/` is checked against
+  // the id, not the filesystem, and only these two ids are wired up there.
+  const BUILT_IN_MAP_IDS = ["journey", "system"];
+  assert(
+    fs.existsSync(path.join(ROOT, "app", "project", "[id]", "maps", "[mapId]")),
+    "the dynamic maps/[mapId] route exists to serve the built-in maps",
+  );
+  for (const [id, route] of Object.entries(NAV_HOTKEY_ROUTES)) {
+    const segments = route.split("/");
+    if (segments[0] === "maps" && segments.length > 1) {
+      assert(
+        segments.length === 2 && BUILT_IN_MAP_IDS.includes(segments[1]),
+        `${id} → ${route} names a built-in map (journey or system) on the dynamic maps/[mapId] route`,
+      );
+    } else {
+      assert(
+        fs.existsSync(path.join(ROOT, "app", "project", "[id]", ...segments)),
+        `${id} → ${route} lands on a real project page`,
+      );
+    }
+  }
+
+  assert(
+    fires("nav-overview", { key: "ø", code: "KeyO", altKey: true }),
+    "⌥O on a Mac (which types ø) still goes to Overview",
+  );
+  assert(fires("nav-delivery", { key: "d", code: "KeyD", altKey: true }, "windows"), "Alt+D off-Mac too");
+  assert(!fires("nav-acceptances", { key: "a", code: "KeyA" }), "a bare a is not ⌥A");
+  assert(fires("toggle-sidebar", { key: "ß", code: "KeyS", altKey: true }), "⌥S also toggles the sidebar");
+
+  // --- Option chords follow the layout ---
+  // TanStack's fallback for a garbled Option character assumes US positions;
+  // layoutAwareHotkey rebinds Alt+<letter> to the key labelled with it.
+  const { layoutAwareHotkey } = registry;
+  const azerty = new Map(
+    "abcdefghijklmnopqrstuvwxyz".split("").map((letter) => [`Key${letter.toUpperCase()}`, letter]),
+  );
+  for (const [code, char] of [
+    ["KeyQ", "a"],
+    ["KeyA", "q"],
+    ["KeyW", "z"],
+    ["KeyZ", "w"],
+    ["Semicolon", "m"],
+    ["KeyM", ","],
+  ]) {
+    azerty.set(code, char);
+  }
+
+  assert(layoutAwareHotkey("Alt+A", azerty) === "Alt+[KeyQ]", "AZERTY: ⌥A binds to the key labelled A (KeyQ)");
+  assert(layoutAwareHotkey("Alt+M", azerty) === "Alt+[Semicolon]", "AZERTY: ⌥M binds to Semicolon, where M lives");
+  assert(layoutAwareHotkey("Alt+O", azerty) === "Alt+[KeyO]", "AZERTY: ⌥O stays on KeyO, now by code");
+  assert(layoutAwareHotkey("Mod+K", azerty) === "Mod+K", "Mod chords are left alone");
+  assert(layoutAwareHotkey("A", azerty) === "A", "bare keys are left alone");
+  assert(layoutAwareHotkey("Alt+A", null) === "Alt+A", "no layout known yet → the chord as written");
+  assert(
+    layoutAwareHotkey("Alt+A", new Map([["KeyA", "ф"]])) === "Alt+A",
+    "no key types the letter → the chord as written",
+  );
+
+  const resolvedA = layoutAwareHotkey("Alt+A", azerty);
+  assert(hotkeys.validateHotkey(resolvedA).valid, `"${resolvedA}" is a valid TanStack hotkey`);
+  assert(
+    hotkeys.matchesKeyboardEvent(event({ key: "æ", code: "KeyQ", altKey: true }), resolvedA, "mac"),
+    "French Mac: ⌥ + the key labelled A (types æ) goes to Acceptances",
+  );
+  assert(
+    !hotkeys.matchesKeyboardEvent(event({ key: "‡", code: "KeyA", altKey: true }), resolvedA, "mac"),
+    "French Mac: ⌥ + the key labelled Q does not",
+  );
+  assert(
+    hotkeys.matchesKeyboardEvent(
+      event({ key: "µ", code: "Semicolon", altKey: true }),
+      layoutAwareHotkey("Alt+M", azerty),
+      "mac",
+    ),
+    "French Mac: ⌥ + the key labelled M goes to Maps",
+  );
+
+  const qwerty = new Map(
+    "abcdefghijklmnopqrstuvwxyz".split("").map((letter) => [`Key${letter.toUpperCase()}`, letter]),
+  );
+  const resolvedQwertyA = layoutAwareHotkey("Alt+A", qwerty);
+  assert(resolvedQwertyA === "Alt+[KeyA]", "QWERTY: ⌥A binds to KeyA");
+  assert(
+    hotkeys.matchesKeyboardEvent(event({ key: "å", code: "KeyA", altKey: true }), resolvedQwertyA, "mac"),
+    "QWERTY Mac: ⌥A (types å) still goes to Acceptances",
+  );
+  assert(
+    hotkeys.matchesKeyboardEvent(event({ key: "a", code: "KeyA", altKey: true }), resolvedQwertyA, "windows"),
+    "QWERTY Windows: Alt+A still goes to Acceptances",
+  );
+
+  // --- learning a layout from typing (Safari, Firefox) ---
+  const { learnLetter } = registry;
+  let learned = new Map();
+  assert(!learnLetter(learned, "KeyQ", "a", true) && learned.size === 0, "learner: nothing learned with ⌘/Ctrl/⌥ held");
+  for (const [code, key, label] of [
+    ["KeyE", "Dead", "a dead key"],
+    ["KeyA", "Process", "an IME keystroke"],
+    ["Digit2", "é", "an accented letter"],
+    ["", "a", "an empty code"],
+    ["Numpad1", "a", "a non-typing code"],
+  ]) {
+    assert(!learnLetter(learned, code, key, false) && learned.size === 0, `learner: ${label} teaches nothing`);
+  }
+  assert(learnLetter(learned, "Semicolon", "M", false), "learner: a Shift-typed letter is learned…");
+  assert(learned.get("Semicolon") === "m", "…stored lowercase");
+  assert(!learnLetter(learned, "Semicolon", "m", false), "learner: re-learning what it knows reports no change");
+
+  learned = new Map();
+  learnLetter(learned, "KeyA", "a", false);
+  assert(
+    learnLetter(learned, "KeyQ", "a", false) && learned.get("KeyQ") === "a" && !learned.has("KeyA"),
+    "learner: switching QWERTY → AZERTY moves a to KeyQ and forgets KeyA",
+  );
+
+  for (const platform of ["mac", "windows"]) {
+    const seen = new Map();
+    for (const { id, hotkey } of strings) {
+      const canonical = hotkeys.normalizeHotkey(layoutAwareHotkey(hotkey, azerty), platform);
+      const clash = seen.get(canonical);
+      assert(!clash, `${id}: "${hotkey}" still claims its chord alone on AZERTY/${platform}${clash ? ` (also ${clash})` : ""}`);
+      seen.set(canonical, id);
+    }
+  }
+
   // --- the sheet ---
   const projectGroups = getShortcutGroups(true);
   const docsGroups = getShortcutGroups(false);
@@ -237,6 +382,13 @@ async function main() {
   assert(formatShortcutKey(MOD_KEY_TOKEN, "Ctrl") === "Ctrl", "…and as Ctrl elsewhere");
   assert(formatShortcutKey(MOD_KEY_TOKEN, null) === "Ctrl", "unknown platform falls back to Ctrl");
   assert(formatShortcutKey("K", "⌘") === "K", "plain keys render as themselves");
+  assert(formatShortcutKey(ALT_KEY_TOKEN, "⌘") === "⌥", "Alt renders as ⌥ on Apple keyboards");
+  assert(formatShortcutKey(ALT_KEY_TOKEN, "Ctrl") === "Alt", "…and as Alt elsewhere");
+  assert(formatShortcutKey(ALT_KEY_TOKEN, null) === "Alt", "unknown platform falls back to Alt");
+  assert(formatChord([ALT_KEY_TOKEN, "O"], "⌘") === "⌥O", "a Mac chord chip reads ⌥O");
+  assert(formatChord([ALT_KEY_TOKEN, "O"], "Ctrl") === "Alt+O", "…and Alt+O elsewhere");
+  assert(formatChord([MOD_KEY_TOKEN, "K"], "⌘") === "⌘K", "the Search chip's ⌘K comes out the same way");
+  assert(formatChord([MOD_KEY_TOKEN, "K"], "Ctrl") === "Ctrl+K", "…and Ctrl+K");
 
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 

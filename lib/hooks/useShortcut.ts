@@ -7,7 +7,8 @@ import {
   type UseHotkeyDefinition,
   type UseHotkeyOptions,
 } from "@tanstack/react-hotkeys";
-import { getShortcut } from "@/lib/utils/keyboard-shortcuts";
+import { useKeyboardLayout } from "@/lib/hooks/useKeyboardLayout";
+import { getShortcut, layoutAwareHotkey } from "@/lib/utils/keyboard-shortcuts";
 
 /**
  * For a handler whose guard can decline. TanStack prevents the event *before*
@@ -27,15 +28,31 @@ export interface ShortcutBinding {
   options?: UseHotkeyOptions;
 }
 
-function toDefinitions({ id, callback, options }: ShortcutBinding): UseHotkeyDefinition[] {
+function toDefinitions(
+  { id, callback, options }: ShortcutBinding,
+  layout: ReadonlyMap<string, string> | null,
+): UseHotkeyDefinition[] {
   // The registry is import-free, so it holds plain strings; the test validates
-  // each one against TanStack, which is what makes this cast honest.
-  return getShortcut(id).hotkeys.map((hotkey) => ({ hotkey: hotkey as Hotkey, callback, options }));
+  // each one against TanStack (and the `[Code]` form layoutAwareHotkey makes),
+  // which is what makes this cast honest.
+  return getShortcut(id).hotkeys.map((hotkey) => ({
+    hotkey: layoutAwareHotkey(hotkey, layout) as Hotkey,
+    callback,
+    options,
+  }));
 }
 
-/** Registers several registry rows at once — every chord of every row. */
+/**
+ * Registers several registry rows at once — every chord of every row. Option
+ * letter chords are bound to the key labelled with the letter on the user's
+ * layout (see `layoutAwareHotkey`), re-registering if the layout changes.
+ */
 export function useShortcuts(bindings: readonly ShortcutBinding[], commonOptions?: UseHotkeyOptions): void {
-  useHotkeys(bindings.flatMap(toDefinitions), commonOptions);
+  const layout = useKeyboardLayout();
+  useHotkeys(
+    bindings.flatMap((binding) => toDefinitions(binding, layout)),
+    commonOptions,
+  );
 }
 
 /**
