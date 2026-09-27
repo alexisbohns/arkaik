@@ -59,6 +59,7 @@ import {
   trendRows,
   upsertAssessment,
   upsertFinding,
+  withImplicitBaseline,
   type AuditCompletedScope,
   type AuditScope,
   type AuditState,
@@ -354,22 +355,17 @@ export function buildKritikCatalog(ctx: KritikContext): {
    * not list), so the two can never disagree about a cell.
    */
   const scopeOf = (graph: LoadedGraph, options: { since?: string; widen?: boolean } = {}): AuditScope => {
-    if (options.since !== undefined) {
-      const recorded = recordedAuditIds(graph.journal);
-      if (!recorded.includes(options.since)) {
-        throw new ToolError(
-          `No recorded audit "${options.since}" in this journal (recorded: ${recorded.join(", ") || "none"}). ` +
-            `A scope is measured from a recorded reading — kritik_matrix with record=true writes one.`,
-        );
-      }
-    }
-
     let section: Pick<QualitySection, "profile" | "assessments" | "findings">;
     let library: Pick<KritikLibrary, "criteria">;
+    let events: readonly JournalEvent[];
     if (ctx.qualityRoot === undefined) {
       const hosted = hostedSection(graph);
       section = hosted.section;
       library = hosted.library ?? { criteria: [] };
+      // A restored project's audit never got a `quality.audit.completed` — the
+      // synthesized reading, dated where the audit was taken, stands in for it
+      // so the window still opens from a real "since" (issue #472).
+      events = withImplicitBaseline(graph.journal, hosted.section, hosted.library);
     } else {
       const root = ctx.qualityRoot;
       const full = libraryOf(root);
@@ -380,8 +376,20 @@ export function buildKritikCatalog(ctx: KritikContext): {
         throw new ToolError((error as Error).message);
       }
       library = full;
+      events = graph.journal;
     }
-    return deriveAuditScope(graph.journal, section, library, options);
+
+    if (options.since !== undefined) {
+      const recorded = recordedAuditIds(events);
+      if (!recorded.includes(options.since)) {
+        throw new ToolError(
+          `No recorded audit "${options.since}" in this journal (recorded: ${recorded.join(", ") || "none"}). ` +
+            `A scope is measured from a recorded reading — kritik_matrix with record=true writes one.`,
+        );
+      }
+    }
+
+    return deriveAuditScope(events, section, library, options);
   };
 
   // ---- Read -----------------------------------------------------------------
@@ -715,7 +723,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
     {
       name: "kritik_trend",
       description:
-        "Where the product stood at each recorded audit, oldest first: one row per quality.audit.completed in the journal, the overall score per surface (or one domain's score with domain), and how each moved against the row above. The score, not the findings — 'from where we started to where we are now'. Rows are ordered by when they were recorded, a re-recorded audit id keeps only its latest reading, and a framework major bump between two audits marks the later row comparable=false with no delta across it. Works in both modes: repo reads the journal sidecar, hosted reads the hosted journal.",
+        "Where the product stood at each recorded audit, oldest first: one row per quality.audit.completed in the journal, the overall score per surface (or one domain's score with domain), and how each moved against the row above. The score, not the findings — 'from where we started to where we are now'. Rows are ordered by when they were recorded, a re-recorded audit id keeps only its latest reading, and a framework major bump between two audits marks the later row comparable=false with no delta across it. Works in both modes: repo reads the journal sidecar, hosted reads the hosted journal — and there a restored audit with no recorded reading appears as a baseline first row.",
       inputSchema: {
         type: "object",
         properties: {
@@ -731,11 +739,16 @@ export function buildKritikCatalog(ctx: KritikContext): {
       // the profile: the folded section when hosted, docs/quality/ in a repo.
       // Neither is required — a journal with audits but no profile still has
       // a trend, with every domain weighing 1 as the matrix would weigh it.
-      const profile =
-        ctx.qualityRoot === undefined
-          ? (graph.loaded.bundle as { quality?: QualitySection }).quality?.profile
-          : (loadProfile(ctx.qualityRoot) ?? undefined);
-      const trend = deriveQualityTrend(graph.journal, profile);
+      const quality = ctx.qualityRoot === undefined ? (graph.loaded.bundle as { quality?: QualitySection }).quality : undefined;
+      const profile = ctx.qualityRoot === undefined ? quality?.profile : (loadProfile(ctx.qualityRoot) ?? undefined);
+      // A restored project's audit never got a `quality.audit.completed` — the
+      // synthesized reading, dated where the audit was taken, stands in as its
+      // first row rather than leaving the trend with none at all (issue #472).
+      const events =
+        quality !== undefined && Array.isArray(quality.assessments) && Array.isArray(quality.findings)
+          ? withImplicitBaseline(graph.journal, quality, resolveKritikLibrary(quality))
+          : graph.journal;
+      const trend = deriveQualityTrend(events, profile);
       const filter = {
         ...(typeof args.surface === "string" && args.surface !== "" ? { surface: args.surface } : {}),
         ...(typeof args.domain === "string" && args.domain !== "" ? { domain: args.domain } : {}),
@@ -748,7 +761,11 @@ export function buildKritikCatalog(ctx: KritikContext): {
         snapshots: trend.snapshots,
         ...(trend.snapshots.length === 0
           ? { note: "No recorded audits yet — `kritik_matrix` with record=true writes one." }
-          : {}),
+          : rows[0]?.baseline === true
+            ? {
+                note: "The first row is the restored audit's reading, rebuilt from its stored scores — no reading was recorded for it.",
+              }
+            : {}),
       };
     },
   );
@@ -757,7 +774,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
     {
       name: "kritik_scope",
       description:
-        "The cells a batch of fixes made stale — the work list for a scoped re-audit. A score only moves when its cell is re-scored, so after closing findings this lists exactly which (criterion x surface) cells to re-score instead of running a comprehensive audit: every quality.finding.resolved since the last recorded audit names its cell (`kind: direct`, `because` = finding ids), and one hop over node_ids adds neighbouring assessed cells a shared fix plausibly moved (`kind: widened`, `because` = node ids). Accepted risks are not fixes and never scope anything. `unknown` lists resolved ids that name no finding — report those, something closed an id that does not exist; `unscorable` lists resolved findings whose cell nothing can re-score (a retired criterion, a surface no longer in the profile). It plans an audit and scores nothing: re-score each cell with kritik_score, evidence and scope=true (which writes into an audit of its own, `<YYYY-MM>-scoped`, never the `since` audit whose recorded reading is history), then kritik_matrix with that audit_id and record=true. Recording closes the window: a cell left unscored drops out of the next scope, so re-score a widened cell that did not move at its current level, saying so in the evidence. Works in both modes — hosted reads the hosted journal and quality section.",
+        "The cells a batch of fixes made stale — the work list for a scoped re-audit. A score only moves when its cell is re-scored, so after closing findings this lists exactly which (criterion x surface) cells to re-score instead of running a comprehensive audit: every quality.finding.resolved since the last recorded audit names its cell (`kind: direct`, `because` = finding ids), and one hop over node_ids adds neighbouring assessed cells a shared fix plausibly moved (`kind: widened`, `because` = node ids). Accepted risks are not fixes and never scope anything. `unknown` lists resolved ids that name no finding — report those, something closed an id that does not exist; `unscorable` lists resolved findings whose cell nothing can re-score (a retired criterion, a surface no longer in the profile). It plans an audit and scores nothing: re-score each cell with kritik_score, evidence and scope=true (which writes into an audit of its own, `<YYYY-MM>-scoped`, never the `since` audit whose recorded reading is history), then kritik_matrix with that audit_id and record=true. Recording closes the window: a cell left unscored drops out of the next scope, so re-score a widened cell that did not move at its current level, saying so in the evidence. Works in both modes — hosted reads the hosted journal and quality section. In a hosted project whose audit arrived by restore with no recorded reading, the scope measures from that audit, dated where it was taken.",
       inputSchema: {
         type: "object",
         properties: {

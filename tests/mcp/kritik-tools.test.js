@@ -525,6 +525,21 @@ async function run() {
     },
   };
 
+  // A hosted project whose audit arrived by restore with no recorded reading
+  // (issue #472) — its assessments/findings sit in `quality`, but the journal
+  // holds only resolutions, never a `quality.audit.completed`.
+  const RESTORED_BUNDLE = {
+    ...HOSTED_BUNDLE,
+    project: { ...HOSTED_BUNDLE.project, id: "restored" },
+    quality: {
+      ...HOSTED_BUNDLE.quality,
+      assessments: [{ criterion_id: "SEC-01", surface: "web", level: 2, evidence: "e", audit_id: "2026-08", ts: "2026-08-01T00:00:00.000Z" }],
+    },
+  };
+  const RESTORED_JOURNAL = [
+    { id: "01RRES", ts: "2026-08-20T00:00:00.000Z", type: "quality.finding.resolved", finding_id: "F-B", resolved_by: "https://pr/3", actor: "github-app" },
+  ];
+
   // Recorded POST bodies to /quality/events, and a mode switch for the 422
   // "refused" response the server sends when a status transition targets a
   // finding that is not open post-fold.
@@ -549,6 +564,10 @@ async function run() {
             { id: "01RESOLVEDGONE", ts: "2026-08-21T00:00:00.000Z", type: "quality.finding.resolved", finding_id: "F-GONE", actor: "github-app" },
           ],
         });
+      }
+      if (req.url === "/api/graph/projects/restored" && req.method === "GET") return json(200, { bundle: RESTORED_BUNDLE, version: "v1" });
+      if (req.url === "/api/graph/projects/restored/journal" && req.method === "GET") {
+        return json(200, { journal: RESTORED_JOURNAL });
       }
       if (req.url === "/api/graph/projects/demo/quality/events" && req.method === "POST") {
         let raw = "";
@@ -773,6 +792,45 @@ async function run() {
     );
   } finally {
     hosted.stop();
+  }
+
+  // --- restored: a hosted project whose audit arrived with no recorded
+  // reading (issue #472) --------------------------------------------------
+
+  const restored = startSession(["--remote", "--project", "restored"], {
+    ARKAIK_TOKEN: "t",
+    ARKAIK_URL: baseUrl,
+  });
+  try {
+    await restored.request("initialize", {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: { name: "kritik-test", version: "0" },
+    });
+
+    const restoredScope = await restored.call("kritik_scope", {});
+    check(
+      "a restored project with no recorded audit scopes from its stored audit",
+      !restoredScope.isError &&
+        restoredScope.json.since === "2026-08" &&
+        restoredScope.json.since_ts === "2026-08-01T00:00:00.000Z" &&
+        JSON.stringify(restoredScope.json.cells.map((c) => [c.criterion_id, c.kind, c.because])) === JSON.stringify([["SEC-01", "direct", ["F-B"]]]),
+      restoredScope.text.slice(0, 400),
+    );
+    const restoredSince = await restored.call("kritik_scope", { since: "2026-08" });
+    check("since=<the stored audit> resolves", !restoredSince.isError && restoredSince.json.since === "2026-08", restoredSince.text.slice(0, 300));
+    const restoredTrend = await restored.call("kritik_trend", {});
+    check(
+      "the trend's first row is the restored audit, flagged baseline",
+      !restoredTrend.isError &&
+        restoredTrend.json.total === 1 &&
+        restoredTrend.json.rows[0].audit_id === "2026-08" &&
+        restoredTrend.json.rows[0].baseline === true &&
+        /rebuilt/.test(restoredTrend.json.note),
+      restoredTrend.text.slice(0, 400),
+    );
+  } finally {
+    restored.stop();
     stub.close();
   }
 }

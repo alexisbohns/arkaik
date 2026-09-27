@@ -494,6 +494,49 @@ try {
   check("--domain reads that domain's score instead of the roll-up", trendDomain.rows[1].cells.web.score === 25, JSON.stringify(trendDomain.rows[1]));
   check("--surface keeps one column", trendDomain.surfaces.length === 1 && trendDomain.surfaces[0] === "web");
 
+  // A baseline row (a restored audit's synthesized reading, #472) and a scoped
+  // re-audit row (#443) each print a note under themselves, the same way an
+  // incomparable row does. A dedicated journal, not `dir`'s, so this fixture's
+  // hand-written events never trip "only quality.* events were ever appended"
+  // below.
+  const notesDir = mkdtempSync(path.join(tmpdir(), "arkaik-kritik-trend-notes-"));
+  try {
+    mkdirSync(path.join(notesDir, "docs", "arkaik"), { recursive: true });
+    writeFileSync(path.join(notesDir, "docs", "arkaik", "bundle.json"), BUNDLE);
+    const notesJournal = [
+      {
+        id: "01HZZZZZZZZZZZZZZZZZZZZZA1",
+        ts: "2026-08-01T00:00:00.000Z",
+        type: "quality.audit.completed",
+        audit_id: "2026-08",
+        framework_version: "1.0.0",
+        scores: { web: { SEC: 40 } },
+        baseline: true,
+      },
+      {
+        id: "01HZZZZZZZZZZZZZZZZZZZZZA2",
+        ts: "2026-08-15T00:00:00.000Z",
+        type: "quality.audit.completed",
+        audit_id: "2026-08-scoped",
+        framework_version: "1.0.0",
+        scores: { web: { SEC: 55 } },
+        scope: { since: "2026-08", cells: 3 },
+      },
+    ];
+    writeFileSync(
+      path.join(notesDir, "docs", "arkaik", "journal.jsonl"),
+      notesJournal.map((event) => JSON.stringify(event)).join("\n") + "\n",
+    );
+    const notesTrend = spawnSync(process.execPath, [CLI, "kritik", "trend"], { encoding: "utf8", cwd: notesDir });
+    check("trend on the notes fixture succeeds", notesTrend.status === 0, notesTrend.stderr);
+    check("a baseline row notes it was rebuilt from a restored audit", /baseline — rebuilt from a restored audit's stored scores/.test(notesTrend.stdout), notesTrend.stdout);
+    check("a scoped row notes how many cells and since when", /scoped re-audit of 3 cell\(s\) since 2026-08/.test(notesTrend.stdout), notesTrend.stdout);
+    const notesJson = JSON.parse(spawnSync(process.execPath, [CLI, "kritik", "trend", "--json"], { encoding: "utf8", cwd: notesDir }).stdout);
+    check("--json still carries baseline and scope unchanged", notesJson.rows[0].baseline === true && notesJson.rows[1].scope.cells === 3, JSON.stringify(notesJson.rows));
+  } finally {
+    rmSync(notesDir, { recursive: true, force: true });
+  }
+
   const noBundleDir = mkdtempSync(path.join(tmpdir(), "arkaik-kritik-nobundle-"));
   try {
     const noBundle = spawnSync(process.execPath, [CLI, "kritik", "trend"], { encoding: "utf8", cwd: noBundleDir });

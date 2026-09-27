@@ -1186,6 +1186,12 @@ function runTrend(args: string[], common: CommonOptions): void {
     if (!row.comparable) {
       console.log(`  ${"".padEnd(widths[0])}   framework ${row.framework_version ?? "?"} — not comparable to the audit above`);
     }
+    if (row.baseline) {
+      console.log(`  ${"".padEnd(widths[0])}   baseline — rebuilt from a restored audit's stored scores`);
+    }
+    if (row.scope) {
+      console.log(`  ${"".padEnd(widths[0])}   scoped re-audit of ${row.scope.cells ?? "?"} cell(s) since ${row.scope.since}`);
+    }
   }
   console.log(
     `\n  ${rows.length} recorded audit${rows.length === 1 ? "" : "s"} · ` +

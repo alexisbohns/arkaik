@@ -148,6 +148,12 @@ jobs:
       - name: Kritik scope tests (direct cells, widening, since window)
         run: npm run test:quality-scope
 
+      # The implicit baseline (issue #472) — the reading synthesized for a
+      # restored audit that never got one, so the scope and trend have
+      # something to measure from. Pure like the four above.
+      - name: Kritik baseline tests (implicit reading, window, scope unlock)
+        run: npm run test:quality-baseline
+
       # The webhook half of the quality loop — the mention grammar and the
       # resolution pass. DB-free on purpose: the grammar imports nothing and
       # the project read is injected, so a Postgres-less runner still gates it.
