@@ -188,7 +188,7 @@ touches the sidebar view.
 | Key | Surfaces | Action |
 |---|---|---|
 | `i` / `w` / `a` | Acceptances, Delivery | Filter to iOS / Web / Android. Pressing the key for the selected platform goes back to all. |
-| `c` | Acceptances, Quality (matrix + findings), Delivery | Clear filters |
+| `c` | Acceptances, Quality findings, Delivery | Clear filters |
 | ⌥E | Acceptances, Decisions, Changelog | Expand or collapse, the same as that bar's toggle |
 
 **Registered inside each filter bar**, since the bar owns the state the
@@ -202,6 +202,20 @@ So:
 - `i`/`w`/`a` are `enabled` only while `showPlatformFilter` is true **and**
   that platform is in `platformOptions`.
 - `c` is `enabled` only while `isFiltered`.
+
+**Also guarded handlers, found in review.** `enabled` alone is not enough for a
+bare key: TanStack's `ignoreInputs` does not recognise a Radix `Select`
+trigger or `Combobox` field (`role="combobox"`) or its open listbox, and Radix
+does not stop propagation on those, so a bare letter typed while picking an
+option would otherwise fire straight through and act on the surface behind
+the menu — and holding the key would autorepeat a toggle like Clear or
+Expand. Every toolbar callback (`i`/`w`/`a`, `c`, ⌥E) is wrapped in
+`toolbarKey()` (`lib/hooks/useShortcut.ts`), which declines on
+`event.repeat`, on an `isEditableElement` target (inputs, textareas,
+`role="textbox"`/`"combobox"`), and while `OPEN_OVERLAY_SELECTOR`
+(`lib/utils/keyboard.ts`) matches any open Radix layer — before calling
+`preventDefault()` and firing. `GUARDED_HOTKEY` is spread into every toolbar
+registration's options alongside `enabled`, same as Part 1's Escape handler.
 
 **Pure helper.** `nextPlatformFilter(current, pressed)` lives in
 `lib/utils/keyboard.ts`: pressing the current platform returns `"all"`,
