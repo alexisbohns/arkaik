@@ -37,6 +37,21 @@ export const SEVERITY_DOT: Record<FindingSeverity, string> = {
 };
 
 /**
+ * Severity as a chart fill — the burndown's stacked bands (issue #441). The
+ * {@link SEVERITY_DOT} families at the same steps, so a band, a dot and a pill
+ * of one severity read as one colour. Adjacent bands are told apart by a
+ * surface-coloured gap and a labelled legend, never by hue alone: High and
+ * Medium sit close enough that colour cannot carry that split on its own.
+ */
+export const SEVERITY_FILL: Record<FindingSeverity, string> = {
+  critical: "fill-red-500",
+  high: "fill-orange-500",
+  medium: "fill-amber-500",
+  low: "fill-blue-400",
+  info: "fill-gray-400",
+};
+
+/**
  * Severity as a chip: the dot's family at a tenth opacity behind a text shade
  * dark enough to read on it, and a second shade for dark mode where the same
  * tint sits on near-black. Tinted rather than solid because a board of twenty

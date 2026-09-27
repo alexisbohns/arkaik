@@ -21,8 +21,11 @@ import {
   isOpenFinding,
   priorityOf,
   severityOf,
+  deriveFindingsBurndown,
+  type BurndownPoint,
   type FindingPriority,
   type FindingSeverity,
+  type FindingsBurndown,
   type FindingStatus,
   type JournalEvent,
   type KritikCriterion,
@@ -945,4 +948,218 @@ export function worstOpenFindingFor(
   }
 
   return { severity: worst, count: own.length };
+}
+
+// --- The findings burndown (issue #441) ---------------------------------------
+
+/** What the burndown is narrowed to: the filter bar's surface and domain, or its cell. */
+export interface BurndownFilter {
+  surface?: string;
+  domain?: string;
+}
+
+/**
+ * The part of the board's filter set the burndown can honour.
+ *
+ * Surface and domain only — plus the cell, which is exactly one of each. The
+ * other filters narrow *which rows are shown*, and the burndown is a count of
+ * open findings over time: a search box has no history, and "status: resolved"
+ * over a line of open counts would be a contradiction. A cell wins over the
+ * separate menus, as it is the narrower of the two.
+ */
+export function burndownFilterOf(filters: Pick<QualityFilters, "surface" | "domain" | "cell">): BurndownFilter {
+  const cell = parseCellKey(filters.cell);
+  const surface = cell?.surface ?? (narrows(filters.surface) ? filters.surface : undefined);
+  const domain = cell?.domain ?? (narrows(filters.domain) ? filters.domain : undefined);
+  return { ...(surface !== undefined ? { surface } : {}), ...(domain !== undefined ? { domain } : {}) };
+}
+
+/**
+ * The live open count a burndown line closes on — from the rows, never from
+ * the burndown's last point. The replay is what the journal says happened;
+ * the rows are what the section says *is*, and the headline's "180 open" is
+ * the latter, the same number the cards' own "180 open" reads.
+ */
+export function countOpenFindings(rows: readonly FindingRow[], filter: BurndownFilter = {}): number {
+  return rows.filter(
+    (row) =>
+      row.open &&
+      (filter.surface === undefined || row.surface === filter.surface) &&
+      (filter.domain === undefined || row.domain === filter.domain),
+  ).length;
+}
+
+/**
+ * The one-sentence answer to "did anything happen": `20 closed since the
+ * 2026-08 audit · 180 open`. Closed counts both kinds of close — a fix and an
+ * accepted risk each take a finding off the line — and {@link describeBurndownDetail}
+ * says which was which.
+ *
+ * `null` when the journal holds nothing to replay at all: a project whose
+ * findings arrived without a single event has no history to report, and a
+ * sentence saying "nothing closed" would be claiming one.
+ */
+export function describeClosedSince(burndown: FindingsBurndown, openNow: number): string | null {
+  if (burndown.points.length === 0) return null;
+  const since = burndown.since;
+  const closed = since ? since.resolved + since.accepted : burndown.resolved + burndown.accepted;
+  const where = since ? ` since the ${since.audit_id} audit` : "";
+  const lead = closed === 0 ? `Nothing closed${where}` : `${closed} closed${where}`;
+  return `${lead} · ${openNow} open`;
+}
+
+/** The closed-since line's breakdown, for its `title`: which closes were fixes, which were accepted risks, and what opened. */
+export function describeBurndownDetail(burndown: FindingsBurndown): string | null {
+  if (burndown.points.length === 0) return null;
+  const tally = burndown.since ?? burndown;
+  const parts = [
+    `${tally.resolved} resolved`,
+    `${tally.accepted} accepted as ${tally.accepted === 1 ? "a risk" : "risks"}`,
+    `${tally.opened} opened`,
+  ];
+  return `${parts.join(", ")} ${burndown.since ? `since the ${burndown.since.audit_id} audit` : "so far"}`;
+}
+
+/** The severities the chart stacks, worst at the baseline — `info` is a note, not a defect, as on the cells' dots. */
+export const BURNDOWN_SEVERITIES: readonly FindingSeverity[] = FINDING_SEVERITIES.filter((severity) => severity !== "info");
+
+export interface BurndownGeometry {
+  /** One stacked step-area per severity, worst first (the bottom band). */
+  bands: { severity: FindingSeverity; path: string }[];
+  /** The total, as a step line — what the sparkline draws. */
+  line: string;
+  /** The x of every audit, for the ticks. */
+  ticks: number[];
+  /** The x each point starts at, in point order — the hover's lookup table. */
+  xs: number[];
+  /** The tallest stack, which the y axis is scaled to (at least 1). */
+  max: number;
+}
+
+/** How much of the width the newest reading holds on to, so the last step is visible at all. */
+const LAST_STEP = 0.06;
+
+/**
+ * The chart's shapes, in a `width × height` box with the origin top-left.
+ *
+ * **Steps, not slopes.** A count of open findings does not drift between two
+ * events, it jumps — so each reading holds until the next one, and the last
+ * holds for a short stub at the right edge. A sloped line would claim half a
+ * finding was open halfway between two closes.
+ *
+ * **The bands start at zero; the line may not.** An area's size is its
+ * value, so the stacked bands always stand on the baseline. The line alone
+ * can be fitted to its own range (`fitLine`) — the sparkline's case, where
+ * 53 → 48 on a zero-based axis is a flat line and says nothing. Its
+ * accessible name carries the real numbers either way.
+ *
+ * **Time on x.** Spacing by event index would draw a week of silence and a
+ * minute of batch-closing as the same distance. If any timestamp does not
+ * parse, the points fall back to even spacing rather than collapsing.
+ */
+export function burndownGeometry(
+  points: readonly BurndownPoint[],
+  width: number,
+  height: number,
+  options: { severities?: readonly FindingSeverity[]; fitLine?: boolean } = {},
+): BurndownGeometry {
+  const severities = options.severities ?? BURNDOWN_SEVERITIES;
+  if (points.length === 0) return { bands: [], line: "", ticks: [], xs: [], max: 1 };
+
+  const times = points.map((point) => Date.parse(point.ts));
+  const first = times[0];
+  const last = times[times.length - 1];
+  const timed = times.every(Number.isFinite) && last > first;
+  const span = points.length === 1 ? width : width * (1 - LAST_STEP);
+  const xs = points.map((_, index) =>
+    points.length === 1 ? 0 : timed ? ((times[index] - first) / (last - first)) * span : (index / (points.length - 1)) * span,
+  );
+  const ends = xs.map((_, index) => (index + 1 < xs.length ? xs[index + 1] : width));
+
+  const totals = points.map((point) => severities.reduce((sum, severity) => sum + (point.open[severity] ?? 0), 0));
+  const max = Math.max(1, ...totals);
+  const y = (value: number) => height - (value / max) * height;
+  const fmt = (value: number) => Number(value.toFixed(2));
+
+  const bands: BurndownGeometry["bands"] = [];
+  const below = points.map(() => 0);
+  for (const severity of severities) {
+    const top: string[] = [];
+    const bottom: string[] = [];
+    points.forEach((point, index) => {
+      const lower = below[index];
+      const upper = lower + (point.open[severity] ?? 0);
+      top.push(`${fmt(xs[index])},${fmt(y(upper))}`, `${fmt(ends[index])},${fmt(y(upper))}`);
+      bottom.unshift(`${fmt(ends[index])},${fmt(y(lower))}`, `${fmt(xs[index])},${fmt(y(lower))}`);
+      below[index] = upper;
+    });
+    bands.push({ severity, path: `M${[...top, ...bottom].join("L")}Z` });
+  }
+
+  const low = Math.min(...totals);
+  const high = Math.max(...totals);
+  const lineY = !options.fitLine
+    ? y
+    : (value: number) => (high === low ? height / 2 : height - ((value - low) / (high - low)) * height);
+  const line = totals
+    .map((total, index) => `${index === 0 ? "M" : "L"}${fmt(xs[index])},${fmt(lineY(total))}L${fmt(ends[index])},${fmt(lineY(total))}`)
+    .join("");
+
+  const ticks = points.flatMap((point, index) => (point.cause.type === "audit" ? [fmt(xs[index])] : []));
+
+  return { bands, line, ticks, xs: xs.map(fmt), max };
+}
+
+/** The point whose step covers `x` — the newest one starting at or before it. */
+export function burndownPointAt(xs: readonly number[], x: number): number {
+  let found = 0;
+  for (let index = 0; index < xs.length; index++) {
+    if (xs[index] <= x) found = index;
+    else break;
+  }
+  return found;
+}
+
+/**
+ * One burndown per surface, for the Overall cards. The same projection the
+ * page-level one runs, narrowed, so a surface card and the Findings page with
+ * that surface picked can never disagree.
+ */
+export function buildSurfaceBurndowns(
+  events: readonly JournalEvent[],
+  surfaces: readonly string[],
+  options: { findings?: readonly QualityFinding[]; library?: KritikLibrary } = {},
+): Map<string, FindingsBurndown> {
+  return new Map(surfaces.map((surface) => [surface, deriveFindingsBurndown(events, { ...options, surface })]));
+}
+
+
+/**
+ * The chart in words, for its accessible name: where the line started, where
+ * it stands, and how many audits it crosses — "Open findings: 246 on
+ * 2026-08-26, 244 on 2026-09-03 — 1 audit recorded". The picture's whole
+ * claim, so a reader who cannot see it is told the same thing.
+ */
+export function describeBurndownTrend(
+  burndown: Pick<FindingsBurndown, "points">,
+  severities: readonly FindingSeverity[] = BURNDOWN_SEVERITIES,
+): string {
+  const { points } = burndown;
+  if (points.length === 0) return "Open findings: no history recorded";
+  const total = (point: BurndownPoint) => severities.reduce((sum, severity) => sum + (point.open[severity] ?? 0), 0);
+  const day = (point: BurndownPoint) => (point.ts === "" ? "an unknown date" : point.ts.slice(0, 10));
+  const first = points[0];
+  const last = points[points.length - 1];
+  const audits = points.filter((point) => point.cause.type === "audit").length;
+  const span =
+    points.length === 1 ? `${total(first)} on ${day(first)}` : `${total(first)} on ${day(first)}, ${total(last)} on ${day(last)}`;
+  return `Open findings: ${span} — ${audits === 0 ? "no audit" : audits === 1 ? "1 audit" : `${audits} audits`} recorded`;
+}
+
+/** What moved the line at one point, in words, for the hover. */
+export function describeBurndownCause(point: Pick<BurndownPoint, "cause">): string {
+  const { type, id } = point.cause;
+  if (type === "audit") return `${id} audit recorded`;
+  if (type === "accepted") return `${id} accepted as a risk`;
+  return `${id} ${type}`;
 }

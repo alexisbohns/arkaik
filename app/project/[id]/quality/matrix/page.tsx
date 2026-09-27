@@ -107,6 +107,8 @@ export default function ProjectQualityMatrixPage() {
         section={data.section}
         library={data.library}
         trend={data.trend}
+        burndown={data.burndown}
+        burndownEvents={data.events}
         activeCell={cell ? cellParam : null}
         onSelectCell={handleSelectCell}
       />

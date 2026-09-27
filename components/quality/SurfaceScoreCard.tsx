@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { formatDelta, type QualityGrade, type QualityMatrixCell, type ScoreDelta } from "@arkaik/schema";
 import { FindingDots, CELL_SEVERITIES } from "@/components/quality/FindingDots";
 import { GradeScale } from "@/components/quality/GradeScale";
@@ -25,6 +26,11 @@ interface SurfaceScoreCardProps {
   delta?: ScoreDelta;
   /** A line under the title — the roll-up's open-finding count. */
   meta?: string;
+  /**
+   * A footnote under the meta — the roll-up cards' burndown sparkline. Last on
+   * the card: it is the history behind the numbers above it, read after them.
+   */
+  footer?: ReactNode;
   /** The card's accessible name; see {@link cellLabel}. */
   label: string;
   active?: boolean;
@@ -102,6 +108,7 @@ export function SurfaceScoreCard({
   findings,
   delta,
   meta,
+  footer,
   label,
   active = false,
   onClick,
@@ -131,6 +138,7 @@ export function SurfaceScoreCard({
       )}
       {findings && <FindingDots findings={findings} />}
       {meta && <span className="text-[10px] text-muted-foreground">{meta}</span>}
+      {footer}
     </>
   );
 

@@ -1207,5 +1207,107 @@ const { worstOpenFindingFor } = loadQuality();
   assert(describeAuditCompleted({}).text === "Audit ? completed", "an event with nothing on it still renders");
 }
 
+// ================== the findings burndown (issue #441) =======================
+
+{
+  const {
+    deriveFindingsBurndown,
+    describeClosedSince,
+    describeBurndownDetail,
+    describeBurndownTrend,
+    describeBurndownCause,
+    burndownFilterOf,
+    countOpenFindings,
+    burndownGeometry,
+    burndownPointAt,
+  } = loadQuality();
+
+  let n = 0;
+  const ev = (day, type, payload) => ({ id: `01B${String(++n).padStart(4, "0")}`, ts: `2026-09-${String(day).padStart(2, "0")}T00:00:00.000Z`, type, ...payload });
+  const open = (day, id, severity) => ev(day, "quality.finding.opened", { finding_id: id, severity, priority: "P2", surface: "web", criterion_id: "SEC-01", title: id });
+  const resolve = (day, id) => ev(day, "quality.finding.resolved", { finding_id: id });
+  const accept = (day, id) => ev(day, "quality.finding.accepted", { finding_id: id, reason: "owned" });
+  const auditAt = (day, id, counts) => ev(day, "quality.audit.completed", { audit_id: id, framework_version: "1.0.0", counts });
+
+  // --- the closed-since line: zero, one, many -------------------------------
+  const base = [open(1, "F-1", "high"), open(1, "F-2", "high"), open(1, "F-3", "low"), auditAt(2, "2026-08", { high: 2, low: 1 })];
+
+  const zero = deriveFindingsBurndown(base);
+  assert(describeClosedSince(zero, 3) === "Nothing closed since the 2026-08 audit · 3 open", `zero closures reads as nothing closed (got ${describeClosedSince(zero, 3)})`);
+
+  const one = deriveFindingsBurndown([...base, resolve(3, "F-1")]);
+  assert(describeClosedSince(one, 2) === "1 closed since the 2026-08 audit · 2 open", `one closure (got ${describeClosedSince(one, 2)})`);
+
+  const many = deriveFindingsBurndown([...base, resolve(3, "F-1"), resolve(4, "F-2"), accept(5, "F-3"), open(6, "F-4", "medium")]);
+  assert(describeClosedSince(many, 1) === "3 closed since the 2026-08 audit · 1 open", `many closures count fixes and accepted risks together (got ${describeClosedSince(many, 1)})`);
+  assert(
+    describeBurndownDetail(many) === "2 resolved, 1 accepted as a risk, 1 opened since the 2026-08 audit",
+    `the detail splits closes into fixes and risks (got ${describeBurndownDetail(many)})`,
+  );
+
+  const before = deriveFindingsBurndown([resolve(1, "F-x"), auditAt(2, "2026-08", {})]);
+  assert(describeClosedSince(before, 0) === "Nothing closed since the 2026-08 audit · 0 open", "a close before the audit is not a close since it");
+
+  const noAudit = deriveFindingsBurndown([open(1, "F-1", "high"), resolve(2, "F-1")]);
+  assert(describeClosedSince(noAudit, 0) === "1 closed · 0 open", `with no audit recorded the line counts every close (got ${describeClosedSince(noAudit, 0)})`);
+  assert(describeBurndownDetail(noAudit) === "1 resolved, 0 accepted as risks, 1 opened so far", `and its detail says so (got ${describeBurndownDetail(noAudit)})`);
+
+  const nothing = deriveFindingsBurndown([]);
+  assert(describeClosedSince(nothing, 12) === null, "no history, no line — not a claim that nothing closed");
+  assert(describeBurndownDetail(nothing) === null, "no history, no detail");
+
+  // --- the filter the burndown honours ---------------------------------------
+  assert(JSON.stringify(burndownFilterOf({ surface: "all", domain: "all", cell: null })) === "{}", "no filter narrows nothing");
+  assert(JSON.stringify(burndownFilterOf({ surface: "web", domain: "", cell: null })) === JSON.stringify({ surface: "web" }), "the surface menu narrows the surface");
+  assert(JSON.stringify(burndownFilterOf({ surface: "all", domain: "SEC", cell: null })) === JSON.stringify({ domain: "SEC" }), "the domain menu narrows the domain");
+  assert(
+    JSON.stringify(burndownFilterOf({ surface: "api", domain: "PRF", cell: "SEC|web" })) === JSON.stringify({ surface: "web", domain: "SEC" }),
+    "a cell wins over the separate menus",
+  );
+
+  const openRows = [
+    { open: true, surface: "web", domain: "SEC" },
+    { open: true, surface: "web", domain: "PRF" },
+    { open: false, surface: "web", domain: "SEC" },
+    { open: true, surface: "api", domain: "SEC" },
+  ];
+  assert(countOpenFindings(openRows) === 3, "the open count reads only open rows");
+  assert(countOpenFindings(openRows, { surface: "web", domain: "SEC" }) === 1, "and narrows by surface and domain");
+
+  // --- geometry ----------------------------------------------------------------
+  const geo = burndownGeometry(many.points, 100, 10);
+  assert(geo.bands.map((b) => b.severity).join() === "critical,high,medium,low", "four bands, worst at the baseline, no info");
+  assert(geo.xs.length === many.points.length && geo.xs[0] === 0, "one x per point, starting at the left edge");
+  assert(geo.xs.every((x, i) => i === 0 || x >= geo.xs[i - 1]), "x never runs backwards");
+  assert(geo.xs[geo.xs.length - 1] < 100, "the newest reading keeps a visible stub at the right edge");
+  assert(geo.max === 3, `the y axis scales to the tallest stack (got ${geo.max})`);
+  assert(geo.ticks.length === 1 && geo.ticks[0] === geo.xs[3], "one tick, at the audit");
+  assert(geo.line.startsWith("M0,6.67") && geo.line.includes("L0,0L18.8,0") && geo.line.endsWith("L94,6.67L100,6.67"), `the total steps up to the peak and back down to the last reading (got ${geo.line})`);
+
+  const undated = burndownGeometry([{ ...many.points[0], ts: "" }, many.points[1], many.points[2]], 100, 10);
+  assert(undated.xs.join() === "0,47,94", `an unparseable ts falls back to even spacing (got ${undated.xs.join()})`);
+  const single = burndownGeometry([many.points[0]], 100, 10);
+  assert(single.line === "M0,0L100,0", `a single reading holds across the whole width (got ${single.line})`);
+  assert(burndownGeometry([], 100, 10).bands.length === 0, "no points, no shapes");
+  // `zero` runs 1, 2, 3, 3 open — its low is 1, not 0.
+  const fitted = burndownGeometry(zero.points, 100, 10, { fitLine: true });
+  const unfitted = burndownGeometry(zero.points, 100, 10);
+  assert(fitted.line.startsWith("M0,10") && unfitted.line.startsWith("M0,6.67"), `a fitted line spans the whole height between its own low and high (got ${fitted.line})`);
+  assert(fitted.bands[1].path === unfitted.bands[1].path, "fitting the line never moves the bands off zero");
+  assert(burndownGeometry([many.points[0], many.points[0]], 100, 10, { fitLine: true }).line.startsWith("M0,5"), "a flat fitted line sits mid-height");
+
+  assert(burndownPointAt([0, 10, 20], 15) === 1, "the hover reads the step under the pointer");
+  assert(burndownPointAt([0, 10, 20], 20) === 2 && burndownPointAt([0, 10, 20], 99) === 2, "the newest step runs to the right edge");
+
+  // --- words ----------------------------------------------------------------
+  assert(
+    describeBurndownTrend(many) === "Open findings: 1 on 2026-09-01, 1 on 2026-09-06 — 1 audit recorded",
+    `the chart in words (got ${describeBurndownTrend(many)})`,
+  );
+  assert(describeBurndownTrend(nothing) === "Open findings: no history recorded", "an empty chart still has a name");
+  assert(describeBurndownCause({ cause: { type: "accepted", id: "F-3" } }) === "F-3 accepted as a risk", "a cause in words");
+  assert(describeBurndownCause({ cause: { type: "audit", id: "2026-08" } }) === "2026-08 audit recorded", "an audit in words");
+}
+
 console.log(failures === 0 ? "\nAll quality projections OK" : `\n${failures} failure(s)`);
 process.exit(failures === 0 ? 0 : 1);
