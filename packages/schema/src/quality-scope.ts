@@ -342,6 +342,85 @@ export function deriveAuditScope(
 }
 
 /**
+ * The pure naming core of a scoped re-audit's target id (issue #473).
+ *
+ * Repo mode and the hosted server agree on one meaning for "which audit does
+ * this score land in" and disagree only on where the inputs come from: a repo
+ * checkout's `scopedAuditTarget` (`cli/kritik-audit.ts`) reads `known` off
+ * disk with `listAuditIds` and finds `open` by checking the newest directory's
+ * `scores.json`; the hosted server reads both from the restored section and
+ * journal instead. Neither touches fs from here, so this is what actually
+ * decides, and the fs-based caller is a thin adapter over it.
+ */
+export interface ScopedAuditIdInput {
+  /** The recorded audit the scope is measured from. */
+  since: string;
+  /** `YYYY-MM`, the month a new scoped audit is named for. */
+  month: string;
+  requested?: string;
+  /** Every audit id that exists: on disk in a repo, in the section and journal when hosted. */
+  known: readonly string[];
+  recorded: readonly string[];
+  /** A scoped audit in progress from the same `since`, not yet recorded — continued rather than forked. */
+  open?: string;
+}
+
+/**
+ * The audit id a scoped re-score writes into, or a refusal saying why none
+ * fits.
+ *
+ * A scoped re-audit is its own audit, never the one it was scoped from: that
+ * audit's recorded reading is history, and re-scoring inside it would rewrite
+ * what the journal says was measured — the same is true of any OTHER recorded
+ * audit, which is just as much history. And it must sort **after every known
+ * audit id**, because the merge is latest-wins in lexical id order — a scoped
+ * audit that sorts earlier has its fresh scores silently outvoted by the stale
+ * ones it was meant to replace.
+ *
+ * Unrequested, it continues the scoped audit already in progress (`open`,
+ * when the caller found one), else opens `<month>-scoped`, then
+ * `<month>-scoped-02` and on, the convention SPEC § 6 names.
+ */
+export function scopedAuditId(input: ScopedAuditIdInput): string {
+  const { since, month, requested, known, recorded, open } = input;
+  const newest = known[known.length - 1];
+
+  if (requested !== undefined) {
+    if (requested === since) {
+      throw new Error(
+        `"${requested}" is the audit this scope is measured from — its recorded reading is history. ` +
+          `Name a new audit (e.g. \`${month}-scoped\`); every other cell keeps its score through the merge.`,
+      );
+    }
+    if (recorded.includes(requested)) {
+      throw new Error(`"${requested}" is already recorded — its reading is history. Name a new audit.`);
+    }
+    if (newest !== undefined && requested < newest) {
+      throw new Error(
+        `"${requested}" sorts before "${newest}", and audits merge latest-wins in lexical order — ` +
+          `its scores would be outvoted by the older ones they replace. Name one that sorts last (e.g. \`${month}-scoped\`).`,
+      );
+    }
+    return requested;
+  }
+
+  if (open !== undefined) return open;
+
+  for (let n = 1; n < 100; n++) {
+    const candidate = n === 1 ? `${month}-scoped` : `${month}-scoped-${String(n).padStart(2, "0")}`;
+    if (known.includes(candidate)) continue;
+    if (newest !== undefined && candidate < newest) {
+      throw new Error(
+        `"${candidate}" would sort before "${newest}", so its scores would lose the latest-wins merge. ` +
+          `Name the scoped audit yourself, one that sorts after "${newest}".`,
+      );
+    }
+    return candidate;
+  }
+  throw new Error(`99 scoped audits in ${month} — name the next one yourself.`);
+}
+
+/**
  * The one-line total a run sheet ends on — built here so the CLI and the MCP
  * tool cannot word the same scope two ways.
  */

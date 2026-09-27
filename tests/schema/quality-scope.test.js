@@ -15,7 +15,7 @@
  */
 
 const { loadSchema } = require("./load-schema");
-const { deriveAuditScope, recordedAuditIds, scopeSummary } = loadSchema();
+const { deriveAuditScope, recordedAuditIds, scopeSummary, scopedAuditId } = loadSchema();
 
 let failures = 0;
 function check(name, cond, detail) {
@@ -349,6 +349,60 @@ const cellIds = (scope) => scope.cells.map((cell) => `${cell.surface}:${cell.cri
   check(
     "a summary with no widening says nothing about it",
     scopeSummary(deriveAuditScope(events.slice(0, 2), SECTION, LIBRARY, { widen: false })) === "1 cell to re-score from 1 resolved finding since 2026-08",
+  );
+}
+
+// --- scopedAuditId (issue #473): the shared naming rule ----------------------
+
+{
+  const throws = (fn) => {
+    try {
+      fn();
+      return undefined;
+    } catch (error) {
+      return error.message;
+    }
+  };
+
+  check(
+    "with nothing requested and nothing open, the default is <month>-scoped",
+    scopedAuditId({ since: "2026-08", month: "2026-09", known: ["2026-08"], recorded: ["2026-08"] }) === "2026-09-scoped",
+  );
+  check(
+    "a taken default rolls to -02",
+    scopedAuditId({ since: "2026-08", month: "2026-09", known: ["2026-08", "2026-09-scoped"], recorded: ["2026-08"] }) === "2026-09-scoped-02",
+  );
+  check(
+    "an open scoped audit is continued rather than forked",
+    scopedAuditId({ since: "2026-08", month: "2026-09", known: ["2026-08", "2026-09-scoped"], recorded: ["2026-08"], open: "2026-09-scoped" }) === "2026-09-scoped",
+  );
+  check(
+    "a requested id measured from itself throws",
+    /is the audit this scope is measured from/.test(
+      throws(() => scopedAuditId({ since: "2026-08", month: "2026-09", requested: "2026-08", known: ["2026-08"], recorded: ["2026-08"] })),
+    ),
+  );
+  check(
+    "a requested id already recorded throws — its reading is history",
+    throws(() =>
+      scopedAuditId({ since: "2026-08", month: "2026-09", requested: "2026-08-scoped", known: ["2026-08", "2026-08-scoped"], recorded: ["2026-08", "2026-08-scoped"] }),
+    ) === `"2026-08-scoped" is already recorded — its reading is history. Name a new audit.`,
+  );
+  check(
+    "a requested id sorting before the newest known id throws",
+    /sorts before/.test(
+      throws(() => scopedAuditId({ since: "2026-08", month: "2026-09", requested: "2026-09-01", known: ["2026-08", "2026-09-scoped"], recorded: ["2026-08"] })),
+    ),
+  );
+  check(
+    "a requested id is otherwise returned",
+    scopedAuditId({ since: "2026-08", month: "2026-09", requested: "2026-09-custom", known: ["2026-08"], recorded: ["2026-08"] }) === "2026-09-custom",
+  );
+  check(
+    "a candidate sorting before a known later audit throws",
+    /would sort before "2026-10"/.test(
+      throws(() => scopedAuditId({ since: "2026-08", month: "2026-09", known: ["2026-08", "2026-10"], recorded: ["2026-08", "2026-10"] })),
+    ),
   );
 }
 

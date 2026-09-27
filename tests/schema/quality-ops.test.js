@@ -24,6 +24,7 @@ const {
   CROSS_SURFACE_ID,
   DEFAULT_TARGET_LEVEL,
   acceptFinding,
+  assessmentScoredInput,
   auditCompletedInput,
   deriveQualityMatrix,
   domainCodeOf,
@@ -146,6 +147,46 @@ const finding = (over = {}) => ({
 
   const tripped = signalTrippedInput({ criterion_id: "SEC-02", surface: "supabase", signal: "grep returned 3 hits" });
   check("signal.tripped is a valid event", makeEvent(tripped.type, tripped.payload, { actor: "t" }).type === "quality.signal.tripped");
+}
+
+// --- assessment.scored (issue #473) -------------------------------------------
+
+{
+  const scored = assessmentScoredInput(
+    { criterion_id: "SEC-01", surface: "web", level: 3, evidence: "src/a.ts:3", audit_id: "2026-09-scoped", commit: "abc" },
+    "2026-08",
+  );
+  check(
+    "assessment.scored builds the hosted-score payload",
+    eq(scored, {
+      type: "quality.assessment.scored",
+      payload: {
+        audit_id: "2026-09-scoped",
+        criterion_id: "SEC-01",
+        surface: "web",
+        level: 3,
+        evidence: "src/a.ts:3",
+        commit: "abc",
+        scope: { since: "2026-08" },
+      },
+    }),
+    JSON.stringify(scored),
+  );
+  check("assessment.scored is a valid event", makeEvent(scored.type, scored.payload, { actor: "t" }).type === "quality.assessment.scored");
+
+  const noCommit = assessmentScoredInput(
+    { criterion_id: "SEC-01", surface: "web", level: 3, evidence: "src/a.ts:3", audit_id: "2026-09-scoped" },
+    "2026-08",
+  );
+  check("assessment.scored omits commit when absent", !("commit" in noCommit.payload), JSON.stringify(noCommit.payload));
+
+  let threw = false;
+  try {
+    makeEvent("quality.assessment.scored", { ...scored.payload, level: 7 }, { actor: "t" });
+  } catch {
+    threw = true;
+  }
+  check("a level outside 0-4 is refused", threw);
 }
 
 {

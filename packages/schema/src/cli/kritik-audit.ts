@@ -28,6 +28,7 @@ import {
   type QualityProfile,
   type QualitySection,
 } from "../quality";
+import { scopedAuditId } from "../quality-scope";
 import { QUALITY_DIR, auditDir, auditsDir, loadProfile, readJson, writeJson } from "./kritik-paths";
 
 /**
@@ -310,17 +311,12 @@ function mergeAudits(
  * The audit directory a scoped re-score writes into (issue #443), or a refusal
  * saying why none fits.
  *
- * A scoped re-audit is its own directory, never the audit it was scoped from:
- * that audit's recorded reading is history, and re-scoring inside it would
- * rewrite what the journal says was measured. And it must sort **after every
- * audit on disk**, because the merge is latest-wins in `listAuditIds`' lexical
- * order — a scoped audit that sorts earlier has its fresh scores silently
- * outvoted by the stale ones it was meant to replace.
- *
- * Unrequested, it continues the scoped audit already in progress (the newest
- * directory, stamped with this same `since`, and not yet recorded — a recorded
- * one is a closed reading), else opens `<month>-scoped`, then
- * `<month>-scoped-02` and on, the convention SPEC § 6 names.
+ * A repo-mode adapter over {@link scopedAuditId} (issue #473), which is the
+ * rule itself, shared with the hosted server: this only supplies the fs-based
+ * inputs — `known` from {@link listAuditIds}, and `open` (the newest directory
+ * when it is stamped with this same `since` and not yet recorded — a recorded
+ * one is a closed reading) so an unrequested re-score continues the scoped
+ * audit already in progress rather than forking a new one.
  */
 export function scopedAuditTarget(
   root: string,
@@ -329,46 +325,13 @@ export function scopedAuditTarget(
   requested?: string,
   recorded: readonly string[] = [],
 ): string {
-  const existing = listAuditIds(root);
-  const newest = existing[existing.length - 1];
-
-  if (requested !== undefined) {
-    if (requested === since) {
-      throw new Error(
-        `"${requested}" is the audit this scope is measured from — its recorded reading is history. ` +
-          `Re-score into a new audit (e.g. \`--audit ${month}-scoped\`); every other cell keeps its score through the merge.`,
-      );
-    }
-    if (newest !== undefined && requested < newest) {
-      throw new Error(
-        `"${requested}" sorts before "${newest}", and audits merge latest-wins in lexical order — ` +
-          `its scores would be outvoted by the older ones they replace. Name one that sorts last (e.g. \`${month}-scoped\`).`,
-      );
-    }
-    return requested;
-  }
-
-  if (
-    newest !== undefined &&
-    newest !== since &&
-    !recorded.includes(newest) &&
-    loadScoresOrEmpty(root, newest).scope?.since === since
-  ) {
-    return newest;
-  }
-
-  for (let n = 1; n < 100; n++) {
-    const candidate = n === 1 ? `${month}-scoped` : `${month}-scoped-${String(n).padStart(2, "0")}`;
-    if (existing.includes(candidate)) continue;
-    if (newest !== undefined && candidate < newest) {
-      throw new Error(
-        `"${candidate}" would sort before "${newest}", so its scores would lose the latest-wins merge. ` +
-          `Name the scoped audit yourself with --audit, one that sorts after "${newest}".`,
-      );
-    }
-    return candidate;
-  }
-  throw new Error(`99 scoped audits in ${month} — name the next one with --audit.`);
+  const known = listAuditIds(root);
+  const newest = known[known.length - 1];
+  const open =
+    newest !== undefined && newest !== since && !recorded.includes(newest) && loadScoresOrEmpty(root, newest).scope?.since === since
+      ? newest
+      : undefined;
+  return scopedAuditId({ since, month, requested, known, recorded, open });
 }
 
 /**
