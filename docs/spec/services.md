@@ -178,19 +178,19 @@ One seam answers "who is calling?" for every route: `getCaller()` in `lib/servic
 | `PUT /api/graph/projects/{id}/bundle` | `graph:write` | Wholesale restore — snapshot and journal replaced together |
 | `PATCH /api/graph/projects/{id}` | `graph:write` | Project-level fields only (title, description, version, metadata) — deliberately cannot touch nodes or edges |
 | `DELETE /api/graph/projects/{id}` | `graph:write` | Archive (`archived_at`); leaves the listing, stays readable |
-| `POST /api/graph/projects/{id}/quality/events` | `graph:write` | Journal-only quality decisions — no snapshot change, no version bump |
+| `POST /api/graph/projects/{id}/quality/events` | `graph:write` (`quality:append` suffices for a batch of trips only) | Journal-only quality events, five whitelisted types: the finding decisions `quality.finding.resolved`/`accepted`, `quality.signal.tripped`, and a hosted scoped re-audit's `quality.assessment.scored` and scoped `quality.audit.completed` (issue #473) — no snapshot change, no version bump. All-or-nothing; refusals name each entry's `index` and `reason` (`lib/services/graph/quality-events.ts`) |
 
 Rules:
 
 - **`If-Match` is strong, and it is the snapshot `version`** (a bigint, returned as a string in the project GET's JSON body). A stale version writes nothing: `409` on `…/mutations`, `412` on `PUT …/bundle` (a known, deliberate inconsistency, documented at the mutations route). `PUT …/bundle` *requires* the header — `428` when it is absent.
 - **A weak validator in `If-Match` is refused, never applied.** `PUT …/bundle` answers `400 if_match_unsupported` (`classifyIfMatch` in `lib/services/graph/restore.ts` treats `W/…`, `*` and comma lists as unsupported shapes); on `…/mutations` a `W/"…"` cannot equal a decimal version and lands as a `409`. This is what makes the weak read validators below safe to hand out.
-- **The version bumps on every snapshot write and never on a journal-only append.** An appended `deliverable.shipped` or quality decision grows the journal while the snapshot — and the version every writer is racing on — stands still.
+- **The version bumps on every snapshot write and never on a journal-only append.** An appended `deliverable.shipped` or quality event grows the journal while the snapshot — and the version every writer is racing on — stands still.
 
 ### Read contract
 
 | Endpoint | Body | Read validator |
 |---|---|---|
-| `GET /api/graph/projects/{id}` | The bundle with quality decisions folded in, plus `version` | `W/"<version>.<quality decision count>"` |
+| `GET /api/graph/projects/{id}` | The bundle with quality decisions and hosted scores folded in, plus `version` | `W/"<version>.<folded quality event count>"` |
 | `GET /api/graph/projects/{id}/nodes` | `{ nodes }` | `W/"<version>"` |
 | `GET /api/graph/projects/{id}/edges` | `{ edges }` | `W/"<version>"` |
 | `GET /api/graph/projects/{id}/journal` | `{ journal }`, server order | `W/"<version>.<event count>"` |
@@ -199,7 +199,7 @@ Rules:
 - **Every read answers with `ETag`, `Cache-Control: private, no-cache` and `Vary: Authorization`** — on the `200` and on the `304` alike. `private` because every body is owner-scoped, `no-cache` because a client must revalidate rather than reuse blind, `Vary` because a bearer token selects the owner.
 - **`If-None-Match` earns a bodiless `304`.** The comparison is weak (RFC 9110 § 8.8.3.2): a case-insensitive `W/` on either side is ignored, `*` matches any representation that exists, and a comma list matches on any member. A matching conditional read costs the auth queries plus one validator statement — no snapshot is loaded, nothing but headers is written.
 - **The validators are weak on purpose.** Marking them weak is what makes a client that echoes a read ETag into `If-Match` fail loudly (see the Write path) instead of silently writing against a version it never read.
-- **Each route validates on exactly what its body depends on.** `/nodes` and `/edges` move only when the snapshot does. `/journal` and `/export` move on every appended event. The bundle GET counts *quality decisions only*, because those are the only events it folds — a merged PR's `deliverable.shipped` must not turn the next map revalidation into a multi-megabyte `200`.
+- **Each route validates on exactly what its body depends on.** `/nodes` and `/edges` move only when the snapshot does. `/journal` and `/export` move on every appended event. The bundle GET counts *the quality events it folds only* — the two finding decisions and `quality.assessment.scored` (`QUALITY_FOLD_TYPES`), because a merged PR's `deliverable.shipped` must not turn the next map revalidation into a multi-megabyte `200`.
 - **Counts, not `max(seq)`.** Journal appends are not transactional, so two concurrent appends can commit out of `seq` order and a max taken between them would never learn about the earlier row. A count moves on every commit whatever the order, and the only deleter (a bundle restore) always bumps the version. It also keeps the platform-wide `bigserial` out of a tenant-visible header.
 - **An archived project still reads.** Only the writes refuse it. A conditional read answers `304`/`200` for exactly the projects an unconditional read answers `200` for — otherwise an archived project would start `404`ing the moment a client revalidated.
 - **`?types=` projects the journal read.** `GET …/journal?types=a,b` — repeatable and comma-separated (`?types=a&types=b` is the same request), tokens trimmed, empties dropped, deduped and sorted into a canonical list. No projection, an empty one, or an unknown type are all valid: the first two mean the whole journal, the third answers an empty list with `200`, so a client reading a forward-compatible event type never breaks against an older server. More than **32 distinct types** is `400 { error: "invalid_types" }` — fail closed, because a silently truncated list would answer with a subset the caller cannot detect. The projection belongs to `/journal` alone: `/nodes`, `/edges` and `/export` ignore the parameter entirely, since `/export` builds an interchange bundle and a bundle missing most of its history would restore as data loss.

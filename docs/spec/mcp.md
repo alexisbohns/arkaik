@@ -114,14 +114,14 @@ journal accumulates the quality history the UI renders as trends.
 
 | Tool | Input | Returns | Journal events |
 |---|---|---|---|
-| `kritik_matrix` | `audit_id?`, `record?` | the comparative matrix, per-surface roll-ups, finding counts, priority lanes, the P0 list; refreshes `matrix.json` in repo mode. Hosted reads the stored quality section instead — no `audit_id`/`commit` (hosted has no audit file) — and `record` is refused there | `quality.audit.completed` (only with `record: true`, repo mode only — recording belongs to the audit run) |
+| `kritik_matrix` | `audit_id?`, `record?`, `scope?`, `commit?` | the comparative matrix, per-surface roll-ups, finding counts, priority lanes, the P0 list; refreshes `matrix.json` in repo mode. A scoped re-audit (scored with `kritik_score` `scope: true`, or declared with `scope: true` in repo mode) also returns `scope` and `left_unscored` — the listed cells no score covered, which drop out of the next scope once it records. Hosted, a plain read is the stored quality section with the journal's finding decisions and hosted scores folded in, and it refuses `audit_id` (hosted has no audit file to partition it by). Hosted `record: true` records **a scoped re-audit only**: it requires the `audit_id` `kritik_score` returned, takes an optional `commit` (the tree the re-audit read), and implies `scope`; the server computes the merged scores and counts itself, so nothing the caller sends can disagree with the scores behind them. A retry of a scoped recording that already landed returns that re-audit's reading as success; `already_recorded` on any other audit (the `since` audit, a comprehensive one) stays an error | `quality.audit.completed` (only with `record: true`; hosted, only a scoped one, marked `scope: {partial, cells, since}`) |
 | `kritik_findings` | `surface?`, `status?`, `priority?`, `criterion_id?`, `audit_id?`, `finding_id?` | findings with **derived** `severity` and `priority`; `finding_id` fetches one. Repo mode reads across every audit under `docs/quality/audits/`; hosted findings are a single living pool with no `audit_id` partition (the filter is refused there) | — |
 | `kritik_signals` | `surface?`, `criterion_id?`, `domain?` | the signal run sheet, plus `tripped_since_last_audit`. Repo sessions only — the pack and its run sheet live with the code | — |
 | `kritik_regressions` | `from?`, `to?`, `record?` | what got worse between two audits: a dropped maturity level, a cell that gained an open Critical or High, a finding resolved and open again. Hosted comparisons are read-only and cover assessment-level drops only — hosted findings are a living pool, not a per-audit snapshot, so the other two regression kinds don't apply there | `quality.signal.tripped`, one per regression (only with `record: true`, repo mode only) |
-| `kritik_trend` | `surface?`, `domain?` | where the product stood at each recorded audit: one row per `quality.audit.completed`, oldest first, the overall score per surface (or one domain's with `domain`) and its delta against the row above. A re-recorded audit id keeps its latest reading; a framework major bump marks the later row `comparable: false` with no delta across it. Both modes — hosted reads the hosted journal | — |
-| `kritik_scope` | `since?`, `widen?` | the scoped re-audit's work list: every (criterion × surface) cell a `quality.finding.resolved` since the `since` audit (default: the newest `quality.audit.completed`) made stale — `kind: direct`, `because` the finding ids — plus, with `widen` (default on), assessed cells one `node_ids` hop away — `kind: widened`, `because` the shared node ids. Each cell carries the score a re-score would replace; `unknown` lists resolved ids that name no finding, `unscorable` resolved findings whose cell nothing can re-score (a retired criterion, an undeclared surface); `summary` is the CLI's totals line. Accepted risks never scope anything. It plans an audit and scores nothing. Both modes — hosted reads the hosted journal and quality section | — |
+| `kritik_trend` | `surface?`, `domain?` | where the product stood at each recorded audit: one row per `quality.audit.completed`, oldest first, the overall score per surface (or one domain's with `domain`) and its delta against the row above. A re-recorded audit id keeps its latest reading; a framework major bump marks the later row `comparable: false` with no delta across it. Both modes — hosted reads the hosted journal, and there a restored audit with no recorded reading appears as a first row flagged `baseline: true`, rebuilt from its stored scores; a scoped re-audit's row carries its `scope` | — |
+| `kritik_scope` | `since?`, `widen?` | the scoped re-audit's work list: every (criterion × surface) cell a `quality.finding.resolved` since the `since` audit (default: the newest `quality.audit.completed`) made stale — `kind: direct`, `because` the finding ids — plus, with `widen` (default on), assessed cells one `node_ids` hop away — `kind: widened`, `because` the shared node ids. Each cell carries the score a re-score would replace; `unknown` lists resolved ids that name no finding, `unscorable` resolved findings whose cell nothing can re-score (a retired criterion, an undeclared surface); `summary` is the CLI's totals line. Accepted risks never scope anything. It plans an audit and scores nothing. Both modes — hosted reads the hosted journal and quality section, and on a restored project with no recorded reading it measures from that audit's implicit baseline, dated where the audit was taken. Hosted, it also returns `open_audit` — `{audit_id, scored: [{criterion_id, surface}]}` for the unrecorded scoped re-audit in progress, or `null` — and marks each cell that audit has scored `rescored: true`, so the loop can check it left nothing before recording | — |
 | `kritik_issue` | `criterion_id`, `surface`, `level?`, `finding_id?` | the prefilled GitHub issue skeleton | — |
-| `kritik_score` | `criterion_id`, `surface`, `level`, `evidence`, `audit_id?`, `commit?` | the assessment, latest-per-cell. Repo sessions only — scoring reads the code, so a hosted session refuses | — |
+| `kritik_score` | `criterion_id`, `surface`, `level`, `evidence`, `audit_id?`, `commit?`, `scope?` | the assessment, latest-per-cell, plus `audit_id` and (with `scope: true`) `scoped_from`. With `scope: true` a cell `kritik_scope` does not list is refused and the score lands in a scoped audit of its own (`<YYYY-MM>-scoped`, continuing one already open). Hosted scoring is **scoped-only**: `scope: true` is required, the server checks the cell against the scope and names the audit, and nothing is written to disk. The first hosted score of a restored audit with no recorded reading first records that reading as a backdated `quality.audit.completed` with `baseline: true`; the reply returns it in `events` and says so in `notes`, which also flag a missing `commit` | repo: none (the score is written to `scores.json`); hosted: `quality.assessment.scored`, preceded once by the baseline `quality.audit.completed` |
 | `kritik_open_finding` | `criterion_id`, `surface`, `title`, `evidence`, `impact`, `likelihood`, `cost`, `detail?`, `remediation?`, `node_ids?`, `issue_url?`, `verification?`, `audit_id?`, `finding_id?` | the finding + its derived severity/priority. Repo sessions only — a new finding cites code, so a hosted session refuses | `quality.finding.opened` (none when `verification.verdict` is `REFUTED`) |
 | `kritik_resolve_finding` | `finding_id`, `resolved_by?` | the closed finding | `quality.finding.resolved` — repo mode writes it via `store.persist`; hosted posts it to the host (idempotent either way — a second resolve writes nothing) |
 | `kritik_accept_finding` | `finding_id`, `note` | the finding as an accepted risk | repo mode: none (acceptance is a state, written straight to the findings file); hosted: `quality.finding.accepted`, since there is no findings file to hold that state — the read derives `accepted-risk` from the event |
@@ -137,30 +137,47 @@ those files, while the `quality.*` events go through `store.persist` — the sam
 every other write tool uses. The journal write runs **first**: a refusal then leaves nothing behind,
 where the other order would leave a finding on disk that no event ever announced.
 
-**Hosted sessions read and transition findings; they don't audit.** A hosted project has no
-`docs/quality/` directory — instead the server folds the account's own journal events into the
-stored bundle's quality section, and `kritik_matrix`, `kritik_findings`, `kritik_regressions` and
-`kritik_issue` read that folded section directly, no checkout required (`kritik_trend` reads the
-hosted journal the same way, and `kritik_scope` reads both). Transitions
-(`kritik_resolve_finding`, `kritik_accept_finding`) go the same way in reverse: the tool posts a
-whitelisted event — `quality.finding.resolved` or `quality.finding.accepted` — to
+**Hosted sessions read, transition findings, and re-score what a fix made stale; they don't run a
+full audit.** A hosted project has no `docs/quality/` directory — instead the server folds the
+account's own journal events into the stored bundle's quality section, and `kritik_matrix`,
+`kritik_findings`, `kritik_regressions` and `kritik_issue` read that folded section directly, no
+checkout required (`kritik_trend` reads the hosted journal the same way, and `kritik_scope` reads
+both). Transitions (`kritik_resolve_finding`, `kritik_accept_finding`) go the same way in reverse:
+the tool posts a whitelisted event — `quality.finding.resolved` or `quality.finding.accepted` — to
 `POST /api/graph/projects/{id}/quality/events` under the `graph:write` scope, and the snapshot's
 `quality` section is never mutated by that route; current status is re-derived on every read, the
 same "current state is a projection" doctrine as everywhere else (§3.2), and the same path the
-GitHub App's own resolution pass uses. What stays repo-only is the audit *run* —
-`kritik_score`, `kritik_signals`, `kritik_trip_signal`, `kritik_open_finding` — because scoring a
-cell and opening a finding both read the code, and an agent pointed at a hosted map has no checkout
-to read it against; those four refuse with that reason stated, not a blanket "hosted isn't
-supported". The half of the old repo-only decision that still holds: **running** an audit needs a
-working tree — only *auditing* does, not reading or deciding on what a past audit already found
-(issue #400).
+GitHub App's own resolution pass uses.
+
+**The hosted scoped re-audit (issue #473).** The same route takes two more whitelisted types, both
+under `graph:write`: `quality.assessment.scored` (what hosted `kritik_score` posts) and a scoped
+`quality.audit.completed` (`scope: true`, `audit_id`, `commit?` — what hosted `kritik_matrix
+record: true` posts). The loop is `kritik_scope` → `kritik_score scope: true` per listed cell →
+`kritik_scope` again, until every cell reads `rescored: true` → `kritik_matrix record: true` with
+the `audit_id` the scores returned (`open_audit.audit_id`), never the scope's `since`. Hosted scoring is
+**scoped-only**: the server refuses a cell `deriveAuditScope` does not list (`out_of_scope`), names
+the scoped audit itself (`<YYYY-MM>-scoped`, continuing one already open from the same scope), and
+computes the recorded reading — the merged matrix through the scores, marked `scope: {partial,
+cells, since}` — from the folded section, refusing a caller-supplied `scores`/`counts`. That scope
+check is a workflow guard that keeps a hosted re-audit scoped, not an access control: any
+`graph:write` caller can resolve a finding, which widens the scope. On a project whose audit arrived
+by `arkaik restore` with no recorded reading, `kritik_scope` and `kritik_trend` measure from an
+implicit baseline (`withImplicitBaseline`, `packages/schema/src/quality-baseline.ts`), dated where
+the audit was taken and capped before the first finding decision, with every finding decided since
+counted as open again (the audit saw it open); the first hosted score writes that
+same reading for real, backdated, with `baseline: true`, after which the synthesis is off. Nothing
+reaches `docs/quality/` — the journal events are the whole record. The agent still reads code to
+score, so it runs from a checkout and passes the `commit` it read. What stays repo-only is
+`kritik_signals`, `kritik_trip_signal` and `kritik_open_finding` — a signal is checked against the
+repo, and a new finding cites code — and a **comprehensive** audit, which has no hosted twin; those
+refuse with that reason stated, not a blanket "hosted isn't supported" (issue #400).
 
 A few shapes of that split are worth being explicit about: writes are events-only (no snapshot
 mutation, no new tables — the fold is the only place a hosted finding's status is computed);
 findings stay a living pool rather than being partitioned by `audit_id` the way repo findings are;
 an optional `commit` anchor on a finding is required by policy for any future hosted-written
 `kritik_open_finding`, should that ever ship; the token scope split stays `graph:read` for the reads
-above and `graph:write` for the two transitions; and Publik's `stripQuality` is unaffected — it
+above and `graph:write` for the transitions, a hosted score and a scoped recording; and Publik's `stripQuality` is unaffected — it
 strips the whole quality section before either read or write path is reachable.
 
 **Nothing here authors a criterion or picks a surface.** `arkaik kritik profile` and `arkaik kritik
