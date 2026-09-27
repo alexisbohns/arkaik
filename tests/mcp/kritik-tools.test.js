@@ -160,6 +160,7 @@ async function run() {
       "kritik_trip_signal",
       "kritik_regressions",
       "kritik_trend",
+      "kritik_scope",
     ]) {
       check(`catalog includes ${name}`, names.includes(name));
     }
@@ -286,6 +287,49 @@ async function run() {
     check("a first row has no delta", trend.json.rows[0].cells.web.delta === null);
     const trendDomain = await session.call("kritik_trend", { domain: "SEC", surface: "web" });
     check("kritik_trend narrows to a domain and a surface", !trendDomain.isError && trendDomain.json.surfaces.length === 1 && trendDomain.json.rows[0].cells.web.score === recorded.json.matrix.SEC.web.score, trendDomain.text.slice(0, 300));
+
+    // --- scope (issue #443) -----------------------------------------------------
+
+    const quietScope = await session.call("kritik_scope", {});
+    check(
+      "kritik_scope right after a recorded audit has nothing stale",
+      !quietScope.isError && quietScope.json.cells.length === 0 && quietScope.json.since === scored.json.audit_id,
+      quietScope.text.slice(0, 300),
+    );
+
+    const fix = await session.call("kritik_open_finding", {
+      criterion_id: "SEC-01",
+      surface: "web",
+      title: "Session id not rotated on login",
+      evidence: "auth.ts:3",
+      impact: 2,
+      likelihood: 2,
+      cost: "S",
+      node_ids: ["V-home"],
+    });
+    await session.call("kritik_resolve_finding", { finding_id: fix.json.finding.id, resolved_by: "https://github.com/x/y/pull/10" });
+
+    const scope = await session.call("kritik_scope", {});
+    const scoped = scope.json.cells ?? [];
+    check(
+      "a finding resolved since the audit scopes its cell",
+      !scope.isError && scoped.length === 1 && scoped[0].criterion_id === "SEC-01" && scoped[0].surface === "web" && scoped[0].kind === "direct",
+      scope.text.slice(0, 400),
+    );
+    check("the cell says which finding and which PR", scoped[0]?.because?.[0] === fix.json.finding.id && scope.json.resolved_by[fix.json.finding.id] === "https://github.com/x/y/pull/10");
+    check("the cell carries the score a re-score would replace", scoped[0]?.current?.level === 3, JSON.stringify(scoped[0]));
+    check(
+      "the summary is the CLI's own totals line",
+      scope.json.summary === `1 cell to re-score from 1 resolved finding since ${scored.json.audit_id}`,
+      scope.json.summary,
+    );
+
+    const unrecorded = await session.call("kritik_scope", { since: "1999-01" });
+    check(
+      "a since that was never recorded is refused, naming what was",
+      unrecorded.isError && unrecorded.json.message.includes("No recorded audit") && unrecorded.json.message.includes(scored.json.audit_id),
+      unrecorded.text.slice(0, 300),
+    );
 
     // --- signals ---------------------------------------------------------------
 
@@ -418,6 +462,10 @@ async function run() {
         return json(200, {
           journal: [
             { id: "01AUDIT", ts: "2026-08-02T00:00:00.000Z", type: "quality.audit.completed", audit_id: "2026-08", framework_version: "1.0.0", scores: { web: { SEC: 70 } }, counts: { critical: 1 }, actor: "arkaik-cli" },
+            // Resolutions after it, so kritik_scope has a hosted window to read —
+            // one real, one naming a finding the section does not hold.
+            { id: "01RESOLVED", ts: "2026-08-20T00:00:00.000Z", type: "quality.finding.resolved", finding_id: "F-B", resolved_by: "https://pr/3", actor: "github-app" },
+            { id: "01RESOLVEDGONE", ts: "2026-08-21T00:00:00.000Z", type: "quality.finding.resolved", finding_id: "F-GONE", actor: "github-app" },
           ],
         });
       }
@@ -560,6 +608,17 @@ async function run() {
       !hostedTrend.isError && hostedTrend.json.total === 1 && hostedTrend.json.rows[0].audit_id === "2026-08" && hostedTrend.json.rows[0].cells.web.score === 70,
       hostedTrend.text.slice(0, 300),
     );
+
+    const hostedScope = await hosted.call("kritik_scope", {});
+    check(
+      "kritik_scope plans from the hosted journal and section — no checkout needed",
+      !hostedScope.isError &&
+        hostedScope.json.since === "2026-08" &&
+        JSON.stringify(hostedScope.json.cells.map((cell) => [cell.surface, cell.criterion_id, cell.kind, cell.because])) ===
+          JSON.stringify([["web", "SEC-01", "direct", ["F-B"]]]),
+      hostedScope.text.slice(0, 400),
+    );
+    check("the hosted scope reports the id that names no finding", (hostedScope.json.unknown ?? []).join() === "F-GONE", hostedScope.text.slice(0, 400));
 
     const issue = await hosted.call("kritik_issue", { criterion_id: "SEC-01", surface: "web", finding_id: "F-A" });
     check(

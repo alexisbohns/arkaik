@@ -28,6 +28,7 @@ import {
   REMEDIATION_COSTS,
   acceptFinding,
   auditCompletedInput,
+  deriveAuditScope,
   deriveQualityTrend,
   detectRegressions,
   findingOpenedInput,
@@ -38,8 +39,10 @@ import {
   orderEvents,
   parseSurfaceSpec,
   priorityOf,
+  recordedAuditIds,
   renderIssue,
   resolveFinding,
+  scopeSummary,
   severityOf,
   signalRunSheet,
   signalTrippedInput,
@@ -53,13 +56,16 @@ import {
   type QualityAssessment,
   type QualityFinding,
   type QualityProfile,
+  type QualitySection,
   type Regression,
   type RemediationCost,
+  type ScopeCell,
   type SurfaceDef,
 } from "@arkaik/schema";
 import {
   computeAuditMatrix,
   listAuditIds,
+  loadCurrentQualitySection,
   loadFindings,
   loadQualitySection,
   loadScoresOrEmpty,
@@ -99,6 +105,7 @@ Subcommands:
   signals               The signal pack, and what has tripped since the last audit.
   regressions           What got worse between two audits.
   trend                 Every recorded audit's scores, and which way each moved.
+  scope                 The cells your resolved findings made stale since the last audit.
   issue <criterion>     Print the prefilled GitHub issue skeleton.
   criterion add ...     Add a project-specific criterion to the overlay.
 
@@ -207,6 +214,27 @@ Reads the journal, so it needs a bundle (--bundle, default docs/arkaik/bundle.js
 and audits recorded with \`arkaik kritik matrix --record\`. A framework major
 bump between two audits breaks the comparison there (SPEC § 8): the row still
 prints, without an arrow.`;
+
+const SCOPE_USAGE = `arkaik kritik scope [--since <audit>] [--no-widen] [--json]
+
+The cells a batch of fixes made stale. A score is an assessment, so closing
+findings moves nothing until the cells they lived on are re-scored — and a
+comprehensive audit is a lot of audit for twenty fixes. Every finding resolved
+since the last recorded audit names its (criterion x surface) cell; one hop
+over node_ids adds the neighbours a fix in a shared view plausibly moved.
+
+This is a work list, not a score: re-score each cell with evidence into an
+audit of its own (\`arkaik kritik score … --audit <YYYY-MM>-scoped\`) — never the
+audit the scope is measured from, whose recorded reading is history — then
+\`arkaik kritik matrix --record\`. Every other cell keeps its last score.
+
+  --since <audit>   Measure from this recorded audit (default: the newest
+                    quality.audit.completed in the journal).
+  --no-widen        Only the resolved findings' own cells, no neighbours.
+  --json            The scope as JSON (what an agent should read).
+
+Reads the journal, so it needs a bundle (--bundle, default docs/arkaik/bundle.json)
+and an audit recorded with \`arkaik kritik matrix --record\` to measure from.`;
 
 const ISSUE_USAGE = `arkaik kritik issue <criterion> --surface <s> [--level <n>] [--finding <id>]
 
@@ -1019,6 +1047,113 @@ function runTrend(args: string[], common: CommonOptions): void {
   process.exit(0);
 }
 
+// --- scope -------------------------------------------------------------------
+
+/** One run-sheet line's reason: which findings (and the PR that closed each), or which shared nodes. */
+function scopeReason(cell: ScopeCell, resolvedBy: Readonly<Record<string, string>>): string {
+  if (cell.kind === "widened") return `widened via ${cell.because.join(", ")}`;
+  const findings = cell.because.map((id) => (resolvedBy[id] !== undefined ? `${id} (resolved by ${resolvedBy[id]})` : id));
+  return `because ${findings.join(", ")}`;
+}
+
+function runScope(args: string[], common: CommonOptions): void {
+  const { single, flags } = collect(args, [], ["json", "no-widen"]);
+  if (flags.has("help")) {
+    console.log(SCOPE_USAGE);
+    process.exit(0);
+  }
+
+  const library = loadLibraryOrFail(common.root);
+  const profile = profileOrFail(common.root);
+
+  const journal = resolveJournal(common.root, common.bundlePath);
+  if (!journal.present) {
+    fail(
+      `kritik: no bundle at ${journal.bundlePath} — the scope is measured from the journal's quality.audit.completed ` +
+        `and quality.finding.resolved events, and there is no journal without a bundle.`,
+    );
+  }
+  const events = readFullJournalEvents(journal.journalPath);
+
+  if (single.since !== undefined) {
+    const recorded = recordedAuditIds(events);
+    if (!recorded.includes(single.since)) {
+      fail(
+        `kritik: no recorded audit "${single.since}" in ${journal.journalPath} ` +
+          `(recorded: ${recorded.join(", ") || "none — `arkaik kritik matrix --record` writes one"}).\n` +
+          `A scope is measured from a recorded reading; an audit directory that was never recorded is not one.`,
+      );
+    }
+  }
+
+  // The merged section, not the newest audit's: a finding opened two audits
+  // ago and resolved last week lives in an older findings.json, and its cell's
+  // current score may come from any audit on disk.
+  let section: Pick<QualitySection, "profile" | "assessments" | "findings">;
+  try {
+    section = loadCurrentQualitySection(common.root, library) ?? { profile, assessments: [], findings: [] };
+  } catch (error) {
+    return fail(`kritik: ${(error as Error).message}`);
+  }
+
+  const scope = deriveAuditScope(events, section, library, {
+    ...(single.since !== undefined ? { since: single.since } : {}),
+    widen: !flags.has("no-widen"),
+  });
+
+  if (flags.has("json")) {
+    console.log(JSON.stringify({ ...scope, summary: scopeSummary(scope) }, null, 2));
+    process.exit(0);
+  }
+
+  if (scope.since === null) {
+    console.log(
+      `\n  no recorded audit yet — a scope is measured from one. \`arkaik kritik matrix --record\` writes it.\n`,
+    );
+    process.exit(0);
+  }
+
+  console.log("");
+  let surface = "";
+  for (const cell of scope.cells) {
+    if (cell.surface !== surface) {
+      if (surface !== "") console.log("");
+      surface = cell.surface;
+    }
+    const current = cell.current !== undefined ? `at ${cell.current.level} (${cell.current.audit_id})` : "unscored";
+    console.log(`  ${cell.surface} · ${cell.criterion_id} · ${current} · ${scopeReason(cell, scope.resolved_by)}`);
+  }
+  if (scope.cells.length > 0) console.log("");
+  console.log(`  ${scopeSummary(scope)}`);
+
+  if (scope.unknown.length > 0) {
+    console.log(
+      `\n  ! ${scope.unknown.length} resolved id${scope.unknown.length === 1 ? " names" : "s name"} no finding in any audit — ` +
+        `something closed an id that does not exist:`,
+    );
+    for (const id of scope.unknown) console.log(`      ${id}`);
+  }
+
+  if (scope.unscorable.length > 0) {
+    console.log(
+      `\n  ! ${scope.unscorable.length} resolved finding${scope.unscorable.length === 1 ? " sits" : "s sit"} on a cell nothing can re-score ` +
+        `(a retired criterion, or a surface no longer in the profile) — the fix still counts, but there is no score to move:`,
+    );
+    for (const id of scope.unscorable) console.log(`      ${id}`);
+  }
+
+  if (scope.cells.length > 0) {
+    console.log(
+      `\n  re-score each with evidence into an audit of its own — ` +
+        `\`arkaik kritik score <criterion> <surface> <level> --evidence … --audit <YYYY-MM>-scoped\` — ` +
+        `then \`arkaik kritik matrix --record\`. Never re-score inside ${scope.since}: its recorded reading is history. ` +
+        `Every other cell keeps its last score.`,
+    );
+  }
+  console.log("");
+  process.exit(0);
+}
+
 // --- issue -------------------------------------------------------------------
 
 function runIssue(args: string[], common: CommonOptions): void {
@@ -1171,6 +1306,8 @@ export function runKritik(args: string[]): void {
       return runRegressions(subArgs, common);
     case "trend":
       return runTrend(subArgs, common);
+    case "scope":
+      return runScope(subArgs, common);
     case "issue":
       return runIssue(subArgs, common);
     case "criterion":
