@@ -216,6 +216,16 @@ export const QualityAuditCompletedEventSchema = z
       })
       .catchall(z.unknown())
       .optional(),
+    // A scoped re-audit (issue #443). Optional and catchall like `counts`:
+    // older readers ignore it, and its `scores` stay the same shape either way.
+    scope: z
+      .object({
+        partial: z.boolean().optional(),
+        cells: z.number().optional(),
+        since: z.string().optional(),
+      })
+      .catchall(z.unknown())
+      .optional(),
   })
   .catchall(z.unknown());
 

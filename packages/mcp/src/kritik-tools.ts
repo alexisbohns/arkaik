@@ -59,6 +59,8 @@ import {
   trendRows,
   upsertAssessment,
   upsertFinding,
+  type AuditCompletedScope,
+  type AuditScope,
   type AuditState,
   type EventInput,
   type JournalEvent,
@@ -77,13 +79,16 @@ import {
   listAuditIds,
   loadCurrentQualitySection,
   loadFindings,
-  loadQualitySection,
+  loadQualitySectionThrough,
   loadScoresOrEmpty,
   locateFinding,
   newestAuditId,
   requireProfile,
   saveFindings,
   saveScores,
+  auditOrderNote,
+  declaredScopeSince,
+  scopedAuditTarget,
 } from "@arkaik/schema/src/cli/kritik-audit";
 import { loadProfile } from "@arkaik/schema/src/cli/kritik-paths";
 import { loadKritikLibrary, readFullJournalEvents, resolveJournal } from "arkaik/io";
@@ -340,13 +345,52 @@ export function buildKritikCatalog(ctx: KritikContext): {
     }
   };
 
+  /**
+   * The scope as it stands, in either mode: the journal's resolutions against
+   * the CURRENT state — the merge across every audit — because a finding
+   * resolved this week was routinely opened two audits ago, and its cell's
+   * standing score may come from any of them. Shared by `kritik_scope` (which
+   * returns it) and `kritik_score` with scope=true (which refuses what it does
+   * not list), so the two can never disagree about a cell.
+   */
+  const scopeOf = (graph: LoadedGraph, options: { since?: string; widen?: boolean } = {}): AuditScope => {
+    if (options.since !== undefined) {
+      const recorded = recordedAuditIds(graph.journal);
+      if (!recorded.includes(options.since)) {
+        throw new ToolError(
+          `No recorded audit "${options.since}" in this journal (recorded: ${recorded.join(", ") || "none"}). ` +
+            `A scope is measured from a recorded reading — kritik_matrix with record=true writes one.`,
+        );
+      }
+    }
+
+    let section: Pick<QualitySection, "profile" | "assessments" | "findings">;
+    let library: Pick<KritikLibrary, "criteria">;
+    if (ctx.qualityRoot === undefined) {
+      const hosted = hostedSection(graph);
+      section = hosted.section;
+      library = hosted.library ?? { criteria: [] };
+    } else {
+      const root = ctx.qualityRoot;
+      const full = libraryOf(root);
+      const profile = profileOf(root);
+      try {
+        section = loadCurrentQualitySection(root, full) ?? { profile, assessments: [], findings: [] };
+      } catch (error) {
+        throw new ToolError((error as Error).message);
+      }
+      library = full;
+    }
+    return deriveAuditScope(graph.journal, section, library, options);
+  };
+
   // ---- Read -----------------------------------------------------------------
 
   tool(
     {
       name: "kritik_matrix",
       description:
-        "The comparative quality matrix: a score and grade per (domain x surface), the weighted roll-up per surface, and open findings by priority lane. Anti-averaging caps are applied — one open Critical caps its cell at D, one open High at B — so a cell full of 3s cannot absorb a live defect. In repo mode this refreshes the audit's matrix.json, and with record=true appends quality.audit.completed; in hosted mode it is a read of the stored quality section (no audit_id/commit — hosted has no audit file) and record is refused — recording belongs to the audit run, which reads code.",
+        "The comparative quality matrix: a score and grade per (domain x surface), the weighted roll-up per surface, and open findings by priority lane. Anti-averaging caps are applied — one open Critical caps its cell at D, one open High at B — so a cell full of 3s cannot absorb a live defect. In repo mode this refreshes the audit's matrix.json, and with record=true appends quality.audit.completed; in hosted mode it is a read of the stored quality section (no audit_id/commit — hosted has no audit file) and record is refused — recording belongs to the audit run, which reads code. A scoped re-audit (scored with kritik_score scope=true, or declared with scope=true here) returns `scope` and records the MERGED matrix through it with a scope marker, so the trend never reads its unscored cells as dropped; matrix.json stays this audit alone.",
       inputSchema: {
         type: "object",
         properties: {
@@ -354,6 +398,10 @@ export function buildKritikCatalog(ctx: KritikContext): {
           record: {
             type: "boolean",
             description: "Append quality.audit.completed carrying these scores and counts. Once per finished audit.",
+          },
+          scope: {
+            type: "boolean",
+            description: "Treat the audit as a scoped re-audit even though it was scored without kritik_score scope=true (which marks it). Repo mode only.",
           },
         },
         additionalProperties: false,
@@ -363,6 +411,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
       const hosted = ctx.qualityRoot === undefined;
       if (hosted) {
         if (args.record === true) refuseHostedRecord("quality.audit.completed");
+        if (args.scope === true) throw new ToolError("A scoped re-audit is an audit run, which reads code — the hosted matrix is the current state.");
         // Refused, not ignored: silently returning the whole-pool matrix for a
         // request that believed it scoped to one audit is the wrong-answer
         // failure mode issue #400 was opened against.
@@ -409,20 +458,63 @@ export function buildKritikCatalog(ctx: KritikContext): {
 
       const { open, lanes, p0 } = openFindingsSummary(section.findings, library);
 
+      // What a scoped audit was measured from: its kritik_score stamp, else —
+      // when scope=true declares it by hand — `declaredScopeSince`, which also
+      // refuses an audit already recorded. Loaded lazily: a comprehensive audit
+      // needs no journal.
+      let graph: LoadedGraph | undefined;
+      let since = loadScoresOrEmpty(root, auditId).scope?.since;
+      if (since === undefined && args.scope === true) {
+        graph = await load();
+        try {
+          since = declaredScopeSince(auditId, recordedAuditIds(graph.journal));
+        } catch (error) {
+          throw new ToolError(`scope=true refused — ${(error as Error).message}`);
+        }
+      }
+      const scope: AuditCompletedScope | undefined =
+        since !== undefined ? { partial: true, cells: section.assessments.length, since } : undefined;
+
+      // The cells the scope still lists that this audit has not re-scored.
+      // Recording closes the window and they drop out of the next scope, so
+      // the reply names them — before recording, and as it happens.
+      let leftUnscored: { criterion_id: string; surface: string; kind: string }[] = [];
+      if (scope !== undefined) {
+        graph = graph ?? (await load());
+        const current = scopeOf(graph);
+        if (current.since === scope.since) {
+          const done = new Set(section.assessments.map((a) => `${a.criterion_id}::${a.surface}`));
+          leftUnscored = current.cells
+            .filter((cell) => !done.has(`${cell.criterion_id}::${cell.surface}`))
+            .map((cell) => ({ criterion_id: cell.criterion_id, surface: cell.surface, kind: cell.kind }));
+        }
+      }
+
       let events: JournalEvent[] = [];
       if (args.record === true) {
-        const graph = await load();
-        events = await record(graph, [
-          auditCompletedInput(matrix, {
+        // The merged matrix through this audit — where the product stands —
+        // not the scoped audit's own dozen cells; see `auditCompletedInput`.
+        let recorded = matrix;
+        if (scope !== undefined) {
+          try {
+            recorded = deriveQualityMatrix({ quality: loadQualitySectionThrough(root, auditId, library) }, library);
+          } catch (error) {
+            throw new ToolError((error as Error).message);
+          }
+        }
+        events = await record(graph ?? (await load()), [
+          auditCompletedInput(recorded, {
             audit_id: auditId,
             framework_version: file.framework_version,
             ...(file.commit !== undefined ? { commit: file.commit } : {}),
+            ...(scope !== undefined ? { scope } : {}),
           }),
         ]);
       }
 
       return {
         ...file,
+        ...(scope !== undefined ? { scope, left_unscored: leftUnscored } : {}),
         assessment_count: section.assessments.length,
         open_findings: open.length,
         lanes,
@@ -528,7 +620,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
     {
       name: "kritik_regressions",
       description:
-        "What got worse between two audits: a cell whose maturity level dropped, a cell that gained an open Critical or High finding, and a finding that was resolved and is open again. Cells scored in only one of the two audits are not compared — a half-finished audit is not a regression. With record=true, appends one quality.signal.tripped per regression (repo mode only — hosted comparisons are read-only and cover assessment-level drops, since hosted findings are a living pool rather than per-audit snapshots). A tripped signal is NOT a finding; it is the prompt to go look.",
+        "What got worse between two audits: a cell whose maturity level dropped, a cell that gained an open Critical or High finding, and a finding that was resolved and is open again. In repo mode each side is every audit through it, merged latest-wins, so a scoped re-audit's cells are compared with their last reading wherever it was taken; cells with no reading on one side are not compared — a half-finished audit is not a regression. With record=true, appends one quality.signal.tripped per regression (repo mode only — hosted comparisons are read-only and cover assessment-level drops, since hosted findings are a living pool rather than per-audit snapshots). A tripped signal is NOT a finding; it is the prompt to go look.",
       inputSchema: {
         type: "object",
         properties: {
@@ -588,9 +680,11 @@ export function buildKritikCatalog(ctx: KritikContext): {
 
       let regressions: Regression[];
       try {
+        // Merged through each audit: a scoped `to` holds only the cells it
+        // re-scored, each compared with its last reading wherever it was taken.
         regressions = detectRegressions(
-          loadQualitySection(root, from, library),
-          loadQualitySection(root, to, library),
+          loadQualitySectionThrough(root, from, library),
+          loadQualitySectionThrough(root, to, library),
           library,
         );
       } catch (error) {
@@ -663,7 +757,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
     {
       name: "kritik_scope",
       description:
-        "The cells a batch of fixes made stale — the work list for a scoped re-audit. A score only moves when its cell is re-scored, so after closing findings this lists exactly which (criterion x surface) cells to re-score instead of running a comprehensive audit: every quality.finding.resolved since the last recorded audit names its cell (`kind: direct`, `because` = finding ids), and one hop over node_ids adds neighbouring assessed cells a shared fix plausibly moved (`kind: widened`, `because` = node ids). Accepted risks are not fixes and never scope anything. `unknown` lists resolved ids that name no finding — report those, something closed an id that does not exist; `unscorable` lists resolved findings whose cell nothing can re-score (a retired criterion, a surface no longer in the profile). It plans an audit and scores nothing: re-score each cell with kritik_score and evidence into an audit of its own (audit_id `<YYYY-MM>-scoped`) — never the `since` audit, whose recorded reading is history — then kritik_matrix with that audit_id and record=true. Works in both modes — hosted reads the hosted journal and quality section.",
+        "The cells a batch of fixes made stale — the work list for a scoped re-audit. A score only moves when its cell is re-scored, so after closing findings this lists exactly which (criterion x surface) cells to re-score instead of running a comprehensive audit: every quality.finding.resolved since the last recorded audit names its cell (`kind: direct`, `because` = finding ids), and one hop over node_ids adds neighbouring assessed cells a shared fix plausibly moved (`kind: widened`, `because` = node ids). Accepted risks are not fixes and never scope anything. `unknown` lists resolved ids that name no finding — report those, something closed an id that does not exist; `unscorable` lists resolved findings whose cell nothing can re-score (a retired criterion, a surface no longer in the profile). It plans an audit and scores nothing: re-score each cell with kritik_score, evidence and scope=true (which writes into an audit of its own, `<YYYY-MM>-scoped`, never the `since` audit whose recorded reading is history), then kritik_matrix with that audit_id and record=true. Recording closes the window: a cell left unscored drops out of the next scope, so re-score a widened cell that did not move at its current level, saying so in the evidence. Works in both modes — hosted reads the hosted journal and quality section.",
       inputSchema: {
         type: "object",
         properties: {
@@ -676,38 +770,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
     async (args) => {
       const graph = await load();
       const since = typeof args.since === "string" && args.since !== "" ? args.since : undefined;
-      if (since !== undefined) {
-        const recorded = recordedAuditIds(graph.journal);
-        if (!recorded.includes(since)) {
-          throw new ToolError(
-            `No recorded audit "${since}" in this journal (recorded: ${recorded.join(", ") || "none"}). ` +
-              `A scope is measured from a recorded reading — kritik_matrix with record=true writes one.`,
-          );
-        }
-      }
-
-      // Both modes read the CURRENT state — the merge across every audit —
-      // because a finding resolved this week was routinely opened two audits
-      // ago, and its cell's standing score may come from any of them.
-      let section: Pick<QualitySection, "profile" | "assessments" | "findings">;
-      let library: Pick<KritikLibrary, "criteria">;
-      if (ctx.qualityRoot === undefined) {
-        const hosted = hostedSection(graph);
-        section = hosted.section;
-        library = hosted.library ?? { criteria: [] };
-      } else {
-        const root = ctx.qualityRoot;
-        const full = libraryOf(root);
-        const profile = profileOf(root);
-        try {
-          section = loadCurrentQualitySection(root, full) ?? { profile, assessments: [], findings: [] };
-        } catch (error) {
-          throw new ToolError((error as Error).message);
-        }
-        library = full;
-      }
-
-      const scope = deriveAuditScope(graph.journal, section, library, {
+      const scope = scopeOf(graph, {
         ...(since !== undefined ? { since } : {}),
         ...(args.widen === false ? { widen: false } : {}),
       });
@@ -794,7 +857,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
     {
       name: "kritik_score",
       description:
-        "Record one (criterion x surface) maturity level with the evidence behind it. A cell holds exactly one level, so re-scoring replaces in place. Evidence is required: a score without a citation is an opinion, not an assessment. Score what the code IS, never what an open PR promises — that is what makes a trend real. Repo sessions only: scoring reads the code, so a hosted session refuses.",
+        "Record one (criterion x surface) maturity level with the evidence behind it. A cell holds exactly one level, so re-scoring replaces in place. Evidence is required: a score without a citation is an opinion, not an assessment. Score what the code IS, never what an open PR promises — that is what makes a trend real. For a scoped re-audit pass scope=true: a cell kritik_scope does not list is refused (so a between-milestone re-audit cannot drift into a comprehensive one), and the score lands in a scoped audit of its own (default <YYYY-MM>-scoped). Repo sessions only: scoring reads the code, so a hosted session refuses.",
       inputSchema: {
         type: "object",
         properties: {
@@ -806,8 +869,15 @@ export function buildKritikCatalog(ctx: KritikContext): {
             description: "0 Absent · 1 Ad-hoc · 2 Defined · 3 Managed · 4 Verified. N/A is the absence of the row, not a level.",
           },
           evidence: { type: "string", description: "file:line / config citations, markdown." },
-          audit_id: { type: "string", description: "Default: the newest audit, or the current YYYY-MM." },
+          audit_id: {
+            type: "string",
+            description: "Default: the newest audit, or the current YYYY-MM. With scope=true: the scoped audit in progress, else <YYYY-MM>-scoped.",
+          },
           commit: { type: "string" },
+          scope: {
+            type: "boolean",
+            description: "This is a scoped re-audit: refuse a cell kritik_scope does not list. Leave it off to re-score an out-of-scope cell on purpose.",
+          },
         },
         required: ["criterion_id", "surface", "level", "evidence"],
         additionalProperties: false,
@@ -831,7 +901,46 @@ export function buildKritikCatalog(ctx: KritikContext): {
         );
       }
 
-      const auditId = auditForWrite(root, args.audit_id);
+      let scopedFrom: string | undefined;
+      let auditId: string;
+      // Loaded only when needed: to scope, or to say a plain score rewrites a
+      // recorded reading. Scoring itself never touches the journal.
+      const graph = await load();
+      if (args.scope === true) {
+        const scope = scopeOf(graph);
+        if (scope.since === null) {
+          throw new ToolError("scope=true needs a recorded audit to measure from — kritik_matrix with record=true writes one.");
+        }
+        if (!scope.cells.some((cell) => cell.criterion_id === criterionId && cell.surface === surface)) {
+          throw new ToolError(
+            `${criterionId} x ${surface} is not in the current scope (${scopeSummary(scope)}). ` +
+              `kritik_scope lists the cells; leave scope off to re-score this one on purpose.`,
+          );
+        }
+        try {
+          auditId = scopedAuditTarget(
+            root,
+            scope.since,
+            currentAuditId(),
+            typeof args.audit_id === "string" && args.audit_id !== "" ? args.audit_id : undefined,
+            recordedAuditIds(graph.journal),
+          );
+        } catch (error) {
+          throw new ToolError((error as Error).message);
+        }
+        scopedFrom = scope.since;
+      } else {
+        auditId = auditForWrite(root, args.audit_id);
+      }
+      // Said out loud rather than refused — each has a legitimate use.
+      const notes: string[] = [];
+      if (scopedFrom === undefined) {
+        if (recordedAuditIds(graph.journal).includes(auditId)) {
+          notes.push(`${auditId} is already recorded — a re-score here rewrites that reading. For a re-audit after fixes, pass scope=true.`);
+        }
+        const order = auditOrderNote(root, auditId);
+        if (order !== undefined) notes.push(order);
+      }
       const file = loadScoresOrEmpty(root, auditId);
       const assessment: QualityAssessment = {
         criterion_id: criterionId,
@@ -848,15 +957,18 @@ export function buildKritikCatalog(ctx: KritikContext): {
         audit_id: auditId,
         framework_version: file.framework_version ?? library.version,
         ...(typeof args.commit === "string" ? { commit: args.commit } : {}),
+        ...(scopedFrom !== undefined ? { scope: { since: scopedFrom } } : {}),
         assessments,
       });
 
       return {
         assessment,
         audit_id: auditId,
+        ...(scopedFrom !== undefined ? { scoped_from: scopedFrom } : {}),
         assessment_count: assessments.length,
         ...(replaced !== undefined ? { replaced_level: replaced.level } : {}),
         anchor: criterion.level_anchors?.[`l${level}`],
+        ...(notes.length > 0 ? { notes } : {}),
       };
     },
   );

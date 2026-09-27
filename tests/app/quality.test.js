@@ -826,5 +826,38 @@ const { worstOpenFindingFor } = loadQuality();
   assert(worstOpenFindingFor([], "V-x") === null, "no rows at all gets null");
 }
 
+// --- describeAuditCompleted (issue #443) -----------------------------------
+
+{
+  const { describeAuditCompleted } = loadQuality();
+  const full = describeAuditCompleted({ type: "quality.audit.completed", audit_id: "2026-08", framework_version: "1.0.0" });
+  assert(full.text === "Audit 2026-08 completed" && full.meta === "Kritik 1.0.0", `a comprehensive audit reads as before (got ${JSON.stringify(full)})`);
+
+  const scoped = describeAuditCompleted({
+    type: "quality.audit.completed",
+    audit_id: "2026-09-scoped",
+    framework_version: "1.0.0",
+    scope: { partial: true, cells: 12, since: "2026-08" },
+  });
+  assert(scoped.text === "Scoped re-audit of 12 cells", `a scoped audit leads with how much it looked at (got ${scoped.text})`);
+  assert(
+    scoped.meta === "2026-09-scoped · since 2026-08 · Kritik 1.0.0",
+    `its meta names the audit, what it was measured from, and the pack (got ${scoped.meta})`,
+  );
+
+  const one = describeAuditCompleted({ audit_id: "2026-09-scoped", scope: { partial: true, cells: 1, since: "2026-08" } });
+  assert(one.text === "Scoped re-audit of 1 cell" && one.meta === "2026-09-scoped · since 2026-08", `one cell is singular (got ${JSON.stringify(one)})`);
+
+  const uncounted = describeAuditCompleted({ audit_id: "2026-09-scoped", scope: { partial: true, cells: "twelve" } });
+  assert(
+    uncounted.text === "Scoped re-audit 2026-09-scoped" && uncounted.meta === undefined,
+    `a malformed count falls back to the audit id, never "of undefined cells" (got ${JSON.stringify(uncounted)})`,
+  );
+
+  const notPartial = describeAuditCompleted({ audit_id: "2026-08", scope: { partial: false, cells: 3 } });
+  assert(notPartial.text === "Audit 2026-08 completed", `a scope that is not partial reads as a whole audit (got ${notPartial.text})`);
+  assert(describeAuditCompleted({}).text === "Audit ? completed", "an event with nothing on it still renders");
+}
+
 console.log(failures === 0 ? "\nAll quality projections OK" : `\n${failures} failure(s)`);
 process.exit(failures === 0 ? 0 : 1);

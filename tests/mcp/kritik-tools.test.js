@@ -404,6 +404,87 @@ async function run() {
     const noOlder = await session.call("kritik_regressions", { to: auditA });
     check("the oldest audit has nothing before it to compare against", noOlder.isError && noOlder.json.message.includes("oldest"), noOlder.text);
 
+    // --- the scoped re-audit (issue #443, part 2) -------------------------------
+    //
+    // After the regressions block on purpose: a `<month>-scoped` audit sorts
+    // after `${auditA}-2`, and would otherwise become the "newest" that block
+    // defaults its comparison to. The scope is still the one opened above —
+    // the fix resolved since `auditA` was recorded.
+
+    // A cell the scoped pass will not touch, so the record can prove it merged.
+    await session.call("kritik_score", { criterion_id: "SEC-02", surface: "supabase", level: 2, evidence: "rls.sql:4", audit_id: auditB });
+
+    // SEC-02 x supabase is IN scope now — widened, its RLS finding shares
+    // V-home with the fix — so the refusal is tested on a cell tied to nothing.
+    const widenedIn = await session.call("kritik_scope", {});
+    check(
+      "a scored neighbour sharing a node with the fix is widened into the scope",
+      widenedIn.json.cells.some((cell) => cell.criterion_id === "SEC-02" && cell.surface === "supabase" && cell.kind === "widened" && cell.because.includes("V-home")),
+      widenedIn.text.slice(0, 400),
+    );
+    const outOfScope = await session.call("kritik_score", { criterion_id: "SEC-04", surface: "web", level: 3, evidence: "x", scope: true });
+    check(
+      "kritik_score scope=true refuses a cell kritik_scope does not list",
+      outOfScope.isError && outOfScope.json.message.includes("not in the current scope") && outOfScope.json.message.includes("kritik_scope"),
+      outOfScope.text.slice(0, 300),
+    );
+
+    const inScope = await session.call("kritik_score", { criterion_id: "SEC-01", surface: "web", level: 4, evidence: "auth.ts:3 rotates on login", scope: true });
+    const scopedAudit = `${auditA}-scoped`;
+    check(
+      "an in-scope cell lands in a scoped audit of its own",
+      !inScope.isError && inScope.json.audit_id === scopedAudit && inScope.json.scoped_from === auditA,
+      inScope.text.slice(0, 300),
+    );
+    check("the scoped audit is stamped", session.readJson("docs", "quality", "audits", scopedAudit, "scores.json").scope?.since === auditA);
+
+    const scopedMatrix = await session.call("kritik_matrix", { audit_id: scopedAudit, record: true });
+    check(
+      "kritik_matrix reports the scope it detected from the stamp",
+      !scopedMatrix.isError && JSON.stringify(scopedMatrix.json.scope) === JSON.stringify({ partial: true, cells: 1, since: auditA }),
+      scopedMatrix.text.slice(0, 300),
+    );
+    check("matrix.json stays this audit alone — supabase is N/A there", scopedMatrix.json.matrix.SEC.supabase === null, JSON.stringify(scopedMatrix.json.matrix.SEC));
+    check(
+      "the reply names the scoped cell left unscored as the window closes",
+      JSON.stringify(scopedMatrix.json.left_unscored) === JSON.stringify([{ criterion_id: "SEC-02", surface: "supabase", kind: "widened" }]),
+      JSON.stringify(scopedMatrix.json.left_unscored),
+    );
+    const scopedEvent = scopedMatrix.json.events[0] ?? {};
+    check("the recorded event carries the scope marker", scopedEvent.scope?.partial === true && scopedEvent.scope?.since === auditA, JSON.stringify(scopedEvent));
+    check(
+      "and the merged picture — the supabase cell this pass never touched keeps its score",
+      typeof scopedEvent.scores?.supabase?.SEC === "number",
+      JSON.stringify(scopedEvent.scores),
+    );
+
+    const afterScoped = await session.call("kritik_scope", {});
+    check("recording the scoped audit opens a fresh window from it", afterScoped.json.since === scopedAudit && afterScoped.json.cells.length === 0, afterScoped.text.slice(0, 300));
+
+    // auditB (`<month>-2`) sorts BEFORE the scoped audit, so what it was
+    // measured from is the newest recorded audit sorting before it — auditA —
+    // never the later scoped one.
+    const declared = await session.call("kritik_matrix", { audit_id: auditB, scope: true });
+    check(
+      "scope=true declares an unstamped audit scoped, measured from the newest recorded audit sorting before it",
+      !declared.isError && declared.json.scope?.since === auditA,
+      declared.text.slice(0, 300),
+    );
+    const declaredRecorded = await session.call("kritik_matrix", { audit_id: auditA, scope: true, record: true });
+    check(
+      "scope=true refuses an audit already recorded",
+      declaredRecorded.isError && declaredRecorded.json.message.includes("already recorded"),
+      declaredRecorded.text.slice(0, 300),
+    );
+
+    const plainIntoRecorded = await session.call("kritik_score", { criterion_id: "SEC-01", surface: "web", level: 3, evidence: "unchanged", audit_id: auditA });
+    const notes = plainIntoRecorded.json.notes ?? [];
+    check(
+      "a plain score into a recorded audit that sorts early carries both notes",
+      !plainIntoRecorded.isError && notes.some((n) => n.includes("already recorded")) && notes.some((n) => n.includes("sorts before")),
+      JSON.stringify(notes),
+    );
+
     // --- the whole journal -----------------------------------------------------
 
     const kinds = new Set(session.journal().map((event) => event.type));
@@ -585,6 +666,9 @@ async function run() {
 
     // Refused, not silently ignored — an agent that asked for one audit's
     // matrix must not be handed the whole pool as though it were scoped.
+    const hostedScopeMatrix = await hosted.call("kritik_matrix", { scope: true });
+    check("hosted matrix refuses scope — a scoped re-audit is an audit run", hostedScopeMatrix.isError && /audit run/.test(hostedScopeMatrix.json.message), hostedScopeMatrix.text.slice(0, 300));
+
     const matrixScoped = await hosted.call("kritik_matrix", { audit_id: "2026-08" });
     check(
       "hosted matrix refuses audit_id rather than ignoring it",

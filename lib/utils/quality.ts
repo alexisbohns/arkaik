@@ -601,6 +601,39 @@ export function describeDelta(delta: ScoreDelta | undefined): string | null {
   return `unchanged from ${delta.previous}${where}`;
 }
 
+/**
+ * A `quality.audit.completed` in words, for the journal feed.
+ *
+ * A scoped re-audit (issue #443) says so — "Scoped re-audit of 12 cells" — so
+ * nobody reads a between-milestone pass over a dozen cells as the whole audit
+ * it is not. Its scores are the merged picture either way; what differs is how
+ * much was actually looked at, and that is the thing a reader of the feed needs.
+ * Lenient like every reader of stored events: a malformed `scope` falls back to
+ * the plain wording rather than rendering "of undefined cells".
+ */
+export function describeAuditCompleted(event: Readonly<Record<string, unknown>>): { text: string; meta?: string } {
+  const str = (value: unknown) => (typeof value === "string" && value !== "" ? value : undefined);
+  const audit = str(event.audit_id);
+  const framework = str(event.framework_version);
+  const kritik = framework ? `Kritik ${framework}` : undefined;
+
+  const scope = event.scope as { partial?: unknown; cells?: unknown; since?: unknown } | null | undefined;
+  if (typeof scope !== "object" || scope === null || scope.partial !== true) {
+    const text = `Audit ${audit ?? "?"} completed`;
+    return kritik ? { text, meta: kritik } : { text };
+  }
+
+  // The count leads when there is one, and the audit id moves to the meta;
+  // without a count the id is all the headline has to say which pass it was.
+  const cells = typeof scope.cells === "number" && Number.isFinite(scope.cells) ? scope.cells : undefined;
+  const since = str(scope.since);
+  const text = cells !== undefined ? `Scoped re-audit of ${cells} cell${cells === 1 ? "" : "s"}` : `Scoped re-audit ${audit ?? "?"}`;
+  const meta = [cells !== undefined ? audit : undefined, since ? `since ${since}` : undefined, kritik]
+    .filter((part): part is string => part !== undefined)
+    .join(" · ");
+  return meta === "" ? { text } : { text, meta };
+}
+
 /** One recorded audit's reading of a cell, for the cell panel's History. */
 export interface CellHistoryRow {
   auditId: string;
