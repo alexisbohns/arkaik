@@ -77,11 +77,27 @@ function startStubServer(state) {
       res.end(JSON.stringify(body));
     };
 
+    // The two reads answer conditionally once `state.version` is set, the way
+    // the real routes do: a weak ETag on every 200, a bodiless 304 when
+    // `If-None-Match` still matches. Unset, they send no validator at all —
+    // the store must work against a server that never offers one.
+    const conditional = (etag, body) => {
+      if (state.version === undefined) return json(200, body);
+      if (req.headers["if-none-match"] === etag) {
+        state.notModified++;
+        res.writeHead(304, { etag });
+        res.end();
+        return undefined;
+      }
+      res.writeHead(200, { "content-type": "application/json", etag });
+      res.end(JSON.stringify(body));
+      return undefined;
+    };
     if (req.url === `/api/graph/projects/${PROJECT_ID}` && req.method === "GET") {
-      return json(200, { bundle: state.bundle, version: "1" });
+      return conditional(`W/"${state.version}"`, { bundle: state.bundle, version: "1" });
     }
     if (req.url === `/api/graph/projects/${PROJECT_ID}/journal` && req.method === "GET") {
-      return json(200, { journal: state.journal });
+      return conditional(`W/"${state.version}.${state.journal.length}"`, { journal: state.journal });
     }
     if (req.url === `/api/graph/projects/${PROJECT_ID}/quality/events` && req.method === "POST") {
       let body = "";
@@ -178,6 +194,7 @@ async function main() {
     journal: [],
     requests: [],
     receivedOps: [],
+    notModified: 0,
     refuseNext: false,
   };
   const server = startStubServer(state);
@@ -490,6 +507,51 @@ async function main() {
       String(twoRefusalError),
     );
     state.refuseQuality = null;
+
+    // --- Conditional reads ---------------------------------------------------
+    // Every tool call loads, and a load used to pull the whole bundle AND the
+    // whole journal again — hundreds of full downloads in one agent session,
+    // enough to exhaust the hosted database's transfer quota. The routes
+    // already answer `If-None-Match` with a bodiless 304; the store has to ask.
+    state.version = "1";
+    state.notModified = 0;
+    const cachingStore = createRemoteStore({ baseUrl, projectId: PROJECT_ID, token: state.token });
+    const first = await cachingStore.load();
+    const second = await cachingStore.load();
+    check(
+      "a second load with nothing changed is answered by two 304s",
+      state.notModified === 2,
+      `${state.notModified} not-modified answer(s)`,
+    );
+    check(
+      "and still returns the full graph and journal",
+      second.nodes.length === 2 && Array.isArray(second.journal) && second.project.title === "Hosted graph",
+      JSON.stringify({ nodes: second.nodes.length, journal: second.journal }),
+    );
+
+    // Tools mutate what `load()` hands them. A cached copy they could reach
+    // would carry a refused or half-applied change into the next call.
+    first.nodes.push({ id: "V-leak" });
+    second.nodes.push({ id: "V-leak-2" });
+    const third = await cachingStore.load();
+    check(
+      "a load never returns an object an earlier caller could have mutated",
+      third.nodes.length === 2 && third.nodes !== second.nodes,
+      JSON.stringify(third.nodes.map((n) => n.id)),
+    );
+
+    // A write moves the server's version; the next load must see it.
+    state.version = "2";
+    state.bundle = { ...makeBundle(), nodes: [...makeBundle().nodes, { id: "V-new", project_id: "gp", species: "view", title: "New", status: "idea", platforms: ["web"] }] };
+    state.notModified = 0;
+    const changed = await cachingStore.load();
+    state.bundle = makeBundle();
+    check(
+      "a changed validator brings the fresh body",
+      state.notModified === 0 && changed.nodes.some((n) => n.id === "V-new"),
+      JSON.stringify({ notModified: state.notModified, nodes: changed.nodes.map((n) => n.id) }),
+    );
+    state.version = undefined;
   } finally {
     server.close();
     fs.rmSync(tmp, { recursive: true, force: true });
