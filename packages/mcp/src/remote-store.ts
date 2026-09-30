@@ -67,14 +67,54 @@ export function createRemoteStore(options: RemoteStoreOptions): Store {
     return body as T;
   }
 
+  // The last body each read path answered, with the validator it came with.
+  // Kept as TEXT and parsed per load: tools mutate what `load()` returns, so a
+  // shared parsed object would carry one call's refused edit into the next.
+  const lastRead = new Map<string, { etag: string; text: string }>();
+
+  /**
+   * A GET that revalidates. Every tool call loads, and the reads are the whole
+   * bundle and the whole journal — unconditional, one agent session pulled
+   * them hundreds of times over and exhausted the hosted database's transfer
+   * quota. The routes answer a matching `If-None-Match` with a bodiless 304
+   * without the snapshot leaving Postgres, so asking costs nearly nothing.
+   */
+  async function read<T>(path: string): Promise<T> {
+    const cached = lastRead.get(path);
+    const res = await doFetch(`${projectPath}${path}`, {
+      headers: {
+        authorization: `Bearer ${options.token}`,
+        ...(cached ? { "if-none-match": cached.etag } : {}),
+      },
+    });
+    if (res.status === 304 && cached) return JSON.parse(cached.text) as T;
+    const text = await res.text();
+    let body: unknown = null;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      // Left null: describeFailure falls back to the status.
+    }
+    if (!res.ok) {
+      const err = new Error(describeFailure(res.status, body)) as Error & { status: number; body: unknown };
+      err.status = res.status;
+      err.body = body;
+      throw err;
+    }
+    const etag = res.headers.get("etag");
+    if (etag) lastRead.set(path, { etag, text });
+    else lastRead.delete(path);
+    return body as T;
+  }
+
   return {
     async load(): Promise<LoadedGraph> {
       // Two reads rather than one /export: the journal can be large and most
       // tool calls never look at it, but `get_changelog` and the timeline
       // projections do — so it is fetched, just not merged into the snapshot.
       const [{ bundle }, { journal }] = await Promise.all([
-        request<{ bundle: Record<string, unknown> }>(""),
-        request<{ journal: JournalEvent[] }>("/journal"),
+        read<{ bundle: Record<string, unknown> }>(""),
+        read<{ journal: JournalEvent[] }>("/journal"),
       ]);
 
       const nodes = (bundle.nodes ?? []) as unknown[];
