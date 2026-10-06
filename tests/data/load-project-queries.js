@@ -72,6 +72,10 @@ function loadProjectQueries() {
   write("remote-provider.js", transpile(path.join(ROOT, "lib", "data", "remote-provider.ts"), "remote-provider.ts"));
   write("query-client.js", transpile(path.join(ROOT, "lib", "data", "query-client.ts"), "query-client.ts"));
   write("project-queries.js", transpile(path.join(ROOT, "lib", "data", "project-queries.ts"), "project-queries.ts"));
+  // The auth-status query (#429) and the gate it sets — both real; the gate
+  // has no imports and the query's other import is project-queries above.
+  write("hosted-availability.js", transpile(path.join(ROOT, "lib", "data", "hosted-availability.ts"), "hosted-availability.ts"));
+  write("auth-status.js", transpile(path.join(ROOT, "lib", "data", "auth-status.ts"), "auth-status.ts"));
 
   for (const name of fs.readdirSync(BUILD_DIR)) {
     if (name.endsWith(".js")) delete require.cache[path.join(BUILD_DIR, name)];
@@ -83,6 +87,8 @@ function loadProjectQueries() {
 
   return {
     queries: req("project-queries.js"),
+    authStatus: req("auth-status.js"),
+    availability: req("hosted-availability.js"),
     queryClient: req("query-client.js"),
     remote: req("remote-provider.js"),
     core: require("@tanstack/query-core"),
