@@ -130,6 +130,10 @@ export function createRemoteProvider(options: RemoteProviderOptions = {}): DataP
     // Unreachable for an unconditional request — the server answers 304 only
     // to `If-None-Match` — but the type has to say so somewhere.
     if (res === NOT_MODIFIED) throw new RemoteProviderError(304, null, "Unexpected 304 on an unconditional read.");
+    // A 204 is a success with nothing to parse — the archive route answers
+    // one, and `res.json()` on its empty body throws AFTER the server already
+    // did the work. Only callers that expect no body (`T` = void) get here.
+    if (res.status === 204) return undefined as T;
     return (await res.json()) as T;
   }
 
