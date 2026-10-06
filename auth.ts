@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import GitHub from "next-auth/providers/github";
 import PostgresAdapter from "@auth/pg-adapter";
 
+import { createAuthErrorLogger } from "@/lib/services/auth-errors";
 import { getPool } from "@/lib/services/db";
 
 /**
@@ -24,11 +25,18 @@ import { getPool } from "@/lib/services/db";
  * Session strategy is JWT: stateless, serverless-friendly, and it means reading
  * a session on the request path (the Synk API's auth check) never touches the
  * database. The Postgres adapter still persists users/accounts on sign-in.
+ *
+ * That adapter write is the one place sign-in depends on the database, and
+ * Auth.js reports its failure as `error=Configuration`. The logger names the
+ * database in the server log instead, and `pages.error` routes the browser to a
+ * page that checks the database before it blames configuration (issue #491).
  */
 export const { handlers, auth, signIn, signOut } = NextAuth(() => ({
   adapter: PostgresAdapter(getPool()),
   providers: [GitHub],
   session: { strategy: "jwt" },
+  logger: { error: createAuthErrorLogger() },
+  pages: { error: "/auth/error" },
   callbacks: {
     // Surface the user id to the session so route handlers and client
     // components can scope Synk data by owner. On the JWT strategy the id lives
