@@ -506,6 +506,87 @@ async function main() {
     );
   }
 
+  // --- Replacing a hosted bundle in place (#429) ---------------------------------
+  // The raw editor's save for a hosted project. It used to go through
+  // `importProject`, which the router lands LOCALLY — a phantom `prj_…` row in
+  // IndexedDB, and the server never told. It is a `PUT …/bundle` now, guarded
+  // by the version the editor was opened on.
+  {
+    const seen = [];
+    const provider = remote.createRemoteProvider({
+      fetchImpl: async (url, init) => {
+        seen.push({ url, method: init?.method, headers: init?.headers, body: init?.body });
+        return jsonResponse({ version: "8", delta: {}, dryRun: false });
+      },
+    });
+    const bundle = { project: { id: "orig" }, nodes: [], edges: [], journal: [] };
+    const result = await provider.replaceProject(HOSTED, bundle, { version: "7" });
+    const sent = seen[0];
+    check(
+      "replaceProject PUTs the bundle to the hosted bundle route",
+      seen.length === 1 && sent.method === "PUT" && sent.url.endsWith(`/projects/${HOSTED}/bundle`) &&
+        JSON.stringify(JSON.parse(sent.body)) === JSON.stringify(bundle),
+      JSON.stringify(seen),
+    );
+    check(
+      "…with the version it was based on as a quoted If-Match",
+      sent.headers["if-match"] === '"7"',
+      JSON.stringify(sent.headers),
+    );
+    check("…and answers the version after the write", result.version === "8", JSON.stringify(result));
+  }
+  {
+    const provider = remote.createRemoteProvider({
+      fetchImpl: async () =>
+        new Response(JSON.stringify({ error: "conflict", message: "The project changed since you read it.", current: "9" }), {
+          status: 412,
+        }),
+    });
+    let error = null;
+    try {
+      await provider.replaceProject(HOSTED, { project: { id: "orig" }, nodes: [], edges: [] }, { version: "7" });
+    } catch (err) {
+      error = err;
+    }
+    check(
+      "a stale version surfaces as a 412 RemoteProviderError, nothing swallowed",
+      error instanceof remote.RemoteProviderError && error.status === 412 && /changed since you read it/.test(error.message),
+      String(error),
+    );
+  }
+  {
+    const seen = [];
+    const router = routing.createRoutingProvider({
+      local: reg.localFake,
+      remote: remote.createRemoteProvider({
+        fetchImpl: async (url, init) => {
+          seen.push({ url, method: init?.method });
+          return jsonResponse({ version: "2", delta: {}, dryRun: false });
+        },
+      }),
+      isRemoteAvailable: () => true,
+    });
+    resetCalls();
+    await router.replaceProject(HOSTED, { project: { id: "orig" }, nodes: [], edges: [] }, { version: "1" });
+    check(
+      "the router sends a hosted replace to the server and never to IndexedDB",
+      seen.length === 1 && seen[0].method === "PUT" && calls.length === 0,
+      `${JSON.stringify(seen)} | ${calls.join(",")}`,
+    );
+
+    let error = null;
+    try {
+      await router.replaceProject(LOCAL, { project: { id: LOCAL }, nodes: [], edges: [] }, { version: "1" });
+    } catch (err) {
+      error = err;
+    }
+    check(
+      "…and refuses a replace for a backend with no versioned write, rather than guessing one",
+      error !== null && seen.length === 1,
+      String(error),
+    );
+  }
+
   // --- A bodiless success (#429) -------------------------------------------------
   // The archive route answers `204 No Content`. Reading a body off it threw a
   // SyntaxError AFTER the server had archived the project, so the settings

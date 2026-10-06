@@ -9,9 +9,10 @@ import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { invalidateProject, invalidateProjects } from "@/lib/data/project-queries";
+import { RemoteProviderError } from "@/lib/data/remote-provider";
 import type { ProjectBundle } from "@/lib/data/types";
 import { usePanelSelfState } from "@/lib/hooks/useProjectPanels";
-import { exportProject, importProject, normalizeProjectTimestamps, parseAndValidateBundle } from "@/lib/utils/export";
+import { loadRawBundle, normalizeProjectTimestamps, parseAndValidateBundle, saveRawBundle } from "@/lib/utils/export";
 import { PANEL_GUTTER } from "@/components/panels/PanelSection";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +39,8 @@ export function RawBundlePanel({ projectId, instanceId }: RawBundlePanelProps) {
   const [mode, setMode] = useState<"view" | "edit">("view");
   const [format, setFormat] = useState<"json" | "yaml">("json");
   const [bundle, setBundle] = useState<ProjectBundle | null>(null);
+  // The server version `bundle` was read at — a hosted save's `If-Match`.
+  const [version, setVersion] = useState<string | null>(null);
   const [draftJson, setDraftJson] = useState("");
   const [draftYaml, setDraftYaml] = useState("");
   const [loading, setLoading] = useState(true);
@@ -93,35 +96,17 @@ export function RawBundlePanel({ projectId, instanceId }: RawBundlePanelProps) {
     };
   }, []);
 
-  const scopeBundleToCurrentProject = useCallback(
-    (sourceBundle: ProjectBundle): ProjectBundle => ({
-      ...sourceBundle,
-      project: {
-        ...sourceBundle.project,
-        id: projectId,
-      },
-      nodes: sourceBundle.nodes.map((node) => ({
-        ...node,
-        project_id: projectId,
-      })),
-      edges: sourceBundle.edges.map((edge) => ({
-        ...edge,
-        project_id: projectId,
-      })),
-    }),
-    [projectId],
-  );
-
   // Load the export once per mount — the stack mounts one panel per open —
   // keeping the effect free of synchronous setState.
   useEffect(() => {
     let cancelled = false;
 
-    exportProject(projectId)
-      .then((exported) => {
+    loadRawBundle(projectId)
+      .then((loaded) => {
         if (cancelled) return;
-        setBundle(exported);
-        syncDrafts(exported);
+        setBundle(loaded.bundle);
+        setVersion(loaded.version);
+        syncDrafts(loaded.bundle);
       })
       .catch((loadError: unknown) => {
         if (cancelled) return;
@@ -241,29 +226,40 @@ export function RawBundlePanel({ projectId, instanceId }: RawBundlePanelProps) {
       return;
     }
 
+    if (!bundle) return;
+
     try {
       const parsedBundle = parseDraftToBundle(draftText, format);
-      const scopedBundle = scopeBundleToCurrentProject(parsedBundle);
-      await importProject(scopedBundle);
+      // Pins the ids to the project this editor was opened on, and sends a
+      // hosted project's save to the server rather than into this browser.
+      await saveRawBundle(projectId, parsedBundle, { bundle, version });
       // The save bypassed the hooks, so the page behind this panel would keep
       // showing the previous graph: refetch its project entry now, and let the
       // listing pick up the new counts on its next mount.
       await invalidateProject(projectId);
       void invalidateProjects();
-      const refreshedBundle = await exportProject(projectId);
-      setBundle(refreshedBundle);
-      syncDrafts(refreshedBundle);
+      const refreshed = await loadRawBundle(projectId);
+      setBundle(refreshed.bundle);
+      setVersion(refreshed.version);
+      syncDrafts(refreshed.bundle);
       setMode("view");
       setConfirmSaveOpen(false);
       setError(null);
       toast.success("Raw bundle saved successfully.");
     } catch (saveError) {
-      const message = saveError instanceof Error ? saveError.message : "Unknown save error";
-      toast.error(`Raw bundle save failed: ${message}`);
+      if (saveError instanceof RemoteProviderError && saveError.status === 412) {
+        // Someone — an agent, the CLI, another tab — wrote since this editor
+        // opened. Saving anyway would erase that write, so the draft stays
+        // here for the user to carry over by hand.
+        toast.error("This project changed since you opened the editor. Copy your edits, then close and reopen it to start from the latest version.");
+      } else {
+        const message = saveError instanceof Error ? saveError.message : "Unknown save error";
+        toast.error(`Raw bundle save failed: ${message}`);
+      }
       setMode("edit");
       setConfirmSaveOpen(false);
     }
-  }, [draftText, format, parseDraftToBundle, projectId, scopeBundleToCurrentProject, syncDrafts]);
+  }, [bundle, draftText, format, parseDraftToBundle, projectId, syncDrafts, version]);
 
   return (
     <>

@@ -6,6 +6,7 @@ import type {
   ReadJournalOptions,
   ReadProjectOptions,
   ReadResult,
+  ReplaceProjectOptions,
 } from "./data-provider";
 import { isHostedProjectId } from "./remote-provider";
 import { isSeedProjectId } from "./seed-project-id";
@@ -136,6 +137,21 @@ export function createRoutingProvider(options: RoutingProviderOptions): DataProv
       const target = forProject(projectId);
       if (target.readJournal) return target.readJournal(projectId, options);
       return { status: "fresh", value: await target.getJournal(projectId, { types: options.types }), etag: null };
+    },
+
+    /**
+     * NO fallback here, unlike the reads: the only stand-in a local or seed
+     * backend has is `importProject`, and the reason this method exists is
+     * that importing a hosted bundle landed it in IndexedDB. A caller with a
+     * project that cannot be replaced in place should import instead — and
+     * one that reaches here by mistake hears about it.
+     */
+    replaceProject(projectId: string, bundle: ProjectBundle, options: ReplaceProjectOptions) {
+      const target = forProject(projectId);
+      if (!target.replaceProject) {
+        return Promise.reject(new Error(`Project ${projectId} cannot be replaced in place; import it instead.`));
+      }
+      return target.replaceProject(projectId, bundle, options);
     },
   } satisfies DataProvider as DataProvider;
 }
