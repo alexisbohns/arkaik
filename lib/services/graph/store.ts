@@ -393,6 +393,83 @@ export async function getJournal(
 }
 
 /**
+ * What the pollen feed needs before it can answer at all, in one owner-scoped
+ * statement: the read validators (the 304 path, and the feed's ETag) and the
+ * project's plant slug (the opt-in gate). The two travel together on purpose —
+ * a project without a plant must answer the same 404 as a missing project on
+ * the CONDITIONAL path too, or `If-None-Match: *` would become an existence
+ * oracle for feed-less projects. `->>` on the nested key pulls one short text
+ * out of the snapshot; the bundle itself never leaves Postgres (issue #490).
+ */
+export async function loadPollenHead(
+  projectId: string,
+  ownerIds: readonly string[],
+): Promise<{ validators: ProjectValidators; plant: string | null } | null> {
+  const { rows } = await query<ValidatorColumns & { plant: string | null }>(
+    `select p.snapshot->'project'->'metadata'->'pollen'->>'plant' as plant, ${VALIDATOR_COLUMNS}
+       from graph_projects p
+      where ${READ_SCOPE}`,
+    [projectId, ownerIds],
+  );
+  if (rows.length === 0) return null;
+  return { validators: toValidators(rows[0]), plant: rows[0].plant ?? null };
+}
+
+/**
+ * Whether the feed holds an event with this id — the cursor check, without
+ * the journal. A cursor names an event the feed SERVED, so it has to be one
+ * of the projected types: a `node.created` id is as unknown to the feed as
+ * one that was never written. The composite primary key answers it in one
+ * index lookup. Not owner-scoped on its own: callers run it after
+ * `loadPollenHead` has authorized the project.
+ */
+export async function pollenEventExists(
+  projectId: string,
+  eventId: string,
+  types: readonly string[],
+): Promise<boolean> {
+  const { rows } = await query<{ found: number }>(
+    `select 1 as found from graph_events
+      where project_id = $1 and id = $2 and event->>'type' = any($3::text[])`,
+    [projectId, eventId, types],
+  );
+  return rows.length > 0;
+}
+
+/**
+ * The feed's body, and only that: `{ id, title }` for every node (what the
+ * projection labels `decided` envelopes with) and the events of the projected
+ * types in server order. The titles come out of `jsonb_array_elements` so the
+ * node objects never leave Postgres whole; the events ride the
+ * `(project_id, (event->>'type'), seq)` index from migration 011, so the
+ * `node.*`/`edge.*` bulk of a journal is never read. Not owner-scoped: it
+ * runs after `loadPollenHead` has authorized the project, and the validators
+ * that head carried are the ones the answer is stamped with (validators
+ * first, then body — the same ordering argument as `getJournal`).
+ */
+export async function loadPollenSource(
+  projectId: string,
+  types: readonly string[],
+): Promise<{ titles: { id: string; title: string }[]; events: JournalEvent[] }> {
+  const titleRows = await query<{ titles: { id: string; title: string }[] | null }>(
+    `select coalesce(
+              (select jsonb_agg(jsonb_build_object('id', n->>'id', 'title', n->>'title'))
+                 from jsonb_array_elements(coalesce(p.snapshot->'nodes', '[]'::jsonb)) as n),
+              '[]'::jsonb) as titles
+       from graph_projects p
+      where p.id = $1`,
+    [projectId],
+  );
+  const { rows } = await query<{ event: JournalEvent }>(
+    `select event from graph_events
+      where project_id = $1 and event->>'type' = any($2::text[])
+      order by seq asc`,
+    [projectId, types],
+  );
+  return { titles: titleRows.rows[0]?.titles ?? [], events: rows.map((row) => row.event) };
+}
+
+/**
  * A project's journal events of exactly the given types, and nothing else.
  *
  * Owner-scoped with the same `READ_SCOPE` clause every read uses, as a

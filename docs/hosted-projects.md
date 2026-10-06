@@ -538,7 +538,9 @@ A hosted project can serve its journal as a **pollen feed** — the transport
 the Ariko federation reads (spec: [services.md § Pollen Feed](spec/services.md)).
 In the project's settings, set a **plant slug** under Federation; the feed
 then answers at `/api/graph/projects/{id}/pollen` for any token with
-`graph:read`.
+`graph:read`. Like every other hosted read it answers conditionally: send the
+`ETag` of the last page back as `If-None-Match` and a poll that finds nothing
+new is a bodiless `304` that reads neither the bundle nor the journal.
 
 While you're there: with the GitHub App installed, a merged PR whose body
 carries a `## Lab Note` section also lands that note in the project's

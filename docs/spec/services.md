@@ -195,6 +195,7 @@ Rules:
 | `GET /api/graph/projects/{id}/edges` | `{ edges }` | `W/"<version>"` |
 | `GET /api/graph/projects/{id}/journal` | `{ journal }`, server order | `W/"<version>.<event count>"` |
 | `GET /api/graph/projects/{id}/export` | `{ bundle }` with the journal embedded | `W/"<version>.<event count>"` |
+| `GET /api/graph/projects/{id}/pollen?after=&limit=` | `{ pollen }`, one page of the projected journal | `W/"<version>.<event count>.<page tag>"` — the page tag is a hash of `after` and `limit` |
 
 - **Every read answers with `ETag`, `Cache-Control: private, no-cache` and `Vary: Authorization`** — on the `200` and on the `304` alike. `private` because every body is owner-scoped, `no-cache` because a client must revalidate rather than reuse blind, `Vary` because a bearer token selects the owner.
 - **`If-None-Match` earns a bodiless `304`.** The comparison is weak (RFC 9110 § 8.8.3.2): a case-insensitive `W/` on either side is ignored, `*` matches any representation that exists, and a comma list matches on any member. A matching conditional read costs the auth queries plus one validator statement — no snapshot is loaded, nothing but headers is written.
@@ -230,6 +231,20 @@ conformance fixtures at `tests/fixtures/pollen/`).
 - **Rebuilds**: a bundle restore replaces the journal wholesale; surviving
   event ids keep their envelope ids (ULIDs are preserved), vanished cursors
   get the 410. This is the contract's coordinated-rewrite case.
+- **Conditional**: every answer carries the read headers above with the
+  validator `W/"<version>.<event count>.<page tag>"` — the journal's
+  validator plus a hash of this page's `after` and `limit`, so a consumer
+  that stores one ETag beside one cursor can never earn a 304 for one page
+  with the tag of another. A matching `If-None-Match` answers a bodiless
+  **304** from the auth queries, one owner-scoped statement (validators and
+  plant slug together, so a feed-less project still 404s and `*` is no
+  existence oracle) and one index lookup for the cursor; neither the bundle
+  nor the journal body is read. The cursor check runs **before** the
+  conditional answer: an unknown `after` is 410 whatever the header says,
+  `*` included, because a gone cursor is not a representation to be
+  unmodified from. A 200 loads only what the projection reads — node
+  `{ id, title }` pairs and the events of the three projected types — never
+  the whole bundle or the whole journal.
 
 The webhook's Lab-Note half feeds this: a merged PR of a linked repository
 whose body carries a `## Lab Note` section lands one `deliverable.shipped`

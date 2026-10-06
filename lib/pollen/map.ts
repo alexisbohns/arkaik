@@ -17,9 +17,27 @@ export interface MappedFeed {
 
 const SOURCE = "arkaik";
 
+/**
+ * The journal event types `mapEvent` below reads. Every other type is noise to
+ * the feed, so a store that serves this projection can filter on these in
+ * Postgres and never load the rest — the self-map's journal is mostly
+ * `node.*` and `edge.*` rows that would only be scanned and dropped here.
+ * Keep in step with `mapEvent`: a type mapped there but missing here would
+ * silently vanish from the hosted feed while the pure projection still emits
+ * it (tests/app/pollen-map.test.js pins the two together).
+ */
+export const POLLEN_SOURCE_TYPES: readonly string[] = [
+  "deliverable.shipped",
+  "release.tagged",
+  "decision.status_changed",
+];
+
+/** What the projection needs from a node: its title, to label a `decided` envelope. */
+export type PollenTitleSource = Pick<Node, "id" | "title">;
+
 export function journalToPollen(
   events: readonly JournalEvent[],
-  nodes: readonly Pick<Node, "id" | "title">[],
+  nodes: readonly PollenTitleSource[],
   config: PollenMapConfig,
 ): MappedFeed {
   const titles = new Map(nodes.map((n) => [n.id, n.title]));

@@ -42,6 +42,7 @@ const {
   snapshotEtag,
   journalEtag,
   bundleEtag,
+  pollenEtag,
   readResponseHeaders,
   ifNoneMatchSatisfied,
   parseJournalTypes,
@@ -86,6 +87,37 @@ assert(
 assert(
   snapshotEtag(validators("4", "12", "4")) !== snapshotEtag(validators("3", "12", "4")),
   "a mutation's version bump moves the snapshot validators",
+);
+
+// --- The pollen feed's composite ---------------------------------------------
+//
+// The feed is a PAGE of the journal, so its validator is the journal's
+// (version + event count) plus a tag for the page parameters: a client that
+// stores one ETag beside one cursor can never turn a stale `after` into a 304
+// by sending the tag it earned for a different page.
+const page = (after, limit) => ({ after, limit });
+const pollen = (v, after, limit) => pollenEtag(validators(...v), page(after, limit));
+
+assert(
+  /^W\/"3\.12\.[0-9a-f]{8}"$/.test(pollen(["3", "12", "4"], null, 100)),
+  "the pollen validator is the journal's parts plus one fixed-width page tag",
+  pollen(["3", "12", "4"], null, 100),
+);
+assert(pollen(["3", "12", "4"], null, 100) === pollen(["3", "12", "4"], null, 100), "the same page stamps the same tag");
+assert(pollen(["3", "12", "4"], "arkaik:01A", 100) !== pollen(["3", "12", "4"], null, 100), "a cursor changes the tag");
+assert(pollen(["3", "12", "4"], "arkaik:01A", 100) !== pollen(["3", "12", "4"], "arkaik:01B", 100), "a different cursor is a different page");
+assert(pollen(["3", "12", "4"], null, 100) !== pollen(["3", "12", "4"], null, 200), "a different limit is a different page");
+assert(pollen(["3", "12", "4"], null, 100) !== pollen(["3", "12", "4"], "", 100), "an empty cursor is not a missing one");
+assert(pollen(["3", "13", "4"], null, 100) !== pollen(["3", "12", "4"], null, 100), "an appended event moves the feed validator");
+assert(pollen(["4", "12", "4"], null, 100) !== pollen(["3", "12", "4"], null, 100), "a version bump (a restore) moves it too");
+assert(
+  pollen(["3", "12", "5"], null, 100) === pollen(["3", "12", "4"], null, 100),
+  "the quality-decision count alone is not part of it — the whole event count already covers every append",
+);
+assert(
+  /^W\/"[!#-~]+"$/.test(pollen(["3", "12", "4"], 'a "quoted", spaced cursor', 100)),
+  "an arbitrary cursor is hashed, so the tag stays a valid entity-tag whatever the client sent",
+  pollen(["3", "12", "4"], 'a "quoted", spaced cursor', 100),
 );
 
 // --- The response headers ---------------------------------------------------
