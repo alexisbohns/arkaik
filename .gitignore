@@ -17,6 +17,7 @@
 /packages/schema/.generate-build/
 /tests/data/.test-build/
 /tests/data/.test-build-export/
+/tests/data/.test-build-raw-bundle/
 /tests/data/.test-build-journal/
 /tests/data/.test-build-emit-events/
 /tests/data/.test-build-local-provider/

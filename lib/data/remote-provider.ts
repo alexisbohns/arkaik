@@ -8,6 +8,7 @@ import type {
   ReadJournalOptions,
   ReadProjectOptions,
   ReadResult,
+  ReplaceProjectOptions,
 } from "./data-provider";
 import type { Edge, JournalEvent, Node, Project, ProjectBundle } from "./types";
 
@@ -301,6 +302,20 @@ export function createRemoteProvider(options: RemoteProviderOptions = {}): DataP
       // The hosted project gets a server-owned id, so the returned project is
       // NOT the one that was sent — callers must navigate to the id from here.
       return { ...bundle.project, id };
+    },
+
+    /**
+     * The raw editor's save. A stale `version` is the server's 412 and
+     * surfaces as a `RemoteProviderError` with that status — the caller's cue
+     * that someone else wrote since the editor was opened.
+     */
+    async replaceProject(projectId: string, bundle: ProjectBundle, { version }: ReplaceProjectOptions) {
+      const result = await request<{ version: string }>(`/projects/${encodeURIComponent(projectId)}/bundle`, {
+        method: "PUT",
+        headers: { "if-match": `"${version}"` },
+        body: JSON.stringify(bundle),
+      });
+      return { version: result.version };
     },
 
     async readProject(id: string, options: ReadProjectOptions): Promise<ReadResult<ProjectBundle>> {

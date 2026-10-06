@@ -150,4 +150,21 @@ export interface DataProvider {
    */
   readProject?(id: string, options: ReadProjectOptions): Promise<ReadResult<ProjectBundle>>;
   readJournal?(projectId: string, options: ReadJournalOptions): Promise<ReadResult<JournalEvent[]>>;
+
+  /**
+   * Replace a project's whole bundle — snapshot and journal — in place,
+   * refused unless the stored version is still `options.version`. OPTIONAL
+   * like the conditional reads: only the remote provider has a version to
+   * guard on (`PUT …/bundle`, whose `If-Match` is mandatory). A local or seed
+   * project's raw save is still `importProject`, which already replaces in
+   * place there. The router forwards this to a backend that has it and
+   * throws for one that does not — it never falls back to an import, which
+   * would land a hosted bundle in IndexedDB.
+   */
+  replaceProject?(projectId: string, bundle: ProjectBundle, options: ReplaceProjectOptions): Promise<{ version: string }>;
+}
+
+export interface ReplaceProjectOptions {
+  /** The server version the replacement was edited from — sent as `If-Match`. */
+  version: string;
 }

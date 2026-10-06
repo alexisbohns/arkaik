@@ -77,7 +77,7 @@
     "test:emit-events": "node tests/data/emit-events.test.js",
     "test:screenshot-size": "node tests/schema/screenshot-size.test.js",
     "test:migrate": "node tests/data/migrate.test.js && node tests/data/import-roundtrip.test.js && node tests/data/seed-import.test.js",
-    "test:provider": "node tests/data/provider-registry.test.js && node tests/data/mutation-notifications.test.js && node tests/data/seed-provider.test.js",
+    "test:provider": "node tests/data/provider-registry.test.js && node tests/data/mutation-notifications.test.js && node tests/data/seed-provider.test.js && node tests/data/raw-bundle.test.js",
     "test:project-queries": "node tests/data/project-queries.test.js",
     "test:project-sections": "node tests/data/project-sections.test.js && node tests/data/create-target.test.js",
     "test:quality-fold": "node tests/data/quality-fold.test.js",

@@ -6,9 +6,9 @@ import {
   validateBundle,
   type ValidationFinding,
 } from "@arkaik/schema";
-import { invalidateProjects } from "@/lib/data/project-queries";
+import { invalidateProjects, readProjectBundle } from "@/lib/data/project-queries";
 import { getProvider } from "@/lib/data/provider-registry";
-import { HOSTED_ID_PREFIX } from "@/lib/data/remote-provider";
+import { HOSTED_ID_PREFIX, isHostedProjectId } from "@/lib/data/remote-provider";
 import { SEED_PROJECT_ID } from "@/lib/data/seed-project-id";
 
 const MAX_RECOMMENDED_EXPORT_BYTES = 4 * 1024 * 1024;
@@ -221,6 +221,64 @@ export async function archiveProject(id: string): Promise<void> {
   // Only the listing. The project entry is left to expire on its own: the
   // layout is still mounted when the settings page archives, and dropping the
   // entry would make it refetch a project that just went away.
+  void invalidateProjects();
+}
+
+/**
+ * What the raw bundle editor opened: the exported bundle and, for a hosted
+ * project, the server version it was read at — the `If-Match` its save sends.
+ * `null` for a local or seed project, which has no version to guard on.
+ */
+export interface RawBundle {
+  bundle: ProjectBundle;
+  version: string | null;
+}
+
+/**
+ * Loads a project for the raw editor.
+ *
+ * On a hosted project the version is read BEFORE the bundle, and the order is
+ * the guarantee: a write landing between the two reads leaves the version
+ * older than the bundle, so the save is refused as a conflict and nothing is
+ * lost. Read the other way round, a newer version could be paired with an
+ * older bundle, and the save would silently undo that write.
+ */
+export async function loadRawBundle(projectId: string): Promise<RawBundle> {
+  if (!isHostedProjectId(projectId)) return { bundle: await exportProject(projectId), version: null };
+  const read = await readProjectBundle(getProvider(), projectId, { etag: null });
+  if (read.status !== "fresh" || !read.version) {
+    throw new Error("The server did not say which version of this project it holds.");
+  }
+  return { bundle: await exportProject(projectId), version: read.version };
+}
+
+/**
+ * Saves the raw editor's bundle over the project it was opened on.
+ *
+ * A local or seed project imports in place, as it always has. A hosted one
+ * REPLACES through the server, refused if anyone wrote since `base` was read
+ * — importing it instead is what used to land a phantom `prj_…` copy in
+ * IndexedDB while the server never heard of the edit.
+ *
+ * The ids are pinned either way, so an edited `project.id` cannot turn a save
+ * into a different project. The pin differs, though: a local project is keyed
+ * by its route id, while a hosted snapshot keeps its bundle's own id verbatim
+ * under the server's `prj_…` row — and `bundle_id`, the column `arkaik link`
+ * recognises a repo's working copy by, is written from it. Pinning a hosted
+ * bundle to the route id would quietly unlink that repo.
+ */
+export async function saveRawBundle(projectId: string, edited: ProjectBundle, base: RawBundle): Promise<void> {
+  const provider = getProvider();
+  if (!isHostedProjectId(projectId)) {
+    await importProject(rewriteBundleProjectId(edited, projectId));
+    return;
+  }
+  if (!base.version || !provider.replaceProject) {
+    throw new Error("This hosted project cannot be saved from here — reopen the editor and try again.");
+  }
+  await provider.replaceProject(projectId, rewriteBundleProjectId(edited, base.bundle.project.id), {
+    version: base.version,
+  });
   void invalidateProjects();
 }
 
