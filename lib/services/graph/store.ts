@@ -6,8 +6,10 @@ import type { PoolClient } from "pg";
 
 import {
   MutationError,
+  RELEASE_COUNT_EVENT_FIELDS,
   STATUS_VOCABULARY_VERSION,
   applyOps,
+  computeReleaseEventCounts,
   migrateStatusVocabulary,
   orderEvents,
   parseBundle,
@@ -19,6 +21,7 @@ import {
   type Node,
   type Project,
   type ProjectBundle,
+  type ReleaseEventCount,
   type ValidationFinding,
 } from "@arkaik/schema";
 
@@ -390,6 +393,63 @@ export async function getJournal(
           [projectId, types],
         );
   return { journal: rows.map((row) => row.event), validators };
+}
+
+/** `GET …/journal/stats`: the journal's size and each release's event count. */
+export interface JournalStats {
+  total: number;
+  releases: ReleaseEventCount[];
+}
+
+/**
+ * The Overview's journal aggregate: how many events there are, and how many
+ * fall in each release's changelog — the two numbers it used to download the
+ * whole journal to count.
+ *
+ * The counting is `computeReleaseEventCounts` from @arkaik/schema, the code
+ * the page ran in the browser, rather than a SQL window: a release's window is
+ * ordered by `(ts, id)` not `seq`, a re-tagged version resolves to its latest
+ * marker, and a platform-scoped release counts only the events touching that
+ * platform's nodes. One implementation means the hosted number cannot drift
+ * from the local one. What keeps it cheap is the projection: each row leaves
+ * Postgres reduced to `RELEASE_COUNT_EVENT_FIELDS`, and the snapshot is read
+ * for node platforms only when some release is platform-scoped.
+ *
+ * Validators first, for the reason `getJournal` gives.
+ */
+export async function getJournalStats(
+  projectId: string,
+  ownerIds: readonly string[],
+): Promise<{ stats: JournalStats; validators: ProjectValidators } | null> {
+  const validators = await loadValidators(projectId, ownerIds);
+  if (!validators) return null;
+  const { rows } = await query<{ event: JournalEvent }>(
+    `select (select coalesce(jsonb_object_agg(f.key, f.value), '{}'::jsonb)
+               from jsonb_each(e.event) f
+              where f.key = any($2::text[])) as event
+       from graph_events e
+      where e.project_id = $1
+      order by e.seq asc`,
+    [projectId, RELEASE_COUNT_EVENT_FIELDS],
+  );
+  const events = rows.map((row) => row.event);
+
+  const platformScoped = events.some((ev) => ev.type === "release.tagged" && typeof ev.platform === "string");
+  let nodesById: Map<string, Pick<Node, "platforms">> | undefined;
+  if (platformScoped) {
+    const nodes = await query<{ id: string; platforms: Node["platforms"] | null }>(
+      `select n->>'id' as id, n->'platforms' as platforms
+         from graph_projects p, jsonb_array_elements(p.snapshot->'nodes') n
+        where ${READ_SCOPE}`,
+      [projectId, ownerIds],
+    );
+    nodesById = new Map(nodes.rows.map((row) => [row.id, { platforms: row.platforms ?? [] }]));
+  }
+
+  return {
+    stats: { total: events.length, releases: computeReleaseEventCounts(events, { nodesById }) },
+    validators,
+  };
 }
 
 /**
