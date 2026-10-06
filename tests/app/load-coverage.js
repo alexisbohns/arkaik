@@ -91,6 +91,9 @@ function loadCoverage() {
     groupItemsByStatus: require(path.join(BUILD_DIR, "delivery.js")).groupItemsByStatus,
     getCountedStatuses: require(path.join(BUILD_DIR, "config-statuses.js")).getCountedStatuses,
     buildProductUsageIndex: require(schemaIndex).buildProductUsageIndex,
+    // The journal aggregate's counting (#429), to check the Overview's
+    // markers-plus-counts pulse against the whole-journal one.
+    computeReleaseEventCounts: require(schemaIndex).computeReleaseEventCounts,
   };
 }
 

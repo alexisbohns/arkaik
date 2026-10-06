@@ -2,7 +2,7 @@ import { SPECIES, type SpeciesId } from "@/lib/config/species";
 import { getCountedStatuses, type CountedStatusPresetId, type StatusId } from "@/lib/config/statuses";
 import type { Edge, JournalEvent, Node, ReleaseTaggedEvent } from "@/lib/data/types";
 import { computeDeliveryItems, groupItemsByStatus, type DeliveryOptions } from "@/lib/utils/delivery";
-import { computeBacklog, computeChangelog } from "@/lib/utils/journal";
+import { computeBacklog, computeReleaseEventCounts, type ReleaseEventCount } from "@/lib/utils/journal";
 import { addEffectiveNodeToRollup, createEmptyRollup, type PlatformStatusRollup } from "@/lib/utils/platform-status";
 import { nodeInScope, scopedPlatforms } from "@/lib/utils/product-scope";
 import { orderEvents } from "@arkaik/schema";
@@ -44,10 +44,15 @@ export interface Inventory {
   species: SpeciesInventory[];
 }
 
+/**
+ * `journalEventCount` is a number, not the events: the Overview reads it off
+ * the journal aggregate (`useJournalStats`) and never downloads the journal
+ * to count it.
+ */
 export function computeInventory(
   nodes: readonly Pick<Node, "species" | "status">[],
   edges: readonly Pick<Edge, "id">[],
-  events: readonly JournalEvent[],
+  journalEventCount: number,
 ): Inventory {
   const bySpecies = new Map<SpeciesId, SpeciesInventory>(
     SPECIES.map((species) => [species.id, { species: species.id, total: 0, byStatus: {} }]),
@@ -63,7 +68,7 @@ export function computeInventory(
   return {
     nodeCount: nodes.length,
     edgeCount: edges.length,
-    journalEventCount: events.length,
+    journalEventCount,
     species: [...bySpecies.values()],
   };
 }
@@ -129,20 +134,39 @@ export interface ReleasePulseEntry {
   notes?: string;
   /** The release.tagged event id — a stable key. */
   eventId: string;
-  /** Events inside this release per computeChangelog (boundary markers excluded). */
-  eventCount: number;
+  /**
+   * Events inside this release per computeChangelog (boundary markers
+   * excluded). Absent when the counts came from a separate read that does not
+   * know this release yet — a tag that landed between the two reads — rather
+   * than a zero that would be a wrong answer.
+   */
+  eventCount?: number;
 }
 
 /**
  * Every tagged release, newest first. A version tagged more than once resolves
  * to its latest marker — `computeChangelog`'s own rule, so the pulse and the
  * changelog page can never disagree about what a version means.
+ *
+ * Only the `release.tagged` markers are read from `events` when `eventCounts`
+ * is given: that is the Overview, which reads the markers alone and takes the
+ * counts from the journal aggregate. Without it the counts are computed here
+ * from `events`, which must then be the whole journal.
  */
 export function computeReleasePulse(
   events: readonly JournalEvent[],
-  options: { nodesById?: ReadonlyMap<string, Pick<Node, "platforms">> } = {},
+  options: {
+    nodesById?: ReadonlyMap<string, Pick<Node, "platforms">>;
+    eventCounts?: readonly ReleaseEventCount[];
+  } = {},
 ): ReleasePulseEntry[] {
   const ordered = orderEvents(events);
+  const counts = new Map(
+    (options.eventCounts ?? computeReleaseEventCounts(events, { nodesById: options.nodesById })).map((entry) => [
+      entry.version,
+      entry.eventCount,
+    ]),
+  );
   const latestByVersion = new Map<string, ReleaseTaggedEvent>();
 
   for (const event of ordered) {
@@ -159,7 +183,7 @@ export function computeReleasePulse(
       ...(tag.platform !== undefined ? { platform: tag.platform } : {}),
       ...(tag.notes !== undefined ? { notes: tag.notes } : {}),
       eventId: tag.id,
-      eventCount: computeChangelog(events, tag.version, { nodesById: options.nodesById }).events.length,
+      ...(counts.has(tag.version) ? { eventCount: counts.get(tag.version) } : {}),
     }));
 }
 

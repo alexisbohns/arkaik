@@ -22,6 +22,7 @@ const {
   groupItemsByStatus,
   getCountedStatuses,
   buildProductUsageIndex,
+  computeReleaseEventCounts,
 } = loadCoverage();
 
 let failures = 0;
@@ -37,7 +38,7 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // =========================== Hand fixtures ===================================
 
 // --- Inventory: all species always present, config order, zero-safe ---------
-const emptyInventory = computeInventory([], [], []);
+const emptyInventory = computeInventory([], [], 0);
 assert(
   eq(emptyInventory.species.map((s) => s.species), ["flow", "view", "data-model", "api-endpoint", "acceptance", "decision"]),
   "inventory lists all six species in config order even when empty",
@@ -54,7 +55,7 @@ const smallInventory = computeInventory(
     { species: "flow", status: "development" },
   ],
   [{ id: "e1" }],
-  [],
+  0,
 );
 assert(
   eq(smallInventory.species.find((s) => s.species === "view").byStatus, { live: 1, development: 1 }),
@@ -111,6 +112,24 @@ assert(
 );
 assert(pulse[1].eventCount === 2, `0.2.0 spans the two events strictly between markers (got ${pulse[1].eventCount})`);
 assert(eq(computeReleasePulse([]), []), "empty journal yields an empty pulse");
+
+// --- Release pulse off the aggregate (#429) ------------------------------------
+// The Overview hands over only the markers plus the counts the journal
+// aggregate answered; the pulse must be the one the whole journal gives.
+const markersOnly = pulseJournal.filter((event) => event.type === "release.tagged");
+const aggregatePulse = computeReleasePulse(markersOnly, {
+  eventCounts: [
+    { version: "0.2.0", eventCount: 2 },
+    { version: "0.1.0", eventCount: 0 },
+  ],
+});
+assert(eq(aggregatePulse, pulse), "markers + aggregate counts give the same pulse as the whole journal");
+const partialPulse = computeReleasePulse(markersOnly, { eventCounts: [{ version: "0.2.0", eventCount: 2 }] });
+assert(
+  partialPulse.find((entry) => entry.version === "0.1.0").eventCount === undefined &&
+    partialPulse.find((entry) => entry.version === "0.2.0").eventCount === 2,
+  "a release the aggregate does not know yet has no count — never a wrong zero",
+);
 
 // --- Delivery snapshot: board defaults ---------------------------------------
 const snapshotFixture = computeDeliverySnapshot([
@@ -190,7 +209,7 @@ const ROOT = path.join(__dirname, "..", "..");
 const bundle = JSON.parse(fs.readFileSync(path.join(ROOT, "seed", "pebbles.json"), "utf8"));
 const nodesById = new Map(bundle.nodes.map((node) => [node.id, node]));
 
-const inventory = computeInventory(bundle.nodes, bundle.edges, bundle.journal);
+const inventory = computeInventory(bundle.nodes, bundle.edges, bundle.journal.length);
 assert(
   inventory.nodeCount === 152 && inventory.edgeCount === 283 && inventory.journalEventCount === 183,
   `seed census 152/283/183 (got ${inventory.nodeCount}/${inventory.edgeCount}/${inventory.journalEventCount})`,
@@ -215,6 +234,16 @@ assert(
 );
 
 const seedPulse = computeReleasePulse(bundle.journal, { nodesById });
+assert(
+  eq(
+    computeReleasePulse(
+      bundle.journal.filter((event) => event.type === "release.tagged"),
+      { nodesById, eventCounts: computeReleaseEventCounts(bundle.journal, { nodesById }) },
+    ),
+    seedPulse,
+  ),
+  "on the real seed, markers + the aggregate's counts reproduce the whole-journal pulse",
+);
 assert(
   eq(
     seedPulse.map((entry) => [entry.version, entry.platform ?? null, entry.eventCount]),
