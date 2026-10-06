@@ -85,6 +85,7 @@
     "test:quality-section-fold": "npm run build -w arkaik && node tests/cli/quality-section-fold.test.js",
     "test:bootstrap": "node tests/cli/bootstrap-era-window.test.js && node tests/cli/bootstrap-body-budget.test.js && node tests/cli/bootstrap-event-id.test.js && node tests/cli/bootstrap-journal-merge.test.js && npm run build -w arkaik && node tests/cli/bootstrap-corpus.test.js && node tests/cli/bootstrap-plan.test.js && node tests/cli/bootstrap-slice.test.js && node tests/cli/bootstrap-merge.test.js && node tests/cli/bootstrap-merge-selfmap.test.js && node tests/cli/bootstrap-e2e.test.js && node tests/cli/bootstrap-restore.test.js",
     "test:auth": "node tests/services/auth-guard.test.js",
+    "test:auth-errors": "node tests/services/auth-errors.test.js",
     "test:tokens": "node tests/services/token-auth.test.js",
     "test:graph": "node tests/services/graph-api.test.js",
     "test:graph-etag": "node tests/services/graph-etag.test.js",

@@ -96,6 +96,33 @@ export async function query<T extends QueryResultRow = QueryResultRow>(
 }
 
 /**
+ * Whether the database answers a `select 1` within `timeoutMs`. False — never a
+ * throw — when DATABASE_URL is unset, the connection is refused, the provider
+ * rejects it (Neon's quota answers `53000`), or it simply hangs.
+ *
+ * Only for diagnosing a failure that has already happened (the sign-in error
+ * page, app/auth/error/page.tsx). Do not put it on a hot path such as
+ * /api/auth/status: that is polled on every app load, and a probe there would
+ * keep a scale-to-zero database awake for nothing.
+ */
+export async function databaseReachable(timeoutMs = 3000): Promise<boolean> {
+  if (!servicesConfigured()) return false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), timeoutMs);
+  });
+  const probe = query("select 1").then(
+    () => true,
+    () => false,
+  );
+  try {
+    return await Promise.race([probe, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Run `fn` inside a single transaction on one checked-out connection, committing
  * on return and rolling back on throw. The client is always released, including
  * when the rollback itself fails.
