@@ -216,6 +216,74 @@ export function computeChangelog(
   };
 }
 
+// --- Release event counts ------------------------------------------------
+
+/** How many events one release's changelog holds. */
+export interface ReleaseEventCount {
+  version: string;
+  eventCount: number;
+}
+
+/**
+ * Every event field {@link computeReleaseEventCounts} reads: ordering
+ * (`ts`, `id`), the markers (`type`, `version`, `platform`), and what
+ * platform filtering resolves through the snapshot (`node_id`, an edge's
+ * endpoints, a deliverable's `node_ids`). The hosted journal-stats route
+ * reduces each row to these before counting, so a release count never has
+ * to carry a whole journal out of Postgres; a test pins that the reduction
+ * cannot change an answer.
+ */
+export const RELEASE_COUNT_EVENT_FIELDS: readonly string[] = [
+  "id",
+  "ts",
+  "type",
+  "version",
+  "platform",
+  "node_id",
+  "source_id",
+  "target_id",
+  "node_ids",
+];
+
+/**
+ * `computeChangelog(events, version, options).events.length` for every
+ * tagged version at once, oldest release first — the Overview's release
+ * pulse, without the events themselves. Same rules by construction: a
+ * version resolves to its LAST marker, its window opens after the nearest
+ * preceding marker of any version, and a platform-scoped marker keeps only
+ * the events affecting that platform. One ordering pass rather than one
+ * `computeChangelog` per version, which re-sorted the whole journal each time.
+ */
+export function computeReleaseEventCounts(
+  events: readonly JournalEvent[],
+  options: Pick<ChangelogOptions, "nodesById"> = {},
+): ReleaseEventCount[] {
+  const ordered = orderEvents(events);
+
+  // Each event's nearest preceding marker, and each version's last marker.
+  const previousMarker: number[] = [];
+  const lastMarker = new Map<string, number>();
+  let previous = -1;
+  ordered.forEach((ev, i) => {
+    previousMarker.push(previous);
+    if (ev.type !== "release.tagged") return;
+    previous = i;
+    const version = asString((ev as ReleaseTaggedEvent).version);
+    if (version !== undefined) lastMarker.set(version, i);
+  });
+
+  return [...lastMarker]
+    .sort((a, b) => a[1] - b[1])
+    .map(([version, toIndex]) => {
+      const slice = ordered.slice(previousMarker[toIndex] + 1, toIndex);
+      const platform = asString((ordered[toIndex] as ReleaseTaggedEvent).platform) as PlatformId | undefined;
+      const eventCount = platform
+        ? slice.filter((ev) => eventAffectsPlatform(ev, platform, options.nodesById)).length
+        : slice.length;
+      return { version, eventCount };
+    });
+}
+
 // --- Backlog -------------------------------------------------------------
 
 /** Open ideas and requests (docs/spec/journal.md:105). */

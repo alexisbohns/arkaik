@@ -20,6 +20,8 @@ export {
   computeBacklog,
   computeDeliverables,
   computeCommitments,
+  computeReleaseEventCounts,
+  RELEASE_COUNT_EVENT_FIELDS,
 } from "@arkaik/schema";
 
 export type {
@@ -29,4 +31,5 @@ export type {
   Backlog,
   BacklogOptions,
   Deliverable,
+  ReleaseEventCount,
 } from "@arkaik/schema";
