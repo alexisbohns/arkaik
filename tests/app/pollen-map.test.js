@@ -5,7 +5,7 @@
 const { loadPollen } = require("./load-pollen");
 
 const { contract, map } = loadPollen();
-const { journalToPollen } = map;
+const { journalToPollen, POLLEN_SOURCE_TYPES } = map;
 const { validatePollen } = contract;
 
 let failures = 0;
@@ -16,6 +16,30 @@ function check(name, cond, detail) {
 
 const CONFIG = { plant: "pbbls" };
 const NODES = [{ id: "DEC-postgres-first", species: "decision", title: "PostgreSQL-first relational schema", status: "live" }];
+
+// --- POLLEN_SOURCE_TYPES is exactly what the projection reads ---
+//
+// The hosted feed filters the journal on this list in Postgres (issue #490),
+// so a type the projection maps but the list omits would vanish from the
+// hosted feed while this pure projection still emitted it. Every envelope
+// below comes from a listed type, and every listed type yields an envelope.
+{
+  const oneOfEach = [
+    { id: "01S1", ts: "2026-08-01T10:00:00Z", type: "deliverable.shipped", deliverable_id: "pr-1", title: "Shipped", url: "https://github.com/x/y/pull/1" },
+    { id: "01S2", ts: "2026-08-01T10:01:00Z", type: "release.tagged", version: "1.0.0" },
+    { id: "01S3", ts: "2026-08-01T10:02:00Z", type: "decision.status_changed", node_id: "DEC-postgres-first", from: "proposed", to: "approved" },
+    { id: "01S4", ts: "2026-08-01T10:03:00Z", type: "node.created", node_id: "V-x", species: "view", title: "X" },
+  ];
+  const { pollen } = journalToPollen(oneOfEach, NODES, CONFIG);
+  const emittedTypes = pollen.map((p) => oneOfEach.find((e) => `arkaik:${e.id}` === p.id).type);
+  check("every emitted envelope comes from a listed source type", emittedTypes.every((t) => POLLEN_SOURCE_TYPES.includes(t)), emittedTypes.join(","));
+  check(
+    "every listed source type emits an envelope",
+    POLLEN_SOURCE_TYPES.every((t) => emittedTypes.includes(t)),
+    `listed ${POLLEN_SOURCE_TYPES.join(",")} / emitted ${emittedTypes.join(",")}`,
+  );
+  check("the list is the three projected families", [...POLLEN_SOURCE_TYPES].sort().join(",") === "decision.status_changed,deliverable.shipped,release.tagged");
+}
 
 // --- unmapped families are silently absent (not skipped-with-reason) ---
 {

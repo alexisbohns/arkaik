@@ -12,7 +12,10 @@
  *     `after` = last processed pollen id, unknown `after` → 410 Gone,
  *     empty array = caught up, limit capped at 200;
  *   - every served envelope passes the vendored reference validator;
- *   - auth is the ordinary graph read plane (401 / 403 / cross-owner 404).
+ *   - auth is the ordinary graph read plane (401 / 403 / cross-owner 404);
+ *   - the feed answers conditionally (issue #490): a weak ETag on every 200,
+ *     a bodiless 304 for a matching If-None-Match that loads neither the
+ *     bundle nor the journal, and a 410 that still wins for an unknown cursor.
  *
  * Same harness as graph-api.test.js: only NextAuth is stubbed; store, tokens,
  * owners, scopes and Postgres run for real. Rows use the
@@ -49,6 +52,7 @@ const E1 = "01KTEST0000000000000000001";
 const E2 = "01KTEST0000000000000000002";
 const E3 = "01KTEST0000000000000000003";
 const E4 = "01KTEST0000000000000000004";
+const E5 = "01KTEST0000000000000000005";
 
 const JOURNAL = [
   {
@@ -191,6 +195,78 @@ async function main() {
     // --- cursor reset + limit cap -------------------------------------------
     check("unknown cursor → 410", (await get(projectId, "?after=arkaik:NOPE", bearer(tokenA.plaintext))).status === 410);
     check("oversize limit is capped, not an error", (await get(projectId, "?limit=999", bearer(tokenA.plaintext))).status === 200);
+
+    // --- conditional reads (#490) --------------------------------------------
+    //
+    // The whole section runs with `getProject` and `getJournal` spied: the
+    // route must call NEITHER on any path, 200 or 304 — the point of #490 is
+    // that a poll never pulls the bundle or the journal body out of Postgres.
+    // The spy works because the transpiled route reads the function off the
+    // store module object at call time.
+    const loads = [];
+    const { getProject: realGetProject, getJournal: realGetJournal } = api.store;
+    api.store.getProject = (...args) => { loads.push("getProject"); return realGetProject(...args); };
+    api.store.getJournal = (...args) => { loads.push("getJournal"); return realGetJournal(...args); };
+    try {
+      const first = await get(projectId, "?limit=10", bearer(tokenA.plaintext));
+      const etag = first.headers.get("etag");
+      check("200 carries a weak ETag", typeof etag === "string" && /^W\/"/.test(etag), String(etag));
+      check(
+        "200 carries the read cache headers",
+        first.headers.get("cache-control") === "private, no-cache" && first.headers.get("vary") === "Authorization",
+      );
+
+      const inm = (tag) => ({ ...bearer(tokenA.plaintext), "if-none-match": tag });
+      const cond = await get(projectId, "?limit=10", inm(etag));
+      check("matching If-None-Match → 304", cond.status === 304, String(cond.status));
+      check("304 has no body", (await cond.text()) === "");
+      check("304 re-stamps the same ETag", cond.headers.get("etag") === etag);
+      check("304 carries the read cache headers too", cond.headers.get("cache-control") === "private, no-cache");
+
+      const otherPage = await get(projectId, `?limit=10&after=arkaik:${E1}`, inm(etag));
+      check("the same validator for a different page → 200, never a 304", otherPage.status === 200, String(otherPage.status));
+      const otherLimit = await get(projectId, "?limit=20", inm(etag));
+      check("…and a different limit is a different page as well", otherLimit.status === 200, String(otherLimit.status));
+
+      const caughtUpRes = await get(projectId, `?after=arkaik:${E4}`, bearer(tokenA.plaintext));
+      const caughtUpTag = caughtUpRes.headers.get("etag");
+      check("a caught-up page has its own ETag", typeof caughtUpTag === "string" && caughtUpTag !== etag, String(caughtUpTag));
+      check(
+        "a caught-up poll that finds nothing new is a 304",
+        (await get(projectId, `?after=arkaik:${E4}`, inm(caughtUpTag))).status === 304,
+      );
+
+      // No existence oracle through the conditional path.
+      check(
+        "another owner's token with If-None-Match: * → 404",
+        (await get(projectId, "", { ...bearer(tokenB.plaintext), "if-none-match": "*" })).status === 404,
+      );
+      check("feed-less project with If-None-Match: * → 404", (await get(plainId, "", inm("*"))).status === 404);
+      check(
+        "unknown cursor beats If-None-Match: * → 410",
+        (await get(projectId, "?after=arkaik:NOPE", inm("*"))).status === 410,
+      );
+      check(
+        "a cursor on an event the feed never serves is unknown too → 410",
+        (await get(projectId, `?after=arkaik:${E3}`, inm("*"))).status === 410,
+      );
+
+      // A journal-only append (what a merged PR's Lab Note does) moves it.
+      await client.query(
+        `insert into graph_events (id, project_id, event, actor) values ($1, $2, $3, $4)`,
+        [E5, projectId, JSON.stringify({ id: E5, ts: "2026-08-14T10:00:00.000Z", actor: "arkaik-cli", type: "release.tagged", version: "1.1.0" }), "graphtest"],
+      );
+      const moved = await get(projectId, `?after=arkaik:${E4}`, inm(caughtUpTag));
+      check("an appended event turns the next poll into a 200", moved.status === 200, String(moved.status));
+      check("…with a new ETag", moved.headers.get("etag") !== caughtUpTag);
+      const movedBody = await moved.json();
+      check("…whose body is exactly the new envelope", movedBody.pollen.map((p) => p.id).join(",") === `arkaik:${E5}`, JSON.stringify(movedBody));
+
+      check("no path loaded the bundle or the journal body", loads.length === 0, loads.join(","));
+    } finally {
+      api.store.getProject = realGetProject;
+      api.store.getJournal = realGetJournal;
+    }
   } finally {
     await cleanup(client);
     await client.end();

@@ -61,6 +61,41 @@ export function bundleEtag(validators: ProjectValidators): string {
 }
 
 /**
+ * The pollen feed, `GET /projects/{id}/pollen?after=&limit=`: the journal's
+ * validator plus a tag for the PAGE. The body is a slice of the projected
+ * journal, so it moves exactly when `/journal` moves — but it also depends on
+ * which slice was asked for, and the feed's consumer stores one ETag beside
+ * one cursor. Folding `after` and `limit` into the tag means a client can
+ * never earn a 304 for one page by sending the tag it was given for another
+ * (a stale cursor would otherwise read as "nothing new").
+ *
+ * The page part is a hash rather than the raw parameters: `after` is
+ * whatever the client sent, and an entity-tag may not contain a quote or
+ * whitespace. A 32-bit FNV-1a is plenty — the tag only has to tell two pages
+ * of the same journal apart, never resist an adversary — and keeps the
+ * module free of `node:crypto`.
+ */
+export function pollenEtag(
+  validators: ProjectValidators,
+  page: { after: string | null; limit: number },
+): string {
+  // A missing cursor and an empty one are different requests (the second is
+  // an unknown cursor), so the discriminator comes before the value.
+  const pageKey = `${page.limit}\u0000${page.after === null ? "-" : `a${page.after}`}`;
+  return formatReadEtag([validators.version, validators.eventCount, fnv1a32(pageKey)]);
+}
+
+/** FNV-1a over the UTF-16 code units, as eight lowercase hex digits. */
+function fnv1a32(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+/**
  * The headers every read answer carries, 200 and 304 alike. `private`
  * because every body is owner-scoped (and it keeps a shared edge cache out),
  * `no-cache` because the browser must revalidate rather than reuse — the
