@@ -120,6 +120,25 @@ async function main() {
     );
   }
 
+  // --- readJournalStats (#429) ----------------------------------------------------
+  {
+    const schema = require(path.join(SCHEMA_BUILD_DIR, "index.js"));
+    const read = await provider.readJournalStats(PROJECT_ID, { etag: null });
+    const expected = schema.computeReleaseEventCounts(SEED.journal, {
+      nodesById: new Map(SEED.nodes.map((n) => [n.id, n])),
+    });
+    check(
+      "readJournalStats counts the seed's own journal, with no validator",
+      read.status === "fresh" && read.etag === null && read.value.total === SEED.journal.length &&
+        expected.length > 0 && JSON.stringify(read.value.releases) === JSON.stringify(expected),
+      JSON.stringify(read).slice(0, 200),
+    );
+    check(
+      "…and answers missing for any other project",
+      (await provider.readJournalStats("not-the-seed", { etag: null })).status === "missing",
+    );
+  }
+
   // --- createNode ----------------------------------------------------------
   const sandboxNode = {
     id: "V-sandbox",

@@ -166,11 +166,12 @@ function loadLocalProvider() {
   // they're pointed at the siblings written above; every other import is a
   // real relative path ("./migrate", "./db", "./emit-events") that resolves
   // naturally since all these files live in the same BUILD_DIR).
-  // journal-projection.js — the shared in-memory `?types=` filter, a plain
-  // relative sibling of local-provider.ts with no imports of its own.
+  // journal-projection.js — the shared in-memory `?types=` filter and the
+  // journal aggregate (`journalStatsOf`, #429), whose release counts are
+  // @arkaik/schema's: its schema require is rewritten like the others.
   fs.writeFileSync(
     path.join(BUILD_DIR, "journal-projection.js"),
-    transpile(path.join(ROOT, "lib", "data", "journal-projection.ts"), "journal-projection.ts"),
+    rewriteSchemaRequire(transpile(path.join(ROOT, "lib", "data", "journal-projection.ts"), "journal-projection.ts")),
   );
 
   let localProviderOut = transpile(path.join(ROOT, "lib", "data", "local-provider.ts"), "local-provider.ts");

@@ -139,6 +139,8 @@ export function createRoutingProvider(options: RoutingProviderOptions): DataProv
       return { status: "fresh", value: await target.getJournal(projectId, { types: options.types }), etag: null };
     },
 
+    readJournalStats: (projectId, options) => forProject(projectId).readJournalStats(projectId, options),
+
     /**
      * NO fallback here, unlike the reads: the only stand-in a local or seed
      * backend has is `importProject`, and the reason this method exists is
