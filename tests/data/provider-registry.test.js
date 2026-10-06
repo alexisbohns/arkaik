@@ -506,6 +506,31 @@ async function main() {
     );
   }
 
+  // --- A bodiless success (#429) -------------------------------------------------
+  // The archive route answers `204 No Content`. Reading a body off it threw a
+  // SyntaxError AFTER the server had archived the project, so the settings
+  // page toasted an error and never left the deleted project.
+  {
+    const seen = [];
+    const provider = remote.createRemoteProvider({
+      fetchImpl: async (url, init) => {
+        seen.push({ url, method: init?.method });
+        return new Response(null, { status: 204 });
+      },
+    });
+    let error = null;
+    try {
+      await provider.archiveProject(HOSTED);
+    } catch (err) {
+      error = err;
+    }
+    check(
+      "archiving a hosted project resolves on the server's 204",
+      error === null && seen.length === 1 && seen[0].method === "DELETE" && seen[0].url.endsWith(`/projects/${HOSTED}`),
+      error ? String(error) : JSON.stringify(seen),
+    );
+  }
+
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 
   if (failures > 0) {
