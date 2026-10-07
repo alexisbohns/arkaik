@@ -28,6 +28,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useJournal } from "@/lib/hooks/useJournal";
+import { useJournalStats } from "@/lib/hooks/useJournalStats";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useOverviewLayout, type OverviewLayout } from "@/lib/hooks/useOverviewLayout";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
@@ -54,6 +55,13 @@ const LAYOUTS: readonly SegmentedControlOption<OverviewLayout>[] = [
 ];
 
 /**
+ * The only events the Overview draws: release markers for the pulse, ideas
+ * and requests for the backlog and Health's backlog row. Its counts come from
+ * the journal aggregate instead.
+ */
+const OVERVIEW_JOURNAL_TYPES = ["release.tagged", "idea.proposed", "request.filed"] as const;
+
+/**
  * The Overview: "Where does this product stand?" — the strategist reading
  * (vision.md § Core Product; docs/spec/maps.md § Overview Composition).
  * Pure projections from lib/utils/coverage.ts composed into one screen;
@@ -67,7 +75,26 @@ export default function OverviewPage() {
   const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges } = useEdges(id);
   const { project: projectBundle, loading: projectLoading, error: projectError, reload: reloadProject } = useProject(id);
-  const { journal, loading: journalLoading, error: journalError, reload: reloadJournal } = useJournal(id);
+  // The page never reads the whole journal (#429). Its two counts — the
+  // inventory total and each release's size — come from the aggregate, and
+  // the cards that list events read only the three types they draw: the
+  // release markers, and the ideas and requests the backlog (and Health's
+  // backlog row) is made of. On a hosted project the rest never leave the
+  // server. Every "empty" this page says is decided over the aggregate's
+  // total, never over the projection, which is empty for a journal of
+  // nothing but node edits.
+  const {
+    journal,
+    loading: markersLoading,
+    error: markersError,
+    reload: reloadMarkers,
+  } = useJournal(id, { types: OVERVIEW_JOURNAL_TYPES });
+  const { stats, loading: statsLoading, error: statsError, reload: reloadStats } = useJournalStats(id);
+  // The cards keep one pending/error pair: every journal-backed card reads
+  // the projection, and two of them the aggregate too.
+  const journalLoading = markersLoading || statsLoading;
+  const journalError = markersError ?? statsError;
+  const reloadJournal = () => Promise.all([reloadMarkers(), reloadStats()]);
 
   // The shell's scope, never a URL param (§ Decision 2). `projectBundle` is
   // `undefined` until `useProject`'s effect lands, and a scope resolved from
@@ -91,8 +118,8 @@ export default function OverviewPage() {
   );
 
   const inventory = useMemo(
-    () => computeInventory(dataNodes, dataEdges, journal),
-    [dataEdges, dataNodes, journal],
+    () => computeInventory(dataNodes, dataEdges, stats?.total ?? 0),
+    [dataEdges, dataNodes, stats],
   );
 
   const rollup = useMemo(
@@ -105,8 +132,8 @@ export default function OverviewPage() {
   const gaugePlatforms = useMemo(() => getRollupPlatforms(rollup), [rollup]);
 
   const releases = useMemo(
-    () => computeReleasePulse(journal, { nodesById }),
-    [journal, nodesById],
+    () => computeReleasePulse(journal, { nodesById, eventCounts: stats?.releases ?? [] }),
+    [journal, nodesById, stats],
   );
 
   const backlog = useMemo(
@@ -207,11 +234,12 @@ export default function OverviewPage() {
     );
   }
 
-  // The gate above guarantees the journal has landed whenever there are no
-  // nodes, so "nothing here" is only ever said over a read journal: a project
-  // with no nodes yet but a journal of ideas is not empty, and neither is one
-  // whose journal failed to load.
-  const isEmpty = dataNodes.length === 0 && journalError === null && journal.length === 0;
+  // The gate above guarantees the journal reads have landed whenever there
+  // are no nodes, so "nothing here" is only ever said over a read journal: a
+  // project with no nodes yet but a journal of ideas is not empty, and neither
+  // is one whose journal failed to load. Decided on the aggregate's TOTAL —
+  // the projection would call a journal of node edits empty.
+  const isEmpty = dataNodes.length === 0 && journalError === null && (stats?.total ?? 0) === 0;
 
   return (
     <PageShell

@@ -80,9 +80,11 @@ export function ReleasePulseCard({
                 </span>
               )}
               <span className="flex-1" />
-              <span className="text-xs text-muted-foreground">
-                {release.eventCount} change{release.eventCount === 1 ? "" : "s"}
-              </span>
+              {release.eventCount !== undefined && (
+                <span className="text-xs text-muted-foreground">
+                  {release.eventCount} change{release.eventCount === 1 ? "" : "s"}
+                </span>
+              )}
               <span className="text-xs text-muted-foreground">{formatEventDate(release.ts)}</span>
             </div>
           ))}
