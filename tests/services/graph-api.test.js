@@ -23,7 +23,8 @@
 
 const { Client } = require("pg");
 const fs = require("fs");
-const { loadGraphApi, BUILD_DIR } = require("./load-graph-api");
+const path = require("path");
+const { loadGraphApi, BUILD_DIR, SCHEMA_BUILD_DIR } = require("./load-graph-api");
 
 const ORIGIN = "https://graph.test";
 
@@ -429,6 +430,7 @@ async function main() {
       ["GET nodes", api.GET_NODES],
       ["GET edges", api.GET_EDGES],
       ["GET journal", api.GET_JOURNAL],
+      ["GET journal stats", api.GET_JOURNAL_STATS],
       ["GET export", api.EXPORT],
     ];
 
@@ -477,6 +479,11 @@ async function main() {
       "a deliverable.shipped append moves the journal validator",
       afterShipped["GET journal"] !== validatorOf["GET journal"],
       `${validatorOf["GET journal"]} -> ${afterShipped["GET journal"]}`,
+    );
+    check(
+      "…and the journal stats', which count the same events",
+      afterShipped["GET journal stats"] !== validatorOf["GET journal stats"],
+      `${validatorOf["GET journal stats"]} -> ${afterShipped["GET journal stats"]}`,
     );
     check(
       "…and the export's, which embeds the same events",
@@ -688,6 +695,60 @@ async function main() {
       JSON.stringify((await nodesTyped.json()).nodes) === JSON.stringify((await nodesPlain.json()).nodes) &&
         nodesTyped.headers.get("etag") === nodesPlain.headers.get("etag"),
     );
+
+    // --- The journal stats aggregate (#429) ---------------------------------
+    // The Overview's counts, answered without shipping the journal. They must
+    // be what the page computed from the whole journal before — asserted
+    // against the schema projection over the full read, not hand-counted.
+    {
+      const schema = require(path.join(SCHEMA_BUILD_DIR, "index.js"));
+      const iosNode = await api.MUTATE(
+        jsonReq(ORIGIN, "POST", { ops: [{ op: "create_node", node: node("V-ios", "view", { platforms: ["ios"] }) }] }),
+        ctx(projectId),
+      );
+      check("an ios-only node for the stats check applies", iosNode.status === 200, String(iosNode.status));
+      const statsEvents = [
+        { id: "01statsrelease90000000000001", ts: "2027-01-01T00:00:00Z", actor: "graphtest", type: "release.tagged", version: "9.0" },
+        { id: "01statsupdateios000000000001", ts: "2027-01-02T00:00:00Z", actor: "graphtest", type: "node.updated", node_id: "V-ios", fields: ["title"] },
+        { id: "01statsupdateweb000000000001", ts: "2027-01-03T00:00:00Z", actor: "graphtest", type: "node.updated", node_id: "V-etag", fields: ["title"] },
+        { id: "01statsrelease91000000000001", ts: "2027-01-04T00:00:00Z", actor: "graphtest", type: "release.tagged", version: "9.1", platform: "ios" },
+      ];
+      const appendStats = await store.appendJournalEvents(projectId, [ownerA], statsEvents, "graphtest");
+      check("the stats fixture events append", appendStats.ok === true, JSON.stringify(appendStats));
+
+      const statsRes = await api.GET_JOURNAL_STATS(new Request(ORIGIN), ctx(projectId));
+      const { stats } = await statsRes.json();
+      const fullJournal = (await (await api.GET_JOURNAL(new Request(ORIGIN), ctx(projectId))).json()).journal;
+      const fullNodes = (await (await api.GET_NODES(new Request(ORIGIN), ctx(projectId))).json()).nodes;
+      const expected = schema.computeReleaseEventCounts(fullJournal, {
+        nodesById: new Map(fullNodes.map((n) => [n.id, n])),
+      });
+      const v91 = stats.releases.find((r) => r.version === "9.1");
+      check(
+        "journal stats: the platform-scoped release counts only its platform's event (precondition)",
+        v91 !== undefined && v91.eventCount === 1,
+        JSON.stringify(stats.releases),
+      );
+      check(
+        "journal stats: every release count equals the projection over the whole journal and snapshot",
+        statsRes.status === 200 && JSON.stringify(stats.releases) === JSON.stringify(expected),
+        `${JSON.stringify(stats.releases)} vs ${JSON.stringify(expected)}`,
+      );
+      check(
+        "journal stats: the total is the whole journal's length",
+        stats.total === fullJournal.length && stats.total > 0,
+        `${stats.total} vs ${fullJournal.length}`,
+      );
+      check(
+        "journal stats ignore ?types= — the aggregate is always over the whole journal",
+        JSON.stringify(
+          (await (await api.GET_JOURNAL_STATS(
+            new Request(`${ORIGIN}/api/graph/projects/${projectId}/journal/stats?types=release.tagged`),
+            ctx(projectId),
+          )).json()).stats,
+        ) === JSON.stringify(stats),
+      );
+    }
 
     // --- Bad requests -------------------------------------------------------
     setSession(sessionFor(userA));
