@@ -2,7 +2,7 @@
 
 import { memo } from "react";
 import { Handle, Position, NodeToolbar, type NodeProps } from "@xyflow/react";
-import { ChevronDown, ChevronRight, Info, PlusCircle, Split } from "lucide-react";
+import { PlusCircle, Split } from "lucide-react";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import { flowGaugePlatforms, type PlatformStatusRollup } from "@/lib/utils/platform-status";
@@ -22,6 +22,7 @@ function FlowNodeComponent({ data }: NodeProps) {
   // Rings unless a map explicitly asked for bars — see DEFAULT_MAP_DISPLAY.
   const platformDisplay = data.platformDisplay === "bars" ? "bars" : "rings";
   const viewCount = typeof data.viewCount === "number" ? data.viewCount : 0;
+  const playlistCount = typeof data.playlistCount === "number" ? data.playlistCount : 0;
   const expanded = Boolean(data.expanded);
   const stage = data.metadata ? (data.metadata as Record<string, unknown>).stage as string | undefined : undefined;
   const renderVariant = data.renderVariant as string | undefined;
@@ -38,7 +39,6 @@ function FlowNodeComponent({ data }: NodeProps) {
   const scopePlatforms = useCanvasScopePlatforms();
   const isBranch = renderVariant === "branch";
   const isConditionBranch = isBranch && branchKind === "condition";
-  const isInteractive = Boolean(onToggle);
 
   return (
     <>
@@ -70,20 +70,18 @@ function FlowNodeComponent({ data }: NodeProps) {
           </span>
         </div>
       ) : (
+        // No onClick: the click bubbles to React Flow's onNodeClick, which is
+        // how a view card opens its panel too — one grammar for every card.
+        // Folding is the handle's job, below.
         <div
-        role={isInteractive ? "button" : "group"}
-        tabIndex={isInteractive ? 0 : -1}
+        role={onOpenDetails ? "button" : "group"}
+        tabIndex={onOpenDetails ? 0 : -1}
         aria-label={label}
-        aria-expanded={isInteractive ? expanded : undefined}
-        className={`flex flex-col gap-3 ${isBranch ? "w-56 border-dashed bg-muted/20" : "w-60"} px-4 py-3 rounded-xl bg-background border-2 border-border shadow-sm ${isInteractive ? `${expanded ? "cursor-zoom-out" : "cursor-zoom-in"} focus:outline-none focus-visible:ring-2 focus-visible:ring-ring` : "cursor-default"} ${ghostClass.wrapper} ${ghostClass.border}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggle?.();
-        }}
+        className={`flex flex-col gap-3 ${isBranch ? "w-56 border-dashed bg-muted/20" : "w-60"} px-4 py-3 rounded-xl bg-background border-2 border-border shadow-sm ${onOpenDetails ? "cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring" : "cursor-default"} ${ghostClass.wrapper} ${ghostClass.border}`}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
-            onToggle?.();
+            onOpenDetails?.();
           }
         }}
         {...nodeProps}
@@ -100,24 +98,6 @@ function FlowNodeComponent({ data }: NodeProps) {
           <div className="flex items-center gap-1">
             <FindingBadge summary={findingSummary} />
             {stage && !isBranch && <StageIcon stage={stage} />}
-            {onOpenDetails && !isBranch && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpenDetails();
-                }}
-                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-                aria-label={`Open details for ${label}`}
-              >
-                <Info className="w-3.5 h-3.5" />
-              </button>
-            )}
-            {!isBranch && expanded ? (
-              <ChevronDown className="w-4 h-4 shrink-0 text-muted-foreground" />
-            ) : !isBranch ? (
-              <ChevronRight className="w-4 h-4 shrink-0 text-muted-foreground" />
-            ) : null}
           </div>
         </div>
         {isBranch && branchSummary ? (
@@ -155,7 +135,40 @@ function FlowNodeComponent({ data }: NodeProps) {
       )}
       <Handle type="source" position={Position.Bottom} id="bottom" className="opacity-0" />
       <Handle type="source" position={Position.Right} id="right" className="opacity-0" />
+      {/* After the handles, not inside the card: a ghosted card's `opacity`
+          makes it a stacking context, so nothing inside it can sit above the
+          invisible bottom handle that shares this exact spot. Last sibling wins. */}
+      {onToggle && !isBranch && playlistCount > 0 && (
+        <FoldHandle expanded={expanded} hidden={playlistCount} onToggle={onToggle} />
+      )}
     </>
+  );
+}
+
+/**
+ * The fold handle, astride the card's bottom edge where its playlist hangs:
+ * "−" folds the playlist away, "+N" says how many nodes are folded and brings
+ * them back. `nodrag nopan`, so pressing it never starts moving the card, and
+ * the click stops here rather than opening the panel.
+ */
+function FoldHandle({ expanded, hidden, onToggle }: { expanded: boolean; hidden: number; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      className={`nodrag nopan absolute left-1/2 -bottom-[11px] -translate-x-1/2 inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full border px-1.5 font-mono text-[10px] font-bold leading-none cursor-pointer transition-colors ${
+        expanded
+          ? "border-border bg-background text-foreground hover:bg-muted"
+          : "border-primary/60 bg-primary/15 text-primary hover:bg-primary/25"
+      }`}
+      aria-expanded={expanded}
+      aria-label={expanded ? "Collapse the nodes under this flow" : `Show the ${hidden} nodes under this flow`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+    >
+      {expanded ? "−" : `+${hidden}`}
+    </button>
   );
 }
 

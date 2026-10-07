@@ -10,6 +10,7 @@ import type { Node as DataNode, Edge as DataEdge, PlaylistEntry, Project } from 
 import {
   EDGE_TYPE_TO_FLOW_TYPE,
   SPECIES_TO_NODE_TYPE,
+  collectReferencedNodeIds,
   createVisualNodeId,
   getPlaylistEntries,
 } from "@/lib/utils/graph-build";
@@ -267,6 +268,8 @@ export function buildJourneyGraph(params: JourneyGraphParams): JourneyGraph {
       // The ring set's center number; the bars never show it, but computing it
       // unconditionally keeps a display flip a pure re-render of the same data.
       baseData.viewCount = collectFlowViewIds(node, nodesById).size;
+      // What the fold handle promises: the distinct nodes an expansion draws.
+      baseData.playlistCount = new Set(collectReferencedNodeIds(getPlaylistEntries(nodesById, node.id))).size;
       baseData.expanded = expandedFlows.has(node.id);
       if (handlers.onToggleFlow) baseData.onToggle = () => handlers.onToggleFlow!(node.id, visualNodeId);
       if (handlers.onAddChild) baseData.onAddChild = () => handlers.onAddChild!(node.id);
