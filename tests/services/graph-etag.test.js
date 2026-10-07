@@ -43,6 +43,7 @@ const {
   journalEtag,
   bundleEtag,
   pollenEtag,
+  journalPageEtag,
   readResponseHeaders,
   ifNoneMatchSatisfied,
   parseJournalTypes,
@@ -119,6 +120,25 @@ assert(
   "an arbitrary cursor is hashed, so the tag stays a valid entity-tag whatever the client sent",
   pollen(["3", "12", "4"], 'a "quoted", spaced cursor', 100),
 );
+
+// --- The paged journal (#429) -------------------------------------------------
+// The History page's slices: the journal's parts plus a page tag, like pollen.
+const jpage = (v, beforeRaw, limit, families) =>
+  journalPageEtag(validators(...v), { beforeRaw, limit, families });
+assert(
+  /^W\/"3\.12\.[0-9a-f]{8}"$/.test(jpage(["3", "12", "4"], null, 100, null)),
+  "the page validator is the journal's parts plus one fixed-width page tag",
+  jpage(["3", "12", "4"], null, 100, null),
+);
+assert(jpage(["3", "12", "4"], null, 100, null) === jpage(["3", "12", "4"], null, 100, null), "the same page stamps the same tag");
+assert(jpage(["3", "12", "4"], '["t","a"]', 100, null) !== jpage(["3", "12", "4"], null, 100, null), "a cursor changes the page tag");
+assert(jpage(["3", "12", "4"], null, 100, null) !== jpage(["3", "12", "4"], null, 50, null), "a limit changes it");
+assert(
+  jpage(["3", "12", "4"], null, 100, ["nodes"]) !== jpage(["3", "12", "4"], null, 100, null) &&
+    jpage(["3", "12", "4"], null, 100, ["nodes"]) !== jpage(["3", "12", "4"], null, 100, ["edges"]),
+  "a family filter changes it, and each filter is its own page",
+);
+assert(jpage(["3", "13", "4"], null, 100, null) !== jpage(["3", "12", "4"], null, 100, null), "an append moves every page");
 
 // --- The response headers ---------------------------------------------------
 const headers = readResponseHeaders('W/"3.4"');

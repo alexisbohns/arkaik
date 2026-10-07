@@ -750,6 +750,106 @@ async function main() {
       );
     }
 
+    // --- The paged journal (#429) -------------------------------------------
+    // History's read. Every walk is checked against `pageJournal` over the
+    // whole journal — the order the page rendered before it paged — and the
+    // fixture includes an append BACKDATED past rows already stored, which
+    // arrival order (`seq`) would put in the wrong place.
+    {
+      const schema = require(path.join(SCHEMA_BUILD_DIR, "index.js"));
+      const backdated = [
+        { id: "01pagebackdated0000000001", ts: "2020-01-01T00:00:00Z", actor: "graphtest", type: "deliverable.shipped", deliverable_id: "pr-old", title: "Old" },
+        { id: "01pageidea00000000000001", ts: "2027-02-01T00:00:00Z", actor: "graphtest", type: "idea.proposed", title: "Later idea" },
+        { id: "01pagenofamily0000000001", ts: "2027-02-02T00:00:00Z", actor: "graphtest", type: "quality.audit.completed", audit_id: "a-page" },
+      ];
+      const appendPage = await store.appendJournalEvents(projectId, [ownerA], backdated, "graphtest");
+      check("the paging fixture events append", appendPage.ok === true, JSON.stringify(appendPage));
+
+      const fullJournal = (await (await api.GET_JOURNAL(new Request(ORIGIN), ctx(projectId))).json()).journal;
+      const pageUrl = (query) => new Request(`${ORIGIN}/api/graph/projects/${projectId}/journal/page${query}`);
+      const walkHosted = async (limit, families) => {
+        const seen = [];
+        let before = null;
+        for (let guard = 0; guard < 500; guard++) {
+          const params = new URLSearchParams({ limit: String(limit) });
+          if (families) params.set("families", families.join(","));
+          if (before) params.set("before", before);
+          const res = await api.GET_JOURNAL_PAGE(pageUrl(`?${params}`), ctx(projectId));
+          if (res.status !== 200) throw new Error(`page read ${res.status}: ${await res.text()}`);
+          const { page } = await res.json();
+          seen.push(...page.events.map((e) => e.id));
+          if (page.next === null) return seen;
+          before = page.next;
+        }
+        throw new Error("hosted walk did not terminate");
+      };
+      const walkLocal = (families) => {
+        const out = [];
+        let before = null;
+        for (;;) {
+          const page = schema.pageJournal(fullJournal, { before, limit: 3, families });
+          out.push(...page.events.map((e) => e.id));
+          if (page.next === null) return out;
+          before = schema.parseJournalCursor(page.next);
+        }
+      };
+
+      const arrival = fullJournal.map((e) => e.id);
+      const expected = walkLocal(null);
+      check(
+        "journal page: the backdated append is out of arrival order (precondition)",
+        expected.indexOf("01pagebackdated0000000001") !== arrival.length - 1 - arrival.indexOf("01pagebackdated0000000001"),
+      );
+      for (const limit of [2, 7, 500]) {
+        const hosted = await walkHosted(limit, null);
+        check(
+          `journal page: walking pages of ${limit} gives pageJournal's order over the whole journal`,
+          hosted.join(",") === expected.join(",") && hosted.length === fullJournal.length,
+          `${hosted.length} vs ${expected.length}`,
+        );
+      }
+      for (const families of [["nodes"], ["delivery", "intake"], ["refs"]]) {
+        const hosted = await walkHosted(2, families);
+        check(
+          `journal page: a ${families.join("+")} walk matches pageJournal's family filter`,
+          hosted.join(",") === walkLocal(families).join(","),
+          `${hosted.join(",")} vs ${walkLocal(families).join(",")}`,
+        );
+      }
+      check(
+        "journal page: a type no family claims is only in the unfiltered walk",
+        expected.includes("01pagenofamily0000000001") &&
+          !(await walkHosted(50, Object.keys(schema.JOURNAL_FAMILIES))).includes("01pagenofamily0000000001"),
+      );
+
+      const first = await api.GET_JOURNAL_PAGE(pageUrl("?limit=2"), ctx(projectId));
+      const firstTag = first.headers.get("etag");
+      const again = await api.GET_JOURNAL_PAGE(
+        new Request(`${ORIGIN}/api/graph/projects/${projectId}/journal/page?limit=2`, { headers: { "if-none-match": firstTag } }),
+        ctx(projectId),
+      );
+      check("journal page: a matching If-None-Match answers 304 with no body", again.status === 304 && (await again.text()) === "");
+      const other = await api.GET_JOURNAL_PAGE(
+        new Request(`${ORIGIN}/api/graph/projects/${projectId}/journal/page?limit=3`, { headers: { "if-none-match": firstTag } }),
+        ctx(projectId),
+      );
+      check("journal page: another page's tag never earns a 304", other.status === 200, String(other.status));
+      for (const [query, error] of [
+        ["?families=quality", "invalid_families"],
+        ["?before=nope", "invalid_cursor"],
+        ["?limit=501", "invalid_limit"],
+      ]) {
+        const res = await api.GET_JOURNAL_PAGE(pageUrl(query), ctx(projectId));
+        check(`journal page: ${query} is a 400 ${error}`, res.status === 400 && (await res.json()).error === error);
+      }
+      setSession(sessionFor(userB));
+      check(
+        "journal page: another owner gets 404",
+        (await api.GET_JOURNAL_PAGE(pageUrl("?limit=2"), ctx(projectId))).status === 404,
+      );
+      setSession(sessionFor(userA));
+    }
+
     // --- Bad requests -------------------------------------------------------
     setSession(sessionFor(userA));
     check(

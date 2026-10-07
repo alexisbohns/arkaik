@@ -35,7 +35,12 @@ export function graphReadRoute<K extends string, T, O = undefined>(
     ownerIds: readonly string[],
     options: O,
   ) => Promise<(Record<K, T> & { validators: ProjectValidators }) | null>,
-  etagFor: (validators: ProjectValidators) => string,
+  /**
+   * Gets the parsed options too, for a route whose body is a SLICE (the paged
+   * journal): its tag has to name the slice, or a validator for one page would
+   * earn a 304 for another. Every other route's tag ignores them.
+   */
+  etagFor: (validators: ProjectValidators, options: O) => string,
   /**
    * Reads the loader's options off the request — the `?types=` projection, and
    * only the journal route has one. A route WITHOUT a parser ignores the query
@@ -78,7 +83,7 @@ export function graphReadRoute<K extends string, T, O = undefined>(
       if (ifNoneMatch !== null) {
         const validators = await loadValidators(projectId, caller.ownerIds);
         if (validators === null) return Response.json({ error: "not_found" }, { status: 404 });
-        const etag = etagFor(validators);
+        const etag = etagFor(validators, options);
         if (ifNoneMatchSatisfied(ifNoneMatch, etag)) {
           return new Response(null, { status: 304, headers: readResponseHeaders(etag) });
         }
@@ -88,7 +93,7 @@ export function graphReadRoute<K extends string, T, O = undefined>(
       if (result === null) return Response.json({ error: "not_found" }, { status: 404 });
       return Response.json(
         { [key]: result[key] },
-        { status: 200, headers: readResponseHeaders(etagFor(result.validators)) },
+        { status: 200, headers: readResponseHeaders(etagFor(result.validators, options)) },
       );
     } catch (err) {
       console.error(`[graph] GET ${label} failed:`, err instanceof Error ? err.message : "unknown error");

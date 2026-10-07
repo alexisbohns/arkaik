@@ -85,6 +85,25 @@ export function pollenEtag(
   return formatReadEtag([validators.version, validators.eventCount, fnv1a32(pageKey)]);
 }
 
+/**
+ * The History page's paged read, `GET …/journal/page`: the journal's
+ * validator plus a tag for the page, for the reason `pollenEtag` gives — the
+ * body is a slice, and a tag for one slice must never earn a 304 for another.
+ * The parts arrive canonical (`parseJournalPageQuery`: families sorted and
+ * deduped), so two spellings of one request share a tag.
+ */
+export function journalPageEtag(
+  validators: ProjectValidators,
+  page: { beforeRaw: string | null; limit: number; families: readonly string[] | null },
+): string {
+  const pageKey = [
+    String(page.limit),
+    page.beforeRaw === null ? "-" : `b${page.beforeRaw}`,
+    page.families === null ? "-" : `f${page.families.join(",")}`,
+  ].join("\u0000");
+  return formatReadEtag([validators.version, validators.eventCount, fnv1a32(pageKey)]);
+}
+
 /** FNV-1a over the UTF-16 code units, as eight lowercase hex digits. */
 function fnv1a32(input: string): string {
   let hash = 0x811c9dc5;

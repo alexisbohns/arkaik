@@ -70,6 +70,7 @@ function loadGraphApi() {
     ["@/lib/services/graph/restore", "./restore.js"],
     ["@/lib/services/graph/store", "./store.js"],
     ["@/lib/services/graph/read-route", "./read-route.js"],
+    ["@/lib/services/graph/journal-page-query", "./journal-page-query.js"],
     ["@/lib/pollen/map", "./pollen-map.js"],
     ["@/lib/utils/quality", "./quality.js"],
     ["@/auth", "./auth-module-stub.js"],
@@ -106,6 +107,11 @@ function loadGraphApi() {
   write("restore.js", transpile(src("lib", "services", "graph", "restore.ts"), "restore.ts", COMMON));
   write("store.js", transpile(src("lib", "services", "graph", "store.ts"), "store.ts", COMMON));
   write("read-route.js", transpile(src("lib", "services", "graph", "read-route.ts"), "read-route.ts", COMMON));
+  // The paged journal's query parser (#429) — pure, over @arkaik/schema.
+  write(
+    "journal-page-query.js",
+    transpile(src("lib", "services", "graph", "journal-page-query.ts"), "journal-page-query.ts", COMMON),
+  );
 
   // The pollen chain (slice 3): support → contract → map, all pure; the feed
   // route below is what needs them. `@arkaik/schema` imports in map.ts are
@@ -129,6 +135,7 @@ function loadGraphApi() {
     "edges-route.js": src("app", "api", "graph", "projects", "[projectId]", "edges", "route.ts"),
     "journal-route.js": src("app", "api", "graph", "projects", "[projectId]", "journal", "route.ts"),
     "journal-stats-route.js": src("app", "api", "graph", "projects", "[projectId]", "journal", "stats", "route.ts"),
+    "journal-page-route.js": src("app", "api", "graph", "projects", "[projectId]", "journal", "page", "route.ts"),
     "export-route.js": src("app", "api", "graph", "projects", "[projectId]", "export", "route.ts"),
     "pollen-route.js": src("app", "api", "graph", "projects", "[projectId]", "pollen", "route.ts"),
     "quality-events-route.js": src("app", "api", "graph", "projects", "[projectId]", "quality", "events", "route.ts"),
@@ -160,6 +167,7 @@ function loadGraphApi() {
     GET_EDGES: req("edges-route.js").GET,
     GET_JOURNAL: req("journal-route.js").GET,
     GET_JOURNAL_STATS: req("journal-stats-route.js").GET,
+    GET_JOURNAL_PAGE: req("journal-page-route.js").GET,
     EXPORT: req("export-route.js").GET,
     GET_POLLEN: req("pollen-route.js").GET,
     QUALITY_EVENTS: req("quality-events-route.js").POST,
