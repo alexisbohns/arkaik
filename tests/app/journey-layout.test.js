@@ -97,8 +97,9 @@ for (const seed of [paramsFor("pebbles.json"), paramsFor("arkaik-self-map.json")
     }
     assert(collisions.length === 0, `${tag}: no two cards overlap${collisions.length ? ` (${collisions.slice(0, 3).join(", ")}…)` : ""}`);
 
-    // Structure: a parent sits GAP_MAIN above its child row and is centred over it;
-    // a sequence is a straight line.
+    // Structure: a parent sits GAP_MAIN above its child row and is centred
+    // between its first and last child (Reingold–Tilford); a sequence is a
+    // straight line.
     const centreX = (id) => rects.get(id).x + rects.get(id).width / 2;
     const bottom = (id) => rects.get(id).y + rects.get(id).height;
     const firstCard = (block) => {
@@ -127,18 +128,24 @@ for (const seed of [paramsFor("pebbles.json"), paramsFor("arkaik-self-map.json")
       for (const head of heads) {
         if (rects.get(head).y !== bottom(block.id) + GAP_MAIN) problems.push(`${head} is not GAP_MAIN under ${block.id}`);
       }
-      // The row is made of whole blocks (a child's subtree may be wider than
-      // its card), so centring is read over every card under the row.
-      const rowIds = under.flatMap(blockNodeIds);
-      if (rowIds.length > 0) {
-        const rowLeft = Math.min(...rowIds.map((id) => rects.get(id).x));
-        const rowRight = Math.max(...rowIds.map((id) => rects.get(id).x + rects.get(id).width));
-        if (Math.abs((rowLeft + rowRight) / 2 - centreX(block.id)) > 1) problems.push(`${block.id} is not centred over its row`);
+      if (heads.length > 0) {
+        const between = (centreX(heads[0]) + centreX(heads[heads.length - 1])) / 2;
+        if (Math.abs(between - centreX(block.id)) > 1) problems.push(`${block.id} is not centred between its first and last child`);
       }
       under.forEach(walk);
     };
     graph.roots.forEach(walk);
-    assert(problems.length === 0, `${tag}: parents centred, rows GAP_MAIN below, sequences straight${problems.length ? ` (${problems.slice(0, 3).join("; ")})` : ""}`);
+    assert(problems.length === 0, `${tag}: parents centred between first and last child, rows GAP_MAIN below, sequences straight${problems.length ? ` (${problems.slice(0, 3).join("; ")})` : ""}`);
+
+    // Contour packing: a subtree tucks under a leaf neighbour instead of
+    // claiming its bounding box. On Pebbles, Path's first child sits left of
+    // Path itself, under Gamification Hub; and the collapsed map stays within
+    // 4000px where a bounding-box tidy tree needed ~5000 (ELK: ~3100).
+    if (seed.label === "pebbles.json") {
+      assert(rects.get("V-pebble-visual").x < rects.get("V-timeline").x, `${tag}: Path's children tuck under its leaf neighbours`);
+      const total = Math.max(...[...rects.values()].map((r) => r.x + r.width));
+      if (state === "collapsed") assert(total <= 4000, `${tag}: packed to ${total}px (≤ 4000)`);
+    }
 
     // Reading RIGHT with transposed cards is the transpose of reading DOWN:
     // the direction only swaps which axis is which.
@@ -167,12 +174,11 @@ for (const seed of [paramsFor("pebbles.json"), paramsFor("arkaik-self-map.json")
     return Math.max(...rs.map((r) => r.x + r.width)) - Math.min(...rs.map((r) => r.x));
   };
   const widthAfter = bounds([...inside], b.rects);
-  const half = (widthAfter - widthBefore) / 2;
+  const growth = widthAfter - widthBefore;
 
-  // The layout is anchored at cross 0, so growth goes rightward: a card left of
-  // the toggled block stays, one right of it slides by the whole delta, and a
-  // parent centred over both slides by half. Nothing moves along the main axis.
-  const allowed = [0, half, 2 * half];
+  // The layout is anchored at cross 0, so growth goes rightward: nothing
+  // outside the block moves along the main axis, nothing moves left, and
+  // nothing slides further than the block grew.
   const offenders = [];
   for (const node of before.nodes) {
     if (inside.has(node.id)) continue;
@@ -180,9 +186,9 @@ for (const seed of [paramsFor("pebbles.json"), paramsFor("arkaik-self-map.json")
     const q = b.positions.get(node.id);
     if (!q) continue;
     if (p.y !== q.y) offenders.push(`${node.id} moved along the main axis`);
-    else if (!allowed.some((d) => Math.abs(q.x - p.x - d) <= 1)) offenders.push(`${node.id} slid ${q.x - p.x}, not 0/${half}/${2 * half}`);
+    else if (q.x - p.x < 0 || q.x - p.x > growth + 1) offenders.push(`${node.id} slid ${q.x - p.x}, outside 0..${growth}`);
   }
-  assert(offenders.length === 0, `outside the toggled block, nothing moves except the rightward re-centring (0, ${half} or ${2 * half})${offenders.length ? ` (${offenders.slice(0, 3).join("; ")})` : ""}`);
+  assert(offenders.length === 0, `outside the toggled block, nothing moves except a rightward slide of at most the ${growth}px growth${offenders.length ? ` (${offenders.slice(0, 3).join("; ")})` : ""}`);
   assert(b.positions.get(toggled).y === a.positions.get(toggled).y, "the toggled flow keeps its main-axis position");
 }
 

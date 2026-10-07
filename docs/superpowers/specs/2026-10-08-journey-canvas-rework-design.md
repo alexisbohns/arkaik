@@ -106,18 +106,23 @@ Output: `Map<id, {x,y}>`.
 
 Computed in abstract (main, cross) axes — main is the reading direction:
 
-- **node**: its card, then its child blocks in a row along the cross axis
-  (`GAP_CROSS = 40` apart), `GAP_MAIN = 48` below the card. Block cross-size
-  = max(card, row); the card is centred over the row.
+- **node**: its card, then its child blocks in a row along the cross axis,
+  `GAP_MAIN = 48` below the card. The row packs by **contour**, the
+  Reingold–Tilford way: each sibling moves right only as far as its left
+  contour needs to clear everything before it by `GAP_CROSS = 40`, so a wide
+  subtree tucks under a leaf neighbour instead of claiming its bounding box
+  (a bounding-box tidy tree laid Pebbles out 7000px wide; contours keep it
+  within the widest level, ~3000px). The card is centred between its first
+  and last child.
 - **sequence**: items stacked along the main axis, `GAP_MAIN` apart, each
-  centred on the sequence's cross-centre. Cross-size = widest item.
+  centred on the sequence's line.
 - **branch**: the branch card, then its arms as a row (as a node's children);
-  the card centred over the arms.
+  the card centred between its first and last arm.
 
-Every card is 240 wide, so a sequence of cards is a straight line; the only
-things that move on a toggle are the items after the toggled flow in its own
-sequence (down, by the subtree's height) and the siblings of its enclosing rows
-when its cross-size changes (re-centring, by half the delta). Nothing else.
+Every card is 240 wide, so a sequence of cards is a straight line. A toggle
+never moves anything along the main axis outside the toggled flow's own
+sequence, and slides what sits to its right across by at most the block's
+growth. Nothing else.
 
 Sizes: `lib/utils/journey-card-size.ts` holds today's flow/view/branch
 estimates (moved out of `elk-layout.ts`, which imports them for the System

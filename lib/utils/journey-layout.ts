@@ -39,28 +39,101 @@ export const GAP_MAIN = 48;
 /** Space across the reading direction between siblings in a row. */
 export const GAP_CROSS = 40;
 
-/** A block's extent in reading-direction (`main`) and across it (`cross`). */
-interface Extent {
-  main: number;
-  cross: number;
-}
-
-const EMPTY: Extent = { main: 0, cross: 0 };
-
 const childrenOf = (block: JourneyBlock): JourneyBlock[] =>
   block.kind === "sequence" ? block.items : block.kind === "node" ? block.children : block.arms;
+
+/** One piece of a contour: over the main interval `[from, to)`, the edge sits at `value` across. */
+interface Segment {
+  from: number;
+  to: number;
+  value: number;
+}
+
+/** A placed block, in its own frame: card offsets, its two contours, and the line it is centred on. */
+interface Placed {
+  offsets: Map<string, { main: number; cross: number }>;
+  /** The leftmost card edge at every main position the block occupies. */
+  left: Segment[];
+  /** The rightmost card edge at every main position the block occupies. */
+  right: Segment[];
+  /** The cross position of the block's card centre (a sequence: its line). */
+  centre: number;
+  /** Where the block ends along main. */
+  mainEnd: number;
+}
+
+const breakpoints = (a: Segment[], b: Segment[]): number[] =>
+  [...new Set([...a, ...b].flatMap((segment) => [segment.from, segment.to]))].sort((x, y) => x - y);
+
+const valueAt = (segments: Segment[], from: number, to: number): number | undefined =>
+  segments.find((segment) => segment.from <= from && segment.to >= to)?.value;
+
+/** The pointwise combination of two contours — `Math.min` for a left edge, `Math.max` for a right one. */
+function combine(a: Segment[], b: Segment[], pick: (x: number, y: number) => number): Segment[] {
+  if (a.length === 0) return b;
+  if (b.length === 0) return a;
+  const points = breakpoints(a, b);
+  const out: Segment[] = [];
+  for (let i = 0; i + 1 < points.length; i += 1) {
+    const from = points[i];
+    const to = points[i + 1];
+    const x = valueAt(a, from, to);
+    const y = valueAt(b, from, to);
+    const value = x === undefined ? y : y === undefined ? x : pick(x, y);
+    if (value === undefined) continue;
+    const last = out[out.length - 1];
+    if (last && last.to === from && last.value === value) last.to = to;
+    else out.push({ from, to, value });
+  }
+  return out;
+}
+
+const shiftSegments = (segments: Segment[], by: number): Segment[] =>
+  by === 0 ? segments : segments.map((segment) => ({ ...segment, value: segment.value + by }));
+
+const shiftPlaced = (placed: Placed, by: number): Placed =>
+  by === 0
+    ? placed
+    : {
+        offsets: new Map([...placed.offsets].map(([id, at]) => [id, { main: at.main, cross: at.cross + by }])),
+        left: shiftSegments(placed.left, by),
+        right: shiftSegments(placed.right, by),
+        centre: placed.centre + by,
+        mainEnd: placed.mainEnd,
+      };
+
+/**
+ * How far right `next` must move so that, wherever the two overlap along
+ * main, its left edge clears `right` by `gap`. Negative when it could even
+ * move left; the caller clamps as it sees fit.
+ */
+function clearance(right: Segment[], next: Segment[], gap: number): number {
+  let needed = -Infinity;
+  for (const r of right) {
+    for (const n of next) {
+      if (r.to <= n.from || n.to <= r.from) continue;
+      needed = Math.max(needed, r.value + gap - n.value);
+    }
+  }
+  return needed;
+}
 
 /**
  * Place every card of the block tree. Pure and synchronous.
  *
- * In abstract axes — `main` is the reading direction, `cross` the other one:
- * a card's children form a row across, `GAP_MAIN` below it, and the card is
- * centred over the row; a sequence stacks its items along `main`, each centred
- * on the sequence's cross-centre; a branch is a card over the row of its arms.
- * Every flow and view card is `CARD_WIDTH` wide, so a sequence of cards is a
- * straight line. A toggle therefore moves only the items after the toggled
- * flow in its own sequence, and re-centres the rows that contain it — nothing
- * else.
+ * In abstract axes — `main` is the reading direction, `cross` the other one.
+ * A card's children form a row across, `GAP_MAIN` below it; a sequence stacks
+ * its items along `main`, each centred on the sequence's line; a branch is a
+ * card over the row of its arms.
+ *
+ * Rows pack by contour, the Reingold–Tilford way: each sibling moves right
+ * only as far as its left contour needs to clear the contour of everything
+ * before it, so a wide subtree tucks under a leaf neighbour instead of
+ * claiming its whole bounding box. A card is centred between its first and
+ * last child. Every flow and view card is `CARD_WIDTH` wide, so a sequence of
+ * cards is a straight line. A toggle therefore never moves anything along
+ * `main` outside the toggled flow's own sequence, and slides what sits to its
+ * right across by at most the block's growth.
  *
  * `direction` swaps the axes: `DOWN` reads top to bottom, `RIGHT` left to right.
  */
@@ -69,88 +142,79 @@ export function layoutJourney(
   sizeOf: (id: string) => Size,
   direction: JourneyDirection = "DOWN",
 ): Map<string, Point> {
-  const extents = new Map<JourneyBlock, Extent>();
-
-  const cardExtent = (id: string): Extent => {
+  const cardExtent = (id: string) => {
     const size = sizeOf(id);
     return direction === "DOWN" ? { main: size.height, cross: size.width } : { main: size.width, cross: size.height };
   };
 
-  const rowExtent = (blocks: readonly JourneyBlock[]): Extent => {
-    let main = 0;
-    let cross = 0;
+  const empty = (main: number): Placed => ({ offsets: new Map(), left: [], right: [], centre: 0, mainEnd: main });
+
+  /** Pack `blocks` left to right at `main`, each in its own frame, and merge them into one. */
+  const placeRow = (blocks: readonly JourneyBlock[], main: number): { row: Placed; first: Placed | null; last: Placed | null } => {
+    let row = empty(main);
+    let first: Placed | null = null;
+    let last: Placed | null = null;
     for (const block of blocks) {
-      const extent = measure(block);
-      if (extent.cross === 0) continue;
-      cross += (cross > 0 ? GAP_CROSS : 0) + extent.cross;
-      main = Math.max(main, extent.main);
-    }
-    return { main, cross };
-  };
-
-  const measure = (block: JourneyBlock): Extent => {
-    const known = extents.get(block);
-    if (known) return known;
-
-    let extent: Extent;
-    if (block.kind === "sequence") {
-      let main = 0;
-      let cross = 0;
-      for (const item of block.items) {
-        const itemExtent = measure(item);
-        if (itemExtent.cross === 0) continue;
-        main += (main > 0 ? GAP_MAIN : 0) + itemExtent.main;
-        cross = Math.max(cross, itemExtent.cross);
-      }
-      extent = main === 0 ? EMPTY : { main, cross };
-    } else {
-      const card = cardExtent(block.id);
-      const row = rowExtent(childrenOf(block));
-      extent = {
-        main: card.main + (row.main > 0 ? GAP_MAIN + row.main : 0),
-        cross: Math.max(card.cross, row.cross),
+      const placed = place(block, main);
+      if (placed.offsets.size === 0) continue;
+      const by = first === null ? 0 : Math.max(clearance(row.right, placed.left, GAP_CROSS), 0);
+      const shifted = shiftPlaced(placed, by);
+      row = {
+        offsets: new Map([...row.offsets, ...shifted.offsets]),
+        left: combine(row.left, shifted.left, Math.min),
+        right: combine(row.right, shifted.right, Math.max),
+        centre: 0,
+        mainEnd: Math.max(row.mainEnd, shifted.mainEnd),
       };
+      first ??= shifted;
+      last = shifted;
     }
-
-    extents.set(block, extent);
-    return extent;
+    return { row, first, last };
   };
 
-  const positions = new Map<string, Point>();
-  const put = (id: string, main: number, cross: number) => {
-    const at = { main: Math.round(main), cross: Math.round(cross) };
-    positions.set(id, direction === "DOWN" ? { x: at.cross, y: at.main } : { x: at.main, y: at.cross });
-  };
-
-  const placeRow = (blocks: readonly JourneyBlock[], main: number, crossCentre: number) => {
-    const row = rowExtent(blocks);
-    let cross = crossCentre - row.cross / 2;
-    for (const block of blocks) {
-      const extent = measure(block);
-      if (extent.cross === 0) continue;
-      place(block, main, cross + extent.cross / 2);
-      cross += extent.cross + GAP_CROSS;
-    }
-  };
-
-  const place = (block: JourneyBlock, main: number, crossCentre: number) => {
+  const place = (block: JourneyBlock, main: number): Placed => {
     if (block.kind === "sequence") {
+      // Items one under the other, every one centred on the line at 0.
       let cursor = main;
+      let placed = empty(main);
       for (const item of block.items) {
-        const extent = measure(item);
-        if (extent.cross === 0) continue;
-        place(item, cursor, crossCentre);
-        cursor += extent.main + GAP_MAIN;
+        const itemAlone = place(item, cursor);
+        const itemPlaced = shiftPlaced(itemAlone, -itemAlone.centre);
+        if (itemPlaced.offsets.size === 0) continue;
+        placed = {
+          offsets: new Map([...placed.offsets, ...itemPlaced.offsets]),
+          left: [...placed.left, ...itemPlaced.left],
+          right: [...placed.right, ...itemPlaced.right],
+          centre: 0,
+          mainEnd: itemPlaced.mainEnd,
+        };
+        cursor = itemPlaced.mainEnd + GAP_MAIN;
       }
-      return;
+      return placed;
     }
 
     const card = cardExtent(block.id);
-    put(block.id, main, crossCentre - card.cross / 2);
-    placeRow(childrenOf(block), main + card.main + GAP_MAIN, crossCentre);
+    const { row, first, last } = placeRow(childrenOf(block), main + card.main + GAP_MAIN);
+    const centre = first && last ? (first.centre + last.centre) / 2 : 0;
+    const cardLeft = centre - card.cross / 2;
+    const cardSegment = { from: main, to: main + card.main };
+    return {
+      offsets: new Map([[block.id, { main, cross: cardLeft }], ...row.offsets]),
+      left: combine([{ ...cardSegment, value: cardLeft }], row.left, Math.min),
+      right: combine([{ ...cardSegment, value: cardLeft + card.cross }], row.right, Math.max),
+      centre,
+      mainEnd: Math.max(main + card.main, row.mainEnd),
+    };
   };
 
-  placeRow(roots, 0, rowExtent(roots).cross / 2);
+  const { row } = placeRow(roots, 0);
+  const minCross = Math.min(0, ...[...row.offsets.values()].map((at) => at.cross));
+  const positions = new Map<string, Point>();
+  for (const [id, at] of row.offsets) {
+    const main = Math.round(at.main);
+    const cross = Math.round(at.cross - minCross);
+    positions.set(id, direction === "DOWN" ? { x: cross, y: main } : { x: main, y: cross });
+  }
   return positions;
 }
 
