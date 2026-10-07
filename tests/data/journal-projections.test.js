@@ -24,8 +24,15 @@ function check(name, cond, detail) {
 }
 const ids = (events) => events.map((e) => e.id).join(",");
 
-const { computeNodeTimeline, computeChangelog, computeBacklog, computeDeliverables, computeCommitments } =
-  loadJournalProjections();
+const {
+  computeNodeTimeline,
+  computeChangelog,
+  computeBacklog,
+  computeDeliverables,
+  computeCommitments,
+  computeReleaseEventCounts,
+  RELEASE_COUNT_EVENT_FIELDS,
+} = loadJournalProjections();
 
 // --- Fixture journal (stored shuffled; consumers must order it) ------------
 // Timeline (by ts): V-home created → idea "Dark mode" → V-settings created →
@@ -218,6 +225,64 @@ function main() {
     JSON.stringify(commitments.map((e) => e.id)),
   );
   check("computeCommitments on an empty journal is empty", computeCommitments([]).length === 0);
+
+  // --- Release event counts (#429): the Overview's aggregate --------------------
+  // The server answers these so the Overview can stop downloading the journal,
+  // so they MUST equal what the page computed before: `computeChangelog`'s
+  // slice length per version. Asserted against that function, never against
+  // hand-counted numbers that could agree with a shared mistake.
+  const changelogCount = (events, version, nodesById) =>
+    computeChangelog(events, version, { nodesById }).events.length;
+  const asRecord = (counts) => Object.fromEntries(counts.map((c) => [c.version, c.eventCount]));
+  {
+    const counts = computeReleaseEventCounts(JOURNAL, { nodesById: NODES_BY_ID });
+    const expected = {
+      "1.0": changelogCount(JOURNAL, "1.0", NODES_BY_ID),
+      "1.1": changelogCount(JOURNAL, "1.1", NODES_BY_ID),
+      "1.2": changelogCount(JOURNAL, "1.2", NODES_BY_ID),
+    };
+    check(
+      "release counts equal computeChangelog per version (platform-scoped 1.2 included)",
+      JSON.stringify(asRecord(counts)) === JSON.stringify(expected) && expected["1.1"] > 0 && expected["1.2"] > 0,
+      `${JSON.stringify(asRecord(counts))} vs ${JSON.stringify(expected)}`,
+    );
+    check(
+      "…listed oldest release first",
+      counts.map((c) => c.version).join(",") === "1.0,1.1,1.2",
+      counts.map((c) => c.version).join(","),
+    );
+    const unscoped = asRecord(computeReleaseEventCounts(JOURNAL));
+    check(
+      "…and without a snapshot a platform-scoped release keeps only events naming the platform, as the changelog does",
+      unscoped["1.2"] === changelogCount(JOURNAL, "1.2", undefined) &&
+        unscoped["1.2"] !== changelogCount(JOURNAL, "1.2", NODES_BY_ID),
+      JSON.stringify(unscoped),
+    );
+  }
+  {
+    // A re-tagged version resolves to its LATEST marker, both here and there.
+    const retag = { id: "01P", ts: "2026-01-07T00:00:00.000Z", type: "release.tagged", version: "1.0" };
+    const late = { id: "01Q", ts: "2026-01-06T12:00:00.000Z", type: "node.updated", node_id: "V-home", fields: ["title"] };
+    const journal = [...JOURNAL, retag, late];
+    const counts = asRecord(computeReleaseEventCounts(journal, { nodesById: NODES_BY_ID }));
+    check(
+      "a re-tagged version counts from its latest marker",
+      counts["1.0"] === changelogCount(journal, "1.0", NODES_BY_ID) && counts["1.0"] === 1,
+      JSON.stringify(counts),
+    );
+  }
+  {
+    // The server reduces each event to these fields before counting.
+    const slim = JOURNAL.map((ev) =>
+      Object.fromEntries(Object.entries(ev).filter(([key]) => RELEASE_COUNT_EVENT_FIELDS.includes(key))),
+    );
+    check(
+      "events reduced to RELEASE_COUNT_EVENT_FIELDS count exactly like whole events",
+      JSON.stringify(computeReleaseEventCounts(slim, { nodesById: NODES_BY_ID })) ===
+        JSON.stringify(computeReleaseEventCounts(JOURNAL, { nodesById: NODES_BY_ID })),
+    );
+  }
+  check("release counts of an empty journal are empty", computeReleaseEventCounts([]).length === 0);
 
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
   fs.rmSync(SCHEMA_BUILD_DIR, { recursive: true, force: true });
