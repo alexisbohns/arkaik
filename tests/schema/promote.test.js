@@ -175,6 +175,63 @@ function main() {
     );
   }
 
+  // --- Live is kept, not re-earned (#424) --------------------------------
+  {
+    // A follow-up PR on a shipped platform attaches its ref and moves
+    // nothing: users still have the feature, and pulling the status back to
+    // development would show a parity gap the product does not have.
+    const reopened = acceptance("AC-keep", {
+      metadata: { platformStatuses: { ios: "live" }, refs: [ref({ platform: "ios", external_status: "open" })] },
+    });
+    const plan = computeRefPromotions(bundle([reopened], true));
+    check(
+      "a reopened PR does not pull a live platform back to development",
+      plan.promotions.find((p) => p.node_id === "AC-keep") === undefined,
+      JSON.stringify(plan.promotions),
+    );
+    check("and the skip says live", plan.skipped[0]?.reason === "live", JSON.stringify(plan.skipped));
+  }
+  {
+    const liveBase = acceptance("AC-kb", { status: "live", metadata: { refs: [ref({ external_status: "open" })] } });
+    const plan = computeRefPromotions(bundle([liveBase], true));
+    check(
+      "an unscoped ref does not pull a live base status back either",
+      plan.promotions.find((p) => p.node_id === "AC-kb") === undefined && plan.skipped[0]?.reason === "live",
+      JSON.stringify(plan),
+    );
+  }
+  {
+    // The guard is on the status the ref TARGETS. A base move on a node whose
+    // only live status is one platform's own entry still goes through, and
+    // the overlay leaves that entry alone — ios stays live by its own entry.
+    const mixed = acceptance("AC-mix", {
+      status: "releasing",
+      metadata: { platformStatuses: { ios: "live" }, refs: [ref({ external_status: "open" })] },
+    });
+    const plan = computeRefPromotions(bundle([mixed], true));
+    const promotion = plan.promotions.find((p) => p.node_id === "AC-mix");
+    check(
+      "a base move is still planned when only a platform entry is live",
+      promotion?.to === "development" && promotion?.platform === undefined,
+      JSON.stringify(plan),
+    );
+    const patch = promotionPatch(mixed, promotion);
+    check(
+      "and the patch does not touch the live platform entry",
+      patch.status === "development" && patch.metadata === undefined,
+      JSON.stringify(patch),
+    );
+  }
+  {
+    // A mapping that says live on a live scope is still `already-there`, not
+    // `live`: the two skips mean different things to the webhook's reporter.
+    const liveToLive = acceptance("AC-ll", {
+      metadata: { platformStatuses: { ios: "live" }, refs: [ref({ platform: "ios" })] },
+    });
+    const plan = computeRefPromotions(bundle([liveToLive], { "github-pr": { merged: "live" } }));
+    check("live → live is already-there, not live", plan.skipped[0]?.reason === "already-there", JSON.stringify(plan.skipped));
+  }
+
   // --- A custom policy overrides the defaults ------------------------------
   {
     const node = acceptance("AC-cust", { metadata: { refs: [ref({ external_status: "merged" })] } });

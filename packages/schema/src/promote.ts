@@ -20,6 +20,11 @@
  * reports Web and Android as lagging. Moving the base `status` instead would
  * silently claim parity the product does not have.
  *
+ * ── Live is kept ───────────────────────────────────────────────────────────
+ * `archived` has always been terminal for promotions. `live` is too (issue
+ * #424): once a scope reads `live`, no mapped ref status moves it. A merge
+ * that reworks a shipped acceptance is still a merge of something users have.
+ *
  * Zod-free (type-only imports) like validate.ts / acceptance.ts / mutate.ts.
  */
 
@@ -62,7 +67,7 @@ export interface Promotion {
 export interface SkippedPromotion {
   node_id: string;
   ref_id: string;
-  reason: "platform-not-applicable" | "archived" | "already-there" | "no-mapping";
+  reason: "platform-not-applicable" | "archived" | "already-there" | "no-mapping" | "live";
   detail?: string;
 }
 
@@ -154,6 +159,19 @@ export function computeRefPromotions(bundle: ProjectBundle): PromotionPlan {
       const from = currentStatus(node, ref.platform);
       if (from === to) {
         skipped.push({ node_id: node.id, ref_id: ref.id, reason: "already-there", detail: to });
+        continue;
+      }
+
+      // Live is kept, not re-earned (issue #424). A follow-up PR on a shipped
+      // scope attaches its ref and moves nothing: users still have the
+      // feature, and pulling the status back would show a parity gap the
+      // product does not have. Judged on the status the ref TARGETS — the
+      // platform entry for a scoped ref, the base for an unscoped one — so a
+      // base move still goes through on a node whose only live status is one
+      // platform's own entry, which the overlay leaves untouched. Only a
+      // human edit moves a status off live.
+      if (from === "live") {
+        skipped.push({ node_id: node.id, ref_id: ref.id, reason: "live", detail: to });
         continue;
       }
 
