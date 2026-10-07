@@ -198,6 +198,8 @@ Component → Hook (useNodes.addNode) → getProvider().createNode(node) → the
 
 Never write to `localStorage`, IndexedDB, or `/api/graph` directly, and never import `localProvider` at a call site. `getProvider()` is the seam — it is what lets the same component work against a local, hosted, or seed project without knowing which it has ([data-layer.md § Providers](data-layer.md)).
 
+**One exception, and it is not a write path.** The persisted query cache (`lib/data/query-persistence.ts`, over its own `arkaik-query-cache` database in `lib/data/query-cache-db.ts`) writes hosted *reads* to IndexedDB so a return visit paints before the network answers. It holds copies of what the server already said, never a change of its own: every row is scoped to the signed-in account, re-checked against the server on restore, and cleared on sign-out. Nothing else may use it to store data, and a mutation never goes through it.
+
 ## Routing UI
 
 - Shared project navigation belongs in `app/project/[id]/layout.tsx`, not inside individual route pages.

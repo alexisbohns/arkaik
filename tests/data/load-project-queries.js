@@ -86,6 +86,11 @@ function loadProjectQueries() {
   // has no imports and the query's other import is project-queries above.
   write("hosted-availability.js", transpile(path.join(ROOT, "lib", "data", "hosted-availability.ts"), "hosted-availability.ts"));
   write("auth-status.js", transpile(path.join(ROOT, "lib", "data", "auth-status.ts"), "auth-status.ts"));
+  // The persisted query cache (#429): real, over the real
+  // @tanstack/query-persist-client-core from node_modules. `migrate.ts` is
+  // real too — the persister's buster reads its CURRENT_SCHEMA_VERSION.
+  write("migrate.js", transpile(path.join(ROOT, "lib", "data", "migrate.ts"), "migrate.ts"));
+  write("query-persistence.js", transpile(path.join(ROOT, "lib", "data", "query-persistence.ts"), "query-persistence.ts"));
 
   for (const name of fs.readdirSync(BUILD_DIR)) {
     if (name.endsWith(".js")) delete require.cache[path.join(BUILD_DIR, name)];
@@ -98,6 +103,7 @@ function loadProjectQueries() {
   return {
     queries: req("project-queries.js"),
     authStatus: req("auth-status.js"),
+    persistence: req("query-persistence.js"),
     availability: req("hosted-availability.js"),
     queryClient: req("query-client.js"),
     remote: req("remote-provider.js"),

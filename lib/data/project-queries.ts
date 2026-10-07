@@ -99,16 +99,38 @@ export interface BundleEntry {
   bundle: ProjectBundle;
   version: string | null;
   etag: string | null;
+  /**
+   * Set on an entry read back from the persisted cache
+   * (`lib/data/query-persistence.ts`) and cleared by the first read the server
+   * confirms. Until then the entry is a previous visit's answer.
+   */
+  restored?: true;
 }
 
 export interface JournalEntry {
   events: JournalEvent[];
   etag: string | null;
+  /** @see BundleEntry.restored */
+  restored?: true;
 }
 
 export interface JournalStatsEntry {
   stats: JournalStats;
   etag: string | null;
+  /** @see BundleEntry.restored */
+  restored?: true;
+}
+
+/**
+ * A `not-modified` answer CONFIRMS the entry it was checked against. The same
+ * object comes back — the zero-render path — unless it was restored from the
+ * persisted cache: then its `restored` mark comes off, once.
+ */
+function confirmed<E extends { restored?: true }>(entry: E): E {
+  if (!entry.restored) return entry;
+  const rest = { ...entry };
+  delete rest.restored;
+  return rest;
 }
 
 /** One loaded page of History: its events, its `next` cursor and its validator. */
@@ -184,7 +206,7 @@ export function bundleQueryOptions(projectId: string) {
       const previous = client.getQueryData<BundleEntry | null>(bundleKey(projectId));
       let read = await readProjectBundle(provider, projectId, { etag: previous?.etag ?? null, signal });
       if (read.status === "not-modified") {
-        if (previous) return previous;
+        if (previous) return confirmed(previous);
         // A 304 with nothing to fall back on should not happen (no entry, no
         // etag sent) — but a server that answered one anyway must not leave
         // the query without data. Read again, unconditionally.
@@ -214,7 +236,7 @@ export function journalQueryOptions(projectId: string, types: readonly string[] 
       const options = { types: key[3].types, signal };
       let read = await readProjectJournal(provider, projectId, { ...options, etag: previous?.etag ?? null });
       if (read.status === "not-modified") {
-        if (previous) return previous;
+        if (previous) return confirmed(previous);
         read = await readProjectJournal(provider, projectId, { ...options, etag: null });
       }
       if (read.status !== "fresh") return null;
@@ -237,7 +259,7 @@ export function journalStatsQueryOptions(projectId: string) {
       const previous = client.getQueryData<JournalStatsEntry | null>(journalStatsKey(projectId));
       let read = await provider.readJournalStats(projectId, { etag: previous?.etag ?? null, signal });
       if (read.status === "not-modified") {
-        if (previous) return previous;
+        if (previous) return confirmed(previous);
         read = await provider.readJournalStats(projectId, { etag: null, signal });
       }
       if (read.status !== "fresh") return null;
