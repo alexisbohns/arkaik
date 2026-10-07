@@ -514,6 +514,17 @@ assert(
   );
 }
 
+// --- The fold handle's count (spec § Flow card) -----------------------------
+{
+  const graph = buildJourneyGraph({ ...baseParams, expandedFlows: new Set() });
+  const flow = graph.nodes.find((node) => node.id === "F-record-pebble");
+  assert(flow?.data.playlistCount === 3, `a flow card knows how many distinct nodes its playlist references (got ${flow?.data.playlistCount})`);
+  assert(
+    graph.nodes.filter((node) => node.type === "flow" && node.data.renderVariant !== "branch").every((node) => typeof node.data.playlistCount === "number"),
+    "every flow card carries the count, 0 for an empty playlist",
+  );
+}
+
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 
 if (failures > 0) {
