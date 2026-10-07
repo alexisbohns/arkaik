@@ -62,6 +62,7 @@ export function ProductManagerPanel({ projectId, project, updateProject }: Produ
     nodes,
     loading: nodesLoading,
     error: nodesError,
+    confirmed: nodesConfirmed,
     reload: reloadNodes,
     applyMutations,
   } = useNodes(projectId);
@@ -96,8 +97,13 @@ export function ProductManagerPanel({ projectId, project, updateProject }: Produ
    * `metadata.product` for a product nobody declares — verbatim the state
    * `handleDelete`'s load guard exists to prevent. One flag, so the guard, the
    * button and the count can never disagree about what is known.
+   *
+   * Unconfirmed is unknown too (#429): a hosted project's nodes may be a
+   * previous visit's, painted from the persisted cache while the server is
+   * asked whether they still hold. Deleting a product reassigns its members,
+   * and the members as of yesterday are not a plan for today.
    */
-  const membersUnknown = nodesLoading || nodesError !== null;
+  const membersUnknown = nodesLoading || nodesError !== null || !nodesConfirmed;
 
   /**
    * The definitions as **resolved**, for everything that reads: rows, counts,

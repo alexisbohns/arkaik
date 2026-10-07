@@ -343,6 +343,16 @@ export function selectEdges(entry: BundleEntry | null | undefined): Edge[] {
   return entry?.bundle.edges ?? EMPTY_EDGES;
 }
 
+/**
+ * Whether the cached bundle is the server's current answer rather than a
+ * previous visit's, restored from the persisted cache and not yet re-checked
+ * (`BundleEntry.restored`). An absent or missing entry is not "restored": the
+ * hooks' `loading` already says that nothing is known.
+ */
+export function selectConfirmed(entry: BundleEntry | null | undefined): boolean {
+  return entry?.restored !== true;
+}
+
 export function selectJournal(entry: JournalEntry | null | undefined): JournalEvent[] {
   return entry?.events ?? EMPTY_JOURNAL;
 }
