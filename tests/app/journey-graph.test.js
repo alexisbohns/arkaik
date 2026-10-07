@@ -144,7 +144,7 @@ const baseParams = {
   const graph = buildJourneyGraph({ ...baseParams, expandedFlows: new Set([firstTopLevelFlowId]) });
   assert(graph.nodes.length === 25, `expanded journey renders 25 nodes (got ${graph.nodes.length})`);
 
-  const visualNodes = graph.nodes.filter((node) => node.id.includes(`@${firstTopLevelFlowId}:`));
+  const visualNodes = graph.nodes.filter((node) => node.id.includes(`@root:${firstTopLevelFlowId}:`));
   assert(
     visualNodes.length === 3,
     `F-record-pebble expands into 3 playlist visual nodes (got ${visualNodes.length})`,
@@ -435,6 +435,82 @@ assert(
   assert(
     noIndex.nodes.every((node) => node.data.findingSummary === undefined),
     "an unaudited project draws no badge on the System map",
+  );
+}
+
+// --- Branch arms never share a card (spec 2026-10-08 § Visual ids) ----------
+// The self-map's routing flow references the same flows at index 0 of two
+// arms; each arm draws its own card, so the junction labels never pile up.
+{
+  const selfMap = JSON.parse(fs.readFileSync(path.join(ROOT, "seed", "arkaik-self-map.json"), "utf8"));
+  const smNodesById = new Map(selfMap.nodes.map((node) => [node.id, node]));
+  const smChildren = new Map();
+  const smParent = new Map();
+  for (const edge of selfMap.edges) {
+    if (edge.edge_type !== "composes") continue;
+    smChildren.set(edge.source_id, [...(smChildren.get(edge.source_id) ?? []), edge.target_id]);
+    if (!smParent.has(edge.target_id)) smParent.set(edge.target_id, edge.source_id);
+  }
+  const smRoot = smNodesById.get(selfMap.project.root_node_id);
+  const smClosure = computeComposeClosure(smRoot, smChildren, smNodesById);
+  const graph = buildJourneyGraph({
+    dataNodes: selfMap.nodes,
+    dataEdges: selfMap.edges,
+    nodesById: smNodesById,
+    composeParentByChild: smParent,
+    explicitRootNode: smRoot,
+    composeClosure: smClosure,
+    expandedFlows: new Set(["F-projects-routing"]),
+    display: { images: true, flow_platforms: "rings", view_platforms: "chips" },
+    viewApiRelationsByViewId: computeViewApiRelations(selfMap.edges, smNodesById),
+  });
+  const createCards = graph.nodes.filter((node) => getBaseNodeId(node.id) === "F-create-project");
+  assert(createCards.length === 2, `F-create-project is drawn once per arm (got ${createCards.length})`);
+  const incoming = graph.edges.filter((edge) => edge.type === "compose" && getBaseNodeId(edge.target) === "F-create-project");
+  assert(
+    incoming.length === 2 && new Set(incoming.map((edge) => edge.target)).size === 2,
+    "each arm's card has exactly one incoming compose edge",
+  );
+}
+
+// --- The builder returns the structure it walked (spec § Structure) --------
+{
+  const graph = buildJourneyGraph({ ...baseParams, expandedFlows: new Set([firstTopLevelFlowId]) });
+  assert(Array.isArray(graph.roots) && graph.roots.length === 1, "an anchored journey has one root block");
+  const root = graph.roots[0];
+  assert(root.kind === "node" && root.id === explicitRootNode.id, "the root block is the anchor's card");
+
+  const flat = [];
+  const walk = (block) => {
+    if (block.kind === "sequence") { block.items.forEach(walk); return; }
+    flat.push(block.id);
+    (block.kind === "node" ? block.children : block.arms).forEach(walk);
+  };
+  graph.roots.forEach(walk);
+  const drawn = new Set(graph.nodes.map((node) => node.id));
+  assert(flat.length === graph.nodes.length && flat.every((id) => drawn.has(id)), "every drawn card appears exactly once in the tree");
+
+  const find = (block, id) => {
+    if (block.kind !== "sequence" && block.id === id) return block;
+    for (const child of block.kind === "sequence" ? block.items : block.kind === "node" ? block.children : block.arms) {
+      const hit = find(child, id);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  const expanded = find(root, firstTopLevelFlowId);
+  assert(
+    expanded && expanded.children.length === 1 && expanded.children[0].kind === "sequence" && expanded.children[0].items.length === 3,
+    "an expanded flow's one child is its playlist as a sequence of 3 cards",
+  );
+  const collapsed = find(root, "F-manage-collections");
+  assert(collapsed && collapsed.children.length === 0, "a collapsed flow is a leaf");
+
+  const branchy = buildJourneyGraph({ ...baseParams, expandedFlows: new Set(["F-manage-collections"]) });
+  const branch = find(branchy.roots[0], "branch-root:F-manage-collections:1");
+  assert(
+    branch && branch.kind === "branch" && branch.arms.length === 4 && branch.arms.every((arm) => arm.kind === "sequence" && arm.items.length === 1),
+    "a junction is a branch block with one sequence per case, in authored order",
   );
 }
 

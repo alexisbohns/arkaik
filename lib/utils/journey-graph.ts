@@ -30,6 +30,7 @@ import {
   type ProductScope,
 } from "@/lib/utils/product-scope";
 import type { NodeFindingSummary } from "@/lib/utils/quality";
+import type { JourneyBlock } from "@/lib/utils/journey-layout";
 
 /**
  * The Journey map's graph construction (docs/spec/maps.md § Built-in Maps) —
@@ -154,6 +155,18 @@ interface RenderSequenceResult {
   startIds: string[];
   endIds: string[];
   entryNodeId?: string;
+  /** What this sequence or entry laid down, for the layout; `null` when nothing was drawn. */
+  block: JourneyBlock | null;
+}
+
+type NodeBlock = Extract<JourneyBlock, { kind: "node" }>;
+
+/** The builder's output: React Flow nodes and edges, plus the tree the layout places. */
+export interface JourneyGraph {
+  nodes: Node[];
+  edges: Edge[];
+  /** One root block per journey root (exactly one with an explicit anchor). */
+  roots: JourneyBlock[];
 }
 
 /** All handlers are optional — a headless build (tests, counts) passes none. */
@@ -191,9 +204,9 @@ export interface JourneyGraphParams {
  * expanded into their playlist sequences per `expandedFlows` — with visual
  * node duplication for reuse and synthetic branch nodes for condition/junction
  * entries — plus every cross-layer edge whose endpoints are both visible.
- * Pure: positions are `{0,0}` placeholders for ELK.
+ * Pure: positions are `{0,0}` placeholders — `layoutJourney` places `roots`.
  */
-export function buildJourneyGraph(params: JourneyGraphParams): { nodes: Node[]; edges: Edge[] } {
+export function buildJourneyGraph(params: JourneyGraphParams): JourneyGraph {
   const {
     dataNodes,
     dataEdges,
@@ -354,34 +367,40 @@ export function buildJourneyGraph(params: JourneyGraphParams): { nodes: Node[]; 
     parentFlowVisualId: string,
   ): RenderSequenceResult => {
     if (entries.length === 0) {
-      return { startIds: [], endIds: [] };
+      return { startIds: [], endIds: [], block: null };
     }
 
     let sequenceStartIds: string[] = [];
     let previousResult: RenderSequenceResult | null = null;
+    const items: JourneyBlock[] = [];
 
     const renderEntry = (
       entry: PlaylistEntry,
-      entryIndex: number,
       entryContextKey: string,
     ): RenderSequenceResult => {
       if (entry.type === "view") {
         const viewNode = nodesById.get(entry.view_id);
-        if (!viewNode) return { startIds: [], endIds: [] };
+        if (!viewNode) return { startIds: [], endIds: [], block: null };
 
-        const viewVisualId = createVisualNodeId(viewNode.id, parentFlowVisualId, entryIndex);
+        const viewVisualId = createVisualNodeId(viewNode.id, entryContextKey);
         addDataNode(viewNode, viewVisualId);
-        return { startIds: [viewVisualId], endIds: [viewVisualId], entryNodeId: viewVisualId };
+        return {
+          startIds: [viewVisualId],
+          endIds: [viewVisualId],
+          entryNodeId: viewVisualId,
+          block: { kind: "node", id: viewVisualId, children: [] },
+        };
       }
 
       if (entry.type === "flow") {
         const flowNode = nodesById.get(entry.flow_id);
-        if (!flowNode) return { startIds: [], endIds: [] };
+        if (!flowNode) return { startIds: [], endIds: [], block: null };
 
-        const flowVisualId = createVisualNodeId(flowNode.id, parentFlowVisualId, entryIndex);
+        const flowVisualId = createVisualNodeId(flowNode.id, entryContextKey);
         addDataNode(flowNode, flowVisualId);
 
         let flowEndIds = [flowVisualId];
+        const children: JourneyBlock[] = [];
 
         if (expandedFlows.has(flowNode.id) && !renderedExpandedFlows.has(flowVisualId) && !flowTrail.has(flowNode.id)) {
           renderedExpandedFlows.add(flowVisualId);
@@ -393,9 +412,15 @@ export function buildJourneyGraph(params: JourneyGraphParams): { nodes: Node[]; 
           if (childSequence.endIds.length > 0) {
             flowEndIds = childSequence.endIds;
           }
+          if (childSequence.block) children.push(childSequence.block);
         }
 
-        return { startIds: [flowVisualId], endIds: flowEndIds, entryNodeId: flowVisualId };
+        return {
+          startIds: [flowVisualId],
+          endIds: flowEndIds,
+          entryNodeId: flowVisualId,
+          block: { kind: "node", id: flowVisualId, children },
+        };
       }
 
       const branchId = `branch-${entryContextKey}`;
@@ -414,10 +439,12 @@ export function buildJourneyGraph(params: JourneyGraphParams): { nodes: Node[]; 
       );
 
       const branchEndIds: string[] = [];
+      const arms: JourneyBlock[] = [];
 
       branches.forEach((branch, index) => {
         if (branch.entries.length === 0) {
           branchEndIds.push(branchId);
+          arms.push({ kind: "sequence", items: [] });
           return;
         }
 
@@ -428,6 +455,7 @@ export function buildJourneyGraph(params: JourneyGraphParams): { nodes: Node[]; 
           `${entryContextKey}:${index}`,
           parentFlowVisualId,
         );
+        arms.push(branchSequence.block ?? { kind: "sequence", items: [] });
 
         if (branchSequence.startIds.length > 0) {
           const branchEdgeData: Record<string, unknown> = { label: branch.label };
@@ -444,15 +472,17 @@ export function buildJourneyGraph(params: JourneyGraphParams): { nodes: Node[]; 
       return {
         startIds: [branchId],
         endIds: uniqueIds(branchEndIds.length > 0 ? branchEndIds : [branchId]),
+        block: { kind: "branch", id: branchId, arms },
       };
     };
 
     for (let index = 0; index < entries.length; index += 1) {
       const entry = entries[index];
-      const entryResult = renderEntry(entry, index, `${contextKey}:${index}`);
+      const entryResult = renderEntry(entry, `${contextKey}:${index}`);
       if (entryResult.startIds.length === 0) {
         continue;
       }
+      if (entryResult.block) items.push(entryResult.block);
 
       if (sequenceStartIds.length === 0) {
         sequenceStartIds = [...entryResult.startIds];
@@ -477,15 +507,31 @@ export function buildJourneyGraph(params: JourneyGraphParams): { nodes: Node[]; 
     return {
       startIds: uniqueIds(sequenceStartIds),
       endIds: uniqueIds(terminalIds),
+      block: { kind: "sequence", items },
     };
+  };
+
+  // The closure is already a tree: `computeComposeClosure` visits each child
+  // once, so a pair's child hangs under exactly one parent.
+  const roots: JourneyBlock[] = [];
+  const blockByNodeId = new Map<string, NodeBlock>();
+  const blockFor = (id: string): NodeBlock => {
+    let block = blockByNodeId.get(id);
+    if (!block) {
+      block = { kind: "node", id, children: [] };
+      blockByNodeId.set(id, block);
+    }
+    return block;
   };
 
   if (explicitRootNode) {
     addDataNode(explicitRootNode);
+    roots.push(blockFor(explicitRootNode.id));
 
     composeClosure.pairs.forEach(({ parentId, child }) => {
       addDataNode(child);
       addComposeEdge(parentId, child.id);
+      blockFor(parentId).children.push(blockFor(child.id));
 
       if (child.species === "flow" && expandedFlows.has(child.id)) {
         renderedExpandedFlows.add(child.id);
@@ -497,6 +543,7 @@ export function buildJourneyGraph(params: JourneyGraphParams): { nodes: Node[]; 
           child.id,
         );
         connectIds([child.id], childSequence.startIds);
+        if (childSequence.block) blockFor(child.id).children.push(childSequence.block);
       }
     });
 
@@ -510,12 +557,14 @@ export function buildJourneyGraph(params: JourneyGraphParams): { nodes: Node[]; 
         explicitRootNode.id,
       );
       connectIds([explicitRootNode.id], rootSequence.startIds);
+      if (rootSequence.block) blockFor(explicitRootNode.id).children.push(rootSequence.block);
     }
   } else {
     const rootNodes = dataNodes.filter((node) => !composeParentByChild.has(node.id) && FLOW_CHILD_SPECIES.has(node.species));
 
     rootNodes.forEach((rootNode) => {
       addDataNode(rootNode);
+      roots.push(blockFor(rootNode.id));
 
       if (rootNode.species === "flow" && expandedFlows.has(rootNode.id)) {
         renderedExpandedFlows.add(rootNode.id);
@@ -527,6 +576,7 @@ export function buildJourneyGraph(params: JourneyGraphParams): { nodes: Node[]; 
           rootNode.id,
         );
         connectIds([rootNode.id], rootSequence.startIds);
+        if (rootSequence.block) blockFor(rootNode.id).children.push(rootSequence.block);
       }
     });
   }
@@ -557,7 +607,7 @@ export function buildJourneyGraph(params: JourneyGraphParams): { nodes: Node[]; 
     }
   }
 
-  return { nodes: visibleNodes, edges: visibleEdges };
+  return { nodes: visibleNodes, edges: visibleEdges, roots };
 }
 
 /* --- Selection: what a journey may draw, and why it sometimes draws nothing --

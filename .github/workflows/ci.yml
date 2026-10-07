@@ -185,6 +185,9 @@ jobs:
       - name: Journey graph golden parity tests
         run: npm run test:journey-graph
 
+      - name: Journey layout tests
+        run: npm run test:journey-layout
+
       - name: Landing page catalogue, fixtures and slice tests
         run: npm run test:landing
 

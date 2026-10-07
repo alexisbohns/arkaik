@@ -26,13 +26,15 @@ export const EDGE_TYPE_TO_FLOW_TYPE: Record<EdgeTypeId, string> = {
 
 /**
  * A reused node renders once per playlist occurrence as a *visual* node:
- * `{nodeId}@{parentFlowVisualId}:{entryIndex}`. `getBaseNodeId` maps any
- * visual id back to the underlying data node.
+ * `{nodeId}@{contextKey}`, where the context key is the entry's whole path
+ * through the walk (`root:F-a:0:1:0`, `…:flow:1`) — so the same node at the
+ * same index of two branch arms is two cards. `getBaseNodeId` maps any visual
+ * id back to the underlying data node.
  */
 export const VISUAL_NODE_ID_SEPARATOR = "@";
 
-export function createVisualNodeId(nodeId: string, parentFlowId: string, entryIndex: number): string {
-  return `${nodeId}${VISUAL_NODE_ID_SEPARATOR}${parentFlowId}:${entryIndex}`;
+export function createVisualNodeId(nodeId: string, contextKey: string): string {
+  return `${nodeId}${VISUAL_NODE_ID_SEPARATOR}${contextKey}`;
 }
 
 export function getBaseNodeId(nodeId: string): string {

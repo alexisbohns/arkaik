@@ -40,7 +40,6 @@ import type { PlatformId } from "@/lib/config/platforms";
 import type { Node as DataNode, Edge as DataEdge, PlaylistEntry } from "@/lib/data/types";
 import type { EdgeTypeId } from "@/lib/config/edge-types";
 import {
-  VISUAL_NODE_ID_SEPARATOR,
   collectReferencedNodeIds,
   createPlaylistEntryForSpecies,
   getBaseNodeId,
@@ -699,8 +698,9 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     const flowId = pendingFitFlowRef.current;
     if (!flowId) return;
 
-    const marker = `${VISUAL_NODE_ID_SEPARATOR}${flowId}:`;
-    if (!layoutedNodes.some((node) => node.id.includes(marker))) return;
+    // Any card drawn under this flow's expansion: a visual id whose context
+    // path passes through the flow (`…:F-x:…`), under any root kind.
+    if (!layoutedNodes.some((node) => getBaseNodeId(node.id) !== node.id && node.id.includes(`:${flowId}:`))) return;
 
     pendingFitFlowRef.current = null;
     setFitSignal((value) => value + 1);
