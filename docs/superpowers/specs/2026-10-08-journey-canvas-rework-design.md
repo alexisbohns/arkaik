@@ -53,8 +53,9 @@ redesign removes the whole class rather than that one symptom.
    dedicated handle under the flow card.
 4. **The camera follows the click, never the panel.** Opening or closing a
    panel re-fits nothing; the clicked node is centred in whatever canvas is
-   left, at the current zoom. `fitView` happens on first paint and on the
-   Controls button only.
+   left, at the current zoom. `fitView` happens on first paint, on the
+   Controls button, and when a map replaces its graph (the System map's
+   layout-mode switch) — never because the canvas changed size.
 5. **An expansion keeps the toggled card where it is on screen** and pans only
    to reveal its new subtree.
 6. **Visual ids carry the whole entry context**, so arms never merge.
@@ -120,9 +121,11 @@ when its cross-size changes (re-centring, by half the delta). Nothing else.
 
 Sizes: `lib/utils/journey-card-size.ts` holds today's flow/view/branch
 estimates (moved out of `elk-layout.ts`, which imports them for the System
-map's view cards). `JourneyCanvas` lays out with `measured[id] ?? estimate`,
-re-running synchronously when a measurement differs — so a wrong estimate
-costs one frame, never an overlap.
+map's view cards). `Canvas` already collects React Flow's dimension changes for the
+minimap; it reports them upward through a new `onMeasured(sizes)` prop, and
+`JourneyCanvas` lays out with `measured[id] ?? estimate`, re-running
+synchronously when a measurement differs — so a wrong estimate costs one
+frame, never an overlap.
 
 ### Where the layout runs
 
