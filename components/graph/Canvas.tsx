@@ -62,6 +62,12 @@ interface CanvasProps {
    * pass it.
    */
   readOnly?: boolean;
+  /**
+   * Measured card sizes, as React Flow reports them. The Journey lays itself
+   * out synchronously from estimates and re-lays from these, so a wrong
+   * estimate costs one frame, never an overlap.
+   */
+  onMeasured?: (sizes: Record<string, { width: number; height: number }>) => void;
 }
 
 export function Canvas({
@@ -76,6 +82,7 @@ export function Canvas({
   scope,
   minimapColor,
   readOnly = false,
+  onMeasured,
 }: CanvasProps) {
   const reactFlowRef = useRef<ReactFlowInstance<Node, Edge> | null>(null);
   const lastFitSignal = useRef(fitSignal);
@@ -123,6 +130,16 @@ export function Canvas({
       return next ?? current;
     });
   }, []);
+
+  // Reported from an effect, not from inside the state updater — updaters must
+  // stay pure (StrictMode double-invokes them).
+  const onMeasuredRef = useRef(onMeasured);
+  useEffect(() => {
+    onMeasuredRef.current = onMeasured;
+  });
+  useEffect(() => {
+    onMeasuredRef.current?.(measured);
+  }, [measured]);
 
   const display = useMemo(() => {
     const nodesWithSize = spotlit.nodes.map((node) => {
