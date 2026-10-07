@@ -362,14 +362,13 @@ export function buildJourneyGraph(params: JourneyGraphParams): { nodes: Node[]; 
 
     const renderEntry = (
       entry: PlaylistEntry,
-      entryIndex: number,
       entryContextKey: string,
     ): RenderSequenceResult => {
       if (entry.type === "view") {
         const viewNode = nodesById.get(entry.view_id);
         if (!viewNode) return { startIds: [], endIds: [] };
 
-        const viewVisualId = createVisualNodeId(viewNode.id, parentFlowVisualId, entryIndex);
+        const viewVisualId = createVisualNodeId(viewNode.id, entryContextKey);
         addDataNode(viewNode, viewVisualId);
         return { startIds: [viewVisualId], endIds: [viewVisualId], entryNodeId: viewVisualId };
       }
@@ -378,7 +377,7 @@ export function buildJourneyGraph(params: JourneyGraphParams): { nodes: Node[]; 
         const flowNode = nodesById.get(entry.flow_id);
         if (!flowNode) return { startIds: [], endIds: [] };
 
-        const flowVisualId = createVisualNodeId(flowNode.id, parentFlowVisualId, entryIndex);
+        const flowVisualId = createVisualNodeId(flowNode.id, entryContextKey);
         addDataNode(flowNode, flowVisualId);
 
         let flowEndIds = [flowVisualId];
@@ -449,7 +448,7 @@ export function buildJourneyGraph(params: JourneyGraphParams): { nodes: Node[]; 
 
     for (let index = 0; index < entries.length; index += 1) {
       const entry = entries[index];
-      const entryResult = renderEntry(entry, index, `${contextKey}:${index}`);
+      const entryResult = renderEntry(entry, `${contextKey}:${index}`);
       if (entryResult.startIds.length === 0) {
         continue;
       }

@@ -144,7 +144,7 @@ const baseParams = {
   const graph = buildJourneyGraph({ ...baseParams, expandedFlows: new Set([firstTopLevelFlowId]) });
   assert(graph.nodes.length === 25, `expanded journey renders 25 nodes (got ${graph.nodes.length})`);
 
-  const visualNodes = graph.nodes.filter((node) => node.id.includes(`@${firstTopLevelFlowId}:`));
+  const visualNodes = graph.nodes.filter((node) => node.id.includes(`@root:${firstTopLevelFlowId}:`));
   assert(
     visualNodes.length === 3,
     `F-record-pebble expands into 3 playlist visual nodes (got ${visualNodes.length})`,
@@ -435,6 +435,41 @@ assert(
   assert(
     noIndex.nodes.every((node) => node.data.findingSummary === undefined),
     "an unaudited project draws no badge on the System map",
+  );
+}
+
+// --- Branch arms never share a card (spec 2026-10-08 § Visual ids) ----------
+// The self-map's routing flow references the same flows at index 0 of two
+// arms; each arm draws its own card, so the junction labels never pile up.
+{
+  const selfMap = JSON.parse(fs.readFileSync(path.join(ROOT, "seed", "arkaik-self-map.json"), "utf8"));
+  const smNodesById = new Map(selfMap.nodes.map((node) => [node.id, node]));
+  const smChildren = new Map();
+  const smParent = new Map();
+  for (const edge of selfMap.edges) {
+    if (edge.edge_type !== "composes") continue;
+    smChildren.set(edge.source_id, [...(smChildren.get(edge.source_id) ?? []), edge.target_id]);
+    if (!smParent.has(edge.target_id)) smParent.set(edge.target_id, edge.source_id);
+  }
+  const smRoot = smNodesById.get(selfMap.project.root_node_id);
+  const smClosure = computeComposeClosure(smRoot, smChildren, smNodesById);
+  const graph = buildJourneyGraph({
+    dataNodes: selfMap.nodes,
+    dataEdges: selfMap.edges,
+    nodesById: smNodesById,
+    composeParentByChild: smParent,
+    explicitRootNode: smRoot,
+    composeClosure: smClosure,
+    expandedFlows: new Set(["F-projects-routing"]),
+    display: { images: true, flow_platforms: "rings", view_platforms: "chips" },
+    viewApiRelationsByViewId: computeViewApiRelations(selfMap.edges, smNodesById),
+  });
+  const createCards = graph.nodes.filter((node) => getBaseNodeId(node.id) === "F-create-project");
+  assert(createCards.length === 2, `F-create-project is drawn once per arm (got ${createCards.length})`);
+  const incoming = graph.edges.filter((edge) => edge.type === "compose" && getBaseNodeId(edge.target) === "F-create-project");
+  assert(
+    incoming.length === 2 && new Set(incoming.map((edge) => edge.target)).size === 2,
+    "each arm's card has exactly one incoming compose edge",
   );
 }
 
