@@ -136,6 +136,65 @@ check(
   }
 }
 
+// --- The hosted route's query parser (lib/services/graph/journal-page-query.ts) ---
+// Pure but for its @arkaik/schema import, so it runs here, in CI's fast job,
+// rather than only behind a database.
+{
+  const ts = require("typescript");
+  const Module = require("module");
+  const source = fs.readFileSync(
+    path.join(__dirname, "..", "..", "lib", "services", "graph", "journal-page-query.ts"),
+    "utf8",
+  );
+  const { outputText } = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true },
+  });
+  const mod = new Module("journal-page-query.js");
+  const originalLoad = Module._load;
+  Module._load = function (request, parent, isMain) {
+    if (request === "@arkaik/schema") return schema;
+    return originalLoad.call(this, request, parent, isMain);
+  };
+  try {
+    mod._compile(outputText, "journal-page-query.js");
+  } finally {
+    Module._load = originalLoad;
+  }
+  const parse = (qs) => mod.exports.parseJournalPageQuery(new URLSearchParams(qs));
+
+  const plain = parse("");
+  check(
+    "no parameters: the newest 100 of every event",
+    plain.ok && plain.query.before === null && plain.query.limit === 100 && plain.query.families === null,
+    JSON.stringify(plain),
+  );
+  const fams = parse("families=intake, nodes&families=nodes,");
+  check(
+    "families are repeatable, comma-separated, trimmed, deduped and sorted",
+    fams.ok && JSON.stringify(fams.query.families) === '["intake","nodes"]',
+    JSON.stringify(fams),
+  );
+  const cursor = formatJournalCursor({ ts: "2026-01-03T00:00:00Z", id: "01C" });
+  const withCursor = parse(`before=${encodeURIComponent(cursor)}&limit=2`);
+  check(
+    "a minted cursor and a limit parse, the raw cursor kept for the page tag",
+    withCursor.ok && withCursor.query.before.id === "01C" && withCursor.query.beforeRaw === cursor && withCursor.query.limit === 2,
+    JSON.stringify(withCursor),
+  );
+  for (const [qs, error] of [
+    ["families=quality", "invalid_families"],
+    ["families=nodes,toString", "invalid_families"],
+    ["before=nope", "invalid_cursor"],
+    ["limit=0", "invalid_limit"],
+    ["limit=501", "invalid_limit"],
+    ["limit=ten", "invalid_limit"],
+    ["limit=-1", "invalid_limit"],
+  ]) {
+    const got = parse(qs);
+    check(`${qs} is refused as ${error}, never guessed at`, !got.ok && got.error === error, JSON.stringify(got));
+  }
+}
+
 fs.rmSync(SCHEMA_BUILD_DIR, { recursive: true, force: true });
 if (failures > 0) {
   console.log(`\n${failures} journal-page test(s) failed.`);

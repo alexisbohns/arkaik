@@ -10,13 +10,19 @@ import {
   STATUS_VOCABULARY_VERSION,
   applyOps,
   computeReleaseEventCounts,
+  formatJournalCursor,
+  journalCursorOf,
+  journalFamilyPrefixes,
   migrateStatusVocabulary,
   orderEvents,
   parseBundle,
   toJournalEvents,
   validateBundle,
   type Edge,
+  type JournalCursor,
   type JournalEvent,
+  type JournalFamilyId,
+  type JournalPage,
   type MutationOp,
   type Node,
   type Project,
@@ -450,6 +456,57 @@ export async function getJournalStats(
     stats: { total: events.length, releases: computeReleaseEventCounts(events, { nodesById }) },
     validators,
   };
+}
+
+/**
+ * `getJournalPage`'s ordering key, spelled EXACTLY as migration 012's index
+ * expression: a different spelling is a different expression to the planner,
+ * and the read silently falls back to sorting the project's whole journal.
+ */
+const EVENT_TIME_KEY = `(case when jsonb_typeof(e.event->'ts') = 'string' then e.event->>'ts' else '' end) collate "C"`;
+
+/**
+ * One page of the journal, newest first in `(ts, id)` order — the History
+ * page's read, and the SQL twin of `pageJournal` from @arkaik/schema (whose
+ * doc says why time order and not `seq`). Keyset-paged on migration 012's
+ * index: `before` is the last event of the previous page, and the row
+ * comparison takes everything strictly older. One extra row is fetched to
+ * learn whether a next page exists without counting.
+ *
+ * Families filter by type prefix (`like 'node.%'`). The prefixes come from
+ * `JOURNAL_FAMILIES`, never from the request, and none contains a `like`
+ * wildcard. Validators first, for the reason `getJournal` gives.
+ */
+export async function getJournalPage(
+  projectId: string,
+  ownerIds: readonly string[],
+  options: { before: JournalCursor | null; limit: number; families: readonly JournalFamilyId[] | null },
+): Promise<{ page: JournalPage; validators: ProjectValidators } | null> {
+  const validators = await loadValidators(projectId, ownerIds);
+  if (!validators) return null;
+  const prefixes = journalFamilyPrefixes(options.families);
+  const { rows } = await query<{ event: JournalEvent }>(
+    `select e.event from graph_events e
+      where e.project_id = $1
+        and ($2::text is null
+             or (${EVENT_TIME_KEY}, e.id collate "C") < ($2::text collate "C", $3::text collate "C"))
+        and ($4::text[] is null or e.event->>'type' like any($4::text[]))
+      order by ${EVENT_TIME_KEY} desc, e.id collate "C" desc
+      limit $5`,
+    [
+      projectId,
+      options.before?.ts ?? null,
+      options.before?.id ?? null,
+      prefixes === null ? null : prefixes.map((prefix) => `${prefix}%`),
+      options.limit + 1,
+    ],
+  );
+  const events = rows.slice(0, options.limit).map((row) => row.event);
+  const next =
+    rows.length > options.limit && events.length > 0
+      ? formatJournalCursor(journalCursorOf(events[events.length - 1]))
+      : null;
+  return { page: { events, next }, validators };
 }
 
 /**
