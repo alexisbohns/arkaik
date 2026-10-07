@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import type { Node, NodeMouseHandler, OnConnect, EdgeMouseHandler } from "@xyflow/react";
 import type { MapMinimapColorMode } from "@arkaik/schema";
-import { Canvas, type CanvasPin } from "@/components/graph/Canvas";
+import { Canvas, type CanvasFocus, type CanvasPin } from "@/components/graph/Canvas";
 import { buildJourneyGraph, type JourneyGraphParams } from "@/lib/utils/journey-graph";
 import { estimateJourneyCardSize } from "@/lib/utils/journey-card-size";
 import { blockBounds, findBlock, layoutJourney, type JourneyDirection, type Size } from "@/lib/utils/journey-layout";
@@ -31,6 +31,8 @@ export interface JourneyCanvasProps extends JourneyGraphParams {
    * re-lays around it, then pans just enough to reveal what opened under it.
    */
   toggled?: { nodeId: string; version: number } | null;
+  /** The card a click selected (see `Canvas`). */
+  focus?: CanvasFocus | null;
   onNodeClick?: NodeMouseHandler;
   onConnect?: OnConnect;
   onEdgeClick?: EdgeMouseHandler;
@@ -59,6 +61,7 @@ export function JourneyCanvas({
   readOnly = false,
   direction = "DOWN",
   toggled = null,
+  focus = null,
   onNodeClick,
   onConnect,
   onEdgeClick,
@@ -145,6 +148,7 @@ export function JourneyCanvas({
       onMeasured={setMeasured}
       fitSignal={fitSignal}
       pin={pin}
+      focus={focus}
       scope={scope}
       minimapColor={minimapColor}
       readOnly={readOnly}

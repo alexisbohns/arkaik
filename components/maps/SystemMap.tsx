@@ -12,6 +12,7 @@ import {
 } from "@arkaik/schema";
 import { toast } from "sonner";
 import { SystemCanvas } from "@/components/graph/SystemCanvas";
+import type { CanvasFocus } from "@/components/graph/Canvas";
 import { MapDisplayPopover } from "@/components/maps/MapDisplayPopover";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
@@ -166,9 +167,9 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
     setFitSignal((value) => value + 1);
   }, []);
 
-  // The canvas is a grid cell now: opening a panel narrows it and closing one
-  // gives the room back, so re-frame rather than leave the map half off-cell.
-  const reframe = useCallback(() => setFitSignal((value) => value + 1), []);
+  // The card a click selected, centred in whatever canvas the panel leaves —
+  // the camera follows the click, never the panel.
+  const [focus, setFocus] = useState<CanvasFocus | null>(null);
 
   const handleLayoutModeChange = useCallback((value: string) => {
     pendingFitRef.current = true;
@@ -178,7 +179,9 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
   const handleNodeClick = useCallback<NodeMouseHandler>(
     (_event, xyNode) => {
       const dataNode = nodesById.get(xyNode.id);
-      if (dataNode) openNode({ nodeId: dataNode.id });
+      if (!dataNode) return;
+      openNode({ nodeId: dataNode.id });
+      setFocus((prev) => ({ nodeId: xyNode.id, version: (prev?.version ?? 0) + 1 }));
     },
     [nodesById, openNode],
   );
@@ -322,7 +325,6 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
           </>
         }
         surfaceCard
-        onLayoutChange={reframe}
         allNodes={dataNodes}
         allEdges={dataEdges}
         scope={scope}
@@ -342,6 +344,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
           nodeFindings={nodeFindings}
           layoutMode={layoutMode}
           fitSignal={fitSignal}
+          focus={focus}
           minimapColor={display.minimap_color}
           spotlight
           spotlightNodeId={addressedNodeId}

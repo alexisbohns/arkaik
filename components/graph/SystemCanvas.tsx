@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { NodeMouseHandler, OnConnect, EdgeMouseHandler } from "@xyflow/react";
 import type { MapDefinition, MapMinimapColorMode, ResolvedMapDisplay } from "@arkaik/schema";
-import { Canvas } from "@/components/graph/Canvas";
+import { Canvas, type CanvasFocus } from "@/components/graph/Canvas";
 import type { Node as DataNode, Edge as DataEdge } from "@/lib/data/types";
 import { useElkLayout } from "@/lib/hooks/useElkLayout";
 import type { ProductScope } from "@/lib/utils/product-scope";
@@ -40,6 +40,8 @@ export interface SystemCanvasProps {
    * only the reading handler (`onOpenDetails`).
    */
   readOnly?: boolean;
+  /** The card a click selected (see `Canvas`). */
+  focus?: CanvasFocus | null;
   onNodeClick?: NodeMouseHandler;
   onConnect?: OnConnect;
   onEdgeClick?: EdgeMouseHandler;
@@ -73,6 +75,7 @@ export function SystemCanvas({
   spotlight = false,
   spotlightNodeId = null,
   readOnly = false,
+  focus = null,
   onNodeClick,
   onConnect,
   onEdgeClick,
@@ -111,6 +114,7 @@ export function SystemCanvas({
       spotlight={spotlight}
       spotlightNodeId={spotlightNodeId}
       scope={scope ?? productScope?.scope}
+      focus={focus}
       readOnly={readOnly}
     />
   );
