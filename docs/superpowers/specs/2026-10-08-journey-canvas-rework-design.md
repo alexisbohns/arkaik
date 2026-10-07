@@ -194,8 +194,9 @@ parses the suffix once `JourneyMap.handleLayout`'s marker goes.
   expanded — no two cards overlap; a child row sits `GAP_MAIN` below its
   parent and its parent is centred over it; a sequence is a straight line;
   toggling a leaf flow leaves every node outside its sequence and its
-  enclosing rows at the same position; `RIGHT` is the exact axis swap of
-  `DOWN`.
+  enclosing rows at the same position; `RIGHT` over transposed cards is
+  the transpose of `DOWN` (cards are not square, so the direction only swaps
+  which axis is which).
 - `journey-graph.test.js`: golden counts re-pinned; the self-map's
   *Projects Actions Routing* arms produce distinct cards (no card has compose
   parents in two arms); `roots` reflects the walk (one root with an anchor,
