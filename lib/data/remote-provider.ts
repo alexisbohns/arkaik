@@ -1,10 +1,11 @@
-import type { MutationOp } from "@arkaik/schema";
+import type { JournalPage, MutationOp } from "@arkaik/schema";
 
 import type {
   DataProvider,
   JournalProjection,
   JournalStats,
   MutationResult,
+  ReadJournalPageOptions,
   ProjectSummary,
   ReadJournalOptions,
   ReadProjectOptions,
@@ -341,6 +342,23 @@ export function createRemoteProvider(options: RemoteProviderOptions = {}): DataP
         );
         if (got.status === "not-modified") return { status: "not-modified" };
         return { status: "fresh", value: got.body.stats, etag: got.etag };
+      } catch (err) {
+        if (err instanceof RemoteProviderError && err.status === 404) return { status: "missing" };
+        throw err;
+      }
+    },
+
+    async readJournalPage(projectId: string, options: ReadJournalPageOptions): Promise<ReadResult<JournalPage>> {
+      const params = new URLSearchParams({ limit: String(options.limit) });
+      if (options.before !== null) params.set("before", options.before);
+      if (options.families && options.families.length > 0) params.set("families", options.families.join(","));
+      try {
+        const got = await conditionalGet<{ page: JournalPage }>(
+          `/projects/${encodeURIComponent(projectId)}/journal/page?${params}`,
+          options,
+        );
+        if (got.status === "not-modified") return { status: "not-modified" };
+        return { status: "fresh", value: got.body.page, etag: got.etag };
       } catch (err) {
         if (err instanceof RemoteProviderError && err.status === 404) return { status: "missing" };
         throw err;

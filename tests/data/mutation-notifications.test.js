@@ -272,6 +272,21 @@ async function main() {
       (await localProvider.readJournalStats("no-such-project", { etag: null })).status === "missing",
     );
 
+    // History's paged read (#429), over the same journal.
+    const page = await localProvider.readJournalPage(PROJECT_D, { before: null, limit: 2, families: null, etag: null });
+    const newestFirst = [...whole].sort((a, b) => (a.ts === b.ts ? (a.id < b.id ? 1 : -1) : a.ts < b.ts ? 1 : -1));
+    check(
+      "readJournalPage serves the newest events first, with a cursor while more remain",
+      page.status === "fresh" && page.etag === null &&
+        JSON.stringify(page.value.events.map((e) => e.id)) === JSON.stringify(newestFirst.slice(0, 2).map((e) => e.id)) &&
+        (whole.length > 2 ? page.value.next !== null : page.value.next === null),
+      JSON.stringify(page),
+    );
+    check(
+      "…and answers missing for a project this browser does not hold",
+      (await localProvider.readJournalPage("no-such-project", { before: null, limit: 2, families: null, etag: null })).status === "missing",
+    );
+
     const created = await localProvider.getJournal(PROJECT_D, { types: ["node.created"] });
     check(
       "getJournal({ types }) filters to those types, in journal order",

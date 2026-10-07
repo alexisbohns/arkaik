@@ -1,4 +1,5 @@
-import type { QueryClient, QueryFunctionContext } from "@tanstack/query-core";
+import type { InfiniteData, QueryClient, QueryFunctionContext } from "@tanstack/query-core";
+import { JOURNAL_PAGE_DEFAULT_LIMIT, type JournalEvent as SchemaJournalEvent, type JournalFamilyId } from "@arkaik/schema";
 
 import type { DataProvider, JournalStats, MutationResult, ProjectSummary, ReadResult } from "@/lib/data/data-provider";
 import { subscribeToMutations } from "@/lib/data/local-provider";
@@ -40,6 +41,25 @@ export const journalKey = (projectId: string, types: readonly string[] | null) =
  * mutation bus reach it like every other read of the project.
  */
 export const journalStatsKey = (projectId: string) => ["project", projectId, "journal-stats"] as const;
+
+/**
+ * History's paged read (`readJournalPage`), one infinite query per family
+ * filter. Like the stats, a sibling of the journal entries and never under
+ * their prefix — the event append would write into it — but under
+ * `projectKey`, so `invalidateProject` and the local bus reach it.
+ */
+export const journalPagesKey = (projectId: string, families: readonly JournalFamilyId[] | null) =>
+  ["project", projectId, "journal-pages", { families: normalizeJournalFamilies(families) }] as const;
+
+const journalPagesPrefix = (projectId: string) => [...projectKey(projectId), "journal-pages"] as const;
+
+/** Sorted and deduped, `[]` and `null` alike meaning "every event" — one entry per filter. */
+export function normalizeJournalFamilies(
+  families: readonly JournalFamilyId[] | null | undefined,
+): JournalFamilyId[] | null {
+  if (!families || families.length === 0) return null;
+  return [...new Set(families)].sort();
+}
 
 /**
  * `["project", id, "journal"]` without the trailing types — the prefix that
@@ -88,6 +108,13 @@ export interface JournalEntry {
 
 export interface JournalStatsEntry {
   stats: JournalStats;
+  etag: string | null;
+}
+
+/** One loaded page of History: its events, its `next` cursor and its validator. */
+export interface JournalPageEntry {
+  events: SchemaJournalEvent[];
+  next: string | null;
   etag: string | null;
 }
 
@@ -216,6 +243,43 @@ export function journalStatsQueryOptions(projectId: string) {
       if (read.status !== "fresh") return null;
       return { stats: read.value, etag: read.etag };
     },
+    ...pollingFor(projectId),
+  };
+}
+
+/**
+ * History's pages as one infinite query: `pageParam` is the cursor (`null`
+ * for the newest page), `getNextPageParam` the page's own `next`.
+ *
+ * Every page revalidates on its own validator. A refetch — the hosted minute,
+ * a window focus, a write-back — re-reads each loaded page in turn, and the
+ * queryFn finds the page it already holds for that cursor and sends its tag:
+ * a quiet journal answers every page with a bodiless 304 and the same object
+ * comes back. When an event did land, the first page changes, its `next`
+ * moves, and the pages after it are asked for under cursors nothing holds a
+ * tag for, so they read fresh.
+ */
+export function journalPagesQueryOptions(projectId: string, families: readonly JournalFamilyId[] | null) {
+  const key = journalPagesKey(projectId, families);
+  return {
+    queryKey: key,
+    queryFn: async ({ client, signal, pageParam }: QueryFunctionContext<typeof key, string | null>): Promise<JournalPageEntry> => {
+      const provider = getProvider();
+      const previous = client.getQueryData<InfiniteData<JournalPageEntry, string | null>>(key);
+      const index = previous ? previous.pageParams.indexOf(pageParam) : -1;
+      const held = index >= 0 ? previous?.pages[index] : undefined;
+      const options = { before: pageParam, limit: JOURNAL_PAGE_DEFAULT_LIMIT, families: key[3].families, signal };
+      let read = await provider.readJournalPage(projectId, { ...options, etag: held?.etag ?? null });
+      if (read.status === "not-modified") {
+        if (held) return held;
+        read = await provider.readJournalPage(projectId, { ...options, etag: null });
+      }
+      // A project that does not exist has no history: one empty, final page.
+      if (read.status !== "fresh") return { events: [], next: null, etag: null };
+      return { events: read.value.events, next: read.value.next, etag: read.etag };
+    },
+    initialPageParam: null as string | null,
+    getNextPageParam: (last: JournalPageEntry): string | null | undefined => last.next ?? undefined,
     ...pollingFor(projectId),
   };
 }
@@ -464,7 +528,8 @@ function refetchIfEmpty(client: QueryClient, projectId: string): void {
 }
 
 /**
- * The aggregate cannot be patched the way the journal is: a release's count
+ * The journal reads that cannot be patched the way the journal is — the
+ * aggregate, and History's pages. The aggregate: a release's count
  * depends on where an event falls among the markers and, for a
  * platform-scoped release, on node platforms the write may have changed. So
  * every write-back re-asks. The default `refetchType` ("active") refetches
@@ -472,8 +537,11 @@ function refetchIfEmpty(client: QueryClient, projectId: string): void {
  * keeps a read that started before the write from landing after it; an
  * unmounted entry is just marked stale for its next mount.
  */
-function invalidateJournalStats(client: QueryClient, projectId: string): void {
+function invalidateJournalReads(client: QueryClient, projectId: string): void {
   void client.invalidateQueries({ queryKey: journalStatsKey(projectId) });
+  // History's pages, for the same reason: an event lands somewhere in time
+  // order, and which page it lands on is not knowable from here.
+  void client.invalidateQueries({ queryKey: journalPagesPrefix(projectId) });
 }
 
 /** The listing shows counts and `updated_at`; any write moves them. */
@@ -494,7 +562,7 @@ export async function writeBackGraph(client: QueryClient, projectId: string, res
   client.setQueryData<BundleEntry | null>(bundleKey(projectId), (entry) => withGraph(entry, result));
   refetchIfEmpty(client, projectId);
   await appendOrInvalidateJournal(client, projectId, result.events);
-  invalidateJournalStats(client, projectId);
+  invalidateJournalReads(client, projectId);
   markProjectsStale(client);
 }
 
@@ -512,7 +580,7 @@ export async function writeBackEdges(
   await client.cancelQueries({ queryKey: bundleKey(projectId) });
   client.setQueryData<BundleEntry | null>(bundleKey(projectId), (entry) => withEdges(entry, edges, version));
   refetchIfEmpty(client, projectId);
-  invalidateJournalStats(client, projectId);
+  invalidateJournalReads(client, projectId);
   markProjectsStale(client);
 }
 
@@ -525,7 +593,7 @@ export async function writeBackEdges(
 export async function writeBackBundle(client: QueryClient, projectId: string, bundle: ProjectBundle): Promise<void> {
   await client.cancelQueries({ queryKey: bundleKey(projectId) });
   client.setQueryData<BundleEntry | null>(bundleKey(projectId), (entry) => withBundle(entry, bundle));
-  invalidateJournalStats(client, projectId);
+  invalidateJournalReads(client, projectId);
   markProjectsStale(client);
 }
 

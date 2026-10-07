@@ -560,6 +560,59 @@ async function main() {
     );
   }
 
+  // --- History's paged read (#429) -----------------------------------------------------
+  {
+    const seen = [];
+    let answer = () =>
+      new Response(JSON.stringify({ page: { events: [{ id: "e2" }], next: '["t","e2"]' } }), {
+        status: 200,
+        headers: { etag: 'W/"4.3.abcd1234"' },
+      });
+    const provider = remote.createRemoteProvider({
+      fetchImpl: async (url, init) => {
+        seen.push({ url, ifNoneMatch: init?.headers?.["if-none-match"] ?? null });
+        return answer();
+      },
+    });
+    const first = await provider.readJournalPage(HOSTED, { before: null, limit: 100, families: null, etag: null });
+    const firstUrl = new URL(seen[0].url, "http://x");
+    check(
+      "readJournalPage GETs the page route with its limit and no cursor or families",
+      firstUrl.pathname.endsWith(`/projects/${HOSTED}/journal/page`) &&
+        firstUrl.searchParams.get("limit") === "100" &&
+        !firstUrl.searchParams.has("before") && !firstUrl.searchParams.has("families"),
+      seen[0].url,
+    );
+    check(
+      "…and answers the page with its validator",
+      first.status === "fresh" && first.value.next === '["t","e2"]' && first.etag === 'W/"4.3.abcd1234"',
+      JSON.stringify(first),
+    );
+    answer = () => new Response(null, { status: 304 });
+    const quiet = await provider.readJournalPage(HOSTED, {
+      before: '["t","e2"]', limit: 100, families: ["intake", "nodes"], etag: 'W/"4.3.abcd1234"',
+    });
+    const secondUrl = new URL(seen[1].url, "http://x");
+    check(
+      "a later page carries its cursor and families, sends its tag, and a 304 is not-modified",
+      secondUrl.searchParams.get("before") === '["t","e2"]' &&
+        secondUrl.searchParams.get("families") === "intake,nodes" &&
+        seen[1].ifNoneMatch === 'W/"4.3.abcd1234"' && quiet.status === "not-modified",
+      JSON.stringify({ url: seen[1].url, quiet }),
+    );
+
+    const router = routing.createRoutingProvider({
+      local: reg.localFake,
+      remote: remote.createRemoteProvider({
+        fetchImpl: async () => { throw new Error("a local page read must not reach the network"); },
+      }),
+      isRemoteAvailable: () => true,
+    });
+    resetCalls();
+    await router.readJournalPage(LOCAL, { before: null, limit: 100, families: null, etag: null });
+    check("the router sends a local project's page read to the local provider", calls.includes(`readJournalPage:${LOCAL}`), calls.join(","));
+  }
+
   // --- Replacing a hosted bundle in place (#429) ---------------------------------
   // The raw editor's save for a hosted project. It used to go through
   // `importProject`, which the router lands LOCALLY — a phantom `prj_…` row in

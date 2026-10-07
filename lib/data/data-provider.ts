@@ -1,4 +1,4 @@
-import type { MutationOp, ReleaseEventCount } from "@arkaik/schema";
+import type { JournalFamilyId, JournalPage, MutationOp, ReleaseEventCount } from "@arkaik/schema";
 
 import type { Node, Edge, Project, ProjectBundle, JournalEvent } from "./types";
 
@@ -164,6 +164,16 @@ export interface DataProvider {
   readJournalStats(projectId: string, options: ReadProjectOptions): Promise<ReadResult<JournalStats>>;
 
   /**
+   * One page of the journal, newest first in `(ts, id)` order — the History
+   * page's read (`pageJournal` in @arkaik/schema). REQUIRED for the same
+   * reason as the stats: the remote provider asks `GET …/journal/page`
+   * (conditional, with a per-page validator), and the local and seed
+   * providers page the journal they hold in memory with `etag: null`. A
+   * project that does not exist is `missing`.
+   */
+  readJournalPage(projectId: string, options: ReadJournalPageOptions): Promise<ReadResult<JournalPage>>;
+
+  /**
    * Replace a project's whole bundle — snapshot and journal — in place,
    * refused unless the stored version is still `options.version`. OPTIONAL
    * like the conditional reads: only the remote provider has a version to
@@ -174,6 +184,14 @@ export interface DataProvider {
    * would land a hosted bundle in IndexedDB.
    */
   replaceProject?(projectId: string, bundle: ProjectBundle, options: ReplaceProjectOptions): Promise<{ version: string }>;
+}
+
+export interface ReadJournalPageOptions extends ReadProjectOptions {
+  /** The previous page's `next`, or `null` for the newest page. */
+  before: string | null;
+  limit: number;
+  /** Only these History families; `null` for every event. */
+  families: readonly JournalFamilyId[] | null;
 }
 
 /** What `readJournalStats` answers — the hosted route's `stats` body. */
