@@ -1,31 +1,35 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import { orderEvents } from "@arkaik/schema";
+import type { JournalFamilyId } from "@arkaik/schema";
 import { PageError } from "@/components/layout/PageError";
 import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
 import { PageSurface } from "@/components/layout/PageSurface";
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useNodes } from "@/lib/hooks/useNodes";
-import { useJournal } from "@/lib/hooks/useJournal";
+import { useJournalPages } from "@/lib/hooks/useJournalPages";
+import { useJournalStats } from "@/lib/hooks/useJournalStats";
 import { useProjectId } from "@/lib/hooks/useProjectId";
 import { FeedRow } from "@/components/journal/FeedRow";
 
 /**
- * Event families for the filter chips. An unknown/forward-compatible type
- * matches no family and shows only under "All".
+ * The filter chips' labels. What each family MATCHES lives in the schema
+ * (`JOURNAL_FAMILIES`, by type prefix), because the backend filters now: a
+ * chip narrows the read itself, not one page of everything. An unknown or
+ * forward-compatible type matches no family and shows only under "All".
  */
-const FAMILIES = [
-  { id: "nodes", label: "Nodes", prefixes: ["node."] },
-  { id: "edges", label: "Edges", prefixes: ["edge."] },
-  { id: "decisions", label: "Decisions", prefixes: ["decision."] },
-  { id: "delivery", label: "Delivery", prefixes: ["release.", "deliverable."] },
-  { id: "intake", label: "Ideas & requests", prefixes: ["idea.", "request."] },
-  { id: "refs", label: "References", prefixes: ["ref."] },
-] as const;
+const FAMILIES: readonly { id: JournalFamilyId; label: string }[] = [
+  { id: "nodes", label: "Nodes" },
+  { id: "edges", label: "Edges" },
+  { id: "decisions", label: "Decisions" },
+  { id: "delivery", label: "Delivery" },
+  { id: "intake", label: "Ideas & requests" },
+  { id: "refs", label: "References" },
+];
 
-type FamilyId = (typeof FAMILIES)[number]["id"];
+type FamilyId = JournalFamilyId;
 
 /**
  * One filter chip.
@@ -64,26 +68,36 @@ export default function HistoryPage() {
   const id = useProjectId();
 
   const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes } = useNodes(id);
-  const { journal, loading: journalLoading, error: journalError, reload: reloadJournal } = useJournal(id);
   const [family, setFamily] = useState<FamilyId | null>(null);
+  // The page reads its history a page at a time, newest first, and never the
+  // whole journal (#429). The total in the header and the "no journal yet"
+  // decision come from the aggregate, never from the pages loaded so far.
+  const { stats, loading: statsLoading, error: statsError, reload: reloadStats } = useJournalStats(id);
+  const families = useMemo(() => (family === null ? null : [family]), [family]);
+  const {
+    events,
+    loading: eventsLoading,
+    error: eventsError,
+    reload: reloadEvents,
+    hasMore,
+    loadMore,
+    loadingMore,
+    loadMoreError,
+  } = useJournalPages(id, families);
+  const total = stats?.total ?? 0;
 
   const nodesById = useMemo(() => new Map(dataNodes.map((node) => [node.id, node])), [dataNodes]);
 
-  const events = useMemo(() => {
-    const ordered = orderEvents(journal).reverse(); // newest first
-    if (family === null) return ordered;
-    const prefixes = FAMILIES.find((f) => f.id === family)?.prefixes ?? [];
-    return ordered.filter((event) => prefixes.some((prefix) => event.type.startsWith(prefix)));
-  }, [journal, family]);
-
-  if (nodesLoading || journalLoading) {
+  // Not on the pages: switching chips loads a new filter, and that must
+  // redraw the list, not the whole page.
+  if (nodesLoading || statsLoading) {
     return <PageLoading label="history" />;
   }
 
   // Before the empty state, never after (#362): an unread journal is `[]`, and
   // "No journal yet. Every recorded event will appear here." over a project
   // with years of history is exactly the sentence this gate exists to prevent.
-  const loadError = nodesError ?? journalError;
+  const loadError = nodesError ?? statsError;
   if (loadError) {
     return (
       <PageError
@@ -91,7 +105,7 @@ export default function HistoryPage() {
         message={loadError}
         onRetry={() => {
           void reloadNodes();
-          void reloadJournal();
+          void reloadStats();
         }}
       />
     );
@@ -100,12 +114,12 @@ export default function HistoryPage() {
   return (
     <PageShell
       title="History"
-      meta={`${journal.length} event${journal.length === 1 ? "" : "s"}`}
+      meta={`${total} event${total === 1 ? "" : "s"}`}
       allNodes={dataNodes}
       history
     >
       <PageSurface contentClassName="flex flex-col gap-4">
-        {journal.length === 0 ? (
+        {total === 0 ? (
           <EmptyState message="No journal yet. Every recorded event will appear here." />
         ) : (
           <>
@@ -124,14 +138,45 @@ export default function HistoryPage() {
               ))}
             </div>
 
-            {events.length === 0 ? (
+            {eventsLoading ? (
+              <p className="text-sm text-muted-foreground" role="status">
+                Loading history…
+              </p>
+            ) : eventsError !== null ? (
+              <div className="flex items-center gap-3 text-sm text-destructive" role="alert">
+                <span>{eventsError}</span>
+                <Button size="sm" variant="outline" className="cursor-pointer" onClick={() => void reloadEvents()}>
+                  Retry
+                </Button>
+              </div>
+            ) : events.length === 0 ? (
               <p className="text-sm text-muted-foreground">No events in this family.</p>
             ) : (
-              <div className="flex flex-col gap-0.5">
-                {events.map((event) => (
-                  <FeedRow key={event.id} event={event} nodesById={nodesById} />
-                ))}
-              </div>
+              <>
+                <div className="flex flex-col gap-0.5">
+                  {events.map((event) => (
+                    <FeedRow key={event.id} event={event} nodesById={nodesById} />
+                  ))}
+                </div>
+                {hasMore && (
+                  <div className="flex items-center gap-3">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="cursor-pointer"
+                      disabled={loadingMore}
+                      onClick={() => void loadMore()}
+                    >
+                      {loadingMore ? "Loading…" : "Load more"}
+                    </Button>
+                    {loadMoreError && (
+                      <span className="text-xs text-destructive" role="status" aria-live="polite">
+                        {loadMoreError}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
