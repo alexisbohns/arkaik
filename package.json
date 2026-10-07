@@ -70,7 +70,7 @@
     "test:lab-note-parse": "node tests/services/lab-note-parse.test.js",
     "test:lab-note-webhook": "node tests/services/lab-note-webhook.test.js",
     "test:mcp": "npm run build -w arkaik && npm run build -w arkaik-mcp && node tests/mcp/run-mcp-tests.js && node tests/mcp/journal-baseline.test.js && node tests/mcp/remote-store.test.js && node tests/mcp/version.test.js && node tests/mcp/kritik-tools.test.js",
-    "test:journal-projections": "node tests/data/journal-projections.test.js",
+    "test:journal-projections": "node tests/data/journal-projections.test.js && node tests/data/journal-page.test.js",
     "test:emit": "node tests/schema/emit.test.js",
     "test:mutate": "node tests/schema/mutate.test.js",
     "test:promote": "node tests/schema/promote.test.js",
