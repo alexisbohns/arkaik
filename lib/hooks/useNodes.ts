@@ -10,6 +10,7 @@ import {
   deriveLoadState,
   EMPTY_EDGES,
   EMPTY_NODES,
+  selectConfirmed,
   selectNodes,
   writeBackGraph,
   type BundleEntry,
@@ -29,6 +30,13 @@ export function useNodes(projectId: string) {
   const result = useQuery({ ...bundleQueryOptions(projectId), select: selectNodes });
   const nodes: Node[] = result.data ?? EMPTY_NODES;
   const { loading, error } = deriveLoadState(result, "Failed to load nodes");
+  /**
+   * False while `nodes` is a previous visit's answer restored from the
+   * persisted cache and the server has not yet confirmed it. Painting it is
+   * the point of keeping it; PLANNING a destructive write against it is not —
+   * a surface about to do that waits for this (`ProductManagerPanel`).
+   */
+  const confirmed = useQuery({ ...bundleQueryOptions(projectId), select: selectConfirmed }).data ?? true;
 
   const { refetch } = result;
   /** The retry behind every `PageError` — joins a fetch already in flight. */
@@ -106,5 +114,5 @@ export function useNodes(projectId: string) {
     [client, commit, projectId],
   );
 
-  return { nodes, loading, error, reload, addNode, removeNode, removeNodes, updateNode, applyMutations };
+  return { nodes, loading, error, confirmed, reload, addNode, removeNode, removeNodes, updateNode, applyMutations };
 }

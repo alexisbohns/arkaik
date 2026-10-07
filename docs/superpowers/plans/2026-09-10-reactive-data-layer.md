@@ -398,6 +398,13 @@ here.
 
 ### Deferred: persistence (design recorded, not shipped here)
 
+> **Shipped in #429's follow-up stack** as designed below, with one change of
+> mechanism: restored entries revalidate through `refetchOnRestore: "always"`
+> rather than an `isInvalidated` flag, and are marked `restored` until the
+> server confirms them — the mark, not `loading`, is what `ProductManagerPanel`
+> waits on, so pages still paint the restored answer at once. See
+> `lib/data/query-persistence.ts`.
+
 The in-memory cache removes the in-session cost; a cold load pays one request
 instead of six either way. The review found the `PersistQueryClientProvider`
 + blob persister costs 20 ms of main-thread `JSON.stringify` and a multi-MB

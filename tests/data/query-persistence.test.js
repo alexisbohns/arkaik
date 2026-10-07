@@ -72,7 +72,7 @@ async function settle(client) {
 
 async function main() {
   const { queries, queryClient, core, setProvider, persistence } = loadProjectQueries();
-  const { bundleQueryOptions, bundleKey, journalPagesKey, journalKey, journalStatsKey, projectsKey } = queries;
+  const { bundleQueryOptions, bundleKey, journalPagesKey, journalKey, journalStatsKey, projectsKey, selectConfirmed } = queries;
   const { createQueryClient } = queryClient;
   const { createHostedQueryPersister, isPersistedQueryKey } = persistence;
 
@@ -140,6 +140,12 @@ async function main() {
     "…and the server's 304 clears the mark, keeping the content",
     confirmedEntry.restored === undefined && confirmedEntry.bundle.nodes[0].id === "V-a" && confirmedEntry.etag === 'W/"1.0"',
     JSON.stringify({ restored: confirmedEntry.restored, etag: confirmedEntry.etag }),
+  );
+
+  check(
+    "selectConfirmed — what ProductManagerPanel waits on — is false for the restored paint, true once confirmed",
+    selectConfirmed(painted[0]) === false && selectConfirmed(confirmedEntry) === true &&
+      selectConfirmed(undefined) === true && selectConfirmed(null) === true,
   );
 
   // --- A 304 that changes nothing writes nothing --------------------------------------------
