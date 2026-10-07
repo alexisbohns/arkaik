@@ -2,52 +2,18 @@ import type { ElkNode, ElkExtendedEdge } from "elkjs/lib/elk-api";
 import type { Node, Edge } from "@xyflow/react";
 
 import { getElkEngine } from "./elk-engine";
-
-// Chrome every card pays: py-3 (24) + border-2 (4) + the title row (28).
-const CARD_CHROME_HEIGHT = 56;
-const CARD_GAP = 12; // gap-3 between a card's stacked blocks
+import { estimateJourneyCardSize } from "./journey-card-size";
 
 /**
- * Size lookup matching rendered node dimensions — keep in sync with components.
- * Both card species are display-driven now (docs/spec/maps.md § Display
- * Options), so the height is summed block by block from the same `data` the
- * component reads rather than from a per-variant constant.
+ * Size lookup matching rendered node dimensions. Flow and view cards are the
+ * Journey's — `journey-card-size.ts` owns their estimate; the System map's
+ * own species are fixed-size cards.
  */
 function getNodeSize(node: Node): { width: number; height: number } {
-  const data = node.data as Record<string, unknown>;
-
   switch (node.type) {
-    case "flow": {
-      // Synthetic branch cards render a summary paragraph, not platform art.
-      if (data.renderVariant === "branch") return { width: 240, height: 136 };
-      // rings (the default): one 30px ring row; bars: three h-2 gauges on
-      // gap-2 rows. Both fallbacks match the components' own.
-      const platformBlock = data.platformDisplay === "bars" ? 58 : 30;
-      // py-3 (24) + border-2 (4) + the flow's taller title row (38) + gap-3.
-      return { width: 240, height: 24 + 4 + 38 + CARD_GAP + platformBlock };
-    }
-    case "view": {
-      const display = data.display as Record<string, unknown> | undefined;
-      const platforms = (data.platforms as string[] | undefined) ?? [];
-      const screenshots = data.platformScreenshots as Record<string, string> | undefined;
-      const hasScreenshot = screenshots != null && Object.values(screenshots).some(Boolean);
-      const hasCover = typeof data.coverUrl === "string";
-      const showsImage = display?.images !== false && (hasScreenshot || hasCover);
-      const showsRows = display?.view_platforms === "rows" && platforms.length > 0;
-      const showsChips = display?.view_platforms !== "rows" && platforms.length > 0;
-      const hasApi =
-        ((data.apiInbound as unknown[] | undefined)?.length ?? 0) > 0 ||
-        ((data.apiOutbound as unknown[] | undefined)?.length ?? 0) > 0;
-
-      let height = CARD_CHROME_HEIGHT;
-      if (showsImage) height += CARD_GAP + 112; // h-28
-      // Rows are text-xs (20) on space-y-2 (8).
-      if (showsRows) height += CARD_GAP + platforms.length * 20 + (platforms.length - 1) * 8;
-      // The footer only exists when it has something in it: API chips, platform chips, or both.
-      if (hasApi || showsChips) height += CARD_GAP + 36;
-
-      return { width: 240, height };
-    }
+    case "flow":
+    case "view":
+      return estimateJourneyCardSize(node);
     case "dataModel":
     case "apiEndpoint":
       return { width: 192, height: 92 };
