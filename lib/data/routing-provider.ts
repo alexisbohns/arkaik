@@ -140,6 +140,7 @@ export function createRoutingProvider(options: RoutingProviderOptions): DataProv
     },
 
     readJournalStats: (projectId, options) => forProject(projectId).readJournalStats(projectId, options),
+    readJournalPage: (projectId, options) => forProject(projectId).readJournalPage(projectId, options),
 
     /**
      * NO fallback here, unlike the reads: the only stand-in a local or seed

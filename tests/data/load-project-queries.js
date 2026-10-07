@@ -30,9 +30,18 @@ const COMPILER_OPTIONS = {
   esModuleInterop: true,
 };
 
+const { loadSchema, BUILD_DIR: SCHEMA_BUILD_DIR } = require("../schema/load-schema");
+
+/**
+ * `@arkaik/schema` resolves to the REAL built package: project-queries.ts
+ * reads the History page size from it (#429), and a stub would only hide a
+ * drift between the two.
+ */
 function transpile(srcAbsPath, fileName) {
   const source = fs.readFileSync(srcAbsPath, "utf8").replace(/from "@\/lib\/data\//g, 'from "./');
-  return ts.transpileModule(source, { fileName, compilerOptions: COMPILER_OPTIONS }).outputText;
+  const out = ts.transpileModule(source, { fileName, compilerOptions: COMPILER_OPTIONS }).outputText;
+  const schemaIndex = path.join(SCHEMA_BUILD_DIR, "index.js");
+  return out.replace(/require\((['"])@arkaik\/schema\1\)/g, `require(${JSON.stringify(schemaIndex)})`);
 }
 
 const REGISTRY_STUB_SOURCE = `
@@ -61,6 +70,7 @@ exports.__listenerCount = () => listeners.size;
 `;
 
 function loadProjectQueries() {
+  loadSchema();
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
   fs.mkdirSync(BUILD_DIR, { recursive: true });
   fs.writeFileSync(path.join(BUILD_DIR, "package.json"), JSON.stringify({ type: "commonjs" }));

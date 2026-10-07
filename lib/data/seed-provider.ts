@@ -2,7 +2,7 @@ import { applyOps, type MutationOp } from "@arkaik/schema";
 
 import type { DataProvider, MutationResult } from "./data-provider";
 import { toJournalEvents } from "./emit-events";
-import { journalStatsOf, projectJournal } from "./journal-projection";
+import { journalPageOf, journalStatsOf, projectJournal } from "./journal-projection";
 import { migrateBundle } from "./migrate";
 import type { JournalEvent, Node, ProjectBundle } from "./types";
 
@@ -127,6 +127,11 @@ export function createSeedProvider(loadBundle: () => ProjectBundle): DataProvide
       if (!matchesProject(projectId)) return { status: "missing" };
       const bundle = ensure();
       return { status: "fresh", value: journalStatsOf(bundle.journal ?? [], bundle.nodes), etag: null };
+    },
+
+    async readJournalPage(projectId, options) {
+      if (!matchesProject(projectId)) return { status: "missing" };
+      return { status: "fresh", value: structuredClone(journalPageOf(ensure().journal ?? [], options)), etag: null };
     },
 
     async createNode(node) {

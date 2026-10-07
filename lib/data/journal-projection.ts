@@ -1,6 +1,6 @@
-import { computeReleaseEventCounts } from "@arkaik/schema";
+import { computeReleaseEventCounts, pageJournal, parseJournalCursor, type JournalPage } from "@arkaik/schema";
 
-import type { JournalStats } from "./data-provider";
+import type { JournalStats, ReadJournalPageOptions } from "./data-provider";
 import type { JournalEvent, Node } from "./types";
 
 /**
@@ -45,4 +45,19 @@ export function journalStatsOf(
     total: events.length,
     releases: computeReleaseEventCounts(events, { nodesById: new Map(nodes.map((node) => [node.id, node])) }),
   };
+}
+
+/**
+ * A page of a journal held in memory — the local and seed providers' answer
+ * to the hosted `GET …/journal/page`, which reproduces `pageJournal` in SQL.
+ * A cursor is a position, not a reference to an event, so one that outlived
+ * its event still pages correctly; only a malformed one is an error.
+ */
+export function journalPageOf(
+  events: readonly JournalEvent[],
+  options: Pick<ReadJournalPageOptions, "before" | "limit" | "families">,
+): JournalPage {
+  const before = options.before === null ? null : parseJournalCursor(options.before);
+  if (options.before !== null && before === null) throw new Error("Invalid journal cursor.");
+  return pageJournal(events, { before, limit: options.limit, families: options.families });
 }

@@ -94,6 +94,8 @@ async function main() {
     journalQueryOptions,
     journalStatsKey,
     journalStatsQueryOptions,
+    journalPagesKey,
+    journalPagesQueryOptions,
     projectsQueryOptions,
     selectNodes,
     selectEdges,
@@ -847,6 +849,88 @@ async function main() {
       journalStatsQueryOptions("prj_abc123").refetchInterval === 60_000 &&
         journalStatsQueryOptions("local-1").refetchInterval === false,
     );
+  }
+
+  // --- History's pages (#429) -------------------------------------------------------
+  {
+    check(
+      "the pages key normalizes families and sits outside the journal prefix",
+      JSON.stringify(journalPagesKey("p", ["nodes", "intake", "nodes"])) === JSON.stringify(journalPagesKey("p", ["intake", "nodes"])) &&
+        JSON.stringify(journalPagesKey("p", [])) === JSON.stringify(journalPagesKey("p", null)) &&
+        journalPagesKey("p", null)[2] !== "journal",
+      JSON.stringify(journalPagesKey("p", ["nodes", "intake"])),
+    );
+
+    // Three pages; each page's tag is its cursor, so a revalidation can be
+    // checked page by page.
+    const PAGES = {
+      null: { events: [makeEvent("e3", "node.created")], next: "c2" },
+      c2: { events: [makeEvent("e2", "node.created")], next: "c1" },
+      c1: { events: [makeEvent("e1", "node.created")], next: null },
+    };
+    const seen = [];
+    let quiet = false;
+    setProvider(makeProvider({
+      readJournalPage: async (id, options) => {
+        seen.push({ before: options.before, etag: options.etag, families: options.families, limit: options.limit });
+        if (quiet && options.etag !== null) return { status: "not-modified" };
+        return { status: "fresh", value: PAGES[String(options.before)], etag: `tag-${options.before}` };
+      },
+    }));
+    const client = newClient();
+    const observer = new core.InfiniteQueryObserver(client, journalPagesQueryOptions("p-pages", ["nodes"]));
+    const unsubscribe = observer.subscribe(() => {});
+    await observer.refetch();
+    await observer.fetchNextPage();
+    await observer.fetchNextPage();
+    const loaded = observer.getCurrentResult();
+    check(
+      "pages chain by their own next cursor, newest first, with the normalized families and default limit",
+      JSON.stringify(seen.map((s) => s.before)) === JSON.stringify([null, "c2", "c1"]) &&
+        seen.every((s) => JSON.stringify(s.families) === '["nodes"]' && s.limit === 100) &&
+        loaded.data.pages.flatMap((p) => p.events.map((e) => e.id)).join(",") === "e3,e2,e1" &&
+        loaded.hasNextPage === false,
+      JSON.stringify(seen),
+    );
+
+    const before = loaded.data.pages;
+    seen.length = 0;
+    quiet = true;
+    await observer.refetch();
+    const after = observer.getCurrentResult().data.pages;
+    check(
+      "a refetch revalidates every loaded page with that page's own tag",
+      JSON.stringify(seen.map((s) => [s.before, s.etag])) ===
+        JSON.stringify([[null, "tag-null"], ["c2", "tag-c2"], ["c1", "tag-c1"]]),
+      JSON.stringify(seen),
+    );
+    check(
+      "…and a quiet journal keeps every page by reference",
+      after.length === 3 && after.every((page, i) => page === before[i]),
+    );
+
+    client.setQueryData(bundleKey("p-pages"), { bundle: makeBundle("p-pages", []), version: null, etag: null });
+    seen.length = 0;
+    await writeBackGraph(client, "p-pages", { nodes: [], edges: [], events: [makeEvent("e4", "node.created")] });
+    while (client.isFetching() > 0) await tick();
+    check(
+      "a write-back re-reads the mounted History pages rather than guessing where the event lands",
+      seen.length >= 1 && seen[0].before === null,
+      JSON.stringify(seen),
+    );
+    check(
+      "…and never writes events into them",
+      !client.getQueryData(journalPagesKey("p-pages", ["nodes"])).pages.some((p) => p.events.some((e) => e.id === "e4")),
+    );
+    check(
+      "the pages poll on a hosted project like the journal does",
+      journalPagesQueryOptions("prj_abc123", null).refetchInterval === 60_000 &&
+        journalPagesQueryOptions("local-1", null).refetchInterval === false,
+    );
+    // Every background refetch above has landed (the waits after each write):
+    // a fetch that resolves after `clear()` re-arms a 30-minute gc timer on a
+    // query the cache no longer holds, and Node never exits.
+    unsubscribe();
   }
 
   for (const client of clients) client.clear();

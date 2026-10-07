@@ -139,6 +139,30 @@ async function main() {
     );
   }
 
+  // --- readJournalPage (#429) ---------------------------------------------------
+  {
+    const schema = require(path.join(SCHEMA_BUILD_DIR, "index.js"));
+    const ids = [];
+    let before = null;
+    for (let guard = 0; guard < 1000; guard++) {
+      const read = await provider.readJournalPage(PROJECT_ID, { before, limit: 50, families: ["delivery"], etag: null });
+      if (read.status !== "fresh") throw new Error(`seed page read ${read.status}`);
+      ids.push(...read.value.events.map((e) => e.id));
+      if (read.value.next === null) break;
+      before = read.value.next;
+    }
+    const expected = schema.pageJournal(SEED.journal, { limit: SEED.journal.length, families: ["delivery"] }).events.map((e) => e.id);
+    check(
+      "readJournalPage walks the seed's delivery events newest first, page by page",
+      expected.length > 50 && ids.join(",") === expected.join(","),
+      `${ids.length} vs ${expected.length}`,
+    );
+    check(
+      "…and answers missing for any other project",
+      (await provider.readJournalPage("not-the-seed", { before: null, limit: 50, families: null, etag: null })).status === "missing",
+    );
+  }
+
   // --- createNode ----------------------------------------------------------
   const sandboxNode = {
     id: "V-sandbox",
