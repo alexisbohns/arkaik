@@ -30,6 +30,8 @@ const MODULES = [
   // through — the same module the app calls, not a restatement of it.
   ["lib/utils/product-scope.ts", "product-scope"],
   ["lib/utils/quality.ts", "quality"],
+  ["lib/utils/journey-layout.ts", "journey-layout"],
+  ["lib/utils/journey-card-size.ts", "journey-card-size"],
   ["lib/utils/journey-graph.ts", "journey-graph"],
   ["lib/utils/system-graph.ts", "system-graph"],
 ];
@@ -46,6 +48,8 @@ const SPECIFIER_MAP = {
   "@/lib/utils/graph-build": "./graph-build",
   "@/lib/utils/product-scope": "./product-scope",
   "@/lib/utils/quality": "./quality", // type-only in both graph builders
+  "@/lib/utils/journey-layout": "./journey-layout",
+  "@/lib/utils/journey-card-size": "./journey-card-size",
 };
 
 function loadJourneyGraph() {
@@ -90,6 +94,14 @@ function loadJourneyGraph() {
     // The visual-id decoder, so a suite can ask which DATA node a duplicated
     // card was drawn from rather than restating the id format.
     getBaseNodeId: require(path.join(BUILD_DIR, "graph-build.js")).getBaseNodeId,
+    // The block layout and the card estimates it is fed, so the layout suite
+    // places exactly what the canvas places.
+    layoutJourney: require(path.join(BUILD_DIR, "journey-layout.js")).layoutJourney,
+    findBlock: require(path.join(BUILD_DIR, "journey-layout.js")).findBlock,
+    blockNodeIds: require(path.join(BUILD_DIR, "journey-layout.js")).blockNodeIds,
+    GAP_MAIN: require(path.join(BUILD_DIR, "journey-layout.js")).GAP_MAIN,
+    GAP_CROSS: require(path.join(BUILD_DIR, "journey-layout.js")).GAP_CROSS,
+    estimateJourneyCardSize: require(path.join(BUILD_DIR, "journey-card-size.js")).estimateJourneyCardSize,
     // The scope resolver every journey assertion needs to name a product, and
     // the graph a membership answer is built from.
     resolveProductScope: require(path.join(BUILD_DIR, "product-scope.js")).resolveProductScope,
