@@ -291,7 +291,7 @@ Nodes unreachable from any root (the Pebbles seed ships two orphan flows) are no
 
 ## Non-Goals (v1)
 
-- **Per-map layout persistence** — positions are computed (ELK), not stored. Card *rendering* is per-map and stored (§ Display Options); card *placement* is not.
+- **Per-map layout persistence** — positions are computed, not stored: the Journey by its own block layout (`lib/utils/journey-layout.ts`, synchronous, from the builder's block tree), the System map by ELK. Card *rendering* is per-map and stored (§ Display Options); card *placement* is not.
 - **Map sharing / cross-project maps** — a definition is project-scoped data.
 - **"Area" / domain tags on nodes** — root-scoping covers the admin-vs-user-app case for now; a first-class area concept is a future format revision if root-scoping proves insufficient.
 - **Journaling map edits** — `project.metadata` changes are not journal events today; unchanged by this spec.
