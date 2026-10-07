@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { buildProductUsageIndex, resolveMapDisplay, type MapDefinition } from "@arkaik/schema";
 import type { ProjectBundle } from "@/lib/data/types";
 import { computeViewApiRelations, resolveJourneySelection } from "@/lib/utils/journey-graph";
@@ -41,11 +41,6 @@ export function JourneyPreviewCanvas({ bundle, definition, expandedFlowIds }: Jo
     };
   }, [bundle, definition, expandedFlowIds]);
 
-  // Re-frame once ELK lands: the canvas's one-time fitView runs over the
-  // {0,0} placeholders, which would leave the preview zoomed onto one card.
-  const [fitSignal, setFitSignal] = useState(0);
-  const reframe = useCallback(() => setFitSignal((value) => value + 1), []);
-
   // The fixture test is the gate; this `null` is not a fallback to design around.
   if (props.selection.emptyReason !== null) return null;
 
@@ -61,8 +56,6 @@ export function JourneyPreviewCanvas({ bundle, definition, expandedFlowIds }: Jo
       display={props.display}
       viewApiRelationsByViewId={props.viewApiRelationsByViewId}
       scope={props.scope}
-      fitSignal={fitSignal}
-      onLayout={reframe}
       readOnly
     />
   );

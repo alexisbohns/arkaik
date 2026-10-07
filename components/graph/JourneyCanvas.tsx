@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { Node, NodeMouseHandler, OnConnect, EdgeMouseHandler } from "@xyflow/react";
 import type { MapMinimapColorMode } from "@arkaik/schema";
-import { Canvas } from "@/components/graph/Canvas";
-import { useElkLayout } from "@/lib/hooks/useElkLayout";
+import { Canvas, type CanvasPin } from "@/components/graph/Canvas";
 import { buildJourneyGraph, type JourneyGraphParams } from "@/lib/utils/journey-graph";
+import { estimateJourneyCardSize } from "@/lib/utils/journey-card-size";
+import { blockBounds, findBlock, layoutJourney, type JourneyDirection, type Size } from "@/lib/utils/journey-layout";
 import type { ProductScope } from "@/lib/utils/product-scope";
 
 export interface JourneyCanvasProps extends JourneyGraphParams {
@@ -22,40 +23,45 @@ export interface JourneyCanvasProps extends JourneyGraphParams {
    * only the reading handlers (`onToggleFlow`, `onOpenDetails`).
    */
   readOnly?: boolean;
+  /** Reading direction; `DOWN` unless a map asks otherwise. */
+  direction?: JourneyDirection;
+  /**
+   * The flow card last toggled, by visual id, with a version that changes per
+   * toggle: the canvas keeps that card where it is on screen while the graph
+   * re-lays around it, then pans just enough to reveal what opened under it.
+   */
+  toggled?: { nodeId: string; version: number } | null;
   onNodeClick?: NodeMouseHandler;
   onConnect?: OnConnect;
   onEdgeClick?: EdgeMouseHandler;
-  /**
-   * Called with the positioned nodes once an ELK layout has landed — never
-   * with the `{0,0}` placeholder positions `buildJourneyGraph` returns before
-   * layout runs. The Journey controller uses it to re-frame once the
-   * auto-expanded flow's playlist has a computed layout; a preview passes
-   * nothing.
-   */
-  onLayout?: (nodes: Node[]) => void;
 }
 
 /**
- * The Journey map's presentational half: graph construction → ELK layout →
+ * The Journey map's presentational half: graph construction → block layout →
  * `Canvas`, driven by plain data. Holds no project hooks, no panel context, no
  * dialogs — `JourneyMap` owns all of that and renders this. The marketing
  * page renders it over a fixture slice of the self-map.
  *
+ * The layout is synchronous (`layoutJourney` over the builder's block tree),
+ * so the first paint already has positions and a toggle re-lays in the same
+ * render. Sizes start as estimates and switch to React Flow's measurements as
+ * they arrive.
+ *
  * `JourneyGraphParams` is spread straight into `buildJourneyGraph`, so the
  * props here are exactly the builder's inputs plus the canvas's own knobs.
  * `handlers` must be referentially stable (memoised by the caller): it is a
- * `buildJourneyGraph` input, so a fresh object every render rebuilds the graph
- * and re-runs ELK every render.
+ * `buildJourneyGraph` input, so a fresh object every render rebuilds the graph.
  */
 export function JourneyCanvas({
   scope,
   fitSignal,
   minimapColor,
   readOnly = false,
+  direction = "DOWN",
+  toggled = null,
   onNodeClick,
   onConnect,
   onEdgeClick,
-  onLayout,
   ...graphParams
 }: JourneyCanvasProps) {
   const {
@@ -73,8 +79,8 @@ export function JourneyCanvas({
   } = graphParams;
 
   // Listed field by field rather than `[graphParams]`: the rest object is a
-  // fresh identity every render, and a graph rebuild re-runs ELK.
-  const graphData = useMemo(
+  // fresh identity every render, and a graph rebuild re-lays everything.
+  const graph = useMemo(
     () =>
       buildJourneyGraph({
         dataNodes,
@@ -104,30 +110,41 @@ export function JourneyCanvas({
     ],
   );
 
-  const { nodes: layoutedNodes, ready } = useElkLayout(graphData);
+  const [measured, setMeasured] = useState<Record<string, Size>>({});
 
-  // The callback is read through a ref, refreshed in an effect rather than
-  // during render (a render-phase write is a side effect `react-hooks/refs`
-  // rejects, and concurrent rendering may run a render more than once per
-  // commit) — so an unstable parent callback cannot re-fire the layout effect.
-  const onLayoutRef = useRef(onLayout);
-  useEffect(() => {
-    onLayoutRef.current = onLayout;
-  });
+  const sizeOf = useCallback(
+    (id: string): Size => {
+      const known = measured[id];
+      if (known) return known;
+      const node = graph.nodes.find((candidate) => candidate.id === id);
+      return node ? estimateJourneyCardSize(node) : { width: 0, height: 0 };
+    },
+    [graph, measured],
+  );
 
-  useEffect(() => {
-    if (!ready) return;
-    onLayoutRef.current?.(layoutedNodes);
-  }, [layoutedNodes, ready]);
+  const positions = useMemo(() => layoutJourney(graph.roots, sizeOf, direction), [direction, graph, sizeOf]);
+
+  const nodes = useMemo<Node[]>(
+    () => graph.nodes.map((node) => ({ ...node, position: positions.get(node.id) ?? node.position })),
+    [graph, positions],
+  );
+
+  const pin = useMemo<CanvasPin | null>(() => {
+    if (!toggled) return null;
+    const reveal = blockBounds(findBlock(graph.roots, toggled.nodeId), positions, sizeOf);
+    return { nodeId: toggled.nodeId, version: toggled.version, reveal };
+  }, [graph, positions, sizeOf, toggled]);
 
   return (
     <Canvas
-      nodes={layoutedNodes}
-      edges={graphData.edges}
+      nodes={nodes}
+      edges={graph.edges}
       onNodeClick={onNodeClick}
       onConnect={onConnect}
       onEdgeClick={onEdgeClick}
+      onMeasured={setMeasured}
       fitSignal={fitSignal}
+      pin={pin}
       scope={scope}
       minimapColor={minimapColor}
       readOnly={readOnly}
