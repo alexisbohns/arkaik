@@ -25,6 +25,8 @@ import { invalidateProjects } from "@/lib/data/project-queries";
  */
 
 export interface AuthStatusUser {
+  /** The account's stable id — what the persisted query cache is scoped to. */
+  id: string | null;
   name: string | null;
   email: string | null;
   image: string | null;
@@ -52,7 +54,9 @@ async function readAuthStatus(): Promise<ResolvedAuthStatus> {
     if (!res.ok) throw new Error(`status ${res.status}`);
     const data: { configured: boolean; user: AuthStatusUser | null } = await res.json();
     if (!data.configured) return { state: "unconfigured" };
-    return data.user ? { state: "signed-in", user: data.user } : { state: "signed-out" };
+    // An older server answers without `id`; the account is then unnamed, and
+    // nothing is persisted for it rather than everything under one shared key.
+    return data.user ? { state: "signed-in", user: { ...data.user, id: data.user.id ?? null } } : { state: "signed-out" };
   } catch {
     return { state: "unconfigured" };
   }
@@ -66,7 +70,7 @@ export function authStatusQueryOptions() {
       const status = await readAuthStatus();
       // Before the query settles, so the first render that knows the user is
       // signed in also knows the account is reachable.
-      setHostedAvailable(status.state === "signed-in");
+      setHostedAvailable(status.state === "signed-in", status.state === "signed-in" ? status.user.id : null);
       if (status.state === "signed-in" && previous?.state !== "signed-in") void invalidateProjects();
       return status;
     },

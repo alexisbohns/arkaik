@@ -25,6 +25,9 @@ export async function GET() {
   const session = await getSession();
   const user = session?.user
     ? {
+        // The signed-in user's own id, for their own client: it scopes the
+        // browser's persisted query cache to one account (#429).
+        id: session.user.id ?? null,
         name: session.user.name ?? null,
         email: session.user.email ?? null,
         image: session.user.image ?? null,
