@@ -9,6 +9,9 @@ import type { MapMinimapColorMode } from "@arkaik/schema";
 import type { ProductScope } from "@/lib/utils/product-scope";
 import type { Rect } from "@/lib/utils/journey-layout";
 import { CanvasScopeProvider } from "./canvas-scope";
+import { CameraFocus, type CanvasFocus } from "./CameraFocus";
+
+export type { CanvasFocus } from "./CameraFocus";
 import { FlowNode } from "./nodes/FlowNode";
 import { ViewNode } from "./nodes/ViewNode";
 import { ApiEndpointNode, DataModelNode } from "./nodes/SystemLayerNode";
@@ -85,6 +88,8 @@ interface CanvasProps {
    * new, so a block already in view pans nothing.
    */
   pin?: CanvasPin | null;
+  /** The card a click selected: centred in the canvas once it has its final size. */
+  focus?: CanvasFocus | null;
 }
 
 export function Canvas({
@@ -101,6 +106,7 @@ export function Canvas({
   readOnly = false,
   onMeasured,
   pin = null,
+  focus = null,
 }: CanvasProps) {
   const reactFlowRef = useRef<ReactFlowInstance<Node, Edge> | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -229,7 +235,7 @@ export function Canvas({
     if (panX === 0 && panY === 0) return;
     x -= panX;
     y -= panY;
-    void reactFlow.setViewport({ x, y, zoom }, { duration: 250 });
+    void reactFlow.setViewport({ x, y, zoom }, { duration: 250, interpolate: "linear" });
   }, [nodes, pin]);
 
   const flowStyle = useMemo(() => {
@@ -249,22 +255,6 @@ export function Canvas({
   const handleInit = useCallback((instance: ReactFlowInstance<Node, Edge>) => {
     reactFlowRef.current = instance;
   }, []);
-
-  const handleNodeClick = useCallback<NodeMouseHandler>((event, node) => {
-    const reactFlow = reactFlowRef.current;
-
-    if (reactFlow) {
-      const width = node.measured?.width ?? node.width ?? 0;
-      const height = node.measured?.height ?? node.height ?? 0;
-
-      void reactFlow.setCenter(node.position.x + width / 2, node.position.y + height / 2, {
-        zoom: reactFlow.getZoom(),
-        duration: 250,
-      });
-    }
-
-    onNodeClick?.(event, node);
-  }, [onNodeClick]);
 
   return (
     <CanvasScopeProvider scope={scope}>
@@ -293,12 +283,13 @@ export function Canvas({
           deleteKeyCode={null}
           onInit={handleInit}
           onNodesChange={handleNodesChange}
-          onNodeClick={handleNodeClick}
+          onNodeClick={onNodeClick}
           onConnect={readOnly ? undefined : onConnect}
           onEdgeClick={readOnly ? undefined : onEdgeClick}
           onNodeMouseEnter={spotlight ? handleNodeMouseEnter : undefined}
           onNodeMouseLeave={spotlight ? handleNodeMouseLeave : undefined}
         >
+          <CameraFocus focus={focus} />
           {!readOnly && <Controls />}
           {!readOnly && <Minimap colorBy={minimapColor} />}
           <Background />

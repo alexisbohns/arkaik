@@ -13,6 +13,7 @@ import {
   type MapDisplayOptions,
 } from "@arkaik/schema";
 import { JourneyCanvas } from "@/components/graph/JourneyCanvas";
+import type { CanvasFocus } from "@/components/graph/Canvas";
 import { MapDisplayPopover } from "@/components/maps/MapDisplayPopover";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
@@ -213,10 +214,10 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     return collectReferencedNodeIds(getPlaylistEntries(nodesById, nodeId));
   }, [nodesById]);
 
-  const [fitSignal, setFitSignal] = useState(0);
-  // The canvas is a grid cell now: opening a panel narrows it and closing one
-  // gives the room back, so re-frame rather than leave the map half off-cell.
-  const reframe = useCallback(() => setFitSignal((value) => value + 1), []);
+  // The card a click selected, centred in whatever canvas the panel leaves —
+  // the camera follows the click, never the panel (a panel opening or closing
+  // re-fits nothing).
+  const [focus, setFocus] = useState<CanvasFocus | null>(null);
 
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null);
   const [edgeDialogOpen, setEdgeDialogOpen] = useState(false);
@@ -545,7 +546,9 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
   const handleNodeClick = useCallback<NodeMouseHandler>((_event, xyNode) => {
     const dataNodeId = getBaseNodeId(xyNode.id);
     const dataNode = dataNodes.find((n) => n.id === dataNodeId);
-    if (dataNode) openNode({ nodeId: dataNode.id });
+    if (!dataNode) return;
+    openNode({ nodeId: dataNode.id });
+    setFocus((prev) => ({ nodeId: xyNode.id, version: (prev?.version ?? 0) + 1 }));
   }, [dataNodes, openNode]);
 
   /**
@@ -701,7 +704,6 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
           </>
         }
         surfaceCard
-        onLayoutChange={reframe}
         allNodes={dataNodes}
         allEdges={dataEdges}
         scope={scope}
@@ -750,7 +752,7 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
             nodeFindings={nodeFindings}
             handlers={journeyHandlers}
             scope={scope}
-            fitSignal={fitSignal}
+            focus={focus}
             minimapColor={display.minimap_color}
             onNodeClick={handleNodeClick}
             onConnect={handleConnect}
