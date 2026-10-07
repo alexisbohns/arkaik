@@ -30,10 +30,18 @@
 const DEFAULT_TIMEOUT_MS = 3000;
 
 export interface HostedAvailability {
-  /** Report the answer, releasing anything waiting on {@link HostedAvailability.whenKnown}. */
-  set(available: boolean): void;
+  /**
+   * Report the answer, releasing anything waiting on {@link HostedAvailability.whenKnown}.
+   * `account` names WHOSE account is reachable — the signed-in user's id, or
+   * `null` when none is. The persisted query cache scopes every entry to it,
+   * so a second account on the same browser never paints the first one's
+   * projects (#429).
+   */
+  set(available: boolean, account?: string | null): void;
   /** The answer as of right now — false until reported. */
   isAvailable(): boolean;
+  /** The reachable account's id as of right now — `null` until reported, or when signed out. */
+  account(): string | null;
   /**
    * The answer once it is actually known, or the current value if nothing
    * reports one within the timeout.
@@ -55,12 +63,15 @@ export function createHostedAvailability(
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   let available = false;
+  let currentAccount: string | null = null;
   let known = false;
   let waiters: Array<(value: boolean) => void> = [];
 
   return {
-    set(next: boolean) {
+    set(next: boolean, account: string | null = null) {
       available = next;
+      // An account only means something while it is reachable.
+      currentAccount = next ? account : null;
       known = true;
       const pending = waiters;
       waiters = [];
@@ -68,6 +79,8 @@ export function createHostedAvailability(
     },
 
     isAvailable: () => available,
+
+    account: () => currentAccount,
 
     whenKnown() {
       if (known) return Promise.resolve(available);
@@ -94,8 +107,8 @@ export function createHostedAvailability(
 
 const shared = createHostedAvailability();
 
-export function setHostedAvailable(available: boolean): void {
-  shared.set(available);
+export function setHostedAvailable(available: boolean, account: string | null = null): void {
+  shared.set(available, account);
 }
 
 export function isHostedAvailable(): boolean {
@@ -105,4 +118,15 @@ export function isHostedAvailable(): boolean {
 /** @see createHostedAvailability */
 export function whenHostedAvailabilityKnown(): Promise<boolean> {
   return shared.whenKnown();
+}
+
+/**
+ * The signed-in account's id once the gate is known (or its current value at
+ * the timeout) — `null` when no account is reachable. What the persisted query
+ * cache waits on before restoring anything: an entry is only ever read back
+ * for the account that wrote it.
+ */
+export async function whenHostedAccountKnown(): Promise<string | null> {
+  await shared.whenKnown();
+  return shared.account();
 }
