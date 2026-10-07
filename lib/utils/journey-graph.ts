@@ -171,7 +171,8 @@ export interface JourneyGraph {
 
 /** All handlers are optional — a headless build (tests, counts) passes none. */
 export interface JourneyGraphHandlers {
-  onToggleFlow?: (flowId: string) => void;
+  /** `visualNodeId` names the card that was toggled — one of possibly several copies. */
+  onToggleFlow?: (flowId: string, visualNodeId: string) => void;
   onAddChild?: (flowId: string) => void;
   onOpenDetails?: (node: DataNode) => void;
   onZoomShot?: (node: DataNode) => void;
@@ -267,7 +268,7 @@ export function buildJourneyGraph(params: JourneyGraphParams): JourneyGraph {
       // unconditionally keeps a display flip a pure re-render of the same data.
       baseData.viewCount = collectFlowViewIds(node, nodesById).size;
       baseData.expanded = expandedFlows.has(node.id);
-      if (handlers.onToggleFlow) baseData.onToggle = () => handlers.onToggleFlow!(node.id);
+      if (handlers.onToggleFlow) baseData.onToggle = () => handlers.onToggleFlow!(node.id, visualNodeId);
       if (handlers.onAddChild) baseData.onAddChild = () => handlers.onAddChild!(node.id);
       if (handlers.onOpenDetails) baseData.onOpenDetails = () => handlers.onOpenDetails!(node);
     }

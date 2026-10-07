@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { type Node, type NodeMouseHandler, type Connection, type EdgeMouseHandler } from "@xyflow/react";
+import { useState, useCallback, useMemo } from "react";
+import { type NodeMouseHandler, type Connection, type EdgeMouseHandler } from "@xyflow/react";
 import { PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -74,7 +74,12 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
 
   const { openNode, topPanelNodeId } = useProjectPanels();
 
-  const [expandedFlows, setExpandedFlows] = useState<Set<string>>(new Set());
+  // `null` until the first toggle: before that, the first top-level flow is
+  // open so a fresh project opens on a real map instead of a bare root.
+  // Derived in render, not set in an effect, so the first paint already has it
+  // and the first fit frames the expanded map.
+  const [touchedFlows, setTouchedFlows] = useState<Set<string> | null>(null);
+  const [toggled, setToggled] = useState<{ nodeId: string; version: number } | null>(null);
   const [zoomNode, setZoomNode] = useState<DataNode | null>(null);
   const [zoomPlatform, setZoomPlatform] = useState<PlatformId | undefined>(undefined);
   const [newNodeOpen, setNewNodeOpen] = useState(false);
@@ -181,6 +186,15 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     [dataNodes],
   );
 
+  const expandedFlows = useMemo(() => {
+    if (touchedFlows === null) {
+      const [firstTopLevelFlowId] = topLevelFlowIds;
+      return firstTopLevelFlowId ? new Set([firstTopLevelFlowId]) : new Set<string>();
+    }
+    // A flow that no longer exists cannot stay expanded.
+    return new Set([...touchedFlows].filter((flowId) => allFlowIds.has(flowId)));
+  }, [allFlowIds, topLevelFlowIds, touchedFlows]);
+
   const viewApiRelationsByViewId = useMemo(
     () => computeViewApiRelations(dataEdges, nodesById),
     [dataEdges, nodesById],
@@ -199,55 +213,10 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     return collectReferencedNodeIds(getPlaylistEntries(nodesById, nodeId));
   }, [nodesById]);
 
-  // Prune expansion entries whose flow no longer exists.
-  //
-  // These three effects were invisible to `set-state-in-effect` until this file
-  // stopped holding an export handler — that handler made the compiler bail on
-  // the whole component, which took its diagnostics with it. They are all
-  // convergent by construction rather than cascading: this one returns `prev`
-  // untouched when there is nothing to prune, so it settles in one pass.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setExpandedFlows((prev) => {
-      const next = new Set<string>();
-
-      for (const flowId of prev) {
-        if (allFlowIds.has(flowId)) {
-          next.add(flowId);
-        }
-      }
-
-      if (next.size === prev.size) {
-        return prev;
-      }
-
-      return next;
-    });
-  }, [allFlowIds]);
-
-  // Expand the first top-level flow once on initial load so a fresh project
-  // opens on a real map instead of a bare root. Gated on all three sources:
-  // nodes/edges resolve before the project bundle, and during that window the
-  // top-level set is computed without the explicit root (orphan flows only).
-  // The decision also lives outside the state updater (updaters must stay
-  // pure — StrictMode double-invokes them).
-  const autoExpandedRef = useRef(false);
-  const pendingFitFlowRef = useRef<string | null>(null);
   const [fitSignal, setFitSignal] = useState(0);
   // The canvas is a grid cell now: opening a panel narrows it and closing one
   // gives the room back, so re-frame rather than leave the map half off-cell.
   const reframe = useCallback(() => setFitSignal((value) => value + 1), []);
-  useEffect(() => {
-    if (autoExpandedRef.current || nodesLoading || edgesLoading || projectLoading) return;
-    if (topLevelFlowIds.size === 0) return;
-    autoExpandedRef.current = true;
-
-    const [firstTopLevelFlowId] = topLevelFlowIds;
-    pendingFitFlowRef.current = firstTopLevelFlowId;
-    // Latched by `autoExpandedRef` above — it runs at most once per mount.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setExpandedFlows((prev) => (prev.size === 0 ? new Set([firstTopLevelFlowId]) : prev));
-  }, [edgesLoading, nodesLoading, projectLoading, topLevelFlowIds]);
 
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null);
   const [edgeDialogOpen, setEdgeDialogOpen] = useState(false);
@@ -324,32 +293,14 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     setDeleteEdgeTarget(null);
   }, [deleteEdgeTarget, removeEdge]);
 
-  const toggleFlow = useCallback((flowId: string) => {
-    setExpandedFlows((prev) => {
-      if (topLevelFlowIds.has(flowId)) {
-        if (prev.has(flowId)) {
-          const next = new Set(prev);
-          next.delete(flowId);
-          return next;
-        }
-
-        const next = new Set(prev);
-        for (const topLevelFlowId of topLevelFlowIds) {
-          next.delete(topLevelFlowId);
-        }
-        next.add(flowId);
-        return next;
-      }
-
-      const next = new Set(prev);
-      if (next.has(flowId)) {
-        next.delete(flowId);
-      } else {
-        next.add(flowId);
-      }
+  const toggleFlow = useCallback((flowId: string, visualNodeId: string) => {
+    setTouchedFlows((prev) => {
+      const next = new Set(prev ?? expandedFlows);
+      if (!next.delete(flowId)) next.add(flowId);
       return next;
     });
-  }, [topLevelFlowIds]);
+    setToggled((prev) => ({ nodeId: visualNodeId, version: (prev?.version ?? 0) + 1 }));
+  }, [expandedFlows]);
 
   const handleNodeUpdate = useCallback(
     async (nodeId: string, patch: Partial<Omit<DataNode, "id" | "project_id">>) => {
@@ -690,22 +641,6 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
     [handleAddChildNode, handleInsertBetween, openNode, toggleFlow],
   );
 
-  // The one-time ReactFlow fitView frames the pre-expansion layout; once the
-  // auto-expanded flow's playlist nodes land in a computed layout, re-frame.
-  // A callback rather than an effect over the canvas's nodes: the layout now
-  // lives inside JourneyCanvas, and a parent must not reach into it.
-  const handleLayout = useCallback((layoutedNodes: Node[]) => {
-    const flowId = pendingFitFlowRef.current;
-    if (!flowId) return;
-
-    // Any card drawn under this flow's expansion: a visual id whose context
-    // path passes through the flow (`…:F-x:…`), under any root kind.
-    if (!layoutedNodes.some((node) => getBaseNodeId(node.id) !== node.id && node.id.includes(`:${flowId}:`))) return;
-
-    pendingFitFlowRef.current = null;
-    setFitSignal((value) => value + 1);
-  }, []);
-
   // The product this journey reads through, as a reader would name it. Falls
   // back to the id for a scope pointing at a product the project no longer
   // declares, exactly as the selector and the Library badges do.
@@ -820,7 +755,7 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
             onNodeClick={handleNodeClick}
             onConnect={handleConnect}
             onEdgeClick={handleEdgeClick}
-            onLayout={handleLayout}
+            toggled={toggled}
           />
         )}
       </PageShell>

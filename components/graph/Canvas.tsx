@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ReactFlow, Controls, Background, type Node, type Edge, type NodeMouseHandler, type OnConnect, type OnNodesChange, type EdgeMouseHandler, type ReactFlowInstance } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useTheme } from "next-themes";
 import { applySpotlight, buildSpotlightIndex } from "@/lib/utils/graph-spotlight";
 import type { MapMinimapColorMode } from "@arkaik/schema";
 import type { ProductScope } from "@/lib/utils/product-scope";
+import type { Rect } from "@/lib/utils/journey-layout";
 import { CanvasScopeProvider } from "./canvas-scope";
 import { FlowNode } from "./nodes/FlowNode";
 import { ViewNode } from "./nodes/ViewNode";
@@ -30,6 +31,15 @@ const edgeTypes = {
   displays: CrossLayerEdge,
   queries: CrossLayerEdge,
 };
+
+/** See `CanvasProps.pin`. */
+export interface CanvasPin {
+  nodeId: string;
+  /** Changes once per toggle; the canvas handles each version once. */
+  version: number;
+  /** The toggled card and everything under it, in flow coordinates. */
+  reveal: Rect | null;
+}
 
 interface CanvasProps {
   nodes: Node[];
@@ -68,6 +78,13 @@ interface CanvasProps {
    * estimate costs one frame, never an overlap.
    */
   onMeasured?: (sizes: Record<string, { width: number; height: number }>) => void;
+  /**
+   * Keep one card where it is on screen while the graph re-lays around it —
+   * the Journey's toggled flow — then pan just enough to reveal `reveal`,
+   * keeping the card's top 24px inside the canvas. Collapsing reveals nothing
+   * new, so a block already in view pans nothing.
+   */
+  pin?: CanvasPin | null;
 }
 
 export function Canvas({
@@ -83,8 +100,10 @@ export function Canvas({
   minimapColor,
   readOnly = false,
   onMeasured,
+  pin = null,
 }: CanvasProps) {
   const reactFlowRef = useRef<ReactFlowInstance<Node, Edge> | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const lastFitSignal = useRef(fitSignal);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const { resolvedTheme } = useTheme();
@@ -174,6 +193,45 @@ export function Canvas({
     return () => clearTimeout(timer);
   }, [fitSignal]);
 
+  /** Where every card was on the previous render — the delta a pin cancels. */
+  const lastPositions = useRef<Map<string, { x: number; y: number }>>(new Map());
+  const handledPin = useRef(0);
+
+  useLayoutEffect(() => {
+    const previous = lastPositions.current;
+    lastPositions.current = new Map(nodes.map((node) => [node.id, node.position]));
+
+    const reactFlow = reactFlowRef.current;
+    const container = containerRef.current;
+    if (!pin || !reactFlow || !container || pin.version === handledPin.current) return;
+    const before = previous.get(pin.nodeId);
+    const after = lastPositions.current.get(pin.nodeId);
+    if (!before || !after) return;
+    handledPin.current = pin.version;
+
+    const viewport = reactFlow.getViewport();
+    const { zoom } = viewport;
+    // 1. Cancel the card's own move, instantly: it stays under the pointer.
+    let x = viewport.x - (after.x - before.x) * zoom;
+    let y = viewport.y - (after.y - before.y) * zoom;
+    if (x !== viewport.x || y !== viewport.y) void reactFlow.setViewport({ x, y, zoom });
+
+    // 2. Reveal the block, without pushing the card's top out of view.
+    if (!pin.reveal) return;
+    const margin = 24;
+    const cardTop = { x: after.x * zoom + x, y: after.y * zoom + y };
+    const overflow = {
+      x: (pin.reveal.x + pin.reveal.width) * zoom + x + margin - container.clientWidth,
+      y: (pin.reveal.y + pin.reveal.height) * zoom + y + margin - container.clientHeight,
+    };
+    const panX = Math.min(Math.max(overflow.x, 0), Math.max(cardTop.x - margin, 0));
+    const panY = Math.min(Math.max(overflow.y, 0), Math.max(cardTop.y - margin, 0));
+    if (panX === 0 && panY === 0) return;
+    x -= panX;
+    y -= panY;
+    void reactFlow.setViewport({ x, y, zoom }, { duration: 250 });
+  }, [nodes, pin]);
+
   const flowStyle = useMemo(() => {
     return {
       "--xy-controls-button-background-color": "hsl(var(--card))",
@@ -210,7 +268,7 @@ export function Canvas({
 
   return (
     <CanvasScopeProvider scope={scope}>
-      <div className="h-full w-full">
+      <div ref={containerRef} className="h-full w-full">
         <ReactFlow
           nodes={display.nodes}
           edges={display.edges}
