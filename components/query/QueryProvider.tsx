@@ -3,8 +3,11 @@
 import { useEffect, useState } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 
+import { whenHostedAccountKnown } from "@/lib/data/hosted-availability";
 import { subscribeLocalMutationsToCache } from "@/lib/data/project-queries";
+import { openQueryCacheStorage } from "@/lib/data/query-cache-db";
 import { configureFocusManager, getQueryClient } from "@/lib/data/query-client";
+import { installQueryPersistence } from "@/lib/data/query-persistence";
 
 /**
  * Hands the app's one `QueryClient` (`lib/data/query-client.ts`) to React and
@@ -15,9 +18,18 @@ import { configureFocusManager, getQueryClient } from "@/lib/data/query-client";
  * the root layout can stay a server component.
  */
 export function QueryProvider({ children }: { children: React.ReactNode }) {
-  // The initializer does not register anything, so StrictMode running it twice
-  // costs nothing: in the browser both calls return the same singleton.
-  const [client] = useState(() => getQueryClient());
+  // In the browser both StrictMode calls return the same singleton. The
+  // persister goes on here rather than in the effect below because a query
+  // takes its default options when it is BUILT — during the children's first
+  // render, before any effect of ours runs. Installing is idempotent, so the
+  // second StrictMode call is a no-op.
+  const [client] = useState(() => {
+    const queryClient = getQueryClient();
+    if (typeof window !== "undefined") {
+      installQueryPersistence(queryClient, { storage: openQueryCacheStorage(), accountKnown: whenHostedAccountKnown });
+    }
+    return queryClient;
+  });
 
   useEffect(() => {
     const unsubscribe = subscribeLocalMutationsToCache(client);

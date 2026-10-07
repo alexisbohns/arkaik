@@ -5,6 +5,7 @@ import { signIn, signOut } from "next-auth/react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
+import { clearPersistedQueries } from "@/lib/data/query-persistence";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -96,7 +97,9 @@ export function AuthButton() {
         <DropdownMenuSeparator />
         <DropdownMenuItem
           className="cursor-pointer"
-          onClick={() => void signOut()}
+          // The kept hosted reads belong to this account; the next one to sign
+          // in on this browser starts with none of them (#429).
+          onClick={() => void clearPersistedQueries().finally(() => signOut())}
         >
           <LogOutIcon />
           <span>Sign out</span>
