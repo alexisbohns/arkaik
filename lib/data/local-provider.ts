@@ -1,5 +1,5 @@
-import type { DataProvider, JournalProjection, MutationResult } from "./data-provider";
-import { projectJournal } from "./journal-projection";
+import type { DataProvider, JournalProjection, JournalStats, MutationResult, ReadResult } from "./data-provider";
+import { journalStatsOf, projectJournal } from "./journal-projection";
 import type { Node, Edge, JournalEvent, ProjectBundle } from "./types";
 import { migrateBundle } from "./migrate";
 import { applyOps, type MutationOp } from "@arkaik/schema";
@@ -246,6 +246,15 @@ export const localProvider: DataProvider = {
     if (!db) return [];
     const row = await db.journals.get(projectId);
     return projectJournal(row?.events ?? [], options?.types);
+  },
+
+  async readJournalStats(projectId: string): Promise<ReadResult<JournalStats>> {
+    const db = await getDb();
+    if (!db) return { status: "missing" };
+    const record = await db.projects.get(projectId);
+    if (!record) return { status: "missing" };
+    const row = await db.journals.get(projectId);
+    return { status: "fresh", value: journalStatsOf(row?.events ?? [], record.snapshot.nodes), etag: null };
   },
 
   async createNode(node: Node) {

@@ -258,6 +258,20 @@ async function main() {
     // backend answers the same question, so a page can ask for its types
     // without knowing where the project lives.
     const whole = await localProvider.getJournal(PROJECT_D);
+
+    // The journal aggregate (#429), counted from the same journal in memory.
+    const stats = await localProvider.readJournalStats(PROJECT_D, { etag: null });
+    check(
+      "readJournalStats totals the local journal, with no validator",
+      stats.status === "fresh" && stats.etag === null && stats.value.total === whole.length && whole.length > 0 &&
+        Array.isArray(stats.value.releases),
+      JSON.stringify(stats),
+    );
+    check(
+      "…and answers missing for a project this browser does not hold",
+      (await localProvider.readJournalStats("no-such-project", { etag: null })).status === "missing",
+    );
+
     const created = await localProvider.getJournal(PROJECT_D, { types: ["node.created"] });
     check(
       "getJournal({ types }) filters to those types, in journal order",

@@ -1,6 +1,6 @@
 import type { QueryClient, QueryFunctionContext } from "@tanstack/query-core";
 
-import type { DataProvider, MutationResult, ProjectSummary, ReadResult } from "@/lib/data/data-provider";
+import type { DataProvider, JournalStats, MutationResult, ProjectSummary, ReadResult } from "@/lib/data/data-provider";
 import { subscribeToMutations } from "@/lib/data/local-provider";
 import { getProvider } from "@/lib/data/provider-registry";
 import { getQueryClient } from "@/lib/data/query-client";
@@ -31,6 +31,15 @@ export const projectKey = (projectId: string) => ["project", projectId] as const
 export const bundleKey = (projectId: string) => ["project", projectId, "bundle"] as const;
 export const journalKey = (projectId: string, types: readonly string[] | null) =>
   ["project", projectId, "journal", { types: normalizeJournalTypes(types) }] as const;
+
+/**
+ * The journal aggregate (`readJournalStats`). A sibling of the journal
+ * entries, never under their prefix: the event append walks every key under
+ * `["project", id, "journal"]` as a projection, and would write events into
+ * this entry. Still under `projectKey`, so `invalidateProject` and the local
+ * mutation bus reach it like every other read of the project.
+ */
+export const journalStatsKey = (projectId: string) => ["project", projectId, "journal-stats"] as const;
 
 /**
  * `["project", id, "journal"]` without the trailing types — the prefix that
@@ -74,6 +83,11 @@ export interface BundleEntry {
 
 export interface JournalEntry {
   events: JournalEvent[];
+  etag: string | null;
+}
+
+export interface JournalStatsEntry {
+  stats: JournalStats;
   etag: string | null;
 }
 
@@ -178,6 +192,29 @@ export function journalQueryOptions(projectId: string, types: readonly string[] 
       }
       if (read.status !== "fresh") return null;
       return { events: read.value, etag: read.etag };
+    },
+    ...pollingFor(projectId),
+  };
+}
+
+/**
+ * The journal aggregate, read conditionally like the journal. Every provider
+ * answers it (`DataProvider.readJournalStats` is required), so there is no
+ * unconditional fallback to wrap here.
+ */
+export function journalStatsQueryOptions(projectId: string) {
+  return {
+    queryKey: journalStatsKey(projectId),
+    queryFn: async ({ client, signal }: QueryFunctionContext): Promise<JournalStatsEntry | null> => {
+      const provider = getProvider();
+      const previous = client.getQueryData<JournalStatsEntry | null>(journalStatsKey(projectId));
+      let read = await provider.readJournalStats(projectId, { etag: previous?.etag ?? null, signal });
+      if (read.status === "not-modified") {
+        if (previous) return previous;
+        read = await provider.readJournalStats(projectId, { etag: null, signal });
+      }
+      if (read.status !== "fresh") return null;
+      return { stats: read.value, etag: read.etag };
     },
     ...pollingFor(projectId),
   };
@@ -426,6 +463,19 @@ function refetchIfEmpty(client: QueryClient, projectId: string): void {
   void client.invalidateQueries({ queryKey: bundleKey(projectId), refetchType: "active" });
 }
 
+/**
+ * The aggregate cannot be patched the way the journal is: a release's count
+ * depends on where an event falls among the markers and, for a
+ * platform-scoped release, on node platforms the write may have changed. So
+ * every write-back re-asks. The default `refetchType` ("active") refetches
+ * only while the Overview is mounted, and the cancel invalidation implies
+ * keeps a read that started before the write from landing after it; an
+ * unmounted entry is just marked stale for its next mount.
+ */
+function invalidateJournalStats(client: QueryClient, projectId: string): void {
+  void client.invalidateQueries({ queryKey: journalStatsKey(projectId) });
+}
+
 /** The listing shows counts and `updated_at`; any write moves them. */
 function markProjectsStale(client: QueryClient): void {
   void client.invalidateQueries({ queryKey: projectsKey(), refetchType: "none" });
@@ -444,6 +494,7 @@ export async function writeBackGraph(client: QueryClient, projectId: string, res
   client.setQueryData<BundleEntry | null>(bundleKey(projectId), (entry) => withGraph(entry, result));
   refetchIfEmpty(client, projectId);
   await appendOrInvalidateJournal(client, projectId, result.events);
+  invalidateJournalStats(client, projectId);
   markProjectsStale(client);
 }
 
@@ -461,6 +512,7 @@ export async function writeBackEdges(
   await client.cancelQueries({ queryKey: bundleKey(projectId) });
   client.setQueryData<BundleEntry | null>(bundleKey(projectId), (entry) => withEdges(entry, edges, version));
   refetchIfEmpty(client, projectId);
+  invalidateJournalStats(client, projectId);
   markProjectsStale(client);
 }
 
@@ -473,6 +525,7 @@ export async function writeBackEdges(
 export async function writeBackBundle(client: QueryClient, projectId: string, bundle: ProjectBundle): Promise<void> {
   await client.cancelQueries({ queryKey: bundleKey(projectId) });
   client.setQueryData<BundleEntry | null>(bundleKey(projectId), (entry) => withBundle(entry, bundle));
+  invalidateJournalStats(client, projectId);
   markProjectsStale(client);
 }
 

@@ -3,6 +3,7 @@ import type { MutationOp } from "@arkaik/schema";
 import type {
   DataProvider,
   JournalProjection,
+  JournalStats,
   MutationResult,
   ProjectSummary,
   ReadJournalOptions,
@@ -326,6 +327,20 @@ export function createRemoteProvider(options: RemoteProviderOptions = {}): DataP
         );
         if (got.status === "not-modified") return { status: "not-modified" };
         return { status: "fresh", value: got.body.bundle, etag: got.etag, version: got.body.version };
+      } catch (err) {
+        if (err instanceof RemoteProviderError && err.status === 404) return { status: "missing" };
+        throw err;
+      }
+    },
+
+    async readJournalStats(projectId: string, options: ReadProjectOptions): Promise<ReadResult<JournalStats>> {
+      try {
+        const got = await conditionalGet<{ stats: JournalStats }>(
+          `/projects/${encodeURIComponent(projectId)}/journal/stats`,
+          options,
+        );
+        if (got.status === "not-modified") return { status: "not-modified" };
+        return { status: "fresh", value: got.body.stats, etag: got.etag };
       } catch (err) {
         if (err instanceof RemoteProviderError && err.status === 404) return { status: "missing" };
         throw err;

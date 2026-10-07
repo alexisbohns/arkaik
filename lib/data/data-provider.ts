@@ -1,4 +1,4 @@
-import type { MutationOp } from "@arkaik/schema";
+import type { MutationOp, ReleaseEventCount } from "@arkaik/schema";
 
 import type { Node, Edge, Project, ProjectBundle, JournalEvent } from "./types";
 
@@ -152,6 +152,18 @@ export interface DataProvider {
   readJournal?(projectId: string, options: ReadJournalOptions): Promise<ReadResult<JournalEvent[]>>;
 
   /**
+   * The journal's aggregate — its size and each release's event count — for
+   * the Overview, which used to download the whole journal to count it.
+   * REQUIRED, unlike the conditional reads above, because every backend can
+   * answer it and only one of them cheaply: the remote provider asks
+   * `GET …/journal/stats` (conditional, with a validator), while the local
+   * and seed providers count the journal they already hold in memory
+   * (`journalStatsOf`, `etag: null`). A project that does not exist is
+   * `missing`, like the project read.
+   */
+  readJournalStats(projectId: string, options: ReadProjectOptions): Promise<ReadResult<JournalStats>>;
+
+  /**
    * Replace a project's whole bundle — snapshot and journal — in place,
    * refused unless the stored version is still `options.version`. OPTIONAL
    * like the conditional reads: only the remote provider has a version to
@@ -162,6 +174,14 @@ export interface DataProvider {
    * would land a hosted bundle in IndexedDB.
    */
   replaceProject?(projectId: string, bundle: ProjectBundle, options: ReplaceProjectOptions): Promise<{ version: string }>;
+}
+
+/** What `readJournalStats` answers — the hosted route's `stats` body. */
+export interface JournalStats {
+  /** Every event in the journal. */
+  total: number;
+  /** Each tagged release's changelog size, oldest release first. */
+  releases: ReleaseEventCount[];
 }
 
 export interface ReplaceProjectOptions {

@@ -506,6 +506,60 @@ async function main() {
     );
   }
 
+  // --- The journal aggregate (#429) ------------------------------------------------
+  // The Overview's counts: a conditional GET of …/journal/stats on a hosted
+  // project, forwarded untouched by the router for every other backend.
+  {
+    const seen = [];
+    let answer = () =>
+      new Response(JSON.stringify({ stats: { total: 3, releases: [{ version: "1.0", eventCount: 2 }] } }), {
+        status: 200,
+        headers: { etag: 'W/"4.3"' },
+      });
+    const provider = remote.createRemoteProvider({
+      fetchImpl: async (url, init) => {
+        seen.push({ url, ifNoneMatch: init?.headers?.["if-none-match"] ?? null });
+        return answer();
+      },
+    });
+    const fresh = await provider.readJournalStats(HOSTED, { etag: null });
+    check(
+      "readJournalStats GETs the hosted stats route, unconditional the first time",
+      seen[0].url.endsWith(`/projects/${HOSTED}/journal/stats`) && seen[0].ifNoneMatch === null,
+      JSON.stringify(seen),
+    );
+    check(
+      "…and answers its body with the validator",
+      fresh.status === "fresh" && fresh.value.total === 3 && fresh.value.releases[0].eventCount === 2 &&
+        fresh.etag === 'W/"4.3"',
+      JSON.stringify(fresh),
+    );
+    answer = () => new Response(null, { status: 304 });
+    const quiet = await provider.readJournalStats(HOSTED, { etag: 'W/"4.3"' });
+    check(
+      "a revalidation sends the validator and turns the 304 into not-modified",
+      seen[1].ifNoneMatch === 'W/"4.3"' && quiet.status === "not-modified",
+      JSON.stringify({ seen: seen[1], quiet }),
+    );
+    answer = () => new Response(JSON.stringify({ error: "not_found" }), { status: 404 });
+    check("a 404 is missing, not an error", (await provider.readJournalStats(HOSTED, { etag: null })).status === "missing");
+
+    const router = routing.createRoutingProvider({
+      local: reg.localFake,
+      remote: remote.createRemoteProvider({
+        fetchImpl: async () => { throw new Error("a local stats read must not reach the network"); },
+      }),
+      isRemoteAvailable: () => true,
+    });
+    resetCalls();
+    await router.readJournalStats(LOCAL, { etag: null });
+    check(
+      "the router sends a local project's stats to the local provider",
+      calls.includes(`readJournalStats:${LOCAL}`),
+      calls.join(","),
+    );
+  }
+
   // --- Replacing a hosted bundle in place (#429) ---------------------------------
   // The raw editor's save for a hosted project. It used to go through
   // `importProject`, which the router lands LOCALLY — a phantom `prj_…` row in

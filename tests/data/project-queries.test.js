@@ -92,6 +92,8 @@ async function main() {
     journalKey,
     bundleQueryOptions,
     journalQueryOptions,
+    journalStatsKey,
+    journalStatsQueryOptions,
     projectsQueryOptions,
     selectNodes,
     selectEdges,
@@ -773,6 +775,77 @@ async function main() {
       "the journal follows the same rule",
       journalQueryOptions("prj_abc123", null).refetchInterval === 60_000 &&
         journalQueryOptions("local-1", null).refetchInterval === false,
+    );
+  }
+
+  // --- the journal aggregate (#429) -----------------------------------------------
+  {
+    check(
+      "the stats key sits under projectKey but outside the journal prefix",
+      JSON.stringify(journalStatsKey("p").slice(0, 2)) === JSON.stringify(projectKey("p")) &&
+        journalStatsKey("p")[2] !== "journal",
+      JSON.stringify(journalStatsKey("p")),
+    );
+
+    const client = newClient();
+    const seen = [];
+    let answer = { status: "fresh", value: { total: 2, releases: [{ version: "1.0", eventCount: 1 }] }, etag: 'W/"1.2"' };
+    setProvider(makeProvider({
+      readJournalStats: async (id, options) => {
+        seen.push(options.etag);
+        return answer;
+      },
+    }));
+    const first = await client.fetchQuery(journalStatsQueryOptions("p-stats"));
+    check(
+      "the stats entry stores the aggregate and its validator",
+      first.stats.total === 2 && first.etag === 'W/"1.2"' && seen[0] === null,
+      JSON.stringify({ first, seen }),
+    );
+    answer = { status: "not-modified" };
+    await client.refetchQueries({ queryKey: journalStatsKey("p-stats"), type: "all" });
+    check(
+      "a revalidation sends the validator and keeps the entry by reference on not-modified",
+      seen[1] === 'W/"1.2"' && client.getQueryData(journalStatsKey("p-stats")) === first,
+      JSON.stringify(seen),
+    );
+    answer = { status: "missing" };
+    await client.refetchQueries({ queryKey: journalStatsKey("p-stats"), type: "all" });
+    check("a missing project is a null stats entry", client.getQueryData(journalStatsKey("p-stats")) === null);
+
+    // Every write-back re-asks: a release count depends on where an event
+    // falls among the markers, which an append cannot patch in place.
+    const stale = newClient();
+    const statsEntry = { stats: { total: 0, releases: [] }, etag: null };
+    stale.setQueryData(bundleKey("p4"), { bundle: makeBundle("p4", []), version: null, etag: null });
+    stale.setQueryData(journalStatsKey("p4"), statsEntry);
+    stale.setQueryData(journalStatsKey("other"), statsEntry);
+    await writeBackGraph(stale, "p4", { nodes: [], edges: [], events: [makeEvent("e9", "node.created")] });
+    check(
+      "a graph write-back marks the project's stats stale…",
+      stale.getQueryState(journalStatsKey("p4")).isInvalidated === true,
+    );
+    check(
+      "…without writing events into it, as it does the journal entries",
+      stale.getQueryData(journalStatsKey("p4")) === statsEntry,
+    );
+    check(
+      "…and leaves another project's stats alone",
+      stale.getQueryState(journalStatsKey("other")).isInvalidated === false,
+    );
+    stale.setQueryData(journalStatsKey("p4"), statsEntry);
+    await writeBackEdges(stale, "p4", []);
+    const afterEdges = stale.getQueryState(journalStatsKey("p4")).isInvalidated;
+    stale.setQueryData(journalStatsKey("p4"), statsEntry);
+    await writeBackBundle(stale, "p4", makeBundle("p4", []));
+    check(
+      "the edge and bundle write-backs mark it stale too",
+      afterEdges === true && stale.getQueryState(journalStatsKey("p4")).isInvalidated === true,
+    );
+    check(
+      "the stats poll on a hosted project like the journal does",
+      journalStatsQueryOptions("prj_abc123").refetchInterval === 60_000 &&
+        journalStatsQueryOptions("local-1").refetchInterval === false,
     );
   }
 

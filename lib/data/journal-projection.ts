@@ -1,4 +1,7 @@
-import type { JournalEvent } from "./types";
+import { computeReleaseEventCounts } from "@arkaik/schema";
+
+import type { JournalStats } from "./data-provider";
+import type { JournalEvent, Node } from "./types";
 
 /**
  * The `?types=` projection, applied in memory — what the local and seed
@@ -25,4 +28,21 @@ export function projectJournal(
   if (types === null || types === undefined || types.length === 0) return [...events];
   const wanted = new Set(types);
   return events.filter((event) => wanted.has(event.type));
+}
+
+/**
+ * The journal aggregate the Overview reads (`readJournalStats`), computed in
+ * memory — the local and seed providers' answer to the hosted
+ * `GET …/journal/stats`, which runs the same `computeReleaseEventCounts` over
+ * its rows. The snapshot nodes are what a platform-scoped release filters
+ * through, exactly as the page's own changelog does.
+ */
+export function journalStatsOf(
+  events: readonly JournalEvent[],
+  nodes: readonly Pick<Node, "id" | "platforms">[],
+): JournalStats {
+  return {
+    total: events.length,
+    releases: computeReleaseEventCounts(events, { nodesById: new Map(nodes.map((node) => [node.id, node])) }),
+  };
 }
