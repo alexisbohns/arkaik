@@ -780,6 +780,66 @@ async function main() {
     );
   }
 
+  // --- the listing follows a write (#429) -------------------------------------------
+  // The persistent switcher and the projects page read node/edge counts and
+  // titles off the listing. A write patches that project's row from the bundle
+  // entry it just wrote — the cache's own authority, so a write-back the
+  // version guard refused patches nothing new — and still marks the listing
+  // stale so its next read is the server's own answer.
+  {
+    const client = newClient();
+    setProvider(makeProvider());
+    const summary = (id, nodeCount, edgeCount, title) => ({
+      project: { id, title, created_at: ISO, updated_at: ISO }, nodeCount, edgeCount, hosted: id.startsWith("prj_"),
+    });
+    const list = [summary("prj_list", 1, 0, "Before"), summary("other", 5, 5, "Other")];
+    client.setQueryData(projectsKey(), list);
+    // A hosted bundle keeps its own project.id, never the route's prj_ id.
+    client.setQueryData(bundleKey("prj_list"), {
+      bundle: { ...makeBundle("orig-bundle-id", [makeNode("V-a", "orig-bundle-id")]) }, version: "3", etag: null,
+    });
+
+    await writeBackGraph(client, "prj_list", {
+      nodes: [makeNode("V-a", "orig-bundle-id"), makeNode("V-b", "orig-bundle-id")],
+      edges: [{ id: "e-V-a-V-b", project_id: "orig-bundle-id", source_id: "V-a", target_id: "V-b", type: "composes" }],
+      version: "4",
+      events: [],
+    });
+    const afterGraph = client.getQueryData(projectsKey());
+    check(
+      "a graph write-back patches the written project's counts in the listing, matched by route id",
+      afterGraph.find((s) => s.project.id === "prj_list").nodeCount === 2 &&
+        afterGraph.find((s) => s.project.id === "prj_list").edgeCount === 1,
+      JSON.stringify(afterGraph.map((s) => [s.project.id, s.nodeCount, s.edgeCount])),
+    );
+    check(
+      "…leaves every other row alone, by reference",
+      afterGraph.find((s) => s.project.id === "other") === list[1],
+    );
+    check("…and still marks the listing stale for its next read", client.getQueryState(projectsKey()).isInvalidated === true);
+
+    await writeBackGraph(client, "prj_list", { nodes: [], edges: [], version: "2", events: [] });
+    check(
+      "a write-back the version guard refuses patches nothing new",
+      client.getQueryData(projectsKey()).find((s) => s.project.id === "prj_list").nodeCount === 2,
+    );
+
+    const renamed = makeBundle("orig-bundle-id", [makeNode("V-a", "orig-bundle-id")]);
+    renamed.project.title = "After";
+    await writeBackBundle(client, "prj_list", renamed);
+    const afterBundle = client.getQueryData(projectsKey()).find((s) => s.project.id === "prj_list");
+    check(
+      "a bundle write-back patches the title and counts, keeping the listing's own project id",
+      afterBundle.project.title === "After" && afterBundle.nodeCount === 1 && afterBundle.project.id === "prj_list",
+      JSON.stringify(afterBundle),
+    );
+
+    const empty = newClient();
+    empty.setQueryData(bundleKey("p-none"), { bundle: makeBundle("p-none", []), version: null, etag: null });
+    await writeBackGraph(empty, "p-none", { nodes: [], edges: [], events: [] });
+    check("with no listing cached there is nothing to patch, and no listing is invented", empty.getQueryData(projectsKey()) === undefined);
+  }
+
   // --- the journal aggregate (#429) -----------------------------------------------
   {
     check(

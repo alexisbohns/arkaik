@@ -544,8 +544,38 @@ function invalidateJournalReads(client: QueryClient, projectId: string): void {
   void client.invalidateQueries({ queryKey: journalPagesPrefix(projectId) });
 }
 
-/** The listing shows counts and `updated_at`; any write moves them. */
-function markProjectsStale(client: QueryClient): void {
+/**
+ * The listing shows each project's title and counts — the persistent switcher
+ * and the projects page both draw them — and any write moves them. Two steps:
+ *
+ * 1. PATCH the written project's row from its bundle entry, so the switcher
+ *    says "12 nodes" the moment the twelfth is drawn rather than a minute
+ *    later (#429). The entry is the cache's authority, read AFTER the
+ *    write-back: a result the version guard refused left the entry as it
+ *    was, so nothing older is patched in. Matched by the route id, never the
+ *    bundle's — a hosted bundle keeps its own `project.id` under its `prj_`
+ *    row. No row, or no listing cached, is nothing to patch; a listing is
+ *    never invented here.
+ * 2. Still mark it stale, without refetching: `updated_at` and anything a
+ *    server derives are only right once the server says so, on the next read.
+ */
+function followListing(client: QueryClient, projectId: string): void {
+  const entry = client.getQueryData<BundleEntry | null>(bundleKey(projectId));
+  if (entry) {
+    const { bundle } = entry;
+    client.setQueryData<ProjectSummary[]>(projectsKey(), (list) =>
+      list?.map((summary) =>
+        summary.project.id !== projectId
+          ? summary
+          : {
+              ...summary,
+              project: { ...summary.project, title: bundle.project.title },
+              nodeCount: bundle.nodes.length,
+              edgeCount: bundle.edges.length,
+            },
+      ),
+    );
+  }
   void client.invalidateQueries({ queryKey: projectsKey(), refetchType: "none" });
 }
 
@@ -563,7 +593,7 @@ export async function writeBackGraph(client: QueryClient, projectId: string, res
   refetchIfEmpty(client, projectId);
   await appendOrInvalidateJournal(client, projectId, result.events);
   invalidateJournalReads(client, projectId);
-  markProjectsStale(client);
+  followListing(client, projectId);
 }
 
 /**
@@ -581,7 +611,7 @@ export async function writeBackEdges(
   client.setQueryData<BundleEntry | null>(bundleKey(projectId), (entry) => withEdges(entry, edges, version));
   refetchIfEmpty(client, projectId);
   invalidateJournalReads(client, projectId);
-  markProjectsStale(client);
+  followListing(client, projectId);
 }
 
 /**
@@ -594,7 +624,7 @@ export async function writeBackBundle(client: QueryClient, projectId: string, bu
   await client.cancelQueries({ queryKey: bundleKey(projectId) });
   client.setQueryData<BundleEntry | null>(bundleKey(projectId), (entry) => withBundle(entry, bundle));
   invalidateJournalReads(client, projectId);
-  markProjectsStale(client);
+  followListing(client, projectId);
 }
 
 // --- Invalidation seams ------------------------------------------------------
