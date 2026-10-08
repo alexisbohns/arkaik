@@ -167,7 +167,7 @@ The Klub tier's database-of-record for a project's graph — where Synk stores *
 One seam answers "who is calling?" for every route: `getCaller()` in `lib/services/auth.ts`.
 
 - **Two kinds of caller.** An interactively signed-in human (Auth.js session) or a machine holding a bearer token (`Authorization: Bearer …`, minted in project settings and stored hashed in `api_tokens`).
-- **Scopes.** `graph:read` and `graph:write`. A token carries the scopes it was minted with; a session caller carries all of them — scopes exist to limit machines, not people. A caller without the scope gets `403 { error: "insufficient_scope", required }`.
+- **Scopes.** `graph:read` and `graph:write` are the agent plane; `synk` is the backup API. Two append-only scopes exist for credentials that live in a public repository's CI secrets, and neither is a default: `quality:append` opens `…/quality/events` for a batch of trips, and `release:append` opens `…/live` (issue #424). A token carries the scopes it was minted with; a session caller carries all of them — scopes exist to limit machines, not people. A caller without the scope gets `403 { error: "insufficient_scope", required }`.
 - **Owner scoping, not user scoping.** Every statement filters on the caller's owner ids (`lib/services/owners.ts`), so shared ownership works and a project belonging to another owner is `404`, never `403` — the API cannot be used to probe for project ids.
 
 ### Write path
@@ -179,6 +179,7 @@ One seam answers "who is calling?" for every route: `getCaller()` in `lib/servic
 | `PATCH /api/graph/projects/{id}` | `graph:write` | Project-level fields only (title, description, version, metadata) — deliberately cannot touch nodes or edges |
 | `DELETE /api/graph/projects/{id}` | `graph:write` | Archive (`archived_at`); leaves the listing, stays readable |
 | `POST /api/graph/projects/{id}/quality/events` | `graph:write` (`quality:append` suffices for a batch of trips only) | Journal-only quality events, five whitelisted types: the finding decisions `quality.finding.resolved`/`accepted`, `quality.signal.tripped`, and a hosted scoped re-audit's `quality.assessment.scored` and scoped `quality.audit.completed` (issue #473) — no snapshot change, no version bump. All-or-nothing; refusals name each entry's `index` and `reason` (`lib/services/graph/quality-events.ts`) |
+| `POST /api/graph/projects/{id}/live` | `graph:write` or `release:append` | The deployment door (issue #424): `{ entries: [{ node_id, platform, detail? }] }` marks each acceptance `live` on that platform and nothing else — `platform` required, acceptances only, never the base status. An ordinary mutation (`applyMutation`: lock, validators, version bump) landing as `node.status_changed` with `platform`, the entry's `detail` and actor `arkaik-ci` (`arkaik-app` for a session). All-or-nothing refusals (`unknown_node`, `not_acceptance`, `archived` (base status or the platform's own entry), `platform_not_applicable`) are 422; `already_live` is a 200 under `skipped`, so a re-run writes nothing (`lib/services/graph/live.ts`). No `If-Match`: the plan is computed from a read outside the lock, so a version conflict re-reads and re-plans up to three times before answering 409 — a retry can only converge (`already_live`) |
 
 Rules:
 

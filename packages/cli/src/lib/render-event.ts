@@ -50,7 +50,9 @@ export function renderEventLine(
       const from = str(event.from) ?? "?";
       const to = str(event.to) ?? "?";
       const platform = str(event.platform);
-      return `${title(event.node_id, nodesById)}: ${from} -> ${to}${platform ? ` [${platform}]` : ""}`;
+      // #424: the live door's evidence rides on the event.
+      const detail = str(event.detail);
+      return `${title(event.node_id, nodesById)}: ${from} -> ${to}${platform ? ` [${platform}]` : ""}${detail ? ` - ${detail}` : ""}`;
     }
     case "node.deleted":
       return `${title(event.node_id, nodesById)} deleted`;

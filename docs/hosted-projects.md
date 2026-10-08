@@ -45,7 +45,7 @@ session-only, so a leaked token can never mint another or widen its own scopes.
 
 ### A token for CI: `quality:append`
 
-There is a fourth scope, and you have to ask for it — it is never a default.
+There is a scope you have to ask for — it is never a default.
 `quality:append` can append one kind of event to one route: a tripped Kritik
 signal. It cannot read your graph, cannot read your findings, and cannot decide
 one. Send it a `quality.finding.resolved` and you get a 403 naming the scope you
@@ -75,6 +75,64 @@ it. The run URL rides in the free-form `detail`.
 
 A trip is **not** a finding. Nothing in CI mints findings; a trip is cheap,
 frequent, allowed to be wrong, and the prompt to go look.
+
+### A token for deployments: `release:append`
+
+A merge is not a release. [`ref_policy`](#6-opt-the-project-in) carries an
+acceptance to `releasing` when its pull request merges; what carries it to
+`live` is the deployment — and the signals for that come from CI, which is
+exactly where a broad credential must not go. `release:append` is
+`quality:append`'s sibling: one route, one kind of write, and you have to ask
+for it when minting.
+
+What it can do: say *this acceptance reached `live` on this platform*. What it
+cannot: read your graph, move a status anywhere but `live`, touch anything but
+an acceptance, or skip the platform. `platform` is required: a deploy is
+always a deploy of *something*, and saying which keeps one release from
+marking the others shipped. A platform the acceptance does not list is refused
+and reported, never guessed. An archived acceptance, or a platform whose own
+entry is archived, is refused too: a deploy does not bring back what was
+deliberately dropped. An acceptance already `live` on that platform is skipped
+with a 200, so a re-run job is harmless. A batch is all-or-nothing: one
+refused entry writes nothing, and the 422 names each entry's `index` and
+`reason`. Filter the list to acceptances that ship on this platform before you
+send it.
+
+The token is minted for an owner, not a project, so it reaches every project
+that owner has — and it can mark an acceptance live from any status, not only
+`releasing`. A wrong `live` is a visible `arkaik-ci` event in the journal that
+a human can revert; keep the token where only your release workflows read it.
+What it learns is limited to what a refusal says about the ids it names (that
+an id exists, its species, its platforms).
+
+```bash
+curl -sS --fail-with-body -X POST "$ARKAIK_URL/api/graph/projects/$PROJECT_ID/live" \
+  -H "Authorization: Bearer $ARKAIK_RELEASE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"entries":[{"node_id":"AC-guest-checkout","platform":"ios","detail":"App Store 2.4.1 (build 318)"}]}'
+```
+
+`--fail-with-body` makes the step fail on a 4xx instead of reporting green
+while nothing went live — this call is the whole point of the step.
+
+`detail` is optional, and the one extra worth sending: the deployment URL,
+the store build number — whatever lets someone reading the journal later see
+*why* this went live. It lands on the `node.status_changed` event, written by
+`arkaik-ci`, beside the platform, and the journal shows it under the move.
+
+Where the call goes depends on the platform, because each one has a different
+moment:
+
+| platform | the moment | where the call goes |
+|---|---|---|
+| web | the production deploy succeeded | a step at the end of the deploy workflow, after the deploy step reports success |
+| android | the release reached the production track and Play review is done | a step in the Play release workflow when it promotes to production itself — or, if a person promotes later in Play Console or the rollout is staged, a scheduled poll of the Play Developer API track status, as for iOS |
+| ios | the version is released on the store — a manual or phased release moves this moment | a **scheduled** workflow that asks App Store Connect for the version's state and posts when it reads as released (`READY_FOR_SALE` in the classic API; newer API versions name the same state differently, so check yours) — approval is asynchronous, and no repository event marks it |
+
+Which acceptances a deploy carried is the part no API can know for you. List
+them in the workflow input, or read them off the pull requests merged since
+the last release and pass the ids along. The door accepts up to fifty entries
+per call.
 
 ## 2. Get a hosted project
 
@@ -125,7 +183,7 @@ arrived since. The server folds those events in on every read. Over MCP,
 `kritik_open_finding`, `kritik_signals` and `kritik_trip_signal` stay
 repo-only, and so does a comprehensive audit.
 
-Every hosted write goes to one route,
+Every hosted Kritik write goes to one route,
 `POST /api/graph/projects/{id}/quality/events`, and it takes exactly five
 event types:
 

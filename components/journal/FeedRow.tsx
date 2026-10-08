@@ -41,7 +41,7 @@ export function FeedRow({ event, nodesById, trailing, onOpen }: FeedRowProps) {
       <Icon className="size-3.5 shrink-0 text-muted-foreground mt-0.5" aria-hidden="true" />
       <div className="flex-1 min-w-0">
         <p className="truncate">{text}</p>
-        {meta && <p className="text-xs text-muted-foreground truncate">{meta}</p>}
+        {meta && <p className="text-xs text-muted-foreground truncate" title={meta}>{meta}</p>}
       </div>
       {trailing}
       <span className="text-xs text-muted-foreground shrink-0">{formatEventDate(event.ts)}</span>

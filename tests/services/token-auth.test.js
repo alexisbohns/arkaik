@@ -97,6 +97,11 @@ function checkScopeVocabulary() {
   // secrets. It must not be in the defaults — nothing mints it by accident.
   check("quality:append is a recognized scope", isTokenScope("quality:append"));
   check("quality:append is not a default", !DEFAULT_TOKEN_SCOPES.includes("quality:append"));
+
+  // #424: the deployment door's credential. Same posture as quality:append —
+  // one route, one kind of write, never a default.
+  check("release:append is a recognized scope", isTokenScope("release:append"));
+  check("release:append is not a default", !DEFAULT_TOKEN_SCOPES.includes("release:append"));
   check("defaults are unchanged", DEFAULT_TOKEN_SCOPES.join(",") === "graph:read,graph:write");
 
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
@@ -181,6 +186,19 @@ async function main() {
       "a quality:append-only token round-trips with exactly that scope",
       appendResolved && appendResolved.scopes.join(",") === "quality:append",
       appendResolved && appendResolved.scopes.join(","),
+    );
+
+    const releaseOnly = await tokens.mintToken({
+      ownerId: ownerA,
+      userId: userA,
+      name: "deploy-ci",
+      scopes: ["release:append"],
+    });
+    const releaseResolved = await tokens.verifyToken(releaseOnly.plaintext);
+    check(
+      "a release:append-only token round-trips with exactly that scope",
+      releaseResolved && releaseResolved.scopes.join(",") === "release:append",
+      releaseResolved && releaseResolved.scopes.join(","),
     );
 
     // The secret is the credential; the prefix alone must be worthless.

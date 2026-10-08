@@ -333,10 +333,10 @@ export function RepoLinksPanel({ projectId }: RepoLinksPanelProps) {
         paths moves nothing and the delivery response says why — as does one arkaik could not read
         the changed files for, which needs this deployment&rsquo;s GitHub App private key. Under{" "}
         <em>All platforms</em>, a pull request that names no platform moves the base status, which
-        marks the acceptance shipped on every platform that has no per-platform status of its own —
-        not on none. When a link names one platform and a pull request names an acceptance that does
+        moves the acceptance on every platform that has no per-platform status of its own — not on
+        none. When a link names one platform and a pull request names an acceptance that does
         not list it, nothing is moved at all — the delivery response says so rather than falling
-        back to marking every platform shipped.
+        back to moving every platform.
       </p>
     </div>
   );

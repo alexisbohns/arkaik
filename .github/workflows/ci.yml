@@ -173,6 +173,11 @@ jobs:
       - name: Kritik hosted-events tests (whitelist, all-or-nothing refusal)
         run: npm run test:quality-events
 
+      # The deployment door's planner (issue #424): the pure core behind
+      # POST .../live. DB-free the same way — the nodes are injected, not read.
+      - name: Live door planner tests (platform required, all-or-nothing, already_live skip)
+        run: npm run test:live
+
       - name: Map projection + validation tests
         run: npm run test:maps
 
