@@ -350,14 +350,16 @@ add `ref_policy` to the project's metadata:
 | PR state | Acceptance status |
 |---|---|
 | opened / reopened | `development` |
-| merged | `live` |
+| merged | `releasing` |
 | closed without merging | *unchanged* |
 
+A merge is not a release: the default stops at `releasing`, and `live` is what
+a deployment says — see [A token for deployments](#a-token-for-deployments-releaseappend).
 To choose your own mapping, give an object instead. `null` means "recognised,
-moves nothing":
+moves nothing"; this is the map that makes a merge mean live:
 
 ```json
-"ref_policy": { "github-pr": { "open": "development", "merged": "releasing", "closed": null } }
+"ref_policy": { "github-pr": { "open": "development", "merged": "live", "closed": null } }
 ```
 
 ## 7. Ship something
@@ -370,8 +372,10 @@ Implements AC-guest-checkout
 ```
 
 - on open → that acceptance moves to `development`
-- on merge → `live`, on the platform that repository builds for — or, in a
+- on merge → `releasing`, on the platform that repository builds for — or, in a
   [monorepo](#monorepos), the platform of the folder the PR touched
+- on deploy → `live`, when your deploy or release workflow says so through the
+  [`release:append` door](#a-token-for-deployments-releaseappend)
 
 ### Naming the platform in the mention
 
@@ -387,7 +391,7 @@ Implements AC-guest-checkout@ios
   request's changed files landed in, then the repository's own link. A bare
   mention in an iOS-linked repo still means iOS, but `@web` there means web;
 - **one PR can name several** — `AC-guest-checkout@ios and AC-guest-checkout@android`
-  marks both platforms shipped and leaves the third as a genuine parity gap;
+  moves both platforms and leaves the third as a genuine parity gap;
 - writing both `AC-guest-checkout` and `AC-guest-checkout@ios` in one PR means
   **iOS only** — the explicit scope absorbs the bare mention rather than also
   moving the base status;
@@ -404,11 +408,12 @@ Implements AC-guest-checkout@ios
 - **naming no platform is the biggest claim, not the smallest** — an unscoped
   mention moves the acceptance's *base* status, which every platform without its
   own entry falls back to. On a three-platform acceptance with nothing pinned
-  that marks all three delivered and leaves no parity gap. On a *partly* shipped
-  one it is worse, not better: `{web: "live"}` with a base of `backlog` is a
+  that moves all three at once. On a *partly* shipped one it can be worse:
+  under a merge-means-live policy, `{web: "live"}` with a base of `backlog` is a
   real parity gap, and moving the base to `live` makes iOS and Android inherit
-  it, so the gap **disappears**. Either way the delivery response names the
-  platforms it is about to mark, one line per acceptance.
+  it, so the gap **disappears**; under the default, iOS and Android are still
+  marked `releasing` when nobody named them. Either way the delivery
+  response names the platforms it is about to mark, one line per acceptance.
 
 An agent can also attach the ref explicitly with `update_node` rather than
 relying on a mention.
@@ -416,6 +421,10 @@ relying on a mention.
 Guards that keep this honest:
 
 - **archived** acceptances are never resurrected by a stale PR;
+- **`live` is kept, not re-earned** — a follow-up pull request on an acceptance
+  that already reads `live` on that platform attaches its ref and moves
+  nothing. Users still have the feature; only a human edit moves a status off
+  `live`;
 - an acceptance already at the target status is skipped, so re-runs and
   redeliveries are no-ops;
 - **a platform that was asked for and cannot be honoured is refused, never
@@ -616,7 +625,7 @@ source names freezes. Four consequences worth knowing:
 
 - **freezing is not deletion, and it is not a quarantine.** A frozen ref stops
   being carried forward — most importantly, it is never upgraded to `merged` —
-  so it cannot become a standing `live` promotion that `arkaik sync --promote`
+  so it cannot become a standing promotion that `arkaik sync --promote`
   fires later. But if an *earlier*, truthful delivery had already mirrored it to
   a promotable state, it stays promotable out of band: freezing stops a ref
   moving, it does not undo a state already written. If you do not want that,

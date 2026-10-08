@@ -20,6 +20,12 @@
  * reports Web and Android as lagging. Moving the base `status` instead would
  * silently claim parity the product does not have.
  *
+ * ── Live is kept ───────────────────────────────────────────────────────────
+ * `archived` has always been terminal for promotions. `live` is too, per scope
+ * (issue #424): once a scope reads `live`, no mapped ref status moves it. A
+ * merge that reworks a shipped acceptance is still a merge of something users
+ * have.
+ *
  * Zod-free (type-only imports) like validate.ts / acceptance.ts / mutate.ts.
  */
 
@@ -40,11 +46,18 @@ export interface RefPolicy {
 
 /**
  * The policy a project gets when it opts in without naming one. PR opened →
- * being worked on; merged → shipped; closed → deliberately nothing.
+ * being worked on; merged → releasing; closed → deliberately nothing.
+ *
+ * Merged means `releasing`, not `live` (issue #424): a merge is not a
+ * release. Web goes live when the production deploy succeeds; iOS and
+ * Android when a store accepts a build, days later. That last hop has its own
+ * writer — `POST …/live` behind the `release:append` scope — so the default
+ * does not claim it on merge. A project that wants merge-means-live says so:
+ * `{ "github-pr": { "open": "development", "merged": "live", "closed": null } }`.
  */
 export const DEFAULT_REF_POLICY: RefPolicy = {
-  "github-pr": { open: "development", merged: "live", closed: null },
-  "gitlab-mr": { open: "development", merged: "live", closed: null },
+  "github-pr": { open: "development", merged: "releasing", closed: null },
+  "gitlab-mr": { open: "development", merged: "releasing", closed: null },
 };
 
 export interface Promotion {
@@ -62,7 +75,7 @@ export interface Promotion {
 export interface SkippedPromotion {
   node_id: string;
   ref_id: string;
-  reason: "platform-not-applicable" | "archived" | "already-there" | "no-mapping";
+  reason: "platform-not-applicable" | "archived" | "already-there" | "no-mapping" | "live";
   detail?: string;
 }
 
@@ -154,6 +167,16 @@ export function computeRefPromotions(bundle: ProjectBundle): PromotionPlan {
       const from = currentStatus(node, ref.platform);
       if (from === to) {
         skipped.push({ node_id: node.id, ref_id: ref.id, reason: "already-there", detail: to });
+        continue;
+      }
+
+      // Live is kept (see the header). Judged on the scope the ref targets —
+      // the platform's effective status for a scoped ref (its entry, else the
+      // base), the base otherwise — so a base move still goes through when
+      // only a platform entry is live; the overlay leaves that entry alone.
+      // Only a human edit moves a status off live.
+      if (from === "live") {
+        skipped.push({ node_id: node.id, ref_id: ref.id, reason: "live", detail: to });
         continue;
       }
 

@@ -19,7 +19,7 @@ import type { JournalEvent } from "./journal";
 const envelope = {
   id: z.string().meta({ description: "ULID — sortable, collision-free without coordination." }),
   ts: z.string().meta({ description: "ISO 8601 timestamp." }),
-  actor: z.string().optional().meta({ description: "Who/what wrote it (e.g. \"claude-code\", \"ci\")." }),
+  actor: z.string().optional().meta({ description: "Who/what wrote it (e.g. \"claude-code\", \"arkaik-ci\")." }),
   v: z.number().int().optional().meta({ description: "Reserved per-event payload version; absent today." }),
 };
 
@@ -65,6 +65,7 @@ export const NodeStatusChangedEventSchema = z
     from: AnyStatusSchema,
     to: AnyStatusSchema,
     platform: PlatformSchema.optional(),
+    detail: z.string().optional(),
   })
   .catchall(z.unknown());
 

@@ -61,7 +61,7 @@ export interface JournalEvent extends Record<string, unknown> {
   id: string;
   /** ISO 8601 timestamp. */
   ts: string;
-  /** Who/what wrote it: "alexis", "claude-code", "arkaik-sync", "ci". */
+  /** Who/what wrote it: "alexis", "claude-code", "arkaik-sync", "arkaik-ci". */
   actor?: string;
   /** Event type — the v1 vocabulary, or an unknown forward-compatible value. */
   type: string;
@@ -93,6 +93,12 @@ export interface NodeStatusChangedEvent extends JournalEvent {
   from: StatusId;
   to: StatusId;
   platform?: PlatformId;
+  /**
+   * Free-form evidence for the move — the deployment URL, the store build
+   * number. Written by the hosted `release:append` door, the one writer that
+   * always knows it; edits through the mutations route never carry it.
+   */
+  detail?: string;
 }
 
 /** A decision moved between decision states (metadata.decision_status). */
