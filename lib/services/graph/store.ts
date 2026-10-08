@@ -26,6 +26,7 @@ import {
   type JournalPage,
   type MutationOp,
   type Node,
+  type PlatformId,
   type Project,
   type ProjectBundle,
   type ReleaseEventCount,
@@ -934,7 +935,7 @@ export async function archiveProject(projectId: string, ownerIds: readonly strin
 /** Evidence for a platform-scoped status change — see {@link ApplyMutationInput.annotations}. */
 export interface StatusAnnotation {
   node_id: string;
-  platform: string;
+  platform: PlatformId;
   detail: string;
 }
 
@@ -953,7 +954,7 @@ export interface ApplyMutationInput {
    * one way a writer that knows WHY a status moved can say so without being
    * allowed to write the event itself. An annotation matching no derived
    * event is dropped: it can only mean the plan and the diff disagreed, and
-   * the diff is the truth. No other caller passes this.
+   * the diff is the truth. Only the live route passes this.
    */
   annotations?: readonly StatusAnnotation[];
 }

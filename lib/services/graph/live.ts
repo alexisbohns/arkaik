@@ -20,7 +20,9 @@ import { PLATFORM_IDS, resolvePlatformStatus, type MutationOp, type Node, type P
  * the system and the last one a CI job should make by omission. So
  * `platform` is required, and a platform the acceptance does not list is
  * refused and reported, never guessed at (the webhook's posture,
- * lib/services/github/pull-request.ts).
+ * lib/services/github/pull-request.ts). `archived` is refused on the base
+ * status and on the platform's own entry alike — a platform deliberately
+ * dropped is not brought back by a deploy.
  *
  * **Already live is a skip, not a refusal.** A deploy job re-runs; the
  * second run must get a 200 and write nothing. Everything else that is wrong
@@ -60,6 +62,7 @@ export interface LiveSkip {
   reason: "already_live";
 }
 
+/** One platform this batch moves to live; `from` is its resolved status before the write. */
 export interface LiveApplied {
   node_id: string;
   platform: PlatformId;
@@ -145,10 +148,9 @@ export function parseLiveEntries(body: unknown): LiveEntry[] | { error: string }
 /**
  * Decide the batch against the project's nodes. Refusals are per entry and
  * all-or-nothing; `already_live` is reported under `skipped` and writes
- * nothing. Every surviving entry folds into ONE `update_node` op per node,
- * each step reading the node as the previous one left it — `applyOps`
- * replaces `metadata` wholesale, so two ops built from the same pre-write
- * node would silently erase each other's platform entry.
+ * nothing. Every surviving entry for a node is gathered and merged over its
+ * metadata once, into ONE `update_node` op — `applyOps` replaces `metadata`
+ * wholesale, so one op per entry would erase each other's platform entry.
  */
 export function planLive(nodes: readonly Node[], entries: readonly LiveEntry[]): LivePlan {
   const byId = new Map(nodes.map((node) => [node.id, node] as const));
@@ -156,14 +158,14 @@ export function planLive(nodes: readonly Node[], entries: readonly LiveEntry[]):
   const skipped: LiveSkip[] = [];
   const applied: LiveApplied[] = [];
   const annotations: LiveAnnotation[] = [];
-  const additions = new Map<string, Partial<Record<PlatformId, StatusId>>>();
+  const additions = new Map<string, { node: Node; statuses: Partial<Record<PlatformId, StatusId>> }>();
 
-  entries.forEach((entry, index) => {
+  for (const [index, entry] of entries.entries()) {
     const { node_id, platform } = entry;
     const node = byId.get(node_id);
     if (!node) {
       refusals.push({ index, node_id, platform, reason: "unknown_node" });
-      return;
+      continue;
     }
     if (node.species !== "acceptance") {
       refusals.push({
@@ -173,11 +175,11 @@ export function planLive(nodes: readonly Node[], entries: readonly LiveEntry[]):
         reason: "not_acceptance",
         detail: `${node_id} is a ${node.species}; only acceptances go live`,
       });
-      return;
+      continue;
     }
     if (node.status === "archived") {
       refusals.push({ index, node_id, platform, reason: "archived" });
-      return;
+      continue;
     }
     if (!node.platforms.includes(platform)) {
       refusals.push({
@@ -185,34 +187,41 @@ export function planLive(nodes: readonly Node[], entries: readonly LiveEntry[]):
         node_id,
         platform,
         reason: "platform_not_applicable",
-        detail: `${node_id} lists: ${node.platforms.join(", ")}`,
+        detail:
+          node.platforms.length > 0
+            ? `${node_id} lists: ${node.platforms.join(", ")}`
+            : `${node_id} lists no platforms`,
       });
-      return;
+      continue;
     }
     // Defined: `includes` just passed. The fallback is only for the type.
     const from = resolvePlatformStatus(node, platform) ?? node.status;
+    if (from === "archived") {
+      refusals.push({ index, node_id, platform, reason: "archived" });
+      continue;
+    }
     if (from === "live") {
       skipped.push({ index, node_id, platform, reason: "already_live" });
-      return;
+      continue;
     }
     applied.push({ node_id, platform, from, to: "live" });
-    additions.set(node_id, { ...additions.get(node_id), [platform]: "live" });
+    const addition = additions.get(node_id) ?? { node, statuses: {} };
+    addition.statuses[platform] = "live";
+    additions.set(node_id, addition);
     if (entry.detail !== undefined) annotations.push({ node_id, platform, detail: entry.detail });
-  });
+  }
 
   if (refusals.length > 0) return { ok: false, refusals };
 
   const ops: MutationOp[] = [];
-  for (const [nodeId, platformStatuses] of additions) {
-    const node = byId.get(nodeId);
-    if (!node) continue;
+  for (const [nodeId, { node, statuses }] of additions) {
     ops.push({
       op: "update_node",
       node_id: nodeId,
       patch: {
         metadata: {
           ...node.metadata,
-          platformStatuses: { ...node.metadata?.platformStatuses, ...platformStatuses },
+          platformStatuses: { ...node.metadata?.platformStatuses, ...statuses },
         },
       },
     });

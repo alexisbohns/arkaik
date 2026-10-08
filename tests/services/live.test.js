@@ -86,24 +86,69 @@ check(
 {
   const view = { id: "V-a", project_id: "p", species: "view", title: "A", status: "releasing", platforms: ["web"] };
   const plan = planLive([view], [{ node_id: "V-a", platform: "web" }]);
-  check("only acceptances go live", !plan.ok && plan.refusals[0]?.reason === "not_acceptance", JSON.stringify(plan));
+  check(
+    "only acceptances go live",
+    !plan.ok && plan.refusals.find((r) => r.index === 0 && r.node_id === "V-a" && r.reason === "not_acceptance" && /is a view/.test(r.detail ?? "")) !== undefined,
+    JSON.stringify(plan),
+  );
 }
 {
   const plan = planLive([acceptance("AC-x", { status: "archived" })], [{ node_id: "AC-x", platform: "ios" }]);
-  check("an archived acceptance is never resurrected by a deploy", !plan.ok && plan.refusals[0]?.reason === "archived", JSON.stringify(plan));
+  check(
+    "an archived acceptance is never resurrected by a deploy",
+    !plan.ok && plan.refusals.find((r) => r.index === 0 && r.node_id === "AC-x" && r.reason === "archived") !== undefined,
+    JSON.stringify(plan),
+  );
+}
+{
+  const node = acceptance("AC-x", { metadata: { platformStatuses: { ios: "archived" } } });
+  const plan = planLive([node], [{ node_id: "AC-x", platform: "ios" }]);
+  check(
+    "a platform deliberately dropped is not brought back by a deploy",
+    !plan.ok && plan.refusals.find((r) => r.reason === "archived" && r.platform === "ios") !== undefined,
+    JSON.stringify(plan),
+  );
 }
 {
   const plan = planLive([acceptance("AC-x")], [{ node_id: "AC-x", platform: "android" }]);
   check(
     "a platform the acceptance does not list is refused, never guessed",
-    !plan.ok && plan.refusals[0]?.reason === "platform_not_applicable" && /web, ios/.test(plan.refusals[0]?.detail ?? ""),
+    !plan.ok &&
+      plan.refusals.find((r) => r.index === 0 && r.node_id === "AC-x" && r.reason === "platform_not_applicable" && /web, ios/.test(r.detail ?? "")) !== undefined,
+    JSON.stringify(plan),
+  );
+}
+{
+  const plan = planLive([acceptance("AC-e", { platforms: [] })], [{ node_id: "AC-e", platform: "web" }]);
+  check(
+    "an acceptance listing no platforms says so",
+    !plan.ok && plan.refusals.find((r) => r.reason === "platform_not_applicable" && /lists no platforms/.test(r.detail ?? "")) !== undefined,
     JSON.stringify(plan),
   );
 }
 {
   // All-or-nothing: one bad entry refuses the batch, and the good one is not applied.
   const plan = planLive([acceptance("AC-x")], [{ node_id: "AC-x", platform: "ios" }, { node_id: "AC-x", platform: "android" }]);
-  check("one refused entry refuses the whole batch", !plan.ok && plan.refusals.every((r) => r.index === 1), JSON.stringify(plan));
+  check(
+    "one refused entry refuses the whole batch",
+    !plan.ok &&
+      plan.refusals.find((r) => r.index === 1 && r.reason === "platform_not_applicable") !== undefined &&
+      !plan.refusals.some((r) => r.index === 0),
+    JSON.stringify(plan),
+  );
+}
+{
+  const plan = planLive(
+    [acceptance("AC-arch", { status: "archived" })],
+    [{ node_id: "AC-nope", platform: "ios" }, { node_id: "AC-arch", platform: "ios" }],
+  );
+  check(
+    "every refusal is collected, not just the first",
+    !plan.ok &&
+      plan.refusals.find((r) => r.index === 0 && r.node_id === "AC-nope" && r.reason === "unknown_node") !== undefined &&
+      plan.refusals.find((r) => r.index === 1 && r.node_id === "AC-arch" && r.reason === "archived") !== undefined,
+    JSON.stringify(plan),
+  );
 }
 
 // --- planLive: the write -------------------------------------------------------
@@ -114,8 +159,12 @@ check(
   check("a valid entry plans", plan.ok, JSON.stringify(plan));
   const op = plan.ok && plan.ops.find((o) => o.op === "update_node" && o.node_id === "AC-x");
   check("as one update_node op", op !== undefined && op !== false, JSON.stringify(plan));
-  check("that patches only platformStatuses", op && op.patch.status === undefined && op.patch.metadata.platformStatuses.ios === "live", JSON.stringify(op));
-  check("and leaves the other platform alone", op && op.patch.metadata.platformStatuses.web === undefined, JSON.stringify(op));
+  check(
+    "that patches only platformStatuses",
+    op && JSON.stringify(Object.keys(op.patch)) === '["metadata"]' && op.patch.status === undefined && op.patch.metadata.platformStatuses.ios === "live",
+    JSON.stringify(op),
+  );
+  check("and invents no entry for the other platform", op && op.patch.metadata.platformStatuses.web === undefined, JSON.stringify(op));
   check(
     "applied records where it came from",
     plan.ok && plan.applied.find((a) => a.node_id === "AC-x" && a.platform === "ios" && a.from === "releasing" && a.to === "live") !== undefined,
@@ -137,8 +186,13 @@ check(
   check("from is the platform's resolved status, falling back to the base", plan.ok && plan.applied[0].from === "releasing", JSON.stringify(plan));
 }
 {
-  // Two platforms, one node → ONE op, each step reading the node as the
-  // previous left it. Two ops from the same pre-write node would erase each other.
+  const node = acceptance("AC-x", { metadata: { platformStatuses: { ios: "development" } } });
+  const plan = planLive([node], [{ node_id: "AC-x", platform: "ios" }]);
+  check("from is the platform's own entry when it has one", plan.ok && plan.applied[0]?.from === "development", JSON.stringify(plan));
+}
+{
+  // Two platforms, one node → ONE op carrying both entries. Two ops built
+  // from the same pre-write node would erase each other.
   const plan = planLive([acceptance("AC-x")], [{ node_id: "AC-x", platform: "ios" }, { node_id: "AC-x", platform: "web" }]);
   const ops = plan.ok ? plan.ops.filter((o) => o.node_id === "AC-x") : [];
   check("two platforms fold into one op", ops[0] !== undefined && ops[1] === undefined, JSON.stringify(plan));
@@ -150,7 +204,12 @@ check(
   check("already live is a skip, not a refusal — a re-run deploy job gets a 200", plan.ok, JSON.stringify(plan));
   check("reported as already_live with its index", plan.ok && plan.skipped.find((s) => s.index === 0 && s.node_id === "AC-x" && s.platform === "ios" && s.reason === "already_live") !== undefined, JSON.stringify(plan));
   check("and plans no op", plan.ok && plan.ops[0] === undefined, JSON.stringify(plan));
+  check("and applies nothing", plan.ok && plan.applied[0] === undefined, JSON.stringify(plan));
   check("and no annotation", plan.ok && plan.annotations[0] === undefined, JSON.stringify(plan));
+}
+{
+  const plan = planLive([acceptance("AC-x")], [{ node_id: "AC-x", platform: "ios" }]);
+  check("no detail, no annotation", plan.ok && plan.annotations[0] === undefined, JSON.stringify(plan));
 }
 {
   const node = acceptance("AC-x", { status: "live" });
