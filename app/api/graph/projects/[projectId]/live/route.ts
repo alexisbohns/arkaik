@@ -1,10 +1,13 @@
 import { getCaller, hasScope } from "@/lib/services/auth";
 import { MAX_BUNDLE_BYTES, servicesConfigured, servicesUnavailable } from "@/lib/services/db";
 import { parseLiveEntries, planLive } from "@/lib/services/graph/live";
-import { applyMutation, getProject, getUserTier } from "@/lib/services/graph/store";
+import { applyMutation, getProject, type StoreFailure } from "@/lib/services/graph/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/** Re-read and re-plan this many times on a version conflict before giving up with 409. */
+const MAX_ATTEMPTS = 3;
 
 /**
  * `POST` — the deployment door (issue #424): *this acceptance reached `live`
@@ -33,11 +36,9 @@ export const dynamic = "force-dynamic";
  * read as `expectedVersion`, and a conflict re-reads and re-plans, up to
  * three times — the plan is idempotent (`already_live`), so a retry can only
  * ever converge. The webhook and the mutations route accept the same hazard
- * without the retry; this route's callers are unattended jobs, which is why
- * it does not.
+ * without retrying; this route retries because its callers are unattended
+ * jobs with no one to re-read and resend.
  */
-const MAX_ATTEMPTS = 3;
-
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ projectId: string }> },
@@ -71,8 +72,7 @@ export async function POST(
   const actor = caller.via === "token" ? "arkaik-ci" : "arkaik-app";
 
   try {
-    const tier = await getUserTier(caller.userId);
-    for (let attempt = 1; ; attempt++) {
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       const found = await getProject(projectId, caller.ownerIds);
       if (!found) return Response.json({ error: "not_found" }, { status: 404 });
 
@@ -93,7 +93,9 @@ export async function POST(
         ownerIds: caller.ownerIds,
         ops: plan.ops,
         actor,
-        tier,
+        // Only patches platformStatuses on existing nodes, never adds an entity: a deploy
+        // must not fail on a tier cap it cannot act on (as lib/services/github/pull-request.ts).
+        tier: "klub",
         expectedVersion: found.version,
         annotations: plan.annotations,
       });
@@ -104,28 +106,38 @@ export async function POST(
           { status: 200, headers: { ETag: `"${result.version}"` } },
         );
       }
-      switch (result.reason) {
-        case "conflict":
-          if (attempt < MAX_ATTEMPTS) continue;
-          return Response.json(
-            { error: "version_conflict", version: result.version },
-            { status: 409, headers: { ETag: `"${result.version}"` } },
-          );
-        case "not_found":
-          return Response.json({ error: "not_found" }, { status: 404 });
-        case "validation":
-          return Response.json({ error: "invalid_bundle", errors: result.errors }, { status: 422 });
-        case "mutation":
-          return Response.json({ error: "mutation_refused", code: result.code, message: result.message }, { status: 422 });
-        case "limit":
-          return Response.json(
-            { error: "limit_exceeded", limit: result.limit, actual: result.actual, tier: result.tier },
-            { status: 403 },
-          );
-      }
+      if (result.reason === "conflict" && attempt < MAX_ATTEMPTS) continue;
+      return failureResponse(result);
     }
+    throw new Error("unreachable: the last attempt always returns");
   } catch (err) {
     console.error("[graph] POST live failed:", err instanceof Error ? err.message : "unknown error");
     return Response.json({ error: "internal_error", message: "Failed to mark live." }, { status: 500 });
+  }
+}
+
+/**
+ * A store failure as the response the mutations route gives for it. No
+ * `default`: a new `StoreFailure` reason is a type error here (TS2366), not a
+ * silent fall-through.
+ */
+function failureResponse(result: StoreFailure): Response {
+  switch (result.reason) {
+    case "conflict":
+      return Response.json(
+        { error: "version_conflict", version: result.version },
+        { status: 409, headers: { ETag: `"${result.version}"` } },
+      );
+    case "not_found":
+      return Response.json({ error: "not_found" }, { status: 404 });
+    case "validation":
+      return Response.json({ error: "invalid_bundle", errors: result.errors }, { status: 422 });
+    case "mutation":
+      return Response.json({ error: "mutation_refused", code: result.code, message: result.message }, { status: 422 });
+    case "limit":
+      return Response.json(
+        { error: "limit_exceeded", limit: result.limit, actual: result.actual, tier: result.tier },
+        { status: 403 },
+      );
   }
 }

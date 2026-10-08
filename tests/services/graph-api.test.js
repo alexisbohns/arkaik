@@ -1407,6 +1407,8 @@ async function main() {
     const liveSeed = bundle([
       node("AC-x", "acceptance", { status: "releasing", platforms: ["web", "ios"] }),
       node("V-a", "view", { status: "releasing" }),
+      // The retry cases' own node (7. below), so they depend on no earlier state.
+      node("AC-r", "acceptance", { status: "releasing", platforms: ["web", "ios"] }),
     ]);
     const liveCreated = await api.CREATE_PROJECT(jsonReq(`${ORIGIN}/api/graph/projects`, "POST", liveSeed));
     const liveCreatedBody = await liveCreated.json();
@@ -1468,6 +1470,7 @@ async function main() {
       check("carrying the evidence as detail", ev?.detail === "App Store 2.4.1 (build 318)", JSON.stringify(ev));
       check("written by arkaik-ci, so the journal says what acted", ev?.actor === "arkaik-ci", JSON.stringify(ev));
       check("the version bumped", body.version === "2", body.version);
+      check("nothing skipped on a first write", Array.isArray(body.skipped) && body.skipped.length === 0, JSON.stringify(body.skipped));
 
       setSession(sessionFor(userL));
       const after = await (await api.GET_PROJECT(new Request(ORIGIN), ctx(liveProjectId))).json();
@@ -1485,7 +1488,8 @@ async function main() {
       const res = await livePost([{ node_id: "AC-x", platform: "ios", detail: "re-run" }], liveToken.plaintext);
       const body = await res.json();
       check("a re-run is a 200", res.status === 200, `${res.status} ${JSON.stringify(body)}`);
-      check("with the entry skipped as already_live", body.skipped?.find((s) => s.index === 0 && s.reason === "already_live") !== undefined && body.applied?.[0] === undefined, JSON.stringify(body));
+      check("with the entry skipped as already_live", body.skipped?.find((s) => s.index === 0 && s.reason === "already_live") !== undefined && Array.isArray(body.applied) && body.applied.length === 0, JSON.stringify(body));
+      check("and no events", Array.isArray(body.events) && body.events.length === 0, JSON.stringify(body.events));
       check("and the version unchanged", body.version === "2", body.version);
     }
 
@@ -1500,7 +1504,11 @@ async function main() {
       check("an unknown node is refused as unknown_node", unknown.status === 422 && (await unknown.json()).refusals?.[0]?.reason === "unknown_node");
       setSession(sessionFor(userL));
       const after = await (await api.GET_PROJECT(new Request(ORIGIN), ctx(liveProjectId))).json();
-      check("the refused batch wrote nothing — web is still not live and the version is still 2", after.version === "2", after.version);
+      check(
+        "the refused batch wrote nothing — web is still not live and the version is still 2",
+        after.version === "2" && after.bundle.nodes.find((n) => n.id === "AC-x")?.metadata?.platformStatuses?.web === undefined,
+        `${after.version} ${JSON.stringify(after.bundle.nodes.find((n) => n.id === "AC-x")?.metadata)}`,
+      );
       setSession(null);
     }
 
@@ -1510,7 +1518,11 @@ async function main() {
       const res = await api.LIVE(jsonReq(`${ORIGIN}/api/graph/projects/${liveProjectId}/live`, "POST", { entries: [{ node_id: "AC-x", platform: "web" }] }), ctx(liveProjectId));
       const body = await res.json();
       check("a signed-in human can use the door too", res.status === 200, `${res.status} ${JSON.stringify(body)}`);
-      check("and writes as arkaik-app", body.events?.[0]?.actor === "arkaik-app", JSON.stringify(body.events));
+      check(
+        "and writes as arkaik-app",
+        body.events?.find((e) => e.type === "node.status_changed" && e.node_id === "AC-x" && e.platform === "web")?.actor === "arkaik-app",
+        JSON.stringify(body.events),
+      );
       setSession(null);
       // A caller the scope gate lets through (graph:write, ownerQ's), so what
       // answers is ownership — a scope-less token is a 403 before the lookup.
@@ -1520,6 +1532,66 @@ async function main() {
         "a token with neither graph:write nor release:append is 403 before any lookup",
         (await livePost([{ node_id: "AC-x", platform: "web" }], qualityAppendToken.plaintext)).status === 403,
       );
+    }
+
+    // 7. The retry: the plan is read outside the lock, so a version conflict
+    // re-reads and re-plans. Spied through the loader's live `store` exports,
+    // which the transpiled route reads at call time.
+    {
+      const realGetProject = api.store.getProject;
+      const realApplyMutation = api.store.applyMutation;
+      try {
+        // A real interleave: someone edits AC-r between the route's read and
+        // its write, so the route's first applyMutation meets a newer version.
+        let reads = 0;
+        api.store.getProject = async (...args) => {
+          reads++;
+          const found = await realGetProject(...args);
+          if (reads === 1) {
+            const existing = found.bundle.nodes.find((n) => n.id === "AC-r")?.metadata;
+            const concurrent = await realApplyMutation({
+              projectId: args[0],
+              ownerIds: args[1],
+              ops: [{ op: "update_node", node_id: "AC-r", patch: { metadata: { ...existing, note: "concurrent" } } }],
+              actor: "graphtest",
+              tier: "klub",
+            });
+            if (!concurrent.ok) throw new Error(`concurrent edit failed: ${JSON.stringify(concurrent)}`);
+          }
+          return found;
+        };
+        const res = await livePost([{ node_id: "AC-r", platform: "ios", detail: "retry" }], liveToken.plaintext);
+        const body = await res.json();
+        api.store.getProject = realGetProject;
+        check("a write that meets a concurrent edit still lands", res.status === 200, `${res.status} ${JSON.stringify(body)}`);
+        setSession(sessionFor(userL));
+        const after = await (await api.GET_PROJECT(new Request(ORIGIN), ctx(liveProjectId))).json();
+        setSession(null);
+        const acr = after.bundle.nodes.find((n) => n.id === "AC-r");
+        check(
+          "a concurrent edit between read and write is not clobbered: the route re-reads and re-plans",
+          acr?.metadata?.note === "concurrent" && acr?.metadata?.platformStatuses?.ios === "live",
+          JSON.stringify(acr?.metadata),
+        );
+        check("the route read the project twice", reads === 2, String(reads));
+
+        // A conflict that never resolves.
+        let writes = 0;
+        api.store.applyMutation = async () => {
+          writes++;
+          return { ok: false, reason: "conflict", version: "99" };
+        };
+        const stuck = await livePost([{ node_id: "AC-r", platform: "web" }], liveToken.plaintext);
+        const stuckBody = await stuck.json();
+        check(
+          "a conflict that never resolves gives up after three attempts",
+          stuck.status === 409 && stuckBody.error === "version_conflict" && writes === 3,
+          `${stuck.status} ${JSON.stringify(stuckBody)} after ${writes} writes`,
+        );
+      } finally {
+        api.store.getProject = realGetProject;
+        api.store.applyMutation = realApplyMutation;
+      }
     }
 
     setSession(sessionFor(userA));
