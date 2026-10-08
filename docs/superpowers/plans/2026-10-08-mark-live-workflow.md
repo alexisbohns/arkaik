@@ -1058,10 +1058,10 @@ jobs:
     with:
       platform: web
       paths: apps/web
-      sha: ${{ github.event.deployment.sha }}
-      environment: ${{ github.event.deployment.environment }}
-      deployment_id: ${{ github.event.deployment.id }}
-      detail: ${{ github.event.deployment_status.environment_url }}
+      sha: ${{ github.event.deployment.sha || github.sha }}
+      environment: ${{ github.event.deployment.environment || 'Production – my-app' }}
+      deployment_id: ${{ github.event.deployment.id || '' }}
+      detail: ${{ github.event.deployment_status.environment_url || '' }}
     secrets:
       ARKAIK_RELEASE_TOKEN: ${{ secrets.ARKAIK_RELEASE_TOKEN }}
 ```
@@ -1117,10 +1117,10 @@ jobs:
     with:
       platform: web
       paths: apps/web
-      sha: ${{ github.event.deployment.sha }}
-      environment: ${{ github.event.deployment.environment }}
-      deployment_id: ${{ github.event.deployment.id }}
-      detail: ${{ github.event.deployment_status.environment_url }}
+      sha: ${{ github.event.deployment.sha || github.sha }}
+      environment: ${{ github.event.deployment.environment || 'Production – pbbls' }}
+      deployment_id: ${{ github.event.deployment.id || '' }}
+      detail: ${{ github.event.deployment_status.environment_url || '' }}
     secrets:
       ARKAIK_RELEASE_TOKEN: ${{ secrets.ARKAIK_RELEASE_TOKEN }}
 ```
