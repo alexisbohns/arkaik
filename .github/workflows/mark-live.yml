@@ -10,6 +10,26 @@
 #
 # The caller's repo must be linked (docs/arkaik/arkaik.json, `arkaik link`) and
 # hold a release:append token as the ARKAIK_RELEASE_TOKEN secret.
+#
+# The caller MUST grant, on the workflow or the calling job:
+#
+#   permissions:
+#     contents: read
+#     deployments: read
+#     pull-requests: read
+#
+# A called workflow can only narrow the caller's GITHUB_TOKEN, never widen it,
+# and a repository's default token is often restricted to grant neither
+# deployments nor pull requests — without the block the range lookup fails.
+#
+# Pull request numbers come from the commits in the range: squash subjects
+# ending in "(#N)" and "Merge pull request #N" merge commits. Rebase merges are
+# not seen. A direct push whose subject ends in "(#issue)" makes the pull
+# request fetch fail and the job red, on purpose: a guess is worse.
+#
+# The first run marks nothing: with no earlier successful deploy of the
+# environment there is no range to measure, and the job says so and exits 0.
+# `environment` and `deployment_id` default to the triggering deployment event.
 name: mark-live
 
 on:
@@ -97,15 +117,15 @@ permissions:
 jobs:
   mark-live:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
       PLATFORM: ${{ inputs.platform }}
       SHA: ${{ inputs.sha != '' && inputs.sha || github.sha }}
-      ENVIRONMENT: ${{ inputs.environment }}
-      DEPLOYMENT_ID: ${{ inputs.deployment_id }}
+      ENVIRONMENT: ${{ inputs.environment != '' && inputs.environment || github.event.deployment.environment || '' }}
+      DEPLOYMENT_ID: ${{ inputs.deployment_id != '' && inputs.deployment_id || github.event.deployment.id || '' }}
       PATHS: ${{ inputs.paths }}
       DETAIL: ${{ inputs.detail != '' && inputs.detail || format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id) }}
       IDS: ${{ inputs.ids }}
-      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Check out the deployed repository
         uses: actions/checkout@v4
@@ -113,6 +133,7 @@ jobs:
           ref: ${{ inputs.sha != '' && inputs.sha || github.sha }}
           fetch-depth: 0
           path: repo
+          persist-credentials: false
 
       - name: Check out arkaik (the CLI is built from main)
         uses: actions/checkout@v4
@@ -120,6 +141,7 @@ jobs:
           repository: alexisbohns/arkaik
           ref: main
           path: tool
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
@@ -137,42 +159,62 @@ jobs:
         id: range
         if: env.IDS == ''
         working-directory: repo
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # The checkout sits at the deployed commit; resolve it so a short sha
+          # or a ref passed by hand still compares against full deployment shas.
+          SHA=$(git rev-parse HEAD)
           if [ -z "$ENVIRONMENT" ]; then
             echo "No environment given and no ids: nothing to derive the range from." >&2
             echo "prev=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # Deployments of this environment, newest first; the first one that is
-          # not the current deployment and has a `success` status bounds the range.
+          if [ -n "$DEPLOYMENT_ID" ] && ! [[ "$DEPLOYMENT_ID" =~ ^[0-9]+$ ]]; then
+            echo "deployment_id is not a number: '$DEPLOYMENT_ID'" >&2
+            exit 1
+          fi
+          # Deployments of this environment, newest first. One page of the 100
+          # newest is the look-back: when none of them qualifies the job marks
+          # nothing, the safe direction. A failed API call stops the job.
+          gh api -X GET "repos/${GITHUB_REPOSITORY}/deployments" \
+            -f environment="$ENVIRONMENT" -f per_page=100 \
+            --jq '.[] | "\(.id) \(.sha)"' > deployments.txt
+          # The previous deploy is the newest one created before the current
+          # (ids increase monotonically, so a re-run after a newer deploy still
+          # measures from the right one), of another commit, with a success status.
           prev=""
-          for id in $(gh api --paginate -X GET "repos/${GITHUB_REPOSITORY}/deployments" \
-              -f environment="$ENVIRONMENT" -f per_page=50 --jq '.[].id'); do
-            if [ -n "$DEPLOYMENT_ID" ] && [ "$id" = "$DEPLOYMENT_ID" ]; then continue; fi
-            dsha=$(gh api "repos/${GITHUB_REPOSITORY}/deployments/$id" --jq .sha)
-            if [ "$dsha" = "$SHA" ]; then continue; fi
-            if gh api "repos/${GITHUB_REPOSITORY}/deployments/$id/statuses" --jq '[.[].state] | index("success") != null' | grep -q true; then
-              prev="$dsha"; break
-            fi
-          done
+          while read -r id dsha; do
+            if [ -n "$DEPLOYMENT_ID" ] && [ "$id" -ge "$DEPLOYMENT_ID" ]; then continue; fi
+            [ "$dsha" = "$SHA" ] && continue
+            ok=$(gh api "repos/${GITHUB_REPOSITORY}/deployments/$id/statuses" --jq 'any(.[]; .state == "success")' </dev/null)
+            if [ "$ok" = true ]; then prev="$dsha"; break; fi
+          done < deployments.txt
           if [ -z "$prev" ]; then
             echo "No previous successful deploy of '$ENVIRONMENT' — marking nothing rather than guessing a range." >&2
             echo "prev=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          if ! git cat-file -e "${prev}^{commit}"; then
+            echo "The previous deploy's commit $prev is not in this repository's history." >&2
+            exit 1
+          fi
           echo "prev=$prev" >> "$GITHUB_OUTPUT"
           echo "Range: $prev..$SHA" >&2
           # Pull request numbers from the squash subjects "(#N)" and merge commits.
           git log --format=%s "$prev..$SHA" \
-            | grep -oE '\(#[0-9]+\)$|Merge pull request #[0-9]+' \
-            | grep -oE '[0-9]+' | sort -un > prs.txt || true
+            | sed -nE 's/.*\(#([0-9]+)\)$/\1/p; s/^Merge pull request #([0-9]+).*/\1/p' \
+            | sort -un > prs.txt
           echo "Pull requests: $(tr '\n' ' ' < prs.txt)" >&2
           : > mentions.jsonl
           while read -r n; do
             [ -z "$n" ] && continue
-            gh pr view "$n" --json number,title,body,files \
-              --jq '{number, title, body, files: [.files[].path]}' >> mentions.jsonl
+            # Files through REST, paginated: `gh pr view --json files` stops at
+            # 100, and in a monorepo the prefix that matters can sort last.
+            files=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/$n/files" --jq '.[].filename' </dev/null | jq -R . | jq -s .)
+            gh pr view "$n" --json number,title,body </dev/null \
+              | jq --argjson files "$files" '{number, title, body, files: $files}' >> mentions.jsonl
           done < prs.txt
           jq -s '.' mentions.jsonl > mentions.json
 
@@ -186,8 +228,14 @@ jobs:
           args=(--platform "$PLATFORM" --detail "$DETAIL")
           if [ -n "$PATHS" ]; then args+=(--paths "$PATHS"); fi
           if [ -n "$IDS" ]; then
-            # shellcheck disable=SC2206
-            args+=($IDS)
+            read -ra id_list <<< "$IDS"
+            for id in "${id_list[@]}"; do
+              if ! [[ "$id" =~ ^AC-[A-Za-z0-9._-]+$ ]]; then
+                echo "Not an acceptance id: '$id'" >&2
+                exit 1
+              fi
+            done
+            args+=("${id_list[@]}")
           else
             args+=(--mentions mentions.json)
           fi

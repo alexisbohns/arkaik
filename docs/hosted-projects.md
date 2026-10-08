@@ -126,10 +126,16 @@ door. One file in your repository:
 
 ```yaml
 name: mark-live
-on: deployment_status
+on:
+  deployment_status:
+  workflow_dispatch:
+permissions:
+  contents: read
+  deployments: read
+  pull-requests: read
 jobs:
   web:
-    if: github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Production – my-app'
+    if: github.event_name == 'workflow_dispatch' || (github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Production – my-app')
     uses: alexisbohns/arkaik/.github/workflows/mark-live.yml@main
     with:
       platform: web
@@ -148,7 +154,9 @@ that forgot `@ios` does not mark web live. Leave it out in a single-platform
 repository. On the first run there is no previous deploy to measure from, and
 the workflow marks nothing rather than guessing — pass explicit `ids` once, or
 let the next deploy be the first real one. The workflow builds the CLI from
-`arkaik@main`, so there is nothing to install or pin.
+`arkaik@main`, so there is nothing to install or pin. The `permissions` block
+is required: a called workflow can only use what the caller grants, and the
+default token grants neither deployments nor pull requests.
 
 `detail` is optional, and the one extra worth sending: the deployment URL,
 the store build number — whatever lets someone reading the journal later see

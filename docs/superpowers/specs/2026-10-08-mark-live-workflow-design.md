@@ -111,7 +111,12 @@ arkaik live --platform <web|ios|android> [--detail <text>] [--mentions <file>]
 | `ids` | no | space-separated ids; skips derivation |
 
 Secret: `ARKAIK_RELEASE_TOKEN`. Permissions: `contents: read`,
-`pull-requests: read`, `deployments: read`.
+`pull-requests: read`, `deployments: read` — and the **caller must grant the
+same block**: a called workflow can only narrow the caller's `GITHUB_TOKEN`,
+and a repository's default token (pbbls's included) grants neither deployments
+nor pull requests. `environment` and `deployment_id` default to the triggering
+deployment event (`github.event.deployment`), so a `deployment_status` caller
+may omit them; under `workflow_dispatch` they stay empty unless given.
 
 Steps: check out the caller at `sha` (full history) into `repo/`; check out
 `alexisbohns/arkaik@main` into `tool/`; setup-node 22 with npm cache keyed on
@@ -121,15 +126,18 @@ Then, unless `ids` was given: find the previous deploy (deployments of
 current one, first whose statuses contain `success`); with none, print the
 reason and stop with success. Otherwise collect PR numbers from
 `git log --format=%s prev..sha` (`(#N)` suffix, or `Merge pull request #N`),
-fetch each with `gh pr view N --json number,title,body,files`, write
+fetch each with `gh pr view N --json number,title,body` and its files through
+the paginated REST `pulls/N/files` (the `gh` field stops at 100), write
 `mentions.json`, and run `node tool/packages/cli/dist/index.js live` from
 `repo/` with the token, platform, paths, detail and mentions file. The step's
 exit code is the job's.
 
 ### The pbbls caller
 
-`.github/workflows/mark-live.yml` in pbbls: `on: deployment_status`, job
-`if: github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Production – pbbls'`,
+`.github/workflows/mark-live.yml` in pbbls: `on: deployment_status` and
+`workflow_dispatch`, with `permissions: { contents: read, deployments: read,
+pull-requests: read }`, job
+`if: github.event_name == 'workflow_dispatch' || (github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Production – pbbls')`,
 `uses: alexisbohns/arkaik/.github/workflows/mark-live.yml@main` with
 `platform: web`, `paths: apps/web`, `sha: ${{ github.event.deployment.sha }}`,
 `environment: ${{ github.event.deployment.environment }}`,
@@ -157,8 +165,9 @@ future poll.
   prints applied and skipped, a 422 prints refusals and fails, a 403 names the
   scope, missing link file / token fail clearly, chunks of 50.
 - The planner and webhook suites keep passing through the re-exports.
-- The workflow is exercised by `workflow_dispatch` against a real pbbls deploy
-  before the caller is wired.
+- The pbbls caller carries a `workflow_dispatch` trigger, so the workflow is
+  exercised by hand from pbbls against a real production deploy once the caller
+  is wired; a dispatch from arkaik itself only reaches arkaik's own project.
 
 ### Out of scope
 
