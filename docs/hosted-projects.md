@@ -115,6 +115,41 @@ curl -sS --fail-with-body -X POST "$ARKAIK_URL/api/graph/projects/$PROJECT_ID/li
 `--fail-with-body` makes the step fail on a 4xx instead of reporting green
 while nothing went live — this call is the whole point of the step.
 
+You rarely need the curl. The CLI wraps it — `arkaik live --platform web
+--detail "$URL" AC-guest-checkout` — and derives the ids for you from the pull
+requests a deploy shipped when you hand it a `--mentions` file (see `arkaik
+live --help`). And the **`mark-live` reusable workflow** does all of it from a
+`deployment_status` event: it finds the previous successful deploy of the same
+environment, collects the pull requests merged in between, reads them with the
+same `AC-id@platform` rules the GitHub App applies on merge, and calls the
+door. One file in your repository:
+
+```yaml
+name: mark-live
+on: deployment_status
+jobs:
+  web:
+    if: github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Production – my-app'
+    uses: alexisbohns/arkaik/.github/workflows/mark-live.yml@main
+    with:
+      platform: web
+      paths: apps/web
+      sha: ${{ github.event.deployment.sha }}
+      environment: ${{ github.event.deployment.environment }}
+      deployment_id: ${{ github.event.deployment.id }}
+      detail: ${{ github.event.deployment_status.environment_url }}
+    secrets:
+      ARKAIK_RELEASE_TOKEN: ${{ secrets.ARKAIK_RELEASE_TOKEN }}
+```
+
+`paths` is for monorepos: a bare `AC-x` mention counts only when that pull
+request touched a file under one of the prefixes, so an iOS-only pull request
+that forgot `@ios` does not mark web live. Leave it out in a single-platform
+repository. On the first run there is no previous deploy to measure from, and
+the workflow marks nothing rather than guessing — pass explicit `ids` once, or
+let the next deploy be the first real one. The workflow builds the CLI from
+`arkaik@main`, so there is nothing to install or pin.
+
 `detail` is optional, and the one extra worth sending: the deployment URL,
 the store build number — whatever lets someone reading the journal later see
 *why* this went live. It lands on the `node.status_changed` event, written by
@@ -125,14 +160,14 @@ moment:
 
 | platform | the moment | where the call goes |
 |---|---|---|
-| web | the production deploy succeeded | a step at the end of the deploy workflow, after the deploy step reports success |
-| android | the release reached the production track and Play review is done | a step in the Play release workflow when it promotes to production itself — or, if a person promotes later in Play Console or the rollout is staged, a scheduled poll of the Play Developer API track status, as for iOS |
-| ios | the version is released on the store — a manual or phased release moves this moment | a **scheduled** workflow that asks App Store Connect for the version's state and posts when it reads as released (`READY_FOR_SALE` in the classic API; newer API versions name the same state differently, so check yours) — approval is asynchronous, and no repository event marks it |
+| web | the production deploy succeeded | the `mark-live` workflow on `deployment_status`, as above |
+| android | the release reached the production track and Play review is done | the same workflow with explicit `ids` from the step that promotes to production — or a scheduled poll of the Play Developer API track status that computes them, when promotion happens by hand |
+| ios | the version is released on the store — a manual or phased release moves this moment | a **scheduled** workflow that asks App Store Connect for the version's state and, when it reads as released, calls the same workflow with explicit `ids` (`READY_FOR_SALE` in the classic API; newer API versions name the state differently, so check yours) — approval is asynchronous, and no repository event marks it |
 
-Which acceptances a deploy carried is the part no API can know for you. List
-them in the workflow input, or read them off the pull requests merged since
-the last release and pass the ids along. The door accepts up to fifty entries
-per call.
+Which acceptances a deploy carried is the part no API can know for you. For
+web the workflow reads them off the pull requests merged since the last deploy;
+for the platforms where it cannot see that moment, work the ids out yourself
+and pass them as `ids`. The door accepts up to fifty entries per call.
 
 ## 2. Get a hosted project
 
