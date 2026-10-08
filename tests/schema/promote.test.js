@@ -160,18 +160,16 @@ function main() {
     check("and the skip says archived", plan.skipped[0]?.reason === "archived");
   }
   {
-    const alreadyLive = acceptance("AC-live", { status: "releasing", metadata: { refs: [ref()] } });
-    const plan = computeRefPromotions(bundle([alreadyLive], true));
+    const alreadyThere = acceptance("AC-at", { status: "releasing", metadata: { refs: [ref()] } });
+    const plan = computeRefPromotions(bundle([alreadyThere], true));
     check("a node already at the target is not re-promoted", plan.promotions.length === 0);
     check("so a re-run is a no-op, not a churn of events", plan.skipped[0]?.reason === "already-there");
   }
   {
     const scopedLive = acceptance("AC-sl", {
-      metadata: { platformStatuses: { ios: "live" }, refs: [ref({ platform: "ios" })] },
+      metadata: { platformStatuses: { ios: "releasing" }, refs: [ref({ platform: "ios" })] },
     });
-    // Explicit merge-means-live: the default now targets releasing (#424), so
-    // `true` would hit the live guard instead of already-there.
-    const plan = computeRefPromotions(bundle([scopedLive], { "github-pr": { merged: "live" } }));
+    const plan = computeRefPromotions(bundle([scopedLive], true));
     check(
       "already-there is judged per platform, not on the base status",
       plan.promotions.length === 0 && plan.skipped[0]?.reason === "already-there",
@@ -230,7 +228,7 @@ function main() {
     // A mapping that says live on a live scope is still `already-there`, not
     // `live`: already-there is idempotence (a re-run), live is a policy refusal
     // (a real move was declined). The explicit policy is deliberate — it keeps
-    // this check meaning the same thing once the default stops mapping merged → live.
+    // this check meaning the same thing now that the default maps merged → releasing.
     const liveToLive = acceptance("AC-ll", {
       metadata: { platformStatuses: { ios: "live" }, refs: [ref({ platform: "ios" })] },
     });
@@ -253,7 +251,7 @@ function main() {
   {
     const node = acceptance("AC-cust", { metadata: { refs: [ref({ external_status: "merged" })] } });
     const plan = computeRefPromotions(bundle([node], { "github-pr": { merged: "live" } }));
-    check("a custom policy is honoured — merge-means-live is now an explicit choice", plan.promotions[0]?.to === "live");
+    check("a custom policy is honoured — merge-means-live is an explicit choice", plan.promotions[0]?.to === "live");
   }
   {
     const node = acceptance("AC-none", { metadata: { refs: [ref()] } });

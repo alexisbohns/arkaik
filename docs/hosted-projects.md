@@ -391,7 +391,7 @@ Implements AC-guest-checkout@ios
   request's changed files landed in, then the repository's own link. A bare
   mention in an iOS-linked repo still means iOS, but `@web` there means web;
 - **one PR can name several** — `AC-guest-checkout@ios and AC-guest-checkout@android`
-  marks both platforms shipped and leaves the third as a genuine parity gap;
+  moves both platforms and leaves the third as a genuine parity gap;
 - writing both `AC-guest-checkout` and `AC-guest-checkout@ios` in one PR means
   **iOS only** — the explicit scope absorbs the bare mention rather than also
   moving the base status;
@@ -408,10 +408,11 @@ Implements AC-guest-checkout@ios
 - **naming no platform is the biggest claim, not the smallest** — an unscoped
   mention moves the acceptance's *base* status, which every platform without its
   own entry falls back to. On a three-platform acceptance with nothing pinned
-  that moves all three at once. On a *partly* shipped one it is worse, not
-  better: under a merge-means-live policy, `{web: "live"}` with a base of
-  `backlog` is a real parity gap, and moving the base to `live` makes iOS and
-  Android inherit it, so the gap **disappears**. Either way the delivery
+  that moves all three at once. On a *partly* shipped one it can be worse:
+  under a merge-means-live policy, `{web: "live"}` with a base of `backlog` is a
+  real parity gap, and moving the base to `live` makes iOS and Android inherit
+  it, so the gap **disappears**; under the default, iOS and Android are still
+  marked `releasing` when nobody named them. Either way the delivery
   response names the platforms it is about to mark, one line per acceptance.
 
 An agent can also attach the ref explicitly with `update_node` rather than
@@ -624,7 +625,7 @@ source names freezes. Four consequences worth knowing:
 
 - **freezing is not deletion, and it is not a quarantine.** A frozen ref stops
   being carried forward — most importantly, it is never upgraded to `merged` —
-  so it cannot become a standing `live` promotion that `arkaik sync --promote`
+  so it cannot become a standing promotion that `arkaik sync --promote`
   fires later. But if an *earlier*, truthful delivery had already mirrored it to
   a promotable state, it stays promotable out of band: freezing stops a ref
   moving, it does not undo a state already written. If you do not want that,

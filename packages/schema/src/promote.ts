@@ -52,7 +52,7 @@ export interface RefPolicy {
  * release. Web goes live when the production deploy succeeds; iOS and
  * Android when a store accepts a build, days later. That last hop has its own
  * writer — `POST …/live` behind the `release:append` scope — so the default
- * no longer claims it on merge. A project that wants merge-means-live says so:
+ * does not claim it on merge. A project that wants merge-means-live says so:
  * `{ "github-pr": { "open": "development", "merged": "live", "closed": null } }`.
  */
 export const DEFAULT_REF_POLICY: RefPolicy = {

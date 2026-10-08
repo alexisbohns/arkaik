@@ -102,8 +102,8 @@ function acceptance(id, platforms, extra = {}) {
 /**
  * The mapping the defaults said before #424 moved merged → `releasing`. This
  * suite is about the planner's grammar and platform scoping, and a run of its
- * checks need a merge to land on a DELIVERED status (`hasParityGap` has to
- * disappear). What `ref_policy: true` means is promote.test.js's to assert;
+ * checks needs a merge to land on a DELIVERED status (`hasParityGap` has to
+ * disappear). promote.test.js owns what `ref_policy: true` means;
  * here `true` is shorthand for this explicit map.
  */
 const MERGE_MEANS_LIVE = { "github-pr": { open: "development", merged: "live", closed: null } };
@@ -708,6 +708,18 @@ async function main() {
     check(
       "promoting that platform only",
       state.metadata?.platformStatuses?.ios === "live" && state.metadata?.platformStatuses?.web === undefined,
+      JSON.stringify(state.metadata?.platformStatuses),
+    );
+  }
+  {
+    // The one check that bypasses MERGE_MEANS_LIVE on purpose: it plans under
+    // the literal `ref_policy: true`, so the real default is exercised end to end.
+    const node = acceptance("AC-x", ["web", "ios"]);
+    const real = { ...bundle([node]), project: { id: "gp", title: "T", metadata: { ref_policy: true } } };
+    const state = settle(node, planOps(real, event({ body: "AC-x@ios" }), wholeRepo()));
+    check(
+      "the REAL default (ref_policy: true) lands a merge on releasing, not live",
+      state.metadata?.platformStatuses?.ios === "releasing",
       JSON.stringify(state.metadata?.platformStatuses),
     );
   }
