@@ -1396,6 +1396,132 @@ async function main() {
       scopeDeniedRes.status === 403 && scopeDeniedBody.required === "graph:write",
       `${scopeDeniedRes.status} ${JSON.stringify(scopeDeniedBody)}`,
     );
+    // --- POST .../live: the deployment door (issue #424) --------------------
+    // A fresh owner, as for quality/events above: userA sits at its project cap.
+    const userL = await seedUser(client, "live");
+    const ownerL = (await owners.resolveOwnerIds(userL))[0];
+    const liveToken = await tokens.mintToken({ ownerId: ownerL, userId: userL, name: "deploy-ci", scopes: ["release:append"] });
+    const readOnlyL = await tokens.mintToken({ ownerId: ownerL, userId: userL, name: "reader", scopes: ["graph:read"] });
+
+    setSession(sessionFor(userL));
+    const liveSeed = bundle([
+      node("AC-x", "acceptance", { status: "releasing", platforms: ["web", "ios"] }),
+      node("V-a", "view", { status: "releasing" }),
+    ]);
+    const liveCreated = await api.CREATE_PROJECT(jsonReq(`${ORIGIN}/api/graph/projects`, "POST", liveSeed));
+    const liveCreatedBody = await liveCreated.json();
+    check("live fixture project imports", liveCreated.status === 201, `${liveCreated.status} ${JSON.stringify(liveCreatedBody)}`);
+    const liveProjectId = liveCreatedBody.id;
+    setSession(null);
+
+    const livePost = (entries, token) =>
+      api.LIVE(
+        jsonReq(`${ORIGIN}/api/graph/projects/${liveProjectId}/live`, "POST", { entries }, token ? bearer(token) : {}),
+        ctx(liveProjectId),
+      );
+
+    // 1. The scope posture: release:append opens this door and nothing else.
+    check("live without credentials is 401", (await livePost([{ node_id: "AC-x", platform: "ios" }])).status === 401);
+    {
+      const res = await livePost([{ node_id: "AC-x", platform: "ios" }], readOnlyL.plaintext);
+      const body = await res.json();
+      check("a graph:read token is refused 403 naming graph:write", res.status === 403 && body.required === "graph:write", `${res.status} ${JSON.stringify(body)}`);
+    }
+    check(
+      "a release:append-only token cannot read the project",
+      (await api.GET_PROJECT(new Request(ORIGIN, { headers: bearer(liveToken.plaintext) }), ctx(liveProjectId))).status === 403,
+    );
+    check(
+      "a release:append-only token cannot use the mutations route",
+      (await api.MUTATE(
+        jsonReq(`${ORIGIN}/api/graph/projects/${liveProjectId}/mutations`, "POST", { ops: [{ op: "update_node", node_id: "AC-x", patch: { status: "live" } }] }, bearer(liveToken.plaintext)),
+        ctx(liveProjectId),
+      )).status === 403,
+    );
+    check(
+      "a release:append-only token cannot post quality events",
+      (await api.QUALITY_EVENTS(
+        jsonReq(`${ORIGIN}/api/graph/projects/${liveProjectId}/quality/events`, "POST", { events: [{ type: "quality.signal.tripped", criterion_id: "SEC-01", surface: "web", signal: "s", commit: "c" }] }, bearer(liveToken.plaintext)),
+        ctx(liveProjectId),
+      )).status === 403,
+    );
+
+    // 2. Shape: platform is required; an unknown one is a 400, not a guess.
+    {
+      const res = await livePost([{ node_id: "AC-x" }], liveToken.plaintext);
+      const body = await res.json();
+      check("an entry without a platform is 400", res.status === 400 && /platform/.test(body.message ?? ""), `${res.status} ${JSON.stringify(body)}`);
+    }
+
+    // 3. The write.
+    {
+      const res = await livePost([{ node_id: "AC-x", platform: "ios", detail: "App Store 2.4.1 (build 318)" }], liveToken.plaintext);
+      const body = await res.json();
+      check("a release:append token marks a platform live", res.status === 200, `${res.status} ${JSON.stringify(body)}`);
+      check(
+        "applied names the move",
+        body.applied?.find((a) => a.node_id === "AC-x" && a.platform === "ios" && a.from === "releasing" && a.to === "live") !== undefined,
+        JSON.stringify(body.applied),
+      );
+      const ev = body.events?.find((e) => e.type === "node.status_changed" && e.node_id === "AC-x");
+      check("the event is an ordinary node.status_changed scoped to the platform", ev?.platform === "ios" && ev?.from === "releasing" && ev?.to === "live", JSON.stringify(body.events));
+      check("carrying the evidence as detail", ev?.detail === "App Store 2.4.1 (build 318)", JSON.stringify(ev));
+      check("written by arkaik-ci, so the journal says what acted", ev?.actor === "arkaik-ci", JSON.stringify(ev));
+      check("the version bumped", body.version === "2", body.version);
+
+      setSession(sessionFor(userL));
+      const after = await (await api.GET_PROJECT(new Request(ORIGIN), ctx(liveProjectId))).json();
+      const acx = after.bundle.nodes.find((n) => n.id === "AC-x");
+      check("the snapshot carries ios live and web untouched", acx?.metadata?.platformStatuses?.ios === "live" && acx?.metadata?.platformStatuses?.web === undefined, JSON.stringify(acx?.metadata));
+      check("and the base status is never moved by this door", acx?.status === "releasing", JSON.stringify(acx?.status));
+      const journal = await (await api.GET_JOURNAL(new Request(ORIGIN), ctx(liveProjectId))).json();
+      const stored = journal.journal.find((e) => e.type === "node.status_changed" && e.node_id === "AC-x" && e.platform === "ios");
+      check("the stored event carries the detail", stored?.detail === "App Store 2.4.1 (build 318)", JSON.stringify(stored));
+      setSession(null);
+    }
+
+    // 4. Idempotence: a re-run deploy job gets a 200 and writes nothing.
+    {
+      const res = await livePost([{ node_id: "AC-x", platform: "ios", detail: "re-run" }], liveToken.plaintext);
+      const body = await res.json();
+      check("a re-run is a 200", res.status === 200, `${res.status} ${JSON.stringify(body)}`);
+      check("with the entry skipped as already_live", body.skipped?.find((s) => s.index === 0 && s.reason === "already_live") !== undefined && body.applied?.[0] === undefined, JSON.stringify(body));
+      check("and the version unchanged", body.version === "2", body.version);
+    }
+
+    // 5. Refusals write nothing.
+    {
+      const res = await livePost([{ node_id: "AC-x", platform: "web" }, { node_id: "AC-x", platform: "android" }], liveToken.plaintext);
+      const body = await res.json();
+      check("a platform the acceptance does not list is refused 422", res.status === 422 && body.refusals?.find((r) => r.index === 1 && r.reason === "platform_not_applicable") !== undefined, `${res.status} ${JSON.stringify(body)}`);
+      const notAcceptance = await livePost([{ node_id: "V-a", platform: "web" }], liveToken.plaintext);
+      check("a view is refused as not_acceptance", notAcceptance.status === 422 && (await notAcceptance.json()).refusals?.[0]?.reason === "not_acceptance");
+      const unknown = await livePost([{ node_id: "AC-nope", platform: "web" }], liveToken.plaintext);
+      check("an unknown node is refused as unknown_node", unknown.status === 422 && (await unknown.json()).refusals?.[0]?.reason === "unknown_node");
+      setSession(sessionFor(userL));
+      const after = await (await api.GET_PROJECT(new Request(ORIGIN), ctx(liveProjectId))).json();
+      check("the refused batch wrote nothing — web is still not live and the version is still 2", after.version === "2", after.version);
+      setSession(null);
+    }
+
+    // 6. A session caller writes as arkaik-app; another owner's project is 404.
+    {
+      setSession(sessionFor(userL));
+      const res = await api.LIVE(jsonReq(`${ORIGIN}/api/graph/projects/${liveProjectId}/live`, "POST", { entries: [{ node_id: "AC-x", platform: "web" }] }), ctx(liveProjectId));
+      const body = await res.json();
+      check("a signed-in human can use the door too", res.status === 200, `${res.status} ${JSON.stringify(body)}`);
+      check("and writes as arkaik-app", body.events?.[0]?.actor === "arkaik-app", JSON.stringify(body.events));
+      setSession(null);
+      // A caller the scope gate lets through (graph:write, ownerQ's), so what
+      // answers is ownership — a scope-less token is a 403 before the lookup.
+      const foreign = await livePost([{ node_id: "AC-x", platform: "web" }], qualityWriteToken.plaintext);
+      check("another owner's project is 404, never 403", foreign.status === 404, String(foreign.status));
+      check(
+        "a token with neither graph:write nor release:append is 403 before any lookup",
+        (await livePost([{ node_id: "AC-x", platform: "web" }], qualityAppendToken.plaintext)).status === 403,
+      );
+    }
+
     setSession(sessionFor(userA));
 
     // --- Archive ------------------------------------------------------------
