@@ -224,12 +224,25 @@ function main() {
   }
   {
     // A mapping that says live on a live scope is still `already-there`, not
-    // `live`: the two skips mean different things to the webhook's reporter.
+    // `live`: already-there is idempotence (a re-run), live is a policy refusal
+    // (a real move was declined). The explicit policy is deliberate — it keeps
+    // this check meaning the same thing once the default stops mapping merged → live.
     const liveToLive = acceptance("AC-ll", {
       metadata: { platformStatuses: { ios: "live" }, refs: [ref({ platform: "ios" })] },
     });
     const plan = computeRefPromotions(bundle([liveToLive], { "github-pr": { merged: "live" } }));
     check("live → live is already-there, not live", plan.skipped[0]?.reason === "already-there", JSON.stringify(plan.skipped));
+  }
+  {
+    // currentStatus falls back to the base for a platform without its own
+    // entry, so a scoped ref on a live base is kept too: ios reads live.
+    const inherits = acceptance("AC-inh", { status: "live", metadata: { refs: [ref({ platform: "ios", external_status: "open" })] } });
+    const plan = computeRefPromotions(bundle([inherits], true));
+    check(
+      "a scoped ref on a platform inheriting a live base is kept as well",
+      plan.promotions.find((p) => p.node_id === "AC-inh") === undefined && plan.skipped[0]?.reason === "live",
+      JSON.stringify(plan),
+    );
   }
 
   // --- A custom policy overrides the defaults ------------------------------

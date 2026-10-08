@@ -21,9 +21,10 @@
  * silently claim parity the product does not have.
  *
  * ── Live is kept ───────────────────────────────────────────────────────────
- * `archived` has always been terminal for promotions. `live` is too (issue
- * #424): once a scope reads `live`, no mapped ref status moves it. A merge
- * that reworks a shipped acceptance is still a merge of something users have.
+ * `archived` has always been terminal for promotions. `live` is too, per scope
+ * (issue #424): once a scope reads `live`, no mapped ref status moves it. A
+ * merge that reworks a shipped acceptance is still a merge of something users
+ * have.
  *
  * Zod-free (type-only imports) like validate.ts / acceptance.ts / mutate.ts.
  */
@@ -162,14 +163,11 @@ export function computeRefPromotions(bundle: ProjectBundle): PromotionPlan {
         continue;
       }
 
-      // Live is kept, not re-earned (issue #424). A follow-up PR on a shipped
-      // scope attaches its ref and moves nothing: users still have the
-      // feature, and pulling the status back would show a parity gap the
-      // product does not have. Judged on the status the ref TARGETS — the
-      // platform entry for a scoped ref, the base for an unscoped one — so a
-      // base move still goes through on a node whose only live status is one
-      // platform's own entry, which the overlay leaves untouched. Only a
-      // human edit moves a status off live.
+      // Live is kept (see the header). Judged on the scope the ref targets —
+      // the platform's effective status for a scoped ref (its entry, else the
+      // base), the base otherwise — so a base move still goes through when
+      // only a platform entry is live; the overlay leaves that entry alone.
+      // Only a human edit moves a status off live.
       if (from === "live") {
         skipped.push({ node_id: node.id, ref_id: ref.id, reason: "live", detail: to });
         continue;
