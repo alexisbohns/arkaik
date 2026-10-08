@@ -61,7 +61,7 @@ export interface JournalEvent extends Record<string, unknown> {
   id: string;
   /** ISO 8601 timestamp. */
   ts: string;
-  /** Who/what wrote it: "alexis", "claude-code", "arkaik-sync", "ci". */
+  /** Who/what wrote it: "alexis", "claude-code", "arkaik-sync", "arkaik-ci". */
   actor?: string;
   /** Event type — the v1 vocabulary, or an unknown forward-compatible value. */
   type: string;

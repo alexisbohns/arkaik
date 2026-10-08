@@ -739,7 +739,7 @@
           "description": "ISO 8601 timestamp."
         },
         "actor": {
-          "description": "Who/what wrote it (e.g. \"claude-code\", \"ci\").",
+          "description": "Who/what wrote it (e.g. \"claude-code\", \"arkaik-ci\").",
           "type": "string"
         },
         "v": {
