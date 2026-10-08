@@ -234,7 +234,7 @@ interface NodeStatusChangedEvent extends JournalEvent {
   /**
    * Free-form evidence for the move — the deployment URL, the store build
    * number. Written by the hosted \`release:append\` door, the one writer that
-   * always knows it; human and agent edits do not write it.
+   * always knows it; edits through the mutations route never carry it.
    */
   detail?: string;
 }
