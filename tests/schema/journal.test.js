@@ -356,15 +356,17 @@ function main() {
       detail: "App Store 2.4.1 (build 318)",
     });
     check("a status change may carry its evidence as detail", withDetail.success, JSON.stringify(withDetail.error?.issues));
-    const badDetail = KnownJournalEventSchema.safeParse({
+    const base = {
       id: "01J0000000000000000000DETAIL",
       ts: "2026-10-08T00:00:00.000Z",
       type: "node.status_changed",
       node_id: "AC-x",
       from: "releasing",
       to: "live",
-      detail: 42,
-    });
+    };
+    // Precondition first, so the rejection below can only be detail's doing.
+    check("the same event without detail parses", KnownJournalEventSchema.safeParse(base).success);
+    const badDetail = KnownJournalEventSchema.safeParse({ ...base, detail: 42 });
     check("detail must be a string when present", !badDetail.success, JSON.stringify(badDetail.data));
   }
 
