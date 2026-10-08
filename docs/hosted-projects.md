@@ -78,32 +78,37 @@ frequent, allowed to be wrong, and the prompt to go look.
 
 ### A token for deployments: `release:append`
 
-A merge is not a release. `ref_policy` carries an acceptance to `releasing`
-when its pull request merges; what carries it to `live` is the deployment —
-and the signals for that live in CI, which is exactly where a broad credential
-must not go. `release:append` is `quality:append`'s sibling: one route, one
-kind of write, and you have to ask for it when minting.
+A merge is not a release. [`ref_policy`](#6-opt-the-project-in) carries an
+acceptance to `releasing` when its pull request merges; what carries it to
+`live` is the deployment — and the signals for that come from CI, which is
+exactly where a broad credential must not go. `release:append` is
+`quality:append`'s sibling: one route, one kind of write, and you have to ask
+for it when minting.
 
 What it can do: say *this acceptance reached `live` on this platform*. What it
 cannot: read your graph, move a status anywhere but `live`, touch anything but
-an acceptance, or skip the platform. An unscoped "live" would mark every
-platform without an entry of its own as delivered — the biggest claim in the
-system, and the last one a CI job should make by omission — so `platform` is
-required, and a platform the acceptance does not list is refused and reported,
-never guessed. An archived acceptance, or a platform whose own entry is
-archived, is refused too: a deploy does not bring back what was deliberately
-dropped. Everything else is also refused rather than guessed; an acceptance
-already `live` on that platform is skipped with a 200, so a re-run job is
-harmless.
+an acceptance, or skip the platform. `platform` is required: a deploy is
+always a deploy of *something*, and saying which keeps one release from
+marking the others shipped. A platform the acceptance does not list is refused
+and reported, never guessed. An archived acceptance, or a platform whose own
+entry is archived, is refused too: a deploy does not bring back what was
+deliberately dropped. An acceptance already `live` on that platform is skipped
+with a 200, so a re-run job is harmless. A batch is all-or-nothing: one
+refused entry writes nothing, and the 422 names each entry's `index` and
+`reason`. Filter the list to acceptances that ship on this platform before you
+send it.
 
 ```bash
-curl -sS -X POST "$ARKAIK_URL/api/graph/projects/$PROJECT_ID/live" \
+curl -sS --fail-with-body -X POST "$ARKAIK_URL/api/graph/projects/$PROJECT_ID/live" \
   -H "Authorization: Bearer $ARKAIK_RELEASE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"entries":[{"node_id":"AC-guest-checkout","platform":"ios","detail":"App Store 2.4.1 (build 318)"}]}'
 ```
 
-`detail` is free text and is the one thing worth sending: the deployment URL,
+`--fail-with-body` makes the step fail on a 4xx instead of reporting green
+while nothing went live — this call is the whole point of the step.
+
+`detail` is optional, and the one extra worth sending: the deployment URL,
 the store build number — whatever lets someone reading the journal later see
 *why* this went live. It lands on the `node.status_changed` event, written by
 `arkaik-ci`, beside the platform, and the journal shows it under the move.
@@ -114,13 +119,13 @@ moment:
 | platform | the moment | where the call goes |
 |---|---|---|
 | web | the production deploy succeeded | a step at the end of the deploy workflow, after the deploy step reports success |
-| android | the release was promoted to the production track | a step at the end of the Play release workflow, after the track upload |
-| ios | the store accepted the build (`READY_FOR_SALE`) | a **scheduled** workflow that asks App Store Connect for the state and posts when it reads ready for sale — approval is asynchronous, and no repository event marks it |
+| android | the release reached the production track and Play review is done | a step in the Play release workflow when it promotes to production itself — or, if a person promotes later in Play Console or the rollout is staged, a scheduled poll of the Play Developer API track status, as for iOS |
+| ios | the version is released on the store — a manual or phased release moves this moment | a **scheduled** workflow that asks App Store Connect for the version's state and posts when it reads as released (`READY_FOR_SALE` in the classic API; newer API versions name the same state differently, so check yours) — approval is asynchronous, and no repository event marks it |
 
-Which acceptances a deploy carried is the part no API can know for you. Keep
-it simple: list them in the workflow input, or read them off the pull
-requests merged since the last release and pass the ids along. The door
-accepts up to fifty entries per call.
+Which acceptances a deploy carried is the part no API can know for you. List
+them in the workflow input, or read them off the pull requests merged since
+the last release and pass the ids along. The door accepts up to fifty entries
+per call.
 
 ## 2. Get a hosted project
 

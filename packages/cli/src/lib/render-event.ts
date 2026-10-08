@@ -52,7 +52,7 @@ export function renderEventLine(
       const platform = str(event.platform);
       // #424: the live door's evidence rides on the event.
       const detail = str(event.detail);
-      return `${title(event.node_id, nodesById)}: ${from} -> ${to}${platform ? ` [${platform}]` : ""}${detail ? ` — ${detail}` : ""}`;
+      return `${title(event.node_id, nodesById)}: ${from} -> ${to}${platform ? ` [${platform}]` : ""}${detail ? ` - ${detail}` : ""}`;
     }
     case "node.deleted":
       return `${title(event.node_id, nodesById)} deleted`;
