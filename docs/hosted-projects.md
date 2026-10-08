@@ -45,7 +45,7 @@ session-only, so a leaked token can never mint another or widen its own scopes.
 
 ### A token for CI: `quality:append`
 
-There is a fourth scope, and you have to ask for it — it is never a default.
+There is a scope you have to ask for — it is never a default.
 `quality:append` can append one kind of event to one route: a tripped Kritik
 signal. It cannot read your graph, cannot read your findings, and cannot decide
 one. Send it a `quality.finding.resolved` and you get a 403 naming the scope you
@@ -97,6 +97,13 @@ with a 200, so a re-run job is harmless. A batch is all-or-nothing: one
 refused entry writes nothing, and the 422 names each entry's `index` and
 `reason`. Filter the list to acceptances that ship on this platform before you
 send it.
+
+The token is minted for an owner, not a project, so it reaches every project
+that owner has — and it can mark an acceptance live from any status, not only
+`releasing`. A wrong `live` is a visible `arkaik-ci` event in the journal that
+a human can revert; keep the token where only your release workflows read it.
+What it learns is limited to what a refusal says about the ids it names (that
+an id exists, its species, its platforms).
 
 ```bash
 curl -sS --fail-with-body -X POST "$ARKAIK_URL/api/graph/projects/$PROJECT_ID/live" \

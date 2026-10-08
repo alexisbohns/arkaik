@@ -1578,7 +1578,7 @@ export function planForProject(
           `${node.id}: an @platform suffix written for this acceptance was not understood, so ` +
             (mentionedNodes.has(node.id)
               ? `the bare mention of ${node.id} was NOT used as a fallback — that would have moved ` +
-                `the base status, marking every platform shipped. `
+                `the base status, moving every platform. `
               : `nothing was inferred from naming ${node.id} at all — the repository link would ` +
                 `have been the fallback, and answering a typo with it is the same guess. `) +
             `The plan attaches no ref and promotes no status for it. ${refusalTail(node.id)} ` +
@@ -1601,7 +1601,7 @@ export function planForProject(
         warnings.push(
           `${node.id}: ${event.repoFullName} is linked by path (${scope.prefixes.join(", ")}), and ` +
             `${scope.detail}. The plan attaches no ref and promotes no status for it — an unscoped ` +
-            `ref here would move the base status, marking every platform shipped. ` +
+            `ref here would move the base status, moving every platform. ` +
             `${refusalTail(node.id)}` +
             // `cause` is the GitHub client's own finished sentences (a missing
             // env var, a revoked installation). Appended whole at the end
@@ -1643,7 +1643,7 @@ export function planForProject(
           warnings.push(
             `${node.id}: ${label} says "${platforms.join(", ")}", which ${node.id} does not list ` +
               `(${node.platforms.join(", ")}). The plan attaches no ref and promotes no status for ` +
-              `it — an unscoped ref here would move the base status, marking every platform shipped. ` +
+              `it — an unscoped ref here would move the base status, moving every platform. ` +
               `${refusalTail(node.id)}`,
           );
         }

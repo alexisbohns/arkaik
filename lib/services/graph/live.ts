@@ -83,6 +83,9 @@ export type LivePlan =
 
 const MAX_ENTRIES = 50;
 const MAX_DETAIL_LENGTH = 2000;
+const BODY_KEYS: ReadonlySet<string> = new Set(["entries"]);
+const ENTRY_KEYS: ReadonlySet<string> = new Set(["node_id", "platform", "detail"]);
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value !== "";
@@ -97,11 +100,17 @@ function isPlatformId(value: unknown): value is PlatformId {
  * structural: it never looks at a node, so it cannot refuse `unknown_node` —
  * that is {@link planLive}'s job. 1–50 entries; `node_id` a non-empty string;
  * `platform` required and one of `PLATFORM_IDS`; `detail` a non-empty string
- * of at most 2000 characters when present; no (node_id, platform) pair twice.
+ * of at most 2000 characters when present, and free of control characters —
+ * it is printed raw by the CLI and the journal; no (node_id, platform) pair
+ * twice. Unknown keys are refused, so a typo like `details` cannot silently
+ * drop the evidence.
  */
 export function parseLiveEntries(body: unknown): LiveEntry[] | { error: string } {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
     return { error: "body must be an object with an entries array" };
+  }
+  for (const key of Object.keys(body)) {
+    if (!BODY_KEYS.has(key)) return { error: `body has an unknown key: ${key}` };
   }
   const { entries } = body as { entries?: unknown };
   if (!Array.isArray(entries)) return { error: "entries must be an array" };
@@ -115,6 +124,9 @@ export function parseLiveEntries(body: unknown): LiveEntry[] | { error: string }
       return { error: `entries[${index}] must be an object` };
     }
     const entry = raw as Record<string, unknown>;
+    for (const key of Object.keys(entry)) {
+      if (!ENTRY_KEYS.has(key)) return { error: `entries[${index}] has an unknown key: ${key}` };
+    }
     if (!isNonEmptyString(entry.node_id)) {
       return { error: `entries[${index}].node_id must be a non-empty string` };
     }
@@ -129,6 +141,9 @@ export function parseLiveEntries(body: unknown): LiveEntry[] | { error: string }
       }
       if (entry.detail.length > MAX_DETAIL_LENGTH) {
         return { error: `entries[${index}].detail must be at most ${MAX_DETAIL_LENGTH} characters` };
+      }
+      if (CONTROL_CHARACTERS.test(entry.detail)) {
+        return { error: `entries[${index}].detail must not contain control characters` };
       }
     }
     const key = `${entry.node_id}@${entry.platform}`;

@@ -76,6 +76,24 @@ check(
   "the same node on two platforms is fine",
   Array.isArray(parseLiveEntries({ entries: [{ node_id: "AC-x", platform: "ios" }, { node_id: "AC-x", platform: "web" }] })),
 );
+check("an unknown top-level key is an error", isError(parseLiveEntries({ entries: [{ node_id: "AC-x", platform: "ios" }], extra: 1 })));
+{
+  const r = parseLiveEntries({ entries: [{ node_id: "AC-x", platform: "ios", details: "x" }] });
+  check("an unknown entry key is an error naming it — a `details` typo cannot drop the evidence", isError(r) && /details/.test(r.error), JSON.stringify(r));
+}
+check(
+  "a detail with an ANSI escape is an error",
+  isError(parseLiveEntries({ entries: [{ node_id: "AC-x", platform: "ios", detail: "build \u001b[31mred" }] })),
+);
+check(
+  "a detail with a tab is an error",
+  isError(parseLiveEntries({ entries: [{ node_id: "AC-x", platform: "ios", detail: "build\t318" }] })),
+);
+{
+  const detail = "App Store 2.4.1 (318) — phased, 10%; see https://example.com/notes?x=1&y=2!";
+  const r = parseLiveEntries({ entries: [{ node_id: "AC-x", platform: "ios", detail }] });
+  check("a detail with ordinary punctuation and an em dash parses", Array.isArray(r) && r[0].detail === detail, JSON.stringify(r));
+}
 
 // --- planLive: refusals --------------------------------------------------------
 
