@@ -118,10 +118,14 @@ export function describeJournalEvent(
       const from = str(event.from);
       const to = str(event.to);
       const platform = str(event.platform);
+      // The live door writes its evidence here (#424): a deploy URL, a store
+      // build number. Shown where the move is, after the platform.
+      const detail = str(event.detail);
+      const meta = [platform ? PLATFORM_LABEL[platform] ?? platform : undefined, detail].filter(Boolean).join(" · ");
       return {
         icon,
         text: `${resolveTitle(event.node_id, nodesById)}: ${from ? STATUS_LABEL[from] ?? from : "?"} → ${to ? STATUS_LABEL[to] ?? to : "?"}`,
-        meta: platform ? PLATFORM_LABEL[platform] ?? platform : undefined,
+        meta: meta || undefined,
       };
     }
     case "decision.status_changed": {
