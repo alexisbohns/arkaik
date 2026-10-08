@@ -99,6 +99,13 @@ async function main() {
     check("a PR without mentions contributes nothing", r.ids[0] === undefined && r.warnings[0] === undefined, JSON.stringify(r));
   }
 
+  {
+    const r = deriveLiveIds([pr(1, "AC-a@web and AC-b", ["apps/web/x"])], "web", ["apps/web"]);
+    check("a bare, path-matched id is reported as inferred; an explicit one is not", JSON.stringify(r.ids) === '["AC-a","AC-b"]' && JSON.stringify(r.inferred) === '["AC-b"]', JSON.stringify(r));
+    const r2 = deriveLiveIds([pr(1, "AC-a@web and AC-b", ["apps/web/x"]), pr(2, "AC-b@web")], "web", ["apps/web"]);
+    check("an id also claimed explicitly is not inferred", Array.isArray(r2.inferred) && r2.inferred.length === 0, JSON.stringify(r2));
+  }
+
   // --- runLive -------------------------------------------------------------------
   const env = { ARKAIK_TOKEN: "ark_test_token" };
   const logs = () => { const out = []; return { out, log: (m) => out.push(m), errorLog: (m) => out.push(`ERR ${m}`) }; };
@@ -226,6 +233,69 @@ async function main() {
     const l = logs();
     const result = await runLive(["--platform", "web", "web"], { cwd, env, httpClient: http, ...l });
     check("a positional that is not an AC- id fails before any request, naming it", result.ok === false && http.calls[0] === undefined && l.out.find((m) => /"web"/.test(m) && /start with AC-/.test(m)) !== undefined, () => l.out.join("\n"));
+    rmSync(cwd, { recursive: true, force: true });
+  }
+  {
+    const cwd = linkedDir();
+    const mentions = path.join(cwd, "mentions.json");
+    writeFileSync(mentions, JSON.stringify([pr(1, "AC-ok@web and AC-ios-only", ["apps/web/x"])]));
+    const http = makeMockHttpClient((url, init, n) => n === 1
+      ? jsonResponse(422, { error: "refused", refusals: [{ index: 1, node_id: "AC-ios-only", platform: "web", reason: "platform_not_applicable", detail: "AC-ios-only lists: ios" }] })
+      : jsonResponse(200, { version: "4", applied: [{ node_id: "AC-ok", platform: "web", from: "releasing", to: "live" }], skipped: [], events: [] }));
+    const l = logs();
+    const result = await runLive(["--platform", "web", "--mentions", mentions, "--paths", "apps/web"], { cwd, env, httpClient: http, ...l });
+    const resentIds = http.calls[1] ? JSON.parse(http.calls[1].init.body).entries.map((e) => e.node_id) : null;
+    check("an inferred id the door does not list for this platform is dropped and the chunk resent", result.ok === true && http.calls[1] !== undefined && http.calls[2] === undefined && JSON.stringify(resentIds) === '["AC-ok"]', () => `${JSON.stringify(resentIds)}\n${l.out.join("\n")}`);
+    check("and the drop is a named warning", l.out.find((m) => /warning:/.test(m) && /AC-ios-only/.test(m) && /platform_not_applicable/.test(m)) !== undefined, () => l.out.join("\n"));
+    rmSync(cwd, { recursive: true, force: true });
+  }
+  {
+    const cwd = linkedDir();
+    const mentions = path.join(cwd, "mentions.json");
+    writeFileSync(mentions, JSON.stringify([pr(1, "AC-ok@web and AC-ios-only@web", ["apps/web/x"])]));
+    const http = makeMockHttpClient(() => jsonResponse(422, { error: "refused", refusals: [{ index: 1, node_id: "AC-ios-only", platform: "web", reason: "platform_not_applicable", detail: "AC-ios-only lists: ios" }] }));
+    const l = logs();
+    const result = await runLive(["--platform", "web", "--mentions", mentions, "--paths", "apps/web"], { cwd, env, httpClient: http, ...l });
+    check("an explicit claim the door refuses is still fatal", result.ok === false && http.calls[0] !== undefined && http.calls[1] === undefined, () => `${http.calls.length} calls\n${l.out.join("\n")}`);
+    rmSync(cwd, { recursive: true, force: true });
+  }
+  {
+    const cwd = linkedDir();
+    const mentions = path.join(cwd, "mentions.json");
+    writeFileSync(mentions, JSON.stringify([pr(1, "AC-ok@web and AC-elsewhere", ["apps/web/x"])]));
+    const http = makeMockHttpClient((url, init, n) => n === 1
+      ? jsonResponse(422, { error: "refused", refusals: [{ index: 1, node_id: "AC-elsewhere", platform: "web", reason: "unknown_node" }] })
+      : jsonResponse(200, { version: "4", applied: [{ node_id: "AC-ok", platform: "web", from: "releasing", to: "live" }], skipped: [], events: [] }));
+    const l = logs();
+    const result = await runLive(["--platform", "web", "--mentions", mentions, "--paths", "apps/web"], { cwd, env, httpClient: http, ...l });
+    const resentIds = http.calls[1] ? JSON.parse(http.calls[1].init.body).entries.map((e) => e.node_id) : null;
+    check("an inferred id the project has no node for is dropped and the chunk resent", result.ok === true && JSON.stringify(resentIds) === '["AC-ok"]', () => `${JSON.stringify(resentIds)}\n${l.out.join("\n")}`);
+    rmSync(cwd, { recursive: true, force: true });
+  }
+  {
+    const cwd = linkedDir();
+    const mentions = path.join(cwd, "mentions.json");
+    writeFileSync(mentions, JSON.stringify([pr(1, "AC-ok@web and AC-old", ["apps/web/x"])]));
+    const http = makeMockHttpClient(() => jsonResponse(422, { error: "refused", refusals: [{ index: 1, node_id: "AC-old", platform: "web", reason: "archived" }] }));
+    const l = logs();
+    const result = await runLive(["--platform", "web", "--mentions", mentions, "--paths", "apps/web"], { cwd, env, httpClient: http, ...l });
+    check("any other reason on an inferred id stays fatal", result.ok === false && http.calls[0] !== undefined && http.calls[1] === undefined, () => `${http.calls.length} calls\n${l.out.join("\n")}`);
+    rmSync(cwd, { recursive: true, force: true });
+  }
+  {
+    const cwd = linkedDir();
+    const http = makeMockHttpClient(() => jsonResponse(200, {}));
+    const l = logs();
+    const result = await runLive(["--platform", "web", "AC-x@ios"], { cwd, env, httpClient: http, ...l });
+    check("a positional with @platform fails before any request, pointing at --platform", result.ok === false && http.calls[0] === undefined && l.out.find((m) => /AC-x@ios/.test(m) && /--platform/.test(m)) !== undefined, () => l.out.join("\n"));
+    rmSync(cwd, { recursive: true, force: true });
+  }
+  {
+    const cwd = linkedDir();
+    const http = makeMockHttpClient(() => jsonResponse(200, {}));
+    const l = logs();
+    const result = await runLive(["--platform", "web", "--mentions=m.json"], { cwd, env, httpClient: http, ...l });
+    check("a --flag=value form is an unknown flag, not silently ignored", result.ok === false && http.calls[0] === undefined && l.out.find((m) => /Unknown flag --mentions=m\.json/.test(m)) !== undefined, () => l.out.join("\n"));
     rmSync(cwd, { recursive: true, force: true });
   }
   {

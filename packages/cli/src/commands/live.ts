@@ -17,6 +17,14 @@
  *     path-scoped-link rule, applied from the deploy side. In a monorepo an
  *     iOS-only PR that forgot `@ios` must not mark web live.
  *
+ * An inferred id the door refuses is dropped with a warning and the batch
+ * resent — the webhook's rule for inferred scopes; an explicit `@platform`
+ * claim that is refused is still fatal. "Inferred" means the id counted ONLY
+ * through a bare mention: the door answers `platform_not_applicable` (the
+ * acceptance does not list this platform) or `unknown_node` (a Lab Note
+ * `nodes:` id from another project), and the webhook would have filtered
+ * either out rather than block every other mark in the deploy.
+ *
  * A deploy that carried no acceptance is normal: "nothing to mark", exit 0.
  * A refusal or any non-2xx from the door is a failure, exit 1 — the workflow
  * step goes red instead of reporting green while nothing went live.
@@ -34,6 +42,12 @@ const LINK_FILE = "docs/arkaik/arkaik.json";
 const DEFAULT_BASE_URL = "https://arkaik.app";
 /** The door's per-request cap (lib/services/graph/live.ts MAX_ENTRIES). */
 const MAX_ENTRIES_PER_REQUEST = 50;
+/** The flags `live` understands; any other `--…` argument (including `--flag=value`) is refused. */
+const KNOWN_FLAGS = new Set(["--platform", "--detail", "--mentions", "--paths", "--remote", "--dry-run", "--help"]);
+/** Of those, the ones that consume the next argument. */
+const VALUED_FLAGS = new Set(["--platform", "--detail", "--mentions", "--paths", "--remote"]);
+/** Refusal reasons that, on an INFERRED id, mean "the webhook would have filtered this out". */
+const DROPPABLE_REASONS = new Set(["platform_not_applicable", "unknown_node"]);
 /** A positional argument must look like an acceptance id; anything else is a misplaced flag value. */
 const ACCEPTANCE_ID = /^AC-[A-Za-z0-9._-]+$/;
 
@@ -85,6 +99,13 @@ export interface DerivedLiveIds {
   ids: string[];
   /** Unknown platform suffixes, one line each, naming the PR. */
   warnings: string[];
+  /**
+   * The subset of `ids` that counted ONLY through a bare mention — no PR claims
+   * them as `@<platform>` for this deploy's platform. The door may refuse these
+   * (`platform_not_applicable`, `unknown_node`); `runLive` drops them and
+   * resends instead of failing, as the webhook filters an inferred scope.
+   */
+  inferred: string[];
 }
 
 function flagValue(argv: readonly string[], flag: string): string | undefined {
@@ -120,12 +141,14 @@ export function deriveLiveIds(
   const ids: string[] = [];
   const warnings: string[] = [];
   const seen = new Set<string>();
+  const explicit = new Set<string>();
   for (const pr of prs) {
     const scan = mentionedAcceptances({ title: pr.title ?? "", body: pr.body ?? "" });
     for (const unknown of scan.unknown) {
       warnings.push(`#${pr.number || "?"}: ${unknown.id}@${unknown.platform} names no platform arkaik knows — ignored`);
     }
     for (const mention of scan.mentions) {
+      if (mention.platform === platform) explicit.add(mention.id);
       // No --paths means every PR's bare mentions count (a single-platform repo).
       const counts =
         mention.platform === platform ||
@@ -135,7 +158,7 @@ export function deriveLiveIds(
       ids.push(mention.id);
     }
   }
-  return { ids, warnings };
+  return { ids, warnings, inferred: ids.filter((id) => !explicit.has(id)) };
 }
 
 function readMentions(file: string): MentionedPullRequest[] | { error: string } {
@@ -189,6 +212,27 @@ export async function runLive(argv: string[], options: RunLiveOptions = {}): Pro
     return { ok: true };
   }
 
+  // Argument shape first: a `--platform=web` must read as an unknown flag, not as a missing --platform.
+  const positional: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (VALUED_FLAGS.has(arg)) { i++; continue; }
+    if (arg.startsWith("--")) {
+      if (KNOWN_FLAGS.has(arg)) continue;
+      errorLog(`Unknown flag ${arg}. Flags take a separate value (--mentions file.json), see arkaik live --help.`);
+      return { ok: false };
+    }
+    if (arg.includes("@")) {
+      errorLog(`"${arg}": positional ids take no @platform — the platform comes from --platform.`);
+      return { ok: false };
+    }
+    if (!ACCEPTANCE_ID.test(arg)) {
+      errorLog(`"${arg}" is not an acceptance id (they start with AC-). Flags take one value each; see arkaik live --help.`);
+      return { ok: false };
+    }
+    positional.push(arg);
+  }
+
   const platformArg = flagValue(argv, "--platform");
   if (!platformArg) {
     errorLog(`--platform is required: arkaik live --platform <${PLATFORM_IDS.join("|")}> …`);
@@ -203,22 +247,6 @@ export async function runLive(argv: string[], options: RunLiveOptions = {}): Pro
   const mentionsFile = flagValue(argv, "--mentions");
   const paths = (flagValue(argv, "--paths") ?? "").split(",").map((p) => p.trim()).filter(Boolean);
   const dryRun = argv.includes("--dry-run");
-
-  // Positional ids: anything that is not a flag or a flag's value.
-  const valued = new Set(["--platform", "--detail", "--mentions", "--paths", "--remote"]);
-  const positional: string[] = [];
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (valued.has(arg)) { i++; continue; }
-    if (arg.startsWith("--")) continue;
-    positional.push(arg);
-  }
-  for (const arg of positional) {
-    if (!ACCEPTANCE_ID.test(arg)) {
-      errorLog(`"${arg}" is not an acceptance id (they start with AC-). Flags take one value each; see arkaik live --help.`);
-      return { ok: false };
-    }
-  }
 
   const linkPath = join(cwd, LINK_FILE);
   let link: { project_id?: string; remote?: string };
@@ -239,6 +267,9 @@ export async function runLive(argv: string[], options: RunLiveOptions = {}): Pro
   const seen = new Set<string>();
   const add = (id: string) => { if (!seen.has(id)) { seen.add(id); ids.push(id); } };
   for (const id of positional) add(id);
+  // Ids that may be dropped on a platform_not_applicable / unknown_node refusal. A positional id
+  // is an explicit claim by whoever ran the command, so it is never inferred.
+  const inferred = new Set<string>();
   if (mentionsFile) {
     // resolve, not join: the workflow (and the tests) may pass an absolute path.
     const prs = readMentions(resolve(cwd, mentionsFile));
@@ -249,6 +280,7 @@ export async function runLive(argv: string[], options: RunLiveOptions = {}): Pro
     const derived = deriveLiveIds(prs, platform, paths);
     for (const warning of derived.warnings) errorLog(`warning: ${warning}`);
     for (const id of derived.ids) add(id);
+    for (const id of derived.inferred) if (!positional.includes(id)) inferred.add(id);
   }
 
   if (ids.length === 0) {
@@ -271,8 +303,7 @@ export async function runLive(argv: string[], options: RunLiveOptions = {}): Pro
     return { ok: false };
   }
 
-  for (let start = 0; start < entries.length; start += MAX_ENTRIES_PER_REQUEST) {
-    const chunk = entries.slice(start, start + MAX_ENTRIES_PER_REQUEST);
+  const post = async (chunk: typeof entries): Promise<{ res: Response; body: LiveResponse } | null> => {
     let res: Response;
     try {
       res = await doFetch(`${baseUrl}/api/graph/projects/${encodeURIComponent(projectId)}/live`, {
@@ -282,30 +313,67 @@ export async function runLive(argv: string[], options: RunLiveOptions = {}): Pro
       });
     } catch (e) {
       errorLog(`Could not reach ${baseUrl}: ${(e as Error).message}`);
-      return { ok: false, ids };
+      return null;
     }
     let body: LiveResponse = {};
     try { body = (await res.json()) as LiveResponse; } catch { /* a non-JSON error body */ }
-    if (res.status === 422 && body.refusals) {
-      // Each request is atomic, but earlier requests have already landed.
-      errorLog(
-        start > 0
-          ? `Refused — entries ${start}–${start + chunk.length - 1} wrote nothing; the ${start} before them were applied above (a re-run skips them):`
-          : "Refused — nothing was written:",
-      );
-      for (const r of body.refusals) {
-        errorLog(`  entries[${start + r.index}] ${r.node_id}@${r.platform}: ${r.reason}${r.detail ? ` — ${r.detail}` : ""}`);
+    return { res, body };
+  };
+
+  /** Entries that earlier requests got through (applied or skipped), for an honest refusal header. */
+  let landed = 0;
+  for (let start = 0; start < entries.length; start += MAX_ENTRIES_PER_REQUEST) {
+    const end = Math.min(start + MAX_ENTRIES_PER_REQUEST, entries.length) - 1;
+    // Each entry keeps its index in the whole batch, so a refusal on a resent (shorter) chunk still names it.
+    let chunk = entries.slice(start, end + 1).map((entry, i) => ({ entry, at: start + i }));
+    let resent = false;
+    for (;;) {
+      const sent = await post(chunk.map((c) => c.entry));
+      if (!sent) return { ok: false, ids };
+      const { res, body } = sent;
+      if (res.status === 422 && body.refusals) {
+        const refusals = body.refusals;
+        // The webhook's rule: an inferred scope the project does not list is filtered, not fatal.
+        // Once only — a second refusal on the resend is a real one.
+        const droppable =
+          !resent && refusals.every((r) => DROPPABLE_REASONS.has(r.reason) && inferred.has(r.node_id));
+        if (droppable) {
+          const dropped = new Set<string>();
+          for (const r of refusals) {
+            errorLog(`warning: ${r.node_id}@${r.platform} was inferred from a bare mention and the project does not list it that way (${r.reason}) — dropped`);
+            dropped.add(r.node_id);
+          }
+          chunk = chunk.filter((c) => !dropped.has(c.entry.node_id));
+          resent = true;
+          if (chunk.length === 0) {
+            log(`Nothing left to send in entries ${start}–${end} after dropping inferred ids.`);
+            break;
+          }
+          continue;
+        }
+        // Each request is atomic, but earlier requests have already landed.
+        errorLog(
+          landed > 0
+            ? `Refused — entries ${start}–${end} wrote nothing; the ${landed} before them were applied above (a re-run skips them):`
+            : "Refused — nothing was written:",
+        );
+        for (const r of refusals) {
+          const at = chunk[r.index]?.at ?? start + r.index;
+          errorLog(`  entries[${at}] ${r.node_id}@${r.platform}: ${r.reason}${r.detail ? ` — ${r.detail}` : ""}`);
+        }
+        errorLog("Re-run with the other ids as arguments — acceptances already live are skipped, so a retry is safe.");
+        return { ok: false, ids };
       }
-      errorLog("Re-run with the other ids as arguments — acceptances already live are skipped, so a retry is safe.");
-      return { ok: false, ids };
+      if (!res.ok) {
+        // A 422 without refusals (invalid_bundle, mutation_refused) lands here too, with its message.
+        errorLog(describeFailure(res.status, baseUrl, body));
+        return { ok: false, ids };
+      }
+      for (const a of body.applied ?? []) log(`${a.node_id}: ${a.from} → ${a.to} [${a.platform}]`);
+      for (const sk of body.skipped ?? []) log(`${sk.node_id}: already live [${sk.platform}]`);
+      landed += chunk.length;
+      break;
     }
-    if (!res.ok) {
-      // A 422 without refusals (invalid_bundle, mutation_refused) lands here too, with its message.
-      errorLog(describeFailure(res.status, baseUrl, body));
-      return { ok: false, ids };
-    }
-    for (const a of body.applied ?? []) log(`${a.node_id}: ${a.from} → ${a.to} [${a.platform}]`);
-    for (const s of body.skipped ?? []) log(`${s.node_id}: already live [${s.platform}]`);
   }
   return { ok: true, ids };
 }
