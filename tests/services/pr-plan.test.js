@@ -99,12 +99,22 @@ function acceptance(id, platforms, extra = {}) {
   };
 }
 
+/**
+ * The mapping the defaults said before #424 moved merged → `releasing`. This
+ * suite is about the planner's grammar and platform scoping, and a run of its
+ * checks need a merge to land on a DELIVERED status (`hasParityGap` has to
+ * disappear). What `ref_policy: true` means is promote.test.js's to assert;
+ * here `true` is shorthand for this explicit map.
+ */
+const MERGE_MEANS_LIVE = { "github-pr": { open: "development", merged: "live", closed: null } };
+
 function bundle(nodes, policy) {
+  const declared = policy === true ? MERGE_MEANS_LIVE : policy;
   return {
     project: {
       id: "gp",
       title: "T",
-      ...(policy === undefined ? {} : { metadata: { ref_policy: policy } }),
+      ...(declared === undefined ? {} : { metadata: { ref_policy: declared } }),
     },
     nodes,
     edges: [],

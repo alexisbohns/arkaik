@@ -350,14 +350,16 @@ add `ref_policy` to the project's metadata:
 | PR state | Acceptance status |
 |---|---|
 | opened / reopened | `development` |
-| merged | `live` |
+| merged | `releasing` |
 | closed without merging | *unchanged* |
 
+A merge is not a release: the default stops at `releasing`, and `live` is what
+a deployment says — see [A token for deployments](#a-token-for-deployments-releaseappend).
 To choose your own mapping, give an object instead. `null` means "recognised,
-moves nothing":
+moves nothing"; this is the map that makes a merge mean live:
 
 ```json
-"ref_policy": { "github-pr": { "open": "development", "merged": "releasing", "closed": null } }
+"ref_policy": { "github-pr": { "open": "development", "merged": "live", "closed": null } }
 ```
 
 ## 7. Ship something
@@ -370,8 +372,10 @@ Implements AC-guest-checkout
 ```
 
 - on open → that acceptance moves to `development`
-- on merge → `live`, on the platform that repository builds for — or, in a
+- on merge → `releasing`, on the platform that repository builds for — or, in a
   [monorepo](#monorepos), the platform of the folder the PR touched
+- on deploy → `live`, when your deploy or release workflow says so through the
+  [`release:append` door](#a-token-for-deployments-releaseappend)
 
 ### Naming the platform in the mention
 
@@ -404,11 +408,11 @@ Implements AC-guest-checkout@ios
 - **naming no platform is the biggest claim, not the smallest** — an unscoped
   mention moves the acceptance's *base* status, which every platform without its
   own entry falls back to. On a three-platform acceptance with nothing pinned
-  that marks all three delivered and leaves no parity gap. On a *partly* shipped
-  one it is worse, not better: `{web: "live"}` with a base of `backlog` is a
-  real parity gap, and moving the base to `live` makes iOS and Android inherit
-  it, so the gap **disappears**. Either way the delivery response names the
-  platforms it is about to mark, one line per acceptance.
+  that moves all three at once. On a *partly* shipped one it is worse, not
+  better: under a merge-means-live policy, `{web: "live"}` with a base of
+  `backlog` is a real parity gap, and moving the base to `live` makes iOS and
+  Android inherit it, so the gap **disappears**. Either way the delivery
+  response names the platforms it is about to mark, one line per acceptance.
 
 An agent can also attach the ref explicitly with `update_node` rather than
 relying on a mention.
@@ -416,6 +420,10 @@ relying on a mention.
 Guards that keep this honest:
 
 - **archived** acceptances are never resurrected by a stale PR;
+- **`live` is kept, not re-earned** — a follow-up pull request on an acceptance
+  that already reads `live` on that platform attaches its ref and moves
+  nothing. Users still have the feature; only a human edit moves a status off
+  `live`;
 - an acceptance already at the target status is skipped, so re-runs and
   redeliveries are no-ops;
 - **a platform that was asked for and cannot be honoured is refused, never

@@ -43,6 +43,10 @@ function check(name, cond, detail) {
   }
 }
 
+// The explicit merge-means-live map — see pr-plan.test.js's MERGE_MEANS_LIVE
+// for why these suites do not lean on the default (#424).
+const MERGE_MEANS_LIVE = { "github-pr": { open: "development", merged: "live", closed: null } };
+
 const SECRET = "webhook-test-secret";
 const REPO = "acme/ios-app";
 
@@ -192,7 +196,7 @@ async function main() {
     // behaves that way — a stale build or a bad rewrite in the loader would
     // show up as these three failing while the pure suite stays green.
     const optedIn = {
-      project: { id: "gp", title: "T", metadata: { ref_policy: true } },
+      project: { id: "gp", title: "T", metadata: { ref_policy: MERGE_MEANS_LIVE } },
       nodes: [acceptance("AC-guest-checkout", ["web", "ios"])],
       edges: [],
     };
@@ -283,7 +287,7 @@ async function main() {
           project: {
             id: "gp",
             title: "Linked",
-            metadata: { ref_policy: true },
+            metadata: { ref_policy: MERGE_MEANS_LIVE },
             created_at: "2026-01-01T00:00:00.000Z",
             updated_at: "2026-01-01T00:00:00.000Z",
           },
@@ -502,7 +506,7 @@ async function main() {
           project: {
             id: "gp",
             title: "Monorepo",
-            metadata: { ref_policy: true },
+            metadata: { ref_policy: MERGE_MEANS_LIVE },
             created_at: "2026-01-01T00:00:00.000Z",
             updated_at: "2026-01-01T00:00:00.000Z",
           },

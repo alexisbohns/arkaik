@@ -46,11 +46,18 @@ export interface RefPolicy {
 
 /**
  * The policy a project gets when it opts in without naming one. PR opened →
- * being worked on; merged → shipped; closed → deliberately nothing.
+ * being worked on; merged → releasing; closed → deliberately nothing.
+ *
+ * Merged means `releasing`, not `live` (issue #424): a merge is not a
+ * release. Web goes live when the production deploy succeeds; iOS and
+ * Android when a store accepts a build, days later. That last hop has its own
+ * writer — `POST …/live` behind the `release:append` scope — so the default
+ * no longer claims it on merge. A project that wants merge-means-live says so:
+ * `{ "github-pr": { "open": "development", "merged": "live", "closed": null } }`.
  */
 export const DEFAULT_REF_POLICY: RefPolicy = {
-  "github-pr": { open: "development", merged: "live", closed: null },
-  "gitlab-mr": { open: "development", merged: "live", closed: null },
+  "github-pr": { open: "development", merged: "releasing", closed: null },
+  "gitlab-mr": { open: "development", merged: "releasing", closed: null },
 };
 
 export interface Promotion {
