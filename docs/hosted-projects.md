@@ -142,7 +142,6 @@ jobs:
       paths: apps/web
       sha: ${{ github.event.deployment.sha || github.sha }}
       environment: ${{ github.event.deployment.environment || 'Production – my-app' }}
-      deployment_id: ${{ github.event.deployment.id || '' }}
       detail: ${{ github.event.deployment_status.environment_url || '' }}
     secrets:
       ARKAIK_RELEASE_TOKEN: ${{ secrets.ARKAIK_RELEASE_TOKEN }}
@@ -158,7 +157,7 @@ let the next deploy be the first real one. The workflow builds the CLI from
 is required: a called workflow can only use what the caller grants, and the
 default token grants neither deployments nor pull requests. The `||` fallbacks
 are what let a hand-run `workflow_dispatch` work: with no deployment event to
-read, the environment name and the commit come from them.
+read, the environment name and the commit come from them. Dispatch when the branch head is what's deployed: a hand run measures up to that head, not to a specific deploy.
 
 `detail` is optional, and the one extra worth sending: the deployment URL,
 the store build number — whatever lets someone reading the journal later see

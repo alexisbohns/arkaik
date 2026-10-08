@@ -141,7 +141,6 @@ pull-requests: read }`, job
 `uses: alexisbohns/arkaik/.github/workflows/mark-live.yml@main` with
 `platform: web`, `paths: apps/web`, `sha: ${{ github.event.deployment.sha || github.sha }}`,
 `environment: ${{ github.event.deployment.environment || 'Production – pbbls' }}`,
-`deployment_id: ${{ github.event.deployment.id || '' }}`,
 `detail: ${{ github.event.deployment_status.environment_url || '' }}`, and
 `secrets: ARKAIK_RELEASE_TOKEN`. The user mints the token in arkaik settings and
 adds the repository secret; the caller lands after the arkaik stack.

@@ -1050,17 +1050,22 @@ door. One file in your repository:
 
 ```yaml
 name: mark-live
-on: deployment_status
+on:
+  deployment_status:
+  workflow_dispatch:
+permissions:
+  contents: read
+  deployments: read
+  pull-requests: read
 jobs:
   web:
-    if: github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Production – my-app'
+    if: github.event_name == 'workflow_dispatch' || (github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Production – my-app')
     uses: alexisbohns/arkaik/.github/workflows/mark-live.yml@main
     with:
       platform: web
       paths: apps/web
       sha: ${{ github.event.deployment.sha || github.sha }}
       environment: ${{ github.event.deployment.environment || 'Production – my-app' }}
-      deployment_id: ${{ github.event.deployment.id || '' }}
       detail: ${{ github.event.deployment_status.environment_url || '' }}
     secrets:
       ARKAIK_RELEASE_TOKEN: ${{ secrets.ARKAIK_RELEASE_TOKEN }}
@@ -1105,24 +1110,36 @@ suggested:
 # Marks the acceptances a production web deploy carried `live` in the hosted
 # arkaik project (docs/arkaik/arkaik.json), via arkaik's reusable workflow.
 # Vercel emits a deployment_status for every deploy; only a successful
-# production one for the web app counts. apps/web scopes bare AC-x mentions.
+# production one for the web app counts. `apps/web` scopes bare `AC-x`
+# mentions: a pull request that forgot `@ios` does not mark web live.
+#
+# The permissions block is required — a called workflow can only use what the
+# caller grants, and the default token grants neither deployments nor pull
+# requests. The `||` fallbacks let a hand-run workflow_dispatch work too.
+# Setup: an arkaik `release:append` token as the ARKAIK_RELEASE_TOKEN secret.
 name: mark-live
 
-on: deployment_status
+on:
+  deployment_status:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: read
+  pull-requests: read
 
 jobs:
   web:
-    if: github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Production – pbbls'
+    if: github.event_name == 'workflow_dispatch' || (github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Production – pbbls')
     uses: alexisbohns/arkaik/.github/workflows/mark-live.yml@main
     with:
       platform: web
       paths: apps/web
       sha: ${{ github.event.deployment.sha || github.sha }}
       environment: ${{ github.event.deployment.environment || 'Production – pbbls' }}
-      deployment_id: ${{ github.event.deployment.id || '' }}
       detail: ${{ github.event.deployment_status.environment_url || '' }}
     secrets:
       ARKAIK_RELEASE_TOKEN: ${{ secrets.ARKAIK_RELEASE_TOKEN }}
 ```
 
-- [ ] **Step 2:** Open the PR with a Lab Note (pbbls has its own pipeline; `suggested.molecule` is pbbls's slug — read pbbls's CLAUDE.md for it). Tell the user: mint a `release:append` token in arkaik settings and add it as the `ARKAIK_RELEASE_TOKEN` repository secret before merging; the first deploy after merge marks nothing (no previous successful deploy recorded under this workflow is fine — the previous-deploy lookup uses Vercel's deployments, which already exist, so the first run should already find a range).
+- [ ] **Step 2:** Open the PR with a Lab Note (pbbls has its own pipeline; `suggested.molecule` is pbbls's slug — read pbbls's CLAUDE.md for it). Tell the user: mint a `release:append` token in arkaik settings and add it as the `ARKAIK_RELEASE_TOKEN` repository secret before merging; the previous-deploy lookup reads Vercel's existing deployments, so the first run already finds a range.
