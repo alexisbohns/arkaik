@@ -1,0 +1,194 @@
+# Reusable: mark the acceptances a production deploy carried `live` in a
+# hosted arkaik project (issue #424 follow-up). Callers run it on
+# `deployment_status` (state success, their production environment) and pass
+# the platform. It finds the previous successful deploy of the same
+# environment, collects the pull requests merged in between with `gh`, and
+# runs `arkaik live`, which reads them with the same AC-id@platform grammar the
+# GitHub App applies on merge. The CLI is built from arkaik@main so a caller
+# never waits on an npm publish. The step fails when the door refuses, so a
+# deploy that could not mark itself live is a red job, not a silent one.
+#
+# The caller's repo must be linked (docs/arkaik/arkaik.json, `arkaik link`) and
+# hold a release:append token as the ARKAIK_RELEASE_TOKEN secret.
+name: mark-live
+
+on:
+  workflow_call:
+    inputs:
+      platform:
+        description: "web | ios | android"
+        required: true
+        type: string
+      sha:
+        description: "The deployed commit. Default: the triggering commit."
+        required: false
+        type: string
+        default: ""
+      environment:
+        description: "Deployment environment name, to find the previous successful deploy (e.g. 'Production – pbbls')."
+        required: false
+        type: string
+        default: ""
+      deployment_id:
+        description: "The current deployment's id, excluded when looking for the previous one."
+        required: false
+        type: string
+        default: ""
+      paths:
+        description: "Comma-separated path prefixes; a bare AC-id mention counts only when the PR touched one (e.g. apps/web)."
+        required: false
+        type: string
+        default: ""
+      detail:
+        description: "Evidence recorded on the status change. Default: this run's URL."
+        required: false
+        type: string
+        default: ""
+      ids:
+        description: "Space-separated acceptance ids. When given, derivation is skipped."
+        required: false
+        type: string
+        default: ""
+    secrets:
+      ARKAIK_RELEASE_TOKEN:
+        required: true
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "web | ios | android"
+        required: true
+        type: string
+      sha:
+        description: "The deployed commit"
+        required: false
+        type: string
+        default: ""
+      environment:
+        description: "Deployment environment name"
+        required: false
+        type: string
+        default: ""
+      deployment_id:
+        description: "Current deployment id to exclude"
+        required: false
+        type: string
+        default: ""
+      paths:
+        description: "Comma-separated path prefixes for bare mentions"
+        required: false
+        type: string
+        default: ""
+      detail:
+        description: "Evidence"
+        required: false
+        type: string
+        default: ""
+      ids:
+        description: "Space-separated ids (skips derivation)"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  pull-requests: read
+  deployments: read
+
+jobs:
+  mark-live:
+    runs-on: ubuntu-latest
+    env:
+      PLATFORM: ${{ inputs.platform }}
+      SHA: ${{ inputs.sha != '' && inputs.sha || github.sha }}
+      ENVIRONMENT: ${{ inputs.environment }}
+      DEPLOYMENT_ID: ${{ inputs.deployment_id }}
+      PATHS: ${{ inputs.paths }}
+      DETAIL: ${{ inputs.detail != '' && inputs.detail || format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id) }}
+      IDS: ${{ inputs.ids }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out the deployed repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha != '' && inputs.sha || github.sha }}
+          fetch-depth: 0
+          path: repo
+
+      - name: Check out arkaik (the CLI is built from main)
+        uses: actions/checkout@v4
+        with:
+          repository: alexisbohns/arkaik
+          ref: main
+          path: tool
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tool/package-lock.json
+
+      - name: Build the arkaik CLI
+        working-directory: tool
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build -w arkaik
+
+      - name: Find the previous successful deploy and the pull requests since
+        id: range
+        if: env.IDS == ''
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          if [ -z "$ENVIRONMENT" ]; then
+            echo "No environment given and no ids: nothing to derive the range from." >&2
+            echo "prev=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Deployments of this environment, newest first; the first one that is
+          # not the current deployment and has a `success` status bounds the range.
+          prev=""
+          for id in $(gh api --paginate -X GET "repos/${GITHUB_REPOSITORY}/deployments" \
+              -f environment="$ENVIRONMENT" -f per_page=50 --jq '.[].id'); do
+            if [ -n "$DEPLOYMENT_ID" ] && [ "$id" = "$DEPLOYMENT_ID" ]; then continue; fi
+            dsha=$(gh api "repos/${GITHUB_REPOSITORY}/deployments/$id" --jq .sha)
+            if [ "$dsha" = "$SHA" ]; then continue; fi
+            if gh api "repos/${GITHUB_REPOSITORY}/deployments/$id/statuses" --jq '[.[].state] | index("success") != null' | grep -q true; then
+              prev="$dsha"; break
+            fi
+          done
+          if [ -z "$prev" ]; then
+            echo "No previous successful deploy of '$ENVIRONMENT' — marking nothing rather than guessing a range." >&2
+            echo "prev=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "prev=$prev" >> "$GITHUB_OUTPUT"
+          echo "Range: $prev..$SHA" >&2
+          # Pull request numbers from the squash subjects "(#N)" and merge commits.
+          git log --format=%s "$prev..$SHA" \
+            | grep -oE '\(#[0-9]+\)$|Merge pull request #[0-9]+' \
+            | grep -oE '[0-9]+' | sort -un > prs.txt || true
+          echo "Pull requests: $(tr '\n' ' ' < prs.txt)" >&2
+          : > mentions.jsonl
+          while read -r n; do
+            [ -z "$n" ] && continue
+            gh pr view "$n" --json number,title,body,files \
+              --jq '{number, title, body, files: [.files[].path]}' >> mentions.jsonl
+          done < prs.txt
+          jq -s '.' mentions.jsonl > mentions.json
+
+      - name: Mark live
+        if: env.IDS != '' || steps.range.outputs.prev != ''
+        working-directory: repo
+        env:
+          ARKAIK_TOKEN: ${{ secrets.ARKAIK_RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          args=(--platform "$PLATFORM" --detail "$DETAIL")
+          if [ -n "$PATHS" ]; then args+=(--paths "$PATHS"); fi
+          if [ -n "$IDS" ]; then
+            # shellcheck disable=SC2206
+            args+=($IDS)
+          else
+            args+=(--mentions mentions.json)
+          fi
+          node ../tool/packages/cli/dist/index.js live "${args[@]}"
