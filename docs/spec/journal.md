@@ -49,7 +49,7 @@ One event is one JSON object:
 interface JournalEvent {
   id: string;      // ULID — sortable, collision-free without coordination
   ts: string;      // ISO 8601 timestamp
-  actor?: string;  // who/what wrote it: "alexis", "claude-code", "arkaik-sync", "ci"
+  actor?: string;  // who/what wrote it: "alexis", "claude-code", "arkaik-sync", "arkaik-ci"
   type: string;    // vocabulary below
   // ...type-specific payload fields, flat on the object
 }
@@ -68,7 +68,7 @@ interface JournalEvent {
 |---|---|---|
 | `node.created` | `node_id`, `species`, `title` | Node added to the graph |
 | `node.updated` | `node_id`, `fields[]`, optional `from`/`to` for scalars | Non-status fields changed |
-| `node.status_changed` | `node_id`, `from`, `to`, `platform?` | Lifecycle transition; `platform` present when a per-platform view status moved. Historical events MAY carry the pre-v3 ids `prioritized`/`blocked` in `from`/`to`; validators MUST accept them — history is never rewritten |
+| `node.status_changed` | `node_id`, `from`, `to`, `platform?`, `detail?` | Lifecycle transition; `platform` present when a per-platform view status moved. `detail` is free-form evidence for the move — a deployment URL, a store build number — written by the hosted `release:append` door (issue #424) and absent on human and agent edits. Historical events MAY carry the pre-v3 ids `prioritized`/`blocked` in `from`/`to`; validators MUST accept them — history is never rewritten |
 | `decision.status_changed` | `node_id`, `from`, `to` | A decision moved between decision states (`metadata.decision_status`); `from`/`to` are decision-status ids, not lifecycle ids |
 | `node.deleted` | `node_id` | Node removed. **Implies** cascade removal of every edge referencing it — writers do not emit the cascaded `edge.removed` events, and consumers/validators MUST apply the cascade |
 | `edge.added` | `edge_id`, `source_id`, `target_id`, `edge_type` | Relationship created |

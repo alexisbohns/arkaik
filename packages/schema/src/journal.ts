@@ -93,6 +93,12 @@ export interface NodeStatusChangedEvent extends JournalEvent {
   from: StatusId;
   to: StatusId;
   platform?: PlatformId;
+  /**
+   * Free-form evidence for the move — the deployment URL, the store build
+   * number. Written by the `release:append` door (issue #424), the one writer
+   * that always knows it; absent on human and agent edits.
+   */
+  detail?: string;
 }
 
 /** A decision moved between decision states (metadata.decision_status). */

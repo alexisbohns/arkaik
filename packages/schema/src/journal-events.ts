@@ -65,6 +65,7 @@ export const NodeStatusChangedEventSchema = z
     from: AnyStatusSchema,
     to: AnyStatusSchema,
     platform: PlatformSchema.optional(),
+    detail: z.string().optional(),
   })
   .catchall(z.unknown());
 

@@ -340,6 +340,34 @@ function main() {
     JSON.stringify(missingProvenanceNodeIds(["V-a", "V-a"], [])) === JSON.stringify(["V-a"]),
   );
 
+  // --- detail on node.status_changed (#424) --------------------------------
+  // KnownJournalEventSchema, not the lenient JournalEventSchema: the lenient
+  // envelope catchalls every payload field, so it can never reject a bad detail.
+  {
+    const withDetail = KnownJournalEventSchema.safeParse({
+      id: "01J0000000000000000000DETAIL",
+      ts: "2026-10-08T00:00:00.000Z",
+      actor: "arkaik-ci",
+      type: "node.status_changed",
+      node_id: "AC-x",
+      from: "releasing",
+      to: "live",
+      platform: "ios",
+      detail: "App Store 2.4.1 (build 318)",
+    });
+    check("a status change may carry its evidence as detail", withDetail.success, JSON.stringify(withDetail.error?.issues));
+    const badDetail = KnownJournalEventSchema.safeParse({
+      id: "01J0000000000000000000DETAIL",
+      ts: "2026-10-08T00:00:00.000Z",
+      type: "node.status_changed",
+      node_id: "AC-x",
+      from: "releasing",
+      to: "live",
+      detail: 42,
+    });
+    check("detail must be a string when present", !badDetail.success, JSON.stringify(badDetail.data));
+  }
+
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 
   if (failures > 0) {
