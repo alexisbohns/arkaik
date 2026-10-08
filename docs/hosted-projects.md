@@ -76,6 +76,52 @@ it. The run URL rides in the free-form `detail`.
 A trip is **not** a finding. Nothing in CI mints findings; a trip is cheap,
 frequent, allowed to be wrong, and the prompt to go look.
 
+### A token for deployments: `release:append`
+
+A merge is not a release. `ref_policy` carries an acceptance to `releasing`
+when its pull request merges; what carries it to `live` is the deployment —
+and the signals for that live in CI, which is exactly where a broad credential
+must not go. `release:append` is `quality:append`'s sibling: one route, one
+kind of write, and you have to ask for it when minting.
+
+What it can do: say *this acceptance reached `live` on this platform*. What it
+cannot: read your graph, move a status anywhere but `live`, touch anything but
+an acceptance, or skip the platform. An unscoped "live" would mark every
+platform without an entry of its own as delivered — the biggest claim in the
+system, and the last one a CI job should make by omission — so `platform` is
+required, and a platform the acceptance does not list is refused and reported,
+never guessed. An archived acceptance, or a platform whose own entry is
+archived, is refused too: a deploy does not bring back what was deliberately
+dropped. Everything else is also refused rather than guessed; an acceptance
+already `live` on that platform is skipped with a 200, so a re-run job is
+harmless.
+
+```bash
+curl -sS -X POST "$ARKAIK_URL/api/graph/projects/$PROJECT_ID/live" \
+  -H "Authorization: Bearer $ARKAIK_RELEASE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"entries":[{"node_id":"AC-guest-checkout","platform":"ios","detail":"App Store 2.4.1 (build 318)"}]}'
+```
+
+`detail` is free text and is the one thing worth sending: the deployment URL,
+the store build number — whatever lets someone reading the journal later see
+*why* this went live. It lands on the `node.status_changed` event, written by
+`arkaik-ci`, beside the platform, and the journal shows it under the move.
+
+Where the call goes depends on the platform, because each one has a different
+moment:
+
+| platform | the moment | where the call goes |
+|---|---|---|
+| web | the production deploy succeeded | a step at the end of the deploy workflow, after the deploy step reports success |
+| android | the release was promoted to the production track | a step at the end of the Play release workflow, after the track upload |
+| ios | the store accepted the build (`READY_FOR_SALE`) | a **scheduled** workflow that asks App Store Connect for the state and posts when it reads ready for sale — approval is asynchronous, and no repository event marks it |
+
+Which acceptances a deploy carried is the part no API can know for you. Keep
+it simple: list them in the workflow input, or read them off the pull
+requests merged since the last release and pass the ids along. The door
+accepts up to fifty entries per call.
+
 ## 2. Get a hosted project
 
 On `/projects`, either create a project while signed in, or take a browser-held
@@ -125,7 +171,7 @@ arrived since. The server folds those events in on every read. Over MCP,
 `kritik_open_finding`, `kritik_signals` and `kritik_trip_signal` stay
 repo-only, and so does a comprehensive audit.
 
-Every hosted write goes to one route,
+Every hosted Kritik write goes to one route,
 `POST /api/graph/projects/{id}/quality/events`, and it takes exactly five
 event types:
 
