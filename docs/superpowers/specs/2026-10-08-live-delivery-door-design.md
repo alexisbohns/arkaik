@@ -126,7 +126,7 @@ quality-events seam: the route reads the project and supplies the nodes.
   |---|---|
   | `unknown_node` | no node with that id |
   | `not_acceptance` | the node is any other species — this route moves acceptances and nothing else |
-  | `archived` | the node's base status is `archived`; a deploy must not resurrect a deliberate end state |
+  | `archived` | the node's base status is `archived`, or the platform's own entry is — a deploy must not resurrect a deliberate end state, on the whole acceptance or on one platform |
   | `platform_not_applicable` | `node.platforms` does not list the platform; reported, never guessed (the webhook's posture) |
 
   Not a refusal: `already_live` — `resolvePlatformStatus(node, platform)` is
@@ -168,8 +168,8 @@ acceptance live by hand already has `update_node` and writes as
 ```
 
 Refusals: `422 { error: "refused", refusals: [{ index, node_id, platform, reason }] }`.
-Store failures map as on the mutations route (`not_found` → 404, `limit` → 422,
-`validation` → 422).
+Store failures map as on the mutations route (`not_found` → 404, `limit` → 403,
+`validation` → 422, `mutation` → 422).
 
 ### The `detail` on `node.status_changed`
 
@@ -179,7 +179,8 @@ explicit optional string so the contract is written down.
 names `arkaik-ci` among the actors. `lib/prompts/generated/schema.ts` is
 regenerated. `components/journal/describe-event.ts` shows the detail text
 under a status change when present, so the deploy URL or build number is
-visible where the status change is.
+visible where the status change is; the CLI's `render-event.ts` appends it
+to the same line.
 
 ### Live is kept: the guard in `computeRefPromotions`
 
