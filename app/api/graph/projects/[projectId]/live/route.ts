@@ -24,8 +24,10 @@ const MAX_ATTEMPTS = 3;
  * scope, as on the quality route.
  *
  * The decision is `planLive` (lib/services/graph/live.ts, DB-free); the write
- * is `applyMutation`, so the row lock, the validators, the entity limits and
- * the version bump all apply unchanged and the journal gets an ordinary
+ * is `applyMutation`, so the row lock, the validators and the version bump
+ * apply unchanged (the tier is the webhook's `klub`: this door adds no
+ * entity, so a cap it cannot act on must not fail a deploy) and the journal
+ * gets an ordinary
  * `node.status_changed` carrying `platform`, the entry's `detail` (stamped by
  * the store from the plan's annotations) and an actor the journal can tell
  * apart: `arkaik-ci` for a token, `arkaik-app` for a session.
