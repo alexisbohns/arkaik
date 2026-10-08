@@ -167,9 +167,10 @@ jobs:
           # or a ref passed by hand still compares against full deployment shas.
           SHA=$(git rev-parse HEAD)
           if [ -z "$ENVIRONMENT" ]; then
-            echo "No environment given and no ids: nothing to derive the range from." >&2
-            echo "prev=" >> "$GITHUB_OUTPUT"
-            exit 0
+            # A caller with neither an environment nor ids is misconfigured;
+            # a green no-op here would hide that forever.
+            echo "No environment given and no ids: nothing to derive the range from. Pass environment (or ids)." >&2
+            exit 1
           fi
           if [ -n "$DEPLOYMENT_ID" ] && ! [[ "$DEPLOYMENT_ID" =~ ^[0-9]+$ ]]; then
             echo "deployment_id is not a number: '$DEPLOYMENT_ID'" >&2
@@ -213,7 +214,7 @@ jobs:
             # Files through REST, paginated: `gh pr view --json files` stops at
             # 100, and in a monorepo the prefix that matters can sort last.
             files=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/$n/files" --jq '.[].filename' </dev/null | jq -R . | jq -s .)
-            gh pr view "$n" --json number,title,body </dev/null \
+            gh pr view "$n" -R "$GITHUB_REPOSITORY" --json number,title,body </dev/null \
               | jq --argjson files "$files" '{number, title, body, files: $files}' >> mentions.jsonl
           done < prs.txt
           jq -s '.' mentions.jsonl > mentions.json

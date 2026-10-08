@@ -157,7 +157,17 @@ let the next deploy be the first real one. The workflow builds the CLI from
 is required: a called workflow can only use what the caller grants, and the
 default token grants neither deployments nor pull requests. The `||` fallbacks
 are what let a hand-run `workflow_dispatch` work: with no deployment event to
-read, the environment name and the commit come from them. Dispatch when the branch head is what's deployed: a hand run measures up to that head, not to a specific deploy.
+read, the environment name and the commit come from them. Dispatch when the
+branch head is what's deployed: a hand run measures up to that head, not to a
+specific deploy.
+
+When a run goes red — a refused explicit claim, the door unreachable — that
+deploy's acceptances are not marked, and the next deploy measures from this
+one, not from the last successful mark. Watch the Actions tab: fix the graph or
+the token, then **Re-run failed jobs** (it reuses the same event, so the same
+range), or dispatch with explicit `ids`. An acceptance named bare that the
+project does not list for this platform is dropped with a warning instead of
+failing the run, the way the GitHub App treats an inferred scope.
 
 `detail` is optional, and the one extra worth sending: the deployment URL,
 the store build number — whatever lets someone reading the journal later see

@@ -233,6 +233,9 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 ## Task 3: `arkaik live` — the pure derivation and the command
 
+> **Superseded by the file as shipped.** Review rounds added: hermetic spawn tests, door messages on 4xx, chunk-aware refusal headers, `AC-` positional validation, unknown-flag rejection, `./` prefix stripping, and the inferred-id rule (a bare mention the door refuses is dropped and the batch resent; an explicit claim stays fatal). Read `packages/cli/src/commands/live.ts` and `tests/cli/live.test.js` on the branch, not the block below.
+
+
 **Files:**
 - Create: `packages/cli/src/commands/live.ts`
 - Modify: `packages/cli/src/index.ts` (import, USAGE line, `case "live"`)
@@ -815,6 +818,9 @@ suggested:
 # Part 3 — `live-3-workflow`
 
 ## Task 5: The reusable workflow
+
+> **Superseded by the file as shipped.** Review rounds changed the range step (one page of 100 deployments, `id >= deployment_id` skip, `any(.[]; .state == "success")`, `git cat-file -e`, anchored `sed`, no `|| true`, paginated REST file lists), scoped `GH_TOKEN` to the range step, added `persist-credentials: false`, `timeout-minutes`, `github.event.deployment.*` fallbacks, id validation, and a hard failure when neither an environment nor ids are given. Read `.github/workflows/mark-live.yml` on the branch, not the block below.
+
 
 **Files:** Create `.github/workflows/mark-live.yml`.
 

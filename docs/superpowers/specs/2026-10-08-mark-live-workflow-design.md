@@ -128,7 +128,7 @@ reason and stop with success. Otherwise collect PR numbers from
 `git log --format=%s prev..sha` (`(#N)` suffix, or `Merge pull request #N`),
 fetch each with `gh pr view N --json number,title,body` and its files through
 the paginated REST `pulls/N/files` (the `gh` field stops at 100), write
-`mentions.json`, and run `node tool/packages/cli/dist/index.js live` from
+`mentions.json`, and run `node ../tool/packages/cli/dist/index.js live` from
 `repo/` with the token, platform, paths, detail and mentions file. The step's
 exit code is the job's.
 
