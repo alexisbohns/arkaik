@@ -5,8 +5,11 @@
 # environment, collects the pull requests merged in between with `gh`, and
 # runs `arkaik live`, which reads them with the same AC-id@platform grammar the
 # GitHub App applies on merge. The CLI is built from arkaik@main so a caller
-# never waits on an npm publish. The step fails when the door refuses, so a
-# deploy that could not mark itself live is a red job, not a silent one.
+# never waits on an npm publish. The step fails when the door refuses an
+# explicit claim or cannot be reached, so a deploy that could not mark itself
+# live is a red job, not a silent one; an id inferred from a bare mention that
+# the project does not list for this platform is dropped with a warning and
+# the rest resent, the GitHub App's rule for an inferred scope.
 #
 # The caller's repo must be linked (docs/arkaik/arkaik.json, `arkaik link`) and
 # hold a release:append token as the ARKAIK_RELEASE_TOKEN secret.

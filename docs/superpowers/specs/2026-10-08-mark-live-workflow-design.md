@@ -53,7 +53,12 @@ by hand; iOS has no release workflow yet.
    the workflow says so and exits 0. Explicit `ids` bypass derivation.
 
 6. **A deploy that carried no acceptance is normal.** The verb prints "nothing
-   to mark" and exits 0. A refusal or any 4xx from the door is a failed step.
+   to mark" and exits 0. A refused explicit claim or any other failed request
+   is a failed step. An id that counted only through a bare mention and that
+   the door refuses (`platform_not_applicable`, `unknown_node`) is dropped
+   with a warning and the batch resent once — the webhook's rule for an
+   inferred scope, applied from the deploy side — so one stale bare mention
+   never blocks the rest of a deploy's marks.
 
 ## Design
 
@@ -88,10 +93,12 @@ arkaik live --platform <web|ios|android> [--detail <text>] [--mentions <file>]
 - **Post** `{ entries: [{ node_id, platform, detail? }] }` in chunks of 50 to
   `${remote}/api/graph/projects/${project_id}/live`. Print one line per
   `applied` (`AC-x: releasing → live [ios]`) and per `skipped`
-  (`AC-x: already live [ios]`). On 422 print each refusal
+  (`AC-x: already live [ios]`). On 422, when every refusal is
+  `platform_not_applicable`/`unknown_node` on an inferred id, warn, drop those
+  ids and resend the chunk once; otherwise print each refusal
   (`entries[i] AC-x@ios: platform_not_applicable — detail`) and exit 1; on any
-  other non-2xx print `describeFailure` and exit 1 (403 names
-  `release:append`).
+  other non-2xx print `describeFailure` with the door's message and exit 1
+  (403 names `release:append`).
 - `--dry-run` prints the entries it would send and exits 0 without a request.
 - `deriveLiveIds` is exported and pure; `runLive(argv, { httpClient, cwd, env,
   log, errorLog })` mirrors `runLink`'s injectable shape for tests.
