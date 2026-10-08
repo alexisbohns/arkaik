@@ -19,6 +19,7 @@ import {
   toJournalEvents,
   validateBundle,
   type Edge,
+  type EventInput,
   type JournalCursor,
   type JournalEvent,
   type JournalFamilyId,
@@ -135,6 +136,21 @@ function toMutationFailure(err: unknown): StoreFailure {
     return { ok: false, reason: "mutation", code: err.code, message: err.message };
   }
   throw err;
+}
+
+/** Stamp each annotation's `detail` onto the derived status event it names. */
+function annotateStatusChanges(
+  inputs: readonly EventInput[],
+  annotations: readonly StatusAnnotation[],
+): EventInput[] {
+  if (annotations.length === 0) return [...inputs];
+  return inputs.map((input) => {
+    if (input.type !== "node.status_changed") return input;
+    const match = annotations.find(
+      (a) => a.node_id === input.payload.node_id && a.platform === input.payload.platform,
+    );
+    return match ? { ...input, payload: { ...input.payload, detail: match.detail } } : input;
+  });
 }
 
 function zodIssueToFinding(issue: { path: PropertyKey[]; code: string; message: string }): ValidationFinding {
@@ -915,6 +931,13 @@ export async function archiveProject(projectId: string, ownerIds: readonly strin
 // The write path
 // ---------------------------------------------------------------------------
 
+/** Evidence for a platform-scoped status change — see {@link ApplyMutationInput.annotations}. */
+export interface StatusAnnotation {
+  node_id: string;
+  platform: string;
+  detail: string;
+}
+
 export interface ApplyMutationInput {
   projectId: string;
   ownerIds: readonly string[];
@@ -923,6 +946,16 @@ export interface ApplyMutationInput {
   tier: string;
   /** When given, the mutation is refused unless the stored version matches. */
   expectedVersion?: string;
+  /**
+   * `detail` to stamp onto the derived `node.status_changed` events matching
+   * each (node_id, platform) — the live door's evidence (issue #424). Events
+   * are derived from the diff, never supplied by the caller, so this is the
+   * one way a writer that knows WHY a status moved can say so without being
+   * allowed to write the event itself. An annotation matching no derived
+   * event is dropped: it can only mean the plan and the diff disagreed, and
+   * the diff is the truth. No other caller passes this.
+   */
+  annotations?: readonly StatusAnnotation[];
 }
 
 /**
@@ -988,7 +1021,10 @@ export async function applyMutation(input: ApplyMutationInput): Promise<Mutation
       return { ok: false, reason: "validation", errors: semantic.errors } as StoreFailure;
     }
 
-    const events = toJournalEvents(outcome.eventInputs, input.actor);
+    const events = toJournalEvents(
+      annotateStatusChanges(outcome.eventInputs, input.annotations ?? []),
+      input.actor,
+    );
     // `version` is a bigint column and arrives as a string; BigInt keeps it exact
     // past 2^53. Written as BigInt(1) rather than a `1n` literal because the
     // app's tsconfig target predates BigInt literals.
