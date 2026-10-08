@@ -17,6 +17,7 @@ import { runPackCli } from "./commands/pack";
 import { runOpenCli } from "./commands/open";
 import { runPushCli } from "./commands/push";
 import { runLinkCli } from "./commands/link";
+import { runLiveCli } from "./commands/live";
 import { runRestoreCli } from "./commands/restore";
 import { runBootstrap } from "./commands/bootstrap";
 import { runKritik } from "./commands/kritik";
@@ -39,6 +40,8 @@ Commands:
                                --delete <id> --key <owner_key> removes a snapshot.
   link [options] [path]       Point this repo at a hosted project so an agent can edit it.
                                --list shows the projects your token can reach.
+  live --platform <p> [ids]   Mark acceptances live on one platform from a deploy (release:append token).
+                               --mentions <file> derives them from merged pull requests.
   restore [options] [path]    Replace the linked project's bundle, journal + quality (backs up first).
   bootstrap <sub> [options]   One-time onboarding: mine, plan, slice, merge a map from a repo.
   kritik <sub> [options]      Quality audits: score criteria, open findings, roll up the matrix.
@@ -103,6 +106,9 @@ function main(argv: string[]): void {
       return;
     case "link":
       runLinkCli(rest);
+      return;
+    case "live":
+      runLiveCli(rest);
       return;
     case "restore":
       runRestoreCli(rest);
