@@ -148,7 +148,9 @@ export type { AcceptanceMention, MentionScan, UnknownPlatformMention };
 /**
  * The valid platform scopes, derived from the app's one list rather than
  * re-declared — a fourth copy of `web | ios | android` would be a fourth place
- * to forget when the set changes.
+ * to forget when the set changes. The mention grammar itself now checks
+ * against the schema's `PLATFORM_IDS` (packages/schema/src/mentions.ts); the
+ * app's `PLATFORMS` `satisfies` that list, so the two cannot disagree.
  */
 const PLATFORM_IDS: readonly PlatformId[] = PLATFORMS.map((p) => p.id);
 const IS_PLATFORM = (value: string): value is PlatformId =>

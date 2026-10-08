@@ -7,7 +7,8 @@
  * `mark-live` reusable workflow. The grammar has been subtly wrong twice (see
  * the invariant below); one implementation is the only defence.
  *
- * Zod-free (type-only imports), like promote.ts.
+ * Zod-free: its only import is `./ids`, itself import-free, so the grammar can
+ * be bundled into the CLI or a workflow without pulling zod along.
  */
 import { PLATFORM_IDS, type PlatformId } from "./ids";
 

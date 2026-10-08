@@ -62,6 +62,23 @@ for (const written of ["@android_tv", "@ios.tv", "@ios/ipad", "@ios2", "@windows
   check(`unknown suffix ${written} is reported, not guessed`, s.mentions.find((m) => m.id === "AC-x") === undefined && s.unknown[0]?.id === "AC-x", JSON.stringify(s));
 }
 {
+  const s = scan("t", "AC-x@windows.");
+  check("an unknown suffix is quoted back without its trailing prose", s.unknown.find((u) => u.id === "AC-x" && u.platform === "windows") !== undefined, JSON.stringify(s));
+}
+{
+  const s = scan("t", "AC-x@ and AC-y@ ios");
+  check("a dangling @ with nothing after it is a bare mention", has(s.mentions, "AC-x", null) && has(s.mentions, "AC-y", null), JSON.stringify(s));
+  check("and not an unknown suffix", s.unknown[0] === undefined, JSON.stringify(s));
+}
+{
+  const s = scan("t", "TRAC-457 and MY_AC-123 are not acceptances");
+  check("AC- inside another word is not a mention", s.mentions[0] === undefined && s.unknown[0] === undefined, JSON.stringify(s));
+}
+{
+  const s = scan("t", "AC-x@iOS");
+  check("a case-folded platform reports nothing unknown", s.unknown[0] === undefined, JSON.stringify(s));
+}
+{
   const s = scan("t", "AC-x@.");
   check("a suffix that trims to nothing is unknown, not bare", !has(s.mentions, "AC-x", null) && s.unknown[0]?.id === "AC-x", JSON.stringify(s));
 }
