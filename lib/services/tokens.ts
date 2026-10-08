@@ -51,8 +51,15 @@ const SECRET_BYTES = 32;
  * exists for keeps its credential in a public repository's Actions secrets, and
  * a scope you can only get by asking for it on purpose is the only kind that
  * belongs there (#406).
+ *
+ * `release:append` is its sibling for the delivery lifecycle (#424): the scope
+ * a deploy or release workflow holds to say "this acceptance reached `live`
+ * on this platform", through `POST …/live` and nothing else. It cannot read
+ * the graph, cannot move a status anywhere but `live`, cannot touch anything
+ * but an acceptance, and must name the platform. Not a default, for the same
+ * reason as `quality:append`.
  */
-export const TOKEN_SCOPES = ["graph:read", "graph:write", "synk", "quality:append"] as const;
+export const TOKEN_SCOPES = ["graph:read", "graph:write", "synk", "quality:append", "release:append"] as const;
 export type TokenScope = (typeof TOKEN_SCOPES)[number];
 
 /** What the settings UI mints unless told otherwise: the agent plane, nothing else. */

@@ -31,6 +31,7 @@ const SCOPE_OPTIONS = [
   { id: "graph:write", label: "Write graph", hint: "Create, update, and delete nodes and edges" },
   { id: "synk", label: "Synk backups", hint: "Read and write project backups" },
   { id: "quality:append", label: "Append quality signals", hint: "Record a tripped Kritik signal — nothing else: no reads, no graph writes" },
+  { id: "release:append", label: "Mark acceptances live", hint: "Record that an acceptance reached live on one platform — nothing else: no reads, no other writes" },
 ] as const;
 
 const DEFAULT_SCOPES = ["graph:read", "graph:write"];
