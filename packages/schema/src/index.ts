@@ -16,6 +16,7 @@ export * from "./emit";
 export * from "./derive";
 export * from "./mutate";
 export * from "./promote";
+export * from "./mentions";
 export * from "./legacy-status";
 export * from "./quality";
 export * from "./quality-schemas";

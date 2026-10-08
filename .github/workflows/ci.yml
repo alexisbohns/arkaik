@@ -51,6 +51,11 @@ jobs:
       - name: Ref promotion policy tests (opt-in, per-platform, guards)
         run: npm run test:promote
 
+      # The AC-id@platform mention grammar, moved to the schema so the CLI and
+      # the mark-live workflow read pull requests with the webhook's rules.
+      - name: Mention grammar tests (scoping invariant, unknown suffixes)
+        run: npm run test:mentions
+
       # The layer directly above test:promote. Deliberately in `build`, not
       # `services`: the whole point is that the PR planner's logic is checked
       # without a database, so a regression fails on a laptop instead of only

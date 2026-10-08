@@ -76,6 +76,7 @@
     "test:emit": "node tests/schema/emit.test.js",
     "test:mutate": "node tests/schema/mutate.test.js",
     "test:promote": "node tests/schema/promote.test.js",
+    "test:mentions": "node tests/schema/mentions.test.js",
     "test:emit-events": "node tests/data/emit-events.test.js",
     "test:screenshot-size": "node tests/schema/screenshot-size.test.js",
     "test:migrate": "node tests/data/migrate.test.js && node tests/data/import-roundtrip.test.js && node tests/data/seed-import.test.js",
