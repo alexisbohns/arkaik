@@ -156,7 +156,9 @@ the workflow marks nothing rather than guessing — pass explicit `ids` once, or
 let the next deploy be the first real one. The workflow builds the CLI from
 `arkaik@main`, so there is nothing to install or pin. The `permissions` block
 is required: a called workflow can only use what the caller grants, and the
-default token grants neither deployments nor pull requests.
+default token grants neither deployments nor pull requests. The `||` fallbacks
+are what let a hand-run `workflow_dispatch` work: with no deployment event to
+read, the environment name and the commit come from them.
 
 `detail` is optional, and the one extra worth sending: the deployment URL,
 the store build number — whatever lets someone reading the journal later see
