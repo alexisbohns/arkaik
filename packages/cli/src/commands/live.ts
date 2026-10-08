@@ -34,6 +34,8 @@ const LINK_FILE = "docs/arkaik/arkaik.json";
 const DEFAULT_BASE_URL = "https://arkaik.app";
 /** The door's per-request cap (lib/services/graph/live.ts MAX_ENTRIES). */
 const MAX_ENTRIES_PER_REQUEST = 50;
+/** A positional argument must look like an acceptance id; anything else is a misplaced flag value. */
+const ACCEPTANCE_ID = /^AC-[A-Za-z0-9._-]+$/;
 
 const USAGE = `arkaik live — mark the acceptances a deploy carried live on one platform
 
@@ -48,13 +50,13 @@ Options:
                       count only when the PR touched one of --paths (or --paths is absent).
   --paths <prefixes>  Comma-separated path prefixes that make a bare mention count (apps/web).
   --dry-run           Print the entries and send nothing.
-  --remote <url>      Instance origin. Default: the link file's remote, else ${DEFAULT_BASE_URL}
+  --remote <url>      Instance origin. Default: $ARKAIK_URL, else the link file's remote, else ${DEFAULT_BASE_URL}
   -h, --help          Show this help.
 
 Environment:
   ARKAIK_TOKEN        Required. A release:append token from <origin>/settings/tokens.
 
-Reads ${LINK_FILE} for the project id. Exit 0 when nothing needs marking; exit 1 on a refusal.`;
+Reads ${LINK_FILE} for the project id. Exit 0 when nothing needs marking; exit 1 on a refusal or any failed request.`;
 
 export interface RunLiveOptions {
   /** Injectable for tests; defaults to the global fetch. */
@@ -90,15 +92,18 @@ function flagValue(argv: readonly string[], flag: string): string | undefined {
   return index !== -1 ? argv[index + 1] : undefined;
 }
 
-/** `apps/web` and `apps/web/` both mean the directory; a prefix matches whole path segments. */
-function normalisePrefix(prefix: string): string {
-  const trimmed = prefix.trim().replace(/^\/+/, "").replace(/\/+$/, "");
-  return trimmed === "" ? "" : `${trimmed}/`;
+/**
+ * `apps/web`, `./apps/web` and `apps/web/` all mean the directory; a prefix
+ * matches whole path segments. Null when nothing is left (`/`, `./`).
+ */
+function normalisePrefix(prefix: string): string | null {
+  const trimmed = prefix.trim().replace(/^(\.\/)+/, "").replace(/^\/+/, "").replace(/\/+$/, "");
+  return trimmed === "" ? null : `${trimmed}/`;
 }
 
+/** Whether any changed file sits under one of the (normalised) prefixes. */
 function touchesAny(files: readonly string[], prefixes: readonly string[]): boolean {
-  if (prefixes.length === 0) return true;
-  return files.some((file) => prefixes.some((prefix) => prefix === "" || file.startsWith(prefix)));
+  return files.some((file) => prefixes.some((prefix) => file.startsWith(prefix)));
 }
 
 /**
@@ -111,19 +116,20 @@ export function deriveLiveIds(
   platform: PlatformId,
   paths: readonly string[],
 ): DerivedLiveIds {
-  const prefixes = paths.map(normalisePrefix);
+  const prefixes = paths.map(normalisePrefix).filter((p): p is string => p !== null);
   const ids: string[] = [];
   const warnings: string[] = [];
   const seen = new Set<string>();
   for (const pr of prs) {
     const scan = mentionedAcceptances({ title: pr.title ?? "", body: pr.body ?? "" });
     for (const unknown of scan.unknown) {
-      warnings.push(`#${pr.number}: ${unknown.id}@${unknown.platform} names no platform arkaik knows — ignored`);
+      warnings.push(`#${pr.number || "?"}: ${unknown.id}@${unknown.platform} names no platform arkaik knows — ignored`);
     }
     for (const mention of scan.mentions) {
+      // No --paths means every PR's bare mentions count (a single-platform repo).
       const counts =
         mention.platform === platform ||
-        (mention.platform === null && touchesAny(pr.files ?? [], prefixes));
+        (mention.platform === null && (prefixes.length === 0 || touchesAny(pr.files ?? [], prefixes)));
       if (!counts || seen.has(mention.id)) continue;
       seen.add(mention.id);
       ids.push(mention.id);
@@ -145,7 +151,7 @@ function readMentions(file: string): MentionedPullRequest[] | { error: string } 
     if (typeof raw !== "object" || raw === null) return { error: `${file}[${i}] must be an object` };
     const r = raw as Record<string, unknown>;
     prs.push({
-      number: typeof r.number === "number" ? r.number : Number(r.number ?? 0),
+      number: typeof r.number === "number" && Number.isFinite(r.number) ? r.number : 0,
       title: typeof r.title === "string" ? r.title : "",
       body: typeof r.body === "string" ? r.body : "",
       files: Array.isArray(r.files) ? r.files.filter((f): f is string => typeof f === "string") : [],
@@ -154,12 +160,12 @@ function readMentions(file: string): MentionedPullRequest[] | { error: string } 
   return prs;
 }
 
-function describeFailure(status: number, baseUrl: string): string {
+function describeFailure(status: number, baseUrl: string, body: LiveResponse): string {
   if (status === 401) return `Unauthorized — check ARKAIK_TOKEN (create one at ${baseUrl}/settings/tokens).`;
   if (status === 403) return "Forbidden — this token lacks the release:append scope (or graph:write).";
   if (status === 404) return `No linked project in this account — check ${LINK_FILE}.`;
   if (status === 409) return "The project changed under every retry — run again.";
-  return `Request failed (${status}).`;
+  return `Request failed (${status})${body.message ? ` — ${body.message}` : body.error ? ` — ${body.error}` : ""}.`;
 }
 
 interface LiveResponse {
@@ -168,6 +174,7 @@ interface LiveResponse {
   skipped?: Array<{ index: number; node_id: string; platform: string; reason: string }>;
   refusals?: Array<{ index: number; node_id: string; platform: string; reason: string; detail?: string }>;
   error?: string;
+  message?: string;
 }
 
 export async function runLive(argv: string[], options: RunLiveOptions = {}): Promise<LiveResult> {
@@ -206,6 +213,12 @@ export async function runLive(argv: string[], options: RunLiveOptions = {}): Pro
     if (arg.startsWith("--")) continue;
     positional.push(arg);
   }
+  for (const arg of positional) {
+    if (!ACCEPTANCE_ID.test(arg)) {
+      errorLog(`"${arg}" is not an acceptance id (they start with AC-). Flags take one value each; see arkaik live --help.`);
+      return { ok: false };
+    }
+  }
 
   const linkPath = join(cwd, LINK_FILE);
   let link: { project_id?: string; remote?: string };
@@ -243,10 +256,12 @@ export async function runLive(argv: string[], options: RunLiveOptions = {}): Pro
     return { ok: true, ids };
   }
 
-  const entries = ids.map((node_id) => ({ node_id, platform, ...(detail !== undefined ? { detail } : {}) }));
+  // An empty --detail (a workflow input left blank) is no evidence at all; the door refuses "".
+  const hasDetail = detail !== undefined && detail !== "";
+  const entries = ids.map((node_id) => ({ node_id, platform, ...(hasDetail ? { detail } : {}) }));
   if (dryRun) {
     log(`Would mark ${platform} live for ${ids.length} acceptance(s) on ${projectId} (${baseUrl}):`);
-    for (const entry of entries) log(`  ${entry.node_id}@${platform}${detail ? ` — ${detail}` : ""}`);
+    for (const entry of entries) log(`  ${entry.node_id}@${platform}${hasDetail ? ` — ${detail}` : ""}`);
     return { ok: true, ids };
   }
 
@@ -258,22 +273,35 @@ export async function runLive(argv: string[], options: RunLiveOptions = {}): Pro
 
   for (let start = 0; start < entries.length; start += MAX_ENTRIES_PER_REQUEST) {
     const chunk = entries.slice(start, start + MAX_ENTRIES_PER_REQUEST);
-    const res = await doFetch(`${baseUrl}/api/graph/projects/${encodeURIComponent(projectId)}/live`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-      body: JSON.stringify({ entries: chunk }),
-    });
+    let res: Response;
+    try {
+      res = await doFetch(`${baseUrl}/api/graph/projects/${encodeURIComponent(projectId)}/live`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({ entries: chunk }),
+      });
+    } catch (e) {
+      errorLog(`Could not reach ${baseUrl}: ${(e as Error).message}`);
+      return { ok: false, ids };
+    }
     let body: LiveResponse = {};
     try { body = (await res.json()) as LiveResponse; } catch { /* a non-JSON error body */ }
     if (res.status === 422 && body.refusals) {
-      errorLog(`Refused — nothing was written:`);
+      // Each request is atomic, but earlier requests have already landed.
+      errorLog(
+        start > 0
+          ? `Refused — entries ${start}–${start + chunk.length - 1} wrote nothing; the ${start} before them were applied above (a re-run skips them):`
+          : "Refused — nothing was written:",
+      );
       for (const r of body.refusals) {
-        errorLog(`  entries[${r.index}] ${r.node_id}@${r.platform}: ${r.reason}${r.detail ? ` — ${r.detail}` : ""}`);
+        errorLog(`  entries[${start + r.index}] ${r.node_id}@${r.platform}: ${r.reason}${r.detail ? ` — ${r.detail}` : ""}`);
       }
+      errorLog("Re-run with the other ids as arguments — acceptances already live are skipped, so a retry is safe.");
       return { ok: false, ids };
     }
     if (!res.ok) {
-      errorLog(describeFailure(res.status, baseUrl));
+      // A 422 without refusals (invalid_bundle, mutation_refused) lands here too, with its message.
+      errorLog(describeFailure(res.status, baseUrl, body));
       return { ok: false, ids };
     }
     for (const a of body.applied ?? []) log(`${a.node_id}: ${a.from} → ${a.to} [${a.platform}]`);

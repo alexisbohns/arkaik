@@ -67,17 +67,15 @@ async function main() {
   // --- deriveLiveIds -----------------------------------------------------------
   {
     const r = deriveLiveIds([pr(1, "ships AC-a@web and AC-b@ios")], "web", []);
-    check("an explicit @web mention counts on a web deploy", r.ids.includes("AC-a"), JSON.stringify(r));
-    check("a mention of another platform never does", !r.ids.includes("AC-b"), JSON.stringify(r));
+    check("an explicit @web mention counts on a web deploy, and a mention of another platform never does", JSON.stringify(r.ids) === '["AC-a"]', JSON.stringify(r));
   }
   {
     const r = deriveLiveIds([pr(2, "closes AC-c")], "web", []);
-    check("with no --paths, a bare mention counts", r.ids.includes("AC-c"), JSON.stringify(r));
+    check("with no --paths, a bare mention counts", JSON.stringify(r.ids) === '["AC-c"]', JSON.stringify(r));
   }
   {
     const r = deriveLiveIds([pr(3, "closes AC-d", ["apps/web/page.tsx"]), pr(4, "closes AC-e", ["apps/ios/App.swift"])], "web", ["apps/web"]);
-    check("with --paths, a bare mention counts when the PR touched the prefix", r.ids.includes("AC-d"), JSON.stringify(r));
-    check("and not when it did not", !r.ids.includes("AC-e"), JSON.stringify(r));
+    check("with --paths, a bare mention counts when the PR touched the prefix, and not when it did not", JSON.stringify(r.ids) === '["AC-d"]', JSON.stringify(r));
   }
   {
     const r = deriveLiveIds([pr(5, "closes AC-f", ["apps/webb/x.ts"])], "web", ["apps/web"]);
@@ -121,7 +119,7 @@ async function main() {
     const call = http.calls[0];
     check("to the project's live route with the bearer token", call && /\/api\/graph\/projects\/prj_test\/live$/.test(call.url) && call.init.headers.authorization === "Bearer ark_test_token", JSON.stringify(call?.url));
     const sent = call ? JSON.parse(call.init.body) : null;
-    check("the body carries one entry per id with the platform and detail", sent?.entries?.find((e) => e.node_id === "AC-a" && e.platform === "web" && e.detail === "https://pbbls.app") !== undefined && sent?.entries?.find((e) => e.node_id === "AC-b") !== undefined, JSON.stringify(sent));
+    check("the body carries one entry per id with the platform and detail", sent?.entries?.length === 2 && sent.entries.find((e) => e.node_id === "AC-a" && e.platform === "web" && e.detail === "https://pbbls.app") !== undefined && sent?.entries?.find((e) => e.node_id === "AC-b") !== undefined, JSON.stringify(sent));
     check("applied and skipped are printed", l.out.find((m) => /AC-a.*releasing.*live/.test(m)) !== undefined && l.out.find((m) => /AC-b.*already live/.test(m)) !== undefined, () => l.out.join("\n"));
     rmSync(cwd, { recursive: true, force: true });
   }
@@ -138,8 +136,8 @@ async function main() {
     const cwd = linkedDir();
     const http = makeMockHttpClient(() => jsonResponse(200, {}));
     const l = logs();
-    const result = await runLive(["--platform", "web", "--dry-run", "AC-q"], { cwd, env, httpClient: http, ...l });
-    check("--dry-run prints the entries and sends nothing", result.ok === true && http.calls[0] === undefined && l.out.find((m) => /AC-q/.test(m)) !== undefined, () => l.out.join("\n"));
+    const result = await runLive(["--platform", "web", "--dry-run", "AC-q"], { cwd, env: {}, httpClient: http, ...l });
+    check("--dry-run prints the entries, sends nothing, and needs no token", result.ok === true && http.calls[0] === undefined && l.out.find((m) => /AC-q/.test(m)) !== undefined, () => l.out.join("\n"));
     rmSync(cwd, { recursive: true, force: true });
   }
   {
@@ -175,7 +173,59 @@ async function main() {
     const http = makeMockHttpClient((url, init) => jsonResponse(200, { version: "9", applied: JSON.parse(init.body).entries.map((e) => ({ ...e, from: "releasing", to: "live" })), skipped: [], events: [] }));
     const l = logs();
     const result = await runLive(["--platform", "web", ...ids], { cwd, env, httpClient: http, ...l });
+    const second = http.calls[1] ? JSON.parse(http.calls[1].init.body).entries : [];
     check("51 ids go in two requests of at most 50", result.ok === true && http.calls[1] !== undefined && http.calls[2] === undefined && JSON.parse(http.calls[0].init.body).entries.length === 50, () => `${http.calls.length} calls`);
+    check("and the second request carries exactly the 51st id", second.length === 1 && second[0].node_id === "AC-n50", JSON.stringify(second));
+    rmSync(cwd, { recursive: true, force: true });
+  }
+  {
+    const cwd = linkedDir();
+    const mentions = path.join(cwd, "mentions.json");
+    writeFileSync(mentions, JSON.stringify([pr(1, "AC-p@web and AC-q@web")]));
+    const http = makeMockHttpClient(() => jsonResponse(200, { version: "3", applied: [], skipped: [], events: [] }));
+    const l = logs();
+    const result = await runLive(["--platform", "web", "--mentions", mentions, "AC-p"], { cwd, env, httpClient: http, ...l });
+    const sentIds = http.calls[0] ? JSON.parse(http.calls[0].init.body).entries.map((e) => e.node_id) : null;
+    check("positional and derived ids merge, deduped, positional first", result.ok === true && JSON.stringify(sentIds) === '["AC-p","AC-q"]', JSON.stringify(sentIds));
+    rmSync(cwd, { recursive: true, force: true });
+  }
+  {
+    const cwd = linkedDir();
+    const ids = Array.from({ length: 51 }, (_, i) => `AC-n${i}`);
+    const http = makeMockHttpClient((url, init, n) => n === 1
+      ? jsonResponse(200, { version: "9", applied: JSON.parse(init.body).entries.map((e) => ({ ...e, from: "releasing", to: "live" })), skipped: [], events: [] })
+      : jsonResponse(422, { error: "refused", refusals: [{ index: 0, node_id: "AC-n50", platform: "web", reason: "unknown_node" }] }));
+    const l = logs();
+    const result = await runLive(["--platform", "web", ...ids], { cwd, env, httpClient: http, ...l });
+    const header = l.out.find((m) => /Refused/.test(m)) ?? "";
+    check("a refusal on a later chunk fails the command", result.ok === false, () => l.out.join("\n"));
+    check("and indexes the refusal into the whole batch (entries[50])", l.out.find((m) => /entries\[50\].*AC-n50.*unknown_node/.test(m)) !== undefined, () => l.out.join("\n"));
+    check("and its header says the first 50 were applied, not that nothing was written", !/nothing was written/.test(header) && /50 before them were applied/.test(header), header);
+    rmSync(cwd, { recursive: true, force: true });
+  }
+  {
+    const cwd = linkedDir();
+    const http = makeMockHttpClient(() => jsonResponse(400, { error: "invalid_entries", message: "entries[0].detail must be a non-empty string when present" }));
+    const l = logs();
+    const result = await runLive(["--platform", "web", "AC-t"], { cwd, env, httpClient: http, ...l });
+    check("a 400 fails and prints the door's message", result.ok === false && l.out.find((m) => /entries\[0\]\.detail must be a non-empty string when present/.test(m)) !== undefined, () => l.out.join("\n"));
+    rmSync(cwd, { recursive: true, force: true });
+  }
+  {
+    const cwd = linkedDir();
+    const http = makeMockHttpClient(() => jsonResponse(200, { version: "3", applied: [], skipped: [], events: [] }));
+    const l = logs();
+    const result = await runLive(["--platform", "web", "--detail", "", "AC-u"], { cwd, env, httpClient: http, ...l });
+    const entry = http.calls[0] ? JSON.parse(http.calls[0].init.body).entries[0] : null;
+    check("an empty --detail is treated as absent", result.ok === true && entry !== null && !("detail" in entry), JSON.stringify(entry));
+    rmSync(cwd, { recursive: true, force: true });
+  }
+  {
+    const cwd = linkedDir();
+    const http = makeMockHttpClient(() => jsonResponse(200, {}));
+    const l = logs();
+    const result = await runLive(["--platform", "web", "web"], { cwd, env, httpClient: http, ...l });
+    check("a positional that is not an AC- id fails before any request, naming it", result.ok === false && http.calls[0] === undefined && l.out.find((m) => /"web"/.test(m) && /start with AC-/.test(m)) !== undefined, () => l.out.join("\n"));
     rmSync(cwd, { recursive: true, force: true });
   }
   {
@@ -194,19 +244,27 @@ async function main() {
   }
 
   // --- argv through the built CLI --------------------------------------------------
+  // An empty cwd and no token, for the reason tests/cli/push.test.js gives at CLI_CWD:
+  // the repo root holds a REAL docs/arkaik/arkaik.json, so a spawn there could reach a live project.
+  const CLI_CWD = mkdtempSync(path.join(tmpdir(), "arkaik-live-cli-"));
+  const cliEnv = { ...process.env };
+  delete cliEnv.ARKAIK_TOKEN;
+  delete cliEnv.ARKAIK_URL;
+  const spawnOpts = { encoding: "utf8", cwd: CLI_CWD, env: cliEnv };
   {
-    const r = spawnSync(process.execPath, [CLI, "live", "--help"], { encoding: "utf8" });
+    const r = spawnSync(process.execPath, [CLI, "live", "--help"], spawnOpts);
     check("live --help prints usage and exits 0", r.status === 0 && /arkaik live/.test(r.stdout), r.stderr);
   }
   {
-    const r = spawnSync(process.execPath, [CLI, "live", "AC-a"], { encoding: "utf8", env: { ...process.env, ARKAIK_TOKEN: "x" } });
+    const r = spawnSync(process.execPath, [CLI, "live", "AC-a"], spawnOpts);
     check("live without --platform exits 1 and says so", r.status === 1 && /--platform/.test(r.stderr), r.stderr);
   }
   {
-    const r = spawnSync(process.execPath, [CLI, "live", "--platform", "windows", "AC-a"], { encoding: "utf8", env: { ...process.env, ARKAIK_TOKEN: "x" } });
+    const r = spawnSync(process.execPath, [CLI, "live", "--platform", "windows", "AC-a"], spawnOpts);
     check("an unknown platform exits 1 naming the valid ones", r.status === 1 && /web, ios, android/.test(r.stderr), r.stderr);
   }
 
+  rmSync(CLI_CWD, { recursive: true, force: true });
   rmSync(TEST_BUILD_DIR, { recursive: true, force: true });
   if (failures > 0) { console.error(`\n${failures} check(s) failed.`); process.exit(1); }
   console.log("\nAll live CLI checks passed.");
