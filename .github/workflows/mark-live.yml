@@ -1,0 +1,246 @@
+# Reusable: mark the acceptances a production deploy carried `live` in a
+# hosted arkaik project (issue #424 follow-up). Callers run it on
+# `deployment_status` (state success, their production environment) and pass
+# the platform. It finds the previous successful deploy of the same
+# environment, collects the pull requests merged in between with `gh`, and
+# runs `arkaik live`, which reads them with the same AC-id@platform grammar the
+# GitHub App applies on merge. The CLI is built from arkaik@main so a caller
+# never waits on an npm publish. The step fails when the door refuses an
+# explicit claim or cannot be reached, so a deploy that could not mark itself
+# live is a red job, not a silent one; an id inferred from a bare mention that
+# the project does not list for this platform is dropped with a warning and
+# the rest resent, the GitHub App's rule for an inferred scope.
+#
+# The caller's repo must be linked (docs/arkaik/arkaik.json, `arkaik link`) and
+# hold a release:append token as the ARKAIK_RELEASE_TOKEN secret.
+#
+# The caller MUST grant, on the workflow or the calling job:
+#
+#   permissions:
+#     contents: read
+#     deployments: read
+#     pull-requests: read
+#
+# A called workflow can only narrow the caller's GITHUB_TOKEN, never widen it,
+# and a repository's default token is often restricted to grant neither
+# deployments nor pull requests — without the block the range lookup fails.
+#
+# Pull request numbers come from the commits in the range: squash subjects
+# ending in "(#N)" and "Merge pull request #N" merge commits. Rebase merges are
+# not seen. A direct push whose subject ends in "(#issue)" makes the pull
+# request fetch fail and the job red, on purpose: a guess is worse.
+#
+# The first run marks nothing: with no earlier successful deploy of the
+# environment there is no range to measure, and the job says so and exits 0.
+# `environment` and `deployment_id` default to the triggering deployment event.
+name: mark-live
+
+on:
+  workflow_call:
+    inputs:
+      platform:
+        description: "web | ios | android"
+        required: true
+        type: string
+      sha:
+        description: "The deployed commit. Default: the triggering commit."
+        required: false
+        type: string
+        default: ""
+      environment:
+        description: "Deployment environment name, to find the previous successful deploy (e.g. 'Production – pbbls')."
+        required: false
+        type: string
+        default: ""
+      deployment_id:
+        description: "The current deployment's id, excluded when looking for the previous one."
+        required: false
+        type: string
+        default: ""
+      paths:
+        description: "Comma-separated path prefixes; a bare AC-id mention counts only when the PR touched one (e.g. apps/web)."
+        required: false
+        type: string
+        default: ""
+      detail:
+        description: "Evidence recorded on the status change. Default: this run's URL."
+        required: false
+        type: string
+        default: ""
+      ids:
+        description: "Space-separated acceptance ids. When given, derivation is skipped."
+        required: false
+        type: string
+        default: ""
+    secrets:
+      ARKAIK_RELEASE_TOKEN:
+        required: true
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "web | ios | android"
+        required: true
+        type: string
+      sha:
+        description: "The deployed commit"
+        required: false
+        type: string
+        default: ""
+      environment:
+        description: "Deployment environment name"
+        required: false
+        type: string
+        default: ""
+      deployment_id:
+        description: "Current deployment id to exclude"
+        required: false
+        type: string
+        default: ""
+      paths:
+        description: "Comma-separated path prefixes for bare mentions"
+        required: false
+        type: string
+        default: ""
+      detail:
+        description: "Evidence"
+        required: false
+        type: string
+        default: ""
+      ids:
+        description: "Space-separated ids (skips derivation)"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  pull-requests: read
+  deployments: read
+
+jobs:
+  mark-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PLATFORM: ${{ inputs.platform }}
+      SHA: ${{ inputs.sha != '' && inputs.sha || github.sha }}
+      ENVIRONMENT: ${{ inputs.environment != '' && inputs.environment || github.event.deployment.environment || '' }}
+      DEPLOYMENT_ID: ${{ inputs.deployment_id != '' && inputs.deployment_id || github.event.deployment.id || '' }}
+      PATHS: ${{ inputs.paths }}
+      DETAIL: ${{ inputs.detail != '' && inputs.detail || format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id) }}
+      IDS: ${{ inputs.ids }}
+    steps:
+      - name: Check out the deployed repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha != '' && inputs.sha || github.sha }}
+          fetch-depth: 0
+          path: repo
+          persist-credentials: false
+
+      - name: Check out arkaik (the CLI is built from main)
+        uses: actions/checkout@v4
+        with:
+          repository: alexisbohns/arkaik
+          ref: main
+          path: tool
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tool/package-lock.json
+
+      - name: Build the arkaik CLI
+        working-directory: tool
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build -w arkaik
+
+      - name: Find the previous successful deploy and the pull requests since
+        id: range
+        if: env.IDS == ''
+        working-directory: repo
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # The checkout sits at the deployed commit; resolve it so a short sha
+          # or a ref passed by hand still compares against full deployment shas.
+          SHA=$(git rev-parse HEAD)
+          if [ -z "$ENVIRONMENT" ]; then
+            # A caller with neither an environment nor ids is misconfigured;
+            # a green no-op here would hide that forever.
+            echo "No environment given and no ids: nothing to derive the range from. Pass environment (or ids)." >&2
+            exit 1
+          fi
+          if [ -n "$DEPLOYMENT_ID" ] && ! [[ "$DEPLOYMENT_ID" =~ ^[0-9]+$ ]]; then
+            echo "deployment_id is not a number: '$DEPLOYMENT_ID'" >&2
+            exit 1
+          fi
+          # Deployments of this environment, newest first. One page of the 100
+          # newest is the look-back: when none of them qualifies the job marks
+          # nothing, the safe direction. A failed API call stops the job.
+          gh api -X GET "repos/${GITHUB_REPOSITORY}/deployments" \
+            -f environment="$ENVIRONMENT" -f per_page=100 \
+            --jq '.[] | "\(.id) \(.sha)"' > deployments.txt
+          # The previous deploy is the newest one created before the current
+          # (ids increase monotonically, so a re-run after a newer deploy still
+          # measures from the right one), of another commit, with a success status.
+          prev=""
+          while read -r id dsha; do
+            if [ -n "$DEPLOYMENT_ID" ] && [ "$id" -ge "$DEPLOYMENT_ID" ]; then continue; fi
+            [ "$dsha" = "$SHA" ] && continue
+            ok=$(gh api "repos/${GITHUB_REPOSITORY}/deployments/$id/statuses" --jq 'any(.[]; .state == "success")' </dev/null)
+            if [ "$ok" = true ]; then prev="$dsha"; break; fi
+          done < deployments.txt
+          if [ -z "$prev" ]; then
+            echo "No previous successful deploy of '$ENVIRONMENT' — marking nothing rather than guessing a range." >&2
+            echo "prev=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! git cat-file -e "${prev}^{commit}"; then
+            echo "The previous deploy's commit $prev is not in this repository's history." >&2
+            exit 1
+          fi
+          echo "prev=$prev" >> "$GITHUB_OUTPUT"
+          echo "Range: $prev..$SHA" >&2
+          # Pull request numbers from the squash subjects "(#N)" and merge commits.
+          git log --format=%s "$prev..$SHA" \
+            | sed -nE 's/.*\(#([0-9]+)\)$/\1/p; s/^Merge pull request #([0-9]+).*/\1/p' \
+            | sort -un > prs.txt
+          echo "Pull requests: $(tr '\n' ' ' < prs.txt)" >&2
+          : > mentions.jsonl
+          while read -r n; do
+            [ -z "$n" ] && continue
+            # Files through REST, paginated: `gh pr view --json files` stops at
+            # 100, and in a monorepo the prefix that matters can sort last.
+            files=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/$n/files" --jq '.[].filename' </dev/null | jq -R . | jq -s .)
+            gh pr view "$n" -R "$GITHUB_REPOSITORY" --json number,title,body </dev/null \
+              | jq --argjson files "$files" '{number, title, body, files: $files}' >> mentions.jsonl
+          done < prs.txt
+          jq -s '.' mentions.jsonl > mentions.json
+
+      - name: Mark live
+        if: env.IDS != '' || steps.range.outputs.prev != ''
+        working-directory: repo
+        env:
+          ARKAIK_TOKEN: ${{ secrets.ARKAIK_RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          args=(--platform "$PLATFORM" --detail "$DETAIL")
+          if [ -n "$PATHS" ]; then args+=(--paths "$PATHS"); fi
+          if [ -n "$IDS" ]; then
+            read -ra id_list <<< "$IDS"
+            for id in "${id_list[@]}"; do
+              if ! [[ "$id" =~ ^AC-[A-Za-z0-9._-]+$ ]]; then
+                echo "Not an acceptance id: '$id'" >&2
+                exit 1
+              fi
+            done
+            args+=("${id_list[@]}")
+          else
+            args+=(--mentions mentions.json)
+          fi
+          node ../tool/packages/cli/dist/index.js live "${args[@]}"

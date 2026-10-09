@@ -53,7 +53,12 @@ by hand; iOS has no release workflow yet.
    the workflow says so and exits 0. Explicit `ids` bypass derivation.
 
 6. **A deploy that carried no acceptance is normal.** The verb prints "nothing
-   to mark" and exits 0. A refusal or any 4xx from the door is a failed step.
+   to mark" and exits 0. A refused explicit claim or any other failed request
+   is a failed step. An id that counted only through a bare mention and that
+   the door refuses (`platform_not_applicable`, `unknown_node`) is dropped
+   with a warning and the batch resent once — the webhook's rule for an
+   inferred scope, applied from the deploy side — so one stale bare mention
+   never blocks the rest of a deploy's marks.
 
 ## Design
 
@@ -88,10 +93,12 @@ arkaik live --platform <web|ios|android> [--detail <text>] [--mentions <file>]
 - **Post** `{ entries: [{ node_id, platform, detail? }] }` in chunks of 50 to
   `${remote}/api/graph/projects/${project_id}/live`. Print one line per
   `applied` (`AC-x: releasing → live [ios]`) and per `skipped`
-  (`AC-x: already live [ios]`). On 422 print each refusal
+  (`AC-x: already live [ios]`). On 422, when every refusal is
+  `platform_not_applicable`/`unknown_node` on an inferred id, warn, drop those
+  ids and resend the chunk once; otherwise print each refusal
   (`entries[i] AC-x@ios: platform_not_applicable — detail`) and exit 1; on any
-  other non-2xx print `describeFailure` and exit 1 (403 names
-  `release:append`).
+  other non-2xx print `describeFailure` with the door's message and exit 1
+  (403 names `release:append`).
 - `--dry-run` prints the entries it would send and exits 0 without a request.
 - `deriveLiveIds` is exported and pure; `runLive(argv, { httpClient, cwd, env,
   log, errorLog })` mirrors `runLink`'s injectable shape for tests.
@@ -111,7 +118,12 @@ arkaik live --platform <web|ios|android> [--detail <text>] [--mentions <file>]
 | `ids` | no | space-separated ids; skips derivation |
 
 Secret: `ARKAIK_RELEASE_TOKEN`. Permissions: `contents: read`,
-`pull-requests: read`, `deployments: read`.
+`pull-requests: read`, `deployments: read` — and the **caller must grant the
+same block**: a called workflow can only narrow the caller's `GITHUB_TOKEN`,
+and a repository's default token (pbbls's included) grants neither deployments
+nor pull requests. `environment` and `deployment_id` default to the triggering
+deployment event (`github.event.deployment`), so a `deployment_status` caller
+may omit them; under `workflow_dispatch` they stay empty unless given.
 
 Steps: check out the caller at `sha` (full history) into `repo/`; check out
 `alexisbohns/arkaik@main` into `tool/`; setup-node 22 with npm cache keyed on
@@ -121,20 +133,22 @@ Then, unless `ids` was given: find the previous deploy (deployments of
 current one, first whose statuses contain `success`); with none, print the
 reason and stop with success. Otherwise collect PR numbers from
 `git log --format=%s prev..sha` (`(#N)` suffix, or `Merge pull request #N`),
-fetch each with `gh pr view N --json number,title,body,files`, write
-`mentions.json`, and run `node tool/packages/cli/dist/index.js live` from
+fetch each with `gh pr view N --json number,title,body` and its files through
+the paginated REST `pulls/N/files` (the `gh` field stops at 100), write
+`mentions.json`, and run `node ../tool/packages/cli/dist/index.js live` from
 `repo/` with the token, platform, paths, detail and mentions file. The step's
 exit code is the job's.
 
 ### The pbbls caller
 
-`.github/workflows/mark-live.yml` in pbbls: `on: deployment_status`, job
-`if: github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Production – pbbls'`,
+`.github/workflows/mark-live.yml` in pbbls: `on: deployment_status` and
+`workflow_dispatch`, with `permissions: { contents: read, deployments: read,
+pull-requests: read }`, job
+`if: github.event_name == 'workflow_dispatch' || (github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Production – pbbls')`,
 `uses: alexisbohns/arkaik/.github/workflows/mark-live.yml@main` with
-`platform: web`, `paths: apps/web`, `sha: ${{ github.event.deployment.sha }}`,
-`environment: ${{ github.event.deployment.environment }}`,
-`deployment_id: ${{ github.event.deployment.id }}`,
-`detail: ${{ github.event.deployment_status.environment_url }}`, and
+`platform: web`, `paths: apps/web`, `sha: ${{ github.event.deployment.sha || github.sha }}`,
+`environment: ${{ github.event.deployment.environment || 'Production – pbbls' }}`,
+`detail: ${{ github.event.deployment_status.environment_url || '' }}`, and
 `secrets: ARKAIK_RELEASE_TOKEN`. The user mints the token in arkaik settings and
 adds the repository secret; the caller lands after the arkaik stack.
 
@@ -157,8 +171,9 @@ future poll.
   prints applied and skipped, a 422 prints refusals and fails, a 403 names the
   scope, missing link file / token fail clearly, chunks of 50.
 - The planner and webhook suites keep passing through the re-exports.
-- The workflow is exercised by `workflow_dispatch` against a real pbbls deploy
-  before the caller is wired.
+- The pbbls caller carries a `workflow_dispatch` trigger, so the workflow is
+  exercised by hand from pbbls against a real production deploy once the caller
+  is wired; a dispatch from arkaik itself only reaches arkaik's own project.
 
 ### Out of scope
 
