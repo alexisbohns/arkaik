@@ -44,7 +44,6 @@ jobs:
   record:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
     steps:
       - name: Check out the rendered repository
         uses: actions/checkout@v4
