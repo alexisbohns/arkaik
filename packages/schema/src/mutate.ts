@@ -30,7 +30,9 @@ import {
   nodeDeletedInput,
   type EventInput,
 } from "./derive";
-import type { Edge, Node } from "./bundle";
+import type { Edge, Node, PlatformScreenshotMeta } from "./bundle";
+import { decideScreenshot, readSlot, type ScreenshotInput } from "./screenshots";
+import type { PlatformId } from "./ids";
 
 /** The patchable surface of a node: never its identity, never its project. */
 export type NodePatch = Partial<Omit<Node, "id" | "project_id">>;
@@ -41,14 +43,26 @@ export type MutationOp =
   | { op: "delete_node"; node_id: string }
   | { op: "delete_nodes"; node_ids: readonly string[] }
   | { op: "create_edge"; edge: Edge }
-  | { op: "delete_edge"; edge_id: string };
+  | { op: "delete_edge"; edge_id: string }
+  /**
+   * Record a screenshot for one platform slot (spec § 2). Applies, skips or
+   * refuses per `decideScreenshot`; a skip derives no event and changes
+   * nothing, like a no-op `update_node`. `ts` is the meta timestamp, for
+   * deterministic tests; it defaults to now.
+   */
+  | ({ op: "record_screenshot"; ts?: string } & ScreenshotInput)
+  /** Clear one platform slot, keeping its CI watermark; an empty slot is a no-op. */
+  | { op: "remove_screenshot"; node_id: string; platform: PlatformId };
 
 export type MutationErrorCode =
   | "node_not_found"
   | "edge_not_found"
   | "duplicate_node"
   | "edge_type_conflict"
-  | "playlist_cycle";
+  | "playlist_cycle"
+  | "not_shot_bearing"
+  | "platform_not_applicable"
+  | "invalid_screenshot";
 
 /**
  * A refused mutation. Carries a machine-readable `code` so each writer can map
@@ -324,6 +338,85 @@ export function applyOps(input: MutationInput, ops: readonly MutationOp[]): Muta
         }
         edges = edges.filter((candidate) => candidate.id !== op.edge_id);
         eventInputs.push(edgeRemovedInput(op.edge_id));
+        break;
+      }
+
+      case "record_screenshot": {
+        const index = nodes.findIndex((candidate) => candidate.id === op.node_id);
+        if (index === -1) {
+          throw new MutationError("node_not_found", `Node ${op.node_id} not found`, op.node_id);
+        }
+        const node = nodes[index];
+        const decision = decideScreenshot(node, op);
+        if (decision.kind === "refuse") throw new MutationError(decision.code, decision.message, op.node_id);
+        // A skip is a no-op by design: nothing changes, nothing is evented, so
+        // a CI re-run or an unchanged value never costs a journal line.
+        if (decision.kind === "skip") break;
+        const ciOrder = op.source === "ci" && typeof op.order === "number" ? op.order : undefined;
+        const commit = op.source === "ci" ? op.commit : undefined;
+        const prevWatermark = readSlot(node, op.platform).ciOrder;
+        const watermark =
+          ciOrder === undefined ? prevWatermark : prevWatermark === undefined ? ciOrder : Math.max(prevWatermark, ciOrder);
+        const meta: PlatformScreenshotMeta = {
+          ts: op.ts ?? new Date().toISOString(),
+          source: op.source,
+          form: op.form,
+          ...(commit !== undefined ? { commit } : {}),
+          ...(ciOrder !== undefined ? { order: ciOrder } : {}),
+          ...(watermark !== undefined ? { ci_order: watermark } : {}),
+        };
+        const updated: Node = {
+          ...node,
+          metadata: {
+            ...node.metadata,
+            platformScreenshots: { ...node.metadata?.platformScreenshots, [op.platform]: op.value },
+            platformScreenshotMeta: { ...node.metadata?.platformScreenshotMeta, [op.platform]: meta },
+          },
+        };
+        const nextNodes = [...nodes];
+        nextNodes[index] = updated;
+        nodes = nextNodes;
+        eventInputs.push({
+          type: "screenshot.recorded",
+          payload: {
+            node_id: op.node_id,
+            platform: op.platform,
+            source: op.source,
+            form: op.form,
+            // Events never embed asset payloads: a data URI stays in the
+            // snapshot. A `path` form travels under `url` too, on purpose.
+            ...(op.form !== "data" ? { url: op.value } : {}),
+            ...(commit !== undefined ? { commit } : {}),
+            ...(ciOrder !== undefined ? { order: ciOrder } : {}),
+            ...(op.detail !== undefined ? { detail: op.detail } : {}),
+          },
+        });
+        break;
+      }
+
+      case "remove_screenshot": {
+        const index = nodes.findIndex((candidate) => candidate.id === op.node_id);
+        if (index === -1) {
+          throw new MutationError("node_not_found", `Node ${op.node_id} not found`, op.node_id);
+        }
+        const node = nodes[index];
+        const shots = { ...node.metadata?.platformScreenshots };
+        if (!(op.platform in shots)) break; // nothing to clear, nothing to event
+        delete shots[op.platform];
+        const metas = { ...node.metadata?.platformScreenshotMeta };
+        // The slot is gone; the watermark is not — it is what keeps a late CI
+        // re-run from resurrecting the shot a person just removed.
+        const watermark = readSlot(node, op.platform).ciOrder;
+        if (watermark !== undefined) metas[op.platform] = { ci_order: watermark };
+        else delete metas[op.platform];
+        const updated: Node = {
+          ...node,
+          metadata: { ...node.metadata, platformScreenshots: shots, platformScreenshotMeta: metas },
+        };
+        const nextNodes = [...nodes];
+        nextNodes[index] = updated;
+        nodes = nextNodes;
+        eventInputs.push({ type: "screenshot.removed", payload: { node_id: op.node_id, platform: op.platform } });
         break;
       }
     }

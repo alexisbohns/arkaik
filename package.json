@@ -75,6 +75,7 @@
     "test:journal-projections": "node tests/data/journal-projections.test.js && node tests/data/journal-page.test.js",
     "test:emit": "node tests/schema/emit.test.js",
     "test:mutate": "node tests/schema/mutate.test.js",
+    "test:screenshots": "node tests/schema/screenshots.test.js",
     "test:promote": "node tests/schema/promote.test.js",
     "test:mentions": "node tests/schema/mentions.test.js",
     "test:emit-events": "node tests/data/emit-events.test.js",

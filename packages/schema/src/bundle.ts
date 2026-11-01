@@ -16,7 +16,8 @@ import {
 import type { DecisionStatusId } from "./decision";
 import { FlowPlaylistSchema, type FlowPlaylist } from "./playlist";
 import { JournalEventSchema } from "./journal-events";
-import type { JournalEvent } from "./journal";
+import { SCREENSHOT_FORMS, SCREENSHOT_SOURCES } from "./journal";
+import type { JournalEvent, ScreenshotForm, ScreenshotSource } from "./journal";
 import type { MapDefinition, MapDisplayOptions } from "./maps";
 import type { ProductDefinition } from "./products";
 import type { QualitySection } from "./quality";
@@ -50,6 +51,38 @@ export const PlatformScreenshotsMapSchema: z.ZodType<PlatformScreenshotsMap> = z
   description:
     "Per-platform screenshot: a relative path, an absolute URL, or a data URI (see docs/spec/bundle-format.md § Asset Values).",
 });
+
+/**
+ * Provenance of the current shot in `platformScreenshots[platform]`, written
+ * only by the `record_screenshot` / `remove_screenshot` ops (mutate.ts). Every
+ * field is optional because a removed slot keeps `ci_order`, the ingest
+ * watermark: the highest CI `order` ever accepted for this slot. It survives a
+ * manual shot and a removal, so a late CI re-run of an older commit can never
+ * overwrite a shot a person recorded after it (spec § 4).
+ */
+export interface PlatformScreenshotMeta {
+  ts?: string;
+  source?: ScreenshotSource;
+  form?: ScreenshotForm;
+  commit?: string;
+  order?: number;
+  ci_order?: number;
+}
+export const PlatformScreenshotMetaSchema: z.ZodType<PlatformScreenshotMeta> = z
+  .object({
+    ts: z.string().optional().meta({ description: "ISO 8601 timestamp of when the current shot was recorded." }),
+    source: z.enum(SCREENSHOT_SOURCES).optional().meta({ description: "Who recorded the current shot: ci or manual." }),
+    form: z.enum(SCREENSHOT_FORMS).optional().meta({ description: "Asset form of the slot value: url, path or data (see Asset Values)." }),
+    commit: z.string().optional().meta({ description: "The sha a CI shot was rendered from." }),
+    order: z.number().int().nonnegative().optional().meta({ description: "That commit's height on the default branch." }),
+    ci_order: z.number().int().nonnegative().optional().meta({ description: "The highest CI order ever accepted for this slot, kept across a manual shot and a removal so a late CI re-run cannot overwrite a newer shot." }),
+  })
+  .meta({ id: "PlatformScreenshotMeta", description: "Provenance of the current per-platform screenshot and the CI order watermark." });
+
+export type PlatformScreenshotMetaMap = Partial<Record<PlatformId, PlatformScreenshotMeta>>;
+export const PlatformScreenshotMetaMapSchema: z.ZodType<PlatformScreenshotMetaMap> = z
+  .partialRecord(PlatformSchema, PlatformScreenshotMetaSchema)
+  .meta({ id: "PlatformScreenshotMetaMap", description: "Per-platform screenshot provenance (see PlatformScreenshotMeta)." });
 
 /**
  * Known external-reference types (docs/spec/bundle-format.md § References).
@@ -115,6 +148,8 @@ export interface NodeMetadata extends Record<string, unknown> {
   platformNotes?: PlatformNotesMap;
   platformStatuses?: PlatformStatusMap;
   platformScreenshots?: PlatformScreenshotsMap;
+  /** Provenance of each current screenshot plus the CI order watermark; written by the screenshot ops only. */
+  platformScreenshotMeta?: PlatformScreenshotMetaMap;
   refs?: Ref[];
   /** Acceptance nodes: one Given/When/Then scenario — the How (spec §3.1). */
   gherkin?: string;
@@ -142,6 +177,7 @@ export const NodeMetadataSchema: z.ZodType<NodeMetadata> = z
     platformNotes: PlatformNotesMapSchema.optional(),
     platformStatuses: PlatformStatusMapSchema.optional(),
     platformScreenshots: PlatformScreenshotsMapSchema.optional(),
+    platformScreenshotMeta: PlatformScreenshotMetaMapSchema.optional(),
     refs: z.array(RefSchema).optional().meta({ description: "Typed external references on the node." }),
     gherkin: z.string().optional().meta({
       description: "Acceptance nodes only: exactly one Given/When/Then scenario (the How). A second scenario is a second acceptance node.",

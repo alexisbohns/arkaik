@@ -15,6 +15,7 @@ export * from "./products";
 export * from "./emit";
 export * from "./derive";
 export * from "./mutate";
+export * from "./screenshots";
 export * from "./promote";
 export * from "./mentions";
 export * from "./legacy-status";

@@ -48,6 +48,9 @@ jobs:
       - name: Mutation core tests (applyOps invariants, batch atomicity)
         run: npm run test:mutate
 
+      - name: Screenshot events tests (decision, ops, reducers, cross-check)
+        run: npm run test:screenshots
+
       - name: Ref promotion policy tests (opt-in, per-platform, guards)
         run: npm run test:promote
 

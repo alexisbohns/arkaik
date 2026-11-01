@@ -17,6 +17,10 @@
 import type { SpeciesId, StatusId, PlatformId, EdgeTypeId } from "./ids";
 import type { DecisionStatusId } from "./decision";
 import { normalizeStatus } from "./legacy-status";
+// Other half of the journal.ts <-> screenshots.ts cycle (screenshots.ts value-imports
+// `orderEvents`). Both sides only call the other inside functions, never at module
+// load, which keeps the CommonJS test loader and the esbuild validator bundle safe.
+import { reduceScreenshotSlots } from "./screenshots";
 
 /**
  * The v1 event vocabulary (docs/spec/journal.md § Event Vocabulary). The list
@@ -39,6 +43,8 @@ export const JOURNAL_EVENT_TYPES = [
   "ref.added",
   "ref.removed",
   "ref.status_changed",
+  "screenshot.recorded",
+  "screenshot.removed",
   "journal.baseline",
   "quality.audit.completed",
   "quality.finding.opened",
@@ -205,6 +211,41 @@ export interface RefStatusChangedEvent extends JournalEvent {
   synced_at: string;
 }
 
+/** Who recorded a screenshot: a CI job, or a person in the UI / over MCP. */
+export const SCREENSHOT_SOURCES = ["ci", "manual"] as const;
+export type ScreenshotSource = (typeof SCREENSHOT_SOURCES)[number];
+
+/** The asset form of the slot value (docs/spec/bundle-format.md § Asset Values). */
+export const SCREENSHOT_FORMS = ["url", "path", "data"] as const;
+export type ScreenshotForm = (typeof SCREENSHOT_FORMS)[number];
+
+/**
+ * A screenshot of `node_id` on `platform` exists. `url` is present for the
+ * `url` and `path` forms and absent for `data`: events never embed asset
+ * payloads (§ Event Envelope), so a data-URI shot is recorded as "a manual
+ * shot was taken" and the bytes live in the snapshot only. `commit` is the
+ * sha the shot was taken from and `order` its height on the default branch,
+ * both CI only; `detail` is free text (the test name, the device).
+ */
+export interface ScreenshotRecordedEvent extends JournalEvent {
+  type: "screenshot.recorded";
+  node_id: string;
+  platform: PlatformId;
+  source: ScreenshotSource;
+  form: ScreenshotForm;
+  url?: string;
+  commit?: string;
+  order?: number;
+  detail?: string;
+}
+
+/** The slot was cleared on purpose. Removed shots stay in history. */
+export interface ScreenshotRemovedEvent extends JournalEvent {
+  type: "screenshot.removed";
+  node_id: string;
+  platform: PlatformId;
+}
+
 /**
  * Journal coverage marker: the listed nodes already existed when this journal's
  * coverage began, and their creation is **not** recorded in it.
@@ -308,6 +349,8 @@ export type KnownJournalEvent =
   | RefAddedEvent
   | RefRemovedEvent
   | RefStatusChangedEvent
+  | ScreenshotRecordedEvent
+  | ScreenshotRemovedEvent
   | JournalBaselineEvent
   | QualityAuditCompletedEvent
   | QualityFindingOpenedEvent
@@ -435,9 +478,15 @@ const NODE_REF_FIELDS: Record<string, readonly string[]> = {
   "ref.added": ["node_id"],
   "ref.removed": ["node_id"],
   "ref.status_changed": ["node_id"],
+  "screenshot.recorded": ["node_id"],
+  "screenshot.removed": ["node_id"],
   "idea.proposed": ["node_id"],
   "request.filed": ["node_id"],
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 /**
  * Whether a journal's last `node.status_changed.to` agrees with the snapshot
@@ -701,6 +750,45 @@ export function crossCheckJournal(bundle: Record<string, unknown>): JournalFindi
       });
     }
   }
+
+  // --- Screenshot slots vs their events (spec § 2, warning only) ---
+  // A slot written through the legacy update_node path has no event and gets
+  // no diagnostic; a slot with history must agree with its last event.
+  const slots = reduceScreenshotSlots(ordered);
+  nodesRaw.forEach((n, index) => {
+    const nodeId = str(n?.id);
+    if (nodeId === undefined) return;
+    const metadata = isRecord(n.metadata) ? n.metadata : {};
+    const shots = isRecord(metadata.platformScreenshots) ? metadata.platformScreenshots : {};
+    const eventSlots = slots.get(nodeId);
+    const platforms = new Set<string>([...Object.keys(shots), ...(eventSlots ? eventSlots.keys() : [])]);
+    for (const platform of platforms) {
+      const last = eventSlots?.get(platform);
+      if (last === undefined) continue; // legacy slot, no history
+      const slot = typeof shots[platform] === "string" ? (shots[platform] as string) : undefined;
+      let says: string;
+      let agrees: boolean;
+      if (last === null) {
+        agrees = slot === undefined;
+        says = "it was removed";
+      } else if (last.form === "data") {
+        agrees = slot !== undefined;
+        says = "a data URI was recorded";
+      } else {
+        const url = str(last.url);
+        agrees = slot === url;
+        says = url === undefined ? "an unknown value was recorded" : `"${url}" was recorded`;
+      }
+      if (!agrees) {
+        findings.push({
+          path: `nodes[${index}].metadata.platformScreenshots.${platform}`,
+          rule: "screenshot-untracked",
+          message: `Node "${nodeId}": platformScreenshots.${platform} is ${slot === undefined ? "empty" : `"${slot}"`} but the journal's last screenshot event says ${says} — write screenshots through record_screenshot, not update_node.`,
+          severity: "warning",
+        });
+      }
+    }
+  });
 
   return findings;
 }

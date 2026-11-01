@@ -13,6 +13,7 @@
 
 import { z } from "zod";
 import { AnyStatusSchema, DecisionStatusSchema, EdgeTypeSchema, PlatformSchema, SpeciesSchema } from "./enums";
+import { SCREENSHOT_FORMS, SCREENSHOT_SOURCES } from "./journal";
 import type { JournalEvent } from "./journal";
 
 /** Shared envelope fields (docs/spec/journal.md § Event Envelope). */
@@ -178,6 +179,25 @@ export const RefStatusChangedEventSchema = z
   })
   .catchall(z.unknown());
 
+export const ScreenshotRecordedEventSchema = z
+  .object({
+    ...envelope,
+    type: z.literal("screenshot.recorded"),
+    node_id: z.string(),
+    platform: PlatformSchema,
+    source: z.enum(SCREENSHOT_SOURCES),
+    form: z.enum(SCREENSHOT_FORMS),
+    url: z.string().optional(),
+    commit: z.string().optional(),
+    order: z.number().int().nonnegative().optional(),
+    detail: z.string().optional(),
+  })
+  .catchall(z.unknown());
+
+export const ScreenshotRemovedEventSchema = z
+  .object({ ...envelope, type: z.literal("screenshot.removed"), node_id: z.string(), platform: PlatformSchema })
+  .catchall(z.unknown());
+
 /**
  * The journal-coverage marker (docs/spec/journal.md § Event Vocabulary). An
  * empty `node_ids` is allowed by the shape but pointless — writers only emit it
@@ -316,6 +336,8 @@ export const JOURNAL_EVENT_SCHEMAS = {
   "ref.added": RefAddedEventSchema,
   "ref.removed": RefRemovedEventSchema,
   "ref.status_changed": RefStatusChangedEventSchema,
+  "screenshot.recorded": ScreenshotRecordedEventSchema,
+  "screenshot.removed": ScreenshotRemovedEventSchema,
   "journal.baseline": JournalBaselineEventSchema,
   "quality.audit.completed": QualityAuditCompletedEventSchema,
   "quality.assessment.scored": QualityAssessmentScoredEventSchema,
@@ -345,6 +367,8 @@ export const KnownJournalEventSchema = z.union([
   RefAddedEventSchema,
   RefRemovedEventSchema,
   RefStatusChangedEventSchema,
+  ScreenshotRecordedEventSchema,
+  ScreenshotRemovedEventSchema,
   JournalBaselineEventSchema,
   QualityAuditCompletedEventSchema,
   QualityAssessmentScoredEventSchema,

@@ -381,6 +381,9 @@
         "platformScreenshots": {
           "$ref": "#/$defs/PlatformScreenshotsMap"
         },
+        "platformScreenshotMeta": {
+          "$ref": "#/$defs/PlatformScreenshotMetaMap"
+        },
         "refs": {
           "description": "Typed external references on the node.",
           "type": "array",
@@ -580,6 +583,60 @@
         "type": "string"
       },
       "description": "Per-platform screenshot: a relative path, an absolute URL, or a data URI (see docs/spec/bundle-format.md § Asset Values)."
+    },
+    "PlatformScreenshotMetaMap": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/Platform"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/PlatformScreenshotMeta"
+      },
+      "description": "Per-platform screenshot provenance (see PlatformScreenshotMeta)."
+    },
+    "PlatformScreenshotMeta": {
+      "type": "object",
+      "properties": {
+        "ts": {
+          "description": "ISO 8601 timestamp of when the current shot was recorded.",
+          "type": "string"
+        },
+        "source": {
+          "description": "Who recorded the current shot: ci or manual.",
+          "type": "string",
+          "enum": [
+            "ci",
+            "manual"
+          ]
+        },
+        "form": {
+          "description": "Asset form of the slot value: url, path or data (see Asset Values).",
+          "type": "string",
+          "enum": [
+            "url",
+            "path",
+            "data"
+          ]
+        },
+        "commit": {
+          "description": "The sha a CI shot was rendered from.",
+          "type": "string"
+        },
+        "order": {
+          "description": "That commit's height on the default branch.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "ci_order": {
+          "description": "The highest CI order ever accepted for this slot, kept across a manual shot and a removal so a late CI re-run cannot overwrite a newer shot.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "additionalProperties": false,
+      "description": "Provenance of the current per-platform screenshot and the CI order watermark."
     },
     "Ref": {
       "type": "object",

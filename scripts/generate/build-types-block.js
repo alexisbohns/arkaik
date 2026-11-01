@@ -45,6 +45,8 @@ function buildTypesBlock(schemaPackage) {
     "PlatformNotesMap",
     "PlatformStatusMap",
     "PlatformScreenshotsMap",
+    "PlatformScreenshotMeta",
+    "PlatformScreenshotMetaMap",
     "Node",
     "Edge",
     "Project",
@@ -78,6 +80,8 @@ function buildTypesBlock(schemaPackage) {
     "RefAddedEvent",
     "RefRemovedEvent",
     "RefStatusChangedEvent",
+    "ScreenshotRecordedEvent",
+    "ScreenshotRemovedEvent",
     "KnownJournalEvent",
   ]);
 
