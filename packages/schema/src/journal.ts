@@ -39,6 +39,8 @@ export const JOURNAL_EVENT_TYPES = [
   "ref.added",
   "ref.removed",
   "ref.status_changed",
+  "screenshot.recorded",
+  "screenshot.removed",
   "journal.baseline",
   "quality.audit.completed",
   "quality.finding.opened",
@@ -205,6 +207,41 @@ export interface RefStatusChangedEvent extends JournalEvent {
   synced_at: string;
 }
 
+/** Who recorded a screenshot: a CI job, or a person in the UI / over MCP. */
+export const SCREENSHOT_SOURCES = ["ci", "manual"] as const;
+export type ScreenshotSource = (typeof SCREENSHOT_SOURCES)[number];
+
+/** The asset form of the slot value (docs/spec/bundle-format.md § Asset Values). */
+export const SCREENSHOT_FORMS = ["url", "path", "data"] as const;
+export type ScreenshotForm = (typeof SCREENSHOT_FORMS)[number];
+
+/**
+ * A screenshot of `node_id` on `platform` exists. `url` is present for the
+ * `url` and `path` forms and absent for `data`: events never embed asset
+ * payloads (§ Event Envelope), so a data-URI shot is recorded as "a manual
+ * shot was taken" and the bytes live in the snapshot only. `commit` is the
+ * sha the shot was taken from and `order` its height on the default branch,
+ * both CI only; `detail` is free text (the test name, the device).
+ */
+export interface ScreenshotRecordedEvent extends JournalEvent {
+  type: "screenshot.recorded";
+  node_id: string;
+  platform: PlatformId;
+  source: ScreenshotSource;
+  form: ScreenshotForm;
+  url?: string;
+  commit?: string;
+  order?: number;
+  detail?: string;
+}
+
+/** The slot was cleared on purpose. Removed shots stay in history. */
+export interface ScreenshotRemovedEvent extends JournalEvent {
+  type: "screenshot.removed";
+  node_id: string;
+  platform: PlatformId;
+}
+
 /**
  * Journal coverage marker: the listed nodes already existed when this journal's
  * coverage began, and their creation is **not** recorded in it.
@@ -308,6 +345,8 @@ export type KnownJournalEvent =
   | RefAddedEvent
   | RefRemovedEvent
   | RefStatusChangedEvent
+  | ScreenshotRecordedEvent
+  | ScreenshotRemovedEvent
   | JournalBaselineEvent
   | QualityAuditCompletedEvent
   | QualityFindingOpenedEvent
@@ -435,6 +474,8 @@ const NODE_REF_FIELDS: Record<string, readonly string[]> = {
   "ref.added": ["node_id"],
   "ref.removed": ["node_id"],
   "ref.status_changed": ["node_id"],
+  "screenshot.recorded": ["node_id"],
+  "screenshot.removed": ["node_id"],
   "idea.proposed": ["node_id"],
   "request.filed": ["node_id"],
 };
