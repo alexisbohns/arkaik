@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { screenshotHistory } from "@arkaik/schema";
 import {
   Dialog,
   DialogClose,
@@ -24,6 +25,8 @@ import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { FIELD_LABEL_CLASS } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { GUARDED_HOTKEY, useShortcut } from "@/lib/hooks/useShortcut";
+import { useJournal } from "@/lib/hooks/useJournal";
+import { useProjectId } from "@/lib/hooks/useProjectId";
 
 export interface ShotPreviewDialogProps {
   open: boolean;
@@ -43,6 +46,9 @@ export function ShotPreviewDialog({
   const platformStatuses: PlatformStatusMap = (node?.metadata?.platformStatuses as PlatformStatusMap) ?? {};
   const platformNotes: PlatformNotesMap = (node?.metadata?.platformNotes as PlatformNotesMap) ?? {};
 
+  const projectId = useProjectId();
+  const { journal } = useJournal(projectId, { types: ["screenshot.recorded", "screenshot.removed"] });
+
   // Platforms that actually have a screenshot
   const platformsWithShots = platforms.filter((p) => screenshots[p]);
 
@@ -61,6 +67,18 @@ export function ShotPreviewDialog({
   }, [open, node?.id, initialPlatform]);
 
   const currentIndex = platformsWithShots.indexOf(activeTab);
+
+  // Only the `url`/`path` forms reach the strip: a data-form event carries no
+  // url (the bytes live in the snapshot only), so there is nothing to show.
+  const history = useMemo(
+    () =>
+      node
+        ? screenshotHistory(journal, node.id, activeTab).filter(
+            (ev) => ev.type === "screenshot.recorded" && typeof ev.url === "string",
+          )
+        : [],
+    [journal, node, activeTab],
+  );
 
   const goToPrev = useCallback(() => {
     if (platformsWithShots.length <= 1) return;
@@ -159,6 +177,31 @@ export function ShotPreviewDialog({
           <p className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">
             {currentNotes}
           </p>
+        </div>
+      )}
+
+      {/* Earlier shots — the current one is the last entry and is excluded */}
+      {history.length > 1 && (
+        <div className="flex flex-col gap-1.5">
+          <span className={FIELD_LABEL_CLASS}>Earlier shots</span>
+          <div className="flex gap-1.5 overflow-x-auto">
+            {history
+              .slice(0, -1)
+              .reverse()
+              .map((ev) => (
+                <a
+                  key={ev.id}
+                  href={ev.url as string}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={`${ev.source === "ci" ? "CI" : "By hand"} · ${new Date(ev.ts).toLocaleString()}${
+                    ev.commit ? ` · ${String(ev.commit).slice(0, 7)}` : ""
+                  }`}
+                >
+                  <img src={ev.url as string} alt="" className="h-12 w-auto rounded border border-border object-contain" />
+                </a>
+              ))}
+          </div>
         </div>
       )}
 

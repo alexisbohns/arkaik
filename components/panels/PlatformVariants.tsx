@@ -145,6 +145,9 @@ export function PlatformVariants({
   const platformSuffix = showTabs ? ` for ${PLATFORM_LABELS[activeTab]}` : "";
 
   async function handleFile(file: File) {
+    // A file dialog opened before an op started and confirmed during it
+    // would otherwise fire a second op.
+    if (busy) return;
     if (!file.type.startsWith("image/")) return;
     if (file.size > MAX_FILE_SIZE) return;
     const dataUrl = await readFileAsDataUrl(file);
