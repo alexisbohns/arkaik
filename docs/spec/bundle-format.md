@@ -195,6 +195,8 @@ Consumers that cannot resolve a form (the hosted app receiving a relative path, 
 
 **Size-bomb guidance:** a `data:` value SHOULD stay under 2MB decoded — the same cap the app's own screenshot upload enforces. `validateBundle()` (`@arkaik/schema`) emits a `screenshot-data-uri-size` **warning** (never an error) above that threshold: data URIs are a legitimate legacy form and MUST NOT be rejected on size alone, only flagged so producers can migrate to a hosted or relative-path form.
 
+**Provenance.** `metadata.platformScreenshotMeta[platform]` records how the current slot value got there — `ts`, `source` (`ci` | `manual`), `form`, `commit?`, `order?` — and `ci_order`, the highest CI `order` ever accepted for the slot, which survives a manual shot and a removal (a slot that was removed keeps `{ ci_order }` alone). It is written only by the `record_screenshot` / `remove_screenshot` mutation ops; a producer that patches `platformScreenshots` through `update_node` leaves it stale, and `validateBundle()` warns `screenshot-untracked` when the slot disagrees with the journal.
+
 ### Acceptance Nodes
 
 An `acceptance` node (id prefix `AC-`) is a testable promise: `title` is the

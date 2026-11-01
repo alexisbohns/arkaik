@@ -108,6 +108,8 @@ Each graph operation has a matching event. Append one line per operation:
 | Remove a node | `node.deleted` (`node_id`) — **implies** cascade removal of its edges; do NOT also emit `edge.removed` for those |
 | Remove an edge on its own (node stays) | `edge.removed` (`edge_id`) |
 | Attach / detach an external reference | `ref.added` / `ref.removed` |
+| Record a screenshot for one platform | `screenshot.recorded` (`node_id`, `platform`, `source`, `form`, `url?`, `commit?`, `order?`) — through the `record_screenshot` tool/op, never by patching `metadata.platformScreenshots` |
+| Clear a screenshot | `screenshot.removed` (`node_id`, `platform`) — through `remove_screenshot` |
 
 Other event types you may append when the change warrants it: `release.tagged`
 (a version shipped), `idea.proposed` (an idea, before or linked to a node),
@@ -154,6 +156,7 @@ Map your code change to graph operations (and the events they pair with):
 | Rename (label only) | Update the node's `title`; keep the `id` stable so edges stay intact | `node.updated` (`fields: ["title"]`, with `from`/`to`) |
 | Rename (id must change) | Update the `id`, then repoint every edge's `source_id`/`target_id` **and** the edge `id` (`e-{source}-{target}`), plus any playlist `view_id`/`flow_id` and `root_node_id` | `node.updated` + `edge.removed`/`edge.added` for each repointed edge |
 | Ship/add user-visible behavior on a platform | Find or create the covering `AC-` acceptance + `covers` edge to the view/flow; set `metadata.platformStatuses.<platform>` on the acceptance | `node.created` + `edge.added` (new acceptance) + `node.status_changed` (`platform`) |
+| A screenshot of a view or acceptance on a platform | `record_screenshot` (`node_id`, `platform`, `source: manual`, `form`, `value`) — writes the slot, its meta and the event in one op | `screenshot.recorded` |
 
 ### 3. Apply the change
 
