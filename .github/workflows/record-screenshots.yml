@@ -1,0 +1,94 @@
+# Reusable: record a consumer's rendered screenshots in a hosted arkaik
+# project (spec 2026-11-01). The caller renders and uploads its images
+# wherever it likes, writes a manifest `[{ node_id, platform, url, detail? }]`
+# and calls this workflow with its path and the rendered commit. It computes
+# the commit's height on the default branch (the door's ordering key, so a
+# re-run or a rebase arriving late can never overwrite a newer shot) and runs
+# `arkaik shot`. A refused entry is a red job; a skipped one (stale order,
+# unchanged) is reported and green.
+#
+# The caller's repo must be linked (docs/arkaik/arkaik.json, `arkaik link`)
+# and hold a screenshot:append token as the ARKAIK_SCREENSHOT_TOKEN secret.
+# The manifest is passed as a path inside the calling job's checkout, so the
+# caller uploads it as an artifact named by `manifest_artifact` and this
+# workflow downloads it.
+name: record-screenshots
+
+on:
+  workflow_call:
+    inputs:
+      manifest_artifact:
+        description: "Name of the uploaded artifact holding the manifest JSON."
+        required: true
+        type: string
+      manifest_path:
+        description: "Path of the manifest inside that artifact."
+        required: false
+        type: string
+        default: "shots.json"
+      sha:
+        description: "The commit the screenshots were rendered from. Default: the triggering commit."
+        required: false
+        type: string
+        default: ""
+    secrets:
+      ARKAIK_SCREENSHOT_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SHA: ${{ inputs.sha != '' && inputs.sha || github.sha }}
+    steps:
+      - name: Check out the rendered repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha != '' && inputs.sha || github.sha }}
+          fetch-depth: 0
+          path: repo
+          persist-credentials: false
+
+      - name: Check out arkaik (the CLI is built from main)
+        uses: actions/checkout@v4
+        with:
+          repository: alexisbohns/arkaik
+          ref: main
+          path: tool
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tool/package-lock.json
+
+      - name: Build the arkaik CLI
+        working-directory: tool
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build -w arkaik
+
+      - name: Download the manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.manifest_artifact }}
+          path: manifest
+
+      - name: Record
+        working-directory: repo
+        env:
+          ARKAIK_TOKEN: ${{ secrets.ARKAIK_SCREENSHOT_TOKEN }}
+          MANIFEST: ../manifest/${{ inputs.manifest_path }}
+        run: |
+          set -euo pipefail
+          SHA=$(git rev-parse "$SHA")
+          # The ordering key: commits reachable from the rendered sha. Monotonic
+          # along the default branch, which is all the door's watermark needs.
+          ORDER=$(git rev-list --count "$SHA")
+          echo "Recording $(jq length "$MANIFEST") screenshot(s) from $SHA (order $ORDER)" >&2
+          node ../tool/packages/cli/dist/index.js shot --manifest "$MANIFEST" --commit "$SHA" --order "$ORDER"
