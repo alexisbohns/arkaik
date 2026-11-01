@@ -74,11 +74,11 @@ export async function POST(
 
   const caller = await getCaller(req);
   if (!caller) return Response.json({ error: "unauthorized" }, { status: 401 });
-  // Pre-parse, this can only ask whether the caller could POST here at all.
-  // The broad scope stays the one named for the broad ask: a caller holding
-  // neither is being told what a full-powered request to this route needs.
+  // Pre-parse, this can only ask whether the caller could POST here at all,
+  // so it names the narrowest scope that opens the door (issue #529). A batch
+  // that turns out to need more is refused again below, naming `graph:write`.
   if (!hasScope(caller, "graph:write") && !hasScope(caller, "quality:append")) {
-    return Response.json({ error: "insufficient_scope", required: "graph:write" }, { status: 403 });
+    return Response.json({ error: "insufficient_scope", required: "quality:append" }, { status: 403 });
   }
 
   const { projectId } = await params;

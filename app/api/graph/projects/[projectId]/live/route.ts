@@ -49,8 +49,9 @@ export async function POST(
 
   const caller = await getCaller(req);
   if (!caller) return Response.json({ error: "unauthorized" }, { status: 401 });
+  // Named for the narrowest scope that opens the door (issue #529).
   if (!hasScope(caller, "graph:write") && !hasScope(caller, "release:append")) {
-    return Response.json({ error: "insufficient_scope", required: "graph:write" }, { status: 403 });
+    return Response.json({ error: "insufficient_scope", required: "release:append" }, { status: 403 });
   }
 
   const { projectId } = await params;

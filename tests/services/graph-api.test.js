@@ -376,7 +376,7 @@ async function main() {
     const doorPost = (entries, token) =>
       api.SCREENSHOTS(jsonReq(ORIGIN, "POST", { entries }, bearer(token.plaintext)), ctx(projectId));
     const forbidden = await doorPost([shotEntry()], readOnly);
-    check("a read-only token gets 403 naming graph:write", forbidden.status === 403 && (await forbidden.json()).required === "graph:write");
+    check("a read-only token gets 403 naming screenshot:append", forbidden.status === 403 && (await forbidden.json()).required === "screenshot:append");
     const door = await doorPost([shotEntry({ detail: "HomeTest.default" })], shotToken);
     const doorBody = await door.json();
     check("screenshot:append opens the door", door.status === 200, JSON.stringify(doorBody));
@@ -1465,26 +1465,38 @@ async function main() {
     {
       const res = await livePost([{ node_id: "AC-x", platform: "ios" }], readOnlyL.plaintext);
       const body = await res.json();
-      check("a graph:read token is refused 403 naming graph:write", res.status === 403 && body.required === "graph:write", `${res.status} ${JSON.stringify(body)}`);
+      check("a graph:read token is refused 403 naming release:append", res.status === 403 && body.required === "release:append", `${res.status} ${JSON.stringify(body)}`);
     }
     check(
       "a release:append-only token cannot read the project",
       (await api.GET_PROJECT(new Request(ORIGIN, { headers: bearer(liveToken.plaintext) }), ctx(liveProjectId))).status === 403,
     );
-    check(
-      "a release:append-only token cannot use the mutations route",
-      (await api.MUTATE(
+    {
+      // The mutations route has no append scope, so it still names graph:write.
+      const res = await api.MUTATE(
         jsonReq(`${ORIGIN}/api/graph/projects/${liveProjectId}/mutations`, "POST", { ops: [{ op: "update_node", node_id: "AC-x", patch: { status: "live" } }] }, bearer(liveToken.plaintext)),
         ctx(liveProjectId),
-      )).status === 403,
-    );
-    check(
-      "a release:append-only token cannot post quality events",
-      (await api.QUALITY_EVENTS(
+      );
+      const body = await res.json();
+      check(
+        "a release:append-only token cannot use the mutations route (403 naming graph:write)",
+        res.status === 403 && body.required === "graph:write",
+        `${res.status} ${JSON.stringify(body)}`,
+      );
+    }
+    {
+      // Issue #529: the quality door names its own append scope, not graph:write.
+      const res = await api.QUALITY_EVENTS(
         jsonReq(`${ORIGIN}/api/graph/projects/${liveProjectId}/quality/events`, "POST", { events: [{ type: "quality.signal.tripped", criterion_id: "SEC-01", surface: "web", signal: "s", commit: "c" }] }, bearer(liveToken.plaintext)),
         ctx(liveProjectId),
-      )).status === 403,
-    );
+      );
+      const body = await res.json();
+      check(
+        "a release:append-only token cannot post quality events (403 naming quality:append)",
+        res.status === 403 && body.required === "quality:append",
+        `${res.status} ${JSON.stringify(body)}`,
+      );
+    }
 
     // 2. Shape: platform is required; an unknown one is a 400, not a guess.
     {
