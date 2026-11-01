@@ -155,7 +155,8 @@ function main() {
   check("bundle with an unknown-type event still validates", validateBundle(fwdBundle).valid);
 
   // --- per-type schema modeling ---
-  // 15 core + the 4 quality.* Kritik types (docs/rfcs/kritik.md § 3.2). The list
+  // Core types + the 4 quality.* Kritik types (docs/rfcs/kritik.md § 3.2) + the
+  // 2 screenshot.* types (docs/spec/journal.md). The list
   // is a *known* set, never an exhaustive gate — unknown types still round-trip.
   check("JOURNAL_EVENT_TYPES has the 22 known types", JOURNAL_EVENT_TYPES.length === 22, `got ${JOURNAL_EVENT_TYPES.length}`);
   const goodStatus = NodeStatusChangedEventSchema.safeParse({

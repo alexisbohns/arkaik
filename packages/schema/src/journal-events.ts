@@ -13,6 +13,7 @@
 
 import { z } from "zod";
 import { AnyStatusSchema, DecisionStatusSchema, EdgeTypeSchema, PlatformSchema, SpeciesSchema } from "./enums";
+import { SCREENSHOT_FORMS, SCREENSHOT_SOURCES } from "./journal";
 import type { JournalEvent } from "./journal";
 
 /** Shared envelope fields (docs/spec/journal.md § Event Envelope). */
@@ -184,8 +185,8 @@ export const ScreenshotRecordedEventSchema = z
     type: z.literal("screenshot.recorded"),
     node_id: z.string(),
     platform: PlatformSchema,
-    source: z.enum(["ci", "manual"]),
-    form: z.enum(["url", "path", "data"]),
+    source: z.enum(SCREENSHOT_SOURCES),
+    form: z.enum(SCREENSHOT_FORMS),
     url: z.string().optional(),
     commit: z.string().optional(),
     order: z.number().int().nonnegative().optional(),

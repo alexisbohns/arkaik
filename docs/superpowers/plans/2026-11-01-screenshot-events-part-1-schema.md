@@ -20,10 +20,10 @@
 
 | File | Responsibility |
 |---|---|
-| `packages/schema/src/journal.ts` (modify) | The two event interfaces, `JOURNAL_EVENT_TYPES`, `KnownJournalEvent`, `NODE_REF_FIELDS`, the `screenshot-untracked` cross-check |
+| `packages/schema/src/journal.ts` (modify) | The two event interfaces, `SCREENSHOT_SOURCES`, `SCREENSHOT_FORMS`, `JOURNAL_EVENT_TYPES`, `KnownJournalEvent`, `NODE_REF_FIELDS`, the `screenshot-untracked` cross-check |
 | `packages/schema/src/journal-events.ts` (modify) | zod schemas for the two events, registered in `JOURNAL_EVENT_SCHEMAS` and `KnownJournalEventSchema` |
 | `packages/schema/src/bundle.ts` (modify) | `PlatformScreenshotMeta`, `PlatformScreenshotMetaMap`, `NodeMetadata.platformScreenshotMeta` + zod |
-| `packages/schema/src/screenshots.ts` (create) | `SCREENSHOT_SOURCES`, `SCREENSHOT_FORMS`, `isValidScreenshotValue`, `decideScreenshot`, `screenshotHistory`, `currentScreenshot` |
+| `packages/schema/src/screenshots.ts` (create) | `isValidScreenshotValue`, `decideScreenshot`, `screenshotHistory`, `currentScreenshot` |
 | `packages/schema/src/mutate.ts` (modify) | The two ops in `MutationOp`, three new `MutationErrorCode`s, the two `applyOps` cases |
 | `packages/schema/src/index.ts` (modify) | `export * from "./screenshots"` |
 | `tests/schema/screenshots.test.js` (create) | Every rule above |
