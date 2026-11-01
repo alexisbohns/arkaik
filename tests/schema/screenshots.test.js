@@ -82,6 +82,9 @@ check("a relative path is a valid path form", isValidScreenshotValue("path", "as
 check("a leading slash is not a valid path form", !isValidScreenshotValue("path", "/assets/home.png"));
 check("a scheme is not a valid path form", !isValidScreenshotValue("path", "https://s/a.png"));
 check("an image data uri is a valid data form", isValidScreenshotValue("data", "data:image/png;base64,AAAA"));
+check("a case-insensitive image data uri is valid", isValidScreenshotValue("data", "data:IMAGE/PNG;base64,AAAA"));
+check("a bare data:image/ prefix is not valid", !isValidScreenshotValue("data", "data:image/"));
+check("a path climbing out is not valid", !isValidScreenshotValue("path", "../../etc/x.png"));
 check("a non-image data uri is not a valid data form", !isValidScreenshotValue("data", "data:text/plain;base64,AAAA"));
 
 {

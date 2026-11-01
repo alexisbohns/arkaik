@@ -1,15 +1,15 @@
 /**
  * Screenshots as events (docs/superpowers/specs/2026-11-01-screenshot-events-design.md).
  *
- * The one decision every writer shares. `applyOps` (mutate.ts) calls
- * {@link decideScreenshot} to apply, skip or refuse a `record_screenshot` op;
- * the hosted door's planner (lib/services/graph/screenshots.ts) calls the
- * same function over a read snapshot to report skips and refusals to its
- * caller before the ops run. Two callers, one rule — the reason this is not
- * inlined in either.
+ * The one decision every writer shares. {@link decideScreenshot} is the
+ * function `applyOps` (mutate.ts) and the hosted door's planner
+ * (lib/services/graph/screenshots.ts) call to apply, skip or refuse a
+ * `record_screenshot` op; the planner runs it over a read snapshot to report
+ * skips and refusals to its caller before the ops run. Two callers, one rule —
+ * the reason this is not inlined in either.
  *
- * Deliberately **zod-free** (type-only imports): `journal.ts` reaches the
- * reducers below for the cross-check, and `validate.ts` bundles that into the
+ * Deliberately **zod-free** (type-only imports): `crossCheckJournal` reads the
+ * reducers below, and `validate.ts` bundles that into the
  * standalone validator.
  *
  * ## The ingest rule (spec § 4)
@@ -23,6 +23,7 @@
 import type { Node } from "./bundle";
 import type { PlatformId } from "./ids";
 import type { JournalEvent, ScreenshotForm, ScreenshotSource } from "./journal";
+// The only value import. Never call it at module load: journal.ts will import this module back (cycle), and the CommonJS test loader only tolerates that for calls made inside functions.
 import { orderEvents } from "./journal";
 
 /** The caller-supplied shape of a `record_screenshot` op, before any node is consulted. */
@@ -51,16 +52,19 @@ export const SHOT_BEARING_SPECIES: readonly string[] = ["view", "acceptance"];
 
 const HTTPS = /^https:\/\/\S+$/;
 const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
-const IMAGE_DATA_URI = /^data:image\//;
+const IMAGE_DATA_URI = /^data:image\/[a-z0-9.+-]+[;,]/i;
 
-/** Whether `value` is a well-formed slot value for `form` (docs/spec/bundle-format.md § Asset Values). */
+/**
+ * Whether `value` is a well-formed slot value for `form` (docs/spec/bundle-format.md § Asset Values).
+ * A path is resolved against the bundle's directory, so it may not climb out of it, and a Windows drive path reads as a scheme and is refused.
+ */
 export function isValidScreenshotValue(form: ScreenshotForm, value: string): boolean {
   if (value === "" || /[\u0000-\u001f\u007f]/.test(value)) return false;
   switch (form) {
     case "url":
       return HTTPS.test(value);
     case "path":
-      return !value.startsWith("/") && !HAS_SCHEME.test(value);
+      return !value.startsWith("/") && !HAS_SCHEME.test(value) && !/(^|\/)\.\.(\/|$)/.test(value);
     case "data":
       return IMAGE_DATA_URI.test(value);
   }
@@ -76,8 +80,10 @@ function readSlot(node: Node, platform: PlatformId): { value: string | undefined
   const shots = isRecord(md.platformScreenshots) ? md.platformScreenshots : {};
   const metas = isRecord(md.platformScreenshotMeta) ? md.platformScreenshotMeta : {};
   const meta = isRecord(metas[platform]) ? metas[platform] : {};
-  const value = typeof shots[platform] === "string" ? (shots[platform] as string) : undefined;
-  const ciOrder = typeof meta.ci_order === "number" ? (meta.ci_order as number) : undefined;
+  const rawValue = shots[platform];
+  const value = typeof rawValue === "string" ? rawValue : undefined;
+  const rawOrder = meta.ci_order;
+  const ciOrder = typeof rawOrder === "number" ? rawOrder : undefined;
   return { value, ciOrder };
 }
 
@@ -104,7 +110,7 @@ export function decideScreenshot(node: Node | undefined, input: ScreenshotInput)
     return { kind: "refuse", code: "invalid_screenshot", message: "a ci screenshot needs a non-negative integer order" };
   }
   const slot = readSlot(node, input.platform);
-  if (input.source === "ci" && slot.ciOrder !== undefined && (input.order as number) < slot.ciOrder) {
+  if (input.source === "ci" && slot.ciOrder !== undefined && typeof input.order === "number" && input.order < slot.ciOrder) {
     return { kind: "skip", reason: "stale_order" };
   }
   if (slot.value === input.value) return { kind: "skip", reason: "unchanged" };

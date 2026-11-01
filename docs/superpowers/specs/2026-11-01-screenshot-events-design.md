@@ -87,6 +87,8 @@ proof.
    - among accepted events, the latest by `(ts, id)` is current. CI after a
      manual shot replaces it, manual after CI replaces that.
 
+   An `unchanged` skip does not advance the watermark: a re-run writes nothing, and CI URLs are keyed by commit in practice, so two heights rendering to the same URL is the degenerate case this accepts.
+
    No pin flag: a slot curated by hand is in practice one no merge refreshes,
    and the reverse. Rejected: "latest by timestamp" alone (wrong for CI), and
    "latest by order" alone (manual shots have no order).
