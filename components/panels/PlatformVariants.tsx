@@ -59,8 +59,13 @@ export interface PlatformVariantsProps {
   initialPlatform?: PlatformId;
   onStatusChange?: (platform: PlatformId, value: StatusId | undefined) => void;
   onNotesChange?: (platform: PlatformId, value: string) => void;
-  /** Record a shot: the drop zone sends `form: "data"`, the URL field `form: "url"`. */
+  /**
+   * Record a shot: the drop zone sends `form: "data"`, the URL field `form: "url"`.
+   * Omitted on a read-only surface, and then the drop zone and URL field do not
+   * render — a control that silently does nothing is worse than none.
+   */
   onRecordScreenshot?: (platform: PlatformId, form: "url" | "data", value: string) => void;
+  /** Omitted on a read-only surface, and then the Remove button does not render. */
   onRemoveScreenshot?: (platform: PlatformId) => void;
   /** Provenance of the current shot per platform, for the caption. */
   screenshotMeta?: Partial<Record<PlatformId, { ts?: string; source?: "ci" | "manual"; form?: string }>>;
@@ -216,16 +221,18 @@ export function PlatformVariants({
               className={`max-h-40 w-full object-contain rounded-md border border-border ${onZoomShot ? "cursor-zoom-in" : ""}`}
               onClick={onZoomShot ? () => onZoomShot(activeTab) : undefined}
             />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute top-1 right-1 size-6 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity bg-background/80 cursor-pointer"
-              aria-label="Remove screenshot"
-              disabled={busy}
-              onClick={() => onRemoveScreenshot?.(activeTab)}
-            >
-              <X className="size-3.5" />
-            </Button>
+            {onRemoveScreenshot && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute top-1 right-1 size-6 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity bg-background/80 cursor-pointer"
+                aria-label="Remove screenshot"
+                disabled={busy}
+                onClick={() => onRemoveScreenshot(activeTab)}
+              >
+                <X className="size-3.5" />
+              </Button>
+            )}
             {/* Always captioned while a shot is up: a slot with no provenance is
                 a legacy one written before the op existed, and saying so is the
                 caption's job. */}
@@ -239,6 +246,10 @@ export function PlatformVariants({
               {currentStale ? " · may be stale" : ""}
             </p>
           </div>
+        ) : !onRecordScreenshot ? (
+          // Read-only: no way to record, so say there is nothing rather than
+          // offer a drop zone and a URL field that would drop what they get.
+          <p className="text-xs text-muted-foreground">No screenshot</p>
         ) : (
           <div className="flex flex-col gap-2">
             <div
@@ -279,7 +290,7 @@ export function PlatformVariants({
                 e.preventDefault();
                 const value = urlDraft.trim();
                 if (!HTTPS_URL.test(value)) return;
-                onRecordScreenshot?.(activeTab, "url", value);
+                onRecordScreenshot(activeTab, "url", value);
                 setUrlDraft("");
               }}
             >
@@ -304,13 +315,15 @@ export function PlatformVariants({
             </form>
           </div>
         )}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={handleFileInput}
-        />
+        {onRecordScreenshot && (
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleFileInput}
+          />
+        )}
       </Field>
     </>
   );
