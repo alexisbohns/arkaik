@@ -188,6 +188,58 @@ web the workflow reads them off the pull requests merged since the last deploy;
 for the platforms where it cannot see that moment, work the ids out yourself
 and pass them as `ids`. The door accepts up to fifty entries per call.
 
+### A token for screenshots: `screenshot:append`
+
+A screenshot is a fact about a commit, and the job that renders it is where it
+should be recorded from. `screenshot:append` is the third append-only scope:
+one route, `POST …/screenshots`, one kind of write. What it can do: say
+*here is a screenshot of this view or acceptance on this platform, from this
+commit*. What it cannot: read the graph, move a status, touch a flow or a
+data model, or fill a platform the node does not list. A leaked token can
+post a picture.
+
+Each entry names the node, the platform, an `https` URL you host, the commit
+and its `order` — the commit's height on your default branch
+(`git rev-list --count <sha>`). The order is what keeps a re-run or a rebase
+that lands late from overwriting a newer shot: an entry below the slot's
+watermark is a `stale_order` skip, an unchanged URL an `unchanged` skip, and
+both are a 200. The workflow refuses a commit that is not on the default branch, because the order is only comparable as that branch's height; call it from a push or deploy of the default branch, not from a pull request. A refused entry (`unknown_node`, `not_shot_bearing`,
+`platform_not_applicable`, `invalid_url`) refuses the whole batch with a 422
+naming its `index`. A shot a person records in the UI always lands and
+becomes current; the next CI run after it replaces it, which is the point.
+
+```bash
+curl -sS --fail-with-body -X POST "$ARKAIK_URL/api/graph/projects/$PROJECT_ID/screenshots" \
+  -H "Authorization: Bearer $ARKAIK_SCREENSHOT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"entries":[{"node_id":"V-home","platform":"ios","url":"https://shots.example/'"$SHA"'/ios/V-home.png","commit":"'"$SHA"'","order":412,"detail":"HomeTests.default"}]}'
+```
+
+The CLI wraps it — `arkaik shot --manifest shots.json --commit $SHA --order $ORDER` —
+and the **`record-screenshots` reusable workflow** does it from a manifest
+your render job uploads as an artifact:
+
+```yaml
+jobs:
+  render:
+    # … run your screenshot tests, upload the PNGs to your bucket,
+    # write shots.json as [{ node_id, platform, url, detail? }] …
+    steps:
+      - uses: actions/upload-artifact@v4
+        with: { name: shots, path: shots.json }
+  record:
+    needs: render
+    uses: alexisbohns/arkaik/.github/workflows/record-screenshots.yml@main
+    with:
+      manifest_artifact: shots
+    secrets:
+      ARKAIK_SCREENSHOT_TOKEN: ${{ secrets.ARKAIK_SCREENSHOT_TOKEN }}
+```
+
+Which test feeds which node is your naming convention — a test whose name
+carries the `AC-…` or `V-…` id is the simplest — and the bytes stay with you:
+arkaik stores URLs, not images.
+
 ## 2. Get a hosted project
 
 On `/projects`, either create a project while signed in, or take a browser-held

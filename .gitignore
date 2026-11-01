@@ -27,6 +27,7 @@
 /tests/services/.test-build-publik/
 /tests/services/.test-build-graph/
 /tests/services/.test-build-live/
+/tests/services/.test-build-screenshots/
 /tests/services/.test-build-graph-etag/
 /tests/services/.test-build-github/
 /tests/services/.test-build-pr-plan/
@@ -49,6 +50,7 @@
 /tests/app/.test-build-product-*/
 /tests/app/.test-build-relation-lines-*/
 /tests/app/.test-build-quality/
+/tests/app/.test-build-screenshot-staleness/
 /packages/cli/.test-build/
 # transient CJS build emitted by the bootstrap-lib direct-require tests
 # (tests/cli/load-bootstrap-lib.js) — a separate dir from the one above,
@@ -60,6 +62,7 @@
 # it behind
 /packages/cli/.test-build-restore/
 /packages/cli/.test-build-live/
+/packages/cli/.test-build-shot/
 # transient ESM bundle emitted by tests/cli/quality-section-fold.test.js
 # (esbuild-bundles pack.ts to reach runPack options that have no CLI flag
 # yet) — cleaned up on a successful run, kept ignored in case a crashed run

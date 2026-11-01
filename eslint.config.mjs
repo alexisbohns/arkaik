@@ -33,11 +33,12 @@ const eslintConfig = defineConfig([
     // cleaned up on success, but a crashed run must not break lint.
     "packages/schema/.test-build/**",
     "packages/schema/.generate-build/**",
-    // Same technique as packages/schema/.test-build/** above, for the
-    // bootstrap-lib direct-require tests (tests/cli/load-bootstrap-lib.js):
-    // never explicitly cleaned up between runs, so it lingers on disk and
-    // must stay ignored rather than break a later `npm run lint`.
-    "packages/cli/.test-build-bootstrap/**",
+    // Same technique as packages/schema/.test-build/** above, for every CLI
+    // suite that esbuild-bundles a command (.test-build, -live, -shot, …) and
+    // for the bootstrap-lib direct-require tests (tests/cli/load-bootstrap-lib.js),
+    // which never clean up between runs: whatever lingers on disk must stay
+    // ignored rather than break a later `npm run lint`.
+    "packages/cli/.test-build*/**",
   ]),
 ]);
 

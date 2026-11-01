@@ -34,6 +34,8 @@ const VALID_OPS = new Set([
   "delete_nodes",
   "create_edge",
   "delete_edge",
+  "record_screenshot",
+  "remove_screenshot",
 ]);
 
 /**

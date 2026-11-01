@@ -102,6 +102,8 @@ function checkScopeVocabulary() {
   // one route, one kind of write, never a default.
   check("release:append is a recognized scope", isTokenScope("release:append"));
   check("release:append is not a default", !DEFAULT_TOKEN_SCOPES.includes("release:append"));
+  check("screenshot:append is a recognized scope", isTokenScope("screenshot:append"));
+  check("screenshot:append is not a default scope", !DEFAULT_TOKEN_SCOPES.includes("screenshot:append"));
   check("defaults are unchanged", DEFAULT_TOKEN_SCOPES.join(",") === "graph:read,graph:write");
 
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });

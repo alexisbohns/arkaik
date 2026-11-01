@@ -709,6 +709,9 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
         scope={scope}
         history
         onUpdate={handleNodeUpdate}
+        onScreenshot={async (op) => {
+          await applyMutations([op]);
+        }}
         onDelete={handleDeleteNodeRequest}
         onCreateNode={handleCreateNodeFromPanel}
         intake={intake}

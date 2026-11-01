@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { PageHeader, type PageAction } from "@/components/layout/PageHeader";
 import { ProjectPanels } from "@/components/panels/ProjectPanels";
+import type { ScreenshotPanelOp } from "@/lib/utils/screenshot-ops";
 import type { KritikLibrary, QualitySection, QualityTrend } from "@arkaik/schema";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { Edge, Node } from "@/lib/data/types";
@@ -43,6 +44,8 @@ interface PageShellProps {
    */
   history?: boolean;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
+  /** Screenshot writes as ops — see `ProjectPanels`. */
+  onScreenshot?: (op: ScreenshotPanelOp) => Promise<void> | void;
   onDelete?: (nodeId: string) => void;
   onCreateNode?: (species: "flow" | "view", title: string) => Promise<Node>;
   onCreateAcceptanceForAnchor?: (anchor: Node, title: string) => Promise<Node>;

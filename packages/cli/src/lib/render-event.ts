@@ -88,6 +88,14 @@ export function renderEventLine(
       const to = str(event.to) ?? "?";
       return `${title(event.node_id, nodesById)}: reference ${from ? `${from} -> ${to}` : to}`;
     }
+    case "screenshot.recorded": {
+      const platform = str(event.platform);
+      return `${title(event.node_id, nodesById)}: screenshot recorded${platform ? ` [${platform}]` : ""}`;
+    }
+    case "screenshot.removed": {
+      const platform = str(event.platform);
+      return `${title(event.node_id, nodesById)}: screenshot removed${platform ? ` [${platform}]` : ""}`;
+    }
     case "journal.baseline": {
       const count = Array.isArray(event.node_ids) ? event.node_ids.length : 0;
       return `Journal baseline: ${count} pre-existing node(s) recorded`;

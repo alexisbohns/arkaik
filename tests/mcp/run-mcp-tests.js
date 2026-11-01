@@ -120,9 +120,9 @@ async function main() {
 
   const listed = await request("tools/list");
   const toolNames = (listed.result?.tools ?? []).map((tool) => tool.name);
-  // 14 graph tools + 12 kritik_* (docs/spec/mcp.md § Tool Catalog).
-  check("tools/list exposes the 27-tool catalog", toolNames.length === 27, toolNames.join(", "));
-  for (const name of ["list_nodes", "get_node", "create_node", "update_node", "add_edge", "validate_bundle", "get_map"]) {
+  // 16 graph tools + 12 kritik_* (docs/spec/mcp.md § Tool Catalog).
+  check("tools/list exposes the 29-tool catalog", toolNames.length === 29, toolNames.join(", "));
+  for (const name of ["list_nodes", "get_node", "create_node", "update_node", "add_edge", "validate_bundle", "get_map", "record_screenshot", "remove_screenshot"]) {
     check(`catalog includes ${name}`, toolNames.includes(name));
   }
   for (const name of ["kritik_matrix", "kritik_score", "kritik_open_finding", "kritik_resolve_finding"]) {
@@ -248,6 +248,21 @@ async function main() {
     noop.body?.events.length === 0 && linesAfterNoop === linesBefore + 1,
     JSON.stringify(noop.body),
   );
+
+  // --- record_screenshot / remove_screenshot (screenshot events, part 2) ------
+  const recorded = await callTool("record_screenshot", { node_id: "V-profile", platform: "web", form: "url", value: "https://shots.example/profile.png", detail: "from the fixture" });
+  check(
+    "record_screenshot emits screenshot.recorded with the mcp actor and source manual",
+    recorded.body?.events?.some((e) => e.type === "screenshot.recorded" && e.actor === "arkaik-mcp" && e.source === "manual" && e.url === "https://shots.example/profile.png"),
+    JSON.stringify(recorded.body),
+  );
+  check("record_screenshot returns the slot", recorded.body?.node?.metadata?.platformScreenshots?.web === "https://shots.example/profile.png", JSON.stringify(recorded.body?.node?.metadata));
+  const recordedAgain = await callTool("record_screenshot", { node_id: "V-profile", platform: "web", form: "url", value: "https://shots.example/profile.png" });
+  check("the same value again is a no-op", recordedAgain.body?.events?.length === 0 && /no-op/i.test(recordedAgain.body?.note ?? ""), JSON.stringify(recordedAgain.body));
+  const badPlatform = await callTool("record_screenshot", { node_id: "V-profile", platform: "ios", form: "url", value: "https://shots.example/p.png" });
+  check("a platform the node does not list is a tool error naming platform_not_applicable", badPlatform.isError === true && /platform_not_applicable/.test(badPlatform.body?.message ?? ""), JSON.stringify(badPlatform.body));
+  const cleared = await callTool("remove_screenshot", { node_id: "V-profile", platform: "web" });
+  check("remove_screenshot emits screenshot.removed", cleared.body?.events?.some((e) => e.type === "screenshot.removed"), JSON.stringify(cleared.body));
 
   const created = await callTool("create_node", {
     species: "view",

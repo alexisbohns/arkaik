@@ -203,6 +203,9 @@ export default function ProjectAcceptancesPage() {
         scope={scope}
         history
         onUpdate={handleNodeUpdate}
+        onScreenshot={async (op) => {
+          await applyMutations([op]);
+        }}
         onCreateAcceptanceForAnchor={handleCreateAcceptanceForAnchor}
         intake={intake}
         relations={relations}

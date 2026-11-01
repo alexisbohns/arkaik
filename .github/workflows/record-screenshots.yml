@@ -1,0 +1,104 @@
+# Reusable: record a consumer's rendered screenshots in a hosted arkaik
+# project (spec 2026-11-01). The caller renders and uploads its images
+# wherever it likes, writes a manifest `[{ node_id, platform, url, detail? }]`
+# and calls this workflow with its path and the rendered commit. It computes
+# the commit's height on the default branch (the door's ordering key, so a
+# re-run or a rebase arriving late can never overwrite a newer shot) and runs
+# `arkaik shot`. A refused entry is a red job; a skipped one (stale order,
+# unchanged) is reported and green.
+#
+# The caller's repo must be linked (docs/arkaik/arkaik.json, `arkaik link`)
+# and hold a screenshot:append token as the ARKAIK_SCREENSHOT_TOKEN secret.
+# The commit must be on the default branch (the order is that branch's height), so call this from a push or deploy of it, not from a pull request.
+# There is no workflow_dispatch: a manual run has no artifact to download.
+# The manifest is passed as a path inside the calling job's checkout, so the
+# caller uploads it as an artifact named by `manifest_artifact` and this
+# workflow downloads it.
+name: record-screenshots
+
+on:
+  workflow_call:
+    inputs:
+      manifest_artifact:
+        description: "Name of the uploaded artifact holding the manifest JSON."
+        required: true
+        type: string
+      manifest_path:
+        description: "Path of the manifest inside that artifact."
+        required: false
+        type: string
+        default: "shots.json"
+      sha:
+        description: "The commit the screenshots were rendered from. Default: the triggering commit."
+        required: false
+        type: string
+        default: ""
+    secrets:
+      ARKAIK_SCREENSHOT_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+    steps:
+      - name: Check out the rendered repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha != '' && inputs.sha || github.sha }}
+          fetch-depth: 0
+          path: repo
+          persist-credentials: false
+
+      - name: Check out arkaik (the CLI is built from main)
+        uses: actions/checkout@v4
+        with:
+          repository: alexisbohns/arkaik
+          ref: main
+          path: tool
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tool/package-lock.json
+
+      - name: Build the arkaik CLI
+        working-directory: tool
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build -w arkaik
+
+      - name: Download the manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.manifest_artifact }}
+          path: manifest
+
+      - name: Record
+        working-directory: repo
+        env:
+          ARKAIK_TOKEN: ${{ secrets.ARKAIK_SCREENSHOT_TOKEN }}
+          MANIFEST: ../manifest/${{ inputs.manifest_path }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          SHA=$(git rev-parse HEAD)
+          if ! git rev-parse -q --verify "origin/$DEFAULT_BRANCH^{commit}" >/dev/null; then
+            echo "origin/$DEFAULT_BRANCH is not in the checkout (fetch-depth must stay 0)." >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$SHA" "origin/$DEFAULT_BRANCH"; then
+            echo "$SHA is not on $DEFAULT_BRANCH: screenshots are recorded from the default branch only, so their order is its height. Call this workflow from a push or deploy of $DEFAULT_BRANCH, not from a pull request." >&2
+            exit 1
+          fi
+          # The ordering key: commits reachable from the rendered sha. Monotonic
+          # along the default branch, which is all the door's watermark needs.
+          ORDER=$(git rev-list --count "$SHA")
+          echo "Recording $(jq 'if type=="array" then length else error("manifest is not an array") end' "$MANIFEST") screenshot(s) from $SHA (order $ORDER)" >&2
+          node ../tool/packages/cli/dist/index.js shot --manifest "$MANIFEST" --commit "$SHA" --order "$ORDER"
