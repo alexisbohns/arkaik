@@ -72,6 +72,8 @@ All tool results are JSON text content. Read tools are projections; write tools 
 | `get_node` | `node_id` | full node + edges with neighbor titles + where-used flows + `computeNodeTimeline` + (views/flows) `covered_by` | — |
 | `create_node` | `species`, `title`, `description?`, `status?`, `platforms`, `metadata?` | created node (id via `deriveNodeId`) + any synthesized `composes` edges | `node.created` (+ one `edge.added` per synthesized composes edge — see Playlist Composition) |
 | `update_node` | `node_id`, `patch` | updated node + any synthesized `composes` edges | via `diffNodeUpdate`: `node.updated` / `node.status_changed` (± `platform`) / `ref.added` / `ref.removed` (+ `edge.added` per synthesized composes edge) |
+| `record_screenshot` | `node_id`, `platform`, `form` (`url` \| `path` \| `data`), `value`, `detail?` | updated node | `screenshot.recorded` (source `manual`); a no-op when the value is unchanged or a newer CI shot outranks it |
+| `remove_screenshot` | `node_id`, `platform` | updated node | `screenshot.removed` |
 | `delete_node` | `node_id` | removed node + cascaded edge ids | `node.deleted` (edge cascade implied per [journal.md](journal.md)) |
 | `add_edge` | `source_id`, `target_id`, `edge_type` | created edge (id via `edgeId`) | `edge.added` |
 | `remove_edge` | `edge_id` | ack | `edge.removed` |

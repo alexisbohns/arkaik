@@ -32,6 +32,7 @@ import {
   type MutationOp,
   type MutationOutcome,
   type Node,
+  type PlatformId,
   type Project,
   type ReleaseTaggedEvent,
   type ValueId,
@@ -132,6 +133,23 @@ function unwrap(result: WriteResult): { warnings: unknown[]; events: JournalEven
 
 const UPDATABLE_NODE_FIELDS = new Set(["title", "description", "status", "platforms", "metadata"]);
 
+/** Narrow a tool argument to a platform id, refusing anything else. */
+function requirePlatform(args: Record<string, unknown>): PlatformId {
+  const raw = requireString(args, "platform");
+  const platform = PLATFORM_IDS.find((id) => id === raw);
+  if (platform === undefined) {
+    throw new ToolError(`"${raw}" is not a platform (expected one of: ${PLATFORM_IDS.join(", ")}).`);
+  }
+  return platform;
+}
+
+/** Narrow a tool argument to a screenshot form, refusing anything else. */
+function requireScreenshotForm(args: Record<string, unknown>): "url" | "path" | "data" {
+  const raw = requireString(args, "form");
+  if (raw === "url" || raw === "path" || raw === "data") return raw;
+  throw new ToolError(`"${raw}" is not a screenshot form (url, path or data).`);
+}
+
 /**
  * Run ops through the shared mutation core, mapping a refusal onto a ToolError.
  *
@@ -146,7 +164,7 @@ function mutate(graph: LoadedGraph, ops: MutationOp[]): MutationOutcome {
   try {
     return applyOps({ projectId: graph.project.id, nodes: graph.nodes, edges: graph.edges }, ops);
   } catch (err) {
-    if (err instanceof MutationError) throw new ToolError(err.message);
+    if (err instanceof MutationError) throw new ToolError(`${err.code}: ${err.message}`);
     throw err;
   }
 }
@@ -512,6 +530,77 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
       );
       const { warnings, events } = unwrap(result);
       return { node: updated, edges: outcome.synthesizedEdges, events, warnings };
+    },
+  );
+
+  tool(
+    {
+      name: "record_screenshot",
+      description:
+        "Record a screenshot for one platform slot of a view or acceptance (screenshot.recorded). `form` is url (https), path (relative to the bundle) or data (an image data URI). Source is manual; CI posts through the screenshots door. Never patch metadata.platformScreenshots with update_node.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          node_id: { type: "string" },
+          platform: { type: "string", enum: [...PLATFORM_IDS] },
+          form: { type: "string", enum: ["url", "path", "data"] },
+          value: { type: "string", description: "The https URL, relative path or image data URI, per form." },
+          detail: { type: "string" },
+        },
+        required: ["node_id", "platform", "form", "value"],
+        additionalProperties: false,
+      },
+    },
+    async (args) => {
+      const nodeId = requireString(args, "node_id");
+      const platform = requirePlatform(args);
+      const form = requireScreenshotForm(args);
+      const value = requireString(args, "value");
+      const graph = await load(ctx);
+      const ops: MutationOp[] = [
+        {
+          op: "record_screenshot",
+          node_id: nodeId,
+          platform,
+          source: "manual",
+          form,
+          value,
+          ...(typeof args.detail === "string" && args.detail !== "" ? { detail: args.detail } : {}),
+        },
+      ];
+      const outcome = mutate(graph, ops);
+      const node = outcome.nodes.find((candidate) => candidate.id === nodeId)!;
+      if (outcome.eventInputs.length === 0) {
+        return { node, events: [], note: "No-op — the slot already holds this value, or a newer CI shot outranks it; nothing written." };
+      }
+      const result = await ctx.store.persist(graph, { nodes: outcome.nodes, edges: outcome.edges, ops }, outcome.eventInputs);
+      const { warnings, events } = unwrap(result);
+      return { node, events, warnings };
+    },
+  );
+
+  tool(
+    {
+      name: "remove_screenshot",
+      description: "Clear one platform slot's screenshot (screenshot.removed). The slot's CI order watermark survives, so a late CI re-run cannot bring the shot back.",
+      inputSchema: {
+        type: "object",
+        properties: { node_id: { type: "string" }, platform: { type: "string", enum: [...PLATFORM_IDS] } },
+        required: ["node_id", "platform"],
+        additionalProperties: false,
+      },
+    },
+    async (args) => {
+      const nodeId = requireString(args, "node_id");
+      const platform = requirePlatform(args);
+      const graph = await load(ctx);
+      const ops: MutationOp[] = [{ op: "remove_screenshot", node_id: nodeId, platform }];
+      const outcome = mutate(graph, ops);
+      const node = outcome.nodes.find((candidate) => candidate.id === nodeId)!;
+      if (outcome.eventInputs.length === 0) return { node, events: [], note: "No-op — the slot was already empty." };
+      const result = await ctx.store.persist(graph, { nodes: outcome.nodes, edges: outcome.edges, ops }, outcome.eventInputs);
+      const { warnings, events } = unwrap(result);
+      return { node, events, warnings };
     },
   );
 

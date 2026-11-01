@@ -108,7 +108,7 @@ Each graph operation has a matching event. Append one line per operation:
 | Remove a node | `node.deleted` (`node_id`) — **implies** cascade removal of its edges; do NOT also emit `edge.removed` for those |
 | Remove an edge on its own (node stays) | `edge.removed` (`edge_id`) |
 | Attach / detach an external reference | `ref.added` / `ref.removed` |
-| Record a screenshot for one platform | `screenshot.recorded` (`node_id`, `platform`, `source`, `form`, `url?`, `commit?`, `order?`) — through the `record_screenshot` tool/op, never by patching `metadata.platformScreenshots` (the MCP tool, the `/mutations` op and `arkaik shot` land with Part 2; until then a slot patched through `update_node` is the legacy path and the validator warns `screenshot-untracked`) |
+| Record a screenshot for one platform | `screenshot.recorded` (`node_id`, `platform`, `source`, `form`, `url?`, `commit?`, `order?`) — through the `record_screenshot` tool/op, never by patching `metadata.platformScreenshots` (`arkaik shot` lands with the CLI task of Part 2; a slot patched through `update_node` is the legacy path and the validator warns `screenshot-untracked`) |
 | Clear a screenshot | `screenshot.removed` (`node_id`, `platform`) — through `remove_screenshot` |
 
 Other event types you may append when the change warrants it: `release.tagged`
