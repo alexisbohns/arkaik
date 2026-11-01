@@ -7,6 +7,7 @@ import { PLATFORM_ICONS, PLATFORM_LABELS } from "@/components/graph/nodes/node-s
 import type { PlatformStatusMap } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 import { platformAvailabilityShape } from "@/lib/utils/product-scope";
+import { formatShotDate } from "@/lib/utils/screenshot-ops";
 import {
   Select,
   SelectContent,
@@ -25,11 +26,6 @@ import { ImagePlus, X } from "lucide-react";
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
 /** The one form the URL field records; `decideScreenshot` checks it again server-side. */
 const HTTPS_URL = /^https:\/\/\S+$/;
-
-function formatShotDate(ts: string): string | undefined {
-  const date = new Date(ts);
-  return Number.isNaN(date.getTime()) ? undefined : date.toLocaleDateString();
-}
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {

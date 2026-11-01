@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { GUARDED_HOTKEY, useShortcut } from "@/lib/hooks/useShortcut";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useProjectId } from "@/lib/hooks/useProjectId";
+import { formatShotDate } from "@/lib/utils/screenshot-ops";
 
 export interface ShotPreviewDialogProps {
   open: boolean;
@@ -46,9 +47,6 @@ export function ShotPreviewDialog({
   const platformStatuses: PlatformStatusMap = (node?.metadata?.platformStatuses as PlatformStatusMap) ?? {};
   const platformNotes: PlatformNotesMap = (node?.metadata?.platformNotes as PlatformNotesMap) ?? {};
 
-  const projectId = useProjectId();
-  const { journal } = useJournal(projectId, { types: ["screenshot.recorded", "screenshot.removed"] });
-
   // Platforms that actually have a screenshot
   const platformsWithShots = platforms.filter((p) => screenshots[p]);
 
@@ -67,18 +65,6 @@ export function ShotPreviewDialog({
   }, [open, node?.id, initialPlatform]);
 
   const currentIndex = platformsWithShots.indexOf(activeTab);
-
-  // Only the `url`/`path` forms reach the strip: a data-form event carries no
-  // url (the bytes live in the snapshot only), so there is nothing to show.
-  const history = useMemo(
-    () =>
-      node
-        ? screenshotHistory(journal, node.id, activeTab).filter(
-            (ev) => ev.type === "screenshot.recorded" && typeof ev.url === "string",
-          )
-        : [],
-    [journal, node, activeTab],
-  );
 
   const goToPrev = useCallback(() => {
     if (platformsWithShots.length <= 1) return;
@@ -180,30 +166,7 @@ export function ShotPreviewDialog({
         </div>
       )}
 
-      {/* Earlier shots — the current one is the last entry and is excluded */}
-      {history.length > 1 && (
-        <div className="flex flex-col gap-1.5">
-          <span className={FIELD_LABEL_CLASS}>Earlier shots</span>
-          <div className="flex gap-1.5 overflow-x-auto">
-            {history
-              .slice(0, -1)
-              .reverse()
-              .map((ev) => (
-                <a
-                  key={ev.id}
-                  href={ev.url as string}
-                  target="_blank"
-                  rel="noreferrer"
-                  title={`${ev.source === "ci" ? "CI" : "By hand"} · ${new Date(ev.ts).toLocaleString()}${
-                    ev.commit ? ` · ${String(ev.commit).slice(0, 7)}` : ""
-                  }`}
-                >
-                  <img src={ev.url as string} alt="" className="h-12 w-auto rounded border border-border object-contain" />
-                </a>
-              ))}
-          </div>
-        </div>
-      )}
+      <EarlierShots node={node} platform={activeTab} current={currentScreenshot} />
 
       {/* Gallery indicator */}
       {platformsWithShots.length > 1 && (
@@ -343,5 +306,63 @@ export function ShotPreviewDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+interface EarlierShot {
+  id: string;
+  url: string;
+  label: string;
+}
+
+/**
+ * The slot's earlier recordings, newest first. A child of the dialog so the
+ * journal projection is read only while the dialog is mounted, not on every
+ * surface that merely holds a closed one.
+ *
+ * "Earlier" is decided by identity with the slot, not by position: every
+ * `screenshot.recorded` whose url is not the slot's current value. Only the
+ * `url` form reaches the strip — a bundle path would render as a broken image
+ * in the hosted app, and a data URI carries no url (its bytes live in the
+ * snapshot only).
+ */
+function EarlierShots({
+  node,
+  platform,
+  current,
+}: {
+  node: Node;
+  platform: PlatformId;
+  current: string | undefined;
+}) {
+  const projectId = useProjectId();
+  const { journal } = useJournal(projectId, { types: ["screenshot.recorded", "screenshot.removed"] });
+
+  const earlier = useMemo<EarlierShot[]>(() => {
+    const shots: EarlierShot[] = [];
+    for (const ev of screenshotHistory(journal, node.id, platform)) {
+      if (ev.type !== "screenshot.recorded" || ev.form !== "url") continue;
+      const url = ev.url;
+      if (typeof url !== "string" || url === current) continue;
+      const by = ev.source === "ci" ? "CI" : "By hand";
+      const commit = typeof ev.commit === "string" ? ` · ${ev.commit.slice(0, 7)}` : "";
+      shots.push({ id: ev.id, url, label: `${by} · ${formatShotDate(ev.ts) ?? "unknown date"}${commit}` });
+    }
+    return shots.reverse();
+  }, [journal, node.id, platform, current]);
+
+  if (earlier.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className={FIELD_LABEL_CLASS}>Earlier shots</span>
+      <div className="flex gap-1.5 overflow-x-auto">
+        {earlier.map((shot) => (
+          <a key={shot.id} href={shot.url} target="_blank" rel="noreferrer" title={shot.label}>
+            <img src={shot.url} alt={shot.label} className="h-12 w-auto rounded border border-border object-contain" />
+          </a>
+        ))}
+      </div>
+    </div>
   );
 }

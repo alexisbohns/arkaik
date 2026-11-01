@@ -15,3 +15,12 @@ import type { MutationOp } from "@arkaik/schema";
 export type ScreenshotPanelOp =
   | (Extract<MutationOp, { op: "record_screenshot" }> & { source: "manual"; form: "url" | "data" })
   | Extract<MutationOp, { op: "remove_screenshot" }>;
+
+/**
+ * The day a shot was taken, for a caption. Guarded: `ts` crosses a surface
+ * boundary and a malformed one renders "Invalid Date" unless checked.
+ */
+export function formatShotDate(ts: string): string | undefined {
+  const date = new Date(ts);
+  return Number.isNaN(date.getTime()) ? undefined : date.toLocaleDateString();
+}

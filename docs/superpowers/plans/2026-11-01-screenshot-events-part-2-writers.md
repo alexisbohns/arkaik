@@ -1779,41 +1779,45 @@ git commit -m "feat(app): record screenshots through the op with a URL field and
 **Files:**
 - Modify: `components/panels/ShotPreviewDialog.tsx`
 
-- [ ] **Step 1: Read history**
+- [ ] **Step 1: Read history, in a child**
 
-Inside the component, after the `platformNotes` line:
+Add an `EarlierShots({ node, platform, current })` component at the bottom of the file. It owns the read — `useProjectId()` and `useJournal(projectId, { types: ["screenshot.recorded", "screenshot.removed"] })` — so the journal projection is only read while the dialog is mounted, not by every surface that holds a closed one. Its memo maps the slot's history to `{ id, url, label }`:
 
 ```ts
-  const projectId = useProjectId();
-  const { journal } = useJournal(projectId, { types: ["screenshot.recorded", "screenshot.removed"] });
-  const history = useMemo(
-    () => (node ? screenshotHistory(journal, node.id, activeTab).filter((ev) => ev.type === "screenshot.recorded" && typeof ev.url === "string") : []),
-    [journal, node, activeTab],
-  );
+  const earlier = useMemo<EarlierShot[]>(() => {
+    const shots: EarlierShot[] = [];
+    for (const ev of screenshotHistory(journal, node.id, platform)) {
+      if (ev.type !== "screenshot.recorded" || ev.form !== "url") continue;
+      const url = ev.url;
+      if (typeof url !== "string" || url === current) continue;
+      const by = ev.source === "ci" ? "CI" : "By hand";
+      const commit = typeof ev.commit === "string" ? ` · ${ev.commit.slice(0, 7)}` : "";
+      shots.push({ id: ev.id, url, label: `${by} · ${formatShotDate(ev.ts) ?? "unknown date"}${commit}` });
+    }
+    return shots.reverse();
+  }, [journal, node.id, platform, current]);
 ```
+
+"Earlier" is keyed on the slot, not on position: every `url`-form recording whose url is not the slot's current value (`current = screenshots[platform]`). Only the `url` form reaches the strip — a path would render as a broken image in the hosted app and a data URI carries no url. `formatShotDate` moves from `PlatformVariants.tsx` to `lib/utils/screenshot-ops.ts` (exported) and both files import it.
 
 Imports: `useProjectId` from `@/lib/hooks/useProjectId`, `useJournal` from `@/lib/hooks/useJournal`, `screenshotHistory` from `@arkaik/schema`, `useMemo` from react.
 
 - [ ] **Step 2: Render the strip**
 
-In the sidebar, after the Platform notes block and before the Gallery indicator:
+The child returns `null` when `earlier` is empty; otherwise the strip, newest first. The dialog renders `<EarlierShots node={node} platform={activeTab} current={currentScreenshot} />` in the sidebar after the Platform notes block and before the Gallery indicator:
 
 ```tsx
-      {history.length > 1 && (
-        <div className="flex flex-col gap-1.5">
-          <span className={FIELD_LABEL_CLASS}>Earlier shots</span>
-          <div className="flex gap-1.5 overflow-x-auto">
-            {history.slice(0, -1).reverse().map((ev) => (
-              <a key={ev.id} href={ev.url as string} target="_blank" rel="noreferrer" title={`${ev.source === "ci" ? "CI" : "By hand"} · ${new Date(ev.ts).toLocaleString()}${ev.commit ? ` · ${String(ev.commit).slice(0, 7)}` : ""}`}>
-                <img src={ev.url as string} alt="" className="h-12 w-auto rounded border border-border object-contain" />
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
+    <div className="flex flex-col gap-1.5">
+      <span className={FIELD_LABEL_CLASS}>Earlier shots</span>
+      <div className="flex gap-1.5 overflow-x-auto">
+        {earlier.map((shot) => (
+          <a key={shot.id} href={shot.url} target="_blank" rel="noreferrer" title={shot.label}>
+            <img src={shot.url} alt={shot.label} className="h-12 w-auto rounded border border-border object-contain" />
+          </a>
+        ))}
+      </div>
+    </div>
 ```
-
-Only `url`/`path` forms reach this strip (data-form events carry no url and are filtered above); the current shot is the last entry and is excluded from "earlier".
 
 - [ ] **Step 3: Build, check, commit**
 
