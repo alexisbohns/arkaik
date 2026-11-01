@@ -1511,8 +1511,10 @@ jobs:
   record:
     needs: render
     uses: alexisbohns/arkaik/.github/workflows/record-screenshots.yml@main
-    with: { manifest_artifact: shots }
-    secrets: { ARKAIK_SCREENSHOT_TOKEN: ${{ secrets.ARKAIK_SCREENSHOT_TOKEN }} }
+    with:
+      manifest_artifact: shots
+    secrets:
+      ARKAIK_SCREENSHOT_TOKEN: ${{ secrets.ARKAIK_SCREENSHOT_TOKEN }}
 ```
 
 Which test feeds which node is your naming convention — a test whose name

@@ -9,6 +9,8 @@
 #
 # The caller's repo must be linked (docs/arkaik/arkaik.json, `arkaik link`)
 # and hold a screenshot:append token as the ARKAIK_SCREENSHOT_TOKEN secret.
+# The commit must be on the default branch (the order is that branch's height), so call this from a push or deploy of it, not from a pull request.
+# There is no workflow_dispatch: a manual run has no artifact to download.
 # The manifest is passed as a path inside the calling job's checkout, so the
 # caller uploads it as an artifact named by `manifest_artifact` and this
 # workflow downloads it.
@@ -86,9 +88,15 @@ jobs:
           MANIFEST: ../manifest/${{ inputs.manifest_path }}
         run: |
           set -euo pipefail
-          SHA=$(git rev-parse "$SHA")
+          SHA=$(git rev-parse HEAD)
+          DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+          git fetch -q origin "$DEFAULT_BRANCH"
+          if ! git merge-base --is-ancestor "$SHA" "origin/$DEFAULT_BRANCH"; then
+            echo "$SHA is not on $DEFAULT_BRANCH: screenshots are recorded from the default branch only, so their order is its height. Call this workflow from a push or deploy of $DEFAULT_BRANCH, not from a pull request." >&2
+            exit 1
+          fi
           # The ordering key: commits reachable from the rendered sha. Monotonic
           # along the default branch, which is all the door's watermark needs.
           ORDER=$(git rev-list --count "$SHA")
-          echo "Recording $(jq length "$MANIFEST") screenshot(s) from $SHA (order $ORDER)" >&2
+          echo "Recording $(jq 'if type=="array" then length else error("manifest is not an array") end' "$MANIFEST") screenshot(s) from $SHA (order $ORDER)" >&2
           node ../tool/packages/cli/dist/index.js shot --manifest "$MANIFEST" --commit "$SHA" --order "$ORDER"

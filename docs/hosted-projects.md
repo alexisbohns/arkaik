@@ -203,7 +203,7 @@ and its `order` — the commit's height on your default branch
 (`git rev-list --count <sha>`). The order is what keeps a re-run or a rebase
 that lands late from overwriting a newer shot: an entry below the slot's
 watermark is a `stale_order` skip, an unchanged URL an `unchanged` skip, and
-both are a 200. A refused entry (`unknown_node`, `not_shot_bearing`,
+both are a 200. The workflow refuses a commit that is not on the default branch, because the order is only comparable as that branch's height; call it from a push or deploy of the default branch, not from a pull request. A refused entry (`unknown_node`, `not_shot_bearing`,
 `platform_not_applicable`, `invalid_url`) refuses the whole batch with a 422
 naming its `index`. A shot a person records in the UI always lands and
 becomes current; the next CI run after it replaces it, which is the point.
@@ -230,8 +230,10 @@ jobs:
   record:
     needs: render
     uses: alexisbohns/arkaik/.github/workflows/record-screenshots.yml@main
-    with: { manifest_artifact: shots }
-    secrets: { ARKAIK_SCREENSHOT_TOKEN: ${{ secrets.ARKAIK_SCREENSHOT_TOKEN }} }
+    with:
+      manifest_artifact: shots
+    secrets:
+      ARKAIK_SCREENSHOT_TOKEN: ${{ secrets.ARKAIK_SCREENSHOT_TOKEN }}
 ```
 
 Which test feeds which node is your naming convention — a test whose name
