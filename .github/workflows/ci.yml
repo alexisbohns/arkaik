@@ -12,6 +12,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Every file in .github/workflows, the reusable mark-live and
+      # record-screenshots included. GitHub validates a workflow file only when
+      # something runs it, and a reusable one only when another repo calls it:
+      # #534's empty job-level `env:` failed every caller with zero jobs and no
+      # log. First, before `npm ci`, because it needs nothing but the checkout
+      # and takes milliseconds. The runner's shellcheck also checks `run:` scripts.
+      - name: Lint workflow files (actionlint)
+        run: |
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12 "$RUNNER_TEMP"
+          "$RUNNER_TEMP/actionlint" -color
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
