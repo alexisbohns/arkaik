@@ -1,6 +1,6 @@
 # Screenshots as events: `screenshot.recorded`, the shot door and the resolver
 
-**Issue:** none yet · **Date:** 2026-11-01 · **Status:** draft, awaiting review
+**Issue:** none yet · **Date:** 2026-11-01 · **Status:** approved 2026-11-01
 
 ## Problem
 
@@ -41,8 +41,12 @@ proof.
    The resolver writes the current shot into `metadata.platformScreenshots`
    unchanged, so `images: true` maps, `ViewNode`, `ShotPreviewDialog` and the
    doc-health indicator need no change, and adds
-   `metadata.platformScreenshotMeta[platform] = { ts, source, commit?, order?, event_id }`
-   so a card can say "iOS, from CI, 3 days ago".
+   `metadata.platformScreenshotMeta[platform] = { ts, source, form, commit?, order?, ci_order? }`
+   so a card can say "iOS, from CI, 3 days ago". `ci_order` is the ingest
+   watermark: the highest CI `order` ever accepted for that slot. It survives
+   a manual shot and a removal, which is what stops a late CI re-run from
+   overwriting a shot a person recorded after it. No `event_id`: ops run
+   before the envelope is stamped, and history is read from the journal.
 
    Rejected: a `refs[]` entry of type `screenshot` (refs mirror external
    status, a shot has none, and the per-platform slot is the display contract);
@@ -77,9 +81,9 @@ proof.
 
 4. **Precedence is decided at ingest, not at read.** For one `(node, platform)`:
    - a `manual` shot is always accepted and becomes current. A person said so;
-   - a `ci` shot is accepted only if `order` is at least the last accepted CI
-     `order` for that slot. A re-run or a rebase arriving late is a
-     `stale_order` skip, never a late overwrite;
+   - a `ci` shot is accepted only if `order` is at least the slot's `ci_order`
+     watermark. A re-run or a rebase arriving late is a `stale_order` skip,
+     never a late overwrite;
    - among accepted events, the latest by `(ts, id)` is current. CI after a
      manual shot replaces it, manual after CI replaces that.
 
@@ -103,9 +107,11 @@ proof.
 ## Format and projection
 
 - `@arkaik/schema`: the two event types, the two ops, `platformScreenshotMeta`
-  on `NodeMetadata`, `reduceScreenshots(events)` in `projections.ts` returning
-  the current slot map and meta, and the validator cross-check
-  (`screenshot-untracked`, warning) in `validate.ts`.
+  on `NodeMetadata`, and a zod-free `screenshots.ts` holding the one decision
+  function (`decideScreenshot`: apply, skip or refuse) that `applyOps` and the
+  door's planner both call, plus the history reducers (`screenshotHistory`,
+  `currentScreenshot`) the validator cross-check (`screenshot-untracked`,
+  warning, in `crossCheckJournal`) and the panel strip read.
 - Kommit mode: `arkaik shot` dual-writes (append the event, patch the slot and
   meta); `validate-bundle.js` runs the same reducer.
 - Hosted mode: the store derives the events from the op and runs the reducer
