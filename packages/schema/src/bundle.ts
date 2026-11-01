@@ -52,6 +52,38 @@ export const PlatformScreenshotsMapSchema: z.ZodType<PlatformScreenshotsMap> = z
 });
 
 /**
+ * Provenance of the current shot in `platformScreenshots[platform]`, written
+ * only by the `record_screenshot` / `remove_screenshot` ops (mutate.ts). Every
+ * field is optional because a removed slot keeps `ci_order`, the ingest
+ * watermark: the highest CI `order` ever accepted for this slot. It survives a
+ * manual shot and a removal, so a late CI re-run of an older commit can never
+ * overwrite a shot a person recorded after it (spec § 4).
+ */
+export interface PlatformScreenshotMeta {
+  ts?: string;
+  source?: "ci" | "manual";
+  form?: "url" | "path" | "data";
+  commit?: string;
+  order?: number;
+  ci_order?: number;
+}
+export const PlatformScreenshotMetaSchema: z.ZodType<PlatformScreenshotMeta> = z
+  .object({
+    ts: z.string().optional(),
+    source: z.enum(["ci", "manual"]).optional(),
+    form: z.enum(["url", "path", "data"]).optional(),
+    commit: z.string().optional(),
+    order: z.number().int().nonnegative().optional(),
+    ci_order: z.number().int().nonnegative().optional(),
+  })
+  .meta({ id: "PlatformScreenshotMeta", description: "Provenance of the current per-platform screenshot and the CI order watermark." });
+
+export type PlatformScreenshotMetaMap = Partial<Record<PlatformId, PlatformScreenshotMeta>>;
+export const PlatformScreenshotMetaMapSchema: z.ZodType<PlatformScreenshotMetaMap> = z
+  .partialRecord(PlatformSchema, PlatformScreenshotMetaSchema)
+  .meta({ id: "PlatformScreenshotMetaMap", description: "Per-platform screenshot provenance (see PlatformScreenshotMeta)." });
+
+/**
  * Known external-reference types (docs/spec/bundle-format.md § References).
  * Unrecognized `type` values are preserved, never rejected — the `(string & {})`
  * arm of `Ref.type` and the free-form `z.string()` in `RefSchema` keep them
@@ -115,6 +147,8 @@ export interface NodeMetadata extends Record<string, unknown> {
   platformNotes?: PlatformNotesMap;
   platformStatuses?: PlatformStatusMap;
   platformScreenshots?: PlatformScreenshotsMap;
+  /** Provenance of each current screenshot plus the CI order watermark; written by the screenshot ops only. */
+  platformScreenshotMeta?: PlatformScreenshotMetaMap;
   refs?: Ref[];
   /** Acceptance nodes: one Given/When/Then scenario — the How (spec §3.1). */
   gherkin?: string;
@@ -142,6 +176,7 @@ export const NodeMetadataSchema: z.ZodType<NodeMetadata> = z
     platformNotes: PlatformNotesMapSchema.optional(),
     platformStatuses: PlatformStatusMapSchema.optional(),
     platformScreenshots: PlatformScreenshotsMapSchema.optional(),
+    platformScreenshotMeta: PlatformScreenshotMetaMapSchema.optional(),
     refs: z.array(RefSchema).optional().meta({ description: "Typed external references on the node." }),
     gherkin: z.string().optional().meta({
       description: "Acceptance nodes only: exactly one Given/When/Then scenario (the How). A second scenario is a second acceptance node.",

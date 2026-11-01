@@ -51,4 +51,19 @@ check("screenshot.removed is in the known vocabulary", JOURNAL_EVENT_TYPES.inclu
   check("screenshot.removed validates", ev.type === "screenshot.removed" && ev.platform === "android");
 }
 
+// --- Task 2: platformScreenshotMeta parses -------------------------------------
+
+{
+  const { NodeMetadataSchema } = schema;
+  const parsed = NodeMetadataSchema.safeParse({
+    platformScreenshots: { ios: "https://shots.example/a.png" },
+    platformScreenshotMeta: { ios: { ts: "2026-11-01T10:00:00.000Z", source: "ci", form: "url", commit: "deadbeef", order: 3, ci_order: 3 } },
+  });
+  check("platformScreenshotMeta parses", parsed.success, JSON.stringify(parsed.error?.issues));
+  const bare = NodeMetadataSchema.safeParse({ platformScreenshotMeta: { web: { ci_order: 9 } } });
+  check("a watermark-only meta entry parses (slot removed, watermark kept)", bare.success, JSON.stringify(bare.error?.issues));
+  const bad = NodeMetadataSchema.safeParse({ platformScreenshotMeta: { web: { ts: "x", source: "bot", form: "url" } } });
+  check("an unknown meta source is refused", !bad.success);
+}
+
 process.exit(failures > 0 ? 1 : 0);
