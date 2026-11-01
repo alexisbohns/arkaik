@@ -496,6 +496,9 @@ export default function ProjectLibraryPage() {
         scope={scope}
         history
         onUpdate={handleNodeUpdate}
+        onScreenshot={async (op) => {
+          await applyMutations([op]);
+        }}
         onCreateNode={handleCreateNodeFromPanel}
         intake={intake}
         relations={relations}

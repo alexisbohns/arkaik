@@ -34,7 +34,7 @@ export default function ProjectDecisionsPage() {
   const id = useProjectId();
 
   const { openNode } = useProjectPanels();
-  const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes, updateNode, addNode } = useNodes(id);
+  const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes, updateNode, addNode, applyMutations } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges } = useEdges(id);
   const { project: projectBundle, error: projectError, reload: reloadProject } = useProject(id);
   const { journal, error: journalError, reload: reloadJournal } = useJournal(id, { types: DECISION_EVENT_TYPES });
@@ -127,6 +127,9 @@ export default function ProjectDecisionsPage() {
         scope={scope}
         history
         onUpdate={handleNodeUpdate}
+        onScreenshot={async (op) => {
+          await applyMutations([op]);
+        }}
       >
         <PageSurface
           contentClassName="flex flex-col gap-4"

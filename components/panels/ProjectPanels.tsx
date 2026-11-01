@@ -14,6 +14,7 @@ import {
   FindingDetailPanelHeader,
 } from "@/components/panels/FindingDetailPanel";
 import { NodeDetailPanel, NodeDetailPanelHeader } from "@/components/panels/NodeDetailPanel";
+import type { ScreenshotPanelOp } from "@/components/panels/NodeDetailPanel";
 import { RawBundlePanel } from "@/components/panels/RawBundlePanel";
 import { SplitAcceptanceDialog } from "@/components/panels/SplitAcceptanceDialog";
 import { DuplicateNodeDialog } from "@/components/panels/DuplicateNodeDialog";
@@ -58,6 +59,8 @@ interface ProjectPanelsProps {
   /** Whether node panels carry a History section — see `PageShell`. */
   history?: boolean;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
+  /** Screenshot writes as ops (`record_screenshot` / `remove_screenshot`), forwarded to every node panel. */
+  onScreenshot?: (op: ScreenshotPanelOp) => Promise<void> | void;
   onDelete?: (nodeId: string) => void;
   onCreateNode?: (species: "flow" | "view", title: string) => Promise<Node>;
   onCreateAcceptanceForAnchor?: (anchor: Node, title: string) => Promise<Node>;
@@ -124,6 +127,7 @@ export function ProjectPanels({
   scope = UNSCOPED,
   history,
   onUpdate,
+  onScreenshot,
   onDelete,
   onCreateNode,
   onCreateAcceptanceForAnchor,
@@ -420,6 +424,7 @@ export function ProjectPanels({
               intake={intake}
               relations={relations}
               onZoomShot={onZoomShot}
+              onScreenshot={onScreenshot}
               findings={qualityFindings}
               // From this panel's own depth, the rule every navigation in the
               // stack follows: a finding opened out of a node sits ABOVE that

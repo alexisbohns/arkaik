@@ -38,6 +38,8 @@ import type { ProductScope } from "@/lib/utils/product-scope";
 import { ProductPicker } from "@/components/panels/ProductPicker";
 import { withProductMembership } from "@/lib/utils/product-editing";
 import { productOf } from "@arkaik/schema";
+import type { PlatformScreenshotMetaMap } from "@arkaik/schema";
+import { useScreenshotStaleness } from "@/lib/hooks/useScreenshotStaleness";
 import { computeNodeTimeline } from "@/lib/utils/journal";
 import { FeedRow } from "@/components/journal/FeedRow";
 import type { FindingRow } from "@/lib/utils/quality";
@@ -51,6 +53,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+/**
+ * A screenshot write, as the op itself. The panel hands it up unchanged and a
+ * surface forwards it to `applyMutations`, so `decideScreenshot` decides once
+ * and the journal gets its `screenshot.recorded` / `screenshot.removed` event —
+ * the one thing a `platformScreenshots` patch through `update_node` never did.
+ */
+export type ScreenshotPanelOp =
+  | { op: "record_screenshot"; node_id: string; platform: PlatformId; source: "manual"; form: "url" | "data"; value: string }
+  | { op: "remove_screenshot"; node_id: string; platform: PlatformId };
+
 interface NodeDetailPanelProps {
   node: Node;
   /**
@@ -63,6 +75,8 @@ interface NodeDetailPanelProps {
   /** Platform tab the variants section opens on (e.g. the clicked Delivery item's platform). */
   initialPlatform?: PlatformId;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
+  /** Screenshot writes, as the op itself: the panel never patches `platformScreenshots` through `onUpdate`. */
+  onScreenshot?: (op: ScreenshotPanelOp) => Promise<void> | void;
   // No `onDelete` / `onDuplicate` here: the record's own actions render in
   // `NodeDetailPanelHeader`, which takes them directly. The body accepted
   // `onDelete` and discarded it with `void onDelete;` for as long as there was
@@ -431,25 +445,37 @@ interface PlatformVariantsSectionProps {
   scope: ProductScope;
   initialPlatform?: PlatformId;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
+  onScreenshot?: (op: ScreenshotPanelOp) => Promise<void> | void;
   onZoomShot?: (platform: PlatformId) => void;
 }
 
-function PlatformVariantsSection({ node, scope, initialPlatform, onUpdate, onZoomShot }: PlatformVariantsSectionProps) {
+function PlatformVariantsSection({ node, scope, initialPlatform, onUpdate, onScreenshot, onZoomShot }: PlatformVariantsSectionProps) {
   const rawNotes = (node.metadata?.platformNotes ?? {}) as Partial<Record<PlatformId, string>>;
   const rawStatuses = getEditablePlatformStatuses(node);
-  const rawScreenshots = (node.metadata?.platformScreenshots ?? {}) as Partial<Record<PlatformId, string>>;
-  // Seeded from the FULL stored maps, not the scoped ones: a note or screenshot
-  // for a platform outside the effective set is not rendered and not deleted —
-  // every handler below patches by spreading these, so it round-trips untouched.
+  // Seeded from the FULL stored maps, not the scoped ones: a note for a
+  // platform outside the effective set is not rendered and not deleted — every
+  // handler below patches by spreading these, so it round-trips untouched.
   const [notes, setNotes] = useState<Partial<Record<PlatformId, string>>>(rawNotes);
   const [statuses, setStatuses] = useState(rawStatuses);
-  const [screenshots, setScreenshots] = useState<Partial<Record<PlatformId, string>>>(rawScreenshots);
+  // Screenshots are READ straight off the node and never held in state here:
+  // they are written through `onScreenshot` as an op, and the op's result
+  // comes back through the cache. The notes and status patches below still
+  // spread the stored slot map so an edit round-trips it untouched — spread,
+  // not written: the one writer of `platformScreenshots` is the op.
+  const screenshots = (node.metadata?.platformScreenshots ?? {}) as Partial<Record<PlatformId, string>>;
+  const screenshotMeta = (node.metadata?.platformScreenshotMeta ?? {}) as PlatformScreenshotMetaMap;
+  const stale = useScreenshotStaleness(node.id, scope.platforms, screenshotMeta);
 
   function handleNotesChange(platform: PlatformId, value: string) {
     const next = { ...notes, [platform]: value };
     setNotes(next);
     onUpdate?.(node.id, {
-      metadata: { ...node.metadata, platformNotes: next, platformStatuses: statuses, platformScreenshots: screenshots },
+      metadata: {
+        ...node.metadata,
+        platformNotes: next,
+        platformStatuses: statuses,
+        platformScreenshots: node.metadata?.platformScreenshots,
+      },
     });
   }
 
@@ -465,20 +491,12 @@ function PlatformVariantsSection({ node, scope, initialPlatform, onUpdate, onZoo
     }
     setStatuses(next);
     onUpdate?.(node.id, {
-      metadata: { ...node.metadata, platformStatuses: next, platformNotes: notes, platformScreenshots: screenshots },
-    });
-  }
-
-  function handleScreenshotChange(platform: PlatformId, value: string | undefined) {
-    const next = { ...screenshots };
-    if (value === undefined) {
-      delete next[platform];
-    } else {
-      next[platform] = value;
-    }
-    setScreenshots(next);
-    onUpdate?.(node.id, {
-      metadata: { ...node.metadata, platformScreenshots: next, platformNotes: notes, platformStatuses: statuses },
+      metadata: {
+        ...node.metadata,
+        platformStatuses: next,
+        platformNotes: notes,
+        platformScreenshots: node.metadata?.platformScreenshots,
+      },
     });
   }
 
@@ -504,10 +522,25 @@ function PlatformVariantsSection({ node, scope, initialPlatform, onUpdate, onZoo
           statuses={statuses}
           notes={notes}
           screenshots={screenshots}
+          screenshotMeta={screenshotMeta}
+          stale={stale}
           initialPlatform={initialPlatform}
           onStatusChange={handleStatusChange}
           onNotesChange={handleNotesChange}
-          onScreenshotChange={handleScreenshotChange}
+          onRecordScreenshot={
+            onScreenshot
+              ? (platform, form, value) => {
+                  void onScreenshot({ op: "record_screenshot", node_id: node.id, platform, source: "manual", form, value });
+                }
+              : undefined
+          }
+          onRemoveScreenshot={
+            onScreenshot
+              ? (platform) => {
+                  void onScreenshot({ op: "remove_screenshot", node_id: node.id, platform });
+                }
+              : undefined
+          }
           onZoomShot={onZoomShot}
         />
       </div>
@@ -657,6 +690,7 @@ export function NodeDetailPanel({
   scope,
   initialPlatform,
   onUpdate,
+  onScreenshot,
   allNodes,
   allEdges,
   history,
@@ -779,7 +813,12 @@ export function NodeDetailPanel({
         {node.species === "acceptance" && onUpdate && (
           <PanelGroup key={`platforms-${node.id}`} title="Platforms">
             <div className={PANEL_GUTTER}>
-              <AcceptancePlatformsSection node={node} scope={scope} onUpdate={onUpdate} />
+              <AcceptancePlatformsSection
+                node={node}
+                scope={scope}
+                onUpdate={onUpdate}
+                onScreenshot={onScreenshot}
+              />
             </div>
           </PanelGroup>
         )}
@@ -790,6 +829,7 @@ export function NodeDetailPanel({
             scope={scope}
             initialPlatform={initialPlatform}
             onUpdate={onUpdate}
+            onScreenshot={onScreenshot}
             onZoomShot={onZoomShot ? (platform) => onZoomShot(node, platform) : undefined}
           />
         )}

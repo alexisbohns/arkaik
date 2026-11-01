@@ -17,11 +17,14 @@ import {
 import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ImagePlus, X } from "lucide-react";
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
+/** The one form the URL field records; `decideScreenshot` checks it again server-side. */
+const HTTPS_URL = /^https:\/\/\S+$/;
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -55,7 +58,13 @@ export interface PlatformVariantsProps {
   initialPlatform?: PlatformId;
   onStatusChange?: (platform: PlatformId, value: StatusId | undefined) => void;
   onNotesChange?: (platform: PlatformId, value: string) => void;
-  onScreenshotChange?: (platform: PlatformId, value: string | undefined) => void;
+  /** Record a shot: the drop zone sends `form: "data"`, the URL field `form: "url"`. */
+  onRecordScreenshot?: (platform: PlatformId, form: "url" | "data", value: string) => void;
+  onRemoveScreenshot?: (platform: PlatformId) => void;
+  /** Provenance of the current shot per platform, for the caption. */
+  screenshotMeta?: Partial<Record<PlatformId, { ts?: string; source?: "ci" | "manual"; form?: string }>>;
+  /** Per platform: the journal says the node moved after this shot. */
+  stale?: Partial<Record<PlatformId, boolean>>;
   onZoomShot?: (platform: PlatformId) => void;
 }
 
@@ -82,7 +91,10 @@ export function PlatformVariants({
   initialPlatform,
   onStatusChange,
   onNotesChange,
-  onScreenshotChange,
+  onRecordScreenshot,
+  onRemoveScreenshot,
+  screenshotMeta,
+  stale,
   onZoomShot,
 }: PlatformVariantsProps) {
   const showTabs = platformAvailabilityShape(platforms) === "rings";
@@ -101,6 +113,7 @@ export function PlatformVariants({
   // frame where the two disagree.
   const activeTab = platforms.includes(selectedTab) ? selectedTab : platforms[0] ?? PLATFORMS[0].id;
   const [dragOver, setDragOver] = useState(false);
+  const [urlDraft, setUrlDraft] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Per-mount, not `platform-notes-${activeTab}` as before: the panel stack keeps
   // hidden panels mounted, so two of these editors can share a document and a
@@ -109,6 +122,9 @@ export function PlatformVariants({
   const currentStatus = statuses[activeTab];
   const currentNotes = notes[activeTab] ?? "";
   const currentScreenshot = screenshots[activeTab];
+  const currentMeta = screenshotMeta?.[activeTab];
+  const currentStale = stale?.[activeTab] === true;
+  const urlDraftValid = HTTPS_URL.test(urlDraft.trim());
   // No platform name at arity ≤ 1: the scope selector already says "Admin — Web
   // only", so repeating it on every label is chrome that earns nothing — and
   // dropping it is what makes arity 0 and arity 1 literally identical.
@@ -118,7 +134,7 @@ export function PlatformVariants({
     if (!file.type.startsWith("image/")) return;
     if (file.size > MAX_FILE_SIZE) return;
     const dataUrl = await readFileAsDataUrl(file);
-    onScreenshotChange?.(activeTab, dataUrl);
+    onRecordScreenshot?.(activeTab, "data", dataUrl);
   }
 
   function handleDrop(e: React.DragEvent) {
@@ -189,37 +205,72 @@ export function PlatformVariants({
               size="icon"
               className="absolute top-1 right-1 size-6 opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 cursor-pointer"
               aria-label="Remove screenshot"
-              onClick={() => onScreenshotChange?.(activeTab, undefined)}
+              onClick={() => onRemoveScreenshot?.(activeTab)}
             >
               <X className="size-3.5" />
             </Button>
+            {(currentMeta || currentStale) && (
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                {currentMeta?.source === "ci"
+                  ? "From CI"
+                  : currentMeta?.source === "manual"
+                    ? "Recorded by hand"
+                    : "Legacy shot"}
+                {currentMeta?.ts ? ` · ${new Date(currentMeta.ts).toLocaleDateString()}` : ""}
+                {currentStale ? " · may be stale" : ""}
+              </p>
+            )}
           </div>
         ) : (
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => fileInputRef.current?.click()}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
+          <div className="flex flex-col gap-2">
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => fileInputRef.current?.click()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
+              onDragOver={(e) => {
                 e.preventDefault();
-                fileInputRef.current?.click();
-              }
-            }}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragOver(true);
-            }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={handleDrop}
-            className={`flex flex-col items-center justify-center gap-1.5 rounded-md border border-dashed px-3 py-4 text-xs text-muted-foreground cursor-pointer transition-colors ${
-              dragOver
-                ? "border-foreground bg-muted"
-                : "border-border hover:border-muted-foreground"
-            }`}
-          >
-            <ImagePlus className="size-5" />
-            <span>Drop an image or click to upload</span>
-            <span className="text-[10px]">Max 2 MB</span>
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+              className={`flex flex-col items-center justify-center gap-1.5 rounded-md border border-dashed px-3 py-4 text-xs text-muted-foreground cursor-pointer transition-colors ${
+                dragOver
+                  ? "border-foreground bg-muted"
+                  : "border-border hover:border-muted-foreground"
+              }`}
+            >
+              <ImagePlus className="size-5" />
+              <span>Drop an image or click to upload</span>
+              <span className="text-[10px]">Max 2 MB</span>
+            </div>
+            <form
+              className="flex items-center gap-1.5"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const value = urlDraft.trim();
+                if (!HTTPS_URL.test(value)) return;
+                onRecordScreenshot?.(activeTab, "url", value);
+                setUrlDraft("");
+              }}
+            >
+              <Input
+                id={`${fieldId}-shot-url`}
+                aria-label={`Screenshot URL${platformSuffix}`}
+                value={urlDraft}
+                onChange={(e) => setUrlDraft(e.target.value)}
+                placeholder="https://…/screenshot.png"
+                className="h-8 text-xs"
+              />
+              <Button type="submit" size="sm" variant="outline" disabled={!urlDraftValid}>
+                Record
+              </Button>
+            </form>
           </div>
         )}
         <input

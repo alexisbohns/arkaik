@@ -218,6 +218,9 @@ export default function ProjectDeliveryPage() {
         scope={scope}
         history
         onUpdate={handleNodeUpdate}
+        onScreenshot={async (op) => {
+          await applyMutations([op]);
+        }}
         onCreateNode={handleCreateNodeFromPanel}
         intake={intake}
         relations={relations}
