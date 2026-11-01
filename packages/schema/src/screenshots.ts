@@ -74,8 +74,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** The slot's current value and meta, read loosely so a hand-edited bundle cannot throw here. */
-function readSlot(node: Node, platform: PlatformId): { value: string | undefined; ciOrder: number | undefined } {
+/** The shared loose reader of a slot's value and CI watermark; a hand-edited bundle cannot make it throw. */
+export function readSlot(node: Node, platform: PlatformId): { value: string | undefined; ciOrder: number | undefined } {
   const md = isRecord(node.metadata) ? node.metadata : {};
   const shots = isRecord(md.platformScreenshots) ? md.platformScreenshots : {};
   const metas = isRecord(md.platformScreenshotMeta) ? md.platformScreenshotMeta : {};

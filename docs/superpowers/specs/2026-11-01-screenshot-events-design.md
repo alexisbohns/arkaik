@@ -54,7 +54,7 @@ proof.
    current shot per `(node, platform)` is enough).
 
 2. **One narrow op, never `update_node`.** A mutation op `record_screenshot`
-   `{ node_id, platform, source, form, url?, commit?, order?, detail? }` and its
+   `{ node_id, platform, source, form, value, commit?, order?, detail? }` (`value` is the slot value in the given form) and its
    twin `remove_screenshot`. They run through `applyMutation` (lock, validators,
    version bump) and derive the events above. They touch one platform slot and
    nothing else, which removes the wipe-the-metadata hazard of a full

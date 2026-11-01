@@ -30,8 +30,8 @@ import {
   nodeDeletedInput,
   type EventInput,
 } from "./derive";
-import type { Edge, Node } from "./bundle";
-import { decideScreenshot, type ScreenshotInput } from "./screenshots";
+import type { Edge, Node, PlatformScreenshotMeta } from "./bundle";
+import { decideScreenshot, readSlot, type ScreenshotInput } from "./screenshots";
 import type { PlatformId } from "./ids";
 
 /** The patchable surface of a node: never its identity, never its project. */
@@ -51,6 +51,7 @@ export type MutationOp =
    * deterministic tests; it defaults to now.
    */
   | ({ op: "record_screenshot"; ts?: string } & ScreenshotInput)
+  /** Clear one platform slot, keeping its CI watermark; an empty slot is a no-op. */
   | { op: "remove_screenshot"; node_id: string; platform: PlatformId };
 
 export type MutationErrorCode =
@@ -185,10 +186,6 @@ export function synthesizeComposesEdges(
 }
 
 /** Guard every sub-flow a playlist references against closing a loop. */
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function assertNoPlaylistCycle(flow: Node, nextNodes: readonly Node[]): void {
   const entries = flow.metadata?.playlist?.entries;
   if (!Array.isArray(entries)) return;
@@ -346,34 +343,33 @@ export function applyOps(input: MutationInput, ops: readonly MutationOp[]): Muta
 
       case "record_screenshot": {
         const index = nodes.findIndex((candidate) => candidate.id === op.node_id);
-        const current = index === -1 ? undefined : nodes[index];
-        const decision = decideScreenshot(current, op);
+        if (index === -1) {
+          throw new MutationError("node_not_found", `Node ${op.node_id} not found`, op.node_id);
+        }
+        const node = nodes[index];
+        const decision = decideScreenshot(node, op);
         if (decision.kind === "refuse") throw new MutationError(decision.code, decision.message, op.node_id);
         // A skip is a no-op by design: nothing changes, nothing is evented, so
         // a CI re-run or an unchanged value never costs a journal line.
         if (decision.kind === "skip") break;
-        const node = current as Node;
-        const md = isRecord(node.metadata) ? node.metadata : {};
-        const metas = isRecord(md.platformScreenshotMeta) ? md.platformScreenshotMeta : {};
-        const slot = metas[op.platform];
-        const prevMeta = isRecord(slot) ? slot : {};
-        const prevWatermark = typeof prevMeta.ci_order === "number" ? prevMeta.ci_order : undefined;
+        const ciOrder = op.source === "ci" && typeof op.order === "number" ? op.order : undefined;
+        const prevWatermark = readSlot(node, op.platform).ciOrder;
         const watermark =
-          op.source === "ci" ? Math.max(prevWatermark ?? -1, op.order as number) : prevWatermark;
-        const meta = {
+          ciOrder === undefined ? prevWatermark : prevWatermark === undefined ? ciOrder : Math.max(prevWatermark, ciOrder);
+        const meta: PlatformScreenshotMeta = {
           ts: op.ts ?? new Date().toISOString(),
           source: op.source,
           form: op.form,
           ...(op.commit !== undefined ? { commit: op.commit } : {}),
-          ...(op.source === "ci" ? { order: op.order } : {}),
+          ...(ciOrder !== undefined ? { order: ciOrder } : {}),
           ...(watermark !== undefined ? { ci_order: watermark } : {}),
         };
         const updated: Node = {
           ...node,
           metadata: {
-            ...md,
-            platformScreenshots: { ...(isRecord(md.platformScreenshots) ? md.platformScreenshots : {}), [op.platform]: op.value },
-            platformScreenshotMeta: { ...metas, [op.platform]: meta },
+            ...node.metadata,
+            platformScreenshots: { ...node.metadata?.platformScreenshots, [op.platform]: op.value },
+            platformScreenshotMeta: { ...node.metadata?.platformScreenshotMeta, [op.platform]: meta },
           },
         };
         const nextNodes = [...nodes];
@@ -386,10 +382,11 @@ export function applyOps(input: MutationInput, ops: readonly MutationOp[]): Muta
             platform: op.platform,
             source: op.source,
             form: op.form,
-            // Events never embed asset payloads: a data URI stays in the snapshot.
+            // Events never embed asset payloads: a data URI stays in the
+            // snapshot. A `path` form travels under `url` too, on purpose.
             ...(op.form !== "data" ? { url: op.value } : {}),
             ...(op.commit !== undefined ? { commit: op.commit } : {}),
-            ...(op.source === "ci" ? { order: op.order } : {}),
+            ...(ciOrder !== undefined ? { order: ciOrder } : {}),
             ...(op.detail !== undefined ? { detail: op.detail } : {}),
           },
         });
@@ -402,20 +399,18 @@ export function applyOps(input: MutationInput, ops: readonly MutationOp[]): Muta
           throw new MutationError("node_not_found", `Node ${op.node_id} not found`, op.node_id);
         }
         const node = nodes[index];
-        const md = isRecord(node.metadata) ? node.metadata : {};
-        const shots = isRecord(md.platformScreenshots) ? { ...md.platformScreenshots } : {};
+        const shots = { ...node.metadata?.platformScreenshots };
         if (!(op.platform in shots)) break; // nothing to clear, nothing to event
         delete shots[op.platform];
-        const metas = isRecord(md.platformScreenshotMeta) ? { ...md.platformScreenshotMeta } : {};
-        const slot = metas[op.platform];
-        const prevMeta = isRecord(slot) ? slot : {};
+        const metas = { ...node.metadata?.platformScreenshotMeta };
         // The slot is gone; the watermark is not — it is what keeps a late CI
         // re-run from resurrecting the shot a person just removed.
-        if (typeof prevMeta.ci_order === "number") metas[op.platform] = { ci_order: prevMeta.ci_order };
+        const watermark = readSlot(node, op.platform).ciOrder;
+        if (watermark !== undefined) metas[op.platform] = { ci_order: watermark };
         else delete metas[op.platform];
         const updated: Node = {
           ...node,
-          metadata: { ...md, platformScreenshots: shots, platformScreenshotMeta: metas },
+          metadata: { ...node.metadata, platformScreenshots: shots, platformScreenshotMeta: metas },
         };
         const nextNodes = [...nodes];
         nextNodes[index] = updated;
