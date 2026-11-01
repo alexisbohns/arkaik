@@ -17,6 +17,7 @@
 import type { SpeciesId, StatusId, PlatformId, EdgeTypeId } from "./ids";
 import type { DecisionStatusId } from "./decision";
 import { normalizeStatus } from "./legacy-status";
+import { currentScreenshot } from "./screenshots";
 
 /**
  * The v1 event vocabulary (docs/spec/journal.md § Event Vocabulary). The list
@@ -480,6 +481,10 @@ const NODE_REF_FIELDS: Record<string, readonly string[]> = {
   "request.filed": ["node_id"],
 };
 
+function isRecordLoose(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /**
  * Whether a journal's last `node.status_changed.to` agrees with the snapshot
  * `status`, across vocabulary vintages. The journal is never rewritten
@@ -740,6 +745,47 @@ export function crossCheckJournal(bundle: Record<string, unknown>): JournalFindi
         message: `Node "${nodeId}": journal's last decision.status_changed.to "${last}" disagrees with snapshot decision_status "${String(current)}".`,
         severity: "error",
       });
+    }
+  }
+
+  // --- Screenshot slots vs their events (spec § 2, warning only) ---
+  // A slot written through the legacy update_node path has no event and gets
+  // no diagnostic; a slot with history must agree with its last event.
+  for (const n of nodesRaw) {
+    const nodeId = str(n?.id);
+    if (nodeId === undefined) continue;
+    const metadata = isRecordLoose(n.metadata) ? n.metadata : {};
+    const shots = isRecordLoose(metadata.platformScreenshots) ? metadata.platformScreenshots : {};
+    const platforms = new Set<string>(Object.keys(shots));
+    for (const { ev } of valid) {
+      if ((ev.type === "screenshot.recorded" || ev.type === "screenshot.removed") && ev.node_id === nodeId && typeof ev.platform === "string") {
+        platforms.add(ev.platform);
+      }
+    }
+    for (const platform of platforms) {
+      const last = currentScreenshot(ordered, nodeId, platform as PlatformId);
+      if (last === undefined) continue; // legacy slot, no history
+      const slot = typeof shots[platform] === "string" ? (shots[platform] as string) : undefined;
+      let expected: string | undefined;
+      let agrees: boolean;
+      if (last === null) {
+        agrees = slot === undefined;
+        expected = undefined;
+      } else if (last.form === "data") {
+        agrees = slot !== undefined;
+        expected = "(a data URI)";
+      } else {
+        expected = str(last.url);
+        agrees = slot === expected;
+      }
+      if (!agrees) {
+        findings.push({
+          path: `nodes[${nodesRaw.indexOf(n)}].metadata.platformScreenshots.${platform}`,
+          rule: "screenshot-untracked",
+          message: `Node "${nodeId}": platformScreenshots.${platform} is ${slot === undefined ? "empty" : `"${slot}"`} but the journal's last screenshot event says ${expected === undefined ? "it was removed" : `"${expected}"`} — write screenshots through record_screenshot, not update_node.`,
+          severity: "warning",
+        });
+      }
     }
   }
 

@@ -78,6 +78,8 @@ interface NodeMetadata extends Record<string, unknown> {
   platformNotes?: PlatformNotesMap;
   platformStatuses?: PlatformStatusMap;
   platformScreenshots?: PlatformScreenshotsMap;
+  /** Provenance of each current screenshot plus the CI order watermark; written by the screenshot ops only. */
+  platformScreenshotMeta?: PlatformScreenshotMetaMap;
   refs?: Ref[];
   /** Acceptance nodes: one Given/When/Then scenario — the How (spec §3.1). */
   gherkin?: string;
@@ -316,6 +318,8 @@ type KnownJournalEvent =
   | RefAddedEvent
   | RefRemovedEvent
   | RefStatusChangedEvent
+  | ScreenshotRecordedEvent
+  | ScreenshotRemovedEvent
   | JournalBaselineEvent
   | QualityAuditCompletedEvent
   | QualityFindingOpenedEvent

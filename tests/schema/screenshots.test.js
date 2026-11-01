@@ -190,4 +190,37 @@ const TS = "2026-11-01T10:00:00.000Z";
   check("remove_screenshot on an unknown node throws node_not_found", missing instanceof MutationError && missing.code === "node_not_found");
 }
 
+// --- Task 5: crossCheckJournal screenshot-untracked ----------------------------
+
+const { crossCheckJournal, currentScreenshot, screenshotHistory } = schema;
+const created = { id: "01A", ts: "2026-01-01T00:00:00.000Z", type: "node.created", node_id: "V-home", species: "view", title: "Home" };
+const recorded = (id, ts, over = {}) => ({ id, ts, type: "screenshot.recorded", node_id: "V-home", platform: "ios", source: "ci", form: "url", url: "https://s/a.png", order: 1, ...over });
+const removed = (id, ts) => ({ id, ts, type: "screenshot.removed", node_id: "V-home", platform: "ios" });
+const bundle = (metadata, journal) => ({ project: { id: "p" }, nodes: [{ ...view("V-home"), metadata }], edges: [], journal });
+const untracked = (findings) => findings.find((f) => f.rule === "screenshot-untracked");
+
+check("slot equals last event: no diagnostic", untracked(crossCheckJournal(bundle({ platformScreenshots: { ios: "https://s/a.png" } }, [created, recorded("01B", "2026-01-02T00:00:00.000Z")]))) === undefined);
+{
+  const f = untracked(crossCheckJournal(bundle({ platformScreenshots: { ios: "https://s/other.png" } }, [created, recorded("01B", "2026-01-02T00:00:00.000Z")])));
+  check("slot differs from last event: a warning naming both", f && f.severity === "warning" && /other\.png/.test(f.message) && /a\.png/.test(f.message), JSON.stringify(f));
+}
+{
+  const f = untracked(crossCheckJournal(bundle({ platformScreenshots: { ios: "https://s/a.png" } }, [created, recorded("01B", "2026-01-02T00:00:00.000Z"), removed("01C", "2026-01-03T00:00:00.000Z")])));
+  check("slot present after a removal: a warning", f && f.severity === "warning", JSON.stringify(f));
+}
+check("slot with no event: no diagnostic (legacy)", untracked(crossCheckJournal(bundle({ platformScreenshots: { ios: "https://s/legacy.png" } }, [created]))) === undefined);
+check("a data-form event with a filled slot: no diagnostic", untracked(crossCheckJournal(bundle({ platformScreenshots: { ios: "data:image/png;base64,AAAA" } }, [created, recorded("01B", "2026-01-02T00:00:00.000Z", { form: "data", url: undefined })]))) === undefined);
+{
+  const f = untracked(crossCheckJournal(bundle({}, [created, recorded("01B", "2026-01-02T00:00:00.000Z", { form: "data", url: undefined })])));
+  check("a data-form event with an empty slot: a warning", f && f.severity === "warning", JSON.stringify(f));
+}
+{
+  const events = [created, recorded("01B", "2026-01-02T00:00:00.000Z"), removed("01C", "2026-01-03T00:00:00.000Z"), recorded("01D", "2026-01-04T00:00:00.000Z", { url: "https://s/b.png" })];
+  const history = screenshotHistory(events, "V-home", "ios");
+  check("screenshotHistory keeps every screenshot event in order", history.map((e) => e.id).join(",") === "01B,01C,01D", JSON.stringify(history.map((e) => e.id)));
+  check("currentScreenshot is the last recorded", currentScreenshot(events, "V-home", "ios").id === "01D");
+  check("currentScreenshot is null after a removal", currentScreenshot(events.slice(0, 3), "V-home", "ios") === null);
+  check("currentScreenshot is undefined with no history", currentScreenshot([created], "V-home", "ios") === undefined);
+}
+
 process.exit(failures > 0 ? 1 : 0);
