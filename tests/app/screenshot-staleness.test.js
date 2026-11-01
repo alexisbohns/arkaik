@@ -26,4 +26,11 @@ check("a later project-level status change: stale", isScreenshotStale(meta, [sta
 check("a later merged ref: stale", isScreenshotStale(meta, [merged(after)], "V-home", "ios") === true);
 check("a later event on another node: not stale", isScreenshotStale(meta, [{ ...status(after, "ios"), node_id: "V-other" }], "V-home", "ios") === false);
 
+const shipped = (ts, node_ids, platform) => ({ id: `s${ts}`, ts, type: "deliverable.shipped", deliverable_id: "d1", title: "t", node_ids, ...(platform ? { platform } : {}) });
+check("a later shipped deliverable naming the node: stale", isScreenshotStale(meta, [shipped(after, ["V-home"])], "V-home", "ios") === true);
+check("a shipped deliverable on another platform: not stale", isScreenshotStale(meta, [shipped(after, ["V-home"], "web")], "V-home", "ios") === false);
+check("a shipped deliverable naming another node: not stale", isScreenshotStale(meta, [shipped(after, ["V-other"])], "V-home", "ios") === false);
+check("an event at exactly meta.ts: not stale", isScreenshotStale(meta, [status(T0, "ios")], "V-home", "ios") === false);
+check("a ref closed (not merged): not stale", isScreenshotStale(meta, [{ ...merged(after), to: "closed" }], "V-home", "ios") === false);
+
 process.exit(failures > 0 ? 1 : 0);

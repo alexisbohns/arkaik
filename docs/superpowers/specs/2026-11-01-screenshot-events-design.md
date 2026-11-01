@@ -94,8 +94,11 @@ proof.
    "latest by order" alone (manual shots have no order).
 
 5. **Staleness is derived, never stored.** The app flags a shot as *may be
-   stale* when the node has a later `node.status_changed` on that platform or a
-   later `ref.status_changed` to `merged`. A derived read costs nothing to be
+   stale* on three signals: a later `node.status_changed` on that platform or
+   project-wide; a later `ref.status_changed` to `merged` (repo mode, `arkaik
+   sync`); a later `deliverable.shipped` naming the node (hosted mode, where
+   the GitHub App patches `metadata.refs` in place and derives no
+   `ref.status_changed`). A derived read costs nothing to be
    wrong about and nothing to repair.
 
 6. **Bytes stay with the consumer.** The door takes URLs; hosting is the M5

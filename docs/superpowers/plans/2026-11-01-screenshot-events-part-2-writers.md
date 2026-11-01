@@ -1724,7 +1724,7 @@ and export the `ScreenshotPanelOp` type from this file (above the props). Thread
 
 ```ts
   const projectId = useProjectId();
-  const { journal } = useJournal(projectId, { types: ["node.status_changed", "ref.status_changed"] });
+  const { journal } = useJournal(projectId, { types: ["node.status_changed", "ref.status_changed", "deliverable.shipped"] });
   const stale = useMemo(() => {
     const out: Partial<Record<PlatformId, boolean>> = {};
     for (const platform of scope.platforms) out[platform] = isScreenshotStale(screenshotMeta[platform], journal, node.id, platform);

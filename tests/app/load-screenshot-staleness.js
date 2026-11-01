@@ -1,8 +1,8 @@
 /**
- * Loads X into a plain Node process — the
+ * Loads lib/utils/screenshot-staleness.ts into a plain Node process — the
  * tests/services/load-quality-events.js idiom.
  *
- * The planner has NO db/auth imports and no `server-only`: its only runtime
+ * The utility has NO db/auth imports and no `server-only`: its only runtime
  * dependency is `@arkaik/schema`, so one rewrite is all it takes.
  */
 
