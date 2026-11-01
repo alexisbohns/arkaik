@@ -18,6 +18,7 @@ import { runOpenCli } from "./commands/open";
 import { runPushCli } from "./commands/push";
 import { runLinkCli } from "./commands/link";
 import { runLiveCli } from "./commands/live";
+import { runShotCli } from "./commands/shot";
 import { runRestoreCli } from "./commands/restore";
 import { runBootstrap } from "./commands/bootstrap";
 import { runKritik } from "./commands/kritik";
@@ -42,6 +43,7 @@ Commands:
                                --list shows the projects your token can reach.
   live --platform <p> [ids]   Mark acceptances live on one platform from a deploy (release:append token).
                                --mentions <file> derives them from merged pull requests.
+  shot [options] [id p value]  Record screenshots: --manifest <file> to the hosted door (screenshot:append token), or into the repo bundle.
   restore [options] [path]    Replace the linked project's bundle, journal + quality (backs up first).
   bootstrap <sub> [options]   One-time onboarding: mine, plan, slice, merge a map from a repo.
   kritik <sub> [options]      Quality audits: score criteria, open findings, roll up the matrix.
@@ -109,6 +111,9 @@ function main(argv: string[]): void {
       return;
     case "live":
       runLiveCli(rest);
+      return;
+    case "shot":
+      runShotCli(rest);
       return;
     case "restore":
       runRestoreCli(rest);
