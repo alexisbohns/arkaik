@@ -100,7 +100,7 @@ export function decideScreenshot(node: Node | undefined, input: ScreenshotInput)
     return {
       kind: "refuse",
       code: "platform_not_applicable",
-      message: node.platforms.length > 0 ? `${node.id} lists: ${node.platforms.join(", ")}` : `${node.id} lists no platforms`,
+      message: `${input.platform} is not a platform of ${node.id} (${node.platforms.length > 0 ? `lists: ${node.platforms.join(", ")}` : "lists none"})`,
     };
   }
   if (!isValidScreenshotValue(input.form, input.value)) {

@@ -353,6 +353,7 @@ export function applyOps(input: MutationInput, ops: readonly MutationOp[]): Muta
         // a CI re-run or an unchanged value never costs a journal line.
         if (decision.kind === "skip") break;
         const ciOrder = op.source === "ci" && typeof op.order === "number" ? op.order : undefined;
+        const commit = op.source === "ci" ? op.commit : undefined;
         const prevWatermark = readSlot(node, op.platform).ciOrder;
         const watermark =
           ciOrder === undefined ? prevWatermark : prevWatermark === undefined ? ciOrder : Math.max(prevWatermark, ciOrder);
@@ -360,7 +361,7 @@ export function applyOps(input: MutationInput, ops: readonly MutationOp[]): Muta
           ts: op.ts ?? new Date().toISOString(),
           source: op.source,
           form: op.form,
-          ...(op.commit !== undefined ? { commit: op.commit } : {}),
+          ...(commit !== undefined ? { commit } : {}),
           ...(ciOrder !== undefined ? { order: ciOrder } : {}),
           ...(watermark !== undefined ? { ci_order: watermark } : {}),
         };
@@ -385,7 +386,7 @@ export function applyOps(input: MutationInput, ops: readonly MutationOp[]): Muta
             // Events never embed asset payloads: a data URI stays in the
             // snapshot. A `path` form travels under `url` too, on purpose.
             ...(op.form !== "data" ? { url: op.value } : {}),
-            ...(op.commit !== undefined ? { commit: op.commit } : {}),
+            ...(commit !== undefined ? { commit } : {}),
             ...(ciOrder !== undefined ? { order: ciOrder } : {}),
             ...(op.detail !== undefined ? { detail: op.detail } : {}),
           },

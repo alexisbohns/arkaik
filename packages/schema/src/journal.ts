@@ -777,7 +777,7 @@ export function crossCheckJournal(bundle: Record<string, unknown>): JournalFindi
       } else {
         const url = str(last.url);
         agrees = slot === url;
-        says = `"${url}" was recorded`;
+        says = url === undefined ? "an unknown value was recorded" : `"${url}" was recorded`;
       }
       if (!agrees) {
         findings.push({

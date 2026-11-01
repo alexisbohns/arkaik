@@ -20,7 +20,7 @@ function check(name, cond, detail) {
 const schema = loadSchema();
 const { makeEvent, JOURNAL_EVENT_TYPES } = schema;
 
-// --- Task 1: event vocabulary -------------------------------------------------
+// --- event vocabulary -------------------------------------------------
 
 check("screenshot.recorded is in the known vocabulary", JOURNAL_EVENT_TYPES.includes("screenshot.recorded"));
 check("screenshot.removed is in the known vocabulary", JOURNAL_EVENT_TYPES.includes("screenshot.removed"));
@@ -51,7 +51,7 @@ check("screenshot.removed is in the known vocabulary", JOURNAL_EVENT_TYPES.inclu
   check("screenshot.removed validates", ev.type === "screenshot.removed" && ev.platform === "android");
 }
 
-// --- Task 2: platformScreenshotMeta parses -------------------------------------
+// --- slot meta -------------------------------------
 
 {
   const { NodeMetadataSchema } = schema;
@@ -66,7 +66,7 @@ check("screenshot.removed is in the known vocabulary", JOURNAL_EVENT_TYPES.inclu
   check("an unknown meta source is refused", !bad.success);
 }
 
-// --- Task 3: decideScreenshot --------------------------------------------------
+// --- decision --------------------------------------------------
 
 const { decideScreenshot, isValidScreenshotValue } = schema;
 
@@ -135,7 +135,7 @@ check("a non-image data uri is not a valid data form", !isValidScreenshotValue("
   check("the watermark survives a removal", d.kind === "skip" && d.reason === "stale_order", JSON.stringify(d));
 }
 
-// --- Task 4: applyOps record_screenshot / remove_screenshot --------------------
+// --- ops --------------------
 
 const { applyOps, MutationError } = schema;
 const graph = (nodes) => ({ projectId: "p", nodes, edges: [] });
@@ -155,6 +155,9 @@ const TS = "2026-11-01T10:00:00.000Z";
   const out = applyOps(graph([view("V-home")]), [{ op: "record_screenshot", ...manual({ form: "data", value: "data:image/png;base64,AAAA" }), ts: TS }]);
   const ev = out.eventInputs.find((e) => e.type === "screenshot.recorded");
   check("a data-form shot emits no url", ev && ev.payload.form === "data" && !("url" in ev.payload), JSON.stringify(ev));
+  const withCommit = applyOps(graph([view("V-home")]), [{ op: "record_screenshot", ...manual({ commit: "c1" }), ts: TS }]);
+  const cev = withCommit.eventInputs.find((e) => e.type === "screenshot.recorded");
+  check("a manual shot with a commit records it nowhere", withCommit.nodes[0].metadata.platformScreenshotMeta.ios.commit === undefined && cev && !("commit" in cev.payload), JSON.stringify(cev));
   check("a data-form shot still fills the slot", out.nodes[0].metadata.platformScreenshots.ios.startsWith("data:image/png"));
 }
 {
@@ -190,7 +193,7 @@ const TS = "2026-11-01T10:00:00.000Z";
   check("remove_screenshot on an unknown node throws node_not_found", missing instanceof MutationError && missing.code === "node_not_found");
 }
 
-// --- Task 5: crossCheckJournal screenshot-untracked ----------------------------
+// --- cross-check and reducers ----------------------------
 
 const { crossCheckJournal, currentScreenshot, screenshotHistory } = schema;
 const created = { id: "01A", ts: "2026-01-01T00:00:00.000Z", type: "node.created", node_id: "V-home", species: "view", title: "Home" };
@@ -223,4 +226,5 @@ check("a data-form event with a filled slot: no diagnostic", untracked(crossChec
   check("currentScreenshot is undefined with no history", currentScreenshot([created], "V-home", "ios") === undefined);
 }
 
-process.exit(failures > 0 ? 1 : 0);
+if (failures > 0) process.exit(1);
+console.log("All screenshot checks passed.");

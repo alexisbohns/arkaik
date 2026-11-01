@@ -97,25 +97,16 @@ interface NodeMetadata extends Record<string, unknown> {
   decided_at?: string;
 }
 
-interface Node {
-  id: string;
-  project_id: string;
-  species: SpeciesId;
-  title: string;
-  description?: string;
-  status: StatusId;
-  platforms: PlatformId[];
-  metadata?: NodeMetadata;
+interface PlatformScreenshotMeta {
+  ts?: string;
+  source?: ScreenshotSource;
+  form?: ScreenshotForm;
+  commit?: string;
+  order?: number;
+  ci_order?: number;
 }
 
-interface Edge {
-  id: string;
-  project_id: string;
-  source_id: string;
-  target_id: string;
-  edge_type: EdgeTypeId;
-  metadata?: Record<string, unknown>;
-}
+type PlatformScreenshotMetaMap = Partial<Record<PlatformId, PlatformScreenshotMeta>>;
 
 type MapKind = "journey" | "system";
 
@@ -166,36 +157,24 @@ interface MapDefinition extends Record<string, unknown> {
   display?: MapDisplayOptions;
 }
 
-interface ProjectMetadata extends Record<string, unknown> {
-  /**
-   * @deprecated Superseded by the per-map `map_display` below. Still parsed,
-   * validated, and round-tripped; no renderer reads it.
-   */
-  view_card_variant?: "compact" | "large";
-  maps?: MapDefinition[];
-  /** Per-map display overrides keyed by map id — built-ins included. */
-  map_display?: Record<string, MapDisplayOptions>;
-  products?: ProductDefinition[];
-  /** Federation (pollen) settings for hosted serving; `plant` is the ariko plant slug this project anchors to. */
-  pollen?: { plant?: string } & Record<string, unknown>;
+interface Edge {
+  id: string;
+  project_id: string;
+  source_id: string;
+  target_id: string;
+  edge_type: EdgeTypeId;
+  metadata?: Record<string, unknown>;
 }
 
-interface Project {
+interface Node {
   id: string;
+  project_id: string;
+  species: SpeciesId;
   title: string;
   description?: string;
-  /** v2: current version label, free-form (semver recommended, not required), e.g. "1.4.0" or "2026-07". Version history lives in the journal. */
-  version?: string;
-  /** Optional node id used as the primary canvas anchor/root. */
-  root_node_id?: string;
-  /** Optional project-level UI settings and preferences. */
-  metadata?: ProjectMetadata;
-  /** ISO 8601 timestamp, e.g. "2024-01-01T00:00:00.000Z" */
-  created_at: string;
-  /** ISO 8601 timestamp, e.g. "2024-01-01T00:00:00.000Z" */
-  updated_at: string;
-  /** ISO 8601 timestamp when archived; null/undefined means active. */
-  archived_at?: string | null;
+  status: StatusId;
+  platforms: PlatformId[];
+  metadata?: NodeMetadata;
 }
 
 interface JournalEvent extends Record<string, unknown> {
@@ -303,6 +282,24 @@ interface RefStatusChangedEvent extends JournalEvent {
   synced_at: string;
 }
 
+interface ScreenshotRecordedEvent extends JournalEvent {
+  type: "screenshot.recorded";
+  node_id: string;
+  platform: PlatformId;
+  source: ScreenshotSource;
+  form: ScreenshotForm;
+  url?: string;
+  commit?: string;
+  order?: number;
+  detail?: string;
+}
+
+interface ScreenshotRemovedEvent extends JournalEvent {
+  type: "screenshot.removed";
+  node_id: string;
+  platform: PlatformId;
+}
+
 type KnownJournalEvent =
   | NodeCreatedEvent
   | NodeUpdatedEvent
@@ -327,16 +324,22 @@ type KnownJournalEvent =
   | QualityFindingAcceptedEvent
   | QualitySignalTrippedEvent;
 
-interface ProjectBundle {
-  /** Bundle Format contract version (docs/spec/bundle-format.md § Schema Versioning). Absent MUST be treated as 1. */
-  schema_version?: number;
-  project: Project;
-  nodes: Node[];
-  edges: Edge[];
-  /** Optional embedded journal — the interchange projection (Level 2). Canonical storage is the JSONL sidecar; see docs/spec/journal.md. */
-  journal?: JournalEvent[];
-  /** Optional Kritik quality state — profile, assessments, findings (docs/rfcs/kritik.md § 4.1). Additive; the matrix is derived, never stored. */
-  quality?: QualitySection;
+interface Project {
+  id: string;
+  title: string;
+  description?: string;
+  /** v2: current version label, free-form (semver recommended, not required), e.g. "1.4.0" or "2026-07". Version history lives in the journal. */
+  version?: string;
+  /** Optional node id used as the primary canvas anchor/root. */
+  root_node_id?: string;
+  /** Optional project-level UI settings and preferences. */
+  metadata?: ProjectMetadata;
+  /** ISO 8601 timestamp, e.g. "2024-01-01T00:00:00.000Z" */
+  created_at: string;
+  /** ISO 8601 timestamp, e.g. "2024-01-01T00:00:00.000Z" */
+  updated_at: string;
+  /** ISO 8601 timestamp when archived; null/undefined means active. */
+  archived_at?: string | null;
 }
 ```
 <!-- GENERATED:SCHEMA:END -->
