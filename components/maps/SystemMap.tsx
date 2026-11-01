@@ -330,6 +330,9 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
         scope={scope}
         history
         onUpdate={handleNodeUpdate}
+        onScreenshot={async (op) => {
+          await applyMutations([op]);
+        }}
         onCreateNode={handleCreateNodeFromPanel}
         intake={intake}
         relations={relations}

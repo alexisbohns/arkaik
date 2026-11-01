@@ -317,8 +317,8 @@ interface KommitInput {
 
 /** The slot form a value takes, the same reading the skill applies by hand. */
 function formOf(value: string): "url" | "data" | "path" {
-  if (/^https:\/\//.test(value)) return "url";
-  if (value.startsWith("data:")) return "data";
+  if (/^https:\/\//i.test(value)) return "url";
+  if (/^data:/i.test(value)) return "data";
   return "path";
 }
 

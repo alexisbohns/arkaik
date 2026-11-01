@@ -49,7 +49,7 @@ One event is one JSON object:
 interface JournalEvent {
   id: string;      // ULID — sortable, collision-free without coordination
   ts: string;      // ISO 8601 timestamp
-  actor?: string;  // who/what wrote it: "alexis", "claude-code", "arkaik-sync", "arkaik-ci"
+  actor?: string;  // who/what wrote it: "alexis", "claude-code", "arkaik-sync", "arkaik-ci", "arkaik-cli", "arkaik-app", "arkaik-mcp"
   type: string;    // vocabulary below
   // ...type-specific payload fields, flat on the object
 }

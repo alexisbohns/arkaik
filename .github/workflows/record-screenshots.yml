@@ -45,7 +45,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      SHA: ${{ inputs.sha != '' && inputs.sha || github.sha }}
     steps:
       - name: Check out the rendered repository
         uses: actions/checkout@v4
