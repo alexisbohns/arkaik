@@ -11,6 +11,8 @@
 # and hold a screenshot:append token as the ARKAIK_SCREENSHOT_TOKEN secret.
 # The commit must be on the default branch (the order is that branch's height), so call this from a push or deploy of it, not from a pull request.
 # There is no workflow_dispatch: a manual run has no artifact to download.
+# A schedule trigger works: its event names no default branch, so the job
+# falls back to origin/HEAD, then to the GitHub API.
 # The manifest is passed as a path inside the calling job's checkout, so the
 # caller uploads it as an artifact named by `manifest_artifact` and this
 # workflow downloads it.
@@ -84,12 +86,31 @@ jobs:
         env:
           ARKAIK_TOKEN: ${{ secrets.ARKAIK_SCREENSHOT_TOKEN }}
           MANIFEST: ../manifest/${{ inputs.manifest_path }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          # Empty on a schedule trigger, whose payload carries no repository.
+          EVENT_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           SHA=$(git rev-parse HEAD)
+          # The default branch, from the first source that answers. origin/HEAD
+          # is only there if something set it (actions/checkout does not), so
+          # the API, readable with the job's own token, is the backstop.
+          if [ -n "$EVENT_DEFAULT_BRANCH" ]; then
+            DEFAULT_BRANCH=$EVENT_DEFAULT_BRANCH
+            FROM="the triggering event"
+          elif HEAD_REF=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null); then
+            DEFAULT_BRANCH=${HEAD_REF#origin/}
+            FROM="origin/HEAD"
+          elif DEFAULT_BRANCH=$(gh api "repos/$REPO" --jq .default_branch 2>/dev/null) && [ -n "$DEFAULT_BRANCH" ]; then
+            FROM="the GitHub API"
+          else
+            echo "Could not determine the default branch of $REPO: the triggering event ($GITHUB_EVENT_NAME) carries none, origin/HEAD is not set in the checkout, and the GitHub API did not answer." >&2
+            exit 1
+          fi
+          echo "Default branch: $DEFAULT_BRANCH (from $FROM)" >&2
           if ! git rev-parse -q --verify "origin/$DEFAULT_BRANCH^{commit}" >/dev/null; then
-            echo "origin/$DEFAULT_BRANCH is not in the checkout (fetch-depth must stay 0)." >&2
+            echo "origin/$DEFAULT_BRANCH (default branch, from $FROM) is not in the checkout: fetch-depth must stay 0." >&2
             exit 1
           fi
           if ! git merge-base --is-ancestor "$SHA" "origin/$DEFAULT_BRANCH"; then
