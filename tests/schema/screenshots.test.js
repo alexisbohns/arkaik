@@ -135,4 +135,59 @@ check("a non-image data uri is not a valid data form", !isValidScreenshotValue("
   check("the watermark survives a removal", d.kind === "skip" && d.reason === "stale_order", JSON.stringify(d));
 }
 
+// --- Task 4: applyOps record_screenshot / remove_screenshot --------------------
+
+const { applyOps, MutationError } = schema;
+const graph = (nodes) => ({ projectId: "p", nodes, edges: [] });
+const TS = "2026-11-01T10:00:00.000Z";
+
+{
+  const out = applyOps(graph([view("V-home")]), [{ op: "record_screenshot", ...ci(), ts: TS }]);
+  const node = out.nodes.find((n) => n.id === "V-home");
+  check("record_screenshot writes the slot", node.metadata.platformScreenshots.ios === "https://s/a.png", JSON.stringify(node.metadata));
+  const meta = node.metadata.platformScreenshotMeta.ios;
+  check("record_screenshot writes the meta and the watermark", meta.ts === TS && meta.source === "ci" && meta.form === "url" && meta.commit === "c1" && meta.order === 10 && meta.ci_order === 10, JSON.stringify(meta));
+  const ev = out.eventInputs.find((e) => e.type === "screenshot.recorded");
+  check("record_screenshot emits screenshot.recorded with the url", ev && ev.payload.node_id === "V-home" && ev.payload.platform === "ios" && ev.payload.url === "https://s/a.png" && ev.payload.order === 10 && ev.payload.source === "ci", JSON.stringify(ev));
+  check("no node.updated is emitted for the slot path", !out.eventInputs.some((e) => e.type === "node.updated"));
+}
+{
+  const out = applyOps(graph([view("V-home")]), [{ op: "record_screenshot", ...manual({ form: "data", value: "data:image/png;base64,AAAA" }), ts: TS }]);
+  const ev = out.eventInputs.find((e) => e.type === "screenshot.recorded");
+  check("a data-form shot emits no url", ev && ev.payload.form === "data" && !("url" in ev.payload), JSON.stringify(ev));
+  check("a data-form shot still fills the slot", out.nodes[0].metadata.platformScreenshots.ios.startsWith("data:image/png"));
+}
+{
+  const seeded = view("V-home", { metadata: { platformScreenshots: { ios: "https://s/a.png" }, platformScreenshotMeta: { ios: { source: "ci", form: "url", order: 10, ci_order: 10 } } } });
+  const out = applyOps(graph([seeded]), [{ op: "record_screenshot", ...ci({ order: 9, value: "https://s/old.png" }) }]);
+  check("a stale_order shot is a no-op: no event", out.eventInputs.length === 0, JSON.stringify(out.eventInputs));
+  check("a stale_order shot is a no-op: slot untouched", out.nodes[0].metadata.platformScreenshots.ios === "https://s/a.png");
+  const same = applyOps(graph([seeded]), [{ op: "record_screenshot", ...ci({ order: 11 }) }]);
+  check("an unchanged shot is a no-op", same.eventInputs.length === 0);
+  const person = applyOps(graph([seeded]), [{ op: "record_screenshot", ...manual(), ts: TS }]);
+  const meta = person.nodes[0].metadata.platformScreenshotMeta.ios;
+  check("a manual shot over a ci one keeps the watermark", meta.source === "manual" && meta.ci_order === 10 && meta.order === undefined, JSON.stringify(meta));
+  const newer = applyOps(graph([person.nodes[0]]), [{ op: "record_screenshot", ...ci({ order: 12, value: "https://s/c.png" }), ts: TS }]);
+  check("a newer ci shot raises the watermark", newer.nodes[0].metadata.platformScreenshotMeta.ios.ci_order === 12);
+}
+{
+  const seeded = view("V-home", { metadata: { platformScreenshots: { ios: "https://s/a.png", web: "https://s/w.png" }, platformScreenshotMeta: { ios: { source: "ci", form: "url", order: 10, ci_order: 10 } }, platformNotes: { ios: "keep me" } } });
+  const out = applyOps(graph([seeded]), [{ op: "remove_screenshot", node_id: "V-home", platform: "ios" }]);
+  const md = out.nodes[0].metadata;
+  check("remove_screenshot clears the slot", md.platformScreenshots.ios === undefined && md.platformScreenshots.web === "https://s/w.png", JSON.stringify(md));
+  check("remove_screenshot keeps only the watermark in the meta", JSON.stringify(md.platformScreenshotMeta.ios) === JSON.stringify({ ci_order: 10 }), JSON.stringify(md.platformScreenshotMeta));
+  check("remove_screenshot leaves sibling metadata alone", md.platformNotes.ios === "keep me");
+  check("remove_screenshot emits screenshot.removed", out.eventInputs.some((e) => e.type === "screenshot.removed" && e.payload.platform === "ios"));
+  const again = applyOps(graph([out.nodes[0]]), [{ op: "remove_screenshot", node_id: "V-home", platform: "ios" }]);
+  check("removing an empty slot is a no-op", again.eventInputs.length === 0);
+}
+{
+  let err;
+  try { applyOps(graph([view("V-home")]), [{ op: "record_screenshot", ...ci({ platform: "android" }) }]); } catch (e) { err = e; }
+  check("a refusal throws a MutationError with the decision's code", err instanceof MutationError && err.code === "platform_not_applicable" && err.subjectId === "V-home", String(err));
+  let missing;
+  try { applyOps(graph([]), [{ op: "remove_screenshot", node_id: "V-nope", platform: "web" }]); } catch (e) { missing = e; }
+  check("remove_screenshot on an unknown node throws node_not_found", missing instanceof MutationError && missing.code === "node_not_found");
+}
+
 process.exit(failures > 0 ? 1 : 0);
