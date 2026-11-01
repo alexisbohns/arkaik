@@ -369,6 +369,32 @@ async function main() {
     const shotNode = afterShot.bundle.nodes.find((n) => n.id === "V-b");
     check("the slot and its meta are in the snapshot", shotNode?.metadata?.platformScreenshots?.web === "https://shots.example/home.png" && shotNode?.metadata?.platformScreenshotMeta?.web?.source === "manual", JSON.stringify(shotNode?.metadata));
 
+    // --- the screenshot door ----------------------------------------------------
+    // V-b@web already holds Task 1's manual shot; a CI shot after a manual one applies.
+    const shotToken = await tokens.mintToken({ ownerId: ownerA, userId: userA, name: "shots-ci", scopes: ["screenshot:append"] });
+    const shotEntry = (extra = {}) => ({ node_id: "V-b", platform: "web", url: "https://shots.example/ci.png", commit: "abc1234", order: 5, ...extra });
+    const doorPost = (entries, token) =>
+      api.SCREENSHOTS(jsonReq(ORIGIN, "POST", { entries }, bearer(token.plaintext)), ctx(projectId));
+    const forbidden = await doorPost([shotEntry()], readOnly);
+    check("a read-only token gets 403 naming graph:write", forbidden.status === 403 && (await forbidden.json()).required === "graph:write");
+    const door = await doorPost([shotEntry({ detail: "HomeTest.default" })], shotToken);
+    const doorBody = await door.json();
+    check("screenshot:append opens the door", door.status === 200, JSON.stringify(doorBody));
+    check("the door reports the applied slot", doorBody.applied?.find((a) => a.node_id === "V-b" && a.platform === "web") !== undefined, JSON.stringify(doorBody));
+    check("the door's event carries actor arkaik-ci, the commit and the order", doorBody.events?.find((e) => e.type === "screenshot.recorded" && e.actor === "arkaik-ci" && e.commit === "abc1234" && e.order === 5) !== undefined, JSON.stringify(doorBody.events));
+    const afterDoor = await (await api.GET_PROJECT(readReq(), ctx(projectId))).json();
+    const doorNode = afterDoor.bundle.nodes.find((n) => n.id === "V-b");
+    check("the snapshot holds the CI url with source ci", doorNode?.metadata?.platformScreenshots?.web === "https://shots.example/ci.png" && doorNode?.metadata?.platformScreenshotMeta?.web?.source === "ci", JSON.stringify(doorNode?.metadata));
+    const rerun = await doorPost([shotEntry({ detail: undefined })], shotToken);
+    const rerunBody = await rerun.json();
+    check("a re-run is a 200 with an unchanged skip and no event", rerun.status === 200 && rerunBody.skipped?.[0]?.reason === "unchanged" && rerunBody.events.length === 0, JSON.stringify(rerunBody));
+    const late = await doorPost([shotEntry({ url: "https://shots.example/older.png", commit: "0ldc0de", order: 4 })], shotToken);
+    const lateBody = await late.json();
+    check("a lower order is a stale_order skip", late.status === 200 && lateBody.skipped?.[0]?.reason === "stale_order", JSON.stringify(lateBody));
+    const refusedDoor = await doorPost([shotEntry({ url: "http://insecure/x.png", order: 6 })], shotToken);
+    const refusedDoorBody = await refusedDoor.json();
+    check("an http url is refused with 422 invalid_url", refusedDoor.status === 422 && refusedDoorBody.refusals?.[0]?.reason === "invalid_url", JSON.stringify(refusedDoorBody));
+
     // --- Optimistic concurrency --------------------------------------------
     const current = await (await api.GET_PROJECT(readReq(), ctx(projectId))).json();
     check("the concurrency baseline read returned a version", Boolean(current.version));

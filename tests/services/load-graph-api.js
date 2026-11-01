@@ -68,6 +68,7 @@ function loadGraphApi() {
     ["@/lib/services/graph/etag", "./etag.js"],
     ["@/lib/services/graph/quality-events", "./quality-events.js"],
     ["@/lib/services/graph/live", "./live.js"],
+    ["@/lib/services/graph/screenshots", "./screenshots.js"],
     ["@/lib/services/graph/restore", "./restore.js"],
     ["@/lib/services/graph/store", "./store.js"],
     ["@/lib/services/graph/read-route", "./read-route.js"],
@@ -107,6 +108,7 @@ function loadGraphApi() {
   );
   // The live door's planner (issue #424) — pure, over @arkaik/schema.
   write("live.js", transpile(src("lib", "services", "graph", "live.ts"), "live.ts", COMMON));
+  write("screenshots.js", transpile(src("lib", "services", "graph", "screenshots.ts"), "screenshots.ts", COMMON));
   write("restore.js", transpile(src("lib", "services", "graph", "restore.ts"), "restore.ts", COMMON));
   write("store.js", transpile(src("lib", "services", "graph", "store.ts"), "store.ts", COMMON));
   write("read-route.js", transpile(src("lib", "services", "graph", "read-route.ts"), "read-route.ts", COMMON));
@@ -143,6 +145,7 @@ function loadGraphApi() {
     "pollen-route.js": src("app", "api", "graph", "projects", "[projectId]", "pollen", "route.ts"),
     "quality-events-route.js": src("app", "api", "graph", "projects", "[projectId]", "quality", "events", "route.ts"),
     "live-route.js": src("app", "api", "graph", "projects", "[projectId]", "live", "route.ts"),
+    "screenshots-route.js": src("app", "api", "graph", "projects", "[projectId]", "screenshots", "route.ts"),
   };
   for (const [out, from] of Object.entries(routes)) {
     write(out, transpile(from, "route.ts", COMMON));
@@ -176,6 +179,7 @@ function loadGraphApi() {
     GET_POLLEN: req("pollen-route.js").GET,
     QUALITY_EVENTS: req("quality-events-route.js").POST,
     LIVE: req("live-route.js").POST,
+    SCREENSHOTS: req("screenshots-route.js").POST,
   };
 }
 

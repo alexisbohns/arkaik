@@ -78,4 +78,5 @@ check("detail is capped at 2000 characters", isError(parseScreenshotEntries({ en
   check("one refusal refuses the whole batch", !plan.ok && plan.refusals.length === 1 && plan.refusals[0].node_id === "V-nope");
 }
 
+if (failures === 0) console.log("All screenshot door checks passed.");
 process.exit(failures > 0 ? 1 : 0);
