@@ -189,6 +189,9 @@ jobs:
       - name: Screenshot door planner tests (ci source forced, all-or-nothing, skips)
         run: npm run test:screenshot-door
 
+      - name: Screenshot staleness tests (derived from the journal, never stored)
+        run: npm run test:screenshot-staleness
+
       - name: Map projection + validation tests
         run: npm run test:maps
 
