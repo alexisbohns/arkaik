@@ -135,6 +135,9 @@ async function main() {
     check("kommit: a re-run writes nothing and exits 0", again.status === 0 && readFileSync(journalPath, "utf8").trim().split("\n").length === 2, again.stdout + again.stderr);
     const manual = spawnSync(process.execPath, [CLI, "shot", "V-home", "web", "https://shots.example/by-hand.png"], { encoding: "utf8", cwd: dir });
     check("kommit: a positional shot without --commit is manual", manual.status === 0 && JSON.parse(readFileSync(bundlePath, "utf8")).nodes[0].metadata.platformScreenshotMeta.web.source === "manual", manual.stdout + manual.stderr);
+    const before = readFileSync(bundlePath, "utf8");
+    const http = spawnSync(process.execPath, [CLI, "shot", "V-home", "web", "http://x/a.png"], { encoding: "utf8", cwd: dir });
+    check("kommit: an http:// value is refused up front and the bundle is untouched", http.status === 1 && /https:\/\//.test(http.stderr) && readFileSync(bundlePath, "utf8") === before, http.stdout + http.stderr);
     rmSync(dir, { recursive: true, force: true });
   }
 

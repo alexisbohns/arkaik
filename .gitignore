@@ -61,6 +61,7 @@
 # it behind
 /packages/cli/.test-build-restore/
 /packages/cli/.test-build-live/
+/packages/cli/.test-build-shot/
 # transient ESM bundle emitted by tests/cli/quality-section-fold.test.js
 # (esbuild-bundles pack.ts to reach runPack options that have no CLI flag
 # yet) — cleaned up on a successful run, kept ignored in case a crashed run

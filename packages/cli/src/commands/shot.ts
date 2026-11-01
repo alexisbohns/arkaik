@@ -1,5 +1,5 @@
 /**
- * `arkaik shot [--manifest <file>] [--commit <sha>] [--order <n>] [--remote <url>] [--dry-run] [node_id platform value]`
+ * `arkaik shot [--manifest <file>] [--commit <sha>] [--order <n>] [--remote <url>] [--bundle <path>] [--dry-run] [node_id platform value]`
  *
  * Record screenshots (spec 2026-11-01). Entries come from `--manifest`, a
  * JSON array of `{ node_id, platform, url, detail? }`, and/or one positional
@@ -59,7 +59,7 @@ Options:
   --manifest <file>   JSON array of { node_id, platform, url, detail? }.
   --commit <sha>      The commit the shots were rendered from. Required when hosted.
   --order <n>         The commit's height on the default branch (git rev-list --count). Required with --commit.
-  --remote <url>      Instance origin. Default: $ARKAIK_URL, else the link file's remote, else ${DEFAULT_BASE_URL}
+  --remote <url>      Hosted only: the instance origin. Default: $ARKAIK_URL, else the link file's remote, else ${DEFAULT_BASE_URL}
   --bundle <path>     Kommit only: the bundle to write (default: ${DEFAULT_BUNDLE_PATH}).
   --dry-run           Show what would be recorded and exit 0.
   -h, --help          Show this help.
@@ -97,6 +97,12 @@ interface DoorResponse {
   refusals?: Array<{ index: number; node_id: string; platform: string; reason: string; detail?: string }>;
   error?: string;
   message?: string;
+}
+
+/** The URI scheme of a value (`https:`, `data:`, `http:`, …), or undefined for a bare path. */
+function schemeOf(value: string): string | undefined {
+  const match = /^([a-z][a-z0-9+.-]*:)/i.exec(value);
+  return match === null ? undefined : match[1].toLowerCase();
 }
 
 function flagValue(argv: readonly string[], flag: string): string | undefined {
@@ -199,6 +205,14 @@ export async function runShot(argv: string[], options: RunShotOptions = {}): Pro
   if (entries.length === 0) {
     errorLog("Nothing to record: pass --manifest <file> or <node_id> <platform> <value>.");
     return { ok: false };
+  }
+  // The door and `decideScreenshot` refuse these too; refusing here names the value before any request or write.
+  for (const e of entries) {
+    const scheme = schemeOf(e.url);
+    if (scheme !== undefined && scheme !== "https:" && scheme !== "data:") {
+      errorLog(`"${e.url}": screenshot values must be https:// URLs, image data URIs, or paths relative to the bundle (got ${scheme})`);
+      return { ok: false };
+    }
   }
 
   const linkPath = join(cwd, LINK_FILE);

@@ -36,7 +36,7 @@ proof.
    was taken" and the bytes live in the snapshot only. `commit` is the sha the
    shot was taken from and `order` its height on the default branch, both CI
    only. `detail` is free text (the test name, the device). Envelope `actor` is
-   `arkaik-ci`, `arkaik-app` or `arkaik-mcp` as elsewhere.
+   `arkaik-ci`, `arkaik-app`, `arkaik-mcp` or `arkaik-cli` as elsewhere.
 
    The resolver writes the current shot into `metadata.platformScreenshots`
    unchanged, so `images: true` maps, `ViewNode`, `ShotPreviewDialog` and the
