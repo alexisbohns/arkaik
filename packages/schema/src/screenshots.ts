@@ -137,8 +137,18 @@ export function screenshotHistory(events: readonly JournalEvent[], nodeId: strin
  * legacy shot written through `update_node`, or no shot at all).
  */
 export function currentScreenshot(events: readonly JournalEvent[], nodeId: string, platform: PlatformId): JournalEvent | null | undefined {
-  const history = screenshotHistory(events, nodeId, platform);
-  if (history.length === 0) return undefined;
-  const last = history[history.length - 1];
-  return last.type === "screenshot.removed" ? null : last;
+  return reduceScreenshotSlots(orderEvents(events)).get(nodeId)?.get(platform);
+}
+
+/** Last screenshot event per (node, platform) over events already in (ts, id) order: the last `screenshot.recorded`, or `null` after a `screenshot.removed`. Slots the journal never mentions are absent. */
+export function reduceScreenshotSlots(ordered: readonly JournalEvent[]): Map<string, Map<string, JournalEvent | null>> {
+  const slots = new Map<string, Map<string, JournalEvent | null>>();
+  for (const ev of ordered) {
+    if (ev.type !== "screenshot.recorded" && ev.type !== "screenshot.removed") continue;
+    if (typeof ev.node_id !== "string" || typeof ev.platform !== "string") continue;
+    let byPlatform = slots.get(ev.node_id);
+    if (!byPlatform) { byPlatform = new Map(); slots.set(ev.node_id, byPlatform); }
+    byPlatform.set(ev.platform, ev.type === "screenshot.removed" ? null : ev);
+  }
+  return slots;
 }
