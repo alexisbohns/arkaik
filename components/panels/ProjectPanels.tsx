@@ -14,7 +14,7 @@ import {
   FindingDetailPanelHeader,
 } from "@/components/panels/FindingDetailPanel";
 import { NodeDetailPanel, NodeDetailPanelHeader } from "@/components/panels/NodeDetailPanel";
-import type { ScreenshotPanelOp } from "@/components/panels/NodeDetailPanel";
+import type { ScreenshotPanelOp } from "@/lib/utils/screenshot-ops";
 import { RawBundlePanel } from "@/components/panels/RawBundlePanel";
 import { SplitAcceptanceDialog } from "@/components/panels/SplitAcceptanceDialog";
 import { DuplicateNodeDialog } from "@/components/panels/DuplicateNodeDialog";

@@ -1716,7 +1716,7 @@ Add to `NodeDetailPanelProps` (after `onUpdate`):
   onScreenshot?: (op: ScreenshotPanelOp) => Promise<void> | void;
 ```
 
-and export the `ScreenshotPanelOp` type from this file (above the props). Thread `onScreenshot` through the component's destructuring to `PlatformVariantsSection` (`onScreenshot={onScreenshot}` at the mount near line 786). In `PlatformVariantsSectionProps` add `onScreenshot?: (op: ScreenshotPanelOp) => Promise<void> | void;` and in the section:
+and define `ScreenshotPanelOp` in `lib/utils/screenshot-ops.ts`, derived from the schema's `MutationOp` (`Extract<MutationOp, { op: "record_screenshot" }> & { source: "manual"; form: "url" | "data" }` | `Extract<MutationOp, { op: "remove_screenshot" }>`) so it cannot drift; import it from there here, in `ProjectPanels`, `PageShell` and `AcceptancePlatformsSection`. Thread `onScreenshot` through the component's destructuring to `PlatformVariantsSection` (`onScreenshot={onScreenshot}` at the mount near line 786). In `PlatformVariantsSectionProps` add `onScreenshot?: (op: ScreenshotPanelOp) => Promise<void> | void;` and in the section:
 
 - delete `handleScreenshotChange` and the `screenshots` state's participation in `handleNotesChange` / `handleStatusChange` patches: both now spread `platformScreenshots: node.metadata?.platformScreenshots` (the stored value, read-only here) instead of the local `screenshots` state, so a note edit still round-trips the slot untouched;
 - read `const screenshots = (node.metadata?.platformScreenshots ?? {}) as Partial<Record<PlatformId, string>>;` and `const screenshotMeta = (node.metadata?.platformScreenshotMeta ?? {}) as PlatformScreenshotMetaMap;` straight from the node (no `useState` for them: the op's result comes back through the cache);

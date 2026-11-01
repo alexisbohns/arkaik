@@ -26,6 +26,11 @@ const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
 /** The one form the URL field records; `decideScreenshot` checks it again server-side. */
 const HTTPS_URL = /^https:\/\/\S+$/;
 
+function formatShotDate(ts: string): string | undefined {
+  const date = new Date(ts);
+  return Number.isNaN(date.getTime()) ? undefined : date.toLocaleDateString();
+}
+
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -65,6 +70,11 @@ export interface PlatformVariantsProps {
   screenshotMeta?: Partial<Record<PlatformId, { ts?: string; source?: "ci" | "manual"; form?: string }>>;
   /** Per platform: the journal says the node moved after this shot. */
   stale?: Partial<Record<PlatformId, boolean>>;
+  /**
+   * A screenshot op is in flight: every control holds, because a status or
+   * notes patch built now would carry the pre-op slot into `update_node`.
+   */
+  busy?: boolean;
   onZoomShot?: (platform: PlatformId) => void;
 }
 
@@ -95,6 +105,7 @@ export function PlatformVariants({
   onRemoveScreenshot,
   screenshotMeta,
   stale,
+  busy = false,
   onZoomShot,
 }: PlatformVariantsProps) {
   const showTabs = platformAvailabilityShape(platforms) === "rings";
@@ -125,6 +136,9 @@ export function PlatformVariants({
   const currentMeta = screenshotMeta?.[activeTab];
   const currentStale = stale?.[activeTab] === true;
   const urlDraftValid = HTTPS_URL.test(urlDraft.trim());
+  // Guarded: `ts` crosses a surface boundary and a malformed one renders
+  // "Invalid Date" unless checked.
+  const shotDate = currentMeta?.ts ? formatShotDate(currentMeta.ts) : undefined;
   // No platform name at arity ≤ 1: the scope selector already says "Admin — Web
   // only", so repeating it on every label is chrome that earns nothing — and
   // dropping it is what makes arity 0 and arity 1 literally identical.
@@ -140,6 +154,7 @@ export function PlatformVariants({
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     setDragOver(false);
+    if (busy) return;
     const file = e.dataTransfer.files[0];
     if (file) void handleFile(file);
   }
@@ -155,6 +170,7 @@ export function PlatformVariants({
       <Field label="Status" htmlFor={`${fieldId}-status`}>
         <Select
           value={currentStatus ?? ""}
+          disabled={busy}
           onValueChange={(value) => {
             if (value === "unset") {
               onStatusChange?.(activeTab, undefined);
@@ -184,6 +200,7 @@ export function PlatformVariants({
           onChange={(e) => onNotesChange?.(activeTab, e.target.value)}
           placeholder={showTabs ? `Notes for ${PLATFORM_LABELS[activeTab]}…` : "Notes…"}
           rows={3}
+          disabled={busy}
           className="leading-relaxed resize-none"
         />
       </Field>
@@ -203,31 +220,37 @@ export function PlatformVariants({
             <Button
               variant="ghost"
               size="icon"
-              className="absolute top-1 right-1 size-6 opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 cursor-pointer"
+              className="absolute top-1 right-1 size-6 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity bg-background/80 cursor-pointer"
               aria-label="Remove screenshot"
+              disabled={busy}
               onClick={() => onRemoveScreenshot?.(activeTab)}
             >
               <X className="size-3.5" />
             </Button>
-            {(currentMeta || currentStale) && (
-              <p className="mt-1 text-[10px] text-muted-foreground">
-                {currentMeta?.source === "ci"
-                  ? "From CI"
-                  : currentMeta?.source === "manual"
-                    ? "Recorded by hand"
-                    : "Legacy shot"}
-                {currentMeta?.ts ? ` · ${new Date(currentMeta.ts).toLocaleDateString()}` : ""}
-                {currentStale ? " · may be stale" : ""}
-              </p>
-            )}
+            {/* Always captioned while a shot is up: a slot with no provenance is
+                a legacy one written before the op existed, and saying so is the
+                caption's job. */}
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              {currentMeta?.source === "ci"
+                ? "From CI"
+                : currentMeta?.source === "manual"
+                  ? "Recorded by hand"
+                  : "Legacy shot"}
+              {shotDate ? ` · ${shotDate}` : ""}
+              {currentStale ? " · may be stale" : ""}
+            </p>
           </div>
         ) : (
           <div className="flex flex-col gap-2">
             <div
               role="button"
-              tabIndex={0}
-              onClick={() => fileInputRef.current?.click()}
+              tabIndex={busy ? -1 : 0}
+              aria-disabled={busy || undefined}
+              onClick={() => {
+                if (!busy) fileInputRef.current?.click();
+              }}
               onKeyDown={(e) => {
+                if (busy) return;
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
                   fileInputRef.current?.click();
@@ -235,11 +258,13 @@ export function PlatformVariants({
               }}
               onDragOver={(e) => {
                 e.preventDefault();
-                setDragOver(true);
+                if (!busy) setDragOver(true);
               }}
               onDragLeave={() => setDragOver(false)}
               onDrop={handleDrop}
-              className={`flex flex-col items-center justify-center gap-1.5 rounded-md border border-dashed px-3 py-4 text-xs text-muted-foreground cursor-pointer transition-colors ${
+              className={`flex flex-col items-center justify-center gap-1.5 rounded-md border border-dashed px-3 py-4 text-xs text-muted-foreground transition-colors ${
+                busy ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+              } ${
                 dragOver
                   ? "border-foreground bg-muted"
                   : "border-border hover:border-muted-foreground"
@@ -266,8 +291,15 @@ export function PlatformVariants({
                 onChange={(e) => setUrlDraft(e.target.value)}
                 placeholder="https://…/screenshot.png"
                 className="h-8 text-xs"
+                disabled={busy}
               />
-              <Button type="submit" size="sm" variant="outline" disabled={!urlDraftValid}>
+              <Button
+                type="submit"
+                size="sm"
+                variant="outline"
+                title="https:// URLs only"
+                disabled={busy || !urlDraftValid}
+              >
                 Record
               </Button>
             </form>

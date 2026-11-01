@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { PageHeader, type PageAction } from "@/components/layout/PageHeader";
 import { ProjectPanels } from "@/components/panels/ProjectPanels";
-import type { ScreenshotPanelOp } from "@/components/panels/NodeDetailPanel";
+import type { ScreenshotPanelOp } from "@/lib/utils/screenshot-ops";
 import type { KritikLibrary, QualitySection, QualityTrend } from "@arkaik/schema";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { Edge, Node } from "@/lib/data/types";

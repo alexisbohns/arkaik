@@ -1,11 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import type { Node, PlatformStatusMap } from "@/lib/data/types";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { ProductScope } from "@/lib/utils/product-scope";
 import { getEditablePlatformStatuses } from "@/lib/utils/platform-status";
 import { PlatformVariants } from "@/components/panels/PlatformVariants";
-import type { ScreenshotPanelOp } from "@/components/panels/NodeDetailPanel";
+import type { ScreenshotPanelOp } from "@/lib/utils/screenshot-ops";
 import { useScreenshotStaleness } from "@/lib/hooks/useScreenshotStaleness";
 import type { PlatformScreenshotMetaMap } from "@arkaik/schema";
 
@@ -35,6 +36,21 @@ export function AcceptancePlatformsSection({ node, scope, onUpdate, onScreenshot
   const statuses: PlatformStatusMap = getEditablePlatformStatuses(node);
   const screenshotMeta = (node.metadata?.platformScreenshotMeta ?? {}) as PlatformScreenshotMetaMap;
   const stale = useScreenshotStaleness(node.id, scope.platforms, screenshotMeta);
+  // Holds every control while an op is in flight: `patchMetadata` spreads the
+  // pre-op `node.metadata`, and `update_node` replaces metadata wholesale, so a
+  // note typed during the window would overwrite the fresh slot. Same hazard
+  // and same hold as `PlatformVariantsSection`.
+  const [shotPending, setShotPending] = useState(false);
+
+  async function runScreenshotOp(op: ScreenshotPanelOp) {
+    if (!onScreenshot) return;
+    setShotPending(true);
+    try {
+      await onScreenshot(op);
+    } finally {
+      setShotPending(false);
+    }
+  }
 
   function patchMetadata(next: Record<string, unknown>) {
     onUpdate(node.id, { metadata: { ...node.metadata, ...next } });
@@ -51,6 +67,7 @@ export function AcceptancePlatformsSection({ node, scope, onUpdate, onScreenshot
       screenshots={node.metadata?.platformScreenshots}
       screenshotMeta={screenshotMeta}
       stale={stale}
+      busy={shotPending}
       onStatusChange={(platform: PlatformId, value) => {
         const next = { ...statuses };
         if (value) next[platform] = value; else delete next[platform];
@@ -62,14 +79,14 @@ export function AcceptancePlatformsSection({ node, scope, onUpdate, onScreenshot
       onRecordScreenshot={
         onScreenshot
           ? (platform, form, value) => {
-              void onScreenshot({ op: "record_screenshot", node_id: node.id, platform, source: "manual", form, value });
+              void runScreenshotOp({ op: "record_screenshot", node_id: node.id, platform, source: "manual", form, value });
             }
           : undefined
       }
       onRemoveScreenshot={
         onScreenshot
           ? (platform) => {
-              void onScreenshot({ op: "remove_screenshot", node_id: node.id, platform });
+              void runScreenshotOp({ op: "remove_screenshot", node_id: node.id, platform });
             }
           : undefined
       }

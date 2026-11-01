@@ -40,6 +40,7 @@ import { withProductMembership } from "@/lib/utils/product-editing";
 import { productOf } from "@arkaik/schema";
 import type { PlatformScreenshotMetaMap } from "@arkaik/schema";
 import { useScreenshotStaleness } from "@/lib/hooks/useScreenshotStaleness";
+import type { ScreenshotPanelOp } from "@/lib/utils/screenshot-ops";
 import { computeNodeTimeline } from "@/lib/utils/journal";
 import { FeedRow } from "@/components/journal/FeedRow";
 import type { FindingRow } from "@/lib/utils/quality";
@@ -52,16 +53,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-
-/**
- * A screenshot write, as the op itself. The panel hands it up unchanged and a
- * surface forwards it to `applyMutations`, so `decideScreenshot` decides once
- * and the journal gets its `screenshot.recorded` / `screenshot.removed` event —
- * the one thing a `platformScreenshots` patch through `update_node` never did.
- */
-export type ScreenshotPanelOp =
-  | { op: "record_screenshot"; node_id: string; platform: PlatformId; source: "manual"; form: "url" | "data"; value: string }
-  | { op: "remove_screenshot"; node_id: string; platform: PlatformId };
 
 interface NodeDetailPanelProps {
   node: Node;
@@ -462,9 +453,27 @@ function PlatformVariantsSection({ node, scope, initialPlatform, onUpdate, onScr
   // comes back through the cache. The notes and status patches below still
   // spread the stored slot map so an edit round-trips it untouched — spread,
   // not written: the one writer of `platformScreenshots` is the op.
+  //
+  // `shotPending` holds every control while an op is in flight: a notes or
+  // status patch built from the pre-op `node.metadata` would hand `update_node`
+  // the old slot, and `update_node` replaces metadata wholesale, so the fresh
+  // shot would be overwritten before the cache ever showed it. The `notes` and
+  // `statuses` state seeded at mount is a pre-existing hazard of the same kind
+  // (a patch spreads whatever the closure holds) and is NOT fixed here.
   const screenshots = (node.metadata?.platformScreenshots ?? {}) as Partial<Record<PlatformId, string>>;
   const screenshotMeta = (node.metadata?.platformScreenshotMeta ?? {}) as PlatformScreenshotMetaMap;
   const stale = useScreenshotStaleness(node.id, scope.platforms, screenshotMeta);
+  const [shotPending, setShotPending] = useState(false);
+
+  async function runScreenshotOp(op: ScreenshotPanelOp) {
+    if (!onScreenshot) return;
+    setShotPending(true);
+    try {
+      await onScreenshot(op);
+    } finally {
+      setShotPending(false);
+    }
+  }
 
   function handleNotesChange(platform: PlatformId, value: string) {
     const next = { ...notes, [platform]: value };
@@ -524,20 +533,21 @@ function PlatformVariantsSection({ node, scope, initialPlatform, onUpdate, onScr
           screenshots={screenshots}
           screenshotMeta={screenshotMeta}
           stale={stale}
+          busy={shotPending}
           initialPlatform={initialPlatform}
           onStatusChange={handleStatusChange}
           onNotesChange={handleNotesChange}
           onRecordScreenshot={
             onScreenshot
               ? (platform, form, value) => {
-                  void onScreenshot({ op: "record_screenshot", node_id: node.id, platform, source: "manual", form, value });
+                  void runScreenshotOp({ op: "record_screenshot", node_id: node.id, platform, source: "manual", form, value });
                 }
               : undefined
           }
           onRemoveScreenshot={
             onScreenshot
               ? (platform) => {
-                  void onScreenshot({ op: "remove_screenshot", node_id: node.id, platform });
+                  void runScreenshotOp({ op: "remove_screenshot", node_id: node.id, platform });
                 }
               : undefined
           }
