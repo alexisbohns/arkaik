@@ -27,6 +27,7 @@
 /tests/services/.test-build-publik/
 /tests/services/.test-build-graph/
 /tests/services/.test-build-live/
+/tests/services/.test-build-screenshots/
 /tests/services/.test-build-graph-etag/
 /tests/services/.test-build-github/
 /tests/services/.test-build-pr-plan/

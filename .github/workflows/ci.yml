@@ -186,6 +186,9 @@ jobs:
       - name: Live door planner tests (platform required, all-or-nothing, already_live skip)
         run: npm run test:live
 
+      - name: Screenshot door planner tests (ci source forced, all-or-nothing, skips)
+        run: npm run test:screenshot-door
+
       - name: Map projection + validation tests
         run: npm run test:maps
 

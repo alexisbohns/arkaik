@@ -33,6 +33,7 @@
     "test:once-changed-files": "node tests/services/once-changed-files.test.js",
     "test:quality-events": "node tests/services/quality-events.test.js",
     "test:live": "node tests/services/live.test.js",
+    "test:screenshot-door": "node tests/services/screenshots.test.js",
     "test:maps": "node tests/schema/maps.test.js",
     "test:products": "node tests/schema/products.test.js",
     "test:edge-semantics": "node tests/schema/edge-semantics.test.js",
