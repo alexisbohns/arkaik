@@ -357,6 +357,18 @@ async function main() {
       JSON.stringify(refusedOpBody),
     );
 
+    // --- record_screenshot through /mutations (screenshot events, part 2) -----
+    const shot = await api.MUTATE(
+      jsonReq(ORIGIN, "POST", { ops: [{ op: "record_screenshot", node_id: "V-b", platform: "web", source: "manual", form: "url", value: "https://shots.example/home.png" }] }, bearer(writeToken.plaintext)),
+      ctx(projectId),
+    );
+    const shotBody = await shot.json();
+    check("record_screenshot is accepted by the mutations route", shot.status === 200, JSON.stringify(shotBody));
+    check("record_screenshot lands a screenshot.recorded event", Array.isArray(shotBody.events) && shotBody.events.some((e) => e.type === "screenshot.recorded" && e.url === "https://shots.example/home.png"), JSON.stringify(shotBody.events));
+    const afterShot = await (await api.GET_PROJECT(readReq(), ctx(projectId))).json();
+    const shotNode = afterShot.bundle.nodes.find((n) => n.id === "V-b");
+    check("the slot and its meta are in the snapshot", shotNode?.metadata?.platformScreenshots?.web === "https://shots.example/home.png" && shotNode?.metadata?.platformScreenshotMeta?.web?.source === "manual", JSON.stringify(shotNode?.metadata));
+
     // --- Optimistic concurrency --------------------------------------------
     const current = await (await api.GET_PROJECT(readReq(), ctx(projectId))).json();
     check("the concurrency baseline read returned a version", Boolean(current.version));

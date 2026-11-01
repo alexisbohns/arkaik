@@ -58,8 +58,14 @@ const SECRET_BYTES = 32;
  * the graph, cannot move a status anywhere but `live`, cannot touch anything
  * but an acceptance, and must name the platform. Not a default, for the same
  * reason as `quality:append`.
+ *
+ * `screenshot:append` is the third append-only sibling (spec 2026-11-01): a
+ * CI job that renders screenshots posts their URLs through `POST …/screenshots`
+ * and nothing else. It cannot read the graph, cannot touch a status, and can
+ * only fill a slot on a view or an acceptance for a platform it lists — a
+ * leaked token can post a picture. Not a default, for the same reason.
  */
-export const TOKEN_SCOPES = ["graph:read", "graph:write", "synk", "quality:append", "release:append"] as const;
+export const TOKEN_SCOPES = ["graph:read", "graph:write", "synk", "quality:append", "release:append", "screenshot:append"] as const;
 export type TokenScope = (typeof TOKEN_SCOPES)[number];
 
 /** What the settings UI mints unless told otherwise: the agent plane, nothing else. */

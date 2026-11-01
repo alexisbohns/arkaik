@@ -32,6 +32,7 @@ const SCOPE_OPTIONS = [
   { id: "synk", label: "Synk backups", hint: "Read and write project backups" },
   { id: "quality:append", label: "Append quality signals", hint: "Record a tripped Kritik signal — nothing else: no reads, no graph writes" },
   { id: "release:append", label: "Mark acceptances live", hint: "Record that an acceptance went live on one platform — nothing else: no reads, no other writes" },
+  { id: "screenshot:append", label: "Record screenshots", hint: "Post screenshot URLs for views and acceptances — nothing else: no reads, no status writes" },
 ] as const;
 
 const DEFAULT_SCOPES = ["graph:read", "graph:write"];
