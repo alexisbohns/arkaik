@@ -45,6 +45,14 @@ export default async function Home() {
 
       <main className="relative mx-auto flex w-full flex-1 flex-col items-center justify-center px-6 pb-14 pt-4">
         <div className="w-full max-w-[400px] text-center">
+          {/* eslint-disable-next-line @next/next/no-img-element -- a static vector mark; next/image has nothing to optimize in an SVG */}
+          <img
+            src="/brand/arkaik-stone.svg"
+            alt=""
+            width={128}
+            height={128}
+            className="mx-auto mb-4 size-32"
+          />
           <ArkaikLogoBoil className="mx-auto" />
 
           <p className={`${gochiHand.className} mt-3 text-[32px] leading-none text-primary sm:text-[32px]`}>
