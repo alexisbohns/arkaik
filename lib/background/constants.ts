@@ -55,3 +55,42 @@ export const INTRO_DURATION_MS = 6000;
 
 /** Opacity fraction the texture starts at when the intro begins. */
 export const INTRO_START_FACTOR = 0.06;
+
+/*
+ * The stone hidden in the terrain (see `lib/background/stone-reveal.ts`).
+ */
+
+/** The brand stone, rasterized at one pixel per grid cell. */
+export const STONE_SRC = "/brand/arkaik-stone.svg";
+
+/**
+ * Stone height as a fraction of the canvas height. Above 1 on purpose: the
+ * stone overflows the hero, its top and bottom clipped by the canvas (and
+ * softened by the edge fade), so it reads as something big lying under the
+ * page rather than a framed picture.
+ */
+export const STONE_FIT_HEIGHT = 1.25;
+
+/** Stone width cap as a fraction of the canvas width (keeps it whole on phones). */
+export const STONE_FIT_WIDTH = 0.9;
+
+/** Below this many cells across, the stone can't read — skip it. */
+export const STONE_MIN_CELLS = 12;
+
+/**
+ * How much a passing cloud deepens the stone's stroke cells: their terrain
+ * value is multiplied by this. Higher = the mark pops out of fainter clouds.
+ */
+export const STONE_INK_GAIN = 2.2;
+
+/**
+ * Ceiling on a lit stroke cell. Kept under the ramp's last step (`█`,
+ * ≥ ~0.92) so strokes read as `#`/`@` texture rather than solid barcode bars.
+ */
+export const STONE_INK_CEILING = 0.86;
+
+/**
+ * Fraction of the cloud that survives over the stone's white body. Low = the
+ * body carves a clean hole in a passing cloud; not 0, so it isn't dead.
+ */
+export const STONE_PAPER_GAIN = 0.18;

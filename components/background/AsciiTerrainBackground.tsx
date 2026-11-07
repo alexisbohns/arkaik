@@ -14,6 +14,11 @@
  * app's theme `--foreground` at a low, brightness-modulated alpha, so it
  * reads as a subtle backdrop in both light and dark mode rather than the
  * pen's stark white-on-black terminal look.
+ *
+ * The brand stone hides in the terrain (`lib/background/stone-reveal.ts`): a
+ * big centred stone, dithered one bit per cell, is a stencil the drifting
+ * clouds light up as they pass — strokes deepen, the body thins — so the mark
+ * is more or less obvious depending on where the weather happens to be.
  */
 
 import { useEffect, useRef } from "react";
@@ -33,7 +38,21 @@ import {
   NOISE_PAN_SPEED,
   NOISE_SCALE,
   OCTAVE_NUM,
+  STONE_FIT_HEIGHT,
+  STONE_FIT_WIDTH,
+  STONE_INK_CEILING,
+  STONE_INK_GAIN,
+  STONE_MIN_CELLS,
+  STONE_PAPER_GAIN,
+  STONE_SRC,
 } from "@/lib/background/constants";
+import {
+  bayerOffset,
+  fitStone,
+  lightStone,
+  sampleStone,
+  type StoneRect,
+} from "@/lib/background/stone-reveal";
 
 const FREQUENCIES = Array.from({ length: OCTAVE_NUM }, (_, i) => FREQ_MULTIPLIER ** i);
 const AMPLITUDES = Array.from({ length: OCTAVE_NUM }, (_, i) => AMP_MULTIPLIER ** i);
@@ -137,6 +156,13 @@ export function AsciiTerrainBackground({ className }: { className?: string }) {
     let lastCssWidth = -1;
     let lastCssHeight = -1;
 
+    // The hidden stone: its footprint on the grid and its per-cell cover/ink
+    // (stone-local, row-major).
+    let stoneImage: HTMLImageElement | null = null;
+    let stoneRect: StoneRect | null = null;
+    let stoneCover = new Float32Array(0);
+    let stoneInk = new Float32Array(0);
+
     const readColor = () => {
       rgb = hslTripleToRgb(getComputedStyle(document.documentElement).getPropertyValue("--foreground"));
     };
@@ -155,7 +181,29 @@ export function AsciiTerrainBackground({ className }: { className?: string }) {
       }
     };
 
-    const render = (opacityScale = 1) => {
+    const buildStone = () => {
+      stoneRect = stoneImage ? fitStone(cols, rows, STONE_FIT_HEIGHT, STONE_FIT_WIDTH, STONE_MIN_CELLS) : null;
+      if (!stoneImage || !stoneRect) {
+        stoneCover = new Float32Array(0);
+        stoneInk = new Float32Array(0);
+        return;
+      }
+      const { size } = stoneRect;
+      const scratch = document.createElement("canvas");
+      scratch.width = size;
+      scratch.height = size;
+      const sctx = scratch.getContext("2d", { willReadFrequently: true });
+      if (!sctx) {
+        stoneRect = null;
+        return;
+      }
+      sctx.drawImage(stoneImage, 0, 0, size, size);
+      const sampled = sampleStone(sctx.getImageData(0, 0, size, size).data, size);
+      stoneCover = sampled.cover;
+      stoneInk = sampled.ink;
+    };
+
+    const render = (opacityScale = 1, stoneScale = 1) => {
       const cssWidth = canvas.clientWidth;
       const cssHeight = canvas.clientHeight;
       ctx.clearRect(0, 0, cssWidth, cssHeight);
@@ -163,6 +211,7 @@ export function AsciiTerrainBackground({ className }: { className?: string }) {
       const half = CHAR_SIZE / 2;
       let currentAlpha = -1;
       const [r, g, b] = rgb;
+      const stone = stoneRect;
 
       for (let col = 0; col < cols; col++) {
         const x = col * CHAR_SIZE + half;
@@ -173,6 +222,23 @@ export function AsciiTerrainBackground({ className }: { className?: string }) {
 
           let noiseVal = clamp(mapRange(noiseCache[index], 0, 1, -0.2, 1.2), 0, 1);
           noiseVal = Math.pow(noiseVal, 1.5);
+
+          if (stone) {
+            const sc = col - stone.col;
+            const sr = row - stone.row;
+            if (sc >= 0 && sr >= 0 && sc < stone.size && sr < stone.size) {
+              const si = sr * stone.size + sc;
+              noiseVal = lightStone(
+                noiseVal,
+                stoneInk[si],
+                stoneCover[si] * stoneScale,
+                bayerOffset(col, row),
+                STONE_INK_GAIN,
+                STONE_PAPER_GAIN,
+                STONE_INK_CEILING,
+              );
+            }
+          }
           const alpha = Math.pow(noiseVal, 0.8) * MAX_OPACITY * opacityScale * fadeFactor;
 
           if (Math.abs(alpha - currentAlpha) > 1 / 255) {
@@ -194,8 +260,9 @@ export function AsciiTerrainBackground({ className }: { className?: string }) {
       if (time - lastFrameTime < FRAME_INTERVAL_MS) return;
       lastFrameTime = time;
 
+      const elapsed = time - mountTime;
       updateNoiseCache();
-      render(introOpacityScale(time - mountTime));
+      render(introOpacityScale(elapsed), smoothstep(elapsed / INTRO_DURATION_MS));
       offsetX += NOISE_PAN_SPEED;
       offsetY += NOISE_PAN_SPEED;
     };
@@ -244,6 +311,8 @@ export function AsciiTerrainBackground({ className }: { className?: string }) {
         }
       }
 
+      buildStone();
+
       // The animation loop repaints on its own next tick; under reduced
       // motion nothing else will, so re-render the static frame now.
       if (reduced) {
@@ -264,6 +333,20 @@ export function AsciiTerrainBackground({ className }: { className?: string }) {
     readColor();
     resize();
 
+    // Until the stone loads (or if it never does) the terrain is just terrain.
+    let disposed = false;
+    const image = new Image();
+    image.src = STONE_SRC;
+    image
+      .decode()
+      .then(() => {
+        if (disposed) return;
+        stoneImage = image;
+        buildStone();
+        if (reduced) render();
+      })
+      .catch(() => {});
+
     const resizeObserver = new ResizeObserver(scheduleResize);
     resizeObserver.observe(canvas);
 
@@ -279,6 +362,7 @@ export function AsciiTerrainBackground({ className }: { className?: string }) {
     reducedMotionQuery.addEventListener("change", applyReducedMotion);
 
     return () => {
+      disposed = true;
       cancelAnimationFrame(rafId);
       resizeObserver.disconnect();
       themeObserver.disconnect();
