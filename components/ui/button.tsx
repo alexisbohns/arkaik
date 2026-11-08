@@ -33,9 +33,10 @@ const buttonVariants = cva(
         icon: "size-9",
       },
     },
-    // After the size classes, so the reader's radius beats `rounded-md`; a
-    // caller's own `rounded-*` (e.g. a split button's `rounded-r-none`) still
-    // comes last and wins.
+    // tailwind-merge (in `cn`) drops the size's `rounded-md` in favour of this
+    // later class in the same group — CSS order alone would not — while a
+    // caller's own `rounded-*` (e.g. a split button's `rounded-r-none`) comes
+    // last and still wins.
     compoundVariants: [
       { variant: ["stone", "stone-secondary"], className: "rounded-[var(--stone-radius)]" },
     ],
