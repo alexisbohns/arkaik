@@ -60,3 +60,51 @@
   --stone-icon-3: var(--stone-dark-icon-3);
   --stone-row-hairline: rgb(255 255 255 / .07);
 }
+
+/*
+ * A stone surface. `.stone-primary` / `.stone-secondary` pick the role; `.stone`
+ * paints it: the texture, its ink and label lift, the raised or flush edge for
+ * the surface it sits on, and — on polished stones — a top sheen, drawn behind
+ * the label (z-index -1 inside the element's own stacking context).
+ */
+@layer components {
+  .stone-primary {
+    --s-fill: var(--stone-primary-fill);
+    --s-ink: var(--stone-primary-ink);
+    --s-tsh: var(--stone-primary-tsh);
+    --s-polish: var(--stone-primary-polish);
+    --s-shadow: var(--stone-primary-shadow);
+    --s-sheen: var(--stone-primary-sheen);
+  }
+  .stone-secondary {
+    --s-fill: var(--stone-secondary-fill);
+    --s-ink: var(--stone-secondary-ink);
+    --s-tsh: var(--stone-secondary-tsh);
+    --s-polish: var(--stone-secondary-polish);
+    --s-shadow: var(--stone-secondary-shadow);
+    --s-sheen: var(--stone-secondary-sheen);
+  }
+  .stone {
+    position: relative;
+    isolation: isolate;
+    background: var(--s-fill);
+    color: var(--s-ink);
+    text-shadow: var(--s-tsh);
+    box-shadow: var(--s-shadow);
+    transition: filter .15s, box-shadow .2s;
+  }
+  .stone::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: var(--s-polish);
+    background: linear-gradient(180deg, rgb(255 255 255 / var(--s-sheen)), rgb(255 255 255 / 0) 48%,
+      rgb(255 255 255 / 0) 82%, rgb(255 255 255 / .1));
+  }
+  .stone:hover {
+    filter: brightness(1.04);
+  }
+}
