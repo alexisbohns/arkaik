@@ -10,6 +10,7 @@
 
 const assert = require("node:assert/strict");
 const path = require("path");
+const fs = require("fs");
 
 const ROOT = path.join(__dirname, "..", "..");
 const { STONES, DEFAULT_STONES, stoneSVG } = require(path.join(ROOT, "scripts", "generate", "lib", "stones.js"));
@@ -72,6 +73,20 @@ test("every texture is a deterministic standalone SVG", () => {
     assert.ok(svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg"'), `${s.id}: opens as an SVG document`);
     assert.ok(svg.endsWith("</svg>"), `${s.id}: closes the SVG`);
   }
+});
+
+test("the generated artifacts match the definitions", () => {
+  const css = fs.readFileSync(path.join(ROOT, "app", "stones.generated.css"), "utf8");
+  const registry = fs.readFileSync(path.join(ROOT, "lib", "stones", "stones-registry.generated.ts"), "utf8");
+  const dir = path.join(ROOT, "public", "stones");
+  for (const s of STONES) {
+    assert.ok(css.includes(`:root[data-stone-${s.side}="${s.id}"]`), `${s.id}: CSS block`);
+    assert.ok(registry.includes(`id: "${s.id}"`), `${s.id}: registry row`);
+    assert.equal(fs.readFileSync(path.join(dir, `${s.id}.svg`), "utf8"), stoneSVG(s) + "\n", `${s.id}: SVG tile`);
+  }
+  assert.deepEqual(fs.readdirSync(dir).sort(), STONES.map((s) => `${s.id}.svg`).sort(), "no stale tiles");
+  assert.ok(css.includes(`:root,\n:root[data-stone-light="${DEFAULT_STONES.light}"]`), "default light stone also applies with no attribute");
+  assert.ok(css.includes(`:root,\n:root[data-stone-dark="${DEFAULT_STONES.dark}"]`), "default dark stone also applies with no attribute");
 });
 
 if (failures) {
