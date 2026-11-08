@@ -84,8 +84,8 @@ export function stoneBootScript(): string {
     `if(!p||typeof p!=="object")return;var d=document.documentElement;` +
     `if(${light}.indexOf(p.light)>=0)d.setAttribute("data-stone-light",p.light);` +
     `if(${dark}.indexOf(p.dark)>=0)d.setAttribute("data-stone-dark",p.dark);` +
-    `var r=p.radius;if(typeof r==="number"&&r>=${RADIUS_MIN}&&r<=${RADIUS_MAX})` +
-    `d.style.setProperty("--stone-radius",r>=${RADIUS_MAX}?"9999px":Math.round(r)+"px");` +
+    `var r=p.radius;if(typeof r==="number"&&r>=${RADIUS_MIN}&&r<=${RADIUS_MAX}){var n=Math.round(r);` +
+    `d.style.setProperty("--stone-radius",n>=${RADIUS_MAX}?"9999px":n+"px");}` +
     `}catch(e){}})();`
   );
 }

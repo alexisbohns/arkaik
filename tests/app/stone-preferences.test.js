@@ -145,6 +145,36 @@ test("the boot script never throws", () => {
   assert.doesNotThrow(() => runBoot(null, { throws: true }));
 });
 
+test("the boot script and the parser agree on every stored record", () => {
+  const records = [
+    { light: "rosa", dark: "lava", radius: 17.5 },
+    { light: "rosa", dark: "lava", radius: 17.9 },
+    { light: "rosa", dark: "lava", radius: 17.4 },
+    { light: "rosa", dark: "lava", radius: -0.4 },
+    { light: "rosa", dark: "lava", radius: 0.5 },
+    { light: "granite", dark: "verde", radius: 3 },
+    { light: "pumice", dark: "carrara", radius: 99 },
+    { light: "carrara" },
+    {},
+  ];
+  for (const record of records) {
+    const boot = runBoot(JSON.stringify(record));
+    const parsed = fakeRoot();
+    applyStonePreferences(parsed, parseStonePreferences(record));
+    // A key the boot script leaves unset keeps the server-rendered default.
+    const booted = {
+      light: boot.attrs["data-stone-light"] ?? D.light,
+      dark: boot.attrs["data-stone-dark"] ?? D.dark,
+      radius: boot.styleValues["--stone-radius"] ?? radiusValue(D.radius),
+    };
+    assert.deepEqual(
+      booted,
+      { light: parsed.attrs["data-stone-light"], dark: parsed.attrs["data-stone-dark"], radius: parsed.styleValues["--stone-radius"] },
+      JSON.stringify(record),
+    );
+  }
+});
+
 if (failures) {
   console.error(`\n${failures} failing`);
   process.exit(1);

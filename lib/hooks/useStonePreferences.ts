@@ -16,7 +16,8 @@ import {
  * exist there), hydration re-reads the real store, and every subscriber agrees
  * the instant a choice changes — `setItem` fires no `storage` event in the tab
  * that wrote it. Writing also re-applies the skin to <html>, so the whole app
- * changes stone without a reload.
+ * changes stone without a reload. Other tabs' changes arrive through the
+ * `storage` event and repaint this one too.
  */
 let cache: StonePreferences | null = null;
 const listeners = new Set<() => void>();
@@ -36,10 +37,24 @@ function getSnapshot(): StonePreferences {
   return cache;
 }
 
+/**
+ * Another tab's choice arrives as a `storage` event: re-read it, re-apply the
+ * skin and notify. Without this, a tab opened earlier would merge a patch into
+ * its stale copy and write the other tab's stone back over.
+ */
+function onStorage(event: StorageEvent) {
+  if (event.key !== STONE_STORAGE_KEY && event.key !== null) return;
+  cache = read();
+  applyStonePreferences(document.documentElement, cache);
+  for (const listener of listeners) listener();
+}
+
 function subscribe(listener: () => void): () => void {
+  if (listeners.size === 0) window.addEventListener("storage", onStorage);
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
+    if (listeners.size === 0) window.removeEventListener("storage", onStorage);
   };
 }
 

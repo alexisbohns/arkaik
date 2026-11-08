@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { useId, type CSSProperties } from "react";
 import { PyramidIcon, RouteIcon, SparklesIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -44,7 +44,7 @@ function StoneChoices({ side, value, onChange }: { side: StoneSide; value: strin
  * theme's tone in both panes.
  */
 function PreviewPane({ mode }: { mode: "light" | "dark" }) {
-  const gradientId = `stone-icon-preview-${mode}`;
+  const gradientId = `stone-icon-preview-${mode}-${useId().replace(/:/g, "")}`;
   return (
     <div
       className={cn(
@@ -55,7 +55,7 @@ function PreviewPane({ mode }: { mode: "light" | "dark" }) {
       )}
       style={{ "--stone-icon-paint": `url(#${gradientId})` } as CSSProperties}
     >
-      <svg aria-hidden="true" width="0" height="0" className="absolute">
+      <svg aria-hidden="true" focusable="false" width="0" height="0" className="absolute">
         <linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="8" y2="24">
           <stop offset="0" style={{ stopColor: "var(--stone-icon-1)" }} />
           <stop offset="0.5" style={{ stopColor: "var(--stone-icon-2)" }} />
@@ -63,11 +63,11 @@ function PreviewPane({ mode }: { mode: "light" | "dark" }) {
         </linearGradient>
       </svg>
       <span className="w-full font-mono text-[10px] uppercase tracking-wider opacity-60">{mode}</span>
-      <Button type="button" size="sm" variant="stone" tabIndex={-1}>
+      <Button type="button" size="sm" variant="stone">
         <SparklesIcon />
         Primary
       </Button>
-      <Button type="button" size="sm" variant="stone-secondary" tabIndex={-1}>
+      <Button type="button" size="sm" variant="stone-secondary">
         <RouteIcon />
         Secondary
       </Button>
@@ -91,6 +91,7 @@ function PreviewPane({ mode }: { mode: "light" | "dark" }) {
 export function StonePicker() {
   const { preferences, update, reset } = useStonePreferences();
   const radiusLabel = preferences.radius >= RADIUS_MAX ? "pill" : `${preferences.radius}px`;
+  const isDefault = isDefaultStonePreferences(preferences);
 
   return (
     <div className="flex flex-col gap-3">
@@ -102,15 +103,19 @@ export function StonePicker() {
             light mode and the light stone in dark mode. Applies to every project in this browser.
           </p>
         </div>
-        {!isDefaultStonePreferences(preferences) && (
-          <button
-            type="button"
-            onClick={reset}
-            className="shrink-0 cursor-pointer text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-          >
-            Reset to default
-          </button>
-        )}
+        {/* Always mounted, so pressing it never drops keyboard focus to <body>; hidden at the default. */}
+        <button
+          type="button"
+          onClick={reset}
+          aria-hidden={isDefault}
+          tabIndex={isDefault ? -1 : undefined}
+          className={cn(
+            "shrink-0 cursor-pointer text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline",
+            isDefault && "invisible",
+          )}
+        >
+          Reset to default
+        </button>
       </div>
       <StoneChoices side="light" value={preferences.light} onChange={(light) => update({ light })} />
       <StoneChoices side="dark" value={preferences.dark} onChange={(dark) => update({ dark })} />
@@ -118,6 +123,7 @@ export function StonePicker() {
         <span className="w-24 shrink-0 text-xs text-muted-foreground">Radius</span>
         <input
           type="range"
+          aria-label="Radius"
           min={RADIUS_MIN}
           max={RADIUS_MAX}
           step={1}
@@ -126,9 +132,9 @@ export function StonePicker() {
           onChange={(event) => update({ radius: Number(event.target.value) })}
           className="w-40 cursor-pointer accent-foreground"
         />
-        <output className="ml-2 font-mono text-xs tabular-nums">{radiusLabel}</output>
+        <output aria-hidden="true" className="ml-2 font-mono text-xs tabular-nums">{radiusLabel}</output>
       </label>
-      <div aria-hidden="true" className="grid gap-2 sm:grid-cols-2">
+      <div aria-hidden="true" inert className="grid gap-2 sm:grid-cols-2">
         <PreviewPane mode="light" />
         <PreviewPane mode="dark" />
       </div>
