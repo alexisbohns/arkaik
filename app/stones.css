@@ -108,3 +108,33 @@
     filter: brightness(1.04);
   }
 }
+
+/*
+ * The active sidebar row: the secondary stone at 78% behind the label, held by
+ * a hairline (dark on light surfaces, light on dark), and its icon stroked in
+ * the stone's icon tone. `--stone-icon-paint` lets a preview point at its own
+ * gradient; everywhere else it is the shared `#stone-icon`.
+ */
+@layer components {
+  [data-sidebar="menu-button"][data-active="true"],
+  [data-sidebar="menu-sub-button"][data-active="true"] {
+    position: relative;
+    isolation: isolate;
+  }
+  [data-sidebar="menu-button"][data-active="true"]::before,
+  [data-sidebar="menu-sub-button"][data-active="true"]::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    background: var(--stone-secondary-fill);
+    opacity: .78;
+    box-shadow: inset 0 0 0 1px var(--stone-row-hairline);
+  }
+  [data-sidebar="menu-button"][data-active="true"] > svg,
+  [data-sidebar="menu-sub-button"][data-active="true"] > svg {
+    stroke: var(--stone-icon-paint, url(#stone-icon));
+  }
+}
