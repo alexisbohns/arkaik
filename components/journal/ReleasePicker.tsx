@@ -5,7 +5,8 @@ import type { ReleaseEntry } from "@/components/journal/release-entry";
 
 interface ReleasePickerProps {
   entries: readonly ReleaseEntry[];
-  value: string | null;
+  /** Always set: the picker only renders while the list has a row. */
+  value: string;
   onChange: (key: string) => void;
 }
 
@@ -15,7 +16,7 @@ interface ReleasePickerProps {
  */
 export function ReleasePicker({ entries, value, onChange }: ReleasePickerProps) {
   return (
-    <Select value={value ?? undefined} onValueChange={onChange}>
+    <Select value={value} onValueChange={onChange}>
       <SelectTrigger aria-label="Release" className="w-full">
         <SelectValue placeholder="Pick a release" />
       </SelectTrigger>

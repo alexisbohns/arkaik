@@ -33,6 +33,14 @@ function countLabel(count: number): string {
 }
 
 /**
+ * What this page reads. A projection, so it must stay in step with what the
+ * page renders — and with its empty state, which now says "no releases, nothing
+ * shipped" rather than "no journal": the events that would contradict a
+ * broader claim are no longer read.
+ */
+const CHANGELOG_EVENT_TYPES = ["deliverable.shipped", "release.tagged"] as const;
+
+/**
  * The Changelog: what shipped, milestone by milestone.
  *
  * Master-detail: the releases down the left, the selected one on the right as
@@ -43,14 +51,6 @@ function countLabel(count: number): string {
  * commitments, decisions) has its own page; none of it had shipped, which is
  * the one thing a changelog is about.
  */
-/**
- * What this page reads. A projection, so it must stay in step with what the
- * page renders — and with its empty state, which now says "no releases, nothing
- * shipped" rather than "no journal": the events that would contradict a
- * broader claim are no longer read.
- */
-const CHANGELOG_EVENT_TYPES = ["deliverable.shipped", "release.tagged"] as const;
-
 export default function ChangelogPage() {
   const id = useProjectId();
 
@@ -174,7 +174,7 @@ export default function ChangelogPage() {
 
   // Before `isEmpty`, never after (#362): an unread journal is `[]`, which is
   // the same thing a project that has never shipped has — and this page's empty
-  // sentence ("Releases and updates will appear here once history is recorded")
+  // sentence ("No releases tagged yet, and nothing shipped since.")
   // would then quietly deny every release the project has ever tagged.
   const loadError = projectError ?? nodesError ?? edgesError ?? journalError;
   if (loadError) {
@@ -194,7 +194,6 @@ export default function ChangelogPage() {
 
   const isEmpty = journal.length === 0;
   const isFiltered = period.year !== null || period.month !== null;
-  const nothingInPeriod = entries.length === 0;
 
   return (
     <PageShell
@@ -219,7 +218,9 @@ export default function ChangelogPage() {
       }
     >
       <PageSurface fill contentClassName="flex flex-col">
-        {isEmpty || nothingInPeriod ? (
+        {/* `selected` is null exactly when the list is empty — nothing tagged,
+            or nothing in the period — so it doubles as the empty check. */}
+        {isEmpty || !selected ? (
           <div className="p-4 md:p-6">
             <EmptyState
               message={
@@ -235,17 +236,20 @@ export default function ChangelogPage() {
           // list folds into a picker above the release.
           <div className="@container flex min-h-0 flex-1 flex-col">
             <div className="border-b p-3 @3xl:hidden">
-              <ReleasePicker entries={entries} value={selectedKey} onChange={selectRelease} />
+              <ReleasePicker entries={entries} value={selected.key} onChange={selectRelease} />
             </div>
             <div className="flex min-h-0 flex-1">
               <ReleaseList
                 entries={entries}
-                selectedKey={selectedKey}
+                selectedKey={selected.key}
                 onSelect={selectRelease}
                 className="hidden w-64 shrink-0 overflow-y-auto border-r @3xl:flex"
               />
-              <div className="min-w-0 flex-1 overflow-y-auto p-4 md:p-6">
-                {selected && <ReleaseDetail entry={selected} nodesById={nodesById} detailed={detailed} />}
+              {/* Keyed by the release so the scroller remounts at the top: one
+                  shared node would open the next release wherever the last
+                  one was left, past its heading. */}
+              <div key={selected.key} className="min-w-0 flex-1 overflow-y-auto p-4 md:p-6">
+                <ReleaseDetail entry={selected} nodesById={nodesById} detailed={detailed} />
               </div>
             </div>
           </div>
