@@ -8,7 +8,7 @@ import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
 import { PageSurface } from "@/components/layout/PageSurface";
 import { SectionRow } from "@/components/layout/SectionRow";
-import { ChangelogFilterBar } from "@/components/journal/ChangelogFilterBar";
+import { ChangelogRail } from "@/components/journal/ChangelogRail";
 import { DeliverableChips, DeliverableHoverCard } from "@/components/journal/DeliverableHoverCard";
 import { iconChipVariants } from "@/components/layout/IconChip";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -19,7 +19,7 @@ import { useProject } from "@/lib/hooks/useProject";
 import { useProjectId } from "@/lib/hooks/useProjectId";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { computeDeliverables, type Deliverable } from "@/lib/utils/journal";
-import { listYears, matchesPeriod, type Period } from "@/lib/utils/changelog-period";
+import { ALL_PERIODS, listYears, matchesPeriod, type Period } from "@/lib/utils/changelog-period";
 import { formatEventDate } from "@/components/journal/describe-event";
 import { PLATFORM_LABELS } from "@/components/graph/nodes/node-styles";
 import type { Node, ReleaseTaggedEvent } from "@/lib/data/types";
@@ -225,23 +225,22 @@ export default function ChangelogPage() {
       allEdges={dataEdges}
       scope={scope}
       history
+      rail={
+        isEmpty ? undefined : (
+          <ChangelogRail
+            years={years}
+            year={period.year}
+            month={period.month}
+            detailed={detailed}
+            onYearChange={(year) => setPeriod((previous) => ({ ...previous, year }))}
+            onMonthChange={(month) => setPeriod((previous) => ({ ...previous, month }))}
+            onDetailedChange={setDetailed}
+            onReset={() => setPeriod(ALL_PERIODS)}
+          />
+        )
+      }
     >
-      <PageSurface
-        contentClassName="flex flex-col divide-y"
-        toolbar={
-          isEmpty ? undefined : (
-            <ChangelogFilterBar
-              years={years}
-              year={period.year}
-              month={period.month}
-              detailed={detailed}
-              onYearChange={(year) => setPeriod((previous) => ({ ...previous, year }))}
-              onMonthChange={(month) => setPeriod((previous) => ({ ...previous, month }))}
-              onDetailedChange={setDetailed}
-            />
-          )
-        }
-      >
+      <PageSurface contentClassName="flex flex-col divide-y">
         {isEmpty ? (
           <EmptyState message="No releases tagged yet, and nothing shipped since." />
         ) : nothingInPeriod ? (

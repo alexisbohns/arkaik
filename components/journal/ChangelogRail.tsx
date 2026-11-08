@@ -1,18 +1,22 @@
 "use client";
 
-import { CalendarIcon, CalendarRangeIcon, ListChevronsDownUpIcon, ListChevronsUpDownIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+  CalendarIcon,
+  CalendarRangeIcon,
+  FilterXIcon,
+  ListChevronsDownUpIcon,
+  ListChevronsUpDownIcon,
+} from "lucide-react";
 import { Select, SelectContent, SelectItem } from "@/components/ui/select";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { FilterSelectTrigger } from "@/components/layout/FilterSelectTrigger";
-import { Toolbar, ToolbarGroup } from "@/components/layout/Toolbar";
+import { RailButton, RailGroup, RightRail } from "@/components/layout/RightRail";
 import { GUARDED_HOTKEY, toolbarKey, useShortcut } from "@/lib/hooks/useShortcut";
 import { MONTH_LABELS } from "@/lib/utils/changelog-period";
 
 /** The "no filter" sentinel — Radix's Select cannot hold an empty string value. */
 const ALL = "__all__";
 
-interface ChangelogFilterBarProps {
+interface ChangelogRailProps {
   /** Years present in the timeline, newest first. */
   years: readonly number[];
   year: number | null;
@@ -22,20 +26,21 @@ interface ChangelogFilterBarProps {
   onYearChange: (year: number | null) => void;
   onMonthChange: (month: number | null) => void;
   onDetailedChange: (detailed: boolean) => void;
+  /** Clear both period filters at once. */
+  onReset: () => void;
 }
 
 /**
- * The Changelog's band: when am I looking at, and how much of it.
+ * The Changelog's right rail: when am I looking at, and how much of it.
  *
- * Two square icon menus and one icon toggle, the vocabulary the other filter
- * bands settled on (#374, #373) — a menu carries its value as a darkened border
- * and its name in the tooltip, a toggle carries its state in the glyph.
- *
- * Month is offered whatever the year filter says: "every March" is a question a
- * release cadence makes sense of, so the two narrow independently rather than
- * the month waiting on a year.
+ * Two groups because they are two questions. "When" holds the Year and Month
+ * menus — they narrow independently, "every March" being a fair question of a
+ * release cadence — and a Reset that only exists while one is set. "View"
+ * holds the details toggle, whose state is carried by its glyph and
+ * `aria-pressed`, never the filled surface: on this rail, filled means "a
+ * filter is set", and a toggle that is on is a different thing.
  */
-export function ChangelogFilterBar({
+export function ChangelogRail({
   years,
   year,
   month,
@@ -43,23 +48,29 @@ export function ChangelogFilterBar({
   onYearChange,
   onMonthChange,
   onDetailedChange,
-}: ChangelogFilterBarProps) {
+  onReset,
+}: ChangelogRailProps) {
   useShortcut("toggle-expand", toolbarKey(() => onDetailedChange(!detailed)), GUARDED_HOTKEY);
 
+  const filtered = year !== null || month !== null;
+  const detailLabel = detailed ? "Collapse deliverable details" : "Expand deliverable details";
+
   return (
-    <Toolbar>
-      <ToolbarGroup>
+    <RightRail label="Changelog filters">
+      <RailGroup label="When">
         <Select
           value={year === null ? ALL : String(year)}
           onValueChange={(value) => onYearChange(value === ALL ? null : Number(value))}
         >
           <FilterSelectTrigger
+            variant="rail"
+            tooltipSide="left"
             icon={<CalendarRangeIcon />}
             label="Year"
             active={year !== null}
             valueLabel={year === null ? undefined : String(year)}
           />
-          <SelectContent align="start">
+          <SelectContent side="left" align="start">
             <SelectItem value={ALL}>All years</SelectItem>
             {years.map((entry) => (
               <SelectItem key={entry} value={String(entry)}>
@@ -74,12 +85,14 @@ export function ChangelogFilterBar({
           onValueChange={(value) => onMonthChange(value === ALL ? null : Number(value))}
         >
           <FilterSelectTrigger
+            variant="rail"
+            tooltipSide="left"
             icon={<CalendarIcon />}
             label="Month"
             active={month !== null}
             valueLabel={month === null ? undefined : MONTH_LABELS[month]}
           />
-          <SelectContent align="start">
+          <SelectContent side="left" align="start">
             <SelectItem value={ALL}>All months</SelectItem>
             {MONTH_LABELS.map((label, index) => (
               <SelectItem key={label} value={String(index)}>
@@ -88,32 +101,18 @@ export function ChangelogFilterBar({
             ))}
           </SelectContent>
         </Select>
-      </ToolbarGroup>
 
-      {/* Its own group, so the band's `justify-between` pushes it to the right
-          edge: the two menus answer "when am I looking at", the toggle answers
-          "how much of it", and they are not the same question. */}
-      <ToolbarGroup>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              size="icon"
-              variant="outline"
-              aria-pressed={detailed}
-              aria-label={detailed ? "Collapse deliverable details" : "Expand deliverable details"}
-              onClick={() => onDetailedChange(!detailed)}
-              // Border only, no fill: the menus beside it use a soft filled
-              // surface to say "a value is set", and this button sets no value —
-              // it opens and shuts the notes and chips under each deliverable.
-              className="bg-transparent dark:bg-transparent"
-            >
-              {detailed ? <ListChevronsDownUpIcon className="size-4" /> : <ListChevronsUpDownIcon className="size-4" />}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{detailed ? "Collapse deliverable details" : "Expand deliverable details"}</TooltipContent>
-        </Tooltip>
-      </ToolbarGroup>
-    </Toolbar>
+        {filtered && <RailButton icon={FilterXIcon} label="Reset filters" onClick={onReset} />}
+      </RailGroup>
+
+      <RailGroup label="View">
+        <RailButton
+          icon={detailed ? ListChevronsDownUpIcon : ListChevronsUpDownIcon}
+          label={detailLabel}
+          pressed={detailed}
+          onClick={() => onDetailedChange(!detailed)}
+        />
+      </RailGroup>
+    </RightRail>
   );
 }

@@ -74,6 +74,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-folder-kanban { filter: url(#wob-folder-kanban); }
 .lucide-folder-open { filter: url(#wob-folder-open); }
 .lucide-folder-tree { filter: url(#wob-folder-tree); }
+.lucide-funnel-x { filter: url(#wob-funnel-x); }
 .lucide-gauge { filter: url(#wob-gauge); }
 .lucide-gem { filter: url(#wob-gem); }
 .lucide-gift { filter: url(#wob-gift); }
