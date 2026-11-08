@@ -35,7 +35,7 @@ import { useInPanelGroup } from "@/components/panels/panel-group-context";
  * had no outline to join — a lone `h3` under nothing is worse than no heading —
  * and that decision was deferred here as "a heading-structure decision for the
  * whole panel stack". The stack has since made it: the page names itself `h1`
- * (`PageHeader`), every open record names itself `h2` (`PanelStack`), and a
+ * (`PageShell`, visually hidden), every open record names itself `h2` (`PanelStack`), and a
  * section takes the next rung free below whatever encloses it. Which is what
  * lets a reader walk a panel by heading instead of by scrolling it.
  *

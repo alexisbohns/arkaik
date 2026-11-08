@@ -40,14 +40,18 @@ export type CommandIconId =
   | "theme"
   | "shortcuts"
   | "projects"
-  | "tokens";
+  | "tokens"
+  | "create";
 
-export type CommandGroupId = "pages" | "maps" | "library" | "project" | "actions";
+export type CommandGroupId = "create" | "pages" | "maps" | "library" | "project" | "actions";
 
 /** Group order in the palette — mirrors the sidebar, so the two read the same.
  * A palette only ever renders the groups its own catalogue fills, so the docs
  * ("Pages") and the project ("Maps"…) groups can share one list. */
 export const COMMAND_GROUPS = [
+  // The page's own create action, registered by `PageShell` — first, because
+  // it is the one thing the palette offers that depends on where you are.
+  { id: "create", label: "Create" },
   { id: "pages", label: "Pages" },
   { id: "maps", label: "Maps" },
   { id: "library", label: "Library" },
@@ -60,7 +64,9 @@ export type CommandActionId = "publish" | "toggle-theme" | "show-shortcuts";
 
 export type CommandTarget =
   | { kind: "href"; href: string; external?: boolean }
-  | { kind: "action"; action: CommandActionId };
+  | { kind: "action"; action: CommandActionId }
+  /** A page-registered command (`usePageAction`): the page runs it itself. */
+  | { kind: "run"; run: () => void };
 
 export interface PaletteCommand {
   id: string;

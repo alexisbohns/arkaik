@@ -20,7 +20,6 @@ import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { computeBacklog, computeCommitments } from "@/lib/utils/journal";
 import { BacklogItemRow, FeedRow } from "@/components/journal/FeedRow";
 import type { DecisionStatusId } from "@/lib/config/decision-statuses";
-import { productScopeMetaLabel } from "@/lib/utils/product-scope";
 
 /**
  * Design: the funnel that runs *before* anything ships — open backlog, the
@@ -104,7 +103,6 @@ export default function DesignPage() {
   return (
     <PageShell
       title="Design"
-      meta={productScopeMetaLabel(scope)}
       allNodes={dataNodes}
       allEdges={dataEdges}
       scope={scope}

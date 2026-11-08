@@ -13,8 +13,8 @@ import { cn } from "@/lib/utils";
  * variant-prefixed utility and a plain one are not the same key to
  * tailwind-merge, so `cn` cannot let a caller's `h-4` displace a
  * `data-[orientation=vertical]:h-full` — both would ship, and the variant
- * utility sorts last and wins. `PageHeader` passes exactly that (`h-4` on a
- * vertical rule), so upstream's form would silently stretch it to full height.
+ * utility sorts last and wins. A caller passing `h-4` on a vertical rule would
+ * be silently stretched to full height by upstream's form.
  */
 function Separator({
   className,

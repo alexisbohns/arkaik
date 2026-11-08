@@ -114,7 +114,6 @@ export default function HistoryPage() {
   return (
     <PageShell
       title="History"
-      meta={`${total} event${total === 1 ? "" : "s"}`}
       allNodes={dataNodes}
       history
     >

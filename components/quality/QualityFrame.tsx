@@ -12,7 +12,6 @@ import type { ProductScope } from "@/lib/utils/product-scope";
 interface QualityFrameProps {
   /** The page's own name — "Matrix", "Findings". */
   title: string;
-  meta?: ReactNode;
   data: ReturnType<typeof useQualityData>;
   scope: ProductScope;
   toolbar?: ReactNode;
@@ -20,7 +19,7 @@ interface QualityFrameProps {
 }
 
 /**
- * The shell both Quality pages mount: header, panel grid, and the three states
+ * The shell both Quality pages mount: panel grid, and the three states
  * that precede any content.
  *
  * Shared because those three states carry decisions that must not be re-made
@@ -29,7 +28,7 @@ interface QualityFrameProps {
  * to read has no `quality` section either, and would otherwise be told to go
  * install a plugin and run an audit it may well have run already.
  */
-export function QualityFrame({ title, meta, data, scope, toolbar, children }: QualityFrameProps) {
+export function QualityFrame({ title, data, scope, toolbar, children }: QualityFrameProps) {
   if (data.loading) {
     return <PageLoading label="quality" />;
   }
@@ -59,7 +58,6 @@ export function QualityFrame({ title, meta, data, scope, toolbar, children }: Qu
   return (
     <PageShell
       title={title}
-      meta={meta}
       /* Neither page renders nodes of its own, but `ProjectPanels` resolves
          node entries against this data — without it, following a finding into
          its linked node opens a panel that cannot find its node. */

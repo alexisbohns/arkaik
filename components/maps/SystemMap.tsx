@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 import { SystemCanvas } from "@/components/graph/SystemCanvas";
 import type { CanvasFocus } from "@/components/graph/Canvas";
+import { MapCanvasControls } from "@/components/maps/MapCanvasControls";
 import { MapDisplayPopover } from "@/components/maps/MapDisplayPopover";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
@@ -305,25 +306,6 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
           icon: PlusIcon,
           onClick: () => setNewNodeOpen(true),
         }}
-        headerExtra={
-          <>
-            <Select value={layoutMode} onValueChange={handleLayoutModeChange}>
-              <SelectTrigger className="h-8 w-[120px]" aria-label="Layout algorithm">
-                <SelectValue placeholder="Layout" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="organic">Organic</SelectItem>
-                <SelectItem value="tiered">Tiered</SelectItem>
-              </SelectContent>
-            </Select>
-            <MapDisplayPopover
-              value={display}
-              onChange={(patch) => void handleDisplayChange(patch)}
-              mapTitle={definition.title}
-              controls={{ viewPlatforms: true, minimapColor: true }}
-            />
-          </>
-        }
         surfaceCard
         allNodes={dataNodes}
         allEdges={dataEdges}
@@ -356,6 +338,23 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
           onEdgeClick={handleEdgeClick}
           onLayoutVersion={handleLayoutVersion}
         />
+        <MapCanvasControls>
+          <Select value={layoutMode} onValueChange={handleLayoutModeChange}>
+            <SelectTrigger className="h-8 w-[120px] bg-background" aria-label="Layout algorithm">
+              <SelectValue placeholder="Layout" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="organic">Organic</SelectItem>
+              <SelectItem value="tiered">Tiered</SelectItem>
+            </SelectContent>
+          </Select>
+          <MapDisplayPopover
+            value={display}
+            onChange={(patch) => void handleDisplayChange(patch)}
+            mapTitle={definition.title}
+            controls={{ viewPlatforms: true, minimapColor: true }}
+          />
+        </MapCanvasControls>
       </PageShell>
       <NewNodeForm
         open={newNodeOpen}

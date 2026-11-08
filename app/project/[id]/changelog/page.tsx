@@ -22,7 +22,6 @@ import { computeDeliverables, type Deliverable } from "@/lib/utils/journal";
 import { listYears, matchesPeriod, type Period } from "@/lib/utils/changelog-period";
 import { formatEventDate } from "@/components/journal/describe-event";
 import { PLATFORM_LABELS } from "@/components/graph/nodes/node-styles";
-import { productScopeMetaLabel } from "@/lib/utils/product-scope";
 import type { Node, ReleaseTaggedEvent } from "@/lib/data/types";
 
 /**
@@ -222,21 +221,10 @@ export default function ChangelogPage() {
   return (
     <PageShell
       title="Changelog"
-      meta={productScopeMetaLabel(scope)}
       allNodes={dataNodes}
       allEdges={dataEdges}
       scope={scope}
       history
-      headerExtra={
-        projectBundle?.project.version ? (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span>Current version</span>
-            <span className="rounded-full border px-2 py-0.5 font-medium text-foreground">
-              {projectBundle.project.version}
-            </span>
-          </div>
-        ) : null
-      }
     >
       <PageSurface
         contentClassName="flex flex-col divide-y"

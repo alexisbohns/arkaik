@@ -188,7 +188,6 @@ export default function ProjectAcceptancesPage() {
     <>
       <PageShell
         title="Acceptances"
-        meta={`${acceptances.length} total · ${filtered.length} shown`}
         action={{
           label: "New acceptance",
           icon: PlusIcon,

@@ -8,7 +8,6 @@ import {
   listMaps,
   resolveKritikLibrary,
 } from "@arkaik/schema";
-import { LayoutGridIcon, RowsIcon } from "lucide-react";
 import { BacklogCard } from "@/components/overview/BacklogCard";
 import { DeliverySnapshotCard } from "@/components/overview/DeliverySnapshotCard";
 import { HealthCard } from "@/components/overview/HealthCard";
@@ -25,12 +24,10 @@ import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
 import { PageSurface } from "@/components/layout/PageSurface";
 import { EmptyState } from "@/components/ui/empty-state";
-import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useJournalStats } from "@/lib/hooks/useJournalStats";
 import { useNodes } from "@/lib/hooks/useNodes";
-import { useOverviewLayout, type OverviewLayout } from "@/lib/hooks/useOverviewLayout";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
 import { useProjectId } from "@/lib/hooks/useProjectId";
@@ -46,13 +43,9 @@ import { computeBacklog } from "@/lib/utils/journal";
 import { computeMapCounts } from "@/lib/utils/journey-graph";
 import { getRollupPlatforms } from "@/lib/utils/platform-status";
 import { buildSurfaceGauges } from "@/lib/utils/quality";
-import { productScopeMetaLabel, type ProductGraph } from "@/lib/utils/product-scope";
+import type { ProductGraph } from "@/lib/utils/product-scope";
 import { computeScopedPyramidTiers } from "@/lib/utils/pyramid";
 
-const LAYOUTS: readonly SegmentedControlOption<OverviewLayout>[] = [
-  { id: "rows", label: "Rows", icon: RowsIcon },
-  { id: "grid", label: "Grid", icon: LayoutGridIcon },
-];
 
 /**
  * The only events the Overview draws: release markers for the pulse, ideas
@@ -70,7 +63,6 @@ const OVERVIEW_JOURNAL_TYPES = ["release.tagged", "idea.proposed", "request.file
  */
 export default function OverviewPage() {
   const id = useProjectId();
-  const [layout, setLayout] = useOverviewLayout();
 
   const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes } = useNodes(id);
   const { edges: dataEdges, loading: edgesLoading, error: edgesError, reload: reloadEdges } = useEdges(id);
@@ -242,42 +234,16 @@ export default function OverviewPage() {
   const isEmpty = dataNodes.length === 0 && journalError === null && (stats?.total ?? 0) === 0;
 
   return (
-    <PageShell
-      title="Overview"
-      meta={productScopeMetaLabel(scope)}
-      headerExtra={
-        <div className="flex items-center gap-3">
-          {projectBundle?.project.version && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>Current version</span>
-              <span className="rounded-full border px-2 py-0.5 font-medium text-foreground">
-                {projectBundle.project.version}
-              </span>
-            </div>
-          )}
-          <SegmentedControl
-            options={LAYOUTS}
-            value={layout}
-            onChange={setLayout}
-            ariaLabel="Overview display"
-            collapseLabels
-          />
-        </div>
-      }
-    >
-      {/*
-        Two displays of the same ten sections. The grid is a two-column wall of
-        cards; rows give each section a full width, heading left and content
-        right, which is the only shape the platform tiles and the 90° value
-        pyramid have room to draw in. The switch is the reader's, remembered.
-      */}
+    <PageShell title="Overview">
       <PageSurface
-        contentClassName={layout === "rows" ? "flex flex-col divide-y" : "grid gap-4 md:grid-cols-2"}
+        contentClassName="flex flex-col divide-y"
       >
-        <OverviewLayoutProvider value={layout}>
+        {/* Rows, always: the Rows/Grid switch lived in the page header, which is
+            gone, and rows are the display that gives the platform tiles and the
+            90° value pyramid the full width they need. */}
+        <OverviewLayoutProvider value="rows">
           {isEmpty ? (
             <EmptyState
-              className={layout === "rows" ? "" : "md:col-span-2"}
               message="Nothing here yet. Sketch the product on the Journey map or add nodes in the Library, and the Overview fills itself in."
             />
           ) : (

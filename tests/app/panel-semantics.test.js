@@ -198,11 +198,13 @@ if (panelCell) {
 
 // --- 3: the outline, rung by rung -------------------------------------------
 
-const pageHeader = parse(path.join(ROOT, "components", "layout", "PageHeader.tsx"));
-const pageHeadings = elements(pageHeader).filter((element) => HEADINGS.has(element.tag));
+// There is no visible page header any more; `PageShell` keeps the h1 anyway,
+// visually hidden, because the panels' h2s still need a rung to hang off.
+const pageShell = parse(path.join(ROOT, "components", "layout", "PageShell.tsx"));
+const pageHeadings = elements(pageShell).filter((element) => HEADINGS.has(element.tag));
 assert(
   pageHeadings.length === 1 && pageHeadings[0].tag === "h1",
-  "PageHeader names the page h1 — the rung every panel h2 hangs off",
+  "PageShell names the page h1 — the rung every panel h2 hangs off",
   `found ${pageHeadings.map((element) => element.tag).join(", ") || "none"}`,
 );
 

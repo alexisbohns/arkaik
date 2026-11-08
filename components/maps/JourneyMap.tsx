@@ -14,6 +14,7 @@ import {
 } from "@arkaik/schema";
 import { JourneyCanvas } from "@/components/graph/JourneyCanvas";
 import type { CanvasFocus } from "@/components/graph/Canvas";
+import { MapCanvasControls } from "@/components/maps/MapCanvasControls";
 import { MapDisplayPopover } from "@/components/maps/MapDisplayPopover";
 import { EdgeTypeDialog } from "@/components/graph/EdgeTypeDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
@@ -689,20 +690,6 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
           icon: PlusIcon,
           onClick: () => { setNewNodePreset(null); setNewNodeOpen(true); },
         }}
-        headerExtra={
-          <>
-            {playlistError && (
-              <span className="text-xs text-destructive" role="status" aria-live="polite">
-                {playlistError}
-              </span>
-            )}
-            <MapDisplayPopover
-              value={display}
-              onChange={(patch) => void handleDisplayChange(patch)}
-              mapTitle={definition?.title ?? "Journey"}
-            />
-          </>
-        }
         surfaceCard
         allNodes={dataNodes}
         allEdges={dataEdges}
@@ -763,6 +750,24 @@ export function JourneyMap({ projectId, definition }: JourneyMapProps) {
             toggled={toggled}
           />
         )}
+        <MapCanvasControls>
+          {playlistError && (
+            // On a backing, not bare: it now floats over the canvas, where
+            // red text alone would sit on top of whatever card is under it.
+            <span
+              className="rounded-md border bg-background px-2 py-1 text-xs text-destructive"
+              role="status"
+              aria-live="polite"
+            >
+              {playlistError}
+            </span>
+          )}
+          <MapDisplayPopover
+            value={display}
+            onChange={(patch) => void handleDisplayChange(patch)}
+            mapTitle={definition?.title ?? "Journey"}
+          />
+        </MapCanvasControls>
       </PageShell>
       <ShotPreviewDialog
         open={zoomNode !== null}
