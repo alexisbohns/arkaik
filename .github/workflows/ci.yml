@@ -248,6 +248,9 @@ jobs:
       - name: Changelog period filter tests
         run: npm run test:changelog-period
 
+      - name: Changelog selected-release tests
+        run: npm run test:changelog-releases
+
       - name: Deliverable PR-number tests
         run: npm run test:deliverable-pr
 
