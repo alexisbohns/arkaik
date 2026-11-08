@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, type CSSProperties } from "react";
+import { useId, useRef, type CSSProperties } from "react";
 import { PyramidIcon, RouteIcon, SparklesIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -92,9 +92,20 @@ export function StonePicker() {
   const { preferences, update, reset } = useStonePreferences();
   const radiusLabel = preferences.radius >= RADIUS_MAX ? "pill" : `${preferences.radius}px`;
   const isDefault = isDefaultStonePreferences(preferences);
+  const root = useRef<HTMLDivElement>(null);
+
+  // The Reset link hides itself once the choice is back to the default, and a
+  // hidden element cannot hold focus — so hand focus to the light stone that is
+  // now selected instead of letting it fall back to <body>.
+  const resetAndRefocus = () => {
+    reset();
+    requestAnimationFrame(() => {
+      root.current?.querySelector<HTMLButtonElement>('[aria-label="Light stone"] [aria-pressed="true"]')?.focus();
+    });
+  };
 
   return (
-    <div className="flex flex-col gap-3">
+    <div ref={root} className="flex flex-col gap-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-medium">Stones</p>
@@ -103,10 +114,10 @@ export function StonePicker() {
             light mode and the light stone in dark mode. Applies to every project in this browser.
           </p>
         </div>
-        {/* Always mounted, so pressing it never drops keyboard focus to <body>; hidden at the default. */}
+        {/* Hidden, not unmounted, at the default, so the header row keeps its layout. */}
         <button
           type="button"
-          onClick={reset}
+          onClick={resetAndRefocus}
           aria-hidden={isDefault}
           tabIndex={isDefault ? -1 : undefined}
           className={cn(
