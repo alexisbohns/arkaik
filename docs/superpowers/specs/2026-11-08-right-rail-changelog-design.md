@@ -108,9 +108,7 @@ DOM-free, tested by `tests/app/changelog-releases.test.js` (transpiled like
 `changelog-period.test.js`; the module takes no `@/` imports so no alias table
 needs touching).
 
-- `UNRELEASED_KEY = "unreleased"`.
-- `releaseKeyOf(entry)` — `"unreleased"` for the unreleased entry, the version
-  otherwise.
+- `UNRELEASED_KEY = "unreleased"`, `RELEASE_PARAM = "release"`.
 - `resolveSelectedRelease(keys: readonly string[], requested: string | null):
   string | null` — `requested` if it is in `keys`; otherwise `keys[0]`; `null`
   when `keys` is empty.
