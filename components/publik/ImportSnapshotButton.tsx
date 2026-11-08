@@ -52,7 +52,7 @@ export function ImportSnapshotButton({ snapshotId, suggestedFileName }: ImportSn
   }
 
   return (
-    <Button size="lg" className="cursor-pointer" onClick={() => void handleImport()} disabled={importing}>
+    <Button size="lg" variant="stone" className="cursor-pointer" onClick={() => void handleImport()} disabled={importing}>
       {importing ? <Loader2Icon className="size-4 animate-spin" /> : <DownloadIcon className="size-4" />}
       {importing ? "Importing..." : "Import into arkaik"}
     </Button>

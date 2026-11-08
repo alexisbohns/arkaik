@@ -273,7 +273,7 @@ export function NewNodeForm({
           <Button variant="outline" type="button" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
-          <Button type="submit" form="new-node-form">
+          <Button type="submit" variant="stone" form="new-node-form">
             Create node
           </Button>
         </DialogFooter>

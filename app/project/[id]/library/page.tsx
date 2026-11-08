@@ -546,7 +546,7 @@ export default function ProjectLibraryPage() {
                   : `No ${emptyLabel} in ${scopeLabel}.`
               }
               action={
-                <Button size="sm" className="cursor-pointer" onClick={() => setNewNodeOpen(true)}>
+                <Button size="sm" variant="stone" className="cursor-pointer" onClick={() => setNewNodeOpen(true)}>
                   <PlusIcon className="size-4" />
                   Create node
                 </Button>

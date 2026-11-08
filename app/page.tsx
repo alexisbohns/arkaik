@@ -59,7 +59,7 @@ export default async function Home() {
             for product architects
           </p>
 
-          <Button asChild size="lg" className="mt-10 px-8 text-base">
+          <Button asChild size="lg" variant="stone" className="mt-10 px-8 text-base">
             <Link href="/projects">Start building</Link>
           </Button>
 
