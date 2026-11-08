@@ -263,6 +263,9 @@ jobs:
       - name: Stone skin tests
         run: npm run test:stones
 
+      - name: Stone preference tests
+        run: npm run test:stone-preferences
+
       - name: Keyboard shortcut catalogue tests
         run: npm run test:keyboard-shortcuts
 
