@@ -9,6 +9,8 @@ import { AppToaster } from "@/components/ui/toaster";
 import { SyncProvider } from "@/components/sync/SyncProvider";
 import { WobbleFilters } from "@/components/wobble/WobbleFilters";
 import { WobbleBoil } from "@/components/wobble/WobbleBoil";
+import { StoneDefs } from "@/components/stones/StoneDefs";
+import { DEFAULT_STONES } from "@/lib/stones/stones-registry.generated";
 
 export const metadata: Metadata = {
   title: "arkaik",
@@ -75,6 +77,8 @@ export default function RootLayout({
       lang="en"
       className={`${GeistSans.variable} ${GeistMono.variable} h-full antialiased`}
       suppressHydrationWarning
+      data-stone-light={DEFAULT_STONES.light}
+      data-stone-dark={DEFAULT_STONES.dark}
     >
       <body className="min-h-full flex flex-col">
         <script
@@ -83,6 +87,7 @@ export default function RootLayout({
         />
         <WobbleFilters />
         <WobbleBoil />
+        <StoneDefs />
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

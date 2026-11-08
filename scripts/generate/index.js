@@ -17,6 +17,9 @@ const STEPS = [
   // Icon-wobble filter registry (issue #271): scans lucide usage and emits
   // lib/wobble/wobble-registry.generated.ts + app/wobble.generated.css.
   "generate-icon-wobble.js",
+  // Stone skins: texture tiles, per-stone CSS tokens and the picker registry
+  // (docs/superpowers/specs/2026-11-08-stone-skins-design.md).
+  "generate-stones.js",
   // Must run last: copies the just-regenerated validate-bundle.js and
   // schema.md into the plugin channel (docs/spec/toolchain.md § Skill
   // Distribution).

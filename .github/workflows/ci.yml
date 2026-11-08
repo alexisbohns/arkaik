@@ -36,7 +36,7 @@ jobs:
         run: npm run generate
 
       - name: Fail on generated-artifact drift
-        run: git diff --exit-code -- public/schema/project-bundle.json docs/arkaik-skill/scripts/validate-bundle.js docs/arkaik-skill/references/schema.md lib/prompts/generated plugin/.claude-plugin/plugin.json plugin/.mcp.json plugin/skills/arkaik plugin-kritik lib/wobble/wobble-registry.generated.ts app/wobble.generated.css lib/landing/generated
+        run: git diff --exit-code -- public/schema/project-bundle.json docs/arkaik-skill/scripts/validate-bundle.js docs/arkaik-skill/references/schema.md lib/prompts/generated plugin/.claude-plugin/plugin.json plugin/.mcp.json plugin/skills/arkaik plugin-kritik lib/wobble/wobble-registry.generated.ts app/wobble.generated.css lib/landing/generated public/stones app/stones.generated.css lib/stones/stones-registry.generated.ts
 
       - name: Lint
         run: npm run lint
@@ -259,6 +259,9 @@ jobs:
 
       - name: Node-search ranking tests
         run: npm run test:search-score
+
+      - name: Stone skin tests
+        run: npm run test:stones
 
       - name: Keyboard shortcut catalogue tests
         run: npm run test:keyboard-shortcuts

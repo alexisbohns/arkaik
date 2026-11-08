@@ -1,0 +1,62 @@
+/*
+ * Stone skins — roles (docs/superpowers/specs/2026-11-08-stone-skins-design.md).
+ *
+ * Per-stone tokens come from stones.generated.css (--stone-light-* for the
+ * chosen light stone, --stone-dark-* for the dark one). Here they become roles:
+ * the primary role (special-action button, checkbox) takes the dark stone in
+ * the light theme and the light stone in the dark theme, because that is where
+ * each gives the most contrast; the secondary role (secondary button, active
+ * sidebar row and its icon) takes the other.
+ *
+ * `.stone-scope-light` / `.stone-scope-dark` force one theme's roles on a
+ * subtree, for previews that show both themes at once.
+ */
+
+:root {
+  --stone-radius: 12px;
+  /* A dark stone (or any stone on a dark surface) sits slightly raised. */
+  --stone-raised: inset 0 1px 0 rgb(255 255 255 / .22), inset 0 -1px 0 rgb(0 0 0 / .28),
+    0 1px 2px rgb(0 0 0 / .18), 0 4px 10px -6px rgb(0 0 0 / .45);
+  /* A light stone on a light surface sits flush: a hairline, no lift. */
+  --stone-flush: inset 0 0 0 1px rgb(0 0 0 / .07), 0 1px 1px rgb(0 0 0 / .04);
+}
+
+:root,
+.stone-scope-light {
+  --stone-primary-fill: var(--stone-dark-fill);
+  --stone-primary-ink: var(--stone-dark-ink);
+  --stone-primary-tsh: var(--stone-dark-tsh);
+  --stone-primary-polish: var(--stone-dark-polish);
+  --stone-primary-shadow: var(--stone-raised);
+  --stone-primary-sheen: .32;
+  --stone-secondary-fill: var(--stone-light-fill);
+  --stone-secondary-ink: var(--stone-light-ink);
+  --stone-secondary-tsh: var(--stone-light-tsh);
+  --stone-secondary-polish: var(--stone-light-polish);
+  --stone-secondary-shadow: var(--stone-flush);
+  --stone-secondary-sheen: .16;
+  --stone-icon-1: var(--stone-light-icon-1);
+  --stone-icon-2: var(--stone-light-icon-2);
+  --stone-icon-3: var(--stone-light-icon-3);
+  --stone-row-hairline: rgb(0 0 0 / .06);
+}
+
+.dark,
+.stone-scope-dark {
+  --stone-primary-fill: var(--stone-light-fill);
+  --stone-primary-ink: var(--stone-light-ink);
+  --stone-primary-tsh: var(--stone-light-tsh);
+  --stone-primary-polish: var(--stone-light-polish);
+  --stone-primary-shadow: var(--stone-raised);
+  --stone-primary-sheen: .32;
+  --stone-secondary-fill: var(--stone-dark-fill);
+  --stone-secondary-ink: var(--stone-dark-ink);
+  --stone-secondary-tsh: var(--stone-dark-tsh);
+  --stone-secondary-polish: var(--stone-dark-polish);
+  --stone-secondary-shadow: var(--stone-raised);
+  --stone-secondary-sheen: .32;
+  --stone-icon-1: var(--stone-dark-icon-1);
+  --stone-icon-2: var(--stone-dark-icon-2);
+  --stone-icon-3: var(--stone-dark-icon-3);
+  --stone-row-hairline: rgb(255 255 255 / .07);
+}
