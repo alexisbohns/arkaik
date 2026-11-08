@@ -1,23 +1,28 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { MilestoneIcon, PackageIcon } from "lucide-react";
 import { orderEvents } from "@arkaik/schema";
 import { PageError } from "@/components/layout/PageError";
 import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
 import { PageSurface } from "@/components/layout/PageSurface";
-import { SectionRow } from "@/components/layout/SectionRow";
 import { ChangelogRail } from "@/components/journal/ChangelogRail";
-import { DeliverableTimeline } from "@/components/journal/DeliverableTimeline";
+import { ReleaseDetail } from "@/components/journal/ReleaseDetail";
+import { ReleaseList } from "@/components/journal/ReleaseList";
+import { ReleasePicker } from "@/components/journal/ReleasePicker";
+import type { ReleaseEntry } from "@/components/journal/release-entry";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
 import { useProjectId } from "@/lib/hooks/useProjectId";
+import { useQueryWriter } from "@/lib/hooks/useQueryWriter";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { computeDeliverables } from "@/lib/utils/journal";
+import { RELEASE_PARAM, UNRELEASED_KEY, resolveSelectedRelease } from "@/lib/utils/changelog-releases";
 import { ALL_PERIODS, listYears, matchesPeriod, type Period } from "@/lib/utils/changelog-period";
 import { formatEventDate } from "@/components/journal/describe-event";
 import { PLATFORM_LABELS } from "@/components/graph/nodes/node-styles";
@@ -30,10 +35,13 @@ function countLabel(count: number): string {
 /**
  * The Changelog: what shipped, milestone by milestone.
  *
- * One section per milestone in the Overview's rows shape — the release on the
- * left, its deliverables as a timeline on the right. The design funnel that
- * used to share this screen (backlog, commitments, decisions) has its own page;
- * none of it had shipped, which is the one thing a changelog is about.
+ * Master-detail: the releases down the left, the selected one on the right as
+ * a timeline of its deliverables. The selection lives in `?release=`, so a
+ * release is a link you can share. When the surface is under 48rem — a node
+ * panel halves it on a wide screen too — the list folds into a picker above
+ * the release. The design funnel that used to share this screen (backlog,
+ * commitments, decisions) has its own page; none of it had shipped, which is
+ * the one thing a changelog is about.
  */
 /**
  * What this page reads. A projection, so it must stay in step with what the
@@ -113,6 +121,53 @@ export default function ChangelogPage() {
     [deliverables, period, releaseTags],
   );
 
+  // One list for the three views of it — the column, the picker, the detail —
+  // so a release reads the same wherever it is drawn. Unreleased first: it is
+  // the milestone that has not happened yet, and it sits where the next one
+  // will.
+  const entries = useMemo<ReleaseEntry[]>(
+    () => [
+      ...(unreleased.length > 0
+        ? [
+            {
+              key: UNRELEASED_KEY,
+              title: "Unreleased",
+              icon: PackageIcon,
+              subtitle: countLabel(unreleased.length),
+              description: "Shipped since the last tag, not yet in a release.",
+              deliverables: unreleased,
+            },
+          ]
+        : []),
+      ...milestones.map(({ tag, deliverables: shipped }) => ({
+        key: tag.version,
+        title: tag.version,
+        icon: MilestoneIcon,
+        subtitle: [
+          formatEventDate(tag.ts),
+          tag.platform ? (PLATFORM_LABELS[tag.platform] ?? tag.platform) : null,
+          countLabel(shipped.length),
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        description: tag.notes,
+        deliverables: shipped,
+      })),
+    ],
+    [milestones, unreleased],
+  );
+
+  const searchParams = useSearchParams();
+  const writeQuery = useQueryWriter();
+  const selectedKey = resolveSelectedRelease(
+    entries.map((entry) => entry.key),
+    searchParams.get(RELEASE_PARAM),
+  );
+  const selected = entries.find((entry) => entry.key === selectedKey) ?? null;
+  // Written even when it equals the default row: a link should say what it
+  // shows. `replace`, not `push` — picking a release is not a navigation.
+  const selectRelease = (key: string) => writeQuery((params) => params.set(RELEASE_PARAM, key));
+
   if (projectLoading || nodesLoading || journalLoading) {
     return <PageLoading label="changelog" />;
   }
@@ -139,7 +194,7 @@ export default function ChangelogPage() {
 
   const isEmpty = journal.length === 0;
   const isFiltered = period.year !== null || period.month !== null;
-  const nothingInPeriod = unreleased.length === 0 && milestones.length === 0;
+  const nothingInPeriod = entries.length === 0;
 
   return (
     <PageShell
@@ -163,56 +218,37 @@ export default function ChangelogPage() {
         )
       }
     >
-      <PageSurface contentClassName="flex flex-col divide-y">
-        {isEmpty ? (
-          <EmptyState message="No releases tagged yet, and nothing shipped since." />
-        ) : nothingInPeriod ? (
-          <EmptyState
-            message={
-              isFiltered
-                ? "Nothing shipped in that period. Widen the year or month filter."
-                : "No releases tagged yet, and nothing shipped since."
-            }
-          />
+      <PageSurface fill contentClassName="flex flex-col">
+        {isEmpty || nothingInPeriod ? (
+          <div className="p-4 md:p-6">
+            <EmptyState
+              message={
+                !isEmpty && isFiltered
+                  ? "Nothing shipped in that period. Widen the year or month filter."
+                  : "No releases tagged yet, and nothing shipped since."
+              }
+            />
+          </div>
         ) : (
-          <>
-            {/* Unreleased first: it is the milestone that has not happened yet,
-                and it sits where the next one will. */}
-            {unreleased.length > 0 && (
-              <SectionRow
-                title="Unreleased"
-                icon={PackageIcon}
-                description="Shipped since the last tag, not yet in a release."
-                subtitle={countLabel(unreleased.length)}
-                stickyHeader
-              >
-                <DeliverableTimeline deliverables={unreleased} nodesById={nodesById} detailed={detailed} />
-              </SectionRow>
-            )}
-
-            {milestones.map(({ tag, deliverables: shipped }) => (
-              <SectionRow
-                key={tag.id}
-                title={tag.version}
-                icon={MilestoneIcon}
-                stickyHeader
-                description={tag.notes}
-                subtitle={[
-                  formatEventDate(tag.ts),
-                  tag.platform ? (PLATFORM_LABELS[tag.platform] ?? tag.platform) : null,
-                  countLabel(shipped.length),
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              >
-                {shipped.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No deliverables recorded for this release.</p>
-                ) : (
-                  <DeliverableTimeline deliverables={shipped} nodesById={nodesById} detailed={detailed} />
-                )}
-              </SectionRow>
-            ))}
-          </>
+          // The surface, not the viewport, decides the layout: a node panel
+          // halves the surface on a wide screen too. Under 48rem of surface the
+          // list folds into a picker above the release.
+          <div className="@container flex min-h-0 flex-1 flex-col">
+            <div className="border-b p-3 @3xl:hidden">
+              <ReleasePicker entries={entries} value={selectedKey} onChange={selectRelease} />
+            </div>
+            <div className="flex min-h-0 flex-1">
+              <ReleaseList
+                entries={entries}
+                selectedKey={selectedKey}
+                onSelect={selectRelease}
+                className="hidden w-64 shrink-0 overflow-y-auto border-r @3xl:flex"
+              />
+              <div className="min-w-0 flex-1 overflow-y-auto p-4 md:p-6">
+                {selected && <ReleaseDetail entry={selected} nodesById={nodesById} detailed={detailed} />}
+              </div>
+            </div>
+          </div>
         )}
       </PageSurface>
     </PageShell>
