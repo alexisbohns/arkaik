@@ -11,6 +11,7 @@ import { WobbleFilters } from "@/components/wobble/WobbleFilters";
 import { WobbleBoil } from "@/components/wobble/WobbleBoil";
 import { StoneDefs } from "@/components/stones/StoneDefs";
 import { DEFAULT_STONES } from "@/lib/stones/stones-registry.generated";
+import { stoneBootScript } from "@/lib/stones/preferences";
 
 export const metadata: Metadata = {
   title: "arkaik",
@@ -80,6 +81,10 @@ export default function RootLayout({
       data-stone-light={DEFAULT_STONES.light}
       data-stone-dark={DEFAULT_STONES.dark}
     >
+      <head>
+        {/* Applies the reader's stones before first paint (lib/stones/preferences.ts). */}
+        <script dangerouslySetInnerHTML={{ __html: stoneBootScript() }} />
+      </head>
       <body className="min-h-full flex flex-col">
         <script
           type="application/ld+json"

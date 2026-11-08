@@ -113,7 +113,7 @@ needs them).
 
 A **Stones** section in `DisplayPreferencesPanel`: light-stone and dark-stone
 swatch buttons (`aria-pressed`), a radius slider (0–18px, 18 shown as "pill"),
-a live preview of a light pane and a dark pane (a `.dark` wrapper) each showing
+a live preview of a light pane and a dark pane (`.stone-scope-light` / `.stone-scope-dark`, each with its own icon gradient, since a gradient's stops resolve where it is defined) each showing
 the primary button, the secondary button and an active sidebar row, and a
 "Reset to default" link shown only when the choice differs from the default.
 
