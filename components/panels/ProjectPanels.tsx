@@ -26,7 +26,11 @@ import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useProjectId } from "@/lib/hooks/useProjectId";
 import { useDuplicateNode } from "@/lib/hooks/useDuplicateNode";
 import type { PanelEntry } from "@/lib/utils/panel-stack";
-import { panelEntryLabel, type PanelDescriptor } from "@/lib/utils/project-panels";
+import { isValueEntry, panelEntryLabel, type PanelDescriptor } from "@/lib/utils/project-panels";
+import type { PyramidTier } from "@/lib/utils/pyramid";
+import type { ValueId } from "@/lib/config/values";
+import { ValueDetailPanel, ValueDetailPanelHeader } from "@/components/pyramid/ValueDetailPanel";
+import { ValuesDirectoryPanel } from "@/components/pyramid/ValuesDirectoryPanel";
 import { buildFindingRows } from "@/lib/utils/quality";
 import { resolveProductScope, type ProductScope } from "@/lib/utils/product-scope";
 import { coveredAnchorsOf } from "@/lib/utils/where-used";
@@ -41,6 +45,8 @@ interface ProjectPanelsProps {
   surfaceLabel: string;
   /** Whether the surface renders as a card. Off unless the surface is a canvas. */
   surfaceCard?: boolean;
+  /** Draw the surface straight on the page background — see `PanelStack`. */
+  surfaceBare?: boolean;
   /** Fires when the columns change, so a canvas can re-frame itself. */
   onLayoutChange?: () => void;
   allNodes?: Node[];
@@ -95,7 +101,21 @@ interface ProjectPanelsProps {
    * open a cell panel and should not pay for a journal projection on mount.
    */
   qualityTrend?: QualityTrend;
+  /**
+   * The scoped pyramid, for the values directory and value panels. Passed by
+   * the Pyramid page alone — the only one that opens either — for the reason
+   * the Kritik state is: nine callers would compute it and never use it.
+   */
+  pyramid?: PyramidPanelData;
 }
+
+export interface PyramidPanelData {
+  tiers: PyramidTier[];
+  /** The Acceptances surface filtered to one element, carrying the surface's override. */
+  acceptancesHref: (valueId: ValueId) => string;
+}
+
+const NO_TIERS: PyramidTier[] = [];
 
 const NO_NODES: Node[] = [];
 const NO_EDGES: Edge[] = [];
@@ -121,6 +141,7 @@ export function ProjectPanels({
   children,
   surfaceLabel,
   surfaceCard,
+  surfaceBare,
   onLayoutChange,
   allNodes = NO_NODES,
   allEdges = NO_EDGES,
@@ -137,9 +158,19 @@ export function ProjectPanels({
   qualitySection,
   qualityLibrary,
   qualityTrend,
+  pyramid,
 }: ProjectPanelsProps) {
-  const { entries, openNode, openCriterion, openFinding, closeAt, unwindTo, pruneMissingNodes, panelStates } =
-    useProjectPanels();
+  const {
+    entries,
+    openNode,
+    openCriterion,
+    openFinding,
+    openValue,
+    closeAt,
+    unwindTo,
+    pruneMissingNodes,
+    panelStates,
+  } = useProjectPanels();
 
   const projectId = useProjectId();
 
@@ -239,6 +270,13 @@ export function ProjectPanels({
         entries={entries}
         surfaceLabel={surfaceLabel}
         surfaceCard={surfaceCard}
+        surfaceBare={surfaceBare}
+        // The values directory is the Pyramid's resting panel: its body opens on
+        // its own tools, and a header naming it and offering to close it is a
+        // row spent on nothing. Its body is four tier cards, so no card of its
+        // own around them either.
+        headerless={(entry) => entry.payload.kind === "values"}
+        bare={(entry) => entry.payload.kind === "values"}
         onLayoutChange={onLayoutChange}
         labelOf={labelOf}
         accentOf={(entry) => panelStates[entry.instanceId]?.accent}
@@ -246,6 +284,12 @@ export function ProjectPanels({
         renderHeader={(entry) => {
           if (entry.payload.kind === "raw")
             return <span className="truncate text-sm font-medium">Raw bundle</span>;
+
+          // Never drawn — the directory is `headerless` above — but the render
+          // prop must still answer for every kind.
+          if (entry.payload.kind === "values") return null;
+
+          if (entry.payload.kind === "value") return <ValueDetailPanelHeader valueId={entry.payload.valueId} />;
 
           if (entry.payload.kind === "cell")
             return (
@@ -299,6 +343,41 @@ export function ProjectPanels({
             return <RawBundlePanel projectId={projectId} instanceId={entry.instanceId} />;
           }
 
+          if (entry.payload.kind === "values") {
+            const above = entries[index + 1];
+            return (
+              <ValuesDirectoryPanel
+                tiers={pyramid?.tiers ?? NO_TIERS}
+                platforms={scope.platforms}
+                selectedValue={above && isValueEntry(above) ? above.payload.valueId : null}
+                // Above the directory, never in place of it: sweeping the list
+                // refreshes the one value panel beside it.
+                onSelect={(valueId, label) => openValue(valueId, label, index + 1)}
+              />
+            );
+          }
+
+          if (entry.payload.kind === "value") {
+            const { valueId } = entry.payload;
+            return (
+              <ValueDetailPanel
+                // Per element: the body holds no state worth carrying from one
+                // element to the next, and its scroll should start at the top.
+                key={valueId}
+                valueId={valueId}
+                tiers={pyramid?.tiers ?? NO_TIERS}
+                allNodes={allNodes}
+                allEdges={allEdges}
+                nodesById={nodesById}
+                scope={scope}
+                acceptancesHref={pyramid?.acceptancesHref(valueId) ?? `/project/${projectId}/acceptances`}
+                // Above this panel: the value slides left and the acceptance
+                // takes the right column, and closing it puts the value back.
+                onOpenAcceptance={(acceptance) => openNode({ nodeId: acceptance.id }, index + 1)}
+              />
+            );
+          }
+
           if (entry.payload.kind === "cell") {
             const { domain, surface } = entry.payload;
             return (
@@ -334,22 +413,9 @@ export function ProjectPanels({
                 // navigation in the stack follows, so the trail still reads back
                 // to the finding the reader came from.
                 //
-                // Sitting above it is not the same as surviving it, and no
-                // comment here should promise that it is. Opening the node
-                // publishes `?node=`; Back — or closing that node panel, which
-                // republishes an empty address — hands `reconcileArrival` a
-                // missing id, and a missing id closes the *whole* stack, this
-                // finding with it, and any criterion or cell panel underneath.
-                // One address, and a finding is not it. Raw has had the
-                // identical behaviour since it landed. What brings the panel
-                // back is the Findings page's own `?finding=` sync, and it
-                // comes back remounted, so the reader loses their scroll
-                // position in it.
-                //
-                // This warning used to sit on the criterion panel's own
-                // `onOpenNode`, which is gone: following a finding's linked
-                // node is now only reachable from here. The trap moved; it did
-                // not close, and it is one panel deeper than it was.
+                // Closing that node panel, or Back past it, leaves this finding
+                // standing: a missing `?node=` takes node panels down and keeps
+                // the addressless ones beneath them (`keepBelowNodes`).
                 onOpenNode={(nodeId) => openNode({ nodeId }, index + 1)}
                 onOpenCriterion={(criterionId, criterionSurface) =>
                   openCriterion(criterionId, criterionSurface, index + 1)

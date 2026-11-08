@@ -64,6 +64,16 @@ interface PlatformAvailabilityProps {
   multiPlatformShape?: MultiPlatformShape;
   /** Tightens the `"bars"` rendition for a canvas card. */
   compactBars?: boolean;
+  /**
+   * Bar only: the bare number *before* the track, in a fixed-width slot, with
+   * `countLabel` kept for screen readers alone. For a column of rows — a
+   * trailing "2 acceptances" beside "30 acceptances" changes width with the
+   * digits and pushes every track to a different start; a leading slot keeps
+   * them aligned. The rings never draw the label, so they ignore this.
+   */
+  leadingCount?: boolean;
+  /** Bar only: a shorter track, for a row with little room to spare. */
+  narrowTrack?: boolean;
 }
 
 /**
@@ -108,6 +118,8 @@ export function PlatformAvailability({
   platformCountLabel,
   multiPlatformShape = "rings",
   compactBars = false,
+  leadingCount = false,
+  narrowTrack = false,
 }: PlatformAvailabilityProps) {
   if (platformAvailabilityShape(platforms) === "rings") {
     return multiPlatformShape === "bars" ? (
@@ -141,7 +153,15 @@ export function PlatformAvailability({
   // rollup: `StatusRing` draws its track alone for an unserved value element.
   return (
     <div className="flex items-center gap-2">
-      <div className="w-24 sm:w-32">
+      {leadingCount && (
+        // `min-w-[3ch]` holds up to three digits, right-aligned so the units
+        // line up down the column like a table's number column.
+        <span className="min-w-[3ch] text-right text-xs tabular-nums text-muted-foreground">
+          {count}
+          {countLabel && <span className="sr-only"> {countLabel}</span>}
+        </span>
+      )}
+      <div className={narrowTrack ? "w-16" : "w-24 sm:w-32"}>
         <div
           className="flex h-2 overflow-hidden rounded-md bg-muted"
           role="img"
@@ -164,10 +184,12 @@ export function PlatformAvailability({
           )}
         </div>
       </div>
-      <span className="text-xs tabular-nums text-muted-foreground">
-        {count}
-        {countLabel ? ` ${countLabel}` : ""}
-      </span>
+      {!leadingCount && (
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {count}
+          {countLabel ? ` ${countLabel}` : ""}
+        </span>
+      )}
     </div>
   );
 }

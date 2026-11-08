@@ -14,8 +14,10 @@
  * Matrix page addresses it with `?cell=`. A finding panel is the fourth, for
  * the same reason the cell is — a finding is something the audit says about
  * this project, not a node in its graph — and the Findings page addresses it
- * with `?finding=`. The stack still has exactly one address, and it is still
- * `?node=`.
+ * with `?finding=`. The Pyramid's two panels are the fifth and sixth: the values
+ * directory and one value element are the taxonomy's, not this graph's nodes,
+ * and the Pyramid page addresses the open element with `?value=`. The stack
+ * still has exactly one address, and it is still `?node=`.
  *
  * One invariant holds it together: a node entry's `key` *is* its node id. What
  * `topNodeKey` returns goes into the URL and comes back through
@@ -25,6 +27,7 @@
  */
 
 import type { PlatformId } from "@/lib/config/platforms";
+import type { ValueId } from "@/lib/config/values";
 import type { PanelEntry } from "@/lib/utils/panel-stack";
 
 /**
@@ -87,6 +90,21 @@ export function findingPanelKey(findingId: string): string {
   return `finding:${findingId}`;
 }
 
+/**
+ * The Pyramid's values directory — the 30 elements as a list. One per stack,
+ * like Raw, and namespaced rather than bare for `criterionPanelKey`'s reason.
+ */
+export const VALUES_PANEL_KEY = "pyramid:values";
+
+/**
+ * One value element's panel key. Namespaced: value ids are bare kebab words
+ * (`saves-time`), exactly the shape that could one day collide with another
+ * kind's bare key.
+ */
+export function valuePanelKey(valueId: string): string {
+  return `value:${valueId}`;
+}
+
 export interface NodePanelDescriptor {
   kind: "node";
   nodeId: string;
@@ -126,11 +144,36 @@ export interface FindingPanelDescriptor {
   findingId: string;
 }
 
+/**
+ * The Pyramid's values directory. Addressless — it is the Pyramid page's
+ * resting panel, not a location in the graph.
+ */
+export interface ValuesPanelDescriptor {
+  kind: "values";
+}
+
+/**
+ * One value element: what it means, how it is delivered, and the acceptances
+ * carrying it. Addressless in the stack; the Pyramid page owns `?value=`.
+ */
+export interface ValuePanelDescriptor {
+  kind: "value";
+  valueId: ValueId;
+  /**
+   * The element's display name, carried in the descriptor because this module
+   * must stay free of value imports (the panel tests load it bare), and the
+   * crumbs and the close button need a name rather than a kebab id.
+   */
+  label: string;
+}
+
 export type PanelDescriptor =
   | NodePanelDescriptor
   | CriterionPanelDescriptor
   | CellPanelDescriptor
   | FindingPanelDescriptor
+  | ValuesPanelDescriptor
+  | ValuePanelDescriptor
   | { kind: "raw" };
 
 export type ProjectPanelEntry = PanelEntry<PanelDescriptor>;
@@ -151,6 +194,30 @@ export function isCellEntry(
   entry: ProjectPanelEntry,
 ): entry is PanelEntry<CellPanelDescriptor> {
   return entry.payload.kind === "cell";
+}
+
+export function isValueEntry(
+  entry: ProjectPanelEntry,
+): entry is PanelEntry<ValuePanelDescriptor> {
+  return entry.payload.kind === "value";
+}
+
+/**
+ * What a missing `?node=` leaves standing: everything below the lowest node
+ * panel.
+ *
+ * The address names node panels only, so its going away — closing the top node
+ * panel, or Back to before one was opened — says something about node panels
+ * and nothing about the addressless panels a reader opened beneath them. A
+ * value panel whose acceptance was just closed, a finding whose linked node
+ * was, must still be there. Everything *above* the first node goes with it,
+ * because a click in a panel owns everything above it — the stack's one rule.
+ *
+ * Returns the same array when nothing is dropped.
+ */
+export function keepBelowNodes(entries: ProjectPanelEntry[]): ProjectPanelEntry[] {
+  const firstNode = entries.findIndex(isNodeEntry);
+  return firstNode < 0 ? entries : entries.slice(0, firstNode);
 }
 
 export function isFindingEntry(
@@ -212,6 +279,10 @@ export function panelEntryLabel(
       return `${entry.payload.domain} × ${entry.payload.surface}`;
     case "finding":
       return entry.payload.findingId;
+    case "values":
+      return "Values";
+    case "value":
+      return entry.payload.label;
     case "node":
       return titleOf(entry.key) ?? entry.key;
   }

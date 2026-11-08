@@ -35,6 +35,25 @@ interface PanelStackProps<T> {
    * subject, and the border is what says so.
    */
   surfaceCard?: boolean;
+  /**
+   * Draw the surface with no cell skin at all — straight on the page
+   * background. For a surface that is a picture rather than a list (the
+   * Pyramid's wheels), where the card around it is a box with nothing to hold.
+   */
+  surfaceBare?: boolean;
+  /**
+   * Panels drawn without their header row — no chips, no close button. For a
+   * resting panel whose body carries its own toolbar, where a header naming it
+   * and offering to close it is a row spent on nothing; Escape still pops it
+   * when it is on top.
+   */
+  headerless?: (entry: PanelEntry<T>, index: number) => boolean;
+  /**
+   * Panels drawn with no cell skin — straight on the page background, like
+   * `surfaceBare`. For a panel whose body is already made of cards, where the
+   * panel's own card would be a box around boxes.
+   */
+  bare?: (entry: PanelEntry<T>, index: number) => boolean;
   /** Per-entry visual accent. "editing" draws a dashed destructive border. */
   accentOf?: (entry: PanelEntry<T>, index: number) => "editing" | null | undefined;
   /**
@@ -76,6 +95,9 @@ export function PanelStack<T>({
   onLayoutChange,
   surfaceLabel,
   surfaceCard = false,
+  surfaceBare = false,
+  headerless,
+  bare,
   accentOf,
   requestCloseAt,
 }: PanelStackProps<T>) {
@@ -194,6 +216,7 @@ export function PanelStack<T>({
           className={cn(
             cellClassName,
             surfaceCard && cardClassName,
+            surfaceBare && "bg-transparent",
             "relative",
             !surfaceVisible && "pointer-events-none invisible absolute inset-3 -z-10",
           )}
@@ -221,6 +244,7 @@ export function PanelStack<T>({
               className={cn(
                 cellClassName,
                 cardClassName,
+                bare?.(entry, index) && "bg-transparent",
                 "outline-none arkaik-panel-enter",
                 accentOf?.(entry, index) === "editing" && "border-dashed border-destructive",
               )}
@@ -228,39 +252,41 @@ export function PanelStack<T>({
               {/* The gutter is the panel's own; the vertical padding is one
                   step tighter than it at every width, because the header is a
                   single row of chips and `py-6` gave it the height of a block. */}
-              <header
-                className={cn(
-                  "flex shrink-0 items-center justify-between gap-2 border-b py-4 lg:py-5",
-                  PANEL_GUTTER,
-                )}
-              >
-                {/* One row, not a column. What identifies a panel — the species
-                    badge and the entity id, the domain chip and the criterion id
-                    — is two or three short chips, and stacking them spent three
-                    lines of the panel's first screenful saying what fits on one.
-                    `min-w-0` is what lets the truncating children inside actually
-                    truncate rather than push the close button off the edge. */}
-                <div className="flex min-w-0 flex-1 flex-row items-center gap-2">
-                  {renderHeader(entry, index)}
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="shrink-0 cursor-pointer"
-                  aria-label={`Close ${labelOf(entry)}`}
-                  // The section, not the article: the button sits in the
-                  // header, which is the article's sibling, so `closest` walks
-                  // straight past it to the cell. That cell is what `runClose`
-                  // asks about focus, and it has to be the whole column —
-                  // focus parked in the body must still count as focus inside
-                  // the panel being closed.
-                  onClick={(event) =>
-                    runClose([index], () => onCloseAt(index), event.currentTarget.closest("section"))
-                  }
+              {!headerless?.(entry, index) && (
+                <header
+                  className={cn(
+                    "flex shrink-0 items-center justify-between gap-2 border-b py-4 lg:py-5",
+                    PANEL_GUTTER,
+                  )}
                 >
-                  <XIcon className="size-4" />
-                </Button>
-              </header>
+                  {/* One row, not a column. What identifies a panel — the species
+                      badge and the entity id, the domain chip and the criterion id
+                      — is two or three short chips, and stacking them spent three
+                      lines of the panel's first screenful saying what fits on one.
+                      `min-w-0` is what lets the truncating children inside actually
+                      truncate rather than push the close button off the edge. */}
+                  <div className="flex min-w-0 flex-1 flex-row items-center gap-2">
+                    {renderHeader(entry, index)}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="shrink-0 cursor-pointer"
+                    aria-label={`Close ${labelOf(entry)}`}
+                    // The section, not the article: the button sits in the
+                    // header, which is the article's sibling, so `closest` walks
+                    // straight past it to the cell. That cell is what `runClose`
+                    // asks about focus, and it has to be the whole column —
+                    // focus parked in the body must still count as focus inside
+                    // the panel being closed.
+                    onClick={(event) =>
+                      runClose([index], () => onCloseAt(index), event.currentTarget.closest("section"))
+                    }
+                  >
+                    <XIcon className="size-4" />
+                  </Button>
+                </header>
+              )}
               {/*
                 The record itself — self-contained, and the one part of this
                 column that would still mean something lifted out of it. The

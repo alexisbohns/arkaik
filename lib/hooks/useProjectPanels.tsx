@@ -23,13 +23,17 @@ import {
   criterionPanelKey,
   findingPanelKey,
   isNodeEntry,
+  keepBelowNodes,
   pruneNodeEntries,
   topNodeKey,
+  valuePanelKey,
   RAW_PANEL_KEY,
+  VALUES_PANEL_KEY,
   type NodePanelDescriptor,
   type PanelDescriptor,
   type ProjectPanelEntry,
 } from "@/lib/utils/project-panels";
+import type { ValueId } from "@/lib/config/values";
 
 /** The search param that addresses the top node panel, on whatever route you're on. */
 export const NODE_PANEL_PARAM = "node";
@@ -115,6 +119,10 @@ interface ProjectPanelsValue {
    * row itself so an audit arriving under it reaches it.
    */
   openFinding: (findingId: string, fromDepth?: number) => void;
+  /** Open the Pyramid's values directory — see the provider. */
+  openValues: (fromDepth?: number) => void;
+  /** Open one value element — see the provider. */
+  openValue: (valueId: ValueId, label: string, fromDepth?: number) => void;
   closeAt: (index: number) => void;
   unwindTo: (depth: number) => void;
   /**
@@ -207,13 +215,17 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
   // Forward, a link from elsewhere. Adjusting during render rather than in an
   // effect means the stack and the address are never painted out of step —
   // React discards this pass and re-renders with the reconciled stack.
+  //
+  // A *missing* id takes the node panels down and leaves the addressless ones
+  // beneath them standing (`keepBelowNodes`): closing an acceptance opened out
+  // of a value panel, or a node opened out of a finding, puts the reader back on
+  // the panel they came from rather than on a bare surface.
   if (urlNodeId !== addressed) {
     setAddressed(urlNodeId);
     setEntries((previous) =>
-      reconcileArrival<PanelDescriptor>(previous, urlNodeId, {
-        kind: "node",
-        nodeId: urlNodeId ?? "",
-      }),
+      urlNodeId === null
+        ? keepBelowNodes(previous)
+        : reconcileArrival<PanelDescriptor>(previous, urlNodeId, { kind: "node", nodeId: urlNodeId }),
     );
   }
 
@@ -373,6 +385,31 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  /**
+   * The Pyramid's values directory. Addressless; one per stack — a second open
+   * from the same depth refreshes it in place. `fromDepth` defaults to `0`: the
+   * directory is the page's resting panel, so opening it from the surface
+   * leaves it alone in the stack.
+   */
+  const openValues = useCallback((fromDepth = 0) => {
+    setEntries((previous) => openFrom<PanelDescriptor>(previous, fromDepth, VALUES_PANEL_KEY, { kind: "values" }));
+  }, []);
+
+  /**
+   * One value element. Addressless (the Pyramid page owns `?value=`) and
+   * `fromDepth`-sensitive like `openFinding`: the directory opens it from
+   * `1`, so sweeping the list refreshes one value panel beside it.
+   */
+  const openValue = useCallback((valueId: ValueId, label: string, fromDepth?: number) => {
+    setEntries((previous) =>
+      openFrom<PanelDescriptor>(previous, fromDepth ?? previous.length, valuePanelKey(valueId), {
+        kind: "value",
+        valueId,
+        label,
+      }),
+    );
+  }, []);
+
   const pruneMissingNodes = useCallback(
     (existingIds: Set<string>) => {
       const next = pruneNodeEntries(entries, existingIds);
@@ -416,6 +453,8 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
       openCriterion,
       openCell,
       openFinding,
+      openValues,
+      openValue,
       closeAt,
       unwindTo,
       pruneMissingNodes,
@@ -430,6 +469,8 @@ export function ProjectPanelsProvider({ children }: { children: ReactNode }) {
     openFinding,
     openNode,
     openRaw,
+    openValue,
+    openValues,
     panelStates,
     pruneMissingNodes,
     registerPanelState,

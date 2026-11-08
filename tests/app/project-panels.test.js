@@ -28,6 +28,10 @@ const {
   topNodeKey,
   pruneNodeEntries,
   buildPanelCrumbs,
+  keepBelowNodes,
+  isValueEntry,
+  valuePanelKey,
+  VALUES_PANEL_KEY,
 } = loadProjectPanels();
 
 let failures = 0;
@@ -266,6 +270,36 @@ assert(
   findingCrumbs[findingCrumbs.length - 1].label === "F-2026-08-SEC-web-01",
   "a finding crumb reads as its id, not its namespaced key",
 );
+
+// --- the Pyramid's values panels, and what a missing ?node= leaves standing ---
+const valuesEntry = { key: VALUES_PANEL_KEY, instanceId: "i-vs", payload: { kind: "values" } };
+const valueEntry = {
+  key: valuePanelKey("saves-time"),
+  instanceId: "i-v",
+  payload: { kind: "value", valueId: "saves-time", label: "Saves time" },
+};
+const acEntry = { key: "AC-x", instanceId: "i-ac", payload: node("AC-x") };
+assert(valuePanelKey("saves-time") === "value:saves-time", "a value panel's key is namespaced");
+assert(isValueEntry(valueEntry) && !isValueEntry(valuesEntry), "isValueEntry tells the element from the directory");
+assert(topNodeKey([valuesEntry, valueEntry]) === null, "the values panels are addressless");
+
+const valueCrumbs = buildPanelCrumbs([valuesEntry, valueEntry], "Value pyramid", () => undefined);
+assert(
+  valueCrumbs.map((crumb) => crumb.label).join(" › ") === "Value pyramid › Values › Saves time",
+  "the crumbs name the directory and the element by label, never by namespaced key",
+);
+
+assert(
+  keys(keepBelowNodes([valuesEntry, valueEntry, acEntry])) === keys([valuesEntry, valueEntry]),
+  "closing the acceptance a value opened leaves the value and the directory standing",
+);
+assert(
+  keys(keepBelowNodes([valuesEntry, valueEntry, acEntry, rawEntry])) === keys([valuesEntry, valueEntry]),
+  "anything above the first node goes with it — a click in a panel owns what is above it",
+);
+assert(keepBelowNodes([nodeEntry, rawEntry]).length === 0, "a node at the bottom still closes the stack");
+const noNodes = [valuesEntry, valueEntry];
+assert(keepBelowNodes(noNodes) === noNodes, "no node in the stack: the same array back");
 
 // --- the History section reads the journal by the route id, never the node's ---
 // A hosted project stores the imported bundle verbatim under a server-minted

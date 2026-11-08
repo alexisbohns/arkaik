@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { PageHeader, type PageAction } from "@/components/layout/PageHeader";
-import { ProjectPanels } from "@/components/panels/ProjectPanels";
+import { ProjectPanels, type PyramidPanelData } from "@/components/panels/ProjectPanels";
 import type { ScreenshotPanelOp } from "@/lib/utils/screenshot-ops";
 import type { KritikLibrary, QualitySection, QualityTrend } from "@arkaik/schema";
 import type { PlatformId } from "@/lib/config/platforms";
@@ -27,6 +27,8 @@ interface PageShellProps {
    * canvas, which has no internal edges of its own.
    */
   surfaceCard?: boolean;
+  /** Draw the surface straight on the page background — see `PanelStack`. */
+  surfaceBare?: boolean;
   onLayoutChange?: () => void;
   /**
    * Node wiring for the detail panels. Optional: a page that passes none still
@@ -58,6 +60,8 @@ interface PageShellProps {
   qualitySection?: QualitySection;
   qualityLibrary?: KritikLibrary;
   qualityTrend?: QualityTrend;
+  /** The scoped pyramid for the values panels — see `ProjectPanels`. Pyramid only. */
+  pyramid?: PyramidPanelData;
 }
 
 /**
@@ -74,6 +78,7 @@ export function PageShell({
   headerExtra,
   children,
   surfaceCard,
+  surfaceBare,
   onLayoutChange,
   ...panelProps
 }: PageShellProps) {
@@ -87,6 +92,7 @@ export function PageShell({
       <ProjectPanels
         surfaceLabel={title}
         surfaceCard={surfaceCard}
+        surfaceBare={surfaceBare}
         onLayoutChange={onLayoutChange}
         {...panelProps}
       >
