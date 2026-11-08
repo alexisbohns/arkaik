@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @import "./wobble.generated.css";
+@import "./stones.generated.css";
+@import "./stones.css";
 
 @custom-variant dark (&:is(.dark *));
 
