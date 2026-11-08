@@ -53,7 +53,6 @@ export function ChangelogRail({
   useShortcut("toggle-expand", toolbarKey(() => onDetailedChange(!detailed)), GUARDED_HOTKEY);
 
   const filtered = year !== null || month !== null;
-  const detailLabel = detailed ? "Collapse deliverable details" : "Expand deliverable details";
 
   return (
     <RightRail label="Changelog filters">
@@ -108,7 +107,9 @@ export function ChangelogRail({
       <RailGroup label="View">
         <RailButton
           icon={detailed ? ListChevronsDownUpIcon : ListChevronsUpDownIcon}
-          label={detailLabel}
+          // A fixed name: `aria-pressed` already says whether it is on, and a
+          // name that flipped too would announce the state twice.
+          label="Deliverable details"
           pressed={detailed}
           onClick={() => onDetailedChange(!detailed)}
         />

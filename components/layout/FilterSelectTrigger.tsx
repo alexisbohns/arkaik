@@ -60,6 +60,10 @@ interface FilterSelectTriggerProps
  * holding a value and a toggle that is pressed are different states and must
  * not converge on the same treatment; the toggles beside it drop their own
  * background for the same reason.
+ *
+ * All of the above is the `band` variant. On the right rail (`variant="rail"`)
+ * there is no border at all, and "set" is the rail's filled tonal surface
+ * (`railItemClass`).
  */
 export function FilterSelectTrigger({
   icon,
@@ -84,7 +88,7 @@ export function FilterSelectTrigger({
           {icon}
         </SelectPrimitive.Trigger>
       </TooltipTrigger>
-      <TooltipContent side={tooltipSide} sideOffset={tooltipSide === "left" ? 8 : undefined}>
+      <TooltipContent side={tooltipSide} sideOffset={variant === "rail" ? 8 : undefined}>
         {(active || forceValueLabel) && valueLabel ? `${label}: ${valueLabel}` : label}
       </TooltipContent>
     </Tooltip>

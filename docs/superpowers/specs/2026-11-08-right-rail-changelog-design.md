@@ -40,11 +40,11 @@ Arkaik's rail is in the layout flow instead, so it never collides.
 Three exports, ported from Krabs' `Chrome` / `ChromeItem` / `chromeItemClass`
 onto Radix (`asChild` instead of Base UI's `render`):
 
-- **`RightRail({ label, children })`** — a `<nav aria-label={label}>`,
+- **`RightRail({ label, children })`** — an `<aside aria-label={label}>` (it holds filters, not links),
   `flex w-15 shrink-0 flex-col items-center gap-3 py-3 pr-3` (it sits after
   the panel grid, whose own `p-3` already gives the left gutter). Buttons
-  anchor at the top. Provides a `RailSideContext` with `"left"` so every
-  tooltip and menu inside opens away from the window edge.
+  anchor at the top. Every tooltip and menu inside is passed `side="left"`
+  explicitly so it opens away from the window edge.
 - **`RailGroup({ label?, children })`** — `flex flex-col gap-1 rounded-2xl
   bg-card p-1.5`; a `role="group"` with `aria-label` when labelled.
 - **`RailButton({ icon, label, active?, pressed?, onClick })`** — a 36px
@@ -79,8 +79,8 @@ Same props as `ChangelogFilterBar`, plus `onReset`. Renders:
 - **"When" group** — Year menu, Month menu (both `FilterSelectTrigger
   variant="rail" tooltipSide="left"`, `SelectContent side="left"`), and a
   **Reset filters** `RailButton` (`FilterXIcon`) only while a period is set.
-- **"View" group** — the details toggle as a `RailButton` with `pressed`, the
-  same glyphs and labels as today, and the same `toggle-expand` shortcut
+- **"View" group** — the details toggle as a `RailButton` with `pressed` and a
+  fixed "Deliverable details" name, the same glyphs as today, and the same `toggle-expand` shortcut
   registration (`useShortcut("toggle-expand", …, GUARDED_HOTKEY)`).
 
 `ChangelogFilterBar.tsx` is deleted; nothing else imports it.

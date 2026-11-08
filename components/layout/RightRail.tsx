@@ -31,17 +31,20 @@ export function railItemClass(active = false, className?: string): string {
  * rail's left, so the rail never has to move. `PageShell` mounts it via its
  * `rail` prop.
  *
+ * An `<aside>`, not a `<nav>`: it holds filters and toggles, not links, and a
+ * named complementary landmark is what a screen reader should announce.
+ *
  * `pr-3 py-3` matches the panel grid's own `p-3` gutter, and `w-15` (60px)
  * leaves exactly the 48px a `RailGroup` needs.
  */
 export function RightRail({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <nav
+    <aside
       aria-label={label}
       className="flex w-15 shrink-0 flex-col items-center gap-3 overflow-y-auto py-3 pr-3"
     >
       {children}
-    </nav>
+    </aside>
   );
 }
 
