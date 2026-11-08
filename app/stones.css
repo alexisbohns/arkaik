@@ -117,27 +117,37 @@
 }
 
 /*
- * The active sidebar row: the secondary stone at 78% behind the label, held by
- * a hairline (dark on light surfaces, light on dark), and its icon stroked in
- * the stone's icon tone. `--stone-icon-paint` lets a preview point at its own
- * gradient; everywhere else it is the shared `#stone-icon`.
+ * The active sidebar row: a chip of the secondary stone behind the icon only —
+ * the label stays on the bare sidebar — held by a hairline (dark on light
+ * surfaces, light on dark), and the icon stroked in the stone's icon tone.
+ * `--stone-icon-paint` lets a preview point at its own gradient; everywhere
+ * else it is the shared `#stone-icon`.
+ *
+ * Geometry: every row pads its leading 16px icon by 8px (`p-2` / `px-2`, and
+ * `!p-2` on the collapsed rail), so a 24px chip at `left: 4px` centres on the
+ * icon in both the expanded and the icon-only sidebar. Its corners follow the
+ * reader's stone radius, scaled to the chip (12px is a full circle). A row
+ * without a leading icon gets no chip: there is nothing for it to hold.
  */
 @layer components {
-  [data-sidebar="menu-button"][data-active="true"],
-  [data-sidebar="menu-sub-button"][data-active="true"] {
+  [data-sidebar="menu-button"][data-active="true"]:has(> svg:first-child),
+  [data-sidebar="menu-sub-button"][data-active="true"]:has(> svg:first-child) {
     position: relative;
     isolation: isolate;
   }
-  [data-sidebar="menu-button"][data-active="true"]::before,
-  [data-sidebar="menu-sub-button"][data-active="true"]::before {
+  [data-sidebar="menu-button"][data-active="true"]:has(> svg:first-child)::before,
+  [data-sidebar="menu-sub-button"][data-active="true"]:has(> svg:first-child)::before {
     content: "";
     position: absolute;
-    inset: 0;
+    top: 50%;
+    left: 4px;
+    width: 24px;
+    height: 24px;
+    translate: 0 -50%;
     z-index: -1;
-    border-radius: inherit;
+    border-radius: min(calc(var(--stone-radius) * .75), 12px);
     pointer-events: none;
     background: var(--stone-secondary-fill);
-    opacity: .78;
     box-shadow: inset 0 0 0 1px var(--stone-row-hairline);
   }
   [data-sidebar="menu-button"][data-active="true"] > svg,
