@@ -133,6 +133,7 @@ export function PageHeader({ title, meta, action, nodes, children }: PageHeaderP
                 <TooltipTrigger asChild>
                   <Button
                     size="sm"
+                    variant="stone"
                     className="cursor-pointer"
                     onClick={action.onClick}
                     disabled={action.disabled}
@@ -153,6 +154,7 @@ export function PageHeader({ title, meta, action, nodes, children }: PageHeaderP
             ) : (
               <Button
                 size="sm"
+                variant="stone"
                 className="cursor-pointer"
                 onClick={action.onClick}
                 disabled={action.disabled}
