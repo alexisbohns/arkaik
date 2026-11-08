@@ -516,10 +516,10 @@ function ProjectsPageBody() {
               >
                 {importing ? "Importing..." : "Import JSON"}
               </Button>
-              <Button variant="outline" className="cursor-pointer" asChild>
+              <Button variant="stone-secondary" className="cursor-pointer" asChild>
                 <Link href="/generate?target=lokal">Generate with AI</Link>
               </Button>
-              <Button className="cursor-pointer" onClick={() => openCreateDialog("lokal")}>
+              <Button variant="stone" className="cursor-pointer" onClick={() => openCreateDialog("lokal")}>
                 Create project
               </Button>
             </div>

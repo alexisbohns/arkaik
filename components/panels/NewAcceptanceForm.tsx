@@ -144,7 +144,7 @@ export function NewAcceptanceForm({
           <Button variant="outline" type="button" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
-          <Button type="submit" form="new-acceptance-form">
+          <Button type="submit" variant="stone" form="new-acceptance-form">
             Create acceptance
           </Button>
         </DialogFooter>

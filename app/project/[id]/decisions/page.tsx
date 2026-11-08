@@ -180,7 +180,7 @@ export default function ProjectDecisionsPage() {
               aria-label="Decision title"
               autoFocus
             />
-            <Button type="submit" disabled={newTitle.trim() === ""}>
+            <Button type="submit" variant="stone" disabled={newTitle.trim() === ""}>
               Create
             </Button>
           </form>
