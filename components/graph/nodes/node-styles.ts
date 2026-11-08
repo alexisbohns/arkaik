@@ -16,14 +16,19 @@ import {
 
 // One row per status: text color, dot fill, and SVG arc stroke. A ring, a bar
 // and a badge therefore can never drift apart on color.
-export const STATUS_STYLES: Record<StatusId, { badge: string; dot: string; stroke: string }> = {
-  idea:        { badge: "text-gray-400",    dot: "bg-gray-400",    stroke: "stroke-gray-400"   },
-  discovery:   { badge: "text-violet-400",  dot: "bg-violet-400",  stroke: "stroke-violet-400" },
-  backlog:     { badge: "text-blue-400",    dot: "bg-blue-400",    stroke: "stroke-blue-400"   },
-  development: { badge: "text-blue-500",    dot: "bg-blue-500",    stroke: "stroke-blue-500"   },
-  releasing:   { badge: "text-purple-500",  dot: "bg-purple-500",  stroke: "stroke-purple-500" },
-  live:        { badge: "text-green-500",   dot: "bg-green-500",   stroke: "stroke-green-500"  },
-  archived:    { badge: "text-gray-400",    dot: "bg-gray-400",    stroke: "stroke-gray-400"   },
+/**
+ * Per-status classes. `surface` is the status's soft wash — its own hue at low
+ * opacity — for an area that belongs to the status as a whole (a Delivery
+ * column), where the solid `dot` would shout.
+ */
+export const STATUS_STYLES: Record<StatusId, { badge: string; dot: string; stroke: string; surface: string }> = {
+  idea:        { badge: "text-gray-400",    dot: "bg-gray-400",    stroke: "stroke-gray-400",   surface: "bg-gray-400/10"   },
+  discovery:   { badge: "text-violet-400",  dot: "bg-violet-400",  stroke: "stroke-violet-400", surface: "bg-violet-400/10" },
+  backlog:     { badge: "text-blue-400",    dot: "bg-blue-400",    stroke: "stroke-blue-400",   surface: "bg-blue-400/10"   },
+  development: { badge: "text-blue-500",    dot: "bg-blue-500",    stroke: "stroke-blue-500",   surface: "bg-blue-500/10"   },
+  releasing:   { badge: "text-purple-500",  dot: "bg-purple-500",  stroke: "stroke-purple-500", surface: "bg-purple-500/10" },
+  live:        { badge: "text-green-500",   dot: "bg-green-500",   stroke: "stroke-green-500",  surface: "bg-green-500/10"  },
+  archived:    { badge: "text-gray-400",    dot: "bg-gray-400",    stroke: "stroke-gray-400",   surface: "bg-gray-400/10"   },
 };
 
 export const STATUS_ICONS: Record<StatusId, LucideIcon> = {

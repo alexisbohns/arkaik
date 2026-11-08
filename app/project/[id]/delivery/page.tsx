@@ -26,6 +26,7 @@ import { useProjectId } from "@/lib/hooks/useProjectId";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
+import { useDisplayPreferences } from "@/lib/hooks/useDisplayPreferences";
 import { useProject } from "@/lib/hooks/useProject";
 import { computeDeliveryItems, groupItemsByStatus, type DeliveryItem } from "@/lib/utils/delivery";
 import { generateNodeId } from "@/lib/utils/id";
@@ -45,10 +46,13 @@ const STATUS_LABEL_BY_ID = Object.fromEntries(
   STATUSES.map((status) => [status.id, status.label]),
 ) as Record<StatusId, string>;
 
-/** All eight statuses in lifecycle order — the "All statuses" column set. */
+/** Every status in lifecycle order — the columns the reader picks from. */
 const ALL_STATUS_COLUMNS: StatusId[] = [...STATUSES]
   .sort((a, b) => a.order - b.order)
   .map((status) => status.id);
+
+/** The columns shown at rest: the counted preset, the board's delivery pipeline. */
+const DEFAULT_STATUS_COLUMNS: readonly StatusId[] = getCountedStatuses(DEFAULT_COUNTED_STATUS_PRESET_ID);
 
 // The board's resting lens. "Clear" (the c key) returns here — not to "no
 // species", which would be an empty board. `readonly`, and every use below
@@ -61,20 +65,23 @@ export default function ProjectDeliveryPage() {
 
   const [platformFilter, setPlatformFilter] = useState<DeliveryPlatformFilter>("all");
   const [speciesFilter, setSpeciesFilter] = useState<SpeciesId[]>(() => [...DEFAULT_SPECIES]);
-  const [showAllStatuses, setShowAllStatuses] = useState(false);
+  const [visibleStatuses, setVisibleStatuses] = useState<StatusId[]>(() => [...DEFAULT_STATUS_COLUMNS]);
+  // Remembered per project, beside the panels' acceptance display.
+  const [displayPreferences, updateDisplayPreferences] = useDisplayPreferences(id);
   const [search, setSearch] = useState("");
   const [newNodeOpen, setNewNodeOpen] = useState(false);
 
   const isFiltered =
     platformFilter !== "all" ||
-    showAllStatuses ||
+    visibleStatuses.length !== DEFAULT_STATUS_COLUMNS.length ||
+    visibleStatuses.some((status) => !DEFAULT_STATUS_COLUMNS.includes(status)) ||
     search !== "" ||
     speciesFilter.length !== DEFAULT_SPECIES.length ||
     speciesFilter.some((species) => !DEFAULT_SPECIES.includes(species));
   const clearFilters = () => {
     setPlatformFilter("all");
     setSpeciesFilter([...DEFAULT_SPECIES]);
-    setShowAllStatuses(false);
+    setVisibleStatuses([...DEFAULT_STATUS_COLUMNS]);
     setSearch("");
   };
 
@@ -118,9 +125,10 @@ export default function ProjectDeliveryPage() {
     [dataEdges, nodesById, usageIndex],
   );
 
+  // Lifecycle order whatever order they were ticked in.
   const statusColumns = useMemo<readonly StatusId[]>(
-    () => (showAllStatuses ? ALL_STATUS_COLUMNS : getCountedStatuses(DEFAULT_COUNTED_STATUS_PRESET_ID)),
-    [showAllStatuses],
+    () => ALL_STATUS_COLUMNS.filter((status) => visibleStatuses.includes(status)),
+    [visibleStatuses],
   );
 
   const columns = useMemo(() => {
@@ -233,17 +241,28 @@ export default function ProjectDeliveryPage() {
           // own swallowed the vertical wheel under `overscroll-behavior:
           // contain`. Given a bounded pane it fits, and each column scrolls.
           fill={totalItems > 0}
-          contentClassName={totalItems > 0 ? "flex p-4 md:p-6" : "flex flex-col gap-4"}
+          // No padding around the board: it runs flush to the surface's edges,
+          // the toolbar's hairline its top.
+          contentClassName={totalItems > 0 ? "flex" : "flex flex-col gap-4"}
           toolbar={
             <DeliveryFilterBar
               platform={platformFilter}
               species={speciesFilter}
-              showAllStatuses={showAllStatuses}
+              statusOptions={ALL_STATUS_COLUMNS}
+              visibleStatuses={visibleStatuses}
               search={search}
               onPlatformChange={setPlatformFilter}
               onToggleSpecies={handleToggleSpecies}
-              onShowAllStatusesChange={setShowAllStatuses}
+              onToggleStatus={(status) =>
+                setVisibleStatuses((previous) =>
+                  previous.includes(status) ? previous.filter((entry) => entry !== status) : [...previous, status],
+                )
+              }
               onSearchChange={setSearch}
+              compact={displayPreferences.deliveryCardDisplay === "compact"}
+              onCompactChange={(compact) =>
+                updateDisplayPreferences({ deliveryCardDisplay: compact ? "compact" : "detailed" })
+              }
               projectId={id}
               project={projectBundle}
               isFiltered={isFiltered}
@@ -274,6 +293,7 @@ export default function ProjectDeliveryPage() {
               speciesLabelById={SPECIES_LABEL_BY_ID}
               speciesDescriptionById={SPECIES_DESCRIPTION_BY_ID}
               onSelectItem={handleSelectItem}
+              compact={displayPreferences.deliveryCardDisplay === "compact"}
             />
           )}
         </PageSurface>

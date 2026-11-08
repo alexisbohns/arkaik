@@ -5,7 +5,6 @@ import {
   CircleFadingArrowUpIcon,
   ListChevronsDownUpIcon,
   ListChevronsUpDownIcon,
-  MonitorSmartphoneIcon,
   PyramidIcon,
   StethoscopeIcon,
   WorkflowIcon,
@@ -26,6 +25,7 @@ import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem } from "@/components/ui/select";
 import { FilterSelectTrigger } from "@/components/layout/FilterSelectTrigger";
+import { SelectedPlatformIcon } from "@/components/layout/SelectedPlatformIcon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PLATFORM_ICONS } from "@/components/graph/nodes/node-styles";
 import { VALUE_ICON_COMPONENTS } from "@/lib/config/value-icons";
@@ -48,13 +48,6 @@ interface AcceptanceFilterBarProps {
 }
 
 const ALL = "all";
-
-/** The selected platform's own glyph, or the generic one while unfiltered. */
-function SelectedPlatformIcon({ platform }: { platform: AcceptanceFilters["platform"] }) {
-  if (platform === "all") return <MonitorSmartphoneIcon />;
-  const Icon = PLATFORM_ICONS[platform];
-  return <Icon />;
-}
 
 export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectId, project, allExpanded, onToggleExpandAll }: AcceptanceFilterBarProps) {
   // Same arity rule and same stale-filter reset as the Delivery bar; only the
