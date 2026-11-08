@@ -9,6 +9,10 @@
  * was tuned by eye in the "Arkaik Gem Accents" artifact — change one only with
  * a reason, and rerun `npm run generate`.
  *
+ * The tiles stitch cleanly left to right, but the contour veins can show a faint
+ * seam top to bottom — keep stone surfaces shorter than a tile (`size`), as every
+ * button, row and checkbox is.
+ *
  * Fields:
  *   side    — "light" stones carry the secondary role in the light theme and
  *             the primary in the dark theme; "dark" stones the reverse.
@@ -350,8 +354,9 @@ function facetLayer({ n = 5, light, dark, a = [0.05, 0.22], edge, edgeA = 0.16, 
       }
     }
   }
-  // Drawn again shifted by a tile on each side, so facets crossing the tile edge stay whole.
-  return `<g>${out}</g><g transform="translate(${-S} 0)">${out}</g><g transform="translate(0 ${-S})">${out}</g><g transform="translate(${-S} ${-S})">${out}</g>`;
+  // Drawn at every offset of the 3×3 neighbourhood, so facets crossing any tile edge stay whole and the edges leave no gaps.
+  const offsets = [-S, 0, S];
+  return offsets.flatMap((dx) => offsets.map((dy) => `<g transform="translate(${dx} ${dy})">${out}</g>`)).join("");
 }
 
 /**

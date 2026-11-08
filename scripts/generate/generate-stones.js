@@ -65,7 +65,7 @@ function registry() {
 fs.mkdirSync(SVG_DIR, { recursive: true });
 const wanted = new Set(STONES.map((s) => `${s.id}.svg`));
 for (const file of fs.readdirSync(SVG_DIR)) {
-  if (!wanted.has(file)) fs.rmSync(path.join(SVG_DIR, file));
+  if (file.endsWith(".svg") && !wanted.has(file)) fs.rmSync(path.join(SVG_DIR, file));
 }
 for (const s of STONES) fs.writeFileSync(path.join(SVG_DIR, `${s.id}.svg`), stoneSVG(s) + "\n");
 

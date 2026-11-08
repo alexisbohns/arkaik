@@ -26,7 +26,7 @@ Each stone has: a texture tile (an SVG of `feTurbulence` layers, contour
 veins, drawn veins or facets), a label ink (`#FFFFFF` on dark stones,
 `#18181B` on light ones), an icon tone (a colour, or a 3-stop gradient), a
 `polish` flag, and two contrast floors measured on what is drawn: label ≥ 4.5:1,
-icon ≥ 3:1 (light stones' icon against white, dark stones' against `#18181B`).
+icon ≥ 3:1 (light stones' icon against white, dark stones' against `#18181B`). On the active sidebar row an icon sits on its own stone rather than the page, where Travertine's and Pumice's #EE5E39 falls to about 2.7:1; that is accepted, because the row's label carries the meaning and the orange is Lava's exact accent.
 
 ## Roles
 
