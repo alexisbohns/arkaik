@@ -16,6 +16,7 @@ import {
   MapPinnedIcon,
   NetworkIcon,
   PencilRulerIcon,
+  PlusIcon,
   PyramidIcon,
   RouteIcon,
   ScrollTextIcon,
@@ -71,6 +72,7 @@ const COMMAND_ICONS: Record<CommandIconId, LucideIcon> = {
   shortcuts: KeyboardIcon,
   projects: FolderOpenIcon,
   tokens: KeyRoundIcon,
+  create: PlusIcon,
 };
 
 interface CommandPaletteProps {
@@ -210,6 +212,10 @@ function PaletteBody({ commands, onAction, onClose, placeholder }: PaletteBodyPr
       const { target } = match.command;
       if (target.kind === "action") {
         onAction(target.action);
+        return;
+      }
+      if (target.kind === "run") {
+        target.run();
         return;
       }
       if (target.external) {

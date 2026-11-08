@@ -238,7 +238,6 @@ export default function ProjectQualityFindingsPage() {
   return (
     <QualityFrame
       title="Findings"
-      meta={`${data.rows.length} findings · ${filtered.length} shown`}
       data={data}
       scope={scope}
       toolbar={

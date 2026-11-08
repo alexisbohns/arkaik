@@ -29,7 +29,7 @@ import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope
 import { useProject } from "@/lib/hooks/useProject";
 import { computeDeliveryItems, groupItemsByStatus, type DeliveryItem } from "@/lib/utils/delivery";
 import { generateNodeId } from "@/lib/utils/id";
-import { productScopeMetaLabel, type ProductGraph } from "@/lib/utils/product-scope";
+import type { ProductGraph } from "@/lib/utils/product-scope";
 import { matchesSearch } from "@/lib/utils/search";
 import { buildProductUsageIndex } from "@arkaik/schema";
 
@@ -207,7 +207,6 @@ export default function ProjectDeliveryPage() {
     <>
       <PageShell
         title="Delivery"
-        meta={productScopeMetaLabel(scope)}
         action={{
           label: "New node",
           icon: PlusIcon,

@@ -78,15 +78,15 @@ export function MapDisplayPopover({
 
   return (
     <Popover>
-      {/* Collapsed to its glyph below `md`, like the layout header's own action
-          (`PageHeader`): this button rides in `headerExtra`, so it shares that
-          one fixed-height row with the map's title and trail. The label lives on
-          as the accessible name, and the popover it opens is headed "Display"
-          anyway — so nothing is lost but the width. */}
+      {/* Collapsed to its glyph below `md`: it floats over the canvas
+          (`MapCanvasControls`), where on a phone every pixel of width it takes
+          is map hidden. The label lives on as the accessible name, and the
+          popover it opens is headed "Display" anyway — so nothing is lost but
+          the width. */}
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
-            <Button size="sm" variant="outline" className="cursor-pointer" aria-label="Display">
+            <Button size="sm" variant="outline" className="cursor-pointer bg-background" aria-label="Display">
               <SlidersHorizontalIcon className="size-4" />
               <span className="hidden md:inline">Display</span>
             </Button>

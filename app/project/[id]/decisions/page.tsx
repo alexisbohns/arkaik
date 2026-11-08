@@ -120,7 +120,6 @@ export default function ProjectDecisionsPage() {
     <>
       <PageShell
         title="Decisions"
-        meta={`${decisions.length} total`}
         action={{ label: "New decision", icon: PlusIcon, onClick: () => setNewOpen(true) }}
         allNodes={dataNodes}
         allEdges={dataEdges}

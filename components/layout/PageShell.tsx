@@ -1,7 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { PageHeader, type PageAction } from "@/components/layout/PageHeader";
 import { ProjectPanels, type PyramidPanelData } from "@/components/panels/ProjectPanels";
 import type { ScreenshotPanelOp } from "@/lib/utils/screenshot-ops";
 import type { KritikLibrary, QualitySection, QualityTrend } from "@arkaik/schema";
@@ -10,13 +9,13 @@ import type { Edge, Node } from "@/lib/data/types";
 import type { ProductScope } from "@/lib/utils/product-scope";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import type { NodeRelations } from "@/lib/hooks/useNodeRelations";
+import { usePageAction, type PageAction } from "@/lib/hooks/usePageCommands";
 
 interface PageShellProps {
+  /** The page's name — its `h1`, read by screen readers; nothing draws it. */
   title: string;
-  meta?: ReactNode;
+  /** The page's create action, offered in the ⌘K palette's Create group. */
   action?: PageAction;
-  /** Right-side header controls, left of the action. */
-  headerExtra?: ReactNode;
   /** The surface — canvas, board, list. The panel grid's first cell. */
   children: ReactNode;
   /**
@@ -65,7 +64,13 @@ interface PageShellProps {
 }
 
 /**
- * A project page: the shared header, and the panel grid holding the surface.
+ * A project page: the panel grid holding the surface, edge to edge — no header.
+ *
+ * What the header used to carry went where it is used: the create action into
+ * the ⌘K palette (`usePageAction`), the sidebar toggle to ⌘B, and the title
+ * into a visually hidden `h1`. The `h1` stays because the panel stack hangs one
+ * `h2` per open record off it; without it the page's outline would start at
+ * level two under nothing.
  *
  * Every project surface renders exactly one of these, which is what makes the
  * raw bundle reachable from anywhere — the grid it needs is no longer something
@@ -73,22 +78,18 @@ interface PageShellProps {
  */
 export function PageShell({
   title,
-  meta,
   action,
-  headerExtra,
   children,
   surfaceCard,
   surfaceBare,
   onLayoutChange,
   ...panelProps
 }: PageShellProps) {
+  usePageAction(action);
+
   return (
     <div className="flex h-full w-full flex-col">
-      {/* The header names the crumbs from the same node list the panels resolve
-          against, so a rename reaches both at once. */}
-      <PageHeader title={title} meta={meta} action={action} nodes={panelProps.allNodes}>
-        {headerExtra}
-      </PageHeader>
+      <h1 className="sr-only">{title}</h1>
       <ProjectPanels
         surfaceLabel={title}
         surfaceCard={surfaceCard}

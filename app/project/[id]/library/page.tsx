@@ -56,17 +56,6 @@ const SPECIES_EMPTY_LABELS: Record<LibrarySpeciesFilter, string> = {
   decision: "decisions",
 };
 
-// The sidebar owns species selection; the header's second line mirrors it so
-// the active filter stays visible on the page itself.
-const SPECIES_META_LABELS: Record<SpeciesId, string> = {
-  view: "Views",
-  flow: "Flows",
-  "data-model": "Data Models",
-  "api-endpoint": "API Endpoints",
-  acceptance: "Acceptances",
-  decision: "Decisions",
-};
-
 const SPECIES_LABEL_BY_ID = Object.fromEntries(
   SPECIES.map((species) => [species.id, species.label]),
 ) as Record<SpeciesId, string>;
@@ -485,7 +474,6 @@ export default function ProjectLibraryPage() {
     <>
       <PageShell
         title="Library"
-        meta={speciesFilter === "all" ? undefined : SPECIES_META_LABELS[speciesFilter]}
         action={{
           label: "New node",
           icon: PlusIcon,

@@ -12,7 +12,7 @@ import { PyramidSummaryPane } from "@/components/pyramid/PyramidSummaryPane";
 import { Button } from "@/components/ui/button";
 import { VALUES, type ValueId } from "@/lib/config/values";
 import { computeScopedPyramidTiers } from "@/lib/utils/pyramid";
-import { PRODUCT_OVERRIDE_PARAM, productScopeMetaLabel } from "@/lib/utils/product-scope";
+import { PRODUCT_OVERRIDE_PARAM } from "@/lib/utils/product-scope";
 import { isValueEntry, VALUES_PANEL_KEY } from "@/lib/utils/project-panels";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useNodes } from "@/lib/hooks/useNodes";
@@ -169,7 +169,6 @@ export default function PyramidPage() {
   return (
     <PageShell
       title="Value pyramid"
-      meta={productScopeMetaLabel(scope)}
       // Node wiring for the acceptance panels a value panel opens.
       allNodes={dataNodes}
       allEdges={dataEdges}

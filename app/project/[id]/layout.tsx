@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useTheme } from "next-themes";
 import { CommandPalette } from "@/components/layout/CommandPalette";
+import { PageCommandsProvider } from "@/lib/hooks/usePageCommands";
 import { KeyboardShortcutsDialog } from "@/components/layout/KeyboardShortcutsDialog";
 import { PageError } from "@/components/layout/PageError";
 import { ProjectSidebar } from "@/components/layout/ProjectSidebar";
@@ -135,63 +136,71 @@ function ProjectChrome({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <SidebarProvider defaultOpen>
-      {/* The whole bundle, not just the title: the product selector in the
-          sidebar header reads `project.metadata.products`, and two props off the
-          same object could disagree. */}
-      <ProjectSidebar
-        projectId={id}
-        project={project}
-        projectFailed={projectError !== null}
-        currentView={currentView}
-        currentSpecies={currentSpecies}
-        currentQualityView={currentQualityView}
-        currentMapId={currentMapId}
-        customMaps={customMaps}
-        currentQueryString={currentQueryString}
-        onOpenCommandPalette={() => setPaletteOpen(true)}
-        onOpenPublish={() => setPublishOpen(true)}
-        onOpenRaw={openRaw}
-      />
-      <SidebarInset className="h-svh overflow-hidden">
-        {/*
-          A project that could not be read replaces the SURFACE, not the chrome
-          (#362).
-
-          Keeping the sidebar is the point: the way out of a failed project is
-          the project switcher, and blanking the whole screen takes it away. The
-          page underneath goes, though — every surface in here reads the same
-          project through its own hooks, so it failed too, and letting it render
-          its own error under this one would stack two apologies.
-
-          Unmounting `children` is also what makes one retry enough: the page's
-          hooks die with it, so a successful reload here remounts them and they
-          load from scratch rather than sitting on stale error state.
-        */}
-        {projectError ? (
-          <PageError
-            label="project"
-            message={projectError}
-            onRetry={() => void reloadProject()}
+    // Outermost so both the pages (which register their create action) and the
+    // palette (which offers it) sit under it.
+    <PageCommandsProvider>
+      {(pageCommands) => (
+        <SidebarProvider defaultOpen>
+          {/* The whole bundle, not just the title: the product selector in the
+              sidebar header reads `project.metadata.products`, and two props off the
+              same object could disagree. */}
+          <ProjectSidebar
+            projectId={id}
+            project={project}
+            projectFailed={projectError !== null}
+            currentView={currentView}
+            currentSpecies={currentSpecies}
+            currentQualityView={currentQualityView}
+            currentMapId={currentMapId}
+            customMaps={customMaps}
+            currentQueryString={currentQueryString}
+            onOpenCommandPalette={() => setPaletteOpen(true)}
+            onOpenPublish={() => setPublishOpen(true)}
+            onOpenRaw={openRaw}
           />
-        ) : (
-          children
-        )}
-      </SidebarInset>
+          <SidebarInset className="h-svh overflow-hidden">
+            {/*
+              A project that could not be read replaces the SURFACE, not the chrome
+              (#362).
 
-      <CommandPalette
-        open={paletteOpen}
-        onOpenChange={setPaletteOpen}
-        commands={commands}
-        onAction={handleCommandAction}
-      />
-      <KeyboardShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} inProject />
-      <PublishDialog
-        open={publishOpen}
-        onOpenChange={setPublishOpen}
-        projectId={id}
-        projectTitle={project?.project.title ?? "Untitled project"}
-      />
-    </SidebarProvider>
+              Keeping the sidebar is the point: the way out of a failed project is
+              the project switcher, and blanking the whole screen takes it away. The
+              page underneath goes, though — every surface in here reads the same
+              project through its own hooks, so it failed too, and letting it render
+              its own error under this one would stack two apologies.
+
+              Unmounting `children` is also what makes one retry enough: the page's
+              hooks die with it, so a successful reload here remounts them and they
+              load from scratch rather than sitting on stale error state.
+            */}
+            {projectError ? (
+              <PageError
+                label="project"
+                message={projectError}
+                onRetry={() => void reloadProject()}
+              />
+            ) : (
+              children
+            )}
+          </SidebarInset>
+
+          <CommandPalette
+            open={paletteOpen}
+            onOpenChange={setPaletteOpen}
+            // The page's own actions first: on an empty query the palette lists in
+            // declaration order, and "New node" is the reason most people opened it.
+            commands={pageCommands.length > 0 ? [...pageCommands, ...commands] : commands}
+            onAction={handleCommandAction}
+          />
+          <KeyboardShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} inProject />
+          <PublishDialog
+            open={publishOpen}
+            onOpenChange={setPublishOpen}
+            projectId={id}
+            projectTitle={project?.project.title ?? "Untitled project"}
+          />
+        </SidebarProvider>
+      )}
+    </PageCommandsProvider>
   );
 }

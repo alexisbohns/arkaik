@@ -98,7 +98,6 @@ export default function ProjectQualityMatrixPage() {
   return (
     <QualityFrame
       title="Matrix"
-      meta={`${data.matrix.surfaces.length} surfaces · ${data.matrix.domains.length} domains · ${data.rows.length} findings`}
       data={data}
       scope={scope}
     >
