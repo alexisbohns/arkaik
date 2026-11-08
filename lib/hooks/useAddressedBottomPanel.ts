@@ -34,11 +34,10 @@ interface AddressedBottomPanelOptions {
  * The hard part is one question the URL alone cannot answer: the panel is gone
  * and the param still names it — was it *closed*, or was it *wiped*?
  *
- * `reconcileArrival`'s rule is that a missing `?node=` closes the **whole**
- * stack, so opening a linked node out of the panel and then pressing Back — or
- * closing that node panel, which republishes an empty address — takes this
- * panel down with it. That is pre-existing behaviour the Raw panel has had
- * since it landed; putting the panel back is this hook's job. It comes back
+ * A missing `?node=` does not take this panel down — closing a linked node,
+ * or Back past it, keeps the addressless panels beneath it (`keepBelowNodes`).
+ * What can still empty the stack is a cold load or an arrival from another
+ * surface, and putting the panel back then is this hook's job. It comes back
  * **remounted**, so whatever the reader had scrolled to inside it is lost.
  *
  * The two cases land in the identical state — no panel, a live param — and

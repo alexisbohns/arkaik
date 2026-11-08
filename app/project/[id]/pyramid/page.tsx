@@ -1,51 +1,49 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useSearchParams } from "next/navigation";
+import { ListIcon } from "lucide-react";
 import { PageError } from "@/components/layout/PageError";
 import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
 import { PageSurface } from "@/components/layout/PageSurface";
-import { PyramidElementCard } from "@/components/pyramid/PyramidElementCard";
-import { PyramidElementRow } from "@/components/pyramid/PyramidElementRow";
-import { PyramidTierGroup } from "@/components/pyramid/PyramidTierGroup";
-import {
-  PyramidToolbar,
-  type PyramidFilterStep,
-  type PyramidViewMode,
-} from "@/components/pyramid/PyramidToolbar";
-import { EmptyState } from "@/components/ui/empty-state";
-import { VALUES, VALUE_TIERS_CONFIG } from "@/lib/config/values";
-import type { PyramidElement } from "@/lib/utils/pyramid";
+import type { PyramidPanelData } from "@/components/panels/ProjectPanels";
+import { PyramidSummaryPane } from "@/components/pyramid/PyramidSummaryPane";
+import { Button } from "@/components/ui/button";
+import { VALUES, type ValueId } from "@/lib/config/values";
 import { computeScopedPyramidTiers } from "@/lib/utils/pyramid";
 import { PRODUCT_OVERRIDE_PARAM, productScopeMetaLabel } from "@/lib/utils/product-scope";
+import { isValueEntry, VALUES_PANEL_KEY } from "@/lib/utils/project-panels";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useNodes } from "@/lib/hooks/useNodes";
+import { NODE_PANEL_PARAM, useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useEffectiveProduct, useProductOverride } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
 import { useProjectId } from "@/lib/hooks/useProjectId";
+import { useQueryWriter } from "@/lib/hooks/useQueryWriter";
 
-const VALUE_LABEL = new Map(VALUES.map((v) => [v.id, v.label]));
-const VALUE_DESCRIPTION = new Map(VALUES.map((v) => [v.id, v.description]));
-const TIER_CONFIG = new Map(VALUE_TIERS_CONFIG.map((t) => [t.id, t]));
+const VALUE_LABEL = new Map<string, string>(VALUES.map((v) => [v.id, v.label]));
 
-function matchesStep(element: PyramidElement, step: PyramidFilterStep) {
-  if (step === "addressed") return element.acceptanceCount > 0;
-  if (step === "empty") return element.acceptanceCount === 0;
-  return true;
-}
+/** The search param naming the open value panel. Page-owned; the stack's address is `?node=`. */
+const VALUE_PARAM = "value";
 
 /**
  * The Pyramid: "How well is each value element delivered?" — the value-delivery
- * radar (spec §9.2). Each element carries its availability — four status rings
- * (global + one per platform) for a scope shipping on two or more, a single bar
- * and a count for one or none; a three-step filter picks the slice worth
- * looking at, and the view switcher trades the icon-led cards for one-line rows.
+ * radar (spec §9.2), on the real panel stack.
+ *
+ * The surface is the pyramid itself, upright. Beside it the values directory
+ * opens as the resting panel: the 30 elements as a list behind a step filter.
+ * Picking an element — a row or a wheel — opens its value panel above the
+ * directory, so the directory slides left and the value takes the right
+ * column; following one of its acceptances slides the value left in turn. The
+ * stack's usual rules, nothing bespoke.
+ *
+ * The open element is addressed as `?value=`, so a reload or a shared link
+ * lands on it.
  */
 export default function PyramidPage() {
   const id = useProjectId();
-
-  const [viewMode, setViewMode] = useState<PyramidViewMode>("cards");
-  const [filterStep, setFilterStep] = useState<PyramidFilterStep>("all");
+  const { entries, openValues, openValue } = useProjectPanels();
 
   const { nodes: dataNodes, loading: nodesLoading, error: nodesError, reload: reloadNodes } = useNodes(id);
   // Gated on below alongside the nodes, as /acceptances does: an acceptance's
@@ -79,25 +77,13 @@ export default function PyramidPage() {
     [acceptances, dataEdges, nodesById, scope],
   );
 
-  const visibleTiers = useMemo(
-    () =>
-      tiers
-        .map((tier) => ({
-          ...tier,
-          addressedCount: tier.elements.filter((element) => element.acceptanceCount > 0).length,
-          visible: tier.elements.filter((element) => matchesStep(element, filterStep)),
-        }))
-        .filter((tier) => tier.visible.length > 0),
-    [tiers, filterStep],
-  );
-
   // The one cross-surface link between two surfaces that both own the override,
   // and so the one place "navigation drops the param" is the wrong answer:
-  // narrow the pyramid to Admin, click an element, and landing on every
-  // product's acceptances reads as a bug. It carries the *override* and not
-  // `scope.productId`, because a global scope needs no carrying — the sidebar
-  // already narrows the destination, and writing it into the URL would turn an
-  // ambient scope into a surface override on arrival.
+  // narrow the pyramid to Admin, follow "Open in Acceptances", and landing on
+  // every product's acceptances reads as a bug. It carries the *override* and
+  // not `scope.productId`, because a global scope needs no carrying — the
+  // sidebar already narrows the destination, and writing it into the URL would
+  // turn an ambient scope into a surface override on arrival.
   const acceptancesHref = useCallback(
     (value: string) => {
       const params = new URLSearchParams({ value });
@@ -106,14 +92,65 @@ export default function PyramidPage() {
     },
     [id, overrideId],
   );
+  const pyramid = useMemo<PyramidPanelData>(
+    () => ({ tiers, acceptancesHref }),
+    [tiers, acceptancesHref],
+  );
+
+  // --- The stack, seeded and addressed -------------------------------------
+
+  const searchParams = useSearchParams();
+  const writeQuery = useQueryWriter();
+  const directoryOpen = entries[0]?.key === VALUES_PANEL_KEY;
+
+  /** Open an element over the directory, reopening the directory first if it was closed. */
+  const showValue = useCallback(
+    (valueId: ValueId) => {
+      if (!directoryOpen) openValues(0);
+      openValue(valueId, VALUE_LABEL.get(valueId) ?? valueId, 1);
+    },
+    [directoryOpen, openValue, openValues],
+  );
+
+  // Seed once per visit: the directory, and the element `?value=` names. Only
+  // into an empty stack — a cold load carrying `?node=` has already put that
+  // node at the bottom, and opening at depth 0 would truncate it away.
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (seeded.current) return;
+    seeded.current = true;
+    if (entries.length > 0 || searchParams.get(NODE_PANEL_PARAM)) return;
+
+    openValues(0);
+    const requested = searchParams.get(VALUE_PARAM);
+    if (requested && VALUE_LABEL.has(requested)) {
+      openValue(requested as ValueId, VALUE_LABEL.get(requested)!, 1);
+    }
+  }, [entries.length, openValue, openValues, searchParams]);
+
+  // The stack → `?value=`. Written only when the open element *changes*, never
+  // on the first pass, so the seed above is not raced by a delete of the very
+  // param it is reading.
+  const openValueId = entries.find(isValueEntry)?.payload.valueId ?? null;
+  const lastOpenValue = useRef<ValueId | null | undefined>(undefined);
+  useEffect(() => {
+    const previous = lastOpenValue.current;
+    lastOpenValue.current = openValueId;
+    if (previous === undefined || previous === openValueId) return;
+
+    writeQuery((params) => {
+      if (openValueId === null) params.delete(VALUE_PARAM);
+      else params.set(VALUE_PARAM, openValueId);
+    });
+  }, [openValueId, writeQuery]);
 
   if (nodesLoading || edgesLoading) {
     return <PageLoading label="pyramid" />;
   }
 
-  // Before the filter's empty state, never after (#362): every tier aggregates
-  // to zero from an unread graph, so "No value element matches this filter."
-  // would blame a filter for a read that never landed.
+  // Before any aggregate is drawn, never after (#362): every tier aggregates to
+  // zero from an unread graph, and a pyramid of empty wheels would blame the
+  // product for a read that never landed.
   const loadError = nodesError ?? edgesError ?? projectError;
   if (loadError) {
     return (
@@ -130,55 +167,33 @@ export default function PyramidPage() {
   }
 
   return (
-    <PageShell title="Value pyramid" meta={productScopeMetaLabel(scope)}>
-      <PageSurface
-        contentClassName="flex flex-col gap-6"
-        toolbar={
-          <PyramidToolbar
-            viewMode={viewMode}
-            filterStep={filterStep}
-            onViewModeChange={setViewMode}
-            onFilterStepChange={setFilterStep}
-            projectId={id}
-            project={projectBundle}
-          />
-        }
-      >
-        {visibleTiers.length === 0 ? (
-          /* `p-10` rather than the `p-8` this card used to hand-roll — the
-             audit's converge-on-the-dominant-treatment call (factorization-3). */
-          <EmptyState message="No value element matches this filter." />
-        ) : (
-          visibleTiers.map((tier) => {
-            const config = TIER_CONFIG.get(tier.tier);
-            const View = viewMode === "cards" ? PyramidElementCard : PyramidElementRow;
-            const items = tier.visible.map((element) => (
-              <View
-                key={element.value}
-                element={element}
-                label={VALUE_LABEL.get(element.value) ?? element.value}
-                description={VALUE_DESCRIPTION.get(element.value) ?? ""}
-                href={acceptancesHref(element.value)}
-                platforms={scope.platforms}
-              />
-            ));
-            return (
-              <PyramidTierGroup
-                key={tier.tier}
-                label={config?.label ?? tier.tier}
-                color={config?.color ?? "#94a3b8"}
-                elementCount={tier.elements.length}
-                addressedCount={tier.addressedCount}
-              >
-                {viewMode === "cards" ? (
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{items}</div>
-                ) : (
-                  <div className="overflow-hidden rounded-xl border bg-card">{items}</div>
-                )}
-              </PyramidTierGroup>
-            );
-          })
-        )}
+    <PageShell
+      title="Value pyramid"
+      meta={productScopeMetaLabel(scope)}
+      // Node wiring for the acceptance panels a value panel opens.
+      allNodes={dataNodes}
+      allEdges={dataEdges}
+      scope={scope}
+      pyramid={pyramid}
+      // The pyramid is a picture, not a list: no card around it.
+      surfaceBare
+    >
+      <PageSurface>
+        <PyramidSummaryPane
+          tiers={tiers}
+          onSelectValue={showValue}
+          action={
+            // Only while the directory is closed — it is the page's resting
+            // panel, and closing it (Escape) must not strand the reader with
+            // no way back to the list short of a reload.
+            directoryOpen ? undefined : (
+              <Button size="sm" variant="outline" className="cursor-pointer self-start" onClick={() => openValues(0)}>
+                <ListIcon className="size-4" />
+                Values
+              </Button>
+            )
+          }
+        />
       </PageSurface>
     </PageShell>
   );
