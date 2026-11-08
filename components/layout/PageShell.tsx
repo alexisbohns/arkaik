@@ -19,6 +19,11 @@ interface PageShellProps {
   /** The surface — canvas, board, list. The panel grid's first cell. */
   children: ReactNode;
   /**
+   * The page's right rail (`RightRail`) — drawn after the panel grid, at the
+   * window's right edge, so open panels sit to its left and it never moves.
+   */
+  rail?: ReactNode;
+  /**
    * Draw the surface as a card — its own background and border.
    *
    * Off by default: most surfaces are already built from cards, tables and
@@ -80,6 +85,7 @@ export function PageShell({
   title,
   action,
   children,
+  rail,
   surfaceCard,
   surfaceBare,
   onLayoutChange,
@@ -87,18 +93,35 @@ export function PageShell({
 }: PageShellProps) {
   usePageAction(action);
 
+  const panels = (
+    <ProjectPanels
+      surfaceLabel={title}
+      surfaceCard={surfaceCard}
+      surfaceBare={surfaceBare}
+      onLayoutChange={onLayoutChange}
+      {...panelProps}
+    >
+      {children}
+    </ProjectPanels>
+  );
+
+  // No rail → exactly the markup every other page already has. With one, the
+  // grid gets its own column box: `PanelStack` is `flex-1` and expects a
+  // column parent to grow into.
+  if (!rail) {
+    return (
+      <div className="flex h-full w-full flex-col">
+        <h1 className="sr-only">{title}</h1>
+        {panels}
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-full w-full flex-col">
+    <div className="flex h-full w-full flex-row">
       <h1 className="sr-only">{title}</h1>
-      <ProjectPanels
-        surfaceLabel={title}
-        surfaceCard={surfaceCard}
-        surfaceBare={surfaceBare}
-        onLayoutChange={onLayoutChange}
-        {...panelProps}
-      >
-        {children}
-      </ProjectPanels>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">{panels}</div>
+      {rail}
     </div>
   );
 }
