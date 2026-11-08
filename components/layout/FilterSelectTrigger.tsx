@@ -1,9 +1,19 @@
 "use client";
 
 import type { ComponentProps, ReactNode } from "react";
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import * as SelectPrimitive from "@radix-ui/react-select";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+
+/** The one skin every filter menu trigger wears — Select-backed or menu-backed. */
+function filterTriggerClassName(active: boolean, className?: string) {
+  return cn(
+    "inline-flex size-9 shrink-0 items-center justify-center rounded-md border bg-transparent shadow-xs outline-none focus:ring-[3px] focus:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 [&_svg:not([class*='size-'])]:size-4",
+    active ? "border-foreground/50 bg-accent text-foreground dark:bg-accent/50" : "border-input text-muted-foreground",
+    className,
+  );
+}
 
 interface FilterSelectTriggerProps
   extends Omit<ComponentProps<typeof SelectPrimitive.Trigger>, "children"> {
@@ -58,13 +68,7 @@ export function FilterSelectTrigger({
         <SelectPrimitive.Trigger
           data-slot="select-trigger"
           aria-label={label}
-          className={cn(
-            "inline-flex size-9 shrink-0 items-center justify-center rounded-md border bg-transparent shadow-xs outline-none focus:ring-[3px] focus:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 [&_svg:not([class*='size-'])]:size-4",
-            active
-              ? "border-foreground/50 bg-accent text-foreground dark:bg-accent/50"
-              : "border-input text-muted-foreground",
-            className,
-          )}
+          className={filterTriggerClassName(active, className)}
           {...props}
         >
           {icon}
@@ -73,6 +77,38 @@ export function FilterSelectTrigger({
       <TooltipContent>
         {(active || forceValueLabel) && valueLabel ? `${label}: ${valueLabel}` : label}
       </TooltipContent>
+    </Tooltip>
+  );
+}
+
+interface FilterMenuTriggerProps
+  extends Omit<ComponentProps<typeof DropdownMenuPrimitive.Trigger>, "children"> {
+  icon: ReactNode;
+  label: string;
+  active?: boolean;
+  valueLabel?: string;
+}
+
+/**
+ * {@link FilterSelectTrigger}'s twin for a `DropdownMenu` — for a filter that
+ * holds several values at once (checkbox items), which a `Select` cannot. Same
+ * square, same "set" treatment, same tooltip, so the two kinds of menu sit in
+ * one band without a seam.
+ */
+export function FilterMenuTrigger({ icon, label, active = false, valueLabel, className, ...props }: FilterMenuTriggerProps) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <DropdownMenuPrimitive.Trigger
+          data-slot="dropdown-menu-trigger"
+          aria-label={label}
+          className={filterTriggerClassName(active, className)}
+          {...props}
+        >
+          {icon}
+        </DropdownMenuPrimitive.Trigger>
+      </TooltipTrigger>
+      <TooltipContent>{active && valueLabel ? `${label}: ${valueLabel}` : label}</TooltipContent>
     </Tooltip>
   );
 }

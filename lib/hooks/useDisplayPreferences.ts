@@ -13,12 +13,21 @@ import { useCallback, useSyncExternalStore } from "react";
  */
 export type AcceptanceDisplay = "rows" | "cards";
 
+/**
+ * How the Delivery board draws one item. `compact` is one line — species glyph,
+ * title, platform glyph — so a column shows three times as many items;
+ * `detailed` is the two-line card with the platform named and the id chip.
+ */
+export type DeliveryCardDisplay = "compact" | "detailed";
+
 export interface DisplayPreferences {
   acceptanceDisplay: AcceptanceDisplay;
+  deliveryCardDisplay: DeliveryCardDisplay;
 }
 
 export const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
   acceptanceDisplay: "rows",
+  deliveryCardDisplay: "compact",
 };
 
 const STORAGE_PREFIX = "arkaik:display-prefs:";
@@ -48,6 +57,10 @@ function isAcceptanceDisplay(value: unknown): value is AcceptanceDisplay {
  * zero quota rather than reporting one. An unreadable or half-recognised record
  * degrades key by key to the defaults rather than being discarded wholesale.
  */
+function isDeliveryCardDisplay(value: unknown): value is DeliveryCardDisplay {
+  return value === "compact" || value === "detailed";
+}
+
 function read(projectId: string): DisplayPreferences {
   if (typeof window === "undefined") return DEFAULT_DISPLAY_PREFERENCES;
   try {
@@ -55,11 +68,14 @@ function read(projectId: string): DisplayPreferences {
     if (!stored) return DEFAULT_DISPLAY_PREFERENCES;
     const parsed: unknown = JSON.parse(stored);
     if (typeof parsed !== "object" || parsed === null) return DEFAULT_DISPLAY_PREFERENCES;
-    const acceptanceDisplay = (parsed as Partial<DisplayPreferences>).acceptanceDisplay;
+    const { acceptanceDisplay, deliveryCardDisplay } = parsed as Partial<DisplayPreferences>;
     return {
       acceptanceDisplay: isAcceptanceDisplay(acceptanceDisplay)
         ? acceptanceDisplay
         : DEFAULT_DISPLAY_PREFERENCES.acceptanceDisplay,
+      deliveryCardDisplay: isDeliveryCardDisplay(deliveryCardDisplay)
+        ? deliveryCardDisplay
+        : DEFAULT_DISPLAY_PREFERENCES.deliveryCardDisplay,
     };
   } catch {
     return DEFAULT_DISPLAY_PREFERENCES;

@@ -24,7 +24,14 @@ export function DeliveryBoardPreview({ bundle }: PreviewProps) {
   return (
     // Arbitrary property on purpose: globals.css traps the vertical wheel over every `.overflow-x-auto`.
     <div className="h-full [overflow-x:auto] p-3">
-      <ReadOnlyDeliveryBoard columns={columns} speciesLabelById={SPECIES_LABEL} speciesDescriptionById={SPECIES_DESCRIPTION} />
+      {/* Framed here, not by the board: in the app the board is the surface
+          itself and runs flush; on the landing page it is a picture in a slot. */}
+      <ReadOnlyDeliveryBoard
+        columns={columns}
+        speciesLabelById={SPECIES_LABEL}
+        speciesDescriptionById={SPECIES_DESCRIPTION}
+        className="rounded-xl border bg-card"
+      />
     </div>
   );
 }

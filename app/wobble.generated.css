@@ -52,6 +52,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-cloud-download { filter: url(#wob-cloud-download); }
 .lucide-cloud-upload { filter: url(#wob-cloud-upload); }
 .lucide-code-xml { filter: url(#wob-code-xml); }
+.lucide-columns3 { filter: url(#wob-columns3); }
 .lucide-compass { filter: url(#wob-compass); }
 .lucide-copy { filter: url(#wob-copy); }
 .lucide-copy-plus { filter: url(#wob-copy-plus); }
@@ -143,6 +144,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-rotate-cw { filter: url(#wob-rotate-cw); }
 .lucide-route { filter: url(#wob-route); }
 .lucide-rows2 { filter: url(#wob-rows2); }
+.lucide-rows4 { filter: url(#wob-rows4); }
 .lucide-scale { filter: url(#wob-scale); }
 .lucide-scroll-text { filter: url(#wob-scroll-text); }
 .lucide-search { filter: url(#wob-search); }
