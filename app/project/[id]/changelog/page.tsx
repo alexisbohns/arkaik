@@ -1,117 +1,37 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { MilestoneIcon, PackageIcon } from "lucide-react";
 import { orderEvents } from "@arkaik/schema";
 import { PageError } from "@/components/layout/PageError";
 import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
 import { PageSurface } from "@/components/layout/PageSurface";
-import { SectionRow } from "@/components/layout/SectionRow";
 import { ChangelogRail } from "@/components/journal/ChangelogRail";
-import { DeliverableChips, DeliverableHoverCard } from "@/components/journal/DeliverableHoverCard";
-import { iconChipVariants } from "@/components/layout/IconChip";
+import { ReleaseDetail } from "@/components/journal/ReleaseDetail";
+import { ReleaseList } from "@/components/journal/ReleaseList";
+import { ReleasePicker } from "@/components/journal/ReleasePicker";
+import type { ReleaseEntry } from "@/components/journal/release-entry";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
 import { useProjectId } from "@/lib/hooks/useProjectId";
+import { useQueryWriter } from "@/lib/hooks/useQueryWriter";
 import { useJournal } from "@/lib/hooks/useJournal";
-import { computeDeliverables, type Deliverable } from "@/lib/utils/journal";
+import { computeDeliverables } from "@/lib/utils/journal";
+import { RELEASE_PARAM, UNRELEASED_KEY, resolveSelectedRelease } from "@/lib/utils/changelog-releases";
 import { ALL_PERIODS, listYears, matchesPeriod, type Period } from "@/lib/utils/changelog-period";
 import { formatEventDate } from "@/components/journal/describe-event";
 import { PLATFORM_LABELS } from "@/components/graph/nodes/node-styles";
-import type { Node, ReleaseTaggedEvent } from "@/lib/data/types";
-
-/**
- * The shipped mark on the rail: the shared chip, told it leads a line of text
- * so it centres on the 20px title beside it rather than 2px below it. Same box
- * as the marks under the row (`DeliverableChips`) — one geometry, three
- * placements.
- */
-const SHIP_MARK = iconChipVariants({ variant: "bare", lead: true });
-
-/**
- * The deliverables of one milestone, drawn as a timeline: a rail of marks down
- * the left, one entry each, newest first.
- *
- * There is deliberately no card per deliverable. The old page nested a bordered
- * row inside a bordered release card inside a bordered section — three lids for
- * one fact. The rail carries the grouping instead, and `detailed` decides
- * whether each entry says more than its title.
- */
-function DeliverableTimeline({
-  deliverables,
-  nodesById,
-  detailed,
-}: {
-  deliverables: readonly Deliverable[];
-  nodesById: Map<string, Node>;
-  detailed: boolean;
-}) {
-  return (
-    <ol className="flex flex-col">
-      {deliverables.map((deliverable, index) => (
-        <li key={deliverable.deliverable_id} className="grid grid-cols-[auto_1fr] gap-x-3">
-          {/* The rail. The connector is `flex-1` inside a stretched grid cell,
-              so it runs to the bottom of the entry however tall it grows — and
-              is absent on the last one, which would otherwise trail into
-              nothing.
-              The breathing room below each entry belongs to the *content*
-              column, never to the `<li>`: a grid child stretches to the content
-              box, so padding on the row would end the connector above the gap
-              and leave the dots unlinked.
-
-              The node on the rail is the *shipped* mark — a package, in the
-              green the `live` status already uses, because what the rail plots
-              is delivery: each node is one thing that reached users. It is
-              deliberately not a link. The pull request has its own mark under
-              the row, in the forge's purple, and one glyph that both stood for
-              "shipped" and navigated to GitHub was doing two jobs badly.
-
-              What the rail mark does carry is the preview: hovering it opens
-              the deliverable's card, whose substance — the summary and the
-              touched nodes' current status — has nothing to do with the URL,
-              and so is there whether or not a link exists. */}
-          <div className="flex flex-col items-center">
-            <DeliverableHoverCard deliverable={deliverable} nodesById={nodesById}>
-              <span className={`${SHIP_MARK} bg-green-500/10 text-green-600 dark:text-green-400`}>
-                <PackageIcon className="size-3" aria-hidden="true" />
-              </span>
-            </DeliverableHoverCard>
-            {index < deliverables.length - 1 && <span className="w-px flex-1 bg-border" aria-hidden="true" />}
-          </div>
-
-          <div className={`flex min-w-0 flex-col gap-1 ${index < deliverables.length - 1 ? "pb-4" : ""}`}>
-            <div className="flex items-baseline justify-between gap-3">
-              <p className="truncate text-sm font-medium">{deliverable.title}</p>
-              <span className="shrink-0 text-xs text-muted-foreground">{formatEventDate(deliverable.ts)}</span>
-            </div>
-
-            {detailed && deliverable.summary && (
-              <p className="text-xs text-muted-foreground">{deliverable.summary}</p>
-            )}
-            {detailed && <DeliverableChips deliverable={deliverable} nodesById={nodesById} />}
-          </div>
-        </li>
-      ))}
-    </ol>
-  );
-}
+import type { ReleaseTaggedEvent } from "@/lib/data/types";
 
 function countLabel(count: number): string {
   return `${count} deliverable${count === 1 ? "" : "s"}`;
 }
 
-/**
- * The Changelog: what shipped, milestone by milestone.
- *
- * One section per milestone in the Overview's rows shape — the release on the
- * left, its deliverables as a timeline on the right. The design funnel that
- * used to share this screen (backlog, commitments, decisions) has its own page;
- * none of it had shipped, which is the one thing a changelog is about.
- */
 /**
  * What this page reads. A projection, so it must stay in step with what the
  * page renders — and with its empty state, which now says "no releases, nothing
@@ -120,6 +40,17 @@ function countLabel(count: number): string {
  */
 const CHANGELOG_EVENT_TYPES = ["deliverable.shipped", "release.tagged"] as const;
 
+/**
+ * The Changelog: what shipped, milestone by milestone.
+ *
+ * Master-detail: the releases down the left, the selected one on the right as
+ * a timeline of its deliverables. The selection lives in `?release=`, so a
+ * release is a link you can share. When the surface is under 48rem — a node
+ * panel halves it on a wide screen too — the list folds into a picker above
+ * the release. The design funnel that used to share this screen (backlog,
+ * commitments, decisions) has its own page; none of it had shipped, which is
+ * the one thing a changelog is about.
+ */
 export default function ChangelogPage() {
   const id = useProjectId();
 
@@ -190,13 +121,60 @@ export default function ChangelogPage() {
     [deliverables, period, releaseTags],
   );
 
+  // One list for the three views of it — the column, the picker, the detail —
+  // so a release reads the same wherever it is drawn. Unreleased first: it is
+  // the milestone that has not happened yet, and it sits where the next one
+  // will.
+  const entries = useMemo<ReleaseEntry[]>(
+    () => [
+      ...(unreleased.length > 0
+        ? [
+            {
+              key: UNRELEASED_KEY,
+              title: "Unreleased",
+              icon: PackageIcon,
+              subtitle: countLabel(unreleased.length),
+              description: "Shipped since the last tag, not yet in a release.",
+              deliverables: unreleased,
+            },
+          ]
+        : []),
+      ...milestones.map(({ tag, deliverables: shipped }) => ({
+        key: tag.version,
+        title: tag.version,
+        icon: MilestoneIcon,
+        subtitle: [
+          formatEventDate(tag.ts),
+          tag.platform ? (PLATFORM_LABELS[tag.platform] ?? tag.platform) : null,
+          countLabel(shipped.length),
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        description: tag.notes,
+        deliverables: shipped,
+      })),
+    ],
+    [milestones, unreleased],
+  );
+
+  const searchParams = useSearchParams();
+  const writeQuery = useQueryWriter();
+  const selectedKey = resolveSelectedRelease(
+    entries.map((entry) => entry.key),
+    searchParams.get(RELEASE_PARAM),
+  );
+  const selected = entries.find((entry) => entry.key === selectedKey) ?? null;
+  // Written even when it equals the default row: a link should say what it
+  // shows. `replace`, not `push` — picking a release is not a navigation.
+  const selectRelease = (key: string) => writeQuery((params) => params.set(RELEASE_PARAM, key));
+
   if (projectLoading || nodesLoading || journalLoading) {
     return <PageLoading label="changelog" />;
   }
 
   // Before `isEmpty`, never after (#362): an unread journal is `[]`, which is
   // the same thing a project that has never shipped has — and this page's empty
-  // sentence ("Releases and updates will appear here once history is recorded")
+  // sentence ("No releases tagged yet, and nothing shipped since.")
   // would then quietly deny every release the project has ever tagged.
   const loadError = projectError ?? nodesError ?? edgesError ?? journalError;
   if (loadError) {
@@ -216,7 +194,6 @@ export default function ChangelogPage() {
 
   const isEmpty = journal.length === 0;
   const isFiltered = period.year !== null || period.month !== null;
-  const nothingInPeriod = unreleased.length === 0 && milestones.length === 0;
 
   return (
     <PageShell
@@ -240,56 +217,42 @@ export default function ChangelogPage() {
         )
       }
     >
-      <PageSurface contentClassName="flex flex-col divide-y">
-        {isEmpty ? (
-          <EmptyState message="No releases tagged yet, and nothing shipped since." />
-        ) : nothingInPeriod ? (
-          <EmptyState
-            message={
-              isFiltered
-                ? "Nothing shipped in that period. Widen the year or month filter."
-                : "No releases tagged yet, and nothing shipped since."
-            }
-          />
+      <PageSurface fill contentClassName="flex flex-col">
+        {/* `selected` is null exactly when the list is empty — nothing tagged,
+            or nothing in the period — so it doubles as the empty check. */}
+        {isEmpty || !selected ? (
+          <div className="p-4 md:p-6">
+            <EmptyState
+              message={
+                !isEmpty && isFiltered
+                  ? "Nothing shipped in that period. Widen the year or month filter."
+                  : "No releases tagged yet, and nothing shipped since."
+              }
+            />
+          </div>
         ) : (
-          <>
-            {/* Unreleased first: it is the milestone that has not happened yet,
-                and it sits where the next one will. */}
-            {unreleased.length > 0 && (
-              <SectionRow
-                title="Unreleased"
-                icon={PackageIcon}
-                description="Shipped since the last tag, not yet in a release."
-                subtitle={countLabel(unreleased.length)}
-                stickyHeader
-              >
-                <DeliverableTimeline deliverables={unreleased} nodesById={nodesById} detailed={detailed} />
-              </SectionRow>
-            )}
-
-            {milestones.map(({ tag, deliverables: shipped }) => (
-              <SectionRow
-                key={tag.id}
-                title={tag.version}
-                icon={MilestoneIcon}
-                stickyHeader
-                description={tag.notes}
-                subtitle={[
-                  formatEventDate(tag.ts),
-                  tag.platform ? (PLATFORM_LABELS[tag.platform] ?? tag.platform) : null,
-                  countLabel(shipped.length),
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              >
-                {shipped.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No deliverables recorded for this release.</p>
-                ) : (
-                  <DeliverableTimeline deliverables={shipped} nodesById={nodesById} detailed={detailed} />
-                )}
-              </SectionRow>
-            ))}
-          </>
+          // The surface, not the viewport, decides the layout: a node panel
+          // halves the surface on a wide screen too. Under 48rem of surface the
+          // list folds into a picker above the release.
+          <div className="@container flex min-h-0 flex-1 flex-col">
+            <div className="border-b p-3 @3xl:hidden">
+              <ReleasePicker entries={entries} value={selected.key} onChange={selectRelease} />
+            </div>
+            <div className="flex min-h-0 flex-1">
+              <ReleaseList
+                entries={entries}
+                selectedKey={selected.key}
+                onSelect={selectRelease}
+                className="hidden w-64 shrink-0 overflow-y-auto border-r @3xl:flex"
+              />
+              {/* Keyed by the release so the scroller remounts at the top: one
+                  shared node would open the next release wherever the last
+                  one was left, past its heading. */}
+              <div key={selected.key} className="min-w-0 flex-1 overflow-y-auto p-4 md:p-6">
+                <ReleaseDetail entry={selected} nodesById={nodesById} detailed={detailed} />
+              </div>
+            </div>
+          </div>
         )}
       </PageSurface>
     </PageShell>

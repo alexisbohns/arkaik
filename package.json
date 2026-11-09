@@ -51,6 +51,7 @@
     "test:keyboard-shortcuts": "node tests/app/keyboard-shortcuts.test.js",
     "test:command-palette": "node tests/app/command-palette.test.js",
     "test:changelog-period": "node tests/app/changelog-period.test.js",
+    "test:changelog-releases": "node tests/app/changelog-releases.test.js",
     "test:deliverable-pr": "node tests/app/deliverable-pr.test.js",
     "test:playlist-utils": "node tests/app/playlist-utils.test.js",
     "test:relation-lines": "node tests/app/relation-lines.test.js",
