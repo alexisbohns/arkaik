@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { cn } from "@/lib/utils";
 import { ProjectPanels, type PyramidPanelData } from "@/components/panels/ProjectPanels";
 import type { ScreenshotPanelOp } from "@/lib/utils/screenshot-ops";
 import type { KritikLibrary, QualitySection, QualityTrend } from "@arkaik/schema";
@@ -18,6 +19,11 @@ interface PageShellProps {
   action?: PageAction;
   /** The surface — canvas, board, list. The panel grid's first cell. */
   children: ReactNode;
+  /**
+   * The page's right rail (`RightRail`) — drawn after the panel grid, at the
+   * window's right edge, so open panels sit to its left and it never moves.
+   */
+  rail?: ReactNode;
   /**
    * Draw the surface as a card — its own background and border.
    *
@@ -80,6 +86,7 @@ export function PageShell({
   title,
   action,
   children,
+  rail,
   surfaceCard,
   surfaceBare,
   onLayoutChange,
@@ -87,18 +94,27 @@ export function PageShell({
 }: PageShellProps) {
   usePageAction(action);
 
+  const panels = (
+    <ProjectPanels
+      surfaceLabel={title}
+      surfaceCard={surfaceCard}
+      surfaceBare={surfaceBare}
+      onLayoutChange={onLayoutChange}
+      {...panelProps}
+    >
+      {children}
+    </ProjectPanels>
+  );
+
+  // No rail → exactly the markup every other page already has. With one, the
+  // root turns into a row and the grid gets its own column box: `PanelStack`
+  // is `flex-1` and expects a column parent to grow into. One return, so one
+  // `h1` — `panel-semantics` holds this file to exactly that.
   return (
-    <div className="flex h-full w-full flex-col">
+    <div className={cn("flex h-full w-full", rail ? "flex-row" : "flex-col")}>
       <h1 className="sr-only">{title}</h1>
-      <ProjectPanels
-        surfaceLabel={title}
-        surfaceCard={surfaceCard}
-        surfaceBare={surfaceBare}
-        onLayoutChange={onLayoutChange}
-        {...panelProps}
-      >
-        {children}
-      </ProjectPanels>
+      {rail ? <div className="flex min-h-0 min-w-0 flex-1 flex-col">{panels}</div> : panels}
+      {rail}
     </div>
   );
 }

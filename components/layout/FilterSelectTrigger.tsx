@@ -5,6 +5,7 @@ import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import * as SelectPrimitive from "@radix-ui/react-select";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { railItemClass } from "@/components/layout/RightRail";
 
 /** The one skin every filter menu trigger wears — Select-backed or menu-backed. */
 function filterTriggerClassName(active: boolean, className?: string) {
@@ -31,6 +32,13 @@ interface FilterSelectTriggerProps
    * said only "Status" would make the reader work that out for themselves.
    */
   forceValueLabel?: boolean;
+  /**
+   * `band` (default) is the bordered square of the toolbar bands; `rail` is the
+   * borderless rounded button of `RightRail`, where "set" is a filled surface.
+   */
+  variant?: "band" | "rail";
+  /** Which side the tooltip opens on — `left` on the right rail. */
+  tooltipSide?: "top" | "right" | "bottom" | "left";
 }
 
 /**
@@ -52,6 +60,10 @@ interface FilterSelectTriggerProps
  * holding a value and a toggle that is pressed are different states and must
  * not converge on the same treatment; the toggles beside it drop their own
  * background for the same reason.
+ *
+ * All of the above is the `band` variant. On the right rail (`variant="rail"`)
+ * there is no border at all, and "set" is the rail's filled tonal surface
+ * (`railItemClass`).
  */
 export function FilterSelectTrigger({
   icon,
@@ -59,6 +71,8 @@ export function FilterSelectTrigger({
   active = false,
   valueLabel,
   forceValueLabel = false,
+  variant = "band",
+  tooltipSide,
   className,
   ...props
 }: FilterSelectTriggerProps) {
@@ -68,13 +82,13 @@ export function FilterSelectTrigger({
         <SelectPrimitive.Trigger
           data-slot="select-trigger"
           aria-label={label}
-          className={filterTriggerClassName(active, className)}
+          className={variant === "rail" ? railItemClass(active, className) : filterTriggerClassName(active, className)}
           {...props}
         >
           {icon}
         </SelectPrimitive.Trigger>
       </TooltipTrigger>
-      <TooltipContent>
+      <TooltipContent side={tooltipSide} sideOffset={variant === "rail" ? 8 : undefined}>
         {(active || forceValueLabel) && valueLabel ? `${label}: ${valueLabel}` : label}
       </TooltipContent>
     </Tooltip>

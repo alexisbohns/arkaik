@@ -77,6 +77,7 @@ export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "folder-kanban", seed: 7 },
   { name: "folder-open", seed: 0 },
   { name: "folder-tree", seed: 12 },
+  { name: "funnel-x", seed: 8 },
   { name: "gauge", seed: 0 },
   { name: "gem", seed: 8 },
   { name: "gift", seed: 3 },
