@@ -50,7 +50,7 @@ onto Radix (`asChild` instead of Base UI's `render`):
 - **`RailButton({ icon, label, active?, pressed?, onClick })`** — a 36px
   `rounded-xl` icon button wrapped in a `Tooltip` whose content opens
   `side="left"`. Skin: `railItemClass(active)` — active is
-  `bg-secondary text-secondary-foreground`, idle is
+  `bg-foreground/10 text-foreground`, idle is
   `text-muted-foreground hover:bg-accent/50 hover:text-foreground`. `pressed`
   sets `aria-pressed` (toggles); a plain action (Reset) omits it.
 - **`railItemClass(active)`** — exported so a Select trigger can wear the same

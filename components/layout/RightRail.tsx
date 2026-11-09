@@ -10,13 +10,16 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
  *
  * Ported from Krabs' `chromeItemClass`. "On" is a filled tonal surface, the
  * Material rail's active indicator; idle is a bare glyph that tints on hover.
+ * The fill is a tint of the foreground rather than `bg-secondary`, which sits
+ * a hair off white on the `bg-card` pill and was easy to miss; a tint follows
+ * every stone skin, light or dark.
  * Exported so `FilterSelectTrigger`'s `rail` variant can wear the same skin.
  */
 export function railItemClass(active = false, className?: string): string {
   return cn(
     "inline-flex size-9 shrink-0 items-center justify-center rounded-xl outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 [&_svg:not([class*='size-'])]:size-4",
     active
-      ? "bg-secondary text-secondary-foreground"
+      ? "bg-foreground/10 text-foreground"
       : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
     className,
   );
