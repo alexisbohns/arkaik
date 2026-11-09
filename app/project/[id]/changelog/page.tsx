@@ -134,25 +134,28 @@ export default function ChangelogPage() {
               title: "Unreleased",
               icon: PackageIcon,
               subtitle: countLabel(unreleased.length),
+              meta: "Not tagged yet",
+              count: unreleased.length,
               description: "Shipped since the last tag, not yet in a release.",
               deliverables: unreleased,
             },
           ]
         : []),
-      ...milestones.map(({ tag, deliverables: shipped }) => ({
-        key: tag.version,
-        title: tag.version,
-        icon: MilestoneIcon,
-        subtitle: [
-          formatEventDate(tag.ts),
-          tag.platform ? (PLATFORM_LABELS[tag.platform] ?? tag.platform) : null,
-          countLabel(shipped.length),
-        ]
+      ...milestones.map(({ tag, deliverables: shipped }) => {
+        const meta = [formatEventDate(tag.ts), tag.platform ? (PLATFORM_LABELS[tag.platform] ?? tag.platform) : null]
           .filter(Boolean)
-          .join(" · "),
-        description: tag.notes,
-        deliverables: shipped,
-      })),
+          .join(" · ");
+        return {
+          key: tag.version,
+          title: tag.version,
+          icon: MilestoneIcon,
+          subtitle: `${meta} · ${countLabel(shipped.length)}`,
+          meta,
+          count: shipped.length,
+          description: tag.notes,
+          deliverables: shipped,
+        };
+      }),
     ],
     [milestones, unreleased],
   );
@@ -202,6 +205,9 @@ export default function ChangelogPage() {
       allEdges={dataEdges}
       scope={scope}
       history
+      // No pane around the page: the release list is its own stack of cards,
+      // and a card around cards is the box-in-a-box this repo took out.
+      surfaceBare
       rail={
         isEmpty ? undefined : (
           <ChangelogRail
@@ -235,20 +241,22 @@ export default function ChangelogPage() {
           // halves the surface on a wide screen too. Under 48rem of surface the
           // list folds into a picker above the release.
           <div className="@container flex min-h-0 flex-1 flex-col">
-            <div className="border-b p-3 @3xl:hidden">
+            <div className="pb-3 @3xl:hidden">
               <ReleasePicker entries={entries} value={selected.key} onChange={selectRelease} />
             </div>
-            <div className="flex min-h-0 flex-1">
+            <div className="flex min-h-0 flex-1 gap-3">
               <ReleaseList
                 entries={entries}
                 selectedKey={selected.key}
                 onSelect={selectRelease}
-                className="hidden w-64 shrink-0 overflow-y-auto border-r @3xl:flex"
+                className="hidden w-72 shrink-0 overflow-y-auto @3xl:flex"
               />
-              {/* Keyed by the release so the scroller remounts at the top: one
-                  shared node would open the next release wherever the last
-                  one was left, past its heading. */}
-              <div key={selected.key} className="min-w-0 flex-1 overflow-y-auto p-4 md:p-6">
+              {/* The release is a pane of its own — a card beside the list, the
+                  way a node panel sits beside a surface. Keyed by the release
+                  so the scroller remounts at the top: one shared node would
+                  open the next release wherever the last one was left, past
+                  its heading. */}
+              <div key={selected.key} className="min-w-0 flex-1 overflow-y-auto rounded-xl bg-card p-4 md:p-6">
                 <ReleaseDetail entry={selected} nodesById={nodesById} detailed={detailed} />
               </div>
             </div>
