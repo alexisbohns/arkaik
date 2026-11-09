@@ -11,8 +11,15 @@ export interface ReleaseEntry {
   key: string;
   title: string;
   icon: LucideIcon;
-  /** The date · platform · count line. */
+  /** The date · platform · count line — the detail column's heading. */
   subtitle: string;
+  /**
+   * The list row's supporting line: the subtitle without its count, which the
+   * row draws on its own at the trailing edge.
+   */
+  meta: string;
+  /** How many deliverables shipped in it — the list row's trailing number. */
+  count: number;
   /** The release notes, or what the Unreleased bucket means. */
   description?: string;
   deliverables: readonly Deliverable[];

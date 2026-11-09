@@ -13,12 +13,12 @@ interface ReleaseDetailProps {
 
 /**
  * The Changelog's right column: one release — the same heading its row used to
- * carry, above its deliverables. Capped in width: a timeline line running the
- * full width of a wide surface is a line nobody reads to the end.
+ * carry, above its deliverables. It fills its card: a cap left the card's right
+ * side empty on a wide window.
  */
 export function ReleaseDetail({ entry, nodesById, detailed }: ReleaseDetailProps) {
   return (
-    <section aria-label={entry.title} className="flex max-w-3xl flex-col gap-6">
+    <section aria-label={entry.title} className="flex flex-col gap-6">
       <SectionHeading
         title={entry.title}
         icon={entry.icon}
