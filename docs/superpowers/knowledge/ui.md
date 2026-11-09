@@ -6,7 +6,13 @@ This document is a collection of knowledge about the user interface of the Arkai
 
 The layout every project surface shares: **no padding on the surface itself**, a toolbar flush against its top edge, and the content below.
 
-The padding placement is the whole point. A padded surface pushes the bar off the edge it is pinned to, and rows then ride up through the gap as they scroll past; giving the padding to the content puts the hairline exactly where the clipping happens.
+The padding placement is the whole point. A padded surface pushes the bar off the edge it is pinned to, and rows then ride up through the gap as they scroll past; giving the padding to the content puts the edge exactly where the clipping happens.
+
+## Segments, not rules
+
+With a toolbar, a surface is drawn in segments (Material 3): each bar and the content are their own `bg-card` pieces, 4px of page background apart, 14px on the corners where the group meets the outside and 4px where two pieces meet. A node panel is drawn the same way — its header and its body are two segments. Nothing draws a hairline between them any more.
+
+Two things make the gap real. The cell behind the surface would paint over it, so `PageSurface` marks a segmented surface with `data-surface-segments` and `PanelStack` drops the cell's fill when it sees one (`has-[>[data-surface-segments]]`). And in the scrolling mode the pinned toolbar stack paints the page background under its bars and across the gap below them, so content scrolling up disappears at the gap instead of showing through it.
 
 ## Two modes, one edge
 

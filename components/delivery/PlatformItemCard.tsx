@@ -31,7 +31,7 @@ export function PlatformItemCard({ item, speciesLabel, speciesDescription, onCli
         onClick={onClick}
         aria-label={`${item.node.title} — ${speciesLabel}, ${PLATFORM_LABELS[item.platform]}`}
         title={item.node.title}
-        className="flex w-full cursor-pointer items-center gap-2 rounded-md bg-card px-2.5 py-1.5 text-left transition-colors hover:bg-card/80 dark:bg-muted dark:hover:bg-muted/80"
+        className="flex w-full cursor-pointer items-center gap-2 rounded-md bg-background px-2.5 py-1.5 text-left transition-colors hover:bg-background/70"
       >
         <SpeciesIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
         <span className="min-w-0 flex-1 truncate text-sm">{item.node.title}</span>
@@ -45,9 +45,12 @@ export function PlatformItemCard({ item, speciesLabel, speciesDescription, onCli
       type="button"
       onClick={onClick}
       // No border: the card is set apart by sitting solid on its column's
-      // tinted wash. In dark mode the card colour is the darkest surface, so
-      // the card takes `muted` instead to stay the raised layer.
-      className="w-full cursor-pointer rounded-lg bg-card p-2.5 text-left transition-colors hover:bg-card/80 dark:bg-muted dark:hover:bg-muted/80"
+      // tinted wash. It takes the page background, not the elevation colour:
+      // the board is already a card, and a card on it in the same colour (or
+      // a `muted` one, in the dark theme) read as one more layer up, when the
+      // card is a hole punched through to the page. Hovering lets the column's
+      // tint show through.
+      className="w-full cursor-pointer rounded-lg bg-background p-2.5 text-left transition-colors hover:bg-background/70"
     >
       <div className="flex items-start justify-between gap-2">
         <p className="min-w-0 flex-1 truncate text-sm font-medium">{item.node.title}</p>

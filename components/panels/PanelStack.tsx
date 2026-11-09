@@ -189,6 +189,13 @@ export function PanelStack<T>({
   const cellClassName =
     "flex min-w-0 min-h-0 flex-col overflow-hidden bg-card rounded-xl [&[hidden]]:hidden";
   const cardClassName = "bg-card";
+  // A panel is drawn in segments (Material 3), not as one card with a rule
+  // under its header: the header and the body are each their own card, 4px of
+  // page background apart, 14px where they meet the outside and 4px where they
+  // meet each other. The cell itself paints nothing, or the gap would vanish.
+  const panelCellClassName = "gap-1 bg-transparent";
+  const headerSegment = "rounded-t-xl rounded-b-sm bg-card";
+  const bodySegment = "rounded-b-xl rounded-t-sm bg-card";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -217,6 +224,9 @@ export function PanelStack<T>({
             cellClassName,
             surfaceCard && cardClassName,
             surfaceBare && "bg-transparent",
+            // A surface with a toolbar draws its own segments — see
+            // `PageSurface` — and the cell's fill would paint over their gap.
+            "has-[>[data-surface-segments]]:bg-transparent",
             "relative",
             !surfaceVisible && "pointer-events-none invisible absolute inset-3 -z-10",
           )}
@@ -243,8 +253,7 @@ export function PanelStack<T>({
               aria-labelledby={headingId}
               className={cn(
                 cellClassName,
-                cardClassName,
-                bare?.(entry, index) && "bg-transparent",
+                panelCellClassName,
                 "outline-none arkaik-panel-enter",
                 accentOf?.(entry, index) === "editing" && "border-dashed border-destructive",
               )}
@@ -255,7 +264,8 @@ export function PanelStack<T>({
               {!headerless?.(entry, index) && (
                 <header
                   className={cn(
-                    "flex shrink-0 items-center justify-between gap-2 border-b py-4 lg:py-5",
+                    "flex shrink-0 items-center justify-between gap-2 py-4 lg:py-5",
+                    headerSegment,
                     PANEL_GUTTER,
                   )}
                 >
@@ -302,7 +312,20 @@ export function PanelStack<T>({
                 named by it, and the body's `PanelSection` headings finally
                 have an `h2` to hang off.
               */}
-              <article aria-labelledby={headingId} className="flex min-h-0 flex-1 flex-col">
+              {/* The body is the second segment — or the whole card when the
+                  panel has no header, and no card at all when it is `bare`:
+                  its own content is already made of cards. */}
+              <article
+                aria-labelledby={headingId}
+                className={cn(
+                  "flex min-h-0 flex-1 flex-col",
+                  bare?.(entry, index)
+                    ? "bg-transparent"
+                    : headerless?.(entry, index)
+                      ? "rounded-xl bg-card"
+                      : bodySegment,
+                )}
+              >
                 <h2 id={headingId} className="sr-only">
                   {labelOf(entry)}
                 </h2>

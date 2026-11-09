@@ -7,14 +7,14 @@ interface ToolbarProps {
 }
 
 /**
- * The one toolbar skin in the app: an opaque band, flush to the surface's edges,
- * separated from the content below by a single hairline.
+ * The one toolbar skin in the app: a segment of the surface it sits on.
  *
- * There is deliberately no border, radius or shadow. A toolbar is not a card
- * floating on the surface — it is the surface's own top edge, so it draws the
- * same `bg-card` as the panel it sits in and marks its bottom with `border-b`.
- * The rounded, bordered bar this replaced read as a control panel *inside* the
- * list, which is exactly the reading `border-b` removes.
+ * Material 3's segmented look, not a band with a rule under it: the toolbar is
+ * its own `bg-card` piece, 4px of page background away from the content below
+ * it, and the corners say which pieces belong together — 14px where the group
+ * meets the outside, 4px where two of its pieces meet. The toolbar only draws
+ * the 4px. `PageSurface` owns the slot, so it rounds the top of the first bar
+ * and lays the gaps; a toolbar never knows whether it is first.
  *
  * The row is `justify-between`, which is the layout every bar here wants: a
  * "what am I looking at" cluster on the left, a "how do I see it" cluster on the
@@ -24,15 +24,14 @@ interface ToolbarProps {
  * `className` (tailwind-merge lets the caller win).
  *
  * Stacking two of these — a filter bar with a selection bar beneath it — is the
- * intended way to grow a toolbar, not nesting rows inside one band: each band
- * keeps its own hairline, and the whole stack pins as one via
- * {@link PageSurface}.
+ * intended way to grow a toolbar, not nesting rows inside one band: each bar is
+ * its own segment, and the whole stack pins as one via {@link PageSurface}.
  */
 export function Toolbar({ children, className }: ToolbarProps) {
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center justify-between gap-3 border-b bg-card p-3",
+        "flex flex-wrap items-center justify-between gap-3 rounded-sm bg-card p-3",
         className,
       )}
     >
