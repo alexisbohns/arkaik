@@ -472,6 +472,17 @@ const throws = (fn) => {
       JSON.stringify(reading.coverage),
     );
   }
+  {
+    const scope = JSON.parse(
+      '{"plan":"p","coverage":{"scored":1,"assessed":2,"applicable":3,"surfaces":{"__proto__":{"assessed":1,"applicable":2},"web":{"assessed":1,"applicable":2}}}}',
+    );
+    const surfaces = readPlanScope(scope).coverage.surfaces;
+    check(
+      "a __proto__ key in coverage.surfaces is skipped, never set as the prototype",
+      Object.getPrototypeOf(surfaces) === Object.prototype && JSON.stringify(Object.keys(surfaces)) === '["web"]' && surfaces.assessed === undefined,
+      JSON.stringify({ keys: Object.keys(surfaces), proto: Object.getPrototypeOf(surfaces) }),
+    );
+  }
   check("a coverage missing a count is null", readPlanScope({ plan: "p", coverage: { scored: 1, assessed: 2 } }).coverage === null);
   {
     const input = JSON.parse(JSON.stringify(full));

@@ -351,7 +351,7 @@ const isCount = (value: unknown): value is number => typeof value === "number" &
 const nonEmptyStrings = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item !== "") : [];
 
-/** A recorded `coverage`, or `null` when any of its three counts is missing; a surface entry missing either count is dropped. */
+/** A recorded `coverage`, or `null` when any of its three counts is missing; a surface entry missing either count, or keyed `__proto__`, is dropped. */
 function readCoverage(value: unknown): PlanCoverage | null {
   if (typeof value !== "object" || value === null) return null;
   const row = value as Record<string, unknown>;
@@ -359,6 +359,8 @@ function readCoverage(value: unknown): PlanCoverage | null {
   const surfaces: Record<string, { assessed: number; applicable: number }> = {};
   if (typeof row.surfaces === "object" && row.surfaces !== null && !Array.isArray(row.surfaces)) {
     for (const [surface, entry] of Object.entries(row.surfaces as Record<string, unknown>)) {
+      // Assigning a "__proto__" key would set the prototype, not a surface.
+      if (surface === "__proto__") continue;
       if (typeof entry !== "object" || entry === null) continue;
       const { assessed, applicable } = entry as Record<string, unknown>;
       if (isCount(assessed) && isCount(applicable)) surfaces[surface] = { assessed, applicable };
