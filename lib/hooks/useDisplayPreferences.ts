@@ -26,18 +26,22 @@ export interface DisplayPreferences {
   acceptanceDisplay: AcceptanceDisplay;
   deliveryCardDisplay: DeliveryCardDisplay;
   /**
-   * The Screens map's platform lens, as this reader last chose it; `null` until
-   * they choose. Never rendered as-is: the map renders `resolveLens(stored,
-   * wall)`, so a lens the current scope does not offer falls back without
-   * anything being written back.
+   * The Screens map's lens, as this reader last chose it: a platform, or
+   * `"side"` (every platform stacked in each frame); `null` until they choose.
+   * Never rendered as-is: the map renders `resolveLens(stored, wall)`, so a
+   * lens the current scope does not offer falls back without anything being
+   * written back.
    */
   screensLens: WallLens | null;
+  /** The Screens map's "Gaps only" switch: fade everything but stale shots and live screens with no shot. */
+  screensGapsOnly: boolean;
 }
 
 export const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
   acceptanceDisplay: "rows",
   deliveryCardDisplay: "compact",
   screensLens: null,
+  screensGapsOnly: false,
 };
 
 const STORAGE_PREFIX = "arkaik:display-prefs:";
@@ -71,9 +75,13 @@ function isDeliveryCardDisplay(value: unknown): value is DeliveryCardDisplay {
   return value === "compact" || value === "detailed";
 }
 
-/** A platform id only: "Side by side" is not a lens this build can draw. */
+/** A lens the Screens map can draw. Whether this scope offers it is `resolveLens`'s call, not the store's. */
 function isScreensLens(value: unknown): value is WallLens {
-  return PLATFORMS.some((platform) => platform.id === value);
+  return value === "side" || PLATFORMS.some((platform) => platform.id === value);
+}
+
+function isScreensGapsOnly(value: unknown): value is boolean {
+  return typeof value === "boolean";
 }
 
 function read(projectId: string): DisplayPreferences {
@@ -83,7 +91,8 @@ function read(projectId: string): DisplayPreferences {
     if (!stored) return DEFAULT_DISPLAY_PREFERENCES;
     const parsed: unknown = JSON.parse(stored);
     if (typeof parsed !== "object" || parsed === null) return DEFAULT_DISPLAY_PREFERENCES;
-    const { acceptanceDisplay, deliveryCardDisplay, screensLens } = parsed as Partial<DisplayPreferences>;
+    const { acceptanceDisplay, deliveryCardDisplay, screensLens, screensGapsOnly } =
+      parsed as Partial<DisplayPreferences>;
     return {
       acceptanceDisplay: isAcceptanceDisplay(acceptanceDisplay)
         ? acceptanceDisplay
@@ -92,6 +101,9 @@ function read(projectId: string): DisplayPreferences {
         ? deliveryCardDisplay
         : DEFAULT_DISPLAY_PREFERENCES.deliveryCardDisplay,
       screensLens: isScreensLens(screensLens) ? screensLens : DEFAULT_DISPLAY_PREFERENCES.screensLens,
+      screensGapsOnly: isScreensGapsOnly(screensGapsOnly)
+        ? screensGapsOnly
+        : DEFAULT_DISPLAY_PREFERENCES.screensGapsOnly,
     };
   } catch {
     return DEFAULT_DISPLAY_PREFERENCES;
