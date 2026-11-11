@@ -942,7 +942,8 @@ scope does not have, and nothing is written back until the viewer chooses.
 
 - **Frames** are `role="button"`, `tabIndex={0}`, with an `aria-label` such as
   "Check-in sheet, Daily check-in. iOS: live, shot current, 3 Nov." or, side by
-  side, "Check-in sheet. Web: stale. iOS: live. Android: not on this platform."
+  side, "Check-in sheet, Daily check-in. Web: stale. iOS: live. Android: not on
+  this platform." Both open with the view's title and its strip's, in that order.
   Jump tiles: "Go to Streaks, 4 screens". Headers are `h2` (the page's `h1` is
   `PageShell`'s), with a button for the flow's panel. Markers are
   `aria-hidden`; the arm label is in the next frame's description when it

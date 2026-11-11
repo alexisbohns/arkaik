@@ -96,9 +96,15 @@ function sideSpokenWord(cell: PlatformCell | undefined): string {
   }
 }
 
-/** "Check-in sheet. Web: stale. iOS: live. Android: not on this platform." (spec § Accessibility). */
+/** The frame's subject, as both lenses open their label: "Check-in sheet, Daily check-in[, in Yes of Has a streak?]." */
+function frameSubject(data: Pick<WallFrameData, "screen" | "stripTitle" | "armContext">): string {
+  const { screen, stripTitle, armContext } = data;
+  return sentence(armContext ? `${screen.title}, ${stripTitle}, ${armContext}` : `${screen.title}, ${stripTitle}`);
+}
+
+/** "Check-in sheet, Daily check-in. Web: stale. iOS: live. Android: not on this platform." (spec § Accessibility). */
 function sideAriaLabel(data: WallFrameData): string {
-  const subject = sentence(data.armContext ? `${data.screen.title}, ${data.armContext}` : data.screen.title);
+  const subject = frameSubject(data);
   const rows = data.platforms.map(
     (platform) => `${PLATFORM_LABELS[platform]}: ${sideSpokenWord(data.screen.cells[platform])}.`,
   );
@@ -204,7 +210,7 @@ function WallSideBox({ data }: { data: WallFrameData }) {
  * so without it no click would ever reach this element.
  */
 function WallFrameNodeComponent({ data }: NodeProps<Node<WallFrameData, "wallFrame">>) {
-  const { frameId, viewId, stripId, stripTitle, screen, lens, shotWidth, armContext, onActivate, onAspect } = data;
+  const { frameId, viewId, stripId, screen, lens, shotWidth, onActivate, onAspect } = data;
   const detailed = useWallDetail();
   // One platform per frame, or null side by side: the side box draws every
   // row of the scope itself (`WallSideBox`), so nothing below indexes a cell
@@ -214,7 +220,7 @@ function WallFrameNodeComponent({ data }: NodeProps<Node<WallFrameData, "wallFra
   const date = cell?.shot?.ts ? formatShotDate(cell.shot.ts) : undefined;
   const word = cell ? cellWord(cell) : "Absent";
 
-  const where = sentence(armContext ? `${screen.title}, ${stripTitle}, ${armContext}` : `${screen.title}, ${stripTitle}`);
+  const where = frameSubject(data);
   const label =
     platform === null
       ? sideAriaLabel(data)
