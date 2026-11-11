@@ -891,3 +891,59 @@ const EQUIV_EXPECTED = {
   check("openingViewport on a laid-out wall: the first strip (2464 wide) at the 0.7 floor, header at (32, 32)",
     nearView(real, { x: 32, y: 32, zoom: 0.7 }), show(real));
 }
+
+// --- Test gaps (review S6): seed screens, untested truth-table rows ---------
+
+{
+  for (const [name, expected] of [["pebbles.json", 58], ["arkaik-self-map.json", 35]]) {
+    const { input, wall } = seedWall(name);
+    const views = input.nodes.filter((n) => n.species === "view");
+    check(`${name}: the wall holds exactly the ${expected} views in scope (All products)`,
+      wall.screens.size === expected && views.length === expected && views.every((v) => wall.screens.has(v.id)),
+      `${wall.screens.size} screens, ${views.length} views`);
+  }
+}
+
+{
+  const nodes = [
+    view("V-gap-nostatus", "No status, a shot", {
+      status: "idea",
+      metadata: { platformScreenshots: { android: "https://x/ga.png" }, platformScreenshotMeta: { android: shotAt(T0) } },
+    }),
+    ac("AC-gap-web", ["web"]),
+    view("V-gap-absent", "Admin with a shot", {
+      platforms: ["web", "ios"],
+      metadata: { product: "admin", platformScreenshots: { ios: "https://x/gi.png" }, platformScreenshotMeta: { ios: shotAt(T0) } },
+    }),
+    view("V-gap-tie", "Tied", {
+      status: "idea",
+      platforms: ["ios"],
+      metadata: { platformScreenshots: { ios: "https://x/gt.png" }, platformScreenshotMeta: { ios: shotAt(T1) } },
+    }),
+    ac("AC-gap-tie", ["ios"]),
+    view("V-gap-wide", "Project-wide move", { platforms: ["web", "ios"] }),
+  ];
+  const edges = [edge("AC-gap-web", "covers", "V-gap-nostatus"), edge("AC-gap-tie", "covers", "V-gap-tie")];
+  const events = [
+    toLive("e-gap-tie", "AC-gap-tie", T1, { platform: "ios", actor: "arkaik-ci" }),
+    shipped("ship-gap-tie", T1, ["AC-gap-tie"]),
+    toLive("e-gap-wide-old", "V-gap-wide", T0, { platform: "ios", actor: "arkaik-ci" }),
+    toLive("e-gap-wide", "V-gap-wide", T2, { actor: "alexis", detail: "all platforms" }),
+  ];
+  const wall = wallOf({ nodes, edges, events, productId: null, root: null });
+  const cell = (viewId, platform) => wall.screens.get(viewId).cells[platform];
+
+  const noStatus = cell("V-gap-nostatus", "android");
+  check("on the platform, no status, a shot: not-live, status null, shot kept, no proof",
+    noStatus.state === "not-live" && noStatus.status === null && noStatus.shot?.value === "https://x/ga.png" && noStatus.proof === null && noStatus.staleBecause.length === 0,
+    show(noStatus));
+  const absent = cell("V-gap-absent", "ios");
+  check("an absent cell keeps its shot",
+    absent.state === "absent" && absent.shot?.value === "https://x/gi.png" && absent.proof === null && absent.staleBecause.length === 0, show(absent));
+  const tie = cell("V-gap-tie", "ios");
+  check("a related acceptance's events at exactly the shot's ts do not make it stale, through the wall",
+    tie.state === "live-current" && tie.staleBecause.length === 0, show(tie));
+  check("an uncovered view's latest move to live, project-wide, is its proof on every platform",
+    ["web", "ios"].every((p) => same(cell("V-gap-wide", p).proof, { kind: "hand", ts: T2, actor: "alexis", detail: "all platforms" })),
+    show(["web", "ios"].map((p) => cell("V-gap-wide", p).proof)));
+}
