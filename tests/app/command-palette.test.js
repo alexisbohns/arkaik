@@ -276,6 +276,120 @@ assert(
   "the docs palette leads back to the app",
 );
 
+// --- search-only rows: ranking and the per-group cap (Screens map stack, part 5) ---
+// Read off the module the loader already required at the top of this file: the
+// require cache holds it, so this is the same instance, not a second build.
+const nodePath = require("path");
+const nodePalette = require(nodePath.join(BUILD_DIR, "command-palette.js"));
+const { limitSearchOnly, NODE_PENALTY, SEARCH_ONLY_PER_GROUP } = nodePalette;
+
+assert(NODE_PENALTY === 500, `NODE_PENALTY is 500 (got ${NODE_PENALTY})`);
+assert(SEARCH_ONLY_PER_GROUP === 6, `SEARCH_ONLY_PER_GROUP is 6 (got ${SEARCH_ONLY_PER_GROUP})`);
+assert(
+  COMMAND_GROUPS.map((group) => group.id).join(",") === "create,pages,maps,flows,views,library,project,actions",
+  `Flows and Views sit right after Maps (got ${COMMAND_GROUPS.map((group) => group.id).join(",")})`,
+);
+assert(
+  COMMAND_GROUPS.find((group) => group.id === "flows")?.label === "Flows" &&
+    COMMAND_GROUPS.find((group) => group.id === "views")?.label === "Views",
+  "the two new groups read Flows and Views",
+);
+
+/** A search-only row by hand: the shape a node row has, with an href target. */
+function searchRow(nodeId, label, group = "views") {
+  return {
+    id: `test:${nodeId}`,
+    label,
+    group,
+    icon: group,
+    keywords: [nodeId],
+    hint: "test row",
+    searchOnly: true,
+    target: { kind: "href", href: `/test/${nodeId}` },
+  };
+}
+const handRows = [
+  searchRow("V-settings", "Settings"),
+  searchRow("V-change", "Change"),
+  searchRow("V-home", "Home"),
+  searchRow("F-checkin", "Check in", "flows"),
+];
+const withHandRows = [...commands, ...handRows];
+function ranked(query) {
+  return rankCommands(withHandRows, query).map((match) => `${match.command.id}@${match.score}`);
+}
+
+// The idle palette is unchanged: search-only rows never show on an empty query.
+const idleWithRows = rankCommands(withHandRows, "");
+assert(
+  idleWithRows.length === commands.length &&
+    idleWithRows.every((match, index) => match.command.id === commands[index].id),
+  "an empty query drops every search-only row and keeps the catalogue's order",
+);
+assert(
+  rankCommands(withHandRows, "   ").every((match) => !match.command.searchOnly),
+  "a blank query is an empty one",
+);
+
+// NODE_PENALTY: a page beats a node title of the same shape…
+assert(
+  ranked("settings").slice(0, 2).join(" ") === "settings@10000 test:V-settings@9500",
+  `"settings": the page (10000) above a view titled Settings (9500) (got ${ranked("settings").slice(0, 2).join(" ")})`,
+);
+// …but a node's exact title beats a page's prefix and a page's exact keyword.
+assert(
+  ranked("change").slice(0, 2).join(" ") === "test:V-change@9500 changelog@7997",
+  `"change": an exact view title (9500) above the Changelog prefix (7997) (got ${ranked("change").slice(0, 2).join(" ")})`,
+);
+assert(
+  ranked("home").slice(0, 3).join(" ") === "test:V-home@9500 overview@9000 projects@9000",
+  `"home": an exact view title (9500) above two exact page keywords (9000) (got ${ranked("home").slice(0, 3).join(" ")})`,
+);
+// An id is a keyword: exact at 10000 − 1000 − 500.
+assert(
+  ranked("v-home").join(" ") === "test:V-home@8500",
+  `an id finds its node at 8500 (got ${ranked("v-home").join(" ")})`,
+);
+assert(
+  rankCommands(withHandRows, "v-home")[0].highlight.length === 0,
+  "an id hit highlights nothing — the id is a keyword",
+);
+
+// limitSearchOnly: at most six search-only rows per group, every other row kept.
+const crowd = [
+  ...commands,
+  ...Array.from({ length: 9 }, (_, index) => searchRow(`V-screen-${index}`, `Screen ${index}`)),
+  searchRow("F-screen-a", "Screen flow a", "flows"),
+  searchRow("F-screen-b", "Screen flow b", "flows"),
+];
+const countIn = (matches, group) => matches.filter((match) => match.command.group === group).length;
+const crowdRanked = rankCommands(crowd, "screen");
+const crowdLimited = limitSearchOnly(crowdRanked);
+assert(countIn(crowdRanked, "views") === 9, `nine views match before the cap (got ${countIn(crowdRanked, "views")})`);
+assert(countIn(crowdLimited, "views") === 6, `six views remain after it (got ${countIn(crowdLimited, "views")})`);
+assert(countIn(crowdLimited, "flows") === 2, `a group under the cap is whole (got ${countIn(crowdLimited, "flows")})`);
+assert(
+  crowdRanked.filter((match) => !match.command.searchOnly).every((match) => crowdLimited.includes(match)),
+  "the cap never drops a page or an action",
+);
+assert(
+  crowdLimited.length === crowdRanked.length - 3 &&
+    crowdLimited.every((match, index) => crowdRanked.filter((kept) => crowdLimited.includes(kept))[index] === match),
+  "the cap drops only the surplus and keeps the ranked order",
+);
+assert(
+  crowdLimited.filter((match) => match.command.group === "views").map((match) => match.command.label).join(",") ===
+    "Screen 0,Screen 1,Screen 2,Screen 3,Screen 4,Screen 5",
+  "the six kept are the group's six best",
+);
+const capTwo = limitSearchOnly(crowdRanked, 2);
+assert(
+  countIn(capTwo, "views") === 2 && countIn(capTwo, "flows") === 2,
+  `an explicit cap applies per group (got views ${countIn(capTwo, "views")}, flows ${countIn(capTwo, "flows")})`,
+);
+const catalogueA = rankCommands(commands, "a");
+assert(limitSearchOnly(catalogueA).length === catalogueA.length, "a catalogue with no search-only rows passes through whole");
+
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 
 console.log(failures === 0 ? "\nAll command palette tests passed" : `\n${failures} test(s) failed`);

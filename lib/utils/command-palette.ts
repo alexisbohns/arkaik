@@ -44,7 +44,7 @@ export type CommandIconId =
   | "tokens"
   | "create";
 
-export type CommandGroupId = "create" | "pages" | "maps" | "library" | "project" | "actions";
+export type CommandGroupId = "create" | "pages" | "maps" | "flows" | "views" | "library" | "project" | "actions";
 
 /** Group order in the palette — mirrors the sidebar, so the two read the same.
  * A palette only ever renders the groups its own catalogue fills, so the docs
@@ -55,6 +55,11 @@ export const COMMAND_GROUPS = [
   { id: "create", label: "Create" },
   { id: "pages", label: "Pages" },
   { id: "maps", label: "Maps" },
+  // Search-only rows (`buildNodeCommands`): one per flow and per view in scope.
+  // They never show on an empty query, so these two headings only ever appear
+  // once something is typed.
+  { id: "flows", label: "Flows" },
+  { id: "views", label: "Views" },
   { id: "library", label: "Library" },
   { id: "project", label: "Project" },
   { id: "actions", label: "Actions" },
@@ -80,6 +85,9 @@ export interface PaletteCommand {
   /** Secondary text on the row — where the command lands. */
   hint?: string;
   target: CommandTarget;
+  /** Offered only once something is typed: an empty query drops it, and a
+   * typed one ranks it `NODE_PENALTY` below a page of the same shape. */
+  searchOnly?: boolean;
 }
 
 export interface CommandMatch {
@@ -107,6 +115,16 @@ const SUBSTRING = 4_000;
 const SUBSEQUENCE = 2_000;
 /** Keyword hits sit one tier below the same-shaped label hit. */
 const KEYWORD_PENALTY = 1_000;
+/**
+ * What a search-only row (a flow or a view) gives up against a page. Half a
+ * keyword step: a page beats a node title of the same shape ("Settings" the
+ * page, 10000, over a view titled "Settings", 9500), but a node's exact title
+ * still beats a page's prefix (at most 8000) or a page's exact keyword (9000).
+ * An exact node id, a keyword, lands at 8500.
+ */
+export const NODE_PENALTY = 500;
+/** How many search-only rows one group shows (`limitSearchOnly`). */
+export const SEARCH_ONLY_PER_GROUP = 6;
 
 function wordStarts(text: string): number[] {
   const starts: number[] = [];
@@ -195,7 +213,8 @@ function completionFor(command: PaletteCommand, query: string): string | null {
 
 /**
  * Rank the catalogue against what has been typed. An empty query keeps every
- * command in declaration order, which is what the palette shows on open.
+ * command in declaration order, which is what the palette shows on open —
+ * minus the search-only rows, so the idle palette never lists seventy nodes.
  */
 export function rankCommands(
   commands: readonly PaletteCommand[],
@@ -206,7 +225,9 @@ export function rankCommands(
   // Nothing typed: the catalogue as authored, so the palette opens on the same
   // reading order as the sidebar instead of an arbitrary tie-break.
   if (!trimmed) {
-    return commands.map((command) => ({ command, score: 0, highlight: [], completion: null }));
+    return commands
+      .filter((command) => !command.searchOnly)
+      .map((command) => ({ command, score: 0, highlight: [], completion: null }));
   }
 
   const matches: (CommandMatch & { order: number })[] = [];
@@ -229,7 +250,7 @@ export function rankCommands(
 
     matches.push({
       command,
-      score: best.score,
+      score: command.searchOnly ? best.score - NODE_PENALTY : best.score,
       highlight,
       completion: completionFor(command, trimmed),
       order,
@@ -245,6 +266,25 @@ export function rankCommands(
       return left.order - right.order;
     })
     .map(({ command, score, highlight, completion }) => ({ command, score, highlight, completion }));
+}
+
+/**
+ * At most `perGroup` search-only rows per group, in ranked order; every other
+ * row is kept. Applied by the overlay after `rankCommands`: "pe" matches
+ * dozens of views, and a list that long buries the pages under them.
+ */
+export function limitSearchOnly(
+  matches: readonly CommandMatch[],
+  perGroup: number = SEARCH_ONLY_PER_GROUP,
+): CommandMatch[] {
+  const kept = new Map<CommandGroupId, number>();
+  return matches.filter((match) => {
+    if (!match.command.searchOnly) return true;
+    const count = kept.get(match.command.group) ?? 0;
+    if (count >= perGroup) return false;
+    kept.set(match.command.group, count + 1);
+    return true;
+  });
 }
 
 /** The ghost suffix drawn after the caret — the completion minus what is
