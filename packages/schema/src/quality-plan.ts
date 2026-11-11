@@ -15,8 +15,9 @@
  * esbuild drops this module from any plugin script that does not use it.
  */
 
-import { applicableCells, CROSS_SURFACE_ID, type KritikCriterion, type KritikLibrary } from "./quality";
+import { applicableCells, CROSS_SURFACE_ID, type KritikCriterion, type KritikLibrary, type QualityAssessment } from "./quality";
 import { domainCodeOf } from "./quality-ops";
+import { planRecordCommand, renderPartPrompt, renderPlanPrompt } from "./kritik-plan-prompt";
 
 // --- Shapes ------------------------------------------------------------------
 
@@ -387,4 +388,147 @@ export function readPlanScope(scope: unknown): PlanScopeReading | null {
     since: typeof row.since === "string" && row.since !== "" ? row.since : null,
     coverage: readCoverage(row.coverage),
   };
+}
+
+// --- P2: assembly and progress ---------------------------------------------------------
+
+/** What {@link buildKritikPlan} needs: the effective library, the profile's surface ids, the parsed runs, and every id a new plan must sort after. */
+export interface BuildKritikPlanInput {
+  library: KritikLibrary;
+  surfaces: readonly string[];
+  runs: readonly PlanRun[];
+  /** Audit directory ids, plan file ids and recorded audit ids. */
+  known: readonly string[];
+  now: Date;
+  /** HEAD at plan time; null outside git. */
+  commit: string | null;
+}
+
+/**
+ * A counts-only plan: one included part per run, in run order, with its cells,
+ * its checklist steps, an audit id that sorts after every known id, and its
+ * prompt. Throws when a run has no applicable cell, and (through `planId`) when
+ * no id on this day sorts last. Pure: the caller reads the files and writes the plan.
+ */
+export function buildKritikPlan(input: BuildKritikPlanInput): KritikPlan {
+  const { library, surfaces, runs, known, now, commit } = input;
+  const counted = runs.map((run) => {
+    const { cells, steps } = planCells(library, surfaces, run);
+    if (cells.length === 0) {
+      throw new Error(
+        `no ${run.domain} criterion applies to "${run.surface}" — every ${run.domain} criterion's applies_to leaves it out, so this part would score nothing.`,
+      );
+    }
+    return { run, cells, steps };
+  });
+  const id = planId({ now, known, runs });
+  const parts: Omit<KritikPlanPart, "prompt">[] = counted.map(({ run, cells, steps }) => ({
+    domain: run.domain,
+    surface: run.surface,
+    auditId: planPartId(id, run.domain, run.surface),
+    cells,
+    steps,
+    estimate: null,
+    status: "included",
+  }));
+  const included = parts.filter((part) => part.status === "included");
+  const head: Omit<KritikPlan, "prompt" | "parts"> = {
+    schema: KRITIK_PLAN_SCHEMA,
+    planId: id,
+    createdAt: now.toISOString(),
+    commit,
+    frameworkVersion: library.version,
+    tier: null,
+    budgetTokens: null,
+    budgetUsd: null,
+    pricePerMTok: null,
+    totals: {
+      cells: included.reduce((sum, part) => sum + part.cells.length, 0),
+      steps: included.reduce((sum, part) => sum + part.steps, 0),
+      applicableCells: applicableCellCount(library, surfaces),
+      tokens: null,
+      usd: null,
+    },
+    recordCommand: planRecordCommand(id),
+  };
+  return {
+    schema: head.schema,
+    planId: head.planId,
+    createdAt: head.createdAt,
+    commit: head.commit,
+    frameworkVersion: head.frameworkVersion,
+    tier: head.tier,
+    budgetTokens: head.budgetTokens,
+    budgetUsd: head.budgetUsd,
+    pricePerMTok: head.pricePerMTok,
+    parts: parts.map((part) => ({ ...part, prompt: renderPartPrompt({ planId: id, commit }, part) })),
+    totals: head.totals,
+    prompt: renderPlanPrompt({ ...head, parts }),
+    recordCommand: head.recordCommand,
+  };
+}
+
+/** Where a part stands, read from its audit directory. Never written into the plan file. */
+export type PlanPartProgress = "not started" | "in progress" | "scored" | "deferred";
+
+export interface PlanPartStatus {
+  auditId: string;
+  domain: string;
+  surface: string;
+  progress: PlanPartProgress;
+  /** Plan cells holding a score. */
+  scored: number;
+  /** Plan cells in the part. */
+  cells: number;
+  /** Plan cells with no score yet, in plan order. */
+  missing: KritikPlanCell[];
+  /** Scores in the part's audit that are not plan cells, in file order. The record refuses them. */
+  stray: KritikPlanCell[];
+}
+
+/**
+ * Each part's progress from the scores in its audit: `not started` with no
+ * score at all, `scored` when every plan cell holds one, `in progress` between
+ * (a stray score counts as started), `deferred` for a part a budget cut.
+ * A part whose audit id is absent from `scoresByPart` has no scores.
+ */
+export function planPartStatuses(
+  plan: Pick<KritikPlan, "parts">,
+  scoresByPart: Readonly<Record<string, readonly Pick<QualityAssessment, "criterion_id" | "surface">[]>>,
+): PlanPartStatus[] {
+  return plan.parts.map((part) => {
+    const planned = new Set(part.cells.map((cell) => planCellKey(cell.criterion_id, cell.surface)));
+    const scoredKeys = new Set<string>();
+    const strayKeys = new Set<string>();
+    const stray: KritikPlanCell[] = [];
+    const scores = Object.prototype.hasOwnProperty.call(scoresByPart, part.auditId) ? scoresByPart[part.auditId] : [];
+    for (const score of scores) {
+      const key = planCellKey(score.criterion_id, score.surface);
+      if (planned.has(key)) scoredKeys.add(key);
+      else if (!strayKeys.has(key)) {
+        strayKeys.add(key);
+        stray.push({ criterion_id: score.criterion_id, surface: score.surface });
+      }
+    }
+    const missing = part.cells.filter((cell) => !scoredKeys.has(planCellKey(cell.criterion_id, cell.surface)));
+    const scored = part.cells.length - missing.length;
+    const progress: PlanPartProgress =
+      part.status === "deferred"
+        ? "deferred"
+        : scored === 0 && stray.length === 0
+          ? "not started"
+          : missing.length === 0
+            ? "scored"
+            : "in progress";
+    return {
+      auditId: part.auditId,
+      domain: part.domain,
+      surface: part.surface,
+      progress,
+      scored,
+      cells: part.cells.length,
+      missing,
+      stray,
+    };
+  });
 }

@@ -613,6 +613,146 @@ const throws = (fn) => {
   );
 }
 
+// --- part 2: buildKritikPlan and planPartStatuses ----------------------------------
+//
+// Against the shipped pack, as the cells block above is: the plan a CLI run
+// would build for SEC:web + AGT:ios on a Pebbles-like profile, and the
+// progress a status read derives from each part's scores.
+{
+  const P2 = require("./load-schema").loadSchema();
+  const PACK = require("../../packages/kritik-library/framework.json");
+  const SURFACES = ["web", "ios", "android", "admin", "supabase"];
+  const NOW = new Date(2026, 10, 11, 9, 30); // local time, as planId reads it: day 11
+  const COMMIT = "3f9c2e1d4b5a69788796a5b4c3d2e1f0a9b8c7d6";
+  const KNOWN = ["2026-08", "2026-11-scoped", "2026-11-sec-web"];
+  const RUNS = [{ domain: "SEC", surface: "web" }, { domain: "AGT", surface: "ios" }];
+
+  const plan = P2.buildKritikPlan({ library: PACK, surfaces: SURFACES, runs: RUNS, known: KNOWN, now: NOW, commit: COMMIT });
+
+  check("buildKritikPlan: the plan id is the day's first that sorts last", plan.planId === "2026-11-zplan-1100", plan.planId);
+  check(
+    "buildKritikPlan: one included part per run, in run order, each with its own audit id",
+    JSON.stringify(plan.parts.map((part) => [part.domain, part.surface, part.auditId, part.status])) ===
+      JSON.stringify([
+        ["SEC", "web", "2026-11-zplan-1100-sec-web", "included"],
+        ["AGT", "ios", "2026-11-zplan-1100-agt-ios", "included"],
+      ]),
+    JSON.stringify(plan.parts.map((part) => part.auditId)),
+  );
+  check(
+    "buildKritikPlan: SEC:web is 6 cells and 36 steps, AGT:ios 8 and 42",
+    plan.parts[0].cells.length === 6 && plan.parts[0].steps === 36 && plan.parts[1].cells.length === 8 && plan.parts[1].steps === 42,
+    JSON.stringify(plan.parts.map((part) => [part.cells.length, part.steps])),
+  );
+  check(
+    "buildKritikPlan: the cells are planCells' cells",
+    JSON.stringify(plan.parts.map((part) => part.cells)) ===
+      JSON.stringify(RUNS.map((run) => P2.planCells(PACK, SURFACES, run).cells)),
+  );
+  check("buildKritikPlan: counts only — no estimate on any part", plan.parts.every((part) => part.estimate === null));
+  check(
+    "buildKritikPlan: totals sum the included parts and count the whole product",
+    JSON.stringify(plan.totals) === JSON.stringify({ cells: 14, steps: 78, applicableCells: 338, tokens: null, usd: null }),
+    JSON.stringify(plan.totals),
+  );
+  check(
+    "buildKritikPlan: the header is the schema, the clock, the commit and the library's version",
+    plan.schema === "arkaik.kritik.plan/1" &&
+      plan.createdAt === NOW.toISOString() &&
+      plan.commit === COMMIT &&
+      plan.frameworkVersion === PACK.version &&
+      plan.tier === null && plan.budgetTokens === null && plan.budgetUsd === null && plan.pricePerMTok === null,
+  );
+  check("buildKritikPlan: the record command names the plan", plan.recordCommand === "arkaik kritik matrix 2026-11-zplan-1100 --record --plan");
+  check(
+    "buildKritikPlan: each part carries the part prompt rendered from it",
+    plan.parts.every(({ prompt, ...part }) => prompt === P2.renderPartPrompt({ planId: plan.planId, commit: COMMIT }, part)),
+  );
+  check(
+    "buildKritikPlan: the plan carries the combined prompt",
+    plan.prompt === P2.renderPlanPrompt({ ...plan, parts: plan.parts.map(({ prompt: _prompt, ...part }) => part) }),
+  );
+  check(
+    "buildKritikPlan: every part id sorts after every known id",
+    plan.parts.every((part) => KNOWN.every((id) => part.auditId > id)),
+  );
+  const parsed = P2.parseKritikPlan(JSON.parse(JSON.stringify(plan)));
+  check("buildKritikPlan: the plan parses as written to disk", parsed.ok === true, parsed.ok ? "" : parsed.issue);
+  check(
+    "buildKritikPlan: a plan id already taken moves the counter",
+    P2.buildKritikPlan({ library: PACK, surfaces: SURFACES, runs: RUNS, known: [...KNOWN, ...plan.parts.map((part) => part.auditId)], now: NOW, commit: null }).planId ===
+      "2026-11-zplan-1101",
+  );
+
+  let zero;
+  try {
+    P2.buildKritikPlan({ library: PACK, surfaces: [...SURFACES, "cli"], runs: [{ domain: "SEC", surface: "cli" }], known: [], now: NOW, commit: null });
+  } catch (error) {
+    zero = error;
+  }
+  check(
+    "buildKritikPlan: a part with no applicable cell is refused, naming the domain and the surface",
+    zero instanceof Error && zero.message.includes('no SEC criterion applies to "cli"'),
+    zero?.message,
+  );
+
+  // --- planPartStatuses ---
+
+  const DEFERRED = {
+    domain: "A11Y", surface: "android", auditId: "2026-11-zplan-1100-a11y-android",
+    cells: [{ criterion_id: "A11Y-01", surface: "android" }], steps: 5, estimate: null, status: "deferred", prompt: "",
+  };
+  const parts = [...plan.parts, DEFERRED];
+  const [sec, agt] = plan.parts;
+  const score = (criterion_id, surface) => ({ criterion_id, surface });
+
+  const fresh = P2.planPartStatuses({ parts }, {});
+  check(
+    "planPartStatuses: with no scores every included part is not started and misses every cell",
+    JSON.stringify(fresh.map((status) => [status.auditId, status.progress, status.scored, status.cells, status.missing.length, status.stray.length])) ===
+      JSON.stringify([
+        [sec.auditId, "not started", 0, 6, 6, 0],
+        [agt.auditId, "not started", 0, 8, 8, 0],
+        [DEFERRED.auditId, "deferred", 0, 1, 1, 0],
+      ]),
+    JSON.stringify(fresh),
+  );
+
+  const mixed = P2.planPartStatuses(
+    { parts },
+    {
+      [sec.auditId]: [score("SEC-01", "web"), score("PRV-01", "web"), score("SEC-05", "web"), score("PRV-01", "web")],
+      [agt.auditId]: agt.cells.map((cell) => score(cell.criterion_id, cell.surface)),
+      "2026-08": [score("SEC-04", "web")],
+    },
+  );
+  check(
+    "planPartStatuses: some plan cells scored is in progress, missing the rest in plan order",
+    mixed[0].progress === "in progress" &&
+      mixed[0].scored === 2 &&
+      JSON.stringify(mixed[0].missing.map((cell) => cell.criterion_id)) === JSON.stringify(["SEC-04", "SEC-06", "SEC-07", "SEC-08"]),
+    JSON.stringify(mixed[0]),
+  );
+  check(
+    "planPartStatuses: a score outside the plan is a stray, listed once",
+    JSON.stringify(mixed[0].stray) === JSON.stringify([{ criterion_id: "PRV-01", surface: "web" }]),
+    JSON.stringify(mixed[0].stray),
+  );
+  check(
+    "planPartStatuses: every plan cell scored is scored",
+    mixed[1].progress === "scored" && mixed[1].scored === 8 && mixed[1].missing.length === 0,
+    JSON.stringify(mixed[1]),
+  );
+  check("planPartStatuses: another audit's scores never count for a part", mixed[0].missing.some((cell) => cell.criterion_id === "SEC-04"));
+
+  const strayOnly = P2.planPartStatuses({ parts: [sec] }, { [sec.auditId]: [score("PRV-01", "web")] });
+  check(
+    "planPartStatuses: a stray alone means the part was started",
+    strayOnly[0].progress === "in progress" && strayOnly[0].scored === 0 && strayOnly[0].stray.length === 1,
+    JSON.stringify(strayOnly[0]),
+  );
+}
+
 // --- summary ------------------------------------------------------------------------
 
 console.log(failures === 0 ? "\nAll quality-plan checks passed." : `\n${failures} check(s) failed.`);
