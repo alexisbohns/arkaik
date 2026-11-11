@@ -91,22 +91,26 @@ const RING_MS = 2000;
 type FlowStore = ReturnType<typeof useStoreApi>;
 
 /**
- * Reports, from inside the map's `ReactFlowProvider`, the React Flow store and
- * the strip the reader is in (`stripNearViewport` over `layout`) whenever that
- * changes — once per strip crossed, not per wheel step: the selector returns
- * an id. The controller sits above the provider, so this is how it learns
+ * Reports, from inside the map's `ReactFlowProvider`, the React Flow store,
+ * the canvas width, and the strip the reader is in (`stripNearViewport` over
+ * `layout`) whenever that changes — once per strip crossed, not per wheel
+ * step: the selector returns an id. The controller sits above the provider, so this is how it learns
  * where the camera is.
  */
 function WallViewportProbe({
   layout,
   onStore,
   onStrip,
+  onWidth,
 }: {
   layout: WallLayout;
   onStore: (store: FlowStore) => void;
   onStrip: (stripId: string | null) => void;
+  /** The canvas width, on every change: a panel opening or closing, a window resize. */
+  onWidth: (width: number) => void;
 }) {
   const store = useStoreApi();
+  const width = useStore((state) => state.width);
   const stripId = useStore((state) =>
     state.width === 0 || state.height === 0
       ? null
@@ -118,34 +122,42 @@ function WallViewportProbe({
   );
   useEffect(() => onStore(store), [onStore, store]);
   useEffect(() => onStrip(stripId), [onStrip, stripId]);
+  useEffect(() => onWidth(width), [onWidth, width]);
   return null;
 }
 
 const NO_PLATFORMS: readonly PlatformId[] = [];
 
 /**
- * The selection's camera on `layout`: the frame and its chip column, framed
- * for the canvas size the request runs at (`selectionViewport`) — beside the
- * inspector card, above its bottom sheet, or with no room kept while a panel
- * stands in for the inspector. `withTitle` ("Also in …") joins the strip's
- * title area when it fits. Null when the frame is not on `layout`. Every
- * selection camera goes through here: a select, a cold load, a lens change.
+ * The selection's camera on `layout`, framed for the canvas size the request
+ * runs at (`selectionViewport`). With the inspector up: the frame and its chip
+ * column, beside the inspector card or above its bottom sheet. While a panel
+ * stands in for the inspector: the frame alone, centred in the canvas the
+ * panel leaves (its chips stay drawn below it) — the panel describes the node,
+ * and a narrowed canvas framing the whole chip column would push the frame to
+ * its top edge. Whether the inspector is up is read from `inspectorUp` when
+ * the camera runs (WallCamera, once the size has settled), not when the
+ * request is made, so a request made just before a panel opened or closed
+ * still frames for what is on screen. `withTitle` ("Also in …") joins the
+ * strip's title area when it fits. Null when the frame is not on `layout`.
+ * Every selection camera goes through here: a select, a cold load, a lens
+ * change, a settled canvas width.
  */
 function selectionCamera(
   wall: Wall,
   layout: WallLayout,
   selection: WallSelection,
-  inspector: boolean,
+  inspectorUp: { readonly current: boolean },
   withTitle: boolean,
 ): WallViewportFor | null {
+  const frame = frameBoxOf(layout, selection.frameId);
   const bounds = selectionBounds(wall, layout, selection.frameId, selection.viewId);
-  if (!bounds) return null;
-  const framing = {
-    ...SELECTION_FRAMING,
-    inspector,
-    header: withTitle ? stripTitleRect(layout, selection.stripId) : null,
+  if (!frame || !bounds) return null;
+  const header = withTitle ? stripTitleRect(layout, selection.stripId) : null;
+  return (size) => {
+    const inspector = inspectorUp.current;
+    return selectionViewport(inspector ? bounds : frame, size, { ...SELECTION_FRAMING, inspector, header });
   };
-  return (size) => selectionViewport(bounds, size, framing);
 }
 
 /** The bar's live line: "Showing iOS. 4 gaps." / "Showing side by side, gaps only. 1 gap." */
@@ -249,6 +261,9 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
   const pickResolves = picked !== null && frameBoxOf(layout, picked.frameId) !== null && wall.screens.has(picked.viewId);
   if (picked !== null && !pickResolves) setPicked(null);
   const selection = pickResolves ? picked : null;
+  // Whether the inspector is up (no panel open), for the selection camera to
+  // read when it runs rather than when it is asked for (`selectionCamera`).
+  const inspectorUp = useLatest(entries.length === 0);
 
   // Loading shows the loading page only until the map has been shown once.
   // After that a read going back to loading — an errored journal refetching on
@@ -291,7 +306,7 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
   if (ready && camera === null && hasStrip && (!pillsUp || pillsBottom !== null)) {
     const target = coldLoadTarget(wall, layout, addressedNodeId);
     const framed =
-      target?.kind === "frame" ? selectionCamera(wall, layout, target.selection, entries.length === 0, false) : null;
+      target?.kind === "frame" ? selectionCamera(wall, layout, target.selection, inspectorUp, false) : null;
     if (target?.kind === "frame" && framed) {
       setPicked(target.selection);
       setCamera({ version: 1, viewport: framed });
@@ -341,11 +356,11 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
     (frameId: string, viewId: string, stripId: string, withTitle: boolean): void => {
       const picked = { frameId, viewId, stripId };
       setPicked(picked);
-      const framed = selectionCamera(wall, layout, picked, entries.length === 0, withTitle);
+      const framed = selectionCamera(wall, layout, picked, inspectorUp, withTitle);
       if (!framed) return;
       setCamera((previous) => ({ version: (previous?.version ?? 0) + 1, viewport: framed }));
     },
-    [entries.length, layout, wall],
+    [inspectorUp, layout, wall],
   );
   const selectFrame = useCallback(
     (frameId: string, viewId: string, stripId: string): void => frameSelection(frameId, viewId, stripId, false),
@@ -367,6 +382,28 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
       selectFrame(frameId, viewId, stripId);
     },
     [openNode, selectFrame, selectionRef],
+  );
+
+  // The canvas's width changes when a panel opens or closes (the surface keeps
+  // its box and narrows) or the window resizes. With a frame selected, the
+  // selection is framed again for the new size: a second activation opens the
+  // panel, which would otherwise leave the frame partly behind it, and closing
+  // a panel brings the inspector back beside (or under) a frame framed for a
+  // canvas that no longer exists. The request is made on every change and
+  // WallCamera runs only the last, 120ms after the size stops changing — once
+  // it has settled — with the viewport rule every selection uses.
+  const settledWidth = useRef<number | null>(null);
+  const handleCanvasWidth = useCallback(
+    (width: number) => {
+      if (width <= 0) return;
+      const before = settledWidth.current;
+      settledWidth.current = width;
+      const selected = selectionRef.current;
+      if (before === null || before === width || !selected) return;
+      const reframed = selectionCamera(wall, layout, selected, inspectorUp, false);
+      if (reframed) setCamera((previous) => ({ version: (previous?.version ?? 0) + 1, viewport: reframed }));
+    },
+    [inspectorUp, layout, selectionRef, wall],
   );
 
   const handlePaneClick = useCallback(() => setPicked(null), []);
@@ -491,7 +528,7 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
       const selected = selectionRef.current;
       if (next !== lens) {
         const nextLayout = layoutWall(wall, next, aspectOf);
-        const reframed = selected ? selectionCamera(wall, nextLayout, selected, entries.length === 0, false) : null;
+        const reframed = selected ? selectionCamera(wall, nextLayout, selected, inspectorUp, false) : null;
         if (reframed) {
           setCamera((previous) => ({ version: (previous?.version ?? 0) + 1, viewport: reframed }));
         } else if (store) {
@@ -506,7 +543,7 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
       }
       setPreferences({ screensLens: next });
     },
-    [aspectOf, entries.length, layout, lens, selectionRef, setPreferences, wall],
+    [aspectOf, inspectorUp, layout, lens, selectionRef, setPreferences, wall],
   );
 
   const handleGapsOnlyChange = useCallback(
@@ -622,7 +659,12 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
               onPaneClick={handlePaneClick}
               onFrameMove={handleFrameMove}
             />
-            <WallViewportProbe layout={layout} onStore={handleStore} onStrip={setViewedStrip} />
+            <WallViewportProbe
+              layout={layout}
+              onStore={handleStore}
+              onStrip={setViewedStrip}
+              onWidth={handleCanvasWidth}
+            />
           </ReactFlowProvider>
           {pillsUp && (
             <div

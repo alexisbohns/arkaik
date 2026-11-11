@@ -814,7 +814,11 @@ shared trunk and turns right into its chip on one small rounded corner.
   open, Escape stays the panel stack's (`PanelStack.tsx:169-183`).
 - The panel stack and the wall stay independent: opening a panel narrows the
   canvas, and `WallCamera` waits for the size to settle (120ms, as
-  `CameraFocus`). A cold load with `?node=` naming a view or flow on the wall
+  `CameraFocus`). Whenever the canvas's settled width changes while a frame is
+  selected (a panel opening or closing, a window resize) the selection is
+  framed again for the new size with the same rule; while a panel is open
+  that rule frames the frame alone, centred in the canvas the panel leaves,
+  its chips still drawn below it. A cold load with `?node=` naming a view or flow on the wall
   frames it (part 4; a view is also selected).
 - The inspector (part 4) is not rendered while any panel is open: the panel
   already says everything it would, and the narrowed canvas would otherwise
