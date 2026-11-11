@@ -106,7 +106,11 @@ export function proofLine(cell: PlatformCell): string | null {
   return parts.filter((part): part is string => typeof part === "string" && part.length > 0).join(" · ");
 }
 
-/** One row per platform of the wall's menu, in `wall.platforms` order; a platform with no cell is left out. */
+/**
+ * One row per platform of the wall's menu, in `wall.platforms` order; a
+ * platform with no cell is left out. An absent row carries its word only: no
+ * status, no shot, and (by the model) no stale reason or proof.
+ */
 export function inspectorRows(wall: Wall, screen: WallScreen): InspectorRow[] {
   const rows: InspectorRow[] = [];
   for (const platform of wall.platforms) {
@@ -121,7 +125,9 @@ export function inspectorRows(wall: Wall, screen: WallScreen): InspectorRow[] {
       word,
       tone: TONES[cell.state],
       status: cell.state !== "absent" && label !== null && label !== word ? label : null,
-      shot: shotLine(cell),
+      // A platform the view is not on has nothing to say about a shot its
+      // slot may still hold from before: the word ("Absent") is the whole row.
+      shot: cell.state === "absent" ? null : shotLine(cell),
       stale: staleLine(cell),
       proof: proofLine(cell),
     });

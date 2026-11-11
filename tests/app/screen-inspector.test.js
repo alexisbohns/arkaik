@@ -182,6 +182,17 @@ test("a row names the status only when its word does not already say it", () => 
   assert.equal(absent[0].status, null, "an absent platform names no status");
 });
 
+test("an absent platform words no shot, even when its slot still holds one", () => {
+  const absent = inspectorRows(
+    { ...wall, platforms: ["web"] },
+    { ...screenA, cells: { web: cell("web", "absent", { status: "live", shot: shot("ci", T1) }) } },
+  );
+  assert.equal(absent[0].word, "Absent");
+  assert.equal(absent[0].shot, null, "no shot line on a platform the view is not on");
+  assert.equal(absent[0].stale, null);
+  assert.equal(absent[0].proof, null);
+});
+
 test("rows carry the shot, stale and proof lines; a platform with no cell is left out", () => {
   const rows = inspectorRows(wall, screenA);
   assert.equal(rows[1].shot, shotLine(screenA.cells.ios));
