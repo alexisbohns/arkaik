@@ -180,6 +180,13 @@ jobs:
       - name: Kritik baseline tests (implicit reading, window, scope unlock)
         run: npm run test:quality-baseline
 
+      # The Kritik planner's pure rules (docs/superpowers/specs/2026-11-11-kritik-planner-design.md):
+      # the --run grammar, the cells per part pinned to the shipped pack, plan
+      # and part ids that sort after every audit, the partial-id predicates and
+      # the plan file's schema. Pure like the five above.
+      - name: Kritik plan tests (grammar, cells, sort-last ids, partial ids, schema)
+        run: npm run test:quality-plan
+
       # The webhook half of the quality loop — the mention grammar and the
       # resolution pass. DB-free on purpose: the grammar imports nothing and
       # the project read is injected, so a Postgres-less runner still gates it.
