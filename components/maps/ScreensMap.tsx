@@ -463,17 +463,23 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
   // header; a view selects its first frame in strip order and frames it.
   // Anything the wall does not show — outside the map's scope, or the wall not
   // built yet — opens its panel, as on every other page that hosts panels.
+  // With a panel already open, the chosen node's panel replaces the stack too
+  // (depth 0, as the palette opens one elsewhere): the wall and the panel
+  // would otherwise show two different nodes.
   usePageNodeHandler((nodeId) => {
+    const panelOpen = entries.length > 0;
     if (wall && layout) {
       const strip = wall.strips.find((candidate) => candidate.flowId === nodeId);
       if (strip && layout.strips.has(strip.id)) {
         jumpToFlow(nodeId);
+        if (panelOpen) openNode({ nodeId });
         return;
       }
       const frameId = frameIdsOf(wall, nodeId)[0];
       const box = frameId === undefined ? undefined : layout.boxes.find((candidate) => candidate.id === frameId);
       if (frameId !== undefined && box) {
         selectFrame(frameId, nodeId, box.stripId);
+        if (panelOpen) openNode({ nodeId });
         return;
       }
     }
