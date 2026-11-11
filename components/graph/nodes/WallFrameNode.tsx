@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, type KeyboardEvent } from "react";
+import { memo, useContext, type KeyboardEvent } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import type { PlatformId } from "@/lib/config/platforms";
 import { cn } from "@/lib/utils";
@@ -18,6 +18,7 @@ import {
 import { TOUCH_TRUNK_X } from "@/lib/utils/screen-inspector";
 import { formatShotDate } from "@/lib/utils/screenshot-ops";
 import { PLATFORM_ICONS, PLATFORM_LABELS, STATUS_LABELS, STATUS_STYLES } from "./node-styles";
+import { INSPECTOR_FOCUSABLE, WallInspectorContext } from "./wall-inspector";
 import type { WallFrameData } from "./wall-node-data";
 import { WallMiniShot, WallShot, useWallDetail } from "./WallShot";
 
@@ -236,8 +237,24 @@ function WallFrameNodeComponent({ data }: NodeProps<Node<WallFrameData, "wallFra
       : `${where} ${sentence(`${PLATFORM_LABELS[platform]}: ${cellPhrase(cell)}`)}`;
   const stateLine = platform === null ? sideStateLine(data) : date && cell?.shot ? `${word} · ${date}` : word;
 
+  // The selected frame is wired to the inspector while it shows: it controls
+  // and is described by that region, and Tab moves straight into it (it sits
+  // after the whole canvas in the page, so the natural order would walk every
+  // other frame first). Shift+Tab from the inspector's first control comes
+  // back here (ScreenInspector).
+  const inspectorId = useContext(WallInspectorContext);
+  const inspector = data.selected && inspectorId !== null ? inspectorId : undefined;
+
   const activate = () => onActivate(frameId, viewId, stripId);
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (inspector && event.key === "Tab" && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
+      const first = document.getElementById(inspector)?.querySelector<HTMLElement>(INSPECTOR_FOCUSABLE);
+      if (first) {
+        event.preventDefault();
+        first.focus();
+      }
+      return;
+    }
     const direction = ARROW_DIRECTIONS[event.key];
     if (direction && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
       event.preventDefault();
@@ -257,6 +274,8 @@ function WallFrameNodeComponent({ data }: NodeProps<Node<WallFrameData, "wallFra
         tabIndex={0}
         aria-label={label}
         aria-current={data.selected ? "true" : undefined}
+        aria-controls={inspector}
+        aria-describedby={inspector}
         data-wall-frame={data.frameId}
         onClick={activate}
         onKeyDown={handleKeyDown}

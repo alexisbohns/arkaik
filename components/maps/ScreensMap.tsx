@@ -7,6 +7,7 @@ import { ImageOffIcon, TriangleAlertIcon } from "lucide-react";
 import { buildProductUsageIndex, type MapDefinition } from "@arkaik/schema";
 import type { CanvasFocus } from "@/components/graph/Canvas";
 import type { WallSelection } from "@/components/graph/nodes/wall-node-data";
+import { SCREEN_INSPECTOR_ID, WallInspectorContext } from "@/components/graph/nodes/wall-inspector";
 import { ScreensCanvas } from "@/components/graph/ScreensCanvas";
 import {
   WALL_BAR_INSET,
@@ -158,6 +159,11 @@ function selectionCamera(
     const inspector = inspectorUp.current;
     return selectionViewport(inspector ? bounds : frame, size, { ...SELECTION_FRAMING, inspector, header });
   };
+}
+
+/** What the bar's live line adds while a frame is selected. */
+function selectionAnnouncement(title: string): string {
+  return `Selected ${title}. Details in the inspector.`;
 }
 
 /** The bar's live line: "Showing iOS. 4 gaps." / "Showing side by side, gaps only. 1 gap." */
@@ -462,6 +468,8 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
   // removed from the page fires no blur.
   const focusInInspector = useRef(false);
   const inspectorShown = selection !== null && entries.length === 0;
+  // Said by the bar's polite live line with the lens: "Selected <view>. Details in the inspector."
+  const selectedScreen = selection ? wall.screens.get(selection.viewId) : undefined;
   useLayoutEffect(() => {
     if (inspectorShown || !focusInInspector.current) return;
     focusInInspector.current = false;
@@ -670,31 +678,35 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
               read where the camera is. Only the canvas: a panel's graph must
               never share it. */}
           <ReactFlowProvider>
-            <ScreensCanvas
-              wall={wall}
-              layout={layout}
-              lens={lens}
-              scope={scope}
-              focus={focus}
-              camera={camera}
-              ring={ring}
-              onFrameActivate={handleFrameActivate}
-              onOpenNode={handleOpenNode}
-              onJump={jumpToFlow}
-              onAspect={reportAspect}
-              // Gaps only with nothing to fix fades nothing: a whole wall at
-              // 15% would read as broken. The bar says why instead.
-              gapsOnly={gapsOnly && gaps > 0}
-              selection={selection}
-              onPaneClick={handlePaneClick}
-              onFrameMove={handleFrameMove}
-            />
-            <WallViewportProbe
-              layout={layout}
-              onStore={handleStore}
-              onStrip={setViewedStrip}
-              onWidth={handleCanvasWidth}
-            />
+            {/* Whether the inspector can show (no panel open): the selected
+                frame wires itself to it (WallFrameNode). */}
+            <WallInspectorContext.Provider value={entries.length === 0 ? SCREEN_INSPECTOR_ID : null}>
+              <ScreensCanvas
+                wall={wall}
+                layout={layout}
+                lens={lens}
+                scope={scope}
+                focus={focus}
+                camera={camera}
+                ring={ring}
+                onFrameActivate={handleFrameActivate}
+                onOpenNode={handleOpenNode}
+                onJump={jumpToFlow}
+                onAspect={reportAspect}
+                // Gaps only with nothing to fix fades nothing: a whole wall at
+                // 15% would read as broken. The bar says why instead.
+                gapsOnly={gapsOnly && gaps > 0}
+                selection={selection}
+                onPaneClick={handlePaneClick}
+                onFrameMove={handleFrameMove}
+              />
+              <WallViewportProbe
+                layout={layout}
+                onStore={handleStore}
+                onStrip={setViewedStrip}
+                onWidth={handleCanvasWidth}
+              />
+            </WallInspectorContext.Provider>
           </ReactFlowProvider>
           {pillsUp && (
             <div
@@ -760,7 +772,11 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
               platforms={wall.platforms}
               lens={lens}
               onLensChange={handleLensChange}
-              announcement={screensAnnouncement(lens, gaps, gapsOnly)}
+              announcement={
+                selectedScreen
+                  ? `${screensAnnouncement(lens, gaps, gapsOnly)} ${selectionAnnouncement(selectedScreen.title)}`
+                  : screensAnnouncement(lens, gaps, gapsOnly)
+              }
               gapsOnly={gapsOnly}
               gapCount={gaps}
               onGapsOnlyChange={handleGapsOnlyChange}

@@ -1,5 +1,6 @@
 "use client";
 
+import type { KeyboardEvent } from "react";
 import { ExternalLinkIcon, HistoryIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,6 +11,7 @@ import {
   SYSTEM_LAYER_STYLES,
 } from "@/components/graph/nodes/node-styles";
 import type { WallSelection } from "@/components/graph/nodes/wall-node-data";
+import { INSPECTOR_FOCUSABLE, SCREEN_INSPECTOR_ID } from "@/components/graph/nodes/wall-inspector";
 import { cn } from "@/lib/utils";
 import { inspectorRows, stripLinks, type InspectorTone } from "@/lib/utils/screen-inspector";
 import type { Wall } from "@/lib/utils/screen-wall";
@@ -42,6 +44,10 @@ const TOUCH_KINDS: Record<"api-endpoint" | "data-model", string> = {
  * live where the journal can tell), the strips it appears in, the endpoints and
  * data models it touches (the keyboard twin of the chips), and "Open panel".
  *
+ * A named region (`SCREEN_INSPECTOR_ID`): the selected frame controls and is
+ * described by it, Tab from that frame enters it and Shift+Tab from its first
+ * control returns to the frame.
+ *
  * Not a panel kind: an overlay in the canvas cell, outside React Flow, so the
  * wheel scrolls it instead of zooming the wall. Top-right and 320px wide; in a
  * container narrower than 40rem, a bottom sheet above the bar, at most half the
@@ -56,9 +62,25 @@ export function ScreenInspector({ wall, selection, onOpenPanel, onGoToStrip }: S
   const rows = inspectorRows(wall, screen);
   const { current, also } = stripLinks(wall, screen, selection.stripId);
 
+  // Tab from the selected frame lands on the first control here (WallFrameNode);
+  // Shift+Tab from that control goes back to the frame rather than to whatever
+  // precedes the inspector in the page.
+  const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key !== "Tab" || !event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
+    const first = event.currentTarget.querySelector<HTMLElement>(INSPECTOR_FOCUSABLE);
+    if (event.target !== first) return;
+    const frame = document.querySelector<HTMLElement>(`[data-wall-frame="${CSS.escape(selection.frameId)}"]`);
+    if (!frame) return;
+    event.preventDefault();
+    frame.focus({ preventScroll: true });
+  };
+
   return (
     <section
+      id={SCREEN_INSPECTOR_ID}
+      role="region"
       aria-label={`${screen.title} on the wall`}
+      onKeyDown={handleKeyDown}
       className={cn(
         "absolute top-3 right-3 z-20 flex max-h-[calc(100%-6rem)] w-80 flex-col gap-3 overflow-y-auto rounded-xl border bg-card p-4 text-sm shadow-lg",
         "@max-[40rem]:top-auto @max-[40rem]:bottom-[72px] @max-[40rem]:left-3 @max-[40rem]:max-h-[50%] @max-[40rem]:w-auto",

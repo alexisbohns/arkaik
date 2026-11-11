@@ -861,7 +861,8 @@ shared trunk and turns right into its chip on one small rounded corner.
   count badge. On with a count of 0, it fades nothing and a `role="status"` pill
   above the bar, in the top pills' style, reads "No gaps on <lens>".
 - A visually hidden `aria-live="polite"` line announces changes ("Showing iOS.
-  4 gaps.").
+  4 gaps."); with a frame selected (part 4) it adds "Selected <view title>.
+  Details in the inspector."
 - I/W/A (part 3) drive the lens through `usePlatformHotkeys`, mapping `"all"`
   to `"side"`; the three filter rows' descriptions gain "Screens".
 
@@ -985,6 +986,13 @@ scope does not have, and nothing is written back until the viewer chooses.
   a window listener; documented by a new registry row `wall-move` ("Move between
   screens (Screens map)", keys ← ↑ → ↓, scope `map`, no `hotkeys`). Escape and
   I/W/A as above.
+- **The inspector** (part 4) is a named region (`role="region"`, id
+  `SCREEN_INSPECTOR_ID`, `aria-label` "<view> on the wall"). While it shows,
+  the selected frame carries `aria-current`, `aria-controls` and
+  `aria-describedby` pointing at it; Tab from the selected frame moves into its
+  first control (it comes after the whole canvas in the page), and Shift+Tab
+  from that control returns to the frame. With a panel open there is no
+  inspector, and the frame points at nothing.
 - **Colour is never alone:** every state has a word or glyph; stale is an amber
   ring plus a "Stale" badge with a clock glyph; no-shot is a dashed amber border
   plus its words.
