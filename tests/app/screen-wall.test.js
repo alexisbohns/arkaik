@@ -401,3 +401,90 @@ const CELL_EVENTS = [
   const wall = wallOf({ nodes: ORDER_NODES, edges: ORDER_EDGES, productId: "app" });
   check("anyShot: false when no slot holds a value", wall.anyShot === false);
 }
+
+// --- Counts, gaps, lens and words (spec § Counts and gaps) -----------------
+
+const shotAt = (ts) => ({ ts, source: "ci", form: "url" });
+const COUNT_NODES = [
+  flow("F-count", "Count", [V("V-1"), V("V-2"), V("V-1"), V("V-3"), V("V-4")]),
+  view("V-1", "One", {
+    metadata: {
+      platformScreenshots: { web: "https://x/1w.png", android: "https://x/1a.png" },
+      platformScreenshotMeta: { web: shotAt(T0) },
+    },
+  }),
+  view("V-2", "Two", { platforms: ["web", "ios"], metadata: { platformScreenshots: { web: "https://x/2w.png" }, platformScreenshotMeta: { web: shotAt(T2) } } }),
+  view("V-3", "Three", { status: "development" }),
+  view("V-4", "Four", { platforms: ["web"] }),
+];
+const COUNT_EVENTS = [toLive("e-1-web", "V-1", T1, { platform: "web", actor: "alexis" })];
+
+{
+  const {
+    countStrip, isGapCell, isGapFrame, gapCount, resolveLens, lensPlatforms, cellWord, stripCountsLine,
+  } = wallModule;
+  const wall = wallOf({ nodes: COUNT_NODES, events: COUNT_EVENTS, productId: "app" });
+  const strip = wall.strips[0];
+  const states = (viewId) => wall.platforms.map((p) => wall.screens.get(viewId).cells[p].state);
+  check("count fixture: the states the counts below read",
+    same(states("V-1"), ["live-stale", "live-no-shot", "live-current"]) &&
+      same(states("V-2"), ["live-current", "live-no-shot", "absent"]) &&
+      same(states("V-3"), ["not-live", "not-live", "not-live"]) &&
+      same(states("V-4"), ["live-no-shot", "absent", "absent"]),
+    show(["V-1", "V-2", "V-3", "V-4"].map(states)));
+
+  check("countStrip on one platform: distinct views; on excludes absent; stale and no-shot pairs",
+    same(countStrip(wall, strip, "web"), { views: 4, perPlatform: { web: { on: 4, live: 3 } }, stale: 1, noShot: 1 }),
+    show(countStrip(wall, strip, "web")));
+  check("countStrip side by side: every platform, pairs summed",
+    same(countStrip(wall, strip, "side"), {
+      views: 4,
+      perPlatform: { web: { on: 4, live: 3 }, ios: { on: 3, live: 2 }, android: { on: 2, live: 1 } },
+      stale: 1,
+      noShot: 3,
+    }),
+    show(countStrip(wall, strip, "side")));
+
+  check("stripCountsLine: live over on, then the non-zero stale and no-shot counts",
+    stripCountsLine(wall, strip, "web") === "3/4 live on Web · 1 stale · 1 without a shot" &&
+      stripCountsLine(wall, strip, "ios") === "2/3 live on iOS · 2 without a shot" &&
+      stripCountsLine(wall, strip, "android") === "1/2 live on Android",
+    show(["web", "ios", "android"].map((lens) => stripCountsLine(wall, strip, lens))));
+  check("stripCountsLine side by side: per platform, then the totals",
+    stripCountsLine(wall, strip, "side") === "Web 3/4 · iOS 2/3 · Android 1/2 · 1 stale · 3 without a shot",
+    stripCountsLine(wall, strip, "side"));
+
+  check("isGapCell: live-stale and live-no-shot only",
+    ["live-stale", "live-no-shot"].every((state) => isGapCell({ state })) &&
+      ["live-current", "not-live", "absent"].every((state) => !isGapCell({ state })));
+  check("isGapFrame: a gap on any lens platform",
+    isGapFrame(wall, "V-1", "web") && !isGapFrame(wall, "V-1", "android") && isGapFrame(wall, "V-2", "side") && !isGapFrame(wall, "V-3", "side"));
+  check("isGapFrame: false for a view not on the wall", !isGapFrame(wall, "V-missing", "side"));
+  check("gapCount: distinct (view, lens platform) pairs, a repeated view once",
+    gapCount(wall, "web") === 2 && gapCount(wall, "ios") === 2 && gapCount(wall, "android") === 0 && gapCount(wall, "side") === 4,
+    show(["web", "ios", "android", "side"].map((lens) => gapCount(wall, lens))));
+
+  check("lensPlatforms: the lens, or every wall platform side by side",
+    same(lensPlatforms(wall, "ios"), ["ios"]) && same(lensPlatforms(wall, "side"), ["web", "ios", "android"]));
+
+  check("resolveLens: a stored platform or side is kept when the wall has it",
+    resolveLens("ios", wall) === "ios" && resolveLens("side", wall) === "side");
+  check("resolveLens: nothing stored is the first platform", resolveLens(null, wall) === "web");
+  const twoPlatforms = wallOf({ nodes: COUNT_NODES, products: [{ id: "app", platforms: ["ios", "android"] }], productId: "app" });
+  check("resolveLens: a platform the scope lacks falls back to the first",
+    same(twoPlatforms.platforms, ["ios", "android"]) && resolveLens("web", twoPlatforms) === "ios");
+  const onePlatform = wallOf({ nodes: COUNT_NODES, products: [{ id: "app", platforms: ["ios"] }], productId: "app" });
+  check("resolveLens: one platform is that platform, whatever is stored",
+    resolveLens("side", onePlatform) === "ios" && resolveLens("web", onePlatform) === "ios");
+  const noPlatforms = wallOf({ nodes: COUNT_NODES, products: [{ id: "app", platforms: [] }], productId: "app" });
+  check("resolveLens: an empty menu reads as web", same(noPlatforms.platforms, []) && resolveLens(null, noPlatforms) === "web");
+
+  check("cellWord: the side-by-side word for every state",
+    cellWord({ state: "live-current", status: "live" }) === "Live" &&
+      cellWord({ state: "live-stale", status: "live" }) === "Stale" &&
+      cellWord({ state: "live-no-shot", status: "live" }) === "No shot" &&
+      cellWord({ state: "not-live", status: null }) === "Unset" &&
+      cellWord({ state: "not-live", status: "releasing" }) === "Releasing" &&
+      cellWord({ state: "not-live", status: "archived" }) === "Archived" &&
+      cellWord({ state: "absent", status: "live" }) === "Absent");
+}

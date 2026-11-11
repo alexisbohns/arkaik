@@ -580,3 +580,93 @@ function evidenceOf(ev: JournalEvent | null): Omit<LiveProof, "kind"> {
     detail: typeof ev?.detail === "string" && ev.detail !== "" ? ev.detail : null,
   };
 }
+
+/* --- Counts, gaps, lens (spec § Counts and gaps) -------------------------- */
+
+/** [lens] for a platform lens; wall.platforms for "side". */
+export function lensPlatforms(wall: Wall, lens: WallLens): PlatformId[] {
+  return lens === "side" ? [...wall.platforms] : [lens];
+}
+
+/** A gap: live with a stale shot, or live with no shot. */
+export function isGapCell(cell: PlatformCell): boolean {
+  return cell.state === "live-stale" || cell.state === "live-no-shot";
+}
+
+export function isGapFrame(wall: Wall, viewId: string, lens: WallLens): boolean {
+  const screen = wall.screens.get(viewId);
+  if (!screen) return false;
+  return lensPlatforms(wall, lens).some((platform) => {
+    const cell = screen.cells[platform];
+    return cell !== undefined && isGapCell(cell);
+  });
+}
+
+/** Distinct (view, lens platform) pairs that are gaps, over the whole wall. */
+export function gapCount(wall: Wall, lens: WallLens): number {
+  let count = 0;
+  for (const screen of wall.screens.values()) {
+    for (const platform of lensPlatforms(wall, lens)) {
+      const cell = screen.cells[platform];
+      if (cell !== undefined && isGapCell(cell)) count += 1;
+    }
+  }
+  return count;
+}
+
+export function countStrip(wall: Wall, strip: WallStrip, lens: WallLens): StripCounts {
+  const counts: StripCounts = { views: strip.viewIds.length, perPlatform: {}, stale: 0, noShot: 0 };
+  for (const platform of lensPlatforms(wall, lens)) {
+    const tally = { on: 0, live: 0 };
+    for (const viewId of strip.viewIds) {
+      const cell = wall.screens.get(viewId)?.cells[platform];
+      if (!cell || cell.state === "absent") continue;
+      tally.on += 1;
+      if (cell.state === "not-live") continue;
+      tally.live += 1;
+      if (cell.state === "live-stale") counts.stale += 1;
+      if (cell.state === "live-no-shot") counts.noShot += 1;
+    }
+    counts.perPlatform[platform] = tally;
+  }
+  return counts;
+}
+
+/**
+ * The lens to render: with fewer than two platforms, the only one (web for an
+ * empty menu); otherwise the stored lens when the wall has it, else the first.
+ */
+export function resolveLens(stored: WallLens | null, wall: Wall): WallLens {
+  if (wall.platforms.length < 2) return wall.platforms[0] ?? "web";
+  if (stored === "side" || (stored !== null && wall.platforms.includes(stored))) return stored;
+  return wall.platforms[0];
+}
+
+/** The truth table's side-by-side word: "Live" | "Stale" | "No shot" | "Unset" | "Absent" | a status label. */
+export function cellWord(cell: PlatformCell): string {
+  switch (cell.state) {
+    case "live-current":
+      return "Live";
+    case "live-stale":
+      return "Stale";
+    case "live-no-shot":
+      return "No shot";
+    case "absent":
+      return "Absent";
+    case "not-live":
+      return cell.status === null ? "Unset" : STATUSES.find((entry) => entry.id === cell.status)?.label ?? cell.status;
+  }
+}
+
+/** R9 header text: "3/5 live on iOS · 1 stale · 2 without a shot", or "Web 3/5 · iOS 4/5 · …" for "side". */
+export function stripCountsLine(wall: Wall, strip: WallStrip, lens: WallLens): string {
+  const counts = countStrip(wall, strip, lens);
+  const tally = (platform: PlatformId) => counts.perPlatform[platform] ?? { on: 0, live: 0 };
+  const parts =
+    lens === "side"
+      ? lensPlatforms(wall, lens).map((platform) => `${platformLabel(platform)} ${tally(platform).live}/${tally(platform).on}`)
+      : [`${tally(lens).live}/${tally(lens).on} live on ${platformLabel(lens)}`];
+  if (counts.stale > 0) parts.push(`${counts.stale} stale`);
+  if (counts.noShot > 0) parts.push(`${counts.noShot} without a shot`);
+  return parts.join(" · ");
+}
