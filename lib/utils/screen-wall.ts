@@ -350,12 +350,15 @@ function buildScreens(
   platforms: readonly PlatformId[],
 ): Map<string, WallScreen> {
   const touchesByView = indexTouches(input.nodes, input.edges);
-  const coveringByView = indexCovering(input.nodes, input.edges);
+  const { coveringByView, coversByTarget } = indexCovering(input.nodes, input.edges);
   const journal = indexEvents(input.events);
   const screens = new Map<string, WallScreen>();
   for (const viewNode of viewsById.values()) {
     const covering = coveringByView.get(viewNode.id) ?? [];
-    const statuses = getEffectivePlatformStatuses(viewNode, input.nodes, input.edges);
+    // The app's own rule, handed only what it reads for this view: its
+    // covering acceptances and the covers edges that point at it — the same
+    // answer as the whole snapshot, without scanning it once per view.
+    const statuses = getEffectivePlatformStatuses(viewNode, covering, coversByTarget.get(viewNode.id) ?? []);
     const onPlatforms = scopedPlatforms(viewNode, input.scope);
     const cells: Partial<Record<PlatformId, PlatformCell>> = {};
     for (const platform of platforms) {
@@ -407,18 +410,28 @@ function compareIds(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-/** The journal bucketed once: events by the node they name, plus every shipped deliverable. */
+/**
+ * The journal bucketed once: events by the node they name, and shipped
+ * deliverables by each id in their `node_ids` — so a cell reads only the
+ * events that can name it, however long the journal grows.
+ */
 interface JournalIndex {
   byNode: ReadonlyMap<string, JournalEvent[]>;
-  shipped: readonly JournalEvent[];
+  shippedByNode: ReadonlyMap<string, JournalEvent[]>;
 }
 
 function indexEvents(events: readonly JournalEvent[]): JournalIndex {
   const byNode = new Map<string, JournalEvent[]>();
-  const shipped: JournalEvent[] = [];
+  const shippedByNode = new Map<string, JournalEvent[]>();
   for (const ev of events) {
     if (ev.type === "deliverable.shipped") {
-      shipped.push(ev);
+      if (!Array.isArray(ev.node_ids)) continue;
+      for (const id of new Set(ev.node_ids)) {
+        if (typeof id !== "string") continue;
+        const bucket = shippedByNode.get(id) ?? [];
+        bucket.push(ev);
+        shippedByNode.set(id, bucket);
+      }
       continue;
     }
     if (typeof ev.node_id !== "string") continue;
@@ -426,14 +439,24 @@ function indexEvents(events: readonly JournalEvent[]): JournalIndex {
     bucket.push(ev);
     byNode.set(ev.node_id, bucket);
   }
-  return { byNode, shipped };
+  return { byNode, shippedByNode };
 }
 
-/** The acceptances covering each anchor, in snapshot order — `acceptancesCovering`, indexed once. */
-function indexCovering(nodes: readonly DataNode[], edges: readonly DataEdge[]): Map<string, DataNode[]> {
+/**
+ * The acceptances covering each anchor, in snapshot order — `acceptancesCovering`,
+ * indexed once — and the covers edges by target, in edge order.
+ */
+function indexCovering(
+  nodes: readonly DataNode[],
+  edges: readonly DataEdge[],
+): { coveringByView: Map<string, DataNode[]>; coversByTarget: Map<string, DataEdge[]> } {
   const anchorsBySource = new Map<string, string[]>();
+  const coversByTarget = new Map<string, DataEdge[]>();
   for (const edge of edges) {
     if (edge.edge_type !== "covers") continue;
+    const covers = coversByTarget.get(edge.target_id) ?? [];
+    covers.push(edge);
+    coversByTarget.set(edge.target_id, covers);
     const anchors = anchorsBySource.get(edge.source_id) ?? [];
     if (!anchors.includes(edge.target_id)) anchors.push(edge.target_id);
     anchorsBySource.set(edge.source_id, anchors);
@@ -447,7 +470,7 @@ function indexCovering(nodes: readonly DataNode[], edges: readonly DataEdge[]): 
       byAnchor.set(anchorId, covering);
     }
   }
-  return byAnchor;
+  return { coveringByView: byAnchor, coversByTarget };
 }
 
 interface CellContext {
@@ -473,10 +496,15 @@ function cellOf(viewNode: DataNode, platform: PlatformId, context: CellContext):
   const proof = proofOf(viewNode.id, related, platform, journal);
   if (!shot) return { ...base, state: "live-no-shot", proof };
 
+  // A deliverable naming the view and one of its acceptances is one event, counted once.
+  const shipped = new Set<JournalEvent>();
+  for (const id of [viewNode.id, ...related]) {
+    for (const ev of journal.shippedByNode.get(id) ?? []) shipped.add(ev);
+  }
   const events = [
     ...(journal.byNode.get(viewNode.id) ?? []),
     ...related.flatMap((id) => journal.byNode.get(id) ?? []),
-    ...journal.shipped,
+    ...shipped,
   ];
   const ids = new Set([viewNode.id, ...related]);
   const staleBecause = staleReasons(meta, events, viewNode.id, platform, related).map((ev) => reasonOf(ev, viewNode.id, ids));

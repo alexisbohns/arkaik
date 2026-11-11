@@ -633,3 +633,147 @@ const COUNT_EVENTS = [toLive("e-1-web", "V-1", T1, { platform: "web", actor: "al
     ]) && same(L.chipRects(frame, 0), []),
     show(L.chipRects(frame, 3)));
 }
+
+// --- Time budget at scale: a grown journal (review S1) ----------------------
+//
+// Measured on the review machine before the fix: 18 ms with no journal, 160 ms
+// with 20,000 events of which 5,000 shipped, 458 ms with 18,000 shipped — every
+// cell copied the whole shipped list, and every view's effective statuses
+// scanned every node and edge. The budget leaves room for slower CI machines.
+
+function grownProject({ shippedCount = 5000, statusCount = 15000 } = {}) {
+  const VIEWS = 500;
+  const platformsAll = ["web", "ios", "android"];
+  const nodes = [];
+  const edges = [];
+  for (let f = 0; f < 50; f += 1) {
+    nodes.push(flow(`F-${f}`, `Flow ${f}`, Array.from({ length: 10 }, (_, i) => V(`V-${f * 10 + i}`))));
+  }
+  for (let v = 0; v < VIEWS; v += 1) {
+    nodes.push(view(`V-${v}`, `View ${v}`, {
+      metadata: {
+        platformScreenshots: { web: `https://x/${v}w.png`, ios: `https://x/${v}i.png`, android: `https://x/${v}a.png` },
+        platformScreenshotMeta: { web: shotAt(T0), ios: shotAt(T0), android: shotAt(T0) },
+      },
+    }));
+  }
+  for (let a = 0; a < VIEWS; a += 1) nodes.push(ac(`AC-${a}`, platformsAll));
+  for (let k = 0; k < 100; k += 1) nodes.push(node(`API-${k}`, "api-endpoint", `Endpoint ${k}`));
+  for (let a = 0; a < VIEWS; a += 1) {
+    edges.push(edge(`AC-${a}`, "covers", `V-${a}`));
+    edges.push(edge(`AC-${a}`, "covers", `V-${(a + 1) % VIEWS}`));
+  }
+  for (let v = 0; v < VIEWS; v += 1) {
+    for (let c = 0; c < 6; c += 1) edges.push(edge(`V-${v}`, "calls", `API-${(v * 7 + c * 13) % 100}`));
+  }
+  const events = [];
+  const stamp = (i) => new Date(Date.parse(T1) + i * 1000).toISOString();
+  for (let i = 0; i < statusCount; i += 1) {
+    const subject = i % 2 === 0 ? `V-${i % VIEWS}` : `AC-${i % VIEWS}`;
+    events.push(toLive(`s-${String(i).padStart(6, "0")}`, subject, stamp(i), { platform: platformsAll[i % 3], actor: i % 5 === 0 ? "arkaik-ci" : "alexis" }));
+  }
+  for (let i = 0; i < shippedCount; i += 1) {
+    events.push({
+      id: `d-${String(i).padStart(6, "0")}`,
+      ts: stamp(statusCount + i),
+      type: "deliverable.shipped",
+      deliverable_id: `del-${i}`,
+      title: `Deliverable ${i}`,
+      node_ids: [`V-${(i * 3) % VIEWS}`, `AC-${(i * 11) % VIEWS}`],
+      ...(i % 4 === 0 ? { platform: platformsAll[i % 3] } : {}),
+    });
+  }
+  return { nodes, edges, events };
+}
+
+{
+  const project = grownProject();
+  check("grown project: 500 views, 500 acceptances, 4,000 edges, 20,000 events of which 5,000 shipped",
+    project.nodes.filter((n) => n.species === "view").length === 500 &&
+      project.nodes.filter((n) => n.species === "acceptance").length === 500 &&
+      project.edges.length === 4000 &&
+      project.events.length === 20000 &&
+      project.events.filter((ev) => ev.type === "deliverable.shipped").length === 5000);
+  const bundleProject = { root_node_id: null, metadata: { products: PRODUCTS } };
+  const input = {
+    ...project,
+    project: bundleProject,
+    definition: null,
+    scope: resolveProductScope({ project: bundleProject }, null),
+    graph: buildProductGraph(project.nodes, project.edges),
+  };
+  const build = () => buildWall(input);
+  const warm = build(); // warm-up, not timed
+  check("grown project: every view on the wall, with a shot on every platform",
+    warm.screens.size === 500 && [...warm.screens.values()].every((screen) => Object.values(screen.cells).every((cell) => cell.shot !== null)));
+  const runs = 5;
+  const start = performance.now();
+  for (let i = 0; i < runs; i += 1) build();
+  const mean = (performance.now() - start) / runs;
+  check(`grown project: buildWall under 60 ms on average (${mean.toFixed(1)} ms)`, mean < 60);
+}
+
+// Equivalence: indexing shipped events by the ids they name changes no answer.
+// EQUIV_EXPECTED was captured from the code before that index existed.
+
+const EQUIV_NODES = [
+  flow("F-eq", "Equivalence", [V("V-e1"), V("V-e2"), V("V-e3")]),
+  view("V-e1", "E one", {
+    metadata: { platformScreenshots: { web: "https://x/e1w.png", ios: "https://x/e1i.png" }, platformScreenshotMeta: { web: shotAt(T0), ios: shotAt(T0) } },
+  }),
+  view("V-e2", "E two", {
+    metadata: { platformScreenshots: { web: "https://x/e2w.png", ios: "https://x/e2i.png" }, platformScreenshotMeta: { web: shotAt(T0), ios: shotAt(T2) } },
+  }),
+  view("V-e3", "E three", {
+    metadata: { platformScreenshots: { android: "https://x/e3a.png" }, platformScreenshotMeta: { android: shotAt(T0) } },
+  }),
+  ac("AC-e1", ["web", "ios"]),
+  ac("AC-e2", ["web"]),
+  ac("AC-e3", ["android"]),
+  ac("AC-unrelated", ["web", "ios", "android"]),
+];
+const EQUIV_EDGES = [
+  edge("AC-e1", "covers", "V-e1"),
+  edge("AC-e2", "covers", "V-e1"),
+  edge("AC-e3", "covers", "V-e3"),
+];
+const shipped = (id, ts, node_ids, extra = {}) => ({ id, ts, type: "deliverable.shipped", deliverable_id: `del-${id}`, title: `Ship ${id}`, node_ids, ...extra });
+const EQUIV_EVENTS = [
+  shipped("ship-1", T1, ["V-e1", "AC-e1"]),
+  shipped("ship-2", T2, ["AC-e2"], { platform: "web" }),
+  shipped("ship-3", T1, ["V-e2"], { platform: "ios" }),
+  shipped("ship-4", T3, ["AC-e3", "V-e2"]),
+  shipped("ship-5", T0, ["V-e1"]),
+  shipped("ship-6", T3, ["AC-unrelated"]),
+  shipped("ship-7", T2, ["V-e3", 42], { title: "" }),
+  toLive("e-eq-ac1", "AC-e1", T2, { platform: "ios", actor: "arkaik-ci" }),
+  toLive("e-eq-v2", "V-e2", T1, { platform: "web", actor: "alexis" }),
+];
+const EQUIV_EXPECTED = {
+  "V-e1": {
+    web: ["live-stale", "live", [{"eventId": "ship-2", "ts": "2026-11-01T12:00:00.000Z", "kind": "shipped", "nodeId": "AC-e2", "label": "Shipped: Ship ship-2"}, {"eventId": "ship-1", "ts": "2026-11-01T11:00:00.000Z", "kind": "shipped", "nodeId": "V-e1", "label": "Shipped: Ship ship-1"}], {"kind": "unknown", "ts": null, "actor": null, "detail": null}],
+    ios: ["live-stale", "live", [{"eventId": "e-eq-ac1", "ts": "2026-11-01T12:00:00.000Z", "kind": "status", "nodeId": "AC-e1", "label": "AC-e1 moved to Live on iOS"}, {"eventId": "ship-1", "ts": "2026-11-01T11:00:00.000Z", "kind": "shipped", "nodeId": "V-e1", "label": "Shipped: Ship ship-1"}], {"kind": "deploy", "ts": "2026-11-01T12:00:00.000Z", "actor": "arkaik-ci", "detail": null}],
+    android: ["not-live", null, [], null],
+  },
+  "V-e2": {
+    web: ["live-stale", "live", [{"eventId": "ship-4", "ts": "2026-11-01T13:00:00.000Z", "kind": "shipped", "nodeId": "V-e2", "label": "Shipped: Ship ship-4"}, {"eventId": "e-eq-v2", "ts": "2026-11-01T11:00:00.000Z", "kind": "status", "nodeId": "V-e2", "label": "V-e2 moved to Live on Web"}], {"kind": "hand", "ts": "2026-11-01T11:00:00.000Z", "actor": "alexis", "detail": null}],
+    ios: ["live-stale", "live", [{"eventId": "ship-4", "ts": "2026-11-01T13:00:00.000Z", "kind": "shipped", "nodeId": "V-e2", "label": "Shipped: Ship ship-4"}], {"kind": "hand", "ts": null, "actor": null, "detail": null}],
+    android: ["live-no-shot", "live", [], {"kind": "hand", "ts": null, "actor": null, "detail": null}],
+  },
+  "V-e3": {
+    web: ["not-live", null, [], null],
+    ios: ["not-live", null, [], null],
+    android: ["live-stale", "live", [{"eventId": "ship-4", "ts": "2026-11-01T13:00:00.000Z", "kind": "shipped", "nodeId": "AC-e3", "label": "Shipped: Ship ship-4"}, {"eventId": "ship-7", "ts": "2026-11-01T12:00:00.000Z", "kind": "shipped", "nodeId": "V-e3", "label": "Shipped: del-ship-7"}], {"kind": "unknown", "ts": null, "actor": null, "detail": null}],
+  },
+};
+
+{
+  const wall = wallOf({ nodes: EQUIV_NODES, edges: EQUIV_EDGES, events: EQUIV_EVENTS, productId: null, root: null });
+  const actual = Object.fromEntries(
+    [...wall.screens.values()].map((screen) => [
+      screen.viewId,
+      Object.fromEntries(Object.entries(screen.cells).map(([platform, c]) => [platform, [c.state, c.status, c.staleBecause, c.proof]])),
+    ]),
+  );
+  check("indexed shipped events: every cell's state, stale reasons and proof as before", same(actual, EQUIV_EXPECTED), show(actual));
+}

@@ -580,8 +580,9 @@ An event about a related acceptance counts under the same three rules as one
 about the view (status change on `p` or project-wide; ref merged;
 `deliverable.shipped` whose `node_ids` include it). The module keeps importing
 only `@arkaik/schema` types, so its loader needs no change. The wall buckets
-events by node id once and passes each view only its bucket plus every
-`deliverable.shipped`.
+events by node id once, and `deliverable.shipped` events by each id in their
+`node_ids`, and passes each view only the buckets of its own id and its
+related ids (a shipped event naming several of them once).
 
 ### Live proof
 
