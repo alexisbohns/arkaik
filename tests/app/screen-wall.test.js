@@ -830,3 +830,15 @@ const EQUIV_EXPECTED = {
   const layout = wallModule.layoutWall(wall, "web", () => undefined);
   check("…and the layout keeps both strips' rects", layout.strips.size === 2, show([...layout.strips.keys()]));
 }
+
+// --- The side-by-side gaps are shared (review S4) ---------------------------
+
+{
+  const L = wallModule;
+  check("SIDE_TAG_GAP and SIDE_WORD_GAP are exported: 6 and 8", L.SIDE_TAG_GAP === 6 && L.SIDE_WORD_GAP === 8, show([L.SIDE_TAG_GAP, L.SIDE_WORD_GAP]));
+  const wall = wallOf({ nodes: ORDER_NODES, edges: ORDER_EDGES, productId: "app" });
+  const geometry = L.sideGeometry(wall, "V-a", () => undefined);
+  const widest = Math.max(...Object.values(geometry.miniWidths));
+  check("sideGeometry's box is the tag column, the tag gap, the widest mini, the word gap and the word column",
+    geometry.shotWidth === L.SIDE_TAG_W + L.SIDE_TAG_GAP + widest + L.SIDE_WORD_GAP + L.SIDE_WORD_W, show(geometry));
+}

@@ -117,7 +117,7 @@ export function neighbourFrame(layout: WallLayout, frameId: string, dir: "left" 
 export function chipRects(frame: WallBox, count: number): Rect[];
 ```
 
-Constants, all exported, values and meanings as the spec's table: `FRAME_H` 280, `CAPTION_GAP` 8, `CAPTION_H` 36, `FRAME_NODE_H` 324, `FRAME_MIN_W` 144, `DEFAULT_ASPECT: Record<PlatformId, number>` = `{ web: 1.6, ios: 0.4615, android: 0.45 }`, `ASPECT_MIN` 0.3, `ASPECT_MAX` 2.4, `ITEM_GAP` 24, `ARM_W` 24, `END_W` 12, `JUMP_W` 144, `JUMP_H` 96, `JUMP_Y` 92 (the tile's y offset), `EMPTY_W` 280, `HEADER_H` 44, `HEADER_GAP` 12, `HEADER_MIN_W` 360, `STRIP_GAP` 72, `LOOSE_PER_ROW` 8, `ROW_GAP` 40, `SIDE_ROW_GAP` 6, `SIDE_TAG_W` 28, `SIDE_WORD_W` 72, `CHIP_W` 220, `CHIP_H` 28, `CHIP_GAP` 6, `CHIP_MAX` 8, `CHIP_OFFSET` 16, `LOD_ZOOM` 0.35.
+Constants, all exported, values and meanings as the spec's table: `FRAME_H` 280, `CAPTION_GAP` 8, `CAPTION_H` 36, `FRAME_NODE_H` 324, `FRAME_MIN_W` 144, `DEFAULT_ASPECT: Record<PlatformId, number>` = `{ web: 1.6, ios: 0.4615, android: 0.45 }`, `ASPECT_MIN` 0.3, `ASPECT_MAX` 2.4, `ITEM_GAP` 24, `ARM_W` 24, `END_W` 12, `JUMP_W` 144, `JUMP_H` 96, `JUMP_Y` 92 (the tile's y offset), `EMPTY_W` 280, `HEADER_H` 44, `HEADER_GAP` 12, `HEADER_MIN_W` 360, `STRIP_GAP` 72, `LOOSE_PER_ROW` 8, `ROW_GAP` 40, `SIDE_ROW_GAP` 6, `SIDE_TAG_W` 28, `SIDE_WORD_W` 72, `SIDE_TAG_GAP` 6 (after the tag column), `SIDE_WORD_GAP` 8 (before the word column; with `SIDE_TAG_GAP`, the two inner gaps `sideGeometry` adds, so a side frame drawn from them matches it), `CHIP_W` 220, `CHIP_H` 28, `CHIP_GAP` 6, `CHIP_MAX` 8, `CHIP_OFFSET` 16, `LOD_ZOOM` 0.35.
 
 ### Part 2 — schema (`packages/schema/src/maps.ts`, `bundle.ts`)
 

@@ -63,8 +63,8 @@ export const CHIP_OFFSET = 16;
 export const LOD_ZOOM = 0.35;
 
 /** The gaps around a side-by-side mini: after the tag column, before the word column. */
-const SIDE_TAG_GAP = 6;
-const SIDE_WORD_GAP = 8;
+export const SIDE_TAG_GAP = 6;
+export const SIDE_WORD_GAP = 8;
 
 export type WallBoxKind = "header" | "frame" | "arm" | "end" | "jump" | "empty";
 
