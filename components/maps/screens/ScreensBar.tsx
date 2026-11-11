@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { CircleCheckIcon, CircleDashedIcon, LayersIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
@@ -35,12 +36,18 @@ function noGapsLine(lens: WallLens): string {
  * scope has fewer than two platforms (the arity rule: with one there is
  * nothing to choose); the gaps switch is always there.
  *
- * A `bg-card` segment in the Toolbar skin. Below a 40rem canvas it spans the
- * width (the controller's `@container` gives it 12px gutters), the lens takes
- * what the switch leaves and collapses to icons below `md` — the segmented
- * control's own breakpoint, which `components/ui/` keeps as it is. It never
- * scrolls sideways: every `.overflow-x-auto` traps the vertical wheel
- * (app/globals.css).
+ * A `bg-card` segment in the Toolbar skin. It answers to the canvas's own
+ * width (the controller's `@container`), never the window's: a panel narrows
+ * the canvas without narrowing the window. From a 33rem canvas up every
+ * label shows on one line (the labelled bar is about 481px, plus its 12px
+ * gutters; every `@max-[33rem]` below is that one breakpoint). Below it the bar spans the width, the lens options show their
+ * icons only (each keeps its accessible name and gets a `title`) and the gaps
+ * switch keeps its icon and count and drops its word — so nothing wraps or
+ * overlaps down to a 280px canvas. The segmented control collapses its labels
+ * by the viewport (`md`), and `components/ui/` is not edited by hand, so the
+ * bar overrides that from outside: its label spans show or hide by the
+ * container query instead. It never scrolls sideways: every
+ * `.overflow-x-auto` traps the vertical wheel (app/globals.css).
  *
  * With gaps only on and nothing to fix on the lens, a status pill above the
  * bar says so ("No gaps on iOS") and nothing on the wall fades; the switch
@@ -65,6 +72,18 @@ export function ScreensBar({
   ];
   const gapsWord = `${gapCount} ${gapCount === 1 ? "gap" : "gaps"}`;
 
+  // A lens option shown as its icon alone still says what it is on hover: the
+  // shared control takes no per-option `title`, so the bar copies each
+  // option's accessible name onto it once the buttons exist.
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const lensNames = lensOptions.map((option) => option.label).join("|");
+  useEffect(() => {
+    toolbarRef.current?.querySelectorAll<HTMLButtonElement>('[role="group"] > button').forEach((button) => {
+      const name = button.getAttribute("aria-label");
+      if (name) button.title = name;
+    });
+  }, [lensNames]);
+
   return (
     <>
       {/* Gaps only with nothing to fix fades nothing (the controller hands the
@@ -82,7 +101,8 @@ export function ScreensBar({
       <div
         role="toolbar"
         aria-label="Screens display"
-        className="pointer-events-auto flex items-center gap-2 rounded-xl border bg-card p-1.5 shadow-md @max-[40rem]:w-full"
+        ref={toolbarRef}
+        className="pointer-events-auto flex items-center gap-2 rounded-xl border bg-card p-1.5 whitespace-nowrap shadow-md @max-[33rem]:w-full"
       >
         {platforms.length >= 2 && (
           <SegmentedControl<WallLens>
@@ -91,7 +111,7 @@ export function ScreensBar({
             onChange={onLensChange}
             ariaLabel="Platform lens"
             collapseLabels
-            className="@max-[40rem]:flex @max-[40rem]:min-w-0 @max-[40rem]:flex-1 @max-[40rem]:[&>button]:flex-1 @max-[40rem]:[&>button]:justify-center"
+            className="[&>button>span]:inline! @max-[33rem]:flex @max-[33rem]:min-w-0 @max-[33rem]:flex-1 @max-[33rem]:[&>button]:flex-1 @max-[33rem]:[&>button]:justify-center @max-[33rem]:[&>button>span]:hidden!"
           />
         )}
         <Button
@@ -100,11 +120,12 @@ export function ScreensBar({
           size="sm"
           aria-pressed={gapsOnly}
           aria-label={`Gaps only, ${gapsWord}`}
+          title="Gaps only"
           onClick={() => onGapsOnlyChange(!gapsOnly)}
           className="cursor-pointer"
         >
           <CircleDashedIcon aria-hidden />
-          <span>Gaps only</span>
+          <span className="@max-[33rem]:hidden">Gaps only</span>
           <span
             data-gap-count=""
             className={cn(
