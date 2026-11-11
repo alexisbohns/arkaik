@@ -439,7 +439,7 @@ const AUG = () => audit("2026-08", "2026-08-31T00:00:00.000Z");
   check("a scope.plan on any other event type is not a plan record", isPlanRecord(resolved("F-1", T(10), { scope: { plan: PLAN } })) === false);
   check(
     "an empty or missing plan id is not a plan record, and nothing malformed throws",
-    [null, undefined, 7, "x", {}, audit(PLAN, T(10), { scope: { plan: "" } }), audit(PLAN, T(10), { scope: null })].every(
+    [null, undefined, 7, "x", {}, audit("2026-09", T(10), { scope: { plan: "" } }), audit("2026-09", T(10), { scope: null })].every(
       (value) => isPlanRecord(value) === false,
     ),
   );
@@ -479,6 +479,47 @@ const AUG = () => audit("2026-08", "2026-08-31T00:00:00.000Z");
     "no plan record: recordedSinceIds equals recordedAuditIds",
     recordedSinceIds(NO_PLAN_SHUFFLED).join() === recordedAuditIds(NO_PLAN_SHUFFLED).join(),
   );
+}
+
+// --- a malformed plan record is still a plan record ------------------------------
+//
+// A record whose audit_id is a plan id but whose scope.plan is missing or not a
+// string is a damaged plan record, never a full audit: read as one, it would
+// become the anchor and clear every stale cell.
+
+{
+  const damaged = [
+    audit(PLAN, T(10)),
+    audit(PLAN, T(10), { scope: null }),
+    audit(PLAN, T(10), { scope: { plan: "" } }),
+    audit(PLAN, T(10), { scope: { plan: 7, parts: [PART_SEC_WEB], scored: ["SEC-01::web"] } }),
+    audit(PLAN, T(10), { scope: { partial: true, cells: 1, parts: [PART_SEC_WEB], scored: ["SEC-01::web"] } }),
+  ];
+  check("a record whose audit_id is a plan id is a plan record, whatever its scope", damaged.every((record) => isPlanRecord(record) === true));
+  check("a plan-shaped audit_id on another event type is not a plan record", isPlanRecord(resolved("F-1", T(10), { audit_id: PLAN })) === false);
+
+  const missingPlan = damaged[4];
+  const plans = recordedPlans([AUG(), missingPlan]);
+  check(
+    "recordedPlans lists a damaged plan record under its audit_id, with no parts and no scored cells",
+    plans.length === 1 && plans[0].plan === PLAN && plans[0].parts.length === 0 && plans[0].scored.length === 0 && plans[0].ts === T(10),
+    JSON.stringify(plans),
+  );
+  check(
+    "a damaged plan record is never the anchor",
+    damaged.every((record) => scopeAnchorId([AUG(), record]) === "2026-08") && scopeAnchorId([missingPlan]) === null,
+  );
+  check("recordedSinceIds leaves a damaged plan record out", recordedSinceIds([AUG(), missingPlan]).join() === "2026-08");
+
+  const events = [AUG(), resolved("F-1", T(2)), resolved("F-3", T(3)), missingPlan];
+  const scope = deriveAuditScope(events, SECTION, LIBRARY, { widen: false });
+  check(
+    "a damaged plan record clears nothing: since stays on the audit, and its scored list is not read",
+    scope.since === "2026-08" && cellIds(scope).join() === "web:SEC-01:direct,ios:A11Y-01:direct",
+    JSON.stringify(scope),
+  );
+  const only = deriveAuditScope([resolved("F-1", T(2)), missingPlan], SECTION, LIBRARY);
+  check("with only a damaged plan record there is still no anchor", only.since === null && only.cells.length === 0, JSON.stringify(only));
 }
 
 // --- rule 1: a plan record is never the audit a scope is measured from ---------

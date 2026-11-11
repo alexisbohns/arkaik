@@ -120,13 +120,16 @@ const orderedRows = (events: readonly JournalEvent[] | null | undefined): Journa
 
 /**
  * Whether `event` is a plan record: a `quality.audit.completed` whose `scope`
- * names a plan (`matrix <planId> --record --plan`). Lenient: anything else,
- * malformed rows included, is not one.
+ * names a plan (`matrix <planId> --record --plan`), or whose `audit_id` is a
+ * plan id. The second reading catches a damaged record — `scope.plan` missing
+ * or not a string — which would otherwise pass for a full audit, become the
+ * anchor and clear every stale cell; it is read as a plan with no parts and no
+ * scored cells. Lenient: anything else, malformed rows included, is not one.
  */
 export function isPlanRecord(event: unknown): boolean {
   if (typeof event !== "object" || event === null) return false;
-  const { type, scope } = event as { type?: unknown; scope?: unknown };
-  return type === "quality.audit.completed" && readPlanScope(scope) !== null;
+  const { type, scope, audit_id: auditId } = event as { type?: unknown; scope?: unknown; audit_id?: unknown };
+  return type === "quality.audit.completed" && (readPlanScope(scope) !== null || isPlanId(auditId));
 }
 
 /** One recorded plan, as its event carries it. */
@@ -140,14 +143,19 @@ export interface RecordedPlan {
   ts: string | null;
 }
 
-/** Every plan record in the journal, in journal order, one entry per record. */
+/**
+ * Every plan record in the journal, in journal order, one entry per record. A
+ * damaged one (see {@link isPlanRecord}) is listed under its `audit_id`, with
+ * no parts and no scored cells: nothing it carries can be trusted to say which.
+ */
 export function recordedPlans(events: readonly JournalEvent[]): RecordedPlan[] {
   const plans: RecordedPlan[] = [];
   for (const event of orderedRows(events)) {
-    if (event.type !== "quality.audit.completed") continue;
+    if (!isPlanRecord(event)) continue;
     const reading = readPlanScope((event as { scope?: unknown }).scope);
-    if (reading === null) continue;
-    plans.push({ plan: reading.plan, parts: stringsOf(reading.parts), scored: stringsOf(reading.scored), ts: isString(event.ts) ? event.ts : null });
+    const ts = isString(event.ts) ? event.ts : null;
+    if (reading === null) plans.push({ plan: (event as { audit_id?: unknown }).audit_id as string, parts: [], scored: [], ts });
+    else plans.push({ plan: reading.plan, parts: stringsOf(reading.parts), scored: stringsOf(reading.scored), ts });
   }
   return plans;
 }
@@ -299,6 +307,8 @@ export function deriveAuditScope(
   // `ts` its part scored the cell at when the section holds it, else the
   // record's own index. Plan records before the anchor need no entry — the
   // anchor's index is already higher, and so is every resolution counted here.
+  // A damaged plan record (no readable `scope.plan`) names no cell, so it sets
+  // no floor: it is skipped here exactly as it is skipped as an anchor.
   const planFloor = new Map<string, { index: number; ts: string | null }>();
   for (let i = sinceIndex + 1; i < ordered.length; i++) {
     const event = ordered[i];
