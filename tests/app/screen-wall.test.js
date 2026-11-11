@@ -740,7 +740,10 @@ function grownProject({ shippedCount = 5000, statusCount = 15000 } = {}) {
   const start = performance.now();
   for (let i = 0; i < runs; i += 1) build();
   const mean = (performance.now() - start) / runs;
-  check(`grown project: buildWall under 60 ms on average (${mean.toFixed(1)} ms)`, mean < 60);
+  // 250 ms, not 60: CI's shared runners measured 79 ms for this (about 3.5 times a
+  // laptop), and a wall-clock budget that fails on a slow runner teaches nothing.
+  // The regression it guards cost about 200 ms on a laptop, so roughly 700 ms there.
+  check(`grown project: buildWall under 250 ms on average (${mean.toFixed(1)} ms)`, mean < 250);
 }
 
 // Equivalence: indexing shipped events by the ids they name changes no answer.
