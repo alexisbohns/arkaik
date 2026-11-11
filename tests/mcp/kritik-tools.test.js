@@ -16,14 +16,14 @@
 
 const { spawn, spawnSync } = require("child_process");
 const http = require("node:http");
-const { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require("fs");
+const { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require("fs");
 const { tmpdir } = require("os");
 const path = require("path");
 const readline = require("readline");
 
 const ROOT = path.join(__dirname, "..", "..");
 const SERVER = path.join(ROOT, "packages", "mcp", "dist", "index.js");
-// The CLI, for the kritik_plan parity check — test:mcp builds it first (arkaik/io lives in it).
+// The CLI, for the kritik_plan and plan-record parity checks — test:mcp builds it first (arkaik/io lives in it).
 const CLI = path.join(ROOT, "packages", "cli", "dist", "index.js");
 
 if (!existsSync(SERVER)) {
@@ -745,6 +745,114 @@ async function run() {
     session.stop();
   }
 
+  // --- a planned partial audit (repo mode) ------------------------------------
+  //
+  // kritik_matrix plan=true is `arkaik kritik matrix <planId> --record --plan`
+  // over MCP — one preparePlanRecord behind both, so one event. The parity check
+  // records the same plan with the CLI in a twin copied just before the MCP record.
+
+  const planned = startSession();
+  const twin = mkdtempSync(path.join(tmpdir(), "arkaik-mcp-kritik-twin-"));
+  try {
+    await planned.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "kritik-test", version: "0" } });
+    const made = await planned.call("kritik_plan", { runs: ["SEC:web"] });
+    const plan = made.json.plan ?? { parts: [] };
+    const planId = plan.planId;
+    const part = plan.parts[0] ?? { cells: [] };
+    check("kritik_plan writes the plan kritik_matrix records", !made.isError && made.json.written === true && typeof planId === "string", made.text.slice(0, 300));
+    for (const cell of part.cells) {
+      await planned.call("kritik_score", { criterion_id: cell.criterion_id, surface: cell.surface, level: 3, evidence: `${cell.criterion_id}.ts:1`, audit_id: part.auditId });
+    }
+    const before = planned.journal().length;
+
+    const partRecord = await planned.call("kritik_matrix", { audit_id: part.auditId, record: true });
+    check(
+      "kritik_matrix refuses to record a plan part on its own, and points to the plan",
+      partRecord.isError && partRecord.json.message.includes(`"${planId}"`) && partRecord.json.message.includes("plan=true") && planned.journal().length === before,
+      partRecord.text.slice(0, 300),
+    );
+    const bare = await planned.call("kritik_matrix", { audit_id: planId });
+    check("a plan id without plan=true is told to pass it", bare.isError && bare.json.message.includes("plan=true"), bare.text.slice(0, 300));
+    const both = await planned.call("kritik_matrix", { audit_id: planId, plan: true, scope: true });
+    check("plan=true with scope=true is refused", both.isError && both.json.message.includes("cannot be combined"), both.text.slice(0, 300));
+    const viaPart = await planned.call("kritik_matrix", { audit_id: part.auditId, plan: true });
+    check("plan=true with a part id names the plan to pass", viaPart.isError && viaPart.json.message.includes(`"${planId}"`), viaPart.text.slice(0, 300));
+
+    // An audit that now sorts after the part would win the merge on every cell both hold.
+    const foreign = `${planId.slice(0, 7)}-zz-foreign`;
+    mkdirSync(path.join(planned.dir, "docs", "quality", "audits", foreign), { recursive: true });
+    writeFileSync(
+      path.join(planned.dir, "docs", "quality", "audits", foreign, "scores.json"),
+      JSON.stringify({ audit_id: foreign, assessments: [{ criterion_id: part.cells[0]?.criterion_id, surface: "web", level: 1, evidence: "x.ts:1", audit_id: foreign }] }),
+    );
+    const outsorted = await planned.call("kritik_matrix", { audit_id: planId, plan: true, record: true });
+    check(
+      "plan=true refuses a plan one of whose parts an audit now sorts after, naming both",
+      outsorted.isError &&
+        outsorted.json.message.includes(`${part.auditId}: "${foreign}"`) &&
+        outsorted.json.message.includes("Make a new plan for the affected parts") &&
+        planned.journal().length === before,
+      outsorted.text.slice(0, 400),
+    );
+    rmSync(path.join(planned.dir, "docs", "quality", "audits", foreign), { recursive: true, force: true });
+
+    const preview = await planned.call("kritik_matrix", { audit_id: planId, plan: true });
+    check("plan=true without record previews and writes nothing", !preview.isError && preview.json.events?.length === 0 && planned.journal().length === before, preview.text.slice(0, 300));
+    check(
+      "the preview carries the plan marker",
+      preview.json.scope?.plan === planId && JSON.stringify(preview.json.scope?.parts) === JSON.stringify([part.auditId]) && preview.json.scope?.cells === part.cells.length,
+      String(JSON.stringify(preview.json.scope)).slice(0, 300),
+    );
+    check(
+      "and its coverage: a first audit that is a plan looked at its own cells only",
+      preview.json.coverage?.scored === part.cells.length &&
+        preview.json.coverage?.assessed === part.cells.length &&
+        preview.json.coverage?.surfaces?.web?.assessed === part.cells.length &&
+        preview.json.coverage?.applicable > part.cells.length,
+      String(JSON.stringify(preview.json.coverage)).slice(0, 300),
+    );
+    check(
+      "coverage_notes say it beside the web roll-up",
+      (preview.json.coverage_notes ?? []).some((note) => note.startsWith("web ") && note.includes(`from ${part.cells.length} of`)),
+      JSON.stringify(preview.json.coverage_notes),
+    );
+
+    cpSync(planned.dir, twin, { recursive: true });
+    const recorded = await planned.call("kritik_matrix", { audit_id: planId, plan: true, record: true });
+    const event = recorded.json.events?.[0] ?? {};
+    check(
+      "plan=true record=true appends one quality.audit.completed under the plan id",
+      !recorded.isError && recorded.json.events.length === 1 && event.type === "quality.audit.completed" && event.audit_id === planId && planned.journal().length === before + 1,
+      recorded.text.slice(0, 300),
+    );
+    check("a first audit that is a plan records no since", event.scope?.plan === planId && event.scope !== undefined && !("since" in event.scope), String(JSON.stringify(event.scope)).slice(0, 300));
+
+    const cli = spawnSync(process.execPath, [CLI, "kritik", "matrix", planId, "--record", "--plan"], { cwd: twin, encoding: "utf8" });
+    const twinEvents = readFileSync(path.join(twin, "docs", "arkaik", "journal.jsonl"), "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    const cliEvent = twinEvents[twinEvents.length - 1] ?? {};
+    const sorted = (value) =>
+      Array.isArray(value)
+        ? value.map(sorted)
+        : value !== null && typeof value === "object"
+          ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, sorted(value[key])]))
+          : value;
+    const payload = (e) => {
+      const { id: _id, ts: _ts, actor: _actor, ...rest } = e;
+      return JSON.stringify(sorted(rest));
+    };
+    check(
+      "kritik_matrix plan=true appends the same event as the CLI",
+      cli.status === 0 && payload(cliEvent) === payload(event),
+      `${cli.stderr}\nCLI: ${payload(cliEvent).slice(0, 300)}\nMCP: ${payload(event).slice(0, 300)}`,
+    );
+
+    const again = await planned.call("kritik_matrix", { audit_id: planId, plan: true, record: true });
+    check("recording the plan twice is refused", again.isError && again.json.message.includes("already recorded") && planned.journal().length === before + 1, again.text.slice(0, 300));
+  } finally {
+    planned.stop();
+    rmSync(twin, { recursive: true, force: true });
+  }
+
   // --- hosted mode -------------------------------------------------------------
   //
   // A stub server stands in for the hosted API. It covers: the reads
@@ -1455,6 +1563,12 @@ async function run() {
       "hosted kritik_scope since=<unknown> with no audit points at a restore, not record=true",
       emptySince.isError && pointsAtRestore(emptySince.json.message),
       emptySince.text.slice(0, 400),
+    );
+    const hostedPlan = await empty.call("kritik_matrix", { audit_id: "2026-11-zplan-1100", plan: true, record: true });
+    check(
+      "a hosted session refuses plan=true — a plan's parts live in the repository",
+      hostedPlan.isError && hostedPlan.json.message.includes("plan=true") && hostedPlan.json.message.includes("--bundle"),
+      hostedPlan.text.slice(0, 300),
     );
   } finally {
     empty.stop();

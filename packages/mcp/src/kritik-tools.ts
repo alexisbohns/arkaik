@@ -53,6 +53,7 @@ import {
   deriveQualityTrend,
   burndownRows,
   burndownSummary,
+  coverageNotes,
   detectRegressions,
   findingOpenedInput,
   findingResolvedInput,
@@ -110,7 +111,16 @@ import {
   scopedAuditTarget,
 } from "@arkaik/schema/src/cli/kritik-audit";
 import { loadProfile } from "@arkaik/schema/src/cli/kritik-paths";
-import { createPlan, loadPlan, planPath, planStatus, savePlan } from "@arkaik/schema/src/cli/kritik-plan";
+import {
+  createPlan,
+  listPlanIds,
+  loadPlan,
+  planPath,
+  planStatus,
+  preparePlanRecord,
+  savePlan,
+  type PlanRecord,
+} from "@arkaik/schema/src/cli/kritik-plan";
 import { existsSync } from "node:fs";
 import { loadKritikLibrary, readFullJournalEvents, resolveJournal } from "arkaik/io";
 import { ToolError, type ToolDefinition, type ToolHandler } from "./protocol";
@@ -479,7 +489,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
     {
       name: "kritik_matrix",
       description:
-        "The comparative quality matrix: a score and grade per (domain x surface), the weighted roll-up per surface, and open findings by priority lane. Anti-averaging caps are applied — one open Critical caps its cell at D, one open High at B — so a cell full of 3s cannot absorb a live defect. In repo mode this refreshes the audit's matrix.json, and with record=true appends quality.audit.completed; in hosted mode it is a read of the stored quality section, and record=true (with the audit_id kritik_score returned) records that scoped re-audit — the server computes the reading from the scores it holds, rather than accepting one on the wire. A scoped re-audit (scored with kritik_score scope=true, or, in repo mode, declared with scope=true here) returns `scope` and records the MERGED matrix through it with a scope marker, so the trend never reads its unscored cells as dropped; matrix.json stays this audit alone.",
+        "The comparative quality matrix: a score and grade per (domain x surface), the weighted roll-up per surface, and open findings by priority lane. Anti-averaging caps are applied — one open Critical caps its cell at D, one open High at B — so a cell full of 3s cannot absorb a live defect. In repo mode this refreshes the audit's matrix.json, and with record=true appends quality.audit.completed; in hosted mode it is a read of the stored quality section, and record=true (with the audit_id kritik_score returned) records that scoped re-audit — the server computes the reading from the scores it holds, rather than accepting one on the wire. A scoped re-audit (scored with kritik_score scope=true, or, in repo mode, declared with scope=true here) returns `scope` and records the MERGED matrix through it with a scope marker, so the trend never reads its unscored cells as dropped; matrix.json stays this audit alone. With plan=true (repo mode only) audit_id is a plan made by kritik_plan: it returns the plan's merged reading — every audit through its last part, latest-wins — with `scope` (the plan marker), `coverage` and `coverage_notes`, writes nothing, and with record=true appends it as one quality.audit.completed under the plan id, after checking the plan's cells have not moved, no audit sorts after one of its parts, and every part scored exactly its cells. A plan part's own id is refused with record or scope: a plan records once, as a whole.",
       inputSchema: {
         type: "object",
         properties: {
@@ -495,6 +505,11 @@ export function buildKritikCatalog(ctx: KritikContext): {
             type: "boolean",
             description: "Treat the audit as a scoped re-audit even though it was scored without kritik_score scope=true (which marks it). Repo mode only.",
           },
+          plan: {
+            type: "boolean",
+            description:
+              "audit_id is a plan made by kritik_plan: return its merged reading with scope and coverage, and with record=true append it as one quality.audit.completed under the plan id. Repo mode only; never with scope.",
+          },
           commit: {
             type: "string",
             description: "Hosted record only: the commit the scoped re-audit read. Repo mode reads it from the audit's scores.json.",
@@ -506,6 +521,12 @@ export function buildKritikCatalog(ctx: KritikContext): {
     async (args) => {
       const hosted = ctx.qualityRoot === undefined;
       if (hosted) {
+        if (args.plan === true) {
+          throw new ToolError(
+            "plan=true records a planned partial audit, whose parts live in docs/quality/audits/ — a hosted session has none. " +
+              "Run it where the checkout is — `arkaik-mcp --bundle <path>`.",
+          );
+        }
         if (args.record === true) {
           if (typeof args.audit_id !== "string" || args.audit_id === "") {
             throw new ToolError(
@@ -621,11 +642,71 @@ export function buildKritikCatalog(ctx: KritikContext): {
 
       const root = repoRootOf(ctx, REPO_MODE_ONLY);
       const library = libraryOf(root);
+
+      // A planned partial audit: the same preparePlanRecord as `matrix <planId> --plan`.
+      if (args.plan === true) {
+        const requested = typeof args.audit_id === "string" && args.audit_id !== "" ? args.audit_id : undefined;
+        if (args.scope === true) {
+          throw new ToolError("plan=true and scope=true cannot be combined — a plan records its own scope marker, measured from the newest full or scoped audit.");
+        }
+        if (requested === undefined) {
+          const plans = listPlanIds(root);
+          throw new ToolError(`plan=true needs the plan id as audit_id (plans: ${plans.join(", ") || "none — kritik_plan makes one"}).`);
+        }
+        if (isPlanPartId(requested)) {
+          const owner = planIdOfPartId(requested) ?? requested;
+          throw new ToolError(`"${requested}" is one part of plan "${owner}" — pass the plan id: audit_id "${owner}" with plan=true.`);
+        }
+        const graph = await load();
+        let prepared: PlanRecord;
+        try {
+          prepared = preparePlanRecord(root, requested, library, graph.journal);
+        } catch (error) {
+          throw new ToolError((error as Error).message);
+        }
+        const events = args.record === true ? await record(graph, [prepared.input]) : [];
+        const { open, lanes, p0 } = openFindingsSummary(prepared.section.findings, library);
+        return {
+          audit_id: prepared.plan.planId,
+          ...(prepared.plan.commit !== null ? { commit: prepared.plan.commit } : {}),
+          framework_version: prepared.plan.frameworkVersion,
+          matrix: prepared.matrix.matrix,
+          overall: prepared.matrix.overall,
+          finding_counts: prepared.matrix.finding_counts,
+          scope: prepared.scope,
+          coverage: prepared.scope.coverage,
+          coverage_notes: coverageNotes(prepared.scope.coverage, prepared.matrix.overall),
+          assessment_count: prepared.section.assessments.length,
+          open_findings: open.length,
+          lanes,
+          p0,
+          events,
+          ...(args.record === true
+            ? {}
+            : { note: `Preview only — nothing written. record=true appends this reading as one quality.audit.completed under ${prepared.plan.planId}.` }),
+        };
+      }
+
       let auditId: string;
       try {
         auditId = typeof args.audit_id === "string" && args.audit_id !== "" ? args.audit_id : newestAuditId(root);
       } catch (error) {
         throw new ToolError((error as Error).message);
+      }
+      // Before anything is computed or written, and before `declaredScopeSince`:
+      // once a plan is recorded its parts are recorded ids, and that check over
+      // `recordedSinceIds` would no longer catch them.
+      if (isPlanId(auditId)) {
+        throw new ToolError(
+          `"${auditId}" is a plan, not an audit — pass plan=true: audit_id "${auditId}" with plan=true previews its merged reading, and with record=true records it.`,
+        );
+      }
+      if (isPlanPartId(auditId) && (args.record === true || args.scope === true)) {
+        const owner = planIdOfPartId(auditId) ?? auditId;
+        throw new ToolError(
+          `"${auditId}" is one part of plan "${owner}" — a plan records once, as a whole, and carries its own scope marker: ` +
+            `kritik_matrix with audit_id "${owner}", plan=true and record=true.`,
+        );
       }
 
       let computed: ReturnType<typeof computeAuditMatrix>;
