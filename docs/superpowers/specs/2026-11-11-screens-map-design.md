@@ -988,8 +988,9 @@ scope does not have, and nothing is written back until the viewer chooses.
   width the Minimap is hidden; below 40rem the Controls are hidden too and the
   inspector becomes a bottom sheet above the bar (max 50% of the cell height,
   scrolling vertically). The selection camera follows the same
-  breakpoint (`INSPECTOR_SHEET_BELOW`, one constant): above it the framed rect
-  widens on the right by the inspector card; below it nothing widens, and the
+  breakpoint (`INSPECTOR_SHEET_BELOW`, one constant): above it the rect is
+  framed in the canvas less the inspector card's 336 screen px; below it no
+  width is reserved, and the
   sheet's maximum height is kept clear above the bar so the frame sits above
   the sheet. With a panel open there is no inspector, so neither. Below 33rem —
   where the labelled bar (about 481px) stops fitting on one line — the bar

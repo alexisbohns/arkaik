@@ -382,14 +382,26 @@ test("selectionBounds is the frame and its chip column, unwidened", () => {
   assert.equal(selectionBounds(wallWithTouches, layout, "V-z@nowhere", "V-a"), null);
 });
 
-test("wide canvas, inspector shown: the rect widens on the right by the inspector, as selectionRect", () => {
+// The card is INSPECTOR_W screen px wide at every zoom, so its room is kept in
+// screen px: the rect is framed in the canvas less the card and its gap.
+const besideCard = (size) => ({ width: size.width - INSPECTOR_GAP - INSPECTOR_W, height: size.height });
+
+test("wide canvas, inspector shown: framed in the canvas less the card's width, in screen px", () => {
   const bounds = selectionBounds(wallWithTouches, layout, FRAME.id, "V-a");
   const size = { width: 1440, height: 900 };
   const view = selectionViewport(bounds, size, { ...OPTS, inspector: true });
-  const expected = frameViewport(selectionRect(wallWithTouches, layout, FRAME.id, "V-a"), size, {
-    padding: 32, bottomInset: 72, minZoom: 0.6, maxZoom: 1,
-  });
+  const expected = frameViewport(bounds, besideCard(size), { padding: 32, bottomInset: 72, minZoom: 0.6, maxZoom: 1 });
   assert.ok(sameView(view, expected), JSON.stringify([view, expected]));
+});
+
+test("…so below zoom 1 the frame and its chips still end left of the card", () => {
+  // Wide enough that the fit drops the zoom below 1 (about 0.84).
+  const tall = { x: 0, y: 0, width: 900, height: 400 };
+  const size = { width: 1160, height: 876 };
+  const view = selectionViewport(tall, size, { ...OPTS, inspector: true });
+  assert.ok(view.zoom < 1, `zoom ${view.zoom}`);
+  const right = (tall.x + tall.width) * view.zoom + view.x;
+  assert.ok(right <= size.width - INSPECTOR_W - INSPECTOR_GAP - 32 + 1e-6, `right edge ${right}`);
 });
 
 test("narrow canvas: no room kept on the right; the sheet's maximum height is kept clear at the bottom", () => {
@@ -410,9 +422,7 @@ test("at exactly the breakpoint the inspector is beside the frame again", () => 
   const bounds = selectionBounds(wallWithTouches, layout, FRAME.id, "V-a");
   const size = { width: INSPECTOR_SHEET_BELOW, height: 800 };
   const view = selectionViewport(bounds, size, { ...OPTS, inspector: true });
-  const expected = frameViewport(selectionRect(wallWithTouches, layout, FRAME.id, "V-a"), size, {
-    padding: 32, bottomInset: 72, minZoom: 0.6, maxZoom: 1,
-  });
+  const expected = frameViewport(bounds, besideCard(size), { padding: 32, bottomInset: 72, minZoom: 0.6, maxZoom: 1 });
   assert.ok(sameView(view, expected));
 });
 
@@ -438,9 +448,7 @@ test("Also in: the strip's title area joins the framed rect when the zoom limits
   const view = selectionViewport(bounds, size, { ...OPTS, inspector: true, header });
   const top = Math.min(bounds.y, header.y);
   const joined = { x: Math.min(bounds.x, header.x), y: top, width: bounds.width, height: bounds.y + bounds.height - top };
-  const expected = frameViewport({ ...joined, width: joined.width + INSPECTOR_GAP + INSPECTOR_W }, size, {
-    padding: 32, bottomInset: 72, minZoom: 0.6, maxZoom: 1,
-  });
+  const expected = frameViewport(joined, besideCard(size), { padding: 32, bottomInset: 72, minZoom: 0.6, maxZoom: 1 });
   assert.ok(sameView(view, expected), JSON.stringify([view, expected]));
   assert.ok(header.y * view.zoom + view.y >= 0, "the header's title is on screen");
 });

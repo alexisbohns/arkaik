@@ -325,8 +325,10 @@ export interface SelectionFraming {
 /**
  * The selection camera for the canvas size it runs at. With the inspector
  * beside the frame (a canvas at least `INSPECTOR_SHEET_BELOW` wide), the rect
- * widens on the right by the card, as `selectionRect`. With the inspector a
- * bottom sheet, nothing is widened: the sheet's maximum height is kept clear
+ * is framed in the canvas less the card and its gap, in screen px — so the
+ * card sits beside the frame at any zoom (`selectionRect`'s flow-unit widening
+ * holds only at zoom 1). With the inspector a bottom sheet, no width is
+ * reserved: the sheet's maximum height is kept clear
  * above the bar instead, so the frame is framed in the space above it. With
  * no inspector (a panel is open), neither. A `header` (the strip's title area)
  * joins the rect only if the joined rect still fits at `minZoom`; otherwise
@@ -341,18 +343,21 @@ export function selectionViewport(
   const sheet = inspector && size.width < INSPECTOR_SHEET_BELOW;
   const beside = inspector && !sheet;
   const bottomInset = sheet ? barInset + size.height * INSPECTOR_SHEET_MAX_H : barInset;
-  const room = (rect: Rect): Rect => (beside ? { ...rect, width: rect.width + INSPECTOR_GAP + INSPECTOR_W } : rect);
+  // The card is INSPECTOR_W screen px at any zoom, so its room comes off the
+  // canvas, not onto the rect: widening the rect in flow units would shrink
+  // with the zoom and let the card cover the frame's right edge below zoom 1.
+  const area = beside ? { width: size.width - INSPECTOR_GAP - INSPECTOR_W, height: size.height } : size;
   const frameOptions = { padding, bottomInset, minZoom, maxZoom };
 
   if (header) {
-    const joined = room(unionRects([bounds, header]));
+    const joined = unionRects([bounds, header]);
     const fit = Math.min(
-      (size.width - 2 * padding) / joined.width,
-      (size.height - 2 * padding - bottomInset) / joined.height,
+      (area.width - 2 * padding) / joined.width,
+      (area.height - 2 * padding - bottomInset) / joined.height,
     );
-    if (fit >= minZoom) return frameViewport(joined, size, frameOptions);
+    if (fit >= minZoom) return frameViewport(joined, area, frameOptions);
   }
-  return frameViewport(room(bounds), size, frameOptions);
+  return frameViewport(bounds, area, frameOptions);
 }
 
 export type ColdLoadTarget =

@@ -302,8 +302,8 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
   // inspector. It never opens a panel.
   //
   // The camera is computed for the canvas size it runs at
-  // (`selectionViewport`): beside a side inspector the rect widens by the
-  // card; above a bottom sheet (a canvas under 40rem) the sheet's height is
+  // (`selectionViewport`): beside a side inspector the card's width comes off
+  // the canvas; above a bottom sheet (a canvas under 40rem) the sheet's height is
   // kept clear instead; with a panel open there is no inspector to make room
   // for. "Also in" passes the target strip's title area to frame with it.
   const frameSelection = useCallback(
