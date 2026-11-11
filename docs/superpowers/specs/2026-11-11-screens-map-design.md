@@ -239,6 +239,10 @@ questions).
 - `computeViewApiRelations` (`journey-graph.ts:59-101`) also accepts an
   endpoint→view `calls` edge as "inbound"; the grammar does not allow it, so the
   wall reads outbound edges only.
+- Touches are scoped like the strips: a touch is an endpoint or model in the
+  wall's scope (`mapScopedNodes` over the scope's `ProductGraph`, the set the
+  views and flows come from). Under a product scope a chip never names a node
+  that scope hides; under All products every reached node is a touch.
 
 ### F6 — The journal, and whether "live from a deploy" can be told apart
 
@@ -465,7 +469,7 @@ export interface WallScreen {
   viewId: string;
   title: string;
   cells: Partial<Record<PlatformId, PlatformCell>>; // one per platform in wall.platforms
-  touches: WallTouch[];                              // endpoints first, then models; each by title
+  touches: WallTouch[];                              // in scope only (F5); endpoints first, then models; each by title
   /** Strip ids the view appears in, in strip order. */
   stripIds: string[];
 }

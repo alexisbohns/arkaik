@@ -203,7 +203,10 @@ export function buildWall(input: WallInput): Wall {
     strips.push({ id: LOOSE_STRIP_ID, flowId: null, title: LOOSE_TITLE, items, viewIds: loose.map((candidate) => candidate.id) });
   }
 
-  const screens = buildScreens(input, viewsById, strips, platforms);
+  // Touches are scoped like the views and flows: only a node the scope keeps
+  // can be a chip, or a chip would open a panel the scope hides.
+  const inScope = new Set(candidates.map((candidate) => candidate.id));
+  const screens = buildScreens(input, viewsById, strips, platforms, inScope);
   const anyShot = [...screens.values()].some((screen) => Object.values(screen.cells).some((cell) => cell?.shot));
   return { strips, screens, platforms, empty, anyShot };
 }
@@ -352,8 +355,9 @@ function buildScreens(
   viewsById: ReadonlyMap<string, DataNode>,
   strips: readonly WallStrip[],
   platforms: readonly PlatformId[],
+  inScope: ReadonlySet<string>,
 ): Map<string, WallScreen> {
-  const touchesByView = indexTouches(input.nodes, input.edges);
+  const touchesByView = indexTouches(input.nodes, input.edges, inScope);
   const { coveringByView, coversByTarget } = indexCovering(input.nodes, input.edges);
   const journal = indexEvents(input.events);
   const screens = new Map<string, WallScreen>();
@@ -385,8 +389,16 @@ function buildScreens(
   return screens;
 }
 
-/** What each view touches: outbound `calls` to endpoints, `displays` to models (spec F5). */
-function indexTouches(nodes: readonly DataNode[], edges: readonly DataEdge[]): Map<string, WallTouch[]> {
+/**
+ * What each view touches: outbound `calls` to endpoints, `displays` to models
+ * (spec F5), limited to the nodes in the wall's scope (`inScope`, the same
+ * `mapScopedNodes` answer the strips are built from).
+ */
+function indexTouches(
+  nodes: readonly DataNode[],
+  edges: readonly DataEdge[],
+  inScope: ReadonlySet<string>,
+): Map<string, WallTouch[]> {
   const nodesById = new Map(nodes.map((candidate) => [candidate.id, candidate]));
   const byView = new Map<string, WallTouch[]>();
   for (const edge of edges) {
@@ -394,7 +406,7 @@ function indexTouches(nodes: readonly DataNode[], edges: readonly DataEdge[]): M
     if (wanted === null) continue;
     const source = nodesById.get(edge.source_id);
     const target = nodesById.get(edge.target_id);
-    if (source?.species !== "view" || target?.species !== wanted) continue;
+    if (source?.species !== "view" || target?.species !== wanted || !inScope.has(target.id)) continue;
     const touches = byView.get(source.id) ?? [];
     if (touches.some((touch) => touch.nodeId === target.id)) continue;
     touches.push({ nodeId: target.id, species: wanted, title: target.title, status: target.status });

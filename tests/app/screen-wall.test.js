@@ -219,6 +219,36 @@ const ORDER_EDGES = [
 }
 
 {
+  // Touches are scoped like the views and flows: a chip may only name a node
+  // the wall's scope keeps (`mapScopedNodes` over the scope's ProductGraph),
+  // or clicking it would open a panel for a node the scope hides. The graph
+  // here places API-adm in Admin only, so under App the App view's call to
+  // it is not a touch, while the endpoints App reaches stay. Under All
+  // products, every one.
+  const nodes = [...ORDER_NODES, node("API-adm", "api-endpoint", "Admin endpoint")];
+  const edges = [...ORDER_EDGES, edge("V-admin", "calls", "API-adm"), edge("V-a", "calls", "API-adm")];
+  const graphEdges = edges.filter((candidate) => candidate.id !== "V-a-calls-API-adm");
+  const project = { root_node_id: "V-home", metadata: { products: PRODUCTS } };
+  const scoped = (productId) =>
+    buildWall({
+      nodes,
+      edges,
+      events: [],
+      project,
+      definition: null,
+      scope: resolveProductScope({ project }, productId),
+      graph: buildProductGraph(nodes, graphEdges),
+    });
+  const touchIds = (wall, viewId) => wall.screens.get(viewId).touches.map((touch) => touch.nodeId);
+  check("touches under a product scope: only the nodes the scope keeps",
+    same(touchIds(scoped("app"), "V-a"), ["API-a", "API-z", "DM-m"]), show(touchIds(scoped("app"), "V-a")));
+  check("touches under All products: every endpoint and model the view reaches",
+    same(touchIds(scoped(null), "V-a"), ["API-adm", "API-a", "API-z", "DM-m"]), show(touchIds(scoped(null), "V-a")));
+  check("touches under the other product: its own view's endpoint is in scope",
+    same(touchIds(scoped("admin"), "V-admin"), ["API-adm"]), show(touchIds(scoped("admin"), "V-admin")));
+}
+
+{
   const noFlows = wallOf({ nodes: [view("V-x", "X"), view("V-y", "Y")], productId: "app" });
   check("views but no flow: empty is no-flows, and the loose strip holds them",
     noFlows.empty === "no-flows" && same(noFlows.strips.map((s) => s.id), ["loose-strip"]) && noFlows.strips[0].items.length === 2);
