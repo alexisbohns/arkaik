@@ -16,6 +16,13 @@ import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
 import { useProjectId } from "@/lib/hooks/useProjectId";
 import { computeMapCounts } from "@/lib/utils/journey-graph";
+
+/**
+ * The kinds `MapEditorDialog` can produce: its Kind select offers exactly
+ * these. Editing a stored map of any other kind (a `screens` one) would save
+ * it back as a journey, so such a map gets Delete and no Edit.
+ */
+const EDITABLE_KINDS: readonly string[] = ["journey", "system"];
 import { type ProductGraph } from "@/lib/utils/product-scope";
 
 /**
@@ -145,6 +152,7 @@ export default function ProjectMapsPage() {
             // built-in once got Edit and Delete from a hard-coded pair.
             const builtIn = isBuiltInMapId(definition.id);
             const renderable = (MAP_KINDS as readonly string[]).includes(definition.kind);
+            const editable = !builtIn && EDITABLE_KINDS.includes(definition.kind);
 
             return (
               <MapCard
@@ -156,7 +164,7 @@ export default function ProjectMapsPage() {
                 builtIn={builtIn}
                 renderable={renderable}
                 onEdit={
-                  builtIn
+                  !editable
                     ? undefined
                     : () => {
                         setEditorTarget(definition);
