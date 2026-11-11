@@ -616,10 +616,12 @@ const AUG = () => audit("2026-08", "2026-08-31T00:00:00.000Z");
 {
   const section = {
     ...SECTION,
-    assessments: [...SECTION.assessments, assess("SEC-01", "web", 3, PART_SEC_WEB)],
+    // The part scored the cell on the 5th: after F-1's fix, before the plan
+    // was recorded (`assess` would date it from the id, which is no date).
+    assessments: [...SECTION.assessments, { ...assess("SEC-01", "web", 3, PART_SEC_WEB), ts: T(5) }],
     findings: [...SECTION.findings, find("F-11", "SEC-01", "web")],
   };
-  const cleared = [AUG(), resolved("F-1", T(2)), planRecord(PLAN, T(10), ["SEC-01::web"])];
+  const cleared =[AUG(), resolved("F-1", T(2)), planRecord(PLAN, T(10), ["SEC-01::web"])];
   check("rule 6 (precondition): the plan cleared SEC-01 x web", deriveAuditScope(cleared, section, LIBRARY, { widen: false }).cells.length === 0);
 
   const back = deriveAuditScope([...cleared, resolved("F-11", T(12))], section, LIBRARY, { widen: false });
@@ -743,6 +745,74 @@ const AUG = () => audit("2026-08", "2026-08-31T00:00:00.000Z");
     LIBRARY,
   );
   check("(precondition) without the plan, that V-settings does widen A11Y-01 x ios", cellIds(undated).includes("ios:A11Y-01:widened"), cellIds(undated).join());
+}
+
+// --- the floor is when the part scored the cell, not when the plan was recorded --
+//
+// A plan's parts are scored first, possibly over days, and the plan is recorded
+// once at the end. A fix that lands after a part scored its cell is not in that
+// score, even though the plan record comes later still.
+
+{
+  const NOV_PLAN = "2026-11-zplan-0100";
+  const NOV_PART = `${NOV_PLAN}-sec-web`;
+  const D = (day, hour = 0) => `2026-11-${String(day).padStart(2, "0")}T${String(hour).padStart(2, "0")}:00:00.000Z`;
+  const OCT = () => audit("2026-10", D(1));
+  const partScore = (criterion, ts, part = NOV_PART) => ({ ...assess(criterion, "web", 3, part), ts });
+  const sectionWith = (...rows) => ({ ...SECTION, assessments: [...SECTION.assessments, ...rows] });
+  const novPlan = (ts, scored, parts = [NOV_PART], planId = NOV_PLAN) => planRecord(planId, ts, scored, parts);
+
+  const section = sectionWith(partScore("SEC-01", D(2)));
+  const late = deriveAuditScope([OCT(), resolved("F-1", D(3)), novPlan(D(4), ["SEC-01::web"])], section, LIBRARY, { widen: false });
+  check(
+    "floor: a fix after the part scored the cell, before the plan was recorded, keeps the cell listed",
+    cellIds(late).join() === "web:SEC-01:direct" && late.cells[0].because.join() === "F-1" && late.findings.join() === "F-1",
+    JSON.stringify(late),
+  );
+
+  const early = deriveAuditScope([OCT(), resolved("F-1", D(1, 12)), novPlan(D(4), ["SEC-01::web"])], section, LIBRARY, { widen: false });
+  check("floor: a fix before the part scored the cell is in its score, so the cell stays cleared", early.cells.length === 0, JSON.stringify(early));
+
+  const untimed = { ...SECTION, assessments: [...SECTION.assessments, { ...assess("SEC-01", "web", 3, NOV_PART), ts: undefined }] };
+  const fallback = deriveAuditScope([OCT(), resolved("F-1", D(3)), novPlan(D(4), ["SEC-01::web"])], untimed, LIBRARY, { widen: false });
+  check("floor: a part assessment with no ts falls back to the plan record's place in the journal", fallback.cells.length === 0, JSON.stringify(fallback));
+  const fallbackAfter = deriveAuditScope([OCT(), novPlan(D(4), ["SEC-01::web"]), resolved("F-1", D(5))], untimed, LIBRARY, { widen: false });
+  check("floor: and under that fallback, a fix after the record still counts", cellIds(fallbackAfter).join() === "web:SEC-01:direct", cellIds(fallbackAfter).join());
+
+  const otherAudit = sectionWith(partScore("SEC-01", D(2), "2026-11-zplan-0100-a11y-ios"));
+  const notAPart = deriveAuditScope([OCT(), resolved("F-1", D(3)), novPlan(D(4), ["SEC-01::web"])], otherAudit, LIBRARY, { widen: false });
+  check("floor: an assessment from an audit that is not one of the plan's parts is not its score", notAPart.cells.length === 0, JSON.stringify(notAPart));
+
+  // Two plans re-scored SEC-01 x web: the first's part on day 2 (recorded day
+  // 4), the second's on day 6 (recorded day 8). The second plan decides.
+  const SECOND = "2026-11-zplan-0500";
+  const SECOND_PART = `${SECOND}-sec-web`;
+  const twoSection = sectionWith(partScore("SEC-01", D(2)), partScore("SEC-01", D(6), SECOND_PART));
+  const twoPlans = (fix) =>
+    deriveAuditScope(
+      [OCT(), novPlan(D(4), ["SEC-01::web"]), novPlan(D(8), ["SEC-01::web"], [SECOND_PART], SECOND), fix],
+      twoSection,
+      LIBRARY,
+      { widen: false },
+    );
+  check("two plans: a fix between the two parts' scores is in the later one's score", twoPlans(resolved("F-1", D(5))).cells.length === 0, cellIds(twoPlans(resolved("F-1", D(5)))).join());
+  check(
+    "two plans: a fix after the later part scored, before its plan was recorded, keeps the cell listed",
+    cellIds(twoPlans(resolved("F-1", D(7)))).join() === "web:SEC-01:direct",
+    cellIds(twoPlans(resolved("F-1", D(7)))).join(),
+  );
+
+  // Widening: F-1's V-home reaches SEC-03 x web, which the part scored on day 2.
+  const widenSection = sectionWith(partScore("SEC-03", D(2)));
+  const widenLate = deriveAuditScope([OCT(), resolved("F-1", D(3)), novPlan(D(4), ["SEC-03::web"])], widenSection, LIBRARY);
+  check(
+    "floor: a widened cell the part scored before the fix stays widened in",
+    cellIds(widenLate).join() === "web:SEC-01:direct,web:SEC-03:widened" &&
+      widenLate.cells.find((cell) => cell.criterion_id === "SEC-03")?.because.join() === "V-home",
+    cellIds(widenLate).join(),
+  );
+  const widenEarly = deriveAuditScope([OCT(), resolved("F-1", D(1, 12)), novPlan(D(4), ["SEC-03::web"])], widenSection, LIBRARY);
+  check("floor: one the part scored after the fix leaves", cellIds(widenEarly).join() === "web:SEC-01:direct", cellIds(widenEarly).join());
 }
 
 // --- scopedAuditId (issue #473): the shared naming rule ----------------------

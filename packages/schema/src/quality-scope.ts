@@ -222,10 +222,16 @@ export function scopeAnchorId(events: readonly JournalEvent[]): string | null {
  *   from its latest recording, the reading the trend keeps too. `since`
  *   defaults to the newest recording that is not a plan record; a plan record
  *   is never the audit a scope is measured from.
- * - **Per cell, after a plan.** A resolution counts toward a cell only when it
- *   is ordered after the last plan record whose `scored` lists that cell: the
- *   plan re-scored the cell after the fix, so the fix is already in its score.
- *   A finding resolved more than once counts by its latest resolution.
+ * - **Per cell, after a plan.** The last plan record whose `scored` lists a
+ *   cell sets that cell's floor, and a resolution counts toward the cell only
+ *   above it. The floor is when the plan's part scored the cell — the newest
+ *   `ts` among the section's assessments of that cell whose `audit_id` is one
+ *   of the record's `parts` — and a resolution is above it when its own `ts`
+ *   is later (raw strings, the key `orderEvents` sorts by): a part is scored
+ *   before its plan is recorded, sometimes days before, and a fix landing in
+ *   between is not in that score. With no such timed assessment the floor is
+ *   the record's own place in the journal. A finding resolved more than once
+ *   counts by its latest resolution.
  * - **Direct cells.** Each resolved finding's own `(criterion_id, surface)`,
  *   read from `section.findings` — the event does not carry them — when
  *   `score` could re-score it; a finding whose cell it could not (a retired
@@ -275,19 +281,51 @@ export function deriveAuditScope(
   const since = isString(anchorId) ? anchorId : null;
   const sinceTs = isString(anchor.ts) ? anchor.ts : null;
 
-  // Rule 2's floor per cell: the journal index of the last plan record that
-  // re-scored it, else the anchor's. A resolution counts for a cell only when
-  // its index is above the cell's floor. Plan records before the anchor need
-  // no entry — the anchor's index is already higher.
-  const planFloor = new Map<string, number>();
+  // When each audit scored each cell: the newest `ts` per (cell, audit id)
+  // among every assessment row the section holds, not only the latest per
+  // cell — a later audit may have outvoted a plan part's score in the merge.
+  const scoredAt = new Map<string, Map<string, string>>();
+  for (const assessment of rowsOf<QualityAssessment>(section?.assessments)) {
+    if (!isString(assessment?.criterion_id) || !isString(assessment?.surface) || !isString(assessment?.audit_id)) continue;
+    if (!isString(assessment.ts)) continue;
+    const key = cellKey(assessment.criterion_id, assessment.surface);
+    const byAudit = scoredAt.get(key) ?? new Map<string, string>();
+    const seen = byAudit.get(assessment.audit_id);
+    if (seen === undefined || seen < assessment.ts) byAudit.set(assessment.audit_id, assessment.ts);
+    scoredAt.set(key, byAudit);
+  }
+
+  // Rule 2's floor per cell, set by the last plan record that re-scored it: the
+  // `ts` its part scored the cell at when the section holds it, else the
+  // record's own index. Plan records before the anchor need no entry — the
+  // anchor's index is already higher, and so is every resolution counted here.
+  const planFloor = new Map<string, { index: number; ts: string | null }>();
   for (let i = sinceIndex + 1; i < ordered.length; i++) {
     const event = ordered[i];
     if (event.type !== "quality.audit.completed") continue;
     const reading = readPlanScope((event as { scope?: unknown }).scope);
     if (reading === null) continue;
-    for (const key of reading.scored) planFloor.set(key, i);
+    for (const key of reading.scored) {
+      let ts: string | null = null;
+      for (const part of reading.parts) {
+        const at = scoredAt.get(key)?.get(part);
+        if (at !== undefined && (ts === null || ts < at)) ts = at;
+      }
+      planFloor.set(key, { index: i, ts });
+    }
   }
-  const floorOf = (key: string): number => planFloor.get(key) ?? sinceIndex;
+  // The raw `ts` string `orderEvents` sorts by, so "later" here and "after" in
+  // `ordered` never disagree: a greater index never has a smaller key.
+  const sortKeyAt = (index: number): string => {
+    const ts = ordered[index]?.ts;
+    return typeof ts === "string" ? ts : "";
+  };
+  /** Whether the resolution at `index` counts for `key` under rule 2. */
+  const countsFor = (key: string, index: number): boolean => {
+    const floor = planFloor.get(key);
+    if (floor === undefined) return index > sinceIndex;
+    return floor.ts !== null ? sortKeyAt(index) > floor.ts : index > floor.index;
+  };
 
   // Resolutions in order, one entry per finding: the index of its latest
   // resolution, and each node id an event carried with the index of the
@@ -400,9 +438,9 @@ export function deriveAuditScope(
       continue;
     }
 
-    // Rules 2 to 4, per target cell: a plan that re-scored the cell after this
-    // finding's latest resolution already holds the fix.
-    const live = targets.filter((surface) => resolution.last > floorOf(cellKey(finding.criterion_id, surface)));
+    // Rules 2 to 4, per target cell: a plan whose part scored the cell after
+    // this finding's latest resolution already holds the fix.
+    const live = targets.filter((surface) => countsFor(cellKey(finding.criterion_id, surface), resolution.last));
     if (live.length === 0) continue;
 
     drivers.push(findingId);
@@ -440,10 +478,15 @@ export function deriveAuditScope(
       // merely might have.
       if (!criterionById.has(assessment.criterion_id)) continue;
       if (!surfaces.includes(assessment.surface) || !scorable(assessment.criterion_id, assessment.surface)) continue;
-      // Rule 5: a node counts for this cell only through a resolution after
-      // the cell's floor — a plan that re-scored this cell after it holds it.
-      const floor = floorOf(key);
-      const shared = [...(nodesByCell.get(key) ?? [])].filter((node) => (resolvedNodes.get(node) ?? -1) > floor).sort();
+      // Rule 5: a node counts for this cell only through a resolution above
+      // the cell's floor — a plan whose part scored this cell after it holds it.
+      // The node's latest index is enough: a greater index never sorts earlier.
+      const shared = [...(nodesByCell.get(key) ?? [])]
+        .filter((node) => {
+          const at = resolvedNodes.get(node);
+          return at !== undefined && countsFor(key, at);
+        })
+        .sort();
       if (shared.length === 0) continue;
       cells.set(key, { criterion_id: assessment.criterion_id, surface: assessment.surface, kind: "widened", because: shared });
       widened++;
