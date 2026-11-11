@@ -28,4 +28,5 @@ export * from "./quality-scope";
 export * from "./quality-burndown";
 export * from "./quality-baseline";
 export * from "./quality-plan";
+export * from "./kritik-plan-prompt";
 export * from "./journal-page";
