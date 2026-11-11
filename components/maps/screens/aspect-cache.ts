@@ -1,7 +1,8 @@
 import type { PlatformId } from "@/lib/config/platforms";
 
 /**
- * Measured proportions of the Screens map's shots, for the tab's lifetime.
+ * What the Screens map learns about its shots, for the tab's lifetime: each
+ * shot's measured proportions, and which shots failed to load.
  *
  * Nothing records an image's dimensions, so a frame starts at its platform's
  * default shape and takes the shot's own once it has loaded (spec § Images).
@@ -21,6 +22,12 @@ import type { PlatformId } from "@/lib/config/platforms";
  * animation frame, so a screenful of loading shots re-lays the wall once, not
  * once per image. The store is copy-on-write — each applied batch is a new
  * map — so it reads through `useSyncExternalStore` with no version counter.
+ *
+ * Failures are kept the same way (slot and key), applied at once: frames
+ * unmount when they leave the viewport, so a failure held in the frame's own
+ * state was forgotten and the broken image requested again every time its
+ * frame came back. Remembered here, it shows its ghost on return without a
+ * request.
  */
 
 export interface AspectEntry {
@@ -99,4 +106,29 @@ export function aspectFrom(
 ): number | undefined {
   const entry = aspects.get(slotOf(viewId, platform));
   return entry && entry.key === key ? entry.ratio : undefined;
+}
+
+const failures = new Set<string>();
+const failureListeners = new Set<() => void>();
+
+const failureOf = (viewId: string, platform: PlatformId, key: string) => `${slotOf(viewId, platform)}|${key}`;
+
+/** A shot did not load (`key` = `shotKey(shot)`): remembered for the tab, applied at once. */
+export function reportShotFailure(viewId: string, platform: PlatformId, key: string): void {
+  const entry = failureOf(viewId, platform, key);
+  if (failures.has(entry)) return;
+  failures.add(entry);
+  for (const listener of failureListeners) listener();
+}
+
+/** Whether this slot's shot (`key`) already failed in this tab. */
+export function hasShotFailed(viewId: string, platform: PlatformId, key: string): boolean {
+  return failures.has(failureOf(viewId, platform, key));
+}
+
+export function subscribeShotFailures(listener: () => void): () => void {
+  failureListeners.add(listener);
+  return () => {
+    failureListeners.delete(listener);
+  };
 }

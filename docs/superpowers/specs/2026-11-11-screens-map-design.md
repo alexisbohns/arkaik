@@ -919,7 +919,10 @@ scope does not have, and nothing is written back until the viewer chooses.
 - **Forms:** `form` = `meta.form`, else `data:image/` → data, `http(s)://` →
   url, anything else → path. A path is never requested; its ghost says "Shot in
   the repo" / "Paths open from the bundle's folder, not in the app". A load
-  error shows "Shot didn't load" / the URL's host.
+  error shows "Shot didn't load" / the URL's host. A failure is remembered for the tab
+  in the same module cache, under the same slot and key, so a frame that
+  leaves the viewport and comes back shows that ghost at once instead of
+  requesting the broken image again.
 - **Ghost frames** (dashed border, faint hatch in `currentColor` at 10%): the
   table in § State truth table, plus the path and error cases above. An
   `absent` ghost has a solid light border and no hatch.

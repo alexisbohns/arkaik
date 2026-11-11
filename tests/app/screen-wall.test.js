@@ -1093,7 +1093,7 @@ const EQUIV_EXPECTED = {
   }
 }
 
-// --- The shot cache: fingerprints, not whole values -------------------------
+// --- The shot cache: fingerprints, not whole values; failures remembered ----
 // (Screens map stack, part 2.) components/maps/screens/aspect-cache.ts runs in
 // the browser; here `window.requestAnimationFrame` is a queue the test flushes.
 {
@@ -1141,5 +1141,21 @@ const EQUIV_EXPECTED = {
   check("reportAspect: the same report again changes nothing", cache.getAspectSnapshot() === after && heard === 1, heard);
   unsubscribe();
 
+  // Failures: remembered for the tab, so a frame that comes back shows its ghost at once.
+  const urlKey = cache.shotKey(shotOf("https://x/broken.png", "2026-11-01T00:00:00Z"));
+  let told = 0;
+  const stop = cache.subscribeShotFailures(() => {
+    told += 1;
+  });
+  check("hasShotFailed: nothing has failed yet", cache.hasShotFailed("V-broken", "web", urlKey) === false);
+  cache.reportShotFailure("V-broken", "web", urlKey);
+  check("reportShotFailure: remembered at once, listeners told", cache.hasShotFailed("V-broken", "web", urlKey) === true && told === 1, told);
+  check("hasShotFailed: keyed like the aspects — another platform, another view or a new shot has not failed",
+    !cache.hasShotFailed("V-broken", "ios", urlKey) &&
+      !cache.hasShotFailed("V-other", "web", urlKey) &&
+      !cache.hasShotFailed("V-broken", "web", cache.shotKey(shotOf("https://x/broken.png", "2026-11-02T00:00:00Z"))));
+  cache.reportShotFailure("V-broken", "web", urlKey);
+  check("reportShotFailure: a repeat tells nobody", told === 1, told);
+  stop();
   delete global.window;
 }

@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useSyncExternalStore, type CSSProperties } from "react";
 import { useStore } from "@xyflow/react";
 import { CircleDashedIcon, ClockIcon, FolderTreeIcon, ImageOffIcon, type LucideIcon } from "lucide-react";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { PlatformCell, WallShot as WallShotValue } from "@/lib/utils/screen-wall";
 import { LOD_ZOOM } from "@/lib/utils/screen-wall-layout";
 import { cn } from "@/lib/utils";
-import { shotKey } from "@/components/maps/screens/aspect-cache";
+import { hasShotFailed, reportShotFailure, shotKey, subscribeShotFailures } from "@/components/maps/screens/aspect-cache";
 import { PLATFORM_ICONS, PLATFORM_LABELS, STATUS_ICONS, STATUS_LABELS, STATUS_STYLES } from "./node-styles";
 import type { AspectReport } from "./wall-node-data";
 
@@ -121,12 +121,17 @@ interface WallShotProps {
  */
 export function WallShot({ viewId, platform, cell, width, height, onAspect }: WallShotProps) {
   const detailed = useWallDetail();
-  // The shot that failed, by its fingerprint (aspect-cache `shotKey`), not a
-  // flag: a new shot for the slot gets a fresh try without an effect resetting
-  // anything.
-  const [failedKey, setFailedKey] = useState<string | null>(null);
   const shot = cell?.shot ?? null;
-  const failed = shot !== null && failedKey === shotKey(shot);
+  // The shot's fingerprint: what its measured shape and its failure are kept
+  // under, tab-wide (aspect-cache). A new shot in the slot is a new key, so it
+  // gets a fresh try; a failed one shows its ghost as soon as the frame comes
+  // back on screen, without requesting the image again.
+  const key = shot === null ? null : shotKey(shot);
+  const failed = useSyncExternalStore(
+    subscribeShotFailures,
+    () => key !== null && hasShotFailed(viewId, platform, key),
+    () => false,
+  );
   const ghost = ghostFor(cell, platform, failed);
 
   if (ghost !== null || shot === null || cell === undefined) {
@@ -186,7 +191,7 @@ export function WallShot({ viewId, platform, cell, width, height, onAspect }: Wa
               onAspect(viewId, platform, shotKey(shot), image.naturalWidth / image.naturalHeight);
             }
           }}
-          onError={() => setFailedKey(shotKey(shot))}
+          onError={() => reportShotFailure(viewId, platform, shotKey(shot))}
         />
       ) : (
         <div
