@@ -30,6 +30,7 @@
  */
 
 import type { EventInput } from "./derive";
+import type { PlanAuditScope } from "./quality-plan";
 import { PLATFORM_IDS } from "./ids";
 import {
   CROSS_SURFACE_ID,
@@ -432,10 +433,14 @@ export interface AuditCompletedScope {
  * a scoped row and not in the full row before it. Known and deliberate for
  * now (issue #443 scoped the merge to partial audits); the trend reads scores,
  * which is where the two cannot disagree.
+ *
+ * A **planned partial audit** passes a `PlanAuditScope` (`cli/kritik-plan.ts`'s
+ * `preparePlanRecord`), with the merged matrix through the plan's last part, under
+ * the plan id: the same "where does the product stand", plus which cells it re-scored.
  */
 export function auditCompletedInput(
   matrix: QualityMatrix,
-  meta: { audit_id: string; framework_version: string; commit?: string; scope?: AuditCompletedScope },
+  meta: { audit_id: string; framework_version: string; commit?: string; scope?: AuditCompletedScope | PlanAuditScope },
 ): EventInput {
   const scores: Record<string, Record<string, number>> = {};
   for (const surface of matrix.surfaces) {

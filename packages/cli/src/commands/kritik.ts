@@ -43,6 +43,7 @@ import {
   outsortedBy,
   parseSurfaceSpec,
   planIdOfPartId,
+  planRecordCommand,
   priorityOf,
   recordedAuditIds,
   renderIssue,
@@ -67,6 +68,7 @@ import {
   type PlanPartStatus,
   type QualityAssessment,
   type QualityFinding,
+  type QualityMatrix,
   type QualityProfile,
   type QualitySection,
   type Regression,
@@ -100,7 +102,15 @@ import {
   type CriterionDraft,
 } from "@arkaik/schema/src/cli/kritik-overlay";
 import { loadProfile, profilePath, writeJson } from "@arkaik/schema/src/cli/kritik-paths";
-import { createPlan, loadPlan, planPath, planStatus, savePlan } from "@arkaik/schema/src/cli/kritik-plan";
+import {
+  createPlan,
+  loadPlan,
+  planPath,
+  planStatus,
+  preparePlanRecord,
+  savePlan,
+  type PlanRecord,
+} from "@arkaik/schema/src/cli/kritik-plan";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { KRITIK_ACTOR, appendQualityEvents, loadKritikLibrary, resolveJournal } from "../lib/kritik-io";
@@ -893,14 +903,92 @@ function unscoredScopeCells(
   return scope.cells.filter((cell) => !done.has(`${cell.criterion_id}::${cell.surface}`));
 }
 
+/** The human matrix report: the table, the open findings by severity and lane, and the P0 shortlist. */
+function printMatrixReport(section: QualitySection, matrix: QualityMatrix, library: KritikLibrary): void {
+  const domainNames = new Map((library.domains ?? []).map((d) => [d.code, d.name]));
+  console.log(`\n${renderMatrixMarkdown(matrix, domainNames)}\n`);
+
+  const open = section.findings.filter(isOpenFinding);
+  const lanes: Record<string, number> = { P0: 0, P1: 0, P2: 0, P3: 0 };
+  for (const finding of open) lanes[priorityOf(finding, library)]++;
+  const counts = matrix.finding_counts;
+  console.log(
+    `${section.assessments.length} assessments · ${open.length} open findings ` +
+      `(${counts.critical} critical, ${counts.high} high, ${counts.medium} medium, ${counts.low} low)\n` +
+      `lanes: P0 ${lanes.P0} · P1 ${lanes.P1} · P2 ${lanes.P2} · P3 ${lanes.P3}`,
+  );
+
+  const p0 = open.filter((finding) => priorityOf(finding, library) === "P0");
+  if (p0.length > 0) {
+    console.log(`\nP0 — fix first:`);
+    for (const finding of p0) {
+      console.log(`  [${severityOf(finding, library)}] ${finding.surface} · ${finding.id} — ${finding.title}`);
+    }
+  }
+}
+
+/**
+ * `matrix <planId> --plan [--record]` — a planned partial audit, read and, with --record,
+ * recorded as one reading (spec "matrix --record --plan"). Every check is
+ * `preparePlanRecord`'s, shared with `kritik_matrix plan=true`; what lives here is printing
+ * and the journal write. Nothing goes to disk but the journal: a plan has no audit directory.
+ */
+function runPlanMatrix(planId: string, flags: Set<string>, common: CommonOptions, library: KritikLibrary): void {
+  const record = flags.has("record");
+  const journal = resolveJournal(common.root, common.bundlePath);
+  const events = journal.present ? readFullJournalEvents(journal.journalPath) : [];
+  let prepared: PlanRecord;
+  try {
+    prepared = preparePlanRecord(common.root, planId, library, events);
+  } catch (error) {
+    return fail(`kritik: ${(error as Error).message}`);
+  }
+  const { plan, section, matrix, scope } = prepared;
+  const parts = scope.parts.length;
+
+  if (flags.has("json")) {
+    console.log(
+      JSON.stringify(
+        {
+          audit_id: plan.planId,
+          ...(plan.commit !== null ? { commit: plan.commit } : {}),
+          framework_version: plan.frameworkVersion,
+          matrix: matrix.matrix,
+          overall: matrix.overall,
+          finding_counts: matrix.finding_counts,
+          scope,
+        },
+        null,
+        2,
+      ),
+    );
+  } else {
+    printMatrixReport(section, matrix, library);
+    console.log(
+      `\nplanned partial audit ${plan.planId}: ${scope.cells} cell${scope.cells === 1 ? "" : "s"} re-scored in ${parts} part${parts === 1 ? "" : "s"}` +
+        (scope.since !== undefined ? ` since ${scope.since}` : ", with no full audit before it") +
+        `. The table is the merged reading through the plan's last part — every other cell at its last score.` +
+        (record ? "" : `\nNothing written. Record it: \`${planRecordCommand(plan.planId)}\``),
+    );
+  }
+  if (record) reportJournal(common.root, [prepared.input], common);
+  console.log("");
+  process.exit(0);
+}
+
 function runMatrix(args: string[], common: CommonOptions): void {
-  const { flags, positionals } = collect(args, [], ["json", "record", "scope"]);
+  const { flags, positionals } = collect(args, [], ["json", "record", "scope", "plan"]);
   if (flags.has("help")) {
     console.log(MATRIX_USAGE);
     process.exit(0);
   }
 
   const library = loadLibraryOrFail(common.root);
+  if (flags.has("plan")) {
+    const planId = positionals[0];
+    if (planId === undefined) return fail(`kritik: --plan needs the plan id — \`arkaik kritik matrix <planId> --record --plan\`.`);
+    return runPlanMatrix(planId, flags, common, library);
+  }
   let auditId: string;
   try {
     auditId = positionals[0] ?? newestAuditId(common.root);
@@ -936,26 +1024,7 @@ function runMatrix(args: string[], common: CommonOptions): void {
     console.log(JSON.stringify(file, null, 2));
     reportUnscored((line) => console.error(line));
   } else {
-    const domainNames = new Map((library.domains ?? []).map((d) => [d.code, d.name]));
-    console.log(`\n${renderMatrixMarkdown(matrix, domainNames)}\n`);
-
-    const open = section.findings.filter(isOpenFinding);
-    const lanes: Record<string, number> = { P0: 0, P1: 0, P2: 0, P3: 0 };
-    for (const finding of open) lanes[priorityOf(finding, library)]++;
-    const counts = matrix.finding_counts;
-    console.log(
-      `${section.assessments.length} assessments · ${open.length} open findings ` +
-        `(${counts.critical} critical, ${counts.high} high, ${counts.medium} medium, ${counts.low} low)\n` +
-        `lanes: P0 ${lanes.P0} · P1 ${lanes.P1} · P2 ${lanes.P2} · P3 ${lanes.P3}`,
-    );
-
-    const p0 = open.filter((finding) => priorityOf(finding, library) === "P0");
-    if (p0.length > 0) {
-      console.log(`\nP0 — fix first:`);
-      for (const finding of p0) {
-        console.log(`  [${severityOf(finding, library)}] ${finding.surface} · ${finding.id} — ${finding.title}`);
-      }
-    }
+    printMatrixReport(section, matrix, library);
     console.log(`\nwrote ${matrixPath(common.root, auditId)}`);
     if (scope !== undefined) {
       reportUnscored((line) => console.log(line));
