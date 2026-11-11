@@ -1,6 +1,6 @@
 import type { PlatformId } from "@/lib/config/platforms";
 import type { StatusId } from "@/lib/config/statuses";
-import type { WallLens, WallScreen } from "@/lib/utils/screen-wall";
+import type { WallLens, WallScreen, WallTouch } from "@/lib/utils/screen-wall";
 
 /**
  * The `data` of the Screens map's React Flow nodes (`ScreensCanvas` builds
@@ -14,6 +14,13 @@ import type { WallLens, WallScreen } from "@/lib/utils/screen-wall";
 
 /** A loaded shot's measured width / height, reported for the slot's current shot: `value` is its fingerprint (aspect-cache `shotKey`), never the shot itself. */
 export type AspectReport = (viewId: string, platform: PlatformId, value: string, ratio: number) => void;
+
+/** The selected frame (part 4): the frame, the view it shows, and the strip it sits in. */
+export interface WallSelection {
+  frameId: string;
+  viewId: string;
+  stripId: string;
+}
 
 export type WallFrameData = {
   frameId: string;
@@ -75,3 +82,12 @@ export type WallJumpData = {
   /** Gaps only: a jump tile is never a gap, so it fades with everything that is not one. */
   dimmed: boolean;
 };
+
+/**
+ * A touch chip under the selected frame (part 4): an endpoint or data model the
+ * view touches, or "+N more" (which opens the view's own panel). Rendered
+ * aria-hidden with tabIndex -1: the inspector's Touches list is its accessible twin.
+ */
+export type WallChipData =
+  | { kind: "touch"; frameId: string; touch: WallTouch; onOpen: (nodeId: string) => void }
+  | { kind: "more"; frameId: string; viewId: string; count: number; onOpen: (nodeId: string) => void };
