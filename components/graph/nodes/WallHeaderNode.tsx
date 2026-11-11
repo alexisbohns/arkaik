@@ -68,7 +68,13 @@ function WallHeaderNodeComponent({ data }: NodeProps<Node<WallHeaderData, "wallH
               title
             )}
           </h2>
-          <span className="-ml-1 shrink-0 text-xs tabular-nums text-muted-foreground">{countsLine}</span>
+          <span
+            className="-ml-1 min-w-0 truncate text-xs tabular-nums text-muted-foreground"
+            title={countsLine}
+            data-counts=""
+          >
+            {countsLine}
+          </span>
         </div>
       </div>
     </div>
