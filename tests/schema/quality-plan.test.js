@@ -280,9 +280,18 @@ const throws = (fn) => {
   const surfaces = ["web", "ios", "android", "admin", "supabase", "web-app", "api_v2"];
   const domains = ["SEC", "PRV", "GDP", "SAF", "ARC", "TST", "PLT", "A11Y", "PRF", "REL", "AGT"];
   const two = (n) => String(n).padStart(2, "0");
-  const existing = () => {
+  // The plan is made on 2026-11-28. Every generated id is dated on or before
+  // that day and numbered below 90, so a plan always fits; half of them are
+  // plan ids or parts of that same day, which is where the NN counter, not the
+  // date, decides whether a part sorts last.
+  const DAY = "2026-11-zplan-28";
+  const sameDay = () => {
+    const plan = `${DAY}${two(random(90))}`;
+    return random(2) === 0 ? plan : `${plan}-${pick(domains).toLowerCase()}-${pick(surfaces)}`;
+  };
+  const earlier = () => {
     const month = `2026-${two(1 + random(11))}`;
-    const plan = `${month}-zplan-${two(1 + random(28))}${two(random(90))}`;
+    const plan = `${month}-zplan-${two(1 + random(27))}${two(random(90))}`;
     switch (random(7)) {
       case 0:
         return month;
@@ -300,20 +309,67 @@ const throws = (fn) => {
         return `${plan}-${pick(domains).toLowerCase()}-${pick(surfaces)}-scoped`;
     }
   };
+  const existing = () => (random(2) === 0 ? sameDay() : earlier());
+  const now = new Date(2026, 10, 28, 8);
+  // The two rules, restated independently of planId: (a) the candidate is
+  // neither a known id nor the plan of one, (b) every part it would get sorts
+  // after every known id.
+  const fits = (candidate, known, runs) =>
+    !known.some((id) => id === candidate || id.startsWith(`${candidate}-`)) &&
+    runs.every((run) => known.every((id) => planPartId(candidate, run.domain, run.surface) > id));
   const violations = [];
+  const notMinimal = [];
+  let sameDayDecided = 0;
   for (let trial = 0; trial < 500; trial++) {
     const known = Array.from({ length: 1 + random(12) }, existing);
-    // Every generated id is dated on or before 2026-11-28 and numbered below
-    // 90, so a plan on the 28th always fits. Same-day plans are what make the
-    // NN rule, not the date, decide whether a part sorts last.
-    const now = new Date(2026, 10, 28, 8);
     const runs = Array.from({ length: 1 + random(3) }, () => ({ domain: pick(domains), surface: pick(surfaces) }));
     const id = planId({ now, known, runs });
     const parts = runs.map((run) => planPartId(id, run.domain, run.surface));
     const late = parts.filter((part) => known.some((other) => !(part > other)));
     if (late.length > 0 || known.includes(id) || !parts.every((part) => isPlanPartId(part) && !isScopedAuditId(part))) violations.push(JSON.stringify({ known, runs, id }));
+    const nn = Number(id.slice(DAY.length));
+    if (!id.startsWith(DAY) || !fits(id, known, runs)) violations.push(JSON.stringify({ known, runs, id }));
+    for (let smaller = 0; smaller < nn; smaller++) {
+      if (fits(`${DAY}${two(smaller)}`, known, runs)) {
+        notMinimal.push(JSON.stringify({ known, runs, id, smaller }));
+        break;
+      }
+    }
+    if (nn > 0) sameDayDecided++;
   }
   check("500 generated histories: every new part id sorts after every existing id", violations.length === 0, violations.slice(0, 3).join(" | "));
+  check("500 generated histories: the NN chosen is the smallest that satisfies both rules", notMinimal.length === 0, notMinimal.slice(0, 3).join(" | "));
+  check("the generated histories exercise the day counter (most choose an NN above 00)", sameDayDecided > 250, String(sameDayDecided));
+
+  // Histories no plan made that day can sort after: a later month, or a
+  // same-month id that sorts after "z".
+  const poisons = () => {
+    switch (random(4)) {
+      case 0:
+        return "2026-12";
+      case 1:
+        return `2027-${two(1 + random(12))}-${pick(domains).toLowerCase()}-${pick(surfaces)}`;
+      case 2:
+        return "2026-11-zz-web";
+      default:
+        return `2026-11-zzz${pick(surfaces)}`;
+    }
+  };
+  const noThrow = [];
+  for (let trial = 0; trial < 100; trial++) {
+    const poison = poisons();
+    const known = [...Array.from({ length: random(8) }, existing), poison];
+    for (let i = known.length - 1; i > 0; i--) {
+      const j = random(i + 1);
+      [known[i], known[j]] = [known[j], known[i]];
+    }
+    const runs = Array.from({ length: 1 + random(3) }, () => ({ domain: pick(domains), surface: pick(surfaces) }));
+    const greatest = [...known].sort().at(-1);
+    const message = throws(() => planId({ now, known, runs }));
+    const anyFits = Array.from({ length: 100 }, (_, n) => `${DAY}${two(n)}`).some((candidate) => fits(candidate, known, runs));
+    if (message !== `no plan id on 2026-11-28 sorts after "${greatest}"` || anyFits) noThrow.push(JSON.stringify({ known, runs, message }));
+  }
+  check("100 generated histories holding a later month or a same-month id after z: planId throws, naming the greatest id", noThrow.length === 0, noThrow.slice(0, 3).join(" | "));
 }
 
 // --- a part that no longer sorts last --------------------------------------------------
