@@ -337,6 +337,30 @@ try {
   );
 
   for (const id of SEC_WEB.slice(1)) ok(["score", id, "web", "3", "--evidence", `${id}.ts:1`, "--audit", partId], `score ${id}`);
+  // Every plan cell scored, and the stray still there: not finished.
+  const scoredWithStray = run(["plan", "--status", FIRST_PLAN]);
+  const strayRow = scoredWithStray.stdout.split("\n").find((row) => row.includes(partId)) ?? "";
+  check(
+    "--status: a fully scored part holding a stray score says so in its row",
+    scoredWithStray.status === 0 && strayRow.includes("scored, 1 outside the plan") && strayRow.includes("6 of 6"),
+    scoredWithStray.stdout,
+  );
+  check(
+    "--status: with a stray left, the footer never says to record once every part is scored",
+    !scoredWithStray.stdout.includes("record once every part is scored") && !scoredWithStray.stdout.includes("every part is scored — record it once"),
+    scoredWithStray.stdout,
+  );
+  check(
+    "--status: the note says how to remove a stray",
+    scoredWithStray.stdout.includes(`delete its row from docs/quality/audits/${partId}/scores.json`),
+    scoredWithStray.stdout,
+  );
+  const strayJson = statusJson(FIRST_PLAN);
+  check(
+    "--status --json mirrors it: the part's summary, and not ready to record",
+    strayJson?.parts[0].progress === "scored" && strayJson.parts[0].summary === "scored, 1 outside the plan" && strayJson.ready_to_record === false,
+    JSON.stringify(strayJson),
+  );
   const partScores = path.join(dir, "docs", "quality", "audits", partId, "scores.json");
   const scoresFile = JSON.parse(readFileSync(partScores, "utf8"));
   writeFileSync(partScores, JSON.stringify({ ...scoresFile, assessments: scoresFile.assessments.filter((a) => a.criterion_id !== "PRV-01") }, null, 2));
@@ -346,6 +370,12 @@ try {
     done.status === 0 && done.stdout.includes("scored") && done.stdout.includes("6 of 6") && done.stdout.includes("every part is scored") &&
       done.stdout.includes(`arkaik kritik matrix ${FIRST_PLAN} --record --plan`),
     done.stdout,
+  );
+  const doneJson = statusJson(FIRST_PLAN);
+  check(
+    "--status --json: once clean, the summary is the progress and the plan is ready to record",
+    doneJson?.parts[0].summary === "scored" && doneJson.ready_to_record === true,
+    JSON.stringify(doneJson),
   );
   check("--status writes nothing", JSON.stringify(JSON.parse(readFileSync(planFile, "utf8"))) === JSON.stringify(plan));
 

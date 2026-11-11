@@ -1516,6 +1516,20 @@ function alignedTable(rows: string[][], numeric: readonly number[] = []): string
   );
 }
 
+/**
+ * A part's progress as its status row reads it: the progress, plus how many
+ * scores sit outside the plan. A fully scored part holding one is not finished
+ * — the record refuses it — so "scored" alone would read as done.
+ */
+function partSummary(status: PlanPartStatus): string {
+  return status.stray.length === 0 ? status.progress : `${status.progress}, ${status.stray.length} outside the plan`;
+}
+
+/** Not recorded yet, every included part scored, and no score outside the plan: what the record step needs. */
+function readyToRecord(statuses: readonly PlanPartStatus[], recorded: boolean): boolean {
+  return !recorded && statuses.every((status) => status.progress === "deferred" || (status.progress === "scored" && status.stray.length === 0));
+}
+
 function printPlanStatus(plan: KritikPlan, statuses: PlanPartStatus[], recorded: boolean): void {
   console.log(`\n  Plan ${plan.planId} — ${recorded ? "recorded" : "not recorded"}\n`);
   const rows = [
@@ -1523,7 +1537,7 @@ function printPlanStatus(plan: KritikPlan, statuses: PlanPartStatus[], recorded:
     ...statuses.map((status) => [
       `${status.domain}:${status.surface}`,
       status.auditId,
-      status.progress,
+      partSummary(status),
       `${status.scored} of ${status.cells}`,
     ]),
   ];
@@ -1537,7 +1551,10 @@ function printPlanStatus(plan: KritikPlan, statuses: PlanPartStatus[], recorded:
       notes.push(`${status.domain}:${status.surface} still to score: ${cellList(status.missing)}`);
     }
     if (status.stray.length > 0) {
-      notes.push(`${status.domain}:${status.surface} outside the plan, remove before recording: ${cellList(status.stray)}`);
+      notes.push(
+        `${status.domain}:${status.surface} outside the plan, remove before recording: ${cellList(status.stray)} — ` +
+          `for each, delete its row from docs/quality/audits/${status.auditId}/scores.json`,
+      );
     }
   }
   if (notes.length > 0) console.log("");
@@ -1545,11 +1562,16 @@ function printPlanStatus(plan: KritikPlan, statuses: PlanPartStatus[], recorded:
 
   const included = statuses.filter((status) => status.progress !== "deferred");
   const done = included.filter((status) => status.progress === "scored").length;
-  const clean = included.every((status) => status.stray.length === 0);
+  const strays = included.reduce((sum, status) => sum + status.stray.length, 0);
   if (recorded) {
     console.log(`\n  recorded — to correct it, make a new plan for the same parts.\n`);
-  } else if (done === included.length && clean) {
+  } else if (done === included.length && strays === 0) {
     console.log(`\n  every part is scored — record it once:  ${plan.recordCommand}\n`);
+  } else if (done === included.length) {
+    console.log(
+      `\n  every plan cell is scored, but ${strays} score${strays === 1 ? "" : "s"} outside the plan must go first (above) — ` +
+        `then record it once:  ${plan.recordCommand}\n`,
+    );
   } else {
     console.log(`\n  ${done} of ${included.length} part${included.length === 1 ? "" : "s"} scored — record once every part is scored:  ${plan.recordCommand}\n`);
   }
@@ -1606,7 +1628,18 @@ function runPlan(args: string[], common: CommonOptions): void {
     }
     const recorded = recordedIdsOf(common).includes(plan.planId);
     if (flags.has("json")) {
-      console.log(JSON.stringify({ plan_id: plan.planId, recorded, parts: statuses }, null, 2));
+      console.log(
+        JSON.stringify(
+          {
+            plan_id: plan.planId,
+            recorded,
+            parts: statuses.map((status) => ({ ...status, summary: partSummary(status) })),
+            ready_to_record: readyToRecord(statuses, recorded),
+          },
+          null,
+          2,
+        ),
+      );
     } else {
       printPlanStatus(plan, statuses, recorded);
     }

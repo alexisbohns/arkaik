@@ -905,7 +905,8 @@ pinned the commit and named the audit. Four rules on top:
   the newest audit on disk, which with two parts in flight may be the other part.
 - **Score exactly the listed cells.** A score outside the plan's cells blocks the
   record until it is removed: the merge reads every audit directory, so a stray
-  score would enter the matrix anyway.
+  score would enter the matrix anyway. To remove one, delete its row from
+  `docs/quality/audits/<partId>/scores.json`.
 - **Never record a part.** Not `arkaik kritik matrix <partId> --record`, and not
   `kritik_matrix` with a part's `audit_id` and `record: true`. A part is half a
   reading. The plan is recorded once, after every part is scored, with the
@@ -915,8 +916,8 @@ pinned the commit and named the audit. Four rules on top:
 
 `arkaik kritik plan --status <planId>` (over MCP, `kritik_plan` with `status`)
 reads each part's audit directory and says whether it is not started, in progress
-or scored, which cells are still missing, and any score outside the plan. It
-writes nothing. Run it before recording. Status and the record read only the
+or scored, which cells are still missing, and any score outside the plan (a part
+reads `scored, 1 outside the plan` until that row is deleted). It writes nothing. Run it before recording. Status and the record read only the
 current checkout: a part scored in another git worktree left its scores there, so
 copy them over first.
 

@@ -681,6 +681,34 @@ async function run() {
     );
     const noSuchPlan = await session.call("kritik_plan", { status: "2026-11-zplan-1199" });
     check("kritik_plan status on a missing plan names the path it read", noSuchPlan.isError && noSuchPlan.json.message.includes("no plan at"), noSuchPlan.text);
+    // Every plan cell scored plus one stray: scored, but not finished.
+    {
+      const partScoresPath = path.join(session.dir, "docs", "quality", "audits", partId, "scores.json");
+      const before = readFileSync(partScoresPath, "utf8");
+      const file = JSON.parse(before);
+      const cell = (criterion_id) => ({ criterion_id, surface: "web", level: 2, evidence: "x.ts:1", audit_id: partId, ts: "2026-11-01T00:00:00.000Z" });
+      writeFileSync(partScoresPath, JSON.stringify({ ...file, assessments: [...madePlan.parts[0].cells.map((c) => cell(c.criterion_id)), cell("PRV-01")] }));
+      const strayStatus = await session.call("kritik_plan", { status: madePlan.planId });
+      const strayPart = strayStatus.json.parts?.[0];
+      check(
+        "kritik_plan status: a fully scored part with a stray score reads 'scored, 1 outside the plan', not ready to record",
+        !strayStatus.isError &&
+          strayPart.progress === "scored" &&
+          strayPart.stray.length === 1 &&
+          strayPart.summary === "scored, 1 outside the plan" &&
+          strayStatus.json.ready_to_record === false,
+        strayStatus.text.slice(0, 400),
+      );
+      writeFileSync(partScoresPath, JSON.stringify({ ...file, assessments: madePlan.parts[0].cells.map((c) => cell(c.criterion_id)) }));
+      const cleanStatus = await session.call("kritik_plan", { status: madePlan.planId });
+      check(
+        "kritik_plan status: once clean, the summary is the progress and the plan is ready to record",
+        cleanStatus.json.parts?.[0]?.summary === "scored" && cleanStatus.json.ready_to_record === true,
+        cleanStatus.text.slice(0, 400),
+      );
+      writeFileSync(partScoresPath, before);
+    }
+
     const notAPlanId = await session.call("kritik_plan", { status: "../../../etc/passwd" });
     check(
       "kritik_plan status refuses an id that is not a plan id, before reading anything",

@@ -1116,7 +1116,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
     {
       name: "kritik_plan",
       description:
-        "Plan a partial audit before running it: one part per DOMAIN:SURFACE in runs (e.g. SEC:web), each with its own audit id that sorts after every audit on disk, the exact cells it scores, its checklist step count, and a prompt to paste into an agent session — plus one combined prompt for a session that runs every part in order. Writes docs/quality/plans/<planId>.json (dry_run=true writes nothing) and returns the plan, the path and any warnings; the same plan file `arkaik kritik plan` writes. Counts only: no token estimate yet. With status=<planId> it instead reads each part's progress from its audit directory (not started, in progress, scored; cells still missing; scores outside the plan, which block the record) and writes nothing. Score every cell with kritik_score and audit_id=<the part's audit id>; never record a part on its own — the plan is recorded once, after every part is scored, with `arkaik kritik matrix <planId> --record --plan`. Repo sessions only: a part is scored against a checkout.",
+        "Plan a partial audit before running it: one part per DOMAIN:SURFACE in runs (e.g. SEC:web), each with its own audit id that sorts after every audit on disk, the exact cells it scores, its checklist step count, and a prompt to paste into an agent session — plus one combined prompt for a session that runs every part in order. Writes docs/quality/plans/<planId>.json (dry_run=true writes nothing) and returns the plan, the path and any warnings; the same plan file `arkaik kritik plan` writes. Counts only: no token estimate yet. With status=<planId> it instead reads each part's progress from its audit directory (not started, in progress, scored; cells still missing; scores outside the plan, which block the record — delete such a row from docs/quality/audits/<partId>/scores.json) and writes nothing; each part's summary reads like the CLI's status row ('scored, 1 outside the plan'), and ready_to_record says whether the plan can be recorded. Score every cell with kritik_score and audit_id=<the part's audit id>; never record a part on its own — the plan is recorded once, after every part is scored, with `arkaik kritik matrix <planId> --record --plan`. Repo sessions only: a part is scored against a checkout.",
       inputSchema: {
         type: "object",
         properties: {
@@ -1153,7 +1153,22 @@ export function buildKritikCatalog(ctx: KritikContext): {
         }
         try {
           const plan = loadPlan(root, planId);
-          return { plan_id: plan.planId, recorded: recorded.includes(plan.planId), parts: planStatus(root, plan) };
+          const isRecorded = recorded.includes(plan.planId);
+          const statuses = planStatus(root, plan);
+          return {
+            plan_id: plan.planId,
+            recorded: isRecorded,
+            // `summary` is the CLI's status row: a fully scored part holding a
+            // score outside the plan reads "scored, 1 outside the plan", since
+            // the record refuses it until that row is deleted from its scores.json.
+            parts: statuses.map((status) => ({
+              ...status,
+              summary: status.stray.length === 0 ? status.progress : `${status.progress}, ${status.stray.length} outside the plan`,
+            })),
+            ready_to_record:
+              !isRecorded &&
+              statuses.every((status) => status.progress === "deferred" || (status.progress === "scored" && status.stray.length === 0)),
+          };
         } catch (error) {
           throw new ToolError((error as Error).message);
         }
