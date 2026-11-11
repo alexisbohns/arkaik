@@ -497,7 +497,8 @@ A planned partial audit's row says so — `planned partial audit: 6 cells
 re-scored in 1 part since 2026-08` — and its arrows move only on the surfaces
 (with `--domain`, only the domain) the plan re-scored. Under it, one coverage
 line per surface the reading has not fully looked at: `web 62, from 6 of 73
-cells`.
+cells`. With `--domain` there is none: the row shows one domain's score, and
+the line would show the whole surface's roll-up.
 
 ### Burndown — what was done since the audit
 

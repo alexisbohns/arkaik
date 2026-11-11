@@ -1420,7 +1420,9 @@ function runTrend(args: string[], common: CommonOptions): void {
           `re-scored in ${parts} part${parts === 1 ? "" : "s"}` +
           (row.plan.since !== null ? ` since ${row.plan.since}` : " — no full audit before it"),
       );
-      if (row.plan.coverage !== null) {
+      // Not under --domain: a row then shows one domain's score, and a coverage line beneath it
+      // would print the whole-surface roll-up — two numbers that contradict each other.
+      if (row.plan.coverage !== null && single.domain === undefined) {
         const shown = {
           ...row.plan.coverage,
           surfaces: Object.fromEntries(Object.entries(row.plan.coverage.surfaces).filter(([surface]) => surfaces.includes(surface))),

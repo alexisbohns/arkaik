@@ -463,6 +463,18 @@ try {
     cTrend.stdout,
   );
 
+  // Under --domain a row shows one domain's score; a coverage line would print the
+  // whole-surface roll-up beneath it, two numbers that contradict each other.
+  const cDomainTrend = c.run(["trend", "--domain", "SEC"]);
+  check(
+    "trend --domain prints the plan line but no coverage lines",
+    cDomainTrend.status === 0 &&
+      cDomainTrend.stdout.includes("planned partial audit: 6 cells re-scored in 1 part") &&
+      !webLine.test(cDomainTrend.stdout) &&
+      !cDomainTrend.stdout.includes(iosLine),
+    cDomainTrend.stdout,
+  );
+
   // === The scope's anchor guard, and an empty scope that says why ================
 
   refuses(a, "a plan id as --since", ["scope", "--since", planId], ["is a plan record, never a scope's anchor", `recorded: ${FULL}`]);
