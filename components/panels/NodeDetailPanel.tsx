@@ -37,9 +37,10 @@ import {
 import type { ProductScope } from "@/lib/utils/product-scope";
 import { ProductPicker } from "@/components/panels/ProductPicker";
 import { withProductMembership } from "@/lib/utils/product-editing";
-import { productOf } from "@arkaik/schema";
+import { acceptancesCovering, productOf } from "@arkaik/schema";
 import type { PlatformScreenshotMetaMap } from "@arkaik/schema";
 import { useScreenshotStaleness } from "@/lib/hooks/useScreenshotStaleness";
+import { stalenessRelatedIds } from "@/lib/utils/screenshot-staleness";
 import type { ScreenshotPanelOp } from "@/lib/utils/screenshot-ops";
 import { computeNodeTimeline } from "@/lib/utils/journal";
 import { FeedRow } from "@/components/journal/FeedRow";
@@ -438,9 +439,24 @@ interface PlatformVariantsSectionProps {
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
   onScreenshot?: (op: ScreenshotPanelOp) => Promise<void> | void;
   onZoomShot?: (platform: PlatformId) => void;
+  /**
+   * Per platform, the covering acceptances whose moves stale this view's shot
+   * (`stalenessRelatedIds`) — the same rule the Screens map applies, so the
+   * caption and the wall never disagree. Absent when the surface passes no
+   * graph: the caption then reads the view's own events only.
+   */
+  staleRelatedIds?: Partial<Record<PlatformId, readonly string[]>>;
 }
 
-function PlatformVariantsSection({ node, scope, initialPlatform, onUpdate, onScreenshot, onZoomShot }: PlatformVariantsSectionProps) {
+function PlatformVariantsSection({
+  node,
+  scope,
+  initialPlatform,
+  onUpdate,
+  onScreenshot,
+  onZoomShot,
+  staleRelatedIds,
+}: PlatformVariantsSectionProps) {
   const rawNotes = (node.metadata?.platformNotes ?? {}) as Partial<Record<PlatformId, string>>;
   const rawStatuses = getEditablePlatformStatuses(node);
   // Seeded from the FULL stored maps, not the scoped ones: a note for a
@@ -462,7 +478,7 @@ function PlatformVariantsSection({ node, scope, initialPlatform, onUpdate, onScr
   // (a patch spreads whatever the closure holds) and is NOT fixed here.
   const screenshots = (node.metadata?.platformScreenshots ?? {}) as Partial<Record<PlatformId, string>>;
   const screenshotMeta = (node.metadata?.platformScreenshotMeta ?? {}) as PlatformScreenshotMetaMap;
-  const stale = useScreenshotStaleness(node.id, scope.platforms, screenshotMeta);
+  const stale = useScreenshotStaleness(node.id, scope.platforms, screenshotMeta, staleRelatedIds);
   const [shotPending, setShotPending] = useState(false);
 
   async function runScreenshotOp(op: ScreenshotPanelOp) {
@@ -758,6 +774,21 @@ export function NodeDetailPanel({
     metadataRef.current = node.metadata;
   }, [node.metadata]);
 
+  // A view's shot is also staled by moves on the acceptances covering it — a
+  // deploy or a merge lands on those, never on the view — so the caption asks
+  // the same question the Screens map does (`stalenessRelatedIds`). Only for a
+  // view, and only with the whole graph: `acceptancesCovering` reads every
+  // `covers` edge, and a surface that passes no graph keeps today's caption.
+  const staleRelatedIds = useMemo(() => {
+    if (node.species !== "view" || !allNodes || !allEdges) return undefined;
+    const covering = acceptancesCovering(node.id, allNodes, allEdges);
+    const byPlatform: Partial<Record<PlatformId, readonly string[]>> = {};
+    for (const platform of scope.platforms) {
+      byPlatform[platform] = stalenessRelatedIds(covering, platform);
+    }
+    return byPlatform;
+  }, [allEdges, allNodes, node.id, node.species, scope.platforms]);
+
   return (
     // The top padding is not decoration: without it the title sat flush against
     // the header's bottom border, which is the one panel body that read as
@@ -841,6 +872,7 @@ export function NodeDetailPanel({
             onUpdate={onUpdate}
             onScreenshot={onScreenshot}
             onZoomShot={onZoomShot ? (platform) => onZoomShot(node, platform) : undefined}
+            staleRelatedIds={staleRelatedIds}
           />
         )}
         {node.species === "flow" && allNodes && allEdges && (
