@@ -323,22 +323,28 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
 
   const handleOpenNode = useCallback((nodeId: string) => openNode({ nodeId }), [openNode]);
 
-  // A jump tile flies to its target strip and rings the header for 2s. Named,
-  // and kept a plain controller function, because later parts call it from
-  // inside this controller too (⌘K flies to a flow through it). The ring
-  // clears itself from a timer started here — never from an effect — and only
-  // if no later ring replaced it. `ringStrip` is that ring alone: "Also in …"
-  // rings the strip it moves the selection to.
+  // A strip header's ring, whoever raises it (a jump tile, "Also in …"):
+  // raised now, cleared RING_MS later from a timer started here — never from
+  // an effect. A new ring replaces the last one and cancels its timer; the
+  // timer is cancelled on unmount too. The version guard is kept as a belt.
   const [ring, setRing] = useState<{ stripId: string; version: number } | null>(null);
   const ringSequence = useRef(0);
-  const ringStrip = useCallback((stripId: string) => {
+  const ringTimer = useRef<number | undefined>(undefined);
+  const ringStrip = useCallback((stripId: string): void => {
     ringSequence.current += 1;
     const version = ringSequence.current;
     setRing({ stripId, version });
-    window.setTimeout(() => {
+    window.clearTimeout(ringTimer.current);
+    ringTimer.current = window.setTimeout(() => {
+      ringTimer.current = undefined;
       setRing((current) => (current?.version === version ? null : current));
     }, RING_MS);
   }, []);
+  useEffect(() => () => window.clearTimeout(ringTimer.current), []);
+
+  // A jump tile flies to its target strip and rings the header for 2s. Named,
+  // and kept a plain controller function, because later parts call it from
+  // inside this controller too (⌘K flies to a flow through it).
   const jumpToFlow = useCallback(
     (flowId: string): void => {
       const stripId = stripIdOf(flowId);
