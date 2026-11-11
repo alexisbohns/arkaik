@@ -947,3 +947,79 @@ const EQUIV_EXPECTED = {
     ["web", "ios"].every((p) => same(cell("V-gap-wide", p).proof, { kind: "hand", ts: T2, actor: "alexis", detail: "all platforms" })),
     show(["web", "ios"].map((p) => cell("V-gap-wide", p).proof)));
 }
+
+// --- Keeping the reader's strip through a lens change ----------------------
+
+{
+  const L = wallModule;
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  const nearView = (actual, expected) => actual !== null && ["x", "y", "zoom"].every((key) => near(actual[key], expected[key]));
+  const layoutOf = (...rects) => ({
+    boxes: [],
+    strips: new Map(rects.map((rect, i) => [`strip:${i}`, rect])),
+    bounds: { x: 0, y: 0, width: Math.max(...rects.map((r) => r.width)), height: 2000 },
+  });
+  const SIZE = { width: 1000, height: 800 };
+  // Three strips: rows 0–380, 452–832, 904–1284.
+  const before = layoutOf(
+    { x: 0, y: 0, width: 6000, height: 380 },
+    { x: 0, y: 452, width: 6000, height: 380 },
+    { x: 0, y: 904, width: 6000, height: 380 },
+  );
+
+  // The viewport's vertical centre, in flow coordinates, is (400 - y) / zoom.
+  check("stripNearViewport: the strip whose row holds the viewport's vertical centre",
+    L.stripNearViewport(before, { x: 0, y: -242, zoom: 1 }, SIZE) === "strip:1",
+    L.stripNearViewport(before, { x: 0, y: -242, zoom: 1 }, SIZE));
+  check("stripNearViewport: in the gap between two rows, the nearer one",
+    L.stripNearViewport(before, { x: 0, y: 400 - 430 * 0.5, zoom: 0.5 }, SIZE) === "strip:1",
+    L.stripNearViewport(before, { x: 0, y: 400 - 430 * 0.5, zoom: 0.5 }, SIZE));
+  check("stripNearViewport: below the last row, the last strip",
+    L.stripNearViewport(before, { x: 0, y: -5000, zoom: 1 }, SIZE) === "strip:2");
+  check("stripNearViewport: above the first row, the first strip",
+    L.stripNearViewport(before, { x: 0, y: 5000, zoom: 1 }, SIZE) === "strip:0");
+  check("stripNearViewport: an equal distance goes to the first strip in layout order",
+    L.stripNearViewport(before, { x: 0, y: 400 - 416, zoom: 1 }, SIZE) === "strip:0",
+    L.stripNearViewport(before, { x: 0, y: 400 - 416, zoom: 1 }, SIZE));
+  check("stripNearViewport: no strip, null",
+    L.stripNearViewport(layoutOf(), { x: 0, y: 0, zoom: 1 }, SIZE) === null);
+
+  // The new lens shrinks strip:1 to 2000 wide.
+  const after = layoutOf(
+    { x: 0, y: 0, width: 2000, height: 380 },
+    { x: 0, y: 452, width: 2000, height: 380 },
+    { x: 0, y: 904, width: 2000, height: 380 },
+  );
+  // Far along the old strip: centre x = (500 - x) / zoom = 5000.
+  const far = { x: 500 - 5000 * 0.8, y: -200, zoom: 0.8 };
+  check("keepStripViewport: a centre past the strip's new end pans so its start sits at the left padding, same zoom and y",
+    nearView(L.keepStripViewport(after, "strip:1", far, SIZE, 32), { x: 32, y: -200, zoom: 0.8 }),
+    show(L.keepStripViewport(after, "strip:1", far, SIZE, 32)));
+  const inside = { x: 500 - 1500 * 0.8, y: -200, zoom: 0.8 };
+  check("keepStripViewport: a centre still inside the strip's new extent moves nothing (null)",
+    L.keepStripViewport(after, "strip:1", inside, SIZE, 32) === null,
+    show(L.keepStripViewport(after, "strip:1", inside, SIZE, 32)));
+  const edge = { x: 500 - 2000 * 0.8, y: -200, zoom: 0.8 };
+  check("keepStripViewport: a centre exactly on the strip's end is inside",
+    L.keepStripViewport(after, "strip:1", edge, SIZE, 32) === null);
+  const shifted = layoutOf({ x: 300, y: 0, width: 900, height: 380 });
+  const left = { x: 500 - 100 * 0.5, y: 10, zoom: 0.5 };
+  check("keepStripViewport: a centre before the strip's start pans too, honouring the strip's own x",
+    nearView(L.keepStripViewport(shifted, "strip:0", left, SIZE, 32), { x: 32 - 300 * 0.5, y: 10, zoom: 0.5 }),
+    show(L.keepStripViewport(shifted, "strip:0", left, SIZE, 32)));
+  check("keepStripViewport: a strip the new layout lacks, null",
+    L.keepStripViewport(after, "strip:9", far, SIZE, 32) === null);
+
+  // On a real wall: Web is several times wider than iOS.
+  const wall = wallOf({ nodes: ORDER_NODES, edges: ORDER_EDGES, productId: "app" });
+  const web = L.layoutWall(wall, "web", () => undefined);
+  const ios = L.layoutWall(wall, "ios", () => undefined);
+  const firstId = wall.strips[0].id;
+  const webRect = web.strips.get(firstId);
+  const atEnd = { x: 500 - (webRect.x + webRect.width - 50), y: 400 - (webRect.y + 100), zoom: 1 };
+  check("on a real wall: at the end of a Web strip, the strip is the one in view",
+    L.stripNearViewport(web, atEnd, SIZE) === firstId, L.stripNearViewport(web, atEnd, SIZE));
+  const kept = L.keepStripViewport(ios, firstId, atEnd, SIZE, 32);
+  check("…and switching to iOS brings its start back to the left padding",
+    nearView(kept, { x: 32 - ios.strips.get(firstId).x, y: atEnd.y, zoom: 1 }), show(kept));
+}

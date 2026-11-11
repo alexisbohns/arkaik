@@ -118,6 +118,13 @@ export function frameViewport(rect: Rect, viewport: { width: number; height: num
  *  right. Height never sets the zoom. No strip → { x: 0, y: 0, zoom: 1 }. */
 export function openingViewport(layout: WallLayout, viewport: { width: number; height: number },
   insets?: { top?: number; right?: number; bottom?: number; left?: number }): { x: number; y: number; zoom: number };
+/** The strip whose rect is nearest the viewport's vertical centre (0 inside; ties → first); null with no strip. */
+export function stripNearViewport(layout: WallLayout, viewport: { x: number; y: number; zoom: number },
+  size: { width: number; height: number }): string | null;
+/** After a lens change: if the viewport's horizontal centre is outside `stripId`'s extent in `layout`, the same zoom
+ *  and y, panned so the strip's start sits `padding` in from the left; else (or no such strip) null. */
+export function keepStripViewport(layout: WallLayout, stripId: string, viewport: { x: number; y: number; zoom: number },
+  size: { width: number; height: number }, padding: number): { x: number; y: number; zoom: number } | null;
 export function neighbourFrame(layout: WallLayout, frameId: string, dir: "left" | "right" | "up" | "down"): string | null;
 export function chipRects(frame: WallBox, count: number): Rect[];
 ```

@@ -251,6 +251,54 @@ export function openingViewport(
   return { x: left + OPENING_PADDING - rect.x * zoom, y: top + OPENING_PADDING - rect.y * zoom, zoom };
 }
 
+/** A React Flow viewport: screen = flow × zoom + (x, y). */
+type Viewport = { x: number; y: number; zoom: number };
+
+/**
+ * The strip the reader is in: the one whose rect is nearest the viewport's
+ * vertical centre (distance 0 inside it; a tie goes to the first strip in
+ * layout order). null with no strip. Horizontal position plays no part — a
+ * strip is a row.
+ */
+export function stripNearViewport(
+  layout: WallLayout,
+  viewport: Viewport,
+  size: { width: number; height: number },
+): string | null {
+  const centreY = (size.height / 2 - viewport.y) / viewport.zoom;
+  let best: string | null = null;
+  let bestDistance = Infinity;
+  for (const [id, rect] of layout.strips) {
+    const distance = centreY < rect.y ? rect.y - centreY : Math.max(0, centreY - (rect.y + rect.height));
+    if (distance < bestDistance) {
+      best = id;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+/**
+ * After a lens change, the viewport that keeps the reader in `stripId`: when
+ * the viewport's horizontal centre falls outside the strip's extent in the
+ * new `layout`, the same zoom and vertical position, panned so the strip's
+ * start sits `padding` in from the left edge. null when the centre is still
+ * inside the strip (nothing moves) or the strip is not in `layout`.
+ */
+export function keepStripViewport(
+  layout: WallLayout,
+  stripId: string,
+  viewport: Viewport,
+  size: { width: number; height: number },
+  padding: number,
+): Viewport | null {
+  const rect = layout.strips.get(stripId);
+  if (!rect) return null;
+  const centreX = (size.width / 2 - viewport.x) / viewport.zoom;
+  if (centreX >= rect.x && centreX <= rect.x + rect.width) return null;
+  return { x: padding - rect.x * viewport.zoom, y: viewport.y, zoom: viewport.zoom };
+}
+
 /**
  * The arrow-key neighbour among frames only: left/right within the row;
  * up/down to the frame in the previous/next row (or strip) whose centre x is
