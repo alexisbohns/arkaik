@@ -51,6 +51,7 @@ export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "circle-x", seed: 0 },
   { name: "clipboard-check", seed: 8 },
   { name: "clipboard-list", seed: 16 },
+  { name: "clock", seed: 13 },
   { name: "cloud", seed: 14 },
   { name: "cloud-download", seed: 9 },
   { name: "cloud-upload", seed: 8 },
