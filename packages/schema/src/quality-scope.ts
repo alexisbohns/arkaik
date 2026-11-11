@@ -36,6 +36,7 @@ import {
   type QualityFinding,
   type QualitySection,
 } from "./quality";
+import { isPlanPartId } from "./quality-plan";
 
 /**
  * One cell to re-score.
@@ -386,7 +387,10 @@ export interface ScopedAuditIdInput {
  * when the caller found one and no known id sorts after it — an `open` a
  * newer audit already outsorts is stale and falls through to naming a fresh
  * candidate instead), else opens `<month>-scoped`, then `<month>-scoped-02`
- * and on, the convention SPEC § 6 names.
+ * and on, the convention SPEC § 6 names. After a plan in the same month,
+ * `<month>-scoped` would sort before the plan's parts, so the candidates start
+ * from the newest part instead: `<partId>-scoped`, `<partId>-scoped-02` (see
+ * `scopedCandidates`).
  */
 export function scopedAuditId(input: ScopedAuditIdInput): string {
   const { since, month, requested, known, recorded, open } = input;
@@ -413,7 +417,7 @@ export function scopedAuditId(input: ScopedAuditIdInput): string {
 
   if (open !== undefined && (newest === undefined || open >= newest)) return open;
 
-  for (const candidate of scopedCandidates(month)) {
+  for (const candidate of scopedCandidates(month, known)) {
     if (known.includes(candidate)) continue;
     if (newest !== undefined && candidate < newest) {
       throw new Error(
@@ -426,9 +430,22 @@ export function scopedAuditId(input: ScopedAuditIdInput): string {
   throw new Error(`99 scoped audits in ${month} — name the next one yourself.`);
 }
 
-/** `<month>-scoped`, then `<month>-scoped-02` … `-99` — the convention SPEC § 6 names, in the order a new audit takes them. */
-function* scopedCandidates(month: string): Generator<string> {
-  for (let n = 1; n < 100; n++) yield n === 1 ? `${month}-scoped` : `${month}-scoped-${String(n).padStart(2, "0")}`;
+/**
+ * `<base>-scoped`, then `<base>-scoped-02` … `-99` — the convention SPEC § 6
+ * names, in the order a new audit takes them.
+ *
+ * The base is `month`, unless `<month>-scoped` sorts before the newest known id
+ * and that id is a plan part, or a scoped re-audit named after one (its stem,
+ * minus `-scoped` / `-scoped-NN`, is a plan part). Then the base is that part
+ * id: a plan's parts sort after every same-month id by design
+ * (`2026-11-zplan-…`), so a month-based candidate could only be refused, and
+ * `<partId>-scoped` is the nearest id that sorts after them.
+ */
+function* scopedCandidates(month: string, known: readonly string[]): Generator<string> {
+  const newest = [...known].sort().at(-1) ?? "";
+  const stem = newest.replace(/-scoped(-\d+)?$/, "");
+  const base = `${month}-scoped` < newest && isPlanPartId(stem) ? stem : month;
+  for (let n = 1; n < 100; n++) yield n === 1 ? `${base}-scoped` : `${base}-scoped-${String(n).padStart(2, "0")}`;
 }
 
 /**
@@ -446,7 +463,7 @@ function* scopedCandidates(month: string): Generator<string> {
 function suggestedAuditId({ since, month, requested, known, recorded }: ScopedAuditIdInput): string {
   const taken = new Set<string>([...known, ...recorded, since, ...(requested !== undefined ? [requested] : [])]);
   const floor = [...taken].sort().at(-1);
-  for (const candidate of scopedCandidates(month)) {
+  for (const candidate of scopedCandidates(month, known)) {
     if (taken.has(candidate)) continue;
     if (floor === undefined || candidate > floor) return candidate;
   }
