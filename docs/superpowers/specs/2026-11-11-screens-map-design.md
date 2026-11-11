@@ -794,6 +794,9 @@ shared trunk and turns right into its chip on one small rounded corner.
   viewport's horizontal centre would fall outside that strip's extent in the
   new layout, the camera pans along it — same zoom, same vertical position —
   to put the strip's start at the left edge, 32px in (`keepStripViewport`).
+  With a frame selected (part 4) a lens change instead frames the selection
+  again on the new layout, from the lens handler (bar or I/W/A), so the frame,
+  its chips and the inspector describing it stay together on screen.
   A product-scope change moves nothing unless that strip left the wall; then
   the opening camera runs again.
 - **Part 2.** Click or Enter/Space on a frame → `openNode({ nodeId: viewId })`

@@ -8,7 +8,12 @@ import { buildProductUsageIndex, type MapDefinition } from "@arkaik/schema";
 import type { CanvasFocus } from "@/components/graph/Canvas";
 import type { WallSelection } from "@/components/graph/nodes/wall-node-data";
 import { ScreensCanvas } from "@/components/graph/ScreensCanvas";
-import { WALL_BAR_INSET, WALL_CAMERA_PADDING, type WallCameraRequest } from "@/components/graph/WallCamera";
+import {
+  WALL_BAR_INSET,
+  WALL_CAMERA_PADDING,
+  type WallCameraRequest,
+  type WallViewportFor,
+} from "@/components/graph/WallCamera";
 import { PageError } from "@/components/layout/PageError";
 import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
@@ -49,7 +54,7 @@ import {
   selectionViewport,
   stripTitleRect,
 } from "@/lib/utils/screen-inspector";
-import { buildWall, gapCount, resolveLens, stripIdOf, type WallLens } from "@/lib/utils/screen-wall";
+import { buildWall, gapCount, resolveLens, stripIdOf, type Wall, type WallLens } from "@/lib/utils/screen-wall";
 import {
   keepStripViewport,
   layoutWall,
@@ -117,6 +122,31 @@ function WallViewportProbe({
 }
 
 const NO_PLATFORMS: readonly PlatformId[] = [];
+
+/**
+ * The selection's camera on `layout`: the frame and its chip column, framed
+ * for the canvas size the request runs at (`selectionViewport`) — beside the
+ * inspector card, above its bottom sheet, or with no room kept while a panel
+ * stands in for the inspector. `withTitle` ("Also in …") joins the strip's
+ * title area when it fits. Null when the frame is not on `layout`. Every
+ * selection camera goes through here: a select, a cold load, a lens change.
+ */
+function selectionCamera(
+  wall: Wall,
+  layout: WallLayout,
+  selection: WallSelection,
+  inspector: boolean,
+  withTitle: boolean,
+): WallViewportFor | null {
+  const bounds = selectionBounds(wall, layout, selection.frameId, selection.viewId);
+  if (!bounds) return null;
+  const framing = {
+    ...SELECTION_FRAMING,
+    inspector,
+    header: withTitle ? stripTitleRect(layout, selection.stripId) : null,
+  };
+  return (size) => selectionViewport(bounds, size, framing);
+}
 
 /** The bar's live line: "Showing iOS. 4 gaps." / "Showing side by side, gaps only. 1 gap." */
 function screensAnnouncement(lens: WallLens, gaps: number, gapsOnly: boolean): string {
@@ -260,14 +290,11 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
   const openingInsets = { top: pillsUp ? (pillsBottom ?? 0) : 0, bottom: WALL_BAR_INSET };
   if (ready && camera === null && hasStrip && (!pillsUp || pillsBottom !== null)) {
     const target = coldLoadTarget(wall, layout, addressedNodeId);
-    const bounds =
-      target?.kind === "frame"
-        ? selectionBounds(wall, layout, target.selection.frameId, target.selection.viewId)
-        : null;
-    if (target?.kind === "frame" && bounds) {
+    const framed =
+      target?.kind === "frame" ? selectionCamera(wall, layout, target.selection, entries.length === 0, false) : null;
+    if (target?.kind === "frame" && framed) {
       setPicked(target.selection);
-      const inspector = entries.length === 0;
-      setCamera({ version: 1, viewport: (size) => selectionViewport(bounds, size, { ...SELECTION_FRAMING, inspector }) });
+      setCamera({ version: 1, viewport: framed });
     } else if (target) {
       setCamera({ version: 1, rect: target.rect, ...STRIP_ZOOM });
     } else {
@@ -312,18 +339,11 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
   // for. "Also in" passes the target strip's title area to frame with it.
   const frameSelection = useCallback(
     (frameId: string, viewId: string, stripId: string, withTitle: boolean): void => {
-      setPicked({ frameId, viewId, stripId });
-      const bounds = selectionBounds(wall, layout, frameId, viewId);
-      if (!bounds) return;
-      const framing = {
-        ...SELECTION_FRAMING,
-        inspector: entries.length === 0,
-        header: withTitle ? stripTitleRect(layout, stripId) : null,
-      };
-      setCamera((previous) => ({
-        version: (previous?.version ?? 0) + 1,
-        viewport: (size) => selectionViewport(bounds, size, framing),
-      }));
+      const picked = { frameId, viewId, stripId };
+      setPicked(picked);
+      const framed = selectionCamera(wall, layout, picked, entries.length === 0, withTitle);
+      if (!framed) return;
+      setCamera((previous) => ({ version: (previous?.version ?? 0) + 1, viewport: framed }));
     },
     [entries.length, layout, wall],
   );
@@ -459,23 +479,34 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
   // iOS), so it keeps the reader in the strip they were in: when the
   // viewport's centre would land outside that strip's new extent, pan along
   // it — same zoom, same height — to bring its start to the left edge.
+  //
+  // With a frame selected, the lens widens or narrows that frame too, and the
+  // inspector would go on describing a frame slid off screen: the selection is
+  // framed again on the new layout instead — from here, in the handler (the
+  // bar and I/W/A both come through it), never from an effect. That replaces
+  // the strip-keeping move for this case only.
   const handleLensChange = useCallback(
     (next: WallLens) => {
       const store = flowStore.current;
-      if (store && next !== lens) {
-        const { transform, width, height } = store.getState();
-        const viewport = { x: transform[0], y: transform[1], zoom: transform[2] };
-        const size = { width, height };
-        const stripId = width > 0 && height > 0 ? stripNearViewport(layout, viewport, size) : null;
-        const kept =
-          stripId === null
-            ? null
-            : keepStripViewport(layoutWall(wall, next, aspectOf), stripId, viewport, size, WALL_CAMERA_PADDING);
-        if (kept) setCamera((previous) => ({ version: (previous?.version ?? 0) + 1, viewport: () => kept }));
+      const selected = selectionRef.current;
+      if (next !== lens) {
+        const nextLayout = layoutWall(wall, next, aspectOf);
+        const reframed = selected ? selectionCamera(wall, nextLayout, selected, entries.length === 0, false) : null;
+        if (reframed) {
+          setCamera((previous) => ({ version: (previous?.version ?? 0) + 1, viewport: reframed }));
+        } else if (store) {
+          const { transform, width, height } = store.getState();
+          const viewport = { x: transform[0], y: transform[1], zoom: transform[2] };
+          const size = { width, height };
+          const stripId = width > 0 && height > 0 ? stripNearViewport(layout, viewport, size) : null;
+          const kept =
+            stripId === null ? null : keepStripViewport(nextLayout, stripId, viewport, size, WALL_CAMERA_PADDING);
+          if (kept) setCamera((previous) => ({ version: (previous?.version ?? 0) + 1, viewport: () => kept }));
+        }
       }
       setPreferences({ screensLens: next });
     },
-    [aspectOf, layout, lens, setPreferences, wall],
+    [aspectOf, entries.length, layout, lens, selectionRef, setPreferences, wall],
   );
 
   const handleGapsOnlyChange = useCallback(
