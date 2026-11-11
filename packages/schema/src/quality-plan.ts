@@ -15,7 +15,15 @@
  * esbuild drops this module from any plugin script that does not use it.
  */
 
-import { applicableCells, CROSS_SURFACE_ID, type KritikCriterion, type KritikLibrary, type QualityAssessment } from "./quality";
+import {
+  applicableCells,
+  CROSS_SURFACE_ID,
+  type KritikCriterion,
+  type KritikLibrary,
+  type QualityAssessment,
+  type QualityProfile,
+  type QualitySection,
+} from "./quality";
 import { domainCodeOf } from "./quality-ops";
 import { planRecordCommand, renderPartPrompt, renderPlanPrompt } from "./kritik-plan-prompt";
 
@@ -531,4 +539,89 @@ export function planPartStatuses(
       stray,
     };
   });
+}
+
+// --- P4: coverage and readings -------------------------------------------------------------
+
+/**
+ * How much of the product a reading actually looked at (spec "A first audit that is a plan").
+ *
+ * `rollUpSurface` averages the domains that scored and skips the rest, so a surface with only
+ * Security scored rolls up to its Security score — which reads as a grade for the whole surface.
+ * Coverage is what says otherwise: `assessed` counts the applicable cells holding a score, once
+ * each, against `applicable`, every cell the profile's surfaces make applicable. An assessment on a
+ * cell that does not apply (a retired or unknown criterion, `cross-surface`, a surface outside the
+ * profile) counts nowhere. `scored` is the caller's — the cells a plan re-scored — and 0 for a
+ * plain reading.
+ *
+ * Surfaces are the profile's, in its order; with no profile, those the assessments name, first
+ * seen first. Lenient and total like every reader here: a malformed row is skipped.
+ */
+export function coverageOf(
+  section: Pick<QualitySection, "assessments"> & { profile?: Pick<QualityProfile, "surfaces"> | null },
+  library: Pick<KritikLibrary, "criteria">,
+  scored = 0,
+): PlanCoverage {
+  const assessments = Array.isArray(section.assessments) ? section.assessments : [];
+  const listed = section.profile?.surfaces;
+  const surfaces: string[] = [];
+  for (const surface of Array.isArray(listed) ? listed : []) {
+    const id = surface?.id;
+    if (typeof id === "string" && id !== "" && id !== CROSS_SURFACE_ID && !surfaces.includes(id)) surfaces.push(id);
+  }
+  if (surfaces.length === 0) {
+    for (const assessment of assessments) {
+      const id = assessment?.surface;
+      if (typeof id === "string" && id !== "" && id !== CROSS_SURFACE_ID && !surfaces.includes(id)) surfaces.push(id);
+    }
+  }
+
+  // A Map, not an object literal: a surface id is user data, and `__proto__` as a key would set a prototype.
+  const perSurface = new Map<string, { assessed: number; applicable: number }>();
+  for (const surface of surfaces) perSurface.set(surface, { assessed: 0, applicable: 0 });
+
+  const applicable = new Set<string>();
+  for (const entry of applicableCells(library, surfaces)) {
+    for (const surface of entry.surfaces) {
+      const counts = perSurface.get(surface);
+      if (counts === undefined) continue;
+      applicable.add(planCellKey(entry.criterion_id, surface));
+      counts.applicable++;
+    }
+  }
+
+  const assessed = new Set<string>();
+  for (const assessment of assessments) {
+    if (typeof assessment?.criterion_id !== "string" || typeof assessment?.surface !== "string") continue;
+    const key = planCellKey(assessment.criterion_id, assessment.surface);
+    if (!applicable.has(key) || assessed.has(key)) continue;
+    assessed.add(key);
+    const counts = perSurface.get(assessment.surface);
+    if (counts !== undefined) counts.assessed++;
+  }
+
+  const bySurface: Record<string, { assessed: number; applicable: number }> = {};
+  for (const [surface, counts] of perSurface) {
+    if (surface === "__proto__") continue;
+    bySurface[surface] = counts;
+  }
+  return { scored, assessed: assessed.size, applicable: applicable.size, surfaces: bySurface };
+}
+
+/**
+ * The line a roll-up wears when it rests on part of its surface: `web 62, from 6 of 71 cells`, one
+ * per surface whose `assessed` is below `applicable`, in `coverage.surfaces` order. The score is
+ * the surface's roll-up from `overall`, an em dash when it has none. A fully covered surface says
+ * nothing — the plain roll-up is already true.
+ */
+export function coverageNotes(coverage: PlanCoverage, overall: Readonly<Record<string, number | null>>): string[] {
+  const notes: string[] = [];
+  const surfaces = coverage.surfaces ?? {};
+  for (const surface of Object.keys(surfaces)) {
+    const { assessed, applicable } = surfaces[surface];
+    if (!(assessed < applicable)) continue;
+    const score = Object.prototype.hasOwnProperty.call(overall, surface) ? overall[surface] : undefined;
+    notes.push(`${surface} ${typeof score === "number" ? score : "—"}, from ${assessed} of ${applicable} cells`);
+  }
+  return notes;
 }

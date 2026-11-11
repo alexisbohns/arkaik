@@ -753,6 +753,104 @@ const throws = (fn) => {
   );
 }
 
+// --- part 4: coverage, and the recorded scope marker -------------------------
+{
+  const p4 = require("./load-schema").loadSchema();
+  const { coverageOf, coverageNotes, readPlanScope, auditCompletedInput, makeEvent, applicableCells } = p4;
+  const p4fs = require("fs");
+  const p4path = require("path");
+  const sameJson = (a, b) => {
+    const sorted = (v) =>
+      Array.isArray(v)
+        ? v.map(sorted)
+        : v !== null && typeof v === "object"
+          ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sorted(v[k])]))
+          : v;
+    return JSON.stringify(sorted(a)) === JSON.stringify(sorted(b));
+  };
+
+  const pack = JSON.parse(p4fs.readFileSync(p4path.join(__dirname, "..", "..", "packages", "kritik-library", "framework.json"), "utf8"));
+  const library = { version: pack.version, domains: pack.domains, criteria: pack.criteria };
+  const SURFACES = ["web", "ios", "android", "admin", "supabase"];
+  const profile = { surfaces: SURFACES.map((id) => ({ id, title: id })) };
+  const all = applicableCells(library, SURFACES).flatMap((entry) =>
+    entry.surfaces.map((surface) => ({ criterion_id: entry.criterion_id, surface, level: 2 })),
+  );
+  const per = (surface) => all.filter((a) => a.surface === surface).length;
+  const secWeb = ["SEC-01", "SEC-04", "SEC-05", "SEC-06", "SEC-07", "SEC-08"].map((criterion_id) => ({ criterion_id, surface: "web", level: 4 }));
+
+  const full = coverageOf({ profile, assessments: all }, library);
+  check("coverageOf: a full audit assesses every applicable cell", full.assessed === 338 && full.applicable === 338 && full.scored === 0, JSON.stringify({ assessed: full.assessed, applicable: full.applicable, scored: full.scored }));
+  check(
+    "coverageOf: one entry per profile surface, in profile order",
+    JSON.stringify(Object.keys(full.surfaces)) === JSON.stringify(SURFACES) && full.surfaces.web.assessed === per("web") && full.surfaces.web.applicable === per("web"),
+    JSON.stringify(full.surfaces),
+  );
+
+  const sparse = coverageOf({ profile, assessments: secWeb }, library, 6);
+  check("coverageOf: a first plan covers its own cells and no more", sparse.scored === 6 && sparse.assessed === 6 && sparse.applicable === 338, JSON.stringify({ scored: sparse.scored, assessed: sparse.assessed, applicable: sparse.applicable }));
+  check(
+    "coverageOf: web holds 6 of its cells, iOS none of its",
+    sparse.surfaces.web.assessed === 6 && sparse.surfaces.web.applicable === per("web") && sparse.surfaces.ios.assessed === 0 && sparse.surfaces.ios.applicable === per("ios"),
+    JSON.stringify(sparse.surfaces),
+  );
+
+  const noisy = coverageOf(
+    {
+      profile,
+      assessments: [
+        ...secWeb,
+        secWeb[0],
+        { criterion_id: "SEC-02", surface: "web", level: 3 },
+        { criterion_id: "X-99", surface: "web", level: 3 },
+        { criterion_id: "SEC-01", surface: "cross-surface", level: 3 },
+      ],
+    },
+    library,
+  );
+  check("coverageOf counts a cell once, and never one that does not apply", noisy.assessed === 6 && noisy.surfaces.web.assessed === 6, JSON.stringify(noisy.surfaces.web));
+
+  const bare = coverageOf({ assessments: [{ criterion_id: "AGT-01", surface: "ios", level: 2 }, { criterion_id: "SEC-01", surface: "web", level: 2 }] }, library);
+  check(
+    "coverageOf with no profile reads the surfaces its assessments name, first seen first",
+    JSON.stringify(Object.keys(bare.surfaces)) === JSON.stringify(["ios", "web"]) && bare.assessed === 2 && bare.applicable === per("ios") + per("web"),
+    JSON.stringify(bare),
+  );
+
+  const notes = coverageNotes(sparse, { web: 100, ios: null, android: 50 });
+  check(
+    "coverageNotes: one line per surface not fully looked at, its score or a dash",
+    notes.length === 5 &&
+      notes[0] === `web 100, from 6 of ${per("web")} cells` &&
+      notes[1] === `ios —, from 0 of ${per("ios")} cells` &&
+      notes[2] === `android 50, from 0 of ${per("android")} cells` &&
+      notes[3] === `admin —, from 0 of ${per("admin")} cells`,
+    JSON.stringify(notes),
+  );
+  check("coverageNotes: nothing to say about a full reading", coverageNotes(full, { web: 50 }).length === 0);
+
+  const planScope = {
+    partial: true,
+    cells: 2,
+    since: "2026-10",
+    plan: "2026-11-zplan-1100",
+    parts: ["2026-11-zplan-1100-sec-web"],
+    scored: ["SEC-01::web", "SEC-04::web"],
+    coverage: { scored: 2, assessed: 2, applicable: 338, surfaces: { web: { assessed: 2, applicable: 73 } } },
+  };
+  const matrix = {
+    surfaces: ["web"],
+    domains: ["SEC"],
+    matrix: { SEC: { web: { score: 100, grade: "A", capped: false, criteria: 2, findings: { critical: 0, high: 0, medium: 0, low: 0 } } } },
+    overall: { web: 100 },
+    finding_counts: { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
+  };
+  const input = auditCompletedInput(matrix, { audit_id: "2026-11-zplan-1100", framework_version: "0.1.0", scope: planScope });
+  const stamped = makeEvent(input.type, input.payload, { actor: "test" });
+  check("the plan marker survives the event schema whole: parts, scored, coverage", sameJson(stamped.scope, planScope), JSON.stringify(stamped.scope));
+  check("and reads back as a plan record", readPlanScope(stamped.scope)?.plan === "2026-11-zplan-1100" && readPlanScope(stamped.scope)?.coverage?.applicable === 338);
+}
+
 // --- summary ------------------------------------------------------------------------
 
 console.log(failures === 0 ? "\nAll quality-plan checks passed." : `\n${failures} check(s) failed.`);
