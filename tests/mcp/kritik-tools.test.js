@@ -14,7 +14,7 @@
  * Run via `npm run test:mcp` (builds `arkaik` for dist/io.js, then `arkaik-mcp`).
  */
 
-const { spawn } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 const http = require("node:http");
 const { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require("fs");
 const { tmpdir } = require("os");
@@ -23,6 +23,8 @@ const readline = require("readline");
 
 const ROOT = path.join(__dirname, "..", "..");
 const SERVER = path.join(ROOT, "packages", "mcp", "dist", "index.js");
+// The CLI, for the kritik_plan parity check — test:mcp builds it first (arkaik/io lives in it).
+const CLI = path.join(ROOT, "packages", "cli", "dist", "index.js");
 
 if (!existsSync(SERVER)) {
   console.error("arkaik-mcp is not built. Run: npm run build -w arkaik-mcp (test:mcp does this).");
@@ -162,6 +164,7 @@ async function run() {
       "kritik_trend",
       "kritik_burndown",
       "kritik_scope",
+      "kritik_plan",
     ]) {
       check(`catalog includes ${name}`, names.includes(name));
     }
@@ -524,6 +527,96 @@ async function run() {
       JSON.stringify(notes),
     );
 
+    // --- kritik_plan --------------------------------------------------------------
+    //
+    // The same plan file `arkaik kritik plan` writes, from the same shared
+    // function: compared field for field with the CLI's, run in this very repo,
+    // except the plan id (the CLI's comes after the file this tool wrote),
+    // createdAt and commit.
+
+    const planDef = (listed.result?.tools ?? []).find((tool) => tool.name === "kritik_plan");
+    check(
+      "kritik_plan takes runs, dry_run and status, and nothing else",
+      JSON.stringify(Object.keys(planDef?.inputSchema?.properties ?? {}).sort()) === JSON.stringify(["dry_run", "runs", "status"]) &&
+        planDef.inputSchema.additionalProperties === false,
+      JSON.stringify(planDef?.inputSchema),
+    );
+
+    const journalBeforePlan = session.journal().length;
+    const dryPlan = await session.call("kritik_plan", { runs: ["SEC:web"], dry_run: true });
+    check(
+      "kritik_plan dry_run=true returns the plan and writes nothing",
+      !dryPlan.isError && dryPlan.json.written === false && dryPlan.json.plan.parts.length === 1 && !existsSync(dryPlan.json.path),
+      dryPlan.text.slice(0, 300),
+    );
+
+    const made = await session.call("kritik_plan", { runs: ["SEC:web", "sec:web"] });
+    const madePlan = made.json.plan;
+    check(
+      "kritik_plan writes docs/quality/plans/<planId>.json and returns it",
+      !made.isError &&
+        made.json.written === true &&
+        made.json.path.endsWith(path.join("docs", "quality", "plans", `${madePlan.planId}.json`)) &&
+        JSON.stringify(session.readJson("docs", "quality", "plans", `${madePlan.planId}.json`)) === JSON.stringify(madePlan),
+      made.text.slice(0, 300),
+    );
+    check(
+      "a duplicate run collapses into one part, with a warning",
+      madePlan?.parts.length === 1 && madePlan.parts[0].cells.length === 6 && made.json.warnings.length === 1,
+      JSON.stringify(made.json.warnings),
+    );
+    check("kritik_plan appends nothing to the journal", session.journal().length === journalBeforePlan);
+
+    const cliPlan = spawnSync(process.execPath, [CLI, "kritik", "plan", "--run", "SEC:web", "--run", "sec:web", "--dry-run", "--json"], {
+      cwd: session.dir,
+      encoding: "utf8",
+    });
+    const normalize = (plan) => JSON.stringify({ ...plan, createdAt: null, commit: null }).split(plan.planId).join("<planId>");
+    let cliJson = null;
+    try {
+      cliJson = JSON.parse(cliPlan.stdout);
+    } catch {
+      // reported by the check below
+    }
+    check(
+      "kritik_plan writes the same plan as the CLI, but for planId, createdAt and commit",
+      cliPlan.status === 0 && cliJson !== null && cliJson.planId !== madePlan.planId && normalize(cliJson) === normalize(madePlan),
+      cliPlan.stderr || cliPlan.stdout.slice(0, 300),
+    );
+
+    const partId = madePlan.parts[0].auditId;
+    const notStarted = await session.call("kritik_plan", { status: madePlan.planId });
+    check(
+      "kritik_plan status reads each part's progress from its audit directory",
+      !notStarted.isError &&
+        notStarted.json.plan_id === madePlan.planId &&
+        notStarted.json.recorded === false &&
+        notStarted.json.parts[0].auditId === partId &&
+        notStarted.json.parts[0].progress === "not started",
+      notStarted.text.slice(0, 300),
+    );
+    const intoPart = await session.call("kritik_score", { criterion_id: "SEC-01", surface: "web", level: 2, evidence: "middleware.ts:14", audit_id: partId });
+    check("kritik_score with the part's audit_id lands in the part", !intoPart.isError && intoPart.json.audit_id === partId, intoPart.text.slice(0, 300));
+    const inProgress = await session.call("kritik_plan", { status: madePlan.planId });
+    check(
+      "and the part reads in progress, 1 of 6",
+      inProgress.json.parts?.[0]?.progress === "in progress" && inProgress.json.parts[0].scored === 1 && inProgress.json.parts[0].missing.length === 5,
+      inProgress.text.slice(0, 300),
+    );
+
+    const noRuns = await session.call("kritik_plan", { runs: [] });
+    check("kritik_plan without runs is an actionable tool error", noRuns.isError && /runs/.test(noRuns.json.message), noRuns.text);
+    const badSurfacePlan = await session.call("kritik_plan", { runs: ["SEC:android"] });
+    check(
+      "kritik_plan refuses a surface the profile does not declare, listing the profile's",
+      badSurfacePlan.isError && badSurfacePlan.json.message.includes("android") && badSurfacePlan.json.message.includes("supabase"),
+      badSurfacePlan.text,
+    );
+    const noSuchPlan = await session.call("kritik_plan", { status: "2026-11-zplan-1199" });
+    check("kritik_plan status on a missing plan names the path it read", noSuchPlan.isError && noSuchPlan.json.message.includes("no plan at"), noSuchPlan.text);
+    const both = await session.call("kritik_plan", { runs: ["SEC:web"], status: madePlan.planId });
+    check("kritik_plan refuses runs and status together", both.isError && /status/.test(both.json.message), both.text);
+
     // --- the whole journal -----------------------------------------------------
 
     const kinds = new Set(session.journal().map((event) => event.type));
@@ -852,6 +945,14 @@ async function run() {
     const signalsRefused = await hosted.call("kritik_signals", { criterion_id: "SEC-01" });
     check("kritik_signals refuses in hosted mode", signalsRefused.isError, signalsRefused.text.slice(0, 200));
     check("kritik_signals' refusal says why: live with the code", /live with the code/.test(signalsRefused.text), signalsRefused.text.slice(0, 300));
+
+    const planRefused = await hosted.call("kritik_plan", { runs: ["SEC:web"] });
+    check(
+      "kritik_plan refuses in hosted mode, saying a part needs a checkout",
+      planRefused.isError && /checkout/.test(planRefused.text) && /hosted project/.test(planRefused.text),
+      planRefused.text.slice(0, 300),
+    );
+
 
     const tripSignalRefused = await hosted.call("kritik_trip_signal", { criterion_id: "SEC-01", surface: "web", signal: "x" });
     check("kritik_trip_signal refuses in hosted mode", tripSignalRefused.isError, tripSignalRefused.text.slice(0, 200));

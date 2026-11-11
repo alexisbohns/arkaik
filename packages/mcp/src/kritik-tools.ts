@@ -106,6 +106,7 @@ import {
   scopedAuditTarget,
 } from "@arkaik/schema/src/cli/kritik-audit";
 import { loadProfile } from "@arkaik/schema/src/cli/kritik-paths";
+import { createPlan, loadPlan, planPath, planStatus, savePlan } from "@arkaik/schema/src/cli/kritik-plan";
 import { loadKritikLibrary, readFullJournalEvents, resolveJournal } from "arkaik/io";
 import { ToolError, type ToolDefinition, type ToolHandler } from "./protocol";
 import type { HostedQualityInput, LoadedGraph, QualityEventRefusal, Store } from "./store";
@@ -1085,6 +1086,64 @@ export function buildKritikCatalog(ctx: KritikContext): {
             }
           : {}),
       };
+    },
+  );
+
+  tool(
+    {
+      name: "kritik_plan",
+      description:
+        "Plan a partial audit before running it: one part per DOMAIN:SURFACE in runs (e.g. SEC:web), each with its own audit id that sorts after every audit on disk, the exact cells it scores, its checklist step count, and a prompt to paste into an agent session — plus one combined prompt for a session that runs every part in order. Writes docs/quality/plans/<planId>.json (dry_run=true writes nothing) and returns the plan, the path and any warnings; the same plan file `arkaik kritik plan` writes. Counts only: no token estimate yet. With status=<planId> it instead reads each part's progress from its audit directory (not started, in progress, scored; cells still missing; scores outside the plan, which block the record) and writes nothing. Score every cell with kritik_score and audit_id=<the part's audit id>; never record a part on its own — the plan is recorded once, after every part is scored, with `arkaik kritik matrix <planId> --record --plan`. Repo sessions only: a part is scored against a checkout.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          runs: {
+            type: "array",
+            items: { type: "string" },
+            description: "One DOMAIN:SURFACE per part, e.g. [\"SEC:web\", \"AGT:ios\"]. The order is kept. Required unless status is given.",
+          },
+          dry_run: { type: "boolean", description: "Build and return the plan, write nothing. Default: false." },
+          status: { type: "string", description: "A plan id: return each part's progress instead of making a plan. Read-only." },
+        },
+        additionalProperties: false,
+      },
+    },
+    async (args) => {
+      const root = repoRootOf(
+        ctx,
+        "A plan's parts are audits under docs/quality/audits/, scored against a checkout.",
+      );
+      const graph = await load();
+      const recorded = recordedAuditIds(graph.journal);
+
+      if (args.status !== undefined) {
+        const planId = requireString(args, "status");
+        if (args.runs !== undefined) {
+          throw new ToolError("status reads a plan that exists — pass runs or status, not both.");
+        }
+        try {
+          const plan = loadPlan(root, planId);
+          return { plan_id: plan.planId, recorded: recorded.includes(plan.planId), parts: planStatus(root, plan) };
+        } catch (error) {
+          throw new ToolError((error as Error).message);
+        }
+      }
+
+      const runs = args.runs;
+      if (!Array.isArray(runs) || runs.length === 0 || runs.some((run) => typeof run !== "string")) {
+        throw new ToolError("`runs` is required: one DOMAIN:SURFACE string per part, e.g. [\"SEC:web\"].");
+      }
+      const library = libraryOf(root);
+      let created: ReturnType<typeof createPlan>;
+      try {
+        created = createPlan(root, library, runs as string[], { recorded });
+      } catch (error) {
+        throw new ToolError((error as Error).message);
+      }
+      const path = planPath(root, created.plan.planId);
+      const written = args.dry_run !== true;
+      if (written) savePlan(path, created.plan);
+      return { plan: created.plan, path, written, warnings: created.warnings };
     },
   );
 

@@ -120,8 +120,8 @@ async function main() {
 
   const listed = await request("tools/list");
   const toolNames = (listed.result?.tools ?? []).map((tool) => tool.name);
-  // 16 graph tools + 12 kritik_* (docs/spec/mcp.md § Tool Catalog).
-  check("tools/list exposes the 29-tool catalog", toolNames.length === 29, toolNames.join(", "));
+  // 16 graph tools + 14 kritik_* (docs/spec/mcp.md § Tool Catalog).
+  check("tools/list exposes the 30-tool catalog", toolNames.length === 30, toolNames.join(", "));
   for (const name of ["list_nodes", "get_node", "create_node", "update_node", "add_edge", "validate_bundle", "get_map", "record_screenshot", "remove_screenshot"]) {
     check(`catalog includes ${name}`, toolNames.includes(name));
   }
