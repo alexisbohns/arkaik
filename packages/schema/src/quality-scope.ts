@@ -219,14 +219,20 @@ export function scopeAnchorId(events: readonly JournalEvent[]): string | null {
  *
  * - **The window.** Every `quality.finding.resolved` ordered (by `orderEvents`)
  *   after the `since` audit's recording. A re-recorded audit id is measured
- *   from its latest recording, the reading the trend keeps too.
+ *   from its latest recording, the reading the trend keeps too. `since`
+ *   defaults to the newest recording that is not a plan record; a plan record
+ *   is never the audit a scope is measured from.
+ * - **Per cell, after a plan.** A resolution counts toward a cell only when it
+ *   is ordered after the last plan record whose `scored` lists that cell: the
+ *   plan re-scored the cell after the fix, so the fix is already in its score.
+ *   A finding resolved more than once counts by its latest resolution.
  * - **Direct cells.** Each resolved finding's own `(criterion_id, surface)`,
  *   read from `section.findings` — the event does not carry them — when
  *   `score` could re-score it; a finding whose cell it could not (a retired
  *   criterion, an undeclared surface) is reported in `unscorable`. A
  *   `cross-surface` finding scopes every surface its criterion applies to: the
  *   contract lens has no column of its own, so the fix lands in the columns
- *   either side of it.
+ *   either side of it. The per-cell rule then judges each of those cells alone.
  * - **Accepted and refuted are out.** An accepted risk is a decision, not a
  *   fix, and the code did not change; the same goes for a refutation. Neither
  *   writes a `resolved` event in a repository, and a finding whose section
@@ -237,6 +243,9 @@ export function scopeAnchorId(events: readonly JournalEvent[]): string | null {
  *   with a resolved finding, joins with `because: [node ids]`. One hop only — a
  *   second would pull the whole graph in, and a scope that says "everything"
  *   is the comprehensive audit again.
+ * - **Reported lists.** `findings` and `resolved_by` hold only the findings
+ *   that still drive a listed cell; `unknown` and `unscorable` hold every
+ *   resolution in the window, plan or no plan.
  */
 export function deriveAuditScope(
   events: readonly JournalEvent[],
@@ -265,18 +274,36 @@ export function deriveAuditScope(
   const since = isString(anchorId) ? anchorId : null;
   const sinceTs = isString(anchor.ts) ? anchor.ts : null;
 
-  // Resolutions in order, one entry per finding. A later NAMED `resolved_by`
-  // wins over an earlier one — the rule `foldQualityEvents` applies, so the
-  // run sheet and the findings board name the same PR.
-  const resolutions = new Map<string, { resolved_by?: string; node_ids: Set<string> }>();
-  for (const event of ordered.slice(sinceIndex + 1)) {
+  // Rule 2's floor per cell: the journal index of the last plan record that
+  // re-scored it, else the anchor's. A resolution counts for a cell only when
+  // its index is above the cell's floor. Plan records before the anchor need
+  // no entry — the anchor's index is already higher.
+  const planFloor = new Map<string, number>();
+  for (let i = sinceIndex + 1; i < ordered.length; i++) {
+    const event = ordered[i];
+    if (event.type !== "quality.audit.completed") continue;
+    const reading = readPlanScope((event as { scope?: unknown }).scope);
+    if (reading === null) continue;
+    for (const key of reading.scored) planFloor.set(key, i);
+  }
+  const floorOf = (key: string): number => planFloor.get(key) ?? sinceIndex;
+
+  // Resolutions in order, one entry per finding: the index of its latest
+  // resolution, and each node id an event carried with the index of the
+  // latest event that carried it. A later NAMED `resolved_by` wins over an
+  // earlier one — the rule `foldQualityEvents` applies, so the run sheet and
+  // the findings board name the same PR.
+  const resolutions = new Map<string, { last: number; resolved_by?: string; nodes: Map<string, number> }>();
+  for (let i = sinceIndex + 1; i < ordered.length; i++) {
+    const event = ordered[i];
     if (event.type !== "quality.finding.resolved") continue;
     const findingId = (event as { finding_id?: unknown }).finding_id;
     if (!isString(findingId)) continue;
-    const entry = resolutions.get(findingId) ?? { node_ids: new Set<string>() };
+    const entry = resolutions.get(findingId) ?? { last: i, nodes: new Map<string, number>() };
+    entry.last = i;
     const by = (event as { resolved_by?: unknown }).resolved_by;
     if (isString(by)) entry.resolved_by = by;
-    for (const node of stringsOf((event as { node_ids?: unknown }).node_ids)) entry.node_ids.add(node);
+    for (const node of stringsOf((event as { node_ids?: unknown }).node_ids)) entry.nodes.set(node, i);
     resolutions.set(findingId, entry);
   }
   if (resolutions.size === 0) return { ...empty, since, since_ts: sinceTs };
@@ -341,7 +368,12 @@ export function deriveAuditScope(
   const unknown: string[] = [];
   const unscorable: string[] = [];
   const resolvedBy: Record<string, string> = {};
-  const resolvedNodes = new Set<string>();
+  // Node id → index of the latest counted resolution that touched it. Whether
+  // it counts for a candidate cell is decided per cell, against that cell's floor.
+  const resolvedNodes = new Map<string, number>();
+  const touch = (node: string, index: number) => {
+    if ((resolvedNodes.get(node) ?? -1) < index) resolvedNodes.set(node, index);
+  };
 
   for (const [findingId, resolution] of resolutions) {
     const finding = findingById.get(findingId);
@@ -358,17 +390,23 @@ export function deriveAuditScope(
       scorable(finding.criterion_id, surface),
     );
     // The fix still happened, and still touched its nodes — so it widens even
-    // when its own cell is one nothing can re-score.
-    for (const node of stringsOf(finding.node_ids)) resolvedNodes.add(node);
-    for (const node of resolution.node_ids) resolvedNodes.add(node);
+    // when its own cell is one nothing can re-score. The finding's own nodes
+    // date from its latest resolution; an event's nodes from that event.
+    for (const node of stringsOf(finding.node_ids)) touch(node, resolution.last);
+    for (const [node, index] of resolution.nodes) touch(node, index);
     if (targets.length === 0) {
       unscorable.push(findingId);
       continue;
     }
 
+    // Rules 2 to 4, per target cell: a plan that re-scored the cell after this
+    // finding's latest resolution already holds the fix.
+    const live = targets.filter((surface) => resolution.last > floorOf(cellKey(finding.criterion_id, surface)));
+    if (live.length === 0) continue;
+
     drivers.push(findingId);
     if (resolution.resolved_by !== undefined) resolvedBy[findingId] = resolution.resolved_by;
-    for (const surface of targets) addDirect(finding.criterion_id, surface, findingId);
+    for (const surface of live) addDirect(finding.criterion_id, surface, findingId);
   }
 
   let widened = 0;
