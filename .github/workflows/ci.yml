@@ -218,6 +218,9 @@ jobs:
       - name: Journey layout tests
         run: npm run test:journey-layout
 
+      - name: Screens wall model tests (strips, states, layout, seed census)
+        run: npm run test:screen-wall
+
       - name: Landing page catalogue, fixtures and slice tests
         run: npm run test:landing
 

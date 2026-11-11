@@ -42,6 +42,7 @@
     "test:delivery": "node tests/app/delivery.test.js",
     "test:journey-graph": "node tests/app/journey-graph.test.js",
     "test:journey-layout": "node tests/app/journey-layout.test.js",
+    "test:screen-wall": "node tests/app/screen-wall.test.js",
     "test:landing": "node tests/landing/landing.test.js",
     "test:spotlight": "node tests/app/graph-spotlight.test.js",
     "test:panel-stack": "node tests/app/panel-stack.test.js",
