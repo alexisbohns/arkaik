@@ -23,6 +23,7 @@ import { deriveQualityMatrix, type KritikLibrary, type QualitySection, type Qual
 import type { PlatformId } from "@/lib/config/platforms";
 import type { Edge, Node } from "@/lib/data/types";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
+import { usePageNodePanelHost } from "@/lib/hooks/usePageCommands";
 import { useProjectId } from "@/lib/hooks/useProjectId";
 import { useDuplicateNode } from "@/lib/hooks/useDuplicateNode";
 import type { PanelEntry } from "@/lib/utils/panel-stack";
@@ -194,6 +195,13 @@ export function ProjectPanels({
   const [splitTarget, setSplitTarget] = useState<Node | null>(null);
 
   const nodesById = useMemo(() => new Map(allNodes.map((node) => [node.id, node])), [allNodes]);
+
+  // A page that hands this stack its nodes can show a node panel; one that
+  // passes none (Overview, Settings) resolves no node entry at all. The ⌘K
+  // palette reads this to choose between opening a node here and taking it to
+  // the Library. Keyed on the prop being given, not on it being non-empty: an
+  // empty list is the loading window, and the panel opens once nodes arrive.
+  usePageNodePanelHost(allNodes !== NO_NODES);
 
   // A set, rebuilt only when the nodes change. `nodesById.keys()` would be a
   // fresh one-shot iterator per render of THIS component — and the dialog

@@ -134,22 +134,24 @@ function ProjectChrome({ children }: { children: React.ReactNode }) {
   );
 
   // A flow or view chosen in the palette. The page's own handler first (the
-  // Screens map flies to it). Overview and Settings host no node panel — their
-  // PageShell gets no nodes — so they hand off to the Library, which opens the
-  // panel from `?node=` on arrival. Everywhere else the panel opens in place.
+  // Screens map flies to it). Then the panel, in place, wherever something on
+  // the page registered that it can show one (`usePageNodePanelHost`). A page
+  // state with no host — Overview, Settings, a loading or error screen, a "no
+  // map named X" card — hands off to the Library, which opens the panel from
+  // `?node=` on arrival; writing `?node=` here would show nothing.
   const goToNode = useCallback(
-    (nodeId: string, pageHandler: PageNodeHandler | null) => {
+    (nodeId: string, pageHandler: PageNodeHandler | null, panelHost: boolean) => {
       if (pageHandler) {
         pageHandler(nodeId);
         return;
       }
-      if (currentView === "overview" || currentView === "settings") {
-        router.push(`/project/${id}/library?${NODE_PANEL_PARAM}=${encodeURIComponent(nodeId)}`);
+      if (panelHost) {
+        openNode({ nodeId });
         return;
       }
-      openNode({ nodeId });
+      router.push(`/project/${id}/library?${NODE_PANEL_PARAM}=${encodeURIComponent(nodeId)}`);
     },
-    [currentView, id, openNode, router],
+    [id, openNode, router],
   );
 
   // ⌘K and ⌘? live in fields too (TanStack's default for a Mod chord): a chord
@@ -194,7 +196,7 @@ function ProjectChrome({ children }: { children: React.ReactNode }) {
     // Outermost so both the pages (which register their create action) and the
     // palette (which offers it) sit under it.
     <PageCommandsProvider>
-      {(pageCommands, nodeHandler) => (
+      {(pageCommands, nodeHandler, nodePanelHost) => (
         <SidebarProvider defaultOpen>
           {/* The whole bundle, not just the title: the product selector in the
               sidebar header reads `project.metadata.products`, and two props off the
@@ -248,7 +250,7 @@ function ProjectChrome({ children }: { children: React.ReactNode }) {
             // and on a tie the page outranks a node through authored order too.
             commands={[...pageCommands, ...commands, ...nodeCommands]}
             onAction={handleCommandAction}
-            onNode={(nodeId) => goToNode(nodeId, nodeHandler)}
+            onNode={(nodeId) => goToNode(nodeId, nodeHandler, nodePanelHost)}
           />
           <KeyboardShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} inProject />
           <PublishDialog
