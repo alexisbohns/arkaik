@@ -36,7 +36,7 @@ import {
   type QualityFinding,
   type QualitySection,
 } from "./quality";
-import { isPlanPartId } from "./quality-plan";
+import { isPlanId, isPlanPartId } from "./quality-plan";
 
 /**
  * One cell to re-score.
@@ -391,6 +391,9 @@ export interface ScopedAuditIdInput {
  * `<month>-scoped` would sort before the plan's parts, so the candidates start
  * from the newest part instead: `<partId>-scoped`, `<partId>-scoped-02` (see
  * `scopedCandidates`).
+ *
+ * A requested id shaped like a plan id or a plan part id is refused: those
+ * names are reserved for a plan's record and its parts.
  */
 export function scopedAuditId(input: ScopedAuditIdInput): string {
   const { since, month, requested, known, recorded, open } = input;
@@ -405,6 +408,15 @@ export function scopedAuditId(input: ScopedAuditIdInput): string {
     }
     if (recorded.includes(requested)) {
       throw new Error(`"${requested}" is already recorded — its reading is history. Name a new audit.`);
+    }
+    // A plan's id names its file and its record, and a part's id one of its parts: an audit
+    // directory named either way could never be recorded, nor read as the plan it looks like.
+    if (isPlanId(requested) || isPlanPartId(requested)) {
+      throw new Error(
+        `"${requested}" is reserved for plans and their parts — a plan id (YYYY-MM-zplan-DDNN) names a plan, ` +
+          `and <planId>-<domain>-<surface> one of its parts, so an audit under that id could never be recorded or read as one. ` +
+          `Name a scoped re-audit (e.g. \`${suggestedAuditId({ ...input, requested: undefined })}\`).`,
+      );
     }
     if (newest !== undefined && requested < newest) {
       throw new Error(

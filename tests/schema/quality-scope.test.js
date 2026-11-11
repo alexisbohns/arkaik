@@ -536,6 +536,30 @@ const cellIds = (scope) => scope.cells.map((cell) => `${cell.surface}:${cell.cri
     "a requested <partId>-scoped is accepted",
     scopedAuditId({ ...base, requested: "2026-11-zplan-1100-sec-web-scoped", known: ["2026-10", ...PARTS] }) === "2026-11-zplan-1100-sec-web-scoped",
   );
+
+  // A requested id shaped like a plan or a part would make an audit directory
+  // that can never be recorded or read as a plan: refused, whatever it sorts after.
+  for (const requested of ["2026-11-zplan-1199", "2026-11-zplan-1199-sec-web", "2026-11-zplan-1100-sec-ios"]) {
+    const input = { ...base, requested, known: ["2026-10", ...PARTS] };
+    const message = throws(() => scopedAuditId(input));
+    check(`a requested "${requested}" is refused as reserved for plans and their parts`, /reserved for plans and their parts/.test(message ?? ""), message);
+    const suggestion = (/e\.g\. `([^`]+)`/.exec(message ?? "") ?? [])[1];
+    check(
+      `the refusal of "${requested}" suggests an id that is accepted`,
+      suggestion !== undefined && scopedAuditId({ ...input, requested: suggestion }) === suggestion,
+      message,
+    );
+  }
+  check(
+    "a recorded part asked for by name still says it is already recorded",
+    /already recorded/.test(throws(() => scopedAuditId({ ...base, requested: "2026-11-zplan-1100-sec-web", known: ["2026-10", ...PARTS] })) ?? ""),
+  );
+  check(
+    "a reserved id is refused with nothing else known, too",
+    /reserved for plans and their parts/.test(
+      throws(() => scopedAuditId({ since: "2026-10", month: "2026-11", requested: "2026-11-zplan-1199", known: ["2026-10"], recorded: ["2026-10"] })) ?? "",
+    ),
+  );
 }
 
 console.log(failures === 0 ? "\nAll quality-scope checks passed." : `\n${failures} check(s) failed.`);
