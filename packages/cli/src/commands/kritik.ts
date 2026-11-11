@@ -899,7 +899,16 @@ function runFindingAccept(args: string[], common: CommonOptions): void {
  * not this one. \`undefined\` for a comprehensive audit.
  */
 function scopedSince(common: CommonOptions, auditId: string, stamped: string | undefined, declared: boolean): string | undefined {
-  if (stamped !== undefined) return stamped;
+  if (stamped !== undefined) {
+    // `score --scope` never stamps a plan (its anchor skips plan records), so this one was written by hand.
+    if (isPlanId(stamped) || isPlanPartId(stamped)) {
+      return fail(
+        `kritik: ${scoresPath(common.root, auditId)} stamps "scope": { "since": "${stamped}" }, a plan or one of its parts — ` +
+          `a scope is measured from a full or scoped audit, never from a plan. Stamp the full or scoped audit this one followed.`,
+      );
+    }
+    return stamped;
+  }
   if (!declared) return undefined;
   const journal = resolveJournal(common.root, common.bundlePath);
   if (!journal.present) {

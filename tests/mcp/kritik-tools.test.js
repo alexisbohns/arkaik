@@ -977,6 +977,26 @@ async function run() {
         guarded.journal().length === beforeC,
       alone.text.slice(0, 400),
     );
+
+    // A hand-written scope stamp naming a plan or a part is refused, naming the file.
+    const stamped = `${planC.planId.slice(0, 7)}-stamped`;
+    for (const since of [planB.planId, partB.auditId]) {
+      mkdirSync(audits(stamped), { recursive: true });
+      writeFileSync(
+        audits(stamped, "scores.json"),
+        JSON.stringify({ audit_id: stamped, scope: { since }, assessments: [{ criterion_id: "PRV-01", surface: "web", level: 2, evidence: "x.ts:1", audit_id: stamped }] }),
+      );
+      const beforeStamp = guarded.journal().length;
+      const refused = await guarded.call("kritik_matrix", { audit_id: stamped, record: true });
+      check(
+        `kritik_matrix refuses a scores.json stamped scope.since "${since}", naming the file`,
+        refused.isError &&
+          refused.json.message.includes(path.join("docs", "quality", "audits", stamped, "scores.json")) &&
+          refused.json.message.includes("a scope is measured from a full or scoped audit, never from a plan") &&
+          guarded.journal().length === beforeStamp,
+        refused.text.slice(0, 400),
+      );
+    }
   } finally {
     guarded.stop();
   }

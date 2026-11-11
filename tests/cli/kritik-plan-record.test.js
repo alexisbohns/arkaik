@@ -654,6 +654,25 @@ try {
   ]);
   refuses(w, "its preview refuses too", ["matrix", wPlan.planId, "--plan"], [`part "${wPart.auditId}" was already recorded on its own`]);
 
+  // === A hand-written scope stamp never names a plan ===========================
+
+  const st = auditedRepo();
+  const stPlan = st.makePlan("SEC:web");
+  const stamped = `${MONTH}-scoped`;
+  for (const since of [stPlan.planId, stPlan.parts[0]?.auditId]) {
+    st.writeJson(`docs/quality/audits/${stamped}/scores.json`, {
+      audit_id: stamped,
+      framework_version: pack.version,
+      scope: { since },
+      assessments: [{ criterion_id: "SEC-01", surface: "web", level: 3, evidence: "x.ts:1", audit_id: stamped, ts: OLD_TS }],
+    });
+    refuses(st, `a scores.json stamped "scope.since": "${since}"`, ["matrix", stamped, "--record"], [
+      path.join("docs", "quality", "audits", stamped, "scores.json"),
+      `"${since}"`,
+      "a scope is measured from a full or scoped audit, never from a plan",
+    ]);
+  }
+
   // ── later sections are inserted above this line ──
 } finally {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });

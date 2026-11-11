@@ -111,6 +111,7 @@ import {
   requireProfile,
   saveFindings,
   saveScores,
+  scoresPath,
   auditOrderNote,
   declaredScopeSince,
   scopedAuditTarget,
@@ -753,6 +754,13 @@ export function buildKritikCatalog(ctx: KritikContext): {
       // needs no journal.
       let graph: LoadedGraph | undefined;
       let since = loadScoresOrEmpty(root, auditId).scope?.since;
+      // kritik_score never stamps a plan (its anchor skips plan records), so this one was written by hand.
+      if (since !== undefined && (isPlanId(since) || isPlanPartId(since))) {
+        throw new ToolError(
+          `${scoresPath(root, auditId)} stamps "scope": { "since": "${since}" }, a plan or one of its parts — ` +
+            `a scope is measured from a full or scoped audit, never from a plan. Stamp the full or scoped audit this one followed.`,
+        );
+      }
       if (since === undefined && args.scope === true) {
         graph = await load();
         try {
