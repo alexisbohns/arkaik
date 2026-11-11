@@ -205,6 +205,93 @@ const throws = (fn) => {
   check("cross-surface never counts as an applicable surface", applicableCellCount(LIB, ["web", "cross-surface"]) === applicableCellCount(LIB, ["web"]));
 }
 
+// --- plan and part ids --------------------------------------------------------------
+
+{
+  const { planId, planPartId, isPlanId, isPlanPartId, isScopedAuditId } = S;
+  // Local time on purpose: the id follows the local calendar, as currentAuditId() does.
+  const NOW = new Date(2026, 10, 11, 9, 30);
+  const RUNS = [{ domain: "SEC", surface: "web" }, { domain: "AGT", surface: "ios" }];
+
+  check("planPartId lower-cases the domain and the surface", planPartId("2026-11-zplan-1100", "A11Y", "Web") === "2026-11-zplan-1100-a11y-web");
+  for (const surface of ["scoped", "pre-scoped", "web-scoped-02"]) {
+    check(`planPartId refuses the surface "${surface}", which would read as a scoped id`, throws(() => planPartId("2026-11-zplan-1100", "SEC", surface)) !== undefined);
+  }
+  check("planPartId accepts a surface that merely contains scoped", planPartId("2026-11-zplan-1100", "SEC", "scoped-api") === "2026-11-zplan-1100-sec-scoped-api");
+
+  check("with nothing known, the first plan of the day is DD00", planId({ now: NOW, known: [], runs: RUNS }) === "2026-11-zplan-1100");
+  check("the id pads the month and the day", planId({ now: new Date(2026, 0, 5, 12), known: [], runs: RUNS }) === "2026-01-zplan-0500");
+  check(
+    "a plan id is a plan id, and its parts are parts",
+    isPlanId(planId({ now: NOW, known: [], runs: RUNS })) && RUNS.every((run) => isPlanPartId(planPartId("2026-11-zplan-1100", run.domain, run.surface))),
+  );
+  check("a known plan id is skipped", planId({ now: NOW, known: ["2026-11-zplan-1100"], runs: RUNS }) === "2026-11-zplan-1101");
+  // Its parts would sort after the known one, so only the "starts with" rule skips it.
+  check("a known part of a candidate is skipped", planId({ now: NOW, known: ["2026-11-zplan-1100-a11y-admin"], runs: RUNS }) === "2026-11-zplan-1101");
+  check(
+    "a candidate whose parts would sort before the greatest known id is skipped",
+    planId({ now: NOW, known: ["2026-11-zplan-1100-zzz-web"], runs: [{ domain: "SEC", surface: "web" }] }) === "2026-11-zplan-1101",
+  );
+  check("known need not arrive sorted", planId({ now: NOW, known: ["2026-11-zplan-1103-sec-web", "2026-10"], runs: RUNS }) === "2026-11-zplan-1104");
+  {
+    const message = throws(() => planId({ now: NOW, known: ["2026-10", "2026-12"], runs: RUNS }));
+    check("past NN 99 it throws, naming the greatest known id", message === 'no plan id on 2026-11-11 sorts after "2026-12"', message);
+  }
+  {
+    const known = Array.from({ length: 100 }, (_, n) => `2026-11-zplan-11${String(n).padStart(2, "0")}`);
+    const message = throws(() => planId({ now: NOW, known, runs: RUNS }));
+    check("a day with all 100 plan ids taken throws", message === 'no plan id on 2026-11-11 sorts after "2026-11-zplan-1199"', message);
+  }
+
+  // Sort-last property: whatever exists, every new part id sorts after all of it.
+  // mulberry32: seeded, so a failure reproduces.
+  let seed = 20261111;
+  const random = (n) => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return Math.floor((((t ^ (t >>> 14)) >>> 0) / 4294967296) * n);
+  };
+  const pick = (items) => items[random(items.length)];
+  const surfaces = ["web", "ios", "android", "admin", "supabase", "web-app", "api_v2"];
+  const domains = ["SEC", "PRV", "GDP", "SAF", "ARC", "TST", "PLT", "A11Y", "PRF", "REL", "AGT"];
+  const two = (n) => String(n).padStart(2, "0");
+  const existing = () => {
+    const month = `2026-${two(1 + random(11))}`;
+    const plan = `${month}-zplan-${two(1 + random(28))}${two(random(90))}`;
+    switch (random(7)) {
+      case 0:
+        return month;
+      case 1:
+        return `${month}-scoped`;
+      case 2:
+        return `${month}-scoped-${two(2 + random(98))}`;
+      case 3:
+        return `${month}-${pick(domains).toLowerCase()}-${pick(surfaces)}`;
+      case 4:
+        return plan;
+      case 5:
+        return `${plan}-${pick(domains).toLowerCase()}-${pick(surfaces)}`;
+      default:
+        return `${plan}-${pick(domains).toLowerCase()}-${pick(surfaces)}-scoped`;
+    }
+  };
+  const violations = [];
+  for (let trial = 0; trial < 500; trial++) {
+    const known = Array.from({ length: 1 + random(12) }, existing);
+    // Every generated id is dated on or before 2026-11-28 and numbered below
+    // 90, so a plan on the 28th always fits. Same-day plans are what make the
+    // NN rule, not the date, decide whether a part sorts last.
+    const now = new Date(2026, 10, 28, 8);
+    const runs = Array.from({ length: 1 + random(3) }, () => ({ domain: pick(domains), surface: pick(surfaces) }));
+    const id = planId({ now, known, runs });
+    const parts = runs.map((run) => planPartId(id, run.domain, run.surface));
+    const late = parts.filter((part) => known.some((other) => !(part > other)));
+    if (late.length > 0 || known.includes(id) || !parts.every((part) => isPlanPartId(part) && !isScopedAuditId(part))) violations.push(JSON.stringify({ known, runs, id }));
+  }
+  check("500 generated histories: every new part id sorts after every existing id", violations.length === 0, violations.slice(0, 3).join(" | "));
+}
+
 // --- summary ------------------------------------------------------------------------
 
 console.log(failures === 0 ? "\nAll quality-plan checks passed." : `\n${failures} check(s) failed.`);

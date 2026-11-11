@@ -215,3 +215,50 @@ export function applicableCellCount(library: Pick<KritikLibrary, "criteria">, su
   for (const entry of applicableCells(library, surfaces)) count += entry.surfaces.length;
   return count;
 }
+
+// --- Plan and part ids -----------------------------------------------------------
+
+/**
+ * A part's audit id: `<planId>-<domain>-<surface>`, lower case. Throws when
+ * the result would read as a scoped re-audit (a surface named `scoped`, or
+ * ending in `-scoped` / `-scoped-NN`), since every reader would then classify
+ * the part as one.
+ */
+export function planPartId(planId: string, domain: string, surface: string): string {
+  const id = `${planId}-${domain.toLowerCase()}-${surface.toLowerCase()}`;
+  if (isScopedAuditId(id)) {
+    throw new Error(
+      `the part ${domain}:${surface} would be named "${id}", which reads as a scoped re-audit. ` +
+        `A surface named "scoped", or ending in "-scoped" or "-scoped-NN", cannot be planned.`,
+    );
+  }
+  return id;
+}
+
+/**
+ * The next plan id: `YYYY-MM-zplan-DDNN` from `now`'s local date, the clock
+ * `currentAuditId()` reads. The `z` lead sorts it after every same-month id
+ * whose third segment starts with a digit or `a` to `y` (`2026-11-scoped`,
+ * `2026-11-sec-web`), and the fixed-width `DDNN` sorts a later plan after an
+ * earlier plan's parts.
+ *
+ * NN is the smallest of 00 to 99 where no `known` id is the candidate or one of
+ * its parts, and every part id the runs would get sorts after the greatest
+ * `known` id under plain string comparison. `known` is every id that exists:
+ * audit directories, plan files and recorded audits.
+ */
+export function planId(input: { now: Date; known: readonly string[]; runs: readonly PlanRun[] }): string {
+  const { now, known, runs } = input;
+  const ids = known.filter((id) => typeof id === "string" && id !== "");
+  const greatest = [...ids].sort().at(-1);
+  const year = String(now.getFullYear()).padStart(4, "0");
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  for (let n = 0; n < 100; n++) {
+    const candidate = `${year}-${month}-zplan-${day}${String(n).padStart(2, "0")}`;
+    if (ids.some((id) => id === candidate || id.startsWith(`${candidate}-`))) continue;
+    if (greatest !== undefined && !runs.every((run) => planPartId(candidate, run.domain, run.surface) > greatest)) continue;
+    return candidate;
+  }
+  throw new Error(`no plan id on ${year}-${month}-${day} sorts after "${greatest}"`);
+}
